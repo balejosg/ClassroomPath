@@ -1,0 +1,24 @@
+{
+  "name": "classroompath",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ClassroomPath SaaS - DNS whitelist management for educational institutions",
+  "author": "balejosg",
+  "license": "AGPL-3.0-or-later",
+  "keywords": ["dns", "whitelist", "classroom", "education", "saas"],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "install:all": "npm install && cd upstream/openpath && npm install",
+    "build": "cd upstream/openpath && npm run build --workspaces --if-present",
+    "build:api": "cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=@openpath/api",
+    "build:spa": "cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=openpath-spa",
+    "dev": "cd upstream/openpath/api && npm run dev",
+    "start": "cd upstream/openpath/api && npm start",
+    "test": "cd upstream/openpath && npm test",
+    "lint": "cd upstream/openpath && npm run lint",
+    "typecheck": "cd upstream/openpath && npm run typecheck",
+    "submodule:update": "git submodule update --remote --merge"
+  }
+}

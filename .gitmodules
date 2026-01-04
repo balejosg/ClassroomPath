@@ -1,0 +1,3 @@
+[submodule "upstream/openpath"]
+	path = upstream/openpath
+	url = https://github.com/balejosg/openpath.git
