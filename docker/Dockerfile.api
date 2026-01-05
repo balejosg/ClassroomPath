@@ -14,6 +14,7 @@ RUN npm ci --workspace=@openpath/shared --workspace=@openpath/api
 COPY tsconfig.base.json ./
 COPY shared/ ./shared/
 COPY api/ ./api/
+COPY spa/ ./spa/
 
 # Build
 RUN npm run build --workspace=@openpath/shared
