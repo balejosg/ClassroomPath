@@ -72,20 +72,12 @@ jobs:
           command_timeout: 15m
           script: |
             set -e
-            echo "Starting ClassroomPath deployment..."
+            echo "Starting ClassroomPath Docker deployment..."
 
-            DEPLOY_DIR="${HOME}/ClassroomPath"
+            DEPLOY_DIR="/opt/classroompath"
+            APP_DIR="$DEPLOY_DIR/app"
             
-            # Clone if doesn't exist
-            if [ ! -d "$DEPLOY_DIR" ]; then
-              git clone --recurse-submodules https://github.com/balejosg/ClassroomPath.git "$DEPLOY_DIR"
-            fi
-            
-            cd "$DEPLOY_DIR"
-
-            # Backup current version
-            echo "Creating backup..."
-            cp -r upstream/openpath/api upstream/openpath/api.backup 2>/dev/null || true
+            cd "$APP_DIR"
 
             # Pull latest changes with submodules
             echo "Pulling latest changes..."
@@ -95,58 +87,32 @@ jobs:
             git reset --hard origin/main
             git submodule update --init --recursive
 
-            # Build API
-            cd upstream/openpath
-            echo "Installing dependencies..."
-            npm ci
+            # Rebuild and restart Docker
+            cd "$DEPLOY_DIR"
+            echo "Rebuilding Docker image..."
+            docker compose build --no-cache
 
-            echo "Building project..."
-            npm run build --workspace=@openpath/shared
-            npm run build --workspace=@openpath/api
-            npm run build --workspace=openpath-spa
-
-            # Copy SPA to web root
-            echo "Deploying SPA..."
-            sudo mkdir -p /var/www/classroompath/spa
-            sudo cp -r spa/index.html spa/setup.html spa/reset-password.html spa/css spa/dist /var/www/classroompath/spa/
-
-            # Run database migrations
-            echo "Running database migrations..."
-            cd api
-            if [ -f .env ]; then
-              set -a && source .env && set +a
-            elif [ -f "$DEPLOY_DIR/config/.env" ]; then
-              set -a && source "$DEPLOY_DIR/config/.env" && set +a
-            fi
-            npm run db:migrate || echo "⚠️ Migration failed - will retry on service restart"
-
-            # Restart service
-            echo "Restarting API service..."
-            if command -v rc-service >/dev/null 2>&1; then
-              sudo rc-service classroompath-api restart || sudo rc-service openpath-api restart || true
-            elif command -v systemctl >/dev/null 2>&1; then
-              sudo systemctl restart classroompath-api || sudo systemctl restart openpath-api || true
-            fi
+            echo "Restarting containers..."
+            docker compose down
+            docker compose up -d
 
             # Verify health
-            sleep 3
-            if curl -f http://localhost:3000/health > /dev/null 2>&1; then
-              echo "✅ Deployment successful!"
-              cd "$DEPLOY_DIR/upstream/openpath" && rm -rf api.backup
-            else
-              echo "❌ Deployment failed! Rolling back..."
-              cd "$DEPLOY_DIR/upstream/openpath"
-              rm -rf api
-              mv api.backup api
-              if command -v rc-service >/dev/null 2>&1; then
-                sudo rc-service classroompath-api restart || true
-              elif command -v systemctl >/dev/null 2>&1; then
-                sudo systemctl restart classroompath-api || true
+            echo "Waiting for service to start..."
+            sleep 10
+            
+            for i in 1 2 3 4 5; do
+              if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+                echo "✅ Deployment successful!"
+                docker logs classroompath-api --tail 5
+                exit 0
               fi
-              exit 1
-            fi
+              echo "Health check attempt $i failed, retrying..."
+              sleep 5
+            done
 
-            echo "Deployment completed at $(date)"
+            echo "❌ Deployment failed! Check logs:"
+            docker logs classroompath-api --tail 30
+            exit 1
 
       - name: Report skip
         if: steps.resolve.outputs.skip == 'true'
