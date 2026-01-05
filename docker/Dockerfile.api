@@ -11,6 +11,7 @@ COPY api/package*.json ./api/
 RUN npm ci --workspace=@openpath/shared --workspace=@openpath/api
 
 # Copy source
+COPY tsconfig.base.json ./
 COPY shared/ ./shared/
 COPY api/ ./api/
 
