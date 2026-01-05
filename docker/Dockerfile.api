@@ -1,0 +1,28 @@
+# API Dockerfile for ClassroomPath
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+COPY shared/package*.json ./shared/
+COPY api/package*.json ./api/
+
+RUN npm ci --workspace=@openpath/shared --workspace=@openpath/api
+
+# Copy source
+COPY shared/ ./shared/
+COPY api/ ./api/
+
+# Build
+RUN npm run build --workspace=@openpath/shared
+RUN npm run build --workspace=@openpath/api
+
+# Create data directory
+RUN mkdir -p /app/data
+
+WORKDIR /app/api
+
+EXPOSE 3000
+
+CMD ["node", "dist/src/server.js"]
