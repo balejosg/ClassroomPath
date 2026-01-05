@@ -25,14 +25,11 @@ Built on [OpenPath](https://github.com/balejosg/openpath) (OSS).
          ┌────────────┴────────────┐
          ▼                         ▼
    Production                  Staging
-classroompath.duckdns.org   classroompath-staging.duckdns.org
          │                         │
          └──────────┬──────────────┘
                     ▼
          ┌─────────────────────┐
          │  Nginx Proxy Manager │
-         │    (CT 112)          │
-         │  192.168.1.112       │
          │  SSL termination     │
          └──────────┬───────────┘
                     │
@@ -40,16 +37,13 @@ classroompath.duckdns.org   classroompath-staging.duckdns.org
       ▼                           ▼
 ┌───────────────┐         ┌───────────────┐
 │ App Prod      │         │ App Staging   │
-│ (CT 111)      │         │ (CT 114)      │
-│ 192.168.1.111 │         │ 192.168.1.114 │
-│ :3000         │         │ :3000         │
+│ Docker        │         │ Docker        │
 └──────┬────────┘         └──────┬────────┘
        │                         │
        ▼                         ▼
 ┌───────────────┐         ┌───────────────┐
 │ PostgreSQL    │         │ PostgreSQL    │
-│ Prod (CT 110) │         │ Staging (CT113│
-│ 192.168.1.110 │         │ 192.168.1.113 │
+│ Production    │         │ Staging       │
 └───────────────┘         └───────────────┘
 ```
 
@@ -61,27 +55,6 @@ classroompath.duckdns.org   classroompath-staging.duckdns.org
 /w/*       → Tokenized whitelist downloads
 /*         → SPA (static files)
 ```
-
-## Infrastructure
-
-### Proxmox Containers (LXC)
-
-| CT | IP | Service | RAM | Disk |
-|----|-----|----------|-----|------|
-| 110 | 192.168.1.110 | PostgreSQL Production | 1GB | 10GB |
-| 111 | 192.168.1.111 | ClassroomPath App Prod | 2GB | 15GB |
-| 112 | 192.168.1.112 | Nginx Proxy Manager | 512MB | 5GB |
-| 113 | 192.168.1.113 | PostgreSQL Staging | 512MB | 8GB |
-| 114 | 192.168.1.114 | ClassroomPath App Staging | 1.5GB | 12GB |
-
-### Port Forwarding (Router)
-
-| External Port | Internal IP | Internal Port | Purpose |
-|---------------|-------------|---------------|---------|
-| 80 | 192.168.1.112 | 80 | HTTP (redirect to HTTPS) |
-| 443 | 192.168.1.112 | 443 | HTTPS |
-| 2211 | 192.168.1.111 | 22 | SSH Deploy Production |
-| 2214 | 192.168.1.114 | 22 | SSH Deploy Staging |
 
 ## Quick Start (Development)
 
@@ -125,19 +98,19 @@ npm run start
 ### GitHub Secrets Required
 
 #### Production
-| Secret | Value |
-|--------|-------|
-| `DEPLOY_HOST` | `classroompath.duckdns.org` |
-| `DEPLOY_PORT` | `2211` |
-| `DEPLOY_USER` | `deploy` |
+| Secret | Description |
+|--------|-------------|
+| `DEPLOY_HOST` | Production server hostname |
+| `DEPLOY_PORT` | SSH port |
+| `DEPLOY_USER` | SSH username |
 | `DEPLOY_SSH_KEY` | Private SSH key |
 
 #### Staging
-| Secret | Value |
-|--------|-------|
-| `STAGING_DEPLOY_HOST` | `classroompath.duckdns.org` |
-| `STAGING_DEPLOY_PORT` | `2214` |
-| `STAGING_DEPLOY_USER` | `deploy` |
+| Secret | Description |
+|--------|-------------|
+| `STAGING_DEPLOY_HOST` | Staging server hostname |
+| `STAGING_DEPLOY_PORT` | SSH port |
+| `STAGING_DEPLOY_USER` | SSH username |
 | `STAGING_DEPLOY_SSH_KEY` | Private SSH key |
 
 ### Manual Deployment
@@ -152,19 +125,6 @@ git push origin v1.0.1
 ```
 
 ## Server Management
-
-### SSH Access
-
-```bash
-# Via Proxmox
-ssh root@192.168.1.150
-pct exec 111 -- bash   # Production app
-pct exec 114 -- bash   # Staging app
-
-# Direct (from internet)
-ssh -p 2211 deploy@classroompath.duckdns.org  # Production
-ssh -p 2214 deploy@classroompath.duckdns.org  # Staging
-```
 
 ### Docker Commands
 
@@ -181,29 +141,7 @@ docker compose build --no-cache && docker compose up -d
 
 ### Nginx Proxy Manager
 
-- **URL**: http://192.168.1.112:81
-- **Purpose**: SSL termination, reverse proxy, Let's Encrypt certificates
-
-## Database
-
-### PostgreSQL Access
-
-```bash
-# Production
-psql -h 192.168.1.110 -U classroompath -d classroompath
-
-# Staging  
-psql -h 192.168.1.113 -U classroompath -d classroompath_staging
-```
-
-### Backups
-
-Automated daily backups at 3:00 AM to `/opt/backups/`.
-
-```bash
-# Manual backup
-/opt/classroompath-backup-all.sh
-```
+Used for SSL termination and reverse proxy with automatic Let's Encrypt certificates.
 
 ## Updating OpenPath
 
