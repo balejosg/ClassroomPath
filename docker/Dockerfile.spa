@@ -20,6 +20,7 @@ COPY spa/ ./spa/
 
 # Build dependencies
 RUN npm run build --workspace=@openpath/shared
+RUN npm run build --workspace=@openpath/api
 # Build SPA (this creates dist/)
 RUN npm run build --workspace=openpath-spa
 
