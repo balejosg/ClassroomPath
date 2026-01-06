@@ -17,8 +17,15 @@
     "dev": "cd upstream/openpath/api && npm run dev",
     "start": "cd upstream/openpath/api && npm start",
     "test": "cd upstream/openpath && npm test",
+    "test:deployment": "node --import tsx --test tests/*.test.ts",
     "lint": "cd upstream/openpath && npm run lint",
     "typecheck": "cd upstream/openpath && npm run typecheck",
     "submodule:update": "git submodule update --remote --merge"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.21.0",
+    "yaml": "^2.7.1"
   }
 }

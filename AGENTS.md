@@ -21,6 +21,29 @@ ClassroomPath/
 
 ## Key Difference from OpenPath
 
+### ⛔ Architectural Constraint
+
+**OpenPath is agnostic of ClassroomPath.** The dependency is unidirectional:
+
+```
+ClassroomPath ──depends on──▶ OpenPath
+     │                           │
+     │                           ├── Has NO knowledge of ClassroomPath
+     │                           ├── Works standalone
+     │                           └── Is the OSS core
+     │
+     ├── Consumes OpenPath as submodule
+     ├── Adds SaaS-specific deployment
+     └── Can be replaced by other distributions
+```
+
+**When adding features:**
+- Generic features → Add to OpenPath (benefits all distributions)
+- SaaS-specific features → Add to ClassroomPath only
+- Never modify OpenPath to "know about" ClassroomPath
+
+### Comparison Table
+
 | Aspect | OpenPath | ClassroomPath |
 |--------|----------|---------------|
 | Purpose | Core library/agent code | Production deployment |
@@ -70,6 +93,15 @@ Environment variables in `config/.env` (copy from `.env.example`):
 | `JWT_SECRET` | Yes | Auth tokens |
 | `APP_SECRET` | Yes | Server refuses to start without |
 | `SHARED_SECRET` | Yes | Machine-to-API auth |
+
+## Testing
+
+| Test Type | Command | Purpose |
+|-----------|---------|---------|
+| OpenPath tests | `npm test` | Delegates to OpenPath (business logic) |
+| Deployment tests | `npm run test:deployment` | SaaS-specific infrastructure |
+
+Deployment tests verify Docker, nginx, and env configurations only. They do NOT test OpenPath logic.
 
 ## Secrets (GitHub Actions)
 
