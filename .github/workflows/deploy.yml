@@ -33,13 +33,51 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Resolve staging host
+        id: resolve
+        run: |
+          HOST="${{ secrets.STAGING_DEPLOY_HOST }}"
+          PORT="${{ secrets.STAGING_DEPLOY_PORT }}"
+          PORT="${PORT:-22}"
+
+          if [ -z "$HOST" ]; then
+            echo "STAGING_DEPLOY_HOST not configured. Skipping deployment."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Try to resolve hostname with retries
+          MAX_RETRIES=3
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "DNS resolution attempt $i of $MAX_RETRIES..."
+            IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1}' | head -1)
+
+            if [ -z "$IP" ]; then
+              IP=$(dig +short "$HOST" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            fi
+
+            if [ -n "$IP" ]; then
+              echo "Resolved $HOST to $IP"
+              echo "ip=$IP" >> $GITHUB_OUTPUT
+              echo "port=$PORT" >> $GITHUB_OUTPUT
+              echo "skip=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "Could not resolve $HOST after $MAX_RETRIES attempts"
+          echo "skip=true" >> $GITHUB_OUTPUT
+
       - name: Deploy to Staging via SSH
+        if: steps.resolve.outputs.skip != 'true'
         uses: appleboy/ssh-action@v1.2.4
         with:
-          host: ${{ secrets.STAGING_DEPLOY_HOST }}
+          host: ${{ steps.resolve.outputs.ip }}
           username: ${{ secrets.STAGING_DEPLOY_USER }}
           key: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
-          port: ${{ secrets.STAGING_DEPLOY_PORT || 22 }}
+          port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 15m
           script: |
@@ -55,6 +93,11 @@ jobs:
             docker compose up -d
             sleep 10
             curl -sf http://localhost:3000/health && echo "✅ Staging OK" || exit 1
+
+      - name: Report skip
+        if: steps.resolve.outputs.skip == 'true'
+        run: |
+          echo "::warning::Staging deployment skipped - could not resolve deploy host"
 
   deploy-production:
     name: Deploy to Production
