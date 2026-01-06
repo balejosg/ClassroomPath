@@ -1,0 +1,36 @@
+# SPA Dockerfile for ClassroomPath
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Install dependencies (copying all packages to ensure workspace links work)
+COPY package*.json ./
+COPY shared/package*.json ./shared/
+COPY api/package*.json ./api/
+COPY spa/package*.json ./spa/
+
+# Install dependencies for shared and spa
+RUN npm ci --workspace=@openpath/shared --workspace=@openpath/api --workspace=openpath-spa
+
+# Copy source
+COPY tsconfig.base.json ./
+COPY shared/ ./shared/
+COPY api/ ./api/
+COPY spa/ ./spa/
+
+# Build dependencies
+RUN npm run build --workspace=@openpath/shared
+# Build SPA (this creates dist/)
+RUN npm run build --workspace=openpath-spa
+
+# Production stage
+FROM nginx:alpine
+
+# Copy the entire SPA directory (source + dist) to Nginx html root
+# source is needed because setup.html uses css/ and js/ from source
+# dist is needed because index.html uses dist/css and dist/js
+COPY --from=builder /app/spa /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
