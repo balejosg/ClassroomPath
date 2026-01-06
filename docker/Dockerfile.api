@@ -7,8 +7,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY shared/package*.json ./shared/
 COPY api/package*.json ./api/
+COPY spa/package*.json ./spa/
 
-RUN npm ci --workspace=@openpath/shared --workspace=@openpath/api
+RUN npm ci --workspace=@openpath/shared --workspace=@openpath/api --workspace=openpath-spa
 
 # Copy source
 COPY tsconfig.base.json ./
@@ -19,6 +20,7 @@ COPY spa/ ./spa/
 # Build
 RUN npm run build --workspace=@openpath/shared
 RUN npm run build --workspace=@openpath/api
+RUN npm run build --workspace=openpath-spa
 
 # Create data directory
 RUN mkdir -p /app/data
