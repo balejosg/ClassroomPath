@@ -91,6 +91,7 @@ jobs:
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
             cd /opt/classroompath
+            docker builder prune -af || true
             docker compose build --no-cache
             docker compose down
             docker compose up -d
