@@ -18,13 +18,12 @@ RUN npm install
 RUN sed -i 's/dist\/main.js/src\/main.ts/g' ../upstream/openpath/spa/index.html
 
 # Build ClassroomPath SPA
-# Use npx to ensure we find the binary
 RUN npx vite build
 
 # Production stage
 FROM nginx:alpine
 COPY --from=builder /app/spa/dist /usr/share/nginx/html
+# Copy CSS from OpenPath SPA (used by some pages)
 COPY --from=builder /app/upstream/openpath/spa/css /usr/share/nginx/html/css
-COPY --from=builder /app/upstream/openpath/spa/js /usr/share/nginx/html/js
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
