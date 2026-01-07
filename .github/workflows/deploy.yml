@@ -88,7 +88,9 @@ jobs:
             cd /opt/classroompath/app
             git fetch origin main
             git reset --hard origin/main
-            git submodule update --init --recursive
+            git submodule foreach --recursive 'git checkout -- . || true'
+            git submodule foreach --recursive 'git clean -fd || true'
+            git submodule update --init --recursive --force
             cd /opt/classroompath
             docker compose build --no-cache
             docker compose down
