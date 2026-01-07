@@ -31,13 +31,17 @@ export default defineConfig({
     },
     plugins: [
         {
-            name: 'inject-onboarding-html',
+            name: 'inject-classroompath-html',
             transformIndexHtml(html) {
                 const onboardingHtml = readFileSync(
                     resolve(__dirname, 'onboarding-screens.html'),
                     'utf-8'
                 );
-                return html.replace('</body>', `${onboardingHtml}\n</body>`);
+                const registerHtml = readFileSync(
+                    resolve(__dirname, 'register-screen.html'),
+                    'utf-8'
+                );
+                return html.replace('</body>', `${onboardingHtml}\n${registerHtml}\n</body>`);
             },
         },
     ],

@@ -1,0 +1,45 @@
+<!-- Register Screen (ClassroomPath only) -->
+<div id="register-screen" class="screen hidden">
+    <div class="login-container">
+        <div class="login-header">
+            <div class="logo">🎓</div>
+            <h1>ClassroomPath</h1>
+            <p>Crear una cuenta nueva</p>
+        </div>
+        <div class="login-form">
+            <div id="google-signup-btn" class="google-btn-container"></div>
+
+            <div class="login-separator">
+                <span>o con tu email</span>
+            </div>
+
+            <form id="email-register-form">
+                <div class="form-group">
+                    <label for="register-email">Email</label>
+                    <input type="email" id="register-email" required placeholder="profesor@colegio.es" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="register-name">Nombre</label>
+                    <input type="text" id="register-name" required placeholder="Tu nombre" autocomplete="name">
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Contraseña</label>
+                    <input type="password" id="register-password" required minlength="8" placeholder="Mínimo 8 caracteres" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="register-password-confirm">Confirmar contraseña</label>
+                    <input type="password" id="register-password-confirm" required minlength="8" placeholder="Repetir contraseña" autocomplete="new-password">
+                </div>
+                <button type="submit" id="email-register-btn" class="btn btn-primary btn-block">
+                    Crear cuenta
+                </button>
+            </form>
+
+            <div id="register-error" class="error-message"></div>
+
+            <p class="login-info">
+                ¿Ya tienes cuenta? <a href="#" id="goto-login-link">Inicia sesión</a>
+            </p>
+        </div>
+    </div>
+</div>
