@@ -6,16 +6,20 @@ WORKDIR /app
 # Copy everything
 COPY . .
 
-# Install EVERYTHING everywhere (slow but sure)
+# Install dependencies in root and submodule
 RUN npm install
 RUN cd upstream/openpath && npm install
 
+# Install dependencies for ClassroomPath SPA specifically
+WORKDIR /app/spa
+RUN npm install
+
 # Patch OpenPath index.html
-RUN sed -i 's/dist\/main.js/src\/main.ts/g' upstream/openpath/spa/index.html
+RUN sed -i 's/dist\/main.js/src\/main.ts/g' ../upstream/openpath/spa/index.html
 
 # Build ClassroomPath SPA
-WORKDIR /app/spa
-RUN npm run build
+# Use npx to ensure we find the binary
+RUN npx vite build
 
 # Production stage
 FROM nginx:alpine
