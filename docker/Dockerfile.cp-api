@@ -26,6 +26,10 @@ RUN npm ci --omit=dev
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
 
+# Copy drizzle config and source for migrations (db:push needs schema source)
+COPY api/drizzle.config.ts ./
+COPY api/src/db ./src/db
+
 EXPOSE 3001
 
 CMD ["node", "dist/server.js"]
