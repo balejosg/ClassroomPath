@@ -18,6 +18,10 @@ export default defineConfig({
             {
                 find: './modules/app-core.js',
                 replacement: resolve(__dirname, 'src/cp-init.ts'),
+            },
+            {
+                find: '@openpath/shared',
+                replacement: resolve(__dirname, '../upstream/openpath/shared/src/index.ts'),
             }
         ],
     },
