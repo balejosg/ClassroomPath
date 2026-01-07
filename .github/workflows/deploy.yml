@@ -91,6 +91,10 @@ jobs:
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
             
+            # Stop any existing classroompath containers (from old deployment location)
+            docker stop classroompath-api classroompath-spa classroompath-gateway 2>/dev/null || true
+            docker rm classroompath-api classroompath-spa classroompath-gateway 2>/dev/null || true
+            
             # Use docker-compose from repo's docker/ directory
             cd /opt/classroompath/app/docker
             docker builder prune -af || true
@@ -186,7 +190,9 @@ jobs:
             git reset --hard origin/main
             git submodule update --init --recursive
 
-            # Use docker-compose from repo's docker/ directory
+            docker stop classroompath-api classroompath-spa classroompath-gateway 2>/dev/null || true
+            docker rm classroompath-api classroompath-spa classroompath-gateway 2>/dev/null || true
+            
             cd "$APP_DIR/docker"
             echo "Rebuilding Docker images..."
             docker compose build --no-cache
