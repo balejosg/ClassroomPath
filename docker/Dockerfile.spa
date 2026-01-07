@@ -6,7 +6,6 @@ WORKDIR /app
 # Copy ClassroomPath API and SPA
 COPY api/ ./api/
 COPY spa/ ./spa/
-COPY shared/ ./shared/
 COPY package*.json ./
 
 # Copy OpenPath submodule
