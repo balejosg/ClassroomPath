@@ -8,10 +8,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@trpc/client": "^10.45.0"
+    "@trpc/client": "^11.8.1"
   },
   "devDependencies": {
     "vite": "^5.4.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "@trpc/server": "^11.0.0-rc.366"
   }
 }
