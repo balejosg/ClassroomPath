@@ -14,12 +14,14 @@ export default defineConfig({
         },
     },
     resolve: {
-        alias: {
-            './modules/app-core.js': resolve(__dirname, 'src/cp-init.ts'),
-        },
+        alias: [
+            {
+                find: './modules/app-core.js',
+                replacement: resolve(__dirname, 'src/cp-init.ts'),
+            }
+        ],
     },
     plugins: [
-        // Plugin to inject onboarding screens into index.html
         {
             name: 'inject-onboarding-html',
             transformIndexHtml(html) {
@@ -27,8 +29,13 @@ export default defineConfig({
                     resolve(__dirname, 'onboarding-screens.html'),
                     'utf-8'
                 );
-                // Insert before closing </body>
-                return html.replace('</body>', `${onboardingHtml}\n</body>`);
+                
+                let processedHtml = html.replace(
+                    '<script type="module" src="dist/main.js"></script>',
+                    '<script type="module" src="/src/main.ts"></script>'
+                );
+
+                return processedHtml.replace('</body>', `${onboardingHtml}\n</body>`);
             },
         },
     ],
