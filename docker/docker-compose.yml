@@ -48,8 +48,8 @@ services:
   # SPA static server (nginx)
   spa:
     build:
-      context: ../upstream/openpath
-      dockerfile: ../../docker/Dockerfile.spa
+      context: ..
+      dockerfile: docker/Dockerfile.spa
     container_name: classroompath-spa
     restart: unless-stopped
     ports:
