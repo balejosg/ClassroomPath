@@ -8,6 +8,8 @@ import { init as openpathInit } from '../../upstream/openpath/spa/src/modules/ap
 import { googleAuth } from '../../upstream/openpath/spa/src/google-auth.js';
 import { showToast } from '../../upstream/openpath/spa/src/utils.js';
 
+let cpInitialized = false;
+
 function showScreen(screenId: string): void {
     document.querySelectorAll('.screen').forEach((el) => {
         el.classList.add('hidden');
@@ -15,20 +17,21 @@ function showScreen(screenId: string): void {
     document.getElementById(screenId)?.classList.remove('hidden');
 }
 
-function injectRegisterLink(): void {
+function setupRegisterUI(): void {
+    if (cpInitialized) return;
+    cpInitialized = true;
+
     const loginInfo = document.querySelector('#login-screen .login-info');
-    if (!loginInfo) return;
-    
-    loginInfo.innerHTML = '¿No tienes cuenta? <a href="#" id="goto-register-link">Crear cuenta</a>';
+    if (loginInfo && !document.getElementById('goto-register-link')) {
+        loginInfo.innerHTML = '¿No tienes cuenta? <a href="#" id="goto-register-link">Crear cuenta</a>';
+    }
     
     document.getElementById('goto-register-link')?.addEventListener('click', (e) => {
         e.preventDefault();
         showScreen('register-screen');
         void googleAuth.renderButton('google-signup-btn');
     });
-}
 
-function initRegisterScreen(): void {
     document.getElementById('goto-login-link')?.addEventListener('click', (e) => {
         e.preventDefault();
         showScreen('login-screen');
@@ -69,7 +72,7 @@ async function handleRegister(): Promise<void> {
         await auth.register(emailInput.value, nameInput.value, passwordInput.value);
         await auth.login(emailInput.value, passwordInput.value);
         showToast('Cuenta creada correctamente', 'success');
-        await init();
+        window.location.reload();
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Error al crear la cuenta';
         if (errorEl) errorEl.textContent = message;
@@ -80,11 +83,10 @@ async function handleRegister(): Promise<void> {
 }
 
 export async function init(): Promise<void> {
-    injectRegisterLink();
-    initRegisterScreen();
-
     if (!auth.isAuthenticated()) {
-        return openpathInit();
+        await openpathInit();
+        setupRegisterUI();
+        return;
     }
 
     const status = await onboarding.checkStatus();
