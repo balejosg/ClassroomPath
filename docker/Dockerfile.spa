@@ -3,27 +3,24 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies for ClassroomPath root
-COPY package*.json ./
-# We don't have a lockfile for ClassroomPath root that covers everything
-# so we'll just install what we need.
-# Actually, ClassroomPath root only has devDeps for testing.
-RUN npm ci || npm install
-
 # Copy ClassroomPath API and SPA
 COPY api/ ./api/
 COPY spa/ ./spa/
+COPY shared/ ./shared/
+COPY package*.json ./
 
 # Copy OpenPath submodule
 COPY upstream/ ./upstream/
 
 # Install dependencies for ClassroomPath SPA
-# It needs @trpc/client and also references OpenPath source
 WORKDIR /app/spa
 RUN npm install
 
+# Patch OpenPath index.html to point to main.ts instead of dist/main.js
+# This is required for Vite to build it correctly
+RUN sed -i 's/dist\/main.js/src\/main.ts/g' ../upstream/openpath/spa/index.html
+
 # Build ClassroomPath SPA
-# This uses spa/vite.config.ts which wraps OpenPath SPA
 RUN npm run build
 
 # Production stage
@@ -32,7 +29,7 @@ FROM nginx:alpine
 # Copy the built SPA files
 COPY --from=builder /app/spa/dist /usr/share/nginx/html
 
-# Also copy OpenPath source CSS/JS because some legacy pages might use them directly
+# Also copy OpenPath source assets
 COPY --from=builder /app/upstream/openpath/spa/css /usr/share/nginx/html/css
 COPY --from=builder /app/upstream/openpath/spa/js /usr/share/nginx/html/js
 

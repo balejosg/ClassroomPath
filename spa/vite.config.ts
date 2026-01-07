@@ -29,13 +29,7 @@ export default defineConfig({
                     resolve(__dirname, 'onboarding-screens.html'),
                     'utf-8'
                 );
-                
-                let processedHtml = html.replace(
-                    '<script type="module" src="dist/main.js"></script>',
-                    '<script type="module" src="/src/main.ts"></script>'
-                );
-
-                return processedHtml.replace('</body>', `${onboardingHtml}\n</body>`);
+                return html.replace('</body>', `${onboardingHtml}\n</body>`);
             },
         },
     ],
