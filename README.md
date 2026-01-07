@@ -50,11 +50,47 @@ Built on [OpenPath](https://github.com/balejosg/openpath) (OSS).
 ### API Routes
 
 ```
-/api/*     → Node.js API (port 3000)
-/trpc/*    → tRPC endpoints
+/cp/*      → ClassroomPath Gateway (port 3001) - multi-tenancy
+/api/*     → OpenPath API (port 3000)
+/trpc/*    → OpenPath tRPC endpoints
 /w/*       → Tokenized whitelist downloads
 /*         → SPA (static files)
 ```
+
+## Multi-tenancy
+
+ClassroomPath adds organization-based multi-tenancy on top of OpenPath:
+
+### User Flow
+
+1. User logs in with Google (via OpenPath auth)
+2. ClassroomPath checks for organization membership
+3. If no membership:
+   - Option A: Create new organization (becomes admin)
+   - Option B: Wait for invitation
+4. Once in an organization, user sees the OpenPath dashboard
+
+### Database Tables
+
+ClassroomPath adds these tables (prefixed with `cp_`):
+
+| Table | Purpose |
+|-------|---------|
+| `cp_organizations` | Organization records |
+| `cp_memberships` | User-organization associations with roles |
+| `cp_user_status` | Tracks users waiting for invitations |
+
+### Gateway API Endpoints
+
+Gateway API runs on port 3001 with prefix `/cp/`:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/cp/health` | GET | Health check |
+| `/cp/trpc/onboarding.status` | GET | Get user's org membership status |
+| `/cp/trpc/onboarding.createOrganization` | POST | Create new org |
+| `/cp/trpc/onboarding.waitForInvitation` | POST | Set waiting status |
+| `/cp/trpc/onboarding.cancelWaiting` | POST | Clear waiting status |
 
 ## Quick Start (Development)
 

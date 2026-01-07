@@ -17,6 +17,8 @@ on:
       - 'v*'
     paths:
       - 'upstream/openpath/**'
+      - 'api/**'
+      - 'spa/**'
       - 'config/**'
       - 'docker/**'
       - '.github/workflows/deploy.yml'
@@ -92,7 +94,13 @@ jobs:
             docker compose down
             docker compose up -d
             sleep 10
-            curl -sf http://localhost:3000/health && echo "✅ Staging OK" || exit 1
+            
+            # Run ClassroomPath gateway migrations
+            echo "Running ClassroomPath database migrations..."
+            docker compose exec -T gateway npm run db:push || echo "⚠️ Migration skipped (gateway may not be ready)"
+            
+            curl -sf http://localhost:3000/health && echo "✅ Staging API OK" || exit 1
+            curl -sf http://localhost:3001/cp/health && echo "✅ Staging Gateway OK" || echo "⚠️ Gateway not responding"
 
       - name: Report skip
         if: steps.resolve.outputs.skip == 'true'
@@ -174,7 +182,6 @@ jobs:
             git reset --hard origin/main
             git submodule update --init --recursive
 
-            # Rebuild and restart Docker
             cd "$DEPLOY_DIR"
             echo "Rebuilding Docker image..."
             docker compose build --no-cache
@@ -183,23 +190,35 @@ jobs:
             docker compose down
             docker compose up -d
 
-            # Verify health
             echo "Waiting for service to start..."
             sleep 10
             
+            echo "Running ClassroomPath database migrations..."
+            docker compose exec -T gateway npm run db:push || echo "⚠️ Migration skipped (gateway may not be ready)"
+            
             for i in 1 2 3 4 5; do
               if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
-                echo "✅ Deployment successful!"
-                docker logs classroompath-api --tail 5
-                exit 0
+                echo "✅ API health check passed!"
+                break
               fi
               echo "Health check attempt $i failed, retrying..."
               sleep 5
             done
 
-            echo "❌ Deployment failed! Check logs:"
-            docker logs classroompath-api --tail 30
-            exit 1
+            if ! curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+              echo "❌ API deployment failed! Check logs:"
+              docker logs classroompath-api --tail 30
+              exit 1
+            fi
+            
+            if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
+              echo "✅ Gateway health check passed!"
+            else
+              echo "⚠️ Gateway not responding (may be expected if not yet configured)"
+            fi
+            
+            echo "✅ Deployment successful!"
+            docker logs classroompath-api --tail 5
 
       - name: Report skip
         if: steps.resolve.outputs.skip == 'true'

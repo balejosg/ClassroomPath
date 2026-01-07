@@ -1,0 +1,75 @@
+<!-- Onboarding Screen (choose path) -->
+<div id="onboarding-screen" class="screen hidden">
+    <div class="onboarding-container">
+        <div class="onboarding-header">
+            <span class="logo-large">🎓</span>
+            <h1>Bienvenido a ClassroomPath</h1>
+            <p class="subtitle">Tu cuenta esta lista. ¿Que deseas hacer?</p>
+        </div>
+        
+        <div class="onboarding-options">
+            <div class="option-card" id="create-org-card">
+                <span class="option-icon">🏫</span>
+                <h2>Crear mi organizacion</h2>
+                <p>Ideal si eres administrador de un centro educativo</p>
+                
+                <form id="create-org-form" class="create-org-form hidden">
+                    <div class="form-group">
+                        <label for="org-name-input">Nombre de la organizacion</label>
+                        <input 
+                            type="text" 
+                            id="org-name-input" 
+                            placeholder="Ej: IES Ejemplo"
+                            minlength="2"
+                            maxlength="100"
+                            required
+                        >
+                    </div>
+                    <div id="create-org-error" class="error-message"></div>
+                    <button type="submit" id="create-org-submit" class="btn btn-primary btn-lg">
+                        Crear organizacion
+                    </button>
+                </form>
+                
+                <button id="show-create-form-btn" class="btn btn-primary btn-lg">
+                    Crear organizacion
+                </button>
+            </div>
+            
+            <div class="option-card">
+                <span class="option-icon">⏳</span>
+                <h2>Esperar invitacion</h2>
+                <p>Si ya existe una organizacion y esperas que te inviten</p>
+                <button id="wait-invite-btn" class="btn btn-secondary btn-lg">
+                    Esperar invitacion
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Waiting Screen -->
+<div id="waiting-screen" class="screen hidden">
+    <div class="waiting-container">
+        <div class="waiting-header">
+            <span class="waiting-icon">⏳</span>
+            <h1>Esperando invitacion</h1>
+            <p>Cuando un administrador te invite a su organizacion, recarga esta pagina para acceder.</p>
+        </div>
+        
+        <div class="waiting-actions">
+            <button id="reload-status-btn" class="btn btn-primary btn-lg">
+                🔄 Recargar pagina
+            </button>
+        </div>
+        
+        <hr class="divider">
+        
+        <div class="change-mind">
+            <p>¿Cambiaste de opinion?</p>
+            <button id="create-org-from-waiting-btn" class="btn btn-link">
+                Quiero crear mi propia organizacion
+            </button>
+        </div>
+    </div>
+</div>
