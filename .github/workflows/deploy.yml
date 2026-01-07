@@ -90,12 +90,14 @@ jobs:
             git reset --hard origin/main
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
-            cd /opt/classroompath
+            
+            # Use docker-compose from repo's docker/ directory
+            cd /opt/classroompath/app/docker
             docker builder prune -af || true
             docker compose build --no-cache
             docker compose down
             docker compose up -d
-            sleep 10
+            sleep 15
             
             # Run ClassroomPath gateway migrations
             echo "Running ClassroomPath database migrations..."
@@ -184,16 +186,17 @@ jobs:
             git reset --hard origin/main
             git submodule update --init --recursive
 
-            cd "$DEPLOY_DIR"
-            echo "Rebuilding Docker image..."
+            # Use docker-compose from repo's docker/ directory
+            cd "$APP_DIR/docker"
+            echo "Rebuilding Docker images..."
             docker compose build --no-cache
 
             echo "Restarting containers..."
             docker compose down
             docker compose up -d
 
-            echo "Waiting for service to start..."
-            sleep 10
+            echo "Waiting for services to start..."
+            sleep 15
             
             echo "Running ClassroomPath database migrations..."
             docker compose exec -T gateway npm run db:push || echo "⚠️ Migration skipped (gateway may not be ready)"

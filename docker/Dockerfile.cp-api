@@ -1,16 +1,30 @@
 # ClassroomPath Gateway API
-FROM node:20-alpine
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy and install ClassroomPath API
+# Copy and install dependencies (including dev for build)
 COPY api/package*.json ./
 RUN npm ci
 
+# Copy source and build
 COPY api/ ./
-
-# Build
 RUN npm run build
+
+# Production stage
+FROM node:20-alpine
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# Copy package files and install prod deps only
+COPY api/package*.json ./
+RUN npm ci --omit=dev
+
+# Copy built files from builder
+COPY --from=builder /app/dist ./dist
 
 EXPOSE 3001
 
