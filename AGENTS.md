@@ -117,9 +117,70 @@ Optimized for Nginx Proxy Manager. See `docker/npm-advanced-config.txt` for:
 - WebSocket support for tRPC
 - `/api/*`, `/trpc/*`, `/w/*` routing
 
+## Database Architecture (CRITICAL)
+
+### ⚠️ ClassroomPath uses PostgreSQL, NOT SQLite
+
+OpenPath supports both SQLite (default) and PostgreSQL. **ClassroomPath deployments use PostgreSQL exclusively.**
+
+| Environment | Database | Location |
+|-------------|----------|----------|
+| OpenPath standalone | SQLite | `/app/data/openpath.db` (inside container) |
+| **ClassroomPath Staging** | **PostgreSQL** | CT 113 (`classroompath-db-staging`) |
+| **ClassroomPath Production** | **PostgreSQL** | CT 110 (`classroompath-db`) |
+
+### Database Connection
+
+The `DATABASE_URL` environment variable determines which database is used:
+- If `DATABASE_URL` is set → PostgreSQL
+- If `DATABASE_URL` is NOT set → SQLite (default)
+
+```bash
+# Staging API container has:
+DATABASE_URL=postgresql://classroompath:<PASSWORD>@<DB_HOST>:5432/classroompath_staging
+```
+
+### Proxmox Container Layout
+
+| CT ID | Name | Purpose |
+|-------|------|---------|
+| 110 | `classroompath-db` | Production PostgreSQL |
+| 111 | `classroompath-app` | Production Docker (API, SPA) |
+| 113 | `classroompath-db-staging` | **Staging PostgreSQL** |
+| 114 | `classroompath-app-staging` | Staging Docker (API, SPA) |
+
+### Database Operations
+
+```bash
+# Connect to Proxmox
+ssh root@192.168.1.150
+
+# Query STAGING database
+pct exec 113 -- docker exec classroompath-postgres-staging \
+  psql -U classroompath -d classroompath_staging -c "SELECT * FROM users;"
+
+# Query PRODUCTION database
+pct exec 110 -- docker exec classroompath-postgres \
+  psql -U classroompath -d classroompath -c "SELECT * FROM users;"
+
+# Clear staging database (CAREFUL!)
+pct exec 113 -- docker exec classroompath-postgres-staging \
+  psql -U classroompath -d classroompath_staging -c "TRUNCATE users, roles CASCADE;"
+```
+
+### Common Mistakes to Avoid
+
+| ❌ Wrong | ✅ Correct |
+|----------|-----------|
+| `rm /app/data/openpath.db` | Query PostgreSQL in CT 113/110 |
+| Looking for `.db` files | Check `DATABASE_URL` env var |
+| Using SQLite commands | Use `psql` via docker exec |
+| Assuming SQLite in staging | Always check which DB is configured |
+
 ## Anti-Patterns
 
 - Editing files in `upstream/openpath/` (changes lost on submodule update)
 - Committing `.env` files
 - Deploying without verifying submodule is updated
 - Using staging secrets in production
+- **Assuming SQLite when PostgreSQL is configured** (check `DATABASE_URL`)
