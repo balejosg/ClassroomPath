@@ -7,6 +7,7 @@
 
 import { auth } from '../../upstream/openpath/spa/src/auth.js';
 import { onboarding } from './onboarding.js';
+import './styles/onboarding.css';
 
 // Re-export everything from OpenPath's app-core
 export * from '../../upstream/openpath/spa/src/modules/app-core.js';

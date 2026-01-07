@@ -1,21 +1,21 @@
 <!-- Onboarding Screen (choose path) -->
 <div id="onboarding-screen" class="screen hidden">
-    <div class="onboarding-container">
+    <div class="login-container">
         <div class="onboarding-header">
             <span class="logo-large">🎓</span>
             <h1>Bienvenido a ClassroomPath</h1>
-            <p class="subtitle">Tu cuenta esta lista. ¿Que deseas hacer?</p>
+            <p class="subtitle">Tu cuenta está lista. ¿Qué deseas hacer?</p>
         </div>
         
         <div class="onboarding-options">
             <div class="option-card" id="create-org-card">
                 <span class="option-icon">🏫</span>
-                <h2>Crear mi organizacion</h2>
+                <h2>Crear mi organización</h2>
                 <p>Ideal si eres administrador de un centro educativo</p>
                 
                 <form id="create-org-form" class="create-org-form hidden">
                     <div class="form-group">
-                        <label for="org-name-input">Nombre de la organizacion</label>
+                        <label for="org-name-input">Nombre de la organización</label>
                         <input 
                             type="text" 
                             id="org-name-input" 
@@ -27,21 +27,21 @@
                     </div>
                     <div id="create-org-error" class="error-message"></div>
                     <button type="submit" id="create-org-submit" class="btn btn-primary btn-lg">
-                        Crear organizacion
+                        Crear organización
                     </button>
                 </form>
                 
                 <button id="show-create-form-btn" class="btn btn-primary btn-lg">
-                    Crear organizacion
+                    Crear organización
                 </button>
             </div>
             
             <div class="option-card">
                 <span class="option-icon">⏳</span>
-                <h2>Esperar invitacion</h2>
-                <p>Si ya existe una organizacion y esperas que te inviten</p>
+                <h2>Esperar invitación</h2>
+                <p>Si ya existe una organización y esperas que te inviten</p>
                 <button id="wait-invite-btn" class="btn btn-secondary btn-lg">
-                    Esperar invitacion
+                    Esperar invitación
                 </button>
             </div>
         </div>
@@ -50,26 +50,28 @@
 
 <!-- Waiting Screen -->
 <div id="waiting-screen" class="screen hidden">
-    <div class="waiting-container">
+    <div class="login-container">
         <div class="waiting-header">
             <span class="waiting-icon">⏳</span>
-            <h1>Esperando invitacion</h1>
-            <p>Cuando un administrador te invite a su organizacion, recarga esta pagina para acceder.</p>
+            <h1>Esperando invitación</h1>
+            <p class="subtitle">Cuando un administrador te invite a su organización, recarga esta página para acceder.</p>
         </div>
         
-        <div class="waiting-actions">
-            <button id="reload-status-btn" class="btn btn-primary btn-lg">
-                🔄 Recargar pagina
-            </button>
-        </div>
-        
-        <hr class="divider">
-        
-        <div class="change-mind">
-            <p>¿Cambiaste de opinion?</p>
-            <button id="create-org-from-waiting-btn" class="btn btn-link">
-                Quiero crear mi propia organizacion
-            </button>
+        <div class="login-form">
+            <div class="waiting-actions">
+                <button id="reload-status-btn" class="btn btn-primary btn-lg">
+                    🔄 Recargar página
+                </button>
+            </div>
+            
+            <div class="login-separator"><span>o</span></div>
+            
+            <div class="change-mind">
+                <p>¿Cambiaste de opinión?</p>
+                <button id="create-org-from-waiting-btn" class="btn btn-link">
+                    Quiero crear mi propia organización
+                </button>
+            </div>
         </div>
     </div>
 </div>
