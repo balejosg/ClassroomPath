@@ -15,8 +15,7 @@ export default defineConfig({
     },
     resolve: {
         alias: {
-            // Override OpenPath's app-core with our wrapper
-            '@openpath/app-core': resolve(__dirname, 'src/cp-init.ts'),
+            './modules/app-core.js': resolve(__dirname, 'src/cp-init.ts'),
         },
     },
     plugins: [

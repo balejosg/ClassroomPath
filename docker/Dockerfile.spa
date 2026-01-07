@@ -8,29 +8,36 @@ COPY package*.json ./
 COPY shared/package*.json ./shared/
 COPY api/package*.json ./api/
 COPY spa/package*.json ./spa/
+COPY upstream/openpath/package*.json ./upstream/openpath/
+COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
+COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
+COPY upstream/openpath/spa/package*.json ./upstream/openpath/spa/
 
-# Install dependencies for shared and spa
-RUN npm ci --workspace=@openpath/shared --workspace=@openpath/api --workspace=openpath-spa
+# Install dependencies
+RUN npm ci
 
 # Copy source
 COPY tsconfig.base.json ./
 COPY shared/ ./shared/
 COPY api/ ./api/
 COPY spa/ ./spa/
+COPY upstream/ ./upstream/
 
-# Build dependencies
-RUN npm run build --workspace=@openpath/shared
-RUN npm run build --workspace=@openpath/api
-# Build SPA (this creates dist/)
-RUN npm run build --workspace=openpath-spa
+# Build ClassroomPath SPA
+# This uses spa/vite.config.ts which wraps OpenPath SPA
+WORKDIR /app/spa
+RUN npm run build
 
 # Production stage
 FROM nginx:alpine
 
-# Copy the entire SPA directory (source + dist) to Nginx html root
-# source is needed because setup.html uses css/ and js/ from source
-# dist is needed because index.html uses dist/css and dist/js
-COPY --from=builder /app/spa /usr/share/nginx/html
+# Copy the built SPA files
+COPY --from=builder /app/spa/dist /usr/share/nginx/html
+
+# Also copy OpenPath source CSS/JS because some legacy pages might use them directly
+# (Though Vite should have bundled everything)
+COPY --from=builder /app/upstream/openpath/spa/css /usr/share/nginx/html/css
+COPY --from=builder /app/upstream/openpath/spa/js /usr/share/nginx/html/js
 
 EXPOSE 80
 
