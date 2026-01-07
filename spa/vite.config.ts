@@ -22,6 +22,10 @@ export default defineConfig({
             {
                 find: '@openpath/shared',
                 replacement: resolve(__dirname, '../upstream/openpath/shared/src/index.ts'),
+            },
+            {
+                find: '@trpc/client',
+                replacement: resolve(__dirname, 'node_modules/@trpc/client'),
             }
         ],
     },
