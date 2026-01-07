@@ -1,53 +1,56 @@
 /* Onboarding & Waiting Screens Styling */
 
+/* Use OpenPath's typography and color variables */
+
 .onboarding-header,
 .waiting-header {
     text-align: center;
-    margin-bottom: 2.5rem;
+    margin-bottom: 3rem;
 }
 
 .logo-large {
-    font-size: 4rem;
+    font-size: 5rem;
     display: block;
-    margin-bottom: 1.5rem;
-    animation: pulse 2s infinite;
+    margin-bottom: 1rem;
 }
 
 .waiting-icon {
-    font-size: 4rem;
+    font-size: 5rem;
     display: block;
-    margin-bottom: 1.5rem;
-    animation: pulse 2s infinite;
+    margin-bottom: 1rem;
+    animation: onboarding-pulse 2s infinite;
 }
 
-@keyframes pulse {
+@keyframes onboarding-pulse {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.05); opacity: 0.8; }
 }
 
 .onboarding-header h1,
 .waiting-header h1 {
-    font-size: var(--font-size-5);
+    font-size: var(--font-size-6);
     font-weight: var(--font-weight-7);
     background: var(--gradient-primary);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.75rem;
 }
 
 .subtitle {
     color: var(--text-secondary);
-    font-size: 1.1rem;
+    font-size: 1.25rem;
+    max-width: 500px;
+    margin: 0 auto;
 }
 
-/* Option Cards */
+/* Option Cards - Matching OpenPath style */
 .onboarding-options {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    display: flex;
     gap: 2rem;
     width: 100%;
     max-width: 900px;
+    justify-content: center;
     margin-top: 1rem;
 }
 
@@ -55,45 +58,54 @@
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    padding: 2.5rem 2rem;
+    padding: 3rem 2rem;
     text-align: center;
-    transition: all 0.3s ease;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: var(--shadow-md);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1rem;
+    flex: 1;
+    min-width: 300px;
+    max-width: 400px;
 }
 
 .option-card:hover {
     border-color: var(--accent-primary);
-    transform: translateY(-5px);
+    transform: translateY(-8px);
     box-shadow: var(--shadow-lg);
+    background: var(--bg-tertiary);
 }
 
 .option-icon {
-    font-size: 3.5rem;
-    margin-bottom: 0.5rem;
+    font-size: 4rem;
+    margin-bottom: 1.5rem;
 }
 
 .option-card h2 {
     font-size: 1.5rem;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
+    margin-bottom: 1rem;
 }
 
 .option-card p {
     color: var(--text-secondary);
     font-size: 1rem;
-    margin-bottom: 1rem;
-    line-height: 1.5;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+    flex: 1;
 }
 
-/* Create Org Form */
+/* Create Org Form Integration */
 .create-org-form {
     width: 100%;
-    margin-top: 0.5rem;
+    margin-top: 0;
     text-align: left;
+    background: transparent;
+    border: none;
+    padding: 0;
+    box-shadow: none;
 }
 
 .create-org-form .form-group {
@@ -101,32 +113,26 @@
 }
 
 .create-org-form label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-    font-size: 0.875rem;
     color: var(--text-secondary);
+    font-weight: 600;
 }
 
-/* Waiting Screen Specifics */
+/* Waiting Screen integration */
 .waiting-actions {
     margin: 2rem 0;
-}
-
-.divider {
-    border: none;
-    border-top: 1px solid var(--border-color);
-    margin: 2.5rem 0;
     width: 100%;
-    max-width: 400px;
 }
 
 .change-mind {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    width: 100%;
     color: var(--text-secondary);
 }
 
 .change-mind p {
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
     font-size: 0.9rem;
 }
 
@@ -136,29 +142,36 @@
     color: var(--accent-primary);
     text-decoration: underline;
     cursor: pointer;
-    font-size: 0.9rem;
-    padding: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.5rem;
+    transition: color 0.2s;
 }
 
 .btn-link:hover {
     color: var(--accent-primary-hover);
 }
 
-/* Utility for bigger buttons */
+/* Big buttons utility */
 .btn-lg {
-    padding: 1rem 2rem;
+    padding: 1rem 1.5rem;
     font-size: 1.1rem;
     font-weight: 600;
     width: 100%;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
     .onboarding-options {
-        grid-template-columns: 1fr;
+        flex-direction: column;
+        align-items: center;
     }
     
-    .onboarding-container,
-    .waiting-container {
-        padding: var(--size-4);
+    .option-card {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .onboarding-header h1 {
+        font-size: 2rem;
     }
 }
