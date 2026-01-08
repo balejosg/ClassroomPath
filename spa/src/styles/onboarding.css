@@ -160,6 +160,37 @@
     width: 100%;
 }
 
+/* Field validation styles */
+.field-error {
+    display: block;
+    color: var(--color-error, #ef4444);
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+    min-height: 1.2em;
+}
+
+.field-hint {
+    display: block;
+    color: var(--text-muted, #888);
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+}
+
+.input-error {
+    border-color: var(--color-error, #ef4444) !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+#email-register-form input:focus:not(.input-error) {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+#email-register-form .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
     .onboarding-options {
         flex-direction: column;

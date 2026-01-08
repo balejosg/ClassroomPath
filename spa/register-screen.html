@@ -1,4 +1,3 @@
-<!-- Register Screen (ClassroomPath only) -->
 <div id="register-screen" class="screen hidden">
     <div class="login-container">
         <div class="login-header">
@@ -13,24 +12,29 @@
                 <span>o con tu email</span>
             </div>
 
-            <form id="email-register-form">
+            <form id="email-register-form" novalidate>
                 <div class="form-group">
                     <label for="register-email">Email</label>
                     <input type="email" id="register-email" required placeholder="profesor@colegio.es" autocomplete="email">
+                    <small id="register-email-error" class="field-error"></small>
                 </div>
                 <div class="form-group">
                     <label for="register-name">Nombre</label>
-                    <input type="text" id="register-name" required placeholder="Tu nombre" autocomplete="name">
+                    <input type="text" id="register-name" required placeholder="Tu nombre" autocomplete="name" minlength="2">
+                    <small id="register-name-error" class="field-error"></small>
                 </div>
                 <div class="form-group">
                     <label for="register-password">Contraseña</label>
                     <input type="password" id="register-password" required minlength="8" placeholder="Mínimo 8 caracteres" autocomplete="new-password">
+                    <small id="register-password-hint" class="field-hint">Mínimo 8 caracteres, con mayúscula, minúscula y número</small>
+                    <small id="register-password-error" class="field-error"></small>
                 </div>
                 <div class="form-group">
                     <label for="register-password-confirm">Confirmar contraseña</label>
                     <input type="password" id="register-password-confirm" required minlength="8" placeholder="Repetir contraseña" autocomplete="new-password">
+                    <small id="register-password-confirm-error" class="field-error"></small>
                 </div>
-                <button type="submit" id="email-register-btn" class="btn btn-primary btn-block">
+                <button type="submit" id="email-register-btn" class="btn btn-primary btn-block" disabled>
                     Crear cuenta
                 </button>
             </form>
