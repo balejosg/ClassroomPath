@@ -32,6 +32,16 @@ export default defineConfig({
         rollupOptions: {
             input: {
                 main: resolve(__dirname, '../upstream/openpath/spa/index.html'),
+                sw: resolve(__dirname, '../upstream/openpath/spa/sw.ts'),
+            },
+            output: {
+                // Service worker needs a fixed name at root, not hashed
+                entryFileNames: (chunkInfo) => {
+                    if (chunkInfo.name === 'sw') {
+                        return 'sw.js';
+                    }
+                    return 'assets/[name]-[hash].js';
+                },
             },
         },
     },
