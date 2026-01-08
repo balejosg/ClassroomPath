@@ -2,9 +2,8 @@
 # Gateway API + OpenPath API + SPA
 
 networks:
-  default:
-    name: openpath_default
-    external: true
+  openpath_default:
+    driver: bridge
 
 services:
   # ClassroomPath Gateway API (handles multi-tenancy)
@@ -29,6 +28,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    networks:
+      - openpath_default
 
   # OpenPath API (core functionality)
   api:
@@ -49,6 +50,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    networks:
+      - openpath_default
 
   # SPA static server (nginx)
   spa:
@@ -64,6 +67,8 @@ services:
     depends_on:
       - api
       - gateway
+    networks:
+      - openpath_default
 
 volumes:
   api-data:
