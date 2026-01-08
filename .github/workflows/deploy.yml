@@ -102,12 +102,6 @@ jobs:
             docker compose up -d
             sleep 15
             
-            # Copy Vite-built SPA files to host path for NPM to serve
-            echo "Syncing SPA files to host path..."
-            mkdir -p /var/www/classroompath/spa
-            docker cp classroompath-spa:/usr/share/nginx/html/. /var/www/classroompath/spa/
-            echo "✅ SPA files synced to /var/www/classroompath/spa"
-            
             # Run ClassroomPath gateway migrations
             echo "Running ClassroomPath database migrations..."
             docker compose exec -T gateway npm run db:push || echo "⚠️ Migration skipped (gateway may not be ready)"
@@ -209,12 +203,6 @@ jobs:
 
             echo "Waiting for services to start..."
             sleep 15
-            
-            # Copy Vite-built SPA files to host path for NPM to serve
-            echo "Syncing SPA files to host path..."
-            mkdir -p /var/www/classroompath/spa
-            docker cp classroompath-spa:/usr/share/nginx/html/. /var/www/classroompath/spa/
-            echo "✅ SPA files synced to /var/www/classroompath/spa"
             
             echo "Running ClassroomPath database migrations..."
             docker compose exec -T gateway npm run db:push || echo "⚠️ Migration skipped (gateway may not be ready)"
