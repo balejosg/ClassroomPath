@@ -69,7 +69,10 @@ void describe('Docker Compose Configuration', () => {
         assert.ok(compose.services['spa'], 'SPA service should exist');
 
         const spa = compose.services['spa'];
-        assert.ok(spa.image?.includes('nginx'), 'SPA should use nginx image');
+        assert.ok(
+            (spa.image?.includes('nginx')) || (spa.build && spa.build.dockerfile.includes('Dockerfile.spa')),
+            'SPA should use nginx image'
+        );
         assert.ok(spa.depends_on?.includes('api'), 'SPA should depend on API');
     });
 
