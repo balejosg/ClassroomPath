@@ -155,9 +155,9 @@ function setupRegisterUI(): void {
     if (cpInitialized) return;
     cpInitialized = true;
 
-    const loginInfo = document.querySelector('#login-screen .login-info');
-    if (loginInfo && !document.getElementById('goto-register-link')) {
-        loginInfo.innerHTML = '¿No tienes cuenta? <a href="#" id="goto-register-link">Crear cuenta</a>';
+    const registerLink = document.getElementById('goto-register-link');
+    if (registerLink) {
+        registerLink.classList.remove('hidden');
     }
     
     document.getElementById('goto-register-link')?.addEventListener('click', (e) => {
