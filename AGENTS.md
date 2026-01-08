@@ -55,10 +55,29 @@ ClassroomPath ──depends on──▶ OpenPath
 
 ### Environments
 
-| Environment | Trigger | Host |
-|-------------|---------|------|
-| Staging | Push to `main` | `STAGING_DEPLOY_HOST` |
-| Production | Tag `v*` | `DEPLOY_HOST` |
+| Environment | URL | Trigger | Host Secret |
+|-------------|-----|---------|-------------|
+| **Staging** | `https://classroompath-staging.duckdns.org` | Push to `main` | `STAGING_DEPLOY_HOST` |
+| **Production** | `https://classroompath.duckdns.org` | Tag `v*` | `DEPLOY_HOST` |
+
+### ⚠️ CRITICAL: Identifying Environments
+
+**LLM Agents: Use these URLs to verify which environment you're working with:**
+
+| Check | Staging | Production |
+|-------|---------|------------|
+| **URL** | `classroompath-staging.duckdns.org` | `classroompath.duckdns.org` |
+| **API Health** | `https://classroompath-staging.duckdns.org/api/health` | `https://classroompath.duckdns.org/api/health` |
+| **Proxmox CT (App)** | CT 114 (`classroompath-app-staging`) | CT 111 (`classroompath-app`) |
+| **Proxmox CT (DB)** | CT 113 (`classroompath-db-staging`) | CT 110 (`classroompath-db`) |
+| **Database Name** | `classroompath_staging` | `classroompath` |
+| **Deploy Trigger** | Any push to `main` | Git tag starting with `v` |
+
+**When debugging issues:**
+1. Always confirm which environment is affected by checking the URL
+2. Staging issues → investigate CT 113/114
+3. Production issues → investigate CT 110/111
+4. Never apply staging fixes to production without explicit user confirmation
 
 ### Manual Sync + Deploy
 
@@ -184,3 +203,17 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
 - Deploying without verifying submodule is updated
 - Using staging secrets in production
 - **Assuming SQLite when PostgreSQL is configured** (check `DATABASE_URL`)
+- **Confusing staging and production environments** (always verify URL first)
+
+## Quick Reference: Environment Identification
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ STAGING                          │ PRODUCTION                       │
+├──────────────────────────────────┼──────────────────────────────────┤
+│ classroompath-staging.duckdns.org│ classroompath.duckdns.org        │
+│ CT 114 (app) + CT 113 (db)       │ CT 111 (app) + CT 110 (db)       │
+│ DB: classroompath_staging        │ DB: classroompath                │
+│ Trigger: push to main            │ Trigger: tag v*                  │
+└──────────────────────────────────┴──────────────────────────────────┘
+```
