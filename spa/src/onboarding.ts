@@ -30,12 +30,12 @@ export const onboarding = {
         return currentStatus;
     },
 
-    async createOrganization(name: string): Promise<boolean> {
+    async createOrganization(name: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await cpTrpc.onboarding.createOrganization.mutate({ name });
             
             if (result.accessToken) {
-                auth.saveTokens({
+                auth.storeTokens({
                     accessToken: result.accessToken,
                     refreshToken: result.refreshToken,
                     expiresIn: '24h',
@@ -43,10 +43,11 @@ export const onboarding = {
                 });
             }
             
-            return true;
+            return { success: true };
         } catch (error) {
             console.error('Failed to create organization:', error);
-            return false;
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            return { success: false, error: errorMessage };
         }
     },
 
@@ -84,15 +85,21 @@ export const onboarding = {
             btn.disabled = true;
             btn.textContent = 'Creando...';
             
-            const success = await this.createOrganization(name);
+            const result = await this.createOrganization(name);
             
-            if (success) {
+            if (result.success) {
                 window.location.reload();
             } else {
-                btn.disabled = false;
-                btn.textContent = 'Crear organizacion';
-                const error = document.getElementById('create-org-error');
-                if (error) error.textContent = 'Error al crear la organizacion';
+                // Check if error is "already belongs to organization"
+                if (result.error?.includes('already belongs to an organization')) {
+                    // Organization was actually created, reload to redirect to dashboard
+                    window.location.reload();
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Crear organización';
+                    const error = document.getElementById('create-org-error');
+                    if (error) error.textContent = 'Error al crear la organización';
+                }
             }
         });
 
