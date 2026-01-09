@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 import * as onboardingService from '../../services/onboarding.service.js';
+import * as openpathRoles from '../../lib/openpath-roles.js';
+import * as openpathUsers from '../../lib/openpath-users.js';
+import * as jwt from '../../lib/jwt.js';
 
 export const onboardingRouter = router({
     /**
@@ -33,9 +36,22 @@ export const onboardingRouter = router({
                 ctx.user.sub
             );
 
+            const user = await openpathUsers.getUserById(ctx.user.sub);
+            if (!user) {
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: 'User not found after organization creation',
+                });
+            }
+
+            const roles = await openpathRoles.getUserRoles(ctx.user.sub);
+            const tokens = jwt.generateTokens(user, roles);
+
             return {
                 success: true,
                 organizationId: result.organizationId,
+                accessToken: tokens.accessToken,
+                refreshToken: tokens.refreshToken,
             };
         }),
 

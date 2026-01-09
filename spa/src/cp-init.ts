@@ -8,22 +8,51 @@ import { showToast } from '../../upstream/openpath/spa/src/utils.js';
 export { updateEditUI };
 
 let cpInitialized = false;
+let isSubmitting = false; // Rate limiting: prevent double submit
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+
+// Error translations for server messages
+const ERROR_TRANSLATIONS: Record<string, string> = {
+    'Email already registered': 'Este email ya está registrado',
+    'Invalid credentials': 'Credenciales inválidas',
+    'User not found': 'Usuario no encontrado',
+    'Invalid password': 'Contraseña incorrecta',
+    'Account inactive': 'Cuenta inactiva',
+    'Invalid email': 'Email inválido',
+    'Password too short': 'Contraseña demasiado corta',
+    'Network Error': 'Error de conexión. Comprueba tu conexión a internet.',
+};
+
+function translateError(error: string): string {
+    // Check for exact matches first
+    if (ERROR_TRANSLATIONS[error]) {
+        return ERROR_TRANSLATIONS[error];
+    }
+    // Check for partial matches
+    for (const [key, value] of Object.entries(ERROR_TRANSLATIONS)) {
+        if (error.toLowerCase().includes(key.toLowerCase())) {
+            return value;
+        }
+    }
+    return error;
+}
 
 interface ValidationState {
     email: boolean;
     name: boolean;
     password: boolean;
     confirm: boolean;
+    terms: boolean;
 }
 
 const validationState: ValidationState = {
     email: false,
     name: false,
     password: false,
-    confirm: false
+    confirm: false,
+    terms: false
 };
 
 function showScreen(screenId: string): void {
@@ -109,15 +138,80 @@ function validateConfirm(password: string, confirm: string): boolean {
     return true;
 }
 
+function validateTerms(): boolean {
+    const termsCheckbox = document.getElementById('register-terms') as HTMLInputElement;
+    if (!termsCheckbox) {
+        validationState.terms = true;
+        return true;
+    }
+    if (!termsCheckbox.checked) {
+        setFieldError('register-terms', 'Debes aceptar los términos y condiciones');
+        return false;
+    }
+    setFieldError('register-terms', '');
+    return true;
+}
+
+function updatePasswordStrength(password: string): void {
+    const strengthBar = document.getElementById('password-strength-bar');
+    const strengthLabel = document.getElementById('password-strength-label');
+    if (!strengthBar || !strengthLabel) return;
+
+    const hasLower = /[a-z]/.test(password);
+    const hasUpper = /[A-Z]/.test(password);
+    const hasNumber = /\d/.test(password);
+    const hasLength = password.length >= 8;
+    
+    const score = [hasLower, hasUpper, hasNumber, hasLength].filter(Boolean).length;
+    
+    strengthBar.classList.remove('weak', 'medium', 'strong');
+    
+    if (password.length === 0) {
+        strengthLabel.textContent = '';
+        return;
+    }
+    
+    if (score <= 2) {
+        strengthBar.classList.add('weak');
+        strengthLabel.textContent = 'Débil';
+    } else if (score === 3) {
+        strengthBar.classList.add('medium');
+        strengthLabel.textContent = 'Media';
+    } else {
+        strengthBar.classList.add('strong');
+        strengthLabel.textContent = 'Fuerte';
+    }
+}
+
+function updatePasswordRequirements(password: string): void {
+    const requirements = {
+        'req-length': password.length >= 8,
+        'req-upper': /[A-Z]/.test(password),
+        'req-lower': /[a-z]/.test(password),
+        'req-number': /\d/.test(password)
+    };
+    
+    for (const [id, met] of Object.entries(requirements)) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.toggle('met', met);
+            el.classList.toggle('unmet', !met);
+            const icon = met ? '✓' : '✗';
+            const text = el.textContent?.replace(/^[✓✗]\s*/, '') || '';
+            el.textContent = `${icon} ${text}`;
+        }
+    }
+}
+
 function validateAllFields(): void {
     const emailInput = document.getElementById('register-email') as HTMLInputElement;
     const nameInput = document.getElementById('register-name') as HTMLInputElement;
     const passwordInput = document.getElementById('register-password') as HTMLInputElement;
     const confirmInput = document.getElementById('register-password-confirm') as HTMLInputElement;
+    const termsCheckbox = document.getElementById('register-terms') as HTMLInputElement;
 
     if (!emailInput || !nameInput || !passwordInput || !confirmInput) return;
 
-    // Validate all fields silently (without showing errors for empty fields)
     if (emailInput.value) {
         validationState.email = validateEmail(emailInput.value);
     }
@@ -126,9 +220,16 @@ function validateAllFields(): void {
     }
     if (passwordInput.value) {
         validationState.password = validatePassword(passwordInput.value);
+        updatePasswordStrength(passwordInput.value);
+        updatePasswordRequirements(passwordInput.value);
     }
     if (confirmInput.value && passwordInput.value) {
         validationState.confirm = validateConfirm(passwordInput.value, confirmInput.value);
+    }
+    if (termsCheckbox) {
+        validationState.terms = termsCheckbox.checked;
+    } else {
+        validationState.terms = true;
     }
     updateSubmitButton();
 }
@@ -138,6 +239,7 @@ function setupRegisterValidation(): void {
     const nameInput = document.getElementById('register-name') as HTMLInputElement;
     const passwordInput = document.getElementById('register-password') as HTMLInputElement;
     const confirmInput = document.getElementById('register-password-confirm') as HTMLInputElement;
+    const termsCheckbox = document.getElementById('register-terms') as HTMLInputElement;
 
     if (!emailInput || !nameInput || !passwordInput || !confirmInput) return;
 
@@ -163,6 +265,8 @@ function setupRegisterValidation(): void {
 
     passwordInput.addEventListener('input', () => {
         validationState.password = validatePassword(passwordInput.value);
+        updatePasswordStrength(passwordInput.value);
+        updatePasswordRequirements(passwordInput.value);
         if (confirmInput.value) {
             validationState.confirm = validateConfirm(passwordInput.value, confirmInput.value);
         }
@@ -174,10 +278,43 @@ function setupRegisterValidation(): void {
         updateSubmitButton();
     });
 
-    // Handle browser autocomplete: validate after a short delay to catch autofilled values
-    setTimeout(() => {
-        validateAllFields();
-    }, 100);
+    if (termsCheckbox) {
+        termsCheckbox.addEventListener('change', () => {
+            validationState.terms = validateTerms();
+            updateSubmitButton();
+        });
+    }
+
+    setupPasswordToggle();
+
+    requestAnimationFrame(() => {
+        setTimeout(validateAllFields, 300);
+    });
+}
+
+function setupPasswordToggle(): void {
+    const toggleBtn = document.getElementById('toggle-register-password');
+    const passwordInput = document.getElementById('register-password') as HTMLInputElement;
+    const confirmInput = document.getElementById('register-password-confirm') as HTMLInputElement;
+    const toggleConfirmBtn = document.getElementById('toggle-register-password-confirm');
+
+    if (toggleBtn && passwordInput) {
+        toggleBtn.addEventListener('click', () => {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            toggleBtn.textContent = isPassword ? '🙈' : '👁️';
+            toggleBtn.setAttribute('aria-label', isPassword ? 'Ocultar contraseña' : 'Mostrar contraseña');
+        });
+    }
+
+    if (toggleConfirmBtn && confirmInput) {
+        toggleConfirmBtn.addEventListener('click', () => {
+            const isPassword = confirmInput.type === 'password';
+            confirmInput.type = isPassword ? 'text' : 'password';
+            toggleConfirmBtn.textContent = isPassword ? '🙈' : '👁️';
+            toggleConfirmBtn.setAttribute('aria-label', isPassword ? 'Ocultar contraseña' : 'Mostrar contraseña');
+        });
+    }
 }
 
 function setupRegisterUI(): void {
@@ -209,6 +346,8 @@ function setupRegisterUI(): void {
 }
 
 async function handleRegister(): Promise<void> {
+    if (isSubmitting) return;
+
     const emailInput = document.getElementById('register-email') as HTMLInputElement;
     const nameInput = document.getElementById('register-name') as HTMLInputElement;
     const passwordInput = document.getElementById('register-password') as HTMLInputElement;
@@ -227,11 +366,13 @@ async function handleRegister(): Promise<void> {
     const nameValid = validateName(name);
     const passwordValid = validatePassword(password);
     const confirmValid = validateConfirm(password, confirm);
+    const termsValid = validateTerms();
 
-    if (!emailValid || !nameValid || !passwordValid || !confirmValid) {
+    if (!emailValid || !nameValid || !passwordValid || !confirmValid || !termsValid) {
         return;
     }
 
+    isSubmitting = true;
     btn.disabled = true;
     btn.classList.add('is-loading');
     const originalText = btn.textContent || 'Crear cuenta';
@@ -246,9 +387,11 @@ async function handleRegister(): Promise<void> {
         await auth.register(email, name, password);
         await auth.login(email, password);
         showToast('Cuenta creada correctamente', 'success');
+        await new Promise(resolve => setTimeout(resolve, 1500));
         window.location.reload();
     } catch (err) {
-        const message = err instanceof Error ? err.message : 'Error al crear la cuenta';
+        const rawMessage = err instanceof Error ? err.message : 'Error al crear la cuenta';
+        const message = translateError(rawMessage);
         if (errorEl) errorEl.textContent = message;
         btn.disabled = false;
         btn.classList.remove('is-loading');
@@ -257,6 +400,8 @@ async function handleRegister(): Promise<void> {
         nameInput.disabled = false;
         passwordInput.disabled = false;
         confirmInput.disabled = false;
+    } finally {
+        isSubmitting = false;
     }
 }
 

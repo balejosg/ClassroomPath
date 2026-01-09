@@ -1,4 +1,5 @@
 import { cpTrpc } from './cp-trpc.js';
+import { auth } from '../../upstream/openpath/spa/src/auth.js';
 
 export interface OnboardingState {
     hasMembership: boolean;
@@ -31,7 +32,17 @@ export const onboarding = {
 
     async createOrganization(name: string): Promise<boolean> {
         try {
-            await cpTrpc.onboarding.createOrganization.mutate({ name });
+            const result = await cpTrpc.onboarding.createOrganization.mutate({ name });
+            
+            if (result.accessToken) {
+                auth.saveTokens({
+                    accessToken: result.accessToken,
+                    refreshToken: result.refreshToken,
+                    expiresIn: '24h',
+                    tokenType: 'Bearer'
+                });
+            }
+            
             return true;
         } catch (error) {
             console.error('Failed to create organization:', error);

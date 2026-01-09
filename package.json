@@ -5,7 +5,13 @@
   "description": "ClassroomPath SaaS - DNS whitelist management for educational institutions",
   "author": "balejosg",
   "license": "AGPL-3.0-or-later",
-  "keywords": ["dns", "whitelist", "classroom", "education", "saas"],
+  "keywords": [
+    "dns",
+    "whitelist",
+    "classroom",
+    "education",
+    "saas"
+  ],
   "engines": {
     "node": ">=20.0.0"
   },
@@ -24,6 +30,7 @@
   },
   "type": "module",
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@types/node": "^22.10.2",
     "tsx": "^4.21.0",
     "yaml": "^2.7.1"

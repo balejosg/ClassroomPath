@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { generateId } from '../lib/id.js';
+import { openpathDb, openpathSchema } from '../db/openpath.js';
 
 export interface OnboardingStatus {
     hasMembership: boolean;
@@ -60,6 +61,7 @@ export async function createOrganization(
 ): Promise<{ organizationId: string; membershipId: string }> {
     const orgId = generateId('org');
     const membershipId = generateId('mem');
+    const roleId = `role_${generateId('')}`;
 
     await db.transaction(async (tx) => {
         // Create organization
@@ -83,6 +85,28 @@ export async function createOrganization(
             .delete(schema.cpUserStatus)
             .where(eq(schema.cpUserStatus.userId, userId));
     });
+
+    try {
+        const existing = await openpathDb.select()
+            .from(openpathSchema.roles)
+            .where(and(
+                eq(openpathSchema.roles.userId, userId),
+                eq(openpathSchema.roles.role, 'admin')
+            ))
+            .limit(1);
+
+        if (existing.length === 0) {
+            await openpathDb.insert(openpathSchema.roles).values({
+                id: roleId,
+                userId,
+                role: 'admin',
+                groupIds: [],
+                createdBy: userId,
+            });
+        }
+    } catch (error) {
+        console.error('Failed to assign admin role in OpenPath:', error);
+    }
 
     return { organizationId: orgId, membershipId };
 }
