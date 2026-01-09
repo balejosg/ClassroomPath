@@ -37,8 +37,8 @@ describe('Onboarding Service', () => {
             .from(openpathSchema.roles)
             .where(eq(openpathSchema.roles.userId, TEST_USER_ID));
         
-        assert.strictEqual(openpathRoles.length, 1, 'Should create admin role in OpenPath');
-        assert.strictEqual(openpathRoles[0].role, 'admin');
+        assert.strictEqual(openpathRoles.length, 1, 'Should create openpath-admin role in OpenPath');
+        assert.strictEqual(openpathRoles[0].role, 'openpath-admin', 'Should assign openpath-admin role for full permissions');
     });
 
     it('should set waiting status', async () => {

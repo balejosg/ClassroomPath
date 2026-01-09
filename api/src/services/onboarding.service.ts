@@ -99,7 +99,7 @@ export async function createOrganization(
             await openpathDb.insert(openpathSchema.roles).values({
                 id: roleId,
                 userId,
-                role: 'admin',
+                role: 'openpath-admin',
                 groupIds: [],
                 createdBy: userId,
             });
