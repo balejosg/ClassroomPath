@@ -109,6 +109,30 @@ function validateConfirm(password: string, confirm: string): boolean {
     return true;
 }
 
+function validateAllFields(): void {
+    const emailInput = document.getElementById('register-email') as HTMLInputElement;
+    const nameInput = document.getElementById('register-name') as HTMLInputElement;
+    const passwordInput = document.getElementById('register-password') as HTMLInputElement;
+    const confirmInput = document.getElementById('register-password-confirm') as HTMLInputElement;
+
+    if (!emailInput || !nameInput || !passwordInput || !confirmInput) return;
+
+    // Validate all fields silently (without showing errors for empty fields)
+    if (emailInput.value) {
+        validationState.email = validateEmail(emailInput.value);
+    }
+    if (nameInput.value) {
+        validationState.name = validateName(nameInput.value);
+    }
+    if (passwordInput.value) {
+        validationState.password = validatePassword(passwordInput.value);
+    }
+    if (confirmInput.value && passwordInput.value) {
+        validationState.confirm = validateConfirm(passwordInput.value, confirmInput.value);
+    }
+    updateSubmitButton();
+}
+
 function setupRegisterValidation(): void {
     const emailInput = document.getElementById('register-email') as HTMLInputElement;
     const nameInput = document.getElementById('register-name') as HTMLInputElement;
@@ -149,6 +173,11 @@ function setupRegisterValidation(): void {
         validationState.confirm = validateConfirm(passwordInput.value, confirmInput.value);
         updateSubmitButton();
     });
+
+    // Handle browser autocomplete: validate after a short delay to catch autofilled values
+    setTimeout(() => {
+        validateAllFields();
+    }, 100);
 }
 
 function setupRegisterUI(): void {
@@ -208,6 +237,11 @@ async function handleRegister(): Promise<void> {
     const originalText = btn.textContent || 'Crear cuenta';
     btn.innerHTML = '<span class="spinner"></span> Creando...';
 
+    emailInput.disabled = true;
+    nameInput.disabled = true;
+    passwordInput.disabled = true;
+    confirmInput.disabled = true;
+
     try {
         await auth.register(email, name, password);
         await auth.login(email, password);
@@ -219,6 +253,10 @@ async function handleRegister(): Promise<void> {
         btn.disabled = false;
         btn.classList.remove('is-loading');
         btn.textContent = originalText;
+        emailInput.disabled = false;
+        nameInput.disabled = false;
+        passwordInput.disabled = false;
+        confirmInput.disabled = false;
     }
 }
 
