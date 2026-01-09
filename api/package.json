@@ -12,7 +12,7 @@
     "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "@trpc/server": "^10.45.0",
+    "@trpc/server": "^11.8.1",
     "cors": "^2.8.5",
     "drizzle-kit": "^0.30.0",
     "drizzle-orm": "^0.38.0",

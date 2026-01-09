@@ -24,10 +24,10 @@ services:
       - api
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/cp/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
     networks:
       - openpath_default
 
@@ -46,9 +46,9 @@ services:
       - api-data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 5s
+      timeout: 3s
+      retries: 12
       start_period: 10s
     networks:
       - openpath_default

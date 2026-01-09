@@ -91,20 +91,22 @@ jobs:
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
             
-            docker ps -a
-            docker stop $(docker ps -aq) 2>/dev/null || true
-            docker rm $(docker ps -aq) 2>/dev/null || true
-            
             cd /opt/classroompath/app/docker
+            docker compose down --remove-orphans || true
             docker builder prune -af || true
             docker compose build --no-cache
-            docker compose down
             docker compose up -d
-            sleep 15
+            
+            # Wait for containers to be healthy
+            echo "Waiting for services to be healthy..."
+            timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done' || {
+              echo "⚠️ Warning: Timeout waiting for health checks"
+              docker compose ps
+            }
             
             # Run ClassroomPath gateway migrations
             echo "Running ClassroomPath database migrations..."
-            docker compose exec -T gateway npm run db:push || echo "⚠️ Migration skipped (gateway may not be ready)"
+            docker compose exec -T gateway npm run db:push
             
             curl -sf http://localhost:3000/health && echo "✅ Staging API OK" || exit 1
             curl -sf http://localhost:3001/cp/health && echo "✅ Staging Gateway OK" || echo "⚠️ Gateway not responding"
@@ -189,23 +191,25 @@ jobs:
             git reset --hard origin/main
             git submodule update --init --recursive
 
-            docker ps -a
-            docker stop $(docker ps -aq) 2>/dev/null || true
-            docker rm $(docker ps -aq) 2>/dev/null || true
-            
             cd "$APP_DIR/docker"
+            echo "Stopping existing containers..."
+            docker compose down --remove-orphans || true
+            
             echo "Rebuilding Docker images..."
             docker compose build --no-cache
 
-            echo "Restarting containers..."
-            docker compose down
+            echo "Starting containers..."
             docker compose up -d
-
-            echo "Waiting for services to start..."
-            sleep 15
+            
+            # Wait for containers to be healthy
+            echo "Waiting for services to be healthy..."
+            timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done' || {
+              echo "⚠️ Warning: Timeout waiting for health checks"
+              docker compose ps
+            }
             
             echo "Running ClassroomPath database migrations..."
-            docker compose exec -T gateway npm run db:push || echo "⚠️ Migration skipped (gateway may not be ready)"
+            docker compose exec -T gateway npm run db:push
             
             for i in 1 2 3 4 5; do
               if curl -sf http://localhost:3000/health > /dev/null 2>&1; then

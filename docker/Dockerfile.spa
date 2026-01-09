@@ -1,29 +1,18 @@
-# SPA Dockerfile for ClassroomPath
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy everything
 COPY . .
 
-# Install dependencies in root and submodule
-RUN npm install
-RUN cd upstream/openpath && npm install
+RUN npm install && \
+    cd upstream/openpath && npm install && \
+    cd ../../spa && npm install
 
-# Install dependencies for ClassroomPath SPA specifically
 WORKDIR /app/spa
-RUN npm install
-
-# Patch OpenPath index.html
-RUN sed -i 's/dist\/main.js/src\/main.ts/g' ../upstream/openpath/spa/index.html
-
-# Build ClassroomPath SPA
 RUN npx vite build
 
-# Production stage
 FROM nginx:alpine
 COPY --from=builder /app/spa/dist /usr/share/nginx/html
-# Copy CSS from OpenPath SPA (used by some pages)
 COPY --from=builder /app/upstream/openpath/spa/css /usr/share/nginx/html/css
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
