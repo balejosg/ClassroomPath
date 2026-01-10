@@ -86,27 +86,28 @@ export async function createOrganization(
             .where(eq(schema.cpUserStatus.userId, userId));
     });
 
-    try {
-        const existing = await openpathDb.select()
-            .from(openpathSchema.roles)
-            .where(and(
-                eq(openpathSchema.roles.userId, userId),
-                eq(openpathSchema.roles.role, 'admin')
-            ))
-            .limit(1);
+    // Assign admin role in OpenPath - use upsert to handle unique constraint
+    const existing = await openpathDb.select()
+        .from(openpathSchema.roles)
+        .where(eq(openpathSchema.roles.userId, userId))
+        .limit(1);
 
-        if (existing.length === 0) {
-            await openpathDb.insert(openpathSchema.roles).values({
-                id: roleId,
-                userId,
-                role: 'admin',
-                groupIds: [],
-                createdBy: userId,
-            });
-        }
-    } catch (error) {
-        console.error('Failed to assign admin role in OpenPath:', error);
+    if (existing.length === 0) {
+        // No role exists - insert new admin role
+        await openpathDb.insert(openpathSchema.roles).values({
+            id: roleId,
+            userId,
+            role: 'admin',
+            groupIds: [],
+            createdBy: userId,
+        });
+    } else if (existing[0].role !== 'admin') {
+        // Role exists but is not admin - update to admin
+        await openpathDb.update(openpathSchema.roles)
+            .set({ role: 'admin', groupIds: [] })
+            .where(eq(openpathSchema.roles.userId, userId));
     }
+    // If already admin, no action needed
 
     return { organizationId: orgId, membershipId };
 }
