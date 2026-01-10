@@ -4,6 +4,16 @@ import { db, schema } from '../src/db/index.js';
 import { openpathDb, openpathSchema } from '../src/db/openpath.js';
 import { eq } from 'drizzle-orm';
 import * as onboardingService from '../src/services/onboarding.service.js';
+import * as openpathRolesLib from '../src/lib/openpath-roles.js';
+
+/**
+ * Mirrors the isAdminToken check from OpenPath's auth.ts
+ * This ensures our test catches the exact bug (role must be 'admin' not 'openpath-admin')
+ */
+function isAdminToken(decoded: { roles?: Array<{ role: string }> } | null): boolean {
+    if (!decoded?.roles) return false;
+    return decoded.roles.some((r) => r.role === 'admin');
+}
 
 const TEST_USER_ID = 'test-user-' + Date.now();
 
@@ -36,9 +46,52 @@ describe('Onboarding Service', () => {
         const openpathRoles = await openpathDb.select()
             .from(openpathSchema.roles)
             .where(eq(openpathSchema.roles.userId, TEST_USER_ID));
-        
-        assert.strictEqual(openpathRoles.length, 1, 'Should create openpath-admin role in OpenPath');
-        assert.strictEqual(openpathRoles[0].role, 'openpath-admin', 'Should assign openpath-admin role for full permissions');
+
+        assert.strictEqual(openpathRoles.length, 1, 'Should create admin role in OpenPath');
+        assert.strictEqual(openpathRoles[0].role, 'admin', 'Should assign admin role (not openpath-admin) for auth compatibility');
+    });
+
+    /**
+     * Regression test for BUG-001: Organization creator gets 403 on groups.list
+     *
+     * Root cause: The onboarding service was inserting role as 'openpath-admin'
+     * instead of 'admin', causing isAdminToken() to return false.
+     *
+     * This test ensures the created role is compatible with the auth system.
+     */
+    it('BUG-001 regression: organization creator should pass isAdminToken check', async () => {
+        const regressionUserId = TEST_USER_ID + '-bug001';
+
+        // Create organization (this should assign admin role)
+        await onboardingService.createOrganization('Bug Test School', regressionUserId);
+
+        // Get the roles as the auth system would see them
+        const roles = await openpathRolesLib.getUserRoles(regressionUserId);
+
+        // Simulate what the JWT payload would contain
+        const mockDecodedToken = {
+            sub: regressionUserId,
+            email: 'test@example.com',
+            name: 'Test User',
+            roles: roles,
+        };
+
+        // This is the actual check that was failing before the fix
+        const isAdmin = isAdminToken(mockDecodedToken);
+
+        assert.strictEqual(isAdmin, true,
+            'Organization creator must be recognized as admin by isAdminToken(). ' +
+            'If this fails, check that the role is "admin" not "openpath-admin".');
+
+        // Verify the role value directly
+        assert.ok(
+            roles.some(r => r.role === 'admin'),
+            'Roles must include exactly "admin" (not "openpath-admin" or other variants)'
+        );
+
+        // Cleanup
+        await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, regressionUserId));
+        await openpathDb.delete(openpathSchema.roles).where(eq(openpathSchema.roles.userId, regressionUserId));
     });
 
     it('should set waiting status', async () => {
