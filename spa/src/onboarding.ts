@@ -41,6 +41,12 @@ export const onboarding = {
                     expiresIn: '24h',
                     tokenType: 'Bearer'
                 });
+                
+                // CRITICAL FIX (BUG-001): Fetch and cache updated user with new admin role
+                // This ensures localStorage.openpath_user contains the admin role
+                // BEFORE page reload triggers dashboard initialization
+                // Without this, the cached user has stale roles → 403 on /trpc/groups.list
+                await auth.getMe();
             }
             
             return { success: true };
