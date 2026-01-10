@@ -188,10 +188,14 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
 ### Success Criteria
 
 ✅ **Regression test PASSED if:**
-- [ ] User can logout successfully
-- [ ] User can login again
-- [ ] Dashboard loads without errors
-- [ ] Admin permissions persist
+- [x] User can logout successfully
+- [x] User can login again
+- [x] Dashboard loads without errors
+- [x] Admin permissions persist
+
+**Test User:** `tc3-relogin-20260110-183009@pruebas.local`  
+**Organization:** "TC3 Test Organization 20260110"  
+**Timestamp:** 2026-01-10 18:31:43 UTC
 
 ---
 
@@ -214,9 +218,12 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
 ### Success Criteria
 
 ✅ **PASSED if:**
-- [ ] No console errors during background refresh
-- [ ] Dashboard remains responsive
-- [ ] No duplicate API calls
+- [x] No console errors during background refresh
+- [x] Dashboard remains responsive
+- [x] No duplicate API calls
+
+**Test Duration:** 60 seconds idle  
+**Timestamp:** 2026-01-10 18:32:43 UTC
 
 ---
 
@@ -227,9 +234,9 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
 | Test Case | Status | Notes |
 |-----------|--------|-------|
 | TC1: Organization Creation | ✅ PASSED | No 403 errors, admin permissions work, created test group successfully |
-| TC2: Registration Link | ✅ PASSED | Link visible and functional, registration completed successfully |
-| TC3: Re-login Regression | ⬜ Skipped | Not required for initial verification |
-| TC4: Background Refresh | ⬜ Skipped | Not required for initial verification |
+| TC2: Registration Link | ✅ PASSED | Link visible and functional, registration completed successfully (re-verified after BUG-002 fix deployment) |
+| TC3: Re-login Regression | ✅ PASSED | User can logout and login again, admin permissions persist across sessions |
+| TC4: Background Refresh | ✅ PASSED | No errors during 60s idle period, dashboard remains responsive |
 
 **Legend:**
 - ✅ PASSED
@@ -292,10 +299,12 @@ git push --force origin main
 
 **✅ FIXES SUCCESSFUL - Both bugs resolved in staging:**
 - [x] Test Case 1 (BUG-001) PASSED - Dashboard loads with admin permissions
-- [x] Test Case 2 (BUG-002) PASSED - Registration link visible and functional
+- [x] Test Case 2 (BUG-002) PASSED - Registration link visible and functional (re-verified after deployment)
+- [x] Test Case 3 (Re-login) PASSED - Admin permissions persist across sessions
+- [x] Test Case 4 (Background refresh) PASSED - No errors during idle period
 - [x] No new regressions introduced
-- [x] Staging tested and verified (2026-01-10 18:12:43 UTC)
-- [ ] Ready for production deployment (requires human approval)
+- [x] All staging tests completed (2026-01-10 18:32:43 UTC)
+- [x] Ready for production deployment (requires human approval)
 
 **Production deployment:** Tag release after human approval
 ```bash
@@ -317,6 +326,14 @@ git push origin v1.1.1
 ---
 
 **Tester:** OpenCode Agent (Playwright Browser Automation)  
-**Date:** 2026-01-10 18:12:43 UTC  
-**Result:** ✅ PASS  
-**Notes:** Both BUG-001 and BUG-002 verified as fixed in staging environment. Dashboard loads correctly with admin permissions after organization creation. Registration link is now visible and functional. Ready for production deployment after human approval.
+**Verification Timeline:**
+- Initial tests: 2026-01-10 18:12:43 UTC
+- BUG-002 fix deployed: 2026-01-10 18:28:54 UTC  
+- Regression tests: 2026-01-10 18:32:43 UTC  
+**Result:** ✅ ALL TESTS PASSED  
+**Notes:** 
+- BUG-001 (Organization creation 403 error): ✅ FIXED - Dashboard loads with admin permissions
+- BUG-002 (Registration link hidden): ✅ FIXED - Link now visible and functional after submodule update
+- TC3 (Re-login): ✅ PASSED - Admin permissions persist across sessions
+- TC4 (Background refresh): ✅ PASSED - No errors during 60s idle period
+- Complete staging verification successful. Ready for production deployment after human approval.
