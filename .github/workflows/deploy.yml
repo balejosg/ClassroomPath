@@ -108,8 +108,8 @@ jobs:
             echo "Running ClassroomPath database migrations..."
             docker compose exec -T gateway npm run db:push
             
-            curl -sf http://localhost:3000/health && echo "✅ Staging API OK" || exit 1
-            curl -sf http://localhost:3001/cp/health && echo "✅ Staging Gateway OK" || echo "⚠️ Gateway not responding"
+            # Health check - Gateway is the primary entry point now
+            curl -sf http://localhost:3001/cp/health && echo "✅ Staging Gateway OK" || exit 1
 
       - name: Report skip
         if: steps.resolve.outputs.skip == 'true'
@@ -211,29 +211,24 @@ jobs:
             echo "Running ClassroomPath database migrations..."
             docker compose exec -T gateway npm run db:push
             
+            # Health check - Gateway is the primary entry point now
             for i in 1 2 3 4 5; do
-              if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
-                echo "✅ API health check passed!"
+              if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
+                echo "✅ Gateway health check passed!"
                 break
               fi
               echo "Health check attempt $i failed, retrying..."
               sleep 5
             done
 
-            if ! curl -sf http://localhost:3000/health > /dev/null 2>&1; then
-              echo "❌ API deployment failed! Check logs:"
-              docker logs classroompath-api --tail 30
+            if ! curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
+              echo "❌ Gateway deployment failed! Check logs:"
+              docker logs classroompath-gateway --tail 30
               exit 1
             fi
             
-            if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-              echo "✅ Gateway health check passed!"
-            else
-              echo "⚠️ Gateway not responding (may be expected if not yet configured)"
-            fi
-            
             echo "✅ Deployment successful!"
-            docker logs classroompath-api --tail 5
+            docker logs classroompath-gateway --tail 5
 
       - name: Report skip
         if: steps.resolve.outputs.skip == 'true'
