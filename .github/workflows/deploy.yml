@@ -189,7 +189,8 @@ jobs:
             git checkout -- . 2>/dev/null || true
             git clean -fd 2>/dev/null || true
             git reset --hard origin/main
-            git submodule update --init --recursive
+            git submodule deinit -f --all || true
+            git submodule update --init --recursive --force
 
             cd "$APP_DIR/docker"
             echo "Stopping existing containers..."
