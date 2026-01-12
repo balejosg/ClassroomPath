@@ -13,6 +13,8 @@ export interface Context {
     user: JWTPayload | null;
     req: CreateExpressContextOptions['req'];
     res: CreateExpressContextOptions['res'];
+    organizationId?: string;
+    userRole?: string;
 }
 
 export async function createContext({ req, res }: CreateExpressContextOptions): Promise<Context> {

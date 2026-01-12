@@ -38,8 +38,8 @@ services:
       dockerfile: ../../docker/Dockerfile.api
     container_name: classroompath-api
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     env_file:
       - ../config/.env
     volumes:

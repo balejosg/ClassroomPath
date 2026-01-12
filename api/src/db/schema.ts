@@ -56,3 +56,52 @@ export type NewMembership = typeof cpMemberships.$inferInsert;
 
 export type UserStatus = typeof cpUserStatus.$inferSelect;
 export type NewUserStatus = typeof cpUserStatus.$inferInsert;
+
+// =============================================================================
+// Organization-Resource Relation Tables (Multi-tenancy)
+// =============================================================================
+
+// Vincular aulas con organizaciones
+export const cpOrganizationClassrooms = pgTable('cp_organization_classrooms', {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    organizationId: varchar('organization_id', { length: 50 })
+        .notNull()
+        .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
+    classroomId: varchar('classroom_id', { length: 50 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+    unique('cp_org_classroom_key').on(table.organizationId, table.classroomId),
+]);
+
+// Vincular grupos de whitelist con organizaciones
+export const cpOrganizationGroups = pgTable('cp_organization_groups', {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    organizationId: varchar('organization_id', { length: 50 })
+        .notNull()
+        .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
+    groupId: varchar('group_id', { length: 50 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+    unique('cp_org_group_key').on(table.organizationId, table.groupId),
+]);
+
+// Vincular usuarios con organizaciones (ya existe en memberships pero esta es específica para users de OpenPath)
+export const cpOrganizationUsers = pgTable('cp_organization_users', {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    organizationId: varchar('organization_id', { length: 50 })
+        .notNull()
+        .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
+    openpathUserId: varchar('openpath_user_id', { length: 50 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+    unique('cp_org_user_key').on(table.organizationId, table.openpathUserId),
+]);
+
+export type OrganizationClassroom = typeof cpOrganizationClassrooms.$inferSelect;
+export type NewOrganizationClassroom = typeof cpOrganizationClassrooms.$inferInsert;
+
+export type OrganizationGroup = typeof cpOrganizationGroups.$inferSelect;
+export type NewOrganizationGroup = typeof cpOrganizationGroups.$inferInsert;
+
+export type OrganizationUser = typeof cpOrganizationUsers.$inferSelect;
+export type NewOrganizationUser = typeof cpOrganizationUsers.$inferInsert;
