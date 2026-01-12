@@ -21,7 +21,16 @@ export const onboarding = {
             return status;
         } catch (error) {
             console.error('Failed to check onboarding status:', error);
-            // Assume no membership on error
+            
+            // If 401/Not authenticated, clear tokens and force login
+            if (error && typeof error === 'object' && 'message' in error && 
+                String(error.message).includes('Not authenticated')) {
+                console.warn('[onboarding] User not authenticated, clearing tokens');
+                auth.logout(); // Clear stale tokens
+                throw error; // Re-throw to trigger login screen
+            }
+            
+            // For other errors, assume no membership
             return { hasMembership: false, isWaiting: false, organization: null };
         }
     },

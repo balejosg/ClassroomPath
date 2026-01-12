@@ -419,7 +419,15 @@ export async function init(): Promise<void> {
         return;
     }
 
-    const status = await onboarding.checkStatus();
+    let status: OnboardingState;
+    try {
+        status = await onboarding.checkStatus();
+    } catch (error) {
+        console.error('[cp-init] Onboarding check failed, showing login:', error);
+        setupRegisterUI();
+        await openpathInit();
+        return;
+    }
 
     if (!status.hasMembership) {
         onboarding.initUI();
