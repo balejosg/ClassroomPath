@@ -1,0 +1,22 @@
+# ClassroomPath AI Ignore Configuration
+
+# CRITICAL: Do NOT edit the submodule
+# For OpenPath changes, go to: /datos_replicados/Bruno/Whitelist/OpenPath
+upstream/openpath/
+
+# Node.js
+**/node_modules/
+**/package-lock.json
+
+# Build outputs
+**/dist/
+**/build/
+**/.tsbuildinfo
+
+# Test artifacts
+**/test-results/
+**/playwright-report/
+
+# Logs and data
+**/*.log
+**/*.db
