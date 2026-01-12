@@ -26,8 +26,8 @@ export const onboarding = {
             if (error && typeof error === 'object' && 'message' in error && 
                 String(error.message).includes('Not authenticated')) {
                 console.warn('[onboarding] User not authenticated, clearing tokens');
-                auth.logout(); // Clear stale tokens
-                throw error; // Re-throw to trigger login screen
+                await auth.logout();
+                throw error;
             }
             
             // For other errors, assume no membership
