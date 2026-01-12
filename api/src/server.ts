@@ -14,12 +14,16 @@ app.use(cors({
 
 app.use(express.json());
 
-// Health check
 app.get('/cp/health', (_req, res) => {
     res.json({ status: 'ok', service: 'classroompath-gateway' });
 });
 
-// tRPC endpoints under /cp/trpc
+app.get('/api/config', (_req, res) => {
+    res.json({
+        googleClientId: process.env.GOOGLE_CLIENT_ID ?? '',
+    });
+});
+
 app.use('/cp/trpc', createExpressMiddleware({
     router: appRouter,
     createContext,
