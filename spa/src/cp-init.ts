@@ -69,8 +69,13 @@ function setFieldError(fieldId: string, message: string): void {
     }
 
     const input = document.getElementById(fieldId) as HTMLInputElement;
-    if (errorEl) errorEl.textContent = message;
-    if (input) input.classList.toggle('input-error', !!message);
+    if (errorEl) {
+        errorEl.textContent = message;
+    }
+    if (input) {
+        input.classList.toggle('input-error', !!message);
+        input.setAttribute('aria-invalid', message ? 'true' : 'false');
+    }
 }
 
 function updateSubmitButton(): void {
@@ -329,7 +334,9 @@ function setupRegisterUI(): void {
     document.getElementById('goto-register-link')?.addEventListener('click', (e) => {
         e.preventDefault();
         showScreen('register-screen');
-        void googleAuth.renderButton('google-signup-btn');
+        setTimeout(() => {
+            void googleAuth.renderButton('google-signup-btn');
+        }, 100);
     });
 
     document.getElementById('goto-login-link')?.addEventListener('click', (e) => {
@@ -407,8 +414,8 @@ async function handleRegister(): Promise<void> {
 
 export async function init(): Promise<void> {
     if (!auth.isAuthenticated()) {
-        await openpathInit();
         setupRegisterUI();
+        await openpathInit();
         return;
     }
 
