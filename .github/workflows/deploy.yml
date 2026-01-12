@@ -195,6 +195,7 @@ jobs:
             cd "$APP_DIR/docker"
             echo "Stopping existing containers..."
             docker compose down --remove-orphans || true
+            docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
             
             echo "Rebuilding Docker images..."
             docker compose build --no-cache
