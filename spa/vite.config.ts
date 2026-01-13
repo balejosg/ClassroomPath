@@ -55,10 +55,6 @@ export default defineConfig({
                 find: '@trpc/client',
                 replacement: resolve(__dirname, 'node_modules/@trpc/client'),
             },
-            {
-                find: /^.*\/upstream\/openpath\/.*\/trpc\.js$/,
-                replacement: resolve(__dirname, 'src/cp-trpc.ts'),
-            }
         ],
     },
     plugins: [
