@@ -37,6 +37,17 @@ app.use('/cp/trpc', createExpressMiddleware({
 // These routes are from OpenPath and must be forwarded to port 3000
 const openPathApiTarget = process.env.OPENPATH_API_URL ?? 'http://api:3000';
 
+// Proxy /health endpoint to OpenPath API /api/health
+// MUST come before /api handler to avoid being caught by /api/* route
+app.get('/health', (req, res, next) => {
+    req.url = '/api/health';
+    const proxy = createProxyMiddleware({
+        target: openPathApiTarget,
+        changeOrigin: true,
+    });
+    proxy(req, res, next);
+});
+
 app.use('/api', createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
@@ -45,24 +56,13 @@ app.use('/api', createProxyMiddleware({
 app.use('/trpc', createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
-    ws: true, // Enable WebSocket proxying for tRPC subscriptions
+    ws: true,
 }));
 
 app.use('/w', createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
 }));
-
-// Proxy /health endpoint to OpenPath API /api/health
-app.get('/health', (req, res, next) => {
-    // Manually rewrite the URL before proxying
-    req.url = '/api/health';
-    const proxy = createProxyMiddleware({
-        target: openPathApiTarget,
-        changeOrigin: true,
-    });
-    proxy(req, res, next);
-});
 
 app.listen(config.port, () => {
     console.log(`ClassroomPath Gateway listening on port ${config.port}`);
