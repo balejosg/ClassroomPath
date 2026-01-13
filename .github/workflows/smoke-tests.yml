@@ -1,0 +1,242 @@
+name: Smoke Tests
+
+on:
+  # Run manually
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+          - both
+
+  # Run on schedule - every 6 hours
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  smoke-test-staging:
+    name: Smoke Test Staging
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.environment == 'staging' || github.event.inputs.environment == 'both'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run smoke tests against staging
+        id: smoke
+        env:
+          SMOKE_TEST_URL: https://classroompath-staging.duckdns.org
+          SMOKE_TEST_TIMEOUT: '15000'
+        run: |
+          echo "🔍 Running smoke tests against $SMOKE_TEST_URL"
+          echo "Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          npm run test:smoke 2>&1 | tee smoke-results.txt
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          exit $exit_code
+
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-staging-${{ github.run_id }}
+          path: smoke-results.txt
+          retention-days: 7
+
+      - name: Create issue on failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '🚨 Staging Smoke Tests Failed';
+            const body = `## Smoke Test Failure Alert
+
+            **Environment:** Staging
+            **Time:** ${new Date().toISOString()}
+            **Run:** [View workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+
+            ### Common Causes
+            - NPM reverse proxy stripping \`/api/\` prefix
+            - \`CORS_ORIGINS\` not including staging domain
+            - Container health check passed but service not fully ready
+            - Database connection issues
+
+            ### Debug Commands
+            \`\`\`bash
+            # On staging server
+            curl -i https://classroompath-staging.duckdns.org/health
+            curl -i https://classroompath-staging.duckdns.org/api/config
+            docker logs classroompath-api --tail 50
+            \`\`\`
+
+            ### Quick Fixes
+            1. Check NPM advanced configuration
+            2. Verify \`CORS_ORIGINS\` env var includes \`https://classroompath-staging.duckdns.org\`
+            3. Check if containers are healthy: \`docker compose ps\`
+            `;
+
+            // Check for existing open issue
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'smoke-test-failure',
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['smoke-test-failure', 'staging', 'automated'],
+              });
+            } else {
+              // Comment on existing issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: `### Another smoke test failure detected\n\n**Time:** ${new Date().toISOString()}\n**Run:** [View workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              });
+            }
+
+  smoke-test-production:
+    name: Smoke Test Production
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'production' || github.event.inputs.environment == 'both'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run smoke tests against production
+        id: smoke
+        env:
+          SMOKE_TEST_URL: https://classroompath.duckdns.org
+          SMOKE_TEST_TIMEOUT: '15000'
+        run: |
+          echo "🔍 Running smoke tests against $SMOKE_TEST_URL"
+          echo "Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          npm run test:smoke 2>&1 | tee smoke-results.txt
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          exit $exit_code
+
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-production-${{ github.run_id }}
+          path: smoke-results.txt
+          retention-days: 7
+
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '🚨 PRODUCTION Smoke Tests Failed';
+            const body = `## PRODUCTION Smoke Test Failure Alert
+
+            **Environment:** Production
+            **Time:** ${new Date().toISOString()}
+            **Run:** [View workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+
+            ### ⚠️ This is a production issue!
+
+            ### Common Causes
+            - NPM reverse proxy stripping \`/api/\` prefix
+            - \`CORS_ORIGINS\` not including production domain
+            - Container health check passed but service not fully ready
+            - Database connection issues
+
+            ### Debug Commands
+            \`\`\`bash
+            # On production server
+            curl -i https://classroompath.duckdns.org/health
+            curl -i https://classroompath.duckdns.org/api/config
+            docker logs classroompath-api --tail 50
+            \`\`\`
+            `;
+
+            // Check for existing open issue
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'smoke-test-failure,production',
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['smoke-test-failure', 'production', 'automated', 'priority-high'],
+              });
+            } else {
+              // Comment on existing issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: `### Another production smoke test failure detected\n\n**Time:** ${new Date().toISOString()}\n**Run:** [View workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              });
+            }
+
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [smoke-test-staging, smoke-test-production]
+    if: always()
+
+    steps:
+      - name: Report results
+        run: |
+          echo "## Smoke Test Summary"
+          echo ""
+
+          staging_result="${{ needs.smoke-test-staging.result }}"
+          production_result="${{ needs.smoke-test-production.result }}"
+
+          if [ "$staging_result" = "success" ]; then
+            echo "✅ Staging: PASSED"
+          elif [ "$staging_result" = "skipped" ]; then
+            echo "⏭️  Staging: SKIPPED"
+          else
+            echo "❌ Staging: FAILED"
+          fi
+
+          if [ "$production_result" = "success" ]; then
+            echo "✅ Production: PASSED"
+          elif [ "$production_result" = "skipped" ]; then
+            echo "⏭️  Production: SKIPPED"
+          else
+            echo "❌ Production: FAILED"
+          fi

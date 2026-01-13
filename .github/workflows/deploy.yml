@@ -92,10 +92,12 @@ jobs:
             git submodule update --init --recursive --force
             
             cd /opt/classroompath/app/docker
+            export COMPOSE_PROJECT_NAME=classroompath-staging
             docker compose down --remove-orphans || true
+            docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
             docker builder prune -af || true
             docker compose build --no-cache
-            docker compose up -d
+            docker compose up -d --force-recreate
             
             # Wait for containers to be healthy
             echo "Waiting for services to be healthy..."
@@ -115,6 +117,63 @@ jobs:
         if: steps.resolve.outputs.skip == 'true'
         run: |
           echo "::warning::Staging deployment skipped - could not resolve deploy host"
+
+  smoke-test-staging:
+    name: Smoke Test Staging
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: always() && needs.deploy-staging.result == 'success'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for deployment to stabilize
+        run: sleep 30
+
+      - name: Run smoke tests against staging
+        id: smoke
+        env:
+          SMOKE_TEST_URL: https://classroompath-staging.duckdns.org
+          SMOKE_TEST_TIMEOUT: '15000'
+        run: |
+          echo "🔍 Running smoke tests against $SMOKE_TEST_URL"
+          npm run test:smoke 2>&1 | tee smoke-results.txt
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          exit $exit_code
+
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results-staging
+          path: smoke-results.txt
+          retention-days: 7
+
+      - name: Report smoke test failure
+        if: failure()
+        run: |
+          echo "::error::Smoke tests FAILED! The staging deployment may be broken."
+          echo "::error::Check the smoke test results for details."
+          echo ""
+          echo "Common issues:"
+          echo "  - NPM reverse proxy stripping /api/ prefix"
+          echo "  - CORS_ORIGINS not including staging domain"
+          echo "  - Container health check passed but service not fully ready"
+          echo ""
+          echo "Debug commands (run on staging server):"
+          echo "  curl -i https://classroompath-staging.duckdns.org/health"
+          echo "  curl -i https://classroompath-staging.duckdns.org/api/config"
+          echo "  docker logs classroompath-api --tail 50"
 
   deploy-production:
     name: Deploy to Production
@@ -193,6 +252,7 @@ jobs:
             git submodule update --init --recursive --force
 
             cd "$APP_DIR/docker"
+            export COMPOSE_PROJECT_NAME=classroompath-production
             echo "Stopping existing containers..."
             docker compose down --remove-orphans || true
             docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
@@ -201,7 +261,7 @@ jobs:
             docker compose build --no-cache
 
             echo "Starting containers..."
-            docker compose up -d
+            docker compose up -d --force-recreate
             
             # Wait for containers to be healthy
             echo "Waiting for services to be healthy..."
@@ -236,3 +296,60 @@ jobs:
         if: steps.resolve.outputs.skip == 'true'
         run: |
           echo "::warning::Deployment skipped - could not resolve or connect to deploy host"
+
+  smoke-test-production:
+    name: Smoke Test Production
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    if: always() && needs.deploy-production.result == 'success'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for deployment to stabilize
+        run: sleep 30
+
+      - name: Run smoke tests against production
+        id: smoke
+        env:
+          SMOKE_TEST_URL: https://classroompath.duckdns.org
+          SMOKE_TEST_TIMEOUT: '15000'
+        run: |
+          echo "🔍 Running smoke tests against $SMOKE_TEST_URL"
+          npm run test:smoke 2>&1 | tee smoke-results.txt
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          exit $exit_code
+
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results-production
+          path: smoke-results.txt
+          retention-days: 7
+
+      - name: Report smoke test failure
+        if: failure()
+        run: |
+          echo "::error::PRODUCTION smoke tests FAILED! The deployment may be broken."
+          echo "::error::Check the smoke test results for details."
+          echo ""
+          echo "Common issues:"
+          echo "  - NPM reverse proxy stripping /api/ prefix"
+          echo "  - CORS_ORIGINS not including production domain"
+          echo "  - Container health check passed but service not fully ready"
+          echo ""
+          echo "Debug commands (run on production server):"
+          echo "  curl -i https://classroompath.duckdns.org/health"
+          echo "  curl -i https://classroompath.duckdns.org/api/config"
+          echo "  docker logs classroompath-api --tail 50"

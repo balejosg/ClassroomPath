@@ -19,7 +19,8 @@ const projectRoot = resolve(testDir, '..');
 interface DockerComposeService {
     build?: { context: string; dockerfile: string };
     image?: string;
-    ports?: string[];
+    ports?: Array<string | number>;
+    expose?: Array<string | number>;
     env_file?: string[];
     healthcheck?: {
         test: string[];
@@ -57,7 +58,11 @@ void describe('Docker Compose Configuration', () => {
 
         const api = compose.services['api'];
         assert.ok(api.build, 'API should have build configuration');
-        assert.ok(api.ports?.some(p => p.includes('3000')), 'API should expose port 3000');
+        assert.ok(
+            api.ports?.some(p => String(p).includes('3000')) ||
+                api.expose?.some(p => String(p).includes('3000')),
+            'API should expose or publish port 3000'
+        );
         assert.ok(api.healthcheck, 'API should have healthcheck');
         assert.ok(api.env_file, 'API should use env_file');
     });

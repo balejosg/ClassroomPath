@@ -23,7 +23,10 @@
     "dev": "cd upstream/openpath/api && npm run dev",
     "start": "cd upstream/openpath/api && npm start",
     "test": "cd upstream/openpath && npm test",
-    "test:deployment": "node --import tsx --test tests/*.test.ts",
+    "test:deployment": "node --import tsx --test tests/deployment.test.ts",
+    "test:smoke": "node --import tsx --test tests/smoke.test.ts",
+    "test:smoke:staging": "SMOKE_TEST_URL=https://classroompath-staging.duckdns.org npm run test:smoke",
+    "test:smoke:production": "SMOKE_TEST_URL=https://classroompath.duckdns.org npm run test:smoke",
     "lint": "cd upstream/openpath && npm run lint",
     "typecheck": "cd upstream/openpath && npm run typecheck",
     "submodule:update": "git submodule update --remote --merge"
