@@ -37,16 +37,12 @@ app.use('/cp/trpc', createExpressMiddleware({
 // These routes are from OpenPath and must be forwarded to port 3000
 const openPathApiTarget = process.env.OPENPATH_API_URL ?? 'http://api:3000';
 
-// Proxy /health endpoint to OpenPath API /api/health
+// Proxy /health endpoint to OpenPath API
 // MUST come before /api handler to avoid being caught by /api/* route
-app.get('/health', (req, res, next) => {
-    req.url = '/api/health';
-    const proxy = createProxyMiddleware({
-        target: openPathApiTarget,
-        changeOrigin: true,
-    });
-    proxy(req, res, next);
-});
+app.get('/health', createProxyMiddleware({
+    target: openPathApiTarget,
+    changeOrigin: true,
+}));
 
 app.use('/api', createProxyMiddleware({
     target: openPathApiTarget,
