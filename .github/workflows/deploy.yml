@@ -141,7 +141,6 @@ jobs:
 
       - name: Run smoke tests against staging
         id: smoke
-        continue-on-error: true
         env:
           SMOKE_TEST_URL: https://classroompath-staging.duckdns.org
           SMOKE_TEST_TIMEOUT: '15000'
@@ -150,10 +149,7 @@ jobs:
           npm run test:smoke 2>&1 | tee smoke-results.txt
           exit_code=${PIPESTATUS[0]}
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
-          if [ "$exit_code" -ne 0 ]; then
-            echo "::warning::Smoke tests reported issues. Check results for details."
-          fi
-          exit 0
+          exit $exit_code
 
       - name: Upload smoke test results
         if: always()
@@ -164,18 +160,16 @@ jobs:
           retention-days: 7
 
       - name: Report smoke test failure
-        if: steps.smoke.outputs.exit_code != '0'
+        if: failure()
         run: |
-          echo "::warning::Smoke tests reported issues. The staging deployment may have problems."
-          echo "::warning::Check the smoke test results for details."
-          echo ""
-          echo "Known issues:"
-          echo "  - /health endpoint returns 502 (under investigation)"
-          echo "  - Other endpoints work correctly (/api/config, /cp/health)"
+          echo "::error::STAGING smoke tests FAILED! The deployment may be broken."
+          echo "::error::Check the smoke test results for details."
           echo ""
           echo "Debug commands (run on staging server):"
           echo "  curl -i https://classroompath-staging.duckdns.org/health"
           echo "  curl -i https://classroompath-staging.duckdns.org/api/config"
+          echo "  curl -i https://classroompath-staging.duckdns.org/cp/health"
+          echo "  docker logs classroompath-gateway --tail 50"
           echo "  docker logs classroompath-api --tail 50"
 
   deploy-production:
