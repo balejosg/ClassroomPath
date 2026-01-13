@@ -53,12 +53,15 @@ app.use('/w', createProxyMiddleware({
     changeOrigin: true,
 }));
 
-// Proxy /health endpoint to OpenPath API
-app.use('/health', createProxyMiddleware({
-    target: openPathApiTarget,
-    changeOrigin: true,
-    pathRewrite: { '^/health': '/api/health' },
-}));
+// Proxy /health endpoint to OpenPath API /api/health
+app.get('/health', (_req, res, next) => {
+    const proxy = createProxyMiddleware({
+        target: openPathApiTarget,
+        changeOrigin: true,
+        pathRewrite: { '^/health': '/api/health' },
+    });
+    proxy(_req, res, next);
+});
 
 app.listen(config.port, () => {
     console.log(`ClassroomPath Gateway listening on port ${config.port}`);
