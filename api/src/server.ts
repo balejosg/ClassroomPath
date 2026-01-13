@@ -54,13 +54,14 @@ app.use('/w', createProxyMiddleware({
 }));
 
 // Proxy /health endpoint to OpenPath API /api/health
-app.get('/health', (_req, res, next) => {
+app.get('/health', (req, res, next) => {
+    // Manually rewrite the URL before proxying
+    req.url = '/api/health';
     const proxy = createProxyMiddleware({
         target: openPathApiTarget,
         changeOrigin: true,
-        pathRewrite: { '^/health': '/api/health' },
     });
-    proxy(_req, res, next);
+    proxy(req, res, next);
 });
 
 app.listen(config.port, () => {
