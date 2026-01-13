@@ -40,27 +40,23 @@ const openPathApiTarget = process.env.OPENPATH_API_URL ?? 'http://api:3000';
 app.use('/api', createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
-    logLevel: 'debug',
 }));
 
 app.use('/trpc', createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
-    logLevel: 'debug',
     ws: true, // Enable WebSocket proxying for tRPC subscriptions
 }));
 
 app.use('/w', createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
-    logLevel: 'debug',
 }));
 
 // Proxy /health endpoint to OpenPath API
 app.use('/health', createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
-    logLevel: 'debug',
     pathRewrite: { '^/health': '/api/health' },
 }));
 
