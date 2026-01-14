@@ -4,7 +4,7 @@ import { readFileSync } from 'fs';
 
 function replaceAppCorePlugin(): Plugin {
     const cpInitPath = resolve(__dirname, 'src/cp-init.ts');
-    const openpathSrcMain = resolve(__dirname, '../upstream/openpath/spa/src/main.ts');
+    const cpMainPath = resolve(__dirname, 'src/main.ts');
     const realAppCorePath = resolve(__dirname, '../upstream/openpath/spa/src/modules/app-core.ts');
     return {
         name: 'replace-app-core',
@@ -16,8 +16,8 @@ function replaceAppCorePlugin(): Plugin {
                 }
                 return cpInitPath;
             }
-            if (source === 'dist/main.js' || source.endsWith('/dist/main.js')) {
-                return openpathSrcMain;
+            if (source.endsWith('/src/main.ts') || source === './src/main.ts' || source === '/src/main.ts') {
+                return cpMainPath;
             }
             return null;
         }
@@ -79,6 +79,7 @@ export default defineConfig({
                     'utf-8'
                 );
                 const cssTag = `<style>${cpCss}</style>`;
+                html = html.replace('<link rel="stylesheet" href="css/style.css">', '');
                 html = html.replace('</head>', `${cssTag}\n</head>`);
                 html = html.replace('</body>', `${onboardingHtml}\n${registerHtml}\n</body>`);
                 return html;
