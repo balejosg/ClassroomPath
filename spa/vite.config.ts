@@ -2,13 +2,36 @@ import { defineConfig, Plugin } from 'vite';
 import { resolve } from 'path';
 import { readFileSync } from 'fs';
 
+function replaceAppCorePlugin(): Plugin {
+    const cpInitPath = resolve(__dirname, 'src/cp-init.ts');
+    const openpathSrcMain = resolve(__dirname, '../upstream/openpath/spa/src/main.ts');
+    const realAppCorePath = resolve(__dirname, '../upstream/openpath/spa/src/modules/app-core.ts');
+    return {
+        name: 'replace-app-core',
+        enforce: 'pre',
+        resolveId(source, importer) {
+            if (source.endsWith('/modules/app-core.js') || source === './modules/app-core.js') {
+                if (importer && importer.endsWith('cp-init.ts')) {
+                    return realAppCorePath;
+                }
+                return cpInitPath;
+            }
+            if (source === 'dist/main.js' || source.endsWith('/dist/main.js')) {
+                return openpathSrcMain;
+            }
+            return null;
+        }
+    };
+}
+
 export default defineConfig({
+    root: '../upstream/openpath/spa',
     build: {
         outDir: resolve(__dirname, 'dist'),
         emptyOutDir: true,
         rollupOptions: {
             input: {
-                main: resolve(__dirname, 'index.html'),
+                main: resolve(__dirname, '../upstream/openpath/spa/index.html'),
                 sw: resolve(__dirname, '../upstream/openpath/spa/sw.ts'),
             },
             output: {
@@ -38,9 +61,8 @@ export default defineConfig({
             },
         ],
     },
-    root: resolve(__dirname),
-    publicDir: resolve(__dirname, '../upstream/openpath/spa/css'),
     plugins: [
+        replaceAppCorePlugin(),
         {
             name: 'inject-classroompath-assets',
             transformIndexHtml(html) {
