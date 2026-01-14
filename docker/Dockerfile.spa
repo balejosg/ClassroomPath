@@ -13,6 +13,5 @@ RUN npx vite build
 
 FROM nginx:alpine
 COPY --from=builder /app/spa/dist /usr/share/nginx/html
-COPY --from=builder /app/upstream/openpath/spa/css /usr/share/nginx/html/css
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
