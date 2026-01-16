@@ -100,7 +100,7 @@ export const usersRouter = router({
                     email: input.email,
                     name: input.name,
                     passwordHash,
-                    active: true,
+                    isActive: true,
                 })
                 .returning();
 
