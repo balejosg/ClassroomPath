@@ -93,9 +93,24 @@ jobs:
             
             # Run database migrations BEFORE building containers
             echo "Running ClassroomPath database migrations..."
-            cd /opt/classroompath/app
-            chmod +x scripts/run-migrations.sh
-            ./scripts/run-migrations.sh
+            cd /opt/classroompath/app/api
+            
+            # Load user profile to get Node.js environment (nvm, etc.)
+            source ~/.bashrc || source ~/.profile || true
+            
+            # Load environment variables
+            export $(grep -v '^#' /opt/classroompath/app/config/.env | xargs)
+            
+            # Check if we have npm
+            if ! command -v npm &> /dev/null; then
+                echo "ERROR: npm not found in PATH after loading profile"
+                echo "PATH=$PATH"
+                exit 1
+            fi
+            
+            # Install dependencies and run migrations
+            npm ci
+            npm run db:push
             
             cd /opt/classroompath/app/docker
             export COMPOSE_PROJECT_NAME=classroompath-staging
@@ -261,8 +276,24 @@ jobs:
 
             # Run database migrations BEFORE building containers
             echo "Running ClassroomPath database migrations..."
-            chmod +x scripts/run-migrations.sh
-            ./scripts/run-migrations.sh
+            cd "$APP_DIR/api"
+            
+            # Load user profile to get Node.js environment (nvm, etc.)
+            source ~/.bashrc || source ~/.profile || true
+            
+            # Load environment variables
+            export $(grep -v '^#' "$APP_DIR/config/.env" | xargs)
+            
+            # Check if we have npm
+            if ! command -v npm &> /dev/null; then
+                echo "ERROR: npm not found in PATH after loading profile"
+                echo "PATH=$PATH"
+                exit 1
+            fi
+            
+            # Install dependencies and run migrations
+            npm ci
+            npm run db:push
 
             cd "$APP_DIR/docker"
             export COMPOSE_PROJECT_NAME=classroompath-production
