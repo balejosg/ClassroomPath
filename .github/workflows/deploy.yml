@@ -94,13 +94,14 @@ jobs:
             # Run database migrations using Node.js Docker container
             echo "Running ClassroomPath database migrations..."
             cd /opt/classroompath/app
+            rm -rf api/node_modules
             docker run --rm \
               -v /opt/classroompath/app/api:/app \
               -v /opt/classroompath/app/config/.env:/app/.env:ro \
               -w /app \
               --env-file /opt/classroompath/app/config/.env \
               node:20-alpine \
-              sh -c "rm -rf node_modules && npm ci && npm run db:push"
+              sh -c "npm ci && npm run db:push"
             
             cd /opt/classroompath/app/docker
             export COMPOSE_PROJECT_NAME=classroompath-staging
@@ -266,13 +267,14 @@ jobs:
 
             # Run database migrations using Node.js Docker container
             echo "Running ClassroomPath database migrations..."
+            rm -rf "$APP_DIR/api/node_modules"
             docker run --rm \
               -v "$APP_DIR/api:/app" \
               -v "$APP_DIR/config/.env:/app/.env:ro" \
               -w /app \
               --env-file "$APP_DIR/config/.env" \
               node:20-alpine \
-              sh -c "rm -rf node_modules && npm ci && npm run db:push"
+              sh -c "npm ci && npm run db:push"
 
             cd "$APP_DIR/docker"
             export COMPOSE_PROJECT_NAME=classroompath-production
