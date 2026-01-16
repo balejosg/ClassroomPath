@@ -100,7 +100,7 @@ jobs:
               -w /app \
               --env-file /opt/classroompath/app/config/.env \
               node:20-alpine \
-              sh -c "npm ci && npm run db:push"
+              sh -c "rm -rf node_modules && npm ci && npm run db:push"
             
             cd /opt/classroompath/app/docker
             export COMPOSE_PROJECT_NAME=classroompath-staging
@@ -272,7 +272,7 @@ jobs:
               -w /app \
               --env-file "$APP_DIR/config/.env" \
               node:20-alpine \
-              sh -c "npm ci && npm run db:push"
+              sh -c "rm -rf node_modules && npm ci && npm run db:push"
 
             cd "$APP_DIR/docker"
             export COMPOSE_PROJECT_NAME=classroompath-production
