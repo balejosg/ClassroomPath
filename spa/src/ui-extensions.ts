@@ -65,3 +65,47 @@ export function navigateToScreen(screenId: string): void {
 
     if (isLucideAvailable()) updateIcons(document.getElementById(screenId) ?? document);
 }
+
+/**
+ * Toggle sidebar open/closed
+ */
+function toggleSidebar(): void {
+    document.getElementById('sidebar')?.classList.toggle('open');
+    document.getElementById('sidebar-backdrop')?.classList.toggle('hidden');
+}
+
+/**
+ * Close sidebar
+ */
+function closeSidebar(): void {
+    document.getElementById('sidebar')?.classList.remove('open');
+    document.getElementById('sidebar-backdrop')?.classList.add('hidden');
+}
+
+/**
+ * Close sidebar on mobile devices
+ */
+function closeSidebarOnMobile(): void {
+    if (window.innerWidth < 768) closeSidebar();
+}
+
+/**
+ * Initialize sidebar navigation
+ */
+export function initSidebar(): void {
+    const navItems = document.querySelectorAll<HTMLButtonElement>('.nav-item[data-screen]');
+    navItems.forEach((item) => {
+        item.addEventListener('click', () => {
+            const screenId = item.getAttribute('data-screen');
+            if (!screenId) return;
+
+            navigateToScreen(screenId);
+            closeSidebarOnMobile();
+        });
+    });
+
+    document.getElementById('menu-toggle')?.addEventListener('click', toggleSidebar);
+    document.getElementById('sidebar-backdrop')?.addEventListener('click', closeSidebar);
+
+    if (isLucideAvailable()) updateIcons(document);
+}
