@@ -5,6 +5,15 @@
 
 set -e
 
+# Load nvm if available (required for npm)
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+    export NVM_DIR="$HOME/.nvm"
+    source "$NVM_DIR/nvm.sh"
+elif [ -s "/usr/local/share/nvm/nvm.sh" ]; then
+    export NVM_DIR="/usr/local/share/nvm"
+    source "$NVM_DIR/nvm.sh"
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 API_DIR="$PROJECT_ROOT/api"
@@ -12,6 +21,13 @@ API_DIR="$PROJECT_ROOT/api"
 echo "🔄 Running ClassroomPath Gateway database migrations..."
 echo "   Project root: $PROJECT_ROOT"
 echo "   API directory: $API_DIR"
+
+# Check if npm is available
+if ! command -v npm &> /dev/null; then
+    echo "❌ Error: npm command not found"
+    echo "   Please ensure Node.js and npm are installed and in PATH"
+    exit 1
+fi
 
 # Check if we're in the right directory
 if [ ! -f "$API_DIR/package.json" ]; then
