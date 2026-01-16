@@ -91,6 +91,12 @@ jobs:
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
             
+            # Run database migrations BEFORE building containers
+            echo "Running ClassroomPath database migrations..."
+            cd /opt/classroompath/app
+            chmod +x scripts/run-migrations.sh
+            ./scripts/run-migrations.sh
+            
             cd /opt/classroompath/app/docker
             export COMPOSE_PROJECT_NAME=classroompath-staging
             docker compose down --remove-orphans || true
@@ -105,10 +111,6 @@ jobs:
               echo "⚠️ Warning: Timeout waiting for health checks"
               docker compose ps
             }
-            
-            # Run ClassroomPath gateway migrations
-            echo "Running ClassroomPath database migrations..."
-            docker compose exec -T gateway npm run db:push
             
             # Health check - Gateway is the primary entry point now
             curl -sf http://localhost:3001/cp/health && echo "✅ Staging Gateway OK" || exit 1
@@ -257,6 +259,11 @@ jobs:
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
 
+            # Run database migrations BEFORE building containers
+            echo "Running ClassroomPath database migrations..."
+            chmod +x scripts/run-migrations.sh
+            ./scripts/run-migrations.sh
+
             cd "$APP_DIR/docker"
             export COMPOSE_PROJECT_NAME=classroompath-production
             echo "Stopping existing containers..."
@@ -275,9 +282,6 @@ jobs:
               echo "⚠️ Warning: Timeout waiting for health checks"
               docker compose ps
             }
-            
-            echo "Running ClassroomPath database migrations..."
-            docker compose exec -T gateway npm run db:push
             
             # Health check - Gateway is the primary entry point now
             for i in 1 2 3 4 5; do
