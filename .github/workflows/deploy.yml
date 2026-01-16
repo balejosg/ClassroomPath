@@ -94,7 +94,8 @@ jobs:
             # Run database migrations using Node.js Docker container
             echo "Running ClassroomPath database migrations..."
             cd /opt/classroompath/app
-            rm -rf api/node_modules
+            # Clean node_modules using Docker to handle permissions
+            docker run --rm -v /opt/classroompath/app/api:/app -w /app node:20-alpine rm -rf node_modules
             docker run --rm \
               -v /opt/classroompath/app/api:/app \
               -v /opt/classroompath/app/config/.env:/app/.env:ro \
@@ -267,7 +268,8 @@ jobs:
 
             # Run database migrations using Node.js Docker container
             echo "Running ClassroomPath database migrations..."
-            rm -rf "$APP_DIR/api/node_modules"
+            # Clean node_modules using Docker to handle permissions
+            docker run --rm -v "$APP_DIR/api:/app" -w /app node:20-alpine rm -rf node_modules
             docker run --rm \
               -v "$APP_DIR/api:/app" \
               -v "$APP_DIR/config/.env:/app/.env:ro" \
