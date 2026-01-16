@@ -1,5 +1,4 @@
 import { getErrorMessage, normalize } from '@openpath/shared';
-import '../../../upstream/openpath/spa/css/style.css';
 import './styles/onboarding.css';
 import { init } from './cp-init.js';
 import { pushManager } from '../../../upstream/openpath/spa/src/push.js';
