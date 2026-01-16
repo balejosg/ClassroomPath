@@ -18,10 +18,25 @@ function isAdminToken(decoded: { roles?: Array<{ role: string }> } | null): bool
 const TEST_USER_ID = 'test-user-' + Date.now();
 
 describe('Onboarding Service', () => {
+    // Setup: Create test user in OpenPath users table
+    before(async () => {
+        // Create base test user
+        await openpathDb.insert(openpathSchema.users).values({
+            id: TEST_USER_ID,
+            email: `test-${Date.now()}@example.com`,
+            name: 'Test User',
+            passwordHash: 'hashed_password_placeholder',
+            isActive: true,
+            emailVerified: false,
+        });
+    });
+
     after(async () => {
+        // Clean up in reverse order (respecting foreign keys)
         await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, TEST_USER_ID));
         await db.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, TEST_USER_ID));
         await openpathDb.delete(openpathSchema.roles).where(eq(openpathSchema.roles.userId, TEST_USER_ID));
+        await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, TEST_USER_ID));
     });
 
     it('should return no membership for new user', async () => {
@@ -62,6 +77,16 @@ describe('Onboarding Service', () => {
     it('BUG-001 regression: organization creator should pass isAdminToken check', async () => {
         const regressionUserId = TEST_USER_ID + '-bug001';
 
+        // Create user in OpenPath first (required for foreign key)
+        await openpathDb.insert(openpathSchema.users).values({
+            id: regressionUserId,
+            email: `regression-${Date.now()}@example.com`,
+            name: 'Regression Test User',
+            passwordHash: 'hashed_password_placeholder',
+            isActive: true,
+            emailVerified: false,
+        });
+
         // Create organization (this should assign admin role)
         await onboardingService.createOrganization('Bug Test School', regressionUserId);
 
@@ -92,6 +117,7 @@ describe('Onboarding Service', () => {
         // Cleanup
         await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, regressionUserId));
         await openpathDb.delete(openpathSchema.roles).where(eq(openpathSchema.roles.userId, regressionUserId));
+        await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, regressionUserId));
     });
 
     it('should set waiting status', async () => {

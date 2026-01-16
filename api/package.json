@@ -9,7 +9,7 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --env-file=.env --test tests/*.test.ts"
   },
   "dependencies": {
     "@trpc/server": "^11.8.1",
@@ -31,6 +31,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.2",
     "@types/pg": "^8.11.10",
+    "dotenv": "^17.2.3",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0"
   }
