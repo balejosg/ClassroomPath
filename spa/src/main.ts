@@ -1,19 +1,19 @@
 import { getErrorMessage, normalize } from '@openpath/shared';
 import './styles/onboarding.css';
 import { init } from './cp-init.js';
-import { pushManager } from '../../../upstream/openpath/spa/src/push.js';
-import { initUsersListeners } from '../../../upstream/openpath/spa/src/modules/users.js';
-import { initClassroomListeners, initMachineListeners } from '../../../upstream/openpath/spa/src/modules/classrooms.js';
-import { initModals, showScreen, openModal, closeModal, initTheme, toggleTheme, initSidebar, navigateToScreen, updateIcons } from '../../../upstream/openpath/spa/src/modules/ui.js';
-import { auth } from '../../../upstream/openpath/spa/src/auth.js';
-import { googleAuth } from '../../../upstream/openpath/spa/src/google-auth.js';
-import { setup } from '../../../upstream/openpath/spa/src/setup.js';
-import { showToast } from '../../../upstream/openpath/spa/src/utils.js';
-import { state } from '../../../upstream/openpath/spa/src/modules/state.js';
-import { loadDashboard, renderRules, saveCurrentGroup, deleteGroup } from '../../../upstream/openpath/spa/src/modules/groups.js';
-import { logger } from '../../../upstream/openpath/spa/src/lib/logger.js';
-import { getElement, requireElement } from '../../../upstream/openpath/spa/src/lib/dom.js';
-import { trpc } from '../../../upstream/openpath/spa/src/trpc.js';
+import { pushManager } from '@/push.js';
+import { initUsersListeners } from '@/modules/users.js';
+import { initClassroomListeners, initMachineListeners } from '@/modules/classrooms.js';
+import { initModals, showScreen, openModal, closeModal, initTheme, toggleTheme, initSidebar, navigateToScreen, updateIcons } from '@/modules/ui.js';
+import { auth } from '@/auth.js';
+import { googleAuth } from '@/google-auth.js';
+import { setup } from '@/setup.js';
+import { showToast } from '@/utils.js';
+import { state } from '@/modules/state.js';
+import { loadDashboard, renderRules, saveCurrentGroup, deleteGroup } from '@/modules/groups.js';
+import { logger } from '@/lib/logger.js';
+import { getElement, requireElement } from '@/lib/dom.js';
+import { trpc } from '@/trpc.js';
 
 document.addEventListener('DOMContentLoaded', () => void (async () => {
     logger.info('OpenPath SPA initializing...');
