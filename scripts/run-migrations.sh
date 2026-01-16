@@ -5,13 +5,27 @@
 
 set -e
 
-# Load nvm if available (required for npm)
-if [ -s "$HOME/.nvm/nvm.sh" ]; then
-    export NVM_DIR="$HOME/.nvm"
-    source "$NVM_DIR/nvm.sh"
-elif [ -s "/usr/local/share/nvm/nvm.sh" ]; then
-    export NVM_DIR="/usr/local/share/nvm"
-    source "$NVM_DIR/nvm.sh"
+# Try to find and load Node.js environment
+# Check common nvm installations
+for nvm_path in "$HOME/.nvm/nvm.sh" "/usr/local/share/nvm/nvm.sh" "$NVM_DIR/nvm.sh" "/root/.nvm/nvm.sh"; do
+    if [ -s "$nvm_path" ]; then
+        export NVM_DIR="$(dirname "$nvm_path")"
+        source "$nvm_path"
+        echo "✅ Loaded nvm from $nvm_path"
+        break
+    fi
+done
+
+# Check if npm is available now, otherwise try to find node in common paths
+if ! command -v npm &> /dev/null; then
+    # Try common node installation paths
+    for node_bin_path in "/usr/local/bin" "/usr/bin" "$HOME/.local/bin" "/opt/node/bin"; do
+        if [ -f "$node_bin_path/npm" ]; then
+            export PATH="$node_bin_path:$PATH"
+            echo "✅ Added $node_bin_path to PATH"
+            break
+        fi
+    done
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,8 +40,13 @@ echo "   API directory: $API_DIR"
 if ! command -v npm &> /dev/null; then
     echo "❌ Error: npm command not found"
     echo "   Please ensure Node.js and npm are installed and in PATH"
+    echo "   Searched paths: $PATH"
+    echo "   Current user: $(whoami)"
     exit 1
 fi
+
+echo "✅ Using npm: $(which npm)"
+echo "✅ Using node: $(which node)"
 
 # Check if we're in the right directory
 if [ ! -f "$API_DIR/package.json" ]; then
