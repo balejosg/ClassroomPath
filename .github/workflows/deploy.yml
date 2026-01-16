@@ -91,9 +91,16 @@ jobs:
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
             
-            # Run database migrations BEFORE building containers
+            # Run database migrations using Node.js Docker container
             echo "Running ClassroomPath database migrations..."
-            bash -lc 'cd /opt/classroompath/app/api && export $(grep -v "^#" /opt/classroompath/app/config/.env | xargs) && npm ci && npm run db:push'
+            cd /opt/classroompath/app
+            docker run --rm \
+              -v /opt/classroompath/app/api:/app \
+              -v /opt/classroompath/app/config/.env:/app/.env:ro \
+              -w /app \
+              --env-file /opt/classroompath/app/config/.env \
+              node:20-alpine \
+              sh -c "npm ci && npm run db:push"
             
             cd /opt/classroompath/app/docker
             export COMPOSE_PROJECT_NAME=classroompath-staging
@@ -257,9 +264,15 @@ jobs:
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
 
-            # Run database migrations BEFORE building containers
+            # Run database migrations using Node.js Docker container
             echo "Running ClassroomPath database migrations..."
-            bash -lc "cd $APP_DIR/api && export \$(grep -v '^#' $APP_DIR/config/.env | xargs) && npm ci && npm run db:push"
+            docker run --rm \
+              -v "$APP_DIR/api:/app" \
+              -v "$APP_DIR/config/.env:/app/.env:ro" \
+              -w /app \
+              --env-file "$APP_DIR/config/.env" \
+              node:20-alpine \
+              sh -c "npm ci && npm run db:push"
 
             cd "$APP_DIR/docker"
             export COMPOSE_PROJECT_NAME=classroompath-production
