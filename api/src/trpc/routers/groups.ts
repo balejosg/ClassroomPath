@@ -87,6 +87,53 @@ export const groupsRouter = router({
             return rules;
         }),
 
+    getByName: tenantProcedure
+        .input(z.object({ name: z.string() }))
+        .query(async ({ ctx, input }) => {
+            const group = await openpathDb.select()
+                .from(whitelistGroups)
+                .where(eq(whitelistGroups.name, input.name))
+                .limit(1);
+
+            if (!group.length) return null;
+
+            const orgGroup = await db.select()
+                .from(schema.cpOrganizationGroups)
+                .where(and(
+                    eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+                    eq(schema.cpOrganizationGroups.groupId, group[0].id)
+                ))
+                .limit(1);
+
+            if (!orgGroup.length) {
+                return null; // Group exists in OpenPath but not in this org
+            }
+
+            return group[0];
+        }),
+
+    listRules: tenantProcedure
+        .input(z.object({ groupId: z.string() }))
+        .query(async ({ ctx, input }) => {
+            const orgGroup = await db.select()
+                .from(schema.cpOrganizationGroups)
+                .where(and(
+                    eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+                    eq(schema.cpOrganizationGroups.groupId, input.groupId)
+                ))
+                .limit(1);
+
+            if (!orgGroup.length) {
+                throw new Error('Group not found or access denied');
+            }
+
+            const rules = await openpathDb.select()
+                .from(whitelistRules)
+                .where(eq(whitelistRules.groupId, input.groupId));
+
+            return rules;
+        }),
+
     create: tenantProcedure
         .input(CreateGroupSchema)
         .mutation(async ({ ctx, input }) => {

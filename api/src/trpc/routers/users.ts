@@ -206,4 +206,25 @@ export const usersRouter = router({
                 return role;
             }
         }),
+
+    revokeRole: tenantProcedure
+        .input(z.object({ userId: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+            const orgUser = await db.select()
+                .from(schema.cpOrganizationUsers)
+                .where(and(
+                    eq(schema.cpOrganizationUsers.organizationId, ctx.organizationId!),
+                    eq(schema.cpOrganizationUsers.openpathUserId, input.userId)
+                ))
+                .limit(1);
+
+            if (!orgUser.length) {
+                throw new Error('User not found or access denied');
+            }
+
+            await openpathDb.delete(roles)
+                .where(eq(roles.userId, input.userId));
+
+            return { success: true };
+        }),
 });

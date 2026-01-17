@@ -59,6 +59,11 @@ export default defineConfig({
                 find: '@trpc/client',
                 replacement: resolve(__dirname, 'node_modules/@trpc/client'),
             },
+            // Redirect OpenPath trpc client to ClassroomPath client
+            {
+                find: /\.\.\/trpc\.js$/,
+                replacement: resolve(__dirname, 'src/cp-trpc-compat.ts'),
+            },
         ],
     },
     plugins: [

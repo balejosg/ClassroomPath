@@ -31,6 +31,34 @@ app.get('/health', createProxyMiddleware({
 
 // Proxy OpenPath API routes (must be before express.json())
 // We use a single proxy with pathFilter to avoid prefix stripping issues with app.use('/path', ...)
+
+// Block sensitive OpenPath endpoints - force use of /cp/trpc/* for tenant-filtered data
+const BLOCKED_OPENPATH_PROCEDURES = [
+    'groups.list', 'groups.getById', 'groups.getByName', 'groups.listRules',
+    'classrooms.list', 'classrooms.get', 'classrooms.listMachines',
+    'users.list', 'users.get', 'users.listTeachers',
+];
+
+app.use('/trpc', (req, res, next) => {
+    const procedurePath = (req.url || '').split('?')[0].replace(/^\//, '');
+    const procedures = procedurePath.split(',');
+
+    const blocked = procedures.find(proc =>
+        BLOCKED_OPENPATH_PROCEDURES.some(b => proc === b || proc.startsWith(b + '.'))
+    );
+
+    if (blocked) {
+        return res.status(403).json({
+            error: {
+                message: 'Use /cp/trpc for tenant-scoped data',
+                code: 'FORBIDDEN',
+                data: { blocked }
+            }
+        });
+    }
+    next();
+});
+
 app.use(createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,

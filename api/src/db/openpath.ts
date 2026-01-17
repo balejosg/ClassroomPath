@@ -59,10 +59,26 @@ export const whitelistRules = pgTable('whitelist_rules', {
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
+export const machines = pgTable('machines', {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    hostname: varchar('hostname', { length: 255 }).unique().notNull(),
+    classroomId: varchar('classroom_id', { length: 50 }).references(
+        () => classrooms.id,
+        { onDelete: 'cascade' }
+    ),
+    version: varchar('version', { length: 50 }).default('unknown'),
+    lastSeen: timestamp('last_seen', { withTimezone: true }).defaultNow(),
+    downloadTokenHash: varchar('download_token_hash', { length: 64 }).unique(),
+    downloadTokenLastRotatedAt: timestamp('download_token_last_rotated_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
 export const openpathSchema = {
     roles,
     users,
     classrooms,
+    machines,
     whitelistGroups,
     whitelistRules,
 };
