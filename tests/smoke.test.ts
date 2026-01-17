@@ -155,13 +155,9 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
     });
 
     void describe('tRPC Endpoints', { skip: !SMOKE_TEST_URL }, () => {
-        void test('POST /trpc/healthcheck.live responds (not 404)', async () => {
-            const response = await fetchWithTimeout(`${SMOKE_TEST_URL}/trpc/healthcheck.live`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({}),
+        void test('GET /trpc/healthcheck.live responds (not 404)', async () => {
+            const response = await fetchWithTimeout(`${SMOKE_TEST_URL}/trpc/healthcheck.live?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D`, {
+                method: 'GET',
             });
 
             // Should NOT be 404 (which would indicate path stripping)
