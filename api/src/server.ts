@@ -47,12 +47,17 @@ app.get('/health', createProxyMiddleware({
 app.use('/api', createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
 }));
 
 app.use('/trpc', createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
     ws: true,
+    timeout: 30000, // 30 second timeout
+    proxyTimeout: 30000,
+    logLevel: 'debug',
 }));
 
 app.use('/w', createProxyMiddleware({
