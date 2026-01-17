@@ -21,6 +21,7 @@ app.use(cors({
 // Proxy OpenPath API routes to internal API container
 // These routes are from OpenPath and must be forwarded to port 3000
 const openPathApiTarget = process.env.OPENPATH_API_URL ?? 'http://api:3000';
+const openPathSpaTarget = process.env.OPENPATH_SPA_URL ?? 'http://spa:80';
 
 // Proxy /health endpoint to OpenPath API
 app.get('/health', createProxyMiddleware({
@@ -28,23 +29,20 @@ app.get('/health', createProxyMiddleware({
     changeOrigin: true,
 }));
 
-// Proxy /trpc to OpenPath API (must be before express.json())
-app.use('/trpc', createProxyMiddleware({
+// Proxy OpenPath API routes (must be before express.json())
+// We use a single proxy with pathFilter to avoid prefix stripping issues with app.use('/path', ...)
+app.use(createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
     ws: true,
+    pathFilter: ['/api', '/trpc', '/w', '/export', '/api-docs'],
 }));
 
-// Proxy /api to OpenPath API (must be before express.json())
-app.use('/api', createProxyMiddleware({
-    target: openPathApiTarget,
+// Proxy all other routes (except /cp/*) to the SPA container
+app.use(createProxyMiddleware({
+    target: openPathSpaTarget,
     changeOrigin: true,
-}));
-
-// Proxy /w (whitelist exports) to OpenPath API
-app.use('/w', createProxyMiddleware({
-    target: openPathApiTarget,
-    changeOrigin: true,
+    pathFilter: (path) => !path.startsWith('/cp') && !path.startsWith('/api') && !path.startsWith('/trpc') && !path.startsWith('/w') && !path.startsWith('/export') && !path.startsWith('/api-docs') && path !== '/health',
 }));
 
 // NOW apply express.json() for ClassroomPath-specific routes that need body parsing
@@ -54,10 +52,6 @@ app.use(express.json());
 app.get('/cp/health', (_req, res) => {
     res.json({ status: 'ok', service: 'classroompath-gateway' });
 });
-
-// ClassroomPath-specific config endpoint (overrides proxy for /api/config)
-// Note: This won't be reached because /api proxy is above. 
-// The SPA fetches /api/config which is handled by OpenPath API.
 
 // ClassroomPath-specific tRPC endpoints
 app.use('/cp/trpc', createExpressMiddleware({
