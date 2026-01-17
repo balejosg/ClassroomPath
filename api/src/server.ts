@@ -13,6 +13,41 @@ app.use(cors({
     credentials: true,
 }));
 
+// IMPORTANT: Proxy routes MUST be defined BEFORE express.json() middleware
+// express.json() consumes the request body stream, which prevents
+// http-proxy-middleware from forwarding the body to the target server.
+// This caused POST requests to /trpc to hang indefinitely.
+
+// Proxy OpenPath API routes to internal API container
+// These routes are from OpenPath and must be forwarded to port 3000
+const openPathApiTarget = process.env.OPENPATH_API_URL ?? 'http://api:3000';
+
+// Proxy /health endpoint to OpenPath API
+app.get('/health', createProxyMiddleware({
+    target: openPathApiTarget,
+    changeOrigin: true,
+}));
+
+// Proxy /trpc to OpenPath API (must be before express.json())
+app.use('/trpc', createProxyMiddleware({
+    target: openPathApiTarget,
+    changeOrigin: true,
+    ws: true,
+}));
+
+// Proxy /api to OpenPath API (must be before express.json())
+app.use('/api', createProxyMiddleware({
+    target: openPathApiTarget,
+    changeOrigin: true,
+}));
+
+// Proxy /w (whitelist exports) to OpenPath API
+app.use('/w', createProxyMiddleware({
+    target: openPathApiTarget,
+    changeOrigin: true,
+}));
+
+// NOW apply express.json() for ClassroomPath-specific routes that need body parsing
 app.use(express.json());
 
 // ClassroomPath-specific health endpoint
@@ -20,49 +55,14 @@ app.get('/cp/health', (_req, res) => {
     res.json({ status: 'ok', service: 'classroompath-gateway' });
 });
 
-// ClassroomPath-specific config endpoint
-app.get('/api/config', (_req, res) => {
-    res.json({
-        googleClientId: process.env.GOOGLE_CLIENT_ID ?? '',
-    });
-});
+// ClassroomPath-specific config endpoint (overrides proxy for /api/config)
+// Note: This won't be reached because /api proxy is above. 
+// The SPA fetches /api/config which is handled by OpenPath API.
 
 // ClassroomPath-specific tRPC endpoints
 app.use('/cp/trpc', createExpressMiddleware({
     router: appRouter,
     createContext,
-}));
-
-// Proxy OpenPath API routes to internal API container
-// These routes are from OpenPath and must be forwarded to port 3000
-const openPathApiTarget = process.env.OPENPATH_API_URL ?? 'http://api:3000';
-
-// Proxy /health endpoint to OpenPath API
-// MUST come before /api handler to avoid being caught by /api/* route
-app.get('/health', createProxyMiddleware({
-    target: openPathApiTarget,
-    changeOrigin: true,
-}));
-
-app.use('/api', createProxyMiddleware({
-    target: openPathApiTarget,
-    changeOrigin: true,
-    timeout: 30000,
-    proxyTimeout: 30000,
-}));
-
-app.use('/trpc', createProxyMiddleware({
-    target: openPathApiTarget,
-    changeOrigin: true,
-    ws: true,
-    timeout: 30000, // 30 second timeout
-    proxyTimeout: 30000,
-    logLevel: 'debug',
-}));
-
-app.use('/w', createProxyMiddleware({
-    target: openPathApiTarget,
-    changeOrigin: true,
 }));
 
 app.listen(config.port, () => {
