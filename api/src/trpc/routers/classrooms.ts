@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, tenantProcedure } from '../trpc.js';
 import { openpathDb } from '../../db/openpath.js';
 import { db } from '../../db/index.js';
@@ -49,7 +50,10 @@ export const classroomsRouter = router({
                 .limit(1);
 
             if (!orgClassroom.length) {
-                throw new Error('Classroom not found or access denied');
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                    message: 'Classroom not found or access denied'
+                });
             }
 
             const classroom = await openpathDb.select()
@@ -72,7 +76,10 @@ export const classroomsRouter = router({
                 .limit(1);
 
             if (!orgClassroom.length) {
-                throw new Error('Classroom not found or access denied');
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                    message: 'Classroom not found or access denied'
+                });
             }
 
             const result = await openpathDb.select()
@@ -83,7 +90,7 @@ export const classroomsRouter = router({
         }),
 
     setActiveGroup: tenantProcedure
-        .input(z.object({ id: z.string(), groupId: z.string() }))
+        .input(z.object({ id: z.string(), groupId: z.string().nullable() }))
         .mutation(async ({ ctx, input }) => {
             const orgClassroom = await db.select()
                 .from(schema.cpOrganizationClassrooms)
@@ -94,20 +101,28 @@ export const classroomsRouter = router({
                 .limit(1);
 
             if (!orgClassroom.length) {
-                throw new Error('Classroom not found or access denied');
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                    message: 'Classroom not found or access denied'
+                });
             }
 
-            // Verify groupId belongs to the org
-            const orgGroup = await db.select()
-                .from(schema.cpOrganizationGroups)
-                .where(and(
-                    eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-                    eq(schema.cpOrganizationGroups.groupId, input.groupId)
-                ))
-                .limit(1);
+            // Verify groupId belongs to the org (skip if null to deactivate group)
+            if (input.groupId !== null) {
+                const orgGroup = await db.select()
+                    .from(schema.cpOrganizationGroups)
+                    .where(and(
+                        eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+                        eq(schema.cpOrganizationGroups.groupId, input.groupId)
+                    ))
+                    .limit(1);
 
-            if (!orgGroup.length) {
-                throw new Error('Group not found or access denied');
+                if (!orgGroup.length) {
+                    throw new TRPCError({
+                        code: 'NOT_FOUND',
+                        message: 'Group not found or access denied'
+                    });
+                }
             }
 
             const [updated] = await openpathDb.update(classrooms)
@@ -130,7 +145,10 @@ export const classroomsRouter = router({
                 .limit(1);
 
             if (!orgClassroom.length) {
-                throw new Error('Classroom not found or access denied');
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                    message: 'Classroom not found or access denied'
+                });
             }
 
             await openpathDb.delete(machines)
@@ -178,7 +196,10 @@ export const classroomsRouter = router({
                 .limit(1);
 
             if (!orgClassroom.length) {
-                throw new Error('Classroom not found or access denied');
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                    message: 'Classroom not found or access denied'
+                });
             }
 
             const { id, ...updateData } = input;
@@ -202,7 +223,10 @@ export const classroomsRouter = router({
                 .limit(1);
 
             if (!orgClassroom.length) {
-                throw new Error('Classroom not found or access denied');
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                    message: 'Classroom not found or access denied'
+                });
             }
 
             await db.delete(schema.cpOrganizationClassrooms)

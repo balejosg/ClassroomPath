@@ -39,8 +39,14 @@ const BLOCKED_OPENPATH_PROCEDURES = [
     'users.list', 'users.get', 'users.listTeachers',
 ];
 
-app.use('/trpc', (req, res, next) => {
-    const procedurePath = (req.url || '').split('?')[0].replace(/^\//, '');
+app.use((req, res, next) => {
+    if (!req.url.startsWith('/trpc')) {
+        return next();
+    }
+
+    // req.url starts with /trpc, so we check procedures
+    // /trpc/health.ping -> health.ping
+    const procedurePath = req.url.slice(5).split('?')[0].replace(/^\//, '');
     const procedures = procedurePath.split(',');
 
     const blocked = procedures.find(proc =>
