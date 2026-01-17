@@ -39,7 +39,15 @@ export const groupsRouter = router({
             .from(whitelistGroups)
             .where(inArray(whitelistGroups.id, groupIds));
 
-        return groups;
+        // Serialize Date fields for JSON compatibility
+        return groups.map(g => ({
+            id: g.id,
+            name: g.name,
+            displayName: g.displayName,
+            enabled: g.enabled,
+            createdAt: g.createdAt?.toISOString() ?? null,
+            updatedAt: g.updatedAt?.toISOString() ?? null,
+        }));
     }),
 
     getById: tenantProcedure
@@ -62,7 +70,18 @@ export const groupsRouter = router({
                 .where(eq(whitelistGroups.id, input.id))
                 .limit(1);
 
-            return group[0] || null;
+            if (!group[0]) return null;
+
+            // Serialize Date fields for JSON compatibility
+            const g = group[0];
+            return {
+                id: g.id,
+                name: g.name,
+                displayName: g.displayName,
+                enabled: g.enabled,
+                createdAt: g.createdAt?.toISOString() ?? null,
+                updatedAt: g.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     getRules: tenantProcedure
@@ -84,7 +103,15 @@ export const groupsRouter = router({
                 .from(whitelistRules)
                 .where(eq(whitelistRules.groupId, input.groupId));
 
-            return rules;
+            // Serialize Date fields for JSON compatibility
+            return rules.map(r => ({
+                id: r.id,
+                groupId: r.groupId,
+                type: r.type,
+                value: r.value,
+                comment: r.comment,
+                createdAt: r.createdAt?.toISOString() ?? null,
+            }));
         }),
 
     getByName: tenantProcedure
@@ -109,7 +136,16 @@ export const groupsRouter = router({
                 return null; // Group exists in OpenPath but not in this org
             }
 
-            return group[0];
+            // Serialize Date fields for JSON compatibility
+            const g = group[0];
+            return {
+                id: g.id,
+                name: g.name,
+                displayName: g.displayName,
+                enabled: g.enabled,
+                createdAt: g.createdAt?.toISOString() ?? null,
+                updatedAt: g.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     listRules: tenantProcedure
@@ -131,7 +167,15 @@ export const groupsRouter = router({
                 .from(whitelistRules)
                 .where(eq(whitelistRules.groupId, input.groupId));
 
-            return rules;
+            // Serialize Date fields for JSON compatibility
+            return rules.map(r => ({
+                id: r.id,
+                groupId: r.groupId,
+                type: r.type,
+                value: r.value,
+                comment: r.comment,
+                createdAt: r.createdAt?.toISOString() ?? null,
+            }));
         }),
 
     create: tenantProcedure
@@ -155,7 +199,15 @@ export const groupsRouter = router({
                     groupId: group.id,
                 });
 
-            return group;
+            // Serialize Date fields for JSON compatibility
+            return {
+                id: group.id,
+                name: group.name,
+                displayName: group.displayName,
+                enabled: group.enabled,
+                createdAt: group.createdAt?.toISOString() ?? null,
+                updatedAt: group.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     update: tenantProcedure
@@ -179,7 +231,15 @@ export const groupsRouter = router({
                 .where(eq(whitelistGroups.id, id))
                 .returning();
 
-            return updated;
+            // Serialize Date fields for JSON compatibility
+            return {
+                id: updated.id,
+                name: updated.name,
+                displayName: updated.displayName,
+                enabled: updated.enabled,
+                createdAt: updated.createdAt?.toISOString() ?? null,
+                updatedAt: updated.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     delete: tenantProcedure
@@ -231,7 +291,15 @@ export const groupsRouter = router({
                 })
                 .returning();
 
-            return rule;
+            // Serialize Date fields for JSON compatibility
+            return {
+                id: rule.id,
+                groupId: rule.groupId,
+                type: rule.type,
+                value: rule.value,
+                comment: rule.comment,
+                createdAt: rule.createdAt?.toISOString() ?? null,
+            };
         }),
 
     deleteRule: tenantProcedure

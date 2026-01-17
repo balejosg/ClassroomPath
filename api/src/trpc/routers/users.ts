@@ -39,7 +39,16 @@ export const usersRouter = router({
             .from(users)
             .where(inArray(users.id, userIds));
 
-        return usersList;
+        // Serialize Date fields for JSON compatibility
+        return usersList.map(u => ({
+            id: u.id,
+            email: u.email,
+            name: u.name,
+            passwordHash: u.passwordHash,
+            isActive: u.isActive,
+            createdAt: u.createdAt?.toISOString() ?? null,
+            updatedAt: u.updatedAt?.toISOString() ?? null,
+        }));
     }),
 
     getById: tenantProcedure
@@ -62,7 +71,19 @@ export const usersRouter = router({
                 .where(eq(users.id, input.id))
                 .limit(1);
 
-            return user[0] || null;
+            if (!user[0]) return null;
+
+            // Serialize Date fields for JSON compatibility
+            const u = user[0];
+            return {
+                id: u.id,
+                email: u.email,
+                name: u.name,
+                passwordHash: u.passwordHash,
+                isActive: u.isActive,
+                createdAt: u.createdAt?.toISOString() ?? null,
+                updatedAt: u.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     getRole: tenantProcedure
@@ -85,7 +106,18 @@ export const usersRouter = router({
                 .where(eq(roles.userId, input.userId))
                 .limit(1);
 
-            return role[0] || null;
+            if (!role[0]) return null;
+
+            // Serialize Date fields for JSON compatibility
+            const r = role[0];
+            return {
+                id: r.id,
+                userId: r.userId,
+                role: r.role,
+                groupIds: r.groupIds,
+                createdBy: r.createdBy,
+                createdAt: r.createdAt?.toISOString() ?? null,
+            };
         }),
 
     create: tenantProcedure
@@ -111,7 +143,16 @@ export const usersRouter = router({
                     openpathUserId: user.id,
                 });
 
-            return user;
+            // Serialize Date fields for JSON compatibility
+            return {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                passwordHash: user.passwordHash,
+                isActive: user.isActive,
+                createdAt: user.createdAt?.toISOString() ?? null,
+                updatedAt: user.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     update: tenantProcedure
@@ -135,7 +176,16 @@ export const usersRouter = router({
                 .where(eq(users.id, id))
                 .returning();
 
-            return updated;
+            // Serialize Date fields for JSON compatibility
+            return {
+                id: updated.id,
+                email: updated.email,
+                name: updated.name,
+                passwordHash: updated.passwordHash,
+                isActive: updated.isActive,
+                createdAt: updated.createdAt?.toISOString() ?? null,
+                updatedAt: updated.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     delete: tenantProcedure
@@ -191,7 +241,15 @@ export const usersRouter = router({
                     .where(eq(roles.userId, input.userId))
                     .returning();
 
-                return updated;
+                // Serialize Date fields for JSON compatibility
+                return {
+                    id: updated.id,
+                    userId: updated.userId,
+                    role: updated.role,
+                    groupIds: updated.groupIds,
+                    createdBy: updated.createdBy,
+                    createdAt: updated.createdAt?.toISOString() ?? null,
+                };
             } else {
                 const [role] = await openpathDb.insert(roles)
                     .values({
@@ -203,7 +261,15 @@ export const usersRouter = router({
                     })
                     .returning();
 
-                return role;
+                // Serialize Date fields for JSON compatibility
+                return {
+                    id: role.id,
+                    userId: role.userId,
+                    role: role.role,
+                    groupIds: role.groupIds,
+                    createdBy: role.createdBy,
+                    createdAt: role.createdAt?.toISOString() ?? null,
+                };
             }
         }),
 

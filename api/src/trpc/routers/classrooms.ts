@@ -35,7 +35,16 @@ export const classroomsRouter = router({
             .from(classrooms)
             .where(inArray(classrooms.id, classroomIds));
 
-        return result;
+        // Serialize Date fields for JSON compatibility
+        return result.map(c => ({
+            id: c.id,
+            name: c.name,
+            displayName: c.displayName,
+            defaultGroupId: c.defaultGroupId,
+            activeGroupId: c.activeGroupId,
+            createdAt: c.createdAt?.toISOString() ?? null,
+            updatedAt: c.updatedAt?.toISOString() ?? null,
+        }));
     }),
 
     getById: tenantProcedure
@@ -61,7 +70,19 @@ export const classroomsRouter = router({
                 .where(eq(classrooms.id, input.id))
                 .limit(1);
 
-            return classroom[0] || null;
+            if (!classroom[0]) return null;
+
+            // Serialize Date fields for JSON compatibility
+            const c = classroom[0];
+            return {
+                id: c.id,
+                name: c.name,
+                displayName: c.displayName,
+                defaultGroupId: c.defaultGroupId,
+                activeGroupId: c.activeGroupId,
+                createdAt: c.createdAt?.toISOString() ?? null,
+                updatedAt: c.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     listMachines: tenantProcedure
@@ -86,7 +107,18 @@ export const classroomsRouter = router({
                 .from(machines)
                 .where(eq(machines.classroomId, input.classroomId));
 
-            return result;
+            // Explicitly serialize Date fields for JSON compatibility
+            return result.map(m => ({
+                id: m.id,
+                hostname: m.hostname,
+                classroomId: m.classroomId,
+                version: m.version,
+                lastSeen: m.lastSeen?.toISOString() ?? null,
+                downloadTokenHash: m.downloadTokenHash,
+                downloadTokenLastRotatedAt: m.downloadTokenLastRotatedAt?.toISOString() ?? null,
+                createdAt: m.createdAt?.toISOString() ?? null,
+                updatedAt: m.updatedAt?.toISOString() ?? null,
+            }));
         }),
 
     setActiveGroup: tenantProcedure
@@ -130,7 +162,16 @@ export const classroomsRouter = router({
                 .where(eq(classrooms.id, input.id))
                 .returning();
 
-            return updated;
+            // Serialize Date fields for JSON compatibility
+            return {
+                id: updated.id,
+                name: updated.name,
+                displayName: updated.displayName,
+                defaultGroupId: updated.defaultGroupId,
+                activeGroupId: updated.activeGroupId,
+                createdAt: updated.createdAt?.toISOString() ?? null,
+                updatedAt: updated.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     deleteMachine: tenantProcedure
@@ -181,7 +222,16 @@ export const classroomsRouter = router({
                     classroomId: classroom.id,
                 });
 
-            return classroom;
+            // Serialize Date fields for JSON compatibility
+            return {
+                id: classroom.id,
+                name: classroom.name,
+                displayName: classroom.displayName,
+                defaultGroupId: classroom.defaultGroupId,
+                activeGroupId: classroom.activeGroupId,
+                createdAt: classroom.createdAt?.toISOString() ?? null,
+                updatedAt: classroom.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     update: tenantProcedure
@@ -208,7 +258,16 @@ export const classroomsRouter = router({
                 .where(eq(classrooms.id, id))
                 .returning();
 
-            return updated;
+            // Serialize Date fields for JSON compatibility
+            return {
+                id: updated.id,
+                name: updated.name,
+                displayName: updated.displayName,
+                defaultGroupId: updated.defaultGroupId,
+                activeGroupId: updated.activeGroupId,
+                createdAt: updated.createdAt?.toISOString() ?? null,
+                updatedAt: updated.updatedAt?.toISOString() ?? null,
+            };
         }),
 
     delete: tenantProcedure
