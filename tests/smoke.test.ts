@@ -155,8 +155,8 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
     });
 
     void describe('tRPC Endpoints', { skip: !SMOKE_TEST_URL }, () => {
-        void test('POST /trpc/health.ping responds (not 404)', async () => {
-            const response = await fetchWithTimeout(`${SMOKE_TEST_URL}/trpc/health.ping`, {
+        void test('POST /trpc/healthcheck.live responds (not 404)', async () => {
+            const response = await fetchWithTimeout(`${SMOKE_TEST_URL}/trpc/healthcheck.live`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -187,7 +187,7 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
 
         void test('tRPC batch endpoint responds', async () => {
             const response = await fetchWithTimeout(
-                `${SMOKE_TEST_URL}/trpc/health.ping?batch=1&input={}`,
+                `${SMOKE_TEST_URL}/trpc/healthcheck.live?batch=1&input={}`,
                 { method: 'GET' }
             );
 
