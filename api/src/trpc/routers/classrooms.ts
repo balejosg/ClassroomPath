@@ -86,26 +86,48 @@ export const classroomsRouter = router({
         }),
 
     listMachines: tenantProcedure
-        .input(z.object({ classroomId: z.string() }))
+        .input(z.object({ classroomId: z.string().optional() }))
         .query(async ({ ctx, input }) => {
-            const orgClassroom = await db.select()
+            // Get all classrooms for this organization
+            const orgClassrooms = await db.select()
                 .from(schema.cpOrganizationClassrooms)
-                .where(and(
-                    eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-                    eq(schema.cpOrganizationClassrooms.classroomId, input.classroomId)
-                ))
-                .limit(1);
+                .where(eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!));
 
-            if (!orgClassroom.length) {
-                throw new TRPCError({
-                    code: 'NOT_FOUND',
-                    message: 'Classroom not found or access denied'
-                });
+            const classroomIds = orgClassrooms.map(oc => oc.classroomId);
+
+            if (classroomIds.length === 0) return [];
+
+            // If specific classroom requested, verify access
+            if (input.classroomId) {
+                if (!classroomIds.includes(input.classroomId)) {
+                    throw new TRPCError({
+                        code: 'NOT_FOUND',
+                        message: 'Classroom not found or access denied'
+                    });
+                }
+
+                // Return machines for specific classroom
+                const result = await openpathDb.select()
+                    .from(machines)
+                    .where(eq(machines.classroomId, input.classroomId));
+
+                return result.map(m => ({
+                    id: m.id,
+                    hostname: m.hostname,
+                    classroomId: m.classroomId,
+                    version: m.version,
+                    lastSeen: m.lastSeen?.toISOString() ?? null,
+                    downloadTokenHash: m.downloadTokenHash,
+                    downloadTokenLastRotatedAt: m.downloadTokenLastRotatedAt?.toISOString() ?? null,
+                    createdAt: m.createdAt?.toISOString() ?? null,
+                    updatedAt: m.updatedAt?.toISOString() ?? null,
+                }));
             }
 
+            // Return machines for all organization's classrooms
             const result = await openpathDb.select()
                 .from(machines)
-                .where(eq(machines.classroomId, input.classroomId));
+                .where(inArray(machines.classroomId, classroomIds));
 
             // Explicitly serialize Date fields for JSON compatibility
             return result.map(m => ({
