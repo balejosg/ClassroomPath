@@ -69,14 +69,14 @@ app.use(createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
     ws: true,
-    pathFilter: ['/api', '/trpc', '/w', '/export', '/api-docs'],
+    pathFilter: ['/api', '/trpc', '/w', '/export', '/api-docs', '/v2'],
 }));
 
 // Proxy all other routes (except /cp/*) to the SPA container
 app.use(createProxyMiddleware({
     target: openPathSpaTarget,
     changeOrigin: true,
-    pathFilter: (path) => !path.startsWith('/cp') && !path.startsWith('/api') && !path.startsWith('/trpc') && !path.startsWith('/w') && !path.startsWith('/export') && !path.startsWith('/api-docs') && path !== '/health',
+    pathFilter: (path) => !path.startsWith('/cp') && !path.startsWith('/api') && !path.startsWith('/trpc') && !path.startsWith('/w') && !path.startsWith('/export') && !path.startsWith('/api-docs') && !path.startsWith('/v2') && path !== '/health',
 }));
 
 // NOW apply express.json() for ClassroomPath-specific routes that need body parsing
