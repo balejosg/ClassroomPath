@@ -1,7 +1,7 @@
 # API Dockerfile for ClassroomPath
 FROM node:20-alpine
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl python3 make g++
 
 WORKDIR /app
 
@@ -9,18 +9,23 @@ WORKDIR /app
 COPY package*.json ./
 COPY shared/package*.json ./shared/
 COPY api/package*.json ./api/
+COPY spa/package*.json ./spa/
+COPY react-spa/package*.json ./react-spa/
 
-RUN npm ci --workspace=@openpath/shared --workspace=@openpath/api
+RUN npm ci --workspace=@openpath/shared --workspace=@openpath/api --workspace=@openpath/spa --workspace=@openpath/react-spa
 
 # Copy source
 COPY tsconfig.base.json ./
 COPY shared/ ./shared/
 COPY api/ ./api/
+COPY spa/ ./spa/
+COPY react-spa/ ./react-spa/
 
 # Build
 RUN npm run build --workspace=@openpath/shared
 RUN npm run build --workspace=@openpath/api
-
+RUN npm run build --workspace=@openpath/spa
+RUN npm run build --workspace=@openpath/react-spa
 
 # Create data directory
 RUN mkdir -p /app/data
