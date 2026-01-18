@@ -74,6 +74,18 @@ export const machines = pgTable('machines', {
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+export const requests = pgTable('requests', {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    domain: varchar('domain', { length: 255 }).notNull(),
+    reason: text('reason'),
+    status: varchar('status', { length: 20 }).default('pending').notNull(),
+    priority: varchar('priority', { length: 20 }).default('normal').notNull(),
+    requesterEmail: varchar('requester_email', { length: 255 }).notNull(),
+    groupId: varchar('group_id', { length: 50 }).references(() => whitelistGroups.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
 export const openpathSchema = {
     roles,
     users,
@@ -81,4 +93,5 @@ export const openpathSchema = {
     machines,
     whitelistGroups,
     whitelistRules,
+    requests,
 };

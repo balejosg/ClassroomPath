@@ -43,6 +43,7 @@ const BLOCKED_OPENPATH_PROCEDURES = [
     'groups.list', 'groups.getById', 'groups.getByName', 'groups.listRules',
     'classrooms.list', 'classrooms.get', 'classrooms.listMachines',
     'users.list', 'users.get', 'users.listTeachers',
+    'requests.list', 'requests.get', 'requests.getStatus',
 ];
 
 app.use((req, res, next) => {
