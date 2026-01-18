@@ -29,6 +29,12 @@ app.get('/health', createProxyMiddleware({
     changeOrigin: true,
 }));
 
+// Route /v2/trpc to the local multi-tenant router
+app.use('/v2/trpc', createExpressMiddleware({
+    router: appRouter,
+    createContext,
+}));
+
 // Proxy OpenPath API routes (must be before express.json())
 // We use a single proxy with pathFilter to avoid prefix stripping issues with app.use('/path', ...)
 
