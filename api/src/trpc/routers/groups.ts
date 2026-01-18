@@ -303,7 +303,7 @@ export const groupsRouter = router({
         }),
 
     deleteRule: tenantProcedure
-        .input(z.object({ ruleId: z.string(), groupId: z.string() }))
+        .input(z.object({ id: z.string(), groupId: z.string() }))
         .mutation(async ({ ctx, input }) => {
             const orgGroup = await db.select()
                 .from(schema.cpOrganizationGroups)
@@ -318,7 +318,7 @@ export const groupsRouter = router({
             }
 
             await openpathDb.delete(whitelistRules)
-                .where(eq(whitelistRules.id, input.ruleId));
+                .where(eq(whitelistRules.id, input.id));
 
             return { success: true };
         }),

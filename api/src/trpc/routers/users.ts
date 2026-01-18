@@ -11,6 +11,7 @@ const CreateUserSchema = z.object({
     email: z.string().email(),
     name: z.string().min(1).max(255),
     password: z.string().min(8),
+    role: z.enum(['admin', 'teacher', 'student']).optional(),
 });
 
 const UpdateUserSchema = z.object({
@@ -142,6 +143,18 @@ export const usersRouter = router({
                     organizationId: ctx.organizationId!,
                     openpathUserId: user.id,
                 });
+
+            // Assign role if provided
+            if (input.role) {
+                await openpathDb.insert(roles)
+                    .values({
+                        id: nanoid(),
+                        userId: user.id,
+                        role: input.role,
+                        groupIds: [],
+                        createdBy: ctx.user.sub,
+                    });
+            }
 
             // Serialize Date fields for JSON compatibility
             return {
