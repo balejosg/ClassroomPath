@@ -30,7 +30,7 @@ app.get('/health', createProxyMiddleware({
 }));
 
 // Route /v2/trpc to the local multi-tenant router
-app.use('/v2/trpc', createExpressMiddleware({
+app.use('/v2/trpc', express.json(), createExpressMiddleware({
     router: appRouter,
     createContext,
 }));
