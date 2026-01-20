@@ -32,7 +32,14 @@ export const authRouter = router({
                     });
                 }
 
-                return await response.json();
+                const data = await response.json();
+                // Extract the inner data from OpenPath's TRPC response
+                // OpenPath returns { result: { data: { accessToken, ... } } }
+                // We want to return { accessToken, ... } so our TRPC wraps it once, not twice
+                if (data.result && data.result.data) {
+                    return data.result.data;
+                }
+                return data;
             } catch (error) {
                 if (error instanceof TRPCError) throw error;
                 throw new TRPCError({
@@ -69,7 +76,12 @@ export const authRouter = router({
                     });
                 }
 
-                return await response.json();
+                const data = await response.json();
+                // Extract the inner data from OpenPath's TRPC response
+                if (data.result && data.result.data) {
+                    return data.result.data;
+                }
+                return data;
             } catch (error) {
                 if (error instanceof TRPCError) throw error;
                 throw new TRPCError({
