@@ -13,6 +13,14 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
     return next({ ctx: { ...ctx, user: ctx.user } });
 });
 
+export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+    const roles = ctx.user.roles?.map(r => r.role) || [];
+    if (!roles.includes('admin')) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+    }
+    return next({ ctx });
+});
+
 export const tenantProcedure = protectedProcedure.use(async ({ ctx, next }) => {
     const { db } = await import('../db/index.js');
     const { cpMemberships } = await import('../db/schema.js');
