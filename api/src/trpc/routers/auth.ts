@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, publicProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
+import * as onboardingService from '../../services/onboarding.service.js';
 
 // Forward auth requests to OpenPath API
 const OPENPATH_API_URL = process.env.OPENPATH_API_URL || 'http://openpath-api:3000';
@@ -33,9 +34,26 @@ export const authRouter = router({
                 }
 
                 const data = await response.json();
+                
+                // Auto-onboarding for React SPA (/v2) compatibility
+                // If user has no organization, create one automatically
+                if (data.result?.data?.user?.id) {
+                    const userId = data.result.data.user.id;
+                    const userName = data.result.data.user.name || 'Usuario';
+                    
+                    try {
+                        const status = await onboardingService.getOnboardingStatus(userId);
+                        if (!status.hasMembership && !status.isWaiting) {
+                            console.log(`[Auth] Auto-creating organization for user ${userId}`);
+                            await onboardingService.createOrganization(`Organización de ${userName}`, userId);
+                        }
+                    } catch (err) {
+                        console.error('[Auth] Failed to auto-onboard user:', err);
+                        // Continue anyway, don't block login
+                    }
+                }
+
                 // Extract the inner data from OpenPath's TRPC response
-                // OpenPath returns { result: { data: { accessToken, ... } } }
-                // We want to return { accessToken, ... } so our TRPC wraps it once, not twice
                 if (data.result && data.result.data) {
                     return data.result.data;
                 }
@@ -77,6 +95,18 @@ export const authRouter = router({
                 }
 
                 const data = await response.json();
+
+                // Auto-onboarding for React SPA (/v2) compatibility
+                if (data.result?.data?.user?.id) {
+                    const userId = data.result.data.user.id;
+                    try {
+                        console.log(`[Auth] Auto-creating organization for new user ${userId}`);
+                        await onboardingService.createOrganization(`Organización de ${input.name}`, userId);
+                    } catch (err) {
+                        console.error('[Auth] Failed to auto-onboard new user:', err);
+                    }
+                }
+
                 // Extract the inner data from OpenPath's TRPC response
                 if (data.result && data.result.data) {
                     return data.result.data;
