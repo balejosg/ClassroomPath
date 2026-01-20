@@ -31,7 +31,7 @@ export default defineConfig({
         emptyOutDir: true,
         rollupOptions: {
             input: {
-                main: resolve(__dirname, '../upstream/openpath/spa/index.html'),
+                main: resolve(__dirname, 'index.html'),
                 sw: resolve(__dirname, '../upstream/openpath/spa/sw.ts'),
             },
             output: {
