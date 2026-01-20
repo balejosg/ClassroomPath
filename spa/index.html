@@ -624,6 +624,161 @@ wikipedia.org"></textarea>
     <!-- Toast notifications -->
     <div id="toast-container"></div>
 
+    <!-- Register Screen -->
+    <div id="register-screen" class="screen hidden">
+        <div class="login-container">
+            <div class="login-header">
+                <div class="logo">🎓</div>
+                <h1>ClassroomPath</h1>
+                <p>Crear una cuenta nueva</p>
+            </div>
+            <div class="login-form">
+                <div id="google-signup-btn" class="google-btn-container"></div>
+
+                <div class="login-separator">
+                    <span>o con tu email</span>
+                </div>
+
+                <form id="email-register-form" novalidate>
+                    <div class="form-group">
+                        <label for="register-email">Email</label>
+                        <input type="email" id="register-email" required placeholder="profesor@colegio.es" autocomplete="email"
+                               aria-describedby="register-email-error" aria-invalid="false">
+                        <small id="register-email-error" class="field-error" role="alert" aria-live="polite"></small>
+                    </div>
+                    <div class="form-group">
+                        <label for="register-name">Nombre</label>
+                        <input type="text" id="register-name" required placeholder="Tu nombre" autocomplete="name" minlength="2"
+                               aria-describedby="register-name-error" aria-invalid="false">
+                        <small id="register-name-error" class="field-error" role="alert" aria-live="polite"></small>
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password">Contraseña</label>
+                        <div class="password-wrapper">
+                            <input type="password" id="register-password" required minlength="8" placeholder="Mínimo 8 caracteres" autocomplete="new-password"
+                                   aria-describedby="register-password-hint register-password-error password-requirements" aria-invalid="false">
+                            <button type="button" id="toggle-register-password" class="password-toggle" aria-label="Mostrar contraseña" title="Mostrar contraseña">👁️</button>
+                        </div>
+                        <div class="password-strength-indicator">
+                            <div class="strength-bar" id="password-strength-bar"></div>
+                            <span class="strength-label" id="password-strength-label"></span>
+                        </div>
+                        <ul class="password-requirements" id="password-requirements" aria-label="Requisitos de contraseña">
+                            <li id="req-length" class="requirement unmet">✗ Mínimo 8 caracteres</li>
+                            <li id="req-upper" class="requirement unmet">✗ Una mayúscula</li>
+                            <li id="req-lower" class="requirement unmet">✗ Una minúscula</li>
+                            <li id="req-number" class="requirement unmet">✗ Un número</li>
+                        </ul>
+                        <small id="register-password-error" class="field-error" role="alert" aria-live="polite"></small>
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password-confirm">Confirmar contraseña</label>
+                        <div class="password-wrapper">
+                            <input type="password" id="register-password-confirm" required minlength="8" placeholder="Repetir contraseña" autocomplete="new-password"
+                                   aria-describedby="register-password-confirm-error" aria-invalid="false">
+                            <button type="button" id="toggle-register-password-confirm" class="password-toggle" aria-label="Mostrar contraseña" title="Mostrar contraseña">👁️</button>
+                        </div>
+                        <small id="register-password-confirm-error" class="field-error" role="alert" aria-live="polite"></small>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="register-terms" required aria-describedby="register-terms-error">
+                            <span>Acepto los <a href="/terms" target="_blank" rel="noopener">Términos de Servicio</a> y la <a href="/privacy" target="_blank" rel="noopener">Política de Privacidad</a></span>
+                        </label>
+                        <small id="register-terms-error" class="field-error" role="alert" aria-live="polite"></small>
+                    </div>
+                    <button type="submit" id="email-register-btn" class="btn btn-primary btn-block" disabled>
+                        Crear cuenta
+                    </button>
+                </form>
+
+                <div id="register-error" class="error-message" role="alert" aria-live="assertive"></div>
+
+                <p class="login-info">
+                    ¿Ya tienes cuenta? <a href="#" id="goto-login-link">Inicia sesión</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Onboarding Screen (choose path) -->
+    <div id="onboarding-screen" class="screen hidden">
+        <div class="login-container">
+            <div class="onboarding-header">
+                <span class="logo-large">🎓</span>
+                <h1>Bienvenido a ClassroomPath</h1>
+                <p class="subtitle">Tu cuenta está lista. ¿Qué deseas hacer?</p>
+            </div>
+            
+            <div class="onboarding-options">
+                <div class="option-card" id="create-org-card">
+                    <span class="option-icon">🏫</span>
+                    <h2>Crear mi organización</h2>
+                    <p>Ideal si eres administrador de un centro educativo</p>
+                    
+                    <form id="create-org-form" class="create-org-form hidden">
+                        <div class="form-group">
+                            <label for="org-name-input">Nombre de la organización</label>
+                            <input 
+                                type="text" 
+                                id="org-name-input" 
+                                placeholder="Ej: IES Ejemplo"
+                                minlength="2"
+                                maxlength="100"
+                                required
+                            >
+                        </div>
+                        <div id="create-org-error" class="error-message"></div>
+                        <button type="submit" id="create-org-submit" class="btn btn-primary btn-lg">
+                            Crear organización
+                        </button>
+                    </form>
+                    
+                    <button id="show-create-form-btn" class="btn btn-primary btn-lg">
+                        Crear organización
+                    </button>
+                </div>
+                
+                <div class="option-card">
+                    <span class="option-icon">⏳</span>
+                    <h2>Esperar invitación</h2>
+                    <p>Si ya existe una organización y esperas que te inviten</p>
+                    <button id="wait-invite-btn" class="btn btn-secondary btn-lg">
+                        Esperar invitación
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Waiting Screen -->
+    <div id="waiting-screen" class="screen hidden">
+        <div class="login-container">
+            <div class="waiting-header">
+                <span class="waiting-icon">⏳</span>
+                <h1>Esperando invitación</h1>
+                <p class="subtitle">Cuando un administrador te invite a su organización, recarga esta página para acceder.</p>
+            </div>
+            
+            <div class="login-form">
+                <div class="waiting-actions">
+                    <button id="reload-status-btn" class="btn btn-primary btn-lg">
+                        🔄 Recargar página
+                    </button>
+                </div>
+                
+                <div class="login-separator"><span>o</span></div>
+                
+                <div class="change-mind">
+                    <p>¿Cambiaste de opinión?</p>
+                    <button id="create-org-from-waiting-btn" class="btn btn-link">
+                        Quiero crear mi propia organización
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script type="module" src="./src/main.ts"></script>
 
