@@ -10,13 +10,13 @@ function replaceAppCorePlugin(): Plugin {
         name: 'replace-app-core',
         enforce: 'pre',
         resolveId(source, importer) {
-            if (source.endsWith('/modules/app-core.js') || source === './modules/app-core.js') {
+            if (source.endsWith('/modules/app-core.js') || source === './modules/app-core.js' || source.endsWith('app-core.ts')) {
                 if (importer && importer.endsWith('cp-init.ts')) {
                     return realAppCorePath;
                 }
                 return cpInitPath;
             }
-            if (source.endsWith('/src/main.ts') || source === './src/main.ts' || source === '/src/main.ts') {
+            if (source.endsWith('src/main.ts') || source.endsWith('src/main.js')) {
                 return cpMainPath;
             }
             return null;
