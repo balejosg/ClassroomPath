@@ -413,7 +413,9 @@ async function handleRegister(): Promise<void> {
 }
 
 export async function init(): Promise<void> {
+    console.log('[cp-init] Initializing...');
     if (!auth.isAuthenticated()) {
+        console.log('[cp-init] Not authenticated, showing login');
         setupRegisterUI();
         await openpathInit();
         return;
@@ -421,20 +423,25 @@ export async function init(): Promise<void> {
 
     let status: OnboardingState;
     try {
+        console.log('[cp-init] Checking onboarding status...');
         status = await onboarding.checkStatus();
+        console.log('[cp-init] Onboarding status:', status);
     } catch (error) {
-        console.error('[cp-init] Onboarding check failed, showing login:', error);
+        console.error('[cp-init] Onboarding check failed with exception:', error);
         setupRegisterUI();
         await openpathInit();
         return;
     }
 
     if (!status.hasMembership) {
+        console.log('[cp-init] No membership, showing onboarding UI');
         onboarding.initUI();
         
         if (status.isWaiting) {
+            console.log('[cp-init] Showing waiting screen');
             showScreen('waiting-screen');
         } else {
+            console.log('[cp-init] Showing onboarding screen');
             showScreen('onboarding-screen');
             
             document.getElementById('show-create-form-btn')?.addEventListener('click', () => {
@@ -446,6 +453,6 @@ export async function init(): Promise<void> {
         return;
     }
 
-    console.log(`User belongs to org: ${status.organization?.name} as ${status.organization?.role}`);
+    console.log(`[cp-init] User belongs to org: ${status.organization?.name} as ${status.organization?.role}`);
     return openpathInit();
 }
