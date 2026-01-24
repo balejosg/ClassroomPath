@@ -15,6 +15,13 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "workspaces": [
+    "api",
+    "react-spa",
+    "upstream/openpath/shared",
+    "upstream/openpath/api",
+    "upstream/openpath/react-spa"
+  ],
   "scripts": {
     "install:all": "npm install && cd upstream/openpath && npm install",
     "build": "cd upstream/openpath && npm run build --workspaces --if-present",

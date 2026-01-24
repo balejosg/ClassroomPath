@@ -3,13 +3,26 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy and install dependencies (including dev for build)
-COPY api/package*.json ./
-RUN npm ci
+# Copy root package files
+COPY package*.json ./
+COPY api/package*.json ./api/
+COPY react-spa/package*.json ./react-spa/
+COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
+COPY upstream/openpath/react-spa/package*.json ./upstream/openpath/react-spa/
 
-# Copy source and build
-COPY api/ ./
-RUN npm run build
+# Install dependencies
+RUN npm ci --workspace=@classroompath/api --workspace=@classroompath/react-spa
+
+# Copy source
+COPY api/ ./api/
+COPY react-spa/ ./react-spa/
+COPY upstream/openpath/shared/ ./upstream/openpath/shared/
+COPY upstream/openpath/react-spa/ ./upstream/openpath/react-spa/
+COPY tsconfig.base.json ./upstream/openpath/tsconfig.base.json
+
+# Build (react-spa first, then api which serves it)
+RUN npm run build --workspace=@classroompath/react-spa
+RUN npm run build --workspace=@classroompath/api
 
 # Production stage
 FROM node:20-alpine
@@ -20,16 +33,19 @@ RUN apk add --no-cache curl
 WORKDIR /app
 
 # Copy package files and install prod deps only
-COPY api/package*.json ./
-RUN npm ci --omit=dev
+COPY package*.json ./
+COPY api/package*.json ./api/
+RUN npm ci --workspace=@classroompath/api --omit=dev
 
 # Copy built files from builder
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/api/dist ./api/dist
+COPY --from=builder /app/react-spa/dist ./react-spa/dist
 
-# Copy drizzle config and source for migrations (db:push needs schema source)
-COPY api/drizzle.config.ts ./
-COPY api/src/db ./src/db
+# Copy drizzle config and source for migrations
+COPY api/drizzle.config.ts ./api/
+COPY api/src/db ./api/src/db
 
+WORKDIR /app/api
 EXPOSE 3001
 
 CMD ["node", "dist/server.js"]
