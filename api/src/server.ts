@@ -1,10 +1,16 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { config } from './config.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -13,15 +19,8 @@ app.use(cors({
     credentials: true,
 }));
 
-// IMPORTANT: Proxy routes MUST be defined BEFORE express.json() middleware
-// express.json() consumes the request body stream, which prevents
-// http-proxy-middleware from forwarding the body to the target server.
-// This caused POST requests to /trpc to hang indefinitely.
-
-// Proxy OpenPath API routes to internal API container
-// These routes are from OpenPath and must be forwarded to port 3000
+// Proxy targets
 const openPathApiTarget = process.env.OPENPATH_API_URL ?? 'http://api:3000';
-const openPathSpaTarget = process.env.OPENPATH_SPA_URL ?? 'http://spa:80';
 
 // Proxy /health endpoint to OpenPath API
 app.get('/health', createProxyMiddleware({
@@ -34,9 +33,6 @@ app.use('/v2/trpc', express.json(), createExpressMiddleware({
     router: appRouter,
     createContext,
 }));
-
-// Proxy OpenPath API routes (must be before express.json())
-// We use a single proxy with pathFilter to avoid prefix stripping issues with app.use('/path', ...)
 
 // Block sensitive OpenPath endpoints - force use of /cp/trpc/* for tenant-filtered data
 const BLOCKED_OPENPATH_PROCEDURES = [
@@ -51,8 +47,6 @@ app.use((req, res, next) => {
         return next();
     }
 
-    // req.url starts with /trpc, so we check procedures
-    // /trpc/health.ping -> health.ping
     const procedurePath = req.url.slice(5).split('?')[0].replace(/^\//, '');
     const procedures = procedurePath.split(',');
 
@@ -72,6 +66,7 @@ app.use((req, res, next) => {
     next();
 });
 
+// Proxy OpenPath API routes (must be before express.json())
 app.use(createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
@@ -79,14 +74,21 @@ app.use(createProxyMiddleware({
     pathFilter: ['/api', '/trpc', '/w', '/export', '/api-docs', '/v2'],
 }));
 
-// Proxy all other routes (except /cp/*) to the SPA container
-app.use(createProxyMiddleware({
-    target: openPathSpaTarget,
-    changeOrigin: true,
-    pathFilter: (path) => !path.startsWith('/cp') && !path.startsWith('/api') && !path.startsWith('/trpc') && !path.startsWith('/w') && !path.startsWith('/export') && !path.startsWith('/api-docs') && !path.startsWith('/v2') && path !== '/health',
-}));
+// Serve ClassroomPath React SPA statically
+// Check if running from compiled dist (api/dist/server.js) or source (api/src/server.ts)
+const isCompiledCode = __dirname.endsWith('/api/dist') || __dirname.endsWith('\\api\\dist');
+const reactSpaPath = isCompiledCode
+    ? path.join(__dirname, '../../../react-spa/dist')
+    : path.join(__dirname, '../../react-spa/dist');
 
-// NOW apply express.json() for ClassroomPath-specific routes that need body parsing
+if (fs.existsSync(reactSpaPath)) {
+    console.log(`Serving ClassroomPath React SPA from: ${reactSpaPath}`);
+    app.use(express.static(reactSpaPath));
+} else {
+    console.warn(`ClassroomPath React SPA dist not found at: ${reactSpaPath}`);
+}
+
+// NOW apply express.json() for ClassroomPath-specific routes
 app.use(express.json());
 
 // ClassroomPath-specific health endpoint
@@ -99,6 +101,18 @@ app.use('/cp/trpc', createExpressMiddleware({
     router: appRouter,
     createContext,
 }));
+
+// SPA Fallback - must be last
+if (fs.existsSync(reactSpaPath)) {
+    app.get('/*', (_req, res) => {
+        // Only fallback if not an API or TRPC route
+        if (!_req.url.startsWith('/cp/') && !_req.url.startsWith('/api') && !_req.url.startsWith('/trpc')) {
+            res.sendFile(path.join(reactSpaPath, 'index.html'));
+        } else {
+            res.status(404).json({ error: 'Not found' });
+        }
+    });
+}
 
 app.listen(config.port, () => {
     console.log(`ClassroomPath Gateway listening on port ${config.port}`);
