@@ -18,7 +18,6 @@ COPY api/ ./api/
 COPY react-spa/ ./react-spa/
 COPY upstream/openpath/shared/ ./upstream/openpath/shared/
 COPY upstream/openpath/react-spa/ ./upstream/openpath/react-spa/
-COPY tsconfig.base.json ./upstream/openpath/tsconfig.base.json
 
 # Build (react-spa first, then api which serves it)
 RUN npm run build --workspace=@classroompath/react-spa
