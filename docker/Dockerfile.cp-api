@@ -7,8 +7,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY api/package*.json ./api/
 COPY react-spa/package*.json ./react-spa/
-COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
 COPY upstream/openpath/react-spa/package*.json ./upstream/openpath/react-spa/
+COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
 
 # Install dependencies (including upstream openpath dependencies)
 RUN npm ci
@@ -16,8 +16,8 @@ RUN npm ci
 # Copy source
 COPY api/ ./api/
 COPY react-spa/ ./react-spa/
-COPY upstream/openpath/shared/ ./upstream/openpath/shared/
 COPY upstream/openpath/react-spa/ ./upstream/openpath/react-spa/
+COPY upstream/openpath/api/ ./upstream/openpath/api/
 
 # Build (react-spa first, then api which serves it)
 RUN npm run build --workspace=@classroompath/react-spa

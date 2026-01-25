@@ -1,39 +1,38 @@
-# API Dockerfile for ClassroomPath
-FROM node:20-alpine
+# Use Node.js 20 alpine as base for building
+FROM node:20-alpine AS builder
 
-RUN apk add --no-cache curl python3 make g++
-
+# Set working directory
 WORKDIR /app
 
-# Install dependencies
+# Copy package manifests for all workspaces
 COPY package*.json ./
-COPY shared/package*.json ./shared/
 COPY api/package*.json ./api/
 COPY spa/package*.json ./spa/
 COPY react-spa/package*.json ./react-spa/
 
-RUN npm ci --workspace=@openpath/shared --workspace=@openpath/api --workspace=@openpath/spa --workspace=@openpath/react-spa
+# Install dependencies
+RUN npm ci
 
-# Copy source
-COPY tsconfig.base.json ./
-COPY shared/ ./shared/
+# Copy source code
 COPY api/ ./api/
 COPY spa/ ./spa/
 COPY react-spa/ ./react-spa/
 
-# Build
-RUN npm run build --workspace=@openpath/shared
-RUN npm run build --workspace=@openpath/api
-RUN npm run build --workspace=@openpath/spa
-RUN npm run build --workspace=@openpath/react-spa
+# Build the api package
+RUN npm run build -w @openpath/api
 
-# Create data directory
-RUN mkdir -p /app/data
+# Final production image
+FROM node:20-alpine
 
-WORKDIR /app/api
+WORKDIR /app
+
+# Copy built files and production dependencies
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/api/dist ./api/dist
+COPY --from=builder /app/api/package.json ./api/package.json
 
 EXPOSE 3000
 
-CMD ["node", "dist/src/server.js"]
-# CD Test lun 05 ene 2026 23:09:29 CET
-# Test 1767651043
+# Start the API
+CMD ["node", "api/dist/server.js"]
