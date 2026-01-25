@@ -2,16 +2,21 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Copy manifests
+COPY package*.json ./
+COPY react-spa/package*.json ./react-spa/
+COPY api/package*.json ./api/
+
+# Install dependencies
+RUN npm ci
+
+# Copy source
 COPY . .
 
-RUN npm install && \
-    cd upstream/openpath && npm install && \
-    cd ../../spa && npm install
-
-WORKDIR /app/spa
-RUN npx vite build
+# Build SPA
+RUN npm run build --workspace=@classroompath/react-spa
 
 FROM nginx:alpine
-COPY --from=builder /app/spa/dist /usr/share/nginx/html
+COPY --from=builder /app/react-spa/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

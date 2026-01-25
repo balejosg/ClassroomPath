@@ -1,11 +1,13 @@
-# Use Node.js 20 alpine as base for building
+# OpenPath Core API
 FROM node:20-alpine AS builder
-
-# Set working directory
 WORKDIR /app
 
-# Copy package manifests for all workspaces
+# Copy root configuration
 COPY package*.json ./
+COPY tsconfig.base.json ./
+
+# Copy manifests
+COPY shared/package*.json ./shared/
 COPY api/package*.json ./api/
 COPY spa/package*.json ./spa/
 COPY react-spa/package*.json ./react-spa/
@@ -13,26 +15,24 @@ COPY react-spa/package*.json ./react-spa/
 # Install dependencies
 RUN npm ci
 
-# Copy source code
+# Copy source
+COPY shared/ ./shared/
 COPY api/ ./api/
 COPY spa/ ./spa/
 COPY react-spa/ ./react-spa/
 
-# Build the api package
+# Build shared first
+RUN npm run build -w @openpath/shared
+# Build core API
 RUN npm run build -w @openpath/api
 
 # Final production image
 FROM node:20-alpine
-
 WORKDIR /app
-
-# Copy built files and production dependencies
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/api/dist ./api/dist
 COPY --from=builder /app/api/package.json ./api/package.json
 
 EXPOSE 3000
-
-# Start the API
 CMD ["node", "api/dist/server.js"]
