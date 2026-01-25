@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Button } from '@openpath/components/ui/Button';
-import { Input } from '@openpath/components/ui/Input';
-import { Card } from '@openpath/components/ui/Card';
+import { Button } from '@openpath/src/components/ui/Button';
+import { Input } from '@openpath/src/components/ui/Input';
+import { Card } from '@openpath/src/components/ui/Card';
 import { PasswordStrength } from '../components/PasswordStrength';
 import { validateEmail, validatePassword, ERROR_MESSAGES_ES } from '../utils/validation';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';

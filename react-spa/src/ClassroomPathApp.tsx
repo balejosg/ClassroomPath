@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import OpenPathApp from '@openpath/App';
-import { isAuthenticated, onAuthChange } from '@openpath/lib/auth';
+import OpenPathApp from '@openpath/src/App';
+import { isAuthenticated, onAuthChange } from '@openpath/src/lib/auth';
 import { DualTRPCProvider } from './lib/dual-trpc-provider';
 import { useOnboardingStatus } from './lib/hooks';
 import { Register } from './views/Register';

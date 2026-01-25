@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Building2, Users } from 'lucide-react';
-import { Button } from '@openpath/components/ui/Button';
-import { Input } from '@openpath/components/ui/Input';
-import { Card } from '@openpath/components/ui/Card';
+import { Button } from '@openpath/src/components/ui/Button';
+import { Input } from '@openpath/src/components/ui/Input';
+import { Card } from '@openpath/src/components/ui/Card';
 import { useCreateOrganization, useWaitForInvitation } from '../lib/hooks';
 
 interface Props {
