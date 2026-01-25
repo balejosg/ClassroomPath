@@ -35,4 +35,5 @@ COPY --from=builder /app/api/dist ./api/dist
 COPY --from=builder /app/api/package.json ./api/package.json
 
 EXPOSE 3000
-CMD ["node", "api/dist/server.js"]
+# Updated CMD to match actual build structure (dist/src/server.js)
+CMD ["node", "api/dist/src/server.js"]

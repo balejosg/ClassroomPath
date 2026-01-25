@@ -1,46 +1,43 @@
 # ClassroomPath Gateway API
 FROM node:20-alpine AS builder
 WORKDIR /app
-
-# Copy root configuration files
 COPY package*.json ./
-# Copy tsconfig base to the exact path expected by upstream packages
 COPY upstream/openpath/tsconfig.base.json ./upstream/openpath/tsconfig.base.json
-
-# Copy package manifests for all workspaces
 COPY api/package*.json ./api/
 COPY react-spa/package*.json ./react-spa/
 COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
 COPY upstream/openpath/react-spa/package*.json ./upstream/openpath/react-spa/
 COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
-
-# Install dependencies
-RUN npm ci
-
-# Copy source code
-COPY api/ ./api/
-COPY react-spa/ ./react-spa/
-COPY upstream/openpath/shared/ ./upstream/openpath/shared/
-COPY upstream/openpath/react-spa/ ./upstream/openpath/react-spa/
-COPY upstream/openpath/api/ ./upstream/openpath/api/
-
-# Build shared first (dependency for api)
+RUN npm install
+COPY . .
 RUN npm run build --workspace=@openpath/shared
-# Build apps
 RUN npm run build --workspace=@classroompath/react-spa
 RUN npm run build --workspace=@classroompath/api
 
-# Production stage
 FROM node:20-alpine
 RUN apk add --no-cache curl
 WORKDIR /app
 COPY package*.json ./
 COPY api/package*.json ./api/
 RUN npm ci --workspace=@classroompath/api --omit=dev
+
+# Copy built files
 COPY --from=builder /app/api/dist ./api/dist
-COPY --from=builder /app/react-spa/dist ./react-spa/dist
+# Place SPA dist at a location consistent with __dirname logic
+# server.js is at /app/api/dist/server.js
+# 3 levels up from /app/api/dist is /
+# So /react-spa/dist is correct if the server is at /app/api/dist
+COPY --from=builder /app/react-spa/dist /react-spa/dist
+
+# Copy database tools
 COPY api/drizzle.config.ts ./api/
 COPY api/src/db ./api/src/db
+
+# IMPORTANT: Also copy shared build for gateway if needed (though it seems standalone)
+# But let's be safe and copy it as well
+COPY --from=builder /app/upstream/openpath/shared/dist ./upstream/openpath/shared/dist
+COPY --from=builder /app/upstream/openpath/shared/package.json ./upstream/openpath/shared/package.json
+
 WORKDIR /app/api
 EXPOSE 3001
 CMD ["node", "dist/server.js"]
