@@ -8,8 +8,14 @@ COPY react-spa/package*.json ./react-spa/
 COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
 COPY upstream/openpath/react-spa/package*.json ./upstream/openpath/react-spa/
 COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
+
+# Use npm install to ensure workspaces are linked
 RUN npm install
+
+# Copy all source
 COPY . .
+
+# Build everything
 RUN npm run build --workspace=@openpath/shared
 RUN npm run build --workspace=@classroompath/react-spa
 RUN npm run build --workspace=@classroompath/api
@@ -19,24 +25,22 @@ RUN apk add --no-cache curl
 WORKDIR /app
 COPY package*.json ./
 COPY api/package*.json ./api/
+
+# Install production dependencies for the gateway
 RUN npm ci --workspace=@classroompath/api --omit=dev
 
 # Copy built files
 COPY --from=builder /app/api/dist ./api/dist
-# Place SPA dist at a location consistent with __dirname logic
-# server.js is at /app/api/dist/server.js
-# 3 levels up from /app/api/dist is /
-# So /react-spa/dist is correct if the server is at /app/api/dist
+# Place SPA dist at root to match server.ts expectation (/react-spa/dist)
 COPY --from=builder /app/react-spa/dist /react-spa/dist
+
+# Shared dependency for production resolution
+COPY --from=builder /app/upstream/openpath/shared/dist ./upstream/openpath/shared/dist
+COPY --from=builder /app/upstream/openpath/shared/package.json ./upstream/openpath/shared/package.json
 
 # Copy database tools
 COPY api/drizzle.config.ts ./api/
 COPY api/src/db ./api/src/db
-
-# IMPORTANT: Also copy shared build for gateway if needed (though it seems standalone)
-# But let's be safe and copy it as well
-COPY --from=builder /app/upstream/openpath/shared/dist ./upstream/openpath/shared/dist
-COPY --from=builder /app/upstream/openpath/shared/package.json ./upstream/openpath/shared/package.json
 
 WORKDIR /app/api
 EXPOSE 3001

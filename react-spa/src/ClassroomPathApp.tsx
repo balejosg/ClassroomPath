@@ -6,6 +6,7 @@ import { useOnboardingStatus } from './lib/hooks';
 import { Register } from './views/Register';
 import { Onboarding } from './views/Onboarding';
 import { Waiting } from './views/Waiting';
+import './index.css';
 
 // Componente que decide qué pantalla mostrar basado en el estado de autenticación y onboarding
 function AppContent() {

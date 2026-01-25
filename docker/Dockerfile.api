@@ -12,8 +12,8 @@ COPY api/package*.json ./api/
 COPY spa/package*.json ./spa/
 COPY react-spa/package*.json ./react-spa/
 
-# Install dependencies
-RUN npm ci
+# Install ALL dependencies for building
+RUN npm install
 
 # Copy source
 COPY shared/ ./shared/
@@ -21,18 +21,26 @@ COPY api/ ./api/
 COPY spa/ ./spa/
 COPY react-spa/ ./react-spa/
 
-# Build shared first
+# Build everything
 RUN npm run build -w @openpath/shared
-# Build core API
 RUN npm run build -w @openpath/api
 
 # Final production image
 FROM node:20-alpine
 WORKDIR /app
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
+
+# Copy package manifests
+COPY package*.json ./
+COPY shared/package*.json ./shared/
+COPY api/package*.json ./api/
+
+# Install production dependencies only
+# This will link shared because of the "file:" dependency in api/package.json
+RUN npm ci --workspace=@openpath/api --omit=dev
+
+# Copy the built files into the locations where Node expects them
 COPY --from=builder /app/api/dist ./api/dist
-COPY --from=builder /app/api/package.json ./api/package.json
+COPY --from=builder /app/shared/dist ./shared/dist
 
 EXPOSE 3000
 # Updated CMD to match actual build structure (dist/src/server.js)
