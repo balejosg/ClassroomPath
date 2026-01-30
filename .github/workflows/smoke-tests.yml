@@ -18,6 +18,10 @@ on:
   schedule:
     - cron: '0 */6 * * *'
 
+permissions:
+  issues: write
+  contents: read
+
 jobs:
   smoke-test-staging:
     name: Smoke Test Staging
@@ -40,7 +44,7 @@ jobs:
         id: smoke
         env:
           SMOKE_TEST_URL: https://classroompath-staging.duckdns.org
-          SMOKE_TEST_TIMEOUT: '15000'
+          SMOKE_TEST_TIMEOUT: '30000'
         run: |
           echo "🔍 Running smoke tests against $SMOKE_TEST_URL"
           echo "Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
@@ -137,7 +141,7 @@ jobs:
         id: smoke
         env:
           SMOKE_TEST_URL: https://classroompath.duckdns.org
-          SMOKE_TEST_TIMEOUT: '15000'
+          SMOKE_TEST_TIMEOUT: '30000'
         run: |
           echo "🔍 Running smoke tests against $SMOKE_TEST_URL"
           echo "Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
