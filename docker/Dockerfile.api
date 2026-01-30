@@ -9,7 +9,6 @@ COPY tsconfig.base.json ./
 # Copy manifests
 COPY shared/package*.json ./shared/
 COPY api/package*.json ./api/
-COPY spa/package*.json ./spa/
 COPY react-spa/package*.json ./react-spa/
 
 # Install ALL dependencies for building
@@ -18,7 +17,6 @@ RUN npm install
 # Copy source
 COPY shared/ ./shared/
 COPY api/ ./api/
-COPY spa/ ./spa/
 COPY react-spa/ ./react-spa/
 
 # Build everything
@@ -42,7 +40,6 @@ RUN npm ci --workspace=@openpath/api --omit=dev
 # Copy the built files into the locations where Node expects them
 COPY --from=builder /app/api/dist ./api/dist
 COPY --from=builder /app/shared/dist ./shared/dist
-COPY --from=builder /app/spa/dist ./spa/dist
 COPY --from=builder /app/react-spa/dist ./react-spa/dist
 
 EXPOSE 3000
