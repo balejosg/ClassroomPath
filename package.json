@@ -26,7 +26,7 @@
     "install:all": "npm install && cd upstream/openpath && npm install",
     "build": "cd upstream/openpath && npm run build --workspaces --if-present",
     "build:api": "cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=@openpath/api",
-    "build:spa": "cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=openpath-spa",
+    "build:spa": "cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=@openpath/react-spa",
     "dev": "cd upstream/openpath/api && npm run dev",
     "start": "cd upstream/openpath/api && npm start",
     "test": "cd upstream/openpath && npm test",
