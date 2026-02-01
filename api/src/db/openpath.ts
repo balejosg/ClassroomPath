@@ -11,6 +11,10 @@ const pool = new Pool({
 
 export const openpathDb = drizzle(pool);
 
+export async function closeOpenPathConnection() {
+    await pool.end();
+}
+
 export const roles = pgTable('roles', {
     id: varchar('id', { length: 50 }).primaryKey(),
     userId: varchar('user_id', { length: 50 }).notNull(),

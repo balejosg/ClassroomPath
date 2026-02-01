@@ -75,7 +75,7 @@ export function Onboarding({ onOrgCreated, onWaitClick }: Props) {
             <p className="text-gray-600 mb-8 leading-relaxed">
               Crea una nueva organización para tu institución y comienza a configurar tus grupos y políticas de filtrado.
             </p>
-            <form onSubmit={handleCreateOrg} className="space-y-4 mt-auto">
+            <form onSubmit={handleCreateOrg} className="space-y-4 mt-auto" noValidate>
               <div>
                 <label className="block text-sm font-semibold mb-2 text-gray-700">
                   Nombre de la organización
