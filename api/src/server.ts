@@ -19,6 +19,11 @@ app.use(cors({
     credentials: true,
 }));
 
+// v2 UI and API endpoints are removed.
+app.use('/v2', (_req, res) => {
+    res.status(404).type('text/plain').send('Not found');
+});
+
 // Proxy targets
 const openPathApiTarget = process.env.OPENPATH_API_URL ?? 'http://api:3000';
 
@@ -26,12 +31,6 @@ const openPathApiTarget = process.env.OPENPATH_API_URL ?? 'http://api:3000';
 app.get('/health', createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
-}));
-
-// Route /v2/trpc to the local multi-tenant router
-app.use('/v2/trpc', express.json(), createExpressMiddleware({
-    router: appRouter,
-    createContext,
 }));
 
 // Block sensitive OpenPath endpoints - force use of /cp/trpc/* for tenant-filtered data
@@ -71,15 +70,12 @@ app.use(createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
     ws: true,
-    pathFilter: ['/api', '/trpc', '/w', '/export', '/api-docs', '/v2'],
+    pathFilter: ['/api', '/trpc', '/w', '/export', '/api-docs'],
 }));
 
 // Serve ClassroomPath React SPA statically
-// Check if running from compiled dist (api/dist/server.js) or source (api/src/server.ts)
-const isCompiledCode = __dirname.endsWith('/api/dist') || __dirname.endsWith('\\api\\dist');
-const reactSpaPath = isCompiledCode
-    ? path.join(__dirname, '../../../react-spa/dist')
-    : path.join(__dirname, '../../react-spa/dist');
+// Works for both source (api/src) and compiled (api/dist).
+const reactSpaPath = path.join(__dirname, '../../react-spa/dist');
 
 if (fs.existsSync(reactSpaPath)) {
     console.log(`Serving ClassroomPath React SPA from: ${reactSpaPath}`);
