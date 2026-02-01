@@ -9,8 +9,8 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "test": "node --import tsx --env-file=.env --test tests/*.test.ts",
-    "test:integration": "JWT_SECRET=test-jwt-secret node --import tsx --env-file=.env --test tests/integration/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:integration": "node --import tsx --test tests/integration/*.test.ts"
   },
   "dependencies": {
     "@trpc/server": "^11.8.1",
