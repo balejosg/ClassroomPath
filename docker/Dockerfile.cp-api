@@ -31,8 +31,8 @@ RUN npm ci --workspace=@classroompath/api --omit=dev
 
 # Copy built files
 COPY --from=builder /app/api/dist ./api/dist
-# Place SPA dist at root to match server.ts expectation (/react-spa/dist)
-COPY --from=builder /app/react-spa/dist /react-spa/dist
+# Place SPA dist to match server.ts expectation (../../react-spa/dist from api/dist)
+COPY --from=builder /app/react-spa/dist /app/react-spa/dist
 
 # Shared dependency for production resolution
 COPY --from=builder /app/upstream/openpath/shared/dist ./upstream/openpath/shared/dist
