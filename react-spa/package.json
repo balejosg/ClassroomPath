@@ -15,7 +15,8 @@
     "@trpc/react-query": "^11.8.0",
     "lucide-react": "^0.562.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "recharts": "^3.6.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
