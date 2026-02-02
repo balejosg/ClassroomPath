@@ -215,12 +215,15 @@ void describe('Submodule Structure', () => {
         const pkgPath = resolve(submodulePath, 'package.json');
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { workspaces?: string[] };
 
-        const requiredWorkspaces = ['api', 'spa', 'shared'];
-        for (const ws of requiredWorkspaces) {
-            assert.ok(
-                pkg.workspaces?.includes(ws),
-                `OpenPath should have ${ws} workspace`
-            );
-        }
+        const workspaces = pkg.workspaces ?? [];
+
+        // OpenPath historically had a legacy `spa` workspace; it has since been replaced by `react-spa`.
+        // ClassroomPath should be compatible with either layout.
+        assert.ok(workspaces.includes('api'), 'OpenPath should have api workspace');
+        assert.ok(workspaces.includes('shared'), 'OpenPath should have shared workspace');
+        assert.ok(
+            workspaces.includes('react-spa') || workspaces.includes('spa'),
+            'OpenPath should have react-spa (or legacy spa) workspace'
+        );
     });
 });
