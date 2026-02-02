@@ -30,6 +30,8 @@
     "dev": "cd upstream/openpath/api && npm run dev",
     "start": "cd upstream/openpath/api && npm start",
     "test": "cd upstream/openpath && npm test",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
     "test:deployment": "node --import tsx --test tests/deployment.test.ts",
     "test:smoke": "node --import tsx --test tests/smoke.test.ts",
     "test:smoke:staging": "SMOKE_TEST_URL=https://classroompath-staging.duckdns.org npm run test:smoke",
