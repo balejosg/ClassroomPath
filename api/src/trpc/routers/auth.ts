@@ -3,7 +3,7 @@ import { router, publicProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 
 // Forward auth requests to OpenPath API
-const OPENPATH_API_URL = process.env.OPENPATH_API_URL || 'http://openpath-api:3000';
+const OPENPATH_API_URL = process.env.OPENPATH_API_URL || 'http://api:3000';
 
 export const authRouter = router({
     /**
