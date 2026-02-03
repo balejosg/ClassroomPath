@@ -83,6 +83,8 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
                 </label>
                 <Input
                   type="text"
+                  name="orgName"
+                  data-testid="onboarding-org-name"
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
                   placeholder="Ej: Colegio San José"
@@ -92,6 +94,7 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
               </div>
               <Button
                 type="submit"
+                data-testid="onboarding-create-org"
                 className="w-full cursor-pointer py-6"
                 disabled={createOrgMutation.isPending}
               >
@@ -114,6 +117,7 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
             <div className="mt-auto">
               <Button
                 onClick={handleWait}
+                data-testid="onboarding-wait-invite"
                 variant="outline"
                 className="w-full cursor-pointer py-6 border-2"
                 disabled={waitMutation.isPending}

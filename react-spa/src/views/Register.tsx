@@ -96,6 +96,8 @@ export function Register({ onLoginClick, onSuccess }: Props) {
             <label className="block text-sm font-medium mb-1 text-gray-700">Email</label>
           <Input
             type="email"
+            name="email"
+            data-testid="register-email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="correo@ejemplo.com"
@@ -108,6 +110,8 @@ export function Register({ onLoginClick, onSuccess }: Props) {
             <label className="block text-sm font-medium mb-1 text-gray-700">Nombre</label>
           <Input
             type="text"
+            name="name"
+            data-testid="register-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Tu nombre completo"
@@ -120,6 +124,8 @@ export function Register({ onLoginClick, onSuccess }: Props) {
             <label className="block text-sm font-medium mb-1 text-gray-700">Contraseña</label>
           <Input
             type="password"
+            name="password"
+            data-testid="register-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
@@ -133,6 +139,8 @@ export function Register({ onLoginClick, onSuccess }: Props) {
             <label className="block text-sm font-medium mb-1 text-gray-700">Confirmar Contraseña</label>
           <Input
             type="password"
+            name="confirmPassword"
+            data-testid="register-confirm-password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="••••••••"
@@ -145,6 +153,8 @@ export function Register({ onLoginClick, onSuccess }: Props) {
             <input
               type="checkbox"
               id="terms"
+              name="terms"
+              data-testid="register-terms"
               checked={termsAccepted}
               onChange={(e) => setTermsAccepted(e.target.checked)}
               className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
@@ -160,6 +170,7 @@ export function Register({ onLoginClick, onSuccess }: Props) {
           
           <Button
             type="submit"
+            data-testid="register-submit"
             className="w-full cursor-pointer"
             disabled={isBusy || !termsAccepted}
           >

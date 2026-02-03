@@ -50,6 +50,7 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
         <div className="space-y-4">
           <Button
             onClick={() => refetch()}
+            data-testid="waiting-check-now"
             variant="outline"
             className="w-full py-6 border-2 font-semibold"
             disabled={isFetching}
@@ -60,6 +61,7 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
           
           <Button
             onClick={handleCancel}
+            data-testid="waiting-cancel"
             variant="ghost"
             className="w-full py-6 text-gray-500 hover:text-gray-700"
             disabled={cancelMutation.isPending}

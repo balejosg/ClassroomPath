@@ -102,6 +102,8 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
                 <Mail className="absolute left-3 top-2.5 text-slate-400" size={18} />
                 <input
                   type="email"
+                  name="email"
+                  data-testid="login-email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -118,6 +120,8 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
                 <Lock className="absolute left-3 top-2.5 text-slate-400" size={18} />
                 <input
                   type="password"
+                  name="password"
+                  data-testid="login-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -130,6 +134,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
 
             <button
               type="submit"
+              data-testid="login-submit"
               disabled={isLoading}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-200"
             >
