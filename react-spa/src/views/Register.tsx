@@ -161,7 +161,7 @@ export function Register({ onLoginClick, onSuccess }: Props) {
           <Button
             type="submit"
             className="w-full cursor-pointer"
-            disabled={isBusy}
+            disabled={isBusy || !termsAccepted}
           >
             {isBusy ? 'Creando cuenta...' : 'Registrarse'}
           </Button>
