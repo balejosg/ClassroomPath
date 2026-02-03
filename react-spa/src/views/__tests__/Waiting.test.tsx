@@ -12,7 +12,7 @@ const mockOnboardingStatus = vi.fn(() => ({
 }));
 
 vi.mock('../../lib/hooks', () => ({
-  useOnboardingStatus: (options: any) => mockOnboardingStatus(options),
+  useOnboardingStatus: () => mockOnboardingStatus(),
   useCreateOrganization: () => ({
     mutate: vi.fn(),
     isPending: false,

@@ -7,9 +7,10 @@ import { useOnboardingStatus, useCancelWaiting } from '../lib/hooks';
 interface Props {
   onStatusChange: () => void;
   onCancelSuccess: () => void;
+  onLogout?: () => void;
 }
 
-export function Waiting({ onStatusChange, onCancelSuccess }: Props) {
+export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
   const query = useOnboardingStatus({
     refetchInterval: 30000, // Polling cada 30s
   });
@@ -66,6 +67,16 @@ export function Waiting({ onStatusChange, onCancelSuccess }: Props) {
             <ArrowLeft size={18} className="mr-2" />
             Cambiar de opinión
           </Button>
+
+          {onLogout && (
+            <Button
+              onClick={onLogout}
+              variant="outline"
+              className="w-full py-6 border-2"
+            >
+              Cerrar sesión
+            </Button>
+          )}
         </div>
         
         <p className="mt-8 text-xs text-gray-400">

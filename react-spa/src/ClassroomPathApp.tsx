@@ -3,6 +3,7 @@ import OpenPathApp from '@openpath/src/App';
 import { isAuthenticated, onAuthChange } from '@openpath/src/lib/auth';
 import { DualTRPCProvider } from './lib/dual-trpc-provider';
 import { useOnboardingStatus } from './lib/hooks';
+import { Login } from './views/Login';
 import { Register } from './views/Register';
 import { Onboarding } from './views/Onboarding';
 import { Waiting } from './views/Waiting';
@@ -12,6 +13,14 @@ import './index.css';
 function AppContent() {
   const [isAuth, setIsAuth] = useState(isAuthenticated());
   const [showRegister, setShowRegister] = useState(false);
+
+  const clearSessionAndShowLogin = () => {
+    localStorage.removeItem('openpath_access_token');
+    localStorage.removeItem('openpath_refresh_token');
+    localStorage.removeItem('openpath_user');
+    setShowRegister(false);
+    setIsAuth(false);
+  };
   
   // Escuchar cambios de autenticación (ej: login exitoso)
   useEffect(() => {
@@ -24,47 +33,52 @@ function AppContent() {
     enabled: isAuth,
   });
 
-  const { data: status, isLoading, refetch } = query;
+  const { data: status, isLoading, refetch, isError, error } = query;
+
+  // If localStorage has a stale/invalid token, isAuthenticated() will be true,
+  // but protected queries will fail. In that case, clear the session and show Login.
+  useEffect(() => {
+    if (!isAuth || !isError || !error) return;
+
+    // tRPC React Query wraps errors; check multiple possible locations
+    const trpcError = error as any;
+    const code = trpcError?.data?.code || trpcError?.shape?.data?.code;
+    const message = trpcError?.message || '';
+    const isUnauthorized =
+      code === 'UNAUTHORIZED' ||
+      message.toLowerCase().includes('not authenticated') ||
+      message.toLowerCase().includes('unauthorized');
+
+    if (isUnauthorized) {
+      localStorage.removeItem('openpath_access_token');
+      localStorage.removeItem('openpath_refresh_token');
+      localStorage.removeItem('openpath_user');
+      setIsAuth(false);
+    }
+  }, [isAuth, isError, error]);
 
   // 1. No autenticado -> Mostrar Login (de OpenPath) o Registro (de ClassroomPath)
-  if (!isAuth) {
+    if (!isAuth) {
     if (showRegister) {
       return (
         <Register 
           onLoginClick={() => setShowRegister(false)} 
           onSuccess={() => {
-            // Tras registro exitoso, el backend de CP NO auto-onboardea (Fase 0 aplicada)
-            // El usuario debe loguearse (o si el registro devuelve tokens, setIsAuth(true))
-            // En este sistema, el registro de OpenPath NO loguea automáticamente, 
-            // pero el de ClassroomPath podría. Por ahora, forzamos login.
+            // Register now auto-logins (tokens stored) - continue into onboarding flow.
             setShowRegister(false);
+            setIsAuth(true);
           }}
         />
       );
     }
-    
-    // Aquí usamos la pantalla de Login de OpenPath, pero necesitamos una forma de
-    // conmutar a nuestro Registro. Como OpenPathApp es una "caja negra" que maneja su propio
-    // login, vamos a envolverla o interceptar el estado.
-    // Si OpenPathApp detecta que no hay auth, mostrará su propio Login.
-    // Añadiremos un pequeño "truco" visual o esperaremos a que el usuario se loguee.
-    return (
-      <div className="relative">
-        <OpenPathApp />
-        {/* Botón flotante para ir a Registro si estamos en la pantalla de login */}
-        {!isAuth && (
-          <div className="fixed bottom-4 right-4 z-50">
-            <button 
-              onClick={() => setShowRegister(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-700 transition-colors cursor-pointer text-sm font-medium"
-            >
-              ¿No tienes cuenta? Regístrate
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
+
+      return (
+        <Login
+          onLogin={() => setIsAuth(true)}
+          onNavigateToRegister={() => setShowRegister(true)}
+        />
+      );
+    }
 
   // 2. Cargando estado de onboarding
   if (isLoading) {
@@ -78,30 +92,65 @@ function AppContent() {
     );
   }
 
-  // 3. Usuario en espera de invitación
-  if (status?.isWaiting) {
+  // If onboarding status fails for non-auth reasons, don't drop the user into onboarding.
+  if (isError) {
     return (
-      <Waiting 
-        onStatusChange={() => refetch()} 
-        onCancelSuccess={() => refetch()} 
-      />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">No se pudo verificar tu acceso</h2>
+          <p className="text-sm text-slate-600 mt-2">
+            Reintenta en unos segundos. Si el problema persiste, vuelve a iniciar sesion.
+          </p>
+          <div className="mt-4 flex gap-3">
+            <button
+              onClick={() => refetch()}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
+            >
+              Reintentar
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem('openpath_access_token');
+                localStorage.removeItem('openpath_refresh_token');
+                localStorage.removeItem('openpath_user');
+                setIsAuth(false);
+              }}
+              className="px-4 py-2 rounded-lg bg-slate-100 text-slate-800 font-medium hover:bg-slate-200"
+            >
+              Volver a login
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
+  // 3. Usuario en espera de invitación
+    if (status?.isWaiting) {
+      return (
+        <Waiting 
+          onStatusChange={() => refetch()} 
+          onCancelSuccess={() => refetch()} 
+          onLogout={clearSessionAndShowLogin}
+        />
+      );
+    }
+
   // 4. Usuario necesita crear organización o esperar invitación
-  if (!status?.hasMembership) {
-    return (
-      <Onboarding 
-        onOrgCreated={(data) => {
-          // Actualizar tokens y recargar para que OpenPathApp los tome
-          localStorage.setItem('openpath_access_token', data.accessToken);
-          localStorage.setItem('openpath_refresh_token', data.refreshToken);
-          refetch();
-        }} 
-        onWaitClick={() => refetch()} 
-      />
-    );
-  }
+    if (!status?.hasMembership) {
+      return (
+        <Onboarding 
+          onOrgCreated={(data) => {
+            // Actualizar tokens y recargar para que OpenPathApp los tome
+            localStorage.setItem('openpath_access_token', data.accessToken);
+            localStorage.setItem('openpath_refresh_token', data.refreshToken);
+            refetch();
+          }} 
+          onWaitClick={() => refetch()} 
+          onLogout={clearSessionAndShowLogin}
+        />
+      );
+    }
 
   // 5. Usuario onboarded -> Mostrar aplicación principal
   return <OpenPathApp />;

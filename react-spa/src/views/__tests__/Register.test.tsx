@@ -13,6 +13,12 @@ const mockMutation = {
 vi.mock('../../lib/dual-trpc-provider', () => ({
   cpTrpcReact: {
     auth: {
+      login: {
+        useMutation: vi.fn(() => ({
+          mutateAsync: vi.fn(),
+          isPending: false,
+        })),
+      },
       register: {
         useMutation: vi.fn(() => mockMutation),
       },

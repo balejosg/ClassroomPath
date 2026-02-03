@@ -90,4 +90,49 @@ export const authRouter = router({
                 });
             }
         }),
+
+    /**
+     * Google login endpoint - forwards to OpenPath API
+     */
+    googleLogin: publicProcedure
+        .input(
+            z.object({
+                idToken: z.string().min(1),
+            })
+        )
+        .mutation(async ({ input }) => {
+            try {
+                const response = await fetch(`${OPENPATH_API_URL}/trpc/auth.googleLogin`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(input),
+                });
+
+                if (!response.ok) {
+                    const error = await response
+                        .json()
+                        .catch(() => ({ error: { message: 'Google login failed' } }));
+                    throw new TRPCError({
+                        code: 'UNAUTHORIZED',
+                        message: error.error?.message || 'Google authentication failed',
+                    });
+                }
+
+                const data = await response.json();
+
+                // Extract the inner data from OpenPath's TRPC response
+                if (data.result && data.result.data) {
+                    return data.result.data;
+                }
+                return data;
+            } catch (error) {
+                if (error instanceof TRPCError) throw error;
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: 'Authentication service unavailable',
+                });
+            }
+        }),
 });

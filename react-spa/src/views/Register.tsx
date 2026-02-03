@@ -18,10 +18,31 @@ export function Register({ onLoginClick, onSuccess }: Props) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState('');
+
+  const loginMutation = cpTrpcReact.auth.login.useMutation();
+
+  const persistSession = (result: {
+    accessToken: string;
+    refreshToken: string;
+    user: unknown;
+  }) => {
+    localStorage.setItem('openpath_access_token', result.accessToken);
+    localStorage.setItem('openpath_refresh_token', result.refreshToken);
+    localStorage.setItem('openpath_user', JSON.stringify(result.user));
+  };
   
   const registerMutation = cpTrpcReact.auth.register.useMutation({
-    onSuccess: () => {
-      onSuccess();
+    onSuccess: async () => {
+      // OpenPath register does not return tokens; do auto-login for better UX.
+      try {
+        const result = await loginMutation.mutateAsync({ email, password });
+        persistSession(result);
+        onSuccess();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : ERROR_MESSAGES_ES.loginFailed
+        );
+      }
     },
     onError: (err) => {
       setError(err.message || ERROR_MESSAGES_ES.registrationFailed);
@@ -56,6 +77,8 @@ export function Register({ onLoginClick, onSuccess }: Props) {
     
     registerMutation.mutate({ email, name, password });
   };
+
+  const isBusy = registerMutation.isPending || loginMutation.isPending;
   
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -71,47 +94,51 @@ export function Register({ onLoginClick, onSuccess }: Props) {
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">Email</label>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="correo@ejemplo.com"
-              required
-            />
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="correo@ejemplo.com"
+            required
+            disabled={isBusy}
+          />
           </div>
           
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">Nombre</label>
-            <Input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Tu nombre completo"
-              required
-            />
+          <Input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Tu nombre completo"
+            required
+            disabled={isBusy}
+          />
           </div>
           
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">Contraseña</label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+            disabled={isBusy}
+          />
             <PasswordStrength password={password} />
           </div>
           
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">Confirmar Contraseña</label>
-            <Input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
+          <Input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+            disabled={isBusy}
+          />
           </div>
           
           <div className="flex items-start gap-2">
@@ -121,6 +148,7 @@ export function Register({ onLoginClick, onSuccess }: Props) {
               checked={termsAccepted}
               onChange={(e) => setTermsAccepted(e.target.checked)}
               className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              disabled={isBusy}
             />
             <label htmlFor="terms" className="text-sm text-gray-600">
               Acepto los{' '}
@@ -133,9 +161,9 @@ export function Register({ onLoginClick, onSuccess }: Props) {
           <Button
             type="submit"
             className="w-full cursor-pointer"
-            disabled={registerMutation.isPending}
+            disabled={isBusy}
           >
-            {registerMutation.isPending ? 'Creando cuenta...' : 'Registrarse'}
+            {isBusy ? 'Creando cuenta...' : 'Registrarse'}
           </Button>
         </form>
         

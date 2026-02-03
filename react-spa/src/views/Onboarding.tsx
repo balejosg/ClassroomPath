@@ -8,9 +8,10 @@ import { useCreateOrganization, useWaitForInvitation } from '../lib/hooks';
 interface Props {
   onOrgCreated: (data: { accessToken: string; refreshToken: string }) => void;
   onWaitClick: () => void;
+  onLogout?: () => void;
 }
 
-export function Onboarding({ onOrgCreated, onWaitClick }: Props) {
+export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
   const [orgName, setOrgName] = useState('');
   const [error, setError] = useState('');
   
@@ -122,6 +123,18 @@ export function Onboarding({ onOrgCreated, onWaitClick }: Props) {
             </div>
           </Card>
         </div>
+
+        {onLogout && (
+          <div className="mt-10 text-center">
+            <button
+              type="button"
+              onClick={onLogout}
+              className="text-sm text-slate-500 hover:text-slate-700 underline"
+            >
+              Cerrar sesión
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

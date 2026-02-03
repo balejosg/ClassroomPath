@@ -32,4 +32,5 @@ export const ERROR_MESSAGES_ES = {
   passwordMismatch: 'Las contraseñas no coinciden',
   termsRequired: 'Debes aceptar los términos de servicio',
   registrationFailed: 'Error al registrar usuario. Por favor intenta nuevamente.',
+  loginFailed: 'No se pudo iniciar sesión. Verifica tus credenciales.',
 };
