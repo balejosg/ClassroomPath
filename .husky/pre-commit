@@ -1,0 +1,26 @@
+#!/usr/bin/env sh
+
+# ClassroomPath pre-commit hook
+# Runs full verification before allowing commit
+# DO NOT skip with --no-verify or -n
+
+echo "🔍 Running pre-commit verification..."
+echo ""
+
+# Run full verification
+npm run verify:full
+
+# Capture exit code
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "❌ Pre-commit verification FAILED!"
+    echo ""
+    echo "Fix the issues above before committing."
+    echo "DO NOT use --no-verify to bypass this check."
+    exit 1
+fi
+
+echo ""
+echo "✅ Pre-commit verification passed!"
