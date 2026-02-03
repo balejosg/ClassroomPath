@@ -38,7 +38,7 @@
     "test:smoke:production": "SMOKE_TEST_URL=https://classroompath.duckdns.org npm run test:smoke",
     "lint": "cd upstream/openpath && npm run lint",
     "typecheck": "cd upstream/openpath && npm run typecheck",
-    "verify:full": "npm run typecheck && npm run test --workspace=@classroompath/react-spa && npm run test --workspace=@classroompath/api",
+    "verify:full": "npm run typecheck && npm run lint && npm run test --workspace=@classroompath/react-spa && npm run test --workspace=@classroompath/api",
     "submodule:update": "git submodule update --remote --merge",
     "prepare": "husky"
   },
