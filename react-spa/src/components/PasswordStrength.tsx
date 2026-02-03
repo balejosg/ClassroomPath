@@ -24,18 +24,28 @@ export function PasswordStrength({ password }: Props) {
   const strengthColor = strength <= 1 ? 'bg-red-500' : strength <= 3 ? 'bg-yellow-500' : 'bg-green-500';
   
   return (
-    <div className="mt-2 space-y-2">
+    <div 
+      className="mt-2 space-y-2 password-strength-indicator"
+      data-testid="password-strength"
+      role="status"
+      aria-live="polite"
+      aria-label={`Fortaleza de contraseña: ${strength} de 4 requisitos cumplidos`}
+    >
       <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
         <div 
           className={`h-full transition-all duration-300 ${strengthColor}`}
           style={{ width: `${(strength / 4) * 100}%` }}
+          role="progressbar"
+          aria-valuenow={strength}
+          aria-valuemin={0}
+          aria-valuemax={4}
         />
       </div>
       <ul className="text-sm space-y-1">
         {requirements.map((req, i) => (
           <li key={i} className={`flex items-center gap-2 ${req.met ? 'text-green-600' : 'text-gray-500'}`}>
-            {req.met ? <Check size={16} /> : <X size={16} />}
-            {req.label}
+            {req.met ? <Check size={16} aria-hidden="true" /> : <X size={16} aria-hidden="true" />}
+            <span>{req.label}</span>
           </li>
         ))}
       </ul>

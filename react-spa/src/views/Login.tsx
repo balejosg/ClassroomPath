@@ -162,8 +162,11 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
           <div className="mt-6 pt-6 border-t border-slate-100 text-center text-sm">
             <span className="text-slate-500">¿No tienes cuenta? </span>
             <button
+              type="button"
               onClick={onNavigateToRegister}
-              className="text-blue-600 font-bold hover:underline"
+              data-testid="navigate-to-register"
+              aria-label="Ir a página de registro"
+              className="text-blue-600 font-bold hover:underline cursor-pointer"
             >
               Regístrate
             </button>
