@@ -77,21 +77,24 @@ describe('Register View', () => {
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), { target: { value: 'Test User' } });
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], { target: { value: 'StrongPassword1' } });
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], { target: { value: 'DifferentPassword1' } });
+    fireEvent.click(screen.getByLabelText(/Acepto los/)); // Need to accept terms to enable submit
     fireEvent.click(screen.getByText('Registrarse'));
     
     expect(await screen.findByText(ERROR_MESSAGES_ES.passwordMismatch)).toBeInTheDocument();
   });
 
-  it('should show error if terms are not accepted', async () => {
+  it('should disable submit button when terms are not accepted', async () => {
     render(<Register onLoginClick={mockOnLoginClick} onSuccess={mockOnSuccess} />);
     
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), { target: { value: 'test@example.com' } });
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), { target: { value: 'Test User' } });
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], { target: { value: 'StrongPassword1' } });
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], { target: { value: 'StrongPassword1' } });
-    fireEvent.click(screen.getByText('Registrarse'));
+    // Do NOT accept terms
     
-    expect(await screen.findByText(ERROR_MESSAGES_ES.termsRequired)).toBeInTheDocument();
+    // Button should be disabled when terms are not accepted
+    const submitButton = screen.getByText('Registrarse');
+    expect(submitButton).toBeDisabled();
   });
 
   it('should call mutate if form is valid', async () => {
