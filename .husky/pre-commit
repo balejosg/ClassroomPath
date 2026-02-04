@@ -1,5 +1,7 @@
 #!/usr/bin/env sh
 
+. "$(dirname -- "$0")/_/husky.sh"
+
 # ClassroomPath pre-commit hook
 # Runs full verification before allowing commit
 # DO NOT skip with --no-verify or -n

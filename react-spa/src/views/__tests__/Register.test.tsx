@@ -52,7 +52,7 @@ describe('Register View', () => {
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], { target: { value: 'StrongPassword1' } });
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], { target: { value: 'StrongPassword1' } });
     fireEvent.click(screen.getByLabelText(/Acepto los/));
-    fireEvent.click(screen.getByText('Registrarse'));
+    fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
     
     expect(await screen.findByText(ERROR_MESSAGES_ES.invalidEmail)).toBeInTheDocument();
   });
@@ -65,7 +65,7 @@ describe('Register View', () => {
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], { target: { value: '123' } });
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], { target: { value: '123' } });
     fireEvent.click(screen.getByLabelText(/Acepto los/));
-    fireEvent.click(screen.getByText('Registrarse'));
+    fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
     
     expect(await screen.findByText(ERROR_MESSAGES_ES.weakPassword)).toBeInTheDocument();
   });
@@ -78,7 +78,7 @@ describe('Register View', () => {
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], { target: { value: 'StrongPassword1' } });
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], { target: { value: 'DifferentPassword1' } });
     fireEvent.click(screen.getByLabelText(/Acepto los/)); // Need to accept terms to enable submit
-    fireEvent.click(screen.getByText('Registrarse'));
+    fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
     
     expect(await screen.findByText(ERROR_MESSAGES_ES.passwordMismatch)).toBeInTheDocument();
   });
@@ -93,7 +93,7 @@ describe('Register View', () => {
     // Do NOT accept terms
     
     // Button should be disabled when terms are not accepted
-    const submitButton = screen.getByText('Registrarse');
+    const submitButton = screen.getByRole('button', { name: /registrarse/i });
     expect(submitButton).toBeDisabled();
   });
 
@@ -105,7 +105,7 @@ describe('Register View', () => {
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], { target: { value: 'StrongPassword1' } });
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], { target: { value: 'StrongPassword1' } });
     fireEvent.click(screen.getByLabelText(/Acepto los/));
-    fireEvent.click(screen.getByText('Registrarse'));
+    fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
     
     expect(mockMutate).toHaveBeenCalledWith({
       email: 'test@example.com',
