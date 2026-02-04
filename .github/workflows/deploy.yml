@@ -94,15 +94,15 @@ jobs:
             # Run database migrations using Node.js Docker container
             echo "Running ClassroomPath database migrations..."
             cd /opt/classroompath/app
-            # Clean node_modules using Docker to handle permissions (force remove even if busy)
-            docker run --rm -v /opt/classroompath/app/api:/app -w /app node:20-alpine sh -c "rm -rf node_modules package-lock.json && mkdir -p node_modules"
+            # Clean node_modules using Docker to handle permissions (keep package-lock.json for npm install)
+            docker run --rm -v /opt/classroompath/app/api:/app -w /app node:20-alpine sh -c "rm -rf node_modules && mkdir -p node_modules"
             docker run --rm \
               -v /opt/classroompath/app/api:/app \
               -v /opt/classroompath/app/config/.env:/app/.env:ro \
               -w /app \
               --env-file /opt/classroompath/app/config/.env \
               node:20-alpine \
-              sh -c "npm ci && npm run db:push"
+              sh -c "npm install && npm run db:push"
             
             cd /opt/classroompath/app/docker
             export COMPOSE_PROJECT_NAME=classroompath-staging
@@ -278,7 +278,7 @@ jobs:
               -w /app \
               --env-file "$APP_DIR/config/.env" \
               node:20-alpine \
-              sh -c "npm ci && npm run db:push"
+              sh -c "npm install && npm run db:push"
 
             cd "$APP_DIR/docker"
             export COMPOSE_PROJECT_NAME=classroompath-production
