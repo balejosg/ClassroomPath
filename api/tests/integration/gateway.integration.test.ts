@@ -109,4 +109,92 @@ describe('ClassroomPath Gateway Integration', async () => {
         const json = await resp.json() as any;
         assert.strictEqual(json.service, 'classroompath-gateway');
     });
+
+    test('should block requests.list on /trpc (requires /cp/trpc)', async () => {
+        const resp = await fetch(`${API_URL}/trpc/requests.list`);
+        assert.strictEqual(resp.status, 403);
+        const json = await resp.json() as any;
+        assert.strictEqual(json.error.message, 'Use /cp/trpc for tenant-scoped data');
+        assert.strictEqual(json.error.data.blocked, 'requests.list');
+    });
+
+    test('should block requests.approve mutation on /trpc', async () => {
+        const resp = await fetch(`${API_URL}/trpc/requests.approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        assert.strictEqual(resp.status, 403);
+        const json = await resp.json() as any;
+        assert.strictEqual(json.error.data.blocked, 'requests.approve');
+    });
+
+    test('should block requests.reject mutation on /trpc', async () => {
+        const resp = await fetch(`${API_URL}/trpc/requests.reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        assert.strictEqual(resp.status, 403);
+        const json = await resp.json() as any;
+        assert.strictEqual(json.error.data.blocked, 'requests.reject');
+    });
+
+    test('should block requests.delete mutation on /trpc', async () => {
+        const resp = await fetch(`${API_URL}/trpc/requests.delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        assert.strictEqual(resp.status, 403);
+        const json = await resp.json() as any;
+        assert.strictEqual(json.error.data.blocked, 'requests.delete');
+    });
+
+    test('should block requests.listGroups on /trpc', async () => {
+        const resp = await fetch(`${API_URL}/trpc/requests.listGroups`);
+        assert.strictEqual(resp.status, 403);
+        const json = await resp.json() as any;
+        assert.strictEqual(json.error.data.blocked, 'requests.listGroups');
+    });
+
+    test('should block batched requests containing blocked procedures', async () => {
+        // tRPC batch format: /trpc/proc1,proc2
+        const resp = await fetch(`${API_URL}/trpc/health.check,requests.list`);
+        assert.strictEqual(resp.status, 403);
+        const json = await resp.json() as any;
+        assert.strictEqual(json.error.data.blocked, 'requests.list');
+    });
+
+    test('/cp/trpc/requests.listGroups should work for authenticated tenant user', async () => {
+        // Create a user with organization membership
+        const userId = 'user-listgroups-test';
+        const email = uniqueEmail('listgroups');
+
+        // Setup: Create user in OpenPath
+        await openpathDb.insert(openpathSchema.users).values({
+            id: userId,
+            email,
+            name: 'ListGroups Test User',
+            passwordHash: 'hashed',
+        }).onConflictDoNothing();
+
+        const token = jwt.sign({
+            sub: userId,
+            email,
+            name: 'ListGroups Test User',
+            roles: []
+        }, JWT_SECRET);
+
+        // Create organization first
+        await trpcMutate(API_URL, 'onboarding.createOrganization', {
+            name: 'ListGroups Test Org'
+        }, bearerAuth(token));
+
+        // Now call listGroups - should return empty array (no groups assigned yet)
+        const resp = await trpcQuery(API_URL, 'requests.listGroups', undefined, bearerAuth(token));
+        assertStatus(resp, 200);
+        const { data } = await parseTRPC(resp) as { data: any[] };
+        assert.ok(Array.isArray(data), 'listGroups should return an array');
+    });
 });

@@ -39,6 +39,9 @@ const BLOCKED_OPENPATH_PROCEDURES = [
     'classrooms.list', 'classrooms.get', 'classrooms.listMachines',
     'users.list', 'users.get', 'users.listTeachers',
     'requests.list', 'requests.get', 'requests.getStatus',
+    // Block mutations to prevent tenant-scoping bypass
+    'requests.approve', 'requests.reject', 'requests.delete',
+    'requests.listGroups',
 ];
 
 app.use((req, res, next) => {

@@ -12,8 +12,8 @@ const buildDatabaseUrl = () => {
 };
 
 export const config = {
-    port: parseInt(process.env.CP_PORT ?? '3001', 10),
-    openpathUrl: process.env.OPENPATH_API_URL ?? 'http://localhost:3000',
-    databaseUrl: buildDatabaseUrl(),
-    jwtSecret: process.env.JWT_SECRET ?? '',
+    get port() { return parseInt(process.env.CP_PORT ?? '3001', 10); },
+    get openpathUrl() { return process.env.OPENPATH_API_URL ?? 'http://localhost:3000'; },
+    get databaseUrl() { return buildDatabaseUrl(); },
+    get jwtSecret() { return process.env.JWT_SECRET ?? ''; },
 };

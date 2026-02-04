@@ -7,6 +7,30 @@ import * as schema from '../../db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
 
 export const requestsRouter = router({
+    // List groups for the organization (used by DomainRequests dropdown)
+    listGroups: tenantProcedure.query(async ({ ctx }) => {
+        const orgGroups = await db.select()
+            .from(schema.cpOrganizationGroups)
+            .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+
+        const groupIds = orgGroups.map(og => og.groupId);
+
+        if (groupIds.length === 0) return [];
+
+        // Import whitelistGroups from openpath db
+        const { whitelistGroups } = await import('../../db/openpath.js');
+        const groups = await openpathDb.select()
+            .from(whitelistGroups)
+            .where(inArray(whitelistGroups.id, groupIds));
+
+        // Return shape expected by DomainRequests UI: { name, path }
+        // path = group.id (the stable identifier for approve mutations)
+        return groups.map(g => ({
+            name: g.displayName ?? g.name,
+            path: g.id,
+        }));
+    }),
+
     list: tenantProcedure
         .input(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
         .query(async ({ ctx, input }) => {
