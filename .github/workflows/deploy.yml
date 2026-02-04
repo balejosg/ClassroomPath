@@ -107,7 +107,9 @@ jobs:
             cd /opt/classroompath/app/docker
             export COMPOSE_PROJECT_NAME=classroompath-staging
             docker compose down --remove-orphans || true
+            # Remove containers with both old and new naming conventions
             docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
+            docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
             docker builder prune -af || true
             docker compose build --no-cache
             docker compose up -d --force-recreate
