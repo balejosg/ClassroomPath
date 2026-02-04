@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import OpenPathApp from '@openpath/src/App';
+
+// Lazy load OpenPathApp so that localStorage.requests_api_url is set BEFORE
+// the module is imported (which evaluates tRPC client URL at import time)
+const OpenPathApp = React.lazy(() => import('@openpath/src/App'));
 import { isAuthenticated, onAuthChange } from '@openpath/src/lib/auth';
 import { DualTRPCProvider } from './lib/dual-trpc-provider';
 import { useOnboardingStatus } from './lib/hooks';
@@ -162,7 +165,11 @@ function AppContent() {
     }
 
   // 5. Usuario onboarded -> Mostrar aplicación principal
-  return <OpenPathApp />;
+  return (
+    <React.Suspense fallback={<div className="flex justify-center items-center h-screen">Cargando...</div>}>
+      <OpenPathApp />
+    </React.Suspense>
+  );
 }
 
 export function ClassroomPathApp() {
