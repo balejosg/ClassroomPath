@@ -22,6 +22,15 @@ function AppContent() {
     setIsAuth(false);
   };
   
+  // Configure OpenPath SPA to use ClassroomPath's tenant-scoped tRPC endpoint
+  // This MUST be before any conditional returns to follow React hooks rules
+  useEffect(() => {
+    localStorage.setItem('requests_api_url', '/cp');
+    return () => {
+      localStorage.removeItem('requests_api_url');
+    };
+  }, []);
+
   // Escuchar cambios de autenticación (ej: login exitoso)
   useEffect(() => {
     return onAuthChange(() => {
@@ -153,15 +162,6 @@ function AppContent() {
     }
 
   // 5. Usuario onboarded -> Mostrar aplicación principal
-  // Configure OpenPath SPA to use ClassroomPath's tenant-scoped tRPC endpoint
-  useEffect(() => {
-    localStorage.setItem('requests_api_url', '/cp');
-    return () => {
-      // Cleanup on unmount (e.g., logout) - let OpenPath use default
-      localStorage.removeItem('requests_api_url');
-    };
-  }, []);
-
   return <OpenPathApp />;
 }
 
