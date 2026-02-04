@@ -22,3 +22,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Local-only artifacts
+MANUAL_TEST_REPORT.md
