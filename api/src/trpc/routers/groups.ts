@@ -51,6 +51,39 @@ export const groupsRouter = router({
         }));
     }),
 
+    /**
+     * Get group statistics for the current organization.
+     * Returns counts of groups, whitelist rules, and blocked rules.
+     */
+    stats: tenantProcedure.query(async ({ ctx }) => {
+        // Get groups belonging to this organization
+        const orgGroups = await db.select()
+            .from(schema.cpOrganizationGroups)
+            .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+
+        const groupIds = orgGroups.map(og => og.groupId);
+
+        if (groupIds.length === 0) {
+            return { groupCount: 0, whitelistCount: 0, blockedCount: 0 };
+        }
+
+        // Get all rules for these groups
+        const rules = await openpathDb.select()
+            .from(whitelistRules)
+            .where(inArray(whitelistRules.groupId, groupIds));
+
+        const whitelistCount = rules.filter(r => r.type === 'whitelist').length;
+        const blockedCount = rules.filter(r =>
+            r.type === 'blocked_subdomain' || r.type === 'blocked_path'
+        ).length;
+
+        return {
+            groupCount: groupIds.length,
+            whitelistCount,
+            blockedCount,
+        };
+    }),
+
     getById: tenantProcedure
         .input(z.object({ id: z.string() }))
         .query(async ({ ctx, input }) => {

@@ -31,6 +31,35 @@ export const requestsRouter = router({
         }));
     }),
 
+    /**
+     * Get request statistics for the current organization.
+     * Returns counts by status: total, pending, approved, rejected.
+     */
+    stats: tenantProcedure.query(async ({ ctx }) => {
+        // Get groups belonging to this organization
+        const orgGroups = await db.select()
+            .from(schema.cpOrganizationGroups)
+            .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+
+        const groupIds = orgGroups.map(og => og.groupId);
+
+        if (groupIds.length === 0) {
+            return { total: 0, pending: 0, approved: 0, rejected: 0 };
+        }
+
+        // Get all requests for these groups
+        const allRequests = await openpathDb.select()
+            .from(requests)
+            .where(inArray(requests.groupId, groupIds));
+
+        return {
+            total: allRequests.length,
+            pending: allRequests.filter(r => r.status === 'pending').length,
+            approved: allRequests.filter(r => r.status === 'approved').length,
+            rejected: allRequests.filter(r => r.status === 'rejected').length,
+        };
+    }),
+
     list: tenantProcedure
         .input(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
         .query(async ({ ctx, input }) => {
