@@ -7,7 +7,7 @@ jobs:
   cleanup-staging:
     name: Cleanup Staging Docker Containers
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Resolve staging host
         id: resolve
@@ -23,7 +23,7 @@ jobs:
 
           # Resolve hostname
           IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1}' | head -1)
-          
+
           if [ -z "$IP" ]; then
             IP=$(dig +short "$HOST" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
           fi
@@ -49,31 +49,31 @@ jobs:
           script: |
             set -e
             echo "🧹 Cleaning up Docker containers and resources..."
-            
+
             cd /opt/classroompath/app/docker
-            
+
             # Stop all containers (both old naming and new naming)
             echo "Stopping containers..."
             docker stop classroompath-gateway classroompath-api classroompath-spa 2>/dev/null || true
             docker stop classroompath-staging-gateway-1 classroompath-staging-api-1 classroompath-staging-spa-1 2>/dev/null || true
-            
+
             # Remove all containers
             echo "Removing containers..."
             docker rm -f classroompath-gateway classroompath-api classroompath-spa 2>/dev/null || true
             docker rm -f classroompath-staging-gateway-1 classroompath-staging-api-1 classroompath-staging-spa-1 2>/dev/null || true
-            
+
             # Clean up with docker compose
             export COMPOSE_PROJECT_NAME=classroompath-staging
             docker compose down --remove-orphans --volumes 2>/dev/null || true
-            
+
             # Remove any dangling containers
             echo "Removing dangling containers..."
             docker ps -a --filter "name=classroompath" --format "{{.Names}}" | xargs -r docker rm -f 2>/dev/null || true
-            
+
             # Prune unused resources
             echo "Pruning unused Docker resources..."
             docker system prune -af --volumes || true
-            
+
             echo "✅ Cleanup complete!"
             echo ""
             echo "Current Docker status:"

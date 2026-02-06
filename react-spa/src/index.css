@@ -1,4 +1,4 @@
-@import "../../upstream/openpath/react-spa/src/index.css";
+@import '../../upstream/openpath/react-spa/src/index.css';
 
 /* Asegurar que Tailwind v4 escanee los archivos del submódulo de OpenPath */
 @source "../../upstream/openpath/react-spa/src/**/*.tsx";

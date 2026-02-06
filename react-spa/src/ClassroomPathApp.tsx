@@ -24,7 +24,7 @@ function AppContent() {
     setShowRegister(false);
     setIsAuth(false);
   };
-  
+
   // Configure OpenPath SPA to use ClassroomPath's tenant-scoped tRPC endpoint
   // This MUST be before any conditional returns to follow React hooks rules
   useEffect(() => {
@@ -70,11 +70,11 @@ function AppContent() {
   }, [isAuth, isError, error]);
 
   // 1. No autenticado -> Mostrar Login (de OpenPath) o Registro (de ClassroomPath)
-    if (!isAuth) {
+  if (!isAuth) {
     if (showRegister) {
       return (
-        <Register 
-          onLoginClick={() => setShowRegister(false)} 
+        <Register
+          onLoginClick={() => setShowRegister(false)}
           onSuccess={() => {
             // Register now auto-logins (tokens stored) - continue into onboarding flow.
             setShowRegister(false);
@@ -84,13 +84,10 @@ function AppContent() {
       );
     }
 
-      return (
-        <Login
-          onLogin={() => setIsAuth(true)}
-          onNavigateToRegister={() => setShowRegister(true)}
-        />
-      );
-    }
+    return (
+      <Login onLogin={() => setIsAuth(true)} onNavigateToRegister={() => setShowRegister(true)} />
+    );
+  }
 
   // 2. Cargando estado de onboarding
   if (isLoading) {
@@ -138,35 +135,37 @@ function AppContent() {
   }
 
   // 3. Usuario en espera de invitación
-    if (status?.isWaiting) {
-      return (
-        <Waiting 
-          onStatusChange={() => refetch()} 
-          onCancelSuccess={() => refetch()} 
-          onLogout={clearSessionAndShowLogin}
-        />
-      );
-    }
+  if (status?.isWaiting) {
+    return (
+      <Waiting
+        onStatusChange={() => refetch()}
+        onCancelSuccess={() => refetch()}
+        onLogout={clearSessionAndShowLogin}
+      />
+    );
+  }
 
   // 4. Usuario necesita crear organización o esperar invitación
-    if (!status?.hasMembership) {
-      return (
-        <Onboarding 
-          onOrgCreated={(data) => {
-            // Actualizar tokens y recargar para que OpenPathApp los tome
-            localStorage.setItem('openpath_access_token', data.accessToken);
-            localStorage.setItem('openpath_refresh_token', data.refreshToken);
-            refetch();
-          }} 
-          onWaitClick={() => refetch()} 
-          onLogout={clearSessionAndShowLogin}
-        />
-      );
-    }
+  if (!status?.hasMembership) {
+    return (
+      <Onboarding
+        onOrgCreated={(data) => {
+          // Actualizar tokens y recargar para que OpenPathApp los tome
+          localStorage.setItem('openpath_access_token', data.accessToken);
+          localStorage.setItem('openpath_refresh_token', data.refreshToken);
+          refetch();
+        }}
+        onWaitClick={() => refetch()}
+        onLogout={clearSessionAndShowLogin}
+      />
+    );
+  }
 
   // 5. Usuario onboarded -> Mostrar aplicación principal
   return (
-    <React.Suspense fallback={<div className="flex justify-center items-center h-screen">Cargando...</div>}>
+    <React.Suspense
+      fallback={<div className="flex justify-center items-center h-screen">Cargando...</div>}
+    >
       <OpenPathApp />
     </React.Suspense>
   );

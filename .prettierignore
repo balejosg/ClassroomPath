@@ -1,0 +1,10 @@
+node_modules
+dist
+*.lock
+package-lock.json
+upstream
+.git
+
+# Generated artifacts
+playwright-report/
+tests/e2e/test-results/

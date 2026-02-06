@@ -16,17 +16,17 @@ vi.mock('../../lib/hooks', () => ({
   useCreateOrganization: () => ({
     mutate: vi.fn(),
     isPending: false,
-    error: null
+    error: null,
   }),
   useWaitForInvitation: () => ({
     mutate: mockCancelMutate,
     isPending: false,
-    error: null
+    error: null,
   }),
   useCancelWaiting: () => ({
     mutate: mockCancelMutate,
     isPending: false,
-  })
+  }),
 }));
 
 describe('Waiting View', () => {
@@ -44,26 +44,28 @@ describe('Waiting View', () => {
 
   it('should render waiting message', () => {
     render(<Waiting onStatusChange={mockOnStatusChange} onCancelSuccess={mockOnCancelSuccess} />);
-    
+
     expect(screen.getByText('Esperando invitación')).toBeInTheDocument();
-    expect(screen.getByText(/Un administrador de tu institución debe agregarte/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Un administrador de tu institución debe agregarte/)
+    ).toBeInTheDocument();
     expect(screen.getByText('Verificar ahora')).toBeInTheDocument();
     expect(screen.getByText('Cambiar de opinión')).toBeInTheDocument();
   });
 
   it('should call refetch when "Verificar ahora" is clicked', () => {
     render(<Waiting onStatusChange={mockOnStatusChange} onCancelSuccess={mockOnCancelSuccess} />);
-    
+
     fireEvent.click(screen.getByText('Verificar ahora'));
-    
+
     expect(mockRefetch).toHaveBeenCalled();
   });
 
   it('should call cancel mutation when "Cambiar de opinión" is clicked', () => {
     render(<Waiting onStatusChange={mockOnStatusChange} onCancelSuccess={mockOnCancelSuccess} />);
-    
+
     fireEvent.click(screen.getByText('Cambiar de opinión'));
-    
+
     expect(mockCancelMutate).toHaveBeenCalled();
   });
 
@@ -75,7 +77,7 @@ describe('Waiting View', () => {
     });
 
     render(<Waiting onStatusChange={mockOnStatusChange} onCancelSuccess={mockOnCancelSuccess} />);
-    
+
     expect(mockOnStatusChange).toHaveBeenCalled();
   });
 });

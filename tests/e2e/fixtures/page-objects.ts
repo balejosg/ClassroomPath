@@ -1,6 +1,6 @@
 /**
  * Page Object Models for ClassroomPath E2E Tests
- * 
+ *
  * Provides reusable abstractions for SaaS-specific UI interactions.
  */
 
@@ -19,24 +19,22 @@ export class RegisterPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.emailInput = page.getByPlaceholder('correo@ejemplo.com');
-    this.nameInput = page.getByPlaceholder('Tu nombre completo');
-    this.passwordInput = page.locator('input[type="password"]').first();
-    this.confirmPasswordInput = page.locator('input[type="password"]').last();
-    this.termsCheckbox = page.getByLabel(/Acepto los/);
-    this.submitButton = page.getByRole('button', { name: 'Registrarse' });
+    this.emailInput = page.getByTestId('register-email');
+    this.nameInput = page.getByTestId('register-name');
+    this.passwordInput = page.getByTestId('register-password');
+    this.confirmPasswordInput = page.getByTestId('register-confirm-password');
+    this.termsCheckbox = page.getByTestId('register-terms');
+    this.submitButton = page.getByTestId('register-submit');
     this.loginLink = page.getByText(/¿Ya tienes cuenta/i);
     this.errorMessage = page.locator('[role="alert"]');
   }
 
   async goto() {
     await this.page.goto('/');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
     // Navigate to register if on login
-    const registerLink = this.page.getByText(/Crear Cuenta|Regístrate/i);
-    if (await registerLink.isVisible()) {
-      await registerLink.click();
-    }
+    const registerLink = this.page.getByTestId('navigate-to-register');
+    if (await registerLink.isVisible().catch(() => false)) await registerLink.click();
   }
 
   async fillForm(data: { email: string; name: string; password: string }) {
@@ -64,8 +62,12 @@ export class OnboardingPage {
     this.page = page;
     this.welcomeMessage = page.getByText(/¡Bienvenido|Welcome/i);
     this.orgNameInput = page.getByPlaceholder(/Ej: Colegio|organization name/i);
-    this.createOrgButton = page.getByRole('button', { name: /Crear Organización|Create Organization/i });
-    this.waitForInviteButton = page.getByRole('button', { name: /Solicitar Acceso|Request Access/i });
+    this.createOrgButton = page.getByRole('button', {
+      name: /Crear Organización|Create Organization/i,
+    });
+    this.waitForInviteButton = page.getByRole('button', {
+      name: /Solicitar Acceso|Request Access/i,
+    });
     this.errorMessage = page.locator('[role="alert"]');
   }
 

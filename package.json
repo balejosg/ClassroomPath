@@ -38,15 +38,41 @@
     "test:smoke:production": "SMOKE_TEST_URL=https://classroompath.duckdns.org npm run test:smoke",
     "lint": "cd upstream/openpath && npm run lint",
     "typecheck": "cd upstream/openpath && npm run typecheck",
-    "verify:full": "npm run typecheck && npm run lint && npm run test --workspace=@classroompath/react-spa && npm run test --workspace=@classroompath/api",
+    "format:check": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "security:secrets": "secretlint '**/*.{js,ts,tsx,json,yml,yaml,env,env.*}'",
+    "security:audit": "npm audit --audit-level=high",
+    "size:check": "npm run size --workspace=@openpath/react-spa",
+    "verify:full": "bash scripts/verify-full.sh",
     "submodule:update": "git submodule update --remote --merge",
     "prepare": "husky || true"
   },
   "type": "module",
+  "lint-staged": {
+    "*.{js,ts,tsx,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write",
+      "secretlint"
+    ],
+    "*.{json,yml,yaml,env*}": [
+      "secretlint"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
   "devDependencies": {
+    "@commitlint/cli": "^20.4.1",
+    "@commitlint/config-conventional": "^20.4.1",
     "@playwright/test": "^1.57.0",
+    "@secretlint/secretlint-rule-preset-recommend": "^11.3.1",
+    "@size-limit/preset-app": "^12.0.0",
     "@types/node": "^22.10.2",
     "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.8.1",
+    "secretlint": "^11.3.1",
+    "size-limit": "^12.0.0",
     "tsx": "^4.21.0",
     "yaml": "^2.7.1"
   }

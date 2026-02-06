@@ -18,11 +18,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
 
   const isLoading = loginMutation.isPending || googleLoginMutation.isPending;
 
-  const persistSession = (result: {
-    accessToken: string;
-    refreshToken: string;
-    user: unknown;
-  }) => {
+  const persistSession = (result: { accessToken: string; refreshToken: string; user: unknown }) => {
     localStorage.setItem('openpath_access_token', result.accessToken);
     localStorage.setItem('openpath_refresh_token', result.refreshToken);
     localStorage.setItem('openpath_user', JSON.stringify(result.user));
@@ -70,9 +66,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-8 shadow-lg shadow-blue-900/50">
             <ShieldCheck size={32} className="text-white" />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-6 leading-tight">
-            ClassroomPath
-          </h1>
+          <h1 className="text-4xl font-bold text-white mb-6 leading-tight">ClassroomPath</h1>
           <p className="text-slate-400 text-lg leading-relaxed max-w-md">
             Accede a tu panel. Si es tu primera vez, crea una cuenta y completa el onboarding de tu
             institución.

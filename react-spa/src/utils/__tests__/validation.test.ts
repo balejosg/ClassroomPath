@@ -42,7 +42,7 @@ describe('Validation Utils', () => {
       expect(validatePassword('abcdefg1').isValid).toBe(false); // missing upper
       expect(validatePassword('ABCDEFG1').isValid).toBe(false); // missing lower
       expect(validatePassword('Abcdefgh').isValid).toBe(false); // missing digit
-      expect(validatePassword('Ab1').isValid).toBe(false);      // missing length
+      expect(validatePassword('Ab1').isValid).toBe(false); // missing length
     });
   });
 });

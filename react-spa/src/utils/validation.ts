@@ -16,7 +16,7 @@ export function validatePassword(password: string): PasswordValidation {
   const hasUpper = /[A-Z]/.test(password);
   const hasLower = /[a-z]/.test(password);
   const hasDigit = /\d/.test(password);
-  
+
   return {
     length,
     hasUpper,
@@ -28,7 +28,8 @@ export function validatePassword(password: string): PasswordValidation {
 
 export const ERROR_MESSAGES_ES = {
   invalidEmail: 'Correo electrónico inválido',
-  weakPassword: 'La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas y números',
+  weakPassword:
+    'La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas y números',
   passwordMismatch: 'Las contraseñas no coinciden',
   termsRequired: 'Debes aceptar los términos de servicio',
   registrationFailed: 'Error al registrar usuario. Por favor intenta nuevamente.',

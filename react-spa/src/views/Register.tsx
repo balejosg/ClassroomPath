@@ -21,16 +21,12 @@ export function Register({ onLoginClick, onSuccess }: Props) {
 
   const loginMutation = cpTrpcReact.auth.login.useMutation();
 
-  const persistSession = (result: {
-    accessToken: string;
-    refreshToken: string;
-    user: unknown;
-  }) => {
+  const persistSession = (result: { accessToken: string; refreshToken: string; user: unknown }) => {
     localStorage.setItem('openpath_access_token', result.accessToken);
     localStorage.setItem('openpath_refresh_token', result.refreshToken);
     localStorage.setItem('openpath_user', JSON.stringify(result.user));
   };
-  
+
   const registerMutation = cpTrpcReact.auth.register.useMutation({
     onSuccess: async () => {
       // OpenPath register does not return tokens; do auto-login for better UX.
@@ -39,116 +35,114 @@ export function Register({ onLoginClick, onSuccess }: Props) {
         persistSession(result);
         onSuccess();
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : ERROR_MESSAGES_ES.loginFailed
-        );
+        setError(err instanceof Error ? err.message : ERROR_MESSAGES_ES.loginFailed);
       }
     },
     onError: (err) => {
       setError(err.message || ERROR_MESSAGES_ES.registrationFailed);
     },
   });
-  
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
     // Validaciones
     if (!validateEmail(email)) {
       setError(ERROR_MESSAGES_ES.invalidEmail);
       return;
     }
-    
+
     const pwdValidation = validatePassword(password);
     if (!pwdValidation.isValid) {
       setError(ERROR_MESSAGES_ES.weakPassword);
       return;
     }
-    
+
     if (password !== confirmPassword) {
       setError(ERROR_MESSAGES_ES.passwordMismatch);
       return;
     }
-    
+
     if (!termsAccepted) {
       setError(ERROR_MESSAGES_ES.termsRequired);
       return;
     }
-    
+
     registerMutation.mutate({ email, name, password });
   };
 
   const isBusy = registerMutation.isPending || loginMutation.isPending;
-  
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <Card className="w-full max-w-md p-8">
         <h1 className="text-2xl font-bold mb-6 text-center">Crear Cuenta</h1>
-        
+
         {error && (
-          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm">
-            {error}
-          </div>
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm">{error}</div>
         )}
-        
+
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">Email</label>
-          <Input
-            type="email"
-            name="email"
-            data-testid="register-email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="correo@ejemplo.com"
-            required
-            disabled={isBusy}
-          />
+            <Input
+              type="email"
+              name="email"
+              data-testid="register-email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="correo@ejemplo.com"
+              required
+              disabled={isBusy}
+            />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">Nombre</label>
-          <Input
-            type="text"
-            name="name"
-            data-testid="register-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Tu nombre completo"
-            required
-            disabled={isBusy}
-          />
+            <Input
+              type="text"
+              name="name"
+              data-testid="register-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Tu nombre completo"
+              required
+              disabled={isBusy}
+            />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">Contraseña</label>
-          <Input
-            type="password"
-            name="password"
-            data-testid="register-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            required
-            disabled={isBusy}
-          />
+            <Input
+              type="password"
+              name="password"
+              data-testid="register-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              disabled={isBusy}
+            />
             <PasswordStrength password={password} />
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">Confirmar Contraseña</label>
-          <Input
-            type="password"
-            name="confirmPassword"
-            data-testid="register-confirm-password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="••••••••"
-            required
-            disabled={isBusy}
-          />
+            <label className="block text-sm font-medium mb-1 text-gray-700">
+              Confirmar Contraseña
+            </label>
+            <Input
+              type="password"
+              name="confirmPassword"
+              data-testid="register-confirm-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              disabled={isBusy}
+            />
           </div>
-          
+
           <div className="flex items-start gap-2">
             <input
               type="checkbox"
@@ -167,7 +161,7 @@ export function Register({ onLoginClick, onSuccess }: Props) {
               </a>
             </label>
           </div>
-          
+
           <Button
             type="submit"
             data-testid="register-submit"
@@ -177,7 +171,7 @@ export function Register({ onLoginClick, onSuccess }: Props) {
             {isBusy ? 'Creando cuenta...' : 'Registrarse'}
           </Button>
         </form>
-        
+
         <p className="mt-6 text-center text-sm text-gray-600">
           ¿Ya tienes cuenta?{' '}
           <button

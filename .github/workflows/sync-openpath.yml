@@ -26,13 +26,13 @@ jobs:
         run: |
           cd upstream/openpath
           git fetch origin main
-          
+
           CURRENT_SHA=$(git rev-parse HEAD)
           LATEST_SHA=$(git rev-parse origin/main)
-          
+
           echo "current=$CURRENT_SHA" >> $GITHUB_OUTPUT
           echo "latest=$LATEST_SHA" >> $GITHUB_OUTPUT
-          
+
           if [ "$CURRENT_SHA" != "$LATEST_SHA" ]; then
             echo "has_updates=true" >> $GITHUB_OUTPUT
             echo "OpenPath has updates: $CURRENT_SHA -> $LATEST_SHA"
@@ -46,11 +46,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           cd upstream/openpath
           git checkout origin/main
           cd ../..
-          
+
           git add upstream/openpath
           if ! git diff --cached --quiet; then
             git commit -m "chore: update openpath submodule to ${{ steps.check.outputs.latest }}"

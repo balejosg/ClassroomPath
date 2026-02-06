@@ -7,12 +7,12 @@ import { usersRouter } from './routers/users.js';
 import { requestsRouter } from './routers/requests.js';
 
 export const appRouter = router({
-    auth: authRouter,
-    onboarding: onboardingRouter,
-    classrooms: classroomsRouter,
-    groups: groupsRouter,
-    users: usersRouter,
-    requests: requestsRouter,
+  auth: authRouter,
+  onboarding: onboardingRouter,
+  classrooms: classroomsRouter,
+  groups: groupsRouter,
+  users: usersRouter,
+  requests: requestsRouter,
 });
 
 export type AppRouter = typeof appRouter;

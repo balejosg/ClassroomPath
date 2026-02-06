@@ -16,9 +16,9 @@ export default mergeConfig(
         optimizer: {
           web: {
             include: [/@openpath/],
-          }
-        }
-      }
+          },
+        },
+      },
     },
   })
 );

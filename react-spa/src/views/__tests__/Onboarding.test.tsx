@@ -10,13 +10,13 @@ vi.mock('../../lib/hooks', () => ({
   useCreateOrganization: () => ({
     mutate: mockCreateOrg,
     isPending: false,
-    error: null
+    error: null,
   }),
   useWaitForInvitation: () => ({
     mutate: mockWaitForInv,
     isPending: false,
-    error: null
-  })
+    error: null,
+  }),
 }));
 
 describe('Onboarding View', () => {
@@ -29,7 +29,7 @@ describe('Onboarding View', () => {
 
   it('should render initial selection view', () => {
     render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
-    
+
     expect(screen.getByText(/¡Bienvenido a ClassroomPath!/i)).toBeInTheDocument();
     expect(screen.getByText('Crear mi organización')).toBeInTheDocument();
     expect(screen.getByText('Esperar invitación')).toBeInTheDocument();
@@ -37,19 +37,19 @@ describe('Onboarding View', () => {
 
   it('should show organization name input', () => {
     render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
-    
+
     expect(screen.getByPlaceholderText('Ej: Colegio San José')).toBeInTheDocument();
     expect(screen.getByText('Crear Organización')).toBeInTheDocument();
   });
 
   it('should call create organization mutation with valid name', () => {
     render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
-    
+
     fireEvent.change(screen.getByPlaceholderText('Ej: Colegio San José'), {
-      target: { value: 'Test Org' }
+      target: { value: 'Test Org' },
     });
     fireEvent.click(screen.getByText('Crear Organización'));
-    
+
     expect(mockCreateOrg).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Test Org' }),
       expect.anything()
@@ -58,9 +58,9 @@ describe('Onboarding View', () => {
 
   it('should show error if organization name is empty', () => {
     render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
-    
+
     fireEvent.click(screen.getByText('Crear Organización'));
-    
+
     expect(screen.getByText('Debes ingresar un nombre para la organización')).toBeInTheDocument();
     expect(mockCreateOrg).not.toHaveBeenCalled();
   });
@@ -72,9 +72,9 @@ describe('Onboarding View', () => {
     });
 
     render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
-    
+
     fireEvent.click(screen.getByText('Solicitar Acceso'));
-    
+
     expect(mockWaitForInv).toHaveBeenCalled();
     expect(mockOnWaitClick).toHaveBeenCalled();
   });

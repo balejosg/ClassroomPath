@@ -52,12 +52,8 @@
           "name": "cp_memberships_organization_id_cp_organizations_id_fk",
           "tableFrom": "cp_memberships",
           "tableTo": "cp_organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -67,10 +63,7 @@
         "cp_memberships_user_org_key": {
           "name": "cp_memberships_user_org_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id",
-            "organization_id"
-          ]
+          "columns": ["user_id", "organization_id"]
         }
       },
       "policies": {},
@@ -113,12 +106,8 @@
           "name": "cp_organization_classrooms_organization_id_cp_organizations_id_fk",
           "tableFrom": "cp_organization_classrooms",
           "tableTo": "cp_organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -128,10 +117,7 @@
         "cp_org_classroom_key": {
           "name": "cp_org_classroom_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "organization_id",
-            "classroom_id"
-          ]
+          "columns": ["organization_id", "classroom_id"]
         }
       },
       "policies": {},
@@ -174,12 +160,8 @@
           "name": "cp_organization_groups_organization_id_cp_organizations_id_fk",
           "tableFrom": "cp_organization_groups",
           "tableTo": "cp_organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -189,10 +171,7 @@
         "cp_org_group_key": {
           "name": "cp_org_group_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "organization_id",
-            "group_id"
-          ]
+          "columns": ["organization_id", "group_id"]
         }
       },
       "policies": {},
@@ -235,12 +214,8 @@
           "name": "cp_organization_users_organization_id_cp_organizations_id_fk",
           "tableFrom": "cp_organization_users",
           "tableTo": "cp_organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -250,10 +225,7 @@
         "cp_org_user_key": {
           "name": "cp_org_user_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "organization_id",
-            "openpath_user_id"
-          ]
+          "columns": ["organization_id", "openpath_user_id"]
         }
       },
       "policies": {},

@@ -13,8 +13,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/trpc': 'http://localhost:3000',
-      '/cp/trpc': 'http://localhost:3001',
+      '/trpc': process.env.OPENPATH_API_URL ?? 'http://localhost:3000',
+      '/cp/trpc': process.env.CP_API_URL ?? 'http://localhost:3001',
     },
   },
 });

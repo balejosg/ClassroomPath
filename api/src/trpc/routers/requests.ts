@@ -7,177 +7,194 @@ import * as schema from '../../db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
 
 export const requestsRouter = router({
-    // List groups for the organization (used by DomainRequests dropdown)
-    listGroups: tenantProcedure.query(async ({ ctx }) => {
-        const orgGroups = await db.select()
-            .from(schema.cpOrganizationGroups)
-            .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+  // List groups for the organization (used by DomainRequests dropdown)
+  listGroups: tenantProcedure.query(async ({ ctx }) => {
+    const orgGroups = await db
+      .select()
+      .from(schema.cpOrganizationGroups)
+      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
 
-        const groupIds = orgGroups.map(og => og.groupId);
+    const groupIds = orgGroups.map((og) => og.groupId);
 
-        if (groupIds.length === 0) return [];
+    if (groupIds.length === 0) return [];
 
-        // Import whitelistGroups from openpath db
-        const { whitelistGroups } = await import('../../db/openpath.js');
-        const groups = await openpathDb.select()
-            .from(whitelistGroups)
-            .where(inArray(whitelistGroups.id, groupIds));
+    // Import whitelistGroups from openpath db
+    const { whitelistGroups } = await import('../../db/openpath.js');
+    const groups = await openpathDb
+      .select()
+      .from(whitelistGroups)
+      .where(inArray(whitelistGroups.id, groupIds));
 
-        // Return shape expected by DomainRequests UI: { name, path }
-        // path = group.id (the stable identifier for approve mutations)
-        return groups.map(g => ({
-            name: g.displayName ?? g.name,
-            path: g.id,
-        }));
+    // Return shape expected by DomainRequests UI: { name, path }
+    // path = group.id (the stable identifier for approve mutations)
+    return groups.map((g) => ({
+      name: g.displayName ?? g.name,
+      path: g.id,
+    }));
+  }),
+
+  /**
+   * Get request statistics for the current organization.
+   * Returns counts by status: total, pending, approved, rejected.
+   */
+  stats: tenantProcedure.query(async ({ ctx }) => {
+    // Get groups belonging to this organization
+    const orgGroups = await db
+      .select()
+      .from(schema.cpOrganizationGroups)
+      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+
+    const groupIds = orgGroups.map((og) => og.groupId);
+
+    if (groupIds.length === 0) {
+      return { total: 0, pending: 0, approved: 0, rejected: 0 };
+    }
+
+    // Get all requests for these groups
+    const allRequests = await openpathDb
+      .select()
+      .from(requests)
+      .where(inArray(requests.groupId, groupIds));
+
+    return {
+      total: allRequests.length,
+      pending: allRequests.filter((r) => r.status === 'pending').length,
+      approved: allRequests.filter((r) => r.status === 'approved').length,
+      rejected: allRequests.filter((r) => r.status === 'rejected').length,
+    };
+  }),
+
+  list: tenantProcedure
+    .input(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
+    .query(async ({ ctx, input }) => {
+      // Get all groups for this organization
+      const orgGroups = await db
+        .select()
+        .from(schema.cpOrganizationGroups)
+        .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+
+      const groupIds = orgGroups.map((og) => og.groupId);
+
+      if (groupIds.length === 0) return [];
+
+      // Filter requests that belong to one of the organization's groups
+      const conditions = [inArray(requests.groupId, groupIds)];
+      if (input.status) {
+        conditions.push(eq(requests.status, input.status));
+      }
+
+      const results = await openpathDb
+        .select()
+        .from(requests)
+        .where(and(...conditions))
+        .orderBy(requests.createdAt);
+
+      // Serialize Date fields for JSON compatibility
+      return results.map((r) => ({
+        ...r,
+        createdAt: r.createdAt?.toISOString() ?? null,
+        updatedAt: r.updatedAt?.toISOString() ?? null,
+      }));
     }),
 
-    /**
-     * Get request statistics for the current organization.
-     * Returns counts by status: total, pending, approved, rejected.
-     */
-    stats: tenantProcedure.query(async ({ ctx }) => {
-        // Get groups belonging to this organization
-        const orgGroups = await db.select()
-            .from(schema.cpOrganizationGroups)
-            .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+  approve: tenantProcedure
+    .input(z.object({ id: z.string(), groupId: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify request belongs to org (via groupId)
+      const request = await openpathDb
+        .select()
+        .from(requests)
+        .where(eq(requests.id, input.id))
+        .limit(1);
 
-        const groupIds = orgGroups.map(og => og.groupId);
+      if (!request[0]) throw new Error('Request not found');
 
-        if (groupIds.length === 0) {
-            return { total: 0, pending: 0, approved: 0, rejected: 0 };
-        }
+      const targetGroupId = input.groupId || request[0].groupId;
+      if (!targetGroupId) throw new Error('Target group required');
 
-        // Get all requests for these groups
-        const allRequests = await openpathDb.select()
-            .from(requests)
-            .where(inArray(requests.groupId, groupIds));
+      const orgGroup = await db
+        .select()
+        .from(schema.cpOrganizationGroups)
+        .where(
+          and(
+            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+            eq(schema.cpOrganizationGroups.groupId, targetGroupId)
+          )
+        )
+        .limit(1);
 
-        return {
-            total: allRequests.length,
-            pending: allRequests.filter(r => r.status === 'pending').length,
-            approved: allRequests.filter(r => r.status === 'approved').length,
-            rejected: allRequests.filter(r => r.status === 'rejected').length,
-        };
+      if (!orgGroup.length) throw new Error('Access denied to target group');
+
+      // Logic for actually adding the rule should be handled by OpenPath API
+      // but for simplicity in multi-tenant, we can just update status
+      // and the user should manually add the rule OR we call RequestService if available.
+      // In ClassroomPath, we usually proxy complex mutations or implement them here.
+
+      // For now, let's just update the status to match what the UI expects
+      await openpathDb
+        .update(requests)
+        .set({ status: 'approved', updatedAt: new Date() } as any)
+        .where(eq(requests.id, input.id));
+
+      return { success: true };
     }),
 
-    list: tenantProcedure
-        .input(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
-        .query(async ({ ctx, input }) => {
-            // Get all groups for this organization
-            const orgGroups = await db.select()
-                .from(schema.cpOrganizationGroups)
-                .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+  reject: tenantProcedure
+    .input(z.object({ id: z.string(), reason: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const request = await openpathDb
+        .select()
+        .from(requests)
+        .where(eq(requests.id, input.id))
+        .limit(1);
 
-            const groupIds = orgGroups.map(og => og.groupId);
+      if (!request[0] || !request[0].groupId) throw new Error('Request not found');
 
-            if (groupIds.length === 0) return [];
+      const orgGroup = await db
+        .select()
+        .from(schema.cpOrganizationGroups)
+        .where(
+          and(
+            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+            eq(schema.cpOrganizationGroups.groupId, request[0].groupId)
+          )
+        )
+        .limit(1);
 
-            // Filter requests that belong to one of the organization's groups
-            const conditions = [inArray(requests.groupId, groupIds)];
-            if (input.status) {
-                conditions.push(eq(requests.status, input.status));
-            }
+      if (!orgGroup.length) throw new Error('Access denied');
 
-            const results = await openpathDb.select()
-                .from(requests)
-                .where(and(...conditions))
-                .orderBy(requests.createdAt);
+      await openpathDb
+        .update(requests)
+        .set({ status: 'rejected', reason: input.reason, updatedAt: new Date() } as any)
+        .where(eq(requests.id, input.id));
 
-            // Serialize Date fields for JSON compatibility
-            return results.map(r => ({
-                ...r,
-                createdAt: r.createdAt?.toISOString() ?? null,
-                updatedAt: r.updatedAt?.toISOString() ?? null,
-            }));
-        }),
+      return { success: true };
+    }),
 
-    approve: tenantProcedure
-        .input(z.object({ id: z.string(), groupId: z.string().optional() }))
-        .mutation(async ({ ctx, input }) => {
-            // Verify request belongs to org (via groupId)
-            const request = await openpathDb.select()
-                .from(requests)
-                .where(eq(requests.id, input.id))
-                .limit(1);
+  delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    const request = await openpathDb
+      .select()
+      .from(requests)
+      .where(eq(requests.id, input.id))
+      .limit(1);
 
-            if (!request[0]) throw new Error('Request not found');
-            
-            const targetGroupId = input.groupId || request[0].groupId;
-            if (!targetGroupId) throw new Error('Target group required');
+    if (!request[0] || !request[0].groupId) throw new Error('Request not found');
 
-            const orgGroup = await db.select()
-                .from(schema.cpOrganizationGroups)
-                .where(and(
-                    eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-                    eq(schema.cpOrganizationGroups.groupId, targetGroupId)
-                ))
-                .limit(1);
+    const orgGroup = await db
+      .select()
+      .from(schema.cpOrganizationGroups)
+      .where(
+        and(
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+          eq(schema.cpOrganizationGroups.groupId, request[0].groupId)
+        )
+      )
+      .limit(1);
 
-            if (!orgGroup.length) throw new Error('Access denied to target group');
+    if (!orgGroup.length) throw new Error('Access denied');
 
-            // Logic for actually adding the rule should be handled by OpenPath API
-            // but for simplicity in multi-tenant, we can just update status
-            // and the user should manually add the rule OR we call RequestService if available.
-            // In ClassroomPath, we usually proxy complex mutations or implement them here.
-            
-            // For now, let's just update the status to match what the UI expects
-            await openpathDb.update(requests)
-                .set({ status: 'approved', updatedAt: new Date() } as any)
-                .where(eq(requests.id, input.id));
+    await openpathDb.delete(requests).where(eq(requests.id, input.id));
 
-            return { success: true };
-        }),
-
-    reject: tenantProcedure
-        .input(z.object({ id: z.string(), reason: z.string().optional() }))
-        .mutation(async ({ ctx, input }) => {
-            const request = await openpathDb.select()
-                .from(requests)
-                .where(eq(requests.id, input.id))
-                .limit(1);
-
-            if (!request[0] || !request[0].groupId) throw new Error('Request not found');
-
-            const orgGroup = await db.select()
-                .from(schema.cpOrganizationGroups)
-                .where(and(
-                    eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-                    eq(schema.cpOrganizationGroups.groupId, request[0].groupId)
-                ))
-                .limit(1);
-
-            if (!orgGroup.length) throw new Error('Access denied');
-
-            await openpathDb.update(requests)
-                .set({ status: 'rejected', reason: input.reason, updatedAt: new Date() } as any)
-                .where(eq(requests.id, input.id));
-
-            return { success: true };
-        }),
-
-    delete: tenantProcedure
-        .input(z.object({ id: z.string() }))
-        .mutation(async ({ ctx, input }) => {
-            const request = await openpathDb.select()
-                .from(requests)
-                .where(eq(requests.id, input.id))
-                .limit(1);
-
-            if (!request[0] || !request[0].groupId) throw new Error('Request not found');
-
-            const orgGroup = await db.select()
-                .from(schema.cpOrganizationGroups)
-                .where(and(
-                    eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-                    eq(schema.cpOrganizationGroups.groupId, request[0].groupId)
-                ))
-                .limit(1);
-
-            if (!orgGroup.length) throw new Error('Access denied');
-
-            await openpathDb.delete(requests)
-                .where(eq(requests.id, input.id));
-
-            return { success: true };
-        }),
+    return { success: true };
+  }),
 });

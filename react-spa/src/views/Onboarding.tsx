@@ -14,19 +14,19 @@ interface Props {
 export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
   const [orgName, setOrgName] = useState('');
   const [error, setError] = useState('');
-  
+
   const createOrgMutation = useCreateOrganization();
   const waitMutation = useWaitForInvitation();
-  
+
   const handleCreateOrg = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
     if (!orgName.trim()) {
       setError('Debes ingresar un nombre para la organización');
       return;
     }
-    
+
     createOrgMutation.mutate(
       { name: orgName },
       {
@@ -39,7 +39,7 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
       }
     );
   };
-  
+
   const handleWait = () => {
     setError('');
     waitMutation.mutate(undefined, {
@@ -51,19 +51,23 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
       },
     });
   };
-  
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-4xl">
-        <h1 className="text-3xl font-bold text-center mb-2 text-gray-900">¡Bienvenido a ClassroomPath!</h1>
-        <p className="text-center text-gray-600 mb-10">Elige cómo quieres comenzar a gestionar tus salas</p>
-        
+        <h1 className="text-3xl font-bold text-center mb-2 text-gray-900">
+          ¡Bienvenido a ClassroomPath!
+        </h1>
+        <p className="text-center text-gray-600 mb-10">
+          Elige cómo quieres comenzar a gestionar tus salas
+        </p>
+
         {error && (
           <div className="mb-8 p-4 bg-red-100 text-red-700 rounded-lg text-sm border border-red-200">
             {error}
           </div>
         )}
-        
+
         <div className="grid md:grid-cols-2 gap-8">
           {/* Opción 1: Crear Organización */}
           <Card className="p-8 flex flex-col shadow-md border-t-4 border-t-blue-600">
@@ -74,7 +78,8 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
               <h2 className="text-xl font-bold text-gray-800">Crear mi organización</h2>
             </div>
             <p className="text-gray-600 mb-8 leading-relaxed">
-              Crea una nueva organización para tu institución y comienza a configurar tus grupos y políticas de filtrado.
+              Crea una nueva organización para tu institución y comienza a configurar tus grupos y
+              políticas de filtrado.
             </p>
             <form onSubmit={handleCreateOrg} className="space-y-4 mt-auto" noValidate>
               <div>
@@ -102,7 +107,7 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
               </Button>
             </form>
           </Card>
-          
+
           {/* Opción 2: Esperar Invitación */}
           <Card className="p-8 flex flex-col shadow-md border-t-4 border-t-green-600">
             <div className="flex items-center gap-4 mb-6">
@@ -112,7 +117,8 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
               <h2 className="text-xl font-bold text-gray-800">Esperar invitación</h2>
             </div>
             <p className="text-gray-600 mb-8 leading-relaxed">
-              Si tu institución ya utiliza ClassroomPath, puedes solicitar acceso y esperar a que un administrador te agregue.
+              Si tu institución ya utiliza ClassroomPath, puedes solicitar acceso y esperar a que un
+              administrador te agregue.
             </p>
             <div className="mt-auto">
               <Button

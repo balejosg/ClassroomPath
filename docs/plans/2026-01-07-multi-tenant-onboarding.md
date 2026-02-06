@@ -23,6 +23,7 @@
 ### Task 1.1: Create ClassroomPath Drizzle Configuration
 
 **Files:**
+
 - Create: `api/drizzle.config.ts`
 - Create: `api/src/db/index.ts`
 - Create: `api/src/db/schema.ts`
@@ -35,13 +36,13 @@ Create file `api/drizzle.config.ts`:
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
-    schema: './src/db/schema.ts',
-    out: './drizzle',
-    dialect: 'postgresql',
-    dbCredentials: {
-        url: process.env.DATABASE_URL ?? '',
-    },
-    tablesFilter: ['cp_*'], // Only manage ClassroomPath tables
+  schema: './src/db/schema.ts',
+  out: './drizzle',
+  dialect: 'postgresql',
+  dbCredentials: {
+    url: process.env.DATABASE_URL ?? '',
+  },
+  tablesFilter: ['cp_*'], // Only manage ClassroomPath tables
 });
 ```
 
@@ -55,7 +56,7 @@ import pg from 'pg';
 import * as schema from './schema.js';
 
 const pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL,
 });
 
 export const db = drizzle(pool, { schema });
@@ -67,50 +68,47 @@ export { schema };
 Create file `api/src/db/schema.ts`:
 
 ```typescript
-import {
-    pgTable,
-    varchar,
-    timestamp,
-    unique,
-} from 'drizzle-orm/pg-core';
+import { pgTable, varchar, timestamp, unique } from 'drizzle-orm/pg-core';
 
 // =============================================================================
 // Organizations Table
 // =============================================================================
 
 export const cpOrganizations = pgTable('cp_organizations', {
-    id: varchar('id', { length: 50 }).primaryKey(),
-    name: varchar('name', { length: 255 }).notNull(),
-    createdBy: varchar('created_by', { length: 50 }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  id: varchar('id', { length: 50 }).primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  createdBy: varchar('created_by', { length: 50 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
 // =============================================================================
 // Memberships Table
 // =============================================================================
 
-export const cpMemberships = pgTable('cp_memberships', {
+export const cpMemberships = pgTable(
+  'cp_memberships',
+  {
     id: varchar('id', { length: 50 }).primaryKey(),
     userId: varchar('user_id', { length: 50 }).notNull(),
     organizationId: varchar('organization_id', { length: 50 })
-        .notNull()
-        .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
+      .notNull()
+      .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
     role: varchar('role', { length: 20 }).notNull(), // 'admin' | 'teacher' | 'student'
     invitedBy: varchar('invited_by', { length: 50 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-}, (table) => [
-    unique('cp_memberships_user_org_key').on(table.userId, table.organizationId),
-]);
+  },
+  (table) => [unique('cp_memberships_user_org_key').on(table.userId, table.organizationId)]
+);
 
 // =============================================================================
 // User Onboarding Status (tracks users who chose "wait for invitation")
 // =============================================================================
 
 export const cpUserStatus = pgTable('cp_user_status', {
-    userId: varchar('user_id', { length: 50 }).primaryKey(),
-    status: varchar('status', { length: 20 }).notNull(), // 'waiting' | 'active'
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  userId: varchar('user_id', { length: 50 }).primaryKey(),
+  status: varchar('status', { length: 20 }).notNull(), // 'waiting' | 'active'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
 // =============================================================================
@@ -139,6 +137,7 @@ git commit -m "feat(cp): add drizzle schema for organizations and memberships"
 ### Task 1.2: Generate and Run Migration
 
 **Files:**
+
 - Create: `api/drizzle/0000_*.sql` (generated)
 
 **Step 1: Install dependencies**
@@ -180,6 +179,7 @@ git commit -m "feat(cp): add database migration for multi-tenant tables"
 ### Task 2.1: Create Express Server with tRPC
 
 **Files:**
+
 - Create: `api/src/server.ts`
 - Create: `api/src/config.ts`
 - Create: `api/src/lib/id.ts`
@@ -190,10 +190,10 @@ Create file `api/src/config.ts`:
 
 ```typescript
 export const config = {
-    port: parseInt(process.env.CP_PORT ?? '3001', 10),
-    openpathUrl: process.env.OPENPATH_API_URL ?? 'http://localhost:3000',
-    databaseUrl: process.env.DATABASE_URL ?? '',
-    jwtSecret: process.env.JWT_SECRET ?? '',
+  port: parseInt(process.env.CP_PORT ?? '3001', 10),
+  openpathUrl: process.env.OPENPATH_API_URL ?? 'http://localhost:3000',
+  databaseUrl: process.env.DATABASE_URL ?? '',
+  jwtSecret: process.env.JWT_SECRET ?? '',
 };
 ```
 
@@ -205,8 +205,8 @@ Create file `api/src/lib/id.ts`:
 import { randomBytes } from 'crypto';
 
 export function generateId(prefix: string = ''): string {
-    const id = randomBytes(12).toString('hex');
-    return prefix ? `${prefix}_${id}` : id;
+  const id = randomBytes(12).toString('hex');
+  return prefix ? `${prefix}_${id}` : id;
 }
 ```
 
@@ -224,26 +224,31 @@ import { config } from './config.js';
 
 const app = express();
 
-app.use(cors({
+app.use(
+  cors({
     origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:5173'],
     credentials: true,
-}));
+  })
+);
 
 app.use(express.json());
 
 // Health check
 app.get('/cp/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'classroompath-gateway' });
+  res.json({ status: 'ok', service: 'classroompath-gateway' });
 });
 
 // tRPC endpoints under /cp/trpc
-app.use('/cp/trpc', createExpressMiddleware({
+app.use(
+  '/cp/trpc',
+  createExpressMiddleware({
     router: appRouter,
     createContext,
-}));
+  })
+);
 
 app.listen(config.port, () => {
-    console.log(`ClassroomPath Gateway listening on port ${config.port}`);
+  console.log(`ClassroomPath Gateway listening on port ${config.port}`);
 });
 
 export { app };
@@ -261,6 +266,7 @@ git commit -m "feat(cp): add express server skeleton"
 ### Task 2.2: Create tRPC Context and Router
 
 **Files:**
+
 - Create: `api/src/trpc/context.ts`
 - Create: `api/src/trpc/trpc.ts`
 - Create: `api/src/trpc/router.ts`
@@ -275,32 +281,32 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 
 export interface JWTPayload {
-    sub: string;
-    email: string;
-    name: string;
-    roles: Array<{ role: string; groupIds: string[] }>;
+  sub: string;
+  email: string;
+  name: string;
+  roles: Array<{ role: string; groupIds: string[] }>;
 }
 
 export interface Context {
-    user: JWTPayload | null;
-    req: CreateExpressContextOptions['req'];
-    res: CreateExpressContextOptions['res'];
+  user: JWTPayload | null;
+  req: CreateExpressContextOptions['req'];
+  res: CreateExpressContextOptions['res'];
 }
 
 export async function createContext({ req, res }: CreateExpressContextOptions): Promise<Context> {
-    const authHeader = req.headers.authorization;
-    let user: JWTPayload | null = null;
+  const authHeader = req.headers.authorization;
+  let user: JWTPayload | null = null;
 
-    if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.slice(7);
-        try {
-            user = jwt.verify(token, config.jwtSecret) as JWTPayload;
-        } catch {
-            // Invalid token, user remains null
-        }
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    try {
+      user = jwt.verify(token, config.jwtSecret) as JWTPayload;
+    } catch {
+      // Invalid token, user remains null
     }
+  }
 
-    return { user, req, res };
+  return { user, req, res };
 }
 ```
 
@@ -318,10 +324,10 @@ export const router = t.router;
 export const publicProcedure = t.procedure;
 
 export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
-    if (!ctx.user) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
-    }
-    return next({ ctx: { ...ctx, user: ctx.user } });
+  if (!ctx.user) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+  }
+  return next({ ctx: { ...ctx, user: ctx.user } });
 });
 ```
 
@@ -334,7 +340,7 @@ import { router } from './trpc.js';
 import { onboardingRouter } from './routers/onboarding.js';
 
 export const appRouter = router({
-    onboarding: onboardingRouter,
+  onboarding: onboardingRouter,
 });
 
 export type AppRouter = typeof appRouter;
@@ -352,6 +358,7 @@ git commit -m "feat(cp): add tRPC infrastructure"
 ### Task 2.3: Create Onboarding Service
 
 **Files:**
+
 - Create: `api/src/services/onboarding.service.ts`
 
 **Step 1: Create onboarding service**
@@ -364,107 +371,103 @@ import { db, schema } from '../db/index.js';
 import { generateId } from '../lib/id.js';
 
 export interface OnboardingStatus {
-    hasMembership: boolean;
-    isWaiting: boolean;
-    organization: {
-        id: string;
-        name: string;
-        role: string;
-    } | null;
+  hasMembership: boolean;
+  isWaiting: boolean;
+  organization: {
+    id: string;
+    name: string;
+    role: string;
+  } | null;
 }
 
 export async function getOnboardingStatus(userId: string): Promise<OnboardingStatus> {
-    // Check for membership
-    const membership = await db
-        .select({
-            orgId: schema.cpMemberships.organizationId,
-            role: schema.cpMemberships.role,
-            orgName: schema.cpOrganizations.name,
-        })
-        .from(schema.cpMemberships)
-        .innerJoin(
-            schema.cpOrganizations,
-            eq(schema.cpMemberships.organizationId, schema.cpOrganizations.id)
-        )
-        .where(eq(schema.cpMemberships.userId, userId))
-        .limit(1);
+  // Check for membership
+  const membership = await db
+    .select({
+      orgId: schema.cpMemberships.organizationId,
+      role: schema.cpMemberships.role,
+      orgName: schema.cpOrganizations.name,
+    })
+    .from(schema.cpMemberships)
+    .innerJoin(
+      schema.cpOrganizations,
+      eq(schema.cpMemberships.organizationId, schema.cpOrganizations.id)
+    )
+    .where(eq(schema.cpMemberships.userId, userId))
+    .limit(1);
 
-    if (membership.length > 0) {
-        return {
-            hasMembership: true,
-            isWaiting: false,
-            organization: {
-                id: membership[0].orgId,
-                name: membership[0].orgName,
-                role: membership[0].role,
-            },
-        };
-    }
-
-    // Check if user is waiting
-    const status = await db
-        .select()
-        .from(schema.cpUserStatus)
-        .where(eq(schema.cpUserStatus.userId, userId))
-        .limit(1);
-
+  if (membership.length > 0) {
     return {
-        hasMembership: false,
-        isWaiting: status.length > 0 && status[0].status === 'waiting',
-        organization: null,
+      hasMembership: true,
+      isWaiting: false,
+      organization: {
+        id: membership[0].orgId,
+        name: membership[0].orgName,
+        role: membership[0].role,
+      },
     };
+  }
+
+  // Check if user is waiting
+  const status = await db
+    .select()
+    .from(schema.cpUserStatus)
+    .where(eq(schema.cpUserStatus.userId, userId))
+    .limit(1);
+
+  return {
+    hasMembership: false,
+    isWaiting: status.length > 0 && status[0].status === 'waiting',
+    organization: null,
+  };
 }
 
 export async function createOrganization(
-    name: string,
-    userId: string
+  name: string,
+  userId: string
 ): Promise<{ organizationId: string; membershipId: string }> {
-    const orgId = generateId('org');
-    const membershipId = generateId('mem');
+  const orgId = generateId('org');
+  const membershipId = generateId('mem');
 
-    await db.transaction(async (tx) => {
-        // Create organization
-        await tx.insert(schema.cpOrganizations).values({
-            id: orgId,
-            name,
-            createdBy: userId,
-        });
-
-        // Create admin membership for creator
-        await tx.insert(schema.cpMemberships).values({
-            id: membershipId,
-            userId,
-            organizationId: orgId,
-            role: 'admin',
-            invitedBy: null,
-        });
-
-        // Remove waiting status if exists
-        await tx
-            .delete(schema.cpUserStatus)
-            .where(eq(schema.cpUserStatus.userId, userId));
+  await db.transaction(async (tx) => {
+    // Create organization
+    await tx.insert(schema.cpOrganizations).values({
+      id: orgId,
+      name,
+      createdBy: userId,
     });
 
-    return { organizationId: orgId, membershipId };
+    // Create admin membership for creator
+    await tx.insert(schema.cpMemberships).values({
+      id: membershipId,
+      userId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: null,
+    });
+
+    // Remove waiting status if exists
+    await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
+  });
+
+  return { organizationId: orgId, membershipId };
 }
 
 export async function setWaitingStatus(userId: string): Promise<void> {
-    await db
-        .insert(schema.cpUserStatus)
-        .values({
-            userId,
-            status: 'waiting',
-        })
-        .onConflictDoUpdate({
-            target: schema.cpUserStatus.userId,
-            set: { status: 'waiting', updatedAt: new Date() },
-        });
+  await db
+    .insert(schema.cpUserStatus)
+    .values({
+      userId,
+      status: 'waiting',
+    })
+    .onConflictDoUpdate({
+      target: schema.cpUserStatus.userId,
+      set: { status: 'waiting', updatedAt: new Date() },
+    });
 }
 
 export async function clearWaitingStatus(userId: string): Promise<void> {
-    await db
-        .delete(schema.cpUserStatus)
-        .where(eq(schema.cpUserStatus.userId, userId));
+  await db.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
 }
 ```
 
@@ -480,6 +483,7 @@ git commit -m "feat(cp): add onboarding service"
 ### Task 2.4: Create Onboarding Router
 
 **Files:**
+
 - Create: `api/src/trpc/routers/onboarding.ts`
 
 **Step 1: Create onboarding router**
@@ -493,65 +497,64 @@ import { TRPCError } from '@trpc/server';
 import * as onboardingService from '../../services/onboarding.service.js';
 
 export const onboardingRouter = router({
-    /**
-     * Get current user's onboarding status
-     */
-    status: protectedProcedure.query(async ({ ctx }) => {
-        return onboardingService.getOnboardingStatus(ctx.user.sub);
+  /**
+   * Get current user's onboarding status
+   */
+  status: protectedProcedure.query(async ({ ctx }) => {
+    return onboardingService.getOnboardingStatus(ctx.user.sub);
+  }),
+
+  /**
+   * Create a new organization (user becomes admin)
+   */
+  createOrganization: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().min(2).max(100),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const status = await onboardingService.getOnboardingStatus(ctx.user.sub);
+
+      if (status.hasMembership) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'User already belongs to an organization',
+        });
+      }
+
+      const result = await onboardingService.createOrganization(input.name, ctx.user.sub);
+
+      return {
+        success: true,
+        organizationId: result.organizationId,
+      };
     }),
 
-    /**
-     * Create a new organization (user becomes admin)
-     */
-    createOrganization: protectedProcedure
-        .input(z.object({
-            name: z.string().min(2).max(100),
-        }))
-        .mutation(async ({ ctx, input }) => {
-            const status = await onboardingService.getOnboardingStatus(ctx.user.sub);
-            
-            if (status.hasMembership) {
-                throw new TRPCError({
-                    code: 'BAD_REQUEST',
-                    message: 'User already belongs to an organization',
-                });
-            }
+  /**
+   * Mark user as waiting for invitation
+   */
+  waitForInvitation: protectedProcedure.mutation(async ({ ctx }) => {
+    const status = await onboardingService.getOnboardingStatus(ctx.user.sub);
 
-            const result = await onboardingService.createOrganization(
-                input.name,
-                ctx.user.sub
-            );
+    if (status.hasMembership) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'User already belongs to an organization',
+      });
+    }
 
-            return {
-                success: true,
-                organizationId: result.organizationId,
-            };
-        }),
+    await onboardingService.setWaitingStatus(ctx.user.sub);
+    return { success: true };
+  }),
 
-    /**
-     * Mark user as waiting for invitation
-     */
-    waitForInvitation: protectedProcedure.mutation(async ({ ctx }) => {
-        const status = await onboardingService.getOnboardingStatus(ctx.user.sub);
-        
-        if (status.hasMembership) {
-            throw new TRPCError({
-                code: 'BAD_REQUEST',
-                message: 'User already belongs to an organization',
-            });
-        }
-
-        await onboardingService.setWaitingStatus(ctx.user.sub);
-        return { success: true };
-    }),
-
-    /**
-     * Clear waiting status (user wants to create org instead)
-     */
-    cancelWaiting: protectedProcedure.mutation(async ({ ctx }) => {
-        await onboardingService.clearWaitingStatus(ctx.user.sub);
-        return { success: true };
-    }),
+  /**
+   * Clear waiting status (user wants to create org instead)
+   */
+  cancelWaiting: protectedProcedure.mutation(async ({ ctx }) => {
+    await onboardingService.clearWaitingStatus(ctx.user.sub);
+    return { success: true };
+  }),
 });
 ```
 
@@ -567,6 +570,7 @@ git commit -m "feat(cp): add onboarding tRPC router"
 ### Task 2.5: Add API Package Configuration
 
 **Files:**
+
 - Create: `api/package.json`
 - Create: `api/tsconfig.json`
 
@@ -652,6 +656,7 @@ git commit -m "feat(cp): add api package configuration"
 ### Task 3.1: Create Onboarding Module
 
 **Files:**
+
 - Create: `spa/src/onboarding.ts`
 - Create: `spa/src/cp-trpc.ts`
 
@@ -664,19 +669,19 @@ import { createTRPCProxyClient, httpBatchLink } from '@trpc/client';
 import type { AppRouter } from '../../api/src/trpc/router.js';
 
 function getAuthToken(): string {
-    return localStorage.getItem('openpath_access_token') ?? '';
+  return localStorage.getItem('openpath_access_token') ?? '';
 }
 
 export const cpTrpc = createTRPCProxyClient<AppRouter>({
-    links: [
-        httpBatchLink({
-            url: '/cp/trpc',
-            headers() {
-                const token = getAuthToken();
-                return token ? { Authorization: `Bearer ${token}` } : {};
-            },
-        }),
-    ],
+  links: [
+    httpBatchLink({
+      url: '/cp/trpc',
+      headers() {
+        const token = getAuthToken();
+        return token ? { Authorization: `Bearer ${token}` } : {};
+      },
+    }),
+  ],
 });
 ```
 
@@ -688,122 +693,122 @@ Create file `spa/src/onboarding.ts`:
 import { cpTrpc } from './cp-trpc.js';
 
 export interface OnboardingState {
-    hasMembership: boolean;
-    isWaiting: boolean;
-    organization: {
-        id: string;
-        name: string;
-        role: string;
-    } | null;
+  hasMembership: boolean;
+  isWaiting: boolean;
+  organization: {
+    id: string;
+    name: string;
+    role: string;
+  } | null;
 }
 
 let currentStatus: OnboardingState | null = null;
 
 export const onboarding = {
-    async checkStatus(): Promise<OnboardingState> {
-        try {
-            const status = await cpTrpc.onboarding.status.query();
-            currentStatus = status;
-            return status;
-        } catch (error) {
-            console.error('Failed to check onboarding status:', error);
-            // Assume no membership on error
-            return { hasMembership: false, isWaiting: false, organization: null };
-        }
-    },
+  async checkStatus(): Promise<OnboardingState> {
+    try {
+      const status = await cpTrpc.onboarding.status.query();
+      currentStatus = status;
+      return status;
+    } catch (error) {
+      console.error('Failed to check onboarding status:', error);
+      // Assume no membership on error
+      return { hasMembership: false, isWaiting: false, organization: null };
+    }
+  },
 
-    getStatus(): OnboardingState | null {
-        return currentStatus;
-    },
+  getStatus(): OnboardingState | null {
+    return currentStatus;
+  },
 
-    async createOrganization(name: string): Promise<boolean> {
-        try {
-            await cpTrpc.onboarding.createOrganization.mutate({ name });
-            return true;
-        } catch (error) {
-            console.error('Failed to create organization:', error);
-            return false;
-        }
-    },
+  async createOrganization(name: string): Promise<boolean> {
+    try {
+      await cpTrpc.onboarding.createOrganization.mutate({ name });
+      return true;
+    } catch (error) {
+      console.error('Failed to create organization:', error);
+      return false;
+    }
+  },
 
-    async waitForInvitation(): Promise<boolean> {
-        try {
-            await cpTrpc.onboarding.waitForInvitation.mutate();
-            return true;
-        } catch (error) {
-            console.error('Failed to set waiting status:', error);
-            return false;
-        }
-    },
+  async waitForInvitation(): Promise<boolean> {
+    try {
+      await cpTrpc.onboarding.waitForInvitation.mutate();
+      return true;
+    } catch (error) {
+      console.error('Failed to set waiting status:', error);
+      return false;
+    }
+  },
 
-    async cancelWaiting(): Promise<boolean> {
-        try {
-            await cpTrpc.onboarding.cancelWaiting.mutate();
-            return true;
-        } catch (error) {
-            console.error('Failed to cancel waiting:', error);
-            return false;
-        }
-    },
+  async cancelWaiting(): Promise<boolean> {
+    try {
+      await cpTrpc.onboarding.cancelWaiting.mutate();
+      return true;
+    } catch (error) {
+      console.error('Failed to cancel waiting:', error);
+      return false;
+    }
+  },
 
-    initUI(): void {
-        // Create organization form handler
-        const createOrgForm = document.getElementById('create-org-form');
-        createOrgForm?.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const input = document.getElementById('org-name-input') as HTMLInputElement;
-            const name = input?.value?.trim();
-            
-            if (!name) return;
-            
-            const btn = document.getElementById('create-org-submit') as HTMLButtonElement;
-            btn.disabled = true;
-            btn.textContent = 'Creando...';
-            
-            const success = await this.createOrganization(name);
-            
-            if (success) {
-                window.location.reload();
-            } else {
-                btn.disabled = false;
-                btn.textContent = 'Crear organización';
-                const error = document.getElementById('create-org-error');
-                if (error) error.textContent = 'Error al crear la organización';
-            }
-        });
+  initUI(): void {
+    // Create organization form handler
+    const createOrgForm = document.getElementById('create-org-form');
+    createOrgForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('org-name-input') as HTMLInputElement;
+      const name = input?.value?.trim();
 
-        // Wait for invitation button
-        document.getElementById('wait-invite-btn')?.addEventListener('click', async () => {
-            const success = await this.waitForInvitation();
-            if (success) {
-                showScreen('waiting-screen');
-            }
-        });
+      if (!name) return;
 
-        // Reload button on waiting screen
-        document.getElementById('reload-status-btn')?.addEventListener('click', () => {
-            window.location.reload();
-        });
+      const btn = document.getElementById('create-org-submit') as HTMLButtonElement;
+      btn.disabled = true;
+      btn.textContent = 'Creando...';
 
-        // Change mind button
-        document.getElementById('change-mind-btn')?.addEventListener('click', async () => {
-            await this.cancelWaiting();
-            showScreen('onboarding-screen');
-        });
+      const success = await this.createOrganization(name);
 
-        // Create org from waiting screen
-        document.getElementById('create-org-from-waiting-btn')?.addEventListener('click', async () => {
-            await this.cancelWaiting();
-            showScreen('onboarding-screen');
-        });
-    },
+      if (success) {
+        window.location.reload();
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Crear organización';
+        const error = document.getElementById('create-org-error');
+        if (error) error.textContent = 'Error al crear la organización';
+      }
+    });
+
+    // Wait for invitation button
+    document.getElementById('wait-invite-btn')?.addEventListener('click', async () => {
+      const success = await this.waitForInvitation();
+      if (success) {
+        showScreen('waiting-screen');
+      }
+    });
+
+    // Reload button on waiting screen
+    document.getElementById('reload-status-btn')?.addEventListener('click', () => {
+      window.location.reload();
+    });
+
+    // Change mind button
+    document.getElementById('change-mind-btn')?.addEventListener('click', async () => {
+      await this.cancelWaiting();
+      showScreen('onboarding-screen');
+    });
+
+    // Create org from waiting screen
+    document.getElementById('create-org-from-waiting-btn')?.addEventListener('click', async () => {
+      await this.cancelWaiting();
+      showScreen('onboarding-screen');
+    });
+  },
 };
 
 function showScreen(screenId: string): void {
-    document.querySelectorAll('.screen').forEach((el) => {
-        el.classList.add('hidden');
-    });
-    document.getElementById(screenId)?.classList.remove('hidden');
+  document.querySelectorAll('.screen').forEach((el) => {
+    el.classList.add('hidden');
+  });
+  document.getElementById(screenId)?.classList.remove('hidden');
 }
 ```
 
@@ -819,6 +824,7 @@ git commit -m "feat(cp): add onboarding SPA module"
 ### Task 3.2: Create Onboarding HTML Screens
 
 **Files:**
+
 - Create: `spa/onboarding-screens.html`
 
 **Step 1: Create onboarding HTML partial**
@@ -828,78 +834,72 @@ Create file `spa/onboarding-screens.html`:
 ```html
 <!-- Onboarding Screen (choose path) -->
 <div id="onboarding-screen" class="screen hidden">
-    <div class="onboarding-container">
-        <div class="onboarding-header">
-            <span class="logo-large">🎓</span>
-            <h1>Bienvenido a ClassroomPath</h1>
-            <p class="subtitle">Tu cuenta está lista. ¿Qué deseas hacer?</p>
-        </div>
-        
-        <div class="onboarding-options">
-            <div class="option-card" id="create-org-card">
-                <span class="option-icon">🏫</span>
-                <h2>Crear mi organización</h2>
-                <p>Ideal si eres administrador de un centro educativo</p>
-                
-                <form id="create-org-form" class="create-org-form hidden">
-                    <div class="form-group">
-                        <label for="org-name-input">Nombre de la organización</label>
-                        <input 
-                            type="text" 
-                            id="org-name-input" 
-                            placeholder="Ej: IES Ejemplo"
-                            minlength="2"
-                            maxlength="100"
-                            required
-                        >
-                    </div>
-                    <div id="create-org-error" class="error-message"></div>
-                    <button type="submit" id="create-org-submit" class="btn btn-primary btn-lg">
-                        Crear organización
-                    </button>
-                </form>
-                
-                <button id="show-create-form-btn" class="btn btn-primary btn-lg">
-                    Crear organización
-                </button>
-            </div>
-            
-            <div class="option-card">
-                <span class="option-icon">⏳</span>
-                <h2>Esperar invitación</h2>
-                <p>Si ya existe una organización y esperas que te inviten</p>
-                <button id="wait-invite-btn" class="btn btn-secondary btn-lg">
-                    Esperar invitación
-                </button>
-            </div>
-        </div>
+  <div class="onboarding-container">
+    <div class="onboarding-header">
+      <span class="logo-large">🎓</span>
+      <h1>Bienvenido a ClassroomPath</h1>
+      <p class="subtitle">Tu cuenta está lista. ¿Qué deseas hacer?</p>
     </div>
+
+    <div class="onboarding-options">
+      <div class="option-card" id="create-org-card">
+        <span class="option-icon">🏫</span>
+        <h2>Crear mi organización</h2>
+        <p>Ideal si eres administrador de un centro educativo</p>
+
+        <form id="create-org-form" class="create-org-form hidden">
+          <div class="form-group">
+            <label for="org-name-input">Nombre de la organización</label>
+            <input
+              type="text"
+              id="org-name-input"
+              placeholder="Ej: IES Ejemplo"
+              minlength="2"
+              maxlength="100"
+              required
+            />
+          </div>
+          <div id="create-org-error" class="error-message"></div>
+          <button type="submit" id="create-org-submit" class="btn btn-primary btn-lg">
+            Crear organización
+          </button>
+        </form>
+
+        <button id="show-create-form-btn" class="btn btn-primary btn-lg">Crear organización</button>
+      </div>
+
+      <div class="option-card">
+        <span class="option-icon">⏳</span>
+        <h2>Esperar invitación</h2>
+        <p>Si ya existe una organización y esperas que te inviten</p>
+        <button id="wait-invite-btn" class="btn btn-secondary btn-lg">Esperar invitación</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Waiting Screen -->
 <div id="waiting-screen" class="screen hidden">
-    <div class="waiting-container">
-        <div class="waiting-header">
-            <span class="waiting-icon">⏳</span>
-            <h1>Esperando invitación</h1>
-            <p>Cuando un administrador te invite a su organización, recarga esta página para acceder.</p>
-        </div>
-        
-        <div class="waiting-actions">
-            <button id="reload-status-btn" class="btn btn-primary btn-lg">
-                🔄 Recargar página
-            </button>
-        </div>
-        
-        <hr class="divider">
-        
-        <div class="change-mind">
-            <p>¿Cambiaste de opinión?</p>
-            <button id="create-org-from-waiting-btn" class="btn btn-link">
-                Quiero crear mi propia organización
-            </button>
-        </div>
+  <div class="waiting-container">
+    <div class="waiting-header">
+      <span class="waiting-icon">⏳</span>
+      <h1>Esperando invitación</h1>
+      <p>Cuando un administrador te invite a su organización, recarga esta página para acceder.</p>
     </div>
+
+    <div class="waiting-actions">
+      <button id="reload-status-btn" class="btn btn-primary btn-lg">🔄 Recargar página</button>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="change-mind">
+      <p>¿Cambiaste de opinión?</p>
+      <button id="create-org-from-waiting-btn" class="btn btn-link">
+        Quiero crear mi propia organización
+      </button>
+    </div>
+  </div>
 </div>
 ```
 
@@ -915,6 +915,7 @@ git commit -m "feat(cp): add onboarding HTML screens"
 ### Task 3.3: Create Onboarding Styles
 
 **Files:**
+
 - Create: `spa/src/styles/onboarding.css`
 
 **Step 1: Create onboarding styles**
@@ -925,126 +926,133 @@ Create file `spa/src/styles/onboarding.css`:
 /* Onboarding Container */
 .onboarding-container,
 .waiting-container {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 2rem;
-    text-align: center;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
 }
 
 .onboarding-header,
 .waiting-header {
-    margin-bottom: 2rem;
+  margin-bottom: 2rem;
 }
 
 .logo-large {
-    font-size: 4rem;
-    display: block;
-    margin-bottom: 1rem;
+  font-size: 4rem;
+  display: block;
+  margin-bottom: 1rem;
 }
 
 .waiting-icon {
-    font-size: 4rem;
-    display: block;
-    margin-bottom: 1rem;
-    animation: pulse 2s infinite;
+  font-size: 4rem;
+  display: block;
+  margin-bottom: 1rem;
+  animation: pulse 2s infinite;
 }
 
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .subtitle {
-    color: var(--color-text-muted);
-    font-size: 1.1rem;
+  color: var(--color-text-muted);
+  font-size: 1.1rem;
 }
 
 /* Option Cards */
 .onboarding-options {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
-    margin-top: 2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
 }
 
 .option-card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 12px;
-    padding: 1.5rem;
-    text-align: center;
-    transition: border-color 0.2s, box-shadow 0.2s;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .option-card:hover {
-    border-color: var(--color-primary);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .option-icon {
-    font-size: 3rem;
-    display: block;
-    margin-bottom: 1rem;
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 1rem;
 }
 
 .option-card h2 {
-    font-size: 1.25rem;
-    margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+  margin-bottom: 0.5rem;
 }
 
 .option-card p {
-    color: var(--color-text-muted);
-    font-size: 0.9rem;
-    margin-bottom: 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
 }
 
 /* Create Org Form */
 .create-org-form {
-    margin-top: 1rem;
-    text-align: left;
+  margin-top: 1rem;
+  text-align: left;
 }
 
 .create-org-form .form-group {
-    margin-bottom: 1rem;
+  margin-bottom: 1rem;
 }
 
 .create-org-form label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
 }
 
 .create-org-form input {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    font-size: 1rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 1rem;
 }
 
 /* Waiting Screen */
 .waiting-actions {
-    margin: 2rem 0;
+  margin: 2rem 0;
 }
 
 .divider {
-    border: none;
-    border-top: 1px solid var(--color-border);
-    margin: 2rem 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 2rem 0;
 }
 
 .change-mind {
-    color: var(--color-text-muted);
+  color: var(--color-text-muted);
 }
 
 .change-mind p {
-    margin-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 /* Button sizes */
 .btn-lg {
-    padding: 0.875rem 1.5rem;
-    font-size: 1rem;
+  padding: 0.875rem 1.5rem;
+  font-size: 1rem;
 }
 ```
 
@@ -1060,6 +1068,7 @@ git commit -m "feat(cp): add onboarding styles"
 ### Task 3.4: Integrate Onboarding into App Init
 
 **Files:**
+
 - Create: `spa/src/cp-init.ts`
 
 **Step 1: Create ClassroomPath init wrapper**
@@ -1069,7 +1078,7 @@ Create file `spa/src/cp-init.ts`:
 ```typescript
 /**
  * ClassroomPath Init Wrapper
- * 
+ *
  * This module wraps OpenPath's init() to add onboarding check.
  * Import this instead of OpenPath's app-core when building ClassroomPath SPA.
  */
@@ -1084,46 +1093,46 @@ export * from '../../upstream/openpath/spa/src/modules/app-core.js';
 import { init as openpathInit } from '../../upstream/openpath/spa/src/modules/app-core.js';
 
 function showScreen(screenId: string): void {
-    document.querySelectorAll('.screen').forEach((el) => {
-        el.classList.add('hidden');
-    });
-    document.getElementById(screenId)?.classList.remove('hidden');
+  document.querySelectorAll('.screen').forEach((el) => {
+    el.classList.add('hidden');
+  });
+  document.getElementById(screenId)?.classList.remove('hidden');
 }
 
 /**
  * ClassroomPath init - adds onboarding check before OpenPath init
  */
 export async function init(): Promise<void> {
-    // If not authenticated, let OpenPath handle login
-    if (!auth.isAuthenticated()) {
-        return openpathInit();
-    }
-
-    // Check onboarding status
-    const status = await onboarding.checkStatus();
-
-    if (!status.hasMembership) {
-        // User has no organization - show onboarding
-        onboarding.initUI();
-        
-        if (status.isWaiting) {
-            showScreen('waiting-screen');
-        } else {
-            showScreen('onboarding-screen');
-            
-            // Setup show form button
-            document.getElementById('show-create-form-btn')?.addEventListener('click', () => {
-                document.getElementById('create-org-form')?.classList.remove('hidden');
-                document.getElementById('show-create-form-btn')?.classList.add('hidden');
-                document.getElementById('org-name-input')?.focus();
-            });
-        }
-        return;
-    }
-
-    // User has organization - proceed with OpenPath
-    console.log(`User belongs to org: ${status.organization?.name} as ${status.organization?.role}`);
+  // If not authenticated, let OpenPath handle login
+  if (!auth.isAuthenticated()) {
     return openpathInit();
+  }
+
+  // Check onboarding status
+  const status = await onboarding.checkStatus();
+
+  if (!status.hasMembership) {
+    // User has no organization - show onboarding
+    onboarding.initUI();
+
+    if (status.isWaiting) {
+      showScreen('waiting-screen');
+    } else {
+      showScreen('onboarding-screen');
+
+      // Setup show form button
+      document.getElementById('show-create-form-btn')?.addEventListener('click', () => {
+        document.getElementById('create-org-form')?.classList.remove('hidden');
+        document.getElementById('show-create-form-btn')?.classList.add('hidden');
+        document.getElementById('org-name-input')?.focus();
+      });
+    }
+    return;
+  }
+
+  // User has organization - proceed with OpenPath
+  console.log(`User belongs to org: ${status.organization?.name} as ${status.organization?.role}`);
+  return openpathInit();
 }
 ```
 
@@ -1141,6 +1150,7 @@ git commit -m "feat(cp): add init wrapper with onboarding check"
 ### Task 4.1: Create ClassroomPath SPA Build Script
 
 **Files:**
+
 - Create: `spa/vite.config.ts`
 - Create: `spa/package.json`
 
@@ -1153,36 +1163,36 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
 export default defineConfig({
-    root: '../upstream/openpath/spa',
-    build: {
-        outDir: resolve(__dirname, 'dist'),
-        emptyOutDir: true,
-        rollupOptions: {
-            input: {
-                main: resolve(__dirname, '../upstream/openpath/spa/index.html'),
-            },
-        },
+  root: '../upstream/openpath/spa',
+  build: {
+    outDir: resolve(__dirname, 'dist'),
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, '../upstream/openpath/spa/index.html'),
+      },
     },
-    resolve: {
-        alias: {
-            // Override OpenPath's app-core with our wrapper
-            '@openpath/app-core': resolve(__dirname, 'src/cp-init.ts'),
-        },
+  },
+  resolve: {
+    alias: {
+      // Override OpenPath's app-core with our wrapper
+      '@openpath/app-core': resolve(__dirname, 'src/cp-init.ts'),
     },
-    plugins: [
-        // Plugin to inject onboarding screens into index.html
-        {
-            name: 'inject-onboarding-html',
-            transformIndexHtml(html) {
-                const onboardingHtml = require('fs').readFileSync(
-                    resolve(__dirname, 'onboarding-screens.html'),
-                    'utf-8'
-                );
-                // Insert before closing </body>
-                return html.replace('</body>', `${onboardingHtml}\n</body>`);
-            },
-        },
-    ],
+  },
+  plugins: [
+    // Plugin to inject onboarding screens into index.html
+    {
+      name: 'inject-onboarding-html',
+      transformIndexHtml(html) {
+        const onboardingHtml = require('fs').readFileSync(
+          resolve(__dirname, 'onboarding-screens.html'),
+          'utf-8'
+        );
+        // Insert before closing </body>
+        return html.replace('</body>', `${onboardingHtml}\n</body>`);
+      },
+    },
+  ],
 });
 ```
 
@@ -1222,6 +1232,7 @@ git commit -m "feat(cp): add SPA build configuration"
 ### Task 4.2: Update Docker Compose for Dual Services
 
 **Files:**
+
 - Modify: `docker/docker-compose.yml`
 - Create: `docker/Dockerfile.cp-api`
 
@@ -1266,7 +1277,7 @@ services:
     container_name: classroompath-gateway
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - '3001:3001'
     environment:
       - CP_PORT=3001
       - OPENPATH_API_URL=http://api:3000
@@ -1275,7 +1286,7 @@ services:
     depends_on:
       - api
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/cp/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:3001/cp/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -1288,13 +1299,13 @@ services:
     container_name: classroompath-api
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - '3000:3000'
     env_file:
       - ../config/.env
     volumes:
       - api-data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -1308,7 +1319,7 @@ services:
     container_name: classroompath-spa
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - '8080:80'
     volumes:
       - ./spa-nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -1331,6 +1342,7 @@ git commit -m "feat(cp): add gateway service to docker-compose"
 ### Task 4.3: Update Nginx Config for Gateway Routing
 
 **Files:**
+
 - Modify: `docker/spa-nginx.conf`
 
 **Step 1: Update nginx config**
@@ -1409,6 +1421,7 @@ git commit -m "feat(cp): add gateway routing to nginx config"
 ### Task 5.1: Create Onboarding API Tests
 
 **Files:**
+
 - Create: `api/tests/onboarding.test.ts`
 
 **Step 1: Create test file**
@@ -1425,56 +1438,56 @@ import * as onboardingService from '../src/services/onboarding.service.js';
 const TEST_USER_ID = 'test-user-' + Date.now();
 
 describe('Onboarding Service', () => {
-    after(async () => {
-        // Cleanup
-        await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, TEST_USER_ID));
-        await db.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, TEST_USER_ID));
-        // Note: org cleanup would cascade from memberships
-    });
+  after(async () => {
+    // Cleanup
+    await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, TEST_USER_ID));
+    await db.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, TEST_USER_ID));
+    // Note: org cleanup would cascade from memberships
+  });
 
-    it('should return no membership for new user', async () => {
-        const status = await onboardingService.getOnboardingStatus(TEST_USER_ID);
-        
-        assert.strictEqual(status.hasMembership, false);
-        assert.strictEqual(status.isWaiting, false);
-        assert.strictEqual(status.organization, null);
-    });
+  it('should return no membership for new user', async () => {
+    const status = await onboardingService.getOnboardingStatus(TEST_USER_ID);
 
-    it('should create organization and admin membership', async () => {
-        const result = await onboardingService.createOrganization('Test School', TEST_USER_ID);
-        
-        assert.ok(result.organizationId.startsWith('org_'));
-        assert.ok(result.membershipId.startsWith('mem_'));
-        
-        // Verify membership
-        const status = await onboardingService.getOnboardingStatus(TEST_USER_ID);
-        assert.strictEqual(status.hasMembership, true);
-        assert.strictEqual(status.organization?.name, 'Test School');
-        assert.strictEqual(status.organization?.role, 'admin');
-    });
+    assert.strictEqual(status.hasMembership, false);
+    assert.strictEqual(status.isWaiting, false);
+    assert.strictEqual(status.organization, null);
+  });
 
-    it('should set waiting status', async () => {
-        const waitingUserId = TEST_USER_ID + '-waiting';
-        
-        await onboardingService.setWaitingStatus(waitingUserId);
-        
-        const status = await onboardingService.getOnboardingStatus(waitingUserId);
-        assert.strictEqual(status.hasMembership, false);
-        assert.strictEqual(status.isWaiting, true);
-        
-        // Cleanup
-        await db.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, waitingUserId));
-    });
+  it('should create organization and admin membership', async () => {
+    const result = await onboardingService.createOrganization('Test School', TEST_USER_ID);
 
-    it('should clear waiting status', async () => {
-        const waitingUserId = TEST_USER_ID + '-clear';
-        
-        await onboardingService.setWaitingStatus(waitingUserId);
-        await onboardingService.clearWaitingStatus(waitingUserId);
-        
-        const status = await onboardingService.getOnboardingStatus(waitingUserId);
-        assert.strictEqual(status.isWaiting, false);
-    });
+    assert.ok(result.organizationId.startsWith('org_'));
+    assert.ok(result.membershipId.startsWith('mem_'));
+
+    // Verify membership
+    const status = await onboardingService.getOnboardingStatus(TEST_USER_ID);
+    assert.strictEqual(status.hasMembership, true);
+    assert.strictEqual(status.organization?.name, 'Test School');
+    assert.strictEqual(status.organization?.role, 'admin');
+  });
+
+  it('should set waiting status', async () => {
+    const waitingUserId = TEST_USER_ID + '-waiting';
+
+    await onboardingService.setWaitingStatus(waitingUserId);
+
+    const status = await onboardingService.getOnboardingStatus(waitingUserId);
+    assert.strictEqual(status.hasMembership, false);
+    assert.strictEqual(status.isWaiting, true);
+
+    // Cleanup
+    await db.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, waitingUserId));
+  });
+
+  it('should clear waiting status', async () => {
+    const waitingUserId = TEST_USER_ID + '-clear';
+
+    await onboardingService.setWaitingStatus(waitingUserId);
+    await onboardingService.clearWaitingStatus(waitingUserId);
+
+    const status = await onboardingService.getOnboardingStatus(waitingUserId);
+    assert.strictEqual(status.isWaiting, false);
+  });
 });
 ```
 
@@ -1513,6 +1526,7 @@ git commit -m "test(cp): add onboarding service tests"
 ### Task 6.1: Update ClassroomPath README
 
 **Files:**
+
 - Modify: `README.md`
 
 **Step 1: Add multi-tenancy section to README**
@@ -1537,23 +1551,23 @@ ClassroomPath adds organization-based multi-tenancy on top of OpenPath:
 
 ClassroomPath adds these tables (prefixed with `cp_`):
 
-| Table | Purpose |
-|-------|---------|
-| `cp_organizations` | Organization records |
-| `cp_memberships` | User-organization associations with roles |
-| `cp_user_status` | Tracks users waiting for invitations |
+| Table              | Purpose                                   |
+| ------------------ | ----------------------------------------- |
+| `cp_organizations` | Organization records                      |
+| `cp_memberships`   | User-organization associations with roles |
+| `cp_user_status`   | Tracks users waiting for invitations      |
 
 ### API Endpoints
 
 Gateway API runs on port 3001 with prefix `/cp/`:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/cp/health` | GET | Health check |
-| `/cp/trpc/onboarding.status` | GET | Get user's org membership status |
-| `/cp/trpc/onboarding.createOrganization` | POST | Create new org |
-| `/cp/trpc/onboarding.waitForInvitation` | POST | Set waiting status |
-| `/cp/trpc/onboarding.cancelWaiting` | POST | Clear waiting status |
+| Endpoint                                 | Method | Description                      |
+| ---------------------------------------- | ------ | -------------------------------- |
+| `/cp/health`                             | GET    | Health check                     |
+| `/cp/trpc/onboarding.status`             | GET    | Get user's org membership status |
+| `/cp/trpc/onboarding.createOrganization` | POST   | Create new org                   |
+| `/cp/trpc/onboarding.waitForInvitation`  | POST   | Set waiting status               |
+| `/cp/trpc/onboarding.cancelWaiting`      | POST   | Clear waiting status             |
 ```
 
 **Step 2: Commit**
@@ -1568,6 +1582,7 @@ git commit -m "docs(cp): add multi-tenancy documentation"
 ### Task 6.2: Update Environment Example
 
 **Files:**
+
 - Modify: `config/.env.example`
 
 **Step 1: Add ClassroomPath variables**
@@ -1606,6 +1621,7 @@ This plan implements multi-tenancy in ClassroomPath with:
 5. **Nginx**: Routing for `/cp/*` to gateway
 
 **Key architectural decisions:**
+
 - OpenPath remains completely unchanged (single-tenant)
 - ClassroomPath adds a gateway layer for multi-tenant features
 - Users without membership see onboarding, not dashboard

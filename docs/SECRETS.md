@@ -5,12 +5,12 @@ Configure these secrets in your GitHub repository settings:
 
 ## Required Secrets
 
-| Secret | Description | Example |
-|--------|-------------|---------|
-| `DEPLOY_HOST` | Hostname or IP of your server | `classroompath.duckdns.org` |
-| `DEPLOY_USER` | SSH username on the server | `deploy` or `pi` |
-| `DEPLOY_SSH_KEY` | Private SSH key for authentication | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| `DEPLOY_PORT` | SSH port (optional, defaults to 22) | `22` |
+| Secret           | Description                         | Example                                  |
+| ---------------- | ----------------------------------- | ---------------------------------------- |
+| `DEPLOY_HOST`    | Hostname or IP of your server       | `classroompath.duckdns.org`              |
+| `DEPLOY_USER`    | SSH username on the server          | `deploy` or `pi`                         |
+| `DEPLOY_SSH_KEY` | Private SSH key for authentication  | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `DEPLOY_PORT`    | SSH port (optional, defaults to 22) | `22`                                     |
 
 ## Generating SSH Keys
 
@@ -28,6 +28,7 @@ cat ~/.ssh/classroompath_deploy
 ## Server Prerequisites
 
 Your server needs:
+
 1. Node.js >= 20 installed
 2. PostgreSQL running
 3. Git installed
@@ -56,6 +57,7 @@ WantedBy=multi-user.target
 ```
 
 Enable with:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable classroompath-api

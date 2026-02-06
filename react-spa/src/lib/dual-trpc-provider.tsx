@@ -30,9 +30,7 @@ const cpTrpcClient = cpTrpcReact.createClient({
 export function DualTRPCProvider({ children }: { children: React.ReactNode }) {
   return (
     <cpTrpcReact.Provider client={cpTrpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </cpTrpcReact.Provider>
   );
 }

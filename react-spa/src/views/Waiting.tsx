@@ -14,7 +14,7 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
   const query = useOnboardingStatus({
     refetchInterval: 30000, // Polling cada 30s
   });
-  
+
   const { data, refetch, isFetching } = query;
 
   useEffect(() => {
@@ -22,9 +22,9 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
       onStatusChange();
     }
   }, [data, onStatusChange]);
-  
+
   const cancelMutation = useCancelWaiting();
-  
+
   const handleCancel = () => {
     cancelMutation.mutate(undefined, {
       onSuccess: () => {
@@ -32,7 +32,7 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
       },
     });
   };
-  
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <Card className="w-full max-w-md p-10 text-center shadow-lg">
@@ -42,11 +42,11 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
           </div>
           <h1 className="text-2xl font-bold mb-3 text-gray-900">Esperando invitación</h1>
           <p className="text-gray-600 leading-relaxed">
-            Un administrador de tu institución debe agregarte a la organización. 
-            Te redirigiremos automáticamente cuando esto suceda.
+            Un administrador de tu institución debe agregarte a la organización. Te redirigiremos
+            automáticamente cuando esto suceda.
           </p>
         </div>
-        
+
         <div className="space-y-4">
           <Button
             onClick={() => refetch()}
@@ -58,7 +58,7 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
             <RefreshCw size={18} className={`mr-2 ${isFetching ? 'animate-spin' : ''}`} />
             {isFetching ? 'Verificando...' : 'Verificar ahora'}
           </Button>
-          
+
           <Button
             onClick={handleCancel}
             data-testid="waiting-cancel"
@@ -71,16 +71,12 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
           </Button>
 
           {onLogout && (
-            <Button
-              onClick={onLogout}
-              variant="outline"
-              className="w-full py-6 border-2"
-            >
+            <Button onClick={onLogout} variant="outline" className="w-full py-6 border-2">
               Cerrar sesión
             </Button>
           )}
         </div>
-        
+
         <p className="mt-8 text-xs text-gray-400">
           Esta página se actualiza automáticamente cada 30 segundos.
         </p>

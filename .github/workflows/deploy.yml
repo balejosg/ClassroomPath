@@ -28,7 +28,7 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
-    
+
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v4
@@ -90,7 +90,7 @@ jobs:
             git reset --hard origin/main
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
-            
+
             # Run database migrations using Node.js Docker container
             echo "Running ClassroomPath database migrations..."
             cd /opt/classroompath/app
@@ -103,7 +103,7 @@ jobs:
               --env-file /opt/classroompath/app/config/.env \
               node:20-alpine \
               sh -c "npm install && npm run db:push"
-            
+
             cd /opt/classroompath/app/docker
             export COMPOSE_PROJECT_NAME=classroompath-staging
             docker compose down --remove-orphans || true
@@ -113,14 +113,14 @@ jobs:
             docker builder prune -af || true
             docker compose build --no-cache
             docker compose up -d --force-recreate
-            
+
             # Wait for containers to be healthy
             echo "Waiting for services to be healthy..."
             timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done' || {
               echo "⚠️ Warning: Timeout waiting for health checks"
               docker compose ps
             }
-            
+
             # Health check - Gateway is the primary entry point now
             curl -sf http://localhost:3001/cp/health && echo "✅ Staging Gateway OK" || exit 1
 
@@ -196,7 +196,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
-    
+
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v4
@@ -256,7 +256,7 @@ jobs:
 
             DEPLOY_DIR="/opt/classroompath"
             APP_DIR="$DEPLOY_DIR/app"
-            
+
             cd "$APP_DIR"
 
             # Pull latest changes with submodules
@@ -285,20 +285,20 @@ jobs:
             echo "Stopping existing containers..."
             docker compose down --remove-orphans || true
             docker rm -f classroompath-production-api-1 classroompath-production-gateway-1 classroompath-production-spa-1 2>/dev/null || true
-            
+
             echo "Rebuilding Docker images..."
             docker compose build --no-cache
 
             echo "Starting containers..."
             docker compose up -d --force-recreate
-            
+
             # Wait for containers to be healthy
             echo "Waiting for services to be healthy..."
             timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done' || {
               echo "⚠️ Warning: Timeout waiting for health checks"
               docker compose ps
             }
-            
+
             # Health check - Gateway is the primary entry point now
             for i in 1 2 3 4 5; do
               if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
@@ -314,7 +314,7 @@ jobs:
               docker logs classroompath-gateway --tail 30
               exit 1
             fi
-            
+
             echo "✅ Deployment successful!"
             docker logs classroompath-gateway --tail 5
 

@@ -15,9 +15,9 @@ classroompath.duckdns.org
    │                 │
    ▼                 ▼
 /api/*            /*
-/trpc/*           
-/health           
-/w/*              
+/trpc/*
+/health
+/w/*
    │                 │
    ▼                 ▼
 ┌─────────────┐ ┌─────────────┐
@@ -58,21 +58,21 @@ docker compose logs -f
 
 #### Details tab:
 
-| Field | Value |
-|-------|-------|
-| Domain Names | `classroompath.duckdns.org` |
-| Scheme | `http` |
-| Forward Hostname/IP | `classroompath-spa` |
-| Forward Port | `80` |
-| Block Common Exploits | ✅ |
+| Field                 | Value                       |
+| --------------------- | --------------------------- |
+| Domain Names          | `classroompath.duckdns.org` |
+| Scheme                | `http`                      |
+| Forward Hostname/IP   | `classroompath-spa`         |
+| Forward Port          | `80`                        |
+| Block Common Exploits | ✅                          |
 
 #### SSL tab:
 
-| Field | Value |
-|-------|-------|
+| Field           | Value                       |
+| --------------- | --------------------------- |
 | SSL Certificate | Request new SSL Certificate |
-| Force SSL | ✅ |
-| HTTP/2 Support | ✅ |
+| Force SSL       | ✅                          |
+| HTTP/2 Support  | ✅                          |
 
 #### Advanced tab:
 
@@ -89,7 +89,7 @@ If NPM is in a different Docker network, use container IPs or add containers to 
 networks:
   default:
     external: true
-    name: npm_network  # Replace with your NPM network name
+    name: npm_network # Replace with your NPM network name
 ```
 
 ## Updating
@@ -128,6 +128,7 @@ docker network inspect <network_name>
 ### API returns 502
 
 Check API logs:
+
 ```bash
 docker compose logs api
 ```
@@ -135,6 +136,7 @@ docker compose logs api
 ### SPA shows blank page
 
 Check SPA logs and verify files are mounted:
+
 ```bash
 docker compose logs spa
 docker compose exec spa ls -la /usr/share/nginx/html

@@ -1,6 +1,6 @@
 /**
  * Test Utilities for ClassroomPath E2E Tests
- * 
+ *
  * Provides test data factories, helpers, and common setup functions.
  */
 
@@ -24,9 +24,11 @@ export interface TestOrganization {
  * Creates a unique test user with timestamp-based email
  */
 export function createTestUser(overrides: Partial<TestUser> = {}): TestUser {
+  // Use timestamp + random string to ensure uniqueness even in parallel tests
   const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 8);
   return {
-    email: `test-${timestamp}@e2e-classroompath.local`,
+    email: `test-${timestamp}-${random}@e2e-classroompath.local`,
     password: 'SecurePassword123!',
     name: `E2E User ${timestamp}`,
     ...overrides,
@@ -36,7 +38,9 @@ export function createTestUser(overrides: Partial<TestUser> = {}): TestUser {
 /**
  * Creates a unique test organization
  */
-export function createTestOrganization(overrides: Partial<TestOrganization> = {}): TestOrganization {
+export function createTestOrganization(
+  overrides: Partial<TestOrganization> = {}
+): TestOrganization {
   const timestamp = Date.now();
   return {
     name: `E2E Organization ${timestamp}`,
@@ -65,6 +69,30 @@ export const PENDING_USER_ACCOUNT = {
 };
 
 // ============================================================================
+// App State Helpers
+// ============================================================================
+
+/**
+ * ClassroomPath is largely state-driven (auth + onboarding) rather than URL-routed.
+ * After login we can land on:
+ * - Onboarding (no membership)
+ * - Waiting (requested access)
+ * - OpenPathApp (onboarded)
+ * - Access-check error screen (transient API failure)
+ */
+export async function waitForPostAuthScreen(page: Page, timeout = 20000): Promise<void> {
+  const candidates = [
+    page.getByTestId('onboarding-org-name'),
+    page.getByTestId('waiting-check-now'),
+    page.getByText('No se pudo verificar tu acceso'),
+    page.getByRole('button', { name: 'Panel de Control' }),
+    page.getByText('OpenPath'),
+  ];
+
+  await Promise.race(candidates.map((l) => l.waitFor({ state: 'visible', timeout })));
+}
+
+// ============================================================================
 // Authentication Helpers
 // ============================================================================
 
@@ -73,20 +101,25 @@ export const PENDING_USER_ACCOUNT = {
  */
 export async function registerUser(page: Page, user: TestUser): Promise<void> {
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
-  
+  await page.waitForLoadState('domcontentloaded');
+
   // Navigate to register if on login
-  const registerLink = page.getByText(/Crear Cuenta|Regístrate|¿No tienes cuenta/i);
-  if (await registerLink.isVisible()) {
-    await registerLink.click();
+  const registerCta = page.getByTestId('navigate-to-register');
+  if (await registerCta.isVisible().catch(() => false)) {
+    await registerCta.click();
   }
-  
-  await page.getByPlaceholder('correo@ejemplo.com').fill(user.email);
-  await page.getByPlaceholder('Tu nombre completo').fill(user.name);
-  await page.locator('input[type="password"]').first().fill(user.password);
-  await page.locator('input[type="password"]').last().fill(user.password);
-  await page.getByLabel(/Acepto los/).check();
-  await page.getByRole('button', { name: 'Registrarse' }).click();
+
+  // Wait for register form
+  await page.getByTestId('register-email').waitFor({ state: 'visible', timeout: 10000 });
+
+  await page.getByTestId('register-email').fill(user.email);
+  await page.getByTestId('register-name').fill(user.name);
+  await page.getByTestId('register-password').fill(user.password);
+  await page.getByTestId('register-confirm-password').fill(user.password);
+  await page.getByTestId('register-terms').check();
+  await page.getByTestId('register-submit').click();
+
+  await waitForPostAuthScreen(page);
 }
 
 /**
@@ -94,12 +127,43 @@ export async function registerUser(page: Page, user: TestUser): Promise<void> {
  */
 export async function loginUser(page: Page, email: string, password: string): Promise<void> {
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
-  
-  await page.locator('input[type="email"]').fill(email);
-  await page.locator('input[type="password"]').fill(password);
-  await page.getByRole('button', { name: /Entrar|Login/i }).click();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
+
+  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 10000 });
+
+  await page.getByTestId('login-email').fill(email);
+  await page.getByTestId('login-password').fill(password);
+  await page.getByTestId('login-submit').click();
+  await page.waitForLoadState('domcontentloaded');
+
+  // Wait for either success or failure
+  const successLocators = [
+    page.getByTestId('onboarding-org-name'),
+    page.getByTestId('waiting-check-now'),
+    page.getByRole('button', { name: 'Panel de Control' }),
+    page.getByText('OpenPath'),
+  ];
+
+  const errorLocator = page.getByText(
+    /Credenciales inválidas|Invalid credentials|error de conexión/i
+  );
+
+  try {
+    await Promise.race([
+      ...successLocators.map((l) => l.waitFor({ state: 'visible', timeout: 20000 })),
+      errorLocator.waitFor({ state: 'visible', timeout: 20000 }).then(() => {
+        throw new Error(`Login failed for ${email}: Invalid credentials or connection error`);
+      }),
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Login failed')) {
+      throw error;
+    }
+    // Re-throw timeout errors with more context
+    throw new Error(
+      `Login timeout for ${email}: Neither dashboard nor error appeared. Current URL: ${page.url()}`
+    );
+  }
 }
 
 /**
@@ -131,8 +195,25 @@ export async function logout(page: Page): Promise<void> {
 /**
  * Clears all authentication state
  */
-export async function clearAuth(context: BrowserContext): Promise<void> {
+export async function clearAuth(target: BrowserContext | Page): Promise<void> {
+  const context: BrowserContext = 'newPage' in target ? target : target.context();
   await context.clearCookies();
+
+  const page: Page = 'newPage' in target ? await target.newPage() : target;
+  if (!page.url().startsWith('http')) {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+  }
+
+  await page.evaluate(() => {
+    localStorage.removeItem('openpath_access_token');
+    localStorage.removeItem('openpath_refresh_token');
+    localStorage.removeItem('openpath_user');
+    // Legacy token key still supported by OpenPath SPA
+    localStorage.removeItem('requests_api_token');
+    sessionStorage.clear();
+  });
+
+  if ('newPage' in target) await page.close();
 }
 
 // ============================================================================
@@ -171,7 +252,8 @@ export async function waitForLoadingComplete(page: Page): Promise<void> {
  * Navigates to dashboard and waits for load
  */
 export async function goToDashboard(page: Page): Promise<void> {
-  await page.goto('/dashboard');
+  // OpenPathApp uses internal tab state; ensure it is loaded and select tab via UI.
+  await page.getByRole('button', { name: 'Panel de Control' }).click();
   await waitForNetworkIdle(page);
 }
 
@@ -179,7 +261,8 @@ export async function goToDashboard(page: Page): Promise<void> {
  * Navigates to organization settings
  */
 export async function goToOrganization(page: Page): Promise<void> {
-  await page.goto('/organization');
+  // There is no dedicated URL route; use OpenPathApp sidebar.
+  await page.getByRole('button', { name: 'Usuarios y Roles' }).click();
   await waitForNetworkIdle(page);
 }
 
@@ -191,25 +274,20 @@ export async function goToOrganization(page: Page): Promise<void> {
  * Completes the organization creation onboarding flow
  */
 export async function completeOrgOnboarding(page: Page, orgName: string): Promise<void> {
-  // Wait for onboarding page
-  await page.getByText(/¡Bienvenido|Welcome/i).waitFor({ state: 'visible', timeout: 10000 });
-  
-  // Fill organization name
-  await page.getByPlaceholder(/Ej: Colegio|organization/i).fill(orgName);
-  
-  // Create organization
-  await page.getByRole('button', { name: /Crear Organización|Create/i }).click();
-  
-  // Wait for dashboard
-  await page.waitForURL(/\/dashboard/, { timeout: 15000 });
+  await page.getByTestId('onboarding-org-name').waitFor({ state: 'visible', timeout: 15000 });
+  await page.getByTestId('onboarding-org-name').fill(orgName);
+  await page.getByTestId('onboarding-create-org').click();
+
+  // After org creation, the app transitions into the OpenPath UI.
+  await waitForPostAuthScreen(page, 30000);
 }
 
 /**
  * Selects "wait for invite" option in onboarding
  */
 export async function selectWaitForInvite(page: Page): Promise<void> {
-  await page.getByText(/¡Bienvenido|Welcome/i).waitFor({ state: 'visible', timeout: 10000 });
-  await page.getByRole('button', { name: /Solicitar Acceso|Request|Esperar/i }).click();
+  await page.getByTestId('onboarding-wait-invite').waitFor({ state: 'visible', timeout: 15000 });
+  await page.getByTestId('onboarding-wait-invite').click();
 }
 
 // ============================================================================
@@ -220,14 +298,16 @@ export async function selectWaitForInvite(page: Page): Promise<void> {
  * Checks if user is on waiting page
  */
 export async function expectWaitingPage(page: Page): Promise<void> {
-  await page.getByText(/Esperando invitación|Waiting/i).waitFor({ state: 'visible', timeout: 5000 });
+  await page.getByTestId('waiting-check-now').waitFor({ state: 'visible', timeout: 10000 });
 }
 
 /**
  * Checks if user is on dashboard
  */
 export async function expectDashboard(page: Page): Promise<void> {
-  await page.getByText(/Dashboard/i).waitFor({ state: 'visible', timeout: 5000 });
+  await page
+    .getByRole('button', { name: 'Panel de Control' })
+    .waitFor({ state: 'visible', timeout: 15000 });
 }
 
 /**
