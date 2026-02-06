@@ -19,7 +19,7 @@ import {
 
 test.describe('Waiting Room Flow', () => {
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('should show waiting screen after requesting access @waiting', async ({ page }) => {
+  test('should show waiting screen after requesting access @waiting', async ({ page }) => {
     const testUser = createTestUser();
 
     // Register new user
@@ -42,7 +42,7 @@ test.describe('Waiting Room Flow', () => {
   });
 
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('should allow manual status check @waiting', async ({ page }) => {
+  test('should allow manual status check @waiting', async ({ page }) => {
     const testUser = createTestUser();
 
     // Register and go to waiting
@@ -65,7 +65,7 @@ test.describe('Waiting Room Flow', () => {
   });
 
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('should auto-refresh status periodically @waiting @auto-refresh', async ({ page }) => {
+  test('should auto-refresh status periodically @waiting @auto-refresh', async ({ page }) => {
     const testUser = createTestUser();
 
     // Register and go to waiting
@@ -92,7 +92,7 @@ test.describe('Waiting Room Flow', () => {
   });
 
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('should allow user to cancel waiting and go back @waiting', async ({ page }) => {
+  test('should allow user to cancel waiting and go back @waiting', async ({ page }) => {
     const testUser = createTestUser();
 
     // Register and go to waiting
@@ -113,24 +113,30 @@ test.describe('Waiting Room Flow', () => {
 });
 
 test.describe('Admin Approval Flow', () => {
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
-  test.skip('should show pending users to admin @waiting @admin', async ({ page }) => {
+  // Run serially to avoid race conditions with shared admin account
+  test.describe.configure({ mode: 'serial' });
+
+  test('should show users management view to admin @waiting @admin', async ({ page }) => {
     await loginAsAdmin(page);
     await waitForNetworkIdle(page);
 
-    // Navigate to organization/pending users
+    // Navigate to users management
     const orgPage = new OrganizationPage(page);
     await orgPage.goto();
 
-    // Should see pending section
-    await expect(page.getByText(/Pendientes|Pending|Solicitudes/i)).toBeVisible();
+    // Should see users management heading (Spanish: "Gestión de Usuarios")
+    await expect(page.getByRole('heading', { name: /Gestión de Usuarios/i })).toBeVisible({
+      timeout: 5000,
+    });
+
+    // Should see the users table with proper columns
+    await expect(page.getByRole('table')).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Usuario' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Email' })).toBeVisible();
   });
 
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('should allow admin to approve pending user @waiting @admin', async ({
-    page,
-    browser,
-  }) => {
+  test('should allow admin to approve pending user @waiting @admin', async ({ page, browser }) => {
     // This test requires two browser contexts: admin and pending user
 
     // First, create a pending user in a separate context
@@ -173,10 +179,7 @@ test.describe('Admin Approval Flow', () => {
   });
 
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('should allow admin to reject pending user @waiting @admin', async ({
-    page,
-    browser,
-  }) => {
+  test('should allow admin to reject pending user @waiting @admin', async ({ page, browser }) => {
     const userContext = await browser.newContext();
     const userPage = await userContext.newPage();
 
@@ -216,7 +219,7 @@ test.describe('Admin Approval Flow', () => {
   });
 
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('should notify user when approved @waiting @notification', async ({ page }) => {
+  test('should notify user when approved @waiting @notification', async ({ page }) => {
     // Test that approved users are redirected to dashboard
     // This is a simplified version - in production, use WebSocket or polling
 

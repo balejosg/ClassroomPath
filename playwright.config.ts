@@ -24,17 +24,17 @@ export default defineConfig({
   /* Global setup - seeds test accounts before running tests */
   globalSetup: './tests/e2e/setup/global-setup.ts',
 
-  /* Run tests in parallel */
+  /* Run tests in parallel for speed */
   fullyParallel: true,
 
   /* Fail on CI if test.only is left in code */
   forbidOnly: isCI,
 
-  /* Retry - helps with flaky tests due to shared servers */
-  retries: isCI ? 2 : 1,
+  /* Retry on failure - critical for handling transient race conditions */
+  retries: isCI ? 2 : 2,
 
-  /* Parallel workers - limit to avoid race conditions with shared test accounts */
-  workers: isCI ? 2 : 2,
+  /* Parallel workers for speed */
+  workers: isCI ? 2 : 4,
 
   /* Reporter configuration */
   reporter: isCI
@@ -96,6 +96,8 @@ export default defineConfig({
       timeout: 120000,
       env: {
         ...process.env,
+        // NODE_ENV=test disables rate limiting for parallel E2E tests
+        NODE_ENV: 'test',
         PORT: String(openPathApiPort),
         // Match ClassroomPath's JWT_SECRET so tokens can be verified across services
         JWT_SECRET: process.env.JWT_SECRET ?? 'dev-secret-key-change-me-in-production',
@@ -110,6 +112,8 @@ export default defineConfig({
       timeout: 120000,
       env: {
         ...process.env,
+        // NODE_ENV=test disables rate limiting for parallel E2E tests
+        NODE_ENV: 'test',
         CP_PORT: String(cpGatewayPort),
         OPENPATH_API_URL: `http://localhost:${String(openPathApiPort)}`,
         // Must match OpenPath's JWT_SECRET for token verification

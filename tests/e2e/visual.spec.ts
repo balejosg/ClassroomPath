@@ -52,7 +52,7 @@ test.describe('Visual Regression - Landing/Register', () => {
 
 test.describe('Visual Regression - Onboarding', () => {
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('onboarding page desktop @visual', async ({ page }) => {
+  test('onboarding page desktop @visual', async ({ page }) => {
     const testUser = createTestUser();
     await registerUser(page, testUser);
 
@@ -67,7 +67,7 @@ test.describe('Visual Regression - Onboarding', () => {
   });
 
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('onboarding page mobile @visual', async ({ page }) => {
+  test('onboarding page mobile @visual', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
 
     const testUser = createTestUser();
@@ -85,7 +85,7 @@ test.describe('Visual Regression - Onboarding', () => {
 
 test.describe('Visual Regression - Waiting Room', () => {
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('waiting page desktop @visual', async ({ page }) => {
+  test('waiting page desktop @visual', async ({ page }) => {
     const testUser = createTestUser();
     await registerUser(page, testUser);
 
@@ -103,7 +103,7 @@ test.describe('Visual Regression - Waiting Room', () => {
   });
 
   // TODO: Fix flaky registration in parallel test execution
-  test.skip('waiting page mobile @visual', async ({ page }) => {
+  test('waiting page mobile @visual', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
 
     const testUser = createTestUser();
@@ -123,15 +123,17 @@ test.describe('Visual Regression - Waiting Room', () => {
 });
 
 test.describe('Visual Regression - Dashboard', () => {
-  test.beforeEach(async ({ page }) => {
+  // Run serially to avoid race conditions with shared admin account
+  test.describe.configure({ mode: 'serial' });
+
+  // No beforeEach login - each test handles login after setting viewport
+
+  test('dashboard desktop @visual', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
     await loginAsAdmin(page);
     await waitForNetworkIdle(page);
-  });
-
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
-  test.skip('dashboard desktop @visual', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/dashboard');
+    // OpenPath is state-driven, not URL-routed. Navigate via sidebar.
+    await page.getByRole('button', { name: 'Panel de Control' }).click();
     await waitForNetworkIdle(page);
     await page.waitForTimeout(1000);
 
@@ -141,11 +143,12 @@ test.describe('Visual Regression - Dashboard', () => {
     });
   });
 
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
-  test.skip('dashboard mobile @visual', async ({ page }) => {
+  test('dashboard mobile @visual', async ({ page }) => {
+    // Set viewport BEFORE login so the app loads in mobile mode
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/dashboard');
+    await loginAsAdmin(page);
     await waitForNetworkIdle(page);
+    // On mobile, sidebar may be collapsed - app should already show dashboard by default
     await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot('dashboard-mobile.png', {
@@ -156,14 +159,18 @@ test.describe('Visual Regression - Dashboard', () => {
 });
 
 test.describe('Visual Regression - Organization', () => {
+  // Run serially to avoid race conditions with shared admin account
+  test.describe.configure({ mode: 'serial' });
+
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
   });
 
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
-  test.skip('organization page desktop @visual', async ({ page }) => {
+  test('organization page desktop @visual', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/organization');
+    // OpenPath is state-driven, not URL-routed. Navigate via sidebar.
+    await waitForNetworkIdle(page);
+    await page.getByRole('button', { name: 'Usuarios y Roles' }).click();
     await waitForNetworkIdle(page);
     await page.waitForTimeout(500);
 
@@ -175,8 +182,10 @@ test.describe('Visual Regression - Organization', () => {
 });
 
 test.describe('Visual Regression - Error States', () => {
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
-  test.skip('network error state @visual', async ({ page }) => {
+  // Run serially to avoid race conditions with shared admin account
+  test.describe.configure({ mode: 'serial' });
+
+  test('network error state @visual', async ({ page }) => {
     await loginAsAdmin(page);
 
     // Intercept and fail API calls
@@ -184,7 +193,8 @@ test.describe('Visual Regression - Error States', () => {
     await page.route('**/trpc/**', (route) => route.abort('failed'));
 
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/dashboard');
+    // OpenPath is state-driven - click sidebar to trigger a navigation that will fail
+    await page.getByRole('button', { name: 'Panel de Control' }).click();
     await page.waitForTimeout(2000);
 
     await expect(page).toHaveScreenshot('error-network.png', {
@@ -194,7 +204,7 @@ test.describe('Visual Regression - Error States', () => {
   });
 
   // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
-  test.skip('empty state @visual', async ({ page }) => {
+  test('empty state @visual', async ({ page }) => {
     await loginAsAdmin(page);
 
     // Mock empty data
@@ -206,7 +216,8 @@ test.describe('Visual Regression - Error States', () => {
     });
 
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/groups');
+    // OpenPath is state-driven - navigate via sidebar
+    await page.getByRole('button', { name: 'Aulas Seguras' }).click();
     await waitForNetworkIdle(page);
     await page.waitForTimeout(500);
 
@@ -232,12 +243,13 @@ test.describe('Visual Regression - Dark Mode', () => {
   });
 
   // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
-  test.skip('dashboard dark mode @visual @dark', async ({ page }) => {
+  test('dashboard dark mode @visual @dark', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await loginAsAdmin(page);
 
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/dashboard');
+    // OpenPath is state-driven - navigate via sidebar
+    await page.getByRole('button', { name: 'Panel de Control' }).click();
     await waitForNetworkIdle(page);
     await page.waitForTimeout(1000);
 

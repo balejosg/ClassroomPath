@@ -126,29 +126,52 @@ export class DashboardPage {
   readonly newClassroomButton: Locator;
   readonly inviteTeacherButton: Locator;
   readonly settingsButton: Locator;
+  readonly dashboardButton: Locator;
+  readonly classroomsButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.orgName = page.locator('[data-testid="org-name"]');
     this.classroomsList = page.locator('[data-testid="classrooms-list"]');
-    this.newClassroomButton = page.getByRole('button', { name: /Nuevo|New|Crear/i });
+    // The "Nueva" button is in the Classrooms view, not Dashboard
+    this.newClassroomButton = page.getByRole('button', { name: /^Nueva$|Crear aula/i });
     this.inviteTeacherButton = page.getByRole('button', { name: /Invitar|Invite/i });
     this.settingsButton = page.getByRole('button', { name: /Configuración|Settings/i });
+    // Sidebar navigation buttons (Spanish UI)
+    this.dashboardButton = page.getByRole('button', { name: 'Panel de Control' });
+    this.classroomsButton = page.getByRole('button', { name: 'Aulas Seguras' });
   }
 
   async goto() {
-    await this.page.goto('/dashboard');
+    // App is state-driven, not URL-routed. Navigate via sidebar.
+    await this.page.goto('/');
+    await this.page.waitForLoadState('networkidle');
+    // Click dashboard button if visible (we may already be on dashboard)
+    if (await this.dashboardButton.isVisible().catch(() => false)) {
+      await this.dashboardButton.click();
+      await this.page.waitForLoadState('networkidle');
+    }
+  }
+
+  async gotoClassrooms() {
+    // Navigate to Classrooms view via sidebar
+    await this.classroomsButton.click();
     await this.page.waitForLoadState('networkidle');
   }
 
   async expectLoaded() {
-    await expect(this.page.getByText(/Dashboard/i)).toBeVisible({ timeout: 10000 });
+    // Spanish UI shows "Vista General" or "Panel de Control" heading
+    await expect(
+      this.page.getByText(/Vista General|Panel de Control|Estado del Sistema/i)
+    ).toBeVisible({ timeout: 10000 });
   }
 
   async createClassroom(name: string) {
+    // Must be in Classrooms view first
+    await this.gotoClassrooms();
     await this.newClassroomButton.click();
     await this.page.getByLabel(/Nombre|Name/i).fill(name);
-    await this.page.getByRole('button', { name: /Crear|Create|Guardar/i }).click();
+    await this.page.getByRole('button', { name: /Crear Aula|Crear|Guardar/i }).click();
   }
 }
 
@@ -157,16 +180,25 @@ export class OrganizationPage {
   readonly membersList: Locator;
   readonly pendingInvites: Locator;
   readonly inviteButton: Locator;
+  readonly newUserButton: Locator;
+  readonly usersButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.membersList = page.locator('[data-testid="members-list"]');
     this.pendingInvites = page.locator('[data-testid="pending-invites"]');
-    this.inviteButton = page.getByRole('button', { name: /Invitar|Invite/i });
+    // Spanish UI has "+ Nuevo Usuario" button, not "Invitar"
+    this.inviteButton = page.getByRole('button', {
+      name: /Nuevo Usuario|\+ Nuevo|Invitar|Invite/i,
+    });
+    this.newUserButton = page.getByRole('button', { name: '+ Nuevo Usuario' });
+    // Sidebar navigation button (Spanish UI: "Usuarios y Roles")
+    this.usersButton = page.getByRole('button', { name: 'Usuarios y Roles' });
   }
 
   async goto() {
-    await this.page.goto('/organization');
+    // App is state-driven, not URL-routed. Navigate via sidebar.
+    await this.usersButton.click();
     await this.page.waitForLoadState('networkidle');
   }
 

@@ -31,6 +31,7 @@
     "start": "cd upstream/openpath/api && npm start",
     "test": "cd upstream/openpath && npm test",
     "test:e2e": "npx playwright test",
+    "test:e2e:setup": "bash scripts/setup-test-db.sh",
     "test:e2e:ui": "npx playwright test --ui",
     "test:deployment": "node --import tsx --test tests/deployment.test.ts",
     "test:smoke": "node --import tsx --test tests/smoke.test.ts",

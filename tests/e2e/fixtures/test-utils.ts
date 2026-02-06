@@ -7,6 +7,44 @@
 import { Page, BrowserContext } from '@playwright/test';
 
 // ============================================================================
+// Retry Logic for Parallel Test Resilience
+// ============================================================================
+
+/**
+ * Wraps an async operation with retry logic and exponential backoff.
+ * Essential for handling transient failures when tests run in parallel.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number;
+    baseDelay?: number;
+    operationName?: string;
+  } = {}
+): Promise<T> {
+  const { maxRetries = 3, baseDelay = 500, operationName = 'operation' } = options;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isLastAttempt = attempt === maxRetries - 1;
+      if (isLastAttempt) {
+        throw error;
+      }
+
+      const delay = baseDelay * Math.pow(2, attempt);
+      console.log(
+        `[Retry] ${operationName} failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms...`
+      );
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+
+  throw new Error(`${operationName} failed after ${maxRetries} retries`);
+}
+
+// ============================================================================
 // Test Data Factories
 // ============================================================================
 
@@ -97,73 +135,96 @@ export async function waitForPostAuthScreen(page: Page, timeout = 20000): Promis
 // ============================================================================
 
 /**
- * Registers a new user through the UI
+ * Registers a new user through the UI with retry logic for parallel test resilience
  */
 export async function registerUser(page: Page, user: TestUser): Promise<void> {
-  await page.goto('/');
-  await page.waitForLoadState('domcontentloaded');
+  await withRetry(
+    async () => {
+      await page.goto('/');
+      await page.waitForLoadState('domcontentloaded');
 
-  // Navigate to register if on login
-  const registerCta = page.getByTestId('navigate-to-register');
-  if (await registerCta.isVisible().catch(() => false)) {
-    await registerCta.click();
-  }
+      // Navigate to register if on login
+      const registerCta = page.getByTestId('navigate-to-register');
+      if (await registerCta.isVisible().catch(() => false)) {
+        await registerCta.click();
+      }
 
-  // Wait for register form
-  await page.getByTestId('register-email').waitFor({ state: 'visible', timeout: 10000 });
+      // Wait for register form
+      await page.getByTestId('register-email').waitFor({ state: 'visible', timeout: 10000 });
 
-  await page.getByTestId('register-email').fill(user.email);
-  await page.getByTestId('register-name').fill(user.name);
-  await page.getByTestId('register-password').fill(user.password);
-  await page.getByTestId('register-confirm-password').fill(user.password);
-  await page.getByTestId('register-terms').check();
-  await page.getByTestId('register-submit').click();
+      await page.getByTestId('register-email').fill(user.email);
+      await page.getByTestId('register-name').fill(user.name);
+      await page.getByTestId('register-password').fill(user.password);
+      await page.getByTestId('register-confirm-password').fill(user.password);
+      await page.getByTestId('register-terms').check();
+      await page.getByTestId('register-submit').click();
 
-  await waitForPostAuthScreen(page);
+      // Wait for either success or failure
+      const successLocators = [
+        page.getByTestId('onboarding-org-name'),
+        page.getByTestId('waiting-check-now'),
+        page.getByRole('button', { name: 'Panel de Control' }),
+        page.getByText('OpenPath'),
+      ];
+
+      const errorLocator = page.getByText(/Registration failed|error|falló/i);
+
+      const result = await Promise.race([
+        ...successLocators.map((l) =>
+          l.waitFor({ state: 'visible', timeout: 20000 }).then(() => 'success' as const)
+        ),
+        errorLocator.waitFor({ state: 'visible', timeout: 20000 }).then(() => 'error' as const),
+      ]);
+
+      if (result === 'error') {
+        throw new Error(`Registration failed for ${user.email}`);
+      }
+    },
+    { maxRetries: 3, baseDelay: 1000, operationName: `registerUser(${user.email})` }
+  );
 }
 
 /**
- * Logs in with existing credentials
+ * Logs in with existing credentials with retry logic for parallel test resilience
  */
 export async function loginUser(page: Page, email: string, password: string): Promise<void> {
-  await page.goto('/');
-  await page.waitForLoadState('domcontentloaded');
+  await withRetry(
+    async () => {
+      await page.goto('/');
+      await page.waitForLoadState('domcontentloaded');
 
-  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 10000 });
+      await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 10000 });
 
-  await page.getByTestId('login-email').fill(email);
-  await page.getByTestId('login-password').fill(password);
-  await page.getByTestId('login-submit').click();
-  await page.waitForLoadState('domcontentloaded');
+      await page.getByTestId('login-email').fill(email);
+      await page.getByTestId('login-password').fill(password);
+      await page.getByTestId('login-submit').click();
+      await page.waitForLoadState('domcontentloaded');
 
-  // Wait for either success or failure
-  const successLocators = [
-    page.getByTestId('onboarding-org-name'),
-    page.getByTestId('waiting-check-now'),
-    page.getByRole('button', { name: 'Panel de Control' }),
-    page.getByText('OpenPath'),
-  ];
+      // Wait for either success or failure
+      const successLocators = [
+        page.getByTestId('onboarding-org-name'),
+        page.getByTestId('waiting-check-now'),
+        page.getByRole('button', { name: 'Panel de Control' }),
+        page.getByText('OpenPath'),
+      ];
 
-  const errorLocator = page.getByText(
-    /Credenciales inválidas|Invalid credentials|error de conexión/i
-  );
+      const errorLocator = page.getByText(
+        /Credenciales inválidas|Invalid credentials|error de conexión/i
+      );
 
-  try {
-    await Promise.race([
-      ...successLocators.map((l) => l.waitFor({ state: 'visible', timeout: 20000 })),
-      errorLocator.waitFor({ state: 'visible', timeout: 20000 }).then(() => {
+      const result = await Promise.race([
+        ...successLocators.map((l) =>
+          l.waitFor({ state: 'visible', timeout: 20000 }).then(() => 'success' as const)
+        ),
+        errorLocator.waitFor({ state: 'visible', timeout: 20000 }).then(() => 'error' as const),
+      ]);
+
+      if (result === 'error') {
         throw new Error(`Login failed for ${email}: Invalid credentials or connection error`);
-      }),
-    ]);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('Login failed')) {
-      throw error;
-    }
-    // Re-throw timeout errors with more context
-    throw new Error(
-      `Login timeout for ${email}: Neither dashboard nor error appeared. Current URL: ${page.url()}`
-    );
-  }
+      }
+    },
+    { maxRetries: 3, baseDelay: 1000, operationName: `loginUser(${email})` }
+  );
 }
 
 /**

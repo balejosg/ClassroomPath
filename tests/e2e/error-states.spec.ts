@@ -148,27 +148,28 @@ test.describe('Session Error Handling', () => {
     await context2.close();
   });
 
-  // TODO: Implement 403 error handling in the app before enabling this test
-  // Currently the app shows cached data when API returns 403
-  test.skip('should show unauthorized error for forbidden actions @errors @auth', async ({
-    page,
-  }) => {
+  // Test 403 error handling - the app should show some error indication
+  test('should show unauthorized error for forbidden actions @errors @auth', async ({ page }) => {
     await loginAsAdmin(page);
 
     await expectDashboard(page);
 
-    // Intercept and return 403 for app API calls.
+    // Intercept and return 403 for ALL API calls (both OpenPath and ClassroomPath)
     await page.route('**/cp/trpc**', (route) => {
-      route.fulfill({ status: 403, body: 'Forbidden' });
+      route.fulfill({ status: 403, body: JSON.stringify({ error: 'Forbidden' }) });
+    });
+    await page.route('**/trpc/**', (route) => {
+      route.fulfill({ status: 403, body: JSON.stringify({ error: 'Forbidden' }) });
     });
 
-    // Trigger a data load
-    await goToDashboard(page);
+    // Force reload to trigger fresh data load with 403 errors
+    await page.reload();
+    await page.waitForTimeout(2000); // Allow time for error state to render
 
-    // Should show some error indication - either an explicit error message or a general error state
-    // Note: The app may not have explicit 403 handling, so we also accept login redirect
+    // Should show some error indication - either an explicit error message, error state, or login redirect
     const hasDenied = await page
-      .getByText(/denegado|forbidden|no autorizado|access denied|error/i)
+      .getByText(/denegado|forbidden|no autorizado|access denied/i)
+      .first()
       .isVisible()
       .catch(() => false);
     const hasAccessCheckError = await page
@@ -181,10 +182,18 @@ test.describe('Session Error Handling', () => {
       .catch(() => false);
     const hasErrorDisplay = await page
       .locator('.bg-red-100, [role="alert"]')
+      .first()
+      .isVisible()
+      .catch(() => false);
+    const hasGenericError = await page
+      .getByText(/error|problema|falló/i)
+      .first()
       .isVisible()
       .catch(() => false);
 
-    expect(hasDenied || hasAccessCheckError || hasLoginRedirect || hasErrorDisplay).toBe(true);
+    expect(
+      hasDenied || hasAccessCheckError || hasLoginRedirect || hasErrorDisplay || hasGenericError
+    ).toBe(true);
   });
 });
 
@@ -258,7 +267,7 @@ test.describe('Empty States', () => {
   // Issue: Registration sometimes fails with "Registration failed" when tests run in parallel
   // These tests pass when run individually but fail when run with other tests
 
-  test.skip('should show empty state when no classrooms @errors @empty', async ({ page }) => {
+  test('should show empty state when no classrooms @errors @empty', async ({ page }) => {
     // Create a fresh user for this test to avoid conflicts
     const testUser = createTestUser();
     await registerUser(page, testUser);
@@ -273,7 +282,7 @@ test.describe('Empty States', () => {
     await expect(page.getByText('Grupos de Seguridad')).toBeVisible({ timeout: 10000 });
   });
 
-  test.skip('should show empty state when no pending requests @errors @empty', async ({ page }) => {
+  test('should show empty state when no pending requests @errors @empty', async ({ page }) => {
     // Create a fresh user for this test to avoid conflicts
     const testUser = createTestUser();
     await registerUser(page, testUser);
@@ -295,9 +304,7 @@ test.describe('Loading States', () => {
   // Issue: Registration sometimes fails with "Registration failed" when tests run in parallel
   // These tests pass when run individually but fail when run with other tests
 
-  test.skip('should show loading indicator during data fetch @errors @loading', async ({
-    page,
-  }) => {
+  test('should show loading indicator during data fetch @errors @loading', async ({ page }) => {
     // Create a fresh user for this test
     const testUser = createTestUser();
     await registerUser(page, testUser);
@@ -324,7 +331,7 @@ test.describe('Loading States', () => {
     ).toBeVisible({ timeout: 2000 });
   });
 
-  test.skip('should show skeleton loaders for content @errors @loading', async ({ page }) => {
+  test('should show skeleton loaders for content @errors @loading', async ({ page }) => {
     // Create a fresh user for this test
     const testUser = createTestUser();
     await registerUser(page, testUser);
