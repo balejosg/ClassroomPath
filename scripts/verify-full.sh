@@ -19,9 +19,11 @@ require_cmd() {
   }
 }
 
+# Cleanup: stop container but preserve volume for faster subsequent runs.
+# Use 'npm run db:test:reset' to fully destroy and recreate.
 cleanup() {
   if [ -f "$COMPOSE_FILE" ]; then
-    docker_compose down -v >/dev/null 2>&1 || true
+    docker_compose stop >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
