@@ -23,7 +23,7 @@ services:
     depends_on:
       - api
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:3001/cp/health']
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:3001/cp/health']
       interval: 5s
       timeout: 3s
       retries: 12
@@ -45,7 +45,7 @@ services:
     volumes:
       - api-data:/app/data
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:3000/health']
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:3000/health']
       interval: 5s
       timeout: 3s
       retries: 12
