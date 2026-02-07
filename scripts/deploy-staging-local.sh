@@ -141,10 +141,23 @@ git submodule update --init --recursive --force
 
 echo "[DEPLOY] Running database migrations..."
 cd "$APP_DIR"
-# Clean and reinstall for migrations
+
+# Run ClassroomPath API migrations (multi-tenancy tables)
+echo "[DEPLOY] - ClassroomPath API schema..."
 docker run --rm -v "$APP_DIR/api:/app" -w /app node:20-alpine sh -c "rm -rf node_modules && mkdir -p node_modules" 2>/dev/null || true
 docker run --rm \
     -v "$APP_DIR/api:/app" \
+    -v "$APP_DIR/config/.env:/app/.env:ro" \
+    -w /app \
+    --env-file "$APP_DIR/config/.env" \
+    node:20-alpine \
+    sh -c "npm install --silent && npm run db:push" 2>&1 | tail -5
+
+# Run OpenPath API migrations (core tables)
+echo "[DEPLOY] - OpenPath API schema..."
+docker run --rm -v "$APP_DIR/upstream/openpath/api:/app" -w /app node:20-alpine sh -c "rm -rf node_modules && mkdir -p node_modules" 2>/dev/null || true
+docker run --rm \
+    -v "$APP_DIR/upstream/openpath/api:/app" \
     -v "$APP_DIR/config/.env:/app/.env:ro" \
     -w /app \
     --env-file "$APP_DIR/config/.env" \

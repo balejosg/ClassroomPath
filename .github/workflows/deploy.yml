@@ -92,12 +92,25 @@ jobs:
             git submodule update --init --recursive --force
 
             # Run database migrations using Node.js Docker container
-            echo "Running ClassroomPath database migrations..."
+            echo "Running database migrations..."
             cd /opt/classroompath/app
-            # Clean node_modules using Docker to handle permissions (keep package-lock.json for npm install)
+
+            # ClassroomPath API migrations (multi-tenancy tables)
+            echo "- ClassroomPath API schema..."
             docker run --rm -v /opt/classroompath/app/api:/app -w /app node:20-alpine sh -c "rm -rf node_modules && mkdir -p node_modules"
             docker run --rm \
               -v /opt/classroompath/app/api:/app \
+              -v /opt/classroompath/app/config/.env:/app/.env:ro \
+              -w /app \
+              --env-file /opt/classroompath/app/config/.env \
+              node:20-alpine \
+              sh -c "npm install && npm run db:push"
+
+            # OpenPath API migrations (core tables)
+            echo "- OpenPath API schema..."
+            docker run --rm -v /opt/classroompath/app/upstream/openpath/api:/app -w /app node:20-alpine sh -c "rm -rf node_modules && mkdir -p node_modules"
+            docker run --rm \
+              -v /opt/classroompath/app/upstream/openpath/api:/app \
               -v /opt/classroompath/app/config/.env:/app/.env:ro \
               -w /app \
               --env-file /opt/classroompath/app/config/.env \
@@ -289,11 +302,24 @@ jobs:
             git submodule update --init --recursive --force
 
             # Run database migrations using Node.js Docker container
-            echo "Running ClassroomPath database migrations..."
-            # Clean node_modules using Docker to handle permissions
+            echo "Running database migrations..."
+
+            # ClassroomPath API migrations (multi-tenancy tables)
+            echo "- ClassroomPath API schema..."
             docker run --rm -v "$APP_DIR/api:/app" -w /app node:20-alpine rm -rf node_modules
             docker run --rm \
               -v "$APP_DIR/api:/app" \
+              -v "$APP_DIR/config/.env:/app/.env:ro" \
+              -w /app \
+              --env-file "$APP_DIR/config/.env" \
+              node:20-alpine \
+              sh -c "npm install && npm run db:push"
+
+            # OpenPath API migrations (core tables)
+            echo "- OpenPath API schema..."
+            docker run --rm -v "$APP_DIR/upstream/openpath/api:/app" -w /app node:20-alpine rm -rf node_modules
+            docker run --rm \
+              -v "$APP_DIR/upstream/openpath/api:/app" \
               -v "$APP_DIR/config/.env:/app/.env:ro" \
               -w /app \
               --env-file "$APP_DIR/config/.env" \
