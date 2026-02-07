@@ -25,6 +25,7 @@ Thumbs.db
 
 # Local-only artifacts
 MANUAL_TEST_REPORT.md
+.env.local
 
 # Test artifacts
 playwright-report/

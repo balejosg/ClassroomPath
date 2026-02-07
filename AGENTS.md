@@ -2,6 +2,59 @@
 
 SaaS distribution wrapper for OpenPath. Provides Docker deployment, multi-environment support, and production infrastructure.
 
+## 🚨 MANDATORY: LLM Agent Deployment Protocol
+
+**After pushing changes to ClassroomPath, you MUST run local staging deployment.**
+
+This is NON-NEGOTIABLE. Do NOT rely on GitHub Actions for staging feedback.
+
+### Required Workflow
+
+```bash
+# 1. Commit and push your changes
+git add .
+git commit -m "your commit message"
+git push origin main
+
+# 2. IMMEDIATELY run local deploy + smoke tests
+npm run deploy:staging:local
+
+# 3. Verify exit code
+#    Exit 0 = SUCCESS (deployment verified, smoke tests passed)
+#    Exit 1 = FAILURE (fix the issue before continuing)
+```
+
+### Why This Is Mandatory
+
+| GitHub Actions                            | Local Deploy                |
+| ----------------------------------------- | --------------------------- |
+| 3-8 minutes                               | **90 seconds**              |
+| Unreliable smoke tests (network timeouts) | **Reliable** (runs locally) |
+| Must poll GH API for status               | **Direct exit code**        |
+| DNS resolution issues                     | **Direct SSH**              |
+
+### What The Script Does
+
+1. Verifies git state (warns if unpushed changes)
+2. SSHs to CT 114 (staging container)
+3. Pulls latest from origin/main
+4. Runs database migrations
+5. Rebuilds and restarts Docker containers
+6. Runs health checks (gateway + API)
+7. **Runs full smoke test suite against staging URL**
+8. Returns exit code 0 (success) or 1 (failure)
+
+### If Smoke Tests Fail
+
+```bash
+# Debug commands
+ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-gateway --tail 50"
+ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-api --tail 50"
+curl -v https://classroompath-staging.duckdns.org/health
+```
+
+---
+
 ## Architecture
 
 ```
@@ -92,6 +145,66 @@ npm run submodule:update
 git add upstream/openpath
 git commit -m "chore: update openpath submodule"
 git push  # Triggers deploy
+```
+
+### Local Staging Deployment (For Agents)
+
+**Use this for fast iteration during development.** Deploys in 30-90 seconds vs 3-8 minutes via GitHub Actions.
+
+#### One-Time Setup
+
+```bash
+# 1. Copy environment template
+cp .env.local.example .env.local
+
+# 2. Edit .env.local with your values:
+#    STAGING_HOST=192.168.1.114
+#    STAGING_USER=deploy
+#    STAGING_SSH_KEY=~/.ssh/classroompath_staging
+
+# 3. Generate SSH key (if not exists)
+ssh-keygen -t ed25519 -C "agent-staging-deploy" -f ~/.ssh/classroompath_staging
+
+# 4. Add public key to CT 114
+ssh root@192.168.1.150 "pct exec 114 -- sh -c 'cat >> /home/deploy/.ssh/authorized_keys'" < ~/.ssh/classroompath_staging.pub
+```
+
+#### Usage
+
+```bash
+# After making changes, commit and push
+git add .
+git commit -m "fix: your change"
+git push origin main
+
+# Deploy to staging (30-90 seconds)
+npm run deploy:staging:local
+
+# Exit code 0 = success, 1 = failure (check stdout)
+```
+
+#### When to Use Local vs GitHub Actions
+
+| Scenario                 | Use                            |
+| ------------------------ | ------------------------------ |
+| Agent iterating on code  | `npm run deploy:staging:local` |
+| Human pushing to main    | GitHub Actions (automatic)     |
+| Production deployment    | GitHub Actions only (tag `v*`) |
+| Debugging network issues | Local (bypasses DNS/firewall)  |
+
+#### Troubleshooting
+
+```bash
+# Test SSH connectivity
+ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "echo OK"
+
+# Check container logs
+ssh deploy@192.168.1.114 "docker logs classroompath-gateway --tail 30"
+ssh deploy@192.168.1.114 "docker logs classroompath-api --tail 30"
+
+# Manual health check
+curl -sf http://192.168.1.114:3001/cp/health
+curl -sf http://192.168.1.114:3000/health
 ```
 
 ## Docker Services
