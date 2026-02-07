@@ -210,16 +210,29 @@ done
 
 # Check API health via gateway (API port 3000 is internal to Docker network only)
 # The gateway proxies /health to the API
-API_HEALTH=$($SSH_CMD "curl -sf http://localhost:3001/health 2>/dev/null" || echo "")
+# Wait a bit for API to be fully ready
+sleep 3
 
-if echo "$API_HEALTH" | grep -q '"status":"ok"'; then
-    log_success "API healthy (via gateway)"
-else
-    log_error "API health check failed"
-    log_error "Response: $API_HEALTH"
-    log_error "Debug: ssh deploy@$STAGING_HOST 'docker logs classroompath-api --tail 30'"
-    exit 1
-fi
+ATTEMPT=0
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+    ATTEMPT=$((ATTEMPT + 1))
+    
+    API_HEALTH=$($SSH_CMD "curl -sf http://localhost:3001/health 2>/dev/null" || echo "")
+    
+    if echo "$API_HEALTH" | grep -q '"status":"ok"'; then
+        log_success "API healthy (via gateway, attempt $ATTEMPT)"
+        break
+    fi
+    
+    if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+        log_error "API health check failed after $MAX_ATTEMPTS attempts"
+        log_error "Response: $API_HEALTH"
+        log_error "Debug: ssh deploy@$STAGING_HOST 'docker logs classroompath-api --tail 30'"
+        exit 1
+    fi
+    
+    sleep 1
+done
 
 # =============================================================================
 # Step 4: Run smoke tests against staging
