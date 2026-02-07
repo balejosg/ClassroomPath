@@ -24,7 +24,7 @@
   ],
   "scripts": {
     "install:all": "npm install && cd upstream/openpath && npm install",
-    "build": "cd upstream/openpath && npm run build --workspaces --if-present",
+    "build": "bash scripts/build-openpath.sh",
     "build:api": "cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=@openpath/api",
     "build:spa": "cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=@openpath/react-spa",
     "dev": "cd upstream/openpath/api && npm run dev",

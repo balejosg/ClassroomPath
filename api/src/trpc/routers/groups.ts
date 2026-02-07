@@ -377,4 +377,37 @@ export const groupsRouter = router({
 
       return { success: true };
     }),
+
+  /**
+   * Get system status (enabled/disabled groups count) for the current organization.
+   * Used by Dashboard to show system status overview.
+   */
+  systemStatus: tenantProcedure.query(async ({ ctx }) => {
+    // Get groups belonging to this organization
+    const orgGroups = await db
+      .select()
+      .from(schema.cpOrganizationGroups)
+      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+
+    const groupIds = orgGroups.map((og) => og.groupId);
+
+    if (groupIds.length === 0) {
+      return { enabledGroups: 0, disabledGroups: 0, totalGroups: 0 };
+    }
+
+    // Get all groups and count enabled/disabled
+    const groups = await openpathDb
+      .select()
+      .from(whitelistGroups)
+      .where(inArray(whitelistGroups.id, groupIds));
+
+    const enabledGroups = groups.filter((g) => g.enabled === 1).length;
+    const disabledGroups = groups.filter((g) => g.enabled === 0).length;
+
+    return {
+      enabledGroups,
+      disabledGroups,
+      totalGroups: groups.length,
+    };
+  }),
 });

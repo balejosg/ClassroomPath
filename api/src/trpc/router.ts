@@ -6,6 +6,8 @@ import { groupsRouter } from './routers/groups.js';
 import { usersRouter } from './routers/users.js';
 import { requestsRouter } from './routers/requests.js';
 import { pendingUsersRouter } from './routers/pending-users.js';
+import { healthcheckRouter } from './routers/healthcheck.js';
+import { apiTokensRouter } from './routers/api-tokens.js';
 
 export const appRouter = router({
   auth: authRouter,
@@ -15,6 +17,8 @@ export const appRouter = router({
   users: usersRouter,
   requests: requestsRouter,
   pendingUsers: pendingUsersRouter,
+  healthcheck: healthcheckRouter,
+  apiTokens: apiTokensRouter,
 });
 
 export type AppRouter = typeof appRouter;
