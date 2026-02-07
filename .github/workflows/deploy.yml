@@ -140,22 +140,30 @@ jobs:
             # Database connectivity check - verify API can reach PostgreSQL
             # NOTE: /health is a simple liveness probe without DB status
             # /trpc/healthcheck.systemInfo includes database.connected field
+            # Retry up to 5 times with 3s delay (DB pool takes time to connect)
             echo "Checking database connectivity..."
-            DB_CHECK=$(curl -sf http://localhost:3000/trpc/healthcheck.systemInfo 2>/dev/null || echo '{"result":{"data":{"database":{"connected":false}}}}')
-            if echo "$DB_CHECK" | grep -q '"connected":true'; then
-              echo "✅ Database connectivity OK"
-            else
-              echo "❌ DATABASE CONNECTION FAILED!"
-              echo "Health response: $DB_CHECK"
-              echo ""
-              echo "Common causes:"
-              echo "  - DATABASE_URL not parsed correctly"
-              echo "  - PostgreSQL container not reachable"
-              echo "  - Wrong credentials in config/.env"
-              echo ""
-              echo "Debug: docker logs classroompath-staging-api-1 --tail 30"
-              exit 1
-            fi
+            for i in 1 2 3 4 5; do
+              DB_CHECK=$(curl -sf http://localhost:3000/trpc/healthcheck.systemInfo 2>/dev/null || echo '{"result":{"data":{"database":{"connected":false}}}}')
+              if echo "$DB_CHECK" | grep -q '"connected":true'; then
+                echo "✅ Database connectivity OK"
+                break
+              fi
+              if [ "$i" -lt 5 ]; then
+                echo "⏳ Database not ready (attempt $i/5), waiting 3s..."
+                sleep 3
+              else
+                echo "❌ DATABASE CONNECTION FAILED after 5 attempts!"
+                echo "Health response: $DB_CHECK"
+                echo ""
+                echo "Common causes:"
+                echo "  - DATABASE_URL not parsed correctly"
+                echo "  - PostgreSQL container not reachable"
+                echo "  - Wrong credentials in config/.env"
+                echo ""
+                echo "Debug: docker logs classroompath-staging-api-1 --tail 30"
+                exit 1
+              fi
+            done
 
       - name: Report skip
         if: steps.resolve.outputs.skip == 'true'
@@ -364,22 +372,30 @@ jobs:
             # Database connectivity check - verify API can reach PostgreSQL
             # NOTE: /health is a simple liveness probe without DB status
             # /trpc/healthcheck.systemInfo includes database.connected field
+            # Retry up to 5 times with 3s delay (DB pool takes time to connect)
             echo "Checking database connectivity..."
-            DB_CHECK=$(curl -sf http://localhost:3000/trpc/healthcheck.systemInfo 2>/dev/null || echo '{"result":{"data":{"database":{"connected":false}}}}')
-            if echo "$DB_CHECK" | grep -q '"connected":true'; then
-              echo "✅ Database connectivity OK"
-            else
-              echo "❌ DATABASE CONNECTION FAILED!"
-              echo "Health response: $DB_CHECK"
-              echo ""
-              echo "Common causes:"
-              echo "  - DATABASE_URL not parsed correctly"
-              echo "  - PostgreSQL container not reachable"
-              echo "  - Wrong credentials in config/.env"
-              echo ""
-              echo "Debug: docker logs classroompath-production-api-1 --tail 30"
-              exit 1
-            fi
+            for i in 1 2 3 4 5; do
+              DB_CHECK=$(curl -sf http://localhost:3000/trpc/healthcheck.systemInfo 2>/dev/null || echo '{"result":{"data":{"database":{"connected":false}}}}')
+              if echo "$DB_CHECK" | grep -q '"connected":true'; then
+                echo "✅ Database connectivity OK"
+                break
+              fi
+              if [ "$i" -lt 5 ]; then
+                echo "⏳ Database not ready (attempt $i/5), waiting 3s..."
+                sleep 3
+              else
+                echo "❌ DATABASE CONNECTION FAILED after 5 attempts!"
+                echo "Health response: $DB_CHECK"
+                echo ""
+                echo "Common causes:"
+                echo "  - DATABASE_URL not parsed correctly"
+                echo "  - PostgreSQL container not reachable"
+                echo "  - Wrong credentials in config/.env"
+                echo ""
+                echo "Debug: docker logs classroompath-production-api-1 --tail 30"
+                exit 1
+              fi
+            done
 
             echo "✅ Deployment successful!"
             docker logs classroompath-gateway --tail 5
