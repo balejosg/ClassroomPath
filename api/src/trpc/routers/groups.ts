@@ -42,15 +42,45 @@ export const groupsRouter = router({
       .from(whitelistGroups)
       .where(inArray(whitelistGroups.id, groupIds));
 
-    // Serialize Date fields for JSON compatibility
-    return groups.map((g) => ({
-      id: g.id,
-      name: g.name,
-      displayName: g.displayName,
-      enabled: g.enabled,
-      createdAt: g.createdAt?.toISOString() ?? null,
-      updatedAt: g.updatedAt?.toISOString() ?? null,
-    }));
+    // Get all rules for these groups to calculate counts
+    const allRules = await openpathDb
+      .select()
+      .from(whitelistRules)
+      .where(inArray(whitelistRules.groupId, groupIds));
+
+    // Build a map of groupId -> rule counts
+    const ruleCounts = new Map<
+      string,
+      { whitelistCount: number; blockedSubdomainCount: number; blockedPathCount: number }
+    >();
+    for (const groupId of groupIds) {
+      const groupRules = allRules.filter((r) => r.groupId === groupId);
+      ruleCounts.set(groupId, {
+        whitelistCount: groupRules.filter((r) => r.type === 'whitelist').length,
+        blockedSubdomainCount: groupRules.filter((r) => r.type === 'blocked_subdomain').length,
+        blockedPathCount: groupRules.filter((r) => r.type === 'blocked_path').length,
+      });
+    }
+
+    // Serialize Date fields for JSON compatibility and include rule counts
+    return groups.map((g) => {
+      const counts = ruleCounts.get(g.id) || {
+        whitelistCount: 0,
+        blockedSubdomainCount: 0,
+        blockedPathCount: 0,
+      };
+      return {
+        id: g.id,
+        name: g.name,
+        displayName: g.displayName,
+        enabled: g.enabled,
+        whitelistCount: counts.whitelistCount,
+        blockedSubdomainCount: counts.blockedSubdomainCount,
+        blockedPathCount: counts.blockedPathCount,
+        createdAt: g.createdAt?.toISOString() ?? null,
+        updatedAt: g.updatedAt?.toISOString() ?? null,
+      };
+    });
   }),
 
   /**
