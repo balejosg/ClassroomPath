@@ -203,7 +203,15 @@ for port in 3001 3010 5173; do
 done
 
 # Playwright global-setup handles seeding, no need to seed here
-npx playwright test
+# Exclude @slow-network tests by default (saves ~54s)
+# Run with VERIFY_ALL=1 to include all tests
+if [ "${VERIFY_ALL:-}" = "1" ]; then
+  echo "Running ALL E2E tests (including @slow-network)..."
+  npx playwright test
+else
+  echo "Running E2E tests (excluding @slow-network)..."
+  npx playwright test --grep-invert="@slow-network"
+fi
 
 # =============================================================================
 # FINAL: Coverage check on changed files

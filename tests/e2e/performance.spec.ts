@@ -289,7 +289,10 @@ test.describe('Bundle Performance', () => {
 });
 
 test.describe('Real User Metrics Simulation', () => {
-  test('simulates slow 3G connection @performance @network', async ({ page, context }) => {
+  test('simulates slow 3G connection @performance @network @slow-network', async ({
+    page,
+    context,
+  }) => {
     // Use longer timeout for slow network simulation
     test.setTimeout(120000);
 
