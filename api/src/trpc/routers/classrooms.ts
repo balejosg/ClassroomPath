@@ -11,7 +11,7 @@ import { classrooms, machines } from '../../db/openpath.js';
 
 const CreateClassroomSchema = z.object({
   name: z.string().min(1).max(100),
-  displayName: z.string().min(1).max(255),
+  displayName: z.string().min(1).max(255).optional(),
   defaultGroupId: z.string().optional(),
 });
 
@@ -247,7 +247,7 @@ export const classroomsRouter = router({
       .values({
         id: classroomId,
         name: input.name,
-        displayName: input.displayName,
+        displayName: input.displayName ?? input.name, // Default to name if not provided
         defaultGroupId: input.defaultGroupId,
       })
       .returning();
