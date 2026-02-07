@@ -125,8 +125,10 @@ jobs:
             curl -sf http://localhost:3001/cp/health && echo "✅ Staging Gateway OK" || exit 1
 
             # Database connectivity check - verify API can reach PostgreSQL
+            # NOTE: /health is a simple liveness probe without DB status
+            # /trpc/healthcheck.systemInfo includes database.connected field
             echo "Checking database connectivity..."
-            DB_CHECK=$(curl -sf http://localhost:3000/health 2>/dev/null || echo '{"database":{"connected":false}}')
+            DB_CHECK=$(curl -sf http://localhost:3000/trpc/healthcheck.systemInfo 2>/dev/null || echo '{"result":{"data":{"database":{"connected":false}}}}')
             if echo "$DB_CHECK" | grep -q '"connected":true'; then
               echo "✅ Database connectivity OK"
             else
@@ -334,8 +336,10 @@ jobs:
             fi
 
             # Database connectivity check - verify API can reach PostgreSQL
+            # NOTE: /health is a simple liveness probe without DB status
+            # /trpc/healthcheck.systemInfo includes database.connected field
             echo "Checking database connectivity..."
-            DB_CHECK=$(curl -sf http://localhost:3000/health 2>/dev/null || echo '{"database":{"connected":false}}')
+            DB_CHECK=$(curl -sf http://localhost:3000/trpc/healthcheck.systemInfo 2>/dev/null || echo '{"result":{"data":{"database":{"connected":false}}}}')
             if echo "$DB_CHECK" | grep -q '"connected":true'; then
               echo "✅ Database connectivity OK"
             else
