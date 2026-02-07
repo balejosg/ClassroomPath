@@ -16,8 +16,8 @@ git add .
 git commit -m "your commit message"
 git push origin main
 
-# 2. IMMEDIATELY run local deploy + smoke tests
-npm run deploy:staging:local
+# 2. IMMEDIATELY run deploy + smoke tests
+npm run deploy:staging
 
 # 3. Verify exit code
 #    Exit 0 = SUCCESS (deployment verified, smoke tests passed)
@@ -109,10 +109,10 @@ ClassroomPath ──depends on──▶ OpenPath
 
 ### Environments
 
-| Environment    | URL                                         | Trigger        | Host Secret           |
-| -------------- | ------------------------------------------- | -------------- | --------------------- |
-| **Staging**    | `https://classroompath-staging.duckdns.org` | Push to `main` | `STAGING_DEPLOY_HOST` |
-| **Production** | `https://classroompath.duckdns.org`         | Tag `v*`       | `DEPLOY_HOST`         |
+| Environment    | URL                                         | Trigger                  | Method             |
+| -------------- | ------------------------------------------- | ------------------------ | ------------------ |
+| **Staging**    | `https://classroompath-staging.duckdns.org` | `npm run deploy:staging` | Local script (SSH) |
+| **Production** | `https://classroompath.duckdns.org`         | Tag `v*`                 | GitHub Actions     |
 
 ### ⚠️ CRITICAL: Identifying Environments
 
@@ -125,7 +125,7 @@ ClassroomPath ──depends on──▶ OpenPath
 | **Proxmox CT (App)** | CT 114 (`classroompath-app-staging`)                   | CT 111 (`classroompath-app`)                   |
 | **Proxmox CT (DB)**  | CT 113 (`classroompath-db-staging`)                    | CT 110 (`classroompath-db`)                    |
 | **Database Name**    | `classroompath_staging`                                | `classroompath`                                |
-| **Deploy Trigger**   | Any push to `main`                                     | Git tag starting with `v`                      |
+| **Deploy Trigger**   | `npm run deploy:staging`                               | Git tag starting with `v`                      |
 
 **When debugging issues:**
 
@@ -147,9 +147,9 @@ git commit -m "chore: update openpath submodule"
 git push  # Triggers deploy
 ```
 
-### Local Staging Deployment (For Agents)
+### Staging Deployment
 
-**Use this for fast iteration during development.** Deploys in 30-90 seconds vs 3-8 minutes via GitHub Actions.
+**Staging is deployed via local script only.** GitHub Actions does NOT deploy to staging.
 
 #### One-Time Setup
 
@@ -178,19 +178,18 @@ git commit -m "fix: your change"
 git push origin main
 
 # Deploy to staging (30-90 seconds)
-npm run deploy:staging:local
+npm run deploy:staging
 
 # Exit code 0 = success, 1 = failure (check stdout)
 ```
 
-#### When to Use Local vs GitHub Actions
+#### Staging vs Production Deployment
 
-| Scenario                 | Use                            |
-| ------------------------ | ------------------------------ |
-| Agent iterating on code  | `npm run deploy:staging:local` |
-| Human pushing to main    | GitHub Actions (automatic)     |
-| Production deployment    | GitHub Actions only (tag `v*`) |
-| Debugging network issues | Local (bypasses DNS/firewall)  |
+| Scenario             | Command / Action                                 |
+| -------------------- | ------------------------------------------------ |
+| Deploy to staging    | `npm run deploy:staging`                         |
+| Deploy to production | `git tag v1.x.x && git push --tags` (GH Actions) |
+| Debug staging issues | SSH to CT 114                                    |
 
 #### Troubleshooting
 
@@ -239,10 +238,11 @@ Deployment tests verify Docker, nginx, and env configurations only. They do NOT 
 
 ## Secrets (GitHub Actions)
 
-| Secret             | Environment | Purpose                      |
-| ------------------ | ----------- | ---------------------------- |
-| `STAGING_DEPLOY_*` | Staging     | SSH access to staging server |
-| `DEPLOY_*`         | Production  | SSH access to production     |
+| Secret     | Environment | Purpose                  |
+| ---------- | ----------- | ------------------------ |
+| `DEPLOY_*` | Production  | SSH access to production |
+
+> **Note:** `STAGING_DEPLOY_*` secrets are no longer used. Staging deploys via local script.
 
 ## Nginx Integration
 
@@ -331,6 +331,6 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
 │ classroompath-staging.duckdns.org│ classroompath.duckdns.org        │
 │ CT 114 (app) + CT 113 (db)       │ CT 111 (app) + CT 110 (db)       │
 │ DB: classroompath_staging        │ DB: classroompath                │
-│ Trigger: push to main            │ Trigger: tag v*                  │
+│ Deploy: npm run deploy:staging   │ Deploy: git tag v* (GH Actions)  │
 └──────────────────────────────────┴──────────────────────────────────┘
 ```
