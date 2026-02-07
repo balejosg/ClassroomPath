@@ -1,7 +1,7 @@
 #!/bin/bash
 # deploy-staging-local.sh - Fast local staging deployment for agent workflows
 # 
-# Usage: npm run deploy:staging:local
+# Usage: npm run deploy:staging
 #        ./scripts/deploy-staging-local.sh
 #
 # Environment variables (set in .env.local or export):
@@ -144,25 +144,23 @@ cd "$APP_DIR"
 
 # Run ClassroomPath API migrations (multi-tenancy tables)
 echo "[DEPLOY] - ClassroomPath API schema..."
-docker run --rm -v "$APP_DIR/api:/app" -w /app node:20-alpine sh -c "rm -rf node_modules && mkdir -p node_modules" 2>/dev/null || true
 docker run --rm \
     -v "$APP_DIR/api:/app" \
     -v "$APP_DIR/config/.env:/app/.env:ro" \
     -w /app \
     --env-file "$APP_DIR/config/.env" \
     node:20-alpine \
-    sh -c "npm install --silent && npm run db:push" 2>&1 | tail -5
+    sh -c "npm ci --silent 2>/dev/null || npm install --silent && npm run db:push" 2>&1 | tail -5
 
 # Run OpenPath API migrations (core tables)
 echo "[DEPLOY] - OpenPath API schema..."
-docker run --rm -v "$APP_DIR/upstream/openpath/api:/app" -w /app node:20-alpine sh -c "rm -rf node_modules && mkdir -p node_modules" 2>/dev/null || true
 docker run --rm \
     -v "$APP_DIR/upstream/openpath/api:/app" \
     -v "$APP_DIR/config/.env:/app/.env:ro" \
     -w /app \
     --env-file "$APP_DIR/config/.env" \
     node:20-alpine \
-    sh -c "npm install --silent && npm run db:push" 2>&1 | tail -5
+    sh -c "npm ci --silent 2>/dev/null || npm install --silent && npm run db:push" 2>&1 | tail -5
 
 echo "[DEPLOY] Rebuilding containers..."
 cd "$APP_DIR/docker"
