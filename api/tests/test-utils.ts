@@ -49,6 +49,8 @@ export async function resetDb(): Promise<void> {
 
   // Truncate OpenPath tables
   const opTables = [
+    'whitelist_rules',
+    'whitelist_groups',
     'users',
     'roles',
     'tokens',
