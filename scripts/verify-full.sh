@@ -47,6 +47,16 @@ docker info >/dev/null 2>&1 || {
 
 cd "$ROOT_DIR"
 
+echo ""
+echo "=========================================="
+echo "  ClassroomPath Verification Starting"
+echo "=========================================="
+echo ""
+
+# FAST: Check test files exist for all source files
+echo "[1/N] Checking test file coverage..."
+bash scripts/check-test-files.sh
+
 echo "Starting PostgreSQL (test)"
 docker_compose up -d postgres
 
@@ -131,4 +141,13 @@ npm run security:audit
 echo "Running secretlint"
 npm run security:secrets
 
-echo "All checks passed"
+# FAST: Check coverage on new/modified files (80% threshold)
+echo ""
+echo "[Final] Checking coverage on changed files..."
+node scripts/check-new-file-coverage.js
+
+echo ""
+echo "=========================================="
+echo "  All Checks Passed!"
+echo "=========================================="
+echo ""

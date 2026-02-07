@@ -1,0 +1,58 @@
+# Test Coverage Allowlist (Grandfathered Files)
+#
+# These files existed before the mandatory test policy was implemented.
+# They are exempt from the test-file requirement but should be addressed over time.
+#
+# DO NOT ADD NEW FILES TO THIS LIST.
+# New source files must have corresponding test files.
+#
+# Format: One file path per line (relative to repo root)
+# Lines starting with # are comments
+#
+# Last updated: 2026-02-07
+
+# API - Gateway/Server/Infrastructure
+api/src/server.ts
+api/src/gateway.ts
+api/src/trpc/trpc.ts
+api/src/trpc/context.ts
+api/src/trpc/router.ts
+
+# API - Routers (tested via integration tests)
+api/src/trpc/routers/requests.ts
+api/src/trpc/routers/classrooms.ts
+api/src/trpc/routers/auth.ts
+api/src/trpc/routers/pending-users.ts
+api/src/trpc/routers/users.ts
+api/src/trpc/routers/groups.ts
+
+# API - Lib
+api/src/lib/openpath-users.ts
+api/src/lib/openpath-roles.ts
+api/src/lib/jwt.ts
+api/src/lib/id.ts
+
+# API - Services
+api/src/services/onboarding.service.ts
+api/src/services/pending-users.service.ts
+
+# API - Database
+api/src/db/schema.ts
+api/src/db/openpath.ts
+
+# React SPA - Components
+react-spa/src/ClassroomPathApp.tsx
+react-spa/src/components/AdminPanel.tsx
+react-spa/src/components/PasswordStrength.tsx
+
+# React SPA - Views (tested via E2E)
+react-spa/src/views/Waiting.tsx
+react-spa/src/views/Register.tsx
+react-spa/src/views/Onboarding.tsx
+react-spa/src/views/Login.tsx
+react-spa/src/views/PendingUsers.tsx
+
+# React SPA - Lib
+react-spa/src/lib/dual-trpc-provider.tsx
+react-spa/src/lib/hooks.ts
+react-spa/src/lib/cp-trpc.ts
