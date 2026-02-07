@@ -152,7 +152,7 @@ export const authRouter = router({
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${(ctx as Context & { token?: string }).token}`,
+          Authorization: `Bearer ${ctx.token}`,
         },
       });
 
