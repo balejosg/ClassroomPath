@@ -25,3 +25,7 @@ Thumbs.db
 
 # Local-only artifacts
 MANUAL_TEST_REPORT.md
+
+# Test artifacts
+playwright-report/
+tests/e2e/test-results/
