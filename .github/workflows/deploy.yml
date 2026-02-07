@@ -124,6 +124,24 @@ jobs:
             # Health check - Gateway is the primary entry point now
             curl -sf http://localhost:3001/cp/health && echo "✅ Staging Gateway OK" || exit 1
 
+            # Database connectivity check - verify API can reach PostgreSQL
+            echo "Checking database connectivity..."
+            DB_CHECK=$(curl -sf http://localhost:3000/health 2>/dev/null || echo '{"database":{"connected":false}}')
+            if echo "$DB_CHECK" | grep -q '"connected":true'; then
+              echo "✅ Database connectivity OK"
+            else
+              echo "❌ DATABASE CONNECTION FAILED!"
+              echo "Health response: $DB_CHECK"
+              echo ""
+              echo "Common causes:"
+              echo "  - DATABASE_URL not parsed correctly"
+              echo "  - PostgreSQL container not reachable"
+              echo "  - Wrong credentials in config/.env"
+              echo ""
+              echo "Debug: docker logs classroompath-staging-api-1 --tail 30"
+              exit 1
+            fi
+
       - name: Report skip
         if: steps.resolve.outputs.skip == 'true'
         run: |
@@ -312,6 +330,24 @@ jobs:
             if ! curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
               echo "❌ Gateway deployment failed! Check logs:"
               docker logs classroompath-gateway --tail 30
+              exit 1
+            fi
+
+            # Database connectivity check - verify API can reach PostgreSQL
+            echo "Checking database connectivity..."
+            DB_CHECK=$(curl -sf http://localhost:3000/health 2>/dev/null || echo '{"database":{"connected":false}}')
+            if echo "$DB_CHECK" | grep -q '"connected":true'; then
+              echo "✅ Database connectivity OK"
+            else
+              echo "❌ DATABASE CONNECTION FAILED!"
+              echo "Health response: $DB_CHECK"
+              echo ""
+              echo "Common causes:"
+              echo "  - DATABASE_URL not parsed correctly"
+              echo "  - PostgreSQL container not reachable"
+              echo "  - Wrong credentials in config/.env"
+              echo ""
+              echo "Debug: docker logs classroompath-production-api-1 --tail 30"
               exit 1
             fi
 
