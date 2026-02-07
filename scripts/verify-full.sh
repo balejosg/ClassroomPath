@@ -111,6 +111,17 @@ echo "Seeding E2E database"
 npm run db:seed:e2e --workspace=@classroompath/api
 
 echo "Running Playwright E2E tests"
+# Stop any Docker containers that might occupy Playwright's ports (3001, 3010, 5173).
+# The openpath-api container maps 3001 externally and conflicts with ClassroomPath gateway.
+docker stop openpath-api 2>/dev/null || true
+# Kill any orphaned node processes from previous timed-out runs.
+for port in 3001 3010 5173; do
+  pid=$(ss -tlnp 2>/dev/null | grep ":$port " | grep -oP 'pid=\K\d+' | head -1 || true)
+  if [ -n "$pid" ]; then
+    echo "Killing orphaned process on port $port (PID: $pid)"
+    kill "$pid" 2>/dev/null || true
+  fi
+done
 # Playwright config starts the web server(s) as needed.
 npx playwright test
 
