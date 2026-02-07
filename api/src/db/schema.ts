@@ -37,6 +37,10 @@ export const cpMemberships = pgTable(
 export const cpUserStatus = pgTable('cp_user_status', {
   userId: varchar('user_id', { length: 50 }).primaryKey(),
   status: varchar('status', { length: 20 }).notNull(), // 'waiting' | 'active'
+  targetOrganizationId: varchar('target_organization_id', { length: 50 }).references(
+    () => cpOrganizations.id,
+    { onDelete: 'set null' }
+  ),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

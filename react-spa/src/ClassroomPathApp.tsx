@@ -10,6 +10,7 @@ import { Login } from './views/Login';
 import { Register } from './views/Register';
 import { Onboarding } from './views/Onboarding';
 import { Waiting } from './views/Waiting';
+import { AdminPanel } from './components/AdminPanel';
 import './index.css';
 
 // Componente que decide qué pantalla mostrar basado en el estado de autenticación y onboarding
@@ -166,6 +167,7 @@ function AppContent() {
     <React.Suspense
       fallback={<div className="flex justify-center items-center h-screen">Cargando...</div>}
     >
+      <AdminPanel userRole={status?.organization?.role} />
       <OpenPathApp />
     </React.Suspense>
   );

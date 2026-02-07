@@ -4,6 +4,10 @@ export function useOnboardingStatus(options = {}) {
   return cpTrpcReact.onboarding.status.useQuery(undefined, options);
 }
 
+export function useListOrganizations(options = {}) {
+  return cpTrpcReact.onboarding.listOrganizations.useQuery(undefined, options);
+}
+
 export function useCreateOrganization() {
   return cpTrpcReact.onboarding.createOrganization.useMutation();
 }
@@ -14,4 +18,17 @@ export function useWaitForInvitation() {
 
 export function useCancelWaiting() {
   return cpTrpcReact.onboarding.cancelWaiting.useMutation();
+}
+
+// Pending users hooks (admin only)
+export function usePendingUsers(options = {}) {
+  return cpTrpcReact.pendingUsers.list.useQuery(undefined, options);
+}
+
+export function useApproveUser() {
+  return cpTrpcReact.pendingUsers.approve.useMutation();
+}
+
+export function useRejectUser() {
+  return cpTrpcReact.pendingUsers.reject.useMutation();
 }

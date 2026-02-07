@@ -1,0 +1,176 @@
+import { eq, and } from 'drizzle-orm';
+import { db, schema } from '../db/index.js';
+import { openpathDb, openpathSchema } from '../db/openpath.js';
+import { generateId } from '../lib/id.js';
+
+export interface PendingUser {
+  userId: string;
+  email: string;
+  name: string;
+  createdAt: Date | null;
+}
+
+/**
+ * List all users waiting to join a specific organization
+ */
+export async function listPendingUsers(organizationId: string): Promise<PendingUser[]> {
+  // Get all users with waiting status for this organization
+  const waitingUsers = await db
+    .select({
+      userId: schema.cpUserStatus.userId,
+      createdAt: schema.cpUserStatus.createdAt,
+    })
+    .from(schema.cpUserStatus)
+    .where(
+      and(
+        eq(schema.cpUserStatus.status, 'waiting'),
+        eq(schema.cpUserStatus.targetOrganizationId, organizationId)
+      )
+    );
+
+  if (waitingUsers.length === 0) {
+    return [];
+  }
+
+  // Get user details from OpenPath
+  const userIds = waitingUsers.map((u) => u.userId);
+  const openpathUsers = await openpathDb
+    .select({
+      id: openpathSchema.users.id,
+      email: openpathSchema.users.email,
+      name: openpathSchema.users.name,
+    })
+    .from(openpathSchema.users);
+
+  // Filter to only the users we need (drizzle doesn't support IN easily)
+  const userMap = new Map(openpathUsers.map((u) => [u.id, u]));
+
+  return waitingUsers
+    .filter((wu) => userMap.has(wu.userId))
+    .map((wu) => {
+      const user = userMap.get(wu.userId)!;
+      return {
+        userId: wu.userId,
+        email: user.email,
+        name: user.name || user.email,
+        createdAt: wu.createdAt,
+      };
+    });
+}
+
+/**
+ * Approve a pending user - add them to the organization
+ */
+export async function approveUser(
+  userId: string,
+  organizationId: string,
+  role: 'admin' | 'teacher' | 'student',
+  approvedBy: string
+): Promise<{ membershipId: string }> {
+  const membershipId = generateId('mem');
+  const roleId = `role_${generateId('')}`;
+
+  await db.transaction(async (tx) => {
+    // Verify user is actually waiting for this organization
+    const status = await tx
+      .select()
+      .from(schema.cpUserStatus)
+      .where(
+        and(
+          eq(schema.cpUserStatus.userId, userId),
+          eq(schema.cpUserStatus.status, 'waiting'),
+          eq(schema.cpUserStatus.targetOrganizationId, organizationId)
+        )
+      )
+      .limit(1);
+
+    if (status.length === 0) {
+      throw new Error('User is not waiting for this organization');
+    }
+
+    // Create membership
+    await tx.insert(schema.cpMemberships).values({
+      id: membershipId,
+      userId,
+      organizationId,
+      role,
+      invitedBy: approvedBy,
+    });
+
+    // Remove waiting status
+    await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
+  });
+
+  // Assign role in OpenPath based on membership role
+  const openpathRole = role === 'admin' ? 'admin' : role === 'teacher' ? 'teacher' : 'viewer';
+
+  const existing = await openpathDb
+    .select()
+    .from(openpathSchema.roles)
+    .where(eq(openpathSchema.roles.userId, userId))
+    .limit(1);
+
+  if (existing.length === 0) {
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: roleId,
+      userId,
+      role: openpathRole,
+      groupIds: [] as any,
+      createdBy: approvedBy,
+    });
+  } else {
+    // Update existing role if the new role is higher privilege
+    const roleHierarchy = { admin: 3, teacher: 2, viewer: 1 };
+    if (
+      roleHierarchy[openpathRole] > roleHierarchy[existing[0].role as keyof typeof roleHierarchy]
+    ) {
+      await openpathDb
+        .update(openpathSchema.roles)
+        .set({ role: openpathRole })
+        .where(eq(openpathSchema.roles.userId, userId));
+    }
+  }
+
+  return { membershipId };
+}
+
+/**
+ * Reject a pending user - remove their waiting status
+ */
+export async function rejectUser(userId: string, organizationId: string): Promise<void> {
+  const result = await db
+    .delete(schema.cpUserStatus)
+    .where(
+      and(
+        eq(schema.cpUserStatus.userId, userId),
+        eq(schema.cpUserStatus.status, 'waiting'),
+        eq(schema.cpUserStatus.targetOrganizationId, organizationId)
+      )
+    );
+
+  // Note: User will need to request access again or create their own org
+}
+
+/**
+ * Set waiting status with target organization
+ */
+export async function setWaitingStatusWithOrg(
+  userId: string,
+  targetOrganizationId: string
+): Promise<void> {
+  await db
+    .insert(schema.cpUserStatus)
+    .values({
+      userId,
+      status: 'waiting',
+      targetOrganizationId,
+    })
+    .onConflictDoUpdate({
+      target: schema.cpUserStatus.userId,
+      set: {
+        status: 'waiting',
+        targetOrganizationId,
+        updatedAt: new Date() as any,
+      },
+    });
+}

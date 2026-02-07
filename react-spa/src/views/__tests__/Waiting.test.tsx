@@ -6,7 +6,7 @@ import { Waiting } from '../Waiting';
 const mockRefetch = vi.fn();
 const mockCancelMutate = vi.fn();
 const mockOnboardingStatus = vi.fn(() => ({
-  data: null,
+  data: null as { hasMembership: boolean; isWaiting: boolean; organization: null } | null,
   refetch: mockRefetch,
   isFetching: false,
 }));
@@ -71,7 +71,7 @@ describe('Waiting View', () => {
 
   it('should call onStatusChange if data says hasMembership', () => {
     mockOnboardingStatus.mockReturnValue({
-      data: { hasMembership: true },
+      data: { hasMembership: true, isWaiting: false, organization: null },
       refetch: mockRefetch,
       isFetching: false,
     });
