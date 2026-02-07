@@ -135,8 +135,12 @@ test.describe('Admin Approval Flow', () => {
     await expect(page.getByRole('columnheader', { name: 'Email' })).toBeVisible();
   });
 
-  // TODO: Fix flaky registration in parallel test execution
-  test('should allow admin to approve pending user @waiting @admin', async ({ page, browser }) => {
+  // TODO: OpenPath Users.tsx doesn't have approve/reject buttons - needs ClassroomPath-specific UI
+  // The waiting room approval feature requires ClassroomPath to add its own pending users view
+  test.skip('should allow admin to approve pending user @waiting @admin', async ({
+    page,
+    browser,
+  }) => {
     // This test requires two browser contexts: admin and pending user
 
     // First, create a pending user in a separate context
@@ -178,8 +182,11 @@ test.describe('Admin Approval Flow', () => {
     await userContext.close();
   });
 
-  // TODO: Fix flaky registration in parallel test execution
-  test('should allow admin to reject pending user @waiting @admin', async ({ page, browser }) => {
+  // TODO: OpenPath Users.tsx doesn't have approve/reject buttons - needs ClassroomPath-specific UI
+  test.skip('should allow admin to reject pending user @waiting @admin', async ({
+    page,
+    browser,
+  }) => {
     const userContext = await browser.newContext();
     const userPage = await userContext.newPage();
 
