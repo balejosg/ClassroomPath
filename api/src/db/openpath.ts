@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { pgTable, varchar, text, timestamp, boolean, integer } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, text, timestamp, boolean, integer, unique } from 'drizzle-orm/pg-core';
 import pg from 'pg';
 import { config } from '../config.js';
 
@@ -54,14 +54,25 @@ export const whitelistGroups = pgTable('whitelist_groups', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
-export const whitelistRules = pgTable('whitelist_rules', {
-  id: varchar('id', { length: 50 }).primaryKey(),
-  groupId: varchar('group_id', { length: 50 }).notNull(),
-  type: varchar('type', { length: 50 }).notNull(),
-  value: varchar('value', { length: 500 }).notNull(),
-  comment: text('comment'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+export const whitelistRules = pgTable(
+  'whitelist_rules',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    groupId: varchar('group_id', { length: 50 }).notNull(),
+    type: varchar('type', { length: 50 }).notNull(),
+    value: varchar('value', { length: 500 }).notNull(),
+    comment: text('comment'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    // Unique constraint for ON CONFLICT DO NOTHING
+    groupTypeValueUnique: unique('whitelist_rules_group_type_value_key').on(
+      table.groupId,
+      table.type,
+      table.value
+    ),
+  })
+);
 
 export const machines = pgTable('machines', {
   id: varchar('id', { length: 50 }).primaryKey(),
