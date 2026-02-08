@@ -37,6 +37,19 @@ const BulkCreateRulesSchema = z.object({
   ),
 });
 
+const ListRulesPaginatedSchema = z.object({
+  groupId: z.string(),
+  type: z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']).optional(),
+  limit: z.number().min(1).max(100).default(50),
+  offset: z.number().min(0).default(0),
+  search: z.string().optional(),
+});
+
+const BulkDeleteRulesSchema = z.object({
+  groupId: z.string(),
+  ruleIds: z.array(z.string()).min(1),
+});
+
 export const groupsRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
     const orgGroups = await db
@@ -275,6 +288,95 @@ export const groupsRouter = router({
         createdAt: r.createdAt?.toISOString() ?? null,
       }));
     }),
+
+  // Paginated rules list - OpenPath SPA RulesManager uses this
+  listRulesPaginated: tenantProcedure
+    .input(ListRulesPaginatedSchema)
+    .query(async ({ ctx, input }) => {
+      const orgGroup = await db
+        .select()
+        .from(schema.cpOrganizationGroups)
+        .where(
+          and(
+            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+            eq(schema.cpOrganizationGroups.groupId, input.groupId)
+          )
+        )
+        .limit(1);
+
+      if (!orgGroup.length) {
+        throw new Error('Group not found or access denied');
+      }
+
+      // Build base query conditions
+      const conditions: ReturnType<typeof eq>[] = [eq(whitelistRules.groupId, input.groupId)];
+
+      if (input.type) {
+        conditions.push(eq(whitelistRules.type, input.type));
+      }
+
+      // Get total count first
+      const allRules = await openpathDb
+        .select()
+        .from(whitelistRules)
+        .where(and(...conditions));
+
+      // Filter by search if provided
+      let filteredRules = allRules;
+      if (input.search) {
+        const searchLower = input.search.toLowerCase();
+        filteredRules = allRules.filter(
+          (r) =>
+            r.value.toLowerCase().includes(searchLower) ||
+            (r.comment && r.comment.toLowerCase().includes(searchLower))
+        );
+      }
+
+      const total = filteredRules.length;
+
+      // Apply pagination
+      const paginatedRules = filteredRules.slice(input.offset, input.offset + input.limit);
+
+      return {
+        rules: paginatedRules.map((r) => ({
+          id: r.id,
+          groupId: r.groupId,
+          type: r.type,
+          value: r.value,
+          comment: r.comment,
+          createdAt: r.createdAt?.toISOString() ?? null,
+        })),
+        total,
+        hasMore: input.offset + input.limit < total,
+      };
+    }),
+
+  // Bulk delete rules - OpenPath SPA RulesManager uses this
+  bulkDeleteRules: tenantProcedure.input(BulkDeleteRulesSchema).mutation(async ({ ctx, input }) => {
+    const orgGroup = await db
+      .select()
+      .from(schema.cpOrganizationGroups)
+      .where(
+        and(
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+          eq(schema.cpOrganizationGroups.groupId, input.groupId)
+        )
+      )
+      .limit(1);
+
+    if (!orgGroup.length) {
+      throw new Error('Group not found or access denied');
+    }
+
+    // Delete rules that belong to the group and match the IDs
+    await openpathDb
+      .delete(whitelistRules)
+      .where(
+        and(eq(whitelistRules.groupId, input.groupId), inArray(whitelistRules.id, input.ruleIds))
+      );
+
+    return { success: true, deletedCount: input.ruleIds.length };
+  }),
 
   create: tenantProcedure.input(CreateGroupSchema).mutation(async ({ ctx, input }) => {
     const groupId = nanoid();
