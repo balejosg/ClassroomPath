@@ -123,6 +123,8 @@ jobs:
             export COMPOSE_PROJECT_NAME=classroompath-production
             echo "Stopping existing containers..."
             docker compose down --remove-orphans || true
+            # Remove containers with both naming conventions (with and without project prefix)
+            docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
             docker rm -f classroompath-production-api-1 classroompath-production-gateway-1 classroompath-production-spa-1 2>/dev/null || true
 
             echo "Rebuilding Docker images..."
