@@ -33,8 +33,8 @@ export default defineConfig({
   /* Retry on failure - critical for handling transient race conditions */
   retries: isCI ? 2 : 2,
 
-  /* Parallel workers for speed */
-  workers: isCI ? 2 : 4,
+  /* Parallel workers for speed (5 is optimal based on benchmarking - see PR for data) */
+  workers: isCI ? 2 : 5,
 
   /* Reporter configuration */
   reporter: isCI
