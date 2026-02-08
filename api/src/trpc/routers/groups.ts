@@ -26,15 +26,11 @@ const AddRuleSchema = z.object({
   comment: z.string().optional(),
 });
 
+// OpenPath SPA uses this schema (type + values array)
 const BulkCreateRulesSchema = z.object({
   groupId: z.string(),
-  rules: z.array(
-    z.object({
-      type: z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']),
-      value: z.string().min(1).max(500),
-      comment: z.string().optional(),
-    })
-  ),
+  type: z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']),
+  values: z.array(z.string().min(1).max(500)),
 });
 
 const ListRulesPaginatedSchema = z.object({
@@ -631,24 +627,25 @@ export const groupsRouter = router({
       throw new Error('Group not found or access denied');
     }
 
-    const rulesToInsert = input.rules.map((rule) => ({
+    // Convert values array to rules format
+    const rulesToInsert = input.values.map((value) => ({
       id: nanoid(),
       groupId: input.groupId,
-      type: rule.type,
-      value: rule.value,
-      comment: rule.comment,
+      type: input.type,
+      value: value,
     }));
 
-    const insertedRules = await openpathDb.insert(whitelistRules).values(rulesToInsert).returning();
+    // Use onConflictDoNothing to skip duplicates
+    const insertedRules = await openpathDb
+      .insert(whitelistRules)
+      .values(rulesToInsert)
+      .onConflictDoNothing({
+        target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
+      })
+      .returning();
 
-    return insertedRules.map((rule) => ({
-      id: rule.id,
-      groupId: rule.groupId,
-      type: rule.type,
-      value: rule.value,
-      comment: rule.comment,
-      createdAt: rule.createdAt?.toISOString() ?? null,
-    }));
+    // Return count like OpenPath does
+    return { count: insertedRules.length };
   }),
 
   deleteRule: tenantProcedure
