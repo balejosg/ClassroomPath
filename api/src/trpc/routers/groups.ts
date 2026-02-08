@@ -374,43 +374,52 @@ export const groupsRouter = router({
       throw new Error('Group not found or access denied');
     }
 
-    // Check for existing rule with same groupId, type, and value (prevent duplicates)
-    const existingRule = await openpathDb
-      .select()
-      .from(whitelistRules)
-      .where(
-        and(
-          eq(whitelistRules.groupId, input.groupId),
-          eq(whitelistRules.type, input.type),
-          eq(whitelistRules.value, input.value)
-        )
-      )
-      .limit(1);
-
-    if (existingRule.length > 0) {
-      // Return existing rule instead of creating duplicate
-      const existing = existingRule[0];
-      return {
-        id: existing.id,
-        groupId: existing.groupId,
-        type: existing.type,
-        value: existing.value,
-        comment: existing.comment,
-        createdAt: existing.createdAt?.toISOString() ?? null,
-      };
-    }
-
-    const [rule] = await openpathDb
+    // Use atomic upsert with ON CONFLICT DO NOTHING to prevent race conditions
+    // The database has a unique constraint on (groupId, type, value)
+    const newId = nanoid();
+    const insertResult = await openpathDb
       .insert(whitelistRules)
       .values({
-        id: nanoid(),
+        id: newId,
         groupId: input.groupId,
         type: input.type,
         value: input.value,
         comment: input.comment,
       })
+      .onConflictDoNothing({
+        target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
+      })
       .returning();
 
+    // If insert was skipped due to conflict, fetch the existing rule
+    if (insertResult.length === 0) {
+      const existingRule = await openpathDb
+        .select()
+        .from(whitelistRules)
+        .where(
+          and(
+            eq(whitelistRules.groupId, input.groupId),
+            eq(whitelistRules.type, input.type),
+            eq(whitelistRules.value, input.value)
+          )
+        )
+        .limit(1);
+
+      if (existingRule.length > 0) {
+        const existing = existingRule[0];
+        return {
+          id: existing.id,
+          groupId: existing.groupId,
+          type: existing.type,
+          value: existing.value,
+          comment: existing.comment,
+          createdAt: existing.createdAt?.toISOString() ?? null,
+        };
+      }
+      throw new Error('Failed to create or find rule');
+    }
+
+    const rule = insertResult[0];
     // Serialize Date fields for JSON compatibility
     return {
       id: rule.id,
@@ -439,43 +448,53 @@ export const groupsRouter = router({
       throw new Error('Group not found or access denied');
     }
 
-    // Check for existing rule with same groupId, type, and value (prevent duplicates)
-    const existingRule = await openpathDb
-      .select()
-      .from(whitelistRules)
-      .where(
-        and(
-          eq(whitelistRules.groupId, input.groupId),
-          eq(whitelistRules.type, input.type),
-          eq(whitelistRules.value, input.value)
-        )
-      )
-      .limit(1);
-
-    if (existingRule.length > 0) {
-      // Return existing rule instead of creating duplicate
-      const existing = existingRule[0];
-      return {
-        id: existing.id,
-        groupId: existing.groupId,
-        type: existing.type,
-        value: existing.value,
-        comment: existing.comment,
-        createdAt: existing.createdAt?.toISOString() ?? null,
-      };
-    }
-
-    const [rule] = await openpathDb
+    // Use atomic upsert with ON CONFLICT DO NOTHING to prevent race conditions
+    // The database has a unique constraint on (groupId, type, value)
+    const newId = nanoid();
+    const insertResult = await openpathDb
       .insert(whitelistRules)
       .values({
-        id: nanoid(),
+        id: newId,
         groupId: input.groupId,
         type: input.type,
         value: input.value,
         comment: input.comment,
       })
+      .onConflictDoNothing({
+        target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
+      })
       .returning();
 
+    // If insert was skipped due to conflict, fetch the existing rule
+    if (insertResult.length === 0) {
+      const existingRule = await openpathDb
+        .select()
+        .from(whitelistRules)
+        .where(
+          and(
+            eq(whitelistRules.groupId, input.groupId),
+            eq(whitelistRules.type, input.type),
+            eq(whitelistRules.value, input.value)
+          )
+        )
+        .limit(1);
+
+      if (existingRule.length > 0) {
+        const existing = existingRule[0];
+        return {
+          id: existing.id,
+          groupId: existing.groupId,
+          type: existing.type,
+          value: existing.value,
+          comment: existing.comment,
+          createdAt: existing.createdAt?.toISOString() ?? null,
+        };
+      }
+      // This shouldn't happen, but handle gracefully
+      throw new Error('Failed to create or find rule');
+    }
+
+    const rule = insertResult[0];
     return {
       id: rule.id,
       groupId: rule.groupId,
