@@ -374,6 +374,32 @@ export const groupsRouter = router({
       throw new Error('Group not found or access denied');
     }
 
+    // Check for existing rule with same groupId, type, and value (prevent duplicates)
+    const existingRule = await openpathDb
+      .select()
+      .from(whitelistRules)
+      .where(
+        and(
+          eq(whitelistRules.groupId, input.groupId),
+          eq(whitelistRules.type, input.type),
+          eq(whitelistRules.value, input.value)
+        )
+      )
+      .limit(1);
+
+    if (existingRule.length > 0) {
+      // Return existing rule instead of creating duplicate
+      const existing = existingRule[0];
+      return {
+        id: existing.id,
+        groupId: existing.groupId,
+        type: existing.type,
+        value: existing.value,
+        comment: existing.comment,
+        createdAt: existing.createdAt?.toISOString() ?? null,
+      };
+    }
+
     const [rule] = await openpathDb
       .insert(whitelistRules)
       .values({
@@ -411,6 +437,32 @@ export const groupsRouter = router({
 
     if (!orgGroup.length) {
       throw new Error('Group not found or access denied');
+    }
+
+    // Check for existing rule with same groupId, type, and value (prevent duplicates)
+    const existingRule = await openpathDb
+      .select()
+      .from(whitelistRules)
+      .where(
+        and(
+          eq(whitelistRules.groupId, input.groupId),
+          eq(whitelistRules.type, input.type),
+          eq(whitelistRules.value, input.value)
+        )
+      )
+      .limit(1);
+
+    if (existingRule.length > 0) {
+      // Return existing rule instead of creating duplicate
+      const existing = existingRule[0];
+      return {
+        id: existing.id,
+        groupId: existing.groupId,
+        type: existing.type,
+        value: existing.value,
+        comment: existing.comment,
+        createdAt: existing.createdAt?.toISOString() ?? null,
+      };
     }
 
     const [rule] = await openpathDb
