@@ -162,6 +162,20 @@ docker run --rm \
     node:20-alpine \
     sh -c "npm ci --silent 2>/dev/null || npm install --silent && npm run db:push" 2>&1 | tail -5
 
+echo "[DEPLOY] Checking disk space..."
+DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+echo "[DEPLOY] Current disk usage: ${DISK_USAGE}%"
+
+if [ "$DISK_USAGE" -gt 80 ]; then
+    echo "[DEPLOY] Disk usage above 80%, running Docker cleanup..."
+    docker system prune -af --volumes 2>/dev/null || true
+    docker builder prune -af 2>/dev/null || true
+    NEW_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+    echo "[DEPLOY] Disk usage after cleanup: ${NEW_USAGE}%"
+else
+    echo "[DEPLOY] Disk usage OK, skipping cleanup"
+fi
+
 echo "[DEPLOY] Rebuilding containers..."
 cd "$APP_DIR/docker"
 export COMPOSE_PROJECT_NAME=classroompath-staging
