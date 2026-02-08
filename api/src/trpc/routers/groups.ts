@@ -26,6 +26,17 @@ const AddRuleSchema = z.object({
   comment: z.string().optional(),
 });
 
+const BulkCreateRulesSchema = z.object({
+  groupId: z.string(),
+  rules: z.array(
+    z.object({
+      type: z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']),
+      value: z.string().min(1).max(500),
+      comment: z.string().optional(),
+    })
+  ),
+});
+
 export const groupsRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
     const orgGroups = await db
@@ -383,6 +394,81 @@ export const groupsRouter = router({
       comment: rule.comment,
       createdAt: rule.createdAt?.toISOString() ?? null,
     };
+  }),
+
+  // Alias for addRule - OpenPath SPA calls this
+  createRule: tenantProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
+    const orgGroup = await db
+      .select()
+      .from(schema.cpOrganizationGroups)
+      .where(
+        and(
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+          eq(schema.cpOrganizationGroups.groupId, input.groupId)
+        )
+      )
+      .limit(1);
+
+    if (!orgGroup.length) {
+      throw new Error('Group not found or access denied');
+    }
+
+    const [rule] = await openpathDb
+      .insert(whitelistRules)
+      .values({
+        id: nanoid(),
+        groupId: input.groupId,
+        type: input.type,
+        value: input.value,
+        comment: input.comment,
+      })
+      .returning();
+
+    return {
+      id: rule.id,
+      groupId: rule.groupId,
+      type: rule.type,
+      value: rule.value,
+      comment: rule.comment,
+      createdAt: rule.createdAt?.toISOString() ?? null,
+    };
+  }),
+
+  // Bulk create rules - OpenPath SPA calls this for batch operations
+  bulkCreateRules: tenantProcedure.input(BulkCreateRulesSchema).mutation(async ({ ctx, input }) => {
+    const orgGroup = await db
+      .select()
+      .from(schema.cpOrganizationGroups)
+      .where(
+        and(
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+          eq(schema.cpOrganizationGroups.groupId, input.groupId)
+        )
+      )
+      .limit(1);
+
+    if (!orgGroup.length) {
+      throw new Error('Group not found or access denied');
+    }
+
+    const rulesToInsert = input.rules.map((rule) => ({
+      id: nanoid(),
+      groupId: input.groupId,
+      type: rule.type,
+      value: rule.value,
+      comment: rule.comment,
+    }));
+
+    const insertedRules = await openpathDb.insert(whitelistRules).values(rulesToInsert).returning();
+
+    return insertedRules.map((rule) => ({
+      id: rule.id,
+      groupId: rule.groupId,
+      type: rule.type,
+      value: rule.value,
+      comment: rule.comment,
+      createdAt: rule.createdAt?.toISOString() ?? null,
+    }));
   }),
 
   deleteRule: tenantProcedure
