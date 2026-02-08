@@ -236,7 +236,12 @@ export const groupsRouter = router({
   }),
 
   listRules: tenantProcedure
-    .input(z.object({ groupId: z.string() }))
+    .input(
+      z.object({
+        groupId: z.string(),
+        type: z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']).optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const orgGroup = await db
         .select()
@@ -253,10 +258,12 @@ export const groupsRouter = router({
         throw new Error('Group not found or access denied');
       }
 
-      const rules = await openpathDb
-        .select()
-        .from(whitelistRules)
-        .where(eq(whitelistRules.groupId, input.groupId));
+      // Build query with optional type filter
+      const whereConditions = input.type
+        ? and(eq(whitelistRules.groupId, input.groupId), eq(whitelistRules.type, input.type))
+        : eq(whitelistRules.groupId, input.groupId);
+
+      const rules = await openpathDb.select().from(whitelistRules).where(whereConditions);
 
       // Serialize Date fields for JSON compatibility
       return rules.map((r) => ({
