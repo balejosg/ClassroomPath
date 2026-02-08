@@ -9,7 +9,11 @@
 #   [4/5] Unit & Integration Tests (DB-dependent)
 #   [5/5] E2E Playwright Tests
 #
-# Expected time: ~115s (down from ~160s)
+# OPTIMIZATION: When only the submodule is updated, OpenPath static checks
+# are skipped because they already passed in the OpenPath repo's pre-commit.
+# This saves ~30-45s per submodule-only commit.
+#
+# Expected time: ~90s (submodule-only) / ~115s (full)
 
 set -euo pipefail
 
@@ -21,6 +25,39 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-classroompath_test}"
 
 # Track parallel job failures
 PARALLEL_FAILED=0
+
+# =============================================================================
+# OPTIMIZATION: Detect submodule-only changes
+# =============================================================================
+# If the only staged change is upstream/openpath, we can skip redundant checks
+# because OpenPath's pre-commit already validated typecheck/lint/security.
+SUBMODULE_ONLY=0
+SKIP_OPENPATH_STATIC=0
+
+detect_change_type() {
+  local staged_files
+  staged_files=$(git diff --cached --name-only 2>/dev/null || echo "")
+  
+  if [ -z "$staged_files" ]; then
+    # No staged files - running manually, do full verification
+    return
+  fi
+  
+  # Check if ALL staged files are just the submodule pointer
+  local non_submodule_files
+  non_submodule_files=$(echo "$staged_files" | grep -v "^upstream/openpath$" || true)
+  
+  if [ -z "$non_submodule_files" ]; then
+    SUBMODULE_ONLY=1
+    SKIP_OPENPATH_STATIC=1
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ⚡ OPTIMIZATION: Submodule-only update detected"
+    echo "  → Skipping OpenPath static checks (already verified in OpenPath repo)"
+    echo "  → Expected time savings: ~30-45s"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+  fi
+}
 
 docker_compose() {
   docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
@@ -80,6 +117,9 @@ docker info >/dev/null 2>&1 || {
 
 cd "$ROOT_DIR"
 
+# Detect if this is a submodule-only update
+detect_change_type
+
 echo ""
 echo "=========================================="
 echo "  ClassroomPath Verification Starting"
@@ -133,14 +173,24 @@ export CI=true
 echo ""
 echo "[2/5] Static analysis (parallel: typecheck, lint, format)..."
 
-run_parallel \
-  "npm run typecheck" \
-  "npm run lint" \
-  "npm run format:check" \
-|| {
-  echo "Static analysis failed!" >&2
-  exit 1
-}
+if [ "$SKIP_OPENPATH_STATIC" = "1" ]; then
+  echo "  → Skipping OpenPath typecheck/lint (already verified upstream)"
+  echo "  → Running ClassroomPath format:check only..."
+  npm run format:check || {
+    echo "Format check failed!" >&2
+    exit 1
+  }
+else
+  # Use Turbo's cache for OpenPath static analysis (much faster on repeat runs)
+  echo "  → Using Turbo cache for OpenPath static analysis..."
+  run_parallel \
+    "cd upstream/openpath && npm run verify:static" \
+    "npm run format:check" \
+  || {
+    echo "Static analysis failed!" >&2
+    exit 1
+  }
+fi
 
 # =============================================================================
 # [3/5] SECURITY & SIZE - Parallel
@@ -148,14 +198,24 @@ run_parallel \
 echo ""
 echo "[3/5] Security and size checks (parallel)..."
 
-run_parallel \
-  "npm run security:audit" \
-  "npm run security:secrets" \
-  "npm run size:check" \
-|| {
-  echo "Security/size checks failed!" >&2
-  exit 1
-}
+if [ "$SKIP_OPENPATH_STATIC" = "1" ]; then
+  echo "  → Skipping OpenPath security/size checks (already verified upstream)"
+  echo "  → Running ClassroomPath-only audit..."
+  # Only run npm audit for ClassroomPath's own dependencies
+  npm audit --audit-level=high || {
+    echo "Security audit failed!" >&2
+    exit 1
+  }
+else
+  run_parallel \
+    "npm run security:audit" \
+    "npm run security:secrets" \
+    "npm run size:check" \
+  || {
+    echo "Security/size checks failed!" >&2
+    exit 1
+  }
+fi
 
 # =============================================================================
 # [4/5] UNIT & INTEGRATION TESTS
