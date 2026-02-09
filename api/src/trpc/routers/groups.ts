@@ -41,9 +41,9 @@ const ListRulesPaginatedSchema = z.object({
   search: z.string().optional(),
 });
 
+// OpenPath SPA sends { ids: string[] } - just the rule IDs
 const BulkDeleteRulesSchema = z.object({
-  groupId: z.string(),
-  ruleIds: z.array(z.string()).min(1),
+  ids: z.array(z.string().min(1)).min(1).max(100),
 });
 
 export const groupsRouter = router({
@@ -348,30 +348,54 @@ export const groupsRouter = router({
     }),
 
   // Bulk delete rules - OpenPath SPA RulesManager uses this
+  // SPA sends { ids: string[] } and expects { rules: Rule[], deleted: number } for undo
   bulkDeleteRules: tenantProcedure.input(BulkDeleteRulesSchema).mutation(async ({ ctx, input }) => {
-    const orgGroup = await db
+    // Get all rules to be deleted (for undo support)
+    const rulesToDelete = await openpathDb
+      .select()
+      .from(whitelistRules)
+      .where(inArray(whitelistRules.id, input.ids));
+
+    if (rulesToDelete.length === 0) {
+      return { rules: [], deleted: 0 };
+    }
+
+    // Verify all rules belong to groups the user has access to
+    const groupIds = [...new Set(rulesToDelete.map((r) => r.groupId))];
+    const orgGroups = await db
       .select()
       .from(schema.cpOrganizationGroups)
       .where(
         and(
           eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationGroups.groupId, input.groupId)
+          inArray(schema.cpOrganizationGroups.groupId, groupIds)
         )
-      )
-      .limit(1);
-
-    if (!orgGroup.length) {
-      throw new Error('Group not found or access denied');
-    }
-
-    // Delete rules that belong to the group and match the IDs
-    await openpathDb
-      .delete(whitelistRules)
-      .where(
-        and(eq(whitelistRules.groupId, input.groupId), inArray(whitelistRules.id, input.ruleIds))
       );
 
-    return { success: true, deletedCount: input.ruleIds.length };
+    const accessibleGroupIds = new Set(orgGroups.map((og) => og.groupId));
+    const accessibleRules = rulesToDelete.filter((r) => accessibleGroupIds.has(r.groupId));
+
+    if (accessibleRules.length === 0) {
+      throw new Error('No accessible rules found');
+    }
+
+    const accessibleIds = accessibleRules.map((r) => r.id);
+
+    // Delete the rules
+    await openpathDb.delete(whitelistRules).where(inArray(whitelistRules.id, accessibleIds));
+
+    // Return in format expected by SPA for undo support
+    return {
+      rules: accessibleRules.map((r) => ({
+        id: r.id,
+        groupId: r.groupId,
+        type: r.type,
+        value: r.value,
+        comment: r.comment,
+        createdAt: r.createdAt?.toISOString() ?? null,
+      })),
+      deleted: accessibleRules.length,
+    };
   }),
 
   create: tenantProcedure.input(CreateGroupSchema).mutation(async ({ ctx, input }) => {
