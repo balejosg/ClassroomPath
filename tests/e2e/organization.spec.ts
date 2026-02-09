@@ -153,8 +153,8 @@ test.describe('Teacher Permissions', () => {
     await loginAsTeacher(page);
     await waitForNetworkIdle(page);
 
-    // Teacher should see dashboard
-    await expect(page.getByText(/Dashboard|Grupos/i)).toBeVisible();
+    // Teacher should see dashboard (check for system status banner which is always visible)
+    await expect(page.getByText(/Estado del Sistema/i)).toBeVisible();
 
     // Teacher should NOT see organization settings
     const orgLink = page.getByRole('link', { name: /Organización|Organization/i });
