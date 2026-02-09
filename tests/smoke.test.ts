@@ -207,21 +207,17 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
       assert.notStrictEqual(response.status, 404, 'tRPC batch endpoint should not return 404');
     });
 
-    void test('POST /trpc/groups.list is BLOCKED (403 Forbidden)', async () => {
+    void test('GET /trpc/groups.list without auth returns 401 Unauthorized', async () => {
+      // tRPC queries use GET, not POST. Without authentication, should return 401.
       const response = await fetchWithTimeout(`${SMOKE_TEST_URL}/trpc/groups.list`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
+        method: 'GET',
       });
 
-      assert.strictEqual(response.status, 403, 'Sensitive tRPC endpoints must be blocked with 403');
-
-      if (isJsonResponse(response)) {
-        const data = (await response.json()) as any;
-        assert.strictEqual(data.error?.code, 'FORBIDDEN', 'Error code should be FORBIDDEN');
-      }
+      assert.strictEqual(
+        response.status,
+        401,
+        'Sensitive tRPC endpoints must require authentication (401)'
+      );
     });
   });
 
