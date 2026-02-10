@@ -8,6 +8,7 @@ import { requestsRouter } from './routers/requests.js';
 import { pendingUsersRouter } from './routers/pending-users.js';
 import { healthcheckRouter } from './routers/healthcheck.js';
 import { apiTokensRouter } from './routers/api-tokens.js';
+import { schedulesRouter } from './routers/schedules.js';
 
 export const appRouter = router({
   auth: authRouter,
@@ -16,6 +17,7 @@ export const appRouter = router({
   groups: groupsRouter,
   users: usersRouter,
   requests: requestsRouter,
+  schedules: schedulesRouter,
   pendingUsers: pendingUsersRouter,
   healthcheck: healthcheckRouter,
   apiTokens: apiTokensRouter,

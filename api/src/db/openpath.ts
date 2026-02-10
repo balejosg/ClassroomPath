@@ -1,5 +1,15 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { pgTable, varchar, text, timestamp, boolean, integer, unique } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  varchar,
+  text,
+  timestamp,
+  boolean,
+  integer,
+  unique,
+  uuid,
+  time,
+} from 'drizzle-orm/pg-core';
 import pg from 'pg';
 import { config } from '../config.js';
 
@@ -88,6 +98,19 @@ export const machines = pgTable('machines', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+export const schedules = pgTable('schedules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  classroomId: varchar('classroom_id', { length: 50 }).notNull(),
+  teacherId: varchar('teacher_id', { length: 50 }).notNull(),
+  groupId: varchar('group_id', { length: 100 }).notNull(),
+  dayOfWeek: integer('day_of_week').notNull(),
+  startTime: time('start_time').notNull(),
+  endTime: time('end_time').notNull(),
+  recurrence: varchar('recurrence', { length: 20 }).default('weekly'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
 export const requests = pgTable('requests', {
   id: varchar('id', { length: 50 }).primaryKey(),
   domain: varchar('domain', { length: 255 }).notNull(),
@@ -105,6 +128,7 @@ export const openpathSchema = {
   users,
   classrooms,
   machines,
+  schedules,
   whitelistGroups,
   whitelistRules,
   requests,

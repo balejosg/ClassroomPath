@@ -40,6 +40,8 @@ app.get(
 
 // Block sensitive OpenPath endpoints - force use of /cp/trpc/* for tenant-filtered data
 const BLOCKED_OPENPATH_PROCEDURES = [
+  // Block schedules to prevent tenant-scoping bypass (ClassroomPath exposes tenant-scoped schedules via /cp/trpc).
+  'schedules',
   'groups.list',
   'groups.getById',
   'groups.getByName',
