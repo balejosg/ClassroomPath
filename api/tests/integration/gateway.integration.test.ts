@@ -198,6 +198,14 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.strictEqual(json.error.data.blocked, 'requests.listGroups');
   });
 
+  test('should block groups.listRulesGrouped on /trpc (requires /cp/trpc)', async () => {
+    const resp = await fetch(`${API_URL}/trpc/groups.listRulesGrouped`);
+    assert.strictEqual(resp.status, 403);
+    const json = (await resp.json()) as any;
+    assert.strictEqual(json.error.message, 'Use /cp/trpc for tenant-scoped data');
+    assert.strictEqual(json.error.data.blocked, 'groups.listRulesGrouped');
+  });
+
   test('should block batched requests containing blocked procedures', async () => {
     // tRPC batch format: /trpc/proc1,proc2
     const resp = await fetch(`${API_URL}/trpc/health.check,requests.list`);

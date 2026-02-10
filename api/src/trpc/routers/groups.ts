@@ -6,6 +6,7 @@ import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import { getRootDomain } from '../../utils/domain.js';
 
 const CreateGroupSchema = z.object({
   name: z.string().min(1).max(100),
@@ -44,6 +45,15 @@ const ListRulesPaginatedSchema = z.object({
 // OpenPath SPA sends { ids: string[] } - just the rule IDs
 const BulkDeleteRulesSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(100),
+});
+
+// Grouped rules pagination - groups by root domain, paginates by groups
+const ListRulesGroupedSchema = z.object({
+  groupId: z.string(),
+  type: z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']).optional(),
+  limit: z.number().min(1).max(50).optional().default(20),
+  offset: z.number().min(0).optional().default(0),
+  search: z.string().optional(),
 });
 
 export const groupsRouter = router({
@@ -346,6 +356,106 @@ export const groupsRouter = router({
         hasMore: input.offset + input.limit < total,
       };
     }),
+
+  // Grouped rules list - groups by root domain, paginates by domain groups
+  // Ensures domain groups are never split across pages
+  listRulesGrouped: tenantProcedure.input(ListRulesGroupedSchema).query(async ({ ctx, input }) => {
+    const orgGroup = await db
+      .select()
+      .from(schema.cpOrganizationGroups)
+      .where(
+        and(
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+          eq(schema.cpOrganizationGroups.groupId, input.groupId)
+        )
+      )
+      .limit(1);
+
+    if (!orgGroup.length) {
+      throw new Error('Group not found or access denied');
+    }
+
+    // Build base query conditions
+    const conditions = [eq(whitelistRules.groupId, input.groupId)];
+
+    if (input.type) {
+      conditions.push(eq(whitelistRules.type, input.type));
+    }
+
+    // Get all rules for the group
+    const allRules = await openpathDb
+      .select()
+      .from(whitelistRules)
+      .where(and(...conditions));
+
+    // Apply search filter if provided
+    let filtered = allRules;
+    if (input.search?.trim()) {
+      const searchLower = input.search.toLowerCase().trim();
+      filtered = allRules.filter((r) => r.value.toLowerCase().includes(searchLower));
+    }
+
+    // Group rules by root domain
+    const groupedMap = new Map();
+    for (const rule of filtered) {
+      const root = getRootDomain(rule.value);
+      const existing = groupedMap.get(root) ?? [];
+      existing.push(rule);
+      groupedMap.set(root, existing);
+    }
+
+    // Sort root domains alphabetically
+    const sortedRoots = Array.from(groupedMap.keys()).sort((a, b) => a.localeCompare(b));
+
+    // Calculate totals before pagination
+    const totalGroups = sortedRoots.length;
+    const totalRules = filtered.length;
+
+    // Apply pagination on groups (not individual rules)
+    const paginatedRoots = sortedRoots.slice(input.offset, input.offset + input.limit);
+
+    // Build domain groups with status
+    const groups = paginatedRoots.map((root) => {
+      const groupRules = groupedMap.get(root) ?? [];
+      // Sort rules within group alphabetically
+      groupRules.sort((a, b) => a.value.localeCompare(b.value));
+
+      // Determine status based on rule types
+      const hasWhitelist = groupRules.some((r) => r.type === 'whitelist');
+      const hasBlocked = groupRules.some(
+        (r) => r.type === 'blocked_subdomain' || r.type === 'blocked_path'
+      );
+
+      let status;
+      if (hasWhitelist && hasBlocked) {
+        status = 'mixed';
+      } else if (hasBlocked) {
+        status = 'blocked';
+      } else {
+        status = 'allowed';
+      }
+
+      return {
+        root,
+        rules: groupRules.map((r) => ({
+          id: r.id,
+          groupId: r.groupId,
+          type: r.type,
+          value: r.value,
+          comment: r.comment,
+          createdAt: r.createdAt?.toISOString() ?? null,
+        })),
+        status,
+      };
+    });
+
+    return {
+      groups,
+      totalGroups,
+      totalRules,
+      hasMore: input.offset + input.limit < totalGroups,
+    };
+  }),
 
   // Bulk delete rules - OpenPath SPA RulesManager uses this
   // SPA sends { ids: string[] } and expects { rules: Rule[], deleted: number } for undo

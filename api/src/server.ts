@@ -44,6 +44,7 @@ const BLOCKED_OPENPATH_PROCEDURES = [
   'groups.getById',
   'groups.getByName',
   'groups.listRules',
+  'groups.listRulesGrouped',
   'classrooms.list',
   'classrooms.get',
   'classrooms.listMachines',
