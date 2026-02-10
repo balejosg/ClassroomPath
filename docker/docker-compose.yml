@@ -7,6 +7,8 @@ networks:
 
 services:
   # ClassroomPath Gateway API (handles multi-tenancy)
+  # The gateway is the public-facing entry point. The upstream SSL proxy
+  # forwards to host port 3000, so the gateway MUST be mapped there.
   gateway:
     build:
       context: ..
@@ -14,6 +16,7 @@ services:
     container_name: classroompath-gateway
     restart: unless-stopped
     ports:
+      - '3000:3001'
       - '3001:3001'
     env_file:
       - ../config/.env
@@ -32,14 +35,15 @@ services:
       - openpath_default
 
   # OpenPath API (core functionality)
+  # Internal only - accessed by gateway via Docker network (http://api:3000)
   api:
     build:
       context: ../upstream/openpath
       dockerfile: ../../docker/Dockerfile.api
     container_name: classroompath-api
     restart: unless-stopped
-    ports:
-      - '3000:3000'
+    expose:
+      - '3000'
     env_file:
       - ../config/.env
     volumes:

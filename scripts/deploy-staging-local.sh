@@ -204,7 +204,7 @@ ATTEMPT=0
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     ATTEMPT=$((ATTEMPT + 1))
     
-    HEALTH=$($SSH_CMD "curl -sf http://localhost:3001/cp/health 2>/dev/null" || echo "")
+    HEALTH=$($SSH_CMD "curl -sf http://localhost:3000/cp/health 2>/dev/null" || echo "")
     
     if [ -n "$HEALTH" ]; then
         log_success "Gateway healthy (attempt $ATTEMPT)"
@@ -229,7 +229,7 @@ ATTEMPT=0
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     ATTEMPT=$((ATTEMPT + 1))
     
-    API_HEALTH=$($SSH_CMD "curl -sf http://localhost:3001/health 2>/dev/null" || echo "")
+    API_HEALTH=$($SSH_CMD "curl -sf http://localhost:3000/health 2>/dev/null" || echo "")
     
     if echo "$API_HEALTH" | grep -q '"status":"ok"'; then
         log_success "API healthy (via gateway, attempt $ATTEMPT)"
