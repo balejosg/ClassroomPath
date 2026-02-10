@@ -805,6 +805,92 @@ export const groupsRouter = router({
       return { success: true };
     }),
 
+  updateRule: tenantProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        groupId: z.string().min(1),
+        value: z.string().min(1).max(500).optional(),
+        comment: z.string().max(500).nullable().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Verify tenant authorization
+      const orgGroup = await db
+        .select()
+        .from(schema.cpOrganizationGroups)
+        .where(
+          and(
+            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+            eq(schema.cpOrganizationGroups.groupId, input.groupId)
+          )
+        )
+        .limit(1);
+
+      if (!orgGroup.length) {
+        throw new Error('Group not found or access denied');
+      }
+
+      // Get existing rule
+      const [existing] = await openpathDb
+        .select()
+        .from(whitelistRules)
+        .where(eq(whitelistRules.id, input.id));
+
+      if (!existing) {
+        throw new Error('Rule not found');
+      }
+
+      // Build update object
+      const updates: Partial<{ value: string; comment: string | null }> = {};
+
+      if (input.value !== undefined) {
+        const normalizedValue = input.value.toLowerCase().trim();
+
+        // Check for duplicates if changing value
+        const [duplicate] = await openpathDb
+          .select()
+          .from(whitelistRules)
+          .where(
+            and(
+              eq(whitelistRules.groupId, existing.groupId),
+              eq(whitelistRules.type, existing.type),
+              eq(whitelistRules.value, normalizedValue)
+            )
+          );
+
+        if (duplicate && duplicate.id !== input.id) {
+          throw new Error('A rule with this value already exists');
+        }
+
+        updates.value = normalizedValue;
+      }
+
+      if (input.comment !== undefined) {
+        updates.comment = input.comment;
+      }
+
+      // Only update if there's something to update
+      if (Object.keys(updates).length > 0) {
+        await openpathDb.update(whitelistRules).set(updates).where(eq(whitelistRules.id, input.id));
+      }
+
+      // Return updated rule
+      const [updated] = await openpathDb
+        .select()
+        .from(whitelistRules)
+        .where(eq(whitelistRules.id, input.id));
+
+      return {
+        id: updated.id,
+        groupId: updated.groupId,
+        type: updated.type,
+        value: updated.value,
+        comment: updated.comment,
+        createdAt: updated.createdAt?.toISOString() ?? null,
+      };
+    }),
+
   /**
    * Get system status (enabled/disabled groups count) for the current organization.
    * Used by Dashboard to show system status overview.
