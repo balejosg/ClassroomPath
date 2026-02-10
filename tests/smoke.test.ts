@@ -207,16 +207,15 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
       assert.notStrictEqual(response.status, 404, 'tRPC batch endpoint should not return 404');
     });
 
-    void test('GET /trpc/groups.list without auth returns 401 Unauthorized', async () => {
-      // tRPC queries use GET, not POST. Without authentication, should return 401.
+    void test('GET /trpc/groups.list returns 403 (blocked, must use /cp/trpc)', async () => {
       const response = await fetchWithTimeout(`${SMOKE_TEST_URL}/trpc/groups.list`, {
         method: 'GET',
       });
 
       assert.strictEqual(
         response.status,
-        401,
-        'Sensitive tRPC endpoints must require authentication (401)'
+        403,
+        'Sensitive OpenPath procedures must be blocked on /trpc (use /cp/trpc)'
       );
     });
   });
