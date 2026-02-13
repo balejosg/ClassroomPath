@@ -5,9 +5,37 @@ import { router, tenantProcedure } from '../trpc.js';
 import { openpathDb } from '../../db/openpath.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
-import { eq, inArray, and } from 'drizzle-orm';
+import { eq, inArray, and, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { classrooms, machines } from '../../db/openpath.js';
+import { classrooms, machines, schedules } from '../../db/openpath.js';
+
+async function getCurrentScheduleGroupId(params: {
+  classroomId: string;
+  date?: Date | undefined;
+}): Promise<string | null> {
+  const date = params.date ?? new Date();
+  const dayOfWeek = date.getDay();
+
+  // Only Mon-Fri scheduling is supported
+  if (dayOfWeek === 0 || dayOfWeek === 6) return null;
+
+  const currentTime = date.toTimeString().slice(0, 5);
+
+  const rows = await openpathDb
+    .select({ groupId: schedules.groupId })
+    .from(schedules)
+    .where(
+      and(
+        eq(schedules.classroomId, params.classroomId),
+        eq(schedules.dayOfWeek, dayOfWeek),
+        sql`${schedules.startTime} <= ${currentTime}::time`,
+        sql`${schedules.endTime} > ${currentTime}::time`
+      )
+    )
+    .limit(1);
+
+  return rows[0]?.groupId ?? null;
+}
 
 const CreateClassroomSchema = z.object({
   name: z.string().min(1).max(100),
@@ -38,6 +66,31 @@ export const classroomsRouter = router({
       .from(classrooms)
       .where(inArray(classrooms.id, classroomIds));
 
+    const now = new Date();
+    const nowDayOfWeek = now.getDay();
+    const nowTime = now.toTimeString().slice(0, 5);
+
+    const scheduleGroupByClassroomId = new Map<string, string>();
+    if (nowDayOfWeek !== 0 && nowDayOfWeek !== 6) {
+      const activeScheduleRows = await openpathDb
+        .select({ classroomId: schedules.classroomId, groupId: schedules.groupId })
+        .from(schedules)
+        .where(
+          and(
+            inArray(schedules.classroomId, classroomIds),
+            eq(schedules.dayOfWeek, nowDayOfWeek),
+            sql`${schedules.startTime} <= ${nowTime}::time`,
+            sql`${schedules.endTime} > ${nowTime}::time`
+          )
+        );
+
+      for (const row of activeScheduleRows) {
+        if (!scheduleGroupByClassroomId.has(row.classroomId)) {
+          scheduleGroupByClassroomId.set(row.classroomId, row.groupId);
+        }
+      }
+    }
+
     // Serialize Date fields for JSON compatibility
     return result.map((c) => ({
       id: c.id,
@@ -45,6 +98,7 @@ export const classroomsRouter = router({
       displayName: c.displayName,
       defaultGroupId: c.defaultGroupId,
       activeGroupId: c.activeGroupId,
+      currentGroupId: c.activeGroupId ?? scheduleGroupByClassroomId.get(c.id) ?? c.defaultGroupId,
       createdAt: c.createdAt?.toISOString() ?? null,
       updatedAt: c.updatedAt?.toISOString() ?? null,
     }));
@@ -77,14 +131,17 @@ export const classroomsRouter = router({
 
     if (!classroom[0]) return null;
 
-    // Serialize Date fields for JSON compatibility
     const c = classroom[0];
+    const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: c.id });
+
+    // Serialize Date fields for JSON compatibility
     return {
       id: c.id,
       name: c.name,
       displayName: c.displayName,
       defaultGroupId: c.defaultGroupId,
       activeGroupId: c.activeGroupId,
+      currentGroupId: c.activeGroupId ?? currentScheduleGroupId ?? c.defaultGroupId,
       createdAt: c.createdAt?.toISOString() ?? null,
       updatedAt: c.updatedAt?.toISOString() ?? null,
     };
@@ -199,6 +256,8 @@ export const classroomsRouter = router({
         .where(eq(classrooms.id, input.id))
         .returning();
 
+      const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
+
       // Serialize Date fields for JSON compatibility
       return {
         id: updated.id,
@@ -206,6 +265,7 @@ export const classroomsRouter = router({
         displayName: updated.displayName,
         defaultGroupId: updated.defaultGroupId,
         activeGroupId: updated.activeGroupId,
+        currentGroupId: updated.activeGroupId ?? currentScheduleGroupId ?? updated.defaultGroupId,
         createdAt: updated.createdAt?.toISOString() ?? null,
         updatedAt: updated.updatedAt?.toISOString() ?? null,
       };
@@ -258,6 +318,8 @@ export const classroomsRouter = router({
       classroomId: classroom.id,
     });
 
+    const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: classroom.id });
+
     // Serialize Date fields for JSON compatibility
     return {
       id: classroom.id,
@@ -265,6 +327,8 @@ export const classroomsRouter = router({
       displayName: classroom.displayName,
       defaultGroupId: classroom.defaultGroupId,
       activeGroupId: classroom.activeGroupId,
+      currentGroupId:
+        classroom.activeGroupId ?? currentScheduleGroupId ?? classroom.defaultGroupId ?? null,
       createdAt: classroom.createdAt?.toISOString() ?? null,
       updatedAt: classroom.updatedAt?.toISOString() ?? null,
     };
@@ -296,6 +360,8 @@ export const classroomsRouter = router({
       .where(eq(classrooms.id, id))
       .returning();
 
+    const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
+
     // Serialize Date fields for JSON compatibility
     return {
       id: updated.id,
@@ -303,6 +369,7 @@ export const classroomsRouter = router({
       displayName: updated.displayName,
       defaultGroupId: updated.defaultGroupId,
       activeGroupId: updated.activeGroupId,
+      currentGroupId: updated.activeGroupId ?? currentScheduleGroupId ?? updated.defaultGroupId,
       createdAt: updated.createdAt?.toISOString() ?? null,
       updatedAt: updated.updatedAt?.toISOString() ?? null,
     };
