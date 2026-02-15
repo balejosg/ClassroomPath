@@ -121,6 +121,9 @@ export const requests = pgTable('requests', {
   groupId: varchar('group_id', { length: 50 }).references(() => whitelistGroups.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolvedBy: varchar('resolved_by', { length: 255 }),
+  resolutionNote: text('resolution_note'),
 });
 
 export const openpathSchema = {
