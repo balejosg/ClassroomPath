@@ -26,6 +26,7 @@ jobs:
   smoke-test-staging:
     name: Staging
     runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.environment == 'staging' || github.event.inputs.environment == 'both'
     permissions:
       issues: write
       contents: read
@@ -124,6 +125,7 @@ jobs:
   smoke-test-production:
     name: Production
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'production' || github.event.inputs.environment == 'both')
     permissions:
       issues: write
       contents: read
