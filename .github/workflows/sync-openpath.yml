@@ -60,17 +60,7 @@ jobs:
             echo "No changes to commit"
           fi
 
-      - name: Trigger staging deploy
+      - name: Deploy note
         if: steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'deploy.yml',
-              ref: 'main',
-              inputs: {
-                environment: 'staging'
-              }
-            })
+        run: |
+          echo "Submodule synced. Staging deployment must be run locally via npm run deploy:staging."
