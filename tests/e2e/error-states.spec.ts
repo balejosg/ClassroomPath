@@ -4,7 +4,7 @@
  * Tests error handling, network failures, and edge cases.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/base-test';
 import {
   createTestUser,
   registerUser,

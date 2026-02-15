@@ -4,7 +4,7 @@
  * Tests organization creation, member management, and multi-tenancy.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/base-test';
 import { DashboardPage, OrganizationPage } from './fixtures/page-objects';
 import {
   loginAsAdmin,

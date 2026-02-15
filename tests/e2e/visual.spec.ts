@@ -4,7 +4,7 @@
  * Uses Playwright's screenshot comparison for visual consistency.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/base-test';
 import {
   loginAsAdmin,
   createTestUser,

@@ -4,7 +4,7 @@
  * Tests page load times, API response times, and user experience metrics.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/base-test';
 import {
   loginAsAdmin,
   createTestUser,

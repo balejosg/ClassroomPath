@@ -19,12 +19,20 @@ const __dirname = dirname(__filename);
 
 const API_URL = process.env.OPENPATH_API_URL ?? 'http://localhost:3010';
 
+function isExternalBaseUrl(): boolean {
+  const baseUrl = process.env.BASE_URL;
+  if (!baseUrl) return false;
+  return !baseUrl.includes('localhost') && !baseUrl.includes('127.0.0.1');
+}
+
 /**
  * Build test database URL from components to avoid secretlint false positive
  */
 function buildTestDatabaseUrl(): string {
-  const user = 'classroompath';
-  const pass = 'classroompath_test';
+  // Use the owner user for schema pushes (drizzle-kit requires table ownership).
+  // The test user can still be granted privileges separately if needed.
+  const user = 'openpath';
+  const pass = 'openpath_dev';
   const host = 'localhost';
   const port = '5432';
   const db = 'classroompath_test';
@@ -56,11 +64,64 @@ async function runSeedScript(): Promise<boolean> {
   }
 }
 
+async function runTruncateOnly(): Promise<boolean> {
+  const apiDir = join(__dirname, '..', '..', '..', 'api');
+
+  try {
+    console.log('Truncating E2E tables (pre-push cleanup)...');
+    execSync('npm run db:seed:e2e', {
+      cwd: apiDir,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        DATABASE_URL: process.env.DATABASE_URL ?? buildTestDatabaseUrl(),
+        E2E_TRUNCATE_ONLY: '1',
+      },
+    });
+    console.log('Truncate-only completed successfully');
+    return true;
+  } catch (error) {
+    console.error('Failed to truncate E2E tables:', error);
+    return false;
+  }
+}
+
+/**
+ * Ensures ClassroomPath (cp_*) tables are up to date before seeding.
+ */
+async function runClassroomPathDbPush(): Promise<boolean> {
+  const apiDir = join(__dirname, '..', '..', '..', 'api');
+
+  try {
+    console.log('Running drizzle-kit push --force for cp_* tables...');
+    execSync('npx drizzle-kit push --force', {
+      cwd: apiDir,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        DATABASE_URL: process.env.DATABASE_URL ?? buildTestDatabaseUrl(),
+      },
+    });
+    console.log('db:push completed successfully');
+    return true;
+  } catch (error) {
+    console.error('Failed to run db:push:', error);
+    return false;
+  }
+}
+
 /**
  * Main global setup function
  */
 async function globalSetup(_config: FullConfig): Promise<void> {
   console.log('\n=== E2E Global Setup: Seeding Test Data ===\n');
+
+  // For external environments (staging/prod), never attempt local DB mutations.
+  if (isExternalBaseUrl()) {
+    console.log('External BASE_URL detected; skipping local db:push + seed.');
+    console.log('\n=== E2E Global Setup Complete ===\n');
+    return;
+  }
 
   // Wait for API to be ready
   let apiReady = false;
@@ -80,6 +141,17 @@ async function globalSetup(_config: FullConfig): Promise<void> {
   if (!apiReady) {
     console.warn('WARNING: API not responding, skipping seed setup');
     return;
+  }
+
+  // Ensure tables are empty so drizzle-kit push never prompts.
+  const truncateSuccess = await runTruncateOnly();
+  if (!truncateSuccess) {
+    console.warn('WARNING: Pre-push truncate failed; db:push may prompt or fail');
+  }
+
+  const pushSuccess = await runClassroomPathDbPush();
+  if (!pushSuccess) {
+    console.warn('WARNING: db:push failed, seed may fail due to schema mismatch');
   }
 
   // Run the seed script which properly sets up:

@@ -74,6 +74,11 @@ async function truncateAll(): Promise<void> {
 async function seed(): Promise<void> {
   await truncateAll();
 
+  if (process.env.E2E_TRUNCATE_ONLY === '1') {
+    console.log('Truncated E2E tables (truncate-only mode)');
+    return;
+  }
+
   const [adminHash, teacherHash, pendingHash] = await Promise.all([
     bcrypt.hash(ADMIN.password, 10),
     bcrypt.hash(TEACHER.password, 10),
@@ -165,4 +170,8 @@ async function seed(): Promise<void> {
 }
 
 await seed();
-console.log('Seeded E2E data successfully');
+if (process.env.E2E_TRUNCATE_ONLY === '1') {
+  console.log('Truncate-only completed successfully');
+} else {
+  console.log('Seeded E2E data successfully');
+}
