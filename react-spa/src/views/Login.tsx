@@ -24,7 +24,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
     setError('');
     try {
       const result = await loginMutation.mutateAsync({ email, password });
-      persistSession(result);
+      persistSession({ user: result.user });
       onLogin();
     } catch (err) {
       setError('Credenciales inválidas o error de conexión');
@@ -37,7 +37,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
     setError('');
     try {
       const result = await googleLoginMutation.mutateAsync({ idToken });
-      persistSession(result);
+      persistSession({ user: result.user });
       onLogin();
     } catch (err: any) {
       setError(err?.message || 'Error al iniciar sesión con Google');

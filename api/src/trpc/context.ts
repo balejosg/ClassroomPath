@@ -1,6 +1,7 @@
 import type { CreateExpressContextOptions } from '@trpc/server/adapters/express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
+import { ACCESS_COOKIE_NAME, parseCookieValue } from '../lib/session-cookies.js';
 
 export interface JWTPayload {
   sub: string;
@@ -20,6 +21,7 @@ export interface Context {
 
 export async function createContext({ req, res }: CreateExpressContextOptions): Promise<Context> {
   const authHeader = req.headers.authorization;
+  const cookieToken = parseCookieValue(req.headers.cookie, ACCESS_COOKIE_NAME);
   let user: JWTPayload | null = null;
   let token: string | null = null;
 
@@ -28,8 +30,18 @@ export async function createContext({ req, res }: CreateExpressContextOptions): 
     try {
       user = jwt.verify(token, config.jwtSecret) as JWTPayload;
     } catch {
-      // Invalid token, user remains null
+      // Invalid token. Try cookie-based token fallback.
       token = null;
+    }
+  }
+
+  if (!token && cookieToken) {
+    try {
+      token = cookieToken;
+      user = jwt.verify(cookieToken, config.jwtSecret) as JWTPayload;
+    } catch {
+      token = null;
+      user = null;
     }
   }
 

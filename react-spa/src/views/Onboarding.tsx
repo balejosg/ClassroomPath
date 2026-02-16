@@ -6,7 +6,7 @@ import { Card } from '@openpath/src/components/ui/Card';
 import { useCreateOrganization, useWaitForInvitation } from '../lib/hooks';
 
 interface Props {
-  onOrgCreated: (data: { accessToken: string; refreshToken: string }) => void;
+  onOrgCreated: () => void;
   onWaitClick: () => void;
   onLogout?: () => void;
 }
@@ -30,8 +30,8 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
     createOrgMutation.mutate(
       { name: orgName },
       {
-        onSuccess: (data) => {
-          onOrgCreated(data);
+        onSuccess: () => {
+          onOrgCreated();
         },
         onError: (err) => {
           setError(err.message || 'Error al crear organización');

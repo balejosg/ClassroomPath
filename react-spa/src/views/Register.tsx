@@ -27,7 +27,7 @@ export function Register({ onLoginClick, onSuccess }: Props) {
       // OpenPath register does not return tokens; do auto-login for better UX.
       try {
         const result = await loginMutation.mutateAsync({ email, password });
-        persistSession(result);
+        persistSession({ user: result.user });
         onSuccess();
       } catch (err) {
         setError(err instanceof Error ? err.message : ERROR_MESSAGES_ES.loginFailed);

@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 // Lazy load OpenPathApp so that localStorage.requests_api_url is set BEFORE
 // the module is imported (which evaluates tRPC client URL at import time)
 const OpenPathApp = React.lazy(() => import('@openpath/src/App'));
-import { isAuthenticated, onAuthChange } from '@openpath/src/lib/auth';
 import { DualTRPCProvider } from './lib/dual-trpc-provider';
 import { useOnboardingStatus } from './lib/hooks';
 import { Login } from './views/Login';
@@ -14,6 +13,7 @@ import { AdminPanel } from './components/AdminPanel';
 import {
   clearRequestsApiUrl,
   clearSession,
+  hasSessionMarker,
   persistSession,
   setRequestsApiUrl,
 } from './lib/auth-storage';
@@ -21,7 +21,7 @@ import './index.css';
 
 // Componente que decide qué pantalla mostrar basado en el estado de autenticación y onboarding
 function AppContent() {
-  const [isAuth, setIsAuth] = useState(isAuthenticated());
+  const [isAuth, setIsAuth] = useState(hasSessionMarker());
   const [showRegister, setShowRegister] = useState(false);
 
   const clearSessionAndShowLogin = () => {
@@ -37,13 +37,6 @@ function AppContent() {
     return () => {
       clearRequestsApiUrl();
     };
-  }, []);
-
-  // Escuchar cambios de autenticación (ej: login exitoso)
-  useEffect(() => {
-    return onAuthChange(() => {
-      setIsAuth(isAuthenticated());
-    });
   }, []);
 
   const query = useOnboardingStatus({
@@ -150,11 +143,8 @@ function AppContent() {
   if (!status?.hasMembership) {
     return (
       <Onboarding
-        onOrgCreated={(data) => {
-          persistSession({
-            accessToken: data.accessToken,
-            refreshToken: data.refreshToken,
-          });
+        onOrgCreated={() => {
+          persistSession({});
           refetch();
         }}
         onWaitClick={() => refetch()}

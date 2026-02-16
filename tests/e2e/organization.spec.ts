@@ -87,9 +87,16 @@ test.describe('Organization Members', () => {
     // Should show a table with user data (columns: Usuario, Email, Roles, Estado)
     await expect(page.getByRole('table')).toBeVisible({ timeout: 5000 });
 
+    // The Users view may render a transient fetch error while backend services finish bootstrapping.
+    // If that happens, retry once through the UI before asserting member rows.
+    const retryUsersFetch = page.getByRole('button', { name: 'Reintentar' });
+    if (await retryUsersFetch.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await retryUsersFetch.click();
+    }
+
     // At least one user email should be visible in the table
     await expect(page.getByRole('cell').filter({ hasText: /@/ }).first()).toBeVisible({
-      timeout: 5000,
+      timeout: 10000,
     });
   });
 

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
-import type { Context } from '../context.js';
+import { setSessionCookies } from '../../lib/session-cookies.js';
 
 // Forward auth requests to OpenPath API
 const OPENPATH_API_URL = process.env.OPENPATH_API_URL || 'http://api:3000';
@@ -17,7 +17,7 @@ export const authRouter = router({
         password: z.string().min(1),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
         const response = await fetch(`${OPENPATH_API_URL}/trpc/auth.login`, {
           method: 'POST',
@@ -36,6 +36,13 @@ export const authRouter = router({
         }
 
         const data = await response.json();
+        const authData = data.result?.data ?? data;
+        if (authData?.accessToken && authData?.refreshToken) {
+          setSessionCookies(ctx.res, {
+            accessToken: authData.accessToken,
+            refreshToken: authData.refreshToken,
+          });
+        }
 
         // Extract the inner data from OpenPath's TRPC response
         if (data.result && data.result.data) {
@@ -62,7 +69,7 @@ export const authRouter = router({
         password: z.string().min(8),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
         const response = await fetch(`${OPENPATH_API_URL}/trpc/auth.register`, {
           method: 'POST',
@@ -83,6 +90,13 @@ export const authRouter = router({
         }
 
         const data = await response.json();
+        const authData = data.result?.data ?? data;
+        if (authData?.accessToken && authData?.refreshToken) {
+          setSessionCookies(ctx.res, {
+            accessToken: authData.accessToken,
+            refreshToken: authData.refreshToken,
+          });
+        }
 
         // Extract the inner data from OpenPath's TRPC response
         if (data.result && data.result.data) {
@@ -107,7 +121,7 @@ export const authRouter = router({
         idToken: z.string().min(1),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
         const response = await fetch(`${OPENPATH_API_URL}/trpc/auth.googleLogin`, {
           method: 'POST',
@@ -128,6 +142,13 @@ export const authRouter = router({
         }
 
         const data = await response.json();
+        const authData = data.result?.data ?? data;
+        if (authData?.accessToken && authData?.refreshToken) {
+          setSessionCookies(ctx.res, {
+            accessToken: authData.accessToken,
+            refreshToken: authData.refreshToken,
+          });
+        }
 
         // Extract the inner data from OpenPath's TRPC response
         if (data.result && data.result.data) {

@@ -5,6 +5,7 @@ import {
   clearSession,
   getAccessToken,
   getAuthHeaders,
+  hasSessionMarker,
   persistSession,
   setRequestsApiUrl,
 } from '../auth-storage';
@@ -21,9 +22,10 @@ describe('auth-storage', () => {
       user: { id: 'u1', email: 'test@example.com' },
     });
 
-    expect(window.localStorage.getItem('openpath_access_token')).toBe('access-123');
-    expect(window.localStorage.getItem('openpath_refresh_token')).toBe('refresh-456');
+    expect(window.localStorage.getItem('openpath_access_token')).toBe('cookie-session');
+    expect(window.localStorage.getItem('openpath_refresh_token')).toBeNull();
     expect(window.localStorage.getItem('openpath_user')).toContain('test@example.com');
+    expect(hasSessionMarker()).toBe(true);
 
     clearSession();
 
@@ -38,6 +40,7 @@ describe('auth-storage', () => {
 
     expect(getAccessToken()).toBe('legacy-token');
     expect(getAuthHeaders()).toEqual({ Authorization: 'Bearer legacy-token' });
+    expect(hasSessionMarker()).toBe(false);
   });
 
   it('manages requests API URL key through helpers', () => {

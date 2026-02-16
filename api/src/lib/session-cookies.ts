@@ -1,0 +1,47 @@
+import type { Response } from 'express';
+
+export const ACCESS_COOKIE_NAME = 'cp_access_token';
+export const REFRESH_COOKIE_NAME = 'cp_refresh_token';
+
+function isProduction(): boolean {
+  return process.env.NODE_ENV === 'production';
+}
+
+export function setSessionCookies(
+  res: Pick<Response, 'cookie'>,
+  tokens: { accessToken: string; refreshToken: string }
+): void {
+  const secure = isProduction();
+
+  res.cookie(ACCESS_COOKIE_NAME, tokens.accessToken, {
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/',
+  });
+
+  res.cookie(REFRESH_COOKIE_NAME, tokens.refreshToken, {
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/',
+  });
+}
+
+export function parseCookieValue(cookieHeader: string | undefined, name: string): string | null {
+  if (!cookieHeader) return null;
+
+  const parts = cookieHeader.split(';');
+  for (const part of parts) {
+    const [rawKey, ...rawValue] = part.trim().split('=');
+    if (rawKey === name) {
+      try {
+        return decodeURIComponent(rawValue.join('='));
+      } catch {
+        return rawValue.join('=');
+      }
+    }
+  }
+
+  return null;
+}

@@ -8,6 +8,7 @@ import * as openpathUsers from '../../lib/openpath-users.js';
 import * as jwt from '../../lib/jwt.js';
 import * as pendingUsersService from '../../services/pending-users.service.js';
 import { db, schema } from '../../db/index.js';
+import { setSessionCookies } from '../../lib/session-cookies.js';
 
 export const onboardingRouter = router({
   /**
@@ -61,6 +62,10 @@ export const onboardingRouter = router({
 
       const roles = await openpathRoles.getUserRoles(ctx.user.sub);
       const tokens = jwt.generateTokens(user, roles);
+      setSessionCookies(ctx.res, {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      });
 
       return {
         success: true,

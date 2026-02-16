@@ -3,10 +3,11 @@ const REFRESH_TOKEN_KEY = 'openpath_refresh_token';
 const USER_KEY = 'openpath_user';
 const LEGACY_API_TOKEN_KEY = 'requests_api_token';
 const REQUESTS_API_URL_KEY = 'requests_api_url';
+const COOKIE_SESSION_MARKER = 'cookie-session';
 
 interface SessionPayload {
-  accessToken: string;
-  refreshToken: string;
+  accessToken?: string;
+  refreshToken?: string;
   user?: unknown;
 }
 
@@ -42,12 +43,27 @@ function removeItem(key: string): void {
 }
 
 export function getAccessToken(): string | null {
-  return getItem(ACCESS_TOKEN_KEY) ?? getItem(LEGACY_API_TOKEN_KEY);
+  const token = getItem(ACCESS_TOKEN_KEY);
+  if (token && token !== COOKIE_SESSION_MARKER) {
+    return token;
+  }
+  return getItem(LEGACY_API_TOKEN_KEY);
+}
+
+export function hasSessionMarker(): boolean {
+  return getItem(ACCESS_TOKEN_KEY) === COOKIE_SESSION_MARKER;
 }
 
 export function persistSession(payload: SessionPayload): void {
-  setItem(ACCESS_TOKEN_KEY, payload.accessToken);
-  setItem(REFRESH_TOKEN_KEY, payload.refreshToken);
+  // Store only a non-sensitive marker in localStorage.
+  // Sensitive JWTs are delivered via HttpOnly cookies.
+  setItem(ACCESS_TOKEN_KEY, COOKIE_SESSION_MARKER);
+  removeItem(REFRESH_TOKEN_KEY);
+  removeItem(LEGACY_API_TOKEN_KEY);
+
+  void payload.accessToken;
+  void payload.refreshToken;
+
   if (payload.user !== undefined) {
     setItem(USER_KEY, JSON.stringify(payload.user));
   }
