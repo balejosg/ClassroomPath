@@ -11,6 +11,12 @@ import { Register } from './views/Register';
 import { Onboarding } from './views/Onboarding';
 import { Waiting } from './views/Waiting';
 import { AdminPanel } from './components/AdminPanel';
+import {
+  clearRequestsApiUrl,
+  clearSession,
+  persistSession,
+  setRequestsApiUrl,
+} from './lib/auth-storage';
 import './index.css';
 
 // Componente que decide qué pantalla mostrar basado en el estado de autenticación y onboarding
@@ -19,9 +25,7 @@ function AppContent() {
   const [showRegister, setShowRegister] = useState(false);
 
   const clearSessionAndShowLogin = () => {
-    localStorage.removeItem('openpath_access_token');
-    localStorage.removeItem('openpath_refresh_token');
-    localStorage.removeItem('openpath_user');
+    clearSession();
     setShowRegister(false);
     setIsAuth(false);
   };
@@ -29,9 +33,9 @@ function AppContent() {
   // Configure OpenPath SPA to use ClassroomPath's tenant-scoped tRPC endpoint
   // This MUST be before any conditional returns to follow React hooks rules
   useEffect(() => {
-    localStorage.setItem('requests_api_url', '/cp');
+    setRequestsApiUrl('/cp');
     return () => {
-      localStorage.removeItem('requests_api_url');
+      clearRequestsApiUrl();
     };
   }, []);
 
@@ -63,9 +67,7 @@ function AppContent() {
       message.toLowerCase().includes('unauthorized');
 
     if (isUnauthorized) {
-      localStorage.removeItem('openpath_access_token');
-      localStorage.removeItem('openpath_refresh_token');
-      localStorage.removeItem('openpath_user');
+      clearSession();
       setIsAuth(false);
     }
   }, [isAuth, isError, error]);
@@ -120,9 +122,7 @@ function AppContent() {
             </button>
             <button
               onClick={() => {
-                localStorage.removeItem('openpath_access_token');
-                localStorage.removeItem('openpath_refresh_token');
-                localStorage.removeItem('openpath_user');
+                clearSession();
                 setIsAuth(false);
               }}
               className="px-4 py-2 rounded-lg bg-slate-100 text-slate-800 font-medium hover:bg-slate-200"
@@ -151,9 +151,10 @@ function AppContent() {
     return (
       <Onboarding
         onOrgCreated={(data) => {
-          // Actualizar tokens y recargar para que OpenPathApp los tome
-          localStorage.setItem('openpath_access_token', data.accessToken);
-          localStorage.setItem('openpath_refresh_token', data.refreshToken);
+          persistSession({
+            accessToken: data.accessToken,
+            refreshToken: data.refreshToken,
+          });
           refetch();
         }}
         onWaitClick={() => refetch()}

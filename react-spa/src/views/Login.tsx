@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import GoogleLoginButton from '@openpath/src/components/GoogleLoginButton';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
+import { persistSession } from '../lib/auth-storage';
 
 interface LoginProps {
   onLogin: () => void;
@@ -17,12 +18,6 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
   const [password, setPassword] = useState('');
 
   const isLoading = loginMutation.isPending || googleLoginMutation.isPending;
-
-  const persistSession = (result: { accessToken: string; refreshToken: string; user: unknown }) => {
-    localStorage.setItem('openpath_access_token', result.accessToken);
-    localStorage.setItem('openpath_refresh_token', result.refreshToken);
-    localStorage.setItem('openpath_user', JSON.stringify(result.user));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

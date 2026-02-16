@@ -7,6 +7,17 @@ import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import { eq, inArray, and, sql } from 'drizzle-orm';
 
+type TenantUserRole = { role: string; groupIds?: string[] | null };
+
+type TenantRouterContext = {
+  organizationId: string;
+  user: {
+    name?: string | null;
+    email?: string | null;
+    roles?: TenantUserRole[];
+  };
+};
+
 function isAdminUser(ctx: {
   user: { roles?: Array<{ role: string; groupIds?: string[] | null }> };
 }) {
@@ -40,6 +51,92 @@ async function groupBelongsToOrganization(
   return orgGroup.length > 0;
 }
 
+async function getTenantGroupIds(organizationId: string): Promise<string[]> {
+  const orgGroups = await db
+    .select({ groupId: schema.cpOrganizationGroups.groupId })
+    .from(schema.cpOrganizationGroups)
+    .where(eq(schema.cpOrganizationGroups.organizationId, organizationId));
+
+  return orgGroups.map((group) => group.groupId);
+}
+
+async function assertGroupBelongsToTenant(
+  ctx: TenantRouterContext,
+  groupId: string
+): Promise<void> {
+  const inTenant = await groupBelongsToOrganization(ctx.organizationId, groupId);
+  if (!inTenant) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Group does not belong to tenant',
+    });
+  }
+}
+
+function assertCanManageGroup(ctx: TenantRouterContext, groupId: string): void {
+  const allowed = isAdminUser(ctx) || canTeacherManageGroup(ctx, groupId);
+  if (!allowed) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Insufficient permissions for this group',
+    });
+  }
+}
+
+async function getRequestById(requestId: string) {
+  const request = await openpathDb
+    .select()
+    .from(requests)
+    .where(eq(requests.id, requestId))
+    .limit(1);
+
+  if (!request[0]) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
+  }
+
+  return request[0];
+}
+
+function assertRequestHasGroupId(request: { groupId: string | null }): string {
+  if (!request.groupId) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Request has no group assigned' });
+  }
+  return request.groupId;
+}
+
+function assertPendingRequest(request: { status: string }): void {
+  if (request.status !== 'pending') {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Request is not pending' });
+  }
+}
+
+async function assertRequestBelongsToTenant(
+  ctx: TenantRouterContext,
+  requestGroupId: string
+): Promise<void> {
+  const inTenant = await groupBelongsToOrganization(ctx.organizationId, requestGroupId);
+  if (!inTenant) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Request does not belong to tenant' });
+  }
+}
+
+function serializeRequestDates<T extends { createdAt: Date | null; updatedAt: Date | null }>(
+  request: T
+) {
+  return {
+    ...request,
+    createdAt: request.createdAt?.toISOString() ?? null,
+    updatedAt: request.updatedAt?.toISOString() ?? null,
+  };
+}
+
+function requireTenantOrganizationId(organizationId: string | null | undefined): string {
+  if (!organizationId) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Missing tenant context' });
+  }
+  return organizationId;
+}
+
 export const requestsRouter = router({
   create: tenantProcedure
     .input(
@@ -59,13 +156,12 @@ export const requestsRouter = router({
         });
       }
 
-      const inTenant = await groupBelongsToOrganization(ctx.organizationId!, input.groupId);
-      if (!inTenant) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Group does not belong to tenant',
-        });
-      }
+      const tenantContext: TenantRouterContext = {
+        organizationId: requireTenantOrganizationId(ctx.organizationId),
+        user: ctx.user,
+      };
+
+      await assertGroupBelongsToTenant(tenantContext, input.groupId);
 
       const pendingRequest = await openpathDb
         .select({ id: requests.id })
@@ -105,21 +201,12 @@ export const requestsRouter = router({
         });
       }
 
-      return {
-        ...created,
-        createdAt: created.createdAt?.toISOString() ?? null,
-        updatedAt: created.updatedAt?.toISOString() ?? null,
-      };
+      return serializeRequestDates(created);
     }),
 
   // List groups for the organization (used by DomainRequests dropdown)
   listGroups: tenantProcedure.query(async ({ ctx }) => {
-    const orgGroups = await db
-      .select()
-      .from(schema.cpOrganizationGroups)
-      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
-
-    const groupIds = orgGroups.map((og) => og.groupId);
+    const groupIds = await getTenantGroupIds(requireTenantOrganizationId(ctx.organizationId));
 
     if (groupIds.length === 0) return [];
 
@@ -143,13 +230,7 @@ export const requestsRouter = router({
    * Returns counts by status: total, pending, approved, rejected.
    */
   stats: tenantProcedure.query(async ({ ctx }) => {
-    // Get groups belonging to this organization
-    const orgGroups = await db
-      .select()
-      .from(schema.cpOrganizationGroups)
-      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
-
-    const groupIds = orgGroups.map((og) => og.groupId);
+    const groupIds = await getTenantGroupIds(requireTenantOrganizationId(ctx.organizationId));
 
     if (groupIds.length === 0) {
       return { total: 0, pending: 0, approved: 0, rejected: 0 };
@@ -172,13 +253,7 @@ export const requestsRouter = router({
   list: tenantProcedure
     .input(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
     .query(async ({ ctx, input }) => {
-      // Get all groups for this organization
-      const orgGroups = await db
-        .select()
-        .from(schema.cpOrganizationGroups)
-        .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
-
-      const groupIds = orgGroups.map((og) => og.groupId);
+      const groupIds = await getTenantGroupIds(requireTenantOrganizationId(ctx.organizationId));
 
       if (groupIds.length === 0) return [];
 
@@ -194,44 +269,20 @@ export const requestsRouter = router({
         .where(and(...conditions))
         .orderBy(requests.createdAt);
 
-      // Serialize Date fields for JSON compatibility
-      return results.map((r) => ({
-        ...r,
-        createdAt: r.createdAt?.toISOString() ?? null,
-        updatedAt: r.updatedAt?.toISOString() ?? null,
-      }));
+      return results.map((request) => serializeRequestDates(request));
     }),
 
   approve: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const request = await openpathDb
-      .select()
-      .from(requests)
-      .where(eq(requests.id, input.id))
-      .limit(1);
+    const tenantContext: TenantRouterContext = {
+      organizationId: requireTenantOrganizationId(ctx.organizationId),
+      user: ctx.user,
+    };
 
-    if (!request[0]) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
-    }
-    if (!request[0].groupId) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Request has no group assigned' });
-    }
-    if (request[0].status !== 'pending') {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Request is not pending' });
-    }
-
-    const requestGroupId = request[0].groupId;
-    const inTenant = await groupBelongsToOrganization(ctx.organizationId!, requestGroupId);
-    if (!inTenant) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'Request does not belong to tenant' });
-    }
-
-    const allowed = isAdminUser(ctx) || canTeacherManageGroup(ctx, requestGroupId);
-    if (!allowed) {
-      throw new TRPCError({
-        code: 'FORBIDDEN',
-        message: 'Insufficient permissions for this group',
-      });
-    }
+    const request = await getRequestById(input.id);
+    const requestGroupId = assertRequestHasGroupId(request);
+    assertPendingRequest(request);
+    await assertRequestBelongsToTenant(tenantContext, requestGroupId);
+    assertCanManageGroup(tenantContext, requestGroupId);
 
     await openpathDb
       .insert(whitelistRules)
@@ -239,7 +290,7 @@ export const requestsRouter = router({
         id: `rule-${nanoid(16)}`,
         groupId: requestGroupId,
         type: 'whitelist',
-        value: request[0].domain,
+        value: request.domain,
       })
       .onConflictDoNothing({
         target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
@@ -262,31 +313,16 @@ export const requestsRouter = router({
   reject: tenantProcedure
     .input(z.object({ id: z.string(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const request = await openpathDb
-        .select()
-        .from(requests)
-        .where(eq(requests.id, input.id))
-        .limit(1);
+      const tenantContext: TenantRouterContext = {
+        organizationId: requireTenantOrganizationId(ctx.organizationId),
+        user: ctx.user,
+      };
 
-      if (!request[0] || !request[0].groupId) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
-      }
-      if (request[0].status !== 'pending') {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Request is not pending' });
-      }
-
-      const inTenant = await groupBelongsToOrganization(ctx.organizationId!, request[0].groupId);
-      if (!inTenant) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Request does not belong to tenant' });
-      }
-
-      const allowed = isAdminUser(ctx) || canTeacherManageGroup(ctx, request[0].groupId);
-      if (!allowed) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Insufficient permissions for this group',
-        });
-      }
+      const request = await getRequestById(input.id);
+      const requestGroupId = assertRequestHasGroupId(request);
+      assertPendingRequest(request);
+      await assertRequestBelongsToTenant(tenantContext, requestGroupId);
+      assertCanManageGroup(tenantContext, requestGroupId);
 
       await openpathDb
         .update(requests)
@@ -303,24 +339,18 @@ export const requestsRouter = router({
     }),
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    if (!isAdminUser(ctx)) {
+    const tenantContext: TenantRouterContext = {
+      organizationId: requireTenantOrganizationId(ctx.organizationId),
+      user: ctx.user,
+    };
+
+    if (!isAdminUser(tenantContext)) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
     }
 
-    const request = await openpathDb
-      .select()
-      .from(requests)
-      .where(eq(requests.id, input.id))
-      .limit(1);
-
-    if (!request[0] || !request[0].groupId) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
-    }
-
-    const inTenant = await groupBelongsToOrganization(ctx.organizationId!, request[0].groupId);
-    if (!inTenant) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'Request does not belong to tenant' });
-    }
+    const request = await getRequestById(input.id);
+    const requestGroupId = assertRequestHasGroupId(request);
+    await assertRequestBelongsToTenant(tenantContext, requestGroupId);
 
     await openpathDb.delete(requests).where(eq(requests.id, input.id));
 

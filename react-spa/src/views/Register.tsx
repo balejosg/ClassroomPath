@@ -5,6 +5,7 @@ import { Card } from '@openpath/src/components/ui/Card';
 import { PasswordStrength } from '../components/PasswordStrength';
 import { validateEmail, validatePassword, ERROR_MESSAGES_ES } from '../utils/validation';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
+import { persistSession } from '../lib/auth-storage';
 
 interface Props {
   onLoginClick: () => void;
@@ -20,12 +21,6 @@ export function Register({ onLoginClick, onSuccess }: Props) {
   const [error, setError] = useState('');
 
   const loginMutation = cpTrpcReact.auth.login.useMutation();
-
-  const persistSession = (result: { accessToken: string; refreshToken: string; user: unknown }) => {
-    localStorage.setItem('openpath_access_token', result.accessToken);
-    localStorage.setItem('openpath_refresh_token', result.refreshToken);
-    localStorage.setItem('openpath_user', JSON.stringify(result.user));
-  };
 
   const registerMutation = cpTrpcReact.auth.register.useMutation({
     onSuccess: async () => {

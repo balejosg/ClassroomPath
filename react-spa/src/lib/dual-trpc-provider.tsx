@@ -2,6 +2,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createTRPCReact, httpBatchLink } from '@trpc/react-query';
 import type { AppRouter } from '../../../api/src/trpc/router';
+import { getAuthHeaders } from './auth-storage';
 
 // Cliente React Query para ClassroomPath endpoints
 export const cpTrpcReact = createTRPCReact<AppRouter>();
@@ -20,8 +21,7 @@ const cpTrpcClient = cpTrpcReact.createClient({
     httpBatchLink({
       url: '/cp/trpc',
       headers() {
-        const token = localStorage.getItem('openpath_access_token');
-        return token ? { Authorization: `Bearer ${token}` } : {};
+        return getAuthHeaders();
       },
     }),
   ],
