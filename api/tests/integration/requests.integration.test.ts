@@ -15,6 +15,7 @@ import { eq, and } from 'drizzle-orm';
 import {
   getAvailablePort,
   trpcMutate,
+  trpcQuery,
   parseTRPC,
   bearerAuth,
   assertStatus,
@@ -313,5 +314,88 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
       .limit(1);
     assert.strictEqual(updatedRequest[0]?.status, 'rejected');
     assert.strictEqual(updatedRequest[0]?.resolutionNote, 'Educational policy');
+  });
+
+  test('create rejects tenant request without groupId', async () => {
+    await resetDb();
+
+    const userId = 'req-create-mg';
+    const email = uniqueEmail('req-create-mg');
+    const orgId = 'org-cmg';
+    const groupId = 'grp-cmg';
+
+    await seedOpenPathUser({ userId, email, name: 'Create Missing Group' });
+    await seedTenant({ orgId, userId, userRole: 'teacher' });
+    await seedGroupForOrg({ orgId, groupId });
+
+    const token = signToken({
+      userId,
+      email,
+      name: 'Create Missing Group',
+      roles: [{ role: 'teacher', groupIds: [groupId] }],
+    });
+
+    const createResp = await trpcMutate(
+      API_URL,
+      'requests.create',
+      {
+        domain: 'missing-groupid.test',
+        reason: 'missing group id regression',
+      },
+      bearerAuth(token)
+    );
+    assertStatus(createResp, 400);
+
+    const parsed = await parseTRPC(createResp);
+    assert.strictEqual(parsed.code, 'BAD_REQUEST');
+    assert.strictEqual(parsed.error, 'groupId is required for tenant requests');
+  });
+
+  test('create with valid groupId is visible in tenant queue', async () => {
+    await resetDb();
+
+    const userId = 'req-create-vis';
+    const email = uniqueEmail('req-create-vis');
+    const orgId = 'org-cv';
+    const groupId = 'grp-cv';
+
+    await seedOpenPathUser({ userId, email, name: 'Create Visible' });
+    await seedTenant({ orgId, userId, userRole: 'teacher' });
+    await seedGroupForOrg({ orgId, groupId });
+
+    const token = signToken({
+      userId,
+      email,
+      name: 'Create Visible',
+      roles: [{ role: 'teacher', groupIds: [groupId] }],
+    });
+
+    const createResp = await trpcMutate(
+      API_URL,
+      'requests.create',
+      {
+        domain: 'tenant-visible-request.test',
+        groupId,
+        reason: 'tenant scoped create',
+      },
+      bearerAuth(token)
+    );
+    assertStatus(createResp, 200);
+
+    const listResp = await trpcQuery(
+      API_URL,
+      'requests.list',
+      { status: 'pending' },
+      bearerAuth(token)
+    );
+    assertStatus(listResp, 200);
+
+    const parsed = (await parseTRPC(listResp)) as {
+      data?: Array<{ domain: string; groupId: string }>;
+    };
+    const rows = parsed.data ?? [];
+    const created = rows.find((row) => row.domain === 'tenant-visible-request.test');
+    assert.ok(created, 'created request should appear in tenant list');
+    assert.strictEqual(created?.groupId, groupId);
   });
 });

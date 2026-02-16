@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid';
 import { openpathDb, requests, whitelistRules } from '../../db/openpath.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
-import { eq, inArray, and } from 'drizzle-orm';
+import { eq, inArray, and, sql } from 'drizzle-orm';
 
 function isAdminUser(ctx: {
   user: { roles?: Array<{ role: string; groupIds?: string[] | null }> };
@@ -41,6 +41,77 @@ async function groupBelongsToOrganization(
 }
 
 export const requestsRouter = router({
+  create: tenantProcedure
+    .input(
+      z.object({
+        domain: z.string().trim().min(1),
+        groupId: z.string().optional(),
+        reason: z.string().optional(),
+        requesterEmail: z.string().email().optional(),
+        priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!input.groupId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'groupId is required for tenant requests',
+        });
+      }
+
+      const inTenant = await groupBelongsToOrganization(ctx.organizationId!, input.groupId);
+      if (!inTenant) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Group does not belong to tenant',
+        });
+      }
+
+      const pendingRequest = await openpathDb
+        .select({ id: requests.id })
+        .from(requests)
+        .where(
+          and(
+            sql`LOWER(${requests.domain}) = LOWER(${input.domain})`,
+            eq(requests.status, 'pending')
+          )
+        )
+        .limit(1);
+
+      if (pendingRequest.length > 0) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'Pending request exists for this domain',
+        });
+      }
+
+      const [created] = await openpathDb
+        .insert(requests)
+        .values({
+          id: `req_${nanoid(8)}`,
+          domain: input.domain.toLowerCase(),
+          reason: input.reason ?? 'No reason provided',
+          requesterEmail: input.requesterEmail ?? ctx.user.email ?? 'anonymous@tenant.local',
+          groupId: input.groupId,
+          priority: input.priority ?? 'normal',
+          status: 'pending',
+        })
+        .returning();
+
+      if (!created) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to create request',
+        });
+      }
+
+      return {
+        ...created,
+        createdAt: created.createdAt?.toISOString() ?? null,
+        updatedAt: created.updatedAt?.toISOString() ?? null,
+      };
+    }),
+
   // List groups for the organization (used by DomainRequests dropdown)
   listGroups: tenantProcedure.query(async ({ ctx }) => {
     const orgGroups = await db

@@ -57,6 +57,7 @@ const BLOCKED_OPENPATH_PROCEDURES = [
   'requests.get',
   'requests.getStatus',
   // Block mutations to prevent tenant-scoping bypass
+  'requests.create',
   'requests.approve',
   'requests.reject',
   'requests.delete',

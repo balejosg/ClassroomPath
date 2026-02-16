@@ -158,6 +158,18 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.strictEqual(json.error.data.blocked, 'requests.list');
   });
 
+  test('should block requests.create on /trpc (requires /cp/trpc)', async () => {
+    const resp = await fetch(`${API_URL}/trpc/requests.create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: 'blocked-create.test' }),
+    });
+    assert.strictEqual(resp.status, 403);
+    const json = (await resp.json()) as any;
+    assert.strictEqual(json.error.message, 'Use /cp/trpc for tenant-scoped data');
+    assert.strictEqual(json.error.data.blocked, 'requests.create');
+  });
+
   test('should block requests.approve mutation on /trpc', async () => {
     const resp = await fetch(`${API_URL}/trpc/requests.approve`, {
       method: 'POST',
