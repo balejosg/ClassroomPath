@@ -36,6 +36,13 @@ function getRounds(): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 80;
 }
 
+function getTimeoutMs(): number {
+  const raw = process.env.NAV_REPRO_TIMEOUT_MS;
+  if (!raw) return 30 * 60 * 1000; // 30 min default for soak runs
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 30 * 60 * 1000;
+}
+
 function getContaminateEvery(): number {
   const raw = process.env.NAV_CONTAMINATE_EVERY;
   if (!raw) return 10;
@@ -108,6 +115,8 @@ test.describe('Navigation Regression Harness', () => {
   test.describe.configure({ mode: 'serial' });
 
   test('sidebar clicks always reach expected headings @errors', async ({ page }) => {
+    test.setTimeout(getTimeoutMs());
+
     if (process.env.NAV_FORCE_500 === '1') {
       // Simulate the staging failure mode to see if it can poison navigation state.
       await page.route('**/cp/trpc/healthcheck.systemInfo,apiTokens.list**', (route) => {
