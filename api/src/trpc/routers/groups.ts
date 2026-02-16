@@ -17,7 +17,7 @@ const CreateGroupSchema = z.object({
 const UpdateGroupSchema = z.object({
   id: z.string(),
   displayName: z.string().min(1).max(255).optional(),
-  enabled: z.number().min(0).max(1).optional(),
+  enabled: z.union([z.number().min(0).max(1), z.boolean()]).optional(),
 });
 
 const AddRuleSchema = z.object({
@@ -554,7 +554,16 @@ export const groupsRouter = router({
       throw new Error('Group not found or access denied');
     }
 
-    const { id, ...updateData } = input;
+    const { id, ...rest } = input;
+    const updateData = {
+      ...rest,
+      ...(rest.enabled === undefined
+        ? {}
+        : {
+            enabled: typeof rest.enabled === 'boolean' ? (rest.enabled ? 1 : 0) : rest.enabled,
+          }),
+    };
+
     const [updated] = await openpathDb
       .update(whitelistGroups)
       .set(updateData)

@@ -254,4 +254,53 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       assert.strictEqual(got.currentGroupId, defaultGroupId);
     });
   });
+
+  test('groups.update accepts boolean enabled payload from OpenPath UI', async () => {
+    await resetDb();
+
+    const adminUserId = 'groups-update-admin';
+    const adminEmail = uniqueEmail('admin-groups-update');
+    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
+    const adminToken = signToken({
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin User',
+      roles: [{ role: 'admin' }],
+    });
+
+    await bootstrapOrg({ token: adminToken });
+    const { groupId } = await createGroup({ token: adminToken }, 'groups-update-target');
+
+    const disableResp = await trpcMutate(
+      API_URL,
+      'groups.update',
+      {
+        id: groupId,
+        displayName: 'Groups Update Target',
+        enabled: false,
+      },
+      bearerAuth(adminToken)
+    );
+
+    assertStatus(disableResp, 200);
+    const disableData = (await parseTRPC(disableResp)) as { data: any };
+    assert.strictEqual(disableData.data.id, groupId);
+    assert.strictEqual(Number(disableData.data.enabled), 0);
+
+    const enableResp = await trpcMutate(
+      API_URL,
+      'groups.update',
+      {
+        id: groupId,
+        displayName: 'Groups Update Target',
+        enabled: true,
+      },
+      bearerAuth(adminToken)
+    );
+
+    assertStatus(enableResp, 200);
+    const enableData = (await parseTRPC(enableResp)) as { data: any };
+    assert.strictEqual(enableData.data.id, groupId);
+    assert.strictEqual(Number(enableData.data.enabled), 1);
+  });
 });
