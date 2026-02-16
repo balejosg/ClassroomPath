@@ -28,6 +28,27 @@ export function setSessionCookies(
   });
 }
 
+export function clearSessionCookies(res: Pick<Response, 'cookie'>): void {
+  const secure = isProduction();
+  const expiredAt = new Date(0);
+
+  res.cookie(ACCESS_COOKIE_NAME, '', {
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/',
+    expires: expiredAt,
+  });
+
+  res.cookie(REFRESH_COOKIE_NAME, '', {
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/',
+    expires: expiredAt,
+  });
+}
+
 export function parseCookieValue(cookieHeader: string | undefined, name: string): string | null {
   if (!cookieHeader) return null;
 

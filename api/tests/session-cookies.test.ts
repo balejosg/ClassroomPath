@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   ACCESS_COOKIE_NAME,
+  clearSessionCookies,
   parseCookieValue,
   REFRESH_COOKIE_NAME,
   setSessionCookies,
@@ -39,5 +40,28 @@ describe('session cookie helpers', () => {
     assert.equal(parseCookieValue(cookieHeader, REFRESH_COOKIE_NAME), 'refresh.value');
     assert.equal(parseCookieValue(cookieHeader, 'missing_cookie'), null);
     assert.equal(parseCookieValue(undefined, ACCESS_COOKIE_NAME), null);
+  });
+
+  it('clears session cookies by setting expired values', () => {
+    const calls: Array<{ name: string; value: string; options: Record<string, unknown> }> = [];
+    const res = {
+      cookie(name: string, value: string, options: Record<string, unknown>) {
+        calls.push({ name, value, options });
+      },
+    };
+
+    clearSessionCookies(res as any);
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0]?.name, ACCESS_COOKIE_NAME);
+    assert.equal(calls[1]?.name, REFRESH_COOKIE_NAME);
+    assert.equal(calls[0]?.value, '');
+    assert.equal(calls[1]?.value, '');
+    assert.equal(calls[0]?.options.httpOnly, true);
+    assert.equal(calls[1]?.options.httpOnly, true);
+    assert.equal(calls[0]?.options.path, '/');
+    assert.equal(calls[1]?.options.path, '/');
+    assert.ok(calls[0]?.options.expires instanceof Date);
+    assert.ok(calls[1]?.options.expires instanceof Date);
   });
 });

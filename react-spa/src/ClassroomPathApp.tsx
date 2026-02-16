@@ -10,6 +10,7 @@ import { Register } from './views/Register';
 import { Onboarding } from './views/Onboarding';
 import { Waiting } from './views/Waiting';
 import { AdminPanel } from './components/AdminPanel';
+import { cpTrpc } from './lib/cp-trpc';
 import {
   clearRequestsApiUrl,
   clearSession,
@@ -24,10 +25,16 @@ function AppContent() {
   const [isAuth, setIsAuth] = useState(hasSessionMarker());
   const [showRegister, setShowRegister] = useState(false);
 
-  const clearSessionAndShowLogin = () => {
-    clearSession();
-    setShowRegister(false);
-    setIsAuth(false);
+  const clearSessionAndShowLogin = async () => {
+    try {
+      await cpTrpc.auth.logout.mutate(undefined);
+    } catch {
+      // Best-effort logout: local cleanup must still happen.
+    } finally {
+      clearSession();
+      setShowRegister(false);
+      setIsAuth(false);
+    }
   };
 
   // Configure OpenPath SPA to use ClassroomPath's tenant-scoped tRPC endpoint

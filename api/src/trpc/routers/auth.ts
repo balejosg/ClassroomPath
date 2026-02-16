@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
-import { setSessionCookies } from '../../lib/session-cookies.js';
+import { clearSessionCookies, setSessionCookies } from '../../lib/session-cookies.js';
 
 // Forward auth requests to OpenPath API
 const OPENPATH_API_URL = process.env.OPENPATH_API_URL || 'http://api:3000';
@@ -249,4 +249,23 @@ export const authRouter = router({
         });
       }
     }),
+
+  /**
+   * Logout endpoint - clears cookie session and forwards token invalidation to OpenPath API
+   */
+  logout: protectedProcedure.mutation(async ({ ctx }) => {
+    try {
+      await fetch(`${OPENPATH_API_URL}/trpc/auth.logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ctx.token}`,
+        },
+      });
+    } finally {
+      clearSessionCookies(ctx.res);
+    }
+
+    return { success: true };
+  }),
 });
