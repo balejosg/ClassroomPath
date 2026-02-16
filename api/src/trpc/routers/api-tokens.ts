@@ -6,6 +6,25 @@ import type { Context } from '../context.js';
 // Forward apiTokens requests to OpenPath API
 const OPENPATH_API_URL = process.env.OPENPATH_API_URL || 'http://api:3000';
 
+type ApiTokenListItem = {
+  id: string;
+  name: string;
+  maskedToken: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string | null;
+  isExpired: boolean;
+};
+
+const EMPTY_API_TOKENS: ApiTokenListItem[] = [];
+
+function extractTrpcData<T>(data: unknown): T | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const wrapped = data as { result?: { data?: T } };
+  if (wrapped.result?.data !== undefined) return wrapped.result.data;
+  return data as T;
+}
+
 // Helper to get authorization token from context
 function getAuthHeader(ctx: Context): string {
   const token = (ctx as Context & { token?: string }).token;
@@ -27,28 +46,30 @@ export const apiTokensRouter = router({
       });
 
       if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ error: { message: 'Failed to list API tokens' } }));
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: error.error?.message || 'Failed to list API tokens',
-        });
+        // Preserve auth semantics for invalid/expired tokens.
+        if (response.status === 401) {
+          throw new TRPCError({
+            code: 'UNAUTHORIZED',
+            message: 'Not authenticated',
+          });
+        }
+        if (response.status === 403) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Forbidden',
+          });
+        }
+
+        // For upstream failures/deploy transitions, degrade gracefully.
+        return EMPTY_API_TOKENS;
       }
 
-      const data = await response.json();
-
-      // Extract the inner data from OpenPath's TRPC response
-      if (data.result && data.result.data) {
-        return data.result.data;
-      }
-      return data;
+      const data: unknown = await response.json();
+      const tokens = extractTrpcData<ApiTokenListItem[]>(data);
+      return Array.isArray(tokens) ? tokens : EMPTY_API_TOKENS;
     } catch (error) {
       if (error instanceof TRPCError) throw error;
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'API tokens service unavailable',
-      });
+      return EMPTY_API_TOKENS;
     }
   }),
 

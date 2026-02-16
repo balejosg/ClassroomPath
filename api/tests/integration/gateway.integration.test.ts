@@ -317,7 +317,7 @@ describe('ClassroomPath Gateway Integration', async () => {
     );
   });
 
-  test('/cp/trpc/healthcheck.systemInfo requires OpenPath API (expected to fail without it)', async () => {
+  test('/cp/trpc/healthcheck.systemInfo degrades gracefully when OpenPath API is unavailable', async () => {
     const userId = 'user-healthcheck-test';
     const email = uniqueEmail('healthcheck');
 
@@ -350,16 +350,33 @@ describe('ClassroomPath Gateway Integration', async () => {
       bearerAuth(token)
     );
 
-    // Call healthcheck.systemInfo - this forwards to OpenPath API
+    // Call healthcheck.systemInfo - this forwards to OpenPath API.
+    // If upstream is unavailable, gateway should return fallback data (200), not 500.
     const resp = await trpcQuery(API_URL, 'healthcheck.systemInfo', undefined, bearerAuth(token));
-    // Without OpenPath API, this will return 500
-    assert.ok(
-      resp.status === 200 || resp.status === 500,
-      'healthcheck.systemInfo should return 200 (with OpenPath) or 500 (without)'
-    );
+    assertStatus(resp, 200, 'healthcheck.systemInfo should always return 200 with fallback');
+    const parsed = (await parseTRPC(resp)) as {
+      data?: {
+        version?: string;
+        database?: { connected?: boolean; type?: string };
+        session?: {
+          accessTokenExpiry?: string;
+          accessTokenExpiryHuman?: string;
+          refreshTokenExpiry?: string;
+          refreshTokenExpiryHuman?: string;
+        };
+        uptime?: number;
+      };
+    };
+    assert.ok(parsed.data, 'healthcheck.systemInfo should return data payload');
+    assert.equal(typeof parsed.data?.version, 'string');
+    assert.equal(typeof parsed.data?.database?.connected, 'boolean');
+    assert.equal(typeof parsed.data?.database?.type, 'string');
+    assert.equal(typeof parsed.data?.session?.accessTokenExpiry, 'string');
+    assert.equal(typeof parsed.data?.session?.refreshTokenExpiry, 'string');
+    assert.equal(typeof parsed.data?.uptime, 'number');
   });
 
-  test('/cp/trpc/apiTokens.list requires OpenPath API (expected to fail without it)', async () => {
+  test('/cp/trpc/apiTokens.list degrades gracefully when OpenPath API is unavailable', async () => {
     const userId = 'user-apitokens-test';
     const email = uniqueEmail('apitokens');
 
@@ -392,13 +409,12 @@ describe('ClassroomPath Gateway Integration', async () => {
       bearerAuth(token)
     );
 
-    // Call apiTokens.list - this forwards to OpenPath API
+    // Call apiTokens.list - this forwards to OpenPath API.
+    // If upstream is unavailable, gateway should return [] (200), not 500.
     const resp = await trpcQuery(API_URL, 'apiTokens.list', undefined, bearerAuth(token));
-    // Without OpenPath API, this will return 500
-    assert.ok(
-      resp.status === 200 || resp.status === 500,
-      'apiTokens.list should return 200 (with OpenPath) or 500 (without)'
-    );
+    assertStatus(resp, 200, 'apiTokens.list should return 200 with fallback []');
+    const parsed = (await parseTRPC(resp)) as { data?: unknown };
+    assert.ok(Array.isArray(parsed.data), 'apiTokens.list fallback should be an array');
   });
 
   test('/cp/trpc/apiTokens.create requires OpenPath API (expected to fail without it)', async () => {
