@@ -11,6 +11,13 @@ const pool = new pg.Pool({
   connectionString,
 });
 
+pool.on('error', (err) => {
+  console.error('Unexpected error on ClassroomPath DB idle client', {
+    message: err.message,
+    stack: err.stack,
+  });
+});
+
 export const db = drizzle(pool, { schema });
 export { schema };
 

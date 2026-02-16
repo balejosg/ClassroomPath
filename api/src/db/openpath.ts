@@ -19,6 +19,13 @@ const pool = new Pool({
   connectionString: config.databaseUrl,
 });
 
+pool.on('error', (err) => {
+  console.error('Unexpected error on OpenPath DB idle client', {
+    message: err.message,
+    stack: err.stack,
+  });
+});
+
 export const openpathDb = drizzle(pool);
 
 export async function closeOpenPathConnection() {
