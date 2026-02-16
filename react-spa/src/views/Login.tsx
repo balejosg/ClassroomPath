@@ -97,6 +97,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
                 <input
                   type="email"
                   name="email"
+                  autoComplete="email"
                   data-testid="login-email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -115,6 +116,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
                 <input
                   type="password"
                   name="password"
+                  autoComplete="current-password"
                   data-testid="login-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
