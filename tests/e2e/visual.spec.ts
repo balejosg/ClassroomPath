@@ -9,6 +9,7 @@ import {
   loginAsAdmin,
   createTestUser,
   registerUser,
+  loginAsOnboardingUser,
   waitForNetworkIdle,
 } from './fixtures/test-utils';
 import type { Page } from '@playwright/test';
@@ -66,10 +67,8 @@ test.describe('Visual Regression - Landing/Register', () => {
 });
 
 test.describe('Visual Regression - Onboarding', () => {
-  // TODO: Fix flaky registration in parallel test execution
   test('onboarding page desktop @visual', async ({ page }) => {
-    const testUser = createTestUser();
-    await registerUser(page, testUser);
+    await loginAsOnboardingUser(page, 2);
 
     await page.setViewportSize({ width: 1280, height: 720 });
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
@@ -81,12 +80,10 @@ test.describe('Visual Regression - Onboarding', () => {
     });
   });
 
-  // TODO: Fix flaky registration in parallel test execution
   test('onboarding page mobile @visual @mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
 
-    const testUser = createTestUser();
-    await registerUser(page, testUser);
+    await loginAsOnboardingUser(page, 3);
 
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
     await waitForVisualStability(page);
@@ -99,7 +96,6 @@ test.describe('Visual Regression - Onboarding', () => {
 });
 
 test.describe('Visual Regression - Waiting Room', () => {
-  // TODO: Fix flaky registration in parallel test execution
   test('waiting page desktop @visual', async ({ page }) => {
     const testUser = createTestUser();
     await registerUser(page, testUser);
@@ -117,7 +113,6 @@ test.describe('Visual Regression - Waiting Room', () => {
     });
   });
 
-  // TODO: Fix flaky registration in parallel test execution
   test('waiting page mobile @visual @mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
 
@@ -138,8 +133,8 @@ test.describe('Visual Regression - Waiting Room', () => {
 });
 
 test.describe('Visual Regression - Dashboard', () => {
-  // Run serially to avoid race conditions with shared admin account
-  test.describe.configure({ mode: 'serial' });
+  // Worker-scoped seeded accounts allow safe parallel execution.
+  test.describe.configure({ mode: 'parallel' });
 
   // No beforeEach login - each test handles login after setting viewport
 
@@ -174,8 +169,8 @@ test.describe('Visual Regression - Dashboard', () => {
 });
 
 test.describe('Visual Regression - Organization', () => {
-  // Run serially to avoid race conditions with shared admin account
-  test.describe.configure({ mode: 'serial' });
+  // Worker-scoped seeded accounts allow safe parallel execution.
+  test.describe.configure({ mode: 'parallel' });
 
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
@@ -197,8 +192,8 @@ test.describe('Visual Regression - Organization', () => {
 });
 
 test.describe('Visual Regression - Error States', () => {
-  // Run serially to avoid race conditions with shared admin account
-  test.describe.configure({ mode: 'serial' });
+  // Worker-scoped seeded accounts allow safe parallel execution.
+  test.describe.configure({ mode: 'parallel' });
 
   test('network error state @visual', async ({ page }) => {
     await loginAsAdmin(page);
@@ -235,7 +230,6 @@ test.describe('Visual Regression - Error States', () => {
     });
   });
 
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
   test('empty state @visual', async ({ page }) => {
     await loginAsAdmin(page);
 
@@ -274,7 +268,6 @@ test.describe('Visual Regression - Dark Mode', () => {
     });
   });
 
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
   test('dashboard dark mode @visual @dark', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await loginAsAdmin(page);

@@ -6,18 +6,18 @@
 
 import { test, expect } from './fixtures/base-test';
 import {
-  createTestUser,
-  registerUser,
   loginAsAdmin,
+  loginAsOnboardingUser,
   waitForNetworkIdle,
   clearAuth,
   expectDashboard,
-  goToDashboard,
+  openRegisterForm,
+  loadingSpinnerLocator,
 } from './fixtures/test-utils';
 
 test.describe('Network Error Handling', () => {
-  // Run serially to avoid race conditions with shared admin account
-  test.describe.configure({ mode: 'serial' });
+  // Worker-scoped seeded accounts allow safe parallel execution.
+  test.describe.configure({ mode: 'parallel' });
 
   test('should show friendly error on network failure @errors @network', async ({ page }) => {
     await loginAsAdmin(page);
@@ -64,13 +64,14 @@ test.describe('Network Error Handling', () => {
     // Look for retry button
     const retryButton = page.getByRole('button', { name: /Reintentar|Retry|Volver a intentar/i });
 
-    if (await retryButton.isVisible({ timeout: 5000 })) {
+    const hasRetryButton = await retryButton.isVisible({ timeout: 5000 }).catch(() => false);
+    if (hasRetryButton) {
       await retryButton.click();
       await waitForNetworkIdle(page);
-
-      // After retry, should load successfully
-      await expectDashboard(page);
     }
+
+    // After retry, should load successfully
+    await expectDashboard(page);
   });
 
   test('should handle timeout gracefully @errors @timeout', async ({ page }) => {
@@ -104,8 +105,8 @@ test.describe('Network Error Handling', () => {
 });
 
 test.describe('Session Error Handling', () => {
-  // Run serially to avoid race conditions with shared admin account
-  test.describe.configure({ mode: 'serial' });
+  // Worker-scoped seeded accounts allow safe parallel execution.
+  test.describe.configure({ mode: 'parallel' });
   test('should redirect to login when session expires @errors @session', async ({
     page,
     context,
@@ -190,7 +191,7 @@ test.describe('Session Error Handling', () => {
             .isVisible()
             .catch(() => false);
           const hasErrorDisplay = await page
-            .locator('.bg-red-100, [role="alert"]')
+            .locator('[role="alert"]')
             .first()
             .isVisible()
             .catch(() => false);
@@ -219,11 +220,7 @@ test.describe('Session Error Handling', () => {
 
 test.describe('Form Validation Errors', () => {
   test('should highlight invalid form fields @errors @validation', async ({ page }) => {
-    await page.goto('/');
-
-    // Navigate to register
-    const registerCta = page.getByTestId('navigate-to-register');
-    if (await registerCta.isVisible().catch(() => false)) await registerCta.click();
+    await openRegisterForm(page);
 
     // Submit invalid form (submit is disabled until terms accepted)
     await page.getByTestId('register-terms').check();
@@ -239,9 +236,7 @@ test.describe('Form Validation Errors', () => {
   });
 
   test('should show inline validation for email format @errors @validation', async ({ page }) => {
-    await page.goto('/');
-    const registerCta = page.getByTestId('navigate-to-register');
-    if (await registerCta.isVisible().catch(() => false)) await registerCta.click();
+    await openRegisterForm(page);
 
     // Validation happens on submit.
     await page.getByTestId('register-email').fill('not-an-email');
@@ -255,9 +250,7 @@ test.describe('Form Validation Errors', () => {
   });
 
   test('should show password strength requirements @errors @validation', async ({ page }) => {
-    await page.goto('/');
-    const registerCta = page.getByTestId('navigate-to-register');
-    if (await registerCta.isVisible().catch(() => false)) await registerCta.click();
+    await openRegisterForm(page);
 
     // Weak password should fail on submit.
     await page.getByTestId('register-email').fill('weak-pass@test.local');
@@ -283,14 +276,8 @@ test.describe('Form Validation Errors', () => {
 });
 
 test.describe('Empty States', () => {
-  // TODO: Fix flaky registration in parallel test execution
-  // Issue: Registration sometimes fails with "Registration failed" when tests run in parallel
-  // These tests pass when run individually but fail when run with other tests
-
   test('should show empty state when no classrooms @errors @empty', async ({ page }) => {
-    // Create a fresh user for this test to avoid conflicts
-    const testUser = createTestUser();
-    await registerUser(page, testUser);
+    await loginAsOnboardingUser(page, 11);
 
     // After registration, user goes to onboarding - create org
     await page.getByTestId('onboarding-org-name').fill('Empty State Org');
@@ -303,9 +290,7 @@ test.describe('Empty States', () => {
   });
 
   test('should show empty state when no pending requests @errors @empty', async ({ page }) => {
-    // Create a fresh user for this test to avoid conflicts
-    const testUser = createTestUser();
-    await registerUser(page, testUser);
+    await loginAsOnboardingUser(page, 12);
 
     // After registration, user goes to onboarding - create org
     await page.getByTestId('onboarding-org-name').fill('Empty Pending Org');
@@ -320,14 +305,8 @@ test.describe('Empty States', () => {
 });
 
 test.describe('Loading States', () => {
-  // TODO: Fix flaky registration in parallel test execution
-  // Issue: Registration sometimes fails with "Registration failed" when tests run in parallel
-  // These tests pass when run individually but fail when run with other tests
-
   test('should show loading indicator during data fetch @errors @loading', async ({ page }) => {
-    // Create a fresh user for this test
-    const testUser = createTestUser();
-    await registerUser(page, testUser);
+    await loginAsOnboardingUser(page, 13);
 
     // After registration, complete onboarding
     await page.getByTestId('onboarding-org-name').fill('Loading Test Org');
@@ -344,17 +323,14 @@ test.describe('Loading States', () => {
 
     // Should show loading state
     await expect(
-      page
-        .locator('.animate-spin')
+      loadingSpinnerLocator(page)
         .or(page.getByText(/Cargando|Loading/i))
         .or(page.locator('[data-testid="skeleton"]'))
     ).toBeVisible({ timeout: 2000 });
   });
 
   test('should show skeleton loaders for content @errors @loading', async ({ page }) => {
-    // Create a fresh user for this test
-    const testUser = createTestUser();
-    await registerUser(page, testUser);
+    await loginAsOnboardingUser(page, 14);
 
     // After registration, complete onboarding
     await page.getByTestId('onboarding-org-name').fill('Skeleton Test Org');
@@ -371,7 +347,7 @@ test.describe('Loading States', () => {
 
     // Should show skeleton or loading indicator
     const hasSkeletons = await page.locator('[data-testid="skeleton"]').count();
-    const hasSpinner = await page.locator('.animate-spin').isVisible();
+    const hasSpinner = await loadingSpinnerLocator(page).isVisible();
     const hasLoading = await page.getByText(/Cargando|Loading/i).isVisible();
 
     expect(hasSkeletons > 0 || hasSpinner || hasLoading).toBe(true);

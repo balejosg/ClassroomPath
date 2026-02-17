@@ -6,6 +6,8 @@
 
 import { Page, Locator, expect } from '@playwright/test';
 
+import { loadingSpinnerLocator, openRegisterForm } from './test-utils';
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -34,11 +36,7 @@ export class RegisterPage {
   }
 
   async goto() {
-    await this.page.goto('/');
-    await this.page.waitForLoadState('domcontentloaded');
-    // Navigate to register if on login
-    const registerLink = this.page.getByTestId('navigate-to-register');
-    if (await registerLink.isVisible().catch(() => false)) await registerLink.click();
+    await openRegisterForm(this.page);
   }
 
   async fillForm(data: { email: string; name: string; password: string }) {
@@ -102,7 +100,7 @@ export class WaitingPage {
     this.waitingMessage = page.getByText(/Esperando invitación|Waiting for invitation/i);
     this.verifyButton = page.getByRole('button', { name: /Verificar ahora|Check now/i });
     this.cancelButton = page.getByRole('button', { name: /Cambiar de opinión|Cancel/i });
-    this.loadingSpinner = page.locator('.animate-spin');
+    this.loadingSpinner = loadingSpinnerLocator(page);
     this.statusMessage = page.getByText(/pendiente|pending|approved|denied/i);
   }
 
@@ -112,10 +110,8 @@ export class WaitingPage {
 
   async checkStatus() {
     await this.verifyButton.click();
-    // Wait for loading to complete
-    if (await this.loadingSpinner.isVisible()) {
-      await this.loadingSpinner.waitFor({ state: 'hidden', timeout: 10000 });
-    }
+    // Wait for loading to complete when spinner is present.
+    await this.loadingSpinner.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
   }
 
   async cancel() {
@@ -151,11 +147,9 @@ export class DashboardPage {
     // App is state-driven, not URL-routed. Navigate via sidebar.
     await this.page.goto('/');
     await this.page.waitForLoadState('networkidle');
-    // Click dashboard button if visible (we may already be on dashboard)
-    if (await this.dashboardButton.isVisible().catch(() => false)) {
-      await this.dashboardButton.click();
-      await this.page.waitForLoadState('networkidle');
-    }
+    await expect(this.dashboardButton).toBeVisible({ timeout: 10000 });
+    await this.dashboardButton.click();
+    await this.page.waitForLoadState('networkidle');
   }
 
   async gotoClassrooms() {

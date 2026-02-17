@@ -10,6 +10,7 @@ import {
   createTestUser,
   expectWaitingPage,
   loginAsAdmin,
+  loginAsPendingUser,
   waitForNetworkIdle,
 } from './fixtures/test-utils';
 import {
@@ -28,14 +29,12 @@ function pendingUserRow(page: Page, email: string) {
 
 async function stabilizeUsersTable(page: Page): Promise<void> {
   const retryButton = page.getByRole('button', { name: 'Reintentar' });
-  if (await retryButton.isVisible({ timeout: 1500 }).catch(() => false)) {
-    await retryButton.click();
-    await waitForNetworkIdle(page).catch(() => {});
-  }
+  await retryButton.click({ timeout: 1500 }).catch(() => {});
+  await waitForNetworkIdle(page).catch(() => {});
 }
 
 test.describe('Waiting Room Flow', () => {
-  // TODO: Fix flaky registration in parallel test execution
+  // Keep one registration-based flow to cover request-access onboarding path.
   test('should show waiting screen after requesting access @waiting', async ({ page }) => {
     const testUser = createTestUser();
 
@@ -46,11 +45,8 @@ test.describe('Waiting Room Flow', () => {
     await expect(page.getByText(/Esperando|Waiting|pendiente/i)).toBeVisible();
   });
 
-  // TODO: Fix flaky registration in parallel test execution
   test('should allow manual status check @waiting', async ({ page }) => {
-    const testUser = createTestUser();
-
-    await registerAndRequestAccess(page, testUser);
+    await loginAsPendingUser(page, 0);
 
     const waitingPage = new WaitingPage(page);
     await waitingPage.expectLoaded();
@@ -60,7 +56,6 @@ test.describe('Waiting Room Flow', () => {
     await expectWaitingPage(page);
   });
 
-  // TODO: Fix flaky registration in parallel test execution
   test('should auto-refresh status periodically @waiting @auto-refresh', async ({ page }) => {
     // Accelerate the 30s polling interval only for this test so we can verify
     // real periodic checks without slowing down the suite.
@@ -79,8 +74,7 @@ test.describe('Waiting Room Flow', () => {
       }
     });
 
-    const testUser = createTestUser();
-    await registerAndRequestAccess(page, testUser);
+    await loginAsPendingUser(page, 1);
 
     // Reset counter after initial load; we care about periodic checks on waiting page.
     onboardingStatusRequests = 0;
@@ -93,11 +87,8 @@ test.describe('Waiting Room Flow', () => {
       .toBeGreaterThanOrEqual(2);
   });
 
-  // TODO: Fix flaky registration in parallel test execution
   test('should allow user to cancel waiting and go back @waiting', async ({ page }) => {
-    const testUser = createTestUser();
-
-    await registerAndRequestAccess(page, testUser);
+    await loginAsPendingUser(page, 2);
 
     const waitingPage = new WaitingPage(page);
     await waitingPage.expectLoaded();
@@ -111,8 +102,8 @@ test.describe('Waiting Room Flow', () => {
 });
 
 test.describe('Admin Approval Flow', () => {
-  // Run serially to avoid race conditions with shared admin account
-  test.describe.configure({ mode: 'serial' });
+  // Worker-scoped seeded accounts allow safe parallel execution.
+  test.describe.configure({ mode: 'parallel' });
 
   test('should show users management view to admin @waiting @admin', async ({ page }) => {
     await loginAsAdmin(page);

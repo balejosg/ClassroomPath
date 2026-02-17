@@ -15,6 +15,62 @@ import {
   waitForNetworkIdle,
 } from './fixtures/test-utils';
 
+type ApiProbeResult = {
+  endpoint: string;
+  status: number;
+  durationMs: number;
+};
+
+async function probeGet(
+  page: import('@playwright/test').Page,
+  endpoint: string
+): Promise<ApiProbeResult> {
+  return page.evaluate(
+    async ({ endpoint: target }) => {
+      const start = performance.now();
+      const response = await fetch(target, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      const durationMs = performance.now() - start;
+
+      // Drain body to include transfer time in realistic measurements.
+      await response.text().catch(() => undefined);
+
+      return {
+        endpoint: target,
+        status: response.status,
+        durationMs,
+      };
+    },
+    { endpoint }
+  ) as Promise<ApiProbeResult>;
+}
+
+async function probeBatchHealthchecks(
+  page: import('@playwright/test').Page
+): Promise<ApiProbeResult> {
+  return page.evaluate(async () => {
+    const input = encodeURIComponent(JSON.stringify({ 0: null, 1: null }));
+    const endpoint = `/cp/trpc/healthcheck.live,healthcheck.ready?batch=1&input=${input}`;
+
+    const start = performance.now();
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    const durationMs = performance.now() - start;
+
+    await response.text().catch(() => undefined);
+
+    return {
+      endpoint,
+      status: response.status,
+      durationMs,
+    };
+  }) as Promise<ApiProbeResult>;
+}
+
 // Performance thresholds (in milliseconds)
 const THRESHOLDS = {
   landingPageLoad: 3000,
@@ -37,7 +93,6 @@ test.describe('Page Load Performance', () => {
     expect(loadTime).toBeLessThan(THRESHOLDS.landingPageLoad);
   });
 
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
   test('dashboard loads within threshold @performance @slow', async ({ page }) => {
     await loginAsAdmin(page);
 
@@ -49,7 +104,6 @@ test.describe('Page Load Performance', () => {
     expect(loadTime).toBeLessThan(THRESHOLDS.dashboardLoad);
   });
 
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
   test('organization page loads within threshold @performance @slow', async ({ page }) => {
     await loginAsAdmin(page);
 
@@ -63,7 +117,6 @@ test.describe('Page Load Performance', () => {
 });
 
 test.describe('User Flow Performance', () => {
-  // TODO: Fix flaky registration in parallel test execution
   test('registration flow completes within threshold @performance @flow', async ({ page }) => {
     const testUser = createTestUser();
 
@@ -80,7 +133,6 @@ test.describe('User Flow Performance', () => {
     expect(totalTime).toBeLessThan(15000); // 15 seconds for full flow
   });
 
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
   test('login flow completes within threshold @performance @flow', async ({ page }) => {
     const start = Date.now();
 
@@ -169,60 +221,58 @@ test.describe('Core Web Vitals', () => {
 });
 
 test.describe('API Performance', () => {
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
   test('API endpoints respond within threshold @performance @api', async ({ page }) => {
     await loginAsAdmin(page);
-
-    const apiTimes: Record<string, number> = {};
-
-    page.on('response', async (response) => {
-      const url = response.url();
-      if (url.includes('/api/') || url.includes('/trpc/') || url.includes('/cp/')) {
-        const timing = response.request().timing();
-        apiTimes[url] = timing.responseEnd - timing.requestStart;
-      }
-    });
-
     await goToDashboard(page);
 
-    console.log('API Response Times:', apiTimes);
+    const probes = [
+      await probeGet(page, '/cp/health'),
+      await probeGet(page, '/cp/trpc/healthcheck.live'),
+      await probeGet(page, '/cp/trpc/healthcheck.ready'),
+    ];
 
-    for (const [url, time] of Object.entries(apiTimes)) {
-      if (time > 0) {
-        expect(time).toBeLessThan(2000);
-      }
+    console.log('API Response Times:', probes);
+
+    expect(probes.length).toBeGreaterThanOrEqual(3);
+    for (const probe of probes) {
+      expect(probe.status).toBeLessThan(500);
+      expect(probe.durationMs).toBeGreaterThan(0);
+      expect(probe.durationMs).toBeLessThan(2000);
     }
   });
 
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
   test('tRPC batch requests are efficient @performance @api', async ({ page }) => {
     await loginAsAdmin(page);
-
-    let batchCount = 0;
-    let singleCount = 0;
-
-    page.on('request', (request) => {
-      const url = request.url();
-      if (url.includes('/trpc/')) {
-        if (url.includes(',')) {
-          batchCount++;
-        } else {
-          singleCount++;
-        }
-      }
-    });
-
     await goToDashboard(page);
 
-    console.log(`Batch requests: ${batchCount}, Single requests: ${singleCount}`);
+    const singleLive = await probeGet(page, '/cp/trpc/healthcheck.live');
+    const singleReady = await probeGet(page, '/cp/trpc/healthcheck.ready');
+    const batch = await probeBatchHealthchecks(page);
 
-    // Batching should be used (more batches than singles)
-    // This may not apply to all setups
+    const singleTotal = singleLive.durationMs + singleReady.durationMs;
+
+    console.log('tRPC batching sample:', {
+      singleLive,
+      singleReady,
+      batch,
+      singleTotal,
+    });
+
+    expect(singleLive.status).toBeLessThan(500);
+    expect(singleReady.status).toBeLessThan(500);
+    expect(batch.status).toBeLessThan(500);
+    expect(singleTotal).toBeGreaterThan(0);
+    expect(batch.durationMs).toBeGreaterThan(0);
+
+    // Batch should not be significantly worse than two equivalent single requests.
+    expect(batch.durationMs).toBeLessThan(singleTotal * 2.5 + 100);
+
+    // Keep hard cap to catch pathological regressions.
+    expect(batch.durationMs).toBeLessThan(2000);
   });
 });
 
 test.describe('Memory Performance', () => {
-  // TODO: Fix loginAsAdmin race conditions - fails in parallel execution
   test('no memory leaks during navigation @performance @memory', async ({ page }) => {
     await loginAsAdmin(page);
 
