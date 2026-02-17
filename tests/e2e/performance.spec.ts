@@ -10,6 +10,8 @@ import {
   createTestUser,
   registerUser,
   expectDashboard,
+  goToDashboard,
+  goToOrganization,
   waitForNetworkIdle,
 } from './fixtures/test-utils';
 
@@ -40,8 +42,7 @@ test.describe('Page Load Performance', () => {
     await loginAsAdmin(page);
 
     const start = Date.now();
-    await page.goto('/dashboard');
-    await waitForNetworkIdle(page);
+    await goToDashboard(page);
     const loadTime = Date.now() - start;
 
     console.log(`Dashboard load time: ${loadTime}ms`);
@@ -53,8 +54,7 @@ test.describe('Page Load Performance', () => {
     await loginAsAdmin(page);
 
     const start = Date.now();
-    await page.goto('/organization');
-    await waitForNetworkIdle(page);
+    await goToOrganization(page);
     const loadTime = Date.now() - start;
 
     console.log(`Organization page load time: ${loadTime}ms`);
@@ -183,8 +183,7 @@ test.describe('API Performance', () => {
       }
     });
 
-    await page.goto('/dashboard');
-    await waitForNetworkIdle(page);
+    await goToDashboard(page);
 
     console.log('API Response Times:', apiTimes);
 
@@ -213,8 +212,7 @@ test.describe('API Performance', () => {
       }
     });
 
-    await page.goto('/dashboard');
-    await waitForNetworkIdle(page);
+    await goToDashboard(page);
 
     console.log(`Batch requests: ${batchCount}, Single requests: ${singleCount}`);
 

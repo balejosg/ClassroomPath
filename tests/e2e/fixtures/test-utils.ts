@@ -86,6 +86,13 @@ export function createTestOrganization(
   };
 }
 
+/**
+ * Base URL used by E2E contexts created manually in tests.
+ */
+export function getE2EBaseUrl(): string {
+  return process.env.BASE_URL ?? 'http://localhost:5173';
+}
+
 // ============================================================================
 // Preconfigured Test Accounts (for seeded test database)
 // ============================================================================

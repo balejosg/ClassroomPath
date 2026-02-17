@@ -130,6 +130,12 @@ npm run verify:full
 # Full stress lane: includes all E2E suites
 VERIFY_ALL=1 npm run verify:full
 
+# Playwright-only fast lane (without full pipeline)
+npm run test:e2e:verify-fast
+
+# Mobile/responsive tagged lane
+npm run test:e2e:mobile
+
 # Optional for low-resource machines
 PLAYWRIGHT_WORKERS=2 npm run verify:full
 ```

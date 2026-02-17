@@ -6,6 +6,10 @@
 
 import { Page, Locator, expect } from '@playwright/test';
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export class RegisterPage {
   readonly page: Page;
   readonly emailInput: Locator;
@@ -211,12 +215,12 @@ export class OrganizationPage {
   }
 
   async approvePendingUser(email: string) {
-    const userRow = this.page.getByText(email).locator('..').locator('..');
+    const userRow = this.page.getByRole('row', { name: new RegExp(escapeRegExp(email), 'i') });
     await userRow.getByRole('button', { name: /Aprobar|Approve/i }).click();
   }
 
   async rejectPendingUser(email: string) {
-    const userRow = this.page.getByText(email).locator('..').locator('..');
+    const userRow = this.page.getByRole('row', { name: new RegExp(escapeRegExp(email), 'i') });
     await userRow.getByRole('button', { name: /Rechazar|Reject/i }).click();
   }
 }

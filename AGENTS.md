@@ -244,6 +244,12 @@ Deployment tests verify Docker, nginx, and env configurations only. They do NOT 
 # Full stress lane (includes slow-network and repro suites)
 VERIFY_ALL=1 npm run verify:full
 
+# Explicit fast lane (Playwright only, skips full verify pipeline)
+npm run test:e2e:verify-fast
+
+# Mobile/responsive tagged lane
+npm run test:e2e:mobile
+
 # Optional override for low-resource machines
 PLAYWRIGHT_WORKERS=2 npm run verify:full
 ```

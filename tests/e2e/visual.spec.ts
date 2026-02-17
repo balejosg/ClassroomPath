@@ -40,7 +40,7 @@ test.describe('Visual Regression - Landing/Register', () => {
     });
   });
 
-  test('register page mobile @visual', async ({ page }) => {
+  test('register page mobile @visual @mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
     await page.waitForLoadState('networkidle');
@@ -52,7 +52,7 @@ test.describe('Visual Regression - Landing/Register', () => {
     });
   });
 
-  test('register page tablet @visual', async ({ page }) => {
+  test('register page tablet @visual @responsive', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto('/');
     await page.waitForLoadState('networkidle');
@@ -82,7 +82,7 @@ test.describe('Visual Regression - Onboarding', () => {
   });
 
   // TODO: Fix flaky registration in parallel test execution
-  test('onboarding page mobile @visual', async ({ page }) => {
+  test('onboarding page mobile @visual @mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
 
     const testUser = createTestUser();
@@ -118,7 +118,7 @@ test.describe('Visual Regression - Waiting Room', () => {
   });
 
   // TODO: Fix flaky registration in parallel test execution
-  test('waiting page mobile @visual', async ({ page }) => {
+  test('waiting page mobile @visual @mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
 
     const testUser = createTestUser();
@@ -158,7 +158,7 @@ test.describe('Visual Regression - Dashboard', () => {
     });
   });
 
-  test('dashboard mobile @visual', async ({ page }) => {
+  test('dashboard mobile @visual @mobile', async ({ page }) => {
     // Set viewport BEFORE login so the app loads in mobile mode
     await page.setViewportSize({ width: 375, height: 667 });
     await loginAsAdmin(page);

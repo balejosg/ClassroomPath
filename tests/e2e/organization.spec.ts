@@ -230,39 +230,17 @@ test.describe('Classroom Management', () => {
     // Fill form - use placeholder text which is "Ej: Laboratorio C"
     await page.getByPlaceholder('Ej: Laboratorio C').fill(classroomName);
 
-    // Submit (Spanish: "Crear Aula") - use the modal's submit button
-    const modal = page.locator('.fixed.inset-0');
-    const createButton = modal.getByRole('button', { name: 'Crear Aula' });
+    // Submit (Spanish: "Crear Aula") - use submit button inside the modal flow.
+    const createButton = page.getByRole('button', { name: 'Crear Aula' }).last();
     await createButton.click();
 
-    // Wait for the API call to complete (button shows loading state then modal closes)
-    // The modal should close after successful creation, or show an error
-    await waitForNetworkIdle(page);
+    // Creation should succeed and close modal.
+    await expect(modalHeading).toBeHidden({ timeout: 10000 });
 
-    // Check if modal closed successfully or if there's an error
-    const modalStillVisible = await modalHeading.isVisible({ timeout: 2000 }).catch(() => false);
-
-    if (modalStillVisible) {
-      // Modal still open - check if there's an error displayed
-      const errorMessage = page.locator('.text-red-500');
-      const hasError = await errorMessage.isVisible().catch(() => false);
-
-      if (hasError) {
-        // There's a validation error - test should pass as the modal interaction works
-        console.log('Modal shows error, interaction verified');
-      } else {
-        // Modal is open but no error - give pending network work a short chance to settle.
-        await waitForNetworkIdle(page, 1500).catch(() => {});
-        const stillVisible = await modalHeading.isVisible().catch(() => false);
-        if (stillVisible) {
-          // Really still open - try to close manually for cleanup.
-          await modal
-            .getByRole('button', { name: 'Cancelar' })
-            .click({ timeout: 2000 })
-            .catch(() => {});
-        }
-      }
-    }
+    // New classroom should be visible in the classrooms list/details.
+    await expect(page.getByRole('heading', { name: classroomName }).first()).toBeVisible({
+      timeout: 10000,
+    });
 
     // Verify we can continue using the app (either modal closed or we closed it)
     // Use specific heading to avoid matching multiple "Aulas" elements
@@ -271,28 +249,37 @@ test.describe('Classroom Management', () => {
     });
   });
 
-  test('should assign teacher to classroom @org @classroom', async ({ page }) => {
-    // Navigate to classroom settings
-    await page.goto('/groups');
+  test('should open classroom configuration after selection @org @classroom', async ({ page }) => {
+    const dashboard = new DashboardPage(page);
+    await dashboard.gotoClassrooms();
     await waitForNetworkIdle(page);
 
-    // Click on first classroom
-    const firstClassroom = page.locator('[data-testid="group-card"]').first();
+    // Create classroom to ensure deterministic assignment target.
+    const classroomName = `Assign Classroom ${Date.now()}`;
+    await dashboard.newClassroomButton.click();
 
-    if (await firstClassroom.isVisible()) {
-      await firstClassroom.click();
-      await waitForNetworkIdle(page);
+    const modalHeading = page.getByRole('heading', { name: 'Nueva Aula' });
+    await expect(modalHeading).toBeVisible({ timeout: 5000 });
+    await page.getByPlaceholder('Ej: Laboratorio C').fill(classroomName);
+    await page.getByRole('button', { name: 'Crear Aula' }).last().click();
+    await expect(modalHeading).toBeHidden({ timeout: 10000 });
 
-      // Look for assign teacher option
-      const assignButton = page.getByRole('button', { name: /Asignar|Assign|Añadir profesor/i });
+    const classroomListHeading = page
+      .getByRole('heading', { name: classroomName, level: 3 })
+      .first();
+    await expect(classroomListHeading).toBeVisible({ timeout: 10000 });
+    await classroomListHeading.click();
+    await waitForNetworkIdle(page);
 
-      if (await assignButton.isVisible()) {
-        await assignButton.click();
-
-        // Should show teacher selection
-        await expect(page.getByText(/Seleccionar|Select|profesores/i)).toBeVisible();
-      }
-    }
+    await expect(page.getByRole('heading', { name: classroomName, level: 2 })).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByRole('combobox', { name: 'Grupo Activo' })).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByRole('combobox', { name: 'Grupo por defecto' })).toBeVisible({
+      timeout: 10000,
+    });
   });
 });
 

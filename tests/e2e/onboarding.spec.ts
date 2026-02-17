@@ -8,7 +8,9 @@ import {
 
 test.describe('Happy Path: User Registration & Onboarding', () => {
   // TODO: Fix flaky registration in parallel test execution
-  test('should allow a new user to register and create an organization', async ({ page }) => {
+  test('should allow a new user to register and create an organization @onboarding @smoke', async ({
+    page,
+  }) => {
     const testUser = createTestUser();
     await registerUser(page, testUser);
 
