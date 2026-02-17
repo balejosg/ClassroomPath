@@ -14,6 +14,18 @@ import assert from 'node:assert';
 // Get the target URL from environment
 const SMOKE_TEST_URL = process.env.SMOKE_TEST_URL;
 const SMOKE_TEST_TIMEOUT = parseInt(process.env.SMOKE_TEST_TIMEOUT || '10000', 10);
+const SMOKE_SKIP_CORS = process.env.SMOKE_SKIP_CORS === '1';
+
+function isIpAddress(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[/, '').replace(/\]$/, '');
+  const ipv4Pattern = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+  const ipv6Pattern = /^[0-9a-fA-F:]+$/;
+
+  return ipv4Pattern.test(normalized) || (normalized.includes(':') && ipv6Pattern.test(normalized));
+}
+
+const SMOKE_HOSTNAME = SMOKE_TEST_URL ? new URL(SMOKE_TEST_URL).hostname : '';
+const SMOKE_RELAX_CORS = SMOKE_SKIP_CORS || (SMOKE_HOSTNAME ? isIpAddress(SMOKE_HOSTNAME) : false);
 
 interface HealthResponse {
   status: string;
@@ -274,6 +286,17 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
           Origin: origin,
         },
       });
+
+      if (SMOKE_RELAX_CORS) {
+        assert.notStrictEqual(
+          response.status,
+          502,
+          'Smoke target is unreachable (502). Check gateway/api containers and reverse proxy.'
+        );
+        assert.ok(response.status < 500, `Expected API to be reachable, got ${response.status}`);
+        console.log('⚠️  Skipping strict CORS origin assertion for IP/fallback smoke target.');
+        return;
+      }
 
       // Check CORS headers
       const allowOrigin = response.headers.get('access-control-allow-origin');

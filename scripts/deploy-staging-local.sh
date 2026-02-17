@@ -45,6 +45,7 @@ fi
 STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
 STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
+STAGING_SMOKE_URL="${STAGING_SMOKE_URL:-https://classroompath-staging.duckdns.org}"
 APP_DIR="/opt/classroompath/app"
 
 # Validate required env vars
@@ -253,9 +254,35 @@ log_info "Running smoke tests against staging..."
 
 cd "$SCRIPT_DIR/.."
 
+SMOKE_TARGET_URL="$STAGING_SMOKE_URL"
+SMOKE_SKIP_CORS="0"
+
+SMOKE_TARGET_HOST=$(printf '%s\n' "$SMOKE_TARGET_URL" | sed -E 's#^[A-Za-z]+://([^/:]+).*#\1#')
+
+if [ -n "$SMOKE_TARGET_HOST" ] && ! getent hosts "$SMOKE_TARGET_HOST" >/dev/null 2>&1; then
+    log_warn "Smoke URL host does not resolve locally: $SMOKE_TARGET_HOST"
+    REMOTE_DNS_STATUS=$($SSH_CMD "getent hosts '$SMOKE_TARGET_HOST' >/dev/null 2>&1 && echo ok || echo fail")
+
+    if [ "$REMOTE_DNS_STATUS" = "ok" ]; then
+        log_warn "Host resolves on staging host but not locally; using direct IP fallback for local smoke runner"
+    else
+        log_warn "Host does not resolve on staging host either; likely DNS outage/missing record"
+    fi
+
+    SMOKE_TARGET_URL="http://$STAGING_HOST:3001"
+    SMOKE_SKIP_CORS="1"
+    log_warn "Falling back smoke target to direct staging gateway: $SMOKE_TARGET_URL"
+fi
+
+log_info "Smoke target URL: $SMOKE_TARGET_URL"
+if [ "$SMOKE_SKIP_CORS" = "1" ]; then
+    log_warn "Strict CORS origin check disabled for fallback smoke run"
+fi
+
 # Run smoke tests with staging URL
-SMOKE_TEST_URL="https://classroompath-staging.duckdns.org" \
+SMOKE_TEST_URL="$SMOKE_TARGET_URL" \
 SMOKE_TEST_TIMEOUT="15000" \
+SMOKE_SKIP_CORS="$SMOKE_SKIP_CORS" \
 npm run test:smoke 2>&1 | tee /tmp/smoke-results.txt
 
 SMOKE_EXIT_CODE=${PIPESTATUS[0]}
@@ -274,7 +301,7 @@ else
     echo "Debug commands:"
     echo "  ssh deploy@$STAGING_HOST 'docker logs classroompath-gateway --tail 50'"
     echo "  ssh deploy@$STAGING_HOST 'docker logs classroompath-api --tail 50'"
-    echo "  curl -v https://classroompath-staging.duckdns.org/health"
+    echo "  curl -v $SMOKE_TARGET_URL/health"
     exit 1
 fi
 
@@ -290,7 +317,7 @@ log_success "Staging deployment + smoke tests complete!"
 echo "========================================"
 echo ""
 echo "  Duration: ${DURATION}s"
-echo "  URL: https://classroompath-staging.duckdns.org"
+echo "  URL: $SMOKE_TARGET_URL"
 echo "  Gateway: http://$STAGING_HOST:3001/cp/health"
 echo "  API: http://$STAGING_HOST:3000/health"
 echo ""
