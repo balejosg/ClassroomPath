@@ -114,7 +114,8 @@ test.describe('Navigation Regression Harness', () => {
   // Run serially: we want a stable long-running loop.
   test.describe.configure({ mode: 'serial' });
 
-  test('sidebar clicks always reach expected headings @errors', async ({ page }) => {
+  // This is a soak/debug harness; keep it opt-in in fast verification flows.
+  test('sidebar clicks always reach expected headings @errors @repro', async ({ page }) => {
     test.setTimeout(getTimeoutMs());
 
     if (process.env.NAV_FORCE_500 === '1') {

@@ -19,6 +19,13 @@ const __dirname = dirname(__filename);
 
 const API_URL = process.env.OPENPATH_API_URL ?? 'http://localhost:3010';
 
+function shouldSkipDbPush(): boolean {
+  const raw = process.env.E2E_SKIP_DB_PUSH;
+  if (!raw) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 function isExternalBaseUrl(): boolean {
   const baseUrl = process.env.BASE_URL;
   if (!baseUrl) return false;
@@ -143,15 +150,19 @@ async function globalSetup(_config: FullConfig): Promise<void> {
     return;
   }
 
-  // Ensure tables are empty so drizzle-kit push never prompts.
-  const truncateSuccess = await runTruncateOnly();
-  if (!truncateSuccess) {
-    console.warn('WARNING: Pre-push truncate failed; db:push may prompt or fail');
-  }
+  if (shouldSkipDbPush()) {
+    console.log('Skipping truncate-only + db:push (E2E_SKIP_DB_PUSH is enabled)');
+  } else {
+    // Ensure tables are empty so drizzle-kit push never prompts.
+    const truncateSuccess = await runTruncateOnly();
+    if (!truncateSuccess) {
+      console.warn('WARNING: Pre-push truncate failed; db:push may prompt or fail');
+    }
 
-  const pushSuccess = await runClassroomPathDbPush();
-  if (!pushSuccess) {
-    console.warn('WARNING: db:push failed, seed may fail due to schema mismatch');
+    const pushSuccess = await runClassroomPathDbPush();
+    if (!pushSuccess) {
+      console.warn('WARNING: db:push failed, seed may fail due to schema mismatch');
+    }
   }
 
   // Run the seed script which properly sets up:

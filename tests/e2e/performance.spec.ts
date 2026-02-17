@@ -9,6 +9,7 @@ import {
   loginAsAdmin,
   createTestUser,
   registerUser,
+  expectDashboard,
   waitForNetworkIdle,
 } from './fixtures/test-utils';
 
@@ -86,7 +87,7 @@ test.describe('User Flow Performance', () => {
     await loginAsAdmin(page);
 
     // Wait for dashboard content
-    await expect(page.getByText(/Dashboard|Grupos/i)).toBeVisible({ timeout: 10000 });
+    await expectDashboard(page);
 
     const totalTime = Date.now() - start;
 
@@ -141,7 +142,6 @@ test.describe('Core Web Vitals', () => {
   test('measures CLS @performance @cwv', async ({ page }) => {
     await page.goto('/');
     await waitForNetworkIdle(page);
-    await page.waitForTimeout(2000);
 
     const cls = await page.evaluate(() => {
       return new Promise((resolve) => {
@@ -157,7 +157,9 @@ test.describe('Core Web Vitals', () => {
           resolve(clsValue);
         }).observe({ type: 'layout-shift', buffered: true });
 
-        setTimeout(() => resolve(clsValue), 3000);
+        // Buffered entries should resolve quickly; keep a short fallback window
+        // for late layout shifts without adding long fixed waits.
+        setTimeout(() => resolve(clsValue), 1000);
       });
     });
 
@@ -238,12 +240,18 @@ test.describe('Memory Performance', () => {
 
     const initialMemory = await getMemory();
 
-    // Navigate through app
-    const routes = ['/dashboard', '/groups', '/organization', '/dashboard'];
+    // Navigate through the SPA using sidebar actions (more realistic than hard reloads)
+    // and still capable of exposing memory growth across repeated view transitions.
+    const navTargets = [
+      'Panel de Control',
+      'Políticas de Grupo',
+      'Usuarios y Roles',
+      'Panel de Control',
+    ];
 
     for (let i = 0; i < 3; i++) {
-      for (const route of routes) {
-        await page.goto(route);
+      for (const target of navTargets) {
+        await page.getByRole('button', { name: target }).click();
         await waitForNetworkIdle(page);
       }
     }

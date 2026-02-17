@@ -121,6 +121,19 @@ npm run build:api
 npm run start
 ```
 
+## Verification
+
+```bash
+# Default verification lane (faster): excludes @slow-network and @repro E2E suites
+npm run verify:full
+
+# Full stress lane: includes all E2E suites
+VERIFY_ALL=1 npm run verify:full
+
+# Optional for low-resource machines
+PLAYWRIGHT_WORKERS=2 npm run verify:full
+```
+
 ## Deployment
 
 ### Automatic (CI/CD)

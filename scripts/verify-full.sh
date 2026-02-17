@@ -263,14 +263,40 @@ for port in 3001 3010 5173; do
 done
 
 # Playwright global-setup handles seeding, no need to seed here
-# Exclude @slow-network tests by default (saves ~54s)
+# db:push already ran in [4/5], so skip duplicate push in global-setup.
+# Exclude long-running opt-in suites by default:
+# - @slow-network (network throttling)
+# - @repro (debug/soak repro harnesses)
+# Auto-tune worker count for local verify runs to reduce wall time.
+# Override with PLAYWRIGHT_WORKERS=<n> when needed.
+detect_playwright_workers() {
+  if [ -n "${PLAYWRIGHT_WORKERS:-}" ]; then
+    echo "$PLAYWRIGHT_WORKERS"
+    return
+  fi
+
+  local cores
+  cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+
+  if [ "$cores" -ge 8 ]; then
+    echo 4
+  elif [ "$cores" -ge 4 ]; then
+    echo 3
+  else
+    echo 2
+  fi
+}
+
+PW_WORKERS=$(detect_playwright_workers)
+echo "Using Playwright workers: $PW_WORKERS"
+
 # Run with VERIFY_ALL=1 to include all tests
 if [ "${VERIFY_ALL:-}" = "1" ]; then
-  echo "Running ALL E2E tests (including @slow-network)..."
-  npx playwright test
+  echo "Running ALL E2E tests (including @slow-network and @repro)..."
+  E2E_SKIP_DB_PUSH=1 PLAYWRIGHT_WORKERS="$PW_WORKERS" npx playwright test
 else
-  echo "Running E2E tests (excluding @slow-network)..."
-  npx playwright test --grep-invert="@slow-network"
+  echo "Running E2E tests (excluding @slow-network and @repro)..."
+  E2E_SKIP_DB_PUSH=1 PLAYWRIGHT_WORKERS="$PW_WORKERS" npx playwright test --grep-invert="@slow-network|@repro"
 fi
 
 # =============================================================================

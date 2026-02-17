@@ -11,13 +11,28 @@ import {
   registerUser,
   waitForNetworkIdle,
 } from './fixtures/test-utils';
+import type { Page } from '@playwright/test';
+
+async function waitForVisualStability(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+    return !fonts || fonts.status === 'loaded';
+  });
+
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      })
+  );
+}
 
 test.describe('Visual Regression - Landing/Register', () => {
   test('register page desktop @visual @smoke', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(500);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('register-desktop.png', {
       maxDiffPixelRatio: 0.01,
@@ -29,7 +44,7 @@ test.describe('Visual Regression - Landing/Register', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(500);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('register-mobile.png', {
       maxDiffPixelRatio: 0.01,
@@ -41,7 +56,7 @@ test.describe('Visual Regression - Landing/Register', () => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(500);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('register-tablet.png', {
       maxDiffPixelRatio: 0.01,
@@ -58,7 +73,7 @@ test.describe('Visual Regression - Onboarding', () => {
 
     await page.setViewportSize({ width: 1280, height: 720 });
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
-    await page.waitForTimeout(500);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('onboarding-desktop.png', {
       maxDiffPixelRatio: 0.02,
@@ -74,7 +89,7 @@ test.describe('Visual Regression - Onboarding', () => {
     await registerUser(page, testUser);
 
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
-    await page.waitForTimeout(500);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('onboarding-mobile.png', {
       maxDiffPixelRatio: 0.02,
@@ -94,7 +109,7 @@ test.describe('Visual Regression - Waiting Room', () => {
 
     await page.setViewportSize({ width: 1280, height: 720 });
     await expect(page.getByText(/Esperando|Waiting/i)).toBeVisible({ timeout: 10000 });
-    await page.waitForTimeout(500);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('waiting-desktop.png', {
       maxDiffPixelRatio: 0.02,
@@ -113,7 +128,7 @@ test.describe('Visual Regression - Waiting Room', () => {
     await page.getByRole('button', { name: /Solicitar Acceso|Request|Esperar/i }).click();
 
     await expect(page.getByText(/Esperando|Waiting/i)).toBeVisible({ timeout: 10000 });
-    await page.waitForTimeout(500);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('waiting-mobile.png', {
       maxDiffPixelRatio: 0.02,
@@ -135,7 +150,7 @@ test.describe('Visual Regression - Dashboard', () => {
     // OpenPath is state-driven, not URL-routed. Navigate via sidebar.
     await page.getByRole('button', { name: 'Panel de Control' }).click();
     await waitForNetworkIdle(page);
-    await page.waitForTimeout(1000);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('dashboard-desktop.png', {
       maxDiffPixelRatio: 0.02,
@@ -149,7 +164,7 @@ test.describe('Visual Regression - Dashboard', () => {
     await loginAsAdmin(page);
     await waitForNetworkIdle(page);
     // On mobile, sidebar may be collapsed - app should already show dashboard by default
-    await page.waitForTimeout(1000);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('dashboard-mobile.png', {
       maxDiffPixelRatio: 0.02,
@@ -172,7 +187,7 @@ test.describe('Visual Regression - Organization', () => {
     await waitForNetworkIdle(page);
     await page.getByRole('button', { name: 'Usuarios y Roles' }).click();
     await waitForNetworkIdle(page);
-    await page.waitForTimeout(500);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('organization-desktop.png', {
       maxDiffPixelRatio: 0.02,
@@ -195,7 +210,24 @@ test.describe('Visual Regression - Error States', () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     // OpenPath is state-driven - click sidebar to trigger a navigation that will fail
     await page.getByRole('button', { name: 'Panel de Control' }).click();
-    await page.waitForTimeout(2000);
+
+    const hasErrorSignal =
+      (await page
+        .locator('[role="alert"], .bg-red-100')
+        .first()
+        .isVisible({ timeout: 3000 })
+        .catch(() => false)) ||
+      (await page
+        .getByText(/error|problema|falló|forbidden|denegado/i)
+        .first()
+        .isVisible({ timeout: 3000 })
+        .catch(() => false));
+
+    if (!hasErrorSignal) {
+      await page.waitForLoadState('networkidle').catch(() => {});
+    }
+
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('error-network.png', {
       maxDiffPixelRatio: 0.05, // More tolerance for error states
@@ -219,7 +251,7 @@ test.describe('Visual Regression - Error States', () => {
     // OpenPath is state-driven - navigate via sidebar
     await page.getByRole('button', { name: 'Aulas Seguras' }).click();
     await waitForNetworkIdle(page);
-    await page.waitForTimeout(500);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('empty-groups.png', {
       maxDiffPixelRatio: 0.02,
@@ -234,7 +266,7 @@ test.describe('Visual Regression - Dark Mode', () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(500);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('register-dark.png', {
       maxDiffPixelRatio: 0.01,
@@ -251,7 +283,7 @@ test.describe('Visual Regression - Dark Mode', () => {
     // OpenPath is state-driven - navigate via sidebar
     await page.getByRole('button', { name: 'Panel de Control' }).click();
     await waitForNetworkIdle(page);
-    await page.waitForTimeout(1000);
+    await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('dashboard-dark.png', {
       maxDiffPixelRatio: 0.02,

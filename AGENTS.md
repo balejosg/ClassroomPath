@@ -236,6 +236,18 @@ Environment variables in `config/.env` (copy from `.env.example`):
 
 Deployment tests verify Docker, nginx, and env configurations only. They do NOT test OpenPath logic.
 
+### E2E Verify Modes
+
+`npm run verify:full` runs Playwright in the default fast lane: excludes `@slow-network` and `@repro`.
+
+```bash
+# Full stress lane (includes slow-network and repro suites)
+VERIFY_ALL=1 npm run verify:full
+
+# Optional override for low-resource machines
+PLAYWRIGHT_WORKERS=2 npm run verify:full
+```
+
 ## Secrets (GitHub Actions)
 
 | Secret     | Environment | Purpose                  |

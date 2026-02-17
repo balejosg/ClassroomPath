@@ -66,6 +66,23 @@ test.describe('Waiting Room Flow', () => {
 
   // TODO: Fix flaky registration in parallel test execution
   test('should auto-refresh status periodically @waiting @auto-refresh', async ({ page }) => {
+    // Accelerate the 30s polling interval only for this test so we can verify
+    // real periodic checks without slowing down the suite.
+    await page.addInitScript(() => {
+      const originalSetInterval = window.setInterval.bind(window);
+      window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+        const adjusted = timeout === 30000 ? 300 : timeout;
+        return originalSetInterval(handler, adjusted, ...args);
+      }) as typeof window.setInterval;
+    });
+
+    let onboardingStatusRequests = 0;
+    page.on('request', (request) => {
+      if (request.url().includes('/cp/trpc/onboarding.status')) {
+        onboardingStatusRequests += 1;
+      }
+    });
+
     const testUser = createTestUser();
 
     // Register and go to waiting
@@ -76,19 +93,15 @@ test.describe('Waiting Room Flow', () => {
     // On waiting page
     await expect(page.getByText(/Esperando|Waiting/i)).toBeVisible({ timeout: 10000 });
 
-    // Wait for auto-refresh interval (typically 30s, but use shorter timeout for test)
-    // The test validates that the UI has auto-refresh capability
-    const lastChecked = page.getByText(/Última verificación|Last checked/i);
+    // Reset counter after initial load; we care about periodic checks on waiting page.
+    onboardingStatusRequests = 0;
 
-    if (await lastChecked.isVisible()) {
-      const initialTime = await lastChecked.textContent();
-
-      // Wait for auto-refresh (or manual trigger in test mode)
-      await page.waitForTimeout(5000);
-
-      // Time should update or button should be clickable
-      await expect(page.getByRole('button', { name: /Verificar|Check/i })).toBeEnabled();
-    }
+    await expect
+      .poll(() => onboardingStatusRequests, {
+        timeout: 5000,
+        message: 'Expected periodic onboarding.status polling while waiting',
+      })
+      .toBeGreaterThanOrEqual(2);
   });
 
   // TODO: Fix flaky registration in parallel test execution
@@ -172,8 +185,8 @@ test.describe('Admin Approval Flow', () => {
         const approveButton = page.getByRole('button', { name: /Aprobar/i }).first();
         await approveButton.click();
 
-        // Should show success or user disappears from list
-        await page.waitForTimeout(1000);
+        // Wait for mutation completion (without fixed sleeps).
+        await waitForNetworkIdle(page, 2000).catch(() => {});
 
         // User page should update on next check
         await userPage.getByRole('button', { name: /Verificar|Check/i }).click();
@@ -232,8 +245,8 @@ test.describe('Admin Approval Flow', () => {
           await confirmButton.click();
         }
 
-        // Wait for action to complete
-        await page.waitForTimeout(1000);
+        // Wait for mutation completion (without fixed sleeps).
+        await waitForNetworkIdle(page, 2000).catch(() => {});
       }
     }
 

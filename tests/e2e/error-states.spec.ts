@@ -75,25 +75,31 @@ test.describe('Network Error Handling', () => {
 
   test('should handle timeout gracefully @errors @timeout', async ({ page }) => {
     await loginAsAdmin(page);
+    await expectDashboard(page);
 
-    // Simulate slow API response
-    await page.route('**/cp/trpc**', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 30000)); // 30s delay
-      route.continue();
+    // Simulate API timeout errors deterministically without long sleeps.
+    await page.route('**/cp/trpc**', (route) => {
+      route.abort('timedout');
     });
 
-    // Set shorter navigation timeout for test
-    page.setDefaultTimeout(5000);
+    await page.reload();
 
-    await page.reload().catch(() => {});
+    const hasTimeoutText = await page
+      .getByText(/timeout|tiempo de espera|expirad|cargando|loading|verificando estado/i)
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
+    const hasRetryButton = await page
+      .getByRole('button', { name: /Reintentar|Retry|Volver a intentar/i })
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
+    const hasErrorState = await page
+      .locator('[role="alert"], .bg-red-100')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
 
-    // Should show timeout or loading error
-    await expect(page.getByText(/timeout|tiempo|cargando|loading/i))
-      .toBeVisible({ timeout: 10000 })
-      .catch(() => {
-        // Or show error state
-        expect(true).toBe(true); // Test passes if page doesn't crash
-      });
+    expect(hasTimeoutText || hasRetryButton || hasErrorState).toBe(true);
   });
 });
 
@@ -164,36 +170,50 @@ test.describe('Session Error Handling', () => {
 
     // Force reload to trigger fresh data load with 403 errors
     await page.reload();
-    await page.waitForTimeout(2000); // Allow time for error state to render
 
-    // Should show some error indication - either an explicit error message, error state, or login redirect
-    const hasDenied = await page
-      .getByText(/denegado|forbidden|no autorizado|access denied/i)
-      .first()
-      .isVisible()
-      .catch(() => false);
-    const hasAccessCheckError = await page
-      .getByText('No se pudo verificar tu acceso')
-      .isVisible()
-      .catch(() => false);
-    const hasLoginRedirect = await page
-      .getByTestId('login-email')
-      .isVisible()
-      .catch(() => false);
-    const hasErrorDisplay = await page
-      .locator('.bg-red-100, [role="alert"]')
-      .first()
-      .isVisible()
-      .catch(() => false);
-    const hasGenericError = await page
-      .getByText(/error|problema|falló/i)
-      .first()
-      .isVisible()
-      .catch(() => false);
+    // Should show some error indication - either explicit unauthorized text,
+    // access-check error card, login redirect, or a generic error UI.
+    await expect
+      .poll(
+        async () => {
+          const hasDenied = await page
+            .getByText(/denegado|forbidden|no autorizado|access denied/i)
+            .first()
+            .isVisible()
+            .catch(() => false);
+          const hasAccessCheckError = await page
+            .getByText('No se pudo verificar tu acceso')
+            .isVisible()
+            .catch(() => false);
+          const hasLoginRedirect = await page
+            .getByTestId('login-email')
+            .isVisible()
+            .catch(() => false);
+          const hasErrorDisplay = await page
+            .locator('.bg-red-100, [role="alert"]')
+            .first()
+            .isVisible()
+            .catch(() => false);
+          const hasGenericError = await page
+            .getByText(/error|problema|falló/i)
+            .first()
+            .isVisible()
+            .catch(() => false);
 
-    expect(
-      hasDenied || hasAccessCheckError || hasLoginRedirect || hasErrorDisplay || hasGenericError
-    ).toBe(true);
+          return (
+            hasDenied ||
+            hasAccessCheckError ||
+            hasLoginRedirect ||
+            hasErrorDisplay ||
+            hasGenericError
+          );
+        },
+        {
+          timeout: 5000,
+          message: 'Expected unauthorized error UI after forcing 403 responses',
+        }
+      )
+      .toBe(true);
   });
 });
 

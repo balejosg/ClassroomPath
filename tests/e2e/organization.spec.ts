@@ -251,12 +251,15 @@ test.describe('Classroom Management', () => {
         // There's a validation error - test should pass as the modal interaction works
         console.log('Modal shows error, interaction verified');
       } else {
-        // Modal is open but no error - wait a bit and check again (might be closing)
-        await page.waitForTimeout(500);
+        // Modal is open but no error - give pending network work a short chance to settle.
+        await waitForNetworkIdle(page, 1500).catch(() => {});
         const stillVisible = await modalHeading.isVisible().catch(() => false);
         if (stillVisible) {
-          // Really still open - close it manually for cleanup
-          await modal.getByRole('button', { name: 'Cancelar' }).click();
+          // Really still open - try to close manually for cleanup.
+          await modal
+            .getByRole('button', { name: 'Cancelar' })
+            .click({ timeout: 2000 })
+            .catch(() => {});
         }
       }
     }
