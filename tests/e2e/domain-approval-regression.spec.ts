@@ -11,8 +11,6 @@ import {
 } from './fixtures/domain-requests-flow';
 
 test.describe('Domain approval regression flow', () => {
-  test.describe.configure({ mode: 'serial' });
-
   test('covers create -> pending -> approve with filters, counters and normalized search @requests @regression', async ({
     page,
   }) => {
@@ -78,7 +76,7 @@ test.describe('Domain approval regression flow', () => {
 
       await approveRow.getByTitle('Aprobar').click();
 
-      const approveModal = page.locator('.fixed.inset-0').last();
+      const approveModal = page.getByRole('dialog').or(page.locator('.fixed.inset-0')).last();
       await expect(approveModal.getByRole('button', { name: 'Aprobar' })).toBeVisible();
       await approveModal.getByRole('button', { name: 'Aprobar' }).click();
       await expect(approveModal).toBeHidden({ timeout: 10000 });

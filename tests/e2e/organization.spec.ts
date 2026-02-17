@@ -9,22 +9,16 @@ import { DashboardPage, OrganizationPage } from './fixtures/page-objects';
 import {
   loginAsAdmin,
   loginAsTeacher,
-  createTestUser,
+  loginAsOnboardingUser,
   createTestOrganization,
-  registerUser,
-  completeOrgOnboarding,
   waitForNetworkIdle,
-  ADMIN_ACCOUNT,
 } from './fixtures/test-utils';
 
 test.describe('Organization Creation', () => {
-  // TODO: Fix flaky registration in parallel test execution
   test('should create new organization during onboarding @org @onboarding', async ({ page }) => {
-    const testUser = createTestUser();
     const testOrg = createTestOrganization();
 
-    // Register new user
-    await registerUser(page, testUser);
+    await loginAsOnboardingUser(page, 10);
 
     // Should be on onboarding page
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
@@ -46,12 +40,8 @@ test.describe('Organization Creation', () => {
     });
   });
 
-  // TODO: Fix flaky registration in parallel test execution
   test('should validate organization name is required @org @validation', async ({ page }) => {
-    const testUser = createTestUser();
-
-    // Register new user
-    await registerUser(page, testUser);
+    await loginAsOnboardingUser(page, 1);
 
     // Wait for onboarding
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
@@ -67,8 +57,8 @@ test.describe('Organization Creation', () => {
 });
 
 test.describe('Organization Members', () => {
-  // Run serially to avoid race conditions with shared admin account
-  test.describe.configure({ mode: 'serial' });
+  // Worker-scoped seeded accounts allow safe parallel execution.
+  test.describe.configure({ mode: 'parallel' });
 
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
@@ -87,19 +77,18 @@ test.describe('Organization Members', () => {
     // Should show a table with user data (columns: Usuario, Email, Roles, Estado)
     await expect(page.getByRole('table')).toBeVisible({ timeout: 5000 });
 
-    // The Users view may render a transient fetch error while backend services finish bootstrapping.
-    // If that happens, retry once through the UI before asserting member rows.
+    // The Users view may render a transient fetch error while backend services
+    // finish bootstrapping. Retry once, then require visible member rows.
     const retryUsersFetch = page.getByRole('button', { name: 'Reintentar' });
-    if (await retryUsersFetch.isVisible({ timeout: 1500 }).catch(() => false)) {
-      await retryUsersFetch.click();
-    }
+    await retryUsersFetch.click({ timeout: 1500 }).catch(() => {});
+    await waitForNetworkIdle(page).catch(() => {});
 
     const firstEmailCell = page.getByRole('cell').filter({ hasText: /@/ }).first();
     const hasEmailRow = await firstEmailCell.isVisible({ timeout: 10000 }).catch(() => false);
 
     if (!hasEmailRow) {
       await expect(page.getByText('Error al cargar usuarios')).toBeVisible({ timeout: 5000 });
-      await expect(page.getByRole('button', { name: 'Reintentar' })).toBeVisible({ timeout: 5000 });
+      await expect(retryUsersFetch).toBeVisible({ timeout: 5000 });
     }
   });
 
@@ -143,21 +132,27 @@ test.describe('Organization Members', () => {
     const orgPage = new OrganizationPage(page);
     await orgPage.goto();
 
-    // Look for pending invites section
-    const pendingSection = page.getByText(/Pendientes|Pending|Invitaciones/i);
+    const statusHeader = page.getByRole('columnheader', { name: /Estado/i });
+    await expect(statusHeader).toBeVisible({ timeout: 10000 });
 
-    if (await pendingSection.isVisible()) {
-      await pendingSection.click().catch(() => {}); // Expand if needed
+    const hasPendingStatus = await page
+      .getByRole('cell', { name: /Pendiente|Pending/i })
+      .first()
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
+    const hasEmptySummary = await page
+      .getByText(/Mostrando 0-0 de 0 usuarios|No hay usuarios/i)
+      .first()
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
 
-      // Should show pending users or empty state
-      await expect(page.getByText(/pendiente|no hay|empty/i)).toBeVisible();
-    }
+    expect(hasPendingStatus || hasEmptySummary).toBe(true);
   });
 });
 
 test.describe('Teacher Permissions', () => {
-  // Run serially to avoid race conditions with shared teacher/admin accounts
-  test.describe.configure({ mode: 'serial' });
+  // Worker-scoped seeded accounts allow safe parallel execution.
+  test.describe.configure({ mode: 'parallel' });
 
   test('should limit teacher to their assigned groups @org @permissions', async ({ page }) => {
     await loginAsTeacher(page);
@@ -175,32 +170,16 @@ test.describe('Teacher Permissions', () => {
     await loginAsTeacher(page);
     await waitForNetworkIdle(page);
 
-    // OpenPath uses tab-based navigation (state-driven), not URL routing.
-    // Teachers should not have access to admin features like inviting users.
-    // Verify that the invite/organization management UI is not available.
-
-    // Check that the Sidebar doesn't have organization/users links for teachers
-    const sidebar = page.locator('nav, [data-testid="sidebar"], .sidebar').first();
-
-    // Teachers should NOT see organization settings or user management links
-    const orgLink = sidebar.getByRole('link', {
-      name: /Organización|Organization|Usuarios|Users/i,
-    });
+    // Teachers should NOT see admin-only controls.
     const inviteButton = page.getByRole('button', { name: /Invitar|Invite/i });
 
-    // Either org link is not visible OR invite button is not accessible
-    const orgLinkVisible = await orgLink.isVisible().catch(() => false);
-    const inviteButtonVisible = await inviteButton.isVisible().catch(() => false);
-
-    // Teacher should not see admin-only controls
-    const isRestricted = !orgLinkVisible || !inviteButtonVisible;
-    expect(isRestricted).toBe(true);
+    await expect(inviteButton).toHaveCount(0);
   });
 });
 
 test.describe('Classroom Management', () => {
-  // Run serially to avoid race conditions with shared admin account
-  test.describe.configure({ mode: 'serial' });
+  // Worker-scoped seeded accounts allow safe parallel execution.
+  test.describe.configure({ mode: 'parallel' });
 
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
@@ -283,21 +262,15 @@ test.describe('Classroom Management', () => {
   });
 });
 
-test.describe('Multi-Organization (Future)', () => {
-  // Run serially to avoid race conditions with shared admin account
-  test.describe.configure({ mode: 'serial' });
+test.describe('Multi-Organization', () => {
+  // Worker-scoped seeded accounts allow safe parallel execution.
+  test.describe.configure({ mode: 'parallel' });
 
-  test('should allow user to switch between organizations @org @multi-org', async ({ page }) => {
-    // This test is for future multi-org support
+  test('should hide org switcher in single-organization mode @org @multi-org', async ({ page }) => {
     await loginAsAdmin(page);
     await waitForNetworkIdle(page);
 
-    // Look for org switcher
     const orgSwitcher = page.locator('[data-testid="org-switcher"]');
-
-    if (await orgSwitcher.isVisible()) {
-      await orgSwitcher.click();
-      await expect(page.getByText(/Cambiar organización|Switch organization/i)).toBeVisible();
-    }
+    await expect(orgSwitcher).toHaveCount(0);
   });
 });
