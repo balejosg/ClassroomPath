@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, tenantProcedure } from '../trpc.js';
@@ -8,6 +9,48 @@ import * as schema from '../../db/schema.js';
 import { eq, inArray, and, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { classrooms, machines, schedules } from '../../db/openpath.js';
+
+const CLASSROOM_SCOPE_PREFIX = 'cp';
+
+function normalizeClassroomKey(rawName: string): string {
+  return rawName
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function scopedClassroomNameForOrg(organizationId: string, publicName: string): string {
+  const normalized = normalizeClassroomKey(publicName);
+
+  if (!normalized) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'Classroom name must include at least one letter or number',
+    });
+  }
+
+  const orgHash = createHash('sha256').update(organizationId).digest('hex').slice(0, 10);
+  const nameHash = createHash('sha256').update(normalized).digest('hex').slice(0, 8);
+  const prefix = `${CLASSROOM_SCOPE_PREFIX}-${orgHash}-`;
+  const suffix = `-${nameHash}`;
+  const maxBaseLength = Math.max(1, 100 - prefix.length - suffix.length);
+  const base = normalized.slice(0, maxBaseLength);
+
+  return `${prefix}${base}${suffix}`;
+}
+
+function toPublicClassroomName(classroom: { name: string; displayName: string | null }): string {
+  const displayName = classroom.displayName?.trim();
+  if (displayName) {
+    return displayName;
+  }
+
+  const scopedMatch = classroom.name.match(/^cp-[a-f0-9]{10}-(.*)-[a-f0-9]{8}$/);
+  return scopedMatch?.[1] ?? classroom.name;
+}
 
 async function getCurrentScheduleGroupId(params: {
   classroomId: string;
@@ -94,7 +137,7 @@ export const classroomsRouter = router({
     // Serialize Date fields for JSON compatibility
     return result.map((c) => ({
       id: c.id,
-      name: c.name,
+      name: toPublicClassroomName(c),
       displayName: c.displayName,
       defaultGroupId: c.defaultGroupId,
       activeGroupId: c.activeGroupId,
@@ -137,7 +180,7 @@ export const classroomsRouter = router({
     // Serialize Date fields for JSON compatibility
     return {
       id: c.id,
-      name: c.name,
+      name: toPublicClassroomName(c),
       displayName: c.displayName,
       defaultGroupId: c.defaultGroupId,
       activeGroupId: c.activeGroupId,
@@ -261,7 +304,7 @@ export const classroomsRouter = router({
       // Serialize Date fields for JSON compatibility
       return {
         id: updated.id,
-        name: updated.name,
+        name: toPublicClassroomName(updated),
         displayName: updated.displayName,
         defaultGroupId: updated.defaultGroupId,
         activeGroupId: updated.activeGroupId,
@@ -300,17 +343,36 @@ export const classroomsRouter = router({
     }),
 
   create: tenantProcedure.input(CreateClassroomSchema).mutation(async ({ ctx, input }) => {
-    const classroomId = nanoid();
+    const publicName = input.name.trim();
+    const displayName = input.displayName?.trim() || publicName;
 
-    const [classroom] = await openpathDb
-      .insert(classrooms)
-      .values({
-        id: classroomId,
-        name: input.name,
-        displayName: input.displayName ?? input.name, // Default to name if not provided
-        defaultGroupId: input.defaultGroupId,
-      })
-      .returning();
+    if (!publicName) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Classroom name is required' });
+    }
+
+    const classroomId = nanoid();
+    const scopedName = scopedClassroomNameForOrg(ctx.organizationId!, publicName);
+
+    let classroom;
+    try {
+      [classroom] = await openpathDb
+        .insert(classrooms)
+        .values({
+          id: classroomId,
+          name: scopedName,
+          displayName,
+          defaultGroupId: input.defaultGroupId,
+        })
+        .returning();
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'Classroom with this name already exists in your organization',
+        });
+      }
+      throw error;
+    }
 
     await db.insert(schema.cpOrganizationClassrooms).values({
       id: nanoid(),
@@ -323,7 +385,7 @@ export const classroomsRouter = router({
     // Serialize Date fields for JSON compatibility
     return {
       id: classroom.id,
-      name: classroom.name,
+      name: toPublicClassroomName(classroom),
       displayName: classroom.displayName,
       defaultGroupId: classroom.defaultGroupId,
       activeGroupId: classroom.activeGroupId,
@@ -365,7 +427,7 @@ export const classroomsRouter = router({
     // Serialize Date fields for JSON compatibility
     return {
       id: updated.id,
-      name: updated.name,
+      name: toPublicClassroomName(updated),
       displayName: updated.displayName,
       defaultGroupId: updated.defaultGroupId,
       activeGroupId: updated.activeGroupId,

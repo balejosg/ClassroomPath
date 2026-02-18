@@ -88,14 +88,17 @@ async function createGroup(admin: { token: string }, name: string): Promise<{ gr
 
 async function createClassroom(
   admin: { token: string },
-  params: { defaultGroupId?: string }
+  params: { defaultGroupId?: string; name?: string; displayName?: string }
 ): Promise<{
   classroomId: string;
 }> {
+  const name = params.name ?? 'classrooms-test-classroom';
+  const displayName = params.displayName ?? 'Classrooms Classroom';
+
   const resp = await trpcMutate(
     API_URL,
     'classrooms.create',
-    { name: 'classrooms-test-classroom', displayName: 'Classrooms Classroom', ...params },
+    { name, displayName, defaultGroupId: params.defaultGroupId },
     bearerAuth(admin.token)
   );
   assertStatus(resp, 200);
@@ -253,6 +256,96 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       const { data: got } = (await parseTRPC(getResp)) as { data: any };
       assert.strictEqual(got.currentGroupId, defaultGroupId);
     });
+  });
+
+  test('allows same classroom name in different organizations but blocks duplicates in same org', async () => {
+    await resetDb();
+
+    const sharedClassroomName = 'Laboratorio C';
+
+    const adminAUserId = 'classrooms-admin-a';
+    const adminAEmail = uniqueEmail('admin-a');
+    await ensureOpenPathUser({ userId: adminAUserId, email: adminAEmail, name: 'Admin A' });
+    const adminAToken = signToken({
+      userId: adminAUserId,
+      email: adminAEmail,
+      name: 'Admin A',
+      roles: [{ role: 'admin' }],
+    });
+
+    await bootstrapOrg({ token: adminAToken });
+
+    const createA1 = await trpcMutate(
+      API_URL,
+      'classrooms.create',
+      { name: sharedClassroomName },
+      bearerAuth(adminAToken)
+    );
+    assertStatus(createA1, 200);
+    const { data: classroomA1 } = (await parseTRPC(createA1)) as { data: any };
+    assert.ok(classroomA1?.id);
+
+    const createA2Duplicate = await trpcMutate(
+      API_URL,
+      'classrooms.create',
+      { name: sharedClassroomName },
+      bearerAuth(adminAToken)
+    );
+    assertStatus(createA2Duplicate, 409);
+
+    const adminBUserId = 'classrooms-admin-b';
+    const adminBEmail = uniqueEmail('admin-b');
+    await ensureOpenPathUser({ userId: adminBUserId, email: adminBEmail, name: 'Admin B' });
+    const adminBToken = signToken({
+      userId: adminBUserId,
+      email: adminBEmail,
+      name: 'Admin B',
+      roles: [{ role: 'admin' }],
+    });
+
+    await bootstrapOrg({ token: adminBToken });
+
+    const createB1 = await trpcMutate(
+      API_URL,
+      'classrooms.create',
+      { name: sharedClassroomName },
+      bearerAuth(adminBToken)
+    );
+    assertStatus(createB1, 200);
+    const { data: classroomB1 } = (await parseTRPC(createB1)) as { data: any };
+    assert.ok(classroomB1?.id);
+    assert.notStrictEqual(String(classroomA1.id), String(classroomB1.id));
+
+    const listAResp = await trpcQuery(
+      API_URL,
+      'classrooms.list',
+      undefined,
+      bearerAuth(adminAToken)
+    );
+    assertStatus(listAResp, 200);
+    const { data: listA } = (await parseTRPC(listAResp)) as { data: any[] };
+    assert.strictEqual(listA.length, 1);
+    assert.strictEqual(String(listA[0].id), String(classroomA1.id));
+    assert.strictEqual(String(listA[0].name), sharedClassroomName);
+
+    const listBResp = await trpcQuery(
+      API_URL,
+      'classrooms.list',
+      undefined,
+      bearerAuth(adminBToken)
+    );
+    assertStatus(listBResp, 200);
+    const { data: listB } = (await parseTRPC(listBResp)) as { data: any[] };
+    assert.strictEqual(listB.length, 1);
+    assert.strictEqual(String(listB[0].id), String(classroomB1.id));
+    assert.strictEqual(String(listB[0].name), sharedClassroomName);
+
+    const dbClassrooms = await openpathDb.select().from(openpathSchema.classrooms);
+    const rowA = dbClassrooms.find((c) => c.id === String(classroomA1.id));
+    const rowB = dbClassrooms.find((c) => c.id === String(classroomB1.id));
+    assert.ok(rowA);
+    assert.ok(rowB);
+    assert.notStrictEqual(rowA?.name, rowB?.name);
   });
 
   test('groups.update accepts boolean enabled payload from OpenPath UI', async () => {
