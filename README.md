@@ -4,6 +4,10 @@ DNS whitelist management SaaS for educational institutions.
 
 Built on [OpenPath](https://github.com/balejosg/openpath) (OSS).
 
+> WARNING: ClassroomPath is distributed under Business Source License 1.1 (`BUSL-1.1`).
+> Use is restricted by the terms in `LICENSE` (including non-production limits before the change date).
+> Deploy and operate this software only in systems and networks where you have explicit authorization.
+
 ## Live URLs
 
 | Environment    | URL                                       | Deploy Trigger |
@@ -211,4 +215,12 @@ git push
 
 ## License
 
-AGPL-3.0-or-later
+Business Source License 1.1 (`BUSL-1.1`).
+
+See `LICENSE` for full terms, including:
+
+- non-production-only use by default before the Change Date,
+- conditions for production/commercial usage,
+- Additional Use Grant: `None` (no production grant),
+- Change Date: `2031-02-18`,
+- Change License: `AGPL-3.0-or-later`.
