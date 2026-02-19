@@ -7,7 +7,11 @@ on:
 
 permissions:
   contents: write
-  actions: write
+  pull-requests: write
+
+concurrency:
+  group: sync-openpath
+  cancel-in-progress: true
 
 jobs:
   sync:
@@ -21,8 +25,19 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Check sync lock
+        id: lock
+        run: |
+          if [ -f ".openpath-sync-lock" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "locked=true" >> $GITHUB_OUTPUT
+            echo "OpenPath sync is locked via .openpath-sync-lock (scheduled run skipped)."
+            exit 0
+          fi
+          echo "locked=false" >> $GITHUB_OUTPUT
+
       - name: Check for OpenPath updates
         id: check
+        if: steps.lock.outputs.locked != 'true'
         run: |
           cd upstream/openpath
           git fetch origin main
@@ -42,25 +57,39 @@ jobs:
           fi
 
       - name: Update submodule
-        if: steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.lock.outputs.locked != 'true' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
           cd upstream/openpath
           git checkout origin/main
           cd ../..
+          git add upstream/openpath
 
           git add upstream/openpath
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update openpath submodule to ${{ steps.check.outputs.latest }}"
-            git push
-            echo "Submodule updated"
-          else
-            echo "No changes to commit"
-          fi
+
+      - name: Open Pull Request
+        if: steps.lock.outputs.locked != 'true' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update openpath submodule to ${{ steps.check.outputs.latest }}'
+          branch: 'chore/sync-openpath'
+          title: 'chore: sync OpenPath submodule'
+          body: |
+            Automated sync of the OpenPath submodule.
+
+            - Previous: ${{ steps.check.outputs.current }}
+            - Latest:   ${{ steps.check.outputs.latest }}
+
+            Notes:
+            - This workflow opens/updates a PR instead of pushing to main.
+            - Staging deployment must still be run locally via `npm run deploy:staging` after merge.
 
       - name: Deploy note
-        if: steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.lock.outputs.locked != 'true' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
         run: |
-          echo "Submodule synced. Staging deployment must be run locally via npm run deploy:staging."
+          echo "OpenPath submodule sync PR created/updated. Staging deployment must be run locally via npm run deploy:staging (after merge)."
+
+      - name: Locked note
+        if: steps.lock.outputs.locked == 'true'
+        run: |
+          echo "Sync skipped: .openpath-sync-lock present (scheduled run)."

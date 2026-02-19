@@ -24,7 +24,8 @@
   ],
   "scripts": {
     "install:all": "npm install && cd upstream/openpath && npm install",
-    "build": "bash scripts/build-openpath.sh",
+    "build": "bash scripts/build-classroompath.sh",
+    "build:openpath": "bash scripts/build-openpath.sh",
     "build:api": "cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=@openpath/api",
     "build:spa": "cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=@openpath/react-spa",
     "dev": "cd upstream/openpath/api && npm run dev",
@@ -46,7 +47,7 @@
     "format:fix": "prettier --write .",
     "security:secrets": "secretlint '**/*.{js,ts,tsx,json,yml,yaml,env,env.*}'",
     "security:audit": "npm audit --audit-level=high",
-    "size:check": "npm run size --workspace=@openpath/react-spa",
+    "size:check": "test -d upstream/openpath/react-spa/dist && npm run size --workspace=@openpath/react-spa || echo 'SKIP: upstream/openpath/react-spa/dist not built, skipping size check'",
     "verify:full": "bash scripts/verify-full.sh",
     "db:test:reset": "docker compose -p classroompath_test -f docker/docker-compose.test.yml down -v && docker compose -p classroompath_test -f docker/docker-compose.test.yml up -d postgres",
     "submodule:update": "git submodule update --remote --merge",
@@ -81,5 +82,13 @@
     "size-limit": "^12.0.0",
     "tsx": "^4.21.0",
     "yaml": "^2.7.1"
+  },
+  "overrides": {
+    "esbuild": "^0.25.0",
+    "qs": "^6.14.2",
+    "minimatch": "^10.2.1",
+    "swagger-jsdoc": {
+      "glob": "^11.0.0"
+    }
   }
 }

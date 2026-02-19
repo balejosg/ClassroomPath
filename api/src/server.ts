@@ -8,6 +8,7 @@ import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { config } from './config.js';
+import { findBlockedOpenPathProcedureFromUrl } from './lib/openpath-proxy-policy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,42 +40,13 @@ app.get(
 );
 
 // Block sensitive OpenPath endpoints - force use of /cp/trpc/* for tenant-filtered data
-const BLOCKED_OPENPATH_PROCEDURES = [
-  // Block schedules to prevent tenant-scoping bypass (ClassroomPath exposes tenant-scoped schedules via /cp/trpc).
-  'schedules',
-  'groups.list',
-  'groups.getById',
-  'groups.getByName',
-  'groups.listRules',
-  'groups.listRulesGrouped',
-  'classrooms.list',
-  'classrooms.get',
-  'classrooms.listMachines',
-  'users.list',
-  'users.get',
-  'users.listTeachers',
-  'requests.list',
-  'requests.get',
-  'requests.getStatus',
-  // Block mutations to prevent tenant-scoping bypass
-  'requests.create',
-  'requests.approve',
-  'requests.reject',
-  'requests.delete',
-  'requests.listGroups',
-];
 
 app.use((req, res, next) => {
   if (!req.url.startsWith('/trpc')) {
     return next();
   }
 
-  const procedurePath = req.url.slice(5).split('?')[0].replace(/^\//, '');
-  const procedures = procedurePath.split(',');
-
-  const blocked = procedures.find((proc) =>
-    BLOCKED_OPENPATH_PROCEDURES.some((b) => proc === b || proc.startsWith(b + '.'))
-  );
+  const blocked = findBlockedOpenPathProcedureFromUrl(req.url);
 
   if (blocked) {
     return res.status(403).json({

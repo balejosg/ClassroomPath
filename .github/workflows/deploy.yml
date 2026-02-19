@@ -87,10 +87,40 @@ jobs:
 
             # Pull latest changes with submodules
             echo "Pulling latest changes..."
-            git fetch origin main
+            DEPLOY_REF="${{ github.ref }}"
+            DEPLOY_SHA="${{ github.sha }}"
+
+            git fetch origin --tags --prune
+            git fetch origin main --prune
             git checkout -- . 2>/dev/null || true
             git clean -fd 2>/dev/null || true
-            git reset --hard origin/main
+
+            TARGET_SHA=""
+
+            # Tag pushes: deploy the tag commit (not whatever origin/main currently is).
+            if [[ "$DEPLOY_REF" == refs/tags/* ]]; then
+              TAG_NAME="${DEPLOY_REF#refs/tags/}"
+              TARGET_SHA=$(git rev-parse "${TAG_NAME}^{commit}" 2>/dev/null || true)
+              if [ -z "$TARGET_SHA" ]; then
+                # Fallback: explicitly fetch the tag ref (helps if server repo lacks tags).
+                git fetch origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}" || true
+                TARGET_SHA=$(git rev-parse "${TAG_NAME}^{commit}" 2>/dev/null || true)
+              fi
+            fi
+
+            # Manual runs (workflow_dispatch) or unexpected refs: deploy the triggering SHA.
+            if [ -z "$TARGET_SHA" ]; then
+              TARGET_SHA=$(git rev-parse "${DEPLOY_SHA}^{commit}" 2>/dev/null || true)
+            fi
+
+            # Final fallback: deploy origin/main.
+            if [ -z "$TARGET_SHA" ]; then
+              TARGET_SHA=$(git rev-parse origin/main)
+            fi
+
+            echo "Deploying ClassroomPath commit: $TARGET_SHA"
+            git checkout --detach "$TARGET_SHA"
+            git reset --hard "$TARGET_SHA"
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
 
