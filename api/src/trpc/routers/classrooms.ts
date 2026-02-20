@@ -135,16 +135,29 @@ export const classroomsRouter = router({
     }
 
     // Serialize Date fields for JSON compatibility
-    return result.map((c) => ({
-      id: c.id,
-      name: toPublicClassroomName(c),
-      displayName: c.displayName,
-      defaultGroupId: c.defaultGroupId,
-      activeGroupId: c.activeGroupId,
-      currentGroupId: c.activeGroupId ?? scheduleGroupByClassroomId.get(c.id) ?? c.defaultGroupId,
-      createdAt: c.createdAt?.toISOString() ?? null,
-      updatedAt: c.updatedAt?.toISOString() ?? null,
-    }));
+    return result.map((c) => {
+      const scheduleGroupId = scheduleGroupByClassroomId.get(c.id) ?? null;
+      const currentGroupId = c.activeGroupId ?? scheduleGroupId ?? c.defaultGroupId ?? null;
+      const currentGroupSource = c.activeGroupId
+        ? 'manual'
+        : scheduleGroupId
+          ? 'schedule'
+          : c.defaultGroupId
+            ? 'default'
+            : 'none';
+
+      return {
+        id: c.id,
+        name: toPublicClassroomName(c),
+        displayName: c.displayName,
+        defaultGroupId: c.defaultGroupId,
+        activeGroupId: c.activeGroupId,
+        currentGroupId,
+        currentGroupSource,
+        createdAt: c.createdAt?.toISOString() ?? null,
+        updatedAt: c.updatedAt?.toISOString() ?? null,
+      };
+    });
   }),
 
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
@@ -176,6 +189,14 @@ export const classroomsRouter = router({
 
     const c = classroom[0];
     const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: c.id });
+    const currentGroupId = c.activeGroupId ?? currentScheduleGroupId ?? c.defaultGroupId ?? null;
+    const currentGroupSource = c.activeGroupId
+      ? 'manual'
+      : currentScheduleGroupId
+        ? 'schedule'
+        : c.defaultGroupId
+          ? 'default'
+          : 'none';
 
     // Serialize Date fields for JSON compatibility
     return {
@@ -184,7 +205,8 @@ export const classroomsRouter = router({
       displayName: c.displayName,
       defaultGroupId: c.defaultGroupId,
       activeGroupId: c.activeGroupId,
-      currentGroupId: c.activeGroupId ?? currentScheduleGroupId ?? c.defaultGroupId,
+      currentGroupId,
+      currentGroupSource,
       createdAt: c.createdAt?.toISOString() ?? null,
       updatedAt: c.updatedAt?.toISOString() ?? null,
     };
@@ -300,6 +322,15 @@ export const classroomsRouter = router({
         .returning();
 
       const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
+      const currentGroupId =
+        updated.activeGroupId ?? currentScheduleGroupId ?? updated.defaultGroupId ?? null;
+      const currentGroupSource = updated.activeGroupId
+        ? 'manual'
+        : currentScheduleGroupId
+          ? 'schedule'
+          : updated.defaultGroupId
+            ? 'default'
+            : 'none';
 
       // Serialize Date fields for JSON compatibility
       return {
@@ -308,7 +339,8 @@ export const classroomsRouter = router({
         displayName: updated.displayName,
         defaultGroupId: updated.defaultGroupId,
         activeGroupId: updated.activeGroupId,
-        currentGroupId: updated.activeGroupId ?? currentScheduleGroupId ?? updated.defaultGroupId,
+        currentGroupId,
+        currentGroupSource,
         createdAt: updated.createdAt?.toISOString() ?? null,
         updatedAt: updated.updatedAt?.toISOString() ?? null,
       };
@@ -381,6 +413,15 @@ export const classroomsRouter = router({
     });
 
     const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: classroom.id });
+    const currentGroupId =
+      classroom.activeGroupId ?? currentScheduleGroupId ?? classroom.defaultGroupId ?? null;
+    const currentGroupSource = classroom.activeGroupId
+      ? 'manual'
+      : currentScheduleGroupId
+        ? 'schedule'
+        : classroom.defaultGroupId
+          ? 'default'
+          : 'none';
 
     // Serialize Date fields for JSON compatibility
     return {
@@ -389,8 +430,8 @@ export const classroomsRouter = router({
       displayName: classroom.displayName,
       defaultGroupId: classroom.defaultGroupId,
       activeGroupId: classroom.activeGroupId,
-      currentGroupId:
-        classroom.activeGroupId ?? currentScheduleGroupId ?? classroom.defaultGroupId ?? null,
+      currentGroupId,
+      currentGroupSource,
       createdAt: classroom.createdAt?.toISOString() ?? null,
       updatedAt: classroom.updatedAt?.toISOString() ?? null,
     };
@@ -423,6 +464,15 @@ export const classroomsRouter = router({
       .returning();
 
     const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
+    const currentGroupId =
+      updated.activeGroupId ?? currentScheduleGroupId ?? updated.defaultGroupId ?? null;
+    const currentGroupSource = updated.activeGroupId
+      ? 'manual'
+      : currentScheduleGroupId
+        ? 'schedule'
+        : updated.defaultGroupId
+          ? 'default'
+          : 'none';
 
     // Serialize Date fields for JSON compatibility
     return {
@@ -431,7 +481,8 @@ export const classroomsRouter = router({
       displayName: updated.displayName,
       defaultGroupId: updated.defaultGroupId,
       activeGroupId: updated.activeGroupId,
-      currentGroupId: updated.activeGroupId ?? currentScheduleGroupId ?? updated.defaultGroupId,
+      currentGroupId,
+      currentGroupSource,
       createdAt: updated.createdAt?.toISOString() ?? null,
       updatedAt: updated.updatedAt?.toISOString() ?? null,
     };

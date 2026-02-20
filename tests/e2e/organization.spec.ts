@@ -34,10 +34,10 @@ test.describe('Organization Creation', () => {
       timeout: 15000,
     });
     // Verify we're on the main dashboard with system status banner
-    // System may show "Seguro" (enabled) or "Sin grupos activos" (no groups enabled yet)
-    await expect(page.getByText(/Estado del Sistema: (Seguro|Sin grupos activos)/)).toBeVisible({
-      timeout: 10000,
-    });
+    // System may show "Seguro" (enabled) or "Sin grupos habilitados" (no groups enabled yet)
+    const systemStatus = page.getByTestId('dashboard-system-status');
+    await expect(systemStatus).toBeVisible({ timeout: 10000 });
+    await expect(systemStatus).toContainText(/Estado del Sistema: (Seguro|Sin grupos habilitados)/);
   });
 
   test('should validate organization name is required @org @validation', async ({ page }) => {
@@ -159,7 +159,7 @@ test.describe('Teacher Permissions', () => {
     await waitForNetworkIdle(page);
 
     // Teacher should see dashboard (check for system status banner which is always visible)
-    await expect(page.getByText(/Estado del Sistema/i)).toBeVisible();
+    await expect(page.getByTestId('dashboard-system-status')).toBeVisible();
 
     // Teacher should NOT see organization settings
     const orgLink = page.getByRole('link', { name: /Organización|Organization/i });

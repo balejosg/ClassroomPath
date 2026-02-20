@@ -230,6 +230,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       assert.strictEqual(row.defaultGroupId, defaultGroupId);
       assert.strictEqual(row.activeGroupId, null);
       assert.strictEqual(row.currentGroupId, scheduledGroupId);
+      assert.strictEqual(row.currentGroupSource, 'schedule');
 
       const getResp = await trpcQuery(
         API_URL,
@@ -241,6 +242,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       const { data: got } = (await parseTRPC(getResp)) as { data: any };
       assert.strictEqual(got.id, classroomId);
       assert.strictEqual(got.currentGroupId, scheduledGroupId);
+      assert.strictEqual(got.currentGroupSource, 'schedule');
     });
 
     // Outside the slot -> fallback to default group
@@ -255,6 +257,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       assertStatus(getResp, 200);
       const { data: got } = (await parseTRPC(getResp)) as { data: any };
       assert.strictEqual(got.currentGroupId, defaultGroupId);
+      assert.strictEqual(got.currentGroupSource, 'default');
     });
   });
 

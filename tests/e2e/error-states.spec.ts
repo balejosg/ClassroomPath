@@ -298,9 +298,7 @@ test.describe('Empty States', () => {
     await waitForNetworkIdle(page);
 
     // OpenPath UI displays system status in Dashboard
-    await expect(page.getByText(/Estado del Sistema|Estado General/i)).toBeVisible({
-      timeout: 10000,
-    });
+    await expect(page.getByTestId('dashboard-system-status')).toBeVisible({ timeout: 10000 });
   });
 });
 

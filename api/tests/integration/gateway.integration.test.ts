@@ -595,5 +595,32 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.strictEqual(typeof data.enabledGroups, 'number', 'enabledGroups should be a number');
     assert.strictEqual(typeof data.disabledGroups, 'number', 'disabledGroups should be a number');
     assert.strictEqual(typeof data.totalGroups, 'number', 'totalGroups should be a number');
+
+    // OpenPath-compatible shape (OpenPath SPA expects these fields)
+    assert.strictEqual(typeof data.enabled, 'boolean', 'enabled should be a boolean');
+    assert.strictEqual(typeof data.activeGroups, 'number', 'activeGroups should be a number');
+    assert.strictEqual(typeof data.pausedGroups, 'number', 'pausedGroups should be a number');
+
+    // Invariants
+    assert.strictEqual(
+      data.activeGroups,
+      data.enabledGroups,
+      'activeGroups should match enabledGroups'
+    );
+    assert.strictEqual(
+      data.pausedGroups,
+      data.disabledGroups,
+      'pausedGroups should match disabledGroups'
+    );
+    assert.strictEqual(
+      data.totalGroups,
+      data.enabledGroups + data.disabledGroups,
+      'totalGroups should match enabledGroups + disabledGroups'
+    );
+    assert.strictEqual(
+      data.enabled,
+      data.activeGroups > 0,
+      'enabled should be true when activeGroups > 0'
+    );
   });
 });

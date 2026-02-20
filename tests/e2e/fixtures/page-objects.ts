@@ -134,8 +134,7 @@ export class DashboardPage {
     this.orgName = page.locator('[data-testid="org-name"]');
     this.classroomsList = page.locator('[data-testid="classrooms-list"]');
     // The "Nueva Aula" button is in the Classrooms view header (not the modal's "Crear Aula")
-    // Use .first() to select the header button, not the modal submit button
-    this.newClassroomButton = page.getByRole('button', { name: /^Nueva( Aula)?$/i }).first();
+    this.newClassroomButton = page.getByTestId('classrooms-new-button');
     this.inviteTeacherButton = page.getByRole('button', { name: /Invitar|Invite/i });
     this.settingsButton = page.getByRole('button', { name: /Configuración|Settings/i });
     // Sidebar navigation buttons (Spanish UI)
@@ -159,10 +158,7 @@ export class DashboardPage {
   }
 
   async expectLoaded() {
-    // Spanish UI shows "Vista General" or "Panel de Control" heading
-    await expect(
-      this.page.getByText(/Vista General|Panel de Control|Estado del Sistema/i)
-    ).toBeVisible({ timeout: 10000 });
+    await expect(this.page.getByTestId('dashboard-system-status')).toBeVisible({ timeout: 10000 });
   }
 
   async createClassroom(name: string) {
