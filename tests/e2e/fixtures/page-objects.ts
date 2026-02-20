@@ -133,9 +133,9 @@ export class DashboardPage {
     this.page = page;
     this.orgName = page.locator('[data-testid="org-name"]');
     this.classroomsList = page.locator('[data-testid="classrooms-list"]');
-    // The "Nueva" button is in the Classrooms view header (not the modal's "Crear Aula")
+    // The "Nueva Aula" button is in the Classrooms view header (not the modal's "Crear Aula")
     // Use .first() to select the header button, not the modal submit button
-    this.newClassroomButton = page.getByRole('button', { name: /^Nueva$/i }).first();
+    this.newClassroomButton = page.getByRole('button', { name: /^Nueva( Aula)?$/i }).first();
     this.inviteTeacherButton = page.getByRole('button', { name: /Invitar|Invite/i });
     this.settingsButton = page.getByRole('button', { name: /Configuración|Settings/i });
     // Sidebar navigation buttons (Spanish UI)

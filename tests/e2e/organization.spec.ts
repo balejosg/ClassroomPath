@@ -34,8 +34,8 @@ test.describe('Organization Creation', () => {
       timeout: 15000,
     });
     // Verify we're on the main dashboard with system status banner
-    // System may show "Seguro" (enabled) or "Deshabilitado" (no groups enabled yet)
-    await expect(page.getByText(/Estado del Sistema: (Seguro|Deshabilitado)/)).toBeVisible({
+    // System may show "Seguro" (enabled) or "Sin grupos activos" (no groups enabled yet)
+    await expect(page.getByText(/Estado del Sistema: (Seguro|Sin grupos activos)/)).toBeVisible({
       timeout: 10000,
     });
   });
