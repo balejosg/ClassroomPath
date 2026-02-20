@@ -914,7 +914,17 @@ export const groupsRouter = router({
     const groupIds = orgGroups.map((og) => og.groupId);
 
     if (groupIds.length === 0) {
-      return { enabledGroups: 0, disabledGroups: 0, totalGroups: 0 };
+      return {
+        // OpenPath-compatible shape
+        enabled: false,
+        totalGroups: 0,
+        activeGroups: 0,
+        pausedGroups: 0,
+
+        // ClassroomPath integration tests expect these
+        enabledGroups: 0,
+        disabledGroups: 0,
+      };
     }
 
     // Get all groups and count enabled/disabled
@@ -927,9 +937,15 @@ export const groupsRouter = router({
     const disabledGroups = groups.filter((g) => g.enabled === 0).length;
 
     return {
+      // OpenPath-compatible shape
+      enabled: enabledGroups > 0,
+      totalGroups: groups.length,
+      activeGroups: enabledGroups,
+      pausedGroups: disabledGroups,
+
+      // ClassroomPath integration tests expect these
       enabledGroups,
       disabledGroups,
-      totalGroups: groups.length,
     };
   }),
 });
