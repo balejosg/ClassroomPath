@@ -27,17 +27,21 @@ test.describe('Organization Creation', () => {
     await page.getByPlaceholder(/Ej: Colegio|organization/i).fill(testOrg.name);
     await page.getByRole('button', { name: /Crear Organización|Create/i }).click();
 
-    // Should redirect to dashboard after org creation
-    // Spanish UI shows "Vista General" heading and "Estado del Sistema: Seguro" banner
-    // Note: Dashboard doesn't display org name, so we verify successful navigation
-    await expect(page.getByRole('heading', { name: 'Vista General' })).toBeVisible({
-      timeout: 15000,
-    });
-    // Verify we're on the main dashboard with system status banner
-    // System may show "Seguro" (enabled) or "Sin grupos habilitados" (no groups enabled yet)
-    const systemStatus = page.getByTestId('dashboard-system-status');
-    await expect(systemStatus).toBeVisible({ timeout: 10000 });
-    await expect(systemStatus).toContainText(/Estado del Sistema: (Seguro|Sin grupos habilitados)/);
+    // Should redirect into OpenPath UI after org creation.
+    // UX varies by role (e.g. teacher: "Mi Panel", admin: "Vista General").
+    const dashboardMarker = page.getByRole('heading', { name: /Mi Panel|Vista General/i });
+    await expect(dashboardMarker).toBeVisible({ timeout: 15000 });
+
+    const hasTeacherDashboard = await page
+      .getByRole('heading', { name: /Hola, Profesor/i })
+      .isVisible()
+      .catch(() => false);
+    const hasSystemStatus = await page
+      .getByTestId('dashboard-system-status')
+      .isVisible()
+      .catch(() => false);
+
+    expect(hasTeacherDashboard || hasSystemStatus).toBe(true);
   });
 
   test('should validate organization name is required @org @validation', async ({ page }) => {
@@ -158,12 +162,13 @@ test.describe('Teacher Permissions', () => {
     await loginAsTeacher(page);
     await waitForNetworkIdle(page);
 
-    // Teacher should see dashboard (check for system status banner which is always visible)
-    await expect(page.getByTestId('dashboard-system-status')).toBeVisible();
+    // Teacher should land on teacher dashboard.
+    await expect(page.getByRole('button', { name: 'Mi Panel' })).toBeVisible({ timeout: 10000 });
 
-    // Teacher should NOT see organization settings
-    const orgLink = page.getByRole('link', { name: /Organización|Organization/i });
-    await expect(orgLink).not.toBeVisible();
+    // Teacher should NOT see admin-only navigation.
+    await expect(page.getByRole('button', { name: /Usuarios y Roles|Organización/i })).toHaveCount(
+      0
+    );
   });
 
   test('should prevent teacher from inviting users @org @permissions', async ({ page }) => {

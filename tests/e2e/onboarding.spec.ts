@@ -18,7 +18,7 @@ test.describe('Happy Path: User Registration & Onboarding', () => {
     await waitForNetworkIdle(page);
 
     // After onboarding the OpenPath UI is loaded (state-driven, not URL-routed).
-    await expect(page.getByRole('button', { name: 'Panel de Control' })).toBeVisible({
+    await expect(page.getByRole('button', { name: /Mi Panel|Panel de Control/i })).toBeVisible({
       timeout: 30000,
     });
   });

@@ -195,6 +195,7 @@ export async function waitForPostAuthScreen(page: Page, timeout = 20000): Promis
     page.getByTestId('onboarding-org-name'),
     page.getByTestId('waiting-check-now'),
     page.getByText('No se pudo verificar tu acceso'),
+    page.getByRole('button', { name: 'Mi Panel' }),
     page.getByRole('button', { name: 'Panel de Control' }),
     page.getByText('OpenPath'),
   ];
@@ -246,6 +247,7 @@ export async function registerUser(page: Page, user: TestUser): Promise<void> {
       const successLocators = [
         page.getByTestId('onboarding-org-name'),
         page.getByTestId('waiting-check-now'),
+        page.getByRole('button', { name: 'Mi Panel' }),
         page.getByRole('button', { name: 'Panel de Control' }),
         page.getByText('OpenPath'),
       ];
@@ -287,6 +289,7 @@ export async function loginUser(page: Page, email: string, password: string): Pr
       const successLocators = [
         page.getByTestId('onboarding-org-name'),
         page.getByTestId('waiting-check-now'),
+        page.getByRole('button', { name: 'Mi Panel' }),
         page.getByRole('button', { name: 'Panel de Control' }),
         page.getByText('OpenPath'),
       ];
@@ -409,7 +412,10 @@ export function loadingSpinnerLocator(page: Page): Locator {
  */
 export async function goToDashboard(page: Page): Promise<void> {
   // OpenPathApp uses internal tab state; ensure it is loaded and select tab via UI.
-  await page.getByRole('button', { name: 'Panel de Control' }).click();
+  await page
+    .getByRole('button', { name: 'Panel de Control' })
+    .or(page.getByRole('button', { name: 'Mi Panel' }))
+    .click();
   await waitForNetworkIdle(page);
 }
 
@@ -463,6 +469,7 @@ export async function expectWaitingPage(page: Page): Promise<void> {
 export async function expectDashboard(page: Page): Promise<void> {
   await page
     .getByRole('button', { name: 'Panel de Control' })
+    .or(page.getByRole('button', { name: 'Mi Panel' }))
     .waitFor({ state: 'visible', timeout: 15000 });
 }
 
