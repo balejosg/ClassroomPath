@@ -150,8 +150,8 @@ function AppContent() {
   if (!status?.hasMembership) {
     return (
       <Onboarding
-        onOrgCreated={() => {
-          persistSession({});
+        onOrgCreated={(result) => {
+          persistSession({ user: result.user });
           refetch();
         }}
         onWaitClick={() => refetch()}

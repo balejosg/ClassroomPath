@@ -57,6 +57,7 @@ export class OnboardingPage {
   readonly welcomeMessage: Locator;
   readonly orgNameInput: Locator;
   readonly createOrgButton: Locator;
+  readonly targetOrgSelect: Locator;
   readonly waitForInviteButton: Locator;
   readonly errorMessage: Locator;
 
@@ -67,6 +68,7 @@ export class OnboardingPage {
     this.createOrgButton = page.getByRole('button', {
       name: /Crear Organización|Create Organization/i,
     });
+    this.targetOrgSelect = page.getByTestId('onboarding-target-org');
     this.waitForInviteButton = page.getByRole('button', {
       name: /Solicitar Acceso|Request Access/i,
     });
@@ -83,6 +85,12 @@ export class OnboardingPage {
   }
 
   async requestAccess() {
+    // Select first available org (placeholder is index 0).
+    await this.targetOrgSelect.waitFor({ state: 'visible', timeout: 10000 });
+    const optionCount = await this.targetOrgSelect.locator('option').count();
+    if (optionCount > 1) {
+      await this.targetOrgSelect.selectOption({ index: 1 });
+    }
     await this.waitForInviteButton.click();
   }
 }

@@ -12,6 +12,12 @@ vi.mock('../../lib/hooks', () => ({
     isPending: false,
     error: null,
   }),
+  useListOrganizations: () => ({
+    data: [{ id: 'org_1', name: 'Org 1' }],
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
   useWaitForInvitation: () => ({
     mutate: mockWaitForInv,
     isPending: false,
@@ -65,13 +71,19 @@ describe('Onboarding View', () => {
     expect(mockCreateOrg).not.toHaveBeenCalled();
   });
 
-  it('should call onWaitClick when Solicitar Acceso is clicked', () => {
+  it('should call onWaitClick when Solicitar Acceso is clicked', async () => {
     // Modify hook to trigger onSuccess immediately for this test
     vi.mocked(mockWaitForInv).mockImplementation((_data, options) => {
       options?.onSuccess?.();
     });
 
     render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
+
+    // Auto-select runs in an effect; wait for it before clicking.
+    await waitFor(() => {
+      const select = screen.getByTestId('onboarding-target-org') as HTMLSelectElement;
+      expect(select.value).toBe('org_1');
+    });
 
     fireEvent.click(screen.getByText('Solicitar Acceso'));
 

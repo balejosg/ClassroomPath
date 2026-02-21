@@ -284,9 +284,11 @@ test.describe('Empty States', () => {
     await page.getByTestId('onboarding-create-org').click();
     await waitForNetworkIdle(page);
 
-    // New onboarding users land on the teacher dashboard by default.
-    await expect(page.getByRole('button', { name: 'Mi Panel' })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('No tienes clases en curso.')).toBeVisible({ timeout: 10000 });
+    // Org creator becomes org admin; should land on the admin dashboard.
+    await expect(page.getByRole('button', { name: 'Panel de Control' })).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByText('No hay aulas configuradas.')).toBeVisible({ timeout: 10000 });
   });
 
   test('should show empty state when no pending requests @errors @empty', async ({ page }) => {
@@ -297,11 +299,12 @@ test.describe('Empty States', () => {
     await page.getByTestId('onboarding-create-org').click();
     await waitForNetworkIdle(page);
 
-    // Teacher dashboard should show an actionable empty state for policies.
-    await expect(page.getByRole('button', { name: 'Mi Panel' })).toBeVisible({ timeout: 10000 });
-    await expect(
-      page.getByText('No tienes políticas aplicadas activamente en este momento.')
-    ).toBeVisible({ timeout: 10000 });
+    // Admin dashboard should show an actionable empty state for pending requests.
+    await expect(page.getByRole('button', { name: 'Panel de Control' })).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByText('Solicitudes Pendientes')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Sin pendientes')).toBeVisible({ timeout: 10000 });
   });
 });
 

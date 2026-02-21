@@ -72,6 +72,12 @@ export const onboardingRouter = router({
         organizationId: result.organizationId,
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          roles,
+        },
       };
     }),
 
@@ -115,8 +121,27 @@ export const onboardingRouter = router({
 
         await pendingUsersService.setWaitingStatusWithOrg(ctx.user.sub, targetOrgId);
       } else {
-        // Legacy behavior: wait without specific org
-        await onboardingService.setWaitingStatus(ctx.user.sub);
+        // If multiple orgs exist, require an explicit selection to avoid
+        // inserting cp_user_status rows with NULL target_organization_id.
+        const orgs = await db
+          .select({ id: schema.cpOrganizations.id })
+          .from(schema.cpOrganizations)
+          .limit(2);
+
+        if (orgs.length === 1) {
+          // Backwards-compatible: auto-target the only org.
+          await pendingUsersService.setWaitingStatusWithOrg(ctx.user.sub, orgs[0].id);
+        } else if (orgs.length === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'No hay organizaciones disponibles',
+          });
+        } else {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Debes seleccionar una organización para solicitar acceso',
+          });
+        }
       }
 
       return { success: true };

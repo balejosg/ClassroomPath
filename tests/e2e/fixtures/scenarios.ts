@@ -12,6 +12,14 @@ import {
 export async function registerAndRequestAccess(page: Page, user: TestUser): Promise<void> {
   await registerUser(page, user);
   await expect(page.getByText(/Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
+
+  const orgSelect = page.getByTestId('onboarding-target-org');
+  await expect(orgSelect).toBeVisible({ timeout: 10000 });
+  const optionCount = await orgSelect.locator('option').count();
+  if (optionCount > 1) {
+    await orgSelect.selectOption({ index: 1 });
+  }
+
   await page.getByRole('button', { name: /Solicitar Acceso|Request|Esperar/i }).click();
   await expect(page.getByText(/Esperando|Waiting/i)).toBeVisible({ timeout: 10000 });
 }

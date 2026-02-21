@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { z } from 'zod';
 import { router, tenantProcedure } from '../trpc.js';
 import { openpathDb, users, roles } from '../../db/openpath.js';
@@ -7,6 +6,67 @@ import * as schema from '../../db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import bcrypt from 'bcrypt';
+import { TRPCError } from '@trpc/server';
+import { generateId } from '../../lib/id.js';
+
+type RoleInfo = { role: string; groupIds: string[] };
+
+function requireOrgAdmin(ctx: { userRole?: string }) {
+  if (ctx.userRole !== 'admin') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Only organization admins can manage users',
+    });
+  }
+}
+
+function toIsoStringOrNull(date: unknown): string | null {
+  if (date instanceof Date) return date.toISOString();
+  return null;
+}
+
+function normalizeGroupIds(groupIds: unknown): string[] {
+  if (Array.isArray(groupIds)) return groupIds.filter((x) => typeof x === 'string') as string[];
+  return [];
+}
+
+async function getOrgScopedUserIds(params: { organizationId: string }): Promise<{
+  userIds: string[];
+  sources: { membershipUserIds: Set<string>; orgUserIds: Set<string> };
+}> {
+  const [memberships, orgUsers] = await Promise.all([
+    db
+      .select({ userId: schema.cpMemberships.userId })
+      .from(schema.cpMemberships)
+      .where(eq(schema.cpMemberships.organizationId, params.organizationId)),
+    db
+      .select({ userId: schema.cpOrganizationUsers.openpathUserId })
+      .from(schema.cpOrganizationUsers)
+      .where(eq(schema.cpOrganizationUsers.organizationId, params.organizationId)),
+  ]);
+
+  const membershipUserIds = new Set(memberships.map((m) => m.userId));
+  const orgUserIds = new Set(orgUsers.map((u) => u.userId));
+
+  const userIds = [...new Set([...membershipUserIds, ...orgUserIds])];
+
+  return { userIds, sources: { membershipUserIds, orgUserIds } };
+}
+
+async function getRolesByUserId(userIds: string[]): Promise<Map<string, RoleInfo[]>> {
+  const result = new Map<string, RoleInfo[]>();
+  if (userIds.length === 0) return result;
+
+  const rows = await openpathDb.select().from(roles).where(inArray(roles.userId, userIds));
+
+  for (const r of rows) {
+    const current = result.get(r.userId) ?? [];
+    current.push({ role: String(r.role), groupIds: normalizeGroupIds(r.groupIds) });
+    result.set(r.userId, current);
+  }
+
+  return result;
+}
 
 const CreateUserSchema = z.object({
   email: z.string().email(),
@@ -24,81 +84,68 @@ const UpdateUserSchema = z.object({
 const AssignRoleSchema = z.object({
   userId: z.string(),
   role: z.enum(['admin', 'teacher', 'student']),
-  groupIds: z.array(z.string()).optional(),
+  groupIds: z.array(z.string()).default([]),
 });
 
 export const usersRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
-    const orgUsers = await db
-      .select()
-      .from(schema.cpOrganizationUsers)
-      .where(eq(schema.cpOrganizationUsers.organizationId, ctx.organizationId!));
+    requireOrgAdmin(ctx);
 
-    const userIds = orgUsers.map((ou) => ou.openpathUserId);
-
+    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
     if (userIds.length === 0) return [];
 
-    const usersList = await openpathDb.select().from(users).where(inArray(users.id, userIds));
+    const [usersList, rolesByUserId] = await Promise.all([
+      openpathDb.select().from(users).where(inArray(users.id, userIds)),
+      getRolesByUserId(userIds),
+    ]);
 
-    // Serialize Date fields for JSON compatibility
+    // IMPORTANT: Never expose passwordHash (security).
     return usersList.map((u) => ({
       id: u.id,
       email: u.email,
       name: u.name,
-      passwordHash: u.passwordHash,
       isActive: u.isActive,
-      createdAt: u.createdAt?.toISOString() ?? null,
-      updatedAt: u.updatedAt?.toISOString() ?? null,
+      emailVerified: u.emailVerified,
+      createdAt: toIsoStringOrNull(u.createdAt) ?? new Date().toISOString(),
+      updatedAt: toIsoStringOrNull(u.updatedAt) ?? new Date().toISOString(),
+      roles: rolesByUserId.get(u.id) ?? [],
     }));
   }),
 
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    const orgUser = await db
-      .select()
-      .from(schema.cpOrganizationUsers)
-      .where(
-        and(
-          eq(schema.cpOrganizationUsers.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationUsers.openpathUserId, input.id)
-        )
-      )
-      .limit(1);
+    requireOrgAdmin(ctx);
 
-    if (!orgUser.length) {
-      throw new Error('User not found or access denied');
+    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    if (!userIds.includes(input.id)) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
 
-    const user = await openpathDb.select().from(users).where(eq(users.id, input.id)).limit(1);
+    const [user, rolesByUserId] = await Promise.all([
+      openpathDb.select().from(users).where(eq(users.id, input.id)).limit(1),
+      getRolesByUserId([input.id]),
+    ]);
 
     if (!user[0]) return null;
 
-    // Serialize Date fields for JSON compatibility
     const u = user[0];
     return {
       id: u.id,
       email: u.email,
       name: u.name,
-      passwordHash: u.passwordHash,
       isActive: u.isActive,
-      createdAt: u.createdAt?.toISOString() ?? null,
-      updatedAt: u.updatedAt?.toISOString() ?? null,
+      emailVerified: u.emailVerified,
+      createdAt: toIsoStringOrNull(u.createdAt) ?? new Date().toISOString(),
+      updatedAt: toIsoStringOrNull(u.updatedAt) ?? new Date().toISOString(),
+      roles: rolesByUserId.get(u.id) ?? [],
     };
   }),
 
   getRole: tenantProcedure.input(z.object({ userId: z.string() })).query(async ({ ctx, input }) => {
-    const orgUser = await db
-      .select()
-      .from(schema.cpOrganizationUsers)
-      .where(
-        and(
-          eq(schema.cpOrganizationUsers.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationUsers.openpathUserId, input.userId)
-        )
-      )
-      .limit(1);
+    requireOrgAdmin(ctx);
 
-    if (!orgUser.length) {
-      throw new Error('User not found or access denied');
+    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    if (!userIds.includes(input.userId)) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
 
     const role = await openpathDb
@@ -122,6 +169,8 @@ export const usersRouter = router({
   }),
 
   create: tenantProcedure.input(CreateUserSchema).mutation(async ({ ctx, input }) => {
+    requireOrgAdmin(ctx);
+
     const userId = nanoid();
     const passwordHash = await bcrypt.hash(input.password, 10);
 
@@ -132,7 +181,7 @@ export const usersRouter = router({
         email: input.email,
         name: input.name,
         passwordHash,
-        isActive: true as any,
+        isActive: true,
       })
       .returning();
 
@@ -142,83 +191,97 @@ export const usersRouter = router({
       openpathUserId: user.id,
     });
 
+    // Grant organization membership so the user can actually join the tenant.
+    await db.insert(schema.cpMemberships).values({
+      id: generateId('mem'),
+      userId: user.id,
+      organizationId: ctx.organizationId!,
+      role: input.role ?? 'student',
+      invitedBy: ctx.user.sub,
+    });
+
     // Assign role if provided
     if (input.role) {
       await openpathDb.insert(roles).values({
         id: nanoid(),
         userId: user.id,
         role: input.role,
-        groupIds: [] as any,
+        groupIds: [],
         createdBy: ctx.user.sub,
       });
     }
 
     // Serialize Date fields for JSON compatibility
+    const rolesByUserId = await getRolesByUserId([user.id]);
     return {
       id: user.id,
       email: user.email,
       name: user.name,
-      passwordHash: user.passwordHash,
       isActive: user.isActive,
-      createdAt: user.createdAt?.toISOString() ?? null,
-      updatedAt: user.updatedAt?.toISOString() ?? null,
+      emailVerified: user.emailVerified,
+      createdAt: toIsoStringOrNull(user.createdAt) ?? new Date().toISOString(),
+      updatedAt: toIsoStringOrNull(user.updatedAt) ?? new Date().toISOString(),
+      roles: rolesByUserId.get(user.id) ?? [],
     };
   }),
 
   update: tenantProcedure.input(UpdateUserSchema).mutation(async ({ ctx, input }) => {
-    const orgUser = await db
-      .select()
-      .from(schema.cpOrganizationUsers)
-      .where(
-        and(
-          eq(schema.cpOrganizationUsers.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationUsers.openpathUserId, input.id)
-        )
-      )
-      .limit(1);
+    requireOrgAdmin(ctx);
 
-    if (!orgUser.length) {
-      throw new Error('User not found or access denied');
+    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    if (!userIds.includes(input.id)) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
 
-    const { id, ...updateData } = input;
+    const updateData: { name?: string; isActive?: boolean } = {};
+    if (input.name !== undefined) updateData.name = input.name;
+    if (input.active !== undefined) updateData.isActive = input.active;
+
     const [updated] = await openpathDb
       .update(users)
       .set(updateData)
-      .where(eq(users.id, id))
+      .where(eq(users.id, input.id))
       .returning();
 
-    // Serialize Date fields for JSON compatibility
+    const rolesByUserId = await getRolesByUserId([updated.id]);
     return {
       id: updated.id,
       email: updated.email,
       name: updated.name,
-      passwordHash: updated.passwordHash,
       isActive: updated.isActive,
-      createdAt: updated.createdAt?.toISOString() ?? null,
-      updatedAt: updated.updatedAt?.toISOString() ?? null,
+      emailVerified: updated.emailVerified,
+      createdAt: toIsoStringOrNull(updated.createdAt) ?? new Date().toISOString(),
+      updatedAt: toIsoStringOrNull(updated.updatedAt) ?? new Date().toISOString(),
+      roles: rolesByUserId.get(updated.id) ?? [],
     };
   }),
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const orgUser = await db
-      .select()
-      .from(schema.cpOrganizationUsers)
+    requireOrgAdmin(ctx);
+
+    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    if (!userIds.includes(input.id)) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
+    }
+
+    // Best-effort cleanup in both org mapping tables.
+    await db
+      .delete(schema.cpOrganizationUsers)
       .where(
         and(
           eq(schema.cpOrganizationUsers.organizationId, ctx.organizationId!),
           eq(schema.cpOrganizationUsers.openpathUserId, input.id)
         )
-      )
-      .limit(1);
-
-    if (!orgUser.length) {
-      throw new Error('User not found or access denied');
-    }
+      );
 
     await db
-      .delete(schema.cpOrganizationUsers)
-      .where(eq(schema.cpOrganizationUsers.id, orgUser[0].id));
+      .delete(schema.cpMemberships)
+      .where(
+        and(
+          eq(schema.cpMemberships.organizationId, ctx.organizationId!),
+          eq(schema.cpMemberships.userId, input.id)
+        )
+      );
 
     await openpathDb.delete(users).where(eq(users.id, input.id));
 
@@ -226,19 +289,11 @@ export const usersRouter = router({
   }),
 
   assignRole: tenantProcedure.input(AssignRoleSchema).mutation(async ({ ctx, input }) => {
-    const orgUser = await db
-      .select()
-      .from(schema.cpOrganizationUsers)
-      .where(
-        and(
-          eq(schema.cpOrganizationUsers.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationUsers.openpathUserId, input.userId)
-        )
-      )
-      .limit(1);
+    requireOrgAdmin(ctx);
 
-    if (!orgUser.length) {
-      throw new Error('User not found or access denied');
+    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    if (!userIds.includes(input.userId)) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
 
     const existingRole = await openpathDb
@@ -293,19 +348,11 @@ export const usersRouter = router({
   revokeRole: tenantProcedure
     .input(z.object({ userId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const orgUser = await db
-        .select()
-        .from(schema.cpOrganizationUsers)
-        .where(
-          and(
-            eq(schema.cpOrganizationUsers.organizationId, ctx.organizationId!),
-            eq(schema.cpOrganizationUsers.openpathUserId, input.userId)
-          )
-        )
-        .limit(1);
+      requireOrgAdmin(ctx);
 
-      if (!orgUser.length) {
-        throw new Error('User not found or access denied');
+      const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+      if (!userIds.includes(input.userId)) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
       }
 
       await openpathDb.delete(roles).where(eq(roles.userId, input.userId));

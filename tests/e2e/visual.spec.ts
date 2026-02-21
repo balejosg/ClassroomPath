@@ -14,7 +14,9 @@ import {
 } from './fixtures/test-utils';
 import type { Page } from '@playwright/test';
 
-async function mockDashboardMobileEmptyState(page: Page): Promise<void> {
+type TrpcPatchMap = Record<string, unknown>;
+
+async function mockTrpcProcedures(page: Page, patches: TrpcPatchMap): Promise<void> {
   await page.route('**/trpc/**', async (route) => {
     const url = new URL(route.request().url());
     const marker = '/trpc/';
@@ -52,27 +54,8 @@ async function mockDashboardMobileEmptyState(page: Page): Promise<void> {
     };
 
     const patchOne = (entry: unknown, procedure: string): unknown => {
-      switch (procedure) {
-        case 'groups.stats':
-          return setResultData(entry, { groupCount: 0, whitelistCount: 0, blockedCount: 0 });
-        case 'requests.stats':
-          return setResultData(entry, { total: 0, pending: 0, approved: 0, rejected: 0 });
-        case 'groups.systemStatus':
-          return setResultData(entry, {
-            enabled: false,
-            totalGroups: 0,
-            activeGroups: 0,
-            pausedGroups: 0,
-            enabledGroups: 0,
-            disabledGroups: 0,
-          });
-        case 'groups.list':
-          return setResultData(entry, []);
-        case 'classrooms.list':
-          return setResultData(entry, []);
-        default:
-          return entry;
-      }
+      if (!(procedure in patches)) return entry;
+      return setResultData(entry, patches[procedure]);
     };
 
     const patchedBody = Array.isArray(originalBody)
@@ -81,6 +64,42 @@ async function mockDashboardMobileEmptyState(page: Page): Promise<void> {
 
     await route.fulfill({ response, json: patchedBody });
   });
+}
+
+async function mockDashboardMobileEmptyState(page: Page): Promise<void> {
+  await mockTrpcProcedures(page, {
+    'groups.stats': { groupCount: 0, whitelistCount: 0, blockedCount: 0 },
+    'requests.stats': { total: 0, pending: 0, approved: 0, rejected: 0 },
+    'groups.systemStatus': {
+      enabled: false,
+      totalGroups: 0,
+      activeGroups: 0,
+      pausedGroups: 0,
+      enabledGroups: 0,
+      disabledGroups: 0,
+    },
+    'groups.list': [],
+    'classrooms.list': [],
+    // Keep visuals stable: waiting-room tests may create pending users in parallel.
+    'pendingUsers.list': [],
+  });
+}
+
+async function maskLastVerification(page: Page): Promise<void> {
+  await page
+    .getByText(/Última verificación:/)
+    .first()
+    .evaluate((el) => {
+      const prefix = 'Última verificación:';
+      const text = el.textContent ?? '';
+      const idx = text.indexOf(prefix);
+      if (idx >= 0) {
+        el.textContent = `${text.slice(0, idx + prefix.length)} --`;
+      } else {
+        el.textContent = `${prefix} --`;
+      }
+    })
+    .catch(() => {});
 }
 
 async function waitForVisualStability(page: Page): Promise<void> {
@@ -170,6 +189,12 @@ test.describe('Visual Regression - Waiting Room', () => {
     await registerUser(page, testUser);
 
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
+    const orgSelect = page.getByTestId('onboarding-target-org');
+    await expect(orgSelect).toBeVisible({ timeout: 10000 });
+    const optionCount = await orgSelect.locator('option').count();
+    if (optionCount > 1) {
+      await orgSelect.selectOption({ index: 1 });
+    }
     await page.getByRole('button', { name: /Solicitar Acceso|Request|Esperar/i }).click();
 
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -189,6 +214,12 @@ test.describe('Visual Regression - Waiting Room', () => {
     await registerUser(page, testUser);
 
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
+    const orgSelect = page.getByTestId('onboarding-target-org');
+    await expect(orgSelect).toBeVisible({ timeout: 10000 });
+    const optionCount = await orgSelect.locator('option').count();
+    if (optionCount > 1) {
+      await orgSelect.selectOption({ index: 1 });
+    }
     await page.getByRole('button', { name: /Solicitar Acceso|Request|Esperar/i }).click();
 
     await expect(page.getByText(/Esperando|Waiting/i)).toBeVisible({ timeout: 10000 });
@@ -209,12 +240,14 @@ test.describe('Visual Regression - Dashboard', () => {
 
   test('dashboard desktop @visual', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
+    await mockTrpcProcedures(page, { 'pendingUsers.list': [] });
     await loginAsAdmin(page);
     await waitForNetworkIdle(page);
     // OpenPath is state-driven, not URL-routed. Navigate via sidebar.
     await page.getByRole('button', { name: 'Panel de Control' }).click();
     await waitForNetworkIdle(page);
     await waitForVisualStability(page);
+    await maskLastVerification(page);
 
     await expect(page).toHaveScreenshot('dashboard-desktop.png', {
       maxDiffPixelRatio: 0.02,
@@ -239,14 +272,7 @@ test.describe('Visual Regression - Dashboard', () => {
     await waitForVisualStability(page);
 
     // Mask dynamic timestamps that would otherwise cause snapshot drift.
-    await page
-      .getByText(/Última verificación:/)
-      .first()
-      .evaluate((el) => {
-        const prefix = 'Última verificación:';
-        el.textContent = `${prefix} --`;
-      })
-      .catch(() => {});
+    await maskLastVerification(page);
 
     await expect(page).toHaveScreenshot('dashboard-mobile.png', {
       maxDiffPixelRatio: 0.02,
@@ -259,12 +285,10 @@ test.describe('Visual Regression - Organization', () => {
   // Worker-scoped seeded accounts allow safe parallel execution.
   test.describe.configure({ mode: 'parallel' });
 
-  test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
-  });
-
   test('organization page desktop @visual', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
+    await mockTrpcProcedures(page, { 'pendingUsers.list': [] });
+    await loginAsAdmin(page);
     // OpenPath is state-driven, not URL-routed. Navigate via sidebar.
     await waitForNetworkIdle(page);
     await page.getByRole('button', { name: 'Usuarios y Roles' }).click();
@@ -283,31 +307,16 @@ test.describe('Visual Regression - Error States', () => {
   test.describe.configure({ mode: 'parallel' });
 
   test('network error state @visual', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
     await loginAsAdmin(page);
 
     // Intercept and fail API calls
     await page.route('**/api/**', (route) => route.abort('failed'));
     await page.route('**/trpc/**', (route) => route.abort('failed'));
 
-    await page.setViewportSize({ width: 1280, height: 720 });
-    // OpenPath is state-driven - click sidebar to trigger a navigation that will fail
-    await page.getByRole('button', { name: 'Panel de Control' }).click();
-
-    const hasErrorSignal =
-      (await page
-        .locator('[role="alert"], .bg-red-100')
-        .first()
-        .isVisible({ timeout: 3000 })
-        .catch(() => false)) ||
-      (await page
-        .getByText(/error|problema|falló|forbidden|denegado/i)
-        .first()
-        .isVisible({ timeout: 3000 })
-        .catch(() => false));
-
-    if (!hasErrorSignal) {
-      await page.waitForLoadState('networkidle').catch(() => {});
-    }
+    // Force a fresh access-check fetch under failure conditions.
+    await page.reload();
+    await expect(page.getByText('No se pudo verificar tu acceso')).toBeVisible({ timeout: 10000 });
 
     await waitForVisualStability(page);
 
@@ -318,20 +327,14 @@ test.describe('Visual Regression - Error States', () => {
   });
 
   test('empty state @visual', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await mockTrpcProcedures(page, { 'pendingUsers.list': [], 'classrooms.list': [] });
     await loginAsAdmin(page);
 
-    // Mock empty data
-    await page.route('**/api/**', (route) => {
-      route.fulfill({
-        status: 200,
-        body: JSON.stringify([]),
-      });
-    });
-
-    await page.setViewportSize({ width: 1280, height: 720 });
     // OpenPath is state-driven - navigate via sidebar
     await page.getByRole('button', { name: 'Aulas Seguras' }).click();
     await waitForNetworkIdle(page);
+    await expect(page.getByText(/Sin aulas/i)).toBeVisible({ timeout: 10000 });
     await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('empty-groups.png', {
@@ -357,13 +360,14 @@ test.describe('Visual Regression - Dark Mode', () => {
 
   test('dashboard dark mode @visual @dark', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await loginAsAdmin(page);
-
     await page.setViewportSize({ width: 1280, height: 720 });
+    await mockTrpcProcedures(page, { 'pendingUsers.list': [] });
+    await loginAsAdmin(page);
     // OpenPath is state-driven - navigate via sidebar
     await page.getByRole('button', { name: 'Panel de Control' }).click();
     await waitForNetworkIdle(page);
     await waitForVisualStability(page);
+    await maskLastVerification(page);
 
     await expect(page).toHaveScreenshot('dashboard-dark.png', {
       maxDiffPixelRatio: 0.02,

@@ -449,6 +449,16 @@ export async function completeOrgOnboarding(page: Page, orgName: string): Promis
  */
 export async function selectWaitForInvite(page: Page): Promise<void> {
   await page.getByTestId('onboarding-wait-invite').waitFor({ state: 'visible', timeout: 15000 });
+
+  // Onboarding now requires selecting a target organization.
+  const orgSelect = page.getByTestId('onboarding-target-org');
+  await orgSelect.waitFor({ state: 'visible', timeout: 15000 });
+  const optionCount = await orgSelect.locator('option').count();
+  if (optionCount > 1) {
+    // Index 0 is the placeholder.
+    await orgSelect.selectOption({ index: 1 });
+  }
+
   await page.getByTestId('onboarding-wait-invite').click();
 }
 

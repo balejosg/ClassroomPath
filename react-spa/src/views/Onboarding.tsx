@@ -1,22 +1,41 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Building2, Users } from 'lucide-react';
 import { Button } from '@openpath/src/components/ui/Button';
 import { Input } from '@openpath/src/components/ui/Input';
 import { Card } from '@openpath/src/components/ui/Card';
-import { useCreateOrganization, useWaitForInvitation } from '../lib/hooks';
+import { useCreateOrganization, useListOrganizations, useWaitForInvitation } from '../lib/hooks';
 
 interface Props {
-  onOrgCreated: () => void;
+  onOrgCreated: (result: {
+    success: boolean;
+    organizationId: string;
+    user?: {
+      id: string;
+      email: string;
+      name: string;
+      roles: Array<{ role: string; groupIds: string[] }>;
+    };
+  }) => void;
   onWaitClick: () => void;
   onLogout?: () => void;
 }
 
 export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
   const [orgName, setOrgName] = useState('');
+  const [targetOrgId, setTargetOrgId] = useState('');
   const [error, setError] = useState('');
 
   const createOrgMutation = useCreateOrganization();
+  const orgsQuery = useListOrganizations();
   const waitMutation = useWaitForInvitation();
+
+  useEffect(() => {
+    if (targetOrgId) return;
+    const orgs = orgsQuery.data ?? [];
+    if (orgs.length === 1) {
+      setTargetOrgId(orgs[0].id);
+    }
+  }, [orgsQuery.data, targetOrgId]);
 
   const handleCreateOrg = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,8 +49,8 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
     createOrgMutation.mutate(
       { name: orgName },
       {
-        onSuccess: () => {
-          onOrgCreated();
+        onSuccess: (data) => {
+          onOrgCreated(data);
         },
         onError: (err) => {
           setError(err.message || 'Error al crear organización');
@@ -42,14 +61,23 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
 
   const handleWait = () => {
     setError('');
-    waitMutation.mutate(undefined, {
-      onSuccess: () => {
-        onWaitClick();
-      },
-      onError: (err) => {
-        setError(err.message || 'Error al procesar solicitud');
-      },
-    });
+
+    if (!targetOrgId) {
+      setError('Selecciona una organización para solicitar acceso');
+      return;
+    }
+
+    waitMutation.mutate(
+      { targetOrganizationId: targetOrgId },
+      {
+        onSuccess: () => {
+          onWaitClick();
+        },
+        onError: (err) => {
+          setError(err.message || 'Error al procesar solicitud');
+        },
+      }
+    );
   };
 
   return (
@@ -121,12 +149,35 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
               administrador te agregue.
             </p>
             <div className="mt-auto">
+              <div className="mb-4">
+                <label className="block text-sm font-semibold mb-2 text-gray-700">
+                  Organización
+                </label>
+                <select
+                  name="targetOrganization"
+                  data-testid="onboarding-target-org"
+                  value={targetOrgId}
+                  onChange={(e) => setTargetOrgId(e.target.value)}
+                  className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+                  disabled={orgsQuery.isPending}
+                >
+                  <option value="">Seleccionar organización...</option>
+                  {(orgsQuery.data ?? []).map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
+                {orgsQuery.isError && (
+                  <p className="mt-2 text-xs text-red-600">No se pudieron cargar organizaciones.</p>
+                )}
+              </div>
               <Button
                 onClick={handleWait}
                 data-testid="onboarding-wait-invite"
                 variant="outline"
                 className="w-full cursor-pointer py-6 border-2"
-                disabled={waitMutation.isPending}
+                disabled={waitMutation.isPending || orgsQuery.isPending}
               >
                 {waitMutation.isPending ? 'Procesando...' : 'Solicitar Acceso'}
               </Button>
