@@ -9,6 +9,7 @@ import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { config } from './config.js';
 import { findBlockedOpenPathProcedureFromUrl } from './lib/openpath-proxy-policy.js';
+import { logger } from './lib/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,10 +87,10 @@ app.use(
 const reactSpaPath = path.join(__dirname, '../../react-spa/dist');
 
 if (fs.existsSync(reactSpaPath)) {
-  console.log(`Serving ClassroomPath React SPA from: ${reactSpaPath}`);
+  logger.info('Serving ClassroomPath React SPA', { path: reactSpaPath });
   app.use(express.static(reactSpaPath));
 } else {
-  console.warn(`ClassroomPath React SPA dist not found at: ${reactSpaPath}`);
+  logger.warn('ClassroomPath React SPA dist not found', { path: reactSpaPath });
 }
 
 // NOW apply express.json() for ClassroomPath-specific routes
@@ -127,8 +128,8 @@ if (fs.existsSync(reactSpaPath)) {
 
 function startGateway() {
   return app.listen(config.port, () => {
-    console.log(`ClassroomPath Gateway listening on port ${config.port}`);
-    console.log(`Proxying OpenPath API routes to ${openPathApiTarget}`);
+    logger.info('ClassroomPath Gateway listening', { port: config.port });
+    logger.info('Proxying OpenPath API routes', { target: openPathApiTarget });
   });
 }
 

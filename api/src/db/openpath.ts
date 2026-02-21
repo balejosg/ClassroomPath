@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import pg from 'pg';
 import { config } from '../config.js';
+import { logger } from '../lib/logger.js';
 
 const { Pool } = pg;
 
@@ -21,7 +22,7 @@ const pool = new Pool({
 });
 
 pool.on('error', (err) => {
-  console.error('Unexpected error on OpenPath DB idle client', {
+  logger.error('Unexpected error on OpenPath DB idle client', {
     message: err.message,
     stack: err.stack,
   });
@@ -49,7 +50,7 @@ export async function notifyOpenPathEvent(event: OpenPathDbEventPayload): Promis
     ]);
   } catch (err) {
     // Best-effort: notifications should not break normal operations.
-    console.warn('Failed to NOTIFY OpenPath DB events channel', {
+    logger.warn('Failed to NOTIFY OpenPath DB events channel', {
       message: err instanceof Error ? err.message : String(err),
     });
   }

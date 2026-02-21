@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from './schema.js';
+import { logger } from '../lib/logger.js';
 
 // Build connection string from individual env vars if DATABASE_URL not set
 const connectionString =
@@ -12,7 +13,7 @@ const pool = new pg.Pool({
 });
 
 pool.on('error', (err) => {
-  console.error('Unexpected error on ClassroomPath DB idle client', {
+  logger.error('Unexpected error on ClassroomPath DB idle client', {
     message: err.message,
     stack: err.stack,
   });
