@@ -5,20 +5,15 @@ import {
   openpathDb,
   whitelistGroups,
   whitelistRules,
-  notifyOpenPathEvent,
+  notifyOpenPathGroupChanged,
+  publishWhitelistGroupChanged,
+  publishWhitelistGroupsChanged,
 } from '../../db/openpath.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getRootDomain } from '../../utils/domain.js';
-
-async function touchGroupUpdatedAt(groupId: string): Promise<void> {
-  await openpathDb
-    .update(whitelistGroups)
-    .set({ updatedAt: new Date() } as any)
-    .where(eq(whitelistGroups.id, groupId));
-}
 
 const CreateGroupSchema = z.object({
   name: z.string().min(1).max(100),
@@ -508,11 +503,7 @@ export const groupsRouter = router({
 
     // Touch affected group versions for agent cache/ETag correctness
     const affectedGroupIds = [...new Set(accessibleRules.map((r) => r.groupId))];
-    await Promise.all(affectedGroupIds.map((gid) => touchGroupUpdatedAt(gid)));
-
-    await Promise.all(
-      affectedGroupIds.map((groupId) => notifyOpenPathEvent({ type: 'group', groupId }))
-    );
+    await publishWhitelistGroupsChanged(affectedGroupIds);
 
     // Return in format expected by SPA for undo support
     return {
@@ -591,7 +582,7 @@ export const groupsRouter = router({
       .where(eq(whitelistGroups.id, id))
       .returning();
 
-    await notifyOpenPathEvent({ type: 'group', groupId: updated.id });
+    await notifyOpenPathGroupChanged(updated.id);
 
     // Serialize Date fields for JSON compatibility
     return {
@@ -626,7 +617,7 @@ export const groupsRouter = router({
 
     await openpathDb.delete(whitelistGroups).where(eq(whitelistGroups.id, input.id));
 
-    await notifyOpenPathEvent({ type: 'group', groupId: input.id });
+    await notifyOpenPathGroupChanged(input.id);
 
     return { success: true };
   }),
@@ -693,8 +684,7 @@ export const groupsRouter = router({
     }
 
     const rule = insertResult[0];
-    await touchGroupUpdatedAt(input.groupId);
-    await notifyOpenPathEvent({ type: 'group', groupId: input.groupId });
+    await publishWhitelistGroupChanged(input.groupId);
     // Serialize Date fields for JSON compatibility
     return {
       id: rule.id,
@@ -770,8 +760,7 @@ export const groupsRouter = router({
     }
 
     const rule = insertResult[0];
-    await touchGroupUpdatedAt(input.groupId);
-    await notifyOpenPathEvent({ type: 'group', groupId: input.groupId });
+    await publishWhitelistGroupChanged(input.groupId);
     return {
       id: rule.id,
       groupId: rule.groupId,
@@ -817,8 +806,7 @@ export const groupsRouter = router({
       .returning();
 
     if (insertedRules.length > 0) {
-      await touchGroupUpdatedAt(input.groupId);
-      await notifyOpenPathEvent({ type: 'group', groupId: input.groupId });
+      await publishWhitelistGroupChanged(input.groupId);
     }
 
     // Return count like OpenPath does
@@ -858,8 +846,7 @@ export const groupsRouter = router({
         .where(eq(whitelistRules.id, input.id));
 
       if ((deleteResult.rowCount ?? 0) > 0) {
-        await touchGroupUpdatedAt(existing.groupId);
-        await notifyOpenPathEvent({ type: 'group', groupId: existing.groupId });
+        await publishWhitelistGroupChanged(existing.groupId);
       }
 
       return { success: true };
@@ -942,8 +929,7 @@ export const groupsRouter = router({
       }
 
       if (updates.value !== undefined) {
-        await touchGroupUpdatedAt(input.groupId);
-        await notifyOpenPathEvent({ type: 'group', groupId: input.groupId });
+        await publishWhitelistGroupChanged(input.groupId);
       }
 
       // Return updated rule

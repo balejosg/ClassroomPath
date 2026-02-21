@@ -1,4 +1,5 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { eq } from 'drizzle-orm';
 import {
   pgTable,
   varchar,
@@ -28,15 +29,56 @@ pool.on('error', (err) => {
 
 export const openpathDb = drizzle(pool);
 
-export async function notifyOpenPathEvent(event: unknown): Promise<void> {
+const DEFAULT_OPENPATH_DB_EVENTS_CHANNEL = 'openpath_events';
+
+export type OpenPathDbEventPayload =
+  | { type: 'group'; groupId: string; origin?: string }
+  | { type: 'classroom'; classroomId: string; origin?: string }
+  | { type: 'broadcast'; origin?: string };
+
+export function resolveOpenPathDbEventsChannel(): string {
+  const raw = process.env.OPENPATH_DB_EVENTS_CHANNEL ?? DEFAULT_OPENPATH_DB_EVENTS_CHANNEL;
+  return /^[a-zA-Z0-9_]+$/.test(raw) ? raw : DEFAULT_OPENPATH_DB_EVENTS_CHANNEL;
+}
+
+export async function notifyOpenPathEvent(event: OpenPathDbEventPayload): Promise<void> {
   try {
-    await pool.query('SELECT pg_notify($1, $2)', ['openpath_events', JSON.stringify(event)]);
+    await pool.query('SELECT pg_notify($1, $2)', [
+      resolveOpenPathDbEventsChannel(),
+      JSON.stringify(event),
+    ]);
   } catch (err) {
     // Best-effort: notifications should not break normal operations.
-    console.warn('Failed to NOTIFY openpath_events', {
+    console.warn('Failed to NOTIFY OpenPath DB events channel', {
       message: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+export async function notifyOpenPathGroupChanged(groupId: string): Promise<void> {
+  await notifyOpenPathEvent({ type: 'group', groupId });
+}
+
+export async function notifyOpenPathClassroomChanged(classroomId: string): Promise<void> {
+  await notifyOpenPathEvent({ type: 'classroom', classroomId });
+}
+
+export async function touchWhitelistGroupUpdatedAt(groupId: string): Promise<void> {
+  await openpathDb
+    .update(whitelistGroups)
+    .set({ updatedAt: new Date() })
+    .where(eq(whitelistGroups.id, groupId));
+}
+
+export async function publishWhitelistGroupChanged(groupId: string): Promise<void> {
+  await touchWhitelistGroupUpdatedAt(groupId);
+  await notifyOpenPathGroupChanged(groupId);
+}
+
+export async function publishWhitelistGroupsChanged(groupIds: readonly string[]): Promise<void> {
+  const unique = [...new Set(groupIds)];
+  await Promise.all(unique.map((groupId) => touchWhitelistGroupUpdatedAt(groupId)));
+  await Promise.all(unique.map((groupId) => notifyOpenPathGroupChanged(groupId)));
 }
 
 export async function closeOpenPathConnection() {

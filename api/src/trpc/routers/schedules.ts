@@ -6,7 +6,12 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { router, tenantProcedure } from '../trpc.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
-import { openpathDb, schedules, classrooms, notifyOpenPathEvent } from '../../db/openpath.js';
+import {
+  openpathDb,
+  schedules,
+  classrooms,
+  notifyOpenPathClassroomChanged,
+} from '../../db/openpath.js';
 
 function isAdminToken(user: any): boolean {
   const roles = user?.roles ?? [];
@@ -270,7 +275,7 @@ export const schedulesRouter = router({
       } as any)
       .returning();
 
-    await notifyOpenPathEvent({ type: 'classroom', classroomId: created.classroomId });
+    await notifyOpenPathClassroomChanged(created.classroomId);
 
     return {
       id: created.id,
@@ -351,7 +356,7 @@ export const schedulesRouter = router({
       .where(eq(schedules.id, input.id as any))
       .returning();
 
-    await notifyOpenPathEvent({ type: 'classroom', classroomId: updated.classroomId });
+    await notifyOpenPathClassroomChanged(updated.classroomId);
 
     return {
       id: updated.id,
@@ -395,7 +400,7 @@ export const schedulesRouter = router({
 
       await openpathDb.delete(schedules).where(eq(schedules.id, input.id as any));
 
-      await notifyOpenPathEvent({ type: 'classroom', classroomId: existing[0].classroomId });
+      await notifyOpenPathClassroomChanged(existing[0].classroomId);
       return { success: true };
     }),
 });

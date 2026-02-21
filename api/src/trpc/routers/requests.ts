@@ -3,8 +3,8 @@ import { router, tenantProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 import { nanoid } from 'nanoid';
 import {
-  notifyOpenPathEvent,
   openpathDb,
+  publishWhitelistGroupChanged,
   requests,
   whitelistGroups,
   whitelistRules,
@@ -216,8 +216,6 @@ export const requestsRouter = router({
 
     if (groupIds.length === 0) return [];
 
-    // Import whitelistGroups from openpath db
-    const { whitelistGroups } = await import('../../db/openpath.js');
     const groups = await openpathDb
       .select()
       .from(whitelistGroups)
@@ -305,11 +303,7 @@ export const requestsRouter = router({
 
     if (inserted.length > 0) {
       // Touch export version + notify OpenPath SSE via LISTEN/NOTIFY
-      await openpathDb
-        .update(whitelistGroups)
-        .set({ updatedAt: new Date() } as any)
-        .where(eq(whitelistGroups.id, requestGroupId));
-      await notifyOpenPathEvent({ type: 'group', groupId: requestGroupId });
+      await publishWhitelistGroupChanged(requestGroupId);
     }
 
     await openpathDb
