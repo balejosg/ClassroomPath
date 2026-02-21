@@ -28,6 +28,17 @@ pool.on('error', (err) => {
 
 export const openpathDb = drizzle(pool);
 
+export async function notifyOpenPathEvent(event: unknown): Promise<void> {
+  try {
+    await pool.query('SELECT pg_notify($1, $2)', ['openpath_events', JSON.stringify(event)]);
+  } catch (err) {
+    // Best-effort: notifications should not break normal operations.
+    console.warn('Failed to NOTIFY openpath_events', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 export async function closeOpenPathConnection() {
   await pool.end();
 }

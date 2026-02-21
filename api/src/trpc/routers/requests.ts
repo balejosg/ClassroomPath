@@ -2,7 +2,13 @@ import { z } from 'zod';
 import { router, tenantProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 import { nanoid } from 'nanoid';
-import { openpathDb, requests, whitelistRules } from '../../db/openpath.js';
+import {
+  notifyOpenPathEvent,
+  openpathDb,
+  requests,
+  whitelistGroups,
+  whitelistRules,
+} from '../../db/openpath.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import { eq, inArray, and, sql } from 'drizzle-orm';
@@ -284,7 +290,7 @@ export const requestsRouter = router({
     await assertRequestBelongsToTenant(tenantContext, requestGroupId);
     assertCanManageGroup(tenantContext, requestGroupId);
 
-    await openpathDb
+    const inserted = await openpathDb
       .insert(whitelistRules)
       .values({
         id: `rule-${nanoid(16)}`,
@@ -294,7 +300,17 @@ export const requestsRouter = router({
       })
       .onConflictDoNothing({
         target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
-      });
+      })
+      .returning();
+
+    if (inserted.length > 0) {
+      // Touch export version + notify OpenPath SSE via LISTEN/NOTIFY
+      await openpathDb
+        .update(whitelistGroups)
+        .set({ updatedAt: new Date() } as any)
+        .where(eq(whitelistGroups.id, requestGroupId));
+      await notifyOpenPathEvent({ type: 'group', groupId: requestGroupId });
+    }
 
     await openpathDb
       .update(requests)

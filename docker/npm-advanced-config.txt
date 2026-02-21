@@ -1,0 +1,93 @@
+# ClassroomPath - Nginx Proxy Manager (NPM) Advanced Config
+#
+# Paste this into the "Advanced" tab of your NPM Proxy Host.
+#
+# Assumptions:
+# - The Proxy Host "Forward Hostname/IP" points to the SPA container (nginx)
+# - API-style paths are routed to the Gateway container, which then proxies to OpenPath API
+#
+# Containers / ports (docker-compose defaults):
+# - classroompath-gateway:3001
+
+# -----------------------------------------------------------------------------
+# Server-Sent Events (SSE) - DO NOT buffer
+# -----------------------------------------------------------------------------
+
+location = /api/machines/events {
+    proxy_pass http://classroompath-gateway:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
+
+    proxy_buffering off;
+    proxy_cache off;
+    gzip off;
+
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_connect_timeout 5s;
+
+    proxy_next_upstream off;
+}
+
+# -----------------------------------------------------------------------------
+# Gateway-routed API paths
+# -----------------------------------------------------------------------------
+
+location /cp/ {
+    proxy_pass http://classroompath-gateway:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /api/ {
+    proxy_pass http://classroompath-gateway:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+
+location /trpc/ {
+    proxy_pass http://classroompath-gateway:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+
+location /w/ {
+    proxy_pass http://classroompath-gateway:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /export/ {
+    proxy_pass http://classroompath-gateway:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location = /health {
+    proxy_pass http://classroompath-gateway:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+}

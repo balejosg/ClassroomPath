@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, tenantProcedure } from '../trpc.js';
-import { openpathDb } from '../../db/openpath.js';
+import { openpathDb, notifyOpenPathEvent } from '../../db/openpath.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import { eq, inArray, and, sql } from 'drizzle-orm';
@@ -332,6 +332,8 @@ export const classroomsRouter = router({
             ? 'default'
             : 'none';
 
+      await notifyOpenPathEvent({ type: 'classroom', classroomId: updated.id });
+
       // Serialize Date fields for JSON compatibility
       return {
         id: updated.id,
@@ -462,6 +464,10 @@ export const classroomsRouter = router({
       .set(updateData)
       .where(eq(classrooms.id, id))
       .returning();
+
+    if (input.defaultGroupId !== undefined || input.activeGroupId !== undefined) {
+      await notifyOpenPathEvent({ type: 'classroom', classroomId: updated.id });
+    }
 
     const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
     const currentGroupId =

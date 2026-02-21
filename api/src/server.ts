@@ -39,6 +39,17 @@ app.get(
   })
 );
 
+// SSE must be streamed end-to-end (no buffering, no proxy timeouts)
+app.use(
+  '/api/machines/events',
+  createProxyMiddleware({
+    target: openPathApiTarget,
+    changeOrigin: true,
+    proxyTimeout: 0,
+    timeout: 0,
+  })
+);
+
 // Block sensitive OpenPath endpoints - force use of /cp/trpc/* for tenant-filtered data
 
 app.use((req, res, next) => {

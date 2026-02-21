@@ -1,12 +1,24 @@
 // @ts-nocheck
 import { z } from 'zod';
 import { router, tenantProcedure } from '../trpc.js';
-import { openpathDb, whitelistGroups, whitelistRules } from '../../db/openpath.js';
+import {
+  openpathDb,
+  whitelistGroups,
+  whitelistRules,
+  notifyOpenPathEvent,
+} from '../../db/openpath.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getRootDomain } from '../../utils/domain.js';
+
+async function touchGroupUpdatedAt(groupId: string): Promise<void> {
+  await openpathDb
+    .update(whitelistGroups)
+    .set({ updatedAt: new Date() } as any)
+    .where(eq(whitelistGroups.id, groupId));
+}
 
 const CreateGroupSchema = z.object({
   name: z.string().min(1).max(100),
@@ -494,6 +506,14 @@ export const groupsRouter = router({
     // Delete the rules
     await openpathDb.delete(whitelistRules).where(inArray(whitelistRules.id, accessibleIds));
 
+    // Touch affected group versions for agent cache/ETag correctness
+    const affectedGroupIds = [...new Set(accessibleRules.map((r) => r.groupId))];
+    await Promise.all(affectedGroupIds.map((gid) => touchGroupUpdatedAt(gid)));
+
+    await Promise.all(
+      affectedGroupIds.map((groupId) => notifyOpenPathEvent({ type: 'group', groupId }))
+    );
+
     // Return in format expected by SPA for undo support
     return {
       rules: accessibleRules.map((r) => ({
@@ -557,6 +577,7 @@ export const groupsRouter = router({
     const { id, ...rest } = input;
     const updateData = {
       ...rest,
+      updatedAt: new Date(),
       ...(rest.enabled === undefined
         ? {}
         : {
@@ -569,6 +590,8 @@ export const groupsRouter = router({
       .set(updateData)
       .where(eq(whitelistGroups.id, id))
       .returning();
+
+    await notifyOpenPathEvent({ type: 'group', groupId: updated.id });
 
     // Serialize Date fields for JSON compatibility
     return {
@@ -602,6 +625,8 @@ export const groupsRouter = router({
       .where(eq(schema.cpOrganizationGroups.id, orgGroup[0].id));
 
     await openpathDb.delete(whitelistGroups).where(eq(whitelistGroups.id, input.id));
+
+    await notifyOpenPathEvent({ type: 'group', groupId: input.id });
 
     return { success: true };
   }),
@@ -668,6 +693,8 @@ export const groupsRouter = router({
     }
 
     const rule = insertResult[0];
+    await touchGroupUpdatedAt(input.groupId);
+    await notifyOpenPathEvent({ type: 'group', groupId: input.groupId });
     // Serialize Date fields for JSON compatibility
     return {
       id: rule.id,
@@ -743,6 +770,8 @@ export const groupsRouter = router({
     }
 
     const rule = insertResult[0];
+    await touchGroupUpdatedAt(input.groupId);
+    await notifyOpenPathEvent({ type: 'group', groupId: input.groupId });
     return {
       id: rule.id,
       groupId: rule.groupId,
@@ -787,6 +816,11 @@ export const groupsRouter = router({
       })
       .returning();
 
+    if (insertedRules.length > 0) {
+      await touchGroupUpdatedAt(input.groupId);
+      await notifyOpenPathEvent({ type: 'group', groupId: input.groupId });
+    }
+
     // Return count like OpenPath does
     return { count: insertedRules.length };
   }),
@@ -809,7 +843,24 @@ export const groupsRouter = router({
         throw new Error('Group not found or access denied');
       }
 
-      await openpathDb.delete(whitelistRules).where(eq(whitelistRules.id, input.id));
+      const [existing] = await openpathDb
+        .select()
+        .from(whitelistRules)
+        .where(eq(whitelistRules.id, input.id))
+        .limit(1);
+
+      if (!existing || existing.groupId !== input.groupId) {
+        throw new Error('Rule not found');
+      }
+
+      const deleteResult = await openpathDb
+        .delete(whitelistRules)
+        .where(eq(whitelistRules.id, input.id));
+
+      if ((deleteResult.rowCount ?? 0) > 0) {
+        await touchGroupUpdatedAt(existing.groupId);
+        await notifyOpenPathEvent({ type: 'group', groupId: existing.groupId });
+      }
 
       return { success: true };
     }),
@@ -850,6 +901,10 @@ export const groupsRouter = router({
         throw new Error('Rule not found');
       }
 
+      if (existing.groupId !== input.groupId) {
+        throw new Error('Rule not found');
+      }
+
       // Build update object
       const updates: Partial<{ value: string; comment: string | null }> = {};
 
@@ -872,7 +927,9 @@ export const groupsRouter = router({
           throw new Error('A rule with this value already exists');
         }
 
-        updates.value = normalizedValue;
+        if (normalizedValue !== existing.value) {
+          updates.value = normalizedValue;
+        }
       }
 
       if (input.comment !== undefined) {
@@ -882,6 +939,11 @@ export const groupsRouter = router({
       // Only update if there's something to update
       if (Object.keys(updates).length > 0) {
         await openpathDb.update(whitelistRules).set(updates).where(eq(whitelistRules.id, input.id));
+      }
+
+      if (updates.value !== undefined) {
+        await touchGroupUpdatedAt(input.groupId);
+        await notifyOpenPathEvent({ type: 'group', groupId: input.groupId });
       }
 
       // Return updated rule
