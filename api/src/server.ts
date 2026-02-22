@@ -10,6 +10,7 @@ import { createContext } from './trpc/context.js';
 import { config } from './config.js';
 import { findBlockedOpenPathProcedureFromUrl } from './lib/openpath-proxy-policy.js';
 import { logger } from './lib/logger.js';
+import { ACCESS_COOKIE_NAME, parseCookieValue } from './lib/session-cookies.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,12 +74,35 @@ app.use((req, res, next) => {
 });
 
 // Proxy OpenPath API routes (must be before express.json())
+
+const enrollTicketPathRegex = /^\/api\/enroll\/[^/]+\/ticket(?:\?|$)/;
+
 app.use(
   createProxyMiddleware({
     target: openPathApiTarget,
     changeOrigin: true,
     ws: true,
     pathFilter: ['/api', '/trpc', '/w', '/export', '/api-docs'],
+    on: {
+      proxyReq: (proxyReq, req) => {
+        const url = req.url ?? '';
+        if (req.method !== 'POST' || !enrollTicketPathRegex.test(url)) {
+          return;
+        }
+
+        // OpenPath's install command generation expects JWT auth for this endpoint.
+        // In ClassroomPath, the browser session is cookie-based (HttpOnly), so we
+        // inject the access token into the proxied Authorization header.
+        if (typeof req.headers.authorization === 'string' && req.headers.authorization.length > 0) {
+          return;
+        }
+
+        const cookieToken = parseCookieValue(req.headers.cookie, ACCESS_COOKIE_NAME);
+        if (cookieToken) {
+          proxyReq.setHeader('Authorization', `Bearer ${cookieToken}`);
+        }
+      },
+    },
   })
 );
 

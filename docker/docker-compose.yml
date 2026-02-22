@@ -46,6 +46,9 @@ services:
       - '3000'
     env_file:
       - ../config/.env
+    environment:
+      # OpenPath runs behind the ClassroomPath gateway; trust one proxy hop.
+      - TRUST_PROXY=1
     volumes:
       - api-data:/app/data
     healthcheck:
