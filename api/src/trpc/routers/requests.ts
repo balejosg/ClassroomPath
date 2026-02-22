@@ -6,6 +6,7 @@ import {
   openpathDb,
   publishWhitelistGroupChanged,
   requests,
+  roles,
   whitelistGroups,
   whitelistRules,
 } from '../../db/openpath.js';
@@ -17,26 +18,49 @@ type TenantUserRole = { role: string; groupIds?: string[] | null };
 
 type TenantRouterContext = {
   organizationId: string;
+  userRole?: string;
   user: {
+    sub: string;
     name?: string | null;
     email?: string | null;
     roles?: TenantUserRole[];
   };
 };
 
-function isAdminUser(ctx: {
-  user: { roles?: Array<{ role: string; groupIds?: string[] | null }> };
-}) {
-  return (ctx.user.roles ?? []).some((r) => r.role === 'admin');
+function isAdminUser(ctx: { userRole?: string }): boolean {
+  return ctx.userRole === 'admin';
 }
 
-function canTeacherManageGroup(
-  ctx: { user: { roles?: Array<{ role: string; groupIds?: string[] | null }> } },
-  groupId: string
-) {
-  return (ctx.user.roles ?? []).some(
-    (r) => r.role === 'teacher' && Array.isArray(r.groupIds) && r.groupIds.includes(groupId)
-  );
+async function getTeacherGroupIdentifiers(userId: string): Promise<Set<string>> {
+  const rows = await openpathDb
+    .select({ role: roles.role, groupIds: roles.groupIds })
+    .from(roles)
+    .where(eq(roles.userId, userId));
+
+  const identifiers = new Set<string>();
+  for (const r of rows) {
+    if (r.role !== 'teacher') continue;
+    if (!Array.isArray(r.groupIds)) continue;
+    for (const gid of r.groupIds) {
+      if (typeof gid === 'string' && gid.trim()) identifiers.add(gid.trim());
+    }
+  }
+  return identifiers;
+}
+
+async function canTeacherManageGroup(ctx: TenantRouterContext, groupId: string): Promise<boolean> {
+  if (ctx.userRole !== 'teacher') return false;
+  const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
+  if (identifiers.has(groupId)) return true;
+
+  // Backwards-compatible: role.groupIds may store group names.
+  const group = await openpathDb
+    .select({ id: whitelistGroups.id, name: whitelistGroups.name })
+    .from(whitelistGroups)
+    .where(eq(whitelistGroups.id, groupId))
+    .limit(1);
+
+  return !!group[0] && identifiers.has(group[0].name);
 }
 
 async function groupBelongsToOrganization(
@@ -66,6 +90,28 @@ async function getTenantGroupIds(organizationId: string): Promise<string[]> {
   return orgGroups.map((group) => group.groupId);
 }
 
+async function getAccessibleTenantGroupIds(params: {
+  organizationId: string;
+  userRole?: string;
+  userId: string;
+}): Promise<string[]> {
+  const groupIds = await getTenantGroupIds(params.organizationId);
+  if (groupIds.length === 0) return [];
+
+  if (params.userRole === 'admin') return groupIds;
+  if (params.userRole !== 'teacher') return [];
+
+  const identifiers = await getTeacherGroupIdentifiers(params.userId);
+  if (identifiers.size === 0) return [];
+
+  const groups = await openpathDb
+    .select({ id: whitelistGroups.id, name: whitelistGroups.name })
+    .from(whitelistGroups)
+    .where(inArray(whitelistGroups.id, groupIds));
+
+  return groups.filter((g) => identifiers.has(g.id) || identifiers.has(g.name)).map((g) => g.id);
+}
+
 async function assertGroupBelongsToTenant(
   ctx: TenantRouterContext,
   groupId: string
@@ -79,14 +125,14 @@ async function assertGroupBelongsToTenant(
   }
 }
 
-function assertCanManageGroup(ctx: TenantRouterContext, groupId: string): void {
-  const allowed = isAdminUser(ctx) || canTeacherManageGroup(ctx, groupId);
-  if (!allowed) {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: 'Insufficient permissions for this group',
-    });
-  }
+async function assertCanManageGroup(ctx: TenantRouterContext, groupId: string): Promise<void> {
+  if (isAdminUser(ctx)) return;
+  const allowed = await canTeacherManageGroup(ctx, groupId);
+  if (allowed) return;
+  throw new TRPCError({
+    code: 'FORBIDDEN',
+    message: 'Insufficient permissions for this group',
+  });
 }
 
 async function getRequestById(requestId: string) {
@@ -164,10 +210,12 @@ export const requestsRouter = router({
 
       const tenantContext: TenantRouterContext = {
         organizationId: requireTenantOrganizationId(ctx.organizationId),
+        userRole: ctx.userRole,
         user: ctx.user,
       };
 
       await assertGroupBelongsToTenant(tenantContext, input.groupId);
+      await assertCanManageGroup(tenantContext, input.groupId);
 
       const pendingRequest = await openpathDb
         .select({ id: requests.id })
@@ -212,7 +260,12 @@ export const requestsRouter = router({
 
   // List groups for the organization (used by DomainRequests dropdown)
   listGroups: tenantProcedure.query(async ({ ctx }) => {
-    const groupIds = await getTenantGroupIds(requireTenantOrganizationId(ctx.organizationId));
+    const organizationId = requireTenantOrganizationId(ctx.organizationId);
+    const groupIds = await getAccessibleTenantGroupIds({
+      organizationId,
+      userRole: ctx.userRole,
+      userId: ctx.user.sub,
+    });
 
     if (groupIds.length === 0) return [];
 
@@ -234,7 +287,12 @@ export const requestsRouter = router({
    * Returns counts by status: total, pending, approved, rejected.
    */
   stats: tenantProcedure.query(async ({ ctx }) => {
-    const groupIds = await getTenantGroupIds(requireTenantOrganizationId(ctx.organizationId));
+    const organizationId = requireTenantOrganizationId(ctx.organizationId);
+    const groupIds = await getAccessibleTenantGroupIds({
+      organizationId,
+      userRole: ctx.userRole,
+      userId: ctx.user.sub,
+    });
 
     if (groupIds.length === 0) {
       return { total: 0, pending: 0, approved: 0, rejected: 0 };
@@ -257,7 +315,12 @@ export const requestsRouter = router({
   list: tenantProcedure
     .input(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
     .query(async ({ ctx, input }) => {
-      const groupIds = await getTenantGroupIds(requireTenantOrganizationId(ctx.organizationId));
+      const organizationId = requireTenantOrganizationId(ctx.organizationId);
+      const groupIds = await getAccessibleTenantGroupIds({
+        organizationId,
+        userRole: ctx.userRole,
+        userId: ctx.user.sub,
+      });
 
       if (groupIds.length === 0) return [];
 
@@ -279,6 +342,7 @@ export const requestsRouter = router({
   approve: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
     const tenantContext: TenantRouterContext = {
       organizationId: requireTenantOrganizationId(ctx.organizationId),
+      userRole: ctx.userRole,
       user: ctx.user,
     };
 
@@ -286,7 +350,7 @@ export const requestsRouter = router({
     const requestGroupId = assertRequestHasGroupId(request);
     assertPendingRequest(request);
     await assertRequestBelongsToTenant(tenantContext, requestGroupId);
-    assertCanManageGroup(tenantContext, requestGroupId);
+    await assertCanManageGroup(tenantContext, requestGroupId);
 
     const inserted = await openpathDb
       .insert(whitelistRules)
@@ -325,6 +389,7 @@ export const requestsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const tenantContext: TenantRouterContext = {
         organizationId: requireTenantOrganizationId(ctx.organizationId),
+        userRole: ctx.userRole,
         user: ctx.user,
       };
 
@@ -332,7 +397,7 @@ export const requestsRouter = router({
       const requestGroupId = assertRequestHasGroupId(request);
       assertPendingRequest(request);
       await assertRequestBelongsToTenant(tenantContext, requestGroupId);
-      assertCanManageGroup(tenantContext, requestGroupId);
+      await assertCanManageGroup(tenantContext, requestGroupId);
 
       await openpathDb
         .update(requests)
@@ -351,6 +416,7 @@ export const requestsRouter = router({
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
     const tenantContext: TenantRouterContext = {
       organizationId: requireTenantOrganizationId(ctx.organizationId),
+      userRole: ctx.userRole,
       user: ctx.user,
     };
 

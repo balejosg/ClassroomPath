@@ -73,12 +73,12 @@ async function bootstrapOrg(admin: { token: string }): Promise<{ organizationId:
   return { organizationId: String(data.organizationId) };
 }
 
-async function createGroup(admin: { token: string }): Promise<{ groupId: string }> {
+async function createGroup(user: { token: string }, name: string): Promise<{ groupId: string }> {
   const resp = await trpcMutate(
     API_URL,
     'groups.create',
-    { name: 'sched-test-group', displayName: 'Schedules Group' },
-    bearerAuth(admin.token)
+    { name, displayName: name },
+    bearerAuth(user.token)
   );
   assertStatus(resp, 200);
   const { data } = (await parseTRPC(resp)) as { data: any };
@@ -200,7 +200,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     });
     const { organizationId } = await bootstrapOrg({ token: adminToken });
 
-    const { groupId } = await createGroup({ token: adminToken });
+    const { groupId: adminGroupId } = await createGroup({ token: adminToken }, 'sched-admin-group');
     const { classroomId } = await createClassroom({ token: adminToken });
 
     // Teacher joins org
@@ -226,7 +226,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       'schedules.create',
       {
         classroomId,
-        groupId,
+        groupId: adminGroupId,
         dayOfWeek: 1,
         startTime: '10:00',
         endTime: '11:00',
@@ -240,25 +240,22 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       'You can only create schedules for your assigned groups'
     );
 
-    // Now give teacher an approval role for that group
-    const teacherTokenWithGroup = signToken({
-      userId: teacherUserId,
-      email: teacherEmail,
-      name: 'Teacher User',
-      roles: [{ role: 'teacher', groupIds: [groupId] }],
-    });
-
+    // Teacher creates their own group and can schedule with it
+    const { groupId: teacherGroupId } = await createGroup(
+      { token: teacherTokenNoGroups },
+      'sched-teacher-group'
+    );
     const createResp = await trpcMutate(
       API_URL,
       'schedules.create',
       {
         classroomId,
-        groupId,
+        groupId: teacherGroupId,
         dayOfWeek: 1,
         startTime: '10:00',
         endTime: '11:00',
       },
-      bearerAuth(teacherTokenWithGroup)
+      bearerAuth(teacherTokenNoGroups)
     );
     assertStatus(createResp, 200);
     const { data: created } = (await parseTRPC(createResp)) as { data: any };
@@ -270,7 +267,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       API_URL,
       'schedules.getMine',
       undefined,
-      bearerAuth(teacherTokenWithGroup)
+      bearerAuth(teacherTokenNoGroups)
     );
     assertStatus(mineResp, 200);
     const { data: mine } = (await parseTRPC(mineResp)) as { data: any[] };
@@ -294,7 +291,6 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
     const { organizationId } = await bootstrapOrg({ token: adminToken });
-    const { groupId } = await createGroup({ token: adminToken });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     // Teacher A joins org, has group approval
@@ -305,7 +301,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       userId: teacherAId,
       email: teacherAEmail,
       name: 'Teacher A',
-      roles: [{ role: 'teacher', groupIds: [groupId] }],
+      roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveTeacher({
       adminToken,
@@ -313,6 +309,11 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       teacherUserId: teacherAId,
       organizationId,
     });
+
+    const { groupId: groupAId } = await createGroup(
+      { token: teacherAToken },
+      'sched-teacher-a-group'
+    );
 
     // Teacher B joins org, has group approval
     const teacherBId = 'sched-teacher-b';
@@ -322,7 +323,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       userId: teacherBId,
       email: teacherBEmail,
       name: 'Teacher B',
-      roles: [{ role: 'teacher', groupIds: [groupId] }],
+      roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveTeacher({
       adminToken,
@@ -337,7 +338,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       'schedules.create',
       {
         classroomId,
-        groupId,
+        groupId: groupAId,
         dayOfWeek: 2,
         startTime: '09:00',
         endTime: '10:00',

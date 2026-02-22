@@ -23,7 +23,8 @@ import {
 } from '../test-utils.js';
 
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
-import { closeConnection } from '../../src/db/index.js';
+import { db, closeConnection } from '../../src/db/index.js';
+import * as cpSchema from '../../src/db/schema.js';
 import { closeOpenPathConnection } from '../../src/db/openpath.js';
 
 let PORT: number;
@@ -105,6 +106,30 @@ async function createClassroom(
   const { data } = (await parseTRPC(resp)) as { data: any };
   assert.ok(data?.id, 'classrooms.create should return id');
   return { classroomId: String(data.id) };
+}
+
+async function approveOrgMember(params: {
+  adminToken: string;
+  memberToken: string;
+  memberUserId: string;
+  organizationId: string;
+  role: 'teacher' | 'student';
+}): Promise<void> {
+  const waitResp = await trpcMutate(
+    API_URL,
+    'onboarding.waitForInvitation',
+    { targetOrganizationId: params.organizationId },
+    bearerAuth(params.memberToken)
+  );
+  assertStatus(waitResp, 200);
+
+  const approveResp = await trpcMutate(
+    API_URL,
+    'pendingUsers.approve',
+    { userId: params.memberUserId, role: params.role },
+    bearerAuth(params.adminToken)
+  );
+  assertStatus(approveResp, 200);
 }
 
 function withMockedDate<T>(date: Date, fn: () => Promise<T>): Promise<T> {
@@ -398,5 +423,152 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const enableData = (await parseTRPC(enableResp)) as { data: any };
     assert.strictEqual(enableData.data.id, groupId);
     assert.strictEqual(Number(enableData.data.enabled), 1);
+  });
+
+  test('groups.delete does not delete group when shared across organizations', async () => {
+    await resetDb();
+
+    const adminAUserId = 'groups-delete-admin-a';
+    const adminAEmail = uniqueEmail('gda');
+    await ensureOpenPathUser({ userId: adminAUserId, email: adminAEmail, name: 'Admin A' });
+    const adminAToken = signToken({
+      userId: adminAUserId,
+      email: adminAEmail,
+      name: 'Admin A',
+      roles: [{ role: 'admin' }],
+    });
+    await bootstrapOrg({ token: adminAToken });
+
+    const adminBUserId = 'groups-delete-admin-b';
+    const adminBEmail = uniqueEmail('gdb');
+    await ensureOpenPathUser({ userId: adminBUserId, email: adminBEmail, name: 'Admin B' });
+    const adminBToken = signToken({
+      userId: adminBUserId,
+      email: adminBEmail,
+      name: 'Admin B',
+      roles: [{ role: 'admin' }],
+    });
+    const { organizationId: orgB } = await bootstrapOrg({ token: adminBToken });
+
+    const { groupId } = await createGroup({ token: adminAToken }, 'shared-group-delete-test');
+
+    // Simulate an accidental/shared link: same whitelist group linked to a second org.
+    await db.insert(cpSchema.cpOrganizationGroups).values({
+      id: `og-b-${groupId}`,
+      organizationId: orgB,
+      groupId,
+    });
+
+    const deleteResp = await trpcMutate(
+      API_URL,
+      'groups.delete',
+      { id: groupId },
+      bearerAuth(adminAToken)
+    );
+    assertStatus(deleteResp, 200);
+
+    const getResp = await trpcQuery(
+      API_URL,
+      'groups.getById',
+      { id: groupId },
+      bearerAuth(adminBToken)
+    );
+    assertStatus(getResp, 200);
+    const { data: got } = (await parseTRPC(getResp)) as { data: any };
+    assert.ok(got, 'group should still exist for other org');
+    assert.strictEqual(String(got.id), groupId);
+  });
+
+  test('classrooms.update blocks students and enforces teacher group ownership for defaultGroupId', async () => {
+    await resetDb();
+
+    const adminUserId = 'classrooms-admin-perms';
+    const adminEmail = uniqueEmail('admin-perms');
+    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
+    const adminToken = signToken({
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin User',
+      roles: [{ role: 'admin' }],
+    });
+
+    const { organizationId } = await bootstrapOrg({ token: adminToken });
+
+    const { groupId: adminGroupId } = await createGroup({ token: adminToken }, 'admin-owned-group');
+    const { classroomId } = await createClassroom(
+      { token: adminToken },
+      { name: 'perms-classroom', displayName: 'Perms Classroom' }
+    );
+
+    const teacherUserId = 'classrooms-teacher-perms';
+    const teacherEmail = uniqueEmail('teacher-perms');
+    await ensureOpenPathUser({ userId: teacherUserId, email: teacherEmail, name: 'Teacher User' });
+    const teacherToken = signToken({
+      userId: teacherUserId,
+      email: teacherEmail,
+      name: 'Teacher User',
+      roles: [{ role: 'teacher', groupIds: [] }],
+    });
+    await approveOrgMember({
+      adminToken,
+      memberToken: teacherToken,
+      memberUserId: teacherUserId,
+      organizationId,
+      role: 'teacher',
+    });
+
+    const forbiddenDefault = await trpcMutate(
+      API_URL,
+      'classrooms.update',
+      { id: classroomId, defaultGroupId: adminGroupId },
+      bearerAuth(teacherToken)
+    );
+    assertStatus(forbiddenDefault, 403);
+
+    const teacherGroupResp = await trpcMutate(
+      API_URL,
+      'groups.create',
+      { name: 'teacher-owned-group', displayName: 'Teacher Owned Group' },
+      bearerAuth(teacherToken)
+    );
+    assertStatus(teacherGroupResp, 200);
+    const { data: teacherGroup } = (await parseTRPC(teacherGroupResp)) as { data: any };
+    assert.ok(teacherGroup?.id, 'groups.create should return id');
+    const teacherGroupId = String(teacherGroup.id);
+
+    const allowedDefault = await trpcMutate(
+      API_URL,
+      'classrooms.update',
+      { id: classroomId, defaultGroupId: teacherGroupId },
+      bearerAuth(teacherToken)
+    );
+    assertStatus(allowedDefault, 200);
+    const { data: updated } = (await parseTRPC(allowedDefault)) as { data: any };
+    assert.strictEqual(updated.defaultGroupId, teacherGroupId);
+
+    const studentUserId = 'classrooms-student-perms';
+    const studentEmail = uniqueEmail('student-perms');
+    await ensureOpenPathUser({ userId: studentUserId, email: studentEmail, name: 'Student User' });
+    const studentToken = signToken({
+      userId: studentUserId,
+      email: studentEmail,
+      name: 'Student User',
+      roles: [{ role: 'student' }],
+    });
+    await approveOrgMember({
+      adminToken,
+      memberToken: studentToken,
+      memberUserId: studentUserId,
+      organizationId,
+      role: 'student',
+    });
+
+    const studentUpdate = await trpcMutate(
+      API_URL,
+      'classrooms.update',
+      { id: classroomId, displayName: 'Hacked Classroom' },
+      bearerAuth(studentToken)
+    );
+    assertStatus(studentUpdate, 403);
   });
 });

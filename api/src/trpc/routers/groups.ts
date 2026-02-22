@@ -1,8 +1,10 @@
 // @ts-nocheck
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, tenantProcedure } from '../trpc.js';
 import {
   openpathDb,
+  roles,
   whitelistGroups,
   whitelistRules,
   notifyOpenPathGroupChanged,
@@ -14,6 +16,123 @@ import * as schema from '../../db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getRootDomain } from '../../utils/domain.js';
+
+function requireTeacherOrAdmin(ctx: { userRole?: string }): void {
+  // tenantProcedure guarantees membership, but we explicitly block students from group management.
+  if (ctx.userRole !== 'admin' && ctx.userRole !== 'teacher') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Teacher access required' });
+  }
+}
+
+function isOrgAdmin(ctx: { userRole?: string }): boolean {
+  return ctx.userRole === 'admin';
+}
+
+async function assertOrgGroupAccess(organizationId: string, groupId: string): Promise<void> {
+  const orgGroup = await db
+    .select({ id: schema.cpOrganizationGroups.id })
+    .from(schema.cpOrganizationGroups)
+    .where(
+      and(
+        eq(schema.cpOrganizationGroups.organizationId, organizationId),
+        eq(schema.cpOrganizationGroups.groupId, groupId)
+      )
+    )
+    .limit(1);
+
+  if (!orgGroup.length) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found or access denied' });
+  }
+}
+
+async function getTeacherGroupIdentifiers(userId: string): Promise<Set<string>> {
+  const rows = await openpathDb
+    .select({ role: roles.role, groupIds: roles.groupIds })
+    .from(roles)
+    .where(eq(roles.userId, userId));
+
+  const identifiers = new Set<string>();
+  for (const r of rows) {
+    if (r.role !== 'teacher') continue;
+    if (!Array.isArray(r.groupIds)) continue;
+    for (const gid of r.groupIds) {
+      if (typeof gid === 'string' && gid.trim()) identifiers.add(gid.trim());
+    }
+  }
+
+  return identifiers;
+}
+
+async function assertTeacherOwnsGroup(params: { userId: string; groupId: string }): Promise<void> {
+  const identifiers = await getTeacherGroupIdentifiers(params.userId);
+  if (identifiers.has(params.groupId)) return;
+
+  // Backwards-compatible: some role.groupIds may store group names.
+  const group = await openpathDb
+    .select({ id: whitelistGroups.id, name: whitelistGroups.name })
+    .from(whitelistGroups)
+    .where(eq(whitelistGroups.id, params.groupId))
+    .limit(1);
+
+  if (group[0] && identifiers.has(group[0].name)) return;
+
+  throw new TRPCError({ code: 'FORBIDDEN', message: 'Insufficient permissions for this group' });
+}
+
+async function assertGroupAccess(ctx: any, groupId: string): Promise<void> {
+  requireTeacherOrAdmin(ctx);
+  await assertOrgGroupAccess(ctx.organizationId!, groupId);
+  if (isOrgAdmin(ctx)) return;
+  await assertTeacherOwnsGroup({ userId: ctx.user.sub, groupId });
+}
+
+async function addGroupToTeacherRole(params: {
+  userId: string;
+  groupId: string;
+  createdBy: string;
+}): Promise<void> {
+  const existingRoles = await openpathDb
+    .select()
+    .from(roles)
+    .where(eq(roles.userId, params.userId));
+  const teacherRole = existingRoles.find((r) => r.role === 'teacher');
+
+  if (!teacherRole) {
+    await openpathDb.insert(roles).values({
+      id: nanoid(),
+      userId: params.userId,
+      role: 'teacher',
+      groupIds: [params.groupId],
+      createdBy: params.createdBy,
+    });
+    return;
+  }
+
+  const current = Array.isArray(teacherRole.groupIds) ? teacherRole.groupIds : [];
+  const next = [...new Set([...current, params.groupId])];
+  await openpathDb
+    .update(roles)
+    .set({ groupIds: next as any })
+    .where(eq(roles.id, teacherRole.id));
+}
+
+async function removeGroupFromTeacherRole(params: {
+  userId: string;
+  groupId: string;
+}): Promise<void> {
+  const existingRoles = await openpathDb
+    .select()
+    .from(roles)
+    .where(eq(roles.userId, params.userId));
+  const teacherRole = existingRoles.find((r) => r.role === 'teacher');
+  if (!teacherRole || !Array.isArray(teacherRole.groupIds)) return;
+
+  const next = teacherRole.groupIds.filter((gid) => gid !== params.groupId);
+  await openpathDb
+    .update(roles)
+    .set({ groupIds: next as any })
+    .where(eq(roles.id, teacherRole.id));
+}
 
 const CreateGroupSchema = z.object({
   name: z.string().min(1).max(100),
@@ -65,6 +184,7 @@ const ListRulesGroupedSchema = z.object({
 
 export const groupsRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
+    requireTeacherOrAdmin(ctx);
     const orgGroups = await db
       .select()
       .from(schema.cpOrganizationGroups)
@@ -79,18 +199,30 @@ export const groupsRouter = router({
       .from(whitelistGroups)
       .where(inArray(whitelistGroups.id, groupIds));
 
+    const visibleGroups = isOrgAdmin(ctx)
+      ? groups
+      : await (async () => {
+          const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
+          if (identifiers.size === 0) return [];
+          return groups.filter((g) => identifiers.has(g.id) || identifiers.has(g.name));
+        })();
+
+    const visibleGroupIds = visibleGroups.map((g) => g.id);
+
+    if (visibleGroupIds.length === 0) return [];
+
     // Get all rules for these groups to calculate counts
     const allRules = await openpathDb
       .select()
       .from(whitelistRules)
-      .where(inArray(whitelistRules.groupId, groupIds));
+      .where(inArray(whitelistRules.groupId, visibleGroupIds));
 
     // Build a map of groupId -> rule counts
     const ruleCounts = new Map<
       string,
       { whitelistCount: number; blockedSubdomainCount: number; blockedPathCount: number }
     >();
-    for (const groupId of groupIds) {
+    for (const groupId of visibleGroupIds) {
       const groupRules = allRules.filter((r) => r.groupId === groupId);
       ruleCounts.set(groupId, {
         whitelistCount: groupRules.filter((r) => r.type === 'whitelist').length,
@@ -100,7 +232,7 @@ export const groupsRouter = router({
     }
 
     // Serialize Date fields for JSON compatibility and include rule counts
-    return groups.map((g) => {
+    return visibleGroups.map((g) => {
       const counts = ruleCounts.get(g.id) || {
         whitelistCount: 0,
         blockedSubdomainCount: 0,
@@ -125,6 +257,7 @@ export const groupsRouter = router({
    * Returns counts of groups, whitelist rules, and blocked rules.
    */
   stats: tenantProcedure.query(async ({ ctx }) => {
+    requireTeacherOrAdmin(ctx);
     // Get groups belonging to this organization
     const orgGroups = await db
       .select()
@@ -137,11 +270,29 @@ export const groupsRouter = router({
       return { groupCount: 0, whitelistCount: 0, blockedCount: 0 };
     }
 
+    const effectiveGroupIds = isOrgAdmin(ctx)
+      ? groupIds
+      : await (async () => {
+          const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
+          if (identifiers.size === 0) return [];
+          const groups = await openpathDb
+            .select({ id: whitelistGroups.id, name: whitelistGroups.name })
+            .from(whitelistGroups)
+            .where(inArray(whitelistGroups.id, groupIds));
+          return groups
+            .filter((g) => identifiers.has(g.id) || identifiers.has(g.name))
+            .map((g) => g.id);
+        })();
+
+    if (effectiveGroupIds.length === 0) {
+      return { groupCount: 0, whitelistCount: 0, blockedCount: 0 };
+    }
+
     // Get all rules for these groups
     const rules = await openpathDb
       .select()
       .from(whitelistRules)
-      .where(inArray(whitelistRules.groupId, groupIds));
+      .where(inArray(whitelistRules.groupId, effectiveGroupIds));
 
     const whitelistCount = rules.filter((r) => r.type === 'whitelist').length;
     const blockedCount = rules.filter(
@@ -149,27 +300,14 @@ export const groupsRouter = router({
     ).length;
 
     return {
-      groupCount: groupIds.length,
+      groupCount: effectiveGroupIds.length,
       whitelistCount,
       blockedCount,
     };
   }),
 
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    const orgGroup = await db
-      .select()
-      .from(schema.cpOrganizationGroups)
-      .where(
-        and(
-          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationGroups.groupId, input.id)
-        )
-      )
-      .limit(1);
-
-    if (!orgGroup.length) {
-      throw new Error('Group not found or access denied');
-    }
+    await assertGroupAccess(ctx, input.id);
 
     const group = await openpathDb
       .select()
@@ -194,20 +332,7 @@ export const groupsRouter = router({
   getRules: tenantProcedure
     .input(z.object({ groupId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const orgGroup = await db
-        .select()
-        .from(schema.cpOrganizationGroups)
-        .where(
-          and(
-            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-            eq(schema.cpOrganizationGroups.groupId, input.groupId)
-          )
-        )
-        .limit(1);
-
-      if (!orgGroup.length) {
-        throw new Error('Group not found or access denied');
-      }
+      await assertGroupAccess(ctx, input.groupId);
 
       const rules = await openpathDb
         .select()
@@ -226,6 +351,7 @@ export const groupsRouter = router({
     }),
 
   getByName: tenantProcedure.input(z.object({ name: z.string() })).query(async ({ ctx, input }) => {
+    requireTeacherOrAdmin(ctx);
     const group = await openpathDb
       .select()
       .from(whitelistGroups)
@@ -235,7 +361,7 @@ export const groupsRouter = router({
     if (!group.length) return null;
 
     const orgGroup = await db
-      .select()
+      .select({ id: schema.cpOrganizationGroups.id })
       .from(schema.cpOrganizationGroups)
       .where(
         and(
@@ -245,8 +371,13 @@ export const groupsRouter = router({
       )
       .limit(1);
 
-    if (!orgGroup.length) {
-      return null; // Group exists in OpenPath but not in this org
+    if (!orgGroup.length) return null; // Group exists in OpenPath but not in this org
+
+    if (!isOrgAdmin(ctx)) {
+      const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
+      if (!identifiers.has(group[0].id) && !identifiers.has(group[0].name)) {
+        return null;
+      }
     }
 
     // Serialize Date fields for JSON compatibility
@@ -269,20 +400,7 @@ export const groupsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const orgGroup = await db
-        .select()
-        .from(schema.cpOrganizationGroups)
-        .where(
-          and(
-            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-            eq(schema.cpOrganizationGroups.groupId, input.groupId)
-          )
-        )
-        .limit(1);
-
-      if (!orgGroup.length) {
-        throw new Error('Group not found or access denied');
-      }
+      await assertGroupAccess(ctx, input.groupId);
 
       // Build query with optional type filter
       const whereConditions = input.type
@@ -306,20 +424,7 @@ export const groupsRouter = router({
   listRulesPaginated: tenantProcedure
     .input(ListRulesPaginatedSchema)
     .query(async ({ ctx, input }) => {
-      const orgGroup = await db
-        .select()
-        .from(schema.cpOrganizationGroups)
-        .where(
-          and(
-            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-            eq(schema.cpOrganizationGroups.groupId, input.groupId)
-          )
-        )
-        .limit(1);
-
-      if (!orgGroup.length) {
-        throw new Error('Group not found or access denied');
-      }
+      await assertGroupAccess(ctx, input.groupId);
 
       // Build base query conditions
       const conditions: ReturnType<typeof eq>[] = [eq(whitelistRules.groupId, input.groupId)];
@@ -367,20 +472,7 @@ export const groupsRouter = router({
   // Grouped rules list - groups by root domain, paginates by domain groups
   // Ensures domain groups are never split across pages
   listRulesGrouped: tenantProcedure.input(ListRulesGroupedSchema).query(async ({ ctx, input }) => {
-    const orgGroup = await db
-      .select()
-      .from(schema.cpOrganizationGroups)
-      .where(
-        and(
-          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationGroups.groupId, input.groupId)
-        )
-      )
-      .limit(1);
-
-    if (!orgGroup.length) {
-      throw new Error('Group not found or access denied');
-    }
+    await assertGroupAccess(ctx, input.groupId);
 
     // Build base query conditions
     const conditions = [eq(whitelistRules.groupId, input.groupId)];
@@ -467,6 +559,7 @@ export const groupsRouter = router({
   // Bulk delete rules - OpenPath SPA RulesManager uses this
   // SPA sends { ids: string[] } and expects { rules: Rule[], deleted: number } for undo
   bulkDeleteRules: tenantProcedure.input(BulkDeleteRulesSchema).mutation(async ({ ctx, input }) => {
+    requireTeacherOrAdmin(ctx);
     // Get all rules to be deleted (for undo support)
     const rulesToDelete = await openpathDb
       .select()
@@ -478,22 +571,40 @@ export const groupsRouter = router({
     }
 
     // Verify all rules belong to groups the user has access to
-    const groupIds = [...new Set(rulesToDelete.map((r) => r.groupId))];
+    const ruleGroupIds = [...new Set(rulesToDelete.map((r) => r.groupId))];
     const orgGroups = await db
-      .select()
+      .select({ groupId: schema.cpOrganizationGroups.groupId })
       .from(schema.cpOrganizationGroups)
       .where(
         and(
           eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-          inArray(schema.cpOrganizationGroups.groupId, groupIds)
+          inArray(schema.cpOrganizationGroups.groupId, ruleGroupIds)
         )
       );
 
-    const accessibleGroupIds = new Set(orgGroups.map((og) => og.groupId));
-    const accessibleRules = rulesToDelete.filter((r) => accessibleGroupIds.has(r.groupId));
+    const orgGroupIdSet = new Set(orgGroups.map((og) => og.groupId));
+
+    const accessibleRules = isOrgAdmin(ctx)
+      ? rulesToDelete.filter((r) => orgGroupIdSet.has(r.groupId))
+      : await (async () => {
+          const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
+          if (identifiers.size === 0) return [];
+          const groups = await openpathDb
+            .select({ id: whitelistGroups.id, name: whitelistGroups.name })
+            .from(whitelistGroups)
+            .where(inArray(whitelistGroups.id, ruleGroupIds));
+          const allowedGroupIds = new Set(
+            groups
+              .filter(
+                (g) => orgGroupIdSet.has(g.id) && (identifiers.has(g.id) || identifiers.has(g.name))
+              )
+              .map((g) => g.id)
+          );
+          return rulesToDelete.filter((r) => allowedGroupIds.has(r.groupId));
+        })();
 
     if (accessibleRules.length === 0) {
-      throw new Error('No accessible rules found');
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'No accessible rules found' });
     }
 
     const accessibleIds = accessibleRules.map((r) => r.id);
@@ -520,6 +631,7 @@ export const groupsRouter = router({
   }),
 
   create: tenantProcedure.input(CreateGroupSchema).mutation(async ({ ctx, input }) => {
+    requireTeacherOrAdmin(ctx);
     const groupId = nanoid();
 
     const [group] = await openpathDb
@@ -538,6 +650,14 @@ export const groupsRouter = router({
       groupId: group.id,
     });
 
+    if (ctx.userRole === 'teacher') {
+      await addGroupToTeacherRole({
+        userId: ctx.user.sub,
+        groupId: group.id,
+        createdBy: ctx.user.sub,
+      });
+    }
+
     // Serialize Date fields for JSON compatibility
     return {
       id: group.id,
@@ -550,20 +670,7 @@ export const groupsRouter = router({
   }),
 
   update: tenantProcedure.input(UpdateGroupSchema).mutation(async ({ ctx, input }) => {
-    const orgGroup = await db
-      .select()
-      .from(schema.cpOrganizationGroups)
-      .where(
-        and(
-          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationGroups.groupId, input.id)
-        )
-      )
-      .limit(1);
-
-    if (!orgGroup.length) {
-      throw new Error('Group not found or access denied');
-    }
+    await assertGroupAccess(ctx, input.id);
 
     const { id, ...rest } = input;
     const updateData = {
@@ -596,26 +703,34 @@ export const groupsRouter = router({
   }),
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const orgGroup = await db
-      .select()
-      .from(schema.cpOrganizationGroups)
+    await assertGroupAccess(ctx, input.id);
+
+    await db
+      .delete(schema.cpOrganizationGroups)
       .where(
         and(
           eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
           eq(schema.cpOrganizationGroups.groupId, input.id)
         )
-      )
+      );
+
+    const stillReferenced = await db
+      .select({ id: schema.cpOrganizationGroups.id })
+      .from(schema.cpOrganizationGroups)
+      .where(eq(schema.cpOrganizationGroups.groupId, input.id))
       .limit(1);
 
-    if (!orgGroup.length) {
-      throw new Error('Group not found or access denied');
+    // Safety: if another organization still references the same OpenPath group,
+    // do not delete the underlying whitelist group row.
+    if (stillReferenced.length > 0) {
+      return { success: true };
     }
 
-    await db
-      .delete(schema.cpOrganizationGroups)
-      .where(eq(schema.cpOrganizationGroups.id, orgGroup[0].id));
-
     await openpathDb.delete(whitelistGroups).where(eq(whitelistGroups.id, input.id));
+
+    if (ctx.userRole === 'teacher') {
+      await removeGroupFromTeacherRole({ userId: ctx.user.sub, groupId: input.id });
+    }
 
     await notifyOpenPathGroupChanged(input.id);
 
@@ -623,20 +738,7 @@ export const groupsRouter = router({
   }),
 
   addRule: tenantProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
-    const orgGroup = await db
-      .select()
-      .from(schema.cpOrganizationGroups)
-      .where(
-        and(
-          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationGroups.groupId, input.groupId)
-        )
-      )
-      .limit(1);
-
-    if (!orgGroup.length) {
-      throw new Error('Group not found or access denied');
-    }
+    await assertGroupAccess(ctx, input.groupId);
 
     // Use atomic upsert with ON CONFLICT DO NOTHING to prevent race conditions
     // The database has a unique constraint on (groupId, type, value)
@@ -698,20 +800,7 @@ export const groupsRouter = router({
 
   // Alias for addRule - OpenPath SPA calls this
   createRule: tenantProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
-    const orgGroup = await db
-      .select()
-      .from(schema.cpOrganizationGroups)
-      .where(
-        and(
-          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationGroups.groupId, input.groupId)
-        )
-      )
-      .limit(1);
-
-    if (!orgGroup.length) {
-      throw new Error('Group not found or access denied');
-    }
+    await assertGroupAccess(ctx, input.groupId);
 
     // Use atomic upsert with ON CONFLICT DO NOTHING to prevent race conditions
     // The database has a unique constraint on (groupId, type, value)
@@ -773,20 +862,7 @@ export const groupsRouter = router({
 
   // Bulk create rules - OpenPath SPA calls this for batch operations
   bulkCreateRules: tenantProcedure.input(BulkCreateRulesSchema).mutation(async ({ ctx, input }) => {
-    const orgGroup = await db
-      .select()
-      .from(schema.cpOrganizationGroups)
-      .where(
-        and(
-          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationGroups.groupId, input.groupId)
-        )
-      )
-      .limit(1);
-
-    if (!orgGroup.length) {
-      throw new Error('Group not found or access denied');
-    }
+    await assertGroupAccess(ctx, input.groupId);
 
     // Convert values array to rules format
     const rulesToInsert = input.values.map((value) => ({
@@ -816,20 +892,7 @@ export const groupsRouter = router({
   deleteRule: tenantProcedure
     .input(z.object({ id: z.string(), groupId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const orgGroup = await db
-        .select()
-        .from(schema.cpOrganizationGroups)
-        .where(
-          and(
-            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-            eq(schema.cpOrganizationGroups.groupId, input.groupId)
-          )
-        )
-        .limit(1);
-
-      if (!orgGroup.length) {
-        throw new Error('Group not found or access denied');
-      }
+      await assertGroupAccess(ctx, input.groupId);
 
       const [existing] = await openpathDb
         .select()
@@ -862,21 +925,7 @@ export const groupsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Verify tenant authorization
-      const orgGroup = await db
-        .select()
-        .from(schema.cpOrganizationGroups)
-        .where(
-          and(
-            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-            eq(schema.cpOrganizationGroups.groupId, input.groupId)
-          )
-        )
-        .limit(1);
-
-      if (!orgGroup.length) {
-        throw new Error('Group not found or access denied');
-      }
+      await assertGroupAccess(ctx, input.groupId);
 
       // Get existing rule
       const [existing] = await openpathDb
@@ -953,6 +1002,7 @@ export const groupsRouter = router({
    * Used by Dashboard to show system status overview.
    */
   systemStatus: tenantProcedure.query(async ({ ctx }) => {
+    requireTeacherOrAdmin(ctx);
     // Get groups belonging to this organization
     const orgGroups = await db
       .select()
@@ -981,13 +1031,32 @@ export const groupsRouter = router({
       .from(whitelistGroups)
       .where(inArray(whitelistGroups.id, groupIds));
 
-    const enabledGroups = groups.filter((g) => g.enabled === 1).length;
-    const disabledGroups = groups.filter((g) => g.enabled === 0).length;
+    const visibleGroups = isOrgAdmin(ctx)
+      ? groups
+      : await (async () => {
+          const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
+          if (identifiers.size === 0) return [];
+          return groups.filter((g) => identifiers.has(g.id) || identifiers.has(g.name));
+        })();
+
+    if (visibleGroups.length === 0) {
+      return {
+        enabled: false,
+        totalGroups: 0,
+        activeGroups: 0,
+        pausedGroups: 0,
+        enabledGroups: 0,
+        disabledGroups: 0,
+      };
+    }
+
+    const enabledGroups = visibleGroups.filter((g) => g.enabled === 1).length;
+    const disabledGroups = visibleGroups.filter((g) => g.enabled === 0).length;
 
     return {
       // OpenPath-compatible shape
       enabled: enabledGroups > 0,
-      totalGroups: groups.length,
+      totalGroups: visibleGroups.length,
       activeGroups: enabledGroups,
       pausedGroups: disabledGroups,
 

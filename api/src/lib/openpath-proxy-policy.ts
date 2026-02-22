@@ -1,26 +1,11 @@
 export const BLOCKED_OPENPATH_PROCEDURES = [
   // Block schedules to prevent tenant-scoping bypass (ClassroomPath exposes tenant-scoped schedules via /cp/trpc).
   'schedules',
-  'groups.list',
-  'groups.getById',
-  'groups.getByName',
-  'groups.listRules',
-  'groups.listRulesGrouped',
-  'classrooms.list',
-  'classrooms.get',
-  'classrooms.listMachines',
-  'users.list',
-  'users.get',
-  'users.listTeachers',
-  'requests.list',
-  'requests.get',
-  'requests.getStatus',
-  // Block mutations to prevent tenant-scoping bypass
-  'requests.create',
-  'requests.approve',
-  'requests.reject',
-  'requests.delete',
-  'requests.listGroups',
+  // Block entire routers that are re-exposed via /cp/trpc with tenant + teacher scoping.
+  'groups',
+  'classrooms',
+  'users',
+  'requests',
 ] as const;
 
 function isBlockedProcedure(proc: string): boolean {

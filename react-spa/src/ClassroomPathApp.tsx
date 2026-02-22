@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // Lazy load OpenPathApp so that localStorage.requests_api_url is set BEFORE
 // the module is imported (which evaluates tRPC client URL at import time)
@@ -20,10 +20,13 @@ import {
 } from './lib/auth-storage';
 import './index.css';
 
+const TEACHER_GROUPS_FEATURE_KEY = 'openpath_teacher_groups_enabled';
+
 // Componente que decide qué pantalla mostrar basado en el estado de autenticación y onboarding
 function AppContent() {
   const [isAuth, setIsAuth] = useState(hasSessionMarker());
   const [showRegister, setShowRegister] = useState(false);
+  const hasSyncedProfileRef = useRef(false);
 
   const clearSessionAndShowLogin = async () => {
     try {
@@ -41,8 +44,18 @@ function AppContent() {
   // This MUST be before any conditional returns to follow React hooks rules
   useEffect(() => {
     setRequestsApiUrl('/cp');
+    try {
+      window.localStorage.setItem(TEACHER_GROUPS_FEATURE_KEY, '1');
+    } catch {
+      // best-effort
+    }
     return () => {
       clearRequestsApiUrl();
+      try {
+        window.localStorage.removeItem(TEACHER_GROUPS_FEATURE_KEY);
+      } catch {
+        // best-effort
+      }
     };
   }, []);
 
@@ -51,6 +64,28 @@ function AppContent() {
   });
 
   const { data: status, isLoading, refetch, isError, error } = query;
+
+  // After a user gets approved/invited, their stored profile may be stale.
+  // Sync it once so OpenPath UI sees the latest roles.
+  useEffect(() => {
+    if (!isAuth) {
+      hasSyncedProfileRef.current = false;
+      return;
+    }
+
+    if (!status?.hasMembership || status?.isWaiting) return;
+    if (hasSyncedProfileRef.current) return;
+    hasSyncedProfileRef.current = true;
+
+    void (async () => {
+      try {
+        const me = await cpTrpc.auth.me.query();
+        persistSession({ user: me.user });
+      } catch {
+        // best-effort
+      }
+    })();
+  }, [isAuth, status?.hasMembership, status?.isWaiting]);
 
   // If localStorage has a stale/invalid token, isAuthenticated() will be true,
   // but protected queries will fail. In that case, clear the session and show Login.

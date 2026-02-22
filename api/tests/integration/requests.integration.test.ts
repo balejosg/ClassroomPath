@@ -100,6 +100,19 @@ async function seedRequest(params: { requestId: string; groupId: string; domain:
   });
 }
 
+async function seedTeacherRoleOwnership(params: {
+  userId: string;
+  groupId: string;
+}): Promise<void> {
+  await openpathDb.insert(openpathSchema.roles).values({
+    id: `role-${params.userId}`,
+    userId: params.userId,
+    role: 'teacher',
+    groupIds: [params.groupId],
+    createdBy: params.userId,
+  });
+}
+
 describe('ClassroomPath requests integration (/cp/trpc)', async () => {
   before(async () => {
     await resetDb();
@@ -269,6 +282,8 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [groupId] }],
     });
 
+    await seedTeacherRoleOwnership({ userId: teacherId, groupId });
+
     const allowedResp = await trpcMutate(
       API_URL,
       'requests.approve',
@@ -369,6 +384,8 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
       name: 'Create Visible',
       roles: [{ role: 'teacher', groupIds: [groupId] }],
     });
+
+    await seedTeacherRoleOwnership({ userId, groupId });
 
     const createResp = await trpcMutate(
       API_URL,

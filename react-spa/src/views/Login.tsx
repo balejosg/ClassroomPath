@@ -9,6 +9,12 @@ interface LoginProps {
   onNavigateToRegister: () => void;
 }
 
+type AuthResultWithUser = { user: unknown };
+
+function isAuthResultWithUser(value: unknown): value is AuthResultWithUser {
+  return typeof value === 'object' && value !== null && 'user' in value;
+}
+
 export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
   const loginMutation = cpTrpcReact.auth.login.useMutation();
   const googleLoginMutation = cpTrpcReact.auth.googleLogin.useMutation();
@@ -24,7 +30,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
     setError('');
     try {
       const result = await loginMutation.mutateAsync({ email, password });
-      persistSession({ user: result.user });
+      persistSession({ user: isAuthResultWithUser(result) ? result.user : undefined });
       onLogin();
     } catch (err) {
       setError('Credenciales inválidas o error de conexión');
@@ -37,7 +43,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
     setError('');
     try {
       const result = await googleLoginMutation.mutateAsync({ idToken });
-      persistSession({ user: result.user });
+      persistSession({ user: isAuthResultWithUser(result) ? result.user : undefined });
       onLogin();
     } catch (err: any) {
       setError(err?.message || 'Error al iniciar sesión con Google');

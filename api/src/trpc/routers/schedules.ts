@@ -8,22 +8,61 @@ import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import {
   openpathDb,
+  roles,
+  whitelistGroups,
   schedules,
   classrooms,
   notifyOpenPathClassroomChanged,
 } from '../../db/openpath.js';
 
-function isAdminToken(user: any): boolean {
-  const roles = user?.roles ?? [];
-  return roles.some((r: any) => r?.role === 'admin');
+function isOrgAdmin(ctx: any): boolean {
+  return ctx.userRole === 'admin';
 }
 
-function canApproveGroup(user: any, groupId: string): boolean {
-  if (isAdminToken(user)) return true;
-  const roles = user?.roles ?? [];
-  return roles.some(
-    (r: any) => r?.role === 'teacher' && Array.isArray(r?.groupIds) && r.groupIds.includes(groupId)
-  );
+async function getTeacherGroupIdentifiers(userId: string): Promise<Set<string>> {
+  const rows = await openpathDb
+    .select({ role: roles.role, groupIds: roles.groupIds })
+    .from(roles)
+    .where(eq(roles.userId, userId));
+
+  const identifiers = new Set<string>();
+  for (const r of rows) {
+    if (r.role !== 'teacher') continue;
+    if (!Array.isArray(r.groupIds)) continue;
+    for (const gid of r.groupIds) {
+      if (typeof gid === 'string' && gid.trim()) identifiers.add(gid.trim());
+    }
+  }
+  return identifiers;
+}
+
+async function teacherCanUseGroup(params: { userId: string; groupId: string }): Promise<boolean> {
+  const identifiers = await getTeacherGroupIdentifiers(params.userId);
+  if (identifiers.has(params.groupId)) return true;
+
+  // Backwards-compatible: roles.groupIds may store group names.
+  const group = await openpathDb
+    .select({ id: whitelistGroups.id, name: whitelistGroups.name })
+    .from(whitelistGroups)
+    .where(eq(whitelistGroups.id, params.groupId))
+    .limit(1);
+
+  return !!group[0] && identifiers.has(group[0].name);
+}
+
+async function assertCanUseGroup(ctx: any, groupId: string): Promise<void> {
+  if (isOrgAdmin(ctx)) return;
+  if (ctx.userRole !== 'teacher') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Teacher access required' });
+  }
+
+  const ok = await teacherCanUseGroup({ userId: ctx.user.sub, groupId });
+  if (!ok) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'You can only create schedules for your assigned groups',
+    });
+  }
 }
 
 function normalizeTime(t: string): string {
@@ -176,7 +215,7 @@ export const schedulesRouter = router({
         .orderBy(schedules.dayOfWeek, schedules.startTime);
 
       const userId = ctx.user.sub;
-      const admin = isAdminToken(ctx.user);
+      const admin = isOrgAdmin(ctx);
 
       return {
         classroom: {
@@ -240,12 +279,7 @@ export const schedulesRouter = router({
     await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
     await assertOrgGroupAccess(ctx.organizationId!, input.groupId);
 
-    if (!canApproveGroup(ctx.user, input.groupId)) {
-      throw new TRPCError({
-        code: 'FORBIDDEN',
-        message: 'You can only create schedules for your assigned groups',
-      });
-    }
+    await assertCanUseGroup(ctx, input.groupId);
 
     assertQuarterHour(input.startTime, 'startTime');
     assertQuarterHour(input.endTime, 'endTime');
@@ -306,7 +340,7 @@ export const schedulesRouter = router({
 
     await assertOrgClassroomAccess(ctx.organizationId!, existing[0].classroomId);
 
-    const admin = isAdminToken(ctx.user);
+    const admin = isOrgAdmin(ctx);
     const isOwner = existing[0].teacherId === ctx.user.sub;
     if (!admin && !isOwner) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only manage your own schedules' });
@@ -320,12 +354,7 @@ export const schedulesRouter = router({
     await assertOrgGroupAccess(ctx.organizationId!, nextGroupId);
 
     if (input.groupId !== undefined && input.groupId !== existing[0].groupId) {
-      if (!canApproveGroup(ctx.user, input.groupId)) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You can only use your assigned groups',
-        });
-      }
+      await assertCanUseGroup(ctx, input.groupId);
     }
 
     assertQuarterHour(nextStart, 'startTime');
@@ -389,7 +418,7 @@ export const schedulesRouter = router({
 
       await assertOrgClassroomAccess(ctx.organizationId!, existing[0].classroomId);
 
-      const admin = isAdminToken(ctx.user);
+      const admin = isOrgAdmin(ctx);
       const isOwner = existing[0].teacherId === ctx.user.sub;
       if (!admin && !isOwner) {
         throw new TRPCError({

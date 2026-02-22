@@ -12,6 +12,12 @@ interface Props {
   onSuccess: () => void;
 }
 
+type AuthResultWithUser = { user: unknown };
+
+function isAuthResultWithUser(value: unknown): value is AuthResultWithUser {
+  return typeof value === 'object' && value !== null && 'user' in value;
+}
+
 export function Register({ onLoginClick, onSuccess }: Props) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -27,7 +33,7 @@ export function Register({ onLoginClick, onSuccess }: Props) {
       // OpenPath register does not return tokens; do auto-login for better UX.
       try {
         const result = await loginMutation.mutateAsync({ email, password });
-        persistSession({ user: result.user });
+        persistSession({ user: isAuthResultWithUser(result) ? result.user : undefined });
         onSuccess();
       } catch (err) {
         setError(err instanceof Error ? err.message : ERROR_MESSAGES_ES.loginFailed);

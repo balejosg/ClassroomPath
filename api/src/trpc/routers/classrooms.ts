@@ -8,7 +8,7 @@ import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import { eq, inArray, and, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { classrooms, machines, schedules } from '../../db/openpath.js';
+import { classrooms, machines, schedules, roles, whitelistGroups } from '../../db/openpath.js';
 
 const CLASSROOM_SCOPE_PREFIX = 'cp';
 
@@ -80,6 +80,79 @@ async function getCurrentScheduleGroupId(params: {
   return rows[0]?.groupId ?? null;
 }
 
+function isOrgAdmin(ctx: any): boolean {
+  return ctx.userRole === 'admin';
+}
+
+function requireTeacherOrAdmin(ctx: any): void {
+  const role = ctx.userRole;
+  if (role !== 'admin' && role !== 'teacher') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Teacher access required' });
+  }
+}
+
+async function assertOrgGroupAccess(organizationId: string, groupId: string): Promise<void> {
+  const orgGroup = await db
+    .select({ id: schema.cpOrganizationGroups.id })
+    .from(schema.cpOrganizationGroups)
+    .where(
+      and(
+        eq(schema.cpOrganizationGroups.organizationId, organizationId),
+        eq(schema.cpOrganizationGroups.groupId, groupId)
+      )
+    )
+    .limit(1);
+
+  if (!orgGroup.length) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Group not found or access denied',
+    });
+  }
+}
+
+async function getTeacherGroupIdentifiers(userId: string): Promise<Set<string>> {
+  const rows = await openpathDb
+    .select({ role: roles.role, groupIds: roles.groupIds })
+    .from(roles)
+    .where(eq(roles.userId, userId));
+
+  const identifiers = new Set<string>();
+  for (const r of rows) {
+    if (r.role !== 'teacher') continue;
+    if (!Array.isArray(r.groupIds)) continue;
+    for (const gid of r.groupIds) {
+      if (typeof gid === 'string' && gid.trim()) identifiers.add(gid.trim());
+    }
+  }
+  return identifiers;
+}
+
+async function teacherCanUseGroup(params: { userId: string; groupId: string }): Promise<boolean> {
+  const identifiers = await getTeacherGroupIdentifiers(params.userId);
+  if (identifiers.has(params.groupId)) return true;
+
+  // Backwards-compatible: roles.groupIds may store group names.
+  const group = await openpathDb
+    .select({ id: whitelistGroups.id, name: whitelistGroups.name })
+    .from(whitelistGroups)
+    .where(eq(whitelistGroups.id, params.groupId))
+    .limit(1);
+
+  return !!group[0] && identifiers.has(group[0].name);
+}
+
+async function assertCanUseGroup(ctx: any, groupId: string): Promise<void> {
+  if (isOrgAdmin(ctx)) return;
+  if (ctx.userRole !== 'teacher') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Teacher access required' });
+  }
+  const ok = await teacherCanUseGroup({ userId: ctx.user.sub, groupId });
+  if (!ok) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only use your assigned groups' });
+  }
+}
+
 const CreateClassroomSchema = z.object({
   name: z.string().min(1).max(100),
   displayName: z.string().min(1).max(255).optional(),
@@ -90,7 +163,6 @@ const UpdateClassroomSchema = z.object({
   id: z.string(),
   displayName: z.string().min(1).max(255).optional(),
   defaultGroupId: z.string().optional(),
-  activeGroupId: z.string().optional(),
 });
 
 export const classroomsRouter = router({
@@ -276,6 +348,7 @@ export const classroomsRouter = router({
   setActiveGroup: tenantProcedure
     .input(z.object({ id: z.string(), groupId: z.string().nullable() }))
     .mutation(async ({ ctx, input }) => {
+      requireTeacherOrAdmin(ctx);
       const orgClassroom = await db
         .select()
         .from(schema.cpOrganizationClassrooms)
@@ -296,23 +369,9 @@ export const classroomsRouter = router({
 
       // Verify groupId belongs to the org (skip if null to deactivate group)
       if (input.groupId !== null) {
-        const orgGroup = await db
-          .select()
-          .from(schema.cpOrganizationGroups)
-          .where(
-            and(
-              eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
-              eq(schema.cpOrganizationGroups.groupId, input.groupId)
-            )
-          )
-          .limit(1);
+        await assertOrgGroupAccess(ctx.organizationId!, input.groupId);
 
-        if (!orgGroup.length) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Group not found or access denied',
-          });
-        }
+        await assertCanUseGroup(ctx, input.groupId);
       }
 
       const [updated] = await openpathDb
@@ -377,6 +436,7 @@ export const classroomsRouter = router({
     }),
 
   create: tenantProcedure.input(CreateClassroomSchema).mutation(async ({ ctx, input }) => {
+    requireTeacherOrAdmin(ctx);
     const publicName = input.name.trim();
     const displayName = input.displayName?.trim() || publicName;
 
@@ -386,6 +446,11 @@ export const classroomsRouter = router({
 
     const classroomId = nanoid();
     const scopedName = scopedClassroomNameForOrg(ctx.organizationId!, publicName);
+
+    if (input.defaultGroupId !== undefined) {
+      await assertOrgGroupAccess(ctx.organizationId!, input.defaultGroupId);
+      await assertCanUseGroup(ctx, input.defaultGroupId);
+    }
 
     let classroom;
     try {
@@ -440,6 +505,7 @@ export const classroomsRouter = router({
   }),
 
   update: tenantProcedure.input(UpdateClassroomSchema).mutation(async ({ ctx, input }) => {
+    requireTeacherOrAdmin(ctx);
     const orgClassroom = await db
       .select()
       .from(schema.cpOrganizationClassrooms)
@@ -458,6 +524,11 @@ export const classroomsRouter = router({
       });
     }
 
+    if (input.defaultGroupId !== undefined) {
+      await assertOrgGroupAccess(ctx.organizationId!, input.defaultGroupId);
+      await assertCanUseGroup(ctx, input.defaultGroupId);
+    }
+
     const { id, ...updateData } = input;
     const [updated] = await openpathDb
       .update(classrooms)
@@ -465,7 +536,7 @@ export const classroomsRouter = router({
       .where(eq(classrooms.id, id))
       .returning();
 
-    if (input.defaultGroupId !== undefined || input.activeGroupId !== undefined) {
+    if (input.defaultGroupId !== undefined) {
       await notifyOpenPathClassroomChanged(updated.id);
     }
 
@@ -495,6 +566,7 @@ export const classroomsRouter = router({
   }),
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    requireTeacherOrAdmin(ctx);
     const orgClassroom = await db
       .select()
       .from(schema.cpOrganizationClassrooms)
