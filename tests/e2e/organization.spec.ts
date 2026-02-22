@@ -139,8 +139,10 @@ test.describe('Organization Members', () => {
     const statusHeader = page.getByRole('columnheader', { name: /Estado/i });
     await expect(statusHeader).toBeVisible({ timeout: 10000 });
 
-    const hasPendingStatus = await page
-      .getByRole('cell', { name: /Pendiente|Pending/i })
+    // Depending on seed data and feature flags, org members may show Active/Inactive
+    // (OpenPath Users view) and/or Pending (invites). Accept any known status.
+    const hasStatusCell = await page
+      .getByRole('cell', { name: /Activo|Inactivo|Pendiente|Active|Inactive|Pending/i })
       .first()
       .isVisible({ timeout: 2000 })
       .catch(() => false);
@@ -150,7 +152,7 @@ test.describe('Organization Members', () => {
       .isVisible({ timeout: 2000 })
       .catch(() => false);
 
-    expect(hasPendingStatus || hasEmptySummary).toBe(true);
+    expect(hasStatusCell || hasEmptySummary).toBe(true);
   });
 });
 

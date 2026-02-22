@@ -17,6 +17,15 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+// Basic security headers for all responses (SPA + API proxy).
+// Note: the OpenPath API also sets headers via Helmet; this ensures the
+// gateway-served SPA gets them even when `/` routes to the gateway.
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  next();
+});
+
 app.use(
   cors({
     origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:5173'],
