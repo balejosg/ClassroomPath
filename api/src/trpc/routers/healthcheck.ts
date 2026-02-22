@@ -1,8 +1,9 @@
 import { router, publicProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 
+import { extractTrpcData, openPathTrpcUrl } from '../../lib/openpath-upstream.js';
+
 // Forward healthcheck requests to OpenPath API
-const OPENPATH_API_URL = process.env.OPENPATH_API_URL || 'http://api:3000';
 
 type SystemInfo = {
   version: string;
@@ -44,20 +45,13 @@ const SYSTEM_INFO_FALLBACK: SystemInfo = {
   uptime: 0,
 };
 
-function extractTrpcData<T>(data: unknown): T | null {
-  if (typeof data !== 'object' || data === null) return null;
-  const wrapped = data as { result?: { data?: T } };
-  if (wrapped.result?.data !== undefined) return wrapped.result.data;
-  return data as T;
-}
-
 export const healthcheckRouter = router({
   /**
    * Liveness probe - forwards to OpenPath API
    */
   live: publicProcedure.query(async () => {
     try {
-      const response = await fetch(`${OPENPATH_API_URL}/trpc/healthcheck.live`, {
+      const response = await fetch(openPathTrpcUrl('healthcheck.live'), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -71,13 +65,8 @@ export const healthcheckRouter = router({
         });
       }
 
-      const data = await response.json();
-
-      // Extract the inner data from OpenPath's TRPC response
-      if (data.result && data.result.data) {
-        return data.result.data;
-      }
-      return data;
+      const data: unknown = await response.json();
+      return extractTrpcData<unknown>(data) ?? data;
     } catch (error) {
       if (error instanceof TRPCError) throw error;
       throw new TRPCError({
@@ -92,7 +81,7 @@ export const healthcheckRouter = router({
    */
   ready: publicProcedure.query(async () => {
     try {
-      const response = await fetch(`${OPENPATH_API_URL}/trpc/healthcheck.ready`, {
+      const response = await fetch(openPathTrpcUrl('healthcheck.ready'), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -106,13 +95,8 @@ export const healthcheckRouter = router({
         });
       }
 
-      const data = await response.json();
-
-      // Extract the inner data from OpenPath's TRPC response
-      if (data.result && data.result.data) {
-        return data.result.data;
-      }
-      return data;
+      const data: unknown = await response.json();
+      return extractTrpcData<unknown>(data) ?? data;
     } catch (error) {
       if (error instanceof TRPCError) throw error;
       throw new TRPCError({
@@ -127,7 +111,7 @@ export const healthcheckRouter = router({
    */
   systemInfo: publicProcedure.query(async () => {
     try {
-      const response = await fetch(`${OPENPATH_API_URL}/trpc/healthcheck.systemInfo`, {
+      const response = await fetch(openPathTrpcUrl('healthcheck.systemInfo'), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

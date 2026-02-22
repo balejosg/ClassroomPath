@@ -1,10 +1,13 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
-import type { Context } from '../context.js';
-
-// Forward apiTokens requests to OpenPath API
-const OPENPATH_API_URL = process.env.OPENPATH_API_URL || 'http://api:3000';
+import {
+  buildOpenPathHeaders,
+  extractTrpcData,
+  mapUpstreamStatusToTrpcCode,
+  openPathTrpcUrl,
+  readUpstreamErrorMessage,
+} from '../../lib/openpath-upstream.js';
 
 type ApiTokenListItem = {
   id: string;
@@ -18,30 +21,16 @@ type ApiTokenListItem = {
 
 const EMPTY_API_TOKENS: ApiTokenListItem[] = [];
 
-function extractTrpcData<T>(data: unknown): T | null {
-  if (typeof data !== 'object' || data === null) return null;
-  const wrapped = data as { result?: { data?: T } };
-  if (wrapped.result?.data !== undefined) return wrapped.result.data;
-  return data as T;
-}
-
-// Helper to get authorization token from context
-function getAuthHeader(ctx: Context): string {
-  const token = (ctx as Context & { token?: string }).token;
-  return token ? `Bearer ${token}` : '';
-}
-
 export const apiTokensRouter = router({
   /**
    * List all active tokens for the current user - forwards to OpenPath API
    */
   list: protectedProcedure.query(async ({ ctx }) => {
     try {
-      const response = await fetch(`${OPENPATH_API_URL}/trpc/apiTokens.list`, {
+      const response = await fetch(openPathTrpcUrl('apiTokens.list'), {
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: getAuthHeader(ctx),
+          ...buildOpenPathHeaders({ req: ctx.req, includeAuth: true, token: ctx.token }),
         },
       });
 
@@ -85,32 +74,25 @@ export const apiTokensRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       try {
-        const response = await fetch(`${OPENPATH_API_URL}/trpc/apiTokens.create`, {
+        const response = await fetch(openPathTrpcUrl('apiTokens.create'), {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            Authorization: getAuthHeader(ctx),
+            ...buildOpenPathHeaders({ req: ctx.req, includeAuth: true, token: ctx.token }),
           },
           body: JSON.stringify(input),
         });
 
         if (!response.ok) {
-          const error = await response
-            .json()
-            .catch(() => ({ error: { message: 'Failed to create API token' } }));
+          const message = await readUpstreamErrorMessage(response, 'Failed to create API token');
+          const code = mapUpstreamStatusToTrpcCode(response.status, 'INTERNAL_SERVER_ERROR');
           throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: error.error?.message || 'Failed to create API token',
+            code,
+            message,
           });
         }
 
-        const data = await response.json();
-
-        // Extract the inner data from OpenPath's TRPC response
-        if (data.result && data.result.data) {
-          return data.result.data;
-        }
-        return data;
+        const data: unknown = await response.json();
+        return extractTrpcData<unknown>(data) ?? data;
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({
@@ -127,32 +109,25 @@ export const apiTokensRouter = router({
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       try {
-        const response = await fetch(`${OPENPATH_API_URL}/trpc/apiTokens.revoke`, {
+        const response = await fetch(openPathTrpcUrl('apiTokens.revoke'), {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            Authorization: getAuthHeader(ctx),
+            ...buildOpenPathHeaders({ req: ctx.req, includeAuth: true, token: ctx.token }),
           },
           body: JSON.stringify(input),
         });
 
         if (!response.ok) {
-          const error = await response
-            .json()
-            .catch(() => ({ error: { message: 'Failed to revoke API token' } }));
+          const message = await readUpstreamErrorMessage(response, 'Failed to revoke API token');
+          const code = mapUpstreamStatusToTrpcCode(response.status, 'NOT_FOUND');
           throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: error.error?.message || 'Failed to revoke API token',
+            code,
+            message,
           });
         }
 
-        const data = await response.json();
-
-        // Extract the inner data from OpenPath's TRPC response
-        if (data.result && data.result.data) {
-          return data.result.data;
-        }
-        return data;
+        const data: unknown = await response.json();
+        return extractTrpcData<unknown>(data) ?? data;
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({
@@ -169,32 +144,28 @@ export const apiTokensRouter = router({
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       try {
-        const response = await fetch(`${OPENPATH_API_URL}/trpc/apiTokens.regenerate`, {
+        const response = await fetch(openPathTrpcUrl('apiTokens.regenerate'), {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            Authorization: getAuthHeader(ctx),
+            ...buildOpenPathHeaders({ req: ctx.req, includeAuth: true, token: ctx.token }),
           },
           body: JSON.stringify(input),
         });
 
         if (!response.ok) {
-          const error = await response
-            .json()
-            .catch(() => ({ error: { message: 'Failed to regenerate API token' } }));
+          const message = await readUpstreamErrorMessage(
+            response,
+            'Failed to regenerate API token'
+          );
+          const code = mapUpstreamStatusToTrpcCode(response.status, 'NOT_FOUND');
           throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: error.error?.message || 'Failed to regenerate API token',
+            code,
+            message,
           });
         }
 
-        const data = await response.json();
-
-        // Extract the inner data from OpenPath's TRPC response
-        if (data.result && data.result.data) {
-          return data.result.data;
-        }
-        return data;
+        const data: unknown = await response.json();
+        return extractTrpcData<unknown>(data) ?? data;
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({
