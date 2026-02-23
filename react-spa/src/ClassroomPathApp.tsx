@@ -22,12 +22,6 @@ import './index.css';
 
 const TEACHER_GROUPS_FEATURE_KEY = 'openpath_teacher_groups_enabled';
 
-function getUserFromMeResponse(value: unknown): unknown | null {
-  if (!value || typeof value !== 'object') return null;
-  const obj = value as Record<string, unknown>;
-  return obj.user ?? null;
-}
-
 // Componente que decide qué pantalla mostrar basado en el estado de autenticación y onboarding
 function AppContent() {
   const [isAuth, setIsAuth] = useState(hasSessionMarker());
@@ -86,10 +80,7 @@ function AppContent() {
     void (async () => {
       try {
         const me = await cpTrpc.auth.me.query();
-        const user = getUserFromMeResponse(me);
-        if (user !== null) {
-          persistSession({ user });
-        }
+        persistSession({ user: me.user });
       } catch {
         // best-effort
       }

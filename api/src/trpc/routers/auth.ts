@@ -19,6 +19,26 @@ function getTokenPair(value: unknown): { accessToken: string; refreshToken: stri
   return { accessToken, refreshToken };
 }
 
+const OpenPathRoleInfoSchema = z
+  .object({
+    role: z.string().min(1),
+    groupIds: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+const OpenPathMeResponseSchema = z
+  .object({
+    user: z
+      .object({
+        id: z.string().min(1),
+        email: z.string().min(1),
+        name: z.string().min(1),
+        roles: z.array(OpenPathRoleInfoSchema).optional().default([]),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
 export const authRouter = router({
   /**
    * Login endpoint - forwards to OpenPath API
@@ -172,7 +192,15 @@ export const authRouter = router({
       }
 
       const data: unknown = await response.json();
-      return extractTrpcData<unknown>(data) ?? data;
+      const unwrapped = extractTrpcData<unknown>(data) ?? data;
+      const parsed = OpenPathMeResponseSchema.safeParse(unwrapped);
+      if (!parsed.success) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Invalid user profile received from upstream',
+        });
+      }
+      return parsed.data;
     } catch (error) {
       if (error instanceof TRPCError) throw error;
       throw new TRPCError({
