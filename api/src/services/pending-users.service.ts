@@ -64,7 +64,7 @@ export async function listPendingUsers(organizationId: string): Promise<PendingU
 export async function approveUser(
   userId: string,
   organizationId: string,
-  role: 'admin' | 'teacher' | 'student',
+  role: 'admin' | 'teacher',
   approvedBy: string
 ): Promise<{ membershipId: string }> {
   const membershipId = generateId('mem');
@@ -102,7 +102,7 @@ export async function approveUser(
   });
 
   // Assign role in OpenPath based on membership role
-  const openpathRole = role === 'admin' ? 'admin' : role === 'teacher' ? 'teacher' : 'viewer';
+  const openpathRole = role === 'admin' ? 'admin' : 'teacher';
 
   const existing = await openpathDb
     .select()
@@ -120,10 +120,9 @@ export async function approveUser(
     });
   } else {
     // Update existing role if the new role is higher privilege
-    const roleHierarchy = { admin: 3, teacher: 2, viewer: 1 };
-    if (
-      roleHierarchy[openpathRole] > roleHierarchy[existing[0].role as keyof typeof roleHierarchy]
-    ) {
+    const roleHierarchy: Record<string, number> = { admin: 3, teacher: 2, viewer: 1 };
+    const currentRank = roleHierarchy[String(existing[0].role)] ?? 0;
+    if (roleHierarchy[openpathRole] > currentRank) {
       await openpathDb
         .update(openpathSchema.roles)
         .set({ role: openpathRole })

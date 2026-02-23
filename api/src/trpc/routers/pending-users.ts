@@ -26,7 +26,7 @@ export const pendingUsersRouter = router({
     .input(
       z.object({
         userId: z.string().min(1),
-        role: z.enum(['admin', 'teacher', 'student']).default('student'),
+        role: z.enum(['admin', 'teacher']).default('teacher'),
       })
     )
     .mutation(async ({ ctx, input }) => {

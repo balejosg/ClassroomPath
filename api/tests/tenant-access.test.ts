@@ -115,7 +115,7 @@ describe('tenant-access', () => {
     requireTeacherOrAdmin({ userRole: 'teacher' });
 
     try {
-      requireTeacherOrAdmin({ userRole: 'student' });
+      requireTeacherOrAdmin({ userRole: 'user' });
       assert.fail('expected requireTeacherOrAdmin to throw');
     } catch (err) {
       assertTrpcError(err, 'FORBIDDEN', 'Teacher access required');
@@ -185,11 +185,11 @@ describe('tenant-access', () => {
     });
     assert.deepStrictEqual([...teacherIds].sort(), [GROUP_ID, GROUP_ID_2].sort());
 
-    const studentIds = await getAccessibleTenantGroupIds({
+    const userIds = await getAccessibleTenantGroupIds({
       organizationId: ORG_ID,
-      userRole: 'student',
+      userRole: 'user',
       userId: USER_ID,
     });
-    assert.deepStrictEqual(studentIds, []);
+    assert.deepStrictEqual(userIds, []);
   });
 });

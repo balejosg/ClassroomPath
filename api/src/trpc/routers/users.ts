@@ -72,7 +72,7 @@ const CreateUserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(255),
   password: z.string().min(8),
-  role: z.enum(['admin', 'teacher', 'student']).optional(),
+  role: z.enum(['admin', 'teacher']).default('teacher'),
 });
 
 const UpdateUserSchema = z.object({
@@ -83,7 +83,7 @@ const UpdateUserSchema = z.object({
 
 const AssignRoleSchema = z.object({
   userId: z.string(),
-  role: z.enum(['admin', 'teacher', 'student']),
+  role: z.enum(['admin', 'teacher']),
   groupIds: z.array(z.string()).default([]),
 });
 
@@ -196,20 +196,17 @@ export const usersRouter = router({
       id: generateId('mem'),
       userId: user.id,
       organizationId: ctx.organizationId!,
-      role: input.role ?? 'student',
+      role: input.role,
       invitedBy: ctx.user.sub,
     });
 
-    // Assign role if provided
-    if (input.role) {
-      await openpathDb.insert(roles).values({
-        id: nanoid(),
-        userId: user.id,
-        role: input.role,
-        groupIds: [],
-        createdBy: ctx.user.sub,
-      });
-    }
+    await openpathDb.insert(roles).values({
+      id: nanoid(),
+      userId: user.id,
+      role: input.role,
+      groupIds: [],
+      createdBy: ctx.user.sub,
+    });
 
     // Serialize Date fields for JSON compatibility
     const rolesByUserId = await getRolesByUserId([user.id]);

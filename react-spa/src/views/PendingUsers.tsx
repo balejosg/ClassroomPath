@@ -9,7 +9,7 @@ interface PendingUser {
   createdAt: string | null;
 }
 
-type RoleOption = 'student' | 'teacher' | 'admin';
+type RoleOption = 'teacher' | 'admin';
 
 const RoleSelector: React.FC<{
   value: RoleOption;
@@ -21,7 +21,6 @@ const RoleSelector: React.FC<{
       onChange={(e) => onChange(e.target.value as RoleOption)}
       className="text-xs border border-slate-300 rounded px-2 py-1 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
     >
-      <option value="student">Estudiante</option>
       <option value="teacher">Profesor</option>
       <option value="admin">Administrador</option>
     </select>
@@ -37,7 +36,7 @@ export function PendingUsers() {
   const [processingUser, setProcessingUser] = useState<string | null>(null);
 
   const handleApprove = async (userId: string) => {
-    const role = selectedRoles[userId] || 'student';
+    const role = selectedRoles[userId] || 'teacher';
     setProcessingUser(userId);
 
     try {
@@ -158,7 +157,7 @@ export function PendingUsers() {
                     </td>
                     <td className="px-6 py-4">
                       <RoleSelector
-                        value={selectedRoles[user.userId] || 'student'}
+                        value={selectedRoles[user.userId] || 'teacher'}
                         onChange={(role) =>
                           setSelectedRoles((prev) => ({ ...prev, [user.userId]: role }))
                         }

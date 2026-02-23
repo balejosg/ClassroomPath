@@ -48,7 +48,7 @@ function signToken(params: { userId: string; email: string; name: string; roles:
 async function seedTenant(params: {
   orgId: string;
   userId: string;
-  userRole: 'admin' | 'teacher' | 'student';
+  userRole: 'admin' | 'teacher';
 }) {
   await db.insert(cpSchema.cpOrganizations).values({
     id: params.orgId,

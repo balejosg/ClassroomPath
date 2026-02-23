@@ -113,7 +113,7 @@ async function approveOrgMember(params: {
   memberToken: string;
   memberUserId: string;
   organizationId: string;
-  role: 'teacher' | 'student';
+  role: 'teacher';
 }): Promise<void> {
   const waitResp = await trpcMutate(
     API_URL,
@@ -479,7 +479,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.strictEqual(String(got.id), groupId);
   });
 
-  test('classrooms.update blocks students and enforces teacher group ownership for defaultGroupId', async () => {
+  test('classrooms.update enforces teacher group ownership for defaultGroupId', async () => {
     await resetDb();
 
     const adminUserId = 'classrooms-admin-perms';
@@ -545,30 +545,5 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assertStatus(allowedDefault, 200);
     const { data: updated } = (await parseTRPC(allowedDefault)) as { data: any };
     assert.strictEqual(updated.defaultGroupId, teacherGroupId);
-
-    const studentUserId = 'classrooms-student-perms';
-    const studentEmail = uniqueEmail('student-perms');
-    await ensureOpenPathUser({ userId: studentUserId, email: studentEmail, name: 'Student User' });
-    const studentToken = signToken({
-      userId: studentUserId,
-      email: studentEmail,
-      name: 'Student User',
-      roles: [{ role: 'student' }],
-    });
-    await approveOrgMember({
-      adminToken,
-      memberToken: studentToken,
-      memberUserId: studentUserId,
-      organizationId,
-      role: 'student',
-    });
-
-    const studentUpdate = await trpcMutate(
-      API_URL,
-      'classrooms.update',
-      { id: classroomId, displayName: 'Hacked Classroom' },
-      bearerAuth(studentToken)
-    );
-    assertStatus(studentUpdate, 403);
   });
 });
