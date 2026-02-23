@@ -6,13 +6,18 @@ import {
   openpathDb,
   publishWhitelistGroupChanged,
   requests,
-  roles,
   whitelistGroups,
   whitelistRules,
 } from '../../db/openpath.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import { eq, inArray, and, sql } from 'drizzle-orm';
+
+import {
+  assertCanUseGroup,
+  getAccessibleTenantGroupIds,
+  isOrgAdmin,
+} from '../../lib/tenant-access.js';
 
 type TenantUserRole = { role: string; groupIds?: string[] | null };
 
@@ -26,42 +31,6 @@ type TenantRouterContext = {
     roles?: TenantUserRole[];
   };
 };
-
-function isAdminUser(ctx: { userRole?: string }): boolean {
-  return ctx.userRole === 'admin';
-}
-
-async function getTeacherGroupIdentifiers(userId: string): Promise<Set<string>> {
-  const rows = await openpathDb
-    .select({ role: roles.role, groupIds: roles.groupIds })
-    .from(roles)
-    .where(eq(roles.userId, userId));
-
-  const identifiers = new Set<string>();
-  for (const r of rows) {
-    if (r.role !== 'teacher') continue;
-    if (!Array.isArray(r.groupIds)) continue;
-    for (const gid of r.groupIds) {
-      if (typeof gid === 'string' && gid.trim()) identifiers.add(gid.trim());
-    }
-  }
-  return identifiers;
-}
-
-async function canTeacherManageGroup(ctx: TenantRouterContext, groupId: string): Promise<boolean> {
-  if (ctx.userRole !== 'teacher') return false;
-  const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
-  if (identifiers.has(groupId)) return true;
-
-  // Backwards-compatible: role.groupIds may store group names.
-  const group = await openpathDb
-    .select({ id: whitelistGroups.id, name: whitelistGroups.name })
-    .from(whitelistGroups)
-    .where(eq(whitelistGroups.id, groupId))
-    .limit(1);
-
-  return !!group[0] && identifiers.has(group[0].name);
-}
 
 async function groupBelongsToOrganization(
   organizationId: string,
@@ -81,37 +50,6 @@ async function groupBelongsToOrganization(
   return orgGroup.length > 0;
 }
 
-async function getTenantGroupIds(organizationId: string): Promise<string[]> {
-  const orgGroups = await db
-    .select({ groupId: schema.cpOrganizationGroups.groupId })
-    .from(schema.cpOrganizationGroups)
-    .where(eq(schema.cpOrganizationGroups.organizationId, organizationId));
-
-  return orgGroups.map((group) => group.groupId);
-}
-
-async function getAccessibleTenantGroupIds(params: {
-  organizationId: string;
-  userRole?: string;
-  userId: string;
-}): Promise<string[]> {
-  const groupIds = await getTenantGroupIds(params.organizationId);
-  if (groupIds.length === 0) return [];
-
-  if (params.userRole === 'admin') return groupIds;
-  if (params.userRole !== 'teacher') return [];
-
-  const identifiers = await getTeacherGroupIdentifiers(params.userId);
-  if (identifiers.size === 0) return [];
-
-  const groups = await openpathDb
-    .select({ id: whitelistGroups.id, name: whitelistGroups.name })
-    .from(whitelistGroups)
-    .where(inArray(whitelistGroups.id, groupIds));
-
-  return groups.filter((g) => identifiers.has(g.id) || identifiers.has(g.name)).map((g) => g.id);
-}
-
 async function assertGroupBelongsToTenant(
   ctx: TenantRouterContext,
   groupId: string
@@ -126,12 +64,9 @@ async function assertGroupBelongsToTenant(
 }
 
 async function assertCanManageGroup(ctx: TenantRouterContext, groupId: string): Promise<void> {
-  if (isAdminUser(ctx)) return;
-  const allowed = await canTeacherManageGroup(ctx, groupId);
-  if (allowed) return;
-  throw new TRPCError({
-    code: 'FORBIDDEN',
-    message: 'Insufficient permissions for this group',
+  await assertCanUseGroup(ctx, groupId, {
+    notTeacherMessage: 'Insufficient permissions for this group',
+    notAllowedMessage: 'Insufficient permissions for this group',
   });
 }
 
@@ -420,7 +355,7 @@ export const requestsRouter = router({
       user: ctx.user,
     };
 
-    if (!isAdminUser(tenantContext)) {
+    if (!isOrgAdmin(tenantContext)) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
     }
 

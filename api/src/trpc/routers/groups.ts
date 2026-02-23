@@ -17,73 +17,19 @@ import { eq, inArray, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getRootDomain } from '../../utils/domain.js';
 
-function requireTeacherOrAdmin(ctx: { userRole?: string }): void {
-  // tenantProcedure guarantees membership, but we explicitly block students from group management.
-  if (ctx.userRole !== 'admin' && ctx.userRole !== 'teacher') {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Teacher access required' });
-  }
-}
-
-function isOrgAdmin(ctx: { userRole?: string }): boolean {
-  return ctx.userRole === 'admin';
-}
-
-async function assertOrgGroupAccess(organizationId: string, groupId: string): Promise<void> {
-  const orgGroup = await db
-    .select({ id: schema.cpOrganizationGroups.id })
-    .from(schema.cpOrganizationGroups)
-    .where(
-      and(
-        eq(schema.cpOrganizationGroups.organizationId, organizationId),
-        eq(schema.cpOrganizationGroups.groupId, groupId)
-      )
-    )
-    .limit(1);
-
-  if (!orgGroup.length) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found or access denied' });
-  }
-}
-
-async function getTeacherGroupIdentifiers(userId: string): Promise<Set<string>> {
-  const rows = await openpathDb
-    .select({ role: roles.role, groupIds: roles.groupIds })
-    .from(roles)
-    .where(eq(roles.userId, userId));
-
-  const identifiers = new Set<string>();
-  for (const r of rows) {
-    if (r.role !== 'teacher') continue;
-    if (!Array.isArray(r.groupIds)) continue;
-    for (const gid of r.groupIds) {
-      if (typeof gid === 'string' && gid.trim()) identifiers.add(gid.trim());
-    }
-  }
-
-  return identifiers;
-}
-
-async function assertTeacherOwnsGroup(params: { userId: string; groupId: string }): Promise<void> {
-  const identifiers = await getTeacherGroupIdentifiers(params.userId);
-  if (identifiers.has(params.groupId)) return;
-
-  // Backwards-compatible: some role.groupIds may store group names.
-  const group = await openpathDb
-    .select({ id: whitelistGroups.id, name: whitelistGroups.name })
-    .from(whitelistGroups)
-    .where(eq(whitelistGroups.id, params.groupId))
-    .limit(1);
-
-  if (group[0] && identifiers.has(group[0].name)) return;
-
-  throw new TRPCError({ code: 'FORBIDDEN', message: 'Insufficient permissions for this group' });
-}
-
+import {
+  assertCanUseGroup,
+  assertOrgGroupAccess,
+  getTeacherGroupIdentifiers,
+  isOrgAdmin,
+  requireTeacherOrAdmin,
+} from '../../lib/tenant-access.js';
 async function assertGroupAccess(ctx: any, groupId: string): Promise<void> {
   requireTeacherOrAdmin(ctx);
   await assertOrgGroupAccess(ctx.organizationId!, groupId);
-  if (isOrgAdmin(ctx)) return;
-  await assertTeacherOwnsGroup({ userId: ctx.user.sub, groupId });
+  await assertCanUseGroup(ctx, groupId, {
+    notAllowedMessage: 'Insufficient permissions for this group',
+  });
 }
 
 async function addGroupToTeacherRole(params: {

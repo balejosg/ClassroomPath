@@ -8,62 +8,18 @@ import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import {
   openpathDb,
-  roles,
-  whitelistGroups,
   schedules,
   classrooms,
   notifyOpenPathClassroomChanged,
 } from '../../db/openpath.js';
 
-function isOrgAdmin(ctx: any): boolean {
-  return ctx.userRole === 'admin';
-}
-
-async function getTeacherGroupIdentifiers(userId: string): Promise<Set<string>> {
-  const rows = await openpathDb
-    .select({ role: roles.role, groupIds: roles.groupIds })
-    .from(roles)
-    .where(eq(roles.userId, userId));
-
-  const identifiers = new Set<string>();
-  for (const r of rows) {
-    if (r.role !== 'teacher') continue;
-    if (!Array.isArray(r.groupIds)) continue;
-    for (const gid of r.groupIds) {
-      if (typeof gid === 'string' && gid.trim()) identifiers.add(gid.trim());
-    }
-  }
-  return identifiers;
-}
-
-async function teacherCanUseGroup(params: { userId: string; groupId: string }): Promise<boolean> {
-  const identifiers = await getTeacherGroupIdentifiers(params.userId);
-  if (identifiers.has(params.groupId)) return true;
-
-  // Backwards-compatible: roles.groupIds may store group names.
-  const group = await openpathDb
-    .select({ id: whitelistGroups.id, name: whitelistGroups.name })
-    .from(whitelistGroups)
-    .where(eq(whitelistGroups.id, params.groupId))
-    .limit(1);
-
-  return !!group[0] && identifiers.has(group[0].name);
-}
-
-async function assertCanUseGroup(ctx: any, groupId: string): Promise<void> {
-  if (isOrgAdmin(ctx)) return;
-  if (ctx.userRole !== 'teacher') {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Teacher access required' });
-  }
-
-  const ok = await teacherCanUseGroup({ userId: ctx.user.sub, groupId });
-  if (!ok) {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: 'You can only create schedules for your assigned groups',
-    });
-  }
-}
+import {
+  assertCanUseGroup,
+  assertOrgClassroomAccess,
+  assertOrgGroupAccess,
+  isOrgAdmin,
+  requireTeacherOrAdmin,
+} from '../../lib/tenant-access.js';
 
 function normalizeTime(t: string): string {
   const parts = t.split(':');
@@ -95,43 +51,6 @@ function assertQuarterHour(t: string, field: string): void {
   }
 }
 
-async function assertOrgClassroomAccess(
-  organizationId: string,
-  classroomId: string
-): Promise<void> {
-  const orgClassroom = await db
-    .select()
-    .from(schema.cpOrganizationClassrooms)
-    .where(
-      and(
-        eq(schema.cpOrganizationClassrooms.organizationId, organizationId),
-        eq(schema.cpOrganizationClassrooms.classroomId, classroomId)
-      )
-    )
-    .limit(1);
-
-  if (!orgClassroom.length) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Classroom not found or access denied' });
-  }
-}
-
-async function assertOrgGroupAccess(organizationId: string, groupId: string): Promise<void> {
-  const orgGroup = await db
-    .select()
-    .from(schema.cpOrganizationGroups)
-    .where(
-      and(
-        eq(schema.cpOrganizationGroups.organizationId, organizationId),
-        eq(schema.cpOrganizationGroups.groupId, groupId)
-      )
-    )
-    .limit(1);
-
-  if (!orgGroup.length) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found or access denied' });
-  }
-}
-
 async function assertNoConflict(params: {
   classroomId: string;
   dayOfWeek: number;
@@ -159,13 +78,6 @@ async function assertNoConflict(params: {
 
   if (conflicts.length) {
     throw new TRPCError({ code: 'CONFLICT', message: 'This time slot is already reserved' });
-  }
-}
-
-function requireTeacherOrAdmin(ctx: any): void {
-  const role = ctx.userRole;
-  if (role !== 'admin' && role !== 'teacher') {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Teacher access required' });
   }
 }
 
@@ -279,7 +191,9 @@ export const schedulesRouter = router({
     await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
     await assertOrgGroupAccess(ctx.organizationId!, input.groupId);
 
-    await assertCanUseGroup(ctx, input.groupId);
+    await assertCanUseGroup(ctx, input.groupId, {
+      notAllowedMessage: 'You can only create schedules for your assigned groups',
+    });
 
     assertQuarterHour(input.startTime, 'startTime');
     assertQuarterHour(input.endTime, 'endTime');
@@ -354,7 +268,9 @@ export const schedulesRouter = router({
     await assertOrgGroupAccess(ctx.organizationId!, nextGroupId);
 
     if (input.groupId !== undefined && input.groupId !== existing[0].groupId) {
-      await assertCanUseGroup(ctx, input.groupId);
+      await assertCanUseGroup(ctx, input.groupId, {
+        notAllowedMessage: 'You can only create schedules for your assigned groups',
+      });
     }
 
     assertQuarterHour(nextStart, 'startTime');
