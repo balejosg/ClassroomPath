@@ -9,12 +9,14 @@ import { pendingUsersRouter } from './routers/pending-users.js';
 import { healthcheckRouter } from './routers/healthcheck.js';
 import { apiTokensRouter } from './routers/api-tokens.js';
 import { schedulesRouter } from './routers/schedules.js';
+import { templatesRouter } from './routers/templates.js';
 
 export const appRouter = router({
   auth: authRouter,
   onboarding: onboardingRouter,
   classrooms: classroomsRouter,
   groups: groupsRouter,
+  templates: templatesRouter,
   users: usersRouter,
   requests: requestsRouter,
   schedules: schedulesRouter,

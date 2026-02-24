@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, unique } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, timestamp, unique, text } from 'drizzle-orm/pg-core';
 
 // =============================================================================
 // Organizations Table
@@ -85,6 +85,8 @@ export const cpOrganizationGroups = pgTable(
       .notNull()
       .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
     groupId: varchar('group_id', { length: 50 }).notNull(),
+    // Visibility within the organization (aligned with OpenPath values).
+    visibility: varchar('visibility', { length: 20 }).default('private').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   },
   (table) => [unique('cp_org_group_key').on(table.organizationId, table.groupId)]
@@ -112,3 +114,48 @@ export type NewOrganizationGroup = typeof cpOrganizationGroups.$inferInsert;
 
 export type OrganizationUser = typeof cpOrganizationUsers.$inferSelect;
 export type NewOrganizationUser = typeof cpOrganizationUsers.$inferInsert;
+
+// =============================================================================
+// SaaS Templates (copy-on-import)
+// =============================================================================
+
+export const cpGroupTemplates = pgTable(
+  'cp_group_templates',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    name: varchar('name', { length: 100 }).notNull(),
+    displayName: varchar('display_name', { length: 255 }).notNull(),
+    description: text('description'),
+    createdBy: varchar('created_by', { length: 50 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [unique('cp_group_templates_name_key').on(table.name)]
+);
+
+export const cpGroupTemplateRules = pgTable(
+  'cp_group_template_rules',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    templateId: varchar('template_id', { length: 50 })
+      .notNull()
+      .references(() => cpGroupTemplates.id, { onDelete: 'cascade' }),
+    type: varchar('type', { length: 50 }).notNull(),
+    value: varchar('value', { length: 500 }).notNull(),
+    comment: text('comment'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    unique('cp_group_template_rules_template_type_value_key').on(
+      table.templateId,
+      table.type,
+      table.value
+    ),
+  ]
+);
+
+export type GroupTemplate = typeof cpGroupTemplates.$inferSelect;
+export type NewGroupTemplate = typeof cpGroupTemplates.$inferInsert;
+
+export type GroupTemplateRule = typeof cpGroupTemplateRules.$inferSelect;
+export type NewGroupTemplateRule = typeof cpGroupTemplateRules.$inferInsert;

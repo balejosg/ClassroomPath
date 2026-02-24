@@ -10,6 +10,7 @@ import { Register } from './views/Register';
 import { Onboarding } from './views/Onboarding';
 import { Waiting } from './views/Waiting';
 import { AdminPanel } from './components/AdminPanel';
+import { GroupLibrary } from './components/GroupLibrary';
 import { cpTrpc } from './lib/cp-trpc';
 import {
   clearRequestsApiUrl,
@@ -201,6 +202,7 @@ function AppContent() {
       fallback={<div className="flex justify-center items-center h-screen">Cargando...</div>}
     >
       <AdminPanel userRole={status?.organization?.role} />
+      <GroupLibrary userRole={status?.organization?.role} />
       <OpenPathApp />
     </React.Suspense>
   );

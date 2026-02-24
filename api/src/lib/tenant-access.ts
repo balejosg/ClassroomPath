@@ -117,6 +117,55 @@ export async function assertCanUseGroup(
   }
 }
 
+export async function assertCanViewGroup(
+  ctx: { organizationId?: string; userRole?: string; user: { sub: string } },
+  groupId: string,
+  opts?: { notTeacherMessage?: string; notAllowedMessage?: string }
+): Promise<void> {
+  requireTeacherOrAdmin(ctx);
+  const organizationId = ctx.organizationId;
+  if (!organizationId) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Missing organizationId' });
+  }
+
+  const orgGroup = await db
+    .select({ visibility: schema.cpOrganizationGroups.visibility })
+    .from(schema.cpOrganizationGroups)
+    .where(
+      and(
+        eq(schema.cpOrganizationGroups.organizationId, organizationId),
+        eq(schema.cpOrganizationGroups.groupId, groupId)
+      )
+    )
+    .limit(1);
+
+  if (!orgGroup.length) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Group not found or access denied',
+    });
+  }
+
+  if (isOrgAdmin(ctx)) return;
+
+  if (orgGroup[0].visibility === 'instance_public') return;
+
+  if (ctx.userRole !== 'teacher') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: opts?.notTeacherMessage ?? 'Teacher access required',
+    });
+  }
+
+  const ok = await teacherCanUseGroup({ userId: ctx.user.sub, groupId });
+  if (!ok) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: opts?.notAllowedMessage ?? 'You can only use your assigned groups',
+    });
+  }
+}
+
 export async function getAccessibleTenantGroupIds(params: {
   organizationId: string;
   userRole?: string;

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, tenantProcedure } from '../trpc.js';
@@ -19,15 +18,24 @@ import { getRootDomain } from '../../utils/domain.js';
 
 import {
   assertCanUseGroup,
+  assertCanViewGroup,
   assertOrgGroupAccess,
   getTeacherGroupIdentifiers,
   isOrgAdmin,
   requireTeacherOrAdmin,
 } from '../../lib/tenant-access.js';
+
+type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
 async function assertGroupAccess(ctx: any, groupId: string): Promise<void> {
   requireTeacherOrAdmin(ctx);
   await assertOrgGroupAccess(ctx.organizationId!, groupId);
   await assertCanUseGroup(ctx, groupId, {
+    notAllowedMessage: 'Insufficient permissions for this group',
+  });
+}
+
+async function assertGroupViewAccess(ctx: any, groupId: string): Promise<void> {
+  await assertCanViewGroup(ctx, groupId, {
     notAllowedMessage: 'Insufficient permissions for this group',
   });
 }
@@ -80,16 +88,51 @@ async function removeGroupFromTeacherRole(params: {
     .where(eq(roles.id, teacherRole.id));
 }
 
+function sanitizeGroupName(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+}
+
+async function findAvailableGroupName(baseName: string): Promise<string> {
+  const safeBase = sanitizeGroupName(baseName);
+  const trimmedBase = safeBase.replace(/^-+/, '').replace(/-+$/, '');
+  if (!trimmedBase) {
+    return `group-${nanoid(8)}`;
+  }
+
+  const maxAttempts = 50;
+  for (let i = 0; i < maxAttempts; i++) {
+    const suffix = i === 0 ? '' : `-${String(i + 1)}`;
+    const candidate = `${trimmedBase}${suffix}`.slice(0, 100);
+    const exists = await openpathDb
+      .select({ id: whitelistGroups.id })
+      .from(whitelistGroups)
+      .where(eq(whitelistGroups.name, candidate))
+      .limit(1);
+    if (!exists.length) return candidate;
+  }
+
+  return `${trimmedBase}-${nanoid(6)}`.slice(0, 100);
+}
+
 const CreateGroupSchema = z.object({
   name: z.string().min(1).max(100),
   displayName: z.string().min(1).max(255),
   enabled: z.number().min(0).max(1).default(1),
 });
 
+const GroupVisibilitySchema = z.enum(['private', 'instance_public']);
+
+const CloneGroupSchema = z.object({
+  sourceGroupId: z.string(),
+  name: z.string().min(1).max(100).optional(),
+  displayName: z.string().min(1).max(255).optional(),
+});
+
 const UpdateGroupSchema = z.object({
   id: z.string(),
   displayName: z.string().min(1).max(255).optional(),
   enabled: z.union([z.number().min(0).max(1), z.boolean()]).optional(),
+  visibility: GroupVisibilitySchema.optional(),
 });
 
 const AddRuleSchema = z.object({
@@ -137,6 +180,7 @@ export const groupsRouter = router({
       .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
 
     const groupIds = orgGroups.map((og) => og.groupId);
+    const orgGroupMetaById = new Map(orgGroups.map((og) => [og.groupId, og]));
 
     if (groupIds.length === 0) return [];
 
@@ -188,7 +232,8 @@ export const groupsRouter = router({
         id: g.id,
         name: g.name,
         displayName: g.displayName,
-        enabled: g.enabled,
+        enabled: g.enabled === 1,
+        visibility: orgGroupMetaById.get(g.id)?.visibility ?? 'private',
         whitelistCount: counts.whitelistCount,
         blockedSubdomainCount: counts.blockedSubdomainCount,
         blockedPathCount: counts.blockedPathCount,
@@ -196,6 +241,155 @@ export const groupsRouter = router({
         updatedAt: g.updatedAt?.toISOString() ?? null,
       };
     });
+  }),
+
+  /**
+   * List instance-public groups for browsing/cloning within the organization.
+   */
+  libraryList: tenantProcedure.query(async ({ ctx }) => {
+    requireTeacherOrAdmin(ctx);
+
+    const orgGroups = await db
+      .select()
+      .from(schema.cpOrganizationGroups)
+      .where(
+        and(
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+          eq(schema.cpOrganizationGroups.visibility, 'instance_public')
+        )
+      );
+
+    const groupIds = orgGroups.map((og) => og.groupId);
+    const orgGroupMetaById = new Map(orgGroups.map((og) => [og.groupId, og]));
+
+    if (groupIds.length === 0) return [];
+
+    const groups = await openpathDb
+      .select()
+      .from(whitelistGroups)
+      .where(inArray(whitelistGroups.id, groupIds));
+
+    if (groups.length === 0) return [];
+
+    const visibleGroupIds = groups.map((g) => g.id);
+
+    const allRules = await openpathDb
+      .select()
+      .from(whitelistRules)
+      .where(inArray(whitelistRules.groupId, visibleGroupIds));
+
+    const ruleCounts = new Map<
+      string,
+      { whitelistCount: number; blockedSubdomainCount: number; blockedPathCount: number }
+    >();
+    for (const groupId of visibleGroupIds) {
+      const groupRules = allRules.filter((r) => r.groupId === groupId);
+      ruleCounts.set(groupId, {
+        whitelistCount: groupRules.filter((r) => r.type === 'whitelist').length,
+        blockedSubdomainCount: groupRules.filter((r) => r.type === 'blocked_subdomain').length,
+        blockedPathCount: groupRules.filter((r) => r.type === 'blocked_path').length,
+      });
+    }
+
+    return groups.map((g) => {
+      const counts = ruleCounts.get(g.id) || {
+        whitelistCount: 0,
+        blockedSubdomainCount: 0,
+        blockedPathCount: 0,
+      };
+
+      return {
+        id: g.id,
+        name: g.name,
+        displayName: g.displayName,
+        enabled: g.enabled === 1,
+        visibility: orgGroupMetaById.get(g.id)?.visibility ?? 'private',
+        whitelistCount: counts.whitelistCount,
+        blockedSubdomainCount: counts.blockedSubdomainCount,
+        blockedPathCount: counts.blockedPathCount,
+        createdAt: g.createdAt?.toISOString() ?? null,
+        updatedAt: g.updatedAt?.toISOString() ?? null,
+      };
+    });
+  }),
+
+  /**
+   * Clone a group into a new private group (copy rules) within the organization.
+   */
+  clone: tenantProcedure.input(CloneGroupSchema).mutation(async ({ ctx, input }) => {
+    requireTeacherOrAdmin(ctx);
+    await assertGroupViewAccess(ctx, input.sourceGroupId);
+
+    const source = await openpathDb
+      .select()
+      .from(whitelistGroups)
+      .where(eq(whitelistGroups.id, input.sourceGroupId))
+      .limit(1);
+
+    if (!source[0]) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found' });
+    }
+
+    let baseName = `${source[0].name}-copy`;
+    const trimmedName = input.name?.trim();
+    if (trimmedName) {
+      baseName = trimmedName;
+    }
+
+    const name = await findAvailableGroupName(baseName);
+
+    let displayName = `${source[0].displayName} Copy`;
+    const trimmedDisplayName = input.displayName?.trim();
+    if (trimmedDisplayName) {
+      displayName = trimmedDisplayName;
+    }
+
+    const groupId = nanoid();
+    const [group] = await openpathDb
+      .insert(whitelistGroups)
+      .values({
+        id: groupId,
+        name,
+        displayName,
+        enabled: 1,
+      })
+      .returning();
+
+    const sourceRules = await openpathDb
+      .select()
+      .from(whitelistRules)
+      .where(eq(whitelistRules.groupId, source[0].id));
+
+    if (sourceRules.length > 0) {
+      await openpathDb.insert(whitelistRules).values(
+        sourceRules.map((r) => ({
+          id: nanoid(),
+          groupId: group.id,
+          type: r.type,
+          value: r.value,
+          comment: r.comment,
+        }))
+      );
+    }
+
+    await db.insert(schema.cpOrganizationGroups).values({
+      id: nanoid(),
+      organizationId: ctx.organizationId!,
+      groupId: group.id,
+      visibility: 'private',
+    });
+
+    if (ctx.userRole === 'teacher') {
+      await addGroupToTeacherRole({
+        userId: ctx.user.sub,
+        groupId: group.id,
+        createdBy: ctx.user.sub,
+      });
+    }
+
+    await publishWhitelistGroupChanged(group.id);
+
+    return { id: group.id, name: group.name };
   }),
 
   /**
@@ -253,7 +447,7 @@ export const groupsRouter = router({
   }),
 
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    await assertGroupAccess(ctx, input.id);
+    await assertGroupViewAccess(ctx, input.id);
 
     const group = await openpathDb
       .select()
@@ -278,7 +472,7 @@ export const groupsRouter = router({
   getRules: tenantProcedure
     .input(z.object({ groupId: z.string() }))
     .query(async ({ ctx, input }) => {
-      await assertGroupAccess(ctx, input.groupId);
+      await assertGroupViewAccess(ctx, input.groupId);
 
       const rules = await openpathDb
         .select()
@@ -346,7 +540,7 @@ export const groupsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      await assertGroupAccess(ctx, input.groupId);
+      await assertGroupViewAccess(ctx, input.groupId);
 
       // Build query with optional type filter
       const whereConditions = input.type
@@ -370,7 +564,7 @@ export const groupsRouter = router({
   listRulesPaginated: tenantProcedure
     .input(ListRulesPaginatedSchema)
     .query(async ({ ctx, input }) => {
-      await assertGroupAccess(ctx, input.groupId);
+      await assertGroupViewAccess(ctx, input.groupId);
 
       // Build base query conditions
       const conditions: ReturnType<typeof eq>[] = [eq(whitelistRules.groupId, input.groupId)];
@@ -418,7 +612,7 @@ export const groupsRouter = router({
   // Grouped rules list - groups by root domain, paginates by domain groups
   // Ensures domain groups are never split across pages
   listRulesGrouped: tenantProcedure.input(ListRulesGroupedSchema).query(async ({ ctx, input }) => {
-    await assertGroupAccess(ctx, input.groupId);
+    await assertGroupViewAccess(ctx, input.groupId);
 
     // Build base query conditions
     const conditions = [eq(whitelistRules.groupId, input.groupId)];
@@ -441,7 +635,7 @@ export const groupsRouter = router({
     }
 
     // Group rules by root domain
-    const groupedMap = new Map();
+    const groupedMap = new Map<string, OpenPathWhitelistRule[]>();
     for (const rule of filtered) {
       const root = getRootDomain(rule.value);
       const existing = groupedMap.get(root) ?? [];
@@ -618,21 +812,39 @@ export const groupsRouter = router({
   update: tenantProcedure.input(UpdateGroupSchema).mutation(async ({ ctx, input }) => {
     await assertGroupAccess(ctx, input.id);
 
-    const { id, ...rest } = input;
-    const updateData = {
-      ...rest,
+    const updateData: {
+      updatedAt: Date;
+      displayName?: string;
+      enabled?: number;
+    } = {
       updatedAt: new Date(),
-      ...(rest.enabled === undefined
-        ? {}
-        : {
-            enabled: typeof rest.enabled === 'boolean' ? (rest.enabled ? 1 : 0) : rest.enabled,
-          }),
     };
+
+    if (input.displayName !== undefined) {
+      updateData.displayName = input.displayName;
+    }
+
+    if (input.enabled !== undefined) {
+      updateData.enabled =
+        typeof input.enabled === 'boolean' ? (input.enabled ? 1 : 0) : (input.enabled as number);
+    }
+
+    if (input.visibility !== undefined) {
+      await db
+        .update(schema.cpOrganizationGroups)
+        .set({ visibility: input.visibility })
+        .where(
+          and(
+            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+            eq(schema.cpOrganizationGroups.groupId, input.id)
+          )
+        );
+    }
 
     const [updated] = await openpathDb
       .update(whitelistGroups)
       .set(updateData)
-      .where(eq(whitelistGroups.id, id))
+      .where(eq(whitelistGroups.id, input.id))
       .returning();
 
     await notifyOpenPathGroupChanged(updated.id);

@@ -1,0 +1,3 @@
+ALTER TABLE "cp_organization_groups" ADD COLUMN "visibility" varchar(20) DEFAULT 'private' NOT NULL;--> statement-breakpoint
+ALTER TABLE "cp_user_status" ADD COLUMN "target_organization_id" varchar(50);--> statement-breakpoint
+ALTER TABLE "cp_user_status" ADD CONSTRAINT "cp_user_status_target_organization_id_cp_organizations_id_fk" FOREIGN KEY ("target_organization_id") REFERENCES "public"."cp_organizations"("id") ON DELETE set null ON UPDATE no action;

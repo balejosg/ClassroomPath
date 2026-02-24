@@ -38,6 +38,8 @@ export async function resetDb(): Promise<void> {
     'cp_organization_users',
     'cp_organization_groups',
     'cp_organization_classrooms',
+    'cp_group_template_rules',
+    'cp_group_templates',
     'cp_memberships',
     'cp_organizations',
     'cp_user_status',

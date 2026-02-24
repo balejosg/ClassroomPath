@@ -38,6 +38,13 @@ app.use('/v2', (_req, res) => {
   res.status(404).type('text/plain').send('Not found');
 });
 
+// NOTE: OpenPath's `/export/:name.txt` is intentionally NOT exposed in ClassroomPath.
+// It is unauthenticated upstream and cannot be safely tenant-scoped by group name.
+// Use tenant-scoped `/cp/trpc` procedures or machine download tokens (`/w/*`).
+app.use('/export', (_req, res) => {
+  res.status(404).type('text/plain').send('Not found');
+});
+
 // Proxy targets
 const openPathApiTarget = config.openpathUrl;
 
@@ -89,7 +96,7 @@ app.use(
     target: openPathApiTarget,
     changeOrigin: true,
     ws: true,
-    pathFilter: ['/api', '/trpc', '/w', '/export', '/api-docs'],
+    pathFilter: ['/api', '/trpc', '/w', '/api-docs'],
     on: {
       proxyReq: (proxyReq, req) => {
         injectEnrollTicketAuth(

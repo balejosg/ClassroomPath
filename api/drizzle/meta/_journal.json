@@ -8,6 +8,20 @@
       "when": 1768208740897,
       "tag": "0000_lazy_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771961130825,
+      "tag": "0001_silky_whiplash",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771963773069,
+      "tag": "0002_group_templates",
+      "breakpoints": true
     }
   ]
 }
