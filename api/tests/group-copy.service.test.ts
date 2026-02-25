@@ -39,6 +39,22 @@ describe('group-copy.service', () => {
       assert.deepStrictEqual(seen.slice(0, 2), ['my-group', 'my-group-2']);
     });
 
+    it('preserves suffix when baseName is truncated by maxLength', async () => {
+      const seen: string[] = [];
+      const name = await findAvailableName({
+        baseName: 'a'.repeat(40),
+        maxLength: 10,
+        fallbackPrefix: 'group',
+        exists: async (candidate) => {
+          seen.push(candidate);
+          return candidate === 'aaaaaaaaaa';
+        },
+      });
+
+      assert.strictEqual(name, 'aaaaaaaa-2');
+      assert.deepStrictEqual(seen.slice(0, 2), ['aaaaaaaaaa', 'aaaaaaaa-2']);
+    });
+
     it('falls back to prefix when baseName sanitizes to empty', async () => {
       const name = await findAvailableName({
         baseName: '!!!',

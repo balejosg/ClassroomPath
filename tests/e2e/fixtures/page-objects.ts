@@ -185,6 +185,9 @@ export class OrganizationPage {
   readonly inviteButton: Locator;
   readonly newUserButton: Locator;
   readonly usersButton: Locator;
+  readonly usersTable: Locator;
+  readonly usersSummary: Locator;
+  readonly retryUsersFetchButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -197,12 +200,32 @@ export class OrganizationPage {
     this.newUserButton = page.getByRole('button', { name: '+ Nuevo Usuario' });
     // Sidebar navigation button (Spanish UI: "Usuarios y Roles")
     this.usersButton = page.getByRole('button', { name: 'Usuarios y Roles' });
+
+    // OpenPath Users view hooks (rendered inside ClassroomPath tenant shell)
+    this.usersTable = page.getByTestId('users-table');
+    this.usersSummary = page.getByTestId('users-summary');
+    this.retryUsersFetchButton = page.getByRole('button', { name: 'Reintentar' });
   }
 
   async goto() {
     // App is state-driven, not URL-routed. Navigate via sidebar.
     await this.usersButton.click();
     await this.page.waitForLoadState('networkidle');
+  }
+
+  async waitForUsersLoaded() {
+    await expect(this.page.getByRole('columnheader', { name: /Estado/i })).toBeVisible({
+      timeout: 10000,
+    });
+
+    await expect(this.usersTable).toBeVisible({ timeout: 10000 });
+    await expect(this.usersSummary).toBeVisible({ timeout: 10000 });
+
+    // The Users view can briefly show a fetch error while services bootstrap.
+    // Retry once, then wait for the loading state to clear.
+    await this.retryUsersFetchButton.click({ timeout: 1500 }).catch(() => {});
+
+    await expect(this.usersTable.getByText(/Cargando usuarios/i)).toBeHidden({ timeout: 15000 });
   }
 
   async inviteMember(email: string, role: 'admin' | 'teacher') {

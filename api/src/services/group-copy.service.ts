@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { nanoid } from 'nanoid';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
@@ -15,8 +15,24 @@ import {
 type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
 type TemplateRule = typeof schema.cpGroupTemplateRules.$inferSelect;
 
+type RuleSeed = Pick<OpenPathWhitelistRule, 'type' | 'value' | 'comment'>;
+
 export function sanitizeSlug(raw: string): string {
   return raw.toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+}
+
+function trimSlugEdges(value: string): string {
+  return value.replace(/^-+/, '').replace(/-+$/, '');
+}
+
+function buildNameCandidate(params: { base: string; suffix: string; maxLength: number }): string {
+  const maxBaseLength = Math.max(0, params.maxLength - params.suffix.length);
+  const base = params.base.slice(0, maxBaseLength).replace(/-+$/, '');
+  return `${base}${params.suffix}`;
+}
+
+function fallbackRandomName(params: { fallbackPrefix: string; maxLength: number }): string {
+  return `${params.fallbackPrefix}-${nanoid(8)}`.slice(0, params.maxLength);
 }
 
 export async function findAvailableName(params: {
@@ -26,19 +42,40 @@ export async function findAvailableName(params: {
   exists: (candidate: string) => Promise<boolean>;
 }): Promise<string> {
   const safeBase = sanitizeSlug(params.baseName);
-  const trimmedBase = safeBase.replace(/^-+/, '').replace(/-+$/, '');
+  const trimmedBase = trimSlugEdges(safeBase);
   if (!trimmedBase) {
-    return `${params.fallbackPrefix}-${nanoid(8)}`.slice(0, params.maxLength);
+    return fallbackRandomName({
+      fallbackPrefix: params.fallbackPrefix,
+      maxLength: params.maxLength,
+    });
   }
 
   const maxAttempts = 50;
   for (let i = 0; i < maxAttempts; i++) {
     const suffix = i === 0 ? '' : `-${String(i + 1)}`;
-    const candidate = `${trimmedBase}${suffix}`.slice(0, params.maxLength);
+    const candidate = buildNameCandidate({
+      base: trimmedBase,
+      suffix,
+      maxLength: params.maxLength,
+    });
+    if (!candidate || candidate.startsWith('-')) {
+      return fallbackRandomName({
+        fallbackPrefix: params.fallbackPrefix,
+        maxLength: params.maxLength,
+      });
+    }
     if (!(await params.exists(candidate))) return candidate;
   }
 
-  return `${trimmedBase}-${nanoid(6)}`.slice(0, params.maxLength);
+  const fallback = buildNameCandidate({
+    base: trimmedBase,
+    suffix: `-${nanoid(6)}`,
+    maxLength: params.maxLength,
+  });
+  return (
+    fallback ||
+    fallbackRandomName({ fallbackPrefix: params.fallbackPrefix, maxLength: params.maxLength })
+  );
 }
 
 export async function findAvailableGroupName(baseName: string): Promise<string> {
@@ -103,20 +140,98 @@ export async function addGroupToTeacherRole(params: {
     .where(eq(roles.id, teacherRole.id));
 }
 
-async function copyRulesToNewGroup(params: {
-  groupId: string;
-  rules: Array<Pick<OpenPathWhitelistRule, 'type' | 'value' | 'comment'>>;
-}): Promise<void> {
-  if (params.rules.length === 0) return;
-  await openpathDb.insert(whitelistRules).values(
-    params.rules.map((r) => ({
+async function deleteOpenPathGroupCascade(groupId: string): Promise<void> {
+  await openpathDb.delete(whitelistRules).where(eq(whitelistRules.groupId, groupId));
+  await openpathDb.delete(whitelistGroups).where(eq(whitelistGroups.id, groupId));
+}
+
+async function createOrgGroupFromRules(params: {
+  organizationId: string;
+  actorUserId: string;
+  actorRole?: string;
+  rawName: string;
+  displayName: string;
+  rules: RuleSeed[];
+}): Promise<{ id: string; name: string }> {
+  const name = await findAvailableGroupName(params.rawName);
+  const groupId = nanoid();
+
+  const group = await openpathDb.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(whitelistGroups)
+      .values({
+        id: groupId,
+        name,
+        displayName: params.displayName,
+        enabled: 1,
+      })
+      .returning();
+
+    if (params.rules.length > 0) {
+      await tx.insert(whitelistRules).values(
+        params.rules.map((r) => ({
+          id: nanoid(),
+          groupId: created.id,
+          type: r.type,
+          value: r.value,
+          comment: r.comment,
+        }))
+      );
+    }
+
+    return created;
+  });
+
+  try {
+    await db.insert(schema.cpOrganizationGroups).values({
       id: nanoid(),
-      groupId: params.groupId,
-      type: r.type,
-      value: r.value,
-      comment: r.comment,
-    }))
-  );
+      organizationId: params.organizationId,
+      groupId: group.id,
+      visibility: 'private',
+    });
+  } catch (err) {
+    try {
+      await deleteOpenPathGroupCascade(group.id);
+    } catch {
+      // Best-effort rollback.
+    }
+    throw err;
+  }
+
+  if (params.actorRole === 'teacher') {
+    try {
+      await addGroupToTeacherRole({
+        userId: params.actorUserId,
+        groupId: group.id,
+        createdBy: params.actorUserId,
+      });
+    } catch (err) {
+      try {
+        await db
+          .delete(schema.cpOrganizationGroups)
+          .where(
+            and(
+              eq(schema.cpOrganizationGroups.organizationId, params.organizationId),
+              eq(schema.cpOrganizationGroups.groupId, group.id)
+            )
+          );
+      } catch {
+        // Best-effort rollback.
+      }
+
+      try {
+        await deleteOpenPathGroupCascade(group.id);
+      } catch {
+        // Best-effort rollback.
+      }
+
+      throw err;
+    }
+  }
+
+  await publishWhitelistGroupChanged(group.id);
+
+  return { id: group.id, name: group.name };
 }
 
 export async function cloneGroupIntoOrganization(params: {
@@ -143,42 +258,23 @@ export async function cloneGroupIntoOrganization(params: {
   const rawDisplayName = params.displayName?.trim();
   const displayName = rawDisplayName || `${source[0].displayName || source[0].name} Copy`;
 
-  const groupId = nanoid();
-  const [group] = await openpathDb
-    .insert(whitelistGroups)
-    .values({
-      id: groupId,
-      name,
-      displayName,
-      enabled: 1,
+  const sourceRules: RuleSeed[] = await openpathDb
+    .select({
+      type: whitelistRules.type,
+      value: whitelistRules.value,
+      comment: whitelistRules.comment,
     })
-    .returning();
-
-  const sourceRules = await openpathDb
-    .select()
     .from(whitelistRules)
     .where(eq(whitelistRules.groupId, source[0].id));
 
-  await copyRulesToNewGroup({ groupId: group.id, rules: sourceRules });
-
-  await db.insert(schema.cpOrganizationGroups).values({
-    id: nanoid(),
+  return await createOrgGroupFromRules({
     organizationId: params.organizationId,
-    groupId: group.id,
-    visibility: 'private',
+    actorUserId: params.actorUserId,
+    actorRole: params.actorRole,
+    rawName,
+    displayName,
+    rules: sourceRules,
   });
-
-  if (params.actorRole === 'teacher') {
-    await addGroupToTeacherRole({
-      userId: params.actorUserId,
-      groupId: group.id,
-      createdBy: params.actorUserId,
-    });
-  }
-
-  await publishWhitelistGroupChanged(group.id);
-
-  return { id: group.id, name: group.name };
 }
 
 export async function importTemplateIntoOrganization(params: {
@@ -205,43 +301,16 @@ export async function importTemplateIntoOrganization(params: {
     .where(eq(schema.cpGroupTemplateRules.templateId, template[0].id));
 
   const rawName = params.name?.trim() || `${template[0].name}-import`;
-  const name = await findAvailableGroupName(rawName);
   const displayName = params.displayName?.trim() || template[0].displayName;
 
-  const groupId = nanoid();
-  const [group] = await openpathDb
-    .insert(whitelistGroups)
-    .values({
-      id: groupId,
-      name,
-      displayName,
-      enabled: 1,
-    })
-    .returning();
-
-  await copyRulesToNewGroup({
-    groupId: group.id,
+  return await createOrgGroupFromRules({
+    organizationId: params.organizationId,
+    actorUserId: params.actorUserId,
+    actorRole: params.actorRole,
+    rawName,
+    displayName,
     rules: templateRules.map((r) => ({ type: r.type, value: r.value, comment: r.comment })),
   });
-
-  await db.insert(schema.cpOrganizationGroups).values({
-    id: nanoid(),
-    organizationId: params.organizationId,
-    groupId: group.id,
-    visibility: 'private',
-  });
-
-  if (params.actorRole === 'teacher') {
-    await addGroupToTeacherRole({
-      userId: params.actorUserId,
-      groupId: group.id,
-      createdBy: params.actorUserId,
-    });
-  }
-
-  await publishWhitelistGroupChanged(group.id);
-
-  return { id: group.id, name: group.name };
 }
 
 export async function publishTemplateFromGroup(params: {
@@ -271,26 +340,29 @@ export async function publishTemplateFromGroup(params: {
   const displayName = params.displayName?.trim() || sourceGroup[0].displayName;
 
   const templateId = nanoid();
-  await db.insert(schema.cpGroupTemplates).values({
-    id: templateId,
-    name,
-    displayName,
-    description: params.description?.trim() || null,
-    createdBy: params.actorUserId,
-    updatedAt: new Date(),
-  });
 
-  if (sourceRules.length > 0) {
-    await db.insert(schema.cpGroupTemplateRules).values(
-      sourceRules.map((r) => ({
-        id: nanoid(),
-        templateId,
-        type: r.type,
-        value: r.value,
-        comment: r.comment,
-      }))
-    );
-  }
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.cpGroupTemplates).values({
+      id: templateId,
+      name,
+      displayName,
+      description: params.description?.trim() || null,
+      createdBy: params.actorUserId,
+      updatedAt: new Date(),
+    });
+
+    if (sourceRules.length > 0) {
+      await tx.insert(schema.cpGroupTemplateRules).values(
+        sourceRules.map((r) => ({
+          id: nanoid(),
+          templateId,
+          type: r.type,
+          value: r.value,
+          comment: r.comment,
+        }))
+      );
+    }
+  });
 
   return { id: templateId, name };
 }

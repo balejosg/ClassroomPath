@@ -81,18 +81,14 @@ test.describe('Organization Members', () => {
     // Should show a table with user data (columns: Usuario, Email, Roles, Estado)
     await expect(page.getByRole('table')).toBeVisible({ timeout: 5000 });
 
-    // The Users view may render a transient fetch error while backend services
-    // finish bootstrapping. Retry once, then require visible member rows.
-    const retryUsersFetch = page.getByRole('button', { name: 'Reintentar' });
-    await retryUsersFetch.click({ timeout: 1500 }).catch(() => {});
-    await waitForNetworkIdle(page).catch(() => {});
+    await orgPage.waitForUsersLoaded();
 
     const firstEmailCell = page.getByRole('cell').filter({ hasText: /@/ }).first();
     const hasEmailRow = await firstEmailCell.isVisible({ timeout: 10000 }).catch(() => false);
 
     if (!hasEmailRow) {
       await expect(page.getByText('Error al cargar usuarios')).toBeVisible({ timeout: 5000 });
-      await expect(retryUsersFetch).toBeVisible({ timeout: 5000 });
+      await expect(orgPage.retryUsersFetchButton).toBeVisible({ timeout: 5000 });
     }
   });
 
@@ -136,29 +132,14 @@ test.describe('Organization Members', () => {
     const orgPage = new OrganizationPage(page);
     await orgPage.goto();
 
-    const statusHeader = page.getByRole('columnheader', { name: /Estado/i });
-    await expect(statusHeader).toBeVisible({ timeout: 10000 });
+    await orgPage.waitForUsersLoaded();
 
-    const usersTable = page.getByTestId('users-table');
-    const usersSummary = page.getByTestId('users-summary');
-
-    await expect(usersTable).toBeVisible({ timeout: 10000 });
-    await expect(usersSummary).toBeVisible({ timeout: 10000 });
-
-    // The Users view can briefly show a fetch error while services bootstrap.
-    // Retry once, then wait for the loading state to clear.
-    const retryUsersFetch = page.getByRole('button', { name: 'Reintentar' });
-    await retryUsersFetch.click({ timeout: 1500 }).catch(() => {});
-    await waitForNetworkIdle(page).catch(() => {});
-
-    await expect(usersTable.getByText(/Cargando usuarios/i)).toBeHidden({ timeout: 15000 });
-
-    const summaryText = (await usersSummary.textContent()) ?? '';
+    const summaryText = (await orgPage.usersSummary.textContent()) ?? '';
     const hasZeroUsers = /Mostrando\s+0-0\s+de\s+0\s+usuarios/i.test(summaryText);
 
     // Depending on seed data and feature flags, org members may show Active/Inactive
     // (OpenPath Users view) and/or Pending (invites). Accept any known status.
-    const hasStatusCell = await usersTable
+    const hasStatusCell = await orgPage.usersTable
       .getByRole('cell', { name: /Activo|Inactivo|Pendiente|Active|Inactive|Pending/i })
       .first()
       .isVisible({ timeout: 10000 })
