@@ -10,6 +10,143 @@ function normalizeSearch(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
+function filterBySearch<T>(items: T[], search: string, buildHaystack: (item: T) => string): T[] {
+  const q = normalizeSearch(search);
+  if (!q) return items;
+
+  return items.filter((item) => {
+    const hay = normalizeSearch(buildHaystack(item));
+    return hay.includes(q);
+  });
+}
+
+type RulesRow = {
+  id: string;
+  type: string;
+  value: string;
+};
+
+type RulesPage = {
+  total: number;
+  rules: RulesRow[];
+  hasMore: boolean;
+};
+
+function RulesPreviewModal(props: {
+  title: string;
+  subtitle: string;
+  search: string;
+  onSearchChange: (next: string) => void;
+  primaryActionLabel: string;
+  onPrimaryAction: () => void;
+  primaryActionDisabled: boolean;
+  onClose: () => void;
+  query: { isLoading: boolean; data?: RulesPage };
+  offset: number;
+  onPrevPage: () => void;
+  onNextPage: () => void;
+  emptyText: string;
+}) {
+  const rules = props.query.data?.rules ?? [];
+  const total = props.query.data?.total ?? 0;
+  const hasMore = props.query.data?.hasMore ?? false;
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm">
+      <div className="fixed inset-x-0 bottom-0 top-0 md:inset-y-10 md:left-1/2 md:-translate-x-1/2 md:max-w-3xl bg-white md:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+        <div className="border-b border-slate-200 px-5 py-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">{props.title}</h3>
+            <p className="text-sm text-slate-500">{props.subtitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={props.onClose}
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+            aria-label="Cerrar"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="px-5 pt-4 flex items-center gap-3">
+          <input
+            value={props.search}
+            onChange={(e) => props.onSearchChange(e.target.value)}
+            placeholder="Buscar dominio..."
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          />
+          <button
+            type="button"
+            onClick={props.onPrimaryAction}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 text-white px-3 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
+            disabled={props.primaryActionDisabled}
+          >
+            <Copy size={16} />
+            {props.primaryActionLabel}
+          </button>
+        </div>
+
+        <div className="p-5 flex-1 overflow-y-auto">
+          {props.query.isLoading ? (
+            <div className="text-sm text-slate-500">Cargando reglas...</div>
+          ) : rules.length ? (
+            <div className="space-y-3">
+              <div className="text-xs text-slate-500">
+                Total: {total} (mostrando {rules.length})
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="text-left font-semibold px-3 py-2">Tipo</th>
+                      <th className="text-left font-semibold px-3 py-2">Dominio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rules.map((r) => (
+                      <tr key={r.id} className="border-t border-slate-100">
+                        <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
+                          {r.type}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs text-slate-900 break-all">
+                          {r.value}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={props.onPrevPage}
+                  disabled={props.offset === 0}
+                  className="text-sm px-3 py-2 rounded-lg border border-slate-200 text-slate-700 disabled:opacity-60"
+                >
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  onClick={props.onNextPage}
+                  disabled={!hasMore}
+                  className="text-sm px-3 py-2 rounded-lg border border-slate-200 text-slate-700 disabled:opacity-60"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-slate-500">{props.emptyText}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GroupLibrary({ userRole }: { userRole?: string }) {
   const canUse = userRole === 'admin' || userRole === 'teacher';
   const isAdmin = userRole === 'admin';
@@ -67,34 +204,32 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
     }
   );
 
+  const invalidateOpenPathGroupsList = () =>
+    queryClient.invalidateQueries({ queryKey: ['groups.list'] });
+
+  const invalidateGroupLists = async () => {
+    await Promise.all([
+      // OpenPath UI uses this exact key via react-query
+      invalidateOpenPathGroupsList(),
+      cpUtils.groups.list.invalidate(),
+      cpUtils.groups.libraryList.invalidate(),
+    ]);
+  };
+
+  const invalidateOrgGroupsList = async () => {
+    await Promise.all([invalidateOpenPathGroupsList(), cpUtils.groups.list.invalidate()]);
+  };
+
   const cloneMutation = cpTrpcReact.groups.clone.useMutation({
-    async onSuccess() {
-      await Promise.all([
-        // OpenPath UI uses this exact key via react-query
-        queryClient.invalidateQueries({ queryKey: ['groups.list'] }),
-        cpUtils.groups.list.invalidate(),
-        cpUtils.groups.libraryList.invalidate(),
-      ]);
-    },
+    onSuccess: invalidateGroupLists,
   });
 
   const updateMutation = cpTrpcReact.groups.update.useMutation({
-    async onSuccess() {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['groups.list'] }),
-        cpUtils.groups.list.invalidate(),
-        cpUtils.groups.libraryList.invalidate(),
-      ]);
-    },
+    onSuccess: invalidateGroupLists,
   });
 
   const importTemplateMutation = cpTrpcReact.templates.import.useMutation({
-    async onSuccess() {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['groups.list'] }),
-        cpUtils.groups.list.invalidate(),
-      ]);
-    },
+    onSuccess: invalidateOrgGroupsList,
   });
 
   const publishTemplateMutation = cpTrpcReact.templates.publishFromGroup.useMutation({
@@ -107,32 +242,25 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
   const orgGroups = orgGroupsQuery.data ?? [];
   const templates = templatesQuery.data ?? [];
 
-  const filteredLibrary = useMemo(() => {
-    const q = normalizeSearch(search);
-    if (!q) return libraryGroups;
-    return libraryGroups.filter((g) => {
-      const hay = `${g.displayName ?? ''} ${g.name ?? ''}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [libraryGroups, search]);
+  const filteredLibrary = useMemo(
+    () => filterBySearch(libraryGroups, search, (g) => `${g.displayName ?? ''} ${g.name ?? ''}`),
+    [libraryGroups, search]
+  );
 
-  const filteredOrgGroups = useMemo(() => {
-    const q = normalizeSearch(search);
-    if (!q) return orgGroups;
-    return orgGroups.filter((g) => {
-      const hay = `${g.displayName ?? ''} ${g.name ?? ''}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [orgGroups, search]);
+  const filteredOrgGroups = useMemo(
+    () => filterBySearch(orgGroups, search, (g) => `${g.displayName ?? ''} ${g.name ?? ''}`),
+    [orgGroups, search]
+  );
 
-  const filteredTemplates = useMemo(() => {
-    const q = normalizeSearch(search);
-    if (!q) return templates;
-    return templates.filter((t) => {
-      const hay = `${t.displayName ?? ''} ${t.name ?? ''} ${t.description ?? ''}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [templates, search]);
+  const filteredTemplates = useMemo(
+    () =>
+      filterBySearch(
+        templates,
+        search,
+        (t) => `${t.displayName ?? ''} ${t.name ?? ''} ${t.description ?? ''}`
+      ),
+    [templates, search]
+  );
 
   const close = () => {
     setIsOpen(false);
@@ -411,210 +539,49 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
           </div>
 
           {/* View modal */}
-          {viewGroupId && (
-            <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm">
-              <div className="fixed inset-x-0 bottom-0 top-0 md:inset-y-10 md:left-1/2 md:-translate-x-1/2 md:max-w-3xl bg-white md:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-                <div className="border-b border-slate-200 px-5 py-4 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900">
-                      Vista previa (solo lectura)
-                    </h3>
-                    <p className="text-sm text-slate-500">Puedes clonar para editar.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setViewGroupId(null)}
-                    className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-                    aria-label="Cerrar"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div className="px-5 pt-4 flex items-center gap-3">
-                  <input
-                    value={rulesSearch}
-                    onChange={(e) => {
-                      setRulesSearch(e.target.value);
-                      setRulesOffset(0);
-                    }}
-                    placeholder="Buscar dominio..."
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => cloneMutation.mutate({ sourceGroupId: viewGroupId })}
-                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 text-white px-3 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
-                    disabled={cloneMutation.isPending}
-                  >
-                    <Copy size={16} />
-                    Clonar
-                  </button>
-                </div>
-
-                <div className="p-5 flex-1 overflow-y-auto">
-                  {rulesQuery.isLoading ? (
-                    <div className="text-sm text-slate-500">Cargando reglas...</div>
-                  ) : rulesQuery.data?.rules?.length ? (
-                    <div className="space-y-3">
-                      <div className="text-xs text-slate-500">
-                        Total: {rulesQuery.data.total} (mostrando {rulesQuery.data.rules.length})
-                      </div>
-
-                      <div className="border border-slate-200 rounded-xl overflow-hidden">
-                        <table className="w-full text-sm">
-                          <thead className="bg-slate-50 text-slate-600">
-                            <tr>
-                              <th className="text-left font-semibold px-3 py-2">Tipo</th>
-                              <th className="text-left font-semibold px-3 py-2">Dominio</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rulesQuery.data.rules.map((r) => (
-                              <tr key={r.id} className="border-t border-slate-100">
-                                <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
-                                  {r.type}
-                                </td>
-                                <td className="px-3 py-2 font-mono text-xs text-slate-900 break-all">
-                                  {r.value}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <button
-                          type="button"
-                          onClick={() => setRulesOffset(Math.max(0, rulesOffset - rulesLimit))}
-                          disabled={rulesOffset === 0}
-                          className="text-sm px-3 py-2 rounded-lg border border-slate-200 text-slate-700 disabled:opacity-60"
-                        >
-                          Anterior
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRulesOffset(rulesOffset + rulesLimit)}
-                          disabled={!rulesQuery.data.hasMore}
-                          className="text-sm px-3 py-2 rounded-lg border border-slate-200 text-slate-700 disabled:opacity-60"
-                        >
-                          Siguiente
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-slate-500">No hay reglas para mostrar.</div>
-                  )}
-                </div>
-              </div>
-            </div>
+          {viewGroupId !== null && (
+            <RulesPreviewModal
+              title="Vista previa (solo lectura)"
+              subtitle="Puedes clonar para editar."
+              search={rulesSearch}
+              onSearchChange={(next) => {
+                setRulesSearch(next);
+                setRulesOffset(0);
+              }}
+              primaryActionLabel="Clonar"
+              onPrimaryAction={() => cloneMutation.mutate({ sourceGroupId: viewGroupId })}
+              primaryActionDisabled={cloneMutation.isPending}
+              onClose={() => setViewGroupId(null)}
+              query={rulesQuery}
+              offset={rulesOffset}
+              onPrevPage={() => setRulesOffset(Math.max(0, rulesOffset - rulesLimit))}
+              onNextPage={() => setRulesOffset(rulesOffset + rulesLimit)}
+              emptyText="No hay reglas para mostrar."
+            />
           )}
 
           {/* Template view modal */}
-          {viewTemplateId && (
-            <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm">
-              <div className="fixed inset-x-0 bottom-0 top-0 md:inset-y-10 md:left-1/2 md:-translate-x-1/2 md:max-w-3xl bg-white md:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-                <div className="border-b border-slate-200 px-5 py-4 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900">Vista previa de plantilla</h3>
-                    <p className="text-sm text-slate-500">Puedes importar para editar.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setViewTemplateId(null)}
-                    className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-                    aria-label="Cerrar"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div className="px-5 pt-4 flex items-center gap-3">
-                  <input
-                    value={templateRulesSearch}
-                    onChange={(e) => {
-                      setTemplateRulesSearch(e.target.value);
-                      setTemplateRulesOffset(0);
-                    }}
-                    placeholder="Buscar dominio..."
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => importTemplateMutation.mutate({ templateId: viewTemplateId })}
-                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 text-white px-3 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
-                    disabled={importTemplateMutation.isPending}
-                  >
-                    <Copy size={16} />
-                    Importar
-                  </button>
-                </div>
-
-                <div className="p-5 flex-1 overflow-y-auto">
-                  {templateRulesQuery.isLoading ? (
-                    <div className="text-sm text-slate-500">Cargando reglas...</div>
-                  ) : templateRulesQuery.data?.rules?.length ? (
-                    <div className="space-y-3">
-                      <div className="text-xs text-slate-500">
-                        Total: {templateRulesQuery.data.total} (mostrando{' '}
-                        {templateRulesQuery.data.rules.length})
-                      </div>
-
-                      <div className="border border-slate-200 rounded-xl overflow-hidden">
-                        <table className="w-full text-sm">
-                          <thead className="bg-slate-50 text-slate-600">
-                            <tr>
-                              <th className="text-left font-semibold px-3 py-2">Tipo</th>
-                              <th className="text-left font-semibold px-3 py-2">Dominio</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {templateRulesQuery.data.rules.map((r) => (
-                              <tr key={r.id} className="border-t border-slate-100">
-                                <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
-                                  {r.type}
-                                </td>
-                                <td className="px-3 py-2 font-mono text-xs text-slate-900 break-all">
-                                  {r.value}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setTemplateRulesOffset(
-                              Math.max(0, templateRulesOffset - templateRulesLimit)
-                            )
-                          }
-                          disabled={templateRulesOffset === 0}
-                          className="text-sm px-3 py-2 rounded-lg border border-slate-200 text-slate-700 disabled:opacity-60"
-                        >
-                          Anterior
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setTemplateRulesOffset(templateRulesOffset + templateRulesLimit)
-                          }
-                          disabled={!templateRulesQuery.data.hasMore}
-                          className="text-sm px-3 py-2 rounded-lg border border-slate-200 text-slate-700 disabled:opacity-60"
-                        >
-                          Siguiente
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-slate-500">No hay reglas para mostrar.</div>
-                  )}
-                </div>
-              </div>
-            </div>
+          {viewTemplateId !== null && (
+            <RulesPreviewModal
+              title="Vista previa de plantilla"
+              subtitle="Puedes importar para editar."
+              search={templateRulesSearch}
+              onSearchChange={(next) => {
+                setTemplateRulesSearch(next);
+                setTemplateRulesOffset(0);
+              }}
+              primaryActionLabel="Importar"
+              onPrimaryAction={() => importTemplateMutation.mutate({ templateId: viewTemplateId })}
+              primaryActionDisabled={importTemplateMutation.isPending}
+              onClose={() => setViewTemplateId(null)}
+              query={templateRulesQuery}
+              offset={templateRulesOffset}
+              onPrevPage={() =>
+                setTemplateRulesOffset(Math.max(0, templateRulesOffset - templateRulesLimit))
+              }
+              onNextPage={() => setTemplateRulesOffset(templateRulesOffset + templateRulesLimit)}
+              emptyText="No hay reglas para mostrar."
+            />
           )}
         </div>
       )}

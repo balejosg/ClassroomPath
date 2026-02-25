@@ -15,6 +15,8 @@ export function requireTeacherOrAdmin(ctx: { userRole?: string }): void {
   }
 }
 
+export type GroupAccessLevel = 'view' | 'edit';
+
 export async function assertOrgGroupAccess(organizationId: string, groupId: string): Promise<void> {
   const orgGroup = await db
     .select({ id: schema.cpOrganizationGroups.id })
@@ -95,31 +97,25 @@ export async function teacherCanUseGroup(params: {
 }
 
 export async function assertCanUseGroup(
-  ctx: { userRole?: string; user: { sub: string } },
+  ctx: { organizationId?: string; userRole?: string; user: { sub: string } },
   groupId: string,
   opts?: { notTeacherMessage?: string; notAllowedMessage?: string }
 ): Promise<void> {
-  if (isOrgAdmin(ctx)) return;
-
-  if (ctx.userRole !== 'teacher') {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: opts?.notTeacherMessage ?? 'Teacher access required',
-    });
-  }
-
-  const ok = await teacherCanUseGroup({ userId: ctx.user.sub, groupId });
-  if (!ok) {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: opts?.notAllowedMessage ?? 'You can only use your assigned groups',
-    });
-  }
+  await assertCanAccessGroup(ctx, groupId, 'edit', opts);
 }
 
 export async function assertCanViewGroup(
   ctx: { organizationId?: string; userRole?: string; user: { sub: string } },
   groupId: string,
+  opts?: { notTeacherMessage?: string; notAllowedMessage?: string }
+): Promise<void> {
+  await assertCanAccessGroup(ctx, groupId, 'view', opts);
+}
+
+export async function assertCanAccessGroup(
+  ctx: { organizationId?: string; userRole?: string; user: { sub: string } },
+  groupId: string,
+  access: GroupAccessLevel,
   opts?: { notTeacherMessage?: string; notAllowedMessage?: string }
 ): Promise<void> {
   requireTeacherOrAdmin(ctx);
@@ -148,14 +144,14 @@ export async function assertCanViewGroup(
 
   if (isOrgAdmin(ctx)) return;
 
-  if (orgGroup[0].visibility === 'instance_public') return;
-
   if (ctx.userRole !== 'teacher') {
     throw new TRPCError({
       code: 'FORBIDDEN',
       message: opts?.notTeacherMessage ?? 'Teacher access required',
     });
   }
+
+  if (access === 'view' && orgGroup[0].visibility === 'instance_public') return;
 
   const ok = await teacherCanUseGroup({ userId: ctx.user.sub, groupId });
   if (!ok) {

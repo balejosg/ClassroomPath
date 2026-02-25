@@ -161,14 +161,22 @@ describe('tenant-access', () => {
   });
 
   it('assertCanUseGroup enforces teacher ownership and allows admin', async () => {
-    await assertCanUseGroup({ userRole: 'admin', user: { sub: USER_ID } }, 'nonexistent');
+    await assertCanUseGroup(
+      { organizationId: ORG_ID, userRole: 'admin', user: { sub: USER_ID } },
+      GROUP_ID_3
+    );
 
-    await assertCanUseGroup({ userRole: 'teacher', user: { sub: USER_ID } }, GROUP_ID);
+    await assertCanUseGroup(
+      { organizationId: ORG_ID, userRole: 'teacher', user: { sub: USER_ID } },
+      GROUP_ID
+    );
 
     try {
-      await assertCanUseGroup({ userRole: 'teacher', user: { sub: USER_ID } }, 'not-owned-group', {
-        notAllowedMessage: 'NO',
-      });
+      await assertCanUseGroup(
+        { organizationId: ORG_ID, userRole: 'teacher', user: { sub: USER_ID } },
+        GROUP_ID_3,
+        { notAllowedMessage: 'NO' }
+      );
       assert.fail('expected assertCanUseGroup to throw');
     } catch (err) {
       assertTrpcError(err, 'FORBIDDEN', 'NO');

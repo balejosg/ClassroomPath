@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
+import { GroupVisibility as GroupVisibilitySchema } from '@openpath/shared';
 import { router, tenantProcedure } from '../trpc.js';
 import {
   openpathDb,
@@ -19,56 +20,21 @@ import { getRootDomain } from '../../utils/domain.js';
 import {
   assertCanUseGroup,
   assertCanViewGroup,
-  assertOrgGroupAccess,
   getTeacherGroupIdentifiers,
   isOrgAdmin,
   requireTeacherOrAdmin,
 } from '../../lib/tenant-access.js';
 
+import {
+  addGroupToTeacherRole,
+  cloneGroupIntoOrganization,
+} from '../../services/group-copy.service.js';
+
 type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
-async function assertGroupAccess(ctx: any, groupId: string): Promise<void> {
-  requireTeacherOrAdmin(ctx);
-  await assertOrgGroupAccess(ctx.organizationId!, groupId);
-  await assertCanUseGroup(ctx, groupId, {
-    notAllowedMessage: 'Insufficient permissions for this group',
-  });
-}
 
-async function assertGroupViewAccess(ctx: any, groupId: string): Promise<void> {
-  await assertCanViewGroup(ctx, groupId, {
-    notAllowedMessage: 'Insufficient permissions for this group',
-  });
-}
-
-async function addGroupToTeacherRole(params: {
-  userId: string;
-  groupId: string;
-  createdBy: string;
-}): Promise<void> {
-  const existingRoles = await openpathDb
-    .select()
-    .from(roles)
-    .where(eq(roles.userId, params.userId));
-  const teacherRole = existingRoles.find((r) => r.role === 'teacher');
-
-  if (!teacherRole) {
-    await openpathDb.insert(roles).values({
-      id: nanoid(),
-      userId: params.userId,
-      role: 'teacher',
-      groupIds: [params.groupId],
-      createdBy: params.createdBy,
-    });
-    return;
-  }
-
-  const current = Array.isArray(teacherRole.groupIds) ? teacherRole.groupIds : [];
-  const next = [...new Set([...current, params.groupId])];
-  await openpathDb
-    .update(roles)
-    .set({ groupIds: next as any })
-    .where(eq(roles.id, teacherRole.id));
-}
+const GROUP_PERMISSION_OPTS = {
+  notAllowedMessage: 'Insufficient permissions for this group',
+} as const;
 
 async function removeGroupFromTeacherRole(params: {
   userId: string;
@@ -88,39 +54,11 @@ async function removeGroupFromTeacherRole(params: {
     .where(eq(roles.id, teacherRole.id));
 }
 
-function sanitizeGroupName(raw: string): string {
-  return raw.toLowerCase().replace(/[^a-z0-9-_]/g, '-');
-}
-
-async function findAvailableGroupName(baseName: string): Promise<string> {
-  const safeBase = sanitizeGroupName(baseName);
-  const trimmedBase = safeBase.replace(/^-+/, '').replace(/-+$/, '');
-  if (!trimmedBase) {
-    return `group-${nanoid(8)}`;
-  }
-
-  const maxAttempts = 50;
-  for (let i = 0; i < maxAttempts; i++) {
-    const suffix = i === 0 ? '' : `-${String(i + 1)}`;
-    const candidate = `${trimmedBase}${suffix}`.slice(0, 100);
-    const exists = await openpathDb
-      .select({ id: whitelistGroups.id })
-      .from(whitelistGroups)
-      .where(eq(whitelistGroups.name, candidate))
-      .limit(1);
-    if (!exists.length) return candidate;
-  }
-
-  return `${trimmedBase}-${nanoid(6)}`.slice(0, 100);
-}
-
 const CreateGroupSchema = z.object({
   name: z.string().min(1).max(100),
   displayName: z.string().min(1).max(255),
   enabled: z.number().min(0).max(1).default(1),
 });
-
-const GroupVisibilitySchema = z.enum(['private', 'instance_public']);
 
 const CloneGroupSchema = z.object({
   sourceGroupId: z.string(),
@@ -317,79 +255,16 @@ export const groupsRouter = router({
    * Clone a group into a new private group (copy rules) within the organization.
    */
   clone: tenantProcedure.input(CloneGroupSchema).mutation(async ({ ctx, input }) => {
-    requireTeacherOrAdmin(ctx);
-    await assertGroupViewAccess(ctx, input.sourceGroupId);
+    await assertCanViewGroup(ctx, input.sourceGroupId, GROUP_PERMISSION_OPTS);
 
-    const source = await openpathDb
-      .select()
-      .from(whitelistGroups)
-      .where(eq(whitelistGroups.id, input.sourceGroupId))
-      .limit(1);
-
-    if (!source[0]) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found' });
-    }
-
-    let baseName = `${source[0].name}-copy`;
-    const trimmedName = input.name?.trim();
-    if (trimmedName) {
-      baseName = trimmedName;
-    }
-
-    const name = await findAvailableGroupName(baseName);
-
-    let displayName = `${source[0].displayName} Copy`;
-    const trimmedDisplayName = input.displayName?.trim();
-    if (trimmedDisplayName) {
-      displayName = trimmedDisplayName;
-    }
-
-    const groupId = nanoid();
-    const [group] = await openpathDb
-      .insert(whitelistGroups)
-      .values({
-        id: groupId,
-        name,
-        displayName,
-        enabled: 1,
-      })
-      .returning();
-
-    const sourceRules = await openpathDb
-      .select()
-      .from(whitelistRules)
-      .where(eq(whitelistRules.groupId, source[0].id));
-
-    if (sourceRules.length > 0) {
-      await openpathDb.insert(whitelistRules).values(
-        sourceRules.map((r) => ({
-          id: nanoid(),
-          groupId: group.id,
-          type: r.type,
-          value: r.value,
-          comment: r.comment,
-        }))
-      );
-    }
-
-    await db.insert(schema.cpOrganizationGroups).values({
-      id: nanoid(),
+    return cloneGroupIntoOrganization({
       organizationId: ctx.organizationId!,
-      groupId: group.id,
-      visibility: 'private',
+      actorUserId: ctx.user.sub,
+      actorRole: ctx.userRole,
+      sourceGroupId: input.sourceGroupId,
+      name: input.name,
+      displayName: input.displayName,
     });
-
-    if (ctx.userRole === 'teacher') {
-      await addGroupToTeacherRole({
-        userId: ctx.user.sub,
-        groupId: group.id,
-        createdBy: ctx.user.sub,
-      });
-    }
-
-    await publishWhitelistGroupChanged(group.id);
-
-    return { id: group.id, name: group.name };
   }),
 
   /**
@@ -447,7 +322,7 @@ export const groupsRouter = router({
   }),
 
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    await assertGroupViewAccess(ctx, input.id);
+    await assertCanViewGroup(ctx, input.id, GROUP_PERMISSION_OPTS);
 
     const group = await openpathDb
       .select()
@@ -472,7 +347,7 @@ export const groupsRouter = router({
   getRules: tenantProcedure
     .input(z.object({ groupId: z.string() }))
     .query(async ({ ctx, input }) => {
-      await assertGroupViewAccess(ctx, input.groupId);
+      await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
       const rules = await openpathDb
         .select()
@@ -540,7 +415,7 @@ export const groupsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      await assertGroupViewAccess(ctx, input.groupId);
+      await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
       // Build query with optional type filter
       const whereConditions = input.type
@@ -564,7 +439,7 @@ export const groupsRouter = router({
   listRulesPaginated: tenantProcedure
     .input(ListRulesPaginatedSchema)
     .query(async ({ ctx, input }) => {
-      await assertGroupViewAccess(ctx, input.groupId);
+      await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
       // Build base query conditions
       const conditions: ReturnType<typeof eq>[] = [eq(whitelistRules.groupId, input.groupId)];
@@ -612,7 +487,7 @@ export const groupsRouter = router({
   // Grouped rules list - groups by root domain, paginates by domain groups
   // Ensures domain groups are never split across pages
   listRulesGrouped: tenantProcedure.input(ListRulesGroupedSchema).query(async ({ ctx, input }) => {
-    await assertGroupViewAccess(ctx, input.groupId);
+    await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
     // Build base query conditions
     const conditions = [eq(whitelistRules.groupId, input.groupId)];
@@ -810,7 +685,7 @@ export const groupsRouter = router({
   }),
 
   update: tenantProcedure.input(UpdateGroupSchema).mutation(async ({ ctx, input }) => {
-    await assertGroupAccess(ctx, input.id);
+    await assertCanUseGroup(ctx, input.id, GROUP_PERMISSION_OPTS);
 
     const updateData: {
       updatedAt: Date;
@@ -861,7 +736,7 @@ export const groupsRouter = router({
   }),
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    await assertGroupAccess(ctx, input.id);
+    await assertCanUseGroup(ctx, input.id, GROUP_PERMISSION_OPTS);
 
     await db
       .delete(schema.cpOrganizationGroups)
@@ -896,7 +771,7 @@ export const groupsRouter = router({
   }),
 
   addRule: tenantProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
-    await assertGroupAccess(ctx, input.groupId);
+    await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
     // Use atomic upsert with ON CONFLICT DO NOTHING to prevent race conditions
     // The database has a unique constraint on (groupId, type, value)
@@ -958,7 +833,7 @@ export const groupsRouter = router({
 
   // Alias for addRule - OpenPath SPA calls this
   createRule: tenantProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
-    await assertGroupAccess(ctx, input.groupId);
+    await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
     // Use atomic upsert with ON CONFLICT DO NOTHING to prevent race conditions
     // The database has a unique constraint on (groupId, type, value)
@@ -1020,7 +895,7 @@ export const groupsRouter = router({
 
   // Bulk create rules - OpenPath SPA calls this for batch operations
   bulkCreateRules: tenantProcedure.input(BulkCreateRulesSchema).mutation(async ({ ctx, input }) => {
-    await assertGroupAccess(ctx, input.groupId);
+    await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
     // Convert values array to rules format
     const rulesToInsert = input.values.map((value) => ({
@@ -1050,7 +925,7 @@ export const groupsRouter = router({
   deleteRule: tenantProcedure
     .input(z.object({ id: z.string(), groupId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await assertGroupAccess(ctx, input.groupId);
+      await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
       const [existing] = await openpathDb
         .select()
@@ -1083,7 +958,7 @@ export const groupsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertGroupAccess(ctx, input.groupId);
+      await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
       // Get existing rule
       const [existing] = await openpathDb

@@ -139,20 +139,32 @@ test.describe('Organization Members', () => {
     const statusHeader = page.getByRole('columnheader', { name: /Estado/i });
     await expect(statusHeader).toBeVisible({ timeout: 10000 });
 
+    const usersTable = page.getByTestId('users-table');
+    const usersSummary = page.getByTestId('users-summary');
+
+    await expect(usersTable).toBeVisible({ timeout: 10000 });
+    await expect(usersSummary).toBeVisible({ timeout: 10000 });
+
+    // The Users view can briefly show a fetch error while services bootstrap.
+    // Retry once, then wait for the loading state to clear.
+    const retryUsersFetch = page.getByRole('button', { name: 'Reintentar' });
+    await retryUsersFetch.click({ timeout: 1500 }).catch(() => {});
+    await waitForNetworkIdle(page).catch(() => {});
+
+    await expect(usersTable.getByText(/Cargando usuarios/i)).toBeHidden({ timeout: 15000 });
+
+    const summaryText = (await usersSummary.textContent()) ?? '';
+    const hasZeroUsers = /Mostrando\s+0-0\s+de\s+0\s+usuarios/i.test(summaryText);
+
     // Depending on seed data and feature flags, org members may show Active/Inactive
     // (OpenPath Users view) and/or Pending (invites). Accept any known status.
-    const hasStatusCell = await page
+    const hasStatusCell = await usersTable
       .getByRole('cell', { name: /Activo|Inactivo|Pendiente|Active|Inactive|Pending/i })
       .first()
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
-    const hasEmptySummary = await page
-      .getByText(/Mostrando 0-0 de 0 usuarios|No hay usuarios/i)
-      .first()
-      .isVisible({ timeout: 2000 })
+      .isVisible({ timeout: 10000 })
       .catch(() => false);
 
-    expect(hasStatusCell || hasEmptySummary).toBe(true);
+    expect(hasStatusCell || hasZeroUsers).toBe(true);
   });
 });
 
