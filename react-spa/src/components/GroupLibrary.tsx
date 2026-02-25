@@ -32,6 +32,14 @@ type RulesPage = {
   hasMore: boolean;
 };
 
+type PreviewKind = 'group' | 'template';
+type PreviewState = {
+  kind: PreviewKind;
+  id: string;
+  search: string;
+  offset: number;
+} | null;
+
 function RulesPreviewModal(props: {
   title: string;
   subtitle: string;
@@ -158,15 +166,8 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
   const [tab, setTab] = useState<LibraryTab>('library');
   const [search, setSearch] = useState('');
 
-  const [viewGroupId, setViewGroupId] = useState<string | null>(null);
-  const [rulesSearch, setRulesSearch] = useState('');
-  const [rulesOffset, setRulesOffset] = useState(0);
+  const [preview, setPreview] = useState<PreviewState>(null);
   const rulesLimit = 50;
-
-  const [viewTemplateId, setViewTemplateId] = useState<string | null>(null);
-  const [templateRulesSearch, setTemplateRulesSearch] = useState('');
-  const [templateRulesOffset, setTemplateRulesOffset] = useState(0);
-  const templateRulesLimit = 50;
 
   const libraryQuery = cpTrpcReact.groups.libraryList.useQuery(undefined, {
     enabled: canUse && isOpen,
@@ -182,25 +183,25 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
 
   const rulesQuery = cpTrpcReact.groups.listRulesPaginated.useQuery(
     {
-      groupId: viewGroupId ?? '',
+      groupId: preview?.kind === 'group' ? preview.id : '',
       limit: rulesLimit,
-      offset: rulesOffset,
-      search: rulesSearch.trim() ? rulesSearch.trim() : undefined,
+      offset: preview?.offset ?? 0,
+      search: preview?.search.trim() ? preview.search.trim() : undefined,
     },
     {
-      enabled: canUse && isOpen && viewGroupId !== null,
+      enabled: canUse && isOpen && preview?.kind === 'group',
     }
   );
 
   const templateRulesQuery = cpTrpcReact.templates.listRulesPaginated.useQuery(
     {
-      templateId: viewTemplateId ?? '',
-      limit: templateRulesLimit,
-      offset: templateRulesOffset,
-      search: templateRulesSearch.trim() ? templateRulesSearch.trim() : undefined,
+      templateId: preview?.kind === 'template' ? preview.id : '',
+      limit: rulesLimit,
+      offset: preview?.offset ?? 0,
+      search: preview?.search.trim() ? preview.search.trim() : undefined,
     },
     {
-      enabled: canUse && isOpen && viewTemplateId !== null,
+      enabled: canUse && isOpen && preview?.kind === 'template',
     }
   );
 
@@ -266,13 +267,7 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
     setIsOpen(false);
     setTab('library');
     setSearch('');
-    setViewGroupId(null);
-    setRulesSearch('');
-    setRulesOffset(0);
-
-    setViewTemplateId(null);
-    setTemplateRulesSearch('');
-    setTemplateRulesOffset(0);
+    setPreview(null);
   };
 
   if (!canUse) return null;
@@ -456,9 +451,7 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
                             <button
                               type="button"
                               onClick={() => {
-                                setViewTemplateId(t.id);
-                                setTemplateRulesSearch('');
-                                setTemplateRulesOffset(0);
+                                setPreview({ kind: 'template', id: t.id, search: '', offset: 0 });
                               }}
                               className="p-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
                               aria-label="Ver"
@@ -510,9 +503,7 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
                             <button
                               type="button"
                               onClick={() => {
-                                setViewGroupId(g.id);
-                                setRulesSearch('');
-                                setRulesOffset(0);
+                                setPreview({ kind: 'group', id: g.id, search: '', offset: 0 });
                               }}
                               className="p-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
                               aria-label="Ver"
@@ -538,48 +529,52 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
             </div>
           </div>
 
-          {/* View modal */}
-          {viewGroupId !== null && (
+          {preview !== null && (
             <RulesPreviewModal
-              title="Vista previa (solo lectura)"
-              subtitle="Puedes clonar para editar."
-              search={rulesSearch}
-              onSearchChange={(next) => {
-                setRulesSearch(next);
-                setRulesOffset(0);
-              }}
-              primaryActionLabel="Clonar"
-              onPrimaryAction={() => cloneMutation.mutate({ sourceGroupId: viewGroupId })}
-              primaryActionDisabled={cloneMutation.isPending}
-              onClose={() => setViewGroupId(null)}
-              query={rulesQuery}
-              offset={rulesOffset}
-              onPrevPage={() => setRulesOffset(Math.max(0, rulesOffset - rulesLimit))}
-              onNextPage={() => setRulesOffset(rulesOffset + rulesLimit)}
-              emptyText="No hay reglas para mostrar."
-            />
-          )}
-
-          {/* Template view modal */}
-          {viewTemplateId !== null && (
-            <RulesPreviewModal
-              title="Vista previa de plantilla"
-              subtitle="Puedes importar para editar."
-              search={templateRulesSearch}
-              onSearchChange={(next) => {
-                setTemplateRulesSearch(next);
-                setTemplateRulesOffset(0);
-              }}
-              primaryActionLabel="Importar"
-              onPrimaryAction={() => importTemplateMutation.mutate({ templateId: viewTemplateId })}
-              primaryActionDisabled={importTemplateMutation.isPending}
-              onClose={() => setViewTemplateId(null)}
-              query={templateRulesQuery}
-              offset={templateRulesOffset}
-              onPrevPage={() =>
-                setTemplateRulesOffset(Math.max(0, templateRulesOffset - templateRulesLimit))
+              title={
+                preview.kind === 'group'
+                  ? 'Vista previa (solo lectura)'
+                  : 'Vista previa de plantilla'
               }
-              onNextPage={() => setTemplateRulesOffset(templateRulesOffset + templateRulesLimit)}
+              subtitle={
+                preview.kind === 'group'
+                  ? 'Puedes clonar para editar.'
+                  : 'Puedes importar para editar.'
+              }
+              search={preview.search}
+              onSearchChange={(next) =>
+                setPreview((current) =>
+                  current ? { ...current, search: next, offset: 0 } : current
+                )
+              }
+              primaryActionLabel={preview.kind === 'group' ? 'Clonar' : 'Importar'}
+              onPrimaryAction={() => {
+                if (preview.kind === 'group') {
+                  cloneMutation.mutate({ sourceGroupId: preview.id });
+                } else {
+                  importTemplateMutation.mutate({ templateId: preview.id });
+                }
+              }}
+              primaryActionDisabled={
+                preview.kind === 'group'
+                  ? cloneMutation.isPending
+                  : importTemplateMutation.isPending
+              }
+              onClose={() => setPreview(null)}
+              query={preview.kind === 'group' ? rulesQuery : templateRulesQuery}
+              offset={preview.offset}
+              onPrevPage={() =>
+                setPreview((current) =>
+                  current
+                    ? { ...current, offset: Math.max(0, current.offset - rulesLimit) }
+                    : current
+                )
+              }
+              onNextPage={() =>
+                setPreview((current) =>
+                  current ? { ...current, offset: current.offset + rulesLimit } : current
+                )
+              }
               emptyText="No hay reglas para mostrar."
             />
           )}
