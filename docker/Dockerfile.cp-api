@@ -34,9 +34,12 @@ COPY --from=builder /app/api/dist ./api/dist
 # Place SPA dist to match server.ts expectation (../../react-spa/dist from api/dist)
 COPY --from=builder /app/react-spa/dist /app/react-spa/dist
 
-# Shared dependency for production resolution
-COPY --from=builder /app/upstream/openpath/shared/dist ./upstream/openpath/shared/dist
-COPY --from=builder /app/upstream/openpath/shared/package.json ./upstream/openpath/shared/package.json
+# Shared dependency for production resolution.
+# The gateway imports from "@openpath/shared" at runtime, so we must provide it
+# as a resolvable Node package (node_modules/@openpath/shared).
+RUN mkdir -p node_modules/@openpath/shared
+COPY --from=builder /app/upstream/openpath/shared/dist ./node_modules/@openpath/shared/dist
+COPY --from=builder /app/upstream/openpath/shared/package.json ./node_modules/@openpath/shared/package.json
 
 # Copy database tools
 COPY api/drizzle.config.ts ./api/
