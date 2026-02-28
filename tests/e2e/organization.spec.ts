@@ -101,8 +101,8 @@ test.describe('Organization Members', () => {
     // Click "+ Nuevo Usuario" button (Spanish UI) and wait for modal
     await orgPage.newUserButton.click();
 
-    // Wait for modal to appear - the h3 heading inside the modal
-    const modalHeading = page.locator('h3').filter({ hasText: 'Nuevo Usuario' });
+    // Wait for modal to appear (OpenPath UI uses shared Modal component)
+    const modalHeading = page.getByRole('dialog').getByRole('heading', { name: 'Nuevo Usuario' });
     await expect(modalHeading).toBeVisible({ timeout: 5000 });
 
     // Verify modal form fields are visible
