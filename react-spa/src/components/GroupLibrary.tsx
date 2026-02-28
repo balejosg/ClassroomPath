@@ -3,8 +3,18 @@ import { BookOpen, Copy, Eye, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
+import { FloatingActionButton } from './FloatingActionButton';
 
 type LibraryTab = 'library' | 'templates' | 'manage';
+
+const GROUP_LIBRARY_TEXT = {
+  openAriaLabel: 'Abrir biblioteca de pol\u00edticas',
+  openSrLabel: 'Biblioteca',
+  title: 'Biblioteca de pol\u00edticas',
+  description: 'Ver y clonar pol\u00edticas compartidas en tu organizaci\u00f3n.',
+  emptyOrg: 'No hay pol\u00edticas para mostrar.',
+  emptyLibrary: 'No hay pol\u00edticas p\u00fablicas en esta organizaci\u00f3n.',
+} as const;
 
 function normalizeSearch(raw: string): string {
   return raw.trim().toLowerCase();
@@ -274,27 +284,21 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
 
   return (
     <>
-      <button
-        type="button"
+      <FloatingActionButton
+        ariaLabel={GROUP_LIBRARY_TEXT.openAriaLabel}
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-5 right-5 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 active:bg-slate-950 transition-colors"
-        aria-label={'Abrir biblioteca de pol\u00edticas'}
       >
         <BookOpen size={18} />
-        <span className="sr-only">Biblioteca</span>
-      </button>
+        <span className="sr-only">{GROUP_LIBRARY_TEXT.openSrLabel}</span>
+      </FloatingActionButton>
 
       {isOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
           <div className="fixed inset-x-0 bottom-0 top-0 md:inset-y-6 md:left-1/2 md:-translate-x-1/2 md:max-w-4xl bg-white md:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             <div className="border-b border-slate-200 px-5 py-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  {'Biblioteca de pol\u00edticas'}
-                </h2>
-                <p className="text-sm text-slate-500">
-                  {'Ver y clonar pol\u00edticas compartidas en tu organizacion.'}
-                </p>
+                <h2 className="text-lg font-bold text-slate-900">{GROUP_LIBRARY_TEXT.title}</h2>
+                <p className="text-sm text-slate-500">{GROUP_LIBRARY_TEXT.description}</p>
               </div>
               <button
                 type="button"
@@ -357,16 +361,15 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
               {tab === 'manage' && isAdmin ? (
                 <div className="space-y-3">
                   <div className="text-sm text-slate-600">
-                    Marca una politica como <span className="font-medium">Publica</span> para que
-                    aparezca en la biblioteca de la organizacion.
+                    {'Marca una pol\u00edtica como '}
+                    <span className="font-medium">{'P\u00fablica'}</span>
+                    {' para que aparezca en la biblioteca de la organizaci\u00f3n.'}
                   </div>
 
                   {orgGroupsQuery.isLoading ? (
                     <div className="text-sm text-slate-500">Cargando...</div>
                   ) : filteredOrgGroups.length === 0 ? (
-                    <div className="text-sm text-slate-500">
-                      {'No hay pol\u00edticas para mostrar.'}
-                    </div>
+                    <div className="text-sm text-slate-500">{GROUP_LIBRARY_TEXT.emptyOrg}</div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {filteredOrgGroups.map((g) => (
@@ -398,7 +401,7 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
                               disabled={updateMutation.isPending}
                             >
                               <option value="private">Privada</option>
-                              <option value="instance_public">Publica (org)</option>
+                              <option value="instance_public">{'P\u00fablica (org)'}</option>
                             </select>
 
                             <button
@@ -482,9 +485,7 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
                   {libraryQuery.isLoading ? (
                     <div className="text-sm text-slate-500">Cargando...</div>
                   ) : filteredLibrary.length === 0 ? (
-                    <div className="text-sm text-slate-500">
-                      {'No hay pol\u00edticas publicas en esta organizacion.'}
-                    </div>
+                    <div className="text-sm text-slate-500">{GROUP_LIBRARY_TEXT.emptyLibrary}</div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {filteredLibrary.map((g) => (
