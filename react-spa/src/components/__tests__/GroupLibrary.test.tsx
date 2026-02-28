@@ -69,11 +69,13 @@ describe('GroupLibrary', () => {
     renderWithQueryClient(<GroupLibrary userRole="teacher" />);
 
     fireEvent.click(screen.getByRole('button', { name: /abrir biblioteca/i }));
-    expect(screen.getByRole('heading', { name: /biblioteca de politicas/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /biblioteca de pol\u00edticas/i })
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
     expect(
-      screen.queryByRole('heading', { name: /biblioteca de politicas/i })
+      screen.queryByRole('heading', { name: /biblioteca de pol\u00edticas/i })
     ).not.toBeInTheDocument();
   });
 });

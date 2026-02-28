@@ -277,11 +277,11 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-slate-900 text-white px-4 py-3 shadow-lg hover:bg-slate-800 active:bg-slate-950 transition-colors"
-        aria-label="Abrir biblioteca de politicas"
+        className="fixed bottom-5 right-5 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 active:bg-slate-950 transition-colors"
+        aria-label={'Abrir biblioteca de pol\u00edticas'}
       >
         <BookOpen size={18} />
-        <span className="text-sm font-semibold">Biblioteca</span>
+        <span className="sr-only">Biblioteca</span>
       </button>
 
       {isOpen && (
@@ -289,9 +289,11 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
           <div className="fixed inset-x-0 bottom-0 top-0 md:inset-y-6 md:left-1/2 md:-translate-x-1/2 md:max-w-4xl bg-white md:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             <div className="border-b border-slate-200 px-5 py-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">Biblioteca de politicas</h2>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {'Biblioteca de pol\u00edticas'}
+                </h2>
                 <p className="text-sm text-slate-500">
-                  Ver y clonar politicas compartidas en tu organizacion.
+                  {'Ver y clonar pol\u00edticas compartidas en tu organizacion.'}
                 </p>
               </div>
               <button
@@ -362,7 +364,9 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
                   {orgGroupsQuery.isLoading ? (
                     <div className="text-sm text-slate-500">Cargando...</div>
                   ) : filteredOrgGroups.length === 0 ? (
-                    <div className="text-sm text-slate-500">No hay politicas para mostrar.</div>
+                    <div className="text-sm text-slate-500">
+                      {'No hay pol\u00edticas para mostrar.'}
+                    </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {filteredOrgGroups.map((g) => (
@@ -479,7 +483,7 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
                     <div className="text-sm text-slate-500">Cargando...</div>
                   ) : filteredLibrary.length === 0 ? (
                     <div className="text-sm text-slate-500">
-                      No hay politicas publicas en esta organizacion.
+                      {'No hay pol\u00edticas publicas en esta organizacion.'}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

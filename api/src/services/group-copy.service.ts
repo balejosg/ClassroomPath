@@ -252,11 +252,11 @@ export async function cloneGroupIntoOrganization(params: {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found' });
   }
 
-  const rawName = params.name?.trim() || `${source[0].name}-copy`;
+  const rawName = params.name?.trim() || `${source[0].name}-copia`;
   const name = await findAvailableGroupName(rawName);
 
   const rawDisplayName = params.displayName?.trim();
-  const displayName = rawDisplayName || `${source[0].displayName || source[0].name} Copy`;
+  const displayName = rawDisplayName || `${source[0].displayName || source[0].name} Copia`;
 
   const sourceRules: RuleSeed[] = await openpathDb
     .select({
