@@ -15,6 +15,19 @@ export function requireTeacherOrAdmin(ctx: { userRole?: string }): void {
   }
 }
 
+export type OpenPathEnabledInput = number | boolean;
+
+export function toOpenPathEnabledFlag(value: OpenPathEnabledInput): 0 | 1 {
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  return value === 1 ? 1 : 0;
+}
+
+export function isOpenPathGroupEnabled(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  return false;
+}
+
 export type GroupAccessLevel = 'view' | 'edit';
 
 export async function assertOrgGroupAccess(organizationId: string, groupId: string): Promise<void> {
@@ -102,6 +115,21 @@ export async function assertCanUseGroup(
   opts?: { notTeacherMessage?: string; notAllowedMessage?: string }
 ): Promise<void> {
   await assertCanAccessGroup(ctx, groupId, 'edit', opts);
+
+  const row = await openpathDb
+    .select({ enabled: openpathSchema.whitelistGroups.enabled })
+    .from(openpathSchema.whitelistGroups)
+    .where(eq(openpathSchema.whitelistGroups.id, groupId))
+    .limit(1);
+
+  const enabledValue = row[0]?.enabled;
+  const enabled = isOpenPathGroupEnabled(enabledValue);
+  if (!enabled) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'No puedes usar un grupo inactivo',
+    });
+  }
 }
 
 export async function assertCanViewGroup(

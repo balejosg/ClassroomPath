@@ -77,7 +77,10 @@ async function assertNoConflict(params: {
     .limit(1);
 
   if (conflicts.length) {
-    throw new TRPCError({ code: 'CONFLICT', message: 'This time slot is already reserved' });
+    throw new TRPCError({
+      code: 'CONFLICT',
+      message: 'Ese tramo horario ya esta reservado',
+    });
   }
 }
 

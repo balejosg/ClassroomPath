@@ -24,6 +24,49 @@ import {
 
 const CLASSROOM_SCOPE_PREFIX = 'cp';
 
+// Scheduling uses dayOfWeek + start/end times without timezone.
+// To make "current schedule" deterministic in Docker (which often defaults to UTC),
+// we compute "now" in an explicit timezone.
+const SCHEDULE_TIMEZONE = process.env.SCHEDULE_TIMEZONE || process.env.TZ || 'Europe/Madrid';
+
+const WEEKDAY_BY_SHORT_EN: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+function getScheduleClock(date: Date): { dayOfWeek: number; timeHHMM: string } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: SCHEDULE_TIMEZONE,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+
+    const weekday = parts.find((p) => p.type === 'weekday')?.value;
+    const hourPartRaw = parts.find((p) => p.type === 'hour')?.value;
+    const minutePart = parts.find((p) => p.type === 'minute')?.value;
+
+    const dayOfWeek =
+      weekday && WEEKDAY_BY_SHORT_EN[weekday] !== undefined
+        ? WEEKDAY_BY_SHORT_EN[weekday]
+        : date.getDay();
+    const hourPart = hourPartRaw === '24' ? '00' : hourPartRaw;
+    const timeHHMM =
+      hourPart && minutePart ? `${hourPart}:${minutePart}` : date.toTimeString().slice(0, 5);
+
+    return { dayOfWeek, timeHHMM };
+  } catch {
+    return { dayOfWeek: date.getDay(), timeHHMM: date.toTimeString().slice(0, 5) };
+  }
+}
+
 function normalizeClassroomKey(rawName: string): string {
   return rawName
     .trim()
@@ -69,12 +112,12 @@ async function getCurrentScheduleGroupId(params: {
   date?: Date | undefined;
 }): Promise<string | null> {
   const date = params.date ?? new Date();
-  const dayOfWeek = date.getDay();
+  const { dayOfWeek, timeHHMM } = getScheduleClock(date);
 
   // Only Mon-Fri scheduling is supported
   if (dayOfWeek === 0 || dayOfWeek === 6) return null;
 
-  const currentTime = date.toTimeString().slice(0, 5);
+  const currentTime = timeHHMM;
 
   const rows = await openpathDb
     .select({ groupId: schedules.groupId })
@@ -121,8 +164,7 @@ export const classroomsRouter = router({
       .where(inArray(classrooms.id, classroomIds));
 
     const now = new Date();
-    const nowDayOfWeek = now.getDay();
-    const nowTime = now.toTimeString().slice(0, 5);
+    const { dayOfWeek: nowDayOfWeek, timeHHMM: nowTime } = getScheduleClock(now);
 
     const scheduleGroupByClassroomId = new Map<string, string>();
     if (nowDayOfWeek !== 0 && nowDayOfWeek !== 6) {

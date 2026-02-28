@@ -27,6 +27,7 @@ const TEACHER_GROUPS_FEATURE_KEY = 'openpath_teacher_groups_enabled';
 function AppContent() {
   const [isAuth, setIsAuth] = useState(hasSessionMarker());
   const [showRegister, setShowRegister] = useState(false);
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const hasSyncedProfileRef = useRef(false);
 
   const clearSessionAndShowLogin = async () => {
@@ -66,6 +67,21 @@ function AppContent() {
 
   const { data: status, isLoading, refetch, isError, error } = query;
 
+  useEffect(() => {
+    if (!isAuth) {
+      setLoadingTimedOut(false);
+      return;
+    }
+
+    if (!isLoading) {
+      setLoadingTimedOut(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setLoadingTimedOut(true), 15000);
+    return () => window.clearTimeout(timeoutId);
+  }, [isAuth, isLoading]);
+
   // After a user gets approved/invited, their stored profile may be stale.
   // Sync it once so OpenPath UI sees the latest roles.
   useEffect(() => {
@@ -96,9 +112,11 @@ function AppContent() {
     // tRPC React Query wraps errors; check multiple possible locations
     const trpcError = error as any;
     const code = trpcError?.data?.code || trpcError?.shape?.data?.code;
+    const httpStatus = trpcError?.data?.httpStatus || trpcError?.shape?.data?.httpStatus;
     const message = trpcError?.message || '';
     const isUnauthorized =
       code === 'UNAUTHORIZED' ||
+      httpStatus === 401 ||
       message.toLowerCase().includes('not authenticated') ||
       message.toLowerCase().includes('unauthorized');
 
@@ -130,6 +148,39 @@ function AppContent() {
 
   // 2. Cargando estado de onboarding
   if (isLoading) {
+    if (loadingTimedOut) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+          <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900">Esto esta tardando demasiado</h2>
+            <p className="text-sm text-slate-600 mt-2">
+              No se pudo verificar tu estado a tiempo. Reintenta o vuelve a iniciar sesion.
+            </p>
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => {
+                  setLoadingTimedOut(false);
+                  refetch();
+                }}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
+              >
+                Reintentar
+              </button>
+              <button
+                onClick={() => {
+                  clearSession();
+                  setIsAuth(false);
+                }}
+                className="px-4 py-2 rounded-lg bg-slate-100 text-slate-800 font-medium hover:bg-slate-200"
+              >
+                Volver a login
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">

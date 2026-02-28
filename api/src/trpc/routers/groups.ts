@@ -18,11 +18,14 @@ import { nanoid } from 'nanoid';
 import { getRootDomain } from '../../utils/domain.js';
 
 import {
+  assertCanAccessGroup,
   assertCanUseGroup,
   assertCanViewGroup,
   getTeacherGroupIdentifiers,
+  isOpenPathGroupEnabled,
   isOrgAdmin,
   requireTeacherOrAdmin,
+  toOpenPathEnabledFlag,
 } from '../../lib/tenant-access.js';
 
 import {
@@ -31,6 +34,19 @@ import {
 } from '../../services/group-copy.service.js';
 
 type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
+type OpenPathWhitelistGroup = typeof whitelistGroups.$inferSelect;
+
+type RuleCounts = {
+  whitelistCount: number;
+  blockedSubdomainCount: number;
+  blockedPathCount: number;
+};
+
+const EMPTY_RULE_COUNTS: RuleCounts = {
+  whitelistCount: 0,
+  blockedSubdomainCount: 0,
+  blockedPathCount: 0,
+};
 
 const GROUP_PERMISSION_OPTS = {
   notAllowedMessage: 'Insufficient permissions for this group',
@@ -109,6 +125,146 @@ const ListRulesGroupedSchema = z.object({
   search: z.string().optional(),
 });
 
+type AddRuleInput = z.infer<typeof AddRuleSchema>;
+
+function buildRuleCountsByGroupId(
+  rules: readonly Pick<OpenPathWhitelistRule, 'groupId' | 'type'>[]
+): Map<string, RuleCounts> {
+  const map = new Map<string, RuleCounts>();
+
+  for (const rule of rules) {
+    const current = map.get(rule.groupId) ?? { ...EMPTY_RULE_COUNTS };
+
+    if (rule.type === 'whitelist') {
+      current.whitelistCount += 1;
+    } else if (rule.type === 'blocked_subdomain') {
+      current.blockedSubdomainCount += 1;
+    } else if (rule.type === 'blocked_path') {
+      current.blockedPathCount += 1;
+    }
+
+    map.set(rule.groupId, current);
+  }
+
+  return map;
+}
+
+async function fetchRuleCountsForGroupIds(
+  groupIds: readonly string[]
+): Promise<Map<string, RuleCounts>> {
+  if (groupIds.length === 0) return new Map();
+  const ids = [...groupIds];
+
+  const allRules = await openpathDb
+    .select({ groupId: whitelistRules.groupId, type: whitelistRules.type })
+    .from(whitelistRules)
+    .where(inArray(whitelistRules.groupId, ids));
+
+  return buildRuleCountsByGroupId(allRules);
+}
+
+function serializeGroupForClient(
+  group: OpenPathWhitelistGroup,
+  params: { visibility?: string; counts?: RuleCounts }
+) {
+  const counts = params.counts ?? EMPTY_RULE_COUNTS;
+  return {
+    id: group.id,
+    name: group.name,
+    displayName: group.displayName,
+    enabled: isOpenPathGroupEnabled(group.enabled),
+    visibility: params.visibility ?? 'private',
+    whitelistCount: counts.whitelistCount,
+    blockedSubdomainCount: counts.blockedSubdomainCount,
+    blockedPathCount: counts.blockedPathCount,
+    createdAt: group.createdAt?.toISOString() ?? null,
+    updatedAt: group.updatedAt?.toISOString() ?? null,
+  };
+}
+
+async function filterGroupsVisibleToUser<T extends { id: string; name: string }>(
+  ctx: { userRole?: string; user: { sub: string } },
+  groups: readonly T[]
+): Promise<T[]> {
+  if (isOrgAdmin(ctx)) return [...groups];
+
+  const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
+  if (identifiers.size === 0) return [];
+  return groups.filter((g) => identifiers.has(g.id) || identifiers.has(g.name));
+}
+
+function serializeWhitelistRule(rule: OpenPathWhitelistRule, created: boolean) {
+  return {
+    id: rule.id,
+    groupId: rule.groupId,
+    type: rule.type,
+    value: rule.value,
+    comment: rule.comment,
+    createdAt: rule.createdAt?.toISOString() ?? null,
+    created,
+  };
+}
+
+async function createOrGetWhitelistRule(
+  input: AddRuleInput
+): Promise<{ rule: OpenPathWhitelistRule; created: boolean }> {
+  // Use atomic upsert with ON CONFLICT DO NOTHING to prevent race conditions
+  // The database has a unique constraint on (groupId, type, value)
+  const newId = nanoid();
+  const insertResult = await openpathDb
+    .insert(whitelistRules)
+    .values({
+      id: newId,
+      groupId: input.groupId,
+      type: input.type,
+      value: input.value,
+      comment: input.comment,
+    })
+    .onConflictDoNothing({
+      target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
+    })
+    .returning();
+
+  if (insertResult.length > 0) {
+    return { rule: insertResult[0], created: true };
+  }
+
+  const existingRule = await openpathDb
+    .select()
+    .from(whitelistRules)
+    .where(
+      and(
+        eq(whitelistRules.groupId, input.groupId),
+        eq(whitelistRules.type, input.type),
+        eq(whitelistRules.value, input.value)
+      )
+    )
+    .limit(1);
+
+  if (existingRule.length > 0) {
+    return { rule: existingRule[0], created: false };
+  }
+
+  throw new TRPCError({
+    code: 'INTERNAL_SERVER_ERROR',
+    message: 'Failed to create or find rule',
+  });
+}
+
+async function createWhitelistRuleForGroup(
+  ctx: { organizationId?: string; userRole?: string; user: { sub: string } },
+  input: AddRuleInput
+) {
+  await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
+
+  const { rule, created } = await createOrGetWhitelistRule(input);
+  if (created) {
+    await publishWhitelistGroupChanged(input.groupId);
+  }
+
+  return serializeWhitelistRule(rule, created);
+}
+
 export const groupsRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
     requireTeacherOrAdmin(ctx);
@@ -127,58 +283,20 @@ export const groupsRouter = router({
       .from(whitelistGroups)
       .where(inArray(whitelistGroups.id, groupIds));
 
-    const visibleGroups = isOrgAdmin(ctx)
-      ? groups
-      : await (async () => {
-          const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
-          if (identifiers.size === 0) return [];
-          return groups.filter((g) => identifiers.has(g.id) || identifiers.has(g.name));
-        })();
+    const visibleGroups = await filterGroupsVisibleToUser(ctx, groups);
 
     const visibleGroupIds = visibleGroups.map((g) => g.id);
 
     if (visibleGroupIds.length === 0) return [];
 
-    // Get all rules for these groups to calculate counts
-    const allRules = await openpathDb
-      .select()
-      .from(whitelistRules)
-      .where(inArray(whitelistRules.groupId, visibleGroupIds));
+    const ruleCounts = await fetchRuleCountsForGroupIds(visibleGroupIds);
 
-    // Build a map of groupId -> rule counts
-    const ruleCounts = new Map<
-      string,
-      { whitelistCount: number; blockedSubdomainCount: number; blockedPathCount: number }
-    >();
-    for (const groupId of visibleGroupIds) {
-      const groupRules = allRules.filter((r) => r.groupId === groupId);
-      ruleCounts.set(groupId, {
-        whitelistCount: groupRules.filter((r) => r.type === 'whitelist').length,
-        blockedSubdomainCount: groupRules.filter((r) => r.type === 'blocked_subdomain').length,
-        blockedPathCount: groupRules.filter((r) => r.type === 'blocked_path').length,
-      });
-    }
-
-    // Serialize Date fields for JSON compatibility and include rule counts
-    return visibleGroups.map((g) => {
-      const counts = ruleCounts.get(g.id) || {
-        whitelistCount: 0,
-        blockedSubdomainCount: 0,
-        blockedPathCount: 0,
-      };
-      return {
-        id: g.id,
-        name: g.name,
-        displayName: g.displayName,
-        enabled: g.enabled === 1,
+    return visibleGroups.map((g) =>
+      serializeGroupForClient(g, {
         visibility: orgGroupMetaById.get(g.id)?.visibility ?? 'private',
-        whitelistCount: counts.whitelistCount,
-        blockedSubdomainCount: counts.blockedSubdomainCount,
-        blockedPathCount: counts.blockedPathCount,
-        createdAt: g.createdAt?.toISOString() ?? null,
-        updatedAt: g.updatedAt?.toISOString() ?? null,
-      };
-    });
+        counts: ruleCounts.get(g.id),
+      })
+    );
   }),
 
   /**
@@ -211,44 +329,14 @@ export const groupsRouter = router({
 
     const visibleGroupIds = groups.map((g) => g.id);
 
-    const allRules = await openpathDb
-      .select()
-      .from(whitelistRules)
-      .where(inArray(whitelistRules.groupId, visibleGroupIds));
+    const ruleCounts = await fetchRuleCountsForGroupIds(visibleGroupIds);
 
-    const ruleCounts = new Map<
-      string,
-      { whitelistCount: number; blockedSubdomainCount: number; blockedPathCount: number }
-    >();
-    for (const groupId of visibleGroupIds) {
-      const groupRules = allRules.filter((r) => r.groupId === groupId);
-      ruleCounts.set(groupId, {
-        whitelistCount: groupRules.filter((r) => r.type === 'whitelist').length,
-        blockedSubdomainCount: groupRules.filter((r) => r.type === 'blocked_subdomain').length,
-        blockedPathCount: groupRules.filter((r) => r.type === 'blocked_path').length,
-      });
-    }
-
-    return groups.map((g) => {
-      const counts = ruleCounts.get(g.id) || {
-        whitelistCount: 0,
-        blockedSubdomainCount: 0,
-        blockedPathCount: 0,
-      };
-
-      return {
-        id: g.id,
-        name: g.name,
-        displayName: g.displayName,
-        enabled: g.enabled === 1,
+    return groups.map((g) =>
+      serializeGroupForClient(g, {
         visibility: orgGroupMetaById.get(g.id)?.visibility ?? 'private',
-        whitelistCount: counts.whitelistCount,
-        blockedSubdomainCount: counts.blockedSubdomainCount,
-        blockedPathCount: counts.blockedPathCount,
-        createdAt: g.createdAt?.toISOString() ?? null,
-        updatedAt: g.updatedAt?.toISOString() ?? null,
-      };
-    });
+        counts: ruleCounts.get(g.id),
+      })
+    );
   }),
 
   /**
@@ -655,7 +743,7 @@ export const groupsRouter = router({
         id: groupId,
         name: input.name,
         displayName: input.displayName,
-        enabled: input.enabled as any,
+        enabled: input.enabled,
       })
       .returning();
 
@@ -678,14 +766,16 @@ export const groupsRouter = router({
       id: group.id,
       name: group.name,
       displayName: group.displayName,
-      enabled: group.enabled,
+      enabled: isOpenPathGroupEnabled(group.enabled),
       createdAt: group.createdAt?.toISOString() ?? null,
       updatedAt: group.updatedAt?.toISOString() ?? null,
     };
   }),
 
   update: tenantProcedure.input(UpdateGroupSchema).mutation(async ({ ctx, input }) => {
-    await assertCanUseGroup(ctx, input.id, GROUP_PERMISSION_OPTS);
+    // Allow updating a disabled group (e.g. to re-enable it).
+    // "Use" checks are enforced on rule mutations and assignment flows.
+    await assertCanAccessGroup(ctx, input.id, 'edit', GROUP_PERMISSION_OPTS);
 
     const updateData: {
       updatedAt: Date;
@@ -700,8 +790,7 @@ export const groupsRouter = router({
     }
 
     if (input.enabled !== undefined) {
-      updateData.enabled =
-        typeof input.enabled === 'boolean' ? (input.enabled ? 1 : 0) : (input.enabled as number);
+      updateData.enabled = toOpenPathEnabledFlag(input.enabled);
     }
 
     if (input.visibility !== undefined) {
@@ -729,7 +818,7 @@ export const groupsRouter = router({
       id: updated.id,
       name: updated.name,
       displayName: updated.displayName,
-      enabled: updated.enabled,
+      enabled: isOpenPathGroupEnabled(updated.enabled),
       createdAt: updated.createdAt?.toISOString() ?? null,
       updatedAt: updated.updatedAt?.toISOString() ?? null,
     };
@@ -771,126 +860,12 @@ export const groupsRouter = router({
   }),
 
   addRule: tenantProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
-    await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-
-    // Use atomic upsert with ON CONFLICT DO NOTHING to prevent race conditions
-    // The database has a unique constraint on (groupId, type, value)
-    const newId = nanoid();
-    const insertResult = await openpathDb
-      .insert(whitelistRules)
-      .values({
-        id: newId,
-        groupId: input.groupId,
-        type: input.type,
-        value: input.value,
-        comment: input.comment,
-      })
-      .onConflictDoNothing({
-        target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
-      })
-      .returning();
-
-    // If insert was skipped due to conflict, fetch the existing rule
-    if (insertResult.length === 0) {
-      const existingRule = await openpathDb
-        .select()
-        .from(whitelistRules)
-        .where(
-          and(
-            eq(whitelistRules.groupId, input.groupId),
-            eq(whitelistRules.type, input.type),
-            eq(whitelistRules.value, input.value)
-          )
-        )
-        .limit(1);
-
-      if (existingRule.length > 0) {
-        const existing = existingRule[0];
-        return {
-          id: existing.id,
-          groupId: existing.groupId,
-          type: existing.type,
-          value: existing.value,
-          comment: existing.comment,
-          createdAt: existing.createdAt?.toISOString() ?? null,
-        };
-      }
-      throw new Error('Failed to create or find rule');
-    }
-
-    const rule = insertResult[0];
-    await publishWhitelistGroupChanged(input.groupId);
-    // Serialize Date fields for JSON compatibility
-    return {
-      id: rule.id,
-      groupId: rule.groupId,
-      type: rule.type,
-      value: rule.value,
-      comment: rule.comment,
-      createdAt: rule.createdAt?.toISOString() ?? null,
-    };
+    return createWhitelistRuleForGroup(ctx, input);
   }),
 
   // Alias for addRule - OpenPath SPA calls this
   createRule: tenantProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
-    await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-
-    // Use atomic upsert with ON CONFLICT DO NOTHING to prevent race conditions
-    // The database has a unique constraint on (groupId, type, value)
-    const newId = nanoid();
-    const insertResult = await openpathDb
-      .insert(whitelistRules)
-      .values({
-        id: newId,
-        groupId: input.groupId,
-        type: input.type,
-        value: input.value,
-        comment: input.comment,
-      })
-      .onConflictDoNothing({
-        target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
-      })
-      .returning();
-
-    // If insert was skipped due to conflict, fetch the existing rule
-    if (insertResult.length === 0) {
-      const existingRule = await openpathDb
-        .select()
-        .from(whitelistRules)
-        .where(
-          and(
-            eq(whitelistRules.groupId, input.groupId),
-            eq(whitelistRules.type, input.type),
-            eq(whitelistRules.value, input.value)
-          )
-        )
-        .limit(1);
-
-      if (existingRule.length > 0) {
-        const existing = existingRule[0];
-        return {
-          id: existing.id,
-          groupId: existing.groupId,
-          type: existing.type,
-          value: existing.value,
-          comment: existing.comment,
-          createdAt: existing.createdAt?.toISOString() ?? null,
-        };
-      }
-      // This shouldn't happen, but handle gracefully
-      throw new Error('Failed to create or find rule');
-    }
-
-    const rule = insertResult[0];
-    await publishWhitelistGroupChanged(input.groupId);
-    return {
-      id: rule.id,
-      groupId: rule.groupId,
-      type: rule.type,
-      value: rule.value,
-      comment: rule.comment,
-      createdAt: rule.createdAt?.toISOString() ?? null,
-    };
+    return createWhitelistRuleForGroup(ctx, input);
   }),
 
   // Bulk create rules - OpenPath SPA calls this for batch operations
@@ -1064,13 +1039,7 @@ export const groupsRouter = router({
       .from(whitelistGroups)
       .where(inArray(whitelistGroups.id, groupIds));
 
-    const visibleGroups = isOrgAdmin(ctx)
-      ? groups
-      : await (async () => {
-          const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
-          if (identifiers.size === 0) return [];
-          return groups.filter((g) => identifiers.has(g.id) || identifiers.has(g.name));
-        })();
+    const visibleGroups = await filterGroupsVisibleToUser(ctx, groups);
 
     if (visibleGroups.length === 0) {
       return {
@@ -1083,8 +1052,8 @@ export const groupsRouter = router({
       };
     }
 
-    const enabledGroups = visibleGroups.filter((g) => g.enabled === 1).length;
-    const disabledGroups = visibleGroups.filter((g) => g.enabled === 0).length;
+    const enabledGroups = visibleGroups.filter((g) => isOpenPathGroupEnabled(g.enabled)).length;
+    const disabledGroups = visibleGroups.length - enabledGroups;
 
     return {
       // OpenPath-compatible shape
