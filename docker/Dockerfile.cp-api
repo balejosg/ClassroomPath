@@ -9,8 +9,8 @@ COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
 COPY upstream/openpath/react-spa/package*.json ./upstream/openpath/react-spa/
 COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
 
-# Use npm install to ensure workspaces are linked
-RUN npm install
+# Use npm ci so workspaces are linked deterministically
+RUN npm ci
 
 # Copy all source
 COPY . .

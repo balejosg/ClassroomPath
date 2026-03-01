@@ -18,6 +18,17 @@
 .github
 .vscode
 
+# Upstream OpenPath: exclude non-workspace dirs from build context
+upstream/openpath/.opencode
+upstream/openpath/build
+upstream/openpath/dashboard
+upstream/openpath/data
+upstream/openpath/docs
+upstream/openpath/firefox-extension
+upstream/openpath/linux
+upstream/openpath/spa
+upstream/openpath/windows
+
 # Local env / secrets (never bake into images)
 .env*
 !.env.local.example

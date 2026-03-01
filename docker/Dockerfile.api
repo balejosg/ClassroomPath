@@ -12,7 +12,7 @@ COPY api/package*.json ./api/
 COPY react-spa/package*.json ./react-spa/
 
 # Install ALL dependencies for building
-RUN npm install
+RUN npm ci
 
 # Copy source
 COPY shared/ ./shared/
