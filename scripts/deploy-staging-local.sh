@@ -137,7 +137,7 @@ echo "[DEPLOY] Resetting to origin/main..."
 git reset --hard origin/main
 
 echo "[DEPLOY] Updating submodules..."
-git submodule deinit -f --all 2>/dev/null || true
+git submodule sync --recursive
 git submodule update --init --recursive --force
 
 echo "[DEPLOY] Running database migrations..."
@@ -185,7 +185,10 @@ docker compose down --remove-orphans 2>/dev/null || true
 docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
 docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
 
-docker compose build --quiet
+if ! docker compose build --quiet; then
+    echo "[DEPLOY] Build failed; retrying with verbose output..."
+    docker compose build
+fi
 docker compose up -d --force-recreate
 
 echo "[DEPLOY] Containers started, waiting for health..."
