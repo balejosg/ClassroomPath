@@ -125,7 +125,7 @@ log_success "Connected to staging"
 log_info "Deploying..."
 
 $SSH_CMD << 'DEPLOY_SCRIPT'
-set -e
+set -euo pipefail
 
 APP_DIR="/opt/classroompath/app"
 cd "$APP_DIR"
@@ -145,23 +145,41 @@ cd "$APP_DIR"
 
 # Run ClassroomPath API migrations (multi-tenancy tables)
 echo "[DEPLOY] - ClassroomPath API schema..."
-docker run --rm \
+CP_MIG_LOG=$(mktemp)
+if docker run --rm \
     -v "$APP_DIR/api:/app" \
     -v "$APP_DIR/config/.env:/app/.env:ro" \
     -w /app \
     --env-file "$APP_DIR/config/.env" \
     node:20-alpine \
-    sh -c "npm ci --silent 2>/dev/null || npm install --silent && npm run db:push" 2>&1 | tail -5
+    sh -c "npm ci --silent 2>/dev/null || npm install --silent && npm run db:push" \
+    >"$CP_MIG_LOG" 2>&1; then
+    tail -5 "$CP_MIG_LOG"
+else
+    cat "$CP_MIG_LOG"
+    rm -f "$CP_MIG_LOG"
+    exit 1
+fi
+rm -f "$CP_MIG_LOG"
 
 # Run OpenPath API migrations (core tables)
 echo "[DEPLOY] - OpenPath API schema..."
-docker run --rm \
+OP_MIG_LOG=$(mktemp)
+if docker run --rm \
     -v "$APP_DIR/upstream/openpath/api:/app" \
     -v "$APP_DIR/config/.env:/app/.env:ro" \
     -w /app \
     --env-file "$APP_DIR/config/.env" \
     node:20-alpine \
-    sh -c "npm ci --silent 2>/dev/null || npm install --silent && npm run db:push" 2>&1 | tail -5
+    sh -c "npm ci --silent 2>/dev/null || npm install --silent && npm run db:push" \
+    >"$OP_MIG_LOG" 2>&1; then
+    tail -5 "$OP_MIG_LOG"
+else
+    cat "$OP_MIG_LOG"
+    rm -f "$OP_MIG_LOG"
+    exit 1
+fi
+rm -f "$OP_MIG_LOG"
 
 echo "[DEPLOY] Checking disk space..."
 DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
