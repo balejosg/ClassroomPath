@@ -7,8 +7,10 @@ export default defineConfig({
   base: '/',
   resolve: {
     alias: {
-      '@openpath': path.resolve(__dirname, '../upstream/openpath/react-spa'),
+      // NOTE: Order matters. Keep the more-specific alias first so
+      // subpath imports like "@openpath/shared/domain" don't get captured by "@openpath".
       '@openpath/shared': path.resolve(__dirname, '../upstream/openpath/shared/src'),
+      '@openpath': path.resolve(__dirname, '../upstream/openpath/react-spa'),
     },
   },
   server: {
