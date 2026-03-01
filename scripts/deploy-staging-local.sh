@@ -162,7 +162,7 @@ if docker run --rm \
     -w /app \
     --env-file "$APP_DIR/config/.env" \
     node:20-alpine \
-    sh -c "npm ci --silent 2>/dev/null || npm install --silent && npm run db:push" \
+    sh -c "npm ci --silent && npm run db:push" \
     >"$CP_MIG_LOG" 2>&1; then
     tail -5 "$CP_MIG_LOG"
 else
@@ -181,7 +181,7 @@ if docker run --rm \
     -w /app \
     --env-file "$APP_DIR/config/.env" \
     node:20-alpine \
-    sh -c "npm ci --silent 2>/dev/null || npm install --silent && npm run db:push" \
+    sh -c "npm ci --silent && npm run db:push" \
     >"$OP_MIG_LOG" 2>&1; then
     tail -5 "$OP_MIG_LOG"
 else
