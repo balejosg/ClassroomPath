@@ -46,6 +46,7 @@ STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
 STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SMOKE_URL="${STAGING_SMOKE_URL:-https://classroompath-staging.duckdns.org}"
+STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
 APP_DIR="/opt/classroompath/app"
 
 # Validate required env vars
@@ -80,7 +81,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
     log_warn "Uncommitted changes detected"
     log_warn "Staging will deploy origin/main, not local changes"
     echo ""
-    read -t 5 -p "Continue anyway? [y/N] " -n 1 -r REPLY || REPLY="y"
+    read -t 10 -p "Continue anyway? [y/N] " -n 1 -r REPLY || REPLY="n"
     echo ""
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         log_error "Aborted. Commit and push your changes first."
@@ -112,10 +113,19 @@ log_success "Git state checked"
 # =============================================================================
 log_info "Connecting to staging..."
 
-SSH_CMD="ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i $STAGING_SSH_KEY -p $STAGING_PORT $STAGING_USER@$STAGING_HOST"
+SSH_CMD=(
+    ssh
+    -o "ConnectTimeout=10"
+    -o "BatchMode=yes"
+    -o "IdentitiesOnly=yes"
+    -o "StrictHostKeyChecking=${STAGING_SSH_STRICT_HOSTKEY}"
+    -i "$STAGING_SSH_KEY"
+    -p "$STAGING_PORT"
+    "${STAGING_USER}@${STAGING_HOST}"
+)
 
 # Test connection
-if ! $SSH_CMD "echo 'connected'" > /dev/null 2>&1; then
+if ! "${SSH_CMD[@]}" "echo connected" > /dev/null 2>&1; then
     log_error "Cannot connect to $STAGING_HOST"
     log_error "Check: STAGING_HOST, STAGING_SSH_KEY, network connectivity"
     exit 1
@@ -124,7 +134,7 @@ fi
 log_success "Connected to staging"
 log_info "Deploying..."
 
-$SSH_CMD << 'DEPLOY_SCRIPT'
+"${SSH_CMD[@]}" << 'DEPLOY_SCRIPT'
 set -euo pipefail
 
 APP_DIR="/opt/classroompath/app"
@@ -226,7 +236,7 @@ ATTEMPT=0
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     ATTEMPT=$((ATTEMPT + 1))
     
-    HEALTH=$($SSH_CMD "curl -sf http://localhost:3000/cp/health 2>/dev/null" || echo "")
+    HEALTH=$("${SSH_CMD[@]}" "curl -sf http://localhost:3000/cp/health 2>/dev/null" || echo "")
     
     if [ -n "$HEALTH" ]; then
         log_success "Gateway healthy (attempt $ATTEMPT)"
@@ -251,7 +261,7 @@ ATTEMPT=0
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     ATTEMPT=$((ATTEMPT + 1))
     
-    API_HEALTH=$($SSH_CMD "curl -sf http://localhost:3000/health 2>/dev/null" || echo "")
+    API_HEALTH=$("${SSH_CMD[@]}" "curl -sf http://localhost:3000/health 2>/dev/null" || echo "")
     
     if echo "$API_HEALTH" | grep -q '"status":"ok"'; then
         log_success "API healthy (via gateway, attempt $ATTEMPT)"
@@ -282,7 +292,7 @@ SMOKE_TARGET_HOST=$(printf '%s\n' "$SMOKE_TARGET_URL" | sed -E 's#^[A-Za-z]+://(
 
 if [ -n "$SMOKE_TARGET_HOST" ] && ! getent hosts "$SMOKE_TARGET_HOST" >/dev/null 2>&1; then
     log_warn "Smoke URL host does not resolve locally: $SMOKE_TARGET_HOST"
-    REMOTE_DNS_STATUS=$($SSH_CMD "getent hosts '$SMOKE_TARGET_HOST' >/dev/null 2>&1 && echo ok || echo fail")
+    REMOTE_DNS_STATUS=$("${SSH_CMD[@]}" "getent hosts '$SMOKE_TARGET_HOST' >/dev/null 2>&1 && echo ok || echo fail")
 
     if [ "$REMOTE_DNS_STATUS" = "ok" ]; then
         log_warn "Host resolves on staging host but not locally; using direct IP fallback for local smoke runner"
