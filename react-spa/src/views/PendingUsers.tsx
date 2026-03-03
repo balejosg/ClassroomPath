@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserPlus, UserX, Loader2, AlertCircle, Clock, CheckCircle } from 'lucide-react';
 import { usePendingUsers, useApproveUser, useRejectUser } from '../lib/hooks';
+import { reportError } from '../lib/reportError';
 
 interface PendingUser {
   userId: string;
@@ -43,7 +44,7 @@ export function PendingUsers() {
       await approveMutation.mutateAsync({ userId, role });
       refetch();
     } catch (err) {
-      console.error('Error approving user:', err);
+      reportError('Error approving user:', err);
     } finally {
       setProcessingUser(null);
     }
@@ -57,7 +58,7 @@ export function PendingUsers() {
       await rejectMutation.mutateAsync({ userId });
       refetch();
     } catch (err) {
-      console.error('Error rejecting user:', err);
+      reportError('Error rejecting user:', err);
     } finally {
       setProcessingUser(null);
     }

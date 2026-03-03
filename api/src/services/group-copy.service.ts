@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { nanoid } from 'nanoid';
 import { and, eq } from 'drizzle-orm';
+import { sanitizeSlug } from '@openpath/shared/slug';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
@@ -16,10 +17,6 @@ type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
 type TemplateRule = typeof schema.cpGroupTemplateRules.$inferSelect;
 
 type RuleSeed = Pick<OpenPathWhitelistRule, 'type' | 'value' | 'comment'>;
-
-export function sanitizeSlug(raw: string): string {
-  return raw.toLowerCase().replace(/[^a-z0-9-_]/g, '-');
-}
 
 function trimSlugEdges(value: string): string {
   return value.replace(/^-+/, '').replace(/-+$/, '');

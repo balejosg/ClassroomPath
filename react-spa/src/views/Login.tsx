@@ -3,6 +3,7 @@ import { Mail, Lock, ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import GoogleLoginButton from '@openpath/src/components/GoogleLoginButton';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { persistSession } from '../lib/auth-storage';
+import { reportError } from '../lib/reportError';
 
 interface LoginProps {
   onLogin: () => void;
@@ -34,8 +35,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
       onLogin();
     } catch (err) {
       setError('Credenciales inválidas o error de conexión');
-      // eslint-disable-next-line no-console
-      console.error(err);
+      reportError('Failed to login:', err);
     }
   };
 
@@ -47,8 +47,7 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
       onLogin();
     } catch (err: any) {
       setError(err?.message || 'Error al iniciar sesión con Google');
-      // eslint-disable-next-line no-console
-      console.error(err);
+      reportError('Failed to login with Google:', err);
     }
   };
 

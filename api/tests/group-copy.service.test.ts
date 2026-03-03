@@ -1,14 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { findAvailableName, sanitizeSlug } from '../src/services/group-copy.service.js';
+import { sanitizeSlug } from '@openpath/shared/slug';
+
+import { findAvailableName } from '../src/services/group-copy.service.js';
 
 describe('group-copy.service', () => {
   describe('sanitizeSlug', () => {
     it('lowercases and replaces unsafe characters', () => {
       assert.strictEqual(sanitizeSlug('TeSt_ABC'), 'test_abc');
-      assert.strictEqual(sanitizeSlug('My Group!'), 'my-group-');
-      assert.strictEqual(sanitizeSlug('A  B'), 'a--b');
+      assert.strictEqual(sanitizeSlug('My Group!'), 'my-group');
+      assert.strictEqual(sanitizeSlug('A  B'), 'a-b');
     });
   });
 
