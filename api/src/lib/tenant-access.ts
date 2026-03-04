@@ -54,6 +54,13 @@ export async function assertOrgClassroomAccess(
   organizationId: string,
   classroomId: string
 ): Promise<void> {
+  await getOrgClassroomLinkOrThrow(organizationId, classroomId);
+}
+
+export async function getOrgClassroomLinkOrThrow(
+  organizationId: string,
+  classroomId: string
+): Promise<{ id: string }> {
   const orgClassroom = await db
     .select({ id: schema.cpOrganizationClassrooms.id })
     .from(schema.cpOrganizationClassrooms)
@@ -65,12 +72,16 @@ export async function assertOrgClassroomAccess(
     )
     .limit(1);
 
-  if (!orgClassroom.length) {
+  const row = orgClassroom[0];
+
+  if (!row) {
     throw new TRPCError({
       code: 'NOT_FOUND',
       message: 'Classroom not found or access denied',
     });
   }
+
+  return row;
 }
 
 export async function getTeacherGroupIdentifiers(userId: string): Promise<Set<string>> {
