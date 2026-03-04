@@ -61,7 +61,7 @@ test.describe('Domain approval regression flow', () => {
       await waitForNetworkIdle(page);
       await expect(page.getByRole('heading', { name: 'Solicitudes de Acceso' })).toBeVisible();
 
-      const searchInput = page.getByPlaceholder('Buscar por dominio o email...');
+      const searchInput = page.locator('input[name="domain-requests-search"]');
 
       const approveRow = requestRowByDomain(page, domainToApprove);
       const pendingRow = requestRowByDomain(page, domainToKeepPending);

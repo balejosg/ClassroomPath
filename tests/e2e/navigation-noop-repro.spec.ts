@@ -59,7 +59,7 @@ async function contaminateState(page: import('@playwright/test').Page): Promise<
   // 1) Control de Dominios: empty-state search + clear.
   try {
     await page.getByRole('button', { name: 'Control de Dominios' }).click({ timeout: short });
-    const search = page.getByRole('textbox', { name: 'Buscar por dominio o email...' });
+    const search = page.locator('input[name="domain-requests-search"]');
     await search.waitFor({ state: 'visible', timeout: short });
     await search.fill('zzzz-notfound-123');
     await page.waitForTimeout(250);

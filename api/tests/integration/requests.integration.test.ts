@@ -96,7 +96,6 @@ async function seedRequest(params: { requestId: string; groupId: string; domain:
     requesterEmail: 'requester@test.local',
     groupId: params.groupId,
     status: 'pending',
-    priority: 'normal',
   });
 }
 

@@ -132,7 +132,6 @@ export const requestsRouter = router({
         groupId: z.string().optional(),
         reason: z.string().optional(),
         requesterEmail: z.string().email().optional(),
-        priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -178,7 +177,6 @@ export const requestsRouter = router({
           reason: input.reason ?? 'No reason provided',
           requesterEmail: input.requesterEmail ?? ctx.user.email ?? 'anonymous@tenant.local',
           groupId: input.groupId,
-          priority: input.priority ?? 'normal',
           status: 'pending',
         })
         .returning();

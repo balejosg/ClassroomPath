@@ -177,7 +177,6 @@ export const requests = pgTable('requests', {
   domain: varchar('domain', { length: 255 }).notNull(),
   reason: text('reason'),
   status: varchar('status', { length: 20 }).default('pending').notNull(),
-  priority: varchar('priority', { length: 20 }).default('normal').notNull(),
   requesterEmail: varchar('requester_email', { length: 255 }).notNull(),
   groupId: varchar('group_id', { length: 50 }).references(() => whitelistGroups.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
