@@ -4,6 +4,7 @@ dist
 package-lock.json
 upstream
 .git
+.turbo/
 
 # Generated artifacts
 playwright-report/

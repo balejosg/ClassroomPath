@@ -150,15 +150,15 @@ async function globalSetup(_config: FullConfig): Promise<void> {
     return;
   }
 
-  if (shouldSkipDbPush()) {
-    console.log('Skipping truncate-only + db:push (E2E_SKIP_DB_PUSH is enabled)');
-  } else {
-    // Ensure tables are empty so drizzle-kit push never prompts.
-    const truncateSuccess = await runTruncateOnly();
-    if (!truncateSuccess) {
-      console.warn('WARNING: Pre-push truncate failed; db:push may prompt or fail');
-    }
+  // Ensure tables are empty so seeding is deterministic and db:push never prompts.
+  const truncateSuccess = await runTruncateOnly();
+  if (!truncateSuccess) {
+    console.warn('WARNING: Pre-push truncate failed; seed may be non-deterministic');
+  }
 
+  if (shouldSkipDbPush()) {
+    console.log('Skipping db:push (E2E_SKIP_DB_PUSH is enabled)');
+  } else {
     const pushSuccess = await runClassroomPathDbPush();
     if (!pushSuccess) {
       console.warn('WARNING: db:push failed, seed may fail due to schema mismatch');
