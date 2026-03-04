@@ -30,3 +30,9 @@ MANUAL_TEST_REPORT.md
 # Test artifacts
 playwright-report/
 tests/e2e/test-results/
+
+# Coverage
+coverage/
+**/coverage/
+.nyc_output/
+**/.nyc_output/

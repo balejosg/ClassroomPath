@@ -11,6 +11,11 @@ export default mergeConfig(
       environment: 'jsdom',
       setupFiles: './src/test/setup.ts',
       include: ['src/**/*.{test,spec}.{ts,tsx}'],
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'json', 'html'],
+        exclude: ['node_modules/**', 'src/test/**', '**/*.d.ts', '**/*.config.*', '**/types/**'],
+      },
       // Important for monorepo/submodule resolution
       deps: {
         optimizer: {

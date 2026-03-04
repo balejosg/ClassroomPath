@@ -6,7 +6,8 @@
 #   [1/5] Build (sequential - required for types)
 #   [2/5] Static Analysis (parallel: typecheck, lint, format)
 #   [3/5] Security & Size (parallel: audit, secrets, size)
-#   [4/5] Unit & Integration Tests (DB-dependent)
+#   [4/5] Unit & Integration Tests (DB-dependent, with coverage)
+#         Coverage gate on changed files (fail fast before E2E)
 #   [5/5] E2E Playwright Tests
 #
 # OPTIMIZATION: When only the submodule is updated, OpenPath static checks
@@ -175,9 +176,12 @@ echo "[2/5] Static analysis (parallel: typecheck, lint, format)..."
 
 if [ "$SKIP_OPENPATH_STATIC" = "1" ]; then
   echo "  → Skipping OpenPath typecheck/lint (already verified upstream)"
-  echo "  → Running ClassroomPath format:check only..."
-  npm run format:check || {
-    echo "Format check failed!" >&2
+  echo "  → Running ClassroomPath-only checks..."
+  run_parallel \
+    "npm run format:check" \
+    "node scripts/check-no-console-react-spa.js" \
+  || {
+    echo "Static analysis failed!" >&2
     exit 1
   }
 else
@@ -186,6 +190,7 @@ else
   run_parallel \
     "cd upstream/openpath && npm run verify:static" \
     "npm run format:check" \
+    "node scripts/check-no-console-react-spa.js" \
   || {
     echo "Static analysis failed!" >&2
     exit 1
@@ -227,13 +232,16 @@ echo "[4/5] Running tests..."
 echo "Running migrations..."
 npm run db:push --workspace=@classroompath/api --workspace=@openpath/api
 
+# Ensure coverage artifacts reflect THIS run
+rm -rf api/coverage api/.nyc_output react-spa/coverage react-spa/.nyc_output
+
 # SPA tests don't need DB, can run in parallel with API tests setup
-echo "Running unit tests (SPA)..."
-npm run test --workspace=@classroompath/react-spa &
+echo "Running unit tests (SPA, with coverage)..."
+npm run test:coverage --workspace=@classroompath/react-spa &
 SPA_PID=$!
 
-echo "Running unit tests (API)..."
-npm run test --workspace=@classroompath/api
+echo "Running unit tests (API, with coverage)..."
+npm run test:coverage --workspace=@classroompath/api
 
 # Wait for SPA tests
 if ! wait $SPA_PID; then
@@ -241,8 +249,9 @@ if ! wait $SPA_PID; then
   exit 1
 fi
 
-echo "Running API integration tests..."
-npm run test:integration --workspace=@classroompath/api
+echo ""
+echo "[4/5] Checking coverage on changed files..."
+node scripts/check-new-file-coverage.js
 
 # =============================================================================
 # [5/5] E2E PLAYWRIGHT TESTS
@@ -298,13 +307,6 @@ else
   echo "Running E2E tests (excluding @slow-network and @repro)..."
   E2E_SKIP_DB_PUSH=1 PLAYWRIGHT_WORKERS="$PW_WORKERS" npx playwright test --grep-invert="@slow-network|@repro"
 fi
-
-# =============================================================================
-# FINAL: Coverage check on changed files
-# =============================================================================
-echo ""
-echo "[Final] Checking coverage on changed files..."
-node scripts/check-new-file-coverage.js
 
 echo ""
 echo "=========================================="

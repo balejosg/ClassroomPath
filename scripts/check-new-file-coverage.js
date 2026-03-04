@@ -160,12 +160,23 @@ function main() {
   const coverage = loadCoverageData();
   console.log('');
 
+  const needsApiCoverage = changedFiles.some((f) => f.startsWith('api/src/'));
+  const needsSpaCoverage = changedFiles.some((f) => f.startsWith('react-spa/src/'));
+
   if (Object.keys(coverage).length === 0) {
-    console.log('WARNING: No coverage data found. Run tests with coverage first.');
-    console.log('Skipping coverage check for this commit.');
+    console.log('ERROR: No coverage data found for this commit.');
+    console.log('Run tests with coverage to generate coverage-final.json:');
+
+    if (needsApiCoverage) {
+      console.log('  - npm run test:coverage --workspace=@classroompath/api');
+    }
+
+    if (needsSpaCoverage) {
+      console.log('  - npm run test:coverage --workspace=@classroompath/react-spa');
+    }
+
     console.log('');
-    // Don't fail - coverage might not be generated yet
-    process.exit(0);
+    process.exit(1);
   }
 
   const failures = [];
@@ -227,11 +238,19 @@ function main() {
     process.exit(1);
   }
 
-  // Treat missing coverage as warning, not failure
   if (missing.length > 0) {
-    console.log('\x1b[33mWARNING: Some files have no coverage data.\x1b[0m');
-    console.log('Make sure to add tests for these files.');
+    console.log('\x1b[31mERROR: Some files have no coverage data.\x1b[0m');
+    console.log('To fix:');
+    console.log('  1. Add tests that import/execute the changed files');
+    console.log('  2. Re-run tests with coverage for the affected workspace(s):');
+    if (needsApiCoverage) {
+      console.log('     - npm run test:coverage --workspace=@classroompath/api');
+    }
+    if (needsSpaCoverage) {
+      console.log('     - npm run test:coverage --workspace=@classroompath/react-spa');
+    }
     console.log('');
+    process.exit(1);
   }
 
   console.log('\x1b[32mAll checked files meet the coverage threshold.\x1b[0m');
