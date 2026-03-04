@@ -10,10 +10,10 @@ Built on [OpenPath](https://github.com/balejosg/openpath) (OSS).
 
 ## Live URLs
 
-| Environment    | URL                                       | Deploy Trigger |
-| -------------- | ----------------------------------------- | -------------- |
-| **Production** | https://classroompath.duckdns.org         | Git tag `v*`   |
-| **Staging**    | https://classroompath-staging.duckdns.org | Push to `main` |
+| Environment    | URL                                       | Deploy Trigger           |
+| -------------- | ----------------------------------------- | ------------------------ |
+| **Production** | https://classroompath.duckdns.org         | Git tag `v*`             |
+| **Staging**    | https://classroompath-staging.duckdns.org | `npm run deploy:staging` |
 
 ## Architecture
 
@@ -146,17 +146,22 @@ PLAYWRIGHT_WORKERS=2 npm run verify:full
 
 ## Deployment
 
-### Automatic (CI/CD)
+### Staging (Local SSH)
 
-| Trigger             | Target     | Action         |
-| ------------------- | ---------- | -------------- |
-| Push to `main`      | Staging    | Auto-deploy    |
-| Tag `v*`            | Production | Auto-deploy    |
-| `workflow_dispatch` | Choice     | Manual trigger |
+Staging is deployed from a developer machine via `npm run deploy:staging` (SSH to the staging host). It always deploys `origin/main`.
 
-### GitHub Secrets Required
+```bash
+git push origin main
+npm run deploy:staging
+```
 
-#### Production
+Staging deploy configuration is local-only via `ClassroomPath/.env.local` (see `.env.local.example`).
+
+### Production (GitHub Actions)
+
+Production deploys automatically on git tags `v*`.
+
+Required GitHub Secrets (production only):
 
 | Secret           | Description                |
 | ---------------- | -------------------------- |
@@ -165,22 +170,7 @@ PLAYWRIGHT_WORKERS=2 npm run verify:full
 | `DEPLOY_USER`    | SSH username               |
 | `DEPLOY_SSH_KEY` | Private SSH key            |
 
-#### Staging
-
-| Secret                   | Description             |
-| ------------------------ | ----------------------- |
-| `STAGING_DEPLOY_HOST`    | Staging server hostname |
-| `STAGING_DEPLOY_PORT`    | SSH port                |
-| `STAGING_DEPLOY_USER`    | SSH username            |
-| `STAGING_DEPLOY_SSH_KEY` | Private SSH key         |
-
-### Manual Deployment
-
 ```bash
-# Deploy to staging
-git push origin main
-
-# Deploy to production
 git tag v1.0.1
 git push origin v1.0.1
 ```
@@ -211,6 +201,9 @@ npm run submodule:update
 git add upstream/openpath
 git commit -m "chore: update openpath submodule"
 git push
+
+# Deploy the updated origin/main to staging
+npm run deploy:staging
 ```
 
 ## License

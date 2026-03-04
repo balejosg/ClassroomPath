@@ -153,43 +153,9 @@ git submodule update --init --recursive --force
 echo "[DEPLOY] Running database migrations..."
 cd "$APP_DIR"
 
-# Run ClassroomPath API migrations (multi-tenancy tables)
-echo "[DEPLOY] - ClassroomPath API schema..."
-CP_MIG_LOG=$(mktemp)
-if docker run --rm \
-    -v "$APP_DIR:/app" \
-    -v "$APP_DIR/config/.env:/app/.env:ro" \
-    -w /app \
-    --env-file "$APP_DIR/config/.env" \
-    node:20-alpine \
-    sh -c "npm ci --silent -w @classroompath/api && npm run db:push -w @classroompath/api" \
-    >"$CP_MIG_LOG" 2>&1; then
-    tail -5 "$CP_MIG_LOG"
-else
-    cat "$CP_MIG_LOG"
-    rm -f "$CP_MIG_LOG"
-    exit 1
-fi
-rm -f "$CP_MIG_LOG"
-
-# Run OpenPath API migrations (core tables)
-echo "[DEPLOY] - OpenPath API schema..."
-OP_MIG_LOG=$(mktemp)
-if docker run --rm \
-    -v "$APP_DIR/upstream/openpath:/app" \
-    -v "$APP_DIR/config/.env:/app/.env:ro" \
-    -w /app \
-    --env-file "$APP_DIR/config/.env" \
-    node:20-alpine \
-    sh -c "npm ci --silent -w @openpath/shared -w @openpath/api && npm run db:push -w @openpath/api" \
-    >"$OP_MIG_LOG" 2>&1; then
-    tail -5 "$OP_MIG_LOG"
-else
-    cat "$OP_MIG_LOG"
-    rm -f "$OP_MIG_LOG"
-    exit 1
-fi
-rm -f "$OP_MIG_LOG"
+# Run schema pushes outside production containers.
+# Uses Docker + npm workspaces to avoid per-package lockfile drift.
+bash scripts/run-migrations-docker.sh --cp --openpath
 
 echo "[DEPLOY] Checking disk space..."
 DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
