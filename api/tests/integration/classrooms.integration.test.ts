@@ -546,4 +546,410 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const { data: updated } = (await parseTRPC(allowedDefault)) as { data: any };
     assert.strictEqual(updated.defaultGroupId, teacherGroupId);
   });
+
+  test('classrooms.listMachines returns org machines, supports filter, and includes download token metadata', async () => {
+    await resetDb();
+
+    const adminUserId = 'classrooms-machines-admin';
+    const adminEmail = uniqueEmail('machines-admin');
+    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
+    const adminToken = signToken({
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin User',
+      roles: [{ role: 'admin' }],
+    });
+
+    await bootstrapOrg({ token: adminToken });
+
+    const { classroomId: classroomA } = await createClassroom(
+      { token: adminToken },
+      { name: 'machines-classroom-a', displayName: 'Machines A' }
+    );
+    const { classroomId: classroomB } = await createClassroom(
+      { token: adminToken },
+      { name: 'machines-classroom-b', displayName: 'Machines B' }
+    );
+
+    const machineAId = 'machine-a';
+    const machineBId = 'machine-b';
+    const rotatedAt = new Date('2026-02-03T10:00:00.000Z');
+    const lastSeen = new Date('2026-02-03T10:20:00.000Z');
+
+    await openpathDb.insert(openpathSchema.machines).values([
+      {
+        id: machineAId,
+        hostname: 'machine-a.test',
+        classroomId: classroomA,
+        version: '1.0.0',
+        lastSeen,
+        downloadTokenHash: 'token-hash-a',
+        downloadTokenLastRotatedAt: rotatedAt,
+      },
+      {
+        id: machineBId,
+        hostname: 'machine-b.test',
+        classroomId: classroomB,
+        version: '2.0.0',
+        lastSeen: null,
+        downloadTokenHash: null,
+        downloadTokenLastRotatedAt: null,
+      },
+    ]);
+
+    const listAllResp = await trpcQuery(
+      API_URL,
+      'classrooms.listMachines',
+      {},
+      bearerAuth(adminToken)
+    );
+    assertStatus(listAllResp, 200);
+    const { data: all } = (await parseTRPC(listAllResp)) as { data: any[] };
+    assert.strictEqual(all.length, 2);
+
+    const rowA = all.find((m) => m.id === machineAId);
+    assert.ok(rowA, 'machine A should be in listMachines');
+    assert.strictEqual(rowA.classroomId, classroomA);
+    assert.strictEqual(rowA.hasDownloadToken, true);
+    assert.strictEqual(rowA.downloadTokenLastRotatedAt, rotatedAt.toISOString());
+    assert.strictEqual(rowA.lastSeen, lastSeen.toISOString());
+
+    const listAResp = await trpcQuery(
+      API_URL,
+      'classrooms.listMachines',
+      { classroomId: classroomA },
+      bearerAuth(adminToken)
+    );
+    assertStatus(listAResp, 200);
+    const { data: onlyA } = (await parseTRPC(listAResp)) as { data: any[] };
+    assert.strictEqual(onlyA.length, 1);
+    assert.strictEqual(onlyA[0].id, machineAId);
+
+    const notFoundResp = await trpcQuery(
+      API_URL,
+      'classrooms.listMachines',
+      { classroomId: 'missing-classroom' },
+      bearerAuth(adminToken)
+    );
+    assertStatus(notFoundResp, 404);
+    const notFound = await parseTRPC(notFoundResp);
+    assert.strictEqual(notFound.code, 'NOT_FOUND');
+    assert.strictEqual(notFound.error, 'Classroom not found or access denied');
+  });
+
+  test('classrooms.listMachines and classrooms.deleteMachine are forbidden for students', async () => {
+    await resetDb();
+
+    const adminUserId = 'classrooms-student-gate-admin';
+    const adminEmail = uniqueEmail('student-gate-admin');
+    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
+    const adminToken = signToken({
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin User',
+      roles: [{ role: 'admin' }],
+    });
+
+    const { organizationId } = await bootstrapOrg({ token: adminToken });
+
+    const { classroomId } = await createClassroom(
+      { token: adminToken },
+      { name: 'student-gate-classroom', displayName: 'Student Gate Classroom' }
+    );
+
+    const machineId = 'student-machine';
+    await openpathDb.insert(openpathSchema.machines).values({
+      id: machineId,
+      hostname: 'student-machine.test',
+      classroomId,
+      version: '1.0.0',
+      lastSeen: new Date('2026-02-03T10:20:00.000Z'),
+    });
+
+    const studentUserId = 'classrooms-student';
+    const studentEmail = uniqueEmail('student');
+    await ensureOpenPathUser({ userId: studentUserId, email: studentEmail, name: 'Student User' });
+    const studentToken = signToken({
+      userId: studentUserId,
+      email: studentEmail,
+      name: 'Student User',
+      roles: [{ role: 'student' }],
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${studentUserId}`,
+      userId: studentUserId,
+      organizationId,
+      role: 'student',
+      invitedBy: adminUserId,
+    });
+
+    const listResp = await trpcQuery(
+      API_URL,
+      'classrooms.listMachines',
+      {},
+      bearerAuth(studentToken)
+    );
+    assertStatus(listResp, 403);
+    const listParsed = await parseTRPC(listResp);
+    assert.strictEqual(listParsed.code, 'FORBIDDEN');
+    assert.strictEqual(listParsed.error, 'Teacher access required');
+
+    const deleteResp = await trpcMutate(
+      API_URL,
+      'classrooms.deleteMachine',
+      { id: machineId, classroomId },
+      bearerAuth(studentToken)
+    );
+    assertStatus(deleteResp, 403);
+    const deleteParsed = await parseTRPC(deleteResp);
+    assert.strictEqual(deleteParsed.code, 'FORBIDDEN');
+    assert.strictEqual(deleteParsed.error, 'Teacher access required');
+  });
+
+  test('classrooms.deleteMachine deletes a machine in an accessible classroom', async () => {
+    await resetDb();
+
+    const adminUserId = 'classrooms-delete-machine-admin';
+    const adminEmail = uniqueEmail('delete-machine-admin');
+    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
+    const adminToken = signToken({
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin User',
+      roles: [{ role: 'admin' }],
+    });
+
+    await bootstrapOrg({ token: adminToken });
+    const { classroomId } = await createClassroom(
+      { token: adminToken },
+      { name: 'delete-machine-classroom', displayName: 'Delete Machine Classroom' }
+    );
+
+    const machineId = 'delete-machine-target';
+    await openpathDb.insert(openpathSchema.machines).values({
+      id: machineId,
+      hostname: 'delete-machine-target.test',
+      classroomId,
+      version: '1.0.0',
+    });
+
+    const deleteResp = await trpcMutate(
+      API_URL,
+      'classrooms.deleteMachine',
+      { id: machineId, classroomId },
+      bearerAuth(adminToken)
+    );
+    assertStatus(deleteResp, 200);
+    const { data: deleted } = (await parseTRPC(deleteResp)) as { data: any };
+    assert.strictEqual(deleted.success, true);
+
+    const listResp = await trpcQuery(
+      API_URL,
+      'classrooms.listMachines',
+      { classroomId },
+      bearerAuth(adminToken)
+    );
+    assertStatus(listResp, 200);
+    const { data: machinesList } = (await parseTRPC(listResp)) as { data: any[] };
+    assert.ok(!machinesList.some((m) => m.id === machineId), 'machine should be deleted');
+  });
+
+  test('classrooms exemptions: create/list/delete happy path is idempotent within same schedule end', async () => {
+    await resetDb();
+
+    const adminUserId = 'classrooms-exemptions-admin';
+    const adminEmail = uniqueEmail('exemptions-admin');
+    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
+    const adminToken = signToken({
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin User',
+      roles: [{ role: 'admin' }],
+    });
+
+    await bootstrapOrg({ token: adminToken });
+    const { classroomId } = await createClassroom(
+      { token: adminToken },
+      { name: 'exemptions-classroom', displayName: 'Exemptions Classroom' }
+    );
+
+    const machineId = 'exemptions-machine';
+    const machineHostname = 'exemptions-machine.test';
+    await openpathDb.insert(openpathSchema.machines).values({
+      id: machineId,
+      hostname: machineHostname,
+      classroomId,
+      version: '1.0.0',
+    });
+
+    const scheduleId = '00000000-0000-0000-0000-000000000001';
+    await openpathDb.insert(openpathSchema.schedules).values({
+      id: scheduleId,
+      classroomId,
+      teacherId: adminUserId,
+      groupId: 'exemptions-group',
+      dayOfWeek: 2,
+      startTime: '10:00',
+      endTime: '11:00',
+    });
+
+    const inSlot = new Date(2026, 1, 3, 10, 30, 45, 123);
+    await withMockedDate(inSlot, async () => {
+      const create1 = await trpcMutate(
+        API_URL,
+        'classrooms.createExemption',
+        { machineId, classroomId, scheduleId },
+        bearerAuth(adminToken)
+      );
+      assertStatus(create1, 200);
+      const { data: ex1 } = (await parseTRPC(create1)) as { data: any };
+      assert.ok(String(ex1.id).startsWith('exempt_'));
+      assert.strictEqual(ex1.machineId, machineId);
+      assert.strictEqual(ex1.classroomId, classroomId);
+      assert.strictEqual(ex1.scheduleId, scheduleId);
+      assert.strictEqual(ex1.createdBy, adminUserId);
+      assert.ok(ex1.expiresAt);
+
+      const create2 = await trpcMutate(
+        API_URL,
+        'classrooms.createExemption',
+        { machineId, classroomId, scheduleId },
+        bearerAuth(adminToken)
+      );
+      assertStatus(create2, 200);
+      const { data: ex2 } = (await parseTRPC(create2)) as { data: any };
+      assert.strictEqual(ex2.id, ex1.id, 'createExemption should be idempotent within same expiry');
+
+      const listResp = await trpcQuery(
+        API_URL,
+        'classrooms.listExemptions',
+        { classroomId },
+        bearerAuth(adminToken)
+      );
+      assertStatus(listResp, 200);
+      const { data: list } = (await parseTRPC(listResp)) as { data: any };
+      assert.strictEqual(list.classroomId, classroomId);
+      assert.strictEqual(list.exemptions.length, 1);
+      assert.strictEqual(list.exemptions[0].id, ex1.id);
+      assert.strictEqual(list.exemptions[0].machineHostname, machineHostname);
+
+      const delResp = await trpcMutate(
+        API_URL,
+        'classrooms.deleteExemption',
+        { id: ex1.id },
+        bearerAuth(adminToken)
+      );
+      assertStatus(delResp, 200);
+      const { data: deleted } = (await parseTRPC(delResp)) as { data: any };
+      assert.strictEqual(deleted.success, true);
+
+      const list2Resp = await trpcQuery(
+        API_URL,
+        'classrooms.listExemptions',
+        { classroomId },
+        bearerAuth(adminToken)
+      );
+      assertStatus(list2Resp, 200);
+      const { data: list2 } = (await parseTRPC(list2Resp)) as { data: any };
+      assert.strictEqual(list2.exemptions.length, 0);
+    });
+  });
+
+  test('classrooms.createExemption rejects weekends', async () => {
+    await resetDb();
+
+    const adminUserId = 'classrooms-weekend-exemptions-admin';
+    const adminEmail = uniqueEmail('weekend-exemptions-admin');
+    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
+    const adminToken = signToken({
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin User',
+      roles: [{ role: 'admin' }],
+    });
+
+    await bootstrapOrg({ token: adminToken });
+    const { classroomId } = await createClassroom(
+      { token: adminToken },
+      { name: 'weekend-exemptions-classroom', displayName: 'Weekend Exemptions Classroom' }
+    );
+
+    const machineId = 'weekend-exemptions-machine';
+    await openpathDb.insert(openpathSchema.machines).values({
+      id: machineId,
+      hostname: 'weekend-exemptions-machine.test',
+      classroomId,
+      version: '1.0.0',
+    });
+
+    const weekend = new Date(2026, 1, 7, 12, 0, 0, 0);
+    await withMockedDate(weekend, async () => {
+      const resp = await trpcMutate(
+        API_URL,
+        'classrooms.createExemption',
+        {
+          machineId,
+          classroomId,
+          scheduleId: '00000000-0000-0000-0000-000000000002',
+        },
+        bearerAuth(adminToken)
+      );
+      assertStatus(resp, 400);
+      const parsed = await parseTRPC(resp);
+      assert.strictEqual(parsed.code, 'BAD_REQUEST');
+      assert.strictEqual(parsed.error, 'Schedules are inactive on weekends');
+    });
+  });
+
+  test('classrooms.setActiveGroup can set manual group and then revert to default', async () => {
+    await resetDb();
+
+    const adminUserId = 'classrooms-active-group-admin';
+    const adminEmail = uniqueEmail('active-group-admin');
+    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
+    const adminToken = signToken({
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin User',
+      roles: [{ role: 'admin' }],
+    });
+
+    await bootstrapOrg({ token: adminToken });
+
+    const { groupId: defaultGroupId } = await createGroup(
+      { token: adminToken },
+      'active-group-default'
+    );
+    const { groupId: manualGroupId } = await createGroup(
+      { token: adminToken },
+      'active-group-manual'
+    );
+    const { classroomId } = await createClassroom(
+      { token: adminToken },
+      { name: 'active-group-classroom', displayName: 'Active Group Classroom', defaultGroupId }
+    );
+
+    const setManualResp = await trpcMutate(
+      API_URL,
+      'classrooms.setActiveGroup',
+      { id: classroomId, groupId: manualGroupId },
+      bearerAuth(adminToken)
+    );
+    assertStatus(setManualResp, 200);
+    const { data: manual } = (await parseTRPC(setManualResp)) as { data: any };
+    assert.strictEqual(manual.currentGroupId, manualGroupId);
+    assert.strictEqual(manual.currentGroupSource, 'manual');
+
+    const clearResp = await trpcMutate(
+      API_URL,
+      'classrooms.setActiveGroup',
+      { id: classroomId, groupId: null },
+      bearerAuth(adminToken)
+    );
+    assertStatus(clearResp, 200);
+    const { data: cleared } = (await parseTRPC(clearResp)) as { data: any };
+    assert.strictEqual(cleared.currentGroupId, defaultGroupId);
+    assert.strictEqual(cleared.currentGroupSource, 'default');
+  });
 });

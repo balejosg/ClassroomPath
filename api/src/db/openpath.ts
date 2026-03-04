@@ -172,6 +172,26 @@ export const schedules = pgTable('schedules', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+export const machineExemptions = pgTable(
+  'machine_exemptions',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    machineId: varchar('machine_id', { length: 50 }).notNull(),
+    classroomId: varchar('classroom_id', { length: 50 }).notNull(),
+    scheduleId: uuid('schedule_id').notNull(),
+    createdBy: varchar('created_by', { length: 50 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    machineScheduleExpiresUnique: unique('machine_exemptions_machine_schedule_expires_key').on(
+      table.machineId,
+      table.scheduleId,
+      table.expiresAt
+    ),
+  })
+);
+
 export const requests = pgTable('requests', {
   id: varchar('id', { length: 50 }).primaryKey(),
   domain: varchar('domain', { length: 255 }).notNull(),
@@ -192,6 +212,7 @@ export const openpathSchema = {
   classrooms,
   machines,
   schedules,
+  machineExemptions,
   whitelistGroups,
   whitelistRules,
   requests,

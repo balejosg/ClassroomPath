@@ -5,7 +5,7 @@ import { TRPCError } from '@trpc/server';
 import { router, tenantProcedure } from '../trpc.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
-import { eq, inArray, and, sql } from 'drizzle-orm';
+import { eq, inArray, and, sql, gt } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
 import {
@@ -14,10 +14,12 @@ import {
   classrooms,
   machines,
   schedules,
+  machineExemptions,
 } from '../../db/openpath.js';
 
 import {
   assertCanUseGroup,
+  assertOrgClassroomAccess,
   assertOrgGroupAccess,
   requireTeacherOrAdmin,
 } from '../../lib/tenant-access.js';
@@ -65,6 +67,52 @@ function getScheduleClock(date: Date): { dayOfWeek: number; timeHHMM: string } {
   } catch {
     return { dayOfWeek: date.getDay(), timeHHMM: date.toTimeString().slice(0, 5) };
   }
+}
+
+type MachineStatus = 'online' | 'stale' | 'offline';
+type ClassroomStatus = 'operational' | 'degraded' | 'offline';
+
+// Thresholds (must match OpenPath classroom.service.ts)
+const ONLINE_THRESHOLD_MINUTES = 5;
+const STALE_THRESHOLD_MINUTES = 15;
+
+function calculateMachineStatus(lastSeen: Date | null): MachineStatus {
+  if (!lastSeen) return 'offline';
+  const now = new Date();
+  const diffMs = now.getTime() - lastSeen.getTime();
+  const diffMinutes = diffMs / (1000 * 60);
+  if (diffMinutes <= ONLINE_THRESHOLD_MINUTES) return 'online';
+  if (diffMinutes <= STALE_THRESHOLD_MINUTES) return 'stale';
+  return 'offline';
+}
+
+function calculateClassroomStatus(machinesList: { status: MachineStatus }[]): ClassroomStatus {
+  if (machinesList.length === 0) return 'operational';
+
+  const onlineCount = machinesList.filter((m) => m.status === 'online').length;
+  const offlineCount = machinesList.filter((m) => m.status === 'offline').length;
+
+  if (onlineCount === machinesList.length) return 'operational';
+  if (offlineCount === machinesList.length) return 'offline';
+  return 'degraded';
+}
+
+function normalizeTimeHHMM(t: string): string {
+  const parts = String(t).split(':');
+  const hh = parts[0];
+  const mm = parts[1];
+  if (hh !== undefined && mm !== undefined) return `${hh}:${mm}`;
+  return String(t);
+}
+
+function parseTimeToMinutes(t: string): number {
+  const parts = String(t).split(':');
+  const hh = parts[0];
+  const mm = parts[1];
+  const h = Number(hh);
+  const m = Number(mm);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return NaN;
+  return h * 60 + m;
 }
 
 function normalizeClassroomKey(rawName: string): string {
@@ -187,6 +235,31 @@ export const classroomsRouter = router({
       }
     }
 
+    const machineRows = await openpathDb
+      .select()
+      .from(machines)
+      .where(inArray(machines.classroomId, classroomIds));
+
+    const machinesByClassroomId = new Map<string, any[]>();
+    for (const m of machineRows) {
+      const classroomId = m.classroomId;
+      if (!classroomId) continue;
+
+      const status = calculateMachineStatus(m.lastSeen ?? null);
+      const item = {
+        id: m.id,
+        hostname: m.hostname,
+        classroomId: m.classroomId,
+        version: m.version,
+        lastSeen: m.lastSeen?.toISOString?.() ?? null,
+        status,
+      };
+
+      const list = machinesByClassroomId.get(classroomId) ?? [];
+      list.push(item);
+      machinesByClassroomId.set(classroomId, list);
+    }
+
     // Serialize Date fields for JSON compatibility
     return result.map((c) => {
       const scheduleGroupId = scheduleGroupByClassroomId.get(c.id) ?? null;
@@ -199,6 +272,10 @@ export const classroomsRouter = router({
             ? 'default'
             : 'none';
 
+      const machinesList = machinesByClassroomId.get(c.id) ?? [];
+      const onlineMachineCount = machinesList.filter((m) => m.status === 'online').length;
+      const status = calculateClassroomStatus(machinesList);
+
       return {
         id: c.id,
         name: toPublicClassroomName(c),
@@ -207,6 +284,10 @@ export const classroomsRouter = router({
         activeGroupId: c.activeGroupId,
         currentGroupId,
         currentGroupSource,
+        machines: machinesList,
+        machineCount: machinesList.length,
+        status,
+        onlineMachineCount,
         createdAt: c.createdAt?.toISOString() ?? null,
         updatedAt: c.updatedAt?.toISOString() ?? null,
       };
@@ -268,6 +349,8 @@ export const classroomsRouter = router({
   listMachines: tenantProcedure
     .input(z.object({ classroomId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
+      requireTeacherOrAdmin(ctx);
+
       // Get all classrooms for this organization
       const orgClassrooms = await db
         .select()
@@ -299,10 +382,8 @@ export const classroomsRouter = router({
           classroomId: m.classroomId,
           version: m.version,
           lastSeen: m.lastSeen?.toISOString() ?? null,
-          downloadTokenHash: m.downloadTokenHash,
+          hasDownloadToken: m.downloadTokenHash !== null,
           downloadTokenLastRotatedAt: m.downloadTokenLastRotatedAt?.toISOString() ?? null,
-          createdAt: m.createdAt?.toISOString() ?? null,
-          updatedAt: m.updatedAt?.toISOString() ?? null,
         }));
       }
 
@@ -312,18 +393,197 @@ export const classroomsRouter = router({
         .from(machines)
         .where(inArray(machines.classroomId, classroomIds));
 
-      // Explicitly serialize Date fields for JSON compatibility
       return result.map((m) => ({
         id: m.id,
         hostname: m.hostname,
         classroomId: m.classroomId,
         version: m.version,
         lastSeen: m.lastSeen?.toISOString() ?? null,
-        downloadTokenHash: m.downloadTokenHash,
+        hasDownloadToken: m.downloadTokenHash !== null,
         downloadTokenLastRotatedAt: m.downloadTokenLastRotatedAt?.toISOString() ?? null,
-        createdAt: m.createdAt?.toISOString() ?? null,
-        updatedAt: m.updatedAt?.toISOString() ?? null,
       }));
+    }),
+
+  listExemptions: tenantProcedure
+    .input(z.object({ classroomId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      requireTeacherOrAdmin(ctx);
+      await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
+
+      const now = new Date();
+
+      const rows = await openpathDb
+        .select({
+          id: machineExemptions.id,
+          machineId: machineExemptions.machineId,
+          machineHostname: machines.hostname,
+          classroomId: machineExemptions.classroomId,
+          scheduleId: machineExemptions.scheduleId,
+          createdBy: machineExemptions.createdBy,
+          createdAt: machineExemptions.createdAt,
+          expiresAt: machineExemptions.expiresAt,
+        })
+        .from(machineExemptions)
+        .innerJoin(machines, eq(machines.id, machineExemptions.machineId))
+        .where(
+          and(
+            eq(machineExemptions.classroomId, input.classroomId),
+            gt(machineExemptions.expiresAt, now)
+          )
+        );
+
+      return {
+        classroomId: input.classroomId,
+        exemptions: rows.map((e) => ({
+          id: e.id,
+          machineId: e.machineId,
+          machineHostname: e.machineHostname,
+          classroomId: e.classroomId,
+          scheduleId: e.scheduleId,
+          createdBy: e.createdBy ?? null,
+          createdAt: e.createdAt ? e.createdAt.toISOString() : null,
+          expiresAt: e.expiresAt.toISOString(),
+        })),
+      };
+    }),
+
+  createExemption: tenantProcedure
+    .input(
+      z.object({
+        machineId: z.string().min(1),
+        classroomId: z.string().min(1),
+        scheduleId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireTeacherOrAdmin(ctx);
+      await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
+
+      const machineRow = await openpathDb
+        .select({ id: machines.id, classroomId: machines.classroomId, hostname: machines.hostname })
+        .from(machines)
+        .where(eq(machines.id, input.machineId))
+        .limit(1);
+
+      const machine = machineRow[0];
+      if (!machine || machine.classroomId !== input.classroomId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Machine not found' });
+      }
+
+      const now = new Date();
+      const { dayOfWeek, timeHHMM } = getScheduleClock(now);
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Schedules are inactive on weekends',
+        });
+      }
+
+      const scheduleRows = await openpathDb
+        .select({ id: schedules.id, endTime: schedules.endTime })
+        .from(schedules)
+        .where(
+          and(
+            eq(schedules.id, input.scheduleId as any),
+            eq(schedules.classroomId, input.classroomId),
+            eq(schedules.dayOfWeek, dayOfWeek),
+            sql`${schedules.startTime} <= ${timeHHMM}::time`,
+            sql`${schedules.endTime} > ${timeHHMM}::time`
+          )
+        )
+        .limit(1);
+
+      const schedule = scheduleRows[0];
+      if (!schedule) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Schedule is not active' });
+      }
+
+      const endHHMM = normalizeTimeHHMM(schedule.endTime);
+      const nowMin = parseTimeToMinutes(timeHHMM);
+      const endMin = parseTimeToMinutes(endHHMM);
+      if (!Number.isFinite(nowMin) || !Number.isFinite(endMin) || endMin <= nowMin) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid schedule end time' });
+      }
+
+      const msIntoMinute = now.getSeconds() * 1000 + now.getMilliseconds();
+      const expiresAt = new Date(now.getTime() - msIntoMinute + (endMin - nowMin) * 60_000);
+
+      const id = `exempt_${nanoid(10)}`;
+      const inserted = await openpathDb
+        .insert(machineExemptions)
+        .values({
+          id,
+          machineId: input.machineId,
+          classroomId: input.classroomId,
+          scheduleId: input.scheduleId as any,
+          createdBy: ctx.user.sub,
+          expiresAt,
+        } as any)
+        .onConflictDoNothing({
+          target: [
+            machineExemptions.machineId,
+            machineExemptions.scheduleId,
+            machineExemptions.expiresAt,
+          ],
+        })
+        .returning();
+
+      const created = inserted[0];
+      const row =
+        created ??
+        (
+          await openpathDb
+            .select()
+            .from(machineExemptions)
+            .where(
+              and(
+                eq(machineExemptions.machineId, input.machineId),
+                eq(machineExemptions.scheduleId, input.scheduleId as any),
+                eq(machineExemptions.expiresAt, expiresAt)
+              )
+            )
+            .limit(1)
+        )[0];
+
+      if (!row) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Could not create exemption' });
+      }
+
+      await notifyOpenPathClassroomChanged(input.classroomId);
+
+      return {
+        id: row.id,
+        machineId: row.machineId,
+        classroomId: row.classroomId,
+        scheduleId: row.scheduleId,
+        createdBy: row.createdBy ?? null,
+        createdAt: row.createdAt ? row.createdAt.toISOString() : null,
+        expiresAt: row.expiresAt.toISOString(),
+      };
+    }),
+
+  deleteExemption: tenantProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      requireTeacherOrAdmin(ctx);
+
+      const existing = await openpathDb
+        .select({ id: machineExemptions.id, classroomId: machineExemptions.classroomId })
+        .from(machineExemptions)
+        .where(eq(machineExemptions.id, input.id))
+        .limit(1);
+
+      const row = existing[0];
+      if (!row) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Exemption not found' });
+      }
+
+      await assertOrgClassroomAccess(ctx.organizationId!, row.classroomId);
+
+      await openpathDb.delete(machineExemptions).where(eq(machineExemptions.id, input.id));
+
+      await notifyOpenPathClassroomChanged(row.classroomId);
+      return { success: true };
     }),
 
   setActiveGroup: tenantProcedure
@@ -391,6 +651,8 @@ export const classroomsRouter = router({
   deleteMachine: tenantProcedure
     .input(z.object({ id: z.string(), classroomId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      requireTeacherOrAdmin(ctx);
+
       const orgClassroom = await db
         .select()
         .from(schema.cpOrganizationClassrooms)
