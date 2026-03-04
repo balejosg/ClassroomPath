@@ -6,7 +6,8 @@
 #   [1/5] Build (sequential - required for types)
 #   [2/5] Static Analysis (parallel: typecheck, lint, format)
 #   [3/5] Security & Size (parallel: audit, secrets, size)
-#   [4/5] Unit & Integration Tests (DB-dependent, with coverage)
+#   [4/5] Unit & Integration Tests (DB-dependent)
+#         Coverage is generated only when needed by the 80% gate
 #         Coverage gate on changed files (fail fast before E2E)
 #   [5/5] E2E Playwright Tests
 #
@@ -35,6 +36,11 @@ PARALLEL_FAILED=0
 SUBMODULE_ONLY=0
 SKIP_OPENPATH_STATIC=0
 
+# Only generate coverage when there are staged changes in src/ that the
+# coverage gate evaluates (api/src/** and react-spa/src/**).
+NEEDS_API_COVERAGE=0
+NEEDS_SPA_COVERAGE=0
+
 detect_change_type() {
   local staged_files
   staged_files=$(git diff --cached --name-only 2>/dev/null || echo "")
@@ -56,6 +62,44 @@ detect_change_type() {
     echo "  → Skipping OpenPath static checks (already verified in OpenPath repo)"
     echo "  → Expected time savings: ~30-45s"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+  fi
+}
+
+detect_coverage_needs() {
+  local staged_files
+  staged_files=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || echo "")
+
+  if [ -z "$staged_files" ]; then
+    # No staged files - running manually, do full coverage for safety.
+    NEEDS_API_COVERAGE=1
+    NEEDS_SPA_COVERAGE=1
+    return
+  fi
+
+  if echo "$staged_files" | grep -qE '^api/src/.*\.(ts|tsx)$'; then
+    NEEDS_API_COVERAGE=1
+  fi
+
+  if echo "$staged_files" | grep -qE '^react-spa/src/.*\.(ts|tsx)$'; then
+    NEEDS_SPA_COVERAGE=1
+  fi
+
+  if [ "$NEEDS_API_COVERAGE" = "0" ] && [ "$NEEDS_SPA_COVERAGE" = "0" ]; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ⚡ OPTIMIZATION: No ClassroomPath src changes detected"
+    echo "  → Running tests without coverage instrumentation"
+    echo "  → Coverage gate will be skipped"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+  else
+    echo "Coverage will be generated for:"
+    if [ "$NEEDS_API_COVERAGE" = "1" ]; then
+      echo "  - api"
+    fi
+    if [ "$NEEDS_SPA_COVERAGE" = "1" ]; then
+      echo "  - react-spa"
+    fi
     echo ""
   fi
 }
@@ -120,6 +164,7 @@ cd "$ROOT_DIR"
 
 # Detect if this is a submodule-only update
 detect_change_type
+detect_coverage_needs
 
 echo ""
 echo "=========================================="
@@ -179,7 +224,7 @@ if [ "$SKIP_OPENPATH_STATIC" = "1" ]; then
   echo "  → Running ClassroomPath-only checks..."
   run_parallel \
     "npm run format:check" \
-    "node scripts/check-no-console-react-spa.js" \
+    "npm run lint --workspace=@classroompath/react-spa" \
   || {
     echo "Static analysis failed!" >&2
     exit 1
@@ -190,7 +235,7 @@ else
   run_parallel \
     "cd upstream/openpath && npm run verify:static" \
     "npm run format:check" \
-    "node scripts/check-no-console-react-spa.js" \
+    "npm run lint --workspace=@classroompath/react-spa" \
   || {
     echo "Static analysis failed!" >&2
     exit 1
@@ -236,12 +281,24 @@ npm run db:push --workspace=@classroompath/api --workspace=@openpath/api
 rm -rf api/coverage api/.nyc_output react-spa/coverage react-spa/.nyc_output
 
 # SPA tests don't need DB, can run in parallel with API tests setup
-echo "Running unit tests (SPA, with coverage)..."
-npm run test:coverage --workspace=@classroompath/react-spa &
+if [ "$NEEDS_SPA_COVERAGE" = "1" ]; then
+  echo "Running unit tests (SPA, with coverage)..."
+  npm run test:coverage --workspace=@classroompath/react-spa &
+else
+  echo "Running unit tests (SPA)..."
+  npm run test --workspace=@classroompath/react-spa &
+fi
 SPA_PID=$!
 
-echo "Running unit tests (API, with coverage)..."
-npm run test:coverage --workspace=@classroompath/api
+if [ "$NEEDS_API_COVERAGE" = "1" ]; then
+  echo "Running unit + integration tests (API, with coverage)..."
+  npm run test:coverage --workspace=@classroompath/api
+else
+  echo "Running unit tests (API)..."
+  npm run test --workspace=@classroompath/api
+  echo "Running integration tests (API)..."
+  npm run test:integration --workspace=@classroompath/api
+fi
 
 # Wait for SPA tests
 if ! wait $SPA_PID; then
@@ -250,7 +307,7 @@ if ! wait $SPA_PID; then
 fi
 
 echo ""
-echo "[4/5] Checking coverage on changed files..."
+echo "[4/5] Checking coverage on changed files (if any)..."
 node scripts/check-new-file-coverage.js
 
 # =============================================================================

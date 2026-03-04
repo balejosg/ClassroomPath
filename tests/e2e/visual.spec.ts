@@ -85,6 +85,22 @@ async function mockDashboardMobileEmptyState(page: Page): Promise<void> {
   });
 }
 
+async function mockStableInviteOrganizations(page: Page): Promise<void> {
+  // Visual snapshots should not drift based on parallel E2E specs mutating org state.
+  // Keep onboarding.listOrganizations stable and ensure the "org_e2e" seed org remains selectable.
+  await mockTrpcProcedures(page, {
+    'onboarding.listOrganizations': [
+      { id: 'org_e2e', name: 'Test Organization' },
+      { id: 'org_e2e_alt', name: 'Another Organization' },
+    ],
+  });
+}
+
+async function waitForInviteOrganizationsLoaded(page: Page): Promise<void> {
+  const orgSelect = page.getByTestId('onboarding-target-org');
+  await expect(orgSelect.locator('option[value="org_e2e"]')).toHaveCount(1);
+}
+
 async function maskLastVerification(page: Page): Promise<void> {
   await page
     .getByText(/Última verificación:/)
@@ -156,10 +172,12 @@ test.describe('Visual Regression - Landing/Register', () => {
 
 test.describe('Visual Regression - Onboarding', () => {
   test('onboarding page desktop @visual', async ({ page }) => {
+    await mockStableInviteOrganizations(page);
     await loginAsOnboardingUser(page, 2);
 
     await page.setViewportSize({ width: 1280, height: 720 });
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
+    await waitForInviteOrganizationsLoaded(page);
     await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('onboarding-desktop.png', {
@@ -171,9 +189,12 @@ test.describe('Visual Regression - Onboarding', () => {
   test('onboarding page mobile @visual @mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
 
+    await mockStableInviteOrganizations(page);
+
     await loginAsOnboardingUser(page, 3);
 
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
+    await waitForInviteOrganizationsLoaded(page);
     await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('onboarding-mobile.png', {
@@ -185,16 +206,15 @@ test.describe('Visual Regression - Onboarding', () => {
 
 test.describe('Visual Regression - Waiting Room', () => {
   test('waiting page desktop @visual', async ({ page }) => {
+    await mockStableInviteOrganizations(page);
     const testUser = createTestUser();
     await registerUser(page, testUser);
 
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
     const orgSelect = page.getByTestId('onboarding-target-org');
     await expect(orgSelect).toBeVisible({ timeout: 10000 });
-    const optionCount = await orgSelect.locator('option').count();
-    if (optionCount > 1) {
-      await orgSelect.selectOption({ index: 1 });
-    }
+    await waitForInviteOrganizationsLoaded(page);
+    await orgSelect.selectOption({ value: 'org_e2e' });
     await page.getByRole('button', { name: /Solicitar Acceso|Request|Esperar/i }).click();
 
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -210,16 +230,16 @@ test.describe('Visual Regression - Waiting Room', () => {
   test('waiting page mobile @visual @mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
 
+    await mockStableInviteOrganizations(page);
+
     const testUser = createTestUser();
     await registerUser(page, testUser);
 
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
     const orgSelect = page.getByTestId('onboarding-target-org');
     await expect(orgSelect).toBeVisible({ timeout: 10000 });
-    const optionCount = await orgSelect.locator('option').count();
-    if (optionCount > 1) {
-      await orgSelect.selectOption({ index: 1 });
-    }
+    await waitForInviteOrganizationsLoaded(page);
+    await orgSelect.selectOption({ value: 'org_e2e' });
     await page.getByRole('button', { name: /Solicitar Acceso|Request|Esperar/i }).click();
 
     await expect(page.getByText(/Esperando|Waiting/i)).toBeVisible({ timeout: 10000 });

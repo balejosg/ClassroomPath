@@ -28,6 +28,7 @@ Thumbs.db
 MANUAL_TEST_REPORT.md
 .env.local
 .turbo/
+.worktrees/
 
 # Test artifacts
 playwright-report/

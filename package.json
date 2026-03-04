@@ -23,7 +23,7 @@
     "upstream/openpath/react-spa"
   ],
   "scripts": {
-    "install:all": "npm install && cd upstream/openpath && npm install",
+    "install:all": "git submodule update --init --recursive && npm install && cd upstream/openpath && npm install",
     "build": "bash scripts/build-classroompath.sh",
     "build:openpath": "bash scripts/build-openpath.sh",
     "build:api": "cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=@openpath/api",
