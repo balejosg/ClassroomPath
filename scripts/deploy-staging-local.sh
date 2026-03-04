@@ -157,12 +157,12 @@ cd "$APP_DIR"
 echo "[DEPLOY] - ClassroomPath API schema..."
 CP_MIG_LOG=$(mktemp)
 if docker run --rm \
-    -v "$APP_DIR/api:/app" \
+    -v "$APP_DIR:/app" \
     -v "$APP_DIR/config/.env:/app/.env:ro" \
     -w /app \
     --env-file "$APP_DIR/config/.env" \
     node:20-alpine \
-    sh -c "npm ci --silent && npm run db:push" \
+    sh -c "npm ci --silent -w @classroompath/api && npm run db:push -w @classroompath/api" \
     >"$CP_MIG_LOG" 2>&1; then
     tail -5 "$CP_MIG_LOG"
 else
@@ -176,12 +176,12 @@ rm -f "$CP_MIG_LOG"
 echo "[DEPLOY] - OpenPath API schema..."
 OP_MIG_LOG=$(mktemp)
 if docker run --rm \
-    -v "$APP_DIR/upstream/openpath/api:/app" \
+    -v "$APP_DIR/upstream/openpath:/app" \
     -v "$APP_DIR/config/.env:/app/.env:ro" \
     -w /app \
     --env-file "$APP_DIR/config/.env" \
     node:20-alpine \
-    sh -c "npm ci --silent && npm run db:push" \
+    sh -c "npm ci --silent -w @openpath/shared -w @openpath/api && npm run db:push -w @openpath/api" \
     >"$OP_MIG_LOG" 2>&1; then
     tail -5 "$OP_MIG_LOG"
 else

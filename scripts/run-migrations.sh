@@ -72,16 +72,16 @@ fi
 echo "✅ DATABASE_URL is configured"
 
 # Install dependencies if node_modules doesn't exist
-cd "$API_DIR"
+cd "$PROJECT_ROOT"
 if [ ! -d "node_modules" ]; then
     echo "📦 Installing dependencies..."
-    npm ci
+    npm ci -w @classroompath/api
 else
     echo "✅ Dependencies already installed"
 fi
 
 # Run migrations
 echo "🚀 Running drizzle-kit push..."
-npm run db:push
+npm run db:push -w @classroompath/api
 
 echo "✅ Migrations completed successfully!"
