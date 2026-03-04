@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
@@ -7,6 +6,12 @@ import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import { eq, inArray, and, sql, gt } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+
+import {
+  calculateClassroomMachineStatus as calculateMachineStatus,
+  calculateClassroomStatus,
+  resolveCurrentGroup,
+} from '@openpath/shared';
 
 import {
   openpathDb,
@@ -21,6 +26,7 @@ import {
   assertCanUseGroup,
   assertOrgClassroomAccess,
   assertOrgGroupAccess,
+  getOrgClassroomLinkOrThrow,
   requireTeacherOrAdmin,
 } from '../../lib/tenant-access.js';
 
@@ -67,34 +73,6 @@ function getScheduleClock(date: Date): { dayOfWeek: number; timeHHMM: string } {
   } catch {
     return { dayOfWeek: date.getDay(), timeHHMM: date.toTimeString().slice(0, 5) };
   }
-}
-
-type MachineStatus = 'online' | 'stale' | 'offline';
-type ClassroomStatus = 'operational' | 'degraded' | 'offline';
-
-// Thresholds (must match OpenPath classroom.service.ts)
-const ONLINE_THRESHOLD_MINUTES = 5;
-const STALE_THRESHOLD_MINUTES = 15;
-
-function calculateMachineStatus(lastSeen: Date | null): MachineStatus {
-  if (!lastSeen) return 'offline';
-  const now = new Date();
-  const diffMs = now.getTime() - lastSeen.getTime();
-  const diffMinutes = diffMs / (1000 * 60);
-  if (diffMinutes <= ONLINE_THRESHOLD_MINUTES) return 'online';
-  if (diffMinutes <= STALE_THRESHOLD_MINUTES) return 'stale';
-  return 'offline';
-}
-
-function calculateClassroomStatus(machinesList: { status: MachineStatus }[]): ClassroomStatus {
-  if (machinesList.length === 0) return 'operational';
-
-  const onlineCount = machinesList.filter((m) => m.status === 'online').length;
-  const offlineCount = machinesList.filter((m) => m.status === 'offline').length;
-
-  if (onlineCount === machinesList.length) return 'operational';
-  if (offlineCount === machinesList.length) return 'offline';
-  return 'degraded';
 }
 
 function normalizeTimeHHMM(t: string): string {
@@ -245,7 +223,7 @@ export const classroomsRouter = router({
       const classroomId = m.classroomId;
       if (!classroomId) continue;
 
-      const status = calculateMachineStatus(m.lastSeen ?? null);
+      const status = calculateMachineStatus(m.lastSeen ?? null, now);
       const item = {
         id: m.id,
         hostname: m.hostname,
@@ -263,14 +241,13 @@ export const classroomsRouter = router({
     // Serialize Date fields for JSON compatibility
     return result.map((c) => {
       const scheduleGroupId = scheduleGroupByClassroomId.get(c.id) ?? null;
-      const currentGroupId = c.activeGroupId ?? scheduleGroupId ?? c.defaultGroupId ?? null;
-      const currentGroupSource = c.activeGroupId
-        ? 'manual'
-        : scheduleGroupId
-          ? 'schedule'
-          : c.defaultGroupId
-            ? 'default'
-            : 'none';
+      const currentGroup = resolveCurrentGroup({
+        activeGroupId: c.activeGroupId,
+        scheduleGroupId,
+        defaultGroupId: c.defaultGroupId,
+      });
+      const currentGroupId = currentGroup.id;
+      const currentGroupSource = currentGroup.source;
 
       const machinesList = machinesByClassroomId.get(c.id) ?? [];
       const onlineMachineCount = machinesList.filter((m) => m.status === 'online').length;
@@ -295,23 +272,7 @@ export const classroomsRouter = router({
   }),
 
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    const orgClassroom = await db
-      .select()
-      .from(schema.cpOrganizationClassrooms)
-      .where(
-        and(
-          eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationClassrooms.classroomId, input.id)
-        )
-      )
-      .limit(1);
-
-    if (!orgClassroom.length) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'Classroom not found or access denied',
-      });
-    }
+    await assertOrgClassroomAccess(ctx.organizationId!, input.id);
 
     const classroom = await openpathDb
       .select()
@@ -323,14 +284,13 @@ export const classroomsRouter = router({
 
     const c = classroom[0];
     const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: c.id });
-    const currentGroupId = c.activeGroupId ?? currentScheduleGroupId ?? c.defaultGroupId ?? null;
-    const currentGroupSource = c.activeGroupId
-      ? 'manual'
-      : currentScheduleGroupId
-        ? 'schedule'
-        : c.defaultGroupId
-          ? 'default'
-          : 'none';
+    const currentGroup = resolveCurrentGroup({
+      activeGroupId: c.activeGroupId,
+      scheduleGroupId: currentScheduleGroupId,
+      defaultGroupId: c.defaultGroupId,
+    });
+    const currentGroupId = currentGroup.id;
+    const currentGroupSource = currentGroup.source;
 
     // Serialize Date fields for JSON compatibility
     return {
@@ -590,23 +550,7 @@ export const classroomsRouter = router({
     .input(z.object({ id: z.string(), groupId: z.string().nullable() }))
     .mutation(async ({ ctx, input }) => {
       requireTeacherOrAdmin(ctx);
-      const orgClassroom = await db
-        .select()
-        .from(schema.cpOrganizationClassrooms)
-        .where(
-          and(
-            eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-            eq(schema.cpOrganizationClassrooms.classroomId, input.id)
-          )
-        )
-        .limit(1);
-
-      if (!orgClassroom.length) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Classroom not found or access denied',
-        });
-      }
+      await assertOrgClassroomAccess(ctx.organizationId!, input.id);
 
       // Verify groupId belongs to the org (skip if null to deactivate group)
       if (input.groupId !== null) {
@@ -622,15 +566,13 @@ export const classroomsRouter = router({
         .returning();
 
       const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
-      const currentGroupId =
-        updated.activeGroupId ?? currentScheduleGroupId ?? updated.defaultGroupId ?? null;
-      const currentGroupSource = updated.activeGroupId
-        ? 'manual'
-        : currentScheduleGroupId
-          ? 'schedule'
-          : updated.defaultGroupId
-            ? 'default'
-            : 'none';
+      const currentGroup = resolveCurrentGroup({
+        activeGroupId: updated.activeGroupId,
+        scheduleGroupId: currentScheduleGroupId,
+        defaultGroupId: updated.defaultGroupId,
+      });
+      const currentGroupId = currentGroup.id;
+      const currentGroupSource = currentGroup.source;
 
       await notifyOpenPathClassroomChanged(updated.id);
 
@@ -653,23 +595,7 @@ export const classroomsRouter = router({
     .mutation(async ({ ctx, input }) => {
       requireTeacherOrAdmin(ctx);
 
-      const orgClassroom = await db
-        .select()
-        .from(schema.cpOrganizationClassrooms)
-        .where(
-          and(
-            eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-            eq(schema.cpOrganizationClassrooms.classroomId, input.classroomId)
-          )
-        )
-        .limit(1);
-
-      if (!orgClassroom.length) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Classroom not found or access denied',
-        });
-      }
+      await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
 
       await openpathDb
         .delete(machines)
@@ -723,15 +649,13 @@ export const classroomsRouter = router({
     });
 
     const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: classroom.id });
-    const currentGroupId =
-      classroom.activeGroupId ?? currentScheduleGroupId ?? classroom.defaultGroupId ?? null;
-    const currentGroupSource = classroom.activeGroupId
-      ? 'manual'
-      : currentScheduleGroupId
-        ? 'schedule'
-        : classroom.defaultGroupId
-          ? 'default'
-          : 'none';
+    const currentGroup = resolveCurrentGroup({
+      activeGroupId: classroom.activeGroupId,
+      scheduleGroupId: currentScheduleGroupId,
+      defaultGroupId: classroom.defaultGroupId,
+    });
+    const currentGroupId = currentGroup.id;
+    const currentGroupSource = currentGroup.source;
 
     // Serialize Date fields for JSON compatibility
     return {
@@ -749,23 +673,7 @@ export const classroomsRouter = router({
 
   update: tenantProcedure.input(UpdateClassroomSchema).mutation(async ({ ctx, input }) => {
     requireTeacherOrAdmin(ctx);
-    const orgClassroom = await db
-      .select()
-      .from(schema.cpOrganizationClassrooms)
-      .where(
-        and(
-          eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationClassrooms.classroomId, input.id)
-        )
-      )
-      .limit(1);
-
-    if (!orgClassroom.length) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'Classroom not found or access denied',
-      });
-    }
+    await assertOrgClassroomAccess(ctx.organizationId!, input.id);
 
     if (input.defaultGroupId !== undefined) {
       await assertOrgGroupAccess(ctx.organizationId!, input.defaultGroupId);
@@ -784,15 +692,13 @@ export const classroomsRouter = router({
     }
 
     const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
-    const currentGroupId =
-      updated.activeGroupId ?? currentScheduleGroupId ?? updated.defaultGroupId ?? null;
-    const currentGroupSource = updated.activeGroupId
-      ? 'manual'
-      : currentScheduleGroupId
-        ? 'schedule'
-        : updated.defaultGroupId
-          ? 'default'
-          : 'none';
+    const currentGroup = resolveCurrentGroup({
+      activeGroupId: updated.activeGroupId,
+      scheduleGroupId: currentScheduleGroupId,
+      defaultGroupId: updated.defaultGroupId,
+    });
+    const currentGroupId = currentGroup.id;
+    const currentGroupSource = currentGroup.source;
 
     // Serialize Date fields for JSON compatibility
     return {
@@ -810,27 +716,11 @@ export const classroomsRouter = router({
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
     requireTeacherOrAdmin(ctx);
-    const orgClassroom = await db
-      .select()
-      .from(schema.cpOrganizationClassrooms)
-      .where(
-        and(
-          eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationClassrooms.classroomId, input.id)
-        )
-      )
-      .limit(1);
-
-    if (!orgClassroom.length) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'Classroom not found or access denied',
-      });
-    }
+    const orgClassroom = await getOrgClassroomLinkOrThrow(ctx.organizationId!, input.id);
 
     await db
       .delete(schema.cpOrganizationClassrooms)
-      .where(eq(schema.cpOrganizationClassrooms.id, orgClassroom[0].id));
+      .where(eq(schema.cpOrganizationClassrooms.id, orgClassroom.id));
 
     await openpathDb.delete(classrooms).where(eq(classrooms.id, input.id));
 

@@ -9,7 +9,9 @@ import { openpathDb, openpathSchema } from '../src/db/openpath.js';
 import {
   assertCanUseGroup,
   assertCanViewGroup,
+  assertOrgClassroomAccess,
   assertOrgGroupAccess,
+  getOrgClassroomLinkOrThrow,
   getAccessibleTenantGroupIds,
   getTeacherGroupIdentifiers,
   requireTeacherOrAdmin,
@@ -30,6 +32,9 @@ const USER_ID = `tacc_u_${RUN_ID}`;
 const USER_EMAIL = `tacc-${RUN_ID}@test.local`;
 
 const ORG_ID = `org_tacc_${RUN_ID}`;
+
+const CLASSROOM_ID = `tacc_c_${RUN_ID}`;
+const ORG_CLASSROOM_LINK_ID = `tacc_oc_${RUN_ID}`;
 
 const GROUP_ID = `tacc_g_${RUN_ID}_1`;
 const GROUP_NAME = `tacc_group_${RUN_ID}_name_1`;
@@ -99,6 +104,12 @@ describe('tenant-access', () => {
       id: ORG_ID,
       name: `Tenant Access Org ${RUN_ID}`,
       createdBy: USER_ID,
+    });
+
+    await db.insert(schema.cpOrganizationClassrooms).values({
+      id: ORG_CLASSROOM_LINK_ID,
+      organizationId: ORG_ID,
+      classroomId: CLASSROOM_ID,
     });
 
     await db.insert(schema.cpOrganizationGroups).values([
@@ -191,6 +202,29 @@ describe('tenant-access', () => {
       assert.fail('expected assertOrgGroupAccess to throw');
     } catch (err) {
       assertTrpcError(err, 'NOT_FOUND', 'Group not found or access denied');
+    }
+  });
+
+  it('assertOrgClassroomAccess enforces org classroom membership', async () => {
+    await assertOrgClassroomAccess(ORG_ID, CLASSROOM_ID);
+
+    try {
+      await assertOrgClassroomAccess(ORG_ID, 'missing');
+      assert.fail('expected assertOrgClassroomAccess to throw');
+    } catch (err) {
+      assertTrpcError(err, 'NOT_FOUND', 'Classroom not found or access denied');
+    }
+  });
+
+  it('getOrgClassroomLinkOrThrow returns cpOrganizationClassrooms id', async () => {
+    const link = await getOrgClassroomLinkOrThrow(ORG_ID, CLASSROOM_ID);
+    assert.strictEqual(link.id, ORG_CLASSROOM_LINK_ID);
+
+    try {
+      await getOrgClassroomLinkOrThrow(ORG_ID, 'missing');
+      assert.fail('expected getOrgClassroomLinkOrThrow to throw');
+    } catch (err) {
+      assertTrpcError(err, 'NOT_FOUND', 'Classroom not found or access denied');
     }
   });
 
