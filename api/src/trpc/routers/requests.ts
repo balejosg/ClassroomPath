@@ -9,9 +9,9 @@ import {
   whitelistGroups,
   whitelistRules,
 } from '../../db/openpath.js';
-import { db } from '../../db/index.js';
-import * as schema from '../../db/schema.js';
 import { eq, inArray, and, sql } from 'drizzle-orm';
+
+import { orgHasGroup } from '../../services/org-group-membership.service.js';
 
 import {
   assertCanUseGroup,
@@ -32,29 +32,11 @@ type TenantRouterContext = {
   };
 };
 
-async function groupBelongsToOrganization(
-  organizationId: string,
-  groupId: string
-): Promise<boolean> {
-  const orgGroup = await db
-    .select()
-    .from(schema.cpOrganizationGroups)
-    .where(
-      and(
-        eq(schema.cpOrganizationGroups.organizationId, organizationId),
-        eq(schema.cpOrganizationGroups.groupId, groupId)
-      )
-    )
-    .limit(1);
-
-  return orgGroup.length > 0;
-}
-
 async function assertGroupBelongsToTenant(
   ctx: TenantRouterContext,
   groupId: string
 ): Promise<void> {
-  const inTenant = await groupBelongsToOrganization(ctx.organizationId, groupId);
+  const inTenant = await orgHasGroup({ organizationId: ctx.organizationId, groupId });
   if (!inTenant) {
     throw new TRPCError({
       code: 'FORBIDDEN',
@@ -101,7 +83,10 @@ async function assertRequestBelongsToTenant(
   ctx: TenantRouterContext,
   requestGroupId: string
 ): Promise<void> {
-  const inTenant = await groupBelongsToOrganization(ctx.organizationId, requestGroupId);
+  const inTenant = await orgHasGroup({
+    organizationId: ctx.organizationId,
+    groupId: requestGroupId,
+  });
   if (!inTenant) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Request does not belong to tenant' });
   }

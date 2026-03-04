@@ -11,6 +11,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR_DEFAULT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+
 # Pinned to the digest of node:20-alpine at time of writing.
 # Override if you need to roll forward/back quickly:
 #   MIGRATIONS_NODE_IMAGE=node:20-alpine bash scripts/run-migrations-docker.sh --cp
@@ -68,7 +71,7 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      echo "Unknown argument: $1" >&2
+      log_error "Unknown argument: $1"
       usage >&2
       exit 2
       ;;
@@ -84,19 +87,14 @@ if [ -z "$ENV_FILE" ]; then
   ENV_FILE="$APP_DIR/config/.env"
 fi
 
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Error: docker not found in PATH" >&2
-  exit 1
-fi
+require_cmd docker
 
 if [ ! -d "$APP_DIR" ]; then
-  echo "Error: app dir not found: $APP_DIR" >&2
-  exit 1
+  die "App dir not found: $APP_DIR" 1
 fi
 
 if [ ! -f "$ENV_FILE" ]; then
-  echo "Error: env file not found: $ENV_FILE" >&2
-  exit 1
+  die "Env file not found: $ENV_FILE" 1
 fi
 
 ensure_node_image() {
@@ -110,17 +108,17 @@ ensure_node_image() {
 }
 
 if ! ensure_node_image "$NODE_IMAGE"; then
-  echo "[WARN] Unable to fetch node image: $NODE_IMAGE" >&2
-  echo "[WARN] Falling back to: $MIGRATIONS_NODE_IMAGE_FALLBACK" >&2
+  log_warn "Unable to fetch node image: $NODE_IMAGE"
+  log_warn "Falling back to: $MIGRATIONS_NODE_IMAGE_FALLBACK"
   NODE_IMAGE="$MIGRATIONS_NODE_IMAGE_FALLBACK"
   ensure_node_image "$NODE_IMAGE" || {
-    echo "Error: unable to fetch node image: $NODE_IMAGE" >&2
+    log_error "Unable to fetch node image: $NODE_IMAGE"
     exit 1
   }
 fi
 
 run_cp_migrations() {
-  echo "[MIGRATIONS] - ClassroomPath API schema..."
+  log_info "[MIGRATIONS] - ClassroomPath API schema..."
   local log
   log=$(mktemp)
 
@@ -143,7 +141,7 @@ run_cp_migrations() {
 }
 
 run_openpath_migrations() {
-  echo "[MIGRATIONS] - OpenPath API schema..."
+  log_info "[MIGRATIONS] - OpenPath API schema..."
   local log
   log=$(mktemp)
 

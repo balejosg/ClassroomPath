@@ -414,4 +414,95 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     assert.ok(created, 'created request should appear in tenant list');
     assert.strictEqual(created?.groupId, groupId);
   });
+
+  test('listGroups returns groups for tenant admin', async () => {
+    await resetDb();
+
+    const userId = 'req-admin-listgroups';
+    const email = uniqueEmail('req-admin-listgroups');
+    const orgId = 'org-listgroups';
+    const groupId = 'group-listgroups-1';
+
+    await seedOpenPathUser({ userId, email, name: 'ListGroups Admin' });
+    await seedTenant({ orgId, userId, userRole: 'admin' });
+    await seedGroupForOrg({ orgId, groupId });
+
+    const token = signToken({
+      userId,
+      email,
+      name: 'ListGroups Admin',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const resp = await trpcQuery(API_URL, 'requests.listGroups', undefined, bearerAuth(token));
+    assertStatus(resp, 200);
+
+    const parsed = (await parseTRPC(resp)) as {
+      data?: Array<{ name: string; path: string }>;
+    };
+
+    const groups = parsed.data ?? [];
+    assert.ok(
+      groups.some((g) => g.path === groupId),
+      'expected group in listGroups results'
+    );
+  });
+
+  test('stats counts requests by status for tenant admin', async () => {
+    await resetDb();
+
+    const userId = 'req-admin-stats';
+    const email = uniqueEmail('req-admin-stats');
+    const orgId = 'org-stats';
+    const groupId = 'group-stats-1';
+
+    await seedOpenPathUser({ userId, email, name: 'Stats Admin' });
+    await seedTenant({ orgId, userId, userRole: 'admin' });
+    await seedGroupForOrg({ orgId, groupId });
+
+    await openpathDb.insert(openpathSchema.requests).values([
+      {
+        id: 'req-stats-1',
+        domain: 'stats-pending.test',
+        requesterEmail: 'requester@test.local',
+        groupId,
+        status: 'pending',
+      },
+      {
+        id: 'req-stats-2',
+        domain: 'stats-approved.test',
+        requesterEmail: 'requester@test.local',
+        groupId,
+        status: 'approved',
+      },
+      {
+        id: 'req-stats-3',
+        domain: 'stats-rejected.test',
+        requesterEmail: 'requester@test.local',
+        groupId,
+        status: 'rejected',
+      },
+    ]);
+
+    const token = signToken({
+      userId,
+      email,
+      name: 'Stats Admin',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const resp = await trpcQuery(API_URL, 'requests.stats', undefined, bearerAuth(token));
+    assertStatus(resp, 200);
+
+    const parsed = (await parseTRPC(resp)) as {
+      data?: { total: number; pending: number; approved: number; rejected: number };
+    };
+
+    assert.deepStrictEqual(parsed.data, {
+      total: 3,
+      pending: 1,
+      approved: 1,
+      rejected: 1,
+    });
+  });
 });

@@ -14,32 +14,55 @@
 #   0 - Success
 #   1 - Failure (check stdout for details)
 
-set -e
+set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+
+usage() {
+    cat <<'EOF'
+Usage:
+  npm run deploy:staging
+  bash scripts/deploy-staging-local.sh [--yes]
+
+Options:
+  --yes   Non-interactive mode; assume "yes" for prompts
+
+Env:
+  DEPLOY_ASSUME_YES=1  Same as --yes
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --yes|-y)
+            DEPLOY_ASSUME_YES=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            log_error "Unknown argument: $1"
+            usage
+            exit 2
+            ;;
+    esac
+done
+
+# Normalize env toggle
+DEPLOY_ASSUME_YES="${DEPLOY_ASSUME_YES:-0}"
+export DEPLOY_ASSUME_YES
 
 # Timing
 START_TIME=$(date +%s)
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-
 # Load .env.local if exists
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/../.env.local"
-if [ -f "$ENV_FILE" ]; then
-    log_info "Loading $ENV_FILE"
-    set -a
-    source "$ENV_FILE"
-    set +a
-fi
+load_env_file "$ENV_FILE" || true
 
 # Configuration with defaults
 STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
@@ -49,8 +72,12 @@ STAGING_SMOKE_URL="${STAGING_SMOKE_URL:-https://classroompath-staging.duckdns.or
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
 APP_DIR="/opt/classroompath/app"
 
+require_cmd git
+require_cmd ssh
+require_cmd npm
+
 # Validate required env vars
-if [ -z "$STAGING_SSH_KEY" ]; then
+if [ -z "${STAGING_SSH_KEY:-}" ]; then
     log_error "STAGING_SSH_KEY not set"
     echo ""
     echo "Set it in .env.local or export:"
@@ -59,7 +86,7 @@ if [ -z "$STAGING_SSH_KEY" ]; then
 fi
 
 # Expand ~ in path
-STAGING_SSH_KEY="${STAGING_SSH_KEY/#\~/$HOME}"
+STAGING_SSH_KEY="$(expand_tilde "$STAGING_SSH_KEY")"
 
 if [ ! -f "$STAGING_SSH_KEY" ]; then
     log_error "SSH key not found: $STAGING_SSH_KEY"
@@ -80,11 +107,17 @@ cd "$SCRIPT_DIR/.."
 if ! git diff --quiet || ! git diff --cached --quiet; then
     log_warn "Uncommitted changes detected"
     log_warn "Staging will deploy origin/main, not local changes"
-    echo ""
-    read -t 10 -p "Continue anyway? [y/N] " -n 1 -r REPLY || REPLY="n"
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_error "Aborted. Commit and push your changes first."
+
+    if [ "$DEPLOY_ASSUME_YES" = "1" ]; then
+        log_warn "DEPLOY_ASSUME_YES=1; continuing without prompt"
+    elif confirm_with_timeout "Continue anyway?" 10; then
+        :
+    else
+        if is_tty_stdin; then
+            log_error "Aborted. Commit and push your changes first."
+        else
+            log_error "Aborted (non-interactive). Set DEPLOY_ASSUME_YES=1 to override."
+        fi
         exit 1
     fi
 fi
@@ -96,9 +129,14 @@ if [ "$CURRENT_BRANCH" != "main" ]; then
     log_warn "Staging deploys origin/main regardless"
 fi
 
-# Check if local is pushed
+# Check if local is pushed (ensure origin/main is up to date)
 LOCAL_SHA=$(git rev-parse HEAD)
-REMOTE_SHA=$(git rev-parse origin/main 2>/dev/null || echo "unknown")
+
+REMOTE_SHA="unknown"
+if git remote get-url origin >/dev/null 2>&1; then
+    git fetch origin main --quiet || true
+    REMOTE_SHA=$(git rev-parse origin/main 2>/dev/null || echo "unknown")
+fi
 
 if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
     log_warn "Local HEAD differs from origin/main"
@@ -277,12 +315,14 @@ if [ "$SMOKE_SKIP_CORS" = "1" ]; then
 fi
 
 # Run smoke tests with staging URL
+set +e
 SMOKE_TEST_URL="$SMOKE_TARGET_URL" \
 SMOKE_TEST_TIMEOUT="15000" \
 SMOKE_SKIP_CORS="$SMOKE_SKIP_CORS" \
 npm run test:smoke 2>&1 | tee /tmp/smoke-results.txt
 
 SMOKE_EXIT_CODE=${PIPESTATUS[0]}
+set -e
 
 if [ $SMOKE_EXIT_CODE -eq 0 ]; then
     log_success "Smoke tests passed"

@@ -1,5 +1,7 @@
 # OpenPath Core API
-FROM node:20-alpine AS builder
+ARG NODE_IMAGE=node@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
+
+FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 
 # Copy root configuration
@@ -22,7 +24,7 @@ RUN npm run build -w @openpath/shared
 RUN npm run build -w @openpath/api
 
 # Final production image
-FROM node:20-alpine
+FROM ${NODE_IMAGE}
 WORKDIR /app
 
 # Copy package manifests

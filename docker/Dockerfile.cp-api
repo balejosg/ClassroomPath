@@ -1,5 +1,7 @@
 # ClassroomPath Gateway API
-FROM node:20-alpine AS builder
+ARG NODE_IMAGE=node@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
+
+FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY upstream/openpath/tsconfig.base.json ./upstream/openpath/tsconfig.base.json
@@ -20,7 +22,7 @@ RUN npm run build --workspace=@openpath/shared
 RUN npm run build --workspace=@classroompath/react-spa
 RUN npm run build --workspace=@classroompath/api
 
-FROM node:20-alpine
+FROM ${NODE_IMAGE}
 RUN apk add --no-cache curl
 WORKDIR /app
 COPY package*.json ./

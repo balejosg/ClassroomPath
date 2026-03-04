@@ -3,7 +3,47 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$SCRIPT_DIR"
+
+# shellcheck source=scripts/lib/common.sh
+source "$PROJECT_ROOT/scripts/lib/common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./quick-deploy.sh [--yes]
+
+Options:
+  --yes   Non-interactive mode; assume "yes" for deploy prompt
+
+Notes:
+  - Staging deploys origin/main, not local commits.
+  - In --yes mode, this script will NOT auto-push; push manually first.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --yes|-y)
+      DEPLOY_ASSUME_YES=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      log_error "Unknown argument: $1"
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+DEPLOY_ASSUME_YES="${DEPLOY_ASSUME_YES:-0}"
+export DEPLOY_ASSUME_YES
+
+cd "$PROJECT_ROOT"
 
 echo "========================================="
 echo "ClassroomPath Quick Deploy (Staging)"
@@ -13,20 +53,14 @@ echo "Este script despliega origin/main a staging via SSH:"
 echo "  npm run deploy:staging"
 echo ""
 
-read -r -p "¿Listo para desplegar a STAGING? (y/n): " ready
-if [ "$ready" != "y" ]; then
-  echo "Abortado."
-  exit 0
-fi
+require_cmd git
+require_cmd npm
 
-if ! command -v git >/dev/null 2>&1; then
-  echo "❌ Error: git no está instalado"
-  exit 1
-fi
-
-if ! command -v npm >/dev/null 2>&1; then
-  echo "❌ Error: npm no está instalado"
-  exit 1
+if [ "$DEPLOY_ASSUME_YES" != "1" ]; then
+  if ! confirm_with_timeout "¿Listo para desplegar a STAGING?" 30; then
+    log_warn "Abortado."
+    exit 0
+  fi
 fi
 
 echo ""
@@ -47,16 +81,20 @@ local_sha=$(git rev-parse HEAD)
 remote_sha=$(git rev-parse origin/main 2>/dev/null || echo "")
 
 if [ -n "$remote_sha" ] && [ "$local_sha" != "$remote_sha" ]; then
-  echo "⚠️  Tu main local no coincide con origin/main:"
+  log_warn "Tu main local no coincide con origin/main:"
   echo "  Local:  $local_sha"
   echo "  Remote: $remote_sha"
   echo ""
+
+  if [ "$DEPLOY_ASSUME_YES" = "1" ] || ! is_tty_stdin; then
+    die "Push requerido: ejecuta 'git push origin main' y reintenta" 1
+  fi
+
   read -r -p "¿Hacer push a origin/main ahora? (y/n): " push_now
   if [ "$push_now" = "y" ]; then
     git push origin main
   else
-    echo "Abortado. Staging despliega origin/main, no tu commit local."
-    exit 1
+    die "Abortado. Staging despliega origin/main, no tu commit local." 1
   fi
 fi
 
