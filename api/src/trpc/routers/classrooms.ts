@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
