@@ -21,6 +21,7 @@ import {
   assertCanUseGroup,
   assertOrgClassroomAccess,
   assertOrgGroupAccess,
+  getOrgClassroomLinkOrThrow,
   requireTeacherOrAdmin,
 } from '../../lib/tenant-access.js';
 
@@ -295,23 +296,7 @@ export const classroomsRouter = router({
   }),
 
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    const orgClassroom = await db
-      .select()
-      .from(schema.cpOrganizationClassrooms)
-      .where(
-        and(
-          eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationClassrooms.classroomId, input.id)
-        )
-      )
-      .limit(1);
-
-    if (!orgClassroom.length) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'Classroom not found or access denied',
-      });
-    }
+    await assertOrgClassroomAccess(ctx.organizationId!, input.id);
 
     const classroom = await openpathDb
       .select()
@@ -590,23 +575,7 @@ export const classroomsRouter = router({
     .input(z.object({ id: z.string(), groupId: z.string().nullable() }))
     .mutation(async ({ ctx, input }) => {
       requireTeacherOrAdmin(ctx);
-      const orgClassroom = await db
-        .select()
-        .from(schema.cpOrganizationClassrooms)
-        .where(
-          and(
-            eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-            eq(schema.cpOrganizationClassrooms.classroomId, input.id)
-          )
-        )
-        .limit(1);
-
-      if (!orgClassroom.length) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Classroom not found or access denied',
-        });
-      }
+      await assertOrgClassroomAccess(ctx.organizationId!, input.id);
 
       // Verify groupId belongs to the org (skip if null to deactivate group)
       if (input.groupId !== null) {
@@ -653,23 +622,7 @@ export const classroomsRouter = router({
     .mutation(async ({ ctx, input }) => {
       requireTeacherOrAdmin(ctx);
 
-      const orgClassroom = await db
-        .select()
-        .from(schema.cpOrganizationClassrooms)
-        .where(
-          and(
-            eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-            eq(schema.cpOrganizationClassrooms.classroomId, input.classroomId)
-          )
-        )
-        .limit(1);
-
-      if (!orgClassroom.length) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Classroom not found or access denied',
-        });
-      }
+      await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
 
       await openpathDb
         .delete(machines)
@@ -749,23 +702,7 @@ export const classroomsRouter = router({
 
   update: tenantProcedure.input(UpdateClassroomSchema).mutation(async ({ ctx, input }) => {
     requireTeacherOrAdmin(ctx);
-    const orgClassroom = await db
-      .select()
-      .from(schema.cpOrganizationClassrooms)
-      .where(
-        and(
-          eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationClassrooms.classroomId, input.id)
-        )
-      )
-      .limit(1);
-
-    if (!orgClassroom.length) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'Classroom not found or access denied',
-      });
-    }
+    await assertOrgClassroomAccess(ctx.organizationId!, input.id);
 
     if (input.defaultGroupId !== undefined) {
       await assertOrgGroupAccess(ctx.organizationId!, input.defaultGroupId);
@@ -810,27 +747,11 @@ export const classroomsRouter = router({
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
     requireTeacherOrAdmin(ctx);
-    const orgClassroom = await db
-      .select()
-      .from(schema.cpOrganizationClassrooms)
-      .where(
-        and(
-          eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!),
-          eq(schema.cpOrganizationClassrooms.classroomId, input.id)
-        )
-      )
-      .limit(1);
-
-    if (!orgClassroom.length) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'Classroom not found or access denied',
-      });
-    }
+    const orgClassroom = await getOrgClassroomLinkOrThrow(ctx.organizationId!, input.id);
 
     await db
       .delete(schema.cpOrganizationClassrooms)
-      .where(eq(schema.cpOrganizationClassrooms.id, orgClassroom[0].id));
+      .where(eq(schema.cpOrganizationClassrooms.id, orgClassroom.id));
 
     await openpathDb.delete(classrooms).where(eq(classrooms.id, input.id));
 
