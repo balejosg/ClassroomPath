@@ -12,7 +12,7 @@ import {
   notifyOpenPathClassroomChanged,
 } from '../../db/openpath.js';
 
-import { normalizeTimeHHMM, parseTimeToMinutes } from '../../services/current-group.service.js';
+import { normalizeTimeHHMM, parseTimeToMinutes } from '../../services/schedule-time.js';
 
 import {
   assertCanUseGroup,
