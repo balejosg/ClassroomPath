@@ -4,7 +4,7 @@ import { TRPCError } from '@trpc/server';
 import { router, tenantProcedure } from '../trpc.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
-import { eq, inArray, and, sql, gt } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
 import {
@@ -75,12 +75,98 @@ function getScheduleClock(date: Date): { dayOfWeek: number; timeHHMM: string } {
   }
 }
 
-function normalizeTimeHHMM(t: string): string {
+type MachineStatus = ReturnType<typeof calculateMachineStatus>;
+
+type ClassroomMachineListItem = {
+  id: string;
+  hostname: string;
+  classroomId: string;
+  version: string | null;
+  lastSeen: string | null;
+  status: MachineStatus;
+};
+
+function normalizeTimeHHMM(t: string | null): string {
   const parts = String(t).split(':');
   const hh = parts[0];
   const mm = parts[1];
   if (hh !== undefined && mm !== undefined) return `${hh}:${mm}`;
   return String(t);
+}
+
+function weeklyRecurrenceWhereClause() {
+  return or(eq(schedules.recurrence, 'weekly'), isNull(schedules.recurrence));
+}
+
+async function resolveActiveScheduleExpiresAt(params: {
+  classroomId: string;
+  scheduleId: string;
+  now: Date;
+}): Promise<Date> {
+  const { classroomId, scheduleId, now } = params;
+
+  // One-off schedules (date/time based) can be active on weekends.
+  const activeOneOffRows = await openpathDb
+    .select({ endAt: schedules.endAt })
+    .from(schedules)
+    .where(
+      and(
+        eq(schedules.id, scheduleId),
+        eq(schedules.classroomId, classroomId),
+        eq(schedules.recurrence, 'one_off'),
+        sql`${schedules.startAt} <= ${now} AND ${schedules.endAt} > ${now}`
+      )
+    )
+    .limit(1);
+
+  const activeOneOff = activeOneOffRows[0];
+  if (activeOneOff) {
+    if (!activeOneOff.endAt) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Invalid one-off schedule end time',
+      });
+    }
+    return activeOneOff.endAt;
+  }
+
+  const { dayOfWeek, timeHHMM } = getScheduleClock(now);
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'Schedules are inactive on weekends',
+    });
+  }
+
+  const scheduleRows = await openpathDb
+    .select({ endTime: schedules.endTime })
+    .from(schedules)
+    .where(
+      and(
+        eq(schedules.id, scheduleId),
+        eq(schedules.classroomId, classroomId),
+        weeklyRecurrenceWhereClause(),
+        eq(schedules.dayOfWeek, dayOfWeek),
+        sql`${schedules.startTime} <= ${timeHHMM}::time`,
+        sql`${schedules.endTime} > ${timeHHMM}::time`
+      )
+    )
+    .limit(1);
+
+  const schedule = scheduleRows[0];
+  if (!schedule) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Schedule is not active' });
+  }
+
+  const endHHMM = normalizeTimeHHMM(schedule.endTime);
+  const nowMin = parseTimeToMinutes(timeHHMM);
+  const endMin = parseTimeToMinutes(endHHMM);
+  if (!Number.isFinite(nowMin) || !Number.isFinite(endMin) || endMin <= nowMin) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid schedule end time' });
+  }
+
+  const msIntoMinute = now.getSeconds() * 1000 + now.getMilliseconds();
+  return new Date(now.getTime() - msIntoMinute + (endMin - nowMin) * 60_000);
 }
 
 function parseTimeToMinutes(t: string): number {
@@ -151,9 +237,31 @@ async function getCurrentScheduleGroupId(params: {
     .where(
       and(
         eq(schedules.classroomId, params.classroomId),
+        weeklyRecurrenceWhereClause(),
         eq(schedules.dayOfWeek, dayOfWeek),
         sql`${schedules.startTime} <= ${currentTime}::time`,
         sql`${schedules.endTime} > ${currentTime}::time`
+      )
+    )
+    .limit(1);
+
+  return rows[0]?.groupId ?? null;
+}
+
+async function getCurrentOneOffScheduleGroupId(params: {
+  classroomId: string;
+  date?: Date | undefined;
+}): Promise<string | null> {
+  const date = params.date ?? new Date();
+
+  const rows = await openpathDb
+    .select({ groupId: schedules.groupId })
+    .from(schedules)
+    .where(
+      and(
+        eq(schedules.classroomId, params.classroomId),
+        eq(schedules.recurrence, 'one_off'),
+        sql`${schedules.startAt} <= ${date} AND ${schedules.endAt} > ${date}`
       )
     )
     .limit(1);
@@ -192,6 +300,24 @@ export const classroomsRouter = router({
     const now = new Date();
     const { dayOfWeek: nowDayOfWeek, timeHHMM: nowTime } = getScheduleClock(now);
 
+    const oneOffGroupByClassroomId = new Map<string, string>();
+    const activeOneOffRows = await openpathDb
+      .select({ classroomId: schedules.classroomId, groupId: schedules.groupId })
+      .from(schedules)
+      .where(
+        and(
+          inArray(schedules.classroomId, classroomIds),
+          eq(schedules.recurrence, 'one_off'),
+          sql`${schedules.startAt} <= ${now} AND ${schedules.endAt} > ${now}`
+        )
+      );
+
+    for (const row of activeOneOffRows) {
+      if (!oneOffGroupByClassroomId.has(row.classroomId)) {
+        oneOffGroupByClassroomId.set(row.classroomId, row.groupId);
+      }
+    }
+
     const scheduleGroupByClassroomId = new Map<string, string>();
     if (nowDayOfWeek !== 0 && nowDayOfWeek !== 6) {
       const activeScheduleRows = await openpathDb
@@ -200,6 +326,7 @@ export const classroomsRouter = router({
         .where(
           and(
             inArray(schedules.classroomId, classroomIds),
+            weeklyRecurrenceWhereClause(),
             eq(schedules.dayOfWeek, nowDayOfWeek),
             sql`${schedules.startTime} <= ${nowTime}::time`,
             sql`${schedules.endTime} > ${nowTime}::time`
@@ -218,16 +345,16 @@ export const classroomsRouter = router({
       .from(machines)
       .where(inArray(machines.classroomId, classroomIds));
 
-    const machinesByClassroomId = new Map<string, any[]>();
+    const machinesByClassroomId = new Map<string, ClassroomMachineListItem[]>();
     for (const m of machineRows) {
       const classroomId = m.classroomId;
       if (!classroomId) continue;
 
       const status = calculateMachineStatus(m.lastSeen ?? null, now);
-      const item = {
+      const item: ClassroomMachineListItem = {
         id: m.id,
         hostname: m.hostname,
-        classroomId: m.classroomId,
+        classroomId,
         version: m.version,
         lastSeen: m.lastSeen?.toISOString?.() ?? null,
         status,
@@ -239,12 +366,14 @@ export const classroomsRouter = router({
     }
 
     // Serialize Date fields for JSON compatibility
-    return result.map((c) => {
-      const scheduleGroupId = scheduleGroupByClassroomId.get(c.id) ?? null;
+      return result.map((c) => {
+        const oneOffGroupId = oneOffGroupByClassroomId.get(c.id) ?? null;
+        const scheduleGroupId = scheduleGroupByClassroomId.get(c.id) ?? null;
+
       const currentGroup = resolveCurrentGroup({
-        activeGroupId: c.activeGroupId,
-        scheduleGroupId,
-        defaultGroupId: c.defaultGroupId,
+        activeGroupId: c.activeGroupId ?? null,
+        scheduleGroupId: oneOffGroupId ?? scheduleGroupId,
+        defaultGroupId: c.defaultGroupId ?? null,
       });
       const currentGroupId = currentGroup.id;
       const currentGroupSource = currentGroup.source;
@@ -283,11 +412,15 @@ export const classroomsRouter = router({
     if (!classroom[0]) return null;
 
     const c = classroom[0];
+    const currentOneOffScheduleGroupId = await getCurrentOneOffScheduleGroupId({
+      classroomId: c.id,
+    });
     const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: c.id });
+
     const currentGroup = resolveCurrentGroup({
-      activeGroupId: c.activeGroupId,
-      scheduleGroupId: currentScheduleGroupId,
-      defaultGroupId: c.defaultGroupId,
+      activeGroupId: c.activeGroupId ?? null,
+      scheduleGroupId: currentOneOffScheduleGroupId ?? currentScheduleGroupId,
+      defaultGroupId: c.defaultGroupId ?? null,
     });
     const currentGroupId = currentGroup.id;
     const currentGroupSource = currentGroup.source;
@@ -431,42 +564,12 @@ export const classroomsRouter = router({
       }
 
       const now = new Date();
-      const { dayOfWeek, timeHHMM } = getScheduleClock(now);
-      if (dayOfWeek === 0 || dayOfWeek === 6) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Schedules are inactive on weekends',
-        });
-      }
 
-      const scheduleRows = await openpathDb
-        .select({ id: schedules.id, endTime: schedules.endTime })
-        .from(schedules)
-        .where(
-          and(
-            eq(schedules.id, input.scheduleId as any),
-            eq(schedules.classroomId, input.classroomId),
-            eq(schedules.dayOfWeek, dayOfWeek),
-            sql`${schedules.startTime} <= ${timeHHMM}::time`,
-            sql`${schedules.endTime} > ${timeHHMM}::time`
-          )
-        )
-        .limit(1);
-
-      const schedule = scheduleRows[0];
-      if (!schedule) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Schedule is not active' });
-      }
-
-      const endHHMM = normalizeTimeHHMM(schedule.endTime);
-      const nowMin = parseTimeToMinutes(timeHHMM);
-      const endMin = parseTimeToMinutes(endHHMM);
-      if (!Number.isFinite(nowMin) || !Number.isFinite(endMin) || endMin <= nowMin) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid schedule end time' });
-      }
-
-      const msIntoMinute = now.getSeconds() * 1000 + now.getMilliseconds();
-      const expiresAt = new Date(now.getTime() - msIntoMinute + (endMin - nowMin) * 60_000);
+      const expiresAt = await resolveActiveScheduleExpiresAt({
+        classroomId: input.classroomId,
+        scheduleId: input.scheduleId,
+        now,
+      });
 
       const id = `exempt_${nanoid(10)}`;
       const inserted = await openpathDb
@@ -475,10 +578,10 @@ export const classroomsRouter = router({
           id,
           machineId: input.machineId,
           classroomId: input.classroomId,
-          scheduleId: input.scheduleId as any,
+          scheduleId: input.scheduleId,
           createdBy: ctx.user.sub,
           expiresAt,
-        } as any)
+        })
         .onConflictDoNothing({
           target: [
             machineExemptions.machineId,
@@ -498,7 +601,7 @@ export const classroomsRouter = router({
             .where(
               and(
                 eq(machineExemptions.machineId, input.machineId),
-                eq(machineExemptions.scheduleId, input.scheduleId as any),
+                eq(machineExemptions.scheduleId, input.scheduleId),
                 eq(machineExemptions.expiresAt, expiresAt)
               )
             )
@@ -561,15 +664,19 @@ export const classroomsRouter = router({
 
       const [updated] = await openpathDb
         .update(classrooms)
-        .set({ activeGroupId: input.groupId } as any)
+        .set({ activeGroupId: input.groupId })
         .where(eq(classrooms.id, input.id))
         .returning();
 
+      const currentOneOffScheduleGroupId = await getCurrentOneOffScheduleGroupId({
+        classroomId: updated.id,
+      });
       const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
+
       const currentGroup = resolveCurrentGroup({
-        activeGroupId: updated.activeGroupId,
-        scheduleGroupId: currentScheduleGroupId,
-        defaultGroupId: updated.defaultGroupId,
+        activeGroupId: updated.activeGroupId ?? null,
+        scheduleGroupId: currentOneOffScheduleGroupId ?? currentScheduleGroupId,
+        defaultGroupId: updated.defaultGroupId ?? null,
       });
       const currentGroupId = currentGroup.id;
       const currentGroupSource = currentGroup.source;
@@ -632,14 +739,19 @@ export const classroomsRouter = router({
           defaultGroupId: input.defaultGroupId,
         })
         .returning();
-    } catch (error: any) {
-      if (error?.code === '23505') {
+    } catch (err: unknown) {
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: unknown }).code)
+          : null;
+
+      if (code === '23505') {
         throw new TRPCError({
           code: 'CONFLICT',
           message: 'Classroom with this name already exists in your organization',
         });
       }
-      throw error;
+      throw err;
     }
 
     await db.insert(schema.cpOrganizationClassrooms).values({
@@ -648,11 +760,15 @@ export const classroomsRouter = router({
       classroomId: classroom.id,
     });
 
+    const currentOneOffScheduleGroupId = await getCurrentOneOffScheduleGroupId({
+      classroomId: classroom.id,
+    });
     const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: classroom.id });
+
     const currentGroup = resolveCurrentGroup({
-      activeGroupId: classroom.activeGroupId,
-      scheduleGroupId: currentScheduleGroupId,
-      defaultGroupId: classroom.defaultGroupId,
+      activeGroupId: classroom.activeGroupId ?? null,
+      scheduleGroupId: currentOneOffScheduleGroupId ?? currentScheduleGroupId,
+      defaultGroupId: classroom.defaultGroupId ?? null,
     });
     const currentGroupId = currentGroup.id;
     const currentGroupSource = currentGroup.source;
@@ -691,11 +807,15 @@ export const classroomsRouter = router({
       await notifyOpenPathClassroomChanged(updated.id);
     }
 
+    const currentOneOffScheduleGroupId = await getCurrentOneOffScheduleGroupId({
+      classroomId: updated.id,
+    });
     const currentScheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
+
     const currentGroup = resolveCurrentGroup({
-      activeGroupId: updated.activeGroupId,
-      scheduleGroupId: currentScheduleGroupId,
-      defaultGroupId: updated.defaultGroupId,
+      activeGroupId: updated.activeGroupId ?? null,
+      scheduleGroupId: currentOneOffScheduleGroupId ?? currentScheduleGroupId,
+      defaultGroupId: updated.defaultGroupId ?? null,
     });
     const currentGroupId = currentGroup.id;
     const currentGroupSource = currentGroup.source;

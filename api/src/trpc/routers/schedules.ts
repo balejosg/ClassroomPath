@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 
 import { router, tenantProcedure } from '../trpc.js';
 import { db } from '../../db/index.js';
@@ -29,6 +29,10 @@ function normalizeTime(t: string): string {
   return t;
 }
 
+function weeklyRecurrenceWhereClause() {
+  return or(eq(schedules.recurrence, 'weekly'), isNull(schedules.recurrence));
+}
+
 function parseTimeToMinutes(t: string): number {
   const [hh, mm] = t.split(':');
   const h = Number(hh);
@@ -47,6 +51,58 @@ function assertQuarterHour(t: string, field: string): void {
     throw new TRPCError({
       code: 'BAD_REQUEST',
       message: `${field} must be in 15-minute increments`,
+    });
+  }
+}
+
+function parseIsoDate(value: string, field: string): Date {
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: `${field} must be a valid date` });
+  }
+  return d;
+}
+
+function assertQuarterHourInstant(d: Date, field: string): void {
+  if (d.getUTCSeconds() !== 0 || d.getUTCMilliseconds() !== 0) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: `${field} must not include seconds` });
+  }
+  if (d.getUTCMinutes() % 15 !== 0) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `${field} must be in 15-minute increments`,
+    });
+  }
+}
+
+async function assertNoOneOffConflict(params: {
+  classroomId: string;
+  startAt: Date;
+  endAt: Date;
+  excludeId?: string;
+}): Promise<void> {
+  const { classroomId, startAt, endAt, excludeId } = params;
+
+  const clauses: any[] = [
+    eq(schedules.classroomId, classroomId),
+    eq(schedules.recurrence, 'one_off'),
+    sql`${schedules.startAt} < ${endAt} AND ${schedules.endAt} > ${startAt}`,
+  ];
+
+  if (excludeId) {
+    clauses.push(sql`${schedules.id} != ${excludeId}::uuid`);
+  }
+
+  const conflicts = await openpathDb
+    .select({ id: schedules.id })
+    .from(schedules)
+    .where(and(...clauses))
+    .limit(1);
+
+  if (conflicts.length) {
+    throw new TRPCError({
+      code: 'CONFLICT',
+      message: 'Ese tramo horario ya esta reservado',
     });
   }
 }
@@ -92,6 +148,13 @@ const CreateScheduleSchema = z.object({
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
 });
 
+const CreateOneOffScheduleSchema = z.object({
+  classroomId: z.string().min(1),
+  groupId: z.string().min(1),
+  startAt: z.string().min(1),
+  endAt: z.string().min(1),
+});
+
 const UpdateScheduleSchema = z.object({
   id: z.string().min(1),
   dayOfWeek: z.number().int().min(1).max(5).optional(),
@@ -103,6 +166,13 @@ const UpdateScheduleSchema = z.object({
     .string()
     .regex(/^([01]\d|2[0-3]):([0-5]\d)$/)
     .optional(),
+  groupId: z.string().min(1).optional(),
+});
+
+const UpdateOneOffScheduleSchema = z.object({
+  id: z.string().min(1),
+  startAt: z.string().min(1).optional(),
+  endAt: z.string().min(1).optional(),
   groupId: z.string().min(1).optional(),
 });
 
@@ -126,8 +196,16 @@ export const schedulesRouter = router({
       const rows = await openpathDb
         .select()
         .from(schedules)
-        .where(eq(schedules.classroomId, input.classroomId))
+        .where(and(eq(schedules.classroomId, input.classroomId), weeklyRecurrenceWhereClause()))
         .orderBy(schedules.dayOfWeek, schedules.startTime);
+
+      const oneOffRows = await openpathDb
+        .select()
+        .from(schedules)
+        .where(
+          and(eq(schedules.classroomId, input.classroomId), eq(schedules.recurrence, 'one_off'))
+        )
+        .orderBy(schedules.startAt);
 
       const userId = ctx.user.sub;
       const admin = isOrgAdmin(ctx);
@@ -147,8 +225,21 @@ export const schedulesRouter = router({
           groupId: s.groupId,
           teacherId: s.teacherId,
           recurrence: s.recurrence ?? 'weekly',
-          createdAt: s.createdAt?.toISOString?.() ?? null,
-          updatedAt: s.updatedAt?.toISOString?.() ?? null,
+          createdAt: s.createdAt?.toISOString?.() ?? new Date().toISOString(),
+          updatedAt: s.updatedAt?.toISOString?.() ?? undefined,
+          isMine: s.teacherId === userId,
+          canEdit: s.teacherId === userId || admin,
+        })),
+        oneOffSchedules: oneOffRows.map((s: any) => ({
+          id: s.id,
+          classroomId: s.classroomId,
+          startAt: s.startAt?.toISOString?.() ?? null,
+          endAt: s.endAt?.toISOString?.() ?? null,
+          groupId: s.groupId,
+          teacherId: s.teacherId,
+          recurrence: 'one_off',
+          createdAt: s.createdAt?.toISOString?.() ?? new Date().toISOString(),
+          updatedAt: s.updatedAt?.toISOString?.() ?? undefined,
           isMine: s.teacherId === userId,
           canEdit: s.teacherId === userId || admin,
         })),
@@ -170,7 +261,11 @@ export const schedulesRouter = router({
       .select()
       .from(schedules)
       .where(
-        and(eq(schedules.teacherId, ctx.user.sub), inArray(schedules.classroomId, classroomIds))
+        and(
+          eq(schedules.teacherId, ctx.user.sub),
+          inArray(schedules.classroomId, classroomIds),
+          weeklyRecurrenceWhereClause()
+        )
       )
       .orderBy(schedules.dayOfWeek, schedules.startTime);
 
@@ -183,8 +278,8 @@ export const schedulesRouter = router({
       groupId: s.groupId,
       teacherId: s.teacherId,
       recurrence: s.recurrence ?? 'weekly',
-      createdAt: s.createdAt?.toISOString?.() ?? null,
-      updatedAt: s.updatedAt?.toISOString?.() ?? null,
+      createdAt: s.createdAt?.toISOString?.() ?? new Date().toISOString(),
+      updatedAt: s.updatedAt?.toISOString?.() ?? undefined,
     }));
   }),
 
@@ -222,6 +317,8 @@ export const schedulesRouter = router({
         dayOfWeek: input.dayOfWeek,
         startTime: input.startTime as any,
         endTime: input.endTime as any,
+        startAt: null,
+        endAt: null,
         recurrence: 'weekly',
       } as any)
       .returning();
@@ -237,10 +334,67 @@ export const schedulesRouter = router({
       groupId: created.groupId,
       teacherId: created.teacherId,
       recurrence: created.recurrence ?? 'weekly',
-      createdAt: created.createdAt?.toISOString?.() ?? null,
-      updatedAt: created.updatedAt?.toISOString?.() ?? null,
+      createdAt: created.createdAt?.toISOString?.() ?? new Date().toISOString(),
+      updatedAt: created.updatedAt?.toISOString?.() ?? undefined,
     };
   }),
+
+  createOneOff: tenantProcedure
+    .input(CreateOneOffScheduleSchema)
+    .mutation(async ({ ctx, input }) => {
+      requireTeacherOrAdmin(ctx);
+
+      await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
+      await assertOrgGroupAccess(ctx.organizationId!, input.groupId);
+
+      await assertCanUseGroup(ctx, input.groupId, {
+        notAllowedMessage: 'You can only create schedules for your assigned groups',
+      });
+
+      const startAt = parseIsoDate(input.startAt, 'startAt');
+      const endAt = parseIsoDate(input.endAt, 'endAt');
+
+      assertQuarterHourInstant(startAt, 'startAt');
+      assertQuarterHourInstant(endAt, 'endAt');
+      if (!(startAt.getTime() < endAt.getTime())) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'endAt must be after startAt' });
+      }
+
+      await assertNoOneOffConflict({
+        classroomId: input.classroomId,
+        startAt,
+        endAt,
+      });
+
+      const [created] = await openpathDb
+        .insert(schedules)
+        .values({
+          classroomId: input.classroomId,
+          teacherId: ctx.user.sub,
+          groupId: input.groupId,
+          dayOfWeek: null,
+          startTime: null,
+          endTime: null,
+          startAt: startAt as any,
+          endAt: endAt as any,
+          recurrence: 'one_off',
+        } as any)
+        .returning();
+
+      await notifyOpenPathClassroomChanged(created.classroomId);
+
+      return {
+        id: created.id,
+        classroomId: created.classroomId,
+        startAt: created.startAt?.toISOString?.() ?? null,
+        endAt: created.endAt?.toISOString?.() ?? null,
+        groupId: created.groupId,
+        teacherId: created.teacherId,
+        recurrence: 'one_off',
+        createdAt: created.createdAt?.toISOString?.() ?? new Date().toISOString(),
+        updatedAt: created.updatedAt?.toISOString?.() ?? undefined,
+      };
+    }),
 
   update: tenantProcedure.input(UpdateScheduleSchema).mutation(async ({ ctx, input }) => {
     requireTeacherOrAdmin(ctx);
@@ -299,6 +453,8 @@ export const schedulesRouter = router({
         startTime: input.startTime as any,
         endTime: input.endTime as any,
         groupId: input.groupId,
+        startAt: null,
+        endAt: null,
         updatedAt: new Date(),
       } as any)
       .where(eq(schedules.id, input.id as any))
@@ -315,10 +471,97 @@ export const schedulesRouter = router({
       groupId: updated.groupId,
       teacherId: updated.teacherId,
       recurrence: updated.recurrence ?? 'weekly',
-      createdAt: updated.createdAt?.toISOString?.() ?? null,
-      updatedAt: updated.updatedAt?.toISOString?.() ?? null,
+      createdAt: updated.createdAt?.toISOString?.() ?? new Date().toISOString(),
+      updatedAt: updated.updatedAt?.toISOString?.() ?? undefined,
     };
   }),
+
+  updateOneOff: tenantProcedure
+    .input(UpdateOneOffScheduleSchema)
+    .mutation(async ({ ctx, input }) => {
+      requireTeacherOrAdmin(ctx);
+
+      const existing = await openpathDb
+        .select()
+        .from(schedules)
+        .where(eq(schedules.id, input.id as any))
+        .limit(1);
+
+      if (!existing[0]) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Schedule not found' });
+      }
+
+      if (existing[0].recurrence !== 'one_off') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Schedule is not one-off' });
+      }
+
+      await assertOrgClassroomAccess(ctx.organizationId!, existing[0].classroomId);
+
+      const admin = isOrgAdmin(ctx);
+      const isOwner = existing[0].teacherId === ctx.user.sub;
+      if (!admin && !isOwner) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You can only manage your own schedules',
+        });
+      }
+
+      const nextGroupId = input.groupId ?? existing[0].groupId;
+      await assertOrgGroupAccess(ctx.organizationId!, nextGroupId);
+
+      if (input.groupId !== undefined && input.groupId !== existing[0].groupId) {
+        await assertCanUseGroup(ctx, input.groupId, {
+          notAllowedMessage: 'You can only create schedules for your assigned groups',
+        });
+      }
+
+      const baseStartAt = existing[0].startAt;
+      const baseEndAt = existing[0].endAt;
+      if (!baseStartAt || !baseEndAt) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid one-off schedule' });
+      }
+
+      const nextStartAt = input.startAt ? parseIsoDate(input.startAt, 'startAt') : baseStartAt;
+      const nextEndAt = input.endAt ? parseIsoDate(input.endAt, 'endAt') : baseEndAt;
+
+      assertQuarterHourInstant(nextStartAt, 'startAt');
+      assertQuarterHourInstant(nextEndAt, 'endAt');
+      if (!(nextStartAt.getTime() < nextEndAt.getTime())) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'endAt must be after startAt' });
+      }
+
+      await assertNoOneOffConflict({
+        classroomId: existing[0].classroomId,
+        startAt: nextStartAt,
+        endAt: nextEndAt,
+        excludeId: input.id,
+      });
+
+      const [updated] = await openpathDb
+        .update(schedules)
+        .set({
+          groupId: input.groupId,
+          startAt: input.startAt ? (nextStartAt as any) : undefined,
+          endAt: input.endAt ? (nextEndAt as any) : undefined,
+          updatedAt: new Date(),
+        } as any)
+        .where(eq(schedules.id, input.id as any))
+        .returning();
+
+      await notifyOpenPathClassroomChanged(updated.classroomId);
+
+      return {
+        id: updated.id,
+        classroomId: updated.classroomId,
+        startAt: updated.startAt?.toISOString?.() ?? null,
+        endAt: updated.endAt?.toISOString?.() ?? null,
+        groupId: updated.groupId,
+        teacherId: updated.teacherId,
+        recurrence: 'one_off',
+        createdAt: updated.createdAt?.toISOString?.() ?? new Date().toISOString(),
+        updatedAt: updated.updatedAt?.toISOString?.() ?? undefined,
+      };
+    }),
 
   delete: tenantProcedure
     .input(z.object({ id: z.string().min(1) }))
