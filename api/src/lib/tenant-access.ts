@@ -30,9 +30,15 @@ export function isOpenPathGroupEnabled(value: unknown): boolean {
 
 export type GroupAccessLevel = 'view' | 'edit';
 
-export async function assertOrgGroupAccess(organizationId: string, groupId: string): Promise<void> {
+export async function getOrgGroupLinkOrThrow(
+  organizationId: string,
+  groupId: string
+): Promise<{ id: string; visibility: string }> {
   const orgGroup = await db
-    .select({ id: schema.cpOrganizationGroups.id })
+    .select({
+      id: schema.cpOrganizationGroups.id,
+      visibility: schema.cpOrganizationGroups.visibility,
+    })
     .from(schema.cpOrganizationGroups)
     .where(
       and(
@@ -42,12 +48,19 @@ export async function assertOrgGroupAccess(organizationId: string, groupId: stri
     )
     .limit(1);
 
-  if (!orgGroup.length) {
+  const row = orgGroup[0];
+  if (!row) {
     throw new TRPCError({
       code: 'NOT_FOUND',
       message: 'Group not found or access denied',
     });
   }
+
+  return row;
+}
+
+export async function assertOrgGroupAccess(organizationId: string, groupId: string): Promise<void> {
+  await getOrgGroupLinkOrThrow(organizationId, groupId);
 }
 
 export async function assertOrgClassroomAccess(
@@ -163,23 +176,7 @@ export async function assertCanAccessGroup(
     throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Missing organizationId' });
   }
 
-  const orgGroup = await db
-    .select({ visibility: schema.cpOrganizationGroups.visibility })
-    .from(schema.cpOrganizationGroups)
-    .where(
-      and(
-        eq(schema.cpOrganizationGroups.organizationId, organizationId),
-        eq(schema.cpOrganizationGroups.groupId, groupId)
-      )
-    )
-    .limit(1);
-
-  if (!orgGroup.length) {
-    throw new TRPCError({
-      code: 'NOT_FOUND',
-      message: 'Group not found or access denied',
-    });
-  }
+  const orgGroup = await getOrgGroupLinkOrThrow(organizationId, groupId);
 
   if (isOrgAdmin(ctx)) return;
 
@@ -190,7 +187,7 @@ export async function assertCanAccessGroup(
     });
   }
 
-  if (access === 'view' && orgGroup[0].visibility === 'instance_public') return;
+  if (access === 'view' && orgGroup.visibility === 'instance_public') return;
 
   const ok = await teacherCanUseGroup({ userId: ctx.user.sub, groupId });
   if (!ok) {

@@ -11,6 +11,7 @@ import {
   assertCanViewGroup,
   assertOrgClassroomAccess,
   assertOrgGroupAccess,
+  getOrgGroupLinkOrThrow,
   getOrgClassroomLinkOrThrow,
   getAccessibleTenantGroupIds,
   getTeacherGroupIdentifiers,
@@ -200,6 +201,23 @@ describe('tenant-access', () => {
     try {
       await assertOrgGroupAccess(ORG_ID, 'missing');
       assert.fail('expected assertOrgGroupAccess to throw');
+    } catch (err) {
+      assertTrpcError(err, 'NOT_FOUND', 'Group not found or access denied');
+    }
+  });
+
+  it('getOrgGroupLinkOrThrow returns cpOrganizationGroups id + visibility', async () => {
+    const linkPublic = await getOrgGroupLinkOrThrow(ORG_ID, GROUP_ID_3);
+    assert.strictEqual(linkPublic.id, `og_${RUN_ID}_3`);
+    assert.strictEqual(linkPublic.visibility, 'instance_public');
+
+    const linkPrivate = await getOrgGroupLinkOrThrow(ORG_ID, GROUP_ID);
+    assert.strictEqual(linkPrivate.id, `og_${RUN_ID}_1`);
+    assert.strictEqual(linkPrivate.visibility, 'private');
+
+    try {
+      await getOrgGroupLinkOrThrow(ORG_ID, 'missing');
+      assert.fail('expected getOrgGroupLinkOrThrow to throw');
     } catch (err) {
       assertTrpcError(err, 'NOT_FOUND', 'Group not found or access denied');
     }
