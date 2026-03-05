@@ -1,65 +1,44 @@
-# GitHub Secrets Configuration
+# GitHub Secrets Configuration (Production Deploy)
 
-Configure these secrets in your GitHub repository settings:
-**Settings → Secrets and variables → Actions → New repository secret**
+Production deployments are triggered by git tags `v*` via `ClassroomPath/.github/workflows/deploy.yml`.
+
+Staging deployments are **not** handled by GitHub Actions; they run locally via `npm run deploy:staging`.
 
 ## Required Secrets
 
-| Secret           | Description                         | Example                                  |
-| ---------------- | ----------------------------------- | ---------------------------------------- |
-| `DEPLOY_HOST`    | Hostname or IP of your server       | `classroompath.duckdns.org`              |
-| `DEPLOY_USER`    | SSH username on the server          | `deploy` or `pi`                         |
-| `DEPLOY_SSH_KEY` | Private SSH key for authentication  | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| `DEPLOY_PORT`    | SSH port (optional, defaults to 22) | `22`                                     |
+Configure these in GitHub:
+Settings → Secrets and variables → Actions → New repository secret
+
+| Secret           | Description                        | Example                                  |
+| ---------------- | ---------------------------------- | ---------------------------------------- |
+| `DEPLOY_HOST`    | Production hostname/IP             | `classroompath.duckdns.org`              |
+| `DEPLOY_USER`    | SSH user on the server             | `deploy`                                 |
+| `DEPLOY_SSH_KEY` | Private SSH key for authentication | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `DEPLOY_PORT`    | SSH port (optional, default 22)    | `22`                                     |
 
 ## Generating SSH Keys
 
 ```bash
-# Generate a new SSH key pair for deployment
 ssh-keygen -t ed25519 -C "classroompath-deploy" -f ~/.ssh/classroompath_deploy
 
 # Copy the public key to your server
-ssh-copy-id -i ~/.ssh/classroompath_deploy.pub user@your-server
+ssh-copy-id -i ~/.ssh/classroompath_deploy.pub deploy@YOUR_SERVER
 
-# The private key (~/.ssh/classroompath_deploy) goes into DEPLOY_SSH_KEY secret
+# Add the private key (~/.ssh/classroompath_deploy) to DEPLOY_SSH_KEY
 cat ~/.ssh/classroompath_deploy
 ```
 
-## Server Prerequisites
+## Server Prerequisites (Production)
 
-Your server needs:
+The production workflow deploys Docker Compose, so the server must have:
 
-1. Node.js >= 20 installed
-2. PostgreSQL running
-3. Git installed
-4. Caddy or nginx for HTTPS (optional but recommended)
-5. A systemd or OpenRC service for the API
+- Docker + `docker compose`
+- Git
 
-### Sample systemd service
+The workflow expects the repo at:
 
-```ini
-# /etc/systemd/system/classroompath-api.service
-[Unit]
-Description=ClassroomPath API
-After=network.target postgresql.service
+- `/opt/classroompath/app`
 
-[Service]
-Type=simple
-User=deploy
-WorkingDirectory=/home/deploy/ClassroomPath/upstream/openpath/api
-ExecStart=/usr/bin/node dist/src/server.js
-Restart=on-failure
-RestartSec=10
-EnvironmentFile=/home/deploy/ClassroomPath/config/.env
+And a real environment file at:
 
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable with:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable classroompath-api
-sudo systemctl start classroompath-api
-```
+- `/opt/classroompath/app/config/.env` (gitignored; create from `config/.env.example`)

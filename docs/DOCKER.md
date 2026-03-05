@@ -1,31 +1,34 @@
 # Docker Deployment with Nginx Proxy Manager
 
+ClassroomPath deploys as Docker Compose with three services:
+
+- `gateway` (public entrypoint, multi-tenancy)
+- `api` (upstream OpenPath API, internal-only)
+- `spa` (static web UI)
+
 ## Architecture
 
 ```
-classroompath.duckdns.org
+classroompath.duckdns.org (or -staging)
          │
          ▼
    ┌─────────────────┐
    │ Nginx Proxy Mgr │
    │     (NPM)       │
    └────────┬────────┘
+            │  default forward host
+            ▼
+     classroompath-spa:80
             │
-   ┌────────┴────────┐
-   │                 │
-   ▼                 ▼
-/api/*            /*
-/trpc/*
-/health
-/w/*
-   │                 │
-   ▼                 ▼
-┌─────────────┐ ┌─────────────┐
-│ API         │ │ SPA         │
-│ :3000       │ │ :8080       │
-│ (Node.js)   │ │ (nginx)     │
-└─────────────┘ └─────────────┘
+            ├─ /cp/*, /api/*, /trpc/*, /w/*, /health, /api/machines/events
+            ▼
+     classroompath-gateway:3001
+            │
+            ▼
+     classroompath-api:3000   (Docker network only)
 ```
+
+NPM routing rules live in `docker/npm-advanced-config.txt`.
 
 ## Quick Start
 
@@ -33,8 +36,7 @@ classroompath.duckdns.org
 
 ```bash
 cp config/.env.example config/.env
-nano config/.env
-# Fill in your values
+${EDITOR:-nano} config/.env
 ```
 
 ### 2. Build and start containers
@@ -44,19 +46,19 @@ cd docker
 docker compose up -d --build
 ```
 
-### 3. Verify containers are running
+### 3. Verify
 
 ```bash
 docker compose ps
-docker compose logs -f
+docker compose logs -f gateway
 ```
 
 ### 4. Configure Nginx Proxy Manager
 
 1. Open NPM web UI (usually `http://your-server:81`)
-2. **Hosts → Proxy Hosts → Add Proxy Host**
+2. Hosts → Proxy Hosts → Add Proxy Host
 
-#### Details tab:
+Details tab:
 
 | Field                 | Value                       |
 | --------------------- | --------------------------- |
@@ -66,7 +68,7 @@ docker compose logs -f
 | Forward Port          | `80`                        |
 | Block Common Exploits | ✅                          |
 
-#### SSL tab:
+SSL tab:
 
 | Field           | Value                       |
 | --------------- | --------------------------- |
@@ -74,28 +76,22 @@ docker compose logs -f
 | Force SSL       | ✅                          |
 | HTTP/2 Support  | ✅                          |
 
-#### Advanced tab:
+Advanced tab:
 
-Copy contents of `docker/npm-advanced-config.txt`
+- Paste the contents of `docker/npm-advanced-config.txt`
 
-5. **Save**
+## Container Networking Notes
 
-## Container Names
+The NPM container must be able to reach `classroompath-spa` and `classroompath-gateway` by container name.
 
-If NPM is in a different Docker network, use container IPs or add containers to same network:
+If NPM runs in a different Docker network, either:
 
-```yaml
-# In docker-compose.yml, add:
-networks:
-  default:
-    external: true
-    name: npm_network # Replace with your NPM network name
-```
+- attach the ClassroomPath services to the same external network, or
+- use reachable IPs instead of container names.
 
 ## Updating
 
 ```bash
-cd ~/ClassroomPath
 git pull --recurse-submodules
 cd docker
 docker compose up -d --build
@@ -104,40 +100,8 @@ docker compose up -d --build
 ## Logs
 
 ```bash
-# All containers
 docker compose logs -f
-
-# API only
+docker compose logs -f gateway
 docker compose logs -f api
-
-# SPA only
 docker compose logs -f spa
-```
-
-## Troubleshooting
-
-### Containers can't reach each other
-
-Make sure all containers are on the same Docker network:
-
-```bash
-docker network ls
-docker network inspect <network_name>
-```
-
-### API returns 502
-
-Check API logs:
-
-```bash
-docker compose logs api
-```
-
-### SPA shows blank page
-
-Check SPA logs and verify files are mounted:
-
-```bash
-docker compose logs spa
-docker compose exec spa ls -la /usr/share/nginx/html
 ```

@@ -55,9 +55,9 @@ Built on [OpenPath](https://github.com/balejosg/openpath) (OSS).
 
 ```
 /cp/*      → ClassroomPath Gateway (port 3001) - multi-tenancy
-/api/*     → OpenPath API (port 3000)
-/trpc/*    → OpenPath tRPC endpoints
-/w/*       → Tokenized whitelist downloads
+/api/*     → Gateway (proxies to OpenPath API)
+/trpc/*    → Gateway (proxies to OpenPath tRPC)
+/w/*       → Gateway (proxies tokenized whitelist downloads)
 /*         → SPA (static files)
 ```
 
@@ -121,8 +121,9 @@ cp config/.env.example config/.env
 ### 4. Build and run
 
 ```bash
-npm run build:api
-npm run start
+# Recommended: run the full stack via Docker Compose
+cd docker
+docker compose up -d --build
 ```
 
 ## Verification
@@ -182,12 +183,13 @@ git push origin v1.0.1
 ```bash
 # View logs
 docker logs -f classroompath-api
+docker logs -f classroompath-gateway
 
 # Restart app
-docker compose down && docker compose up -d
+cd docker && docker compose down && docker compose up -d
 
 # Rebuild
-docker compose build --no-cache && docker compose up -d
+cd docker && docker compose build --no-cache && docker compose up -d
 ```
 
 ### Nginx Proxy Manager

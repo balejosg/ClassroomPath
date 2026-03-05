@@ -118,14 +118,14 @@ ClassroomPath ──depends on──▶ OpenPath
 
 **LLM Agents: Use these URLs to verify which environment you're working with:**
 
-| Check                | Staging                                                | Production                                     |
-| -------------------- | ------------------------------------------------------ | ---------------------------------------------- |
-| **URL**              | `classroompath-staging.duckdns.org`                    | `classroompath.duckdns.org`                    |
-| **API Health**       | `https://classroompath-staging.duckdns.org/api/health` | `https://classroompath.duckdns.org/api/health` |
-| **Proxmox CT (App)** | CT 114 (`classroompath-app-staging`)                   | CT 111 (`classroompath-app`)                   |
-| **Proxmox CT (DB)**  | CT 113 (`classroompath-db-staging`)                    | CT 110 (`classroompath-db`)                    |
-| **Database Name**    | `classroompath_staging`                                | `classroompath`                                |
-| **Deploy Trigger**   | `npm run deploy:staging`                               | Git tag starting with `v`                      |
+| Check                | Staging                                               | Production                                    |
+| -------------------- | ----------------------------------------------------- | --------------------------------------------- |
+| **URL**              | `classroompath-staging.duckdns.org`                   | `classroompath.duckdns.org`                   |
+| **Gateway Health**   | `https://classroompath-staging.duckdns.org/cp/health` | `https://classroompath.duckdns.org/cp/health` |
+| **Proxmox CT (App)** | CT 114 (`classroompath-app-staging`)                  | CT 111 (`classroompath-app`)                  |
+| **Proxmox CT (DB)**  | CT 113 (`classroompath-db-staging`)                   | CT 110 (`classroompath-db`)                   |
+| **Database Name**    | `classroompath_staging`                               | `classroompath`                               |
+| **Deploy Trigger**   | `npm run deploy:staging`                              | Git tag starting with `v`                     |
 
 **When debugging issues:**
 
@@ -144,7 +144,10 @@ gh workflow run sync-openpath.yml
 npm run submodule:update
 git add upstream/openpath
 git commit -m "chore: update openpath submodule"
-git push  # Triggers deploy
+git push origin main
+
+# Production deploy is triggered by tags v*
+# git tag v1.2.3 && git push origin v1.2.3
 ```
 
 ### Staging Deployment
@@ -208,24 +211,29 @@ curl -sf http://192.168.1.114:3000/health
 
 ## Docker Services
 
-| Service | Image            | Port | Purpose            |
-| ------- | ---------------- | ---- | ------------------ |
-| `api`   | `Dockerfile.api` | 3000 | tRPC API server    |
-| `spa`   | nginx:alpine     | 80   | Static SPA serving |
+| Service   | Container               | Ports (host)    | Purpose                                      |
+| --------- | ----------------------- | --------------- | -------------------------------------------- |
+| `gateway` | `classroompath-gateway` | `3000`, `3001`  | Public entrypoint (`/cp`, `/api`, `/trpc`)   |
+| `api`     | `classroompath-api`     | (internal only) | Upstream OpenPath API (reachable by gateway) |
+| `spa`     | `classroompath-spa`     | `8081`          | Static SPA serving                           |
 
-Build: `docker compose build --no-cache`
-Run: `docker compose up -d`
+Build: `cd docker && docker compose build --no-cache`
+Run: `cd docker && docker compose up -d`
 
 ## Configuration
 
 Environment variables in `config/.env` (copy from `.env.example`):
 
-| Variable        | Required | Notes                           |
-| --------------- | -------- | ------------------------------- |
-| `DB_*`          | Yes      | PostgreSQL connection           |
-| `JWT_SECRET`    | Yes      | Auth tokens                     |
-| `APP_SECRET`    | Yes      | Server refuses to start without |
-| `SHARED_SECRET` | Yes      | Machine-to-API auth             |
+| Variable           | Required | Notes                                                   |
+| ------------------ | -------- | ------------------------------------------------------- |
+| `DATABASE_URL`     | Yes      | PostgreSQL connection (shared by gateway + OpenPath)    |
+| `PUBLIC_URL`       | Yes      | Used to generate external download URLs                 |
+| `JWT_SECRET`       | Yes      | JWT signing secret (OpenPath)                           |
+| `CORS_ORIGINS`     | Yes      | Allowed SPA origins                                     |
+| `CP_PORT`          | Yes      | Gateway port (default `3001`)                           |
+| `OPENPATH_API_URL` | Yes      | Gateway -> OpenPath API URL (default `http://api:3000`) |
+
+See `ClassroomPath/config/.env.example` for the canonical list.
 
 ## Testing
 
@@ -268,26 +276,23 @@ Optimized for Nginx Proxy Manager. See `docker/npm-advanced-config.txt` for:
 
 - SSL termination
 - WebSocket support for tRPC
-- `/api/*`, `/trpc/*`, `/w/*` routing
+- `/cp/*`, `/api/*`, `/trpc/*`, `/w/*`, `/health` routing
+- SSE handling for `/api/machines/events` (no buffering)
 
 ## Database Architecture (CRITICAL)
 
-### ⚠️ ClassroomPath uses PostgreSQL, NOT SQLite
+### PostgreSQL Required
 
-OpenPath supports both SQLite (default) and PostgreSQL. **ClassroomPath deployments use PostgreSQL exclusively.**
+ClassroomPath requires PostgreSQL via `DATABASE_URL`. Both the gateway and the upstream OpenPath API use the same connection string from `config/.env`.
 
-| Environment                  | Database       | Location                                   |
-| ---------------------------- | -------------- | ------------------------------------------ |
-| OpenPath standalone          | SQLite         | `/app/data/openpath.db` (inside container) |
-| **ClassroomPath Staging**    | **PostgreSQL** | CT 113 (`classroompath-db-staging`)        |
-| **ClassroomPath Production** | **PostgreSQL** | CT 110 (`classroompath-db`)                |
+| Environment                  | Database       | Location                            |
+| ---------------------------- | -------------- | ----------------------------------- |
+| **ClassroomPath Staging**    | **PostgreSQL** | CT 113 (`classroompath-db-staging`) |
+| **ClassroomPath Production** | **PostgreSQL** | CT 110 (`classroompath-db`)         |
 
 ### Database Connection
 
-The `DATABASE_URL` environment variable determines which database is used:
-
-- If `DATABASE_URL` is set → PostgreSQL
-- If `DATABASE_URL` is NOT set → SQLite (default)
+`DATABASE_URL` must be set in `config/.env` (used by both services).
 
 ```bash
 # Staging API container has:
@@ -324,12 +329,11 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
 
 ### Common Mistakes to Avoid
 
-| ❌ Wrong                   | ✅ Correct                          |
-| -------------------------- | ----------------------------------- |
-| `rm /app/data/openpath.db` | Query PostgreSQL in CT 113/110      |
-| Looking for `.db` files    | Check `DATABASE_URL` env var        |
-| Using SQLite commands      | Use `psql` via docker exec          |
-| Assuming SQLite in staging | Always check which DB is configured |
+| ❌ Wrong                                  | ✅ Correct                   |
+| ----------------------------------------- | ---------------------------- |
+| Looking for `.db` files in containers     | Use PostgreSQL in CT 113/110 |
+| Assuming the wrong DB/CT                  | Verify URL + CT + db name    |
+| Debugging without checking `DATABASE_URL` | Inspect `config/.env`        |
 
 ## Anti-Patterns
 
@@ -337,7 +341,7 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
 - Committing `.env` files
 - Deploying without verifying submodule is updated
 - Using staging secrets in production
-- **Assuming SQLite when PostgreSQL is configured** (check `DATABASE_URL`)
+- **Assuming the wrong DB/config** (always verify `DATABASE_URL` and the target CT)
 - **Confusing staging and production environments** (always verify URL first)
 
 ## Quick Reference: Environment Identification
