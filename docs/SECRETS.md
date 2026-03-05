@@ -1,6 +1,6 @@
 # GitHub Secrets Configuration (Production Deploy)
 
-Production deployments are triggered by git tags `v*` via `ClassroomPath/.github/workflows/deploy.yml`.
+Production deployments are triggered by git tags `v*` via `.github/workflows/deploy.yml`.
 
 Staging deployments are **not** handled by GitHub Actions; they run locally via `npm run deploy:staging`.
 

@@ -15,6 +15,10 @@ Built on [OpenPath](https://github.com/balejosg/openpath) (OSS).
 | **Production** | https://classroompath.duckdns.org         | Git tag `v*`             |
 | **Staging**    | https://classroompath-staging.duckdns.org | `npm run deploy:staging` |
 
+## Docs
+
+- `docs/INDEX.md`
+
 ## Architecture
 
 ```
@@ -156,7 +160,7 @@ git push origin main
 npm run deploy:staging
 ```
 
-Staging deploy configuration is local-only via `ClassroomPath/.env.local` (see `.env.local.example`).
+Staging deploy configuration is local-only via `.env.local` (see `.env.local.example`).
 
 ### Production (GitHub Actions)
 

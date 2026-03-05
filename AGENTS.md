@@ -2,6 +2,8 @@
 
 SaaS distribution wrapper for OpenPath. Provides Docker deployment, multi-environment support, and production infrastructure.
 
+Docs index: `docs/INDEX.md`
+
 ## 🚨 MANDATORY: LLM Agent Deployment Protocol
 
 **After pushing changes to ClassroomPath, you MUST run local staging deployment.**
@@ -233,7 +235,7 @@ Environment variables in `config/.env` (copy from `.env.example`):
 | `CP_PORT`          | Yes      | Gateway port (default `3001`)                           |
 | `OPENPATH_API_URL` | Yes      | Gateway -> OpenPath API URL (default `http://api:3000`) |
 
-See `ClassroomPath/config/.env.example` for the canonical list.
+See `config/.env.example` for the canonical list.
 
 ## Testing
 
