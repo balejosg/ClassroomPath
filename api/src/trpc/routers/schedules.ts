@@ -138,6 +138,16 @@ async function assertNoConflict(params: {
 
 type DbSchedule = typeof schedules.$inferSelect;
 
+type ScheduleManageContext = Parameters<typeof isOrgAdmin>[0] & { user: { sub: string } };
+
+function assertCanManageSchedule(ctx: ScheduleManageContext, schedule: DbSchedule): void {
+  const admin = isOrgAdmin(ctx);
+  const isOwner = schedule.teacherId === ctx.user.sub;
+  if (!admin && !isOwner) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only manage your own schedules' });
+  }
+}
+
 function mapToWeeklyScheduleBase(s: DbSchedule) {
   if (s.dayOfWeek === null || s.startTime === null || s.endTime === null) {
     throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Invalid weekly schedule row' });
@@ -406,11 +416,7 @@ export const schedulesRouter = router({
 
     await assertOrgClassroomAccess(ctx.organizationId!, schedule.classroomId);
 
-    const admin = isOrgAdmin(ctx);
-    const isOwner = schedule.teacherId === ctx.user.sub;
-    if (!admin && !isOwner) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only manage your own schedules' });
-    }
+    assertCanManageSchedule(ctx, schedule);
 
     const nextDayOfWeek = input.dayOfWeek ?? baseDayOfWeek;
     const nextStart = input.startTime ?? normalizeTimeHHMM(baseStartTime);
@@ -497,14 +503,7 @@ export const schedulesRouter = router({
 
       await assertOrgClassroomAccess(ctx.organizationId!, schedule.classroomId);
 
-      const admin = isOrgAdmin(ctx);
-      const isOwner = schedule.teacherId === ctx.user.sub;
-      if (!admin && !isOwner) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You can only manage your own schedules',
-        });
-      }
+      assertCanManageSchedule(ctx, schedule);
 
       const nextGroupId = input.groupId ?? schedule.groupId;
       await assertOrgGroupAccess(ctx.organizationId!, nextGroupId);
@@ -587,14 +586,7 @@ export const schedulesRouter = router({
 
       await assertOrgClassroomAccess(ctx.organizationId!, schedule.classroomId);
 
-      const admin = isOrgAdmin(ctx);
-      const isOwner = schedule.teacherId === ctx.user.sub;
-      if (!admin && !isOwner) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You can only manage your own schedules',
-        });
-      }
+      assertCanManageSchedule(ctx, schedule);
 
       await openpathDb.delete(schedules).where(eq(schedules.id, input.id));
 
