@@ -5,6 +5,7 @@ import { sanitizeSlug } from '@openpath/shared/slug';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
+import { isOpenPathGroupEnabled } from '../lib/tenant-access.js';
 import {
   openpathDb,
   publishWhitelistGroupChanged,
@@ -247,6 +248,13 @@ export async function cloneGroupIntoOrganization(params: {
 
   if (!source[0]) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found' });
+  }
+
+  if (!isOpenPathGroupEnabled(source[0].enabled)) {
+    throw new TRPCError({
+      code: 'CONFLICT',
+      message: 'No se puede clonar un grupo inactivo',
+    });
   }
 
   const rawName = params.name?.trim() || `${source[0].name}-copia`;

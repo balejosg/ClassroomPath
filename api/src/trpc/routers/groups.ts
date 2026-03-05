@@ -737,15 +737,37 @@ export const groupsRouter = router({
     requireTeacherOrAdmin(ctx);
     const groupId = nanoid();
 
-    const [group] = await openpathDb
-      .insert(whitelistGroups)
-      .values({
-        id: groupId,
-        name: input.name,
-        displayName: input.displayName,
-        enabled: input.enabled,
-      })
-      .returning();
+    let group: OpenPathWhitelistGroup;
+    try {
+      [group] = await openpathDb
+        .insert(whitelistGroups)
+        .values({
+          id: groupId,
+          name: input.name,
+          displayName: input.displayName,
+          enabled: input.enabled,
+        })
+        .returning();
+    } catch (err: unknown) {
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: unknown }).code)
+          : null;
+      const message =
+        typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message?: unknown }).message)
+          : '';
+      const normalized = message.toLowerCase();
+
+      if (code === '23505' || normalized.includes('unique constraint')) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'Ya existe un grupo con ese identificador (slug)',
+        });
+      }
+
+      throw err;
+    }
 
     await db.insert(schema.cpOrganizationGroups).values({
       id: nanoid(),
