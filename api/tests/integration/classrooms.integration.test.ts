@@ -27,6 +27,7 @@ import {
   stopIntegrationServer,
   approveOrganizationMember,
 } from './harness.js';
+import { createTenantScenario, withFrozenDate } from './scenario-builder.js';
 
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { db } from '../../src/db/index.js';
@@ -36,16 +37,9 @@ let API_URL: string;
 let integrationServer: IntegrationServerHandle | undefined;
 
 async function createGroup(admin: { token: string }, name: string): Promise<{ groupId: string }> {
-  const resp = await trpcMutate(
-    API_URL,
-    'groups.create',
-    { name, displayName: name },
-    bearerAuth(admin.token)
-  );
-  assertStatus(resp, 200);
-  const { data } = (await parseTRPC(resp)) as { data: any };
-  assert.ok(data?.id, 'groups.create should return id');
-  return { groupId: String(data.id) };
+  const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
+  const group = await scenario.createGroup({ token: admin.token, name });
+  return { groupId: group.id };
 }
 
 async function createClassroom(
@@ -54,44 +48,14 @@ async function createClassroom(
 ): Promise<{
   classroomId: string;
 }> {
-  const name = params.name ?? 'classrooms-test-classroom';
-  const displayName = params.displayName ?? 'Classrooms Classroom';
-
-  const resp = await trpcMutate(
-    API_URL,
-    'classrooms.create',
-    { name, displayName, defaultGroupId: params.defaultGroupId },
-    bearerAuth(admin.token)
-  );
-  assertStatus(resp, 200);
-  const { data } = (await parseTRPC(resp)) as { data: any };
-  assert.ok(data?.id, 'classrooms.create should return id');
-  return { classroomId: String(data.id) };
-}
-
-function withMockedDate<T>(date: Date, fn: () => Promise<T>): Promise<T> {
-  const RealDate = Date;
-  const fixed = date;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).Date = class extends RealDate {
-    constructor(...args: any[]) {
-      if (args.length === 0) super(fixed.getTime());
-      else super(...(args as any));
-    }
-
-    static now(): number {
-      return fixed.getTime();
-    }
-
-    static parse = RealDate.parse;
-    static UTC = RealDate.UTC;
-  };
-
-  return fn().finally(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).Date = RealDate;
+  const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
+  const classroom = await scenario.createClassroom({
+    token: admin.token,
+    name: params.name ?? 'classrooms-test-classroom',
+    displayName: params.displayName ?? 'Classrooms Classroom',
+    defaultGroupId: params.defaultGroupId,
   });
+  return { classroomId: classroom.id };
 }
 
 describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
@@ -133,7 +97,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
 
     // Fixed local time: Tuesday 10:30 -> should match schedule dayOfWeek=2 (Tue)
     const inSlot = new Date(2026, 1, 3, 10, 30, 0, 0);
-    await withMockedDate(inSlot, async () => {
+    await withFrozenDate(inSlot, async () => {
       const createSchedule = await trpcMutate(
         API_URL,
         'schedules.create',
@@ -178,7 +142,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
 
     // Outside the slot -> fallback to default group
     const outOfSlot = new Date(2026, 1, 3, 12, 0, 0, 0);
-    await withMockedDate(outOfSlot, async () => {
+    await withFrozenDate(outOfSlot, async () => {
       const getResp = await trpcQuery(
         API_URL,
         'classrooms.getById',
@@ -726,7 +690,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     });
 
     const inSlot = new Date(2026, 1, 3, 10, 30, 45, 123);
-    await withMockedDate(inSlot, async () => {
+    await withFrozenDate(inSlot, async () => {
       const create1 = await trpcMutate(
         API_URL,
         'classrooms.createExemption',
@@ -816,7 +780,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     });
 
     const weekend = new Date(2026, 1, 7, 12, 0, 0, 0);
-    await withMockedDate(weekend, async () => {
+    await withFrozenDate(weekend, async () => {
       const resp = await trpcMutate(
         API_URL,
         'classrooms.createExemption',

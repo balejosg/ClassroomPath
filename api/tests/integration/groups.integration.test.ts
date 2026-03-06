@@ -19,57 +19,14 @@ import {
   uniqueEmail,
 } from '../test-utils.js';
 import {
-  approveOrganizationMember,
-  bootstrapOrg,
-  ensureOpenPathUser,
   type IntegrationServerHandle,
-  signToken,
   startIntegrationServer,
   stopIntegrationServer,
 } from './harness.js';
-
-import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
+import { createTenantScenario } from './scenario-builder.js';
 
 let API_URL: string;
 let integrationServer: IntegrationServerHandle | undefined;
-
-async function createGroup(params: {
-  token: string;
-  name: string;
-  displayName?: string;
-}): Promise<{ id: string; name: string }> {
-  const resp = await trpcMutate(
-    API_URL,
-    'groups.create',
-    { name: params.name, displayName: params.displayName ?? params.name },
-    bearerAuth(params.token)
-  );
-  assertStatus(resp, 200);
-  const { data } = (await parseTRPC(resp)) as { data: any };
-  assert.ok(data?.id, 'groups.create should return id');
-  return { id: String(data.id), name: String(data.name) };
-}
-
-async function updateGroup(params: {
-  token: string;
-  id: string;
-  enabled?: boolean;
-  visibility?: 'private' | 'instance_public';
-  displayName?: string;
-}): Promise<void> {
-  const resp = await trpcMutate(
-    API_URL,
-    'groups.update',
-    {
-      id: params.id,
-      enabled: params.enabled,
-      visibility: params.visibility,
-      displayName: params.displayName,
-    },
-    bearerAuth(params.token)
-  );
-  assertStatus(resp, 200);
-}
 
 describe('ClassroomPath groups integration (/cp/trpc)', async () => {
   before(async () => {
@@ -88,26 +45,22 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
   test('groups.create returns CONFLICT when name/slug already exists', async () => {
     await resetDb();
 
-    const adminUserId = 'groups-admin';
-    const adminEmail = uniqueEmail('admin');
-    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
-    const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: adminUserId,
-      email: adminEmail,
-      name: 'Admin User',
-      roles: [{ role: 'admin' }],
+    const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
+
+    const {
+      actor: admin,
+    } = await scenario.createOrgAdmin({
+      userId: 'groups-admin',
+      organizationName: 'Groups Test Org',
     });
 
-    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Groups Test Org' });
-
-    await createGroup({ token: adminToken, name: 'dup-group', displayName: 'Dup Group' });
+    await scenario.createGroup({ token: admin.token, name: 'dup-group', displayName: 'Dup Group' });
 
     const dupResp = await trpcMutate(
       API_URL,
       'groups.create',
       { name: 'dup-group', displayName: 'Dup Group 2' },
-      bearerAuth(adminToken)
+      bearerAuth(admin.token)
     );
     assertStatus(dupResp, 409);
     const { code, error } = await parseTRPC(dupResp);
@@ -118,56 +71,33 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
   test('groups.clone blocks inactive sources and exercises rules + templates flows', async () => {
     await resetDb();
 
-    const adminUserId = 'groups-admin-2';
-    const adminEmail = uniqueEmail('admin');
-    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
-    const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: adminUserId,
-      email: adminEmail,
-      name: 'Admin User',
-      roles: [{ role: 'admin' }],
-    });
+    const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
 
-    const teacherUserId = 'groups-teacher';
-    const teacherEmail = uniqueEmail('teacher');
-    await ensureOpenPathUser({ userId: teacherUserId, email: teacherEmail, name: 'Teacher User' });
-    const teacherToken = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: teacherUserId,
-      email: teacherEmail,
-      name: 'Teacher User',
-      roles: [{ role: 'teacher', groupIds: [] }],
+    const { actor: admin, organization } = await scenario.createOrgAdmin({
+      userId: 'groups-admin-2',
+      organizationName: 'Groups Test Org',
     });
-
-    const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
-      token: adminToken,
-      name: 'Groups Test Org',
-    });
-    await approveOrganizationMember({
-      baseUrl: API_URL,
-      adminToken,
-      memberToken: teacherToken,
-      memberUserId: teacherUserId,
-      organizationId,
+    const teacher = await scenario.addTeacher({
+      adminToken: admin.token,
+      organizationId: organization.organizationId,
+      userId: 'groups-teacher',
     });
 
     // Admin creates a group and makes it instance_public so teachers can view/clone it.
-    const source = await createGroup({
-      token: adminToken,
+    const source = await scenario.createGroup({
+      token: admin.token,
       name: 'library-source-group',
       displayName: 'Library Source Group',
     });
 
-    await updateGroup({ token: adminToken, id: source.id, visibility: 'instance_public' });
+    await scenario.updateGroup({ token: admin.token, id: source.id, visibility: 'instance_public' });
 
     // Add a rule (and trigger duplicate createOrGet branch).
     const createRule1 = await trpcMutate(
       API_URL,
       'groups.createRule',
       { groupId: source.id, type: 'whitelist', value: 'example.com' },
-      bearerAuth(adminToken)
+      bearerAuth(admin.token)
     );
     assertStatus(createRule1, 200);
 
@@ -175,7 +105,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.createRule',
       { groupId: source.id, type: 'whitelist', value: 'example.com' },
-      bearerAuth(adminToken)
+      bearerAuth(admin.token)
     );
     assertStatus(createRuleDup, 200);
     const dupData = (await parseTRPC(createRuleDup)) as { data: any };
@@ -186,7 +116,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.libraryList',
       undefined,
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(libraryResp, 200);
     const { data: libraryData } = (await parseTRPC(libraryResp)) as { data: any };
@@ -198,7 +128,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.clone',
       { sourceGroupId: source.id, name: 'teacher-clone-1', displayName: 'Teacher Clone 1' },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(cloneResp, 200);
     const { data: cloneData } = (await parseTRPC(cloneResp)) as { data: any };
@@ -210,7 +140,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.list',
       undefined,
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(listTeacher, 200);
     const { data: teacherGroups } = (await parseTRPC(listTeacher)) as { data: any };
@@ -221,7 +151,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.getById',
       { id: clonedGroupId },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(getById, 200);
 
@@ -229,7 +159,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.getByName',
       { name: 'teacher-clone-1' },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(getByName, 200);
 
@@ -238,7 +168,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.listRulesPaginated',
       { groupId: clonedGroupId, limit: 50, offset: 0 },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(rulesList, 200);
     const { data: rulesPage } = (await parseTRPC(rulesList)) as { data: any };
@@ -250,7 +180,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.updateRule',
       { id: firstRuleId, groupId: clonedGroupId, comment: 'updated' },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(updateRuleResp, 200);
 
@@ -258,7 +188,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.bulkCreateRules',
       { groupId: clonedGroupId, type: 'whitelist', values: ['a.com', 'a.com', 'b.com'] },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(bulkCreate, 200);
 
@@ -266,7 +196,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.listRulesGrouped',
       { groupId: clonedGroupId, limit: 10, offset: 0 },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(grouped, 200);
 
@@ -274,7 +204,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.deleteRule',
       { id: firstRuleId, groupId: clonedGroupId },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(delRuleResp, 200);
 
@@ -283,7 +213,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.listRulesPaginated',
       { groupId: clonedGroupId, limit: 50, offset: 0 },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(afterRules, 200);
     const { data: afterRulesPage } = (await parseTRPC(afterRules)) as { data: any };
@@ -292,18 +222,18 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.bulkDeleteRules',
       { ids },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(bulkDelete, 200);
 
     // System stats endpoints (admin + teacher branches).
-    const statsAdmin = await trpcQuery(API_URL, 'groups.stats', undefined, bearerAuth(adminToken));
+    const statsAdmin = await trpcQuery(API_URL, 'groups.stats', undefined, bearerAuth(admin.token));
     assertStatus(statsAdmin, 200);
     const statsTeacher = await trpcQuery(
       API_URL,
       'groups.stats',
       undefined,
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(statsTeacher, 200);
 
@@ -311,7 +241,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'groups.systemStatus',
       undefined,
-      bearerAuth(adminToken)
+      bearerAuth(admin.token)
     );
     assertStatus(systemStatus, 200);
 
@@ -320,7 +250,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'templates.publishFromGroup',
       { groupId: clonedGroupId },
-      bearerAuth(adminToken)
+      bearerAuth(admin.token)
     );
     assertStatus(publishTpl, 200);
     const { data: tplData } = (await parseTRPC(publishTpl)) as { data: any };
@@ -331,19 +261,19 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       API_URL,
       'templates.import',
       { templateId, name: 'tpl-import-1', displayName: 'Imported' },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(importTpl, 200);
     const { data: importedData } = (await parseTRPC(importTpl)) as { data: any };
     assert.ok(importedData?.id, 'templates.import should return group id');
 
     // Disable the original source group and ensure cloning now fails with CONFLICT.
-    await updateGroup({ token: adminToken, id: source.id, enabled: false });
+    await scenario.updateGroup({ token: admin.token, id: source.id, enabled: false });
     const cloneInactive = await trpcMutate(
       API_URL,
       'groups.clone',
       { sourceGroupId: source.id, name: 'teacher-clone-inactive' },
-      bearerAuth(teacherToken)
+      bearerAuth(teacher.token)
     );
     assertStatus(cloneInactive, 409);
     const inactiveErr = await parseTRPC(cloneInactive);

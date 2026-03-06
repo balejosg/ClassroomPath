@@ -28,6 +28,7 @@ import {
   startIntegrationServer,
   stopIntegrationServer,
 } from './harness.js';
+import { createTenantScenario } from './scenario-builder.js';
 
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 
@@ -35,29 +36,19 @@ let API_URL: string;
 let integrationServer: IntegrationServerHandle | undefined;
 
 async function createGroup(user: { token: string }, name: string): Promise<{ groupId: string }> {
-  const resp = await trpcMutate(
-    API_URL,
-    'groups.create',
-    { name, displayName: name },
-    bearerAuth(user.token)
-  );
-  assertStatus(resp, 200);
-  const { data } = (await parseTRPC(resp)) as { data: any };
-  assert.ok(data?.id, 'groups.create should return id');
-  return { groupId: String(data.id) };
+  const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
+  const group = await scenario.createGroup({ token: user.token, name });
+  return { groupId: group.id };
 }
 
 async function createClassroom(admin: { token: string }): Promise<{ classroomId: string }> {
-  const resp = await trpcMutate(
-    API_URL,
-    'classrooms.create',
-    { name: 'sched-test-classroom', displayName: 'Schedules Classroom' },
-    bearerAuth(admin.token)
-  );
-  assertStatus(resp, 200);
-  const { data } = (await parseTRPC(resp)) as { data: any };
-  assert.ok(data?.id, 'classrooms.create should return id');
-  return { classroomId: String(data.id) };
+  const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
+  const classroom = await scenario.createClassroom({
+    token: admin.token,
+    name: 'sched-test-classroom',
+    displayName: 'Schedules Classroom',
+  });
+  return { classroomId: classroom.id };
 }
 
 describe('ClassroomPath schedules integration (/cp/trpc)', async () => {

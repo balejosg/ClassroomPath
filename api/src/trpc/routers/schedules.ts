@@ -3,8 +3,6 @@ import { TRPCError } from '@trpc/server';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 
 import { router, tenantProcedure } from '../trpc.js';
-import { db } from '../../db/index.js';
-import * as schema from '../../db/schema.js';
 import {
   openpathDb,
   schedules,
@@ -21,6 +19,7 @@ import {
   isOrgAdmin,
   requireTeacherOrAdmin,
 } from '../../lib/tenant-access.js';
+import { getOrgClassroomIds } from '../../services/org-classroom-membership.service.js';
 
 function weeklyRecurrenceWhereClause() {
   return or(eq(schedules.recurrence, 'weekly'), isNull(schedules.recurrence));
@@ -273,12 +272,7 @@ export const schedulesRouter = router({
   getMine: tenantProcedure.query(async ({ ctx }) => {
     requireTeacherOrAdmin(ctx);
 
-    const orgClassrooms = await db
-      .select()
-      .from(schema.cpOrganizationClassrooms)
-      .where(eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!));
-
-    const classroomIds = orgClassrooms.map((oc) => oc.classroomId);
+    const classroomIds = await getOrgClassroomIds({ organizationId: ctx.organizationId! });
     if (classroomIds.length === 0) return [];
 
     const rows: DbSchedule[] = await openpathDb

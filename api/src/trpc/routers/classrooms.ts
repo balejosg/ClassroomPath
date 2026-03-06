@@ -1,10 +1,9 @@
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, tenantProcedure } from '../trpc.js';
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
-import { and, eq, gt, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
 import {
@@ -16,16 +15,18 @@ import {
 } from '../../db/openpath.js';
 
 import {
-  getCurrentScheduleGroupByClassroomId,
   getCurrentScheduleGroupId,
   resolveActiveScheduleExpiresAt,
 } from '../../services/current-group.service.js';
 
+import { presentClassroomBase } from '../../services/classroom-presenter.js';
+import { scopedClassroomNameForOrg } from '../../services/classroom-name.service.js';
 import {
-  groupMachinesByClassroomIdForList,
-  presentClassroomBase,
-  presentClassroomListItem,
-} from '../../services/classroom-presenter.js';
+  getTenantClassroomById,
+  listActiveClassroomExemptions,
+  listTenantClassroomMachines,
+  listTenantClassrooms,
+} from '../../services/classroom-access.service.js';
 
 import {
   assertCanUseGroup,
@@ -35,38 +36,6 @@ import {
   requireTeacherOrAdmin,
 } from '../../lib/tenant-access.js';
 import { throwConflictOnUniqueViolation } from '../../lib/pg-errors.js';
-
-const CLASSROOM_SCOPE_PREFIX = 'cp';
-
-function normalizeClassroomKey(rawName: string): string {
-  return rawName
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function scopedClassroomNameForOrg(organizationId: string, publicName: string): string {
-  const normalized = normalizeClassroomKey(publicName);
-
-  if (!normalized) {
-    throw new TRPCError({
-      code: 'BAD_REQUEST',
-      message: 'Classroom name must include at least one letter or number',
-    });
-  }
-
-  const orgHash = createHash('sha256').update(organizationId).digest('hex').slice(0, 10);
-  const nameHash = createHash('sha256').update(normalized).digest('hex').slice(0, 8);
-  const prefix = `${CLASSROOM_SCOPE_PREFIX}-${orgHash}-`;
-  const suffix = `-${nameHash}`;
-  const maxBaseLength = Math.max(1, 100 - prefix.length - suffix.length);
-  const base = normalized.slice(0, maxBaseLength);
-
-  return `${prefix}${base}${suffix}`;
-}
 
 const CreateClassroomSchema = z.object({
   name: z.string().min(1).max(100),
@@ -81,116 +50,21 @@ const UpdateClassroomSchema = z.object({
 });
 
 export const classroomsRouter = router({
-  list: tenantProcedure.query(async ({ ctx }) => {
-    const orgClassrooms = await db
-      .select()
-      .from(schema.cpOrganizationClassrooms)
-      .where(eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!));
-
-    const classroomIds = orgClassrooms.map((oc) => oc.classroomId);
-
-    if (classroomIds.length === 0) return [];
-
-    const result = await openpathDb
-      .select()
-      .from(classrooms)
-      .where(inArray(classrooms.id, classroomIds));
-
-    const now = new Date();
-    const scheduleGroupByClassroomId = await getCurrentScheduleGroupByClassroomId({
-      classroomIds,
-      date: now,
-    });
-
-    const machineRows = await openpathDb
-      .select()
-      .from(machines)
-      .where(inArray(machines.classroomId, classroomIds));
-
-    const machinesByClassroomId = groupMachinesByClassroomIdForList(machineRows, now);
-
-    return result.map((c) =>
-      presentClassroomListItem({
-        classroom: c,
-        scheduleGroupId: scheduleGroupByClassroomId.get(c.id) ?? null,
-        machines: machinesByClassroomId.get(c.id) ?? [],
-      })
-    );
-  }),
+  list: tenantProcedure.query(async ({ ctx }) => listTenantClassrooms({ organizationId: ctx.organizationId! })),
 
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     await assertOrgClassroomAccess(ctx.organizationId!, input.id);
-
-    const classroom = await openpathDb
-      .select()
-      .from(classrooms)
-      .where(eq(classrooms.id, input.id))
-      .limit(1);
-
-    if (!classroom[0]) return null;
-
-    const c = classroom[0];
-    const scheduleGroupId = await getCurrentScheduleGroupId({ classroomId: c.id });
-
-    return presentClassroomBase({ classroom: c, scheduleGroupId });
+    return getTenantClassroomById({ classroomId: input.id });
   }),
 
   listMachines: tenantProcedure
     .input(z.object({ classroomId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       requireTeacherOrAdmin(ctx);
-
-      // Get all classrooms for this organization
-      const orgClassrooms = await db
-        .select()
-        .from(schema.cpOrganizationClassrooms)
-        .where(eq(schema.cpOrganizationClassrooms.organizationId, ctx.organizationId!));
-
-      const classroomIds = orgClassrooms.map((oc) => oc.classroomId);
-
-      if (classroomIds.length === 0) return [];
-
-      // If specific classroom requested, verify access
-      if (input.classroomId) {
-        if (!classroomIds.includes(input.classroomId)) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Classroom not found or access denied',
-          });
-        }
-
-        // Return machines for specific classroom
-        const result = await openpathDb
-          .select()
-          .from(machines)
-          .where(eq(machines.classroomId, input.classroomId));
-
-        return result.map((m) => ({
-          id: m.id,
-          hostname: m.hostname,
-          classroomId: m.classroomId,
-          version: m.version,
-          lastSeen: m.lastSeen?.toISOString() ?? null,
-          hasDownloadToken: m.downloadTokenHash !== null,
-          downloadTokenLastRotatedAt: m.downloadTokenLastRotatedAt?.toISOString() ?? null,
-        }));
-      }
-
-      // Return machines for all organization's classrooms
-      const result = await openpathDb
-        .select()
-        .from(machines)
-        .where(inArray(machines.classroomId, classroomIds));
-
-      return result.map((m) => ({
-        id: m.id,
-        hostname: m.hostname,
-        classroomId: m.classroomId,
-        version: m.version,
-        lastSeen: m.lastSeen?.toISOString() ?? null,
-        hasDownloadToken: m.downloadTokenHash !== null,
-        downloadTokenLastRotatedAt: m.downloadTokenLastRotatedAt?.toISOString() ?? null,
-      }));
+      return listTenantClassroomMachines({
+        organizationId: ctx.organizationId!,
+        classroomId: input.classroomId,
+      });
     }),
 
   listExemptions: tenantProcedure
@@ -198,42 +72,7 @@ export const classroomsRouter = router({
     .query(async ({ ctx, input }) => {
       requireTeacherOrAdmin(ctx);
       await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
-
-      const now = new Date();
-
-      const rows = await openpathDb
-        .select({
-          id: machineExemptions.id,
-          machineId: machineExemptions.machineId,
-          machineHostname: machines.hostname,
-          classroomId: machineExemptions.classroomId,
-          scheduleId: machineExemptions.scheduleId,
-          createdBy: machineExemptions.createdBy,
-          createdAt: machineExemptions.createdAt,
-          expiresAt: machineExemptions.expiresAt,
-        })
-        .from(machineExemptions)
-        .innerJoin(machines, eq(machines.id, machineExemptions.machineId))
-        .where(
-          and(
-            eq(machineExemptions.classroomId, input.classroomId),
-            gt(machineExemptions.expiresAt, now)
-          )
-        );
-
-      return {
-        classroomId: input.classroomId,
-        exemptions: rows.map((e) => ({
-          id: e.id,
-          machineId: e.machineId,
-          machineHostname: e.machineHostname,
-          classroomId: e.classroomId,
-          scheduleId: e.scheduleId,
-          createdBy: e.createdBy ?? null,
-          createdAt: e.createdAt ? e.createdAt.toISOString() : null,
-          expiresAt: e.expiresAt.toISOString(),
-        })),
-      };
+      return listActiveClassroomExemptions({ classroomId: input.classroomId });
     }),
 
   createExemption: tenantProcedure
