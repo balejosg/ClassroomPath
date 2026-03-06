@@ -1,9 +1,6 @@
 import { z } from 'zod';
-import { TRPCError } from '@trpc/server';
-import { and, eq, inArray } from 'drizzle-orm';
 
 import { router, tenantProcedure } from '../trpc.js';
-import { openpathDb, schedules, classrooms } from '../../db/openpath.js';
 import {
   createOneOffScheduleForTenant,
   createWeeklyScheduleForTenant,
@@ -13,21 +10,13 @@ import {
   type DbSchedule,
   updateOneOffScheduleForTenant,
   updateWeeklyScheduleForTenant,
-  weeklyRecurrenceWhereClause,
 } from '../../services/schedule-write.service.js';
+import {
+  getClassroomSchedulesForTenant,
+  getTeacherSchedulesForTenant,
+} from '../../services/schedule-read.service.js';
 
-import {
-  assertOrgClassroomAccess,
-  isOrgAdmin,
-  requireTeacherOrAdmin,
-} from '../../lib/tenant-access.js';
-import { getOrgClassroomIds } from '../../services/org-classroom-membership.service.js';
-import {
-  loadScheduleMetadataMaps,
-  presentOneOffScheduleWithPermissions,
-  presentWeeklySchedule,
-  presentWeeklyScheduleWithPermissions,
-} from '../../services/schedule-presenter.js';
+import { requireTeacherOrAdmin } from '../../lib/tenant-access.js';
 
 const CreateScheduleSchema = z.object({
   classroomId: z.string().min(1),
@@ -70,72 +59,12 @@ export const schedulesRouter = router({
     .input(z.object({ classroomId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       requireTeacherOrAdmin(ctx);
-      await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
-
-      const classroom = await openpathDb
-        .select()
-        .from(classrooms)
-        .where(eq(classrooms.id, input.classroomId))
-        .limit(1);
-
-      if (!classroom[0]) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Classroom not found' });
-      }
-
-      const rows: DbSchedule[] = await openpathDb
-        .select()
-        .from(schedules)
-        .where(and(eq(schedules.classroomId, input.classroomId), weeklyRecurrenceWhereClause()))
-        .orderBy(schedules.dayOfWeek, schedules.startTime);
-
-      const oneOffRows: DbSchedule[] = await openpathDb
-        .select()
-        .from(schedules)
-        .where(
-          and(eq(schedules.classroomId, input.classroomId), eq(schedules.recurrence, 'one_off'))
-        )
-        .orderBy(schedules.startAt);
-
-      const userId = ctx.user.sub;
-      const admin = isOrgAdmin(ctx);
-      const metadata = await loadScheduleMetadataMaps([...rows, ...oneOffRows]);
-
-      return {
-        classroom: {
-          id: classroom[0].id,
-          name: classroom[0].name,
-          displayName: classroom[0].displayName,
-        },
-        schedules: rows.map((row) =>
-          presentWeeklyScheduleWithPermissions(row, metadata, { userId, admin })
-        ),
-        oneOffSchedules: oneOffRows.map((row) =>
-          presentOneOffScheduleWithPermissions(row, metadata, { userId, admin })
-        ),
-      };
+      return getClassroomSchedulesForTenant({ ctx, classroomId: input.classroomId });
     }),
 
   getMine: tenantProcedure.query(async ({ ctx }) => {
     requireTeacherOrAdmin(ctx);
-
-    const classroomIds = await getOrgClassroomIds({ organizationId: ctx.organizationId! });
-    if (classroomIds.length === 0) return [];
-
-    const rows: DbSchedule[] = await openpathDb
-      .select()
-      .from(schedules)
-      .where(
-        and(
-          eq(schedules.teacherId, ctx.user.sub),
-          inArray(schedules.classroomId, classroomIds),
-          weeklyRecurrenceWhereClause()
-        )
-      )
-      .orderBy(schedules.dayOfWeek, schedules.startTime);
-
-    const metadata = await loadScheduleMetadataMaps(rows);
-
-    return rows.map((row) => presentWeeklySchedule(row, metadata));
+    return getTeacherSchedulesForTenant({ ctx });
   }),
 
   create: tenantProcedure.input(CreateScheduleSchema).mutation(async ({ ctx, input }) => {
