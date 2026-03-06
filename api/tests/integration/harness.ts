@@ -8,6 +8,7 @@ import {
   bearerAuth,
   getAvailablePort,
   parseTRPC,
+  trpcQuery,
   resetDb,
   trpcMutate,
   waitForHealth,
@@ -109,6 +110,23 @@ export async function approveOrganizationMember(params: {
     bearerAuth(params.adminToken)
   );
   assertStatus(approveResp, 200);
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const readyResp = await trpcQuery(
+      params.baseUrl,
+      'requests.listGroups',
+      undefined,
+      bearerAuth(params.memberToken)
+    );
+
+    if (readyResp.status === 200) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error('Approved tenant member never became visible to tenant-scoped procedures');
 }
 
 export async function startIntegrationServer(): Promise<IntegrationServerHandle> {

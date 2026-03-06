@@ -33,9 +33,13 @@ import {
   isOrgAdmin,
   requireTeacherOrAdmin,
 } from '../../lib/tenant-access.js';
-import { getGroupDisplayNamesByIds } from '../../lib/openpath-groups.js';
-import { getUserNamesByIds } from '../../lib/openpath-users.js';
 import { getOrgClassroomIds } from '../../services/org-classroom-membership.service.js';
+import {
+  loadScheduleMetadataMaps,
+  presentOneOffScheduleWithPermissions,
+  presentWeeklySchedule,
+  presentWeeklyScheduleWithPermissions,
+} from '../../services/schedule-presenter.js';
 
 const CreateScheduleSchema = z.object({
   classroomId: z.string().min(1),
@@ -73,13 +77,6 @@ const UpdateOneOffScheduleSchema = z.object({
   groupId: z.string().min(1).optional(),
 });
 
-function getScheduleMetadataMaps(rows: readonly DbSchedule[]) {
-  return {
-    groupIds: rows.map((row) => row.groupId),
-    teacherIds: rows.map((row) => row.teacherId),
-  };
-}
-
 export const schedulesRouter = router({
   getByClassroom: tenantProcedure
     .input(z.object({ classroomId: z.string().min(1) }))
@@ -113,11 +110,7 @@ export const schedulesRouter = router({
 
       const userId = ctx.user.sub;
       const admin = isOrgAdmin(ctx);
-      const metadataInputs = getScheduleMetadataMaps([...rows, ...oneOffRows]);
-      const [groupDisplayNamesById, teacherNamesById] = await Promise.all([
-        getGroupDisplayNamesByIds(metadataInputs.groupIds),
-        getUserNamesByIds(metadataInputs.teacherIds),
-      ]);
+      const metadata = await loadScheduleMetadataMaps([...rows, ...oneOffRows]);
 
       return {
         classroom: {
@@ -125,28 +118,12 @@ export const schedulesRouter = router({
           name: classroom[0].name,
           displayName: classroom[0].displayName,
         },
-        schedules: rows.map((s) => {
-          const base = mapToWeeklyScheduleBase(s);
-          const isMine = base.teacherId === userId;
-          return {
-            ...base,
-            groupDisplayName: groupDisplayNamesById.get(base.groupId) ?? null,
-            teacherName: teacherNamesById.get(base.teacherId) ?? null,
-            isMine,
-            canEdit: isMine || admin,
-          };
-        }),
-        oneOffSchedules: oneOffRows.map((s) => {
-          const base = mapToOneOffScheduleBase(s);
-          const isMine = base.teacherId === userId;
-          return {
-            ...base,
-            groupDisplayName: groupDisplayNamesById.get(base.groupId) ?? null,
-            teacherName: teacherNamesById.get(base.teacherId) ?? null,
-            isMine,
-            canEdit: isMine || admin,
-          };
-        }),
+        schedules: rows.map((row) =>
+          presentWeeklyScheduleWithPermissions(row, metadata, { userId, admin })
+        ),
+        oneOffSchedules: oneOffRows.map((row) =>
+          presentOneOffScheduleWithPermissions(row, metadata, { userId, admin })
+        ),
       };
     }),
 
@@ -168,20 +145,9 @@ export const schedulesRouter = router({
       )
       .orderBy(schedules.dayOfWeek, schedules.startTime);
 
-    const metadataInputs = getScheduleMetadataMaps(rows);
-    const [groupDisplayNamesById, teacherNamesById] = await Promise.all([
-      getGroupDisplayNamesByIds(metadataInputs.groupIds),
-      getUserNamesByIds(metadataInputs.teacherIds),
-    ]);
+    const metadata = await loadScheduleMetadataMaps(rows);
 
-    return rows.map((row) => {
-      const base = mapToWeeklyScheduleBase(row);
-      return {
-        ...base,
-        groupDisplayName: groupDisplayNamesById.get(base.groupId) ?? null,
-        teacherName: teacherNamesById.get(base.teacherId) ?? null,
-      };
-    });
+    return rows.map((row) => presentWeeklySchedule(row, metadata));
   }),
 
   create: tenantProcedure.input(CreateScheduleSchema).mutation(async ({ ctx, input }) => {
