@@ -1,12 +1,10 @@
 import { TRPCError } from '@trpc/server';
 import { and, eq, gt, inArray } from 'drizzle-orm';
+import { openpathDb, classrooms, machineExemptions, machines } from '../db/openpath.js';
 import {
-  openpathDb,
-  classrooms,
-  machineExemptions,
-  machines,
-} from '../db/openpath.js';
-import { getCurrentScheduleGroupByClassroomId, getCurrentScheduleGroupId } from './current-group.service.js';
+  getCurrentScheduleGroupByClassroomId,
+  getCurrentScheduleGroupId,
+} from './current-group.service.js';
 import {
   groupMachinesByClassroomIdForList,
   presentClassroomBase,
@@ -44,14 +42,20 @@ export async function listTenantClassrooms(params: { organizationId: string }) {
     return [];
   }
 
-  const rows = await openpathDb.select().from(classrooms).where(inArray(classrooms.id, classroomIds));
+  const rows = await openpathDb
+    .select()
+    .from(classrooms)
+    .where(inArray(classrooms.id, classroomIds));
 
   const now = new Date();
   const scheduleGroupByClassroomId = await getCurrentScheduleGroupByClassroomId({
     classroomIds,
     date: now,
   });
-  const machineRows = await openpathDb.select().from(machines).where(inArray(machines.classroomId, classroomIds));
+  const machineRows = await openpathDb
+    .select()
+    .from(machines)
+    .where(inArray(machines.classroomId, classroomIds));
   const machinesByClassroomId = groupMachinesByClassroomIdForList(machineRows, now);
 
   return rows.map((classroom) =>
@@ -103,14 +107,14 @@ export async function listTenantClassroomMachines(params: {
     return rows.map(presentClassroomMachineSummary);
   }
 
-  const rows = await openpathDb.select().from(machines).where(inArray(machines.classroomId, classroomIds));
+  const rows = await openpathDb
+    .select()
+    .from(machines)
+    .where(inArray(machines.classroomId, classroomIds));
   return rows.map(presentClassroomMachineSummary);
 }
 
-export async function listActiveClassroomExemptions(params: {
-  classroomId: string;
-  now?: Date;
-}) {
+export async function listActiveClassroomExemptions(params: { classroomId: string; now?: Date }) {
   const now = params.now ?? new Date();
 
   const rows = await openpathDb
@@ -126,7 +130,12 @@ export async function listActiveClassroomExemptions(params: {
     })
     .from(machineExemptions)
     .innerJoin(machines, eq(machines.id, machineExemptions.machineId))
-    .where(and(eq(machineExemptions.classroomId, params.classroomId), gt(machineExemptions.expiresAt, now)));
+    .where(
+      and(
+        eq(machineExemptions.classroomId, params.classroomId),
+        gt(machineExemptions.expiresAt, now)
+      )
+    );
 
   return {
     classroomId: params.classroomId,

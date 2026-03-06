@@ -26,7 +26,10 @@ describe('classroom-name.service', () => {
       (error: unknown) => {
         assert.ok(error instanceof TRPCError);
         assert.strictEqual(error.code, 'BAD_REQUEST');
-        assert.strictEqual(error.message, 'Classroom name must include at least one letter or number');
+        assert.strictEqual(
+          error.message,
+          'Classroom name must include at least one letter or number'
+        );
         return true;
       }
     );

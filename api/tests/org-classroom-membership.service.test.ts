@@ -45,7 +45,13 @@ describe('org-classroom-membership.service', () => {
   });
 
   it('returns true only when the organization has the classroom link', async () => {
-    assert.strictEqual(await orgHasClassroom({ organizationId: ORG_ID, classroomId: CLASSROOM_A }), true);
-    assert.strictEqual(await orgHasClassroom({ organizationId: ORG_ID, classroomId: 'missing' }), false);
+    assert.strictEqual(
+      await orgHasClassroom({ organizationId: ORG_ID, classroomId: CLASSROOM_A }),
+      true
+    );
+    assert.strictEqual(
+      await orgHasClassroom({ organizationId: ORG_ID, classroomId: 'missing' }),
+      false
+    );
   });
 });

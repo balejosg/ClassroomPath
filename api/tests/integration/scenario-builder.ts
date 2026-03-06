@@ -1,13 +1,7 @@
 import assert from 'node:assert';
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
-import {
-  assertStatus,
-  bearerAuth,
-  parseTRPC,
-  trpcMutate,
-  uniqueEmail,
-} from '../test-utils.js';
+import { assertStatus, bearerAuth, parseTRPC, trpcMutate, uniqueEmail } from '../test-utils.js';
 import {
   approveOrganizationMember,
   bootstrapOrg,

@@ -3,10 +3,7 @@ import assert from 'node:assert';
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../src/db/index.js';
-import {
-  openpathDb,
-  openpathSchema,
-} from '../src/db/openpath.js';
+import { openpathDb, openpathSchema } from '../src/db/openpath.js';
 import {
   getTenantClassroomById,
   listActiveClassroomExemptions,
@@ -24,14 +21,28 @@ const TEACHER_ID = `teacher_access_${RUN_ID}`;
 
 describe('classroom-access.service', () => {
   before(async () => {
-    await openpathDb.delete(openpathSchema.machineExemptions).where(eq(openpathSchema.machineExemptions.classroomId, CLASSROOM_ID));
-    await openpathDb.delete(openpathSchema.schedules).where(eq(openpathSchema.schedules.classroomId, CLASSROOM_ID));
-    await openpathDb.delete(openpathSchema.machines).where(eq(openpathSchema.machines.classroomId, CLASSROOM_ID));
-    await openpathDb.delete(openpathSchema.machines).where(eq(openpathSchema.machines.classroomId, OTHER_CLASSROOM_ID));
-    await openpathDb.delete(openpathSchema.classrooms).where(eq(openpathSchema.classrooms.id, CLASSROOM_ID));
-    await openpathDb.delete(openpathSchema.classrooms).where(eq(openpathSchema.classrooms.id, OTHER_CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.machineExemptions)
+      .where(eq(openpathSchema.machineExemptions.classroomId, CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.schedules)
+      .where(eq(openpathSchema.schedules.classroomId, CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.machines)
+      .where(eq(openpathSchema.machines.classroomId, CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.machines)
+      .where(eq(openpathSchema.machines.classroomId, OTHER_CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.classrooms)
+      .where(eq(openpathSchema.classrooms.id, CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.classrooms)
+      .where(eq(openpathSchema.classrooms.id, OTHER_CLASSROOM_ID));
     await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, TEACHER_ID));
-    await db.delete(schema.cpOrganizationClassrooms).where(eq(schema.cpOrganizationClassrooms.organizationId, ORG_ID));
+    await db
+      .delete(schema.cpOrganizationClassrooms)
+      .where(eq(schema.cpOrganizationClassrooms.organizationId, ORG_ID));
     await db.delete(schema.cpOrganizations).where(eq(schema.cpOrganizations.id, ORG_ID));
 
     await db.insert(schema.cpOrganizations).values({
@@ -128,14 +139,28 @@ describe('classroom-access.service', () => {
   });
 
   after(async () => {
-    await openpathDb.delete(openpathSchema.machineExemptions).where(eq(openpathSchema.machineExemptions.classroomId, CLASSROOM_ID));
-    await openpathDb.delete(openpathSchema.schedules).where(eq(openpathSchema.schedules.classroomId, CLASSROOM_ID));
-    await openpathDb.delete(openpathSchema.machines).where(eq(openpathSchema.machines.classroomId, CLASSROOM_ID));
-    await openpathDb.delete(openpathSchema.machines).where(eq(openpathSchema.machines.classroomId, OTHER_CLASSROOM_ID));
-    await openpathDb.delete(openpathSchema.classrooms).where(eq(openpathSchema.classrooms.id, CLASSROOM_ID));
-    await openpathDb.delete(openpathSchema.classrooms).where(eq(openpathSchema.classrooms.id, OTHER_CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.machineExemptions)
+      .where(eq(openpathSchema.machineExemptions.classroomId, CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.schedules)
+      .where(eq(openpathSchema.schedules.classroomId, CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.machines)
+      .where(eq(openpathSchema.machines.classroomId, CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.machines)
+      .where(eq(openpathSchema.machines.classroomId, OTHER_CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.classrooms)
+      .where(eq(openpathSchema.classrooms.id, CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.classrooms)
+      .where(eq(openpathSchema.classrooms.id, OTHER_CLASSROOM_ID));
     await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, TEACHER_ID));
-    await db.delete(schema.cpOrganizationClassrooms).where(eq(schema.cpOrganizationClassrooms.organizationId, ORG_ID));
+    await db
+      .delete(schema.cpOrganizationClassrooms)
+      .where(eq(schema.cpOrganizationClassrooms.organizationId, ORG_ID));
     await db.delete(schema.cpOrganizations).where(eq(schema.cpOrganizations.id, ORG_ID));
   });
 

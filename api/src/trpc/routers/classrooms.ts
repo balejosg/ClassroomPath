@@ -50,7 +50,9 @@ const UpdateClassroomSchema = z.object({
 });
 
 export const classroomsRouter = router({
-  list: tenantProcedure.query(async ({ ctx }) => listTenantClassrooms({ organizationId: ctx.organizationId! })),
+  list: tenantProcedure.query(async ({ ctx }) =>
+    listTenantClassrooms({ organizationId: ctx.organizationId! })
+  ),
 
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     await assertOrgClassroomAccess(ctx.organizationId!, input.id);

@@ -47,9 +47,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
 
     const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
 
-    const {
-      actor: admin,
-    } = await scenario.createOrgAdmin({
+    const { actor: admin } = await scenario.createOrgAdmin({
       userId: 'groups-admin',
       organizationName: 'Groups Test Org',
     });
@@ -90,7 +88,11 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
       displayName: 'Library Source Group',
     });
 
-    await scenario.updateGroup({ token: admin.token, id: source.id, visibility: 'instance_public' });
+    await scenario.updateGroup({
+      token: admin.token,
+      id: source.id,
+      visibility: 'instance_public',
+    });
 
     // Add a rule (and trigger duplicate createOrGet branch).
     const createRule1 = await trpcMutate(
