@@ -10,9 +10,35 @@ import {
   setRequestsApiUrl,
 } from '../auth-storage';
 
+const storage = new Map<string, string>();
+const localStorageMock: Storage = {
+  get length() {
+    return storage.size;
+  },
+  clear() {
+    storage.clear();
+  },
+  getItem(key) {
+    return storage.get(key) ?? null;
+  },
+  key(index) {
+    return Array.from(storage.keys())[index] ?? null;
+  },
+  removeItem(key) {
+    storage.delete(key);
+  },
+  setItem(key, value) {
+    storage.set(key, value);
+  },
+};
+
 describe('auth-storage', () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    storage.clear();
+    Object.defineProperty(window, 'localStorage', {
+      value: localStorageMock,
+      configurable: true,
+    });
   });
 
   it('persists and clears session keys consistently', () => {
