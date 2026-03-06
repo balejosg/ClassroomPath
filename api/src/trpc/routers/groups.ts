@@ -24,9 +24,12 @@ import {
   getTeacherGroupIdentifiers,
   isOpenPathGroupEnabled,
   isOrgAdmin,
-  requireTeacherOrAdmin,
   toOpenPathEnabledFlag,
 } from '../../lib/tenant-access.js';
+import {
+  assertTeacherOrAdminTenantProcedureContext,
+  assertTenantProcedureContext,
+} from '../tenant-procedure-helpers.js';
 
 import {
   addGroupToTeacherRole,
@@ -218,11 +221,11 @@ async function createWhitelistRuleForGroup(
 
 export const groupsRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
-    requireTeacherOrAdmin(ctx);
+    assertTeacherOrAdminTenantProcedureContext(ctx);
     const orgGroups = await db
       .select()
       .from(schema.cpOrganizationGroups)
-      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId));
 
     const groupIds = orgGroups.map((og) => og.groupId);
     const orgGroupMetaById = new Map(orgGroups.map((og) => [og.groupId, og]));
@@ -254,14 +257,14 @@ export const groupsRouter = router({
    * List instance-public groups for browsing/cloning within the organization.
    */
   libraryList: tenantProcedure.query(async ({ ctx }) => {
-    requireTeacherOrAdmin(ctx);
+    assertTeacherOrAdminTenantProcedureContext(ctx);
 
     const orgGroups = await db
       .select()
       .from(schema.cpOrganizationGroups)
       .where(
         and(
-          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId),
           eq(schema.cpOrganizationGroups.visibility, 'instance_public')
         )
       );
@@ -294,10 +297,11 @@ export const groupsRouter = router({
    * Clone a group into a new private group (copy rules) within the organization.
    */
   clone: tenantProcedure.input(CloneGroupSchema).mutation(async ({ ctx, input }) => {
+    assertTenantProcedureContext(ctx);
     await assertCanViewGroup(ctx, input.sourceGroupId, GROUP_PERMISSION_OPTS);
 
     return cloneGroupIntoOrganization({
-      organizationId: ctx.organizationId!,
+      organizationId: ctx.organizationId,
       actorUserId: ctx.user.sub,
       actorRole: ctx.userRole,
       sourceGroupId: input.sourceGroupId,
@@ -311,12 +315,12 @@ export const groupsRouter = router({
    * Returns counts of groups, whitelist rules, and blocked rules.
    */
   stats: tenantProcedure.query(async ({ ctx }) => {
-    requireTeacherOrAdmin(ctx);
+    assertTeacherOrAdminTenantProcedureContext(ctx);
     // Get groups belonging to this organization
     const orgGroups = await db
       .select()
       .from(schema.cpOrganizationGroups)
-      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId));
 
     const groupIds = orgGroups.map((og) => og.groupId);
 
@@ -392,7 +396,7 @@ export const groupsRouter = router({
     }),
 
   getByName: tenantProcedure.input(z.object({ name: z.string() })).query(async ({ ctx, input }) => {
-    requireTeacherOrAdmin(ctx);
+    assertTeacherOrAdminTenantProcedureContext(ctx);
     const group = await openpathDb
       .select()
       .from(whitelistGroups)
@@ -406,7 +410,7 @@ export const groupsRouter = router({
       .from(schema.cpOrganizationGroups)
       .where(
         and(
-          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId),
           eq(schema.cpOrganizationGroups.groupId, group[0].id)
         )
       )
@@ -466,7 +470,7 @@ export const groupsRouter = router({
   // Bulk delete rules - OpenPath SPA RulesManager uses this
   // SPA sends { ids: string[] } and expects { rules: Rule[], deleted: number } for undo
   bulkDeleteRules: tenantProcedure.input(BulkDeleteRulesSchema).mutation(async ({ ctx, input }) => {
-    requireTeacherOrAdmin(ctx);
+    assertTeacherOrAdminTenantProcedureContext(ctx);
     // Get all rules to be deleted (for undo support)
     const rulesToDelete = await openpathDb
       .select()
@@ -484,7 +488,7 @@ export const groupsRouter = router({
       .from(schema.cpOrganizationGroups)
       .where(
         and(
-          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId),
           inArray(schema.cpOrganizationGroups.groupId, ruleGroupIds)
         )
       );
@@ -538,7 +542,7 @@ export const groupsRouter = router({
   }),
 
   create: tenantProcedure.input(CreateGroupSchema).mutation(async ({ ctx, input }) => {
-    requireTeacherOrAdmin(ctx);
+    assertTeacherOrAdminTenantProcedureContext(ctx);
     const groupId = nanoid();
 
     let group: OpenPathWhitelistGroup;
@@ -558,7 +562,7 @@ export const groupsRouter = router({
 
     await db.insert(schema.cpOrganizationGroups).values({
       id: nanoid(),
-      organizationId: ctx.organizationId!,
+      organizationId: ctx.organizationId,
       groupId: group.id,
     });
 
@@ -582,6 +586,7 @@ export const groupsRouter = router({
   }),
 
   update: tenantProcedure.input(UpdateGroupSchema).mutation(async ({ ctx, input }) => {
+    assertTenantProcedureContext(ctx);
     // Allow updating a disabled group (e.g. to re-enable it).
     // "Use" checks are enforced on rule mutations and assignment flows.
     await assertCanAccessGroup(ctx, input.id, 'edit', GROUP_PERMISSION_OPTS);
@@ -608,7 +613,7 @@ export const groupsRouter = router({
         .set({ visibility: input.visibility })
         .where(
           and(
-            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId),
             eq(schema.cpOrganizationGroups.groupId, input.id)
           )
         );
@@ -634,13 +639,14 @@ export const groupsRouter = router({
   }),
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    assertTenantProcedureContext(ctx);
     await assertCanUseGroup(ctx, input.id, GROUP_PERMISSION_OPTS);
 
     await db
       .delete(schema.cpOrganizationGroups)
       .where(
         and(
-          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!),
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId),
           eq(schema.cpOrganizationGroups.groupId, input.id)
         )
       );
@@ -731,12 +737,12 @@ export const groupsRouter = router({
    * Used by Dashboard to show system status overview.
    */
   systemStatus: tenantProcedure.query(async ({ ctx }) => {
-    requireTeacherOrAdmin(ctx);
+    assertTeacherOrAdminTenantProcedureContext(ctx);
     // Get groups belonging to this organization
     const orgGroups = await db
       .select()
       .from(schema.cpOrganizationGroups)
-      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId!));
+      .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId));
 
     const groupIds = orgGroups.map((og) => og.groupId);
 

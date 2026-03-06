@@ -16,7 +16,7 @@ import {
   getTeacherSchedulesForTenant,
 } from '../../services/schedule-read.service.js';
 
-import { requireTeacherOrAdmin } from '../../lib/tenant-access.js';
+import { assertTeacherOrAdminTenantProcedureContext } from '../tenant-procedure-helpers.js';
 
 const CreateScheduleSchema = z.object({
   classroomId: z.string().min(1),
@@ -58,17 +58,17 @@ export const schedulesRouter = router({
   getByClassroom: tenantProcedure
     .input(z.object({ classroomId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      requireTeacherOrAdmin(ctx);
+      assertTeacherOrAdminTenantProcedureContext(ctx);
       return getClassroomSchedulesForTenant({ ctx, classroomId: input.classroomId });
     }),
 
   getMine: tenantProcedure.query(async ({ ctx }) => {
-    requireTeacherOrAdmin(ctx);
+    assertTeacherOrAdminTenantProcedureContext(ctx);
     return getTeacherSchedulesForTenant({ ctx });
   }),
 
   create: tenantProcedure.input(CreateScheduleSchema).mutation(async ({ ctx, input }) => {
-    requireTeacherOrAdmin(ctx);
+    assertTeacherOrAdminTenantProcedureContext(ctx);
     const created = await createWeeklyScheduleForTenant({ ctx, input });
 
     return mapToWeeklyScheduleBase(created as DbSchedule);
@@ -77,14 +77,14 @@ export const schedulesRouter = router({
   createOneOff: tenantProcedure
     .input(CreateOneOffScheduleSchema)
     .mutation(async ({ ctx, input }) => {
-      requireTeacherOrAdmin(ctx);
+      assertTeacherOrAdminTenantProcedureContext(ctx);
       const created = await createOneOffScheduleForTenant({ ctx, input });
 
       return mapToOneOffScheduleBase(created as DbSchedule);
     }),
 
   update: tenantProcedure.input(UpdateScheduleSchema).mutation(async ({ ctx, input }) => {
-    requireTeacherOrAdmin(ctx);
+    assertTeacherOrAdminTenantProcedureContext(ctx);
 
     const updated = await updateWeeklyScheduleForTenant({ ctx, input });
     return mapToWeeklyScheduleBase(updated);
@@ -93,7 +93,7 @@ export const schedulesRouter = router({
   updateOneOff: tenantProcedure
     .input(UpdateOneOffScheduleSchema)
     .mutation(async ({ ctx, input }) => {
-      requireTeacherOrAdmin(ctx);
+      assertTeacherOrAdminTenantProcedureContext(ctx);
 
       const updated = await updateOneOffScheduleForTenant({ ctx, input });
       return mapToOneOffScheduleBase(updated);
@@ -102,7 +102,7 @@ export const schedulesRouter = router({
   delete: tenantProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      requireTeacherOrAdmin(ctx);
+      assertTeacherOrAdminTenantProcedureContext(ctx);
 
       await deleteScheduleForTenant({ ctx, id: input.id });
       return { success: true };

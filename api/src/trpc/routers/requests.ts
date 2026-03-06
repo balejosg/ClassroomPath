@@ -13,27 +13,15 @@ import { eq, inArray, and, sql } from 'drizzle-orm';
 
 import { orgHasGroup } from '../../services/org-group-membership.service.js';
 
+import { assertCanUseGroup, getAccessibleTenantGroupIds } from '../../lib/tenant-access.js';
 import {
-  assertCanUseGroup,
-  getAccessibleTenantGroupIds,
-  isOrgAdmin,
-} from '../../lib/tenant-access.js';
-
-type TenantUserRole = { role: string; groupIds?: string[] | null };
-
-type TenantRouterContext = {
-  organizationId: string;
-  userRole?: string;
-  user: {
-    sub: string;
-    name?: string | null;
-    email?: string | null;
-    roles?: TenantUserRole[];
-  };
-};
+  assertOrgAdminTenantProcedureContext,
+  assertTenantProcedureContext,
+  type TenantProcedureContext,
+} from '../tenant-procedure-helpers.js';
 
 async function assertGroupBelongsToTenant(
-  ctx: TenantRouterContext,
+  ctx: TenantProcedureContext,
   groupId: string
 ): Promise<void> {
   const inTenant = await orgHasGroup({ organizationId: ctx.organizationId, groupId });
@@ -45,7 +33,7 @@ async function assertGroupBelongsToTenant(
   }
 }
 
-async function assertCanManageGroup(ctx: TenantRouterContext, groupId: string): Promise<void> {
+async function assertCanManageGroup(ctx: TenantProcedureContext, groupId: string): Promise<void> {
   await assertCanUseGroup(ctx, groupId, {
     notTeacherMessage: 'Insufficient permissions for this group',
     notAllowedMessage: 'Insufficient permissions for this group',
@@ -80,7 +68,7 @@ function assertPendingRequest(request: { status: string }): void {
 }
 
 async function assertRequestBelongsToTenant(
-  ctx: TenantRouterContext,
+  ctx: TenantProcedureContext,
   requestGroupId: string
 ): Promise<void> {
   const inTenant = await orgHasGroup({
@@ -102,13 +90,6 @@ function serializeRequestDates<T extends { createdAt: Date | null; updatedAt: Da
   };
 }
 
-function requireTenantOrganizationId(organizationId: string | null | undefined): string {
-  if (!organizationId) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Missing tenant context' });
-  }
-  return organizationId;
-}
-
 export const requestsRouter = router({
   create: tenantProcedure
     .input(
@@ -127,14 +108,9 @@ export const requestsRouter = router({
         });
       }
 
-      const tenantContext: TenantRouterContext = {
-        organizationId: requireTenantOrganizationId(ctx.organizationId),
-        userRole: ctx.userRole,
-        user: ctx.user,
-      };
-
-      await assertGroupBelongsToTenant(tenantContext, input.groupId);
-      await assertCanManageGroup(tenantContext, input.groupId);
+      assertTenantProcedureContext(ctx);
+      await assertGroupBelongsToTenant(ctx, input.groupId);
+      await assertCanManageGroup(ctx, input.groupId);
 
       const pendingRequest = await openpathDb
         .select({ id: requests.id })
@@ -178,9 +154,9 @@ export const requestsRouter = router({
 
   // List groups for the organization (used by DomainRequests dropdown)
   listGroups: tenantProcedure.query(async ({ ctx }) => {
-    const organizationId = requireTenantOrganizationId(ctx.organizationId);
+    assertTenantProcedureContext(ctx);
     const groupIds = await getAccessibleTenantGroupIds({
-      organizationId,
+      organizationId: ctx.organizationId,
       userRole: ctx.userRole,
       userId: ctx.user.sub,
     });
@@ -205,9 +181,9 @@ export const requestsRouter = router({
    * Returns counts by status: total, pending, approved, rejected.
    */
   stats: tenantProcedure.query(async ({ ctx }) => {
-    const organizationId = requireTenantOrganizationId(ctx.organizationId);
+    assertTenantProcedureContext(ctx);
     const groupIds = await getAccessibleTenantGroupIds({
-      organizationId,
+      organizationId: ctx.organizationId,
       userRole: ctx.userRole,
       userId: ctx.user.sub,
     });
@@ -233,9 +209,9 @@ export const requestsRouter = router({
   list: tenantProcedure
     .input(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
     .query(async ({ ctx, input }) => {
-      const organizationId = requireTenantOrganizationId(ctx.organizationId);
+      assertTenantProcedureContext(ctx);
       const groupIds = await getAccessibleTenantGroupIds({
-        organizationId,
+        organizationId: ctx.organizationId,
         userRole: ctx.userRole,
         userId: ctx.user.sub,
       });
@@ -258,17 +234,13 @@ export const requestsRouter = router({
     }),
 
   approve: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const tenantContext: TenantRouterContext = {
-      organizationId: requireTenantOrganizationId(ctx.organizationId),
-      userRole: ctx.userRole,
-      user: ctx.user,
-    };
+    assertTenantProcedureContext(ctx);
 
     const request = await getRequestById(input.id);
     const requestGroupId = assertRequestHasGroupId(request);
     assertPendingRequest(request);
-    await assertRequestBelongsToTenant(tenantContext, requestGroupId);
-    await assertCanManageGroup(tenantContext, requestGroupId);
+    await assertRequestBelongsToTenant(ctx, requestGroupId);
+    await assertCanManageGroup(ctx, requestGroupId);
 
     const inserted = await openpathDb
       .insert(whitelistRules)
@@ -305,17 +277,13 @@ export const requestsRouter = router({
   reject: tenantProcedure
     .input(z.object({ id: z.string(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const tenantContext: TenantRouterContext = {
-        organizationId: requireTenantOrganizationId(ctx.organizationId),
-        userRole: ctx.userRole,
-        user: ctx.user,
-      };
+      assertTenantProcedureContext(ctx);
 
       const request = await getRequestById(input.id);
       const requestGroupId = assertRequestHasGroupId(request);
       assertPendingRequest(request);
-      await assertRequestBelongsToTenant(tenantContext, requestGroupId);
-      await assertCanManageGroup(tenantContext, requestGroupId);
+      await assertRequestBelongsToTenant(ctx, requestGroupId);
+      await assertCanManageGroup(ctx, requestGroupId);
 
       await openpathDb
         .update(requests)
@@ -332,19 +300,11 @@ export const requestsRouter = router({
     }),
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const tenantContext: TenantRouterContext = {
-      organizationId: requireTenantOrganizationId(ctx.organizationId),
-      userRole: ctx.userRole,
-      user: ctx.user,
-    };
-
-    if (!isOrgAdmin(tenantContext)) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-    }
+    assertOrgAdminTenantProcedureContext(ctx);
 
     const request = await getRequestById(input.id);
     const requestGroupId = assertRequestHasGroupId(request);
-    await assertRequestBelongsToTenant(tenantContext, requestGroupId);
+    await assertRequestBelongsToTenant(ctx, requestGroupId);
 
     await openpathDb.delete(requests).where(eq(requests.id, input.id));
 
