@@ -8,12 +8,9 @@ process.env.NODE_ENV = 'test';
 
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
-import type { Server } from 'node:http';
-import jwt from 'jsonwebtoken';
 import { and, eq } from 'drizzle-orm';
 
 import {
-  getAvailablePort,
   trpcMutate,
   trpcQuery,
   parseTRPC,
@@ -21,75 +18,33 @@ import {
   assertStatus,
   resetDb,
   uniqueEmail,
-  waitForHealth,
 } from '../test-utils.js';
+import {
+  type IntegrationServerHandle,
+  signToken,
+  startIntegrationServer,
+  stopIntegrationServer,
+} from './harness.js';
 
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
-import { closeConnection } from '../../src/db/index.js';
-import { closeOpenPathConnection } from '../../src/db/openpath.js';
 
-let PORT: number;
 let API_URL: string;
-let server: Server | undefined;
-
-function signToken(params: { userId: string; email: string; name: string; roles: any[] }): string {
-  return jwt.sign(
-    {
-      sub: params.userId,
-      email: params.email,
-      name: params.name,
-      roles: params.roles,
-    },
-    JWT_SECRET
-  );
-}
+let integrationServer: IntegrationServerHandle | undefined;
 
 describe('ClassroomPath users integration (/cp/trpc)', async () => {
   before(async () => {
     await resetDb();
 
-    PORT = await getAvailablePort();
-    API_URL = `http://localhost:${String(PORT)}`;
-    process.env.CP_PORT = String(PORT);
-
-    const { app } = await import('../../src/server.js');
-    server = app.listen(PORT);
-    await waitForHealth(API_URL);
+    integrationServer = await startIntegrationServer();
+    API_URL = integrationServer.baseUrl;
   });
 
   after(async () => {
-    const srv = server;
-    server = undefined;
-    if (srv !== undefined) {
-      try {
-        if ((srv as any).listening === true) {
-          await new Promise<void>((resolve, reject) => {
-            srv.close((err) => {
-              if (err) reject(err);
-              else resolve();
-            });
-          });
-        }
-      } catch (err: any) {
-        if (err?.code !== 'ERR_SERVER_NOT_RUNNING') throw err;
-      }
-    }
-
-    await closeConnection();
-    await closeOpenPathConnection();
-
-    // Close undici keep-alives to let node:test exit cleanly.
-    try {
-      const undici: any = await import('undici');
-      const dispatcher: any = undici.getGlobalDispatcher?.();
-      if (typeof dispatcher?.close === 'function') {
-        await dispatcher.close();
-      }
-    } catch {
-      // best-effort cleanup
-    }
+    const currentServer = integrationServer;
+    integrationServer = undefined;
+    await stopIntegrationServer(currentServer?.server);
   });
 
   test('users.list returns SafeUserWithRoles and never exposes passwordHash', async () => {
@@ -164,6 +119,7 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     ]);
 
     const token = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
@@ -234,6 +190,7 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     });
 
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Creator',
@@ -271,6 +228,7 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     assert.strictEqual(membership[0].role, 'teacher');
 
     const createdToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: created.id,
       email: createdEmail,
       name: 'Created Teacher',

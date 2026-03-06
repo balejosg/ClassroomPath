@@ -34,6 +34,7 @@ import {
   getOrgClassroomLinkOrThrow,
   requireTeacherOrAdmin,
 } from '../../lib/tenant-access.js';
+import { throwConflictOnUniqueViolation } from '../../lib/pg-errors.js';
 
 const CLASSROOM_SCOPE_PREFIX = 'cp';
 
@@ -413,18 +414,10 @@ export const classroomsRouter = router({
         })
         .returning();
     } catch (err: unknown) {
-      const code =
-        typeof err === 'object' && err !== null && 'code' in err
-          ? String((err as { code?: unknown }).code)
-          : null;
-
-      if (code === '23505') {
-        throw new TRPCError({
-          code: 'CONFLICT',
-          message: 'Classroom with this name already exists in your organization',
-        });
-      }
-      throw err;
+      throwConflictOnUniqueViolation(
+        err,
+        'Classroom with this name already exists in your organization'
+      );
     }
 
     await db.insert(schema.cpOrganizationClassrooms).values({

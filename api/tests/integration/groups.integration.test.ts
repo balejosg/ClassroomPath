@@ -8,11 +8,8 @@ process.env.NODE_ENV = 'test';
 
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
-import type { Server } from 'node:http';
-import jwt from 'jsonwebtoken';
 
 import {
-  getAvailablePort,
   trpcQuery,
   trpcMutate,
   parseTRPC,
@@ -20,82 +17,21 @@ import {
   assertStatus,
   resetDb,
   uniqueEmail,
-  waitForHealth,
 } from '../test-utils.js';
+import {
+  approveOrganizationMember,
+  bootstrapOrg,
+  ensureOpenPathUser,
+  type IntegrationServerHandle,
+  signToken,
+  startIntegrationServer,
+  stopIntegrationServer,
+} from './harness.js';
 
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
-import { closeConnection } from '../../src/db/index.js';
-import { closeOpenPathConnection } from '../../src/db/openpath.js';
 
-let PORT: number;
 let API_URL: string;
-let server: Server | undefined;
-
-type TestUser = {
-  userId: string;
-  email: string;
-  name: string;
-};
-
-function signToken(params: { userId: string; email: string; name: string; roles: any[] }): string {
-  return jwt.sign(
-    {
-      sub: params.userId,
-      email: params.email,
-      name: params.name,
-      roles: params.roles,
-    },
-    JWT_SECRET
-  );
-}
-
-async function ensureOpenPathUser(u: TestUser): Promise<void> {
-  await openpathDb
-    .insert(openpathSchema.users)
-    .values({
-      id: u.userId,
-      email: u.email,
-      name: u.name,
-      passwordHash: 'hashed',
-    })
-    .onConflictDoNothing();
-}
-
-async function bootstrapOrg(admin: { token: string }): Promise<{ organizationId: string }> {
-  const createResp = await trpcMutate(
-    API_URL,
-    'onboarding.createOrganization',
-    { name: 'Groups Test Org' },
-    bearerAuth(admin.token)
-  );
-  assertStatus(createResp, 200);
-  const { data } = (await parseTRPC(createResp)) as { data: any };
-  assert.ok(data?.organizationId, 'createOrganization should return organizationId');
-  return { organizationId: String(data.organizationId) };
-}
-
-async function approveTeacher(params: {
-  adminToken: string;
-  teacherToken: string;
-  teacherUserId: string;
-  organizationId: string;
-}): Promise<void> {
-  const waitResp = await trpcMutate(
-    API_URL,
-    'onboarding.waitForInvitation',
-    { targetOrganizationId: params.organizationId },
-    bearerAuth(params.teacherToken)
-  );
-  assertStatus(waitResp, 200);
-
-  const approveResp = await trpcMutate(
-    API_URL,
-    'pendingUsers.approve',
-    { userId: params.teacherUserId, role: 'teacher' },
-    bearerAuth(params.adminToken)
-  );
-  assertStatus(approveResp, 200);
-}
+let integrationServer: IntegrationServerHandle | undefined;
 
 async function createGroup(params: {
   token: string;
@@ -139,46 +75,14 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
   before(async () => {
     await resetDb();
 
-    PORT = await getAvailablePort();
-    API_URL = `http://localhost:${String(PORT)}`;
-    process.env.CP_PORT = String(PORT);
-
-    const { app } = await import('../../src/server.js');
-    server = app.listen(PORT);
-    await waitForHealth(API_URL);
+    integrationServer = await startIntegrationServer();
+    API_URL = integrationServer.baseUrl;
   });
 
   after(async () => {
-    const srv = server;
-    server = undefined;
-    if (srv !== undefined) {
-      try {
-        if ((srv as any).listening === true) {
-          await new Promise<void>((resolve, reject) => {
-            srv.close((err) => {
-              if (err) reject(err);
-              else resolve();
-            });
-          });
-        }
-      } catch (err: any) {
-        if (err?.code !== 'ERR_SERVER_NOT_RUNNING') throw err;
-      }
-    }
-
-    await closeConnection();
-    await closeOpenPathConnection();
-
-    // Close undici keep-alives so node:test can exit cleanly.
-    try {
-      const undici: any = await import('undici');
-      const dispatcher: any = undici.getGlobalDispatcher?.();
-      if (typeof dispatcher?.close === 'function') {
-        await dispatcher.close();
-      }
-    } catch {
-      // best-effort
-    }
+    const currentServer = integrationServer;
+    integrationServer = undefined;
+    await stopIntegrationServer(currentServer?.server);
   });
 
   test('groups.create returns CONFLICT when name/slug already exists', async () => {
@@ -188,13 +92,14 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
       roles: [{ role: 'admin' }],
     });
 
-    await bootstrapOrg({ token: adminToken });
+    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Groups Test Org' });
 
     await createGroup({ token: adminToken, name: 'dup-group', displayName: 'Dup Group' });
 
@@ -217,6 +122,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
@@ -227,17 +133,23 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
     const teacherEmail = uniqueEmail('teacher');
     await ensureOpenPathUser({ userId: teacherUserId, email: teacherEmail, name: 'Teacher User' });
     const teacherToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherUserId,
       email: teacherEmail,
       name: 'Teacher User',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
 
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
-    await approveTeacher({
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Groups Test Org',
+    });
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken,
-      teacherUserId,
+      memberToken: teacherToken,
+      memberUserId: teacherUserId,
       organizationId,
     });
 

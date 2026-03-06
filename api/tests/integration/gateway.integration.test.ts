@@ -8,10 +8,7 @@ process.env.NODE_ENV = 'test';
 
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
-import type { Server } from 'node:http';
-import jwt from 'jsonwebtoken';
 import {
-  getAvailablePort,
   trpcQuery,
   trpcMutate,
   parseTRPC,
@@ -19,64 +16,31 @@ import {
   assertStatus,
   resetDb,
   uniqueEmail,
-  waitForHealth,
 } from '../test-utils.js';
+import {
+  type IntegrationServerHandle,
+  signToken,
+  startIntegrationServer,
+  stopIntegrationServer,
+} from './harness.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
-import { closeConnection } from '../../src/db/index.js';
-import { closeOpenPathConnection } from '../../src/db/openpath.js';
 
-let PORT: number;
 let API_URL: string;
 
-let server: Server | undefined;
+let integrationServer: IntegrationServerHandle | undefined;
 
 describe('ClassroomPath Gateway Integration', async () => {
   before(async () => {
     await resetDb();
 
-    PORT = await getAvailablePort();
-    API_URL = `http://localhost:${String(PORT)}`;
-    process.env.CP_PORT = String(PORT);
-
-    const { app } = await import('../../src/server.js');
-
-    server = app.listen(PORT);
-    await waitForHealth(API_URL);
+    integrationServer = await startIntegrationServer();
+    API_URL = integrationServer.baseUrl;
   });
 
   after(async () => {
-    const srv = server;
-    server = undefined;
-    if (srv !== undefined) {
-      try {
-        // Node may throw ERR_SERVER_NOT_RUNNING if already closed.
-        // Also avoid closing when not listening to keep teardown robust.
-        if ((srv as any).listening === true) {
-          await new Promise<void>((resolve, reject) => {
-            srv.close((err) => {
-              if (err) reject(err);
-              else resolve();
-            });
-          });
-        }
-      } catch (err: any) {
-        if (err?.code !== 'ERR_SERVER_NOT_RUNNING') throw err;
-      }
-    }
-    await closeConnection();
-    await closeOpenPathConnection();
-
-    // Node's fetch (undici) can keep sockets alive and prevent the test runner from exiting.
-    // Close the global dispatcher to release any keep-alive connections.
-    try {
-      const undici: any = await import('undici');
-      const dispatcher: any = undici.getGlobalDispatcher?.();
-      if (typeof dispatcher?.close === 'function') {
-        await dispatcher.close();
-      }
-    } catch {
-      // best-effort cleanup
-    }
+    const currentServer = integrationServer;
+    integrationServer = undefined;
+    await stopIntegrationServer(currentServer?.server);
   });
 
   test('should return 401 for unauthenticated requests to /cp/trpc', async () => {
@@ -97,15 +61,13 @@ describe('ClassroomPath Gateway Integration', async () => {
       passwordHash: 'hashed',
     });
 
-    const token = jwt.sign(
-      {
-        sub: userId,
-        email,
-        name: 'Test User',
-        roles: [],
-      },
-      JWT_SECRET
-    );
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: userId,
+      email,
+      name: 'Test User',
+      roles: [],
+    });
 
     // 1. Check status (should be not onboarded)
     const statusResp = await trpcQuery(API_URL, 'onboarding.status', undefined, bearerAuth(token));
@@ -251,15 +213,13 @@ describe('ClassroomPath Gateway Integration', async () => {
       })
       .onConflictDoNothing();
 
-    const token = jwt.sign(
-      {
-        sub: userId,
-        email,
-        name: 'ListGroups Test User',
-        roles: [],
-      },
-      JWT_SECRET
-    );
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: userId,
+      email,
+      name: 'ListGroups Test User',
+      roles: [],
+    });
 
     // Create organization first
     await trpcMutate(
@@ -302,15 +262,13 @@ describe('ClassroomPath Gateway Integration', async () => {
       })
       .onConflictDoNothing();
 
-    const token = jwt.sign(
-      {
-        sub: userId,
-        email,
-        name: userName,
-        roles: [],
-      },
-      JWT_SECRET
-    );
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: userId,
+      email,
+      name: userName,
+      roles: [],
+    });
 
     // Create organization to establish tenant context
     await trpcMutate(
@@ -345,15 +303,13 @@ describe('ClassroomPath Gateway Integration', async () => {
       })
       .onConflictDoNothing();
 
-    const token = jwt.sign(
-      {
-        sub: userId,
-        email,
-        name: 'Healthcheck Test User',
-        roles: [],
-      },
-      JWT_SECRET
-    );
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: userId,
+      email,
+      name: 'Healthcheck Test User',
+      roles: [],
+    });
 
     // Create organization
     await trpcMutate(
@@ -404,15 +360,13 @@ describe('ClassroomPath Gateway Integration', async () => {
       })
       .onConflictDoNothing();
 
-    const token = jwt.sign(
-      {
-        sub: userId,
-        email,
-        name: 'API Tokens Test User',
-        roles: [],
-      },
-      JWT_SECRET
-    );
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: userId,
+      email,
+      name: 'API Tokens Test User',
+      roles: [],
+    });
 
     // Create organization
     await trpcMutate(
@@ -445,15 +399,13 @@ describe('ClassroomPath Gateway Integration', async () => {
       })
       .onConflictDoNothing();
 
-    const token = jwt.sign(
-      {
-        sub: userId,
-        email,
-        name: 'API Tokens Create Test User',
-        roles: [],
-      },
-      JWT_SECRET
-    );
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: userId,
+      email,
+      name: 'API Tokens Create Test User',
+      roles: [],
+    });
 
     // Create organization
     await trpcMutate(
@@ -492,15 +444,13 @@ describe('ClassroomPath Gateway Integration', async () => {
       })
       .onConflictDoNothing();
 
-    const token = jwt.sign(
-      {
-        sub: userId,
-        email,
-        name: 'Groups Counts Test User',
-        roles: [],
-      },
-      JWT_SECRET
-    );
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: userId,
+      email,
+      name: 'Groups Counts Test User',
+      roles: [],
+    });
 
     // Create organization
     await trpcMutate(
@@ -570,15 +520,13 @@ describe('ClassroomPath Gateway Integration', async () => {
       })
       .onConflictDoNothing();
 
-    const token = jwt.sign(
-      {
-        sub: userId,
-        email,
-        name: 'System Status Test User',
-        roles: [],
-      },
-      JWT_SECRET
-    );
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: userId,
+      email,
+      name: 'System Status Test User',
+      roles: [],
+    });
 
     // Create organization
     await trpcMutate(

@@ -8,12 +8,9 @@ process.env.NODE_ENV = 'test';
 
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
-import type { Server } from 'node:http';
-import jwt from 'jsonwebtoken';
 import { eq, and } from 'drizzle-orm';
 
 import {
-  getAvailablePort,
   trpcMutate,
   trpcQuery,
   parseTRPC,
@@ -21,30 +18,20 @@ import {
   assertStatus,
   resetDb,
   uniqueEmail,
-  waitForHealth,
 } from '../test-utils.js';
+import {
+  type IntegrationServerHandle,
+  signToken,
+  startIntegrationServer,
+  stopIntegrationServer,
+} from './harness.js';
 
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
-import { closeConnection } from '../../src/db/index.js';
-import { closeOpenPathConnection } from '../../src/db/openpath.js';
 
-let PORT: number;
 let API_URL: string;
-let server: Server | undefined;
-
-function signToken(params: { userId: string; email: string; name: string; roles: any[] }): string {
-  return jwt.sign(
-    {
-      sub: params.userId,
-      email: params.email,
-      name: params.name,
-      roles: params.roles,
-    },
-    JWT_SECRET
-  );
-}
+let integrationServer: IntegrationServerHandle | undefined;
 
 async function seedTenant(params: {
   orgId: string;
@@ -117,45 +104,14 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
   before(async () => {
     await resetDb();
 
-    PORT = await getAvailablePort();
-    API_URL = `http://localhost:${String(PORT)}`;
-    process.env.CP_PORT = String(PORT);
-
-    const { app } = await import('../../src/server.js');
-    server = app.listen(PORT);
-    await waitForHealth(API_URL);
+    integrationServer = await startIntegrationServer();
+    API_URL = integrationServer.baseUrl;
   });
 
   after(async () => {
-    const srv = server;
-    server = undefined;
-    if (srv !== undefined) {
-      try {
-        if ((srv as any).listening === true) {
-          await new Promise<void>((resolve, reject) => {
-            srv.close((err) => {
-              if (err) reject(err);
-              else resolve();
-            });
-          });
-        }
-      } catch (err: any) {
-        if (err?.code !== 'ERR_SERVER_NOT_RUNNING') throw err;
-      }
-    }
-
-    await closeConnection();
-    await closeOpenPathConnection();
-
-    try {
-      const undici: any = await import('undici');
-      const dispatcher: any = undici.getGlobalDispatcher?.();
-      if (typeof dispatcher?.close === 'function') {
-        await dispatcher.close();
-      }
-    } catch {
-      // best-effort
-    }
+    const currentServer = integrationServer;
+    integrationServer = undefined;
+    await stopIntegrationServer(currentServer?.server);
   });
 
   test('approve creates whitelist rule and marks request approved', async () => {
@@ -229,6 +185,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     await seedRequest({ requestId, groupId: groupB, domain: 'cross-tenant.com' });
 
     const token = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminAId,
       email: adminAEmail,
       name: 'Admin A',
@@ -261,6 +218,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     await seedRequest({ requestId, groupId, domain: 'teacher-denied.com' });
 
     const deniedToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher 1',
@@ -276,6 +234,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     assertStatus(deniedResp, 403);
 
     const allowedToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher 1',

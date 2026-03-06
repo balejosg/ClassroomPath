@@ -8,12 +8,9 @@ process.env.NODE_ENV = 'test';
 
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
-import type { Server } from 'node:http';
-import jwt from 'jsonwebtoken';
 import { eq } from 'drizzle-orm';
 
 import {
-  getAvailablePort,
   trpcQuery,
   trpcMutate,
   parseTRPC,
@@ -21,59 +18,21 @@ import {
   assertStatus,
   resetDb,
   uniqueEmail,
-  waitForHealth,
 } from '../test-utils.js';
+import {
+  approveOrganizationMember,
+  bootstrapOrg,
+  ensureOpenPathUser,
+  type IntegrationServerHandle,
+  signToken,
+  startIntegrationServer,
+  stopIntegrationServer,
+} from './harness.js';
 
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
-import { closeConnection } from '../../src/db/index.js';
-import { closeOpenPathConnection } from '../../src/db/openpath.js';
 
-let PORT: number;
 let API_URL: string;
-let server: Server | undefined;
-
-type TestUser = {
-  userId: string;
-  email: string;
-  name: string;
-};
-
-function signToken(params: { userId: string; email: string; name: string; roles: any[] }): string {
-  return jwt.sign(
-    {
-      sub: params.userId,
-      email: params.email,
-      name: params.name,
-      roles: params.roles,
-    },
-    JWT_SECRET
-  );
-}
-
-async function ensureOpenPathUser(u: TestUser): Promise<void> {
-  await openpathDb
-    .insert(openpathSchema.users)
-    .values({
-      id: u.userId,
-      email: u.email,
-      name: u.name,
-      passwordHash: 'hashed',
-    })
-    .onConflictDoNothing();
-}
-
-async function bootstrapOrg(admin: { token: string }): Promise<{ organizationId: string }> {
-  const createResp = await trpcMutate(
-    API_URL,
-    'onboarding.createOrganization',
-    { name: 'Schedules Test Org' },
-    bearerAuth(admin.token)
-  );
-  assertStatus(createResp, 200);
-  const { data } = (await parseTRPC(createResp)) as { data: any };
-  assert.ok(data?.organizationId, 'createOrganization should return organizationId');
-  return { organizationId: String(data.organizationId) };
-}
+let integrationServer: IntegrationServerHandle | undefined;
 
 async function createGroup(user: { token: string }, name: string): Promise<{ groupId: string }> {
   const resp = await trpcMutate(
@@ -101,72 +60,18 @@ async function createClassroom(admin: { token: string }): Promise<{ classroomId:
   return { classroomId: String(data.id) };
 }
 
-async function approveTeacher(params: {
-  adminToken: string;
-  teacherToken: string;
-  teacherUserId: string;
-  organizationId: string;
-}): Promise<void> {
-  const waitResp = await trpcMutate(
-    API_URL,
-    'onboarding.waitForInvitation',
-    { targetOrganizationId: params.organizationId },
-    bearerAuth(params.teacherToken)
-  );
-  assertStatus(waitResp, 200);
-
-  const approveResp = await trpcMutate(
-    API_URL,
-    'pendingUsers.approve',
-    { userId: params.teacherUserId, role: 'teacher' },
-    bearerAuth(params.adminToken)
-  );
-  assertStatus(approveResp, 200);
-}
-
 describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
   before(async () => {
     await resetDb();
 
-    PORT = await getAvailablePort();
-    API_URL = `http://localhost:${String(PORT)}`;
-    process.env.CP_PORT = String(PORT);
-
-    const { app } = await import('../../src/server.js');
-    server = app.listen(PORT);
-    await waitForHealth(API_URL);
+    integrationServer = await startIntegrationServer();
+    API_URL = integrationServer.baseUrl;
   });
 
   after(async () => {
-    const srv = server;
-    server = undefined;
-    if (srv !== undefined) {
-      try {
-        if ((srv as any).listening === true) {
-          await new Promise<void>((resolve, reject) => {
-            srv.close((err) => {
-              if (err) reject(err);
-              else resolve();
-            });
-          });
-        }
-      } catch (err: any) {
-        if (err?.code !== 'ERR_SERVER_NOT_RUNNING') throw err;
-      }
-    }
-    await closeConnection();
-    await closeOpenPathConnection();
-
-    // Close undici keep-alives so node:test can exit cleanly.
-    try {
-      const undici: any = await import('undici');
-      const dispatcher: any = undici.getGlobalDispatcher?.();
-      if (typeof dispatcher?.close === 'function') {
-        await dispatcher.close();
-      }
-    } catch {
-      // best-effort
-    }
+    const currentServer = integrationServer;
+    integrationServer = undefined;
+    await stopIntegrationServer(currentServer?.server);
   });
 
   test('requires authentication + tenant membership', async () => {
@@ -195,12 +100,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
       roles: [{ role: 'admin' }],
     });
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
 
     const { groupId: adminGroupId } = await createGroup({ token: adminToken }, 'sched-admin-group');
     const { classroomId } = await createClassroom({ token: adminToken });
@@ -210,15 +120,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherEmail = uniqueEmail('teacher');
     await ensureOpenPathUser({ userId: teacherUserId, email: teacherEmail, name: 'Teacher User' });
     const teacherTokenNoGroups = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherUserId,
       email: teacherEmail,
       name: 'Teacher User',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken: teacherTokenNoGroups,
-      teacherUserId,
+      memberToken: teacherTokenNoGroups,
+      memberUserId: teacherUserId,
       organizationId,
     });
 
@@ -287,12 +199,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin2');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User 2' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User 2',
       roles: [{ role: 'admin' }],
     });
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     // Teacher A joins org, has group approval
@@ -300,15 +217,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherAEmail = uniqueEmail('teachera');
     await ensureOpenPathUser({ userId: teacherAId, email: teacherAEmail, name: 'Teacher A' });
     const teacherAToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherAId,
       email: teacherAEmail,
       name: 'Teacher A',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken: teacherAToken,
-      teacherUserId: teacherAId,
+      memberToken: teacherAToken,
+      memberUserId: teacherAId,
       organizationId,
     });
 
@@ -322,15 +241,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherBEmail = uniqueEmail('teacherb');
     await ensureOpenPathUser({ userId: teacherBId, email: teacherBEmail, name: 'Teacher B' });
     const teacherBToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherBId,
       email: teacherBEmail,
       name: 'Teacher B',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken: teacherBToken,
-      teacherUserId: teacherBId,
+      memberToken: teacherBToken,
+      memberUserId: teacherBId,
       organizationId,
     });
 
@@ -400,13 +321,18 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-oneoff');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin OneOff' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin OneOff',
       roles: [{ role: 'admin' }],
     });
 
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     const teacherAId = 'sched-teacher-a-oneoff';
@@ -417,15 +343,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher A OneOff',
     });
     const teacherAToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherAId,
       email: teacherAEmail,
       name: 'Teacher A OneOff',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken: teacherAToken,
-      teacherUserId: teacherAId,
+      memberToken: teacherAToken,
+      memberUserId: teacherAId,
       organizationId,
     });
     const { groupId: groupAId } = await createGroup(
@@ -441,15 +369,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher B OneOff',
     });
     const teacherBToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherBId,
       email: teacherBEmail,
       name: 'Teacher B OneOff',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken: teacherBToken,
-      teacherUserId: teacherBId,
+      memberToken: teacherBToken,
+      memberUserId: teacherBId,
       organizationId,
     });
     const { groupId: groupBId } = await createGroup(
@@ -547,28 +477,35 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-oneoff-validate');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Validate' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Validate',
       roles: [{ role: 'admin' }],
     });
 
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     const teacherId = 'sched-teacher-oneoff-validate';
     const teacherEmail = uniqueEmail('teacher-oneoff-validate');
     await ensureOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Teacher Validate' });
     const teacherToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher Validate',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken,
-      teacherUserId: teacherId,
+      memberToken: teacherToken,
+      memberUserId: teacherId,
       organizationId,
     });
     const { groupId } = await createGroup({ token: teacherToken }, 'sched-oneoff-validate-group');
@@ -641,28 +578,35 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-oneoff-conflict');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Conflict' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Conflict',
       roles: [{ role: 'admin' }],
     });
 
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     const teacherId = 'sched-teacher-oneoff-conflict';
     const teacherEmail = uniqueEmail('teacher-oneoff-conflict');
     await ensureOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Teacher Conflict' });
     const teacherToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher Conflict',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken,
-      teacherUserId: teacherId,
+      memberToken: teacherToken,
+      memberUserId: teacherId,
       organizationId,
     });
     const { groupId } = await createGroup({ token: teacherToken }, 'sched-oneoff-conflict-group');
@@ -703,28 +647,35 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-oneoff-update');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Update' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Update',
       roles: [{ role: 'admin' }],
     });
 
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     const teacherAId = 'sched-teacher-oneoff-owner';
     const teacherAEmail = uniqueEmail('teacher-oneoff-owner');
     await ensureOpenPathUser({ userId: teacherAId, email: teacherAEmail, name: 'Teacher Owner' });
     const teacherAToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherAId,
       email: teacherAEmail,
       name: 'Teacher Owner',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken: teacherAToken,
-      teacherUserId: teacherAId,
+      memberToken: teacherAToken,
+      memberUserId: teacherAId,
       organizationId,
     });
     const { groupId: groupAId } = await createGroup(
@@ -736,15 +687,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherBEmail = uniqueEmail('teacher-oneoff-other');
     await ensureOpenPathUser({ userId: teacherBId, email: teacherBEmail, name: 'Teacher Other' });
     const teacherBToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherBId,
       email: teacherBEmail,
       name: 'Teacher Other',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken: teacherBToken,
-      teacherUserId: teacherBId,
+      memberToken: teacherBToken,
+      memberUserId: teacherBId,
       organizationId,
     });
 
@@ -817,12 +770,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-empty-mine');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Empty Mine' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Empty Mine',
       roles: [{ role: 'admin' }],
     });
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
 
     const teacherId = 'sched-teacher-empty-mine';
     const teacherEmail = uniqueEmail('teacher-empty-mine');
@@ -832,15 +790,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher Empty Mine',
     });
     const teacherToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher Empty Mine',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken,
-      teacherUserId: teacherId,
+      memberToken: teacherToken,
+      memberUserId: teacherId,
       organizationId,
     });
 
@@ -863,12 +823,13 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-unknown-ids');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Unknown Ids' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Unknown Ids',
       roles: [{ role: 'admin' }],
     });
-    await bootstrapOrg({ token: adminToken });
+    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Schedules Test Org' });
 
     const unknownId = '00000000-0000-0000-0000-000000000000';
 
@@ -914,13 +875,18 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin Weekly Invalid Window',
     });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Weekly Invalid Window',
       roles: [{ role: 'admin' }],
     });
 
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     const teacherId = 'sched-teacher-weekly-invalid-window';
@@ -931,15 +897,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher Weekly Invalid Window',
     });
     const teacherToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher Weekly Invalid Window',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken,
-      teacherUserId: teacherId,
+      memberToken: teacherToken,
+      memberUserId: teacherId,
       organizationId,
     });
     const { groupId } = await createGroup(
@@ -985,28 +953,35 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin Weekly Group Change',
     });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Weekly Group Change',
       roles: [{ role: 'admin' }],
     });
 
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     const teacherAId = 'sched-teacher-weekly-group-change-a';
     const teacherAEmail = uniqueEmail('teacher-weekly-group-change-a');
     await ensureOpenPathUser({ userId: teacherAId, email: teacherAEmail, name: 'Teacher Group A' });
     const teacherAToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherAId,
       email: teacherAEmail,
       name: 'Teacher Group A',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken: teacherAToken,
-      teacherUserId: teacherAId,
+      memberToken: teacherAToken,
+      memberUserId: teacherAId,
       organizationId,
     });
     const { groupId: groupAId } = await createGroup(
@@ -1018,15 +993,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherBEmail = uniqueEmail('teacher-weekly-group-change-b');
     await ensureOpenPathUser({ userId: teacherBId, email: teacherBEmail, name: 'Teacher Group B' });
     const teacherBToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherBId,
       email: teacherBEmail,
       name: 'Teacher Group B',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken: teacherBToken,
-      teacherUserId: teacherBId,
+      memberToken: teacherBToken,
+      memberUserId: teacherBId,
       organizationId,
     });
     const { groupId: groupBId } = await createGroup(
@@ -1075,12 +1052,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin OneOff Invalid Range',
     });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin OneOff Invalid Range',
       roles: [{ role: 'admin' }],
     });
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     const teacherId = 'sched-teacher-oneoff-invalid-range';
@@ -1091,15 +1073,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher OneOff Invalid Range',
     });
     const teacherToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher OneOff Invalid Range',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken,
-      teacherUserId: teacherId,
+      memberToken: teacherToken,
+      memberUserId: teacherId,
       organizationId,
     });
     const { groupId } = await createGroup(
@@ -1144,12 +1128,13 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin Classroom Missing',
     });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Classroom Missing',
       roles: [{ role: 'admin' }],
     });
-    await bootstrapOrg({ token: adminToken });
+    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Schedules Test Org' });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     await openpathDb
@@ -1178,12 +1163,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin OneOff Corrupt',
     });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin OneOff Corrupt',
       roles: [{ role: 'admin' }],
     });
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     const teacherId = 'sched-teacher-oneoff-corrupt';
@@ -1194,15 +1184,17 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher OneOff Corrupt',
     });
     const teacherToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher OneOff Corrupt',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken,
-      teacherUserId: teacherId,
+      memberToken: teacherToken,
+      memberUserId: teacherId,
       organizationId,
     });
     const { groupId } = await createGroup({ token: teacherToken }, 'sched-oneoff-corrupt-group');
@@ -1240,28 +1232,35 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-weekly-conflict');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Weekly' });
     const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Weekly',
       roles: [{ role: 'admin' }],
     });
 
-    const { organizationId } = await bootstrapOrg({ token: adminToken });
+    const { organizationId } = await bootstrapOrg({
+      baseUrl: API_URL,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     const teacherId = 'sched-teacher-weekly-conflict';
     const teacherEmail = uniqueEmail('teacher-weekly-conflict');
     await ensureOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Teacher Weekly' });
     const teacherToken = signToken({
+      jwtSecret: JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher Weekly',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
-    await approveTeacher({
+    await approveOrganizationMember({
+      baseUrl: API_URL,
       adminToken,
-      teacherToken,
-      teacherUserId: teacherId,
+      memberToken: teacherToken,
+      memberUserId: teacherId,
       organizationId,
     });
     const { groupId } = await createGroup({ token: teacherToken }, 'sched-weekly-conflict-group');
