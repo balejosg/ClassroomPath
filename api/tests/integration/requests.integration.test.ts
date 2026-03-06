@@ -21,6 +21,7 @@ import {
   assertStatus,
   resetDb,
   uniqueEmail,
+  waitForHealth,
 } from '../test-utils.js';
 
 import { db } from '../../src/db/index.js';
@@ -122,7 +123,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
 
     const { app } = await import('../../src/server.js');
     server = app.listen(PORT);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await waitForHealth(API_URL);
   });
 
   after(async () => {

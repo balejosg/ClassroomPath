@@ -29,6 +29,41 @@ export async function getAvailablePort(): Promise<number> {
   });
 }
 
+export interface WaitForHealthOptions {
+  path?: string;
+  timeoutMs?: number;
+  intervalMs?: number;
+}
+
+/**
+ * Wait until the API process is accepting requests.
+ */
+export async function waitForHealth(
+  baseUrl: string,
+  options: WaitForHealthOptions = {}
+): Promise<void> {
+  const path = options.path ?? '/cp/health';
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const intervalMs = options.intervalMs ?? 200;
+
+  const deadline = Date.now() + timeoutMs;
+  let lastFailure = 'no response';
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`);
+      if (response.ok) return;
+      lastFailure = `status ${String(response.status)}`;
+    } catch (err) {
+      lastFailure = err instanceof Error ? err.message : String(err);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error(`Timed out waiting for health endpoint ${baseUrl}${path}: ${lastFailure}`);
+}
+
 /**
  * Reset database by truncating all tables in both CP and OpenPath databases
  */

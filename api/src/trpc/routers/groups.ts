@@ -16,6 +16,7 @@ import * as schema from '../../db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getRootDomain } from '../../utils/domain.js';
+import { throwConflictOnUniqueViolation } from '../../lib/pg-errors.js';
 
 import {
   assertCanAccessGroup,
@@ -749,24 +750,7 @@ export const groupsRouter = router({
         })
         .returning();
     } catch (err: unknown) {
-      const code =
-        typeof err === 'object' && err !== null && 'code' in err
-          ? String((err as { code?: unknown }).code)
-          : null;
-      const message =
-        typeof err === 'object' && err !== null && 'message' in err
-          ? String((err as { message?: unknown }).message)
-          : '';
-      const normalized = message.toLowerCase();
-
-      if (code === '23505' || normalized.includes('unique constraint')) {
-        throw new TRPCError({
-          code: 'CONFLICT',
-          message: 'Ya existe un grupo con ese identificador (slug)',
-        });
-      }
-
-      throw err;
+      throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
     }
 
     await db.insert(schema.cpOrganizationGroups).values({

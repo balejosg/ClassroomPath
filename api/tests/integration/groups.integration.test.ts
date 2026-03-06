@@ -20,6 +20,7 @@ import {
   assertStatus,
   resetDb,
   uniqueEmail,
+  waitForHealth,
 } from '../test-utils.js';
 
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
@@ -144,7 +145,7 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
 
     const { app } = await import('../../src/server.js');
     server = app.listen(PORT);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await waitForHealth(API_URL);
   });
 
   after(async () => {

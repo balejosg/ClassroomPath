@@ -19,6 +19,7 @@ import {
   assertStatus,
   resetDb,
   uniqueEmail,
+  waitForHealth,
 } from '../test-utils.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { closeConnection } from '../../src/db/index.js';
@@ -40,7 +41,7 @@ describe('ClassroomPath Gateway Integration', async () => {
     const { app } = await import('../../src/server.js');
 
     server = app.listen(PORT);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await waitForHealth(API_URL);
   });
 
   after(async () => {
