@@ -148,6 +148,64 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     });
   });
 
+  test('classrooms.list/getById expose readable group names for teacher-facing default and current groups', async () => {
+    await resetDb();
+
+    const scenario = buildScenario();
+    const { actor: admin, organization } = await scenario.createOrgAdmin({
+      userId: 'classrooms-readable-admin',
+      organizationName: 'Readable Classroom Org',
+    });
+
+    const adminGroup = await scenario.createGroup({
+      token: admin.token,
+      name: 'admin-readable-group',
+      displayName: 'Plan Admin Visible',
+    });
+
+    const classroom = await scenario.createClassroom({
+      token: admin.token,
+      name: 'classroom-readable',
+      displayName: 'Aula Visible',
+      defaultGroupId: adminGroup.id,
+    });
+
+    const teacher = await scenario.addTeacher({
+      adminToken: admin.token,
+      organizationId: organization.organizationId,
+      userId: 'classrooms-readable-teacher',
+      name: 'Teacher Viewer',
+      groupIds: [],
+    });
+
+    const listResp = await trpcQuery(
+      integration.baseUrl,
+      'classrooms.list',
+      undefined,
+      bearerAuth(teacher.token)
+    );
+    assertStatus(listResp, 200);
+    const { data: list } = (await parseTRPC(listResp)) as { data: any[] };
+    const row = list.find((c) => c.id === classroom.id);
+    assert.ok(row, 'classroom should be present for teacher');
+    assert.strictEqual(row.defaultGroupId, adminGroup.id);
+    assert.strictEqual(row.currentGroupId, adminGroup.id);
+    assert.strictEqual(row.currentGroupSource, 'default');
+    assert.strictEqual(row.defaultGroupDisplayName, 'Plan Admin Visible');
+    assert.strictEqual(row.currentGroupDisplayName, 'Plan Admin Visible');
+
+    const getResp = await trpcQuery(
+      integration.baseUrl,
+      'classrooms.getById',
+      { id: classroom.id },
+      bearerAuth(teacher.token)
+    );
+    assertStatus(getResp, 200);
+    const { data: got } = (await parseTRPC(getResp)) as { data: any };
+    assert.strictEqual(got.defaultGroupDisplayName, 'Plan Admin Visible');
+    assert.strictEqual(got.currentGroupDisplayName, 'Plan Admin Visible');
+  });
+
   test('allows same classroom name in different organizations but blocks duplicates in same org', async () => {
     await resetDb();
 

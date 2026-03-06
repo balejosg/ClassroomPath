@@ -27,6 +27,7 @@ import {
   listTenantClassroomMachines,
   listTenantClassrooms,
 } from '../../services/classroom-access.service.js';
+import { getGroupDisplayNamesByIds } from '../../lib/openpath-groups.js';
 
 import {
   assertCanUseGroup,
@@ -206,10 +207,19 @@ export const classroomsRouter = router({
         .returning();
 
       const scheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
+      const groupDisplayNamesById = await getGroupDisplayNamesByIds(
+        [updated.defaultGroupId, updated.activeGroupId, scheduleGroupId].filter(
+          (value): value is string => !!value
+        )
+      );
 
       await notifyOpenPathClassroomChanged(updated.id);
 
-      return presentClassroomBase({ classroom: updated, scheduleGroupId });
+      return presentClassroomBase({
+        classroom: updated,
+        scheduleGroupId,
+        groupDisplayNamesById,
+      });
     }),
 
   deleteMachine: tenantProcedure
@@ -268,8 +278,13 @@ export const classroomsRouter = router({
     });
 
     const scheduleGroupId = await getCurrentScheduleGroupId({ classroomId: classroom.id });
+    const groupDisplayNamesById = await getGroupDisplayNamesByIds(
+      [classroom.defaultGroupId, classroom.activeGroupId, scheduleGroupId].filter(
+        (value): value is string => !!value
+      )
+    );
 
-    return presentClassroomBase({ classroom, scheduleGroupId });
+    return presentClassroomBase({ classroom, scheduleGroupId, groupDisplayNamesById });
   }),
 
   update: tenantProcedure.input(UpdateClassroomSchema).mutation(async ({ ctx, input }) => {
@@ -293,8 +308,17 @@ export const classroomsRouter = router({
     }
 
     const scheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
+    const groupDisplayNamesById = await getGroupDisplayNamesByIds(
+      [updated.defaultGroupId, updated.activeGroupId, scheduleGroupId].filter(
+        (value): value is string => !!value
+      )
+    );
 
-    return presentClassroomBase({ classroom: updated, scheduleGroupId });
+    return presentClassroomBase({
+      classroom: updated,
+      scheduleGroupId,
+      groupDisplayNamesById,
+    });
   }),
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {

@@ -82,13 +82,16 @@ export function toPublicClassroomName(classroom: {
 export function presentClassroomBase(params: {
   classroom: OpenPathClassroomRowForPresent;
   scheduleGroupId: string | null;
+  groupDisplayNamesById?: ReadonlyMap<string, string>;
 }): {
   id: string;
   name: string;
   displayName: string | null;
   defaultGroupId: string | null;
+  defaultGroupDisplayName: string | null;
   activeGroupId: string | null;
   currentGroupId: string | null;
+  currentGroupDisplayName: string | null;
   currentGroupSource: ReturnType<typeof resolveCurrentGroup>['source'];
   createdAt: string | null;
   updatedAt: string | null;
@@ -105,8 +108,14 @@ export function presentClassroomBase(params: {
     name: toPublicClassroomName(c),
     displayName: c.displayName,
     defaultGroupId: c.defaultGroupId,
+    defaultGroupDisplayName: c.defaultGroupId
+      ? (params.groupDisplayNamesById?.get(c.defaultGroupId) ?? null)
+      : null,
     activeGroupId: c.activeGroupId,
     currentGroupId: currentGroup.id,
+    currentGroupDisplayName: currentGroup.id
+      ? (params.groupDisplayNamesById?.get(currentGroup.id) ?? null)
+      : null,
     currentGroupSource: currentGroup.source,
     createdAt: c.createdAt?.toISOString() ?? null,
     updatedAt: c.updatedAt?.toISOString() ?? null,
@@ -117,13 +126,16 @@ export function presentClassroomListItem(params: {
   classroom: OpenPathClassroomRowForPresent;
   scheduleGroupId: string | null;
   machines: ClassroomMachineListItem[];
+  groupDisplayNamesById?: ReadonlyMap<string, string>;
 }): {
   id: string;
   name: string;
   displayName: string | null;
   defaultGroupId: string | null;
+  defaultGroupDisplayName: string | null;
   activeGroupId: string | null;
   currentGroupId: string | null;
+  currentGroupDisplayName: string | null;
   currentGroupSource: ReturnType<typeof resolveCurrentGroup>['source'];
   machines: ClassroomMachineListItem[];
   machineCount: number;
@@ -135,6 +147,7 @@ export function presentClassroomListItem(params: {
   const base = presentClassroomBase({
     classroom: params.classroom,
     scheduleGroupId: params.scheduleGroupId,
+    groupDisplayNamesById: params.groupDisplayNamesById,
   });
 
   const machines = params.machines;

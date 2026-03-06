@@ -175,6 +175,67 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.strictEqual(mine[0].classroomId, classroomId);
   });
 
+  test('schedules.getByClassroom exposes readable group and teacher names for schedules created by another teacher', async () => {
+    await resetDb();
+
+    const scenario = buildScenario();
+    const { actor: admin, organization } = await scenario.createOrgAdmin({
+      userId: 'sched-readable-admin',
+      organizationName: 'Readable Schedules Org',
+    });
+
+    const classroom = await scenario.createClassroom({
+      token: admin.token,
+      name: 'sched-readable-classroom',
+      displayName: 'Readable Classroom',
+    });
+
+    const teacherA = await scenario.addTeacher({
+      adminToken: admin.token,
+      organizationId: organization.organizationId,
+      userId: 'sched-readable-teacher-a',
+      name: 'Teacher A',
+      groupIds: [],
+    });
+
+    const adminGroup = await scenario.createGroup({
+      token: admin.token,
+      name: 'sched-readable-admin-group',
+      displayName: 'Plan Admin Visible',
+    });
+
+    const createResp = await trpcMutate(
+      integration.baseUrl,
+      'schedules.create',
+      {
+        classroomId: classroom.id,
+        groupId: adminGroup.id,
+        dayOfWeek: 2,
+        startTime: '10:00',
+        endTime: '11:00',
+      },
+      bearerAuth(admin.token)
+    );
+    assertStatus(createResp, 200);
+    const { data: created } = (await parseTRPC(createResp)) as { data: any };
+    assert.ok(created?.id, 'schedule id should be returned');
+
+    const byResp = await trpcQuery(
+      integration.baseUrl,
+      'schedules.getByClassroom',
+      { classroomId: classroom.id },
+      bearerAuth(teacherA.token)
+    );
+    assertStatus(byResp, 200);
+    const { data } = (await parseTRPC(byResp)) as { data: any };
+    const schedule = data?.schedules?.find((s: any) => s.id === created.id);
+    assert.ok(schedule, 'teacher should receive the other schedule');
+    assert.strictEqual(schedule.canEdit, false);
+    assert.strictEqual(schedule.isMine, false);
+    assert.strictEqual(schedule.groupDisplayName, 'Plan Admin Visible');
+    assert.strictEqual(schedule.teacherName, 'Admin User');
+  });
+
   test('update/delete: owner-only unless admin token', async () => {
     await resetDb();
 

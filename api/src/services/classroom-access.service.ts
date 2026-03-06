@@ -5,6 +5,7 @@ import {
   getCurrentScheduleGroupByClassroomId,
   getCurrentScheduleGroupId,
 } from './current-group.service.js';
+import { getGroupDisplayNamesByIds } from '../lib/openpath-groups.js';
 import {
   groupMachinesByClassroomIdForList,
   presentClassroomBase,
@@ -13,6 +14,7 @@ import {
 import { getOrgClassroomIds } from './org-classroom-membership.service.js';
 
 type OpenPathMachineRow = typeof machines.$inferSelect;
+type OpenPathClassroomRow = typeof classrooms.$inferSelect;
 
 export type ClassroomMachineSummary = {
   id: string;
@@ -36,6 +38,26 @@ function presentClassroomMachineSummary(machine: OpenPathMachineRow): ClassroomM
   };
 }
 
+async function loadClassroomGroupDisplayNames(params: {
+  classrooms: OpenPathClassroomRow[];
+  scheduleGroupIdByClassroomId?: ReadonlyMap<string, string>;
+  scheduleGroupId?: string | null;
+}): Promise<Map<string, string>> {
+  const groupIds = params.classrooms.flatMap((classroom) =>
+    [classroom.defaultGroupId, classroom.activeGroupId].filter((value): value is string => !!value)
+  );
+
+  if (params.scheduleGroupIdByClassroomId) {
+    groupIds.push(...params.scheduleGroupIdByClassroomId.values());
+  }
+
+  if (params.scheduleGroupId) {
+    groupIds.push(params.scheduleGroupId);
+  }
+
+  return getGroupDisplayNamesByIds(groupIds);
+}
+
 export async function listTenantClassrooms(params: { organizationId: string }) {
   const classroomIds = await getOrgClassroomIds({ organizationId: params.organizationId });
   if (classroomIds.length === 0) {
@@ -52,6 +74,10 @@ export async function listTenantClassrooms(params: { organizationId: string }) {
     classroomIds,
     date: now,
   });
+  const groupDisplayNamesById = await loadClassroomGroupDisplayNames({
+    classrooms: rows,
+    scheduleGroupIdByClassroomId: scheduleGroupByClassroomId,
+  });
   const machineRows = await openpathDb
     .select()
     .from(machines)
@@ -62,6 +88,7 @@ export async function listTenantClassrooms(params: { organizationId: string }) {
     presentClassroomListItem({
       classroom,
       scheduleGroupId: scheduleGroupByClassroomId.get(classroom.id) ?? null,
+      groupDisplayNamesById,
       machines: machinesByClassroomId.get(classroom.id) ?? [],
     })
   );
@@ -80,7 +107,11 @@ export async function getTenantClassroomById(params: { classroomId: string }) {
   }
 
   const scheduleGroupId = await getCurrentScheduleGroupId({ classroomId: classroom.id });
-  return presentClassroomBase({ classroom, scheduleGroupId });
+  const groupDisplayNamesById = await loadClassroomGroupDisplayNames({
+    classrooms: [classroom],
+    scheduleGroupId,
+  });
+  return presentClassroomBase({ classroom, scheduleGroupId, groupDisplayNamesById });
 }
 
 export async function listTenantClassroomMachines(params: {
