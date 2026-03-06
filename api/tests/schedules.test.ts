@@ -18,7 +18,9 @@ describe('Schedules Router', () => {
     assert.ok(procedures.getMine, 'should have getMine procedure');
     assert.ok(procedures.getByClassroom, 'should have getByClassroom procedure');
     assert.ok(procedures.create, 'should have create procedure');
+    assert.ok(procedures.createOneOff, 'should have createOneOff procedure');
     assert.ok(procedures.update, 'should have update procedure');
+    assert.ok(procedures.updateOneOff, 'should have updateOneOff procedure');
     assert.ok(procedures.delete, 'should have delete procedure');
   });
 });

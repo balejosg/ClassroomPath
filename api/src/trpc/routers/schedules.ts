@@ -3,23 +3,13 @@ import { TRPCError } from '@trpc/server';
 import { and, eq, inArray } from 'drizzle-orm';
 
 import { router, tenantProcedure } from '../trpc.js';
+import { openpathDb, schedules, classrooms } from '../../db/openpath.js';
 import {
-  openpathDb,
-  schedules,
-  classrooms,
-  notifyOpenPathClassroomChanged,
-} from '../../db/openpath.js';
-
-import { parseTimeToMinutes } from '../../services/schedule-time.js';
-import {
-  assertNoConflict,
-  assertNoOneOffConflict,
-  assertQuarterHour,
-  assertQuarterHourInstant,
+  createOneOffScheduleForTenant,
+  createWeeklyScheduleForTenant,
   deleteScheduleForTenant,
   mapToOneOffScheduleBase,
   mapToWeeklyScheduleBase,
-  parseIsoDate,
   type DbSchedule,
   updateOneOffScheduleForTenant,
   updateWeeklyScheduleForTenant,
@@ -27,9 +17,7 @@ import {
 } from '../../services/schedule-write.service.js';
 
 import {
-  assertCanUseGroup,
   assertOrgClassroomAccess,
-  assertOrgGroupAccess,
   isOrgAdmin,
   requireTeacherOrAdmin,
 } from '../../lib/tenant-access.js';
@@ -152,45 +140,7 @@ export const schedulesRouter = router({
 
   create: tenantProcedure.input(CreateScheduleSchema).mutation(async ({ ctx, input }) => {
     requireTeacherOrAdmin(ctx);
-
-    await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
-    await assertOrgGroupAccess(ctx.organizationId!, input.groupId);
-
-    await assertCanUseGroup(ctx, input.groupId, {
-      notAllowedMessage: 'You can only create schedules for your assigned groups',
-    });
-
-    assertQuarterHour(input.startTime, 'startTime');
-    assertQuarterHour(input.endTime, 'endTime');
-    const start = parseTimeToMinutes(input.startTime);
-    const end = parseTimeToMinutes(input.endTime);
-    if (!(start < end)) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'startTime must be before endTime' });
-    }
-
-    await assertNoConflict({
-      classroomId: input.classroomId,
-      dayOfWeek: input.dayOfWeek,
-      startTime: input.startTime,
-      endTime: input.endTime,
-    });
-
-    const [created] = await openpathDb
-      .insert(schedules)
-      .values({
-        classroomId: input.classroomId,
-        teacherId: ctx.user.sub,
-        groupId: input.groupId,
-        dayOfWeek: input.dayOfWeek,
-        startTime: input.startTime,
-        endTime: input.endTime,
-        startAt: null,
-        endAt: null,
-        recurrence: 'weekly',
-      })
-      .returning();
-
-    await notifyOpenPathClassroomChanged(created.classroomId);
+    const created = await createWeeklyScheduleForTenant({ ctx, input });
 
     return mapToWeeklyScheduleBase(created as DbSchedule);
   }),
@@ -199,45 +149,7 @@ export const schedulesRouter = router({
     .input(CreateOneOffScheduleSchema)
     .mutation(async ({ ctx, input }) => {
       requireTeacherOrAdmin(ctx);
-
-      await assertOrgClassroomAccess(ctx.organizationId!, input.classroomId);
-      await assertOrgGroupAccess(ctx.organizationId!, input.groupId);
-
-      await assertCanUseGroup(ctx, input.groupId, {
-        notAllowedMessage: 'You can only create schedules for your assigned groups',
-      });
-
-      const startAt = parseIsoDate(input.startAt, 'startAt');
-      const endAt = parseIsoDate(input.endAt, 'endAt');
-
-      assertQuarterHourInstant(startAt, 'startAt');
-      assertQuarterHourInstant(endAt, 'endAt');
-      if (!(startAt.getTime() < endAt.getTime())) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'endAt must be after startAt' });
-      }
-
-      await assertNoOneOffConflict({
-        classroomId: input.classroomId,
-        startAt,
-        endAt,
-      });
-
-      const [created] = await openpathDb
-        .insert(schedules)
-        .values({
-          classroomId: input.classroomId,
-          teacherId: ctx.user.sub,
-          groupId: input.groupId,
-          dayOfWeek: null,
-          startTime: null,
-          endTime: null,
-          startAt,
-          endAt,
-          recurrence: 'one_off',
-        })
-        .returning();
-
-      await notifyOpenPathClassroomChanged(created.classroomId);
+      const created = await createOneOffScheduleForTenant({ ctx, input });
 
       return mapToOneOffScheduleBase(created as DbSchedule);
     }),

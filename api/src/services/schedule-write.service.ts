@@ -25,11 +25,26 @@ export interface WeeklyScheduleUpdateInput {
   groupId?: string;
 }
 
+export interface WeeklyScheduleCreateInput {
+  classroomId: string;
+  groupId: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+}
+
 export interface OneOffScheduleUpdateInput {
   id: string;
   startAt?: string;
   endAt?: string;
   groupId?: string;
+}
+
+export interface OneOffScheduleCreateInput {
+  classroomId: string;
+  groupId: string;
+  startAt: string;
+  endAt: string;
 }
 
 export function weeklyRecurrenceWhereClause() {
@@ -225,6 +240,109 @@ function getOneOffScheduleBase(schedule: DbSchedule) {
     startAt: schedule.startAt,
     endAt: schedule.endAt,
   };
+}
+
+export async function createWeeklyScheduleForTenant(params: {
+  ctx: ScheduleWriteContext;
+  input: WeeklyScheduleCreateInput;
+}): Promise<DbSchedule> {
+  await assertOrgClassroomAccess(params.ctx.organizationId!, params.input.classroomId);
+  await assertOrgGroupAccess(params.ctx.organizationId!, params.input.groupId);
+
+  await assertCanUseGroup(params.ctx, params.input.groupId, {
+    notAllowedMessage: 'You can only create schedules for your assigned groups',
+  });
+
+  assertQuarterHour(params.input.startTime, 'startTime');
+  assertQuarterHour(params.input.endTime, 'endTime');
+  const start = parseTimeToMinutes(params.input.startTime);
+  const end = parseTimeToMinutes(params.input.endTime);
+  if (!(start < end)) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'startTime must be before endTime' });
+  }
+
+  await assertNoConflict({
+    classroomId: params.input.classroomId,
+    dayOfWeek: params.input.dayOfWeek,
+    startTime: params.input.startTime,
+    endTime: params.input.endTime,
+  });
+
+  const [created] = await openpathDb
+    .insert(schedules)
+    .values({
+      classroomId: params.input.classroomId,
+      teacherId: params.ctx.user.sub,
+      groupId: params.input.groupId,
+      dayOfWeek: params.input.dayOfWeek,
+      startTime: params.input.startTime,
+      endTime: params.input.endTime,
+      startAt: null,
+      endAt: null,
+      recurrence: 'weekly',
+    })
+    .returning();
+
+  if (!created) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create schedule' });
+  }
+
+  await notifyOpenPathClassroomChanged(created.classroomId);
+
+  return created;
+}
+
+export async function createOneOffScheduleForTenant(params: {
+  ctx: ScheduleWriteContext;
+  input: OneOffScheduleCreateInput;
+}): Promise<DbSchedule> {
+  await assertOrgClassroomAccess(params.ctx.organizationId!, params.input.classroomId);
+  await assertOrgGroupAccess(params.ctx.organizationId!, params.input.groupId);
+
+  await assertCanUseGroup(params.ctx, params.input.groupId, {
+    notAllowedMessage: 'You can only create schedules for your assigned groups',
+  });
+
+  const startAt = parseIsoDate(params.input.startAt, 'startAt');
+  const endAt = parseIsoDate(params.input.endAt, 'endAt');
+
+  assertQuarterHourInstant(startAt, 'startAt');
+  assertQuarterHourInstant(endAt, 'endAt');
+  if (!(startAt.getTime() < endAt.getTime())) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'endAt must be after startAt' });
+  }
+
+  await assertNoOneOffConflict({
+    classroomId: params.input.classroomId,
+    startAt,
+    endAt,
+  });
+
+  const [created] = await openpathDb
+    .insert(schedules)
+    .values({
+      classroomId: params.input.classroomId,
+      teacherId: params.ctx.user.sub,
+      groupId: params.input.groupId,
+      dayOfWeek: null,
+      startTime: null,
+      endTime: null,
+      startAt,
+      endAt,
+      recurrence: 'one_off',
+    })
+    .returning();
+
+  if (!created) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Failed to create one-off schedule',
+    });
+  }
+
+  await notifyOpenPathClassroomChanged(created.classroomId);
+
+  return created;
 }
 
 export async function updateWeeklyScheduleForTenant(params: {
