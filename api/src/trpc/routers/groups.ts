@@ -15,7 +15,6 @@ import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { getRootDomain } from '../../utils/domain.js';
 import { throwConflictOnUniqueViolation } from '../../lib/pg-errors.js';
 
 import {
@@ -33,6 +32,15 @@ import {
   addGroupToTeacherRole,
   cloneGroupIntoOrganization,
 } from '../../services/group-copy.service.js';
+import {
+  bulkCreateGroupRules,
+  createOrReuseGroupRule,
+  deleteGroupRule,
+  listGroupedGroupRules,
+  listGroupRules,
+  listPaginatedGroupRules,
+  updateGroupRule,
+} from '../../services/group-rules.service.js';
 
 type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
 type OpenPathWhitelistGroup = typeof whitelistGroups.$inferSelect;
@@ -194,76 +202,18 @@ async function filterGroupsVisibleToUser<T extends { id: string; name: string }>
   return groups.filter((g) => identifiers.has(g.id) || identifiers.has(g.name));
 }
 
-function serializeWhitelistRule(rule: OpenPathWhitelistRule, created: boolean) {
-  return {
-    id: rule.id,
-    groupId: rule.groupId,
-    type: rule.type,
-    value: rule.value,
-    comment: rule.comment,
-    createdAt: rule.createdAt?.toISOString() ?? null,
-    created,
-  };
-}
-
-async function createOrGetWhitelistRule(
-  input: AddRuleInput
-): Promise<{ rule: OpenPathWhitelistRule; created: boolean }> {
-  // Use atomic upsert with ON CONFLICT DO NOTHING to prevent race conditions
-  // The database has a unique constraint on (groupId, type, value)
-  const newId = nanoid();
-  const insertResult = await openpathDb
-    .insert(whitelistRules)
-    .values({
-      id: newId,
-      groupId: input.groupId,
-      type: input.type,
-      value: input.value,
-      comment: input.comment,
-    })
-    .onConflictDoNothing({
-      target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
-    })
-    .returning();
-
-  if (insertResult.length > 0) {
-    return { rule: insertResult[0], created: true };
-  }
-
-  const existingRule = await openpathDb
-    .select()
-    .from(whitelistRules)
-    .where(
-      and(
-        eq(whitelistRules.groupId, input.groupId),
-        eq(whitelistRules.type, input.type),
-        eq(whitelistRules.value, input.value)
-      )
-    )
-    .limit(1);
-
-  if (existingRule.length > 0) {
-    return { rule: existingRule[0], created: false };
-  }
-
-  throw new TRPCError({
-    code: 'INTERNAL_SERVER_ERROR',
-    message: 'Failed to create or find rule',
-  });
-}
-
 async function createWhitelistRuleForGroup(
   ctx: { organizationId?: string; userRole?: string; user: { sub: string } },
   input: AddRuleInput
 ) {
   await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
-  const { rule, created } = await createOrGetWhitelistRule(input);
-  if (created) {
+  const result = await createOrReuseGroupRule(input);
+  if (result.created) {
     await publishWhitelistGroupChanged(input.groupId);
   }
 
-  return serializeWhitelistRule(rule, created);
+  return result;
 }
 
 export const groupsRouter = router({
@@ -438,20 +388,7 @@ export const groupsRouter = router({
     .query(async ({ ctx, input }) => {
       await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
-      const rules = await openpathDb
-        .select()
-        .from(whitelistRules)
-        .where(eq(whitelistRules.groupId, input.groupId));
-
-      // Serialize Date fields for JSON compatibility
-      return rules.map((r) => ({
-        id: r.id,
-        groupId: r.groupId,
-        type: r.type,
-        value: r.value,
-        comment: r.comment,
-        createdAt: r.createdAt?.toISOString() ?? null,
-      }));
+      return listGroupRules({ groupId: input.groupId });
     }),
 
   getByName: tenantProcedure.input(z.object({ name: z.string() })).query(async ({ ctx, input }) => {
@@ -506,22 +443,7 @@ export const groupsRouter = router({
     .query(async ({ ctx, input }) => {
       await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
-      // Build query with optional type filter
-      const whereConditions = input.type
-        ? and(eq(whitelistRules.groupId, input.groupId), eq(whitelistRules.type, input.type))
-        : eq(whitelistRules.groupId, input.groupId);
-
-      const rules = await openpathDb.select().from(whitelistRules).where(whereConditions);
-
-      // Serialize Date fields for JSON compatibility
-      return rules.map((r) => ({
-        id: r.id,
-        groupId: r.groupId,
-        type: r.type,
-        value: r.value,
-        comment: r.comment,
-        createdAt: r.createdAt?.toISOString() ?? null,
-      }));
+      return listGroupRules(input);
     }),
 
   // Paginated rules list - OpenPath SPA RulesManager uses this
@@ -530,47 +452,7 @@ export const groupsRouter = router({
     .query(async ({ ctx, input }) => {
       await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
-      // Build base query conditions
-      const conditions: ReturnType<typeof eq>[] = [eq(whitelistRules.groupId, input.groupId)];
-
-      if (input.type) {
-        conditions.push(eq(whitelistRules.type, input.type));
-      }
-
-      // Get total count first
-      const allRules = await openpathDb
-        .select()
-        .from(whitelistRules)
-        .where(and(...conditions));
-
-      // Filter by search if provided
-      let filteredRules = allRules;
-      if (input.search) {
-        const searchLower = input.search.toLowerCase();
-        filteredRules = allRules.filter(
-          (r) =>
-            r.value.toLowerCase().includes(searchLower) ||
-            (r.comment && r.comment.toLowerCase().includes(searchLower))
-        );
-      }
-
-      const total = filteredRules.length;
-
-      // Apply pagination
-      const paginatedRules = filteredRules.slice(input.offset, input.offset + input.limit);
-
-      return {
-        rules: paginatedRules.map((r) => ({
-          id: r.id,
-          groupId: r.groupId,
-          type: r.type,
-          value: r.value,
-          comment: r.comment,
-          createdAt: r.createdAt?.toISOString() ?? null,
-        })),
-        total,
-        hasMore: input.offset + input.limit < total,
-      };
+      return listPaginatedGroupRules(input);
     }),
 
   // Grouped rules list - groups by root domain, paginates by domain groups
@@ -578,86 +460,7 @@ export const groupsRouter = router({
   listRulesGrouped: tenantProcedure.input(ListRulesGroupedSchema).query(async ({ ctx, input }) => {
     await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
-    // Build base query conditions
-    const conditions = [eq(whitelistRules.groupId, input.groupId)];
-
-    if (input.type) {
-      conditions.push(eq(whitelistRules.type, input.type));
-    }
-
-    // Get all rules for the group
-    const allRules = await openpathDb
-      .select()
-      .from(whitelistRules)
-      .where(and(...conditions));
-
-    // Apply search filter if provided
-    let filtered = allRules;
-    if (input.search?.trim()) {
-      const searchLower = input.search.toLowerCase().trim();
-      filtered = allRules.filter((r) => r.value.toLowerCase().includes(searchLower));
-    }
-
-    // Group rules by root domain
-    const groupedMap = new Map<string, OpenPathWhitelistRule[]>();
-    for (const rule of filtered) {
-      const root = getRootDomain(rule.value);
-      const existing = groupedMap.get(root) ?? [];
-      existing.push(rule);
-      groupedMap.set(root, existing);
-    }
-
-    // Sort root domains alphabetically
-    const sortedRoots = Array.from(groupedMap.keys()).sort((a, b) => a.localeCompare(b));
-
-    // Calculate totals before pagination
-    const totalGroups = sortedRoots.length;
-    const totalRules = filtered.length;
-
-    // Apply pagination on groups (not individual rules)
-    const paginatedRoots = sortedRoots.slice(input.offset, input.offset + input.limit);
-
-    // Build domain groups with status
-    const groups = paginatedRoots.map((root) => {
-      const groupRules = groupedMap.get(root) ?? [];
-      // Sort rules within group alphabetically
-      groupRules.sort((a, b) => a.value.localeCompare(b.value));
-
-      // Determine status based on rule types
-      const hasWhitelist = groupRules.some((r) => r.type === 'whitelist');
-      const hasBlocked = groupRules.some(
-        (r) => r.type === 'blocked_subdomain' || r.type === 'blocked_path'
-      );
-
-      let status;
-      if (hasWhitelist && hasBlocked) {
-        status = 'mixed';
-      } else if (hasBlocked) {
-        status = 'blocked';
-      } else {
-        status = 'allowed';
-      }
-
-      return {
-        root,
-        rules: groupRules.map((r) => ({
-          id: r.id,
-          groupId: r.groupId,
-          type: r.type,
-          value: r.value,
-          comment: r.comment,
-          createdAt: r.createdAt?.toISOString() ?? null,
-        })),
-        status,
-      };
-    });
-
-    return {
-      groups,
-      totalGroups,
-      totalRules,
-      hasMore: input.offset + input.limit < totalGroups,
-    };
+    return listGroupedGroupRules(input);
   }),
 
   // Bulk delete rules - OpenPath SPA RulesManager uses this
@@ -878,29 +681,14 @@ export const groupsRouter = router({
   bulkCreateRules: tenantProcedure.input(BulkCreateRulesSchema).mutation(async ({ ctx, input }) => {
     await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
-    // Convert values array to rules format
-    const rulesToInsert = input.values.map((value) => ({
-      id: nanoid(),
-      groupId: input.groupId,
-      type: input.type,
-      value: value,
-    }));
+    const insertedCount = await bulkCreateGroupRules(input);
 
-    // Use onConflictDoNothing to skip duplicates
-    const insertedRules = await openpathDb
-      .insert(whitelistRules)
-      .values(rulesToInsert)
-      .onConflictDoNothing({
-        target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
-      })
-      .returning();
-
-    if (insertedRules.length > 0) {
+    if (insertedCount > 0) {
       await publishWhitelistGroupChanged(input.groupId);
     }
 
     // Return count like OpenPath does
-    return { count: insertedRules.length };
+    return { count: insertedCount };
   }),
 
   deleteRule: tenantProcedure
@@ -908,22 +696,10 @@ export const groupsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
-      const [existing] = await openpathDb
-        .select()
-        .from(whitelistRules)
-        .where(eq(whitelistRules.id, input.id))
-        .limit(1);
+      const deleted = await deleteGroupRule(input);
 
-      if (!existing || existing.groupId !== input.groupId) {
-        throw new Error('Rule not found');
-      }
-
-      const deleteResult = await openpathDb
-        .delete(whitelistRules)
-        .where(eq(whitelistRules.id, input.id));
-
-      if ((deleteResult.rowCount ?? 0) > 0) {
-        await publishWhitelistGroupChanged(existing.groupId);
+      if (deleted) {
+        await publishWhitelistGroupChanged(input.groupId);
       }
 
       return { success: true };
@@ -941,74 +717,13 @@ export const groupsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
-      // Get existing rule
-      const [existing] = await openpathDb
-        .select()
-        .from(whitelistRules)
-        .where(eq(whitelistRules.id, input.id));
+      const { rule, valueChanged } = await updateGroupRule(input);
 
-      if (!existing) {
-        throw new Error('Rule not found');
-      }
-
-      if (existing.groupId !== input.groupId) {
-        throw new Error('Rule not found');
-      }
-
-      // Build update object
-      const updates: Partial<{ value: string; comment: string | null }> = {};
-
-      if (input.value !== undefined) {
-        const normalizedValue = input.value.toLowerCase().trim();
-
-        // Check for duplicates if changing value
-        const [duplicate] = await openpathDb
-          .select()
-          .from(whitelistRules)
-          .where(
-            and(
-              eq(whitelistRules.groupId, existing.groupId),
-              eq(whitelistRules.type, existing.type),
-              eq(whitelistRules.value, normalizedValue)
-            )
-          );
-
-        if (duplicate && duplicate.id !== input.id) {
-          throw new Error('A rule with this value already exists');
-        }
-
-        if (normalizedValue !== existing.value) {
-          updates.value = normalizedValue;
-        }
-      }
-
-      if (input.comment !== undefined) {
-        updates.comment = input.comment;
-      }
-
-      // Only update if there's something to update
-      if (Object.keys(updates).length > 0) {
-        await openpathDb.update(whitelistRules).set(updates).where(eq(whitelistRules.id, input.id));
-      }
-
-      if (updates.value !== undefined) {
+      if (valueChanged) {
         await publishWhitelistGroupChanged(input.groupId);
       }
 
-      // Return updated rule
-      const [updated] = await openpathDb
-        .select()
-        .from(whitelistRules)
-        .where(eq(whitelistRules.id, input.id));
-
-      return {
-        id: updated.id,
-        groupId: updated.groupId,
-        type: updated.type,
-        value: updated.value,
-        comment: updated.comment,
-        createdAt: updated.createdAt?.toISOString() ?? null,
-      };
+      return rule;
     }),
 
   /**
