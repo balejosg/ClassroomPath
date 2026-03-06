@@ -6,7 +6,7 @@ const JWT_SECRET = 'test-jwt-secret';
 process.env.JWT_SECRET = JWT_SECRET;
 process.env.NODE_ENV = 'test';
 
-import { test, describe, before, after } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { eq, and } from 'drizzle-orm';
 
@@ -19,19 +19,13 @@ import {
   resetDb,
   uniqueEmail,
 } from '../test-utils.js';
-import {
-  type IntegrationServerHandle,
-  signToken,
-  startIntegrationServer,
-  stopIntegrationServer,
-} from './harness.js';
+import { signToken, useIntegrationServer } from './harness.js';
 
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 
-let API_URL: string;
-let integrationServer: IntegrationServerHandle | undefined;
+const integration = useIntegrationServer({ resetBeforeStart: true });
 
 async function seedTenant(params: {
   orgId: string;
@@ -101,19 +95,6 @@ async function seedTeacherRoleOwnership(params: {
 }
 
 describe('ClassroomPath requests integration (/cp/trpc)', async () => {
-  before(async () => {
-    await resetDb();
-
-    integrationServer = await startIntegrationServer();
-    API_URL = integrationServer.baseUrl;
-  });
-
-  after(async () => {
-    const currentServer = integrationServer;
-    integrationServer = undefined;
-    await stopIntegrationServer(currentServer?.server);
-  });
-
   test('approve creates whitelist rule and marks request approved', async () => {
     await resetDb();
 
@@ -136,7 +117,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     });
 
     const resp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'requests.approve',
       { id: requestId },
       bearerAuth(token)
@@ -193,7 +174,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     });
 
     const resp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'requests.approve',
       { id: requestId },
       bearerAuth(token)
@@ -226,7 +207,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     });
 
     const deniedResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'requests.approve',
       { id: requestId },
       bearerAuth(deniedToken)
@@ -244,7 +225,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     await seedTeacherRoleOwnership({ userId: teacherId, groupId });
 
     const allowedResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'requests.approve',
       { id: requestId },
       bearerAuth(allowedToken)
@@ -274,7 +255,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     });
 
     const resp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'requests.reject',
       { id: requestId, reason: 'Educational policy' },
       bearerAuth(token)
@@ -310,7 +291,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     });
 
     const createResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'requests.create',
       {
         domain: 'missing-groupid.test',
@@ -347,7 +328,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     await seedTeacherRoleOwnership({ userId, groupId });
 
     const createResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'requests.create',
       {
         domain: 'tenant-visible-request.test',
@@ -359,7 +340,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     assertStatus(createResp, 200);
 
     const listResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'requests.list',
       { status: 'pending' },
       bearerAuth(token)
@@ -394,7 +375,12 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin', groupIds: [] }],
     });
 
-    const resp = await trpcQuery(API_URL, 'requests.listGroups', undefined, bearerAuth(token));
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'requests.listGroups',
+      undefined,
+      bearerAuth(token)
+    );
     assertStatus(resp, 200);
 
     const parsed = (await parseTRPC(resp)) as {
@@ -451,7 +437,12 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin', groupIds: [] }],
     });
 
-    const resp = await trpcQuery(API_URL, 'requests.stats', undefined, bearerAuth(token));
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'requests.stats',
+      undefined,
+      bearerAuth(token)
+    );
     assertStatus(resp, 200);
 
     const parsed = (await parseTRPC(resp)) as {

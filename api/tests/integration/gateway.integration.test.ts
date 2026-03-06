@@ -6,7 +6,7 @@ const JWT_SECRET = 'test-jwt-secret';
 process.env.JWT_SECRET = JWT_SECRET;
 process.env.NODE_ENV = 'test';
 
-import { test, describe, before, after } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import {
   trpcQuery,
@@ -17,34 +17,14 @@ import {
   resetDb,
   uniqueEmail,
 } from '../test-utils.js';
-import {
-  type IntegrationServerHandle,
-  signToken,
-  startIntegrationServer,
-  stopIntegrationServer,
-} from './harness.js';
+import { signToken, useIntegrationServer } from './harness.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 
-let API_URL: string;
-
-let integrationServer: IntegrationServerHandle | undefined;
+const integration = useIntegrationServer({ resetBeforeStart: true });
 
 describe('ClassroomPath Gateway Integration', async () => {
-  before(async () => {
-    await resetDb();
-
-    integrationServer = await startIntegrationServer();
-    API_URL = integrationServer.baseUrl;
-  });
-
-  after(async () => {
-    const currentServer = integrationServer;
-    integrationServer = undefined;
-    await stopIntegrationServer(currentServer?.server);
-  });
-
   test('should return 401 for unauthenticated requests to /cp/trpc', async () => {
-    const resp = await trpcQuery(API_URL, 'onboarding.status');
+    const resp = await trpcQuery(integration.baseUrl, 'onboarding.status');
     const { error } = (await parseTRPC(resp)) as { error: string };
     assert.strictEqual(error, 'Not authenticated');
   });
@@ -70,14 +50,19 @@ describe('ClassroomPath Gateway Integration', async () => {
     });
 
     // 1. Check status (should be not onboarded)
-    const statusResp = await trpcQuery(API_URL, 'onboarding.status', undefined, bearerAuth(token));
+    const statusResp = await trpcQuery(
+      integration.baseUrl,
+      'onboarding.status',
+      undefined,
+      bearerAuth(token)
+    );
     assertStatus(statusResp, 200);
     const { data: status } = (await parseTRPC(statusResp)) as { data: any };
     assert.strictEqual(status.hasMembership, false);
 
     // 2. Create organization
     const createResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'onboarding.createOrganization',
       {
         name: 'Test Organization',
@@ -88,7 +73,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // 3. Verify status now shows membership
     const newStatusResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'onboarding.status',
       undefined,
       bearerAuth(token)
@@ -100,21 +85,21 @@ describe('ClassroomPath Gateway Integration', async () => {
 
   test('should block direct access to sensitive OpenPath procedures', async () => {
     // Procedure 'groups.list' is in BLOCKED_OPENPATH_PROCEDURES in server.ts
-    const resp = await fetch(`${API_URL}/trpc/groups.list`);
+    const resp = await fetch(`${integration.baseUrl}/trpc/groups.list`);
     assert.strictEqual(resp.status, 403);
     const json = (await resp.json()) as any;
     assert.strictEqual(json.error.message, 'Use /cp/trpc for tenant-scoped data');
   });
 
   test('should route /cp/health correctly', async () => {
-    const resp = await fetch(`${API_URL}/cp/health`);
+    const resp = await fetch(`${integration.baseUrl}/cp/health`);
     assert.strictEqual(resp.status, 200);
     const json = (await resp.json()) as any;
     assert.strictEqual(json.service, 'classroompath-gateway');
   });
 
   test('should block requests.list on /trpc (requires /cp/trpc)', async () => {
-    const resp = await fetch(`${API_URL}/trpc/requests.list`);
+    const resp = await fetch(`${integration.baseUrl}/trpc/requests.list`);
     assert.strictEqual(resp.status, 403);
     const json = (await resp.json()) as any;
     assert.strictEqual(json.error.message, 'Use /cp/trpc for tenant-scoped data');
@@ -122,7 +107,7 @@ describe('ClassroomPath Gateway Integration', async () => {
   });
 
   test('should block requests.create on /trpc (requires /cp/trpc)', async () => {
-    const resp = await fetch(`${API_URL}/trpc/requests.create`, {
+    const resp = await fetch(`${integration.baseUrl}/trpc/requests.create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain: 'blocked-create.test' }),
@@ -134,7 +119,7 @@ describe('ClassroomPath Gateway Integration', async () => {
   });
 
   test('should block requests.approve mutation on /trpc', async () => {
-    const resp = await fetch(`${API_URL}/trpc/requests.approve`, {
+    const resp = await fetch(`${integration.baseUrl}/trpc/requests.approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -145,7 +130,7 @@ describe('ClassroomPath Gateway Integration', async () => {
   });
 
   test('should block requests.reject mutation on /trpc', async () => {
-    const resp = await fetch(`${API_URL}/trpc/requests.reject`, {
+    const resp = await fetch(`${integration.baseUrl}/trpc/requests.reject`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -156,7 +141,7 @@ describe('ClassroomPath Gateway Integration', async () => {
   });
 
   test('should block requests.delete mutation on /trpc', async () => {
-    const resp = await fetch(`${API_URL}/trpc/requests.delete`, {
+    const resp = await fetch(`${integration.baseUrl}/trpc/requests.delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -167,14 +152,14 @@ describe('ClassroomPath Gateway Integration', async () => {
   });
 
   test('should block requests.listGroups on /trpc', async () => {
-    const resp = await fetch(`${API_URL}/trpc/requests.listGroups`);
+    const resp = await fetch(`${integration.baseUrl}/trpc/requests.listGroups`);
     assert.strictEqual(resp.status, 403);
     const json = (await resp.json()) as any;
     assert.strictEqual(json.error.data.blocked, 'requests.listGroups');
   });
 
   test('should block groups.listRulesGrouped on /trpc (requires /cp/trpc)', async () => {
-    const resp = await fetch(`${API_URL}/trpc/groups.listRulesGrouped`);
+    const resp = await fetch(`${integration.baseUrl}/trpc/groups.listRulesGrouped`);
     assert.strictEqual(resp.status, 403);
     const json = (await resp.json()) as any;
     assert.strictEqual(json.error.message, 'Use /cp/trpc for tenant-scoped data');
@@ -182,7 +167,7 @@ describe('ClassroomPath Gateway Integration', async () => {
   });
 
   test('should block schedules.getMine on /trpc (requires /cp/trpc)', async () => {
-    const resp = await fetch(`${API_URL}/trpc/schedules.getMine`);
+    const resp = await fetch(`${integration.baseUrl}/trpc/schedules.getMine`);
     assert.strictEqual(resp.status, 403);
     const json = (await resp.json()) as any;
     assert.strictEqual(json.error.message, 'Use /cp/trpc for tenant-scoped data');
@@ -191,7 +176,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
   test('should block batched requests containing blocked procedures', async () => {
     // tRPC batch format: /trpc/proc1,proc2
-    const resp = await fetch(`${API_URL}/trpc/health.check,requests.list`);
+    const resp = await fetch(`${integration.baseUrl}/trpc/health.check,requests.list`);
     assert.strictEqual(resp.status, 403);
     const json = (await resp.json()) as any;
     assert.strictEqual(json.error.data.blocked, 'requests.list');
@@ -223,7 +208,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Create organization first
     await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'onboarding.createOrganization',
       {
         name: 'ListGroups Test Org',
@@ -232,7 +217,12 @@ describe('ClassroomPath Gateway Integration', async () => {
     );
 
     // Now call listGroups - should return empty array (no groups assigned yet)
-    const resp = await trpcQuery(API_URL, 'requests.listGroups', undefined, bearerAuth(token));
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'requests.listGroups',
+      undefined,
+      bearerAuth(token)
+    );
     assertStatus(resp, 200);
     const { data } = (await parseTRPC(resp)) as { data: any[] };
     assert.ok(Array.isArray(data), 'listGroups should return an array');
@@ -272,7 +262,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Create organization to establish tenant context
     await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'onboarding.createOrganization',
       { name: 'Auth Me Test Org' },
       bearerAuth(token)
@@ -280,7 +270,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Call auth.me - this forwards to OpenPath API which isn't running
     // So we expect a 500 error (service unavailable)
-    const resp = await trpcQuery(API_URL, 'auth.me', undefined, bearerAuth(token));
+    const resp = await trpcQuery(integration.baseUrl, 'auth.me', undefined, bearerAuth(token));
     // Without OpenPath API, this will return 500
     assert.ok(
       resp.status === 200 || resp.status === 500,
@@ -313,7 +303,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Create organization
     await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'onboarding.createOrganization',
       { name: 'Healthcheck Test Org' },
       bearerAuth(token)
@@ -321,7 +311,12 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Call healthcheck.systemInfo - this forwards to OpenPath API.
     // If upstream is unavailable, gateway should return fallback data (200), not 500.
-    const resp = await trpcQuery(API_URL, 'healthcheck.systemInfo', undefined, bearerAuth(token));
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'healthcheck.systemInfo',
+      undefined,
+      bearerAuth(token)
+    );
     assertStatus(resp, 200, 'healthcheck.systemInfo should always return 200 with fallback');
     const parsed = (await parseTRPC(resp)) as {
       data?: {
@@ -370,7 +365,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Create organization
     await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'onboarding.createOrganization',
       { name: 'API Tokens Test Org' },
       bearerAuth(token)
@@ -378,7 +373,12 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Call apiTokens.list - this forwards to OpenPath API.
     // If upstream is unavailable, gateway should return [] (200), not 500.
-    const resp = await trpcQuery(API_URL, 'apiTokens.list', undefined, bearerAuth(token));
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'apiTokens.list',
+      undefined,
+      bearerAuth(token)
+    );
     assertStatus(resp, 200, 'apiTokens.list should return 200 with fallback []');
     const parsed = (await parseTRPC(resp)) as { data?: unknown };
     assert.ok(Array.isArray(parsed.data), 'apiTokens.list fallback should be an array');
@@ -409,7 +409,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Create organization
     await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'onboarding.createOrganization',
       { name: 'API Tokens Create Test Org' },
       bearerAuth(token)
@@ -417,7 +417,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Create an API token - this forwards to OpenPath API
     const createResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'apiTokens.create',
       { name: 'Test Token', expiresInDays: 30 },
       bearerAuth(token)
@@ -454,7 +454,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Create organization
     await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'onboarding.createOrganization',
       { name: 'Groups Counts Test Org' },
       bearerAuth(token)
@@ -462,7 +462,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Create a group
     const createResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'groups.create',
       { name: 'test-group-counts', displayName: 'Test Group with Counts' },
       bearerAuth(token)
@@ -472,14 +472,19 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Add a whitelist rule
     await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'groups.addRule',
       { groupId: group.id, type: 'whitelist', value: 'example.com' },
       bearerAuth(token)
     );
 
     // Fetch groups.list and verify counts are present
-    const listResp = await trpcQuery(API_URL, 'groups.list', undefined, bearerAuth(token));
+    const listResp = await trpcQuery(
+      integration.baseUrl,
+      'groups.list',
+      undefined,
+      bearerAuth(token)
+    );
     assertStatus(listResp, 200);
     const { data: groups } = (await parseTRPC(listResp)) as { data: any[] };
 
@@ -530,14 +535,19 @@ describe('ClassroomPath Gateway Integration', async () => {
 
     // Create organization
     await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'onboarding.createOrganization',
       { name: 'System Status Test Org' },
       bearerAuth(token)
     );
 
     // Call groups.systemStatus
-    const resp = await trpcQuery(API_URL, 'groups.systemStatus', undefined, bearerAuth(token));
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'groups.systemStatus',
+      undefined,
+      bearerAuth(token)
+    );
     assertStatus(resp, 200);
     const { data } = (await parseTRPC(resp)) as { data: any };
     assert.ok(data, 'groups.systemStatus should return data');

@@ -6,7 +6,7 @@ const JWT_SECRET = 'test-jwt-secret';
 process.env.JWT_SECRET = JWT_SECRET;
 process.env.NODE_ENV = 'test';
 
-import { test, describe, before, after } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert';
 
 import {
@@ -21,11 +21,9 @@ import {
 import {
   bootstrapOrg,
   ensureOpenPathUser,
-  type IntegrationServerHandle,
   signToken,
-  startIntegrationServer,
-  stopIntegrationServer,
   approveOrganizationMember,
+  useIntegrationServer,
 } from './harness.js';
 import { createTenantScenario, withFrozenDate } from './scenario-builder.js';
 
@@ -33,11 +31,14 @@ import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
 
-let API_URL: string;
-let integrationServer: IntegrationServerHandle | undefined;
+const integration = useIntegrationServer({ resetBeforeStart: true });
+
+function buildScenario() {
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+}
 
 async function createGroup(admin: { token: string }, name: string): Promise<{ groupId: string }> {
-  const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
+  const scenario = buildScenario();
   const group = await scenario.createGroup({ token: admin.token, name });
   return { groupId: group.id };
 }
@@ -48,7 +49,7 @@ async function createClassroom(
 ): Promise<{
   classroomId: string;
 }> {
-  const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
+  const scenario = buildScenario();
   const classroom = await scenario.createClassroom({
     token: admin.token,
     name: params.name ?? 'classrooms-test-classroom',
@@ -59,19 +60,6 @@ async function createClassroom(
 }
 
 describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
-  before(async () => {
-    await resetDb();
-
-    integrationServer = await startIntegrationServer();
-    API_URL = integrationServer.baseUrl;
-  });
-
-  after(async () => {
-    const currentServer = integrationServer;
-    integrationServer = undefined;
-    await stopIntegrationServer(currentServer?.server);
-  });
-
   test('classrooms.list/getById include currentGroupId from schedule (or default)', async () => {
     await resetDb();
 
@@ -86,7 +74,11 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
 
-    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Classrooms Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminToken,
+      name: 'Classrooms Test Org',
+    });
 
     const { groupId: defaultGroupId } = await createGroup({ token: adminToken }, 'default-group');
     const { groupId: scheduledGroupId } = await createGroup(
@@ -99,7 +91,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const inSlot = new Date(2026, 1, 3, 10, 30, 0, 0);
     await withFrozenDate(inSlot, async () => {
       const createSchedule = await trpcMutate(
-        API_URL,
+        integration.baseUrl,
         'schedules.create',
         {
           classroomId,
@@ -113,7 +105,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       assertStatus(createSchedule, 200);
 
       const listResp = await trpcQuery(
-        API_URL,
+        integration.baseUrl,
         'classrooms.list',
         undefined,
         bearerAuth(adminToken)
@@ -128,7 +120,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       assert.strictEqual(row.currentGroupSource, 'schedule');
 
       const getResp = await trpcQuery(
-        API_URL,
+        integration.baseUrl,
         'classrooms.getById',
         { id: classroomId },
         bearerAuth(adminToken)
@@ -144,7 +136,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const outOfSlot = new Date(2026, 1, 3, 12, 0, 0, 0);
     await withFrozenDate(outOfSlot, async () => {
       const getResp = await trpcQuery(
-        API_URL,
+        integration.baseUrl,
         'classrooms.getById',
         { id: classroomId },
         bearerAuth(adminToken)
@@ -172,10 +164,14 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
 
-    await bootstrapOrg({ baseUrl: API_URL, token: adminAToken, name: 'Classrooms Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminAToken,
+      name: 'Classrooms Test Org',
+    });
 
     const createA1 = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'classrooms.create',
       { name: sharedClassroomName },
       bearerAuth(adminAToken)
@@ -185,7 +181,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.ok(classroomA1?.id);
 
     const createA2Duplicate = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'classrooms.create',
       { name: sharedClassroomName },
       bearerAuth(adminAToken)
@@ -203,10 +199,14 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
 
-    await bootstrapOrg({ baseUrl: API_URL, token: adminBToken, name: 'Classrooms Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminBToken,
+      name: 'Classrooms Test Org',
+    });
 
     const createB1 = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'classrooms.create',
       { name: sharedClassroomName },
       bearerAuth(adminBToken)
@@ -217,7 +217,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.notStrictEqual(String(classroomA1.id), String(classroomB1.id));
 
     const listAResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'classrooms.list',
       undefined,
       bearerAuth(adminAToken)
@@ -229,7 +229,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.strictEqual(String(listA[0].name), sharedClassroomName);
 
     const listBResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'classrooms.list',
       undefined,
       bearerAuth(adminBToken)
@@ -262,11 +262,15 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
 
-    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Classrooms Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminToken,
+      name: 'Classrooms Test Org',
+    });
     const { groupId } = await createGroup({ token: adminToken }, 'groups-update-target');
 
     const disableResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'groups.update',
       {
         id: groupId,
@@ -282,7 +286,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.strictEqual(Number(disableData.data.enabled), 0);
 
     const enableResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'groups.update',
       {
         id: groupId,
@@ -311,7 +315,11 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       name: 'Admin A',
       roles: [{ role: 'admin' }],
     });
-    await bootstrapOrg({ baseUrl: API_URL, token: adminAToken, name: 'Classrooms Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminAToken,
+      name: 'Classrooms Test Org',
+    });
 
     const adminBUserId = 'groups-delete-admin-b';
     const adminBEmail = uniqueEmail('gdb');
@@ -324,7 +332,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
     const { organizationId: orgB } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminBToken,
       name: 'Classrooms Test Org',
     });
@@ -339,7 +347,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     });
 
     const deleteResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'groups.delete',
       { id: groupId },
       bearerAuth(adminAToken)
@@ -347,7 +355,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assertStatus(deleteResp, 200);
 
     const getResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'groups.getById',
       { id: groupId },
       bearerAuth(adminBToken)
@@ -373,7 +381,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     });
 
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Classrooms Test Org',
     });
@@ -395,7 +403,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherToken,
       memberUserId: teacherUserId,
@@ -404,7 +412,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     });
 
     const forbiddenDefault = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'classrooms.update',
       { id: classroomId, defaultGroupId: adminGroupId },
       bearerAuth(teacherToken)
@@ -412,7 +420,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assertStatus(forbiddenDefault, 403);
 
     const teacherGroupResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'groups.create',
       { name: 'teacher-owned-group', displayName: 'Teacher Owned Group' },
       bearerAuth(teacherToken)
@@ -423,7 +431,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const teacherGroupId = String(teacherGroup.id);
 
     const allowedDefault = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'classrooms.update',
       { id: classroomId, defaultGroupId: teacherGroupId },
       bearerAuth(teacherToken)
@@ -447,7 +455,11 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
 
-    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Classrooms Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminToken,
+      name: 'Classrooms Test Org',
+    });
 
     const { classroomId: classroomA } = await createClassroom(
       { token: adminToken },
@@ -485,7 +497,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     ]);
 
     const listAllResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'classrooms.listMachines',
       {},
       bearerAuth(adminToken)
@@ -502,7 +514,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.strictEqual(rowA.lastSeen, lastSeen.toISOString());
 
     const listAResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'classrooms.listMachines',
       { classroomId: classroomA },
       bearerAuth(adminToken)
@@ -513,7 +525,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.strictEqual(onlyA[0].id, machineAId);
 
     const notFoundResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'classrooms.listMachines',
       { classroomId: 'missing-classroom' },
       bearerAuth(adminToken)
@@ -539,7 +551,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     });
 
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Classrooms Test Org',
     });
@@ -578,7 +590,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     });
 
     const listResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'classrooms.listMachines',
       {},
       bearerAuth(studentToken)
@@ -589,7 +601,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.strictEqual(listParsed.error, 'Teacher access required');
 
     const deleteResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'classrooms.deleteMachine',
       { id: machineId, classroomId },
       bearerAuth(studentToken)
@@ -614,7 +626,11 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
 
-    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Classrooms Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminToken,
+      name: 'Classrooms Test Org',
+    });
     const { classroomId } = await createClassroom(
       { token: adminToken },
       { name: 'delete-machine-classroom', displayName: 'Delete Machine Classroom' }
@@ -629,7 +645,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     });
 
     const deleteResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'classrooms.deleteMachine',
       { id: machineId, classroomId },
       bearerAuth(adminToken)
@@ -639,7 +655,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.strictEqual(deleted.success, true);
 
     const listResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'classrooms.listMachines',
       { classroomId },
       bearerAuth(adminToken)
@@ -663,7 +679,11 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
 
-    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Classrooms Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminToken,
+      name: 'Classrooms Test Org',
+    });
     const { classroomId } = await createClassroom(
       { token: adminToken },
       { name: 'exemptions-classroom', displayName: 'Exemptions Classroom' }
@@ -692,7 +712,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const inSlot = new Date(2026, 1, 3, 10, 30, 45, 123);
     await withFrozenDate(inSlot, async () => {
       const create1 = await trpcMutate(
-        API_URL,
+        integration.baseUrl,
         'classrooms.createExemption',
         { machineId, classroomId, scheduleId },
         bearerAuth(adminToken)
@@ -707,7 +727,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       assert.ok(ex1.expiresAt);
 
       const create2 = await trpcMutate(
-        API_URL,
+        integration.baseUrl,
         'classrooms.createExemption',
         { machineId, classroomId, scheduleId },
         bearerAuth(adminToken)
@@ -717,7 +737,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       assert.strictEqual(ex2.id, ex1.id, 'createExemption should be idempotent within same expiry');
 
       const listResp = await trpcQuery(
-        API_URL,
+        integration.baseUrl,
         'classrooms.listExemptions',
         { classroomId },
         bearerAuth(adminToken)
@@ -730,7 +750,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       assert.strictEqual(list.exemptions[0].machineHostname, machineHostname);
 
       const delResp = await trpcMutate(
-        API_URL,
+        integration.baseUrl,
         'classrooms.deleteExemption',
         { id: ex1.id },
         bearerAuth(adminToken)
@@ -740,7 +760,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       assert.strictEqual(deleted.success, true);
 
       const list2Resp = await trpcQuery(
-        API_URL,
+        integration.baseUrl,
         'classrooms.listExemptions',
         { classroomId },
         bearerAuth(adminToken)
@@ -765,7 +785,11 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
 
-    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Classrooms Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminToken,
+      name: 'Classrooms Test Org',
+    });
     const { classroomId } = await createClassroom(
       { token: adminToken },
       { name: 'weekend-exemptions-classroom', displayName: 'Weekend Exemptions Classroom' }
@@ -782,7 +806,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const weekend = new Date(2026, 1, 7, 12, 0, 0, 0);
     await withFrozenDate(weekend, async () => {
       const resp = await trpcMutate(
-        API_URL,
+        integration.baseUrl,
         'classrooms.createExemption',
         {
           machineId,
@@ -812,7 +836,11 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
 
-    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Classrooms Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminToken,
+      name: 'Classrooms Test Org',
+    });
 
     const { groupId: defaultGroupId } = await createGroup(
       { token: adminToken },
@@ -828,7 +856,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     );
 
     const setManualResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'classrooms.setActiveGroup',
       { id: classroomId, groupId: manualGroupId },
       bearerAuth(adminToken)
@@ -839,7 +867,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.strictEqual(manual.currentGroupSource, 'manual');
 
     const clearResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'classrooms.setActiveGroup',
       { id: classroomId, groupId: null },
       bearerAuth(adminToken)

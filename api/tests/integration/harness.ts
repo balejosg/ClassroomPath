@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import { after, before } from 'node:test';
 import jwt from 'jsonwebtoken';
 import { closeConnection } from '../../src/db/index.js';
 import { closeOpenPathConnection, openpathDb, openpathSchema } from '../../src/db/openpath.js';
@@ -7,6 +8,7 @@ import {
   bearerAuth,
   getAvailablePort,
   parseTRPC,
+  resetDb,
   trpcMutate,
   waitForHealth,
 } from '../test-utils.js';
@@ -160,4 +162,32 @@ export async function stopIntegrationServer(server: Server | undefined): Promise
   } catch {
     // best-effort cleanup
   }
+}
+
+export function useIntegrationServer(options: { resetBeforeStart?: boolean } = {}) {
+  let integrationServer: IntegrationServerHandle | undefined;
+
+  before(async () => {
+    if (options.resetBeforeStart) {
+      await resetDb();
+    }
+
+    integrationServer = await startIntegrationServer();
+  });
+
+  after(async () => {
+    const currentServer = integrationServer;
+    integrationServer = undefined;
+    await stopIntegrationServer(currentServer?.server);
+  });
+
+  return {
+    get baseUrl(): string {
+      if (!integrationServer) {
+        throw new Error('Integration server has not started yet');
+      }
+
+      return integrationServer.baseUrl;
+    },
+  };
 }

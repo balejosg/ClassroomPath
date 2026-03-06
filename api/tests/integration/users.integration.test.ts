@@ -6,7 +6,7 @@ const JWT_SECRET = 'test-jwt-secret';
 process.env.JWT_SECRET = JWT_SECRET;
 process.env.NODE_ENV = 'test';
 
-import { test, describe, before, after } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { and, eq } from 'drizzle-orm';
 
@@ -19,34 +19,15 @@ import {
   resetDb,
   uniqueEmail,
 } from '../test-utils.js';
-import {
-  type IntegrationServerHandle,
-  signToken,
-  startIntegrationServer,
-  stopIntegrationServer,
-} from './harness.js';
+import { signToken, useIntegrationServer } from './harness.js';
 
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 
-let API_URL: string;
-let integrationServer: IntegrationServerHandle | undefined;
+const integration = useIntegrationServer({ resetBeforeStart: true });
 
 describe('ClassroomPath users integration (/cp/trpc)', async () => {
-  before(async () => {
-    await resetDb();
-
-    integrationServer = await startIntegrationServer();
-    API_URL = integrationServer.baseUrl;
-  });
-
-  after(async () => {
-    const currentServer = integrationServer;
-    integrationServer = undefined;
-    await stopIntegrationServer(currentServer?.server);
-  });
-
   test('users.list returns SafeUserWithRoles and never exposes passwordHash', async () => {
     const orgId = `org-users-${Date.now()}`;
 
@@ -126,7 +107,7 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin', groupIds: [] }],
     });
 
-    const resp = await trpcQuery(API_URL, 'users.list', undefined, bearerAuth(token));
+    const resp = await trpcQuery(integration.baseUrl, 'users.list', undefined, bearerAuth(token));
     assertStatus(resp, 200);
 
     const { data } = (await parseTRPC(resp)) as { data: any };
@@ -199,7 +180,7 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
 
     const createdEmail = uniqueEmail('created');
     const createResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'users.create',
       {
         email: createdEmail,
@@ -235,7 +216,7 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     const statusResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'onboarding.status',
       undefined,
       bearerAuth(createdToken)
@@ -281,7 +262,7 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
 
-    const resp = await trpcQuery(API_URL, 'users.list', undefined, bearerAuth(token));
+    const resp = await trpcQuery(integration.baseUrl, 'users.list', undefined, bearerAuth(token));
     // tRPC can respond 200 with an error payload; parseTRPC normalizes that.
     const parsed = (await parseTRPC(resp)) as any;
     assert.ok(parsed.error, 'Expected error payload');

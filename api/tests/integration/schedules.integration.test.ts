@@ -6,7 +6,7 @@ const JWT_SECRET = 'test-jwt-secret';
 process.env.JWT_SECRET = JWT_SECRET;
 process.env.NODE_ENV = 'test';
 
-import { test, describe, before, after } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { eq } from 'drizzle-orm';
 
@@ -23,26 +23,27 @@ import {
   approveOrganizationMember,
   bootstrapOrg,
   ensureOpenPathUser,
-  type IntegrationServerHandle,
   signToken,
-  startIntegrationServer,
-  stopIntegrationServer,
+  useIntegrationServer,
 } from './harness.js';
 import { createTenantScenario } from './scenario-builder.js';
 
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 
-let API_URL: string;
-let integrationServer: IntegrationServerHandle | undefined;
+const integration = useIntegrationServer({ resetBeforeStart: true });
+
+function buildScenario() {
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+}
 
 async function createGroup(user: { token: string }, name: string): Promise<{ groupId: string }> {
-  const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
+  const scenario = buildScenario();
   const group = await scenario.createGroup({ token: user.token, name });
   return { groupId: group.id };
 }
 
 async function createClassroom(admin: { token: string }): Promise<{ classroomId: string }> {
-  const scenario = createTenantScenario({ baseUrl: API_URL, jwtSecret: JWT_SECRET });
+  const scenario = buildScenario();
   const classroom = await scenario.createClassroom({
     token: admin.token,
     name: 'sched-test-classroom',
@@ -52,22 +53,9 @@ async function createClassroom(admin: { token: string }): Promise<{ classroomId:
 }
 
 describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
-  before(async () => {
-    await resetDb();
-
-    integrationServer = await startIntegrationServer();
-    API_URL = integrationServer.baseUrl;
-  });
-
-  after(async () => {
-    const currentServer = integrationServer;
-    integrationServer = undefined;
-    await stopIntegrationServer(currentServer?.server);
-  });
-
   test('requires authentication + tenant membership', async () => {
     // No auth token -> UNAUTHORIZED
-    const unauthResp = await trpcQuery(API_URL, 'schedules.getMine');
+    const unauthResp = await trpcQuery(integration.baseUrl, 'schedules.getMine');
     const unauth = (await parseTRPC(unauthResp)) as any;
     assert.strictEqual(unauth.error, 'Not authenticated');
 
@@ -77,7 +65,12 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     await ensureOpenPathUser({ userId, email, name: 'No Membership' });
     const token = signToken({ userId, email, name: 'No Membership', roles: [] });
 
-    const resp = await trpcQuery(API_URL, 'schedules.getMine', undefined, bearerAuth(token));
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'schedules.getMine',
+      undefined,
+      bearerAuth(token)
+    );
     const parsed = (await parseTRPC(resp)) as any;
     assert.strictEqual(parsed.code, 'FORBIDDEN');
     assert.strictEqual(parsed.error, 'No organization membership found');
@@ -98,7 +91,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -118,7 +111,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherTokenNoGroups,
       memberUserId: teacherUserId,
@@ -127,7 +120,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
 
     // Teacher cannot create schedule for group they are not assigned to
     const forbiddenCreate = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -151,7 +144,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       'sched-teacher-group'
     );
     const createResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -169,7 +162,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
 
     // getMine should return only schedules within org classrooms
     const mineResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'schedules.getMine',
       undefined,
       bearerAuth(teacherTokenNoGroups)
@@ -197,7 +190,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -215,7 +208,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherAToken,
       memberUserId: teacherAId,
@@ -239,7 +232,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherBToken,
       memberUserId: teacherBId,
@@ -248,7 +241,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
 
     // Teacher A creates schedule
     const createResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -264,7 +257,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
 
     // Teacher B cannot update A's schedule
     const updateResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.update',
       { id: sched.id, startTime: '09:15' },
       bearerAuth(teacherBToken)
@@ -275,7 +268,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
 
     // Admin token can update any schedule
     const adminUpdateResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.update',
       { id: sched.id, startTime: '09:15' },
       bearerAuth(adminToken)
@@ -284,7 +277,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
 
     // Teacher B cannot delete A's schedule
     const delResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.delete',
       { id: sched.id },
       bearerAuth(teacherBToken)
@@ -295,7 +288,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
 
     // Admin can delete
     const adminDelResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.delete',
       { id: sched.id },
       bearerAuth(adminToken)
@@ -320,7 +313,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     });
 
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -341,7 +334,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherAToken,
       memberUserId: teacherAId,
@@ -367,7 +360,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherBToken,
       memberUserId: teacherBId,
@@ -379,7 +372,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     );
 
     const weeklyResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -395,7 +388,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.ok(weekly?.id, 'schedules.create should return id');
 
     const oneOffAResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
@@ -410,7 +403,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.ok(oneOffA?.id, 'schedules.createOneOff should return id');
 
     const oneOffBResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
@@ -425,7 +418,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.ok(oneOffB?.id, 'schedules.createOneOff should return id');
 
     const byResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'schedules.getByClassroom',
       { classroomId },
       bearerAuth(teacherAToken)
@@ -449,7 +442,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.strictEqual(otherOneOff.canEdit, false);
 
     const mineResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'schedules.getMine',
       undefined,
       bearerAuth(teacherAToken)
@@ -476,7 +469,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     });
 
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -493,7 +486,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherToken,
       memberUserId: teacherId,
@@ -502,7 +495,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const { groupId } = await createGroup({ token: teacherToken }, 'sched-oneoff-validate-group');
 
     const invalidDate = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
@@ -517,7 +510,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.match(String(invalidDateJson.error), /startAt.*valid date/i);
 
     const seconds = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
@@ -532,7 +525,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.match(String(secondsJson.error), /startAt.*seconds/i);
 
     const nonQuarter = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
@@ -547,7 +540,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.match(String(nonQuarterJson.error), /15-minute increments/i);
 
     const invalidRange = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
@@ -577,7 +570,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     });
 
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -594,7 +587,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherToken,
       memberUserId: teacherId,
@@ -603,7 +596,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const { groupId } = await createGroup({ token: teacherToken }, 'sched-oneoff-conflict-group');
 
     const first = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
@@ -616,7 +609,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assertStatus(first, 200);
 
     const overlap = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
@@ -646,7 +639,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     });
 
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -663,7 +656,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherAToken,
       memberUserId: teacherAId,
@@ -685,7 +678,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherBToken,
       memberUserId: teacherBId,
@@ -693,7 +686,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     });
 
     const createOneOffResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
@@ -707,7 +700,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const { data: oneOff } = (await parseTRPC(createOneOffResp)) as { data: any };
 
     const forbidden = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.updateOneOff',
       { id: oneOff.id, groupId: groupAId },
       bearerAuth(teacherBToken)
@@ -717,7 +710,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.match(String(forbiddenJson.error), /own schedules/i);
 
     const ownerUpdate = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.updateOneOff',
       {
         id: oneOff.id,
@@ -729,7 +722,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assertStatus(ownerUpdate, 200);
 
     const weeklyResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -744,7 +737,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const { data: weekly } = (await parseTRPC(weeklyResp)) as { data: any };
 
     const notOneOff = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.updateOneOff',
       { id: weekly.id, groupId: groupAId },
       bearerAuth(adminToken)
@@ -768,7 +761,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -788,7 +781,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherToken,
       memberUserId: teacherId,
@@ -796,7 +789,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     });
 
     const mineResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'schedules.getMine',
       undefined,
       bearerAuth(teacherToken)
@@ -820,12 +813,16 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin Unknown Ids',
       roles: [{ role: 'admin' }],
     });
-    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Schedules Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
 
     const unknownId = '00000000-0000-0000-0000-000000000000';
 
     const updateResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.update',
       { id: unknownId },
       bearerAuth(adminToken)
@@ -835,7 +832,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.strictEqual(updateJson.error, 'Schedule not found');
 
     const updateOneOffResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.updateOneOff',
       { id: unknownId },
       bearerAuth(adminToken)
@@ -845,7 +842,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.strictEqual(updateOneOffJson.error, 'Schedule not found');
 
     const deleteResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.delete',
       { id: unknownId },
       bearerAuth(adminToken)
@@ -874,7 +871,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     });
 
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -895,7 +892,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherToken,
       memberUserId: teacherId,
@@ -907,7 +904,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     );
 
     const createResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -923,7 +920,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.ok(sched?.id);
 
     const invalidUpdate = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.update',
       { id: sched.id, endTime: '08:45' },
       bearerAuth(teacherToken)
@@ -952,7 +949,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     });
 
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -969,7 +966,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherAToken,
       memberUserId: teacherAId,
@@ -991,7 +988,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherBToken,
       memberUserId: teacherBId,
@@ -1003,7 +1000,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     );
 
     const createResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -1019,7 +1016,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.ok(sched?.id);
 
     const forbiddenUpdate = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.update',
       { id: sched.id, groupId: groupBId },
       bearerAuth(teacherAToken)
@@ -1050,7 +1047,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -1071,7 +1068,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherToken,
       memberUserId: teacherId,
@@ -1083,7 +1080,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     );
 
     const createOneOffResp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
@@ -1098,7 +1095,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.ok(oneOff?.id);
 
     const invalidUpdate = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.updateOneOff',
       { id: oneOff.id, endAt: '2026-01-01T09:00:00Z' },
       bearerAuth(teacherToken)
@@ -1125,7 +1122,11 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin Classroom Missing',
       roles: [{ role: 'admin' }],
     });
-    await bootstrapOrg({ baseUrl: API_URL, token: adminToken, name: 'Schedules Test Org' });
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminToken,
+      name: 'Schedules Test Org',
+    });
     const { classroomId } = await createClassroom({ token: adminToken });
 
     await openpathDb
@@ -1133,7 +1134,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       .where(eq(openpathSchema.classrooms.id, classroomId));
 
     const byResp = await trpcQuery(
-      API_URL,
+      integration.baseUrl,
       'schedules.getByClassroom',
       { classroomId },
       bearerAuth(adminToken)
@@ -1161,7 +1162,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin' }],
     });
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -1182,7 +1183,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherToken,
       memberUserId: teacherId,
@@ -1206,7 +1207,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       .returning();
 
     const resp = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.updateOneOff',
       { id: corrupt.id, groupId },
       bearerAuth(teacherToken)
@@ -1231,7 +1232,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     });
 
     const { organizationId } = await bootstrapOrg({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       token: adminToken,
       name: 'Schedules Test Org',
     });
@@ -1248,7 +1249,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       roles: [{ role: 'teacher', groupIds: [] }],
     });
     await approveOrganizationMember({
-      baseUrl: API_URL,
+      baseUrl: integration.baseUrl,
       adminToken,
       memberToken: teacherToken,
       memberUserId: teacherId,
@@ -1257,7 +1258,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const { groupId } = await createGroup({ token: teacherToken }, 'sched-weekly-conflict-group');
 
     const invalidQuarter = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -1273,7 +1274,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.match(String(invalidQuarterJson.error), /15-minute increments/i);
 
     const invalidWindow = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -1289,7 +1290,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.match(String(invalidWindowJson.error), /startTime must be before endTime/i);
 
     const first = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -1304,7 +1305,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const { data: schedA } = (await parseTRPC(first)) as { data: any };
 
     const overlap = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -1320,7 +1321,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.match(String(overlapJson.error), /reservado/i);
 
     const second = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.create',
       {
         classroomId,
@@ -1335,7 +1336,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const { data: schedB } = (await parseTRPC(second)) as { data: any };
 
     const updateOverlap = await trpcMutate(
-      API_URL,
+      integration.baseUrl,
       'schedules.update',
       { id: schedB.id, startTime: '10:30' },
       bearerAuth(teacherToken)
