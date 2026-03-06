@@ -106,12 +106,20 @@ export async function getTenantClassroomById(params: { classroomId: string }) {
     return null;
   }
 
-  const scheduleGroupId = await getCurrentScheduleGroupId({ classroomId: classroom.id });
+  return presentTenantClassroom({ classroom });
+}
+
+export async function presentTenantClassroom(params: { classroom: OpenPathClassroomRow }) {
+  const scheduleGroupId = await getCurrentScheduleGroupId({ classroomId: params.classroom.id });
   const groupDisplayNamesById = await loadClassroomGroupDisplayNames({
-    classrooms: [classroom],
+    classrooms: [params.classroom],
     scheduleGroupId,
   });
-  return presentClassroomBase({ classroom, scheduleGroupId, groupDisplayNamesById });
+  return presentClassroomBase({
+    classroom: params.classroom,
+    scheduleGroupId,
+    groupDisplayNamesById,
+  });
 }
 
 export async function listTenantClassroomMachines(params: {

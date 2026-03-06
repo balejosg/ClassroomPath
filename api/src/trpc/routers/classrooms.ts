@@ -14,20 +14,16 @@ import {
   machineExemptions,
 } from '../../db/openpath.js';
 
-import {
-  getCurrentScheduleGroupId,
-  resolveActiveScheduleExpiresAt,
-} from '../../services/current-group.service.js';
+import { resolveActiveScheduleExpiresAt } from '../../services/current-group.service.js';
 
-import { presentClassroomBase } from '../../services/classroom-presenter.js';
 import { scopedClassroomNameForOrg } from '../../services/classroom-name.service.js';
 import {
   getTenantClassroomById,
   listActiveClassroomExemptions,
   listTenantClassroomMachines,
   listTenantClassrooms,
+  presentTenantClassroom,
 } from '../../services/classroom-access.service.js';
-import { getGroupDisplayNamesByIds } from '../../lib/openpath-groups.js';
 
 import {
   assertCanUseGroup,
@@ -206,20 +202,8 @@ export const classroomsRouter = router({
         .where(eq(classrooms.id, input.id))
         .returning();
 
-      const scheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
-      const groupDisplayNamesById = await getGroupDisplayNamesByIds(
-        [updated.defaultGroupId, updated.activeGroupId, scheduleGroupId].filter(
-          (value): value is string => !!value
-        )
-      );
-
       await notifyOpenPathClassroomChanged(updated.id);
-
-      return presentClassroomBase({
-        classroom: updated,
-        scheduleGroupId,
-        groupDisplayNamesById,
-      });
+      return presentTenantClassroom({ classroom: updated });
     }),
 
   deleteMachine: tenantProcedure
@@ -277,14 +261,7 @@ export const classroomsRouter = router({
       classroomId: classroom.id,
     });
 
-    const scheduleGroupId = await getCurrentScheduleGroupId({ classroomId: classroom.id });
-    const groupDisplayNamesById = await getGroupDisplayNamesByIds(
-      [classroom.defaultGroupId, classroom.activeGroupId, scheduleGroupId].filter(
-        (value): value is string => !!value
-      )
-    );
-
-    return presentClassroomBase({ classroom, scheduleGroupId, groupDisplayNamesById });
+    return presentTenantClassroom({ classroom });
   }),
 
   update: tenantProcedure.input(UpdateClassroomSchema).mutation(async ({ ctx, input }) => {
@@ -307,18 +284,7 @@ export const classroomsRouter = router({
       await notifyOpenPathClassroomChanged(updated.id);
     }
 
-    const scheduleGroupId = await getCurrentScheduleGroupId({ classroomId: updated.id });
-    const groupDisplayNamesById = await getGroupDisplayNamesByIds(
-      [updated.defaultGroupId, updated.activeGroupId, scheduleGroupId].filter(
-        (value): value is string => !!value
-      )
-    );
-
-    return presentClassroomBase({
-      classroom: updated,
-      scheduleGroupId,
-      groupDisplayNamesById,
-    });
+    return presentTenantClassroom({ classroom: updated });
   }),
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
