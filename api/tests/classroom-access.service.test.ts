@@ -9,7 +9,7 @@ import {
   listActiveClassroomExemptions,
   listTenantClassroomMachines,
   listTenantClassrooms,
-} from '../src/services/classroom-access.service.js';
+} from '../src/services/classrooms/classroom-access.service.js';
 
 const RUN_ID = Math.random().toString(36).slice(2, 10);
 const ORG_ID = `org_classroom_access_${RUN_ID}`;

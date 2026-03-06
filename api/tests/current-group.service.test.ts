@@ -3,7 +3,7 @@ import assert from 'node:assert';
 
 import { TRPCError } from '@trpc/server';
 
-import { calculateWeeklyScheduleExpiresAt } from '../src/services/current-group.service.js';
+import { calculateWeeklyScheduleExpiresAt } from '../src/services/schedules/current-group.service.js';
 
 describe('current-group.service', () => {
   describe('calculateWeeklyScheduleExpiresAt', () => {

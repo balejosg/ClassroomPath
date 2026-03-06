@@ -1,14 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import type { DbSchedule } from '../src/services/schedule-write.service.js';
+import type { DbSchedule } from '../src/services/schedules/schedule-write.service.js';
 import {
   presentOneOffSchedule,
   presentOneOffScheduleWithPermissions,
   presentWeeklySchedule,
   presentWeeklyScheduleWithPermissions,
   type ScheduleMetadataMaps,
-} from '../src/services/schedule-presenter.js';
+} from '../src/services/schedules/schedule-presenter.js';
 
 function buildWeeklySchedule(overrides: Partial<DbSchedule> = {}): DbSchedule {
   return {

@@ -4,7 +4,7 @@ import { TRPCError } from '@trpc/server';
 import {
   normalizeClassroomKey,
   scopedClassroomNameForOrg,
-} from '../src/services/classroom-name.service.js';
+} from '../src/services/classrooms/classroom-name.service.js';
 
 describe('classroom-name.service', () => {
   it('normalizes classroom keys to a slug-safe value', () => {

@@ -2,16 +2,16 @@ import { TRPCError } from '@trpc/server';
 import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
-import { db } from '../db/index.js';
-import * as schema from '../db/schema.js';
+import { db } from '../../db/index.js';
+import * as schema from '../../db/schema.js';
 import {
   openpathDb,
   notifyOpenPathClassroomChanged,
   classrooms,
   machines,
   machineExemptions,
-} from '../db/openpath.js';
-import { resolveActiveScheduleExpiresAt } from './current-group.service.js';
+} from '../../db/openpath.js';
+import { resolveActiveScheduleExpiresAt } from '../schedules/current-group.service.js';
 import { scopedClassroomNameForOrg } from './classroom-name.service.js';
 import { presentTenantClassroom } from './classroom-access.service.js';
 import {
@@ -19,8 +19,8 @@ import {
   assertOrgClassroomAccess,
   assertOrgGroupAccess,
   getOrgClassroomLinkOrThrow,
-} from '../lib/tenant-access.js';
-import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
+} from '../../lib/tenant-access.js';
+import { throwConflictOnUniqueViolation } from '../../lib/pg-errors.js';
 
 export type ClassroomWriteContext = Parameters<typeof assertCanUseGroup>[0];
 

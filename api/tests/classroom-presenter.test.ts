@@ -8,7 +8,7 @@ import {
   presentMachineForClassroomList,
   toPublicClassroomName,
   type ClassroomMachineListItem,
-} from '../src/services/classroom-presenter.js';
+} from '../src/services/classrooms/classroom-presenter.js';
 
 describe('classroom-presenter', () => {
   describe('toPublicClassroomName', () => {

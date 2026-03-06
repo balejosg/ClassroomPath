@@ -5,7 +5,7 @@ import {
   listActiveClassroomExemptions,
   listTenantClassroomMachines,
   listTenantClassrooms,
-} from '../../services/classroom-access.service.js';
+} from '../../services/classrooms/classroom-access.service.js';
 import {
   createClassroomExemptionForTenant,
   createClassroomForTenant,
@@ -14,7 +14,7 @@ import {
   deleteClassroomMachineForTenant,
   setActiveGroupForTenant,
   updateClassroomForTenant,
-} from '../../services/classroom-write.service.js';
+} from '../../services/classrooms/classroom-write.service.js';
 
 import { assertOrgClassroomAccess } from '../../lib/tenant-access.js';
 import {

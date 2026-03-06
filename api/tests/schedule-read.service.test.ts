@@ -7,7 +7,7 @@ import { openpathDb, openpathSchema } from '../src/db/openpath.js';
 import {
   getClassroomSchedulesForTenant,
   getTeacherSchedulesForTenant,
-} from '../src/services/schedule-read.service.js';
+} from '../src/services/schedules/schedule-read.service.js';
 
 const RUN_ID = Math.random().toString(36).slice(2, 10);
 const ORG_ID = `org_schedule_read_${RUN_ID}`;

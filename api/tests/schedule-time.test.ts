@@ -5,7 +5,7 @@ import {
   getScheduleClock,
   normalizeTimeHHMM,
   parseTimeToMinutes,
-} from '../src/services/schedule-time.js';
+} from '../src/services/schedules/schedule-time.js';
 
 describe('schedule-time', () => {
   describe('normalizeTimeHHMM', () => {

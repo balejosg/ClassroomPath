@@ -9,7 +9,7 @@ import {
   deleteClassroomForTenant,
   setActiveGroupForTenant,
   updateClassroomForTenant,
-} from '../src/services/classroom-write.service.js';
+} from '../src/services/classrooms/classroom-write.service.js';
 
 const RUN_ID = Math.random().toString(36).slice(2, 10);
 const ORG_ID = `org_classroom_write_${RUN_ID}`;

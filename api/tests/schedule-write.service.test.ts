@@ -7,7 +7,7 @@ import {
   assertQuarterHour,
   assertQuarterHourInstant,
   parseIsoDate,
-} from '../src/services/schedule-write.service.js';
+} from '../src/services/schedules/schedule-write.service.js';
 
 describe('schedule-write.service', () => {
   it('accepts quarter-hour times and rejects invalid minute increments', () => {

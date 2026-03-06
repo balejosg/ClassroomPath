@@ -1,7 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 
-import { openpathDb, schedules } from '../db/openpath.js';
+import { openpathDb, schedules } from '../../db/openpath.js';
 
 import { getScheduleClock, normalizeTimeHHMM, parseTimeToMinutes } from './schedule-time.js';
 

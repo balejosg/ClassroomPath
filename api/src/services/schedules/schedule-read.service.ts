@@ -1,9 +1,9 @@
 import { TRPCError } from '@trpc/server';
 import { and, eq, inArray } from 'drizzle-orm';
 
-import { openpathDb, schedules, classrooms } from '../db/openpath.js';
-import { assertOrgClassroomAccess, isOrgAdmin } from '../lib/tenant-access.js';
-import { getOrgClassroomIds } from './org-classroom-membership.service.js';
+import { openpathDb, schedules, classrooms } from '../../db/openpath.js';
+import { assertOrgClassroomAccess, isOrgAdmin } from '../../lib/tenant-access.js';
+import { getOrgClassroomIds } from '../org-classroom-membership.service.js';
 import {
   loadScheduleMetadataMaps,
   presentOneOffScheduleWithPermissions,

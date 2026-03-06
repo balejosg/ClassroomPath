@@ -10,11 +10,11 @@ import {
   type DbSchedule,
   updateOneOffScheduleForTenant,
   updateWeeklyScheduleForTenant,
-} from '../../services/schedule-write.service.js';
+} from '../../services/schedules/schedule-write.service.js';
 import {
   getClassroomSchedulesForTenant,
   getTeacherSchedulesForTenant,
-} from '../../services/schedule-read.service.js';
+} from '../../services/schedules/schedule-read.service.js';
 
 import { assertTeacherOrAdminTenantProcedureContext } from '../tenant-procedure-helpers.js';
 

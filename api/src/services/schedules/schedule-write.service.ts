@@ -1,14 +1,14 @@
 import { TRPCError } from '@trpc/server';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 
-import { openpathDb, schedules, notifyOpenPathClassroomChanged } from '../db/openpath.js';
+import { openpathDb, schedules, notifyOpenPathClassroomChanged } from '../../db/openpath.js';
 import { normalizeTimeHHMM, parseTimeToMinutes } from './schedule-time.js';
 import {
   assertCanUseGroup,
   assertOrgClassroomAccess,
   assertOrgGroupAccess,
   isOrgAdmin,
-} from '../lib/tenant-access.js';
+} from '../../lib/tenant-access.js';
 
 export type DbSchedule = typeof schedules.$inferSelect;
 

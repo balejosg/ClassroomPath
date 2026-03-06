@@ -1,5 +1,5 @@
-import { getGroupDisplayNamesByIds } from '../lib/openpath-groups.js';
-import { getUserNamesByIds } from '../lib/openpath-users.js';
+import { getGroupDisplayNamesByIds } from '../../lib/openpath-groups.js';
+import { getUserNamesByIds } from '../../lib/openpath-users.js';
 import {
   mapToOneOffScheduleBase,
   mapToWeeklyScheduleBase,

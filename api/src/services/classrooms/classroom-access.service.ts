@@ -1,17 +1,17 @@
 import { TRPCError } from '@trpc/server';
 import { and, eq, gt, inArray } from 'drizzle-orm';
-import { openpathDb, classrooms, machineExemptions, machines } from '../db/openpath.js';
+import { openpathDb, classrooms, machineExemptions, machines } from '../../db/openpath.js';
 import {
   getCurrentScheduleGroupByClassroomId,
   getCurrentScheduleGroupId,
-} from './current-group.service.js';
-import { getGroupDisplayNamesByIds } from '../lib/openpath-groups.js';
+} from '../schedules/current-group.service.js';
+import { getGroupDisplayNamesByIds } from '../../lib/openpath-groups.js';
 import {
   groupMachinesByClassroomIdForList,
   presentClassroomBase,
   presentClassroomListItem,
 } from './classroom-presenter.js';
-import { getOrgClassroomIds } from './org-classroom-membership.service.js';
+import { getOrgClassroomIds } from '../org-classroom-membership.service.js';
 
 type OpenPathMachineRow = typeof machines.$inferSelect;
 type OpenPathClassroomRow = typeof classrooms.$inferSelect;
