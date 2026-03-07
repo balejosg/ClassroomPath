@@ -1,4 +1,5 @@
 import type { TRPC_ERROR_CODE_KEY } from '@trpc/server/rpc';
+import { z } from 'zod';
 import { config } from '../config.js';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -113,4 +114,112 @@ export function mapUpstreamStatusToTrpcCode(
   if (status === 504) return 'GATEWAY_TIMEOUT';
   if (status >= 500) return 'INTERNAL_SERVER_ERROR';
   return defaultCode;
+}
+
+const OpenPathRoleInfoSchema = z
+  .object({
+    role: z.string().min(1),
+    groupIds: z.array(z.string()).optional().default([]),
+  })
+  .passthrough();
+
+const OpenPathMeResponseSchema = z
+  .object({
+    user: z
+      .object({
+        id: z.string().min(1),
+        email: z.string().min(1),
+        name: z.string().min(1),
+        roles: z.array(OpenPathRoleInfoSchema).optional().default([]),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+export interface AuthenticatedOpenPathUser {
+  sub: string;
+  email: string;
+  name: string;
+  roles: Array<{ role: string; groupIds: string[] }>;
+}
+
+export type OpenPathAuthValidationResult =
+  | {
+      ok: true;
+      user: AuthenticatedOpenPathUser;
+    }
+  | {
+      ok: false;
+      code: 'UNAUTHORIZED' | 'SERVICE_UNAVAILABLE';
+      message: string;
+    };
+
+export async function validateOpenPathAccessToken(params: {
+  req?: { headers: Record<string, unknown> };
+  token: string;
+}): Promise<OpenPathAuthValidationResult> {
+  try {
+    const response = await fetch(openPathTrpcUrl('auth.me'), {
+      method: 'GET',
+      headers: buildOpenPathHeaders({
+        req: params.req,
+        includeAuth: true,
+        token: params.token,
+      }),
+    });
+
+    if (!response.ok) {
+      const message = await readUpstreamErrorMessage(
+        response,
+        response.status >= 500
+          ? 'Authentication service unavailable'
+          : 'Invalid authentication token'
+      );
+
+      if (response.status >= 500) {
+        return {
+          ok: false,
+          code: 'SERVICE_UNAVAILABLE',
+          message,
+        };
+      }
+
+      return {
+        ok: false,
+        code: 'UNAUTHORIZED',
+        message,
+      };
+    }
+
+    const body: unknown = await response.json();
+    const unwrapped = extractTrpcData<unknown>(body) ?? body;
+    const parsed = OpenPathMeResponseSchema.safeParse(unwrapped);
+
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Authentication service unavailable',
+      };
+    }
+
+    return {
+      ok: true,
+      user: {
+        sub: parsed.data.user.id,
+        email: parsed.data.user.email,
+        name: parsed.data.user.name,
+        roles: parsed.data.user.roles.map((role) => ({
+          role: role.role,
+          groupIds: role.groupIds,
+        })),
+      },
+    };
+  } catch {
+    return {
+      ok: false,
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Authentication service unavailable',
+    };
+  }
 }

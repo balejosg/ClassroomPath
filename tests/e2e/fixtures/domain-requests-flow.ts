@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
+const COOKIE_SESSION_MARKER = 'cookie-session';
+
 interface TrpcEnvelope<T> {
   result?: { data: T };
   error?: { message?: string; data?: { code?: string } };
@@ -30,17 +32,15 @@ export interface DomainRequestItem {
   status: string;
 }
 
-export async function getAccessTokenOrThrow(page: Page): Promise<string> {
+export async function getSessionBearerToken(page: Page): Promise<string | null> {
   const token = await page.evaluate(() => window.localStorage.getItem('openpath_access_token'));
-  if (!token) {
-    throw new Error('Missing openpath_access_token');
-  }
+  if (!token || token === COOKIE_SESSION_MARKER) return null;
   return token;
 }
 
 async function cpTrpcQuery<T>(
   page: Page,
-  token: string,
+  token: string | null,
   procedure: string,
   input?: unknown
 ): Promise<TrpcResponse<T>> {
@@ -50,9 +50,8 @@ async function cpTrpcQuery<T>(
         input === undefined ? '' : `?input=${encodeURIComponent(JSON.stringify(input))}`;
       const response = await fetch(`/cp/trpc/${procedure}${query}`, {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'same-origin',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       let body: TrpcEnvelope<T> | null = null;
@@ -75,7 +74,7 @@ async function cpTrpcQuery<T>(
 
 async function cpTrpcMutate<T>(
   page: Page,
-  token: string,
+  token: string | null,
   procedure: string,
   input: unknown
 ): Promise<TrpcResponse<T>> {
@@ -83,9 +82,10 @@ async function cpTrpcMutate<T>(
     async ({ token, procedure, input }) => {
       const response = await fetch(`/cp/trpc/${procedure}`, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(input),
       });
@@ -114,13 +114,19 @@ export function uniqueDomain(prefix: string): string {
   return `${prefix}-${now}-${random}.test`;
 }
 
-export async function getTenantGroups(page: Page, token: string): Promise<TenantGroupItem[]> {
+export async function getTenantGroups(
+  page: Page,
+  token: string | null
+): Promise<TenantGroupItem[]> {
   const groups = await cpTrpcQuery<TenantGroupItem[]>(page, token, 'requests.listGroups');
   expect(groups.status).toBe(200);
   return groups.data ?? [];
 }
 
-export async function ensureTenantGroup(page: Page, token: string): Promise<TenantGroupItem> {
+export async function ensureTenantGroup(
+  page: Page,
+  token: string | null
+): Promise<TenantGroupItem> {
   const existingGroups = await getTenantGroups(page, token);
   if (existingGroups[0]) {
     return existingGroups[0];
@@ -147,7 +153,7 @@ export async function ensureTenantGroup(page: Page, token: string): Promise<Tena
 
 export async function createTenantRequest(
   page: Page,
-  token: string,
+  token: string | null,
   input: { domain: string; groupId: string; reason: string }
 ): Promise<void> {
   const created = await cpTrpcMutate(page, token, 'requests.create', input);
@@ -156,7 +162,7 @@ export async function createTenantRequest(
 
 export async function listTenantRequests(
   page: Page,
-  token: string,
+  token: string | null,
   input: { status?: 'pending' | 'approved' | 'rejected' } = {}
 ): Promise<DomainRequestItem[]> {
   const listed = await cpTrpcQuery<DomainRequestItem[]>(page, token, 'requests.list', input);
@@ -166,7 +172,7 @@ export async function listTenantRequests(
 
 export async function deleteTenantRequest(
   page: Page,
-  token: string,
+  token: string | null,
   requestId: string
 ): Promise<void> {
   const deleted = await cpTrpcMutate(page, token, 'requests.delete', { id: requestId });
@@ -175,7 +181,7 @@ export async function deleteTenantRequest(
 
 export async function cleanupRequestsByDomain(
   page: Page,
-  token: string,
+  token: string | null,
   domains: string[]
 ): Promise<void> {
   const rows = await listTenantRequests(page, token);

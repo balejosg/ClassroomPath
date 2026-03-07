@@ -17,8 +17,9 @@ import {
   resetDb,
   uniqueEmail,
 } from '../test-utils.js';
-import { signToken, useIntegrationServer } from './harness.js';
+import { revokeMockOpenPathToken, signToken, useIntegrationServer } from './harness.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
+import { ACCESS_COOKIE_NAME } from '../../src/lib/session-cookies.js';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
 
@@ -27,6 +28,95 @@ describe('ClassroomPath Gateway Integration', async () => {
     const resp = await trpcQuery(integration.baseUrl, 'onboarding.status');
     const { error } = (await parseTRPC(resp)) as { error: string };
     assert.strictEqual(error, 'Not authenticated');
+  });
+
+  test('should reject refresh tokens on /cp/trpc/onboarding.status', async () => {
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: 'refresh-only-user',
+      email: uniqueEmail('refresh'),
+      name: 'Refresh Only',
+      roles: [],
+      type: 'refresh',
+    });
+
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'onboarding.status',
+      undefined,
+      bearerAuth(token)
+    );
+    assertStatus(resp, 401);
+    const parsed = (await parseTRPC(resp)) as { error?: string; code?: string };
+    assert.strictEqual(parsed.code, 'UNAUTHORIZED');
+    assert.match(parsed.error ?? '', /not authenticated|invalid/i);
+  });
+
+  test('should reject tokens with the wrong issuer on /cp/trpc/onboarding.status', async () => {
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: 'wrong-issuer-user',
+      email: uniqueEmail('issuer'),
+      name: 'Wrong Issuer',
+      roles: [],
+      issuer: 'other-service',
+    });
+
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'onboarding.status',
+      undefined,
+      bearerAuth(token)
+    );
+    assertStatus(resp, 401);
+    const parsed = (await parseTRPC(resp)) as { error?: string; code?: string };
+    assert.strictEqual(parsed.code, 'UNAUTHORIZED');
+    assert.match(parsed.error ?? '', /not authenticated|invalid/i);
+  });
+
+  test('should reject revoked access tokens on /cp/trpc/onboarding.status', async () => {
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: 'revoked-token-user',
+      email: uniqueEmail('revoked'),
+      name: 'Revoked Token',
+      roles: [],
+    });
+    revokeMockOpenPathToken(token);
+
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'onboarding.status',
+      undefined,
+      bearerAuth(token)
+    );
+    assertStatus(resp, 401);
+    const parsed = (await parseTRPC(resp)) as { error?: string; code?: string };
+    assert.strictEqual(parsed.code, 'UNAUTHORIZED');
+    assert.match(parsed.error ?? '', /revoked|not authenticated|invalid/i);
+  });
+
+  test('should allow valid cookie-backed sessions on /cp/trpc/onboarding.status', async () => {
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: 'cookie-session-user',
+      email: uniqueEmail('cookie'),
+      name: 'Cookie Session',
+      roles: [],
+    });
+
+    const resp = await fetch(`${integration.baseUrl}/cp/trpc/onboarding.status`, {
+      headers: {
+        Cookie: `${ACCESS_COOKIE_NAME}=${token}`,
+      },
+    });
+    assertStatus(resp, 200);
+    const parsed = (await parseTRPC(resp)) as {
+      data?: { hasMembership?: boolean; isWaiting?: boolean; organization?: unknown };
+    };
+    assert.strictEqual(parsed.data?.hasMembership, false);
+    assert.strictEqual(parsed.data?.isWaiting, false);
+    assert.strictEqual(parsed.data?.organization, null);
   });
 
   test('should allow onboarding for new users', async () => {

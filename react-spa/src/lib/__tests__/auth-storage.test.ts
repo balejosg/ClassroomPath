@@ -61,6 +61,18 @@ describe('auth-storage', () => {
     expect(window.localStorage.getItem('requests_api_token')).toBeNull();
   });
 
+  it('treats cookie-backed sessions as marker-only state', () => {
+    persistSession({
+      accessToken: 'access-123',
+      refreshToken: 'refresh-456',
+      user: { id: 'u1', email: 'test@example.com' },
+    });
+
+    expect(getAccessToken()).toBeNull();
+    expect(getAuthHeaders()).toEqual({});
+    expect(hasSessionMarker()).toBe(true);
+  });
+
   it('uses legacy token key when modern key is missing', () => {
     window.localStorage.setItem('requests_api_token', 'legacy-token');
 

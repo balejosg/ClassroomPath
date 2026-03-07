@@ -4,7 +4,7 @@ import {
   cleanupRequestsByDomain,
   createTenantRequest,
   ensureTenantGroup,
-  getAccessTokenOrThrow,
+  getSessionBearerToken,
   parsePendingCounter,
   requestRowByDomain,
   uniqueDomain,
@@ -21,7 +21,7 @@ test.describe('Domain approval regression flow', () => {
     await loginAsAdmin(page);
     await waitForNetworkIdle(page);
 
-    const token = await getAccessTokenOrThrow(page);
+    const token = await getSessionBearerToken(page);
     const group = await ensureTenantGroup(page, token);
     const groupId = group.path;
 

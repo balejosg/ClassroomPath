@@ -1,5 +1,7 @@
 import type { Server } from 'node:http';
 import { after, before } from 'node:test';
+import express from 'express';
+import { eq } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 import { closeConnection } from '../../src/db/index.js';
 import { closeOpenPathConnection, openpathDb, openpathSchema } from '../../src/db/openpath.js';
@@ -26,12 +28,247 @@ export interface IntegrationServerHandle {
   server: Server;
 }
 
+let mockOpenPathServer: Server | undefined;
+let mockOpenPathBaseUrl: string | undefined;
+const revokedMockTokens = new Set<string>();
+
+async function buildMockAuthMeResponse(token: string): Promise<{
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    roles: Array<{ role: string; groupIds: string[] }>;
+  };
+}> {
+  const decoded = jwt.decode(token) as
+    | (jwt.JwtPayload & {
+        email?: string;
+        name?: string;
+        roles?: Array<{ role?: string; groupIds?: string[] }>;
+      })
+    | null;
+  const sub = typeof decoded?.sub === 'string' ? decoded.sub : 'unknown-user';
+  const [userRow] = await openpathDb
+    .select({
+      email: openpathSchema.users.email,
+      name: openpathSchema.users.name,
+    })
+    .from(openpathSchema.users)
+    .where(eq(openpathSchema.users.id, sub))
+    .limit(1);
+  const [roleRow] = await openpathDb
+    .select({
+      role: openpathSchema.roles.role,
+      groupIds: openpathSchema.roles.groupIds,
+    })
+    .from(openpathSchema.roles)
+    .where(eq(openpathSchema.roles.userId, sub))
+    .limit(1);
+
+  const email =
+    userRow?.email ?? (typeof decoded?.email === 'string' ? decoded.email : `${sub}@test.local`);
+  const name = userRow?.name ?? (typeof decoded?.name === 'string' ? decoded.name : 'Mock User');
+  const tokenRoles = Array.isArray(decoded?.roles)
+    ? decoded.roles
+        .filter(
+          (role): role is { role: string; groupIds?: string[] } =>
+            role !== null && typeof role === 'object' && typeof role.role === 'string'
+        )
+        .map((role) => ({
+          role: role.role,
+          groupIds: Array.isArray(role.groupIds)
+            ? role.groupIds.filter((groupId): groupId is string => typeof groupId === 'string')
+            : [],
+        }))
+    : [];
+  const roles = roleRow
+    ? [
+        {
+          role: roleRow.role,
+          groupIds: Array.isArray(roleRow.groupIds)
+            ? roleRow.groupIds.filter((groupId): groupId is string => typeof groupId === 'string')
+            : [],
+        },
+      ]
+    : tokenRoles;
+
+  return {
+    user: {
+      id: sub,
+      email,
+      name,
+      roles,
+    },
+  };
+}
+
+async function ensureMockOpenPathServer(): Promise<string> {
+  if (mockOpenPathServer && mockOpenPathBaseUrl) {
+    return mockOpenPathBaseUrl;
+  }
+
+  const port = await getAvailablePort();
+  mockOpenPathBaseUrl = `http://127.0.0.1:${String(port)}`;
+
+  const app = express();
+  app.use(express.json());
+
+  app.get('/health', (_req, res) => {
+    res.json({ status: 'ok', service: 'mock-openpath-api' });
+  });
+
+  app.get('/trpc/auth.me', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({
+        error: {
+          message: 'Not authenticated',
+          code: 'UNAUTHORIZED',
+        },
+      });
+    }
+
+    const token = authHeader.slice(7);
+    if (revokedMockTokens.has(token)) {
+      return res.status(401).json({
+        error: {
+          message: 'Token revoked',
+          code: 'UNAUTHORIZED',
+        },
+      });
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET ?? '', {
+        issuer: 'openpath-api',
+      }) as jwt.JwtPayload & { type?: string };
+
+      if (decoded.type !== 'access') {
+        return res.status(401).json({
+          error: {
+            message: 'Invalid token type',
+            code: 'UNAUTHORIZED',
+          },
+        });
+      }
+
+      return res.json({
+        result: {
+          data: await buildMockAuthMeResponse(token),
+        },
+      });
+    } catch {
+      return res.status(401).json({
+        error: {
+          message: 'Invalid token',
+          code: 'UNAUTHORIZED',
+        },
+      });
+    }
+  });
+
+  app.get('/trpc/healthcheck.live', (_req, res) => {
+    res.json({ result: { data: { status: 'ok' } } });
+  });
+
+  app.get('/trpc/healthcheck.ready', (_req, res) => {
+    res.json({ result: { data: { status: 'ready' } } });
+  });
+
+  app.get('/trpc/healthcheck.systemInfo', (_req, res) => {
+    res.json({
+      result: {
+        data: {
+          version: 'test',
+          database: { connected: true, type: 'postgresql' },
+          session: {
+            accessTokenExpiry: '24h',
+            accessTokenExpiryHuman: '24 hours',
+            refreshTokenExpiry: '7d',
+            refreshTokenExpiryHuman: '7 days',
+          },
+          backup: {
+            lastBackupAt: null,
+            lastBackupHuman: null,
+            lastBackupStatus: null,
+          },
+          uptime: 1,
+        },
+      },
+    });
+  });
+
+  app.get('/trpc/apiTokens.list', (_req, res) => {
+    res.json({ result: { data: [] } });
+  });
+
+  app.post('/trpc/auth.logout', (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      revokedMockTokens.add(authHeader.slice(7));
+    }
+
+    const body = req.body as { refreshToken?: unknown } | undefined;
+    if (typeof body?.refreshToken === 'string' && body.refreshToken.length > 0) {
+      revokedMockTokens.add(body.refreshToken);
+    }
+
+    res.json({ result: { data: { success: true } } });
+  });
+
+  app.post('/trpc/apiTokens.create', (_req, res) => {
+    res.json({
+      result: {
+        data: {
+          id: 'tok_mock',
+          name: 'Mock Token',
+          token: 'tok_mock_secret',
+        },
+      },
+    });
+  });
+
+  app.post('/trpc/apiTokens.revoke', (_req, res) => {
+    res.json({ result: { data: { success: true, revokedAt: new Date().toISOString() } } });
+  });
+
+  app.post('/trpc/apiTokens.regenerate', (_req, res) => {
+    res.json({
+      result: {
+        data: {
+          id: 'tok_mock',
+          name: 'Mock Token',
+          token: 'tok_mock_secret_regenerated',
+        },
+      },
+    });
+  });
+
+  mockOpenPathServer = app.listen(port);
+  mockOpenPathServer.unref();
+
+  await waitForHealth(mockOpenPathBaseUrl, { path: '/health' });
+
+  return mockOpenPathBaseUrl;
+}
+
+export function revokeMockOpenPathToken(token: string): void {
+  revokedMockTokens.add(token);
+}
+
+export function resetMockOpenPathUpstreamState(): void {
+  revokedMockTokens.clear();
+}
+
 export function signToken(params: {
   jwtSecret?: string;
   userId: string;
   email: string;
   name: string;
   roles: unknown[];
+  expiresIn?: string | number;
+  issuer?: string;
+  type?: 'access' | 'refresh';
 }): string {
   const jwtSecret = params.jwtSecret ?? process.env.JWT_SECRET;
 
@@ -39,15 +276,22 @@ export function signToken(params: {
     throw new Error('JWT secret is required to sign integration test tokens');
   }
 
-  return jwt.sign(
-    {
-      sub: params.userId,
-      email: params.email,
-      name: params.name,
-      roles: params.roles,
-    },
-    jwtSecret
-  );
+  const type = params.type ?? 'access';
+  const payload: Record<string, unknown> = {
+    sub: params.userId,
+    type,
+  };
+
+  if (type === 'access') {
+    payload.email = params.email;
+    payload.name = params.name;
+    payload.roles = params.roles;
+  }
+
+  return jwt.sign(payload, jwtSecret, {
+    issuer: params.issuer ?? 'openpath-api',
+    expiresIn: params.expiresIn ?? '1h',
+  });
 }
 
 export async function ensureOpenPathUser(user: TestUser): Promise<void> {
@@ -130,9 +374,11 @@ export async function approveOrganizationMember(params: {
 }
 
 export async function startIntegrationServer(): Promise<IntegrationServerHandle> {
+  const upstreamBaseUrl = await ensureMockOpenPathServer();
   const port = await getAvailablePort();
   const baseUrl = `http://localhost:${String(port)}`;
   process.env.CP_PORT = String(port);
+  process.env.OPENPATH_API_URL = upstreamBaseUrl;
 
   const { app } = await import('../../src/server.js');
   const server = app.listen(port);
@@ -186,6 +432,8 @@ export function useIntegrationServer(options: { resetBeforeStart?: boolean } = {
   let integrationServer: IntegrationServerHandle | undefined;
 
   before(async () => {
+    resetMockOpenPathUpstreamState();
+
     if (options.resetBeforeStart) {
       await resetDb();
     }
