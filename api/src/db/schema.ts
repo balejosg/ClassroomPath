@@ -27,7 +27,10 @@ export const cpMemberships = pgTable(
     invitedBy: varchar('invited_by', { length: 50 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   },
-  (table) => [unique('cp_memberships_user_org_key').on(table.userId, table.organizationId)]
+  (table) => [
+    unique('cp_memberships_user_id_key').on(table.userId),
+    unique('cp_memberships_user_org_key').on(table.userId, table.organizationId),
+  ]
 );
 
 // =============================================================================

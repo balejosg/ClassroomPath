@@ -2,6 +2,12 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { generateId } from '../lib/id.js';
 import { openpathDb, openpathSchema } from '../db/openpath.js';
+import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
+import {
+  assertNoExistingMembershipOrThrow,
+  getSingleMembershipOrThrow,
+  SINGLE_ORG_MEMBERSHIP_MESSAGE,
+} from '../lib/tenant-memberships.js';
 
 export interface OnboardingStatus {
   hasMembership: boolean;
@@ -14,29 +20,24 @@ export interface OnboardingStatus {
 }
 
 export async function getOnboardingStatus(userId: string): Promise<OnboardingStatus> {
-  // Check for membership
-  const membership = await db
-    .select({
-      orgId: schema.cpMemberships.organizationId,
-      role: schema.cpMemberships.role,
-      orgName: schema.cpOrganizations.name,
-    })
-    .from(schema.cpMemberships)
-    .innerJoin(
-      schema.cpOrganizations,
-      eq(schema.cpMemberships.organizationId, schema.cpOrganizations.id)
-    )
-    .where(eq(schema.cpMemberships.userId, userId))
-    .limit(1);
+  const membership = await getSingleMembershipOrThrow(userId);
+  if (membership) {
+    const [organization] = await db
+      .select({
+        id: schema.cpOrganizations.id,
+        name: schema.cpOrganizations.name,
+      })
+      .from(schema.cpOrganizations)
+      .where(eq(schema.cpOrganizations.id, membership.organizationId))
+      .limit(1);
 
-  if (membership.length > 0) {
     return {
       hasMembership: true,
       isWaiting: false,
       organization: {
-        id: membership[0].orgId,
-        name: membership[0].orgName,
-        role: membership[0].role,
+        id: membership.organizationId,
+        name: organization?.name ?? membership.organizationId,
+        role: membership.role,
       },
     };
   }
@@ -55,34 +56,44 @@ export async function getOnboardingStatus(userId: string): Promise<OnboardingSta
   };
 }
 
+export async function assertCanStartOnboarding(userId: string): Promise<void> {
+  await assertNoExistingMembershipOrThrow(userId);
+}
+
 export async function createOrganization(
   name: string,
   userId: string
 ): Promise<{ organizationId: string; membershipId: string }> {
+  await assertCanStartOnboarding(userId);
+
   const orgId = generateId('org');
   const membershipId = generateId('mem');
   const roleId = `role_${generateId('')}`;
 
-  await db.transaction(async (tx) => {
-    // Create organization
-    await tx.insert(schema.cpOrganizations).values({
-      id: orgId,
-      name,
-      createdBy: userId,
-    });
+  try {
+    await db.transaction(async (tx) => {
+      // Create organization
+      await tx.insert(schema.cpOrganizations).values({
+        id: orgId,
+        name,
+        createdBy: userId,
+      });
 
-    // Create admin membership for creator
-    await tx.insert(schema.cpMemberships).values({
-      id: membershipId,
-      userId,
-      organizationId: orgId,
-      role: 'admin',
-      invitedBy: null,
-    });
+      // Create admin membership for creator
+      await tx.insert(schema.cpMemberships).values({
+        id: membershipId,
+        userId,
+        organizationId: orgId,
+        role: 'admin',
+        invitedBy: null,
+      });
 
-    // Remove waiting status if exists
-    await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
-  });
+      // Remove waiting status if exists
+      await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
+    });
+  } catch (error) {
+    throwConflictOnUniqueViolation(error, SINGLE_ORG_MEMBERSHIP_MESSAGE);
+  }
 
   // Assign admin role in OpenPath - use upsert to handle unique constraint
   const existing = await openpathDb

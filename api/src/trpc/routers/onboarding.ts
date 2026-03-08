@@ -41,14 +41,7 @@ export const onboardingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const status = await onboardingService.getOnboardingStatus(ctx.user.sub);
-
-      if (status.hasMembership) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'User already belongs to an organization',
-        });
-      }
+      await onboardingService.assertCanStartOnboarding(ctx.user.sub);
 
       const result = await onboardingService.createOrganization(input.name, ctx.user.sub);
 
@@ -93,14 +86,7 @@ export const onboardingRouter = router({
         .optional()
     )
     .mutation(async ({ ctx, input }) => {
-      const status = await onboardingService.getOnboardingStatus(ctx.user.sub);
-
-      if (status.hasMembership) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'User already belongs to an organization',
-        });
-      }
+      await onboardingService.assertCanStartOnboarding(ctx.user.sub);
 
       const targetOrgId = input?.targetOrganizationId;
 

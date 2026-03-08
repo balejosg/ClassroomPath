@@ -8,6 +8,7 @@ import { nanoid } from 'nanoid';
 import bcrypt from 'bcrypt';
 import { TRPCError } from '@trpc/server';
 import { generateId } from '../../lib/id.js';
+import { getSingleMembershipOrThrow } from '../../lib/tenant-memberships.js';
 
 type RoleInfo = { role: string; groupIds: string[] };
 
@@ -230,6 +231,8 @@ export const usersRouter = router({
       throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
 
+    await getSingleMembershipOrThrow(input.id);
+
     const updateData: { name?: string; isActive?: boolean } = {};
     if (input.name !== undefined) updateData.name = input.name;
     if (input.active !== undefined) updateData.isActive = input.active;
@@ -280,8 +283,6 @@ export const usersRouter = router({
         )
       );
 
-    await openpathDb.delete(users).where(eq(users.id, input.id));
-
     return { success: true };
   }),
 
@@ -292,6 +293,8 @@ export const usersRouter = router({
     if (!userIds.includes(input.userId)) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
+
+    await getSingleMembershipOrThrow(input.userId);
 
     const existingRole = await openpathDb
       .select()
@@ -351,6 +354,8 @@ export const usersRouter = router({
       if (!userIds.includes(input.userId)) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
       }
+
+      await getSingleMembershipOrThrow(input.userId);
 
       await openpathDb.delete(roles).where(eq(roles.userId, input.userId));
 

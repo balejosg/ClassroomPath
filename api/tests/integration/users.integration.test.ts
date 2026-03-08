@@ -268,4 +268,480 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     assert.ok(parsed.error, 'Expected error payload');
     assert.strictEqual(parsed.code, 'FORBIDDEN');
   });
+
+  test('users.delete detaches the tenant user without hard-deleting the global OpenPath identity', async () => {
+    const orgId = `org-users-delete-${Date.now()}`;
+    const adminUserId = `u-admin-delete-${Date.now()}`;
+    const targetUserId = `u-target-delete-${Date.now()}`;
+
+    const adminEmail = uniqueEmail('admin-delete');
+    const targetEmail = uniqueEmail('target-delete');
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: adminUserId,
+        email: adminEmail,
+        name: 'Admin Delete',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: targetUserId,
+        email: targetEmail,
+        name: 'Detach Me',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values([
+      {
+        id: `role-${adminUserId}`,
+        userId: adminUserId,
+        role: 'admin',
+        groupIds: [],
+        createdBy: adminUserId,
+      },
+      {
+        id: `role-${targetUserId}`,
+        userId: targetUserId,
+        role: 'teacher',
+        groupIds: [],
+        createdBy: adminUserId,
+      },
+    ]);
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values([
+      {
+        id: `mem-${adminUserId}`,
+        userId: adminUserId,
+        organizationId: orgId,
+        role: 'admin',
+        invitedBy: adminUserId,
+      },
+      {
+        id: `mem-${targetUserId}`,
+        userId: targetUserId,
+        organizationId: orgId,
+        role: 'teacher',
+        invitedBy: adminUserId,
+      },
+    ]);
+
+    await db.insert(cpSchema.cpOrganizationUsers).values({
+      id: `org-user-${targetUserId}`,
+      organizationId: orgId,
+      openpathUserId: targetUserId,
+    });
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin Delete',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const deleteResp = await trpcMutate(
+      integration.baseUrl,
+      'users.delete',
+      { id: targetUserId },
+      bearerAuth(adminToken)
+    );
+    assertStatus(deleteResp, 200);
+
+    const memberships = await db
+      .select()
+      .from(cpSchema.cpMemberships)
+      .where(
+        and(
+          eq(cpSchema.cpMemberships.organizationId, orgId),
+          eq(cpSchema.cpMemberships.userId, targetUserId)
+        )
+      );
+    assert.strictEqual(memberships.length, 0, 'tenant membership should be removed');
+
+    const orgLinks = await db
+      .select()
+      .from(cpSchema.cpOrganizationUsers)
+      .where(
+        and(
+          eq(cpSchema.cpOrganizationUsers.organizationId, orgId),
+          eq(cpSchema.cpOrganizationUsers.openpathUserId, targetUserId)
+        )
+      );
+    assert.strictEqual(orgLinks.length, 0, 'tenant org-user link should be removed');
+
+    const survivingUsers = await openpathDb
+      .select({ id: openpathSchema.users.id })
+      .from(openpathSchema.users)
+      .where(eq(openpathSchema.users.id, targetUserId));
+    assert.strictEqual(survivingUsers.length, 1, 'global OpenPath user should remain');
+
+    const listResp = await trpcQuery(
+      integration.baseUrl,
+      'users.list',
+      undefined,
+      bearerAuth(adminToken)
+    );
+    assertStatus(listResp, 200);
+    const { data: users } = (await parseTRPC(listResp)) as { data: Array<{ id: string }> };
+    assert.ok(
+      users.every((user) => user.id !== targetUserId),
+      'detached user should disappear from tenant list'
+    );
+  });
+
+  test('users.update mutates tenant-scoped OpenPath profile fields', async () => {
+    const orgId = `org-users-update-${Date.now()}`;
+    const adminUserId = `u-admin-update-${Date.now()}`;
+    const targetUserId = `u-target-update-${Date.now()}`;
+
+    const adminEmail = uniqueEmail('admin-update');
+    const targetEmail = uniqueEmail('target-update');
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: adminUserId,
+        email: adminEmail,
+        name: 'Admin Update',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: targetUserId,
+        email: targetEmail,
+        name: 'Before Update',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values([
+      {
+        id: `mem-${adminUserId}`,
+        userId: adminUserId,
+        organizationId: orgId,
+        role: 'admin',
+        invitedBy: adminUserId,
+      },
+      {
+        id: `mem-${targetUserId}`,
+        userId: targetUserId,
+        organizationId: orgId,
+        role: 'teacher',
+        invitedBy: adminUserId,
+      },
+    ]);
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin Update',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const updateResp = await trpcMutate(
+      integration.baseUrl,
+      'users.update',
+      { id: targetUserId, name: 'After Update', active: false },
+      bearerAuth(adminToken)
+    );
+    assertStatus(updateResp, 200);
+
+    const { data: updatedUser } = (await parseTRPC(updateResp)) as {
+      data: { id: string; name: string; isActive: boolean; roles: Array<{ role: string }> };
+    };
+    assert.strictEqual(updatedUser.id, targetUserId);
+    assert.strictEqual(updatedUser.name, 'After Update');
+    assert.strictEqual(updatedUser.isActive, false);
+    assert.ok(Array.isArray(updatedUser.roles));
+
+    const [persistedUser] = await openpathDb
+      .select()
+      .from(openpathSchema.users)
+      .where(eq(openpathSchema.users.id, targetUserId));
+    assert.strictEqual(persistedUser?.name, 'After Update');
+    assert.strictEqual(persistedUser?.isActive, false);
+  });
+
+  test('users.assignRole creates or updates OpenPath roles and users.revokeRole removes them', async () => {
+    const orgId = `org-users-role-${Date.now()}`;
+    const adminUserId = `u-admin-role-${Date.now()}`;
+    const targetUserId = `u-target-role-${Date.now()}`;
+
+    const adminEmail = uniqueEmail('admin-role');
+    const targetEmail = uniqueEmail('target-role');
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: adminUserId,
+        email: adminEmail,
+        name: 'Admin Role',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: targetUserId,
+        email: targetEmail,
+        name: 'Target Role',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values([
+      {
+        id: `mem-${adminUserId}`,
+        userId: adminUserId,
+        organizationId: orgId,
+        role: 'admin',
+        invitedBy: adminUserId,
+      },
+      {
+        id: `mem-${targetUserId}`,
+        userId: targetUserId,
+        organizationId: orgId,
+        role: 'teacher',
+        invitedBy: adminUserId,
+      },
+    ]);
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin Role',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const createRoleResp = await trpcMutate(
+      integration.baseUrl,
+      'users.assignRole',
+      { userId: targetUserId, role: 'teacher', groupIds: ['group-a'] },
+      bearerAuth(adminToken)
+    );
+    assertStatus(createRoleResp, 200);
+    const { data: createdRole } = (await parseTRPC(createRoleResp)) as {
+      data: { userId: string; role: string; groupIds: string[] };
+    };
+    assert.strictEqual(createdRole.userId, targetUserId);
+    assert.strictEqual(createdRole.role, 'teacher');
+    assert.deepStrictEqual(createdRole.groupIds, ['group-a']);
+
+    const updateRoleResp = await trpcMutate(
+      integration.baseUrl,
+      'users.assignRole',
+      { userId: targetUserId, role: 'admin', groupIds: ['group-b'] },
+      bearerAuth(adminToken)
+    );
+    assertStatus(updateRoleResp, 200);
+    const { data: updatedRole } = (await parseTRPC(updateRoleResp)) as {
+      data: { userId: string; role: string; groupIds: string[] };
+    };
+    assert.strictEqual(updatedRole.userId, targetUserId);
+    assert.strictEqual(updatedRole.role, 'admin');
+    assert.deepStrictEqual(updatedRole.groupIds, ['group-b']);
+
+    const revokeRoleResp = await trpcMutate(
+      integration.baseUrl,
+      'users.revokeRole',
+      { userId: targetUserId },
+      bearerAuth(adminToken)
+    );
+    assertStatus(revokeRoleResp, 200);
+
+    const remainingRoles = await openpathDb
+      .select()
+      .from(openpathSchema.roles)
+      .where(eq(openpathSchema.roles.userId, targetUserId));
+    assert.strictEqual(remainingRoles.length, 0);
+  });
+
+  test('users.assignRole and users.revokeRole reject users outside the tenant scope', async () => {
+    const orgId = `org-users-role-forbidden-${Date.now()}`;
+    const adminUserId = `u-admin-role-forbidden-${Date.now()}`;
+    const outsiderUserId = `u-outsider-role-forbidden-${Date.now()}`;
+
+    const adminEmail = uniqueEmail('admin-role-forbidden');
+    const outsiderEmail = uniqueEmail('outsider-role-forbidden');
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: adminUserId,
+        email: adminEmail,
+        name: 'Admin Forbidden',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: outsiderUserId,
+        email: outsiderEmail,
+        name: 'Outsider User',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${adminUserId}`,
+      userId: adminUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: adminUserId,
+    });
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin Forbidden',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const assignResp = await trpcMutate(
+      integration.baseUrl,
+      'users.assignRole',
+      { userId: outsiderUserId, role: 'teacher', groupIds: [] },
+      bearerAuth(adminToken)
+    );
+    const assignParsed = (await parseTRPC(assignResp)) as { error?: string; code?: string };
+    assert.ok(assignParsed.error, 'Expected error payload');
+    assert.strictEqual(assignParsed.code, 'FORBIDDEN');
+
+    const revokeResp = await trpcMutate(
+      integration.baseUrl,
+      'users.revokeRole',
+      { userId: outsiderUserId },
+      bearerAuth(adminToken)
+    );
+    const revokeParsed = (await parseTRPC(revokeResp)) as { error?: string; code?: string };
+    assert.ok(revokeParsed.error, 'Expected error payload');
+    assert.strictEqual(revokeParsed.code, 'FORBIDDEN');
+  });
+
+  test('users.delete rejects users outside the tenant scope', async () => {
+    const orgId = `org-users-delete-forbidden-${Date.now()}`;
+    const adminUserId = `u-admin-delete-forbidden-${Date.now()}`;
+    const outsiderUserId = `u-outsider-delete-forbidden-${Date.now()}`;
+
+    const adminEmail = uniqueEmail('admin-delete-forbidden');
+    const outsiderEmail = uniqueEmail('outsider-delete-forbidden');
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: adminUserId,
+        email: adminEmail,
+        name: 'Admin Delete Forbidden',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: outsiderUserId,
+        email: outsiderEmail,
+        name: 'Delete Outsider',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${adminUserId}`,
+      userId: adminUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: adminUserId,
+    });
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin Delete Forbidden',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const deleteResp = await trpcMutate(
+      integration.baseUrl,
+      'users.delete',
+      { id: outsiderUserId },
+      bearerAuth(adminToken)
+    );
+    const deleteParsed = (await parseTRPC(deleteResp)) as { error?: string; code?: string };
+    assert.ok(deleteParsed.error, 'Expected error payload');
+    assert.strictEqual(deleteParsed.code, 'FORBIDDEN');
+  });
 });

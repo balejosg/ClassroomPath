@@ -2,6 +2,11 @@ import { eq, and } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { openpathDb, openpathSchema } from '../db/openpath.js';
 import { generateId } from '../lib/id.js';
+import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
+import {
+  SINGLE_ORG_MEMBERSHIP_MESSAGE,
+  throwMembershipConflict,
+} from '../lib/tenant-memberships.js';
 
 export interface PendingUser {
   userId: string;
@@ -70,36 +75,52 @@ export async function approveUser(
   const membershipId = generateId('mem');
   const roleId = `role_${generateId('')}`;
 
-  await db.transaction(async (tx) => {
-    // Verify user is actually waiting for this organization
-    const status = await tx
-      .select()
-      .from(schema.cpUserStatus)
-      .where(
-        and(
-          eq(schema.cpUserStatus.userId, userId),
-          eq(schema.cpUserStatus.status, 'waiting'),
-          eq(schema.cpUserStatus.targetOrganizationId, organizationId)
+  try {
+    await db.transaction(async (tx) => {
+      // Verify user is actually waiting for this organization
+      const status = await tx
+        .select()
+        .from(schema.cpUserStatus)
+        .where(
+          and(
+            eq(schema.cpUserStatus.userId, userId),
+            eq(schema.cpUserStatus.status, 'waiting'),
+            eq(schema.cpUserStatus.targetOrganizationId, organizationId)
+          )
         )
-      )
-      .limit(1);
+        .limit(1);
 
-    if (status.length === 0) {
-      throw new Error('User is not waiting for this organization');
-    }
+      if (status.length === 0) {
+        throw new Error('User is not waiting for this organization');
+      }
 
-    // Create membership
-    await tx.insert(schema.cpMemberships).values({
-      id: membershipId,
-      userId,
-      organizationId,
-      role,
-      invitedBy: approvedBy,
+      const existingMemberships = await tx
+        .select({
+          organizationId: schema.cpMemberships.organizationId,
+        })
+        .from(schema.cpMemberships)
+        .where(eq(schema.cpMemberships.userId, userId))
+        .limit(2);
+
+      if (existingMemberships.length > 0) {
+        throwMembershipConflict(existingMemberships.length);
+      }
+
+      // Create membership
+      await tx.insert(schema.cpMemberships).values({
+        id: membershipId,
+        userId,
+        organizationId,
+        role,
+        invitedBy: approvedBy,
+      });
+
+      // Remove waiting status
+      await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
     });
-
-    // Remove waiting status
-    await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
-  });
+  } catch (error) {
+    throwConflictOnUniqueViolation(error, SINGLE_ORG_MEMBERSHIP_MESSAGE);
+  }
 
   // Assign role in OpenPath based on membership role
   const openpathRole = role === 'admin' ? 'admin' : 'teacher';

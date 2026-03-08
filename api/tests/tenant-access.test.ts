@@ -33,6 +33,7 @@ const USER_ID = `tacc_u_${RUN_ID}`;
 const USER_EMAIL = `tacc-${RUN_ID}@test.local`;
 
 const ORG_ID = `org_tacc_${RUN_ID}`;
+const SECOND_ORG_ID = `org_tacc_${RUN_ID}_second`;
 
 const CLASSROOM_ID = `tacc_c_${RUN_ID}`;
 const ORG_CLASSROOM_LINK_ID = `tacc_oc_${RUN_ID}`;
@@ -126,9 +127,11 @@ describe('tenant-access', () => {
   });
 
   after(async () => {
+    await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, USER_ID));
     await db
       .delete(schema.cpOrganizationGroups)
       .where(eq(schema.cpOrganizationGroups.organizationId, ORG_ID));
+    await db.delete(schema.cpOrganizations).where(eq(schema.cpOrganizations.id, SECOND_ORG_ID));
     await db.delete(schema.cpOrganizations).where(eq(schema.cpOrganizations.id, ORG_ID));
 
     await openpathDb.delete(openpathSchema.roles).where(eq(openpathSchema.roles.userId, USER_ID));
@@ -274,5 +277,35 @@ describe('tenant-access', () => {
       userId: USER_ID,
     });
     assert.deepStrictEqual(userIds, []);
+  });
+
+  it('enforces single-organization membership per user', async () => {
+    await db.insert(schema.cpOrganizations).values({
+      id: SECOND_ORG_ID,
+      name: `Tenant Access Org ${RUN_ID} Secondary`,
+      createdBy: USER_ID,
+    });
+
+    await db.insert(schema.cpMemberships).values({
+      id: `mem_${RUN_ID}_primary`,
+      userId: USER_ID,
+      organizationId: ORG_ID,
+      role: 'teacher',
+      invitedBy: USER_ID,
+    });
+
+    await assert.rejects(
+      db.insert(schema.cpMemberships).values({
+        id: `mem_${RUN_ID}_secondary`,
+        userId: USER_ID,
+        organizationId: SECOND_ORG_ID,
+        role: 'teacher',
+        invitedBy: USER_ID,
+      }),
+      /cp_memberships_user_id_key|duplicate/i
+    );
+
+    await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, USER_ID));
+    await db.delete(schema.cpOrganizations).where(eq(schema.cpOrganizations.id, SECOND_ORG_ID));
   });
 });
