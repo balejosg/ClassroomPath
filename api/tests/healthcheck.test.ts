@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import { afterEach, describe, it } from 'node:test';
 import { TRPCError } from '@trpc/server';
 
-import { getGatewayReadiness } from '../src/server.js';
+import { getGatewayReadiness } from '../src/lib/gateway-readiness.js';
 import type { Context } from '../src/trpc/context.js';
 import { getGatewaySystemInfo, healthcheckRouter } from '../src/trpc/routers/healthcheck.js';
 

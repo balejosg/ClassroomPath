@@ -1,6 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
 import winston from 'winston';
 
+import { getClientIp } from './http-request-meta.js';
+
 interface ChildLogger {
   info: (message: string, meta?: Record<string, unknown>) => void;
   warn: (message: string, meta?: Record<string, unknown>) => void;
@@ -84,7 +86,7 @@ function logHttpRequest(meta: HttpRequestLogMeta): void {
 }
 
 function requestMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const startedAt = Date.now();
+  const startedAt = performance.now();
 
   res.on('finish', () => {
     logHttpRequest({
@@ -92,9 +94,9 @@ function requestMiddleware(req: Request, res: Response, next: NextFunction): voi
       method: req.method,
       path: req.originalUrl || req.url,
       statusCode: res.statusCode,
-      durationMs: Date.now() - startedAt,
+      durationMs: Number((performance.now() - startedAt).toFixed(2)),
       userAgent: req.get('user-agent'),
-      ip: req.ip,
+      ip: getClientIp(req),
     });
   });
 

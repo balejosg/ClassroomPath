@@ -5,16 +5,22 @@ import fs from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { createExpressMiddleware } from '@trpc/server/adapters/express';
-import { sql } from 'drizzle-orm';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { config } from './config.js';
 import { findBlockedOpenPathProcedureFromUrl } from './lib/openpath-proxy-policy.js';
 import { logger } from './lib/logger.js';
 import { injectEnrollTicketAuth } from './lib/enroll-ticket-proxy.js';
-import { extractTrpcData, openPathTrpcUrl } from './lib/openpath-upstream.js';
 import { assignRequestId, getRequestId, REQUEST_ID_HEADER } from './lib/request-id.js';
-import { db } from './db/index.js';
+import {
+  applyGatewaySecurityHeaders,
+  createGatewayErrorBody,
+  createGatewayRateLimitRules,
+  createRateLimitMiddleware,
+  isPayloadTooLargeError,
+} from './lib/gateway-hardening.js';
+import { getGatewayReadiness } from './lib/gateway-readiness.js';
+import { getClientIp } from './lib/http-request-meta.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,260 +54,13 @@ interface GatewayAppOptions {
   onboardingRateLimitWindowMs?: number;
 }
 
-interface RateLimitRule {
-  bucket: 'auth' | 'onboarding';
-  limit: number;
-  windowMs: number;
-  matches: (path: string) => boolean;
-}
-
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
-function headerValue(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) {
-    return typeof value[0] === 'string' ? value[0] : null;
-  }
-
-  return typeof value === 'string' ? value : null;
-}
-
-function getClientIp(req: Request): string {
-  const xForwardedFor = headerValue(req.headers['x-forwarded-for']);
-  if (xForwardedFor) {
-    const [clientIp] = xForwardedFor.split(',');
-    if (clientIp && clientIp.trim().length > 0) {
-      return clientIp.trim();
-    }
-  }
-
-  return req.socket.remoteAddress ?? 'unknown';
-}
-
-function buildGatewayContentSecurityPolicy(): string {
-  const connectSources = ["'self'", 'https://accounts.google.com'];
-
-  if (process.env.NODE_ENV !== 'production') {
-    connectSources.push('http://localhost:*', 'http://127.0.0.1:*', 'ws://localhost:*');
-  }
-
-  return [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "frame-ancestors 'none'",
-    "object-src 'none'",
-    "img-src 'self' data: https:",
-    "style-src 'self' 'unsafe-inline'",
-    "font-src 'self' data: https://fonts.gstatic.com",
-    "script-src 'self' https://accounts.google.com/gsi/client",
-    "frame-src 'self' https://accounts.google.com",
-    `connect-src ${connectSources.join(' ')}`,
-  ].join('; ');
-}
-
-function applyGatewaySecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
-  res.setHeader('Content-Security-Policy', buildGatewayContentSecurityPolicy());
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('X-DNS-Prefetch-Control', 'off');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  next();
-}
-
-function logHttpRequests(req: Request, res: Response, next: NextFunction): void {
-  const startedAt = performance.now();
-
-  res.on('finish', () => {
-    logger.httpRequest({
-      requestId: req.requestId,
-      method: req.method,
-      path: req.originalUrl || req.url,
-      statusCode: res.statusCode,
-      durationMs: Number((performance.now() - startedAt).toFixed(2)),
-      userAgent: req.get('user-agent'),
-      ip: getClientIp(req),
-    });
-  });
-
-  next();
-}
-
-function createRateLimitMiddleware(rules: RateLimitRule[]) {
-  const entries = new Map<string, RateLimitEntry>();
-
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const path = req.originalUrl || req.url;
-    const rule = rules.find((candidate) => candidate.matches(path));
-
-    if (!rule) {
-      next();
-      return;
-    }
-
-    const now = Date.now();
-
-    if (entries.size > 1000) {
-      for (const [key, entry] of entries.entries()) {
-        if (entry.resetAt <= now) {
-          entries.delete(key);
-        }
-      }
-    }
-
-    const clientIp = getClientIp(req);
-    const key = `${rule.bucket}:${clientIp}`;
-    const existing = entries.get(key);
-    const entry =
-      existing && existing.resetAt > now
-        ? existing
-        : {
-            count: 0,
-            resetAt: now + rule.windowMs,
-          };
-
-    if (!existing || existing.resetAt <= now) {
-      entries.set(key, entry);
-    }
-
-    if (entry.count >= rule.limit) {
-      const retryAfterMs = Math.max(0, entry.resetAt - now);
-      const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
-      const requestId = getRequestId(req);
-
-      logger.request(requestId).warn('Rate limit exceeded', {
-        bucket: rule.bucket,
-        ip: clientIp,
-        method: req.method,
-        path,
-        retryAfterMs,
-      });
-
-      res.setHeader('Retry-After', String(retryAfterSeconds));
-      res.status(429).json({
-        error: {
-          message: 'Too many requests',
-          code: 'TOO_MANY_REQUESTS',
-          data: {
-            code: 'TOO_MANY_REQUESTS',
-            bucket: rule.bucket,
-            requestId,
-            retryAfterMs,
-          },
-        },
-      });
-      return;
-    }
-
-    entry.count += 1;
-    res.setHeader('X-RateLimit-Limit', String(rule.limit));
-    res.setHeader('X-RateLimit-Remaining', String(Math.max(0, rule.limit - entry.count)));
-    res.setHeader('X-RateLimit-Reset', String(Math.ceil(entry.resetAt / 1000)));
-
-    next();
-  };
-}
-
-function isPayloadTooLargeError(
-  error: unknown
-): error is { status?: number; statusCode?: number; type?: string } {
-  if (typeof error !== 'object' || error === null) {
-    return false;
-  }
-
-  const candidate = error as { status?: number; statusCode?: number; type?: string };
-  return (
-    candidate.status === 413 ||
-    candidate.statusCode === 413 ||
-    candidate.type === 'entity.too.large'
-  );
-}
-
-export interface GatewayReadiness {
-  ready: boolean;
-  upstreamAvailable: boolean;
-  databaseConnected: boolean;
-}
-
-function createGatewayRateLimitRules(options: GatewayAppOptions): RateLimitRule[] {
-  const authRateLimitMax = options.authRateLimitMax ?? AUTH_RATE_LIMIT_MAX;
-  const authRateLimitWindowMs = options.authRateLimitWindowMs ?? AUTH_RATE_LIMIT_WINDOW_MS;
-  const onboardingRateLimitMax = options.onboardingRateLimitMax ?? ONBOARDING_RATE_LIMIT_MAX;
-  const onboardingRateLimitWindowMs =
-    options.onboardingRateLimitWindowMs ?? ONBOARDING_RATE_LIMIT_WINDOW_MS;
-
-  return [
-    {
-      bucket: 'auth',
-      limit: authRateLimitMax,
-      windowMs: authRateLimitWindowMs,
-      matches: (path: string) =>
-        /^\/(?:cp\/)?trpc\/auth\.(?:login|register|googleLogin|resetPassword|logout)(?:\?|$)/.test(
-          path
-        ),
-    },
-    {
-      bucket: 'onboarding',
-      limit: onboardingRateLimitMax,
-      windowMs: onboardingRateLimitWindowMs,
-      matches: (path: string) =>
-        /^\/cp\/trpc\/onboarding\.(?:createOrganization|waitForInvitation|cancelWaiting)(?:\?|$)/.test(
-          path
-        ),
-    },
-  ];
-}
-
-async function defaultDatabaseCheck(): Promise<boolean> {
-  try {
-    await db.execute(sql`select 1`);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export async function getGatewayReadiness(
-  deps: {
-    checkDatabase?: () => Promise<boolean>;
-    fetchImpl?: typeof fetch;
-  } = {}
-): Promise<GatewayReadiness> {
-  const checkDatabase = deps.checkDatabase ?? defaultDatabaseCheck;
-  const fetchImpl = deps.fetchImpl ?? fetch;
-
-  const databaseConnected = await checkDatabase();
-  let upstreamAvailable = false;
-
-  try {
-    const response = await fetchImpl(openPathTrpcUrl('healthcheck.ready'), {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (response.ok) {
-      const payload: unknown = await response.json();
-      const data = extractTrpcData<{ status?: unknown }>(payload) ?? payload;
-      upstreamAvailable =
-        typeof data === 'object' &&
-        data !== null &&
-        'status' in data &&
-        ['ready', 'ok'].includes(String((data as { status?: unknown }).status));
-    }
-  } catch {
-    upstreamAvailable = false;
-  }
-
+function resolveGatewayRateLimitOptions(options: GatewayAppOptions) {
   return {
-    ready: upstreamAvailable && databaseConnected,
-    upstreamAvailable,
-    databaseConnected,
+    authRateLimitMax: options.authRateLimitMax ?? AUTH_RATE_LIMIT_MAX,
+    authRateLimitWindowMs: options.authRateLimitWindowMs ?? AUTH_RATE_LIMIT_WINDOW_MS,
+    onboardingRateLimitMax: options.onboardingRateLimitMax ?? ONBOARDING_RATE_LIMIT_MAX,
+    onboardingRateLimitWindowMs:
+      options.onboardingRateLimitWindowMs ?? ONBOARDING_RATE_LIMIT_WINDOW_MS,
   };
 }
 
@@ -312,13 +71,15 @@ export function createGatewayApp(options: GatewayAppOptions = {}) {
   const enableRateLimit = options.enableRateLimit ?? RATE_LIMIT_ENABLED;
   const jsonBodyLimit = options.jsonBodyLimit ?? JSON_BODY_LIMIT;
   const rateLimitMiddleware = enableRateLimit
-    ? createRateLimitMiddleware(createGatewayRateLimitRules(options))
+    ? createRateLimitMiddleware(
+        createGatewayRateLimitRules(resolveGatewayRateLimitOptions(options))
+      )
     : null;
 
   app.disable('x-powered-by');
   app.use(assignRequestId);
   app.use(applyGatewaySecurityHeaders);
-  app.use(logHttpRequests);
+  app.use(logger.requestMiddleware);
   app.use(
     cors({
       origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:5173'],
@@ -460,16 +221,11 @@ export function createGatewayApp(options: GatewayAppOptions = {}) {
       limit: jsonBodyLimit,
     });
 
-    res.status(413).json({
-      error: {
-        message: 'Payload too large',
-        code: 'PAYLOAD_TOO_LARGE',
-        data: {
-          code: 'PAYLOAD_TOO_LARGE',
-          requestId,
-        },
-      },
-    });
+    res.status(413).json(
+      createGatewayErrorBody('PAYLOAD_TOO_LARGE', 'Payload too large', {
+        requestId,
+      })
+    );
   });
 
   if (fs.existsSync(reactSpaPath)) {
