@@ -67,6 +67,21 @@ describe('Healthcheck Router', () => {
     assert.strictEqual(readiness.databaseConnected, true);
   });
 
+  it('reports readiness when upstream returns ok status', async () => {
+    const readiness = await getGatewayReadiness({
+      checkDatabase: async () => true,
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ result: { data: { status: 'ok' } } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    });
+
+    assert.strictEqual(readiness.ready, true);
+    assert.strictEqual(readiness.upstreamAvailable, true);
+    assert.strictEqual(readiness.databaseConnected, true);
+  });
+
   it('reports readiness failure when upstream check fails', async () => {
     const readiness = await getGatewayReadiness({
       checkDatabase: async () => true,

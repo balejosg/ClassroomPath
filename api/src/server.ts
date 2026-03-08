@@ -292,7 +292,7 @@ export async function getGatewayReadiness(
         typeof data === 'object' &&
         data !== null &&
         'status' in data &&
-        String((data as { status?: unknown }).status) === 'ready';
+        ['ready', 'ok'].includes(String((data as { status?: unknown }).status));
     }
   } catch {
     upstreamAvailable = false;
