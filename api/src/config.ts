@@ -11,6 +11,24 @@ const buildDatabaseUrl = () => {
   return `postgres://${user}:${password}@${host}:${port}/${name}`;
 };
 
+const parseBooleanEnv = (value: string | undefined, defaultValue: boolean) => {
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return defaultValue;
+};
+
+const isProduction = () => process.env.NODE_ENV === 'production';
+
 export const config = {
   get port() {
     return parseInt(process.env.CP_PORT ?? '3001', 10);
@@ -25,5 +43,11 @@ export const config = {
     // Must match OpenPath's Docker env (dev-secret-key-change-me-in-production)
     // so JWT tokens issued by OpenPath can be verified by ClassroomPath
     return process.env.JWT_SECRET ?? 'dev-secret-key-change-me-in-production';
+  },
+  get allowSelfServiceOrgs() {
+    return parseBooleanEnv(process.env.CP_ALLOW_SELF_SERVICE_ORGS, !isProduction());
+  },
+  get allowOrgDirectory() {
+    return parseBooleanEnv(process.env.CP_ALLOW_ORG_DIRECTORY, !isProduction());
   },
 };

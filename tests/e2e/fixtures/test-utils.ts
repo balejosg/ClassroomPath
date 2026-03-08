@@ -193,6 +193,7 @@ export function getOnboardingAccountForWorker(variantOffset = 0) {
 export async function waitForPostAuthScreen(page: Page, timeout = 20000): Promise<void> {
   const candidates = [
     page.getByTestId('onboarding-org-name'),
+    page.getByTestId('onboarding-wait-invite'),
     page.getByTestId('waiting-check-now'),
     page.getByText('No se pudo verificar tu acceso'),
     page.getByRole('button', { name: 'Mi Panel' }),
@@ -246,6 +247,7 @@ export async function registerUser(page: Page, user: TestUser): Promise<void> {
       // Wait for either success or failure
       const successLocators = [
         page.getByTestId('onboarding-org-name'),
+        page.getByTestId('onboarding-wait-invite'),
         page.getByTestId('waiting-check-now'),
         page.getByRole('button', { name: 'Mi Panel' }),
         page.getByRole('button', { name: 'Panel de Control' }),
@@ -288,6 +290,7 @@ export async function loginUser(page: Page, email: string, password: string): Pr
       // Wait for either success or failure
       const successLocators = [
         page.getByTestId('onboarding-org-name'),
+        page.getByTestId('onboarding-wait-invite'),
         page.getByTestId('waiting-check-now'),
         page.getByRole('button', { name: 'Mi Panel' }),
         page.getByRole('button', { name: 'Panel de Control' }),

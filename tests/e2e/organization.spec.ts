@@ -13,6 +13,77 @@ import {
   createTestOrganization,
   waitForNetworkIdle,
 } from './fixtures/test-utils';
+import type { Page } from '@playwright/test';
+
+type OnboardingPolicyPatch = {
+  allowSelfServiceOrgs: boolean;
+  allowOrgDirectory: boolean;
+  organizations?: Array<{ id: string; name: string }>;
+};
+
+async function mockOnboardingPolicy(page: Page, patch: OnboardingPolicyPatch): Promise<void> {
+  await page.route('**/cp/trpc/**', async (route) => {
+    const url = new URL(route.request().url());
+    const marker = '/cp/trpc/';
+    const markerIndex = url.pathname.indexOf(marker);
+    if (markerIndex < 0) {
+      await route.continue();
+      return;
+    }
+
+    const proceduresPart = url.pathname.slice(markerIndex + marker.length);
+    const procedures = proceduresPart.split(',').filter(Boolean);
+    const policy = {
+      allowSelfServiceOrgs: patch.allowSelfServiceOrgs,
+      allowOrgDirectory: patch.allowOrgDirectory,
+    };
+    const patches: Record<string, unknown> = {
+      'onboarding.status': {
+        hasMembership: false,
+        isWaiting: false,
+        organization: null,
+        policy,
+      },
+      'onboarding.policy': policy,
+      'onboarding.listOrganizations': patch.organizations ?? [],
+    };
+
+    const response = await route.fetch();
+    const contentType = response.headers()['content-type'] || '';
+    if (!contentType.includes('application/json')) {
+      await route.fulfill({ response });
+      return;
+    }
+
+    const originalBody: unknown = await response.json();
+
+    const setResultData = (entry: unknown, value: unknown): unknown => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const e = entry as { result?: { data?: unknown } };
+      if (!e.result || typeof e.result !== 'object') return entry;
+
+      const data = (e.result as { data?: unknown }).data;
+      if (data && typeof data === 'object' && 'json' in data) {
+        (e.result as { data?: { json?: unknown } }).data!.json = value;
+      } else {
+        (e.result as { data?: unknown }).data = value;
+      }
+
+      return entry;
+    };
+
+    const patchOne = (entry: unknown, procedure: string): unknown => {
+      if (!(procedure in patches)) return entry;
+      return setResultData(entry, patches[procedure]);
+    };
+
+    const patchedBody = Array.isArray(originalBody)
+      ? originalBody.map((entry, index) => patchOne(entry, procedures[index] ?? proceduresPart))
+      : patchOne(originalBody, proceduresPart);
+
+    await route.fulfill({ response, json: patchedBody });
+  });
+}
 
 test.describe('Organization Creation', () => {
   test('should create new organization during onboarding @org @onboarding', async ({ page }) => {
@@ -57,6 +128,23 @@ test.describe('Organization Creation', () => {
     await expect(
       page.getByText(/requerido|required|obligatorio|Debes ingresar|nombre para la organización/i)
     ).toBeVisible();
+  });
+
+  test('should hide self-service onboarding when policy disables org creation and discovery @org @onboarding', async ({
+    page,
+  }) => {
+    await mockOnboardingPolicy(page, {
+      allowSelfServiceOrgs: false,
+      allowOrgDirectory: false,
+    });
+
+    await loginAsOnboardingUser(page, 11);
+
+    await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('onboarding-create-org')).toHaveCount(0);
+    await expect(page.getByTestId('onboarding-target-org')).toHaveCount(0);
+    await expect(page.getByTestId('onboarding-access-policy')).toBeVisible();
+    await expect(page.getByTestId('onboarding-wait-invite')).toBeVisible();
   });
 });
 

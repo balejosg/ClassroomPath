@@ -5,15 +5,22 @@ import { Onboarding } from '../Onboarding';
 // Mock the hooks
 const mockCreateOrg = vi.fn();
 const mockWaitForInv = vi.fn();
+let mockPolicy = { allowSelfServiceOrgs: true, allowOrgDirectory: true };
+let mockOrganizations = [{ id: 'org_1', name: 'Org 1' }];
 
 vi.mock('../../lib/hooks', () => ({
+  useOnboardingStatus: () => ({
+    data: {
+      policy: mockPolicy,
+    },
+  }),
   useCreateOrganization: () => ({
     mutate: mockCreateOrg,
     isPending: false,
     error: null,
   }),
   useListOrganizations: () => ({
-    data: [{ id: 'org_1', name: 'Org 1' }],
+    data: mockOrganizations,
     isPending: false,
     isError: false,
     error: null,
@@ -31,6 +38,8 @@ describe('Onboarding View', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPolicy = { allowSelfServiceOrgs: true, allowOrgDirectory: true };
+    mockOrganizations = [{ id: 'org_1', name: 'Org 1' }];
   });
 
   it('should render initial selection view', () => {
@@ -89,5 +98,51 @@ describe('Onboarding View', () => {
 
     expect(mockWaitForInv).toHaveBeenCalled();
     expect(mockOnWaitClick).toHaveBeenCalled();
+  });
+});
+
+describe('Onboarding policy UI', () => {
+  const mockOnOrgCreated = vi.fn();
+  const mockOnWaitClick = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPolicy = { allowSelfServiceOrgs: true, allowOrgDirectory: true };
+    mockOrganizations = [{ id: 'org_1', name: 'Org 1' }];
+  });
+
+  it('hides self-service organization creation when policy disables it', () => {
+    mockPolicy = { allowSelfServiceOrgs: false, allowOrgDirectory: false };
+    mockOrganizations = [];
+
+    render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
+
+    expect(screen.queryByTestId('onboarding-create-org')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('onboarding-target-org')).not.toBeInTheDocument();
+    expect(screen.getByTestId('onboarding-access-policy')).toBeInTheDocument();
+    expect(screen.getByTestId('onboarding-wait-invite')).toBeInTheDocument();
+  });
+
+  it('does not enumerate organizations when directory discovery is disabled', () => {
+    mockPolicy = { allowSelfServiceOrgs: false, allowOrgDirectory: false };
+    mockOrganizations = [];
+    vi.mocked(mockWaitForInv).mockImplementation((_input, options) => {
+      options?.onSuccess?.();
+    });
+
+    render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
+
+    fireEvent.click(screen.getByTestId('onboarding-wait-invite'));
+
+    expect(mockWaitForInv).toHaveBeenCalledWith(undefined, expect.anything());
+    expect(mockOnWaitClick).toHaveBeenCalled();
+  });
+
+  it('keeps both onboarding paths visible when the server policy enables them', () => {
+    render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
+
+    expect(screen.getByText('Crear mi organización')).toBeInTheDocument();
+    expect(screen.getByTestId('onboarding-target-org')).toBeInTheDocument();
+    expect(screen.getByText('Org 1')).toBeInTheDocument();
   });
 });

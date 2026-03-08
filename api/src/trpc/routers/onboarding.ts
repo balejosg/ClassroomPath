@@ -8,6 +8,7 @@ import * as openpathUsers from '../../lib/openpath-users.js';
 import * as jwt from '../../lib/jwt.js';
 import * as pendingUsersService from '../../services/pending-users.service.js';
 import { db, schema } from '../../db/index.js';
+import { config } from '../../config.js';
 import { setSessionCookies } from '../../lib/session-cookies.js';
 
 export const onboardingRouter = router({
@@ -15,6 +16,10 @@ export const onboardingRouter = router({
    * List all organizations (for users to select which one to join)
    */
   listOrganizations: protectedProcedure.query(async () => {
+    if (!config.allowOrgDirectory) {
+      return [];
+    }
+
     const orgs = await db
       .select({
         id: schema.cpOrganizations.id,
@@ -41,6 +46,13 @@ export const onboardingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (!config.allowSelfServiceOrgs) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'La creación de organizaciones está deshabilitada',
+        });
+      }
+
       await onboardingService.assertCanStartOnboarding(ctx.user.sub);
 
       const result = await onboardingService.createOrganization(input.name, ctx.user.sub);
@@ -107,20 +119,23 @@ export const onboardingRouter = router({
 
         await pendingUsersService.setWaitingStatusWithOrg(ctx.user.sub, targetOrgId);
       } else {
-        // If multiple orgs exist, require an explicit selection to avoid
-        // inserting cp_user_status rows with NULL target_organization_id.
         const orgs = await db
           .select({ id: schema.cpOrganizations.id })
           .from(schema.cpOrganizations)
           .limit(2);
 
         if (orgs.length === 1) {
-          // Backwards-compatible: auto-target the only org.
           await pendingUsersService.setWaitingStatusWithOrg(ctx.user.sub, orgs[0].id);
         } else if (orgs.length === 0) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
             message: 'No hay organizaciones disponibles',
+          });
+        } else if (!config.allowOrgDirectory) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message:
+              'El directorio de organizaciones está deshabilitado. Solicita una invitación directa a tu administrador',
           });
         } else {
           throw new TRPCError({

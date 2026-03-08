@@ -3,6 +3,7 @@ import { db, schema } from '../db/index.js';
 import { generateId } from '../lib/id.js';
 import { openpathDb, openpathSchema } from '../db/openpath.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
+import { config } from '../config.js';
 import {
   assertNoExistingMembershipOrThrow,
   getSingleMembershipOrThrow,
@@ -17,9 +18,23 @@ export interface OnboardingStatus {
     name: string;
     role: string;
   } | null;
+  policy: OnboardingPolicy;
+}
+
+export interface OnboardingPolicy {
+  allowSelfServiceOrgs: boolean;
+  allowOrgDirectory: boolean;
+}
+
+export function getOnboardingPolicy(): OnboardingPolicy {
+  return {
+    allowSelfServiceOrgs: config.allowSelfServiceOrgs,
+    allowOrgDirectory: config.allowOrgDirectory,
+  };
 }
 
 export async function getOnboardingStatus(userId: string): Promise<OnboardingStatus> {
+  const policy = getOnboardingPolicy();
   const membership = await getSingleMembershipOrThrow(userId);
   if (membership) {
     const [organization] = await db
@@ -39,6 +54,7 @@ export async function getOnboardingStatus(userId: string): Promise<OnboardingSta
         name: organization?.name ?? membership.organizationId,
         role: membership.role,
       },
+      policy,
     };
   }
 
@@ -53,6 +69,7 @@ export async function getOnboardingStatus(userId: string): Promise<OnboardingSta
     hasMembership: false,
     isWaiting: status.length > 0 && status[0].status === 'waiting',
     organization: null,
+    policy,
   };
 }
 
