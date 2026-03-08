@@ -1,3 +1,4 @@
+import type { NextFunction, Request, Response } from 'express';
 import winston from 'winston';
 
 interface ChildLogger {
@@ -11,15 +12,27 @@ interface LogMeta {
   [key: string]: unknown;
 }
 
+interface HttpRequestLogMeta extends LogMeta {
+  requestId: string | undefined;
+  method: string;
+  path: string;
+  statusCode: number;
+  durationMs: number;
+  userAgent: string | undefined;
+  ip: string | undefined;
+}
+
 const isProduction = process.env.NODE_ENV === 'production';
 const logLevel = process.env.LOG_LEVEL ?? (isProduction ? 'info' : 'debug');
 
 const devFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.colorize(),
-  winston.format.printf(({ timestamp, level, message, ...meta }) => {
+  winston.format.printf(({ timestamp, level, message, requestId, ...meta }) => {
+    const requestPrefix =
+      typeof requestId === 'string' && requestId.length > 0 ? `[${requestId}] ` : '';
     const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
-    return `${timestamp as string} ${level}: ${message as string}${metaStr}`;
+    return `${timestamp as string} ${level}: ${requestPrefix}${message as string}${metaStr}`;
   })
 );
 
@@ -54,6 +67,40 @@ function createChildLogger(meta: LogMeta): ChildLogger {
   };
 }
 
+function createRequestLogger(requestId: string, meta: LogMeta = {}): ChildLogger {
+  return createChildLogger({ requestId, ...meta });
+}
+
+function logHttpRequest(meta: HttpRequestLogMeta): void {
+  let level: 'info' | 'warn' | 'error' = 'info';
+
+  if (meta.statusCode >= 500) {
+    level = 'error';
+  } else if (meta.statusCode >= 400) {
+    level = 'warn';
+  }
+
+  baseLogger[level]('HTTP request completed', meta);
+}
+
+function requestMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const startedAt = Date.now();
+
+  res.on('finish', () => {
+    logHttpRequest({
+      requestId: req.requestId,
+      method: req.method,
+      path: req.originalUrl || req.url,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startedAt,
+      userAgent: req.get('user-agent'),
+      ip: req.ip,
+    });
+  });
+
+  next();
+}
+
 export const logger = {
   info: (message: string, meta?: Record<string, unknown>): void => {
     baseLogger.info(message, meta);
@@ -68,4 +115,7 @@ export const logger = {
     baseLogger.debug(message, meta);
   },
   child: createChildLogger,
+  request: createRequestLogger,
+  httpRequest: logHttpRequest,
+  requestMiddleware,
 };

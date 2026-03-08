@@ -120,6 +120,37 @@ function isJsonResponse(response: Response): boolean {
   return contentType?.includes('application/json') ?? false;
 }
 
+function assertGatewaySecurityHeaders(response: Response): void {
+  const csp = response.headers.get('content-security-policy');
+
+  assert.strictEqual(
+    response.headers.get('x-content-type-options'),
+    'nosniff',
+    'Gateway should send X-Content-Type-Options: nosniff'
+  );
+  assert.strictEqual(
+    response.headers.get('x-frame-options'),
+    'DENY',
+    'Gateway should send X-Frame-Options: DENY'
+  );
+  assert.strictEqual(
+    response.headers.get('referrer-policy'),
+    'no-referrer',
+    'Gateway should send Referrer-Policy: no-referrer'
+  );
+  assert.ok(
+    response.headers.get('x-request-id'),
+    'Gateway responses should include an x-request-id header'
+  );
+  assert.strictEqual(
+    response.headers.get('x-powered-by'),
+    null,
+    'Gateway should not expose x-powered-by'
+  );
+  assert.ok(csp, 'Gateway responses should include a content-security-policy header');
+  assert.match(csp, /default-src 'self'/);
+}
+
 void describe('Smoke Tests - Live Deployment Verification', () => {
   before(() => {
     if (!SMOKE_TEST_URL) {
@@ -161,6 +192,8 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
         200,
         `Gateway health endpoint should return 200, got ${response.status}`
       );
+
+      assertGatewaySecurityHeaders(response);
     });
 
     void test('GET /cp/ready (Gateway) returns 200 OK', async () => {
@@ -171,6 +204,8 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
         200,
         `Gateway readiness endpoint should return 200, got ${response.status}`
       );
+
+      assertGatewaySecurityHeaders(response);
     });
   });
 
