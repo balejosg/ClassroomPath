@@ -1,6 +1,6 @@
 import type { TRPC_ERROR_CODE_KEY } from '@trpc/server/rpc';
-import { z } from 'zod';
 import { config } from '../config.js';
+import { OpenPathMeResponseSchema } from './openpath-auth-schema.js';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null;
@@ -115,26 +115,6 @@ export function mapUpstreamStatusToTrpcCode(
   if (status >= 500) return 'INTERNAL_SERVER_ERROR';
   return defaultCode;
 }
-
-const OpenPathRoleInfoSchema = z
-  .object({
-    role: z.string().min(1),
-    groupIds: z.array(z.string()).optional().default([]),
-  })
-  .passthrough();
-
-const OpenPathMeResponseSchema = z
-  .object({
-    user: z
-      .object({
-        id: z.string().min(1),
-        email: z.string().min(1),
-        name: z.string().min(1),
-        roles: z.array(OpenPathRoleInfoSchema).optional().default([]),
-      })
-      .passthrough(),
-  })
-  .passthrough();
 
 export interface AuthenticatedOpenPathUser {
   sub: string;

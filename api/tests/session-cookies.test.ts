@@ -1,12 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { Response } from 'express';
 
 import {
   ACCESS_COOKIE_NAME,
   clearSessionCookies,
+  extractSessionTokens,
   parseCookieValue,
   REFRESH_COOKIE_NAME,
   setSessionCookies,
+  storeSessionFromPayload,
   stripSessionTokens,
 } from '../src/lib/session-cookies.js';
 
@@ -19,7 +22,10 @@ describe('session cookie helpers', () => {
       },
     };
 
-    setSessionCookies(res as any, { accessToken: 'a-token', refreshToken: 'r-token' });
+    setSessionCookies(res as Pick<Response, 'cookie'>, {
+      accessToken: 'a-token',
+      refreshToken: 'r-token',
+    });
 
     assert.equal(calls.length, 2);
     assert.equal(calls[0]?.name, ACCESS_COOKIE_NAME);
@@ -51,7 +57,7 @@ describe('session cookie helpers', () => {
       },
     };
 
-    clearSessionCookies(res as any);
+    clearSessionCookies(res as Pick<Response, 'cookie'>);
 
     assert.equal(calls.length, 2);
     assert.equal(calls[0]?.name, ACCESS_COOKIE_NAME);
@@ -84,5 +90,46 @@ describe('session cookie helpers', () => {
         email: 'user@example.com',
       },
     });
+  });
+
+  it('extracts session tokens only when both access and refresh tokens are present', () => {
+    assert.deepStrictEqual(
+      extractSessionTokens({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      }),
+      {
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      }
+    );
+    assert.equal(extractSessionTokens({ accessToken: 'access-token' }), null);
+    assert.equal(extractSessionTokens(['not', 'an', 'object']), null);
+  });
+
+  it('stores cookies from a payload and returns the token-stripped result', () => {
+    const calls: Array<{ name: string; value: string; options: Record<string, unknown> }> = [];
+    const res = {
+      cookie(name: string, value: string, options: Record<string, unknown>) {
+        calls.push({ name, value, options });
+      },
+    };
+
+    const sanitized = storeSessionFromPayload(res as Pick<Response, 'cookie'>, {
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      user: {
+        id: 'user-1',
+      },
+    });
+
+    assert.deepStrictEqual(sanitized, {
+      user: {
+        id: 'user-1',
+      },
+    });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0]?.name, ACCESS_COOKIE_NAME);
+    assert.equal(calls[1]?.name, REFRESH_COOKIE_NAME);
   });
 });

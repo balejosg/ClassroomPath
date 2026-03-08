@@ -9,7 +9,7 @@ import * as jwt from '../../lib/jwt.js';
 import * as pendingUsersService from '../../services/pending-users.service.js';
 import { db, schema } from '../../db/index.js';
 import { config } from '../../config.js';
-import { setSessionCookies, stripSessionTokens } from '../../lib/session-cookies.js';
+import { storeSessionFromPayload } from '../../lib/session-cookies.js';
 
 export const onboardingRouter = router({
   /**
@@ -67,12 +67,7 @@ export const onboardingRouter = router({
 
       const roles = await openpathRoles.getUserRoles(ctx.user.sub);
       const tokens = jwt.generateTokens(user, roles);
-      setSessionCookies(ctx.res, {
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-      });
-
-      return stripSessionTokens({
+      return storeSessionFromPayload(ctx.res, {
         success: true,
         organizationId: result.organizationId,
         accessToken: tokens.accessToken,

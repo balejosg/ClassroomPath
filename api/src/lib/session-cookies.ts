@@ -2,15 +2,16 @@ import type { Response } from 'express';
 
 export const ACCESS_COOKIE_NAME = 'cp_access_token';
 export const REFRESH_COOKIE_NAME = 'cp_refresh_token';
+export interface SessionTokenPair {
+  accessToken: string;
+  refreshToken: string;
+}
 
 function isProduction(): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
-export function setSessionCookies(
-  res: Pick<Response, 'cookie'>,
-  tokens: { accessToken: string; refreshToken: string }
-): void {
+export function setSessionCookies(res: Pick<Response, 'cookie'>, tokens: SessionTokenPair): void {
   const secure = isProduction();
 
   res.cookie(ACCESS_COOKIE_NAME, tokens.accessToken, {
@@ -49,6 +50,22 @@ export function clearSessionCookies(res: Pick<Response, 'cookie'>): void {
   });
 }
 
+export function extractSessionTokens(value: unknown): SessionTokenPair | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const payload = value as Record<string, unknown>;
+  if (typeof payload.accessToken !== 'string' || typeof payload.refreshToken !== 'string') {
+    return null;
+  }
+
+  return {
+    accessToken: payload.accessToken,
+    refreshToken: payload.refreshToken,
+  };
+}
+
 export function stripSessionTokens<T>(payload: T): T {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return payload;
@@ -60,6 +77,14 @@ export function stripSessionTokens<T>(payload: T): T {
     ...rest
   } = payload as Record<string, unknown>;
   return rest as T;
+}
+
+export function storeSessionFromPayload<T>(res: Pick<Response, 'cookie'>, payload: T): T {
+  const tokens = extractSessionTokens(payload);
+  if (tokens) {
+    setSessionCookies(res, tokens);
+  }
+  return stripSessionTokens(payload);
 }
 
 export function parseCookieValue(cookieHeader: string | undefined, name: string): string | null {
