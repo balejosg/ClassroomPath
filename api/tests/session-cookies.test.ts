@@ -7,6 +7,7 @@ import {
   parseCookieValue,
   REFRESH_COOKIE_NAME,
   setSessionCookies,
+  stripSessionTokens,
 } from '../src/lib/session-cookies.js';
 
 describe('session cookie helpers', () => {
@@ -63,5 +64,25 @@ describe('session cookie helpers', () => {
     assert.equal(calls[1]?.options.path, '/');
     assert.ok(calls[0]?.options.expires instanceof Date);
     assert.ok(calls[1]?.options.expires instanceof Date);
+  });
+
+  it('strips session tokens from auth payloads before returning them to the browser', () => {
+    const payload = {
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      success: true,
+      user: {
+        id: 'user-1',
+        email: 'user@example.com',
+      },
+    };
+
+    assert.deepStrictEqual(stripSessionTokens(payload), {
+      success: true,
+      user: {
+        id: 'user-1',
+        email: 'user@example.com',
+      },
+    });
   });
 });

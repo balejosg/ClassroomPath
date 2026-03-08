@@ -4,6 +4,7 @@
  */
 
 import { createServer } from 'node:net';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { db, schema } from '../src/db/index.js';
 import { openpathDb, openpathSchema } from '../src/db/openpath.js';
 import { sql } from 'drizzle-orm';
@@ -68,7 +69,6 @@ export async function waitForHealth(
  * Reset database by truncating all tables in both CP and OpenPath databases
  */
 export async function resetDb(): Promise<void> {
-  // Truncate ClassroomPath tables
   const cpTables = [
     'cp_organization_users',
     'cp_organization_groups',
@@ -80,11 +80,6 @@ export async function resetDb(): Promise<void> {
     'cp_user_status',
   ];
 
-  for (const table of cpTables) {
-    await db.execute(sql.raw(`TRUNCATE TABLE "${table}" CASCADE`));
-  }
-
-  // Truncate OpenPath tables
   const opTables = [
     'whitelist_rules',
     'whitelist_groups',
@@ -98,8 +93,29 @@ export async function resetDb(): Promise<void> {
     'settings',
   ];
 
-  for (const table of opTables) {
-    await openpathDb.execute(sql.raw(`TRUNCATE TABLE "${table}" CASCADE`));
+  const truncateTables = async (
+    tableNames: readonly string[],
+    executor: typeof db | typeof openpathDb
+  ) => {
+    const quotedTableNames = tableNames.map((table) => `"${table}"`).join(', ');
+    await executor.execute(sql.raw(`TRUNCATE TABLE ${quotedTableNames} CASCADE`));
+  };
+
+  const isDeadlockError = (error: unknown): error is { code: string } =>
+    typeof error === 'object' && error !== null && 'code' in error && error.code === '40P01';
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await truncateTables(cpTables, db);
+      await truncateTables(opTables, openpathDb);
+      return;
+    } catch (error) {
+      if (!isDeadlockError(error) || attempt === 3) {
+        throw error;
+      }
+
+      await sleep(50 * attempt);
+    }
   }
 }
 

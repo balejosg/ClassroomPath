@@ -11,6 +11,7 @@ import {
   expectWaitingPage,
   loginAsAdmin,
   loginAsPendingUser,
+  waitForPostAuthScreen,
   waitForNetworkIdle,
 } from './fixtures/test-utils';
 import {
@@ -25,12 +26,6 @@ function escapeRegExp(value: string): string {
 
 function pendingUserRow(page: Page, email: string) {
   return page.getByRole('row', { name: new RegExp(escapeRegExp(email), 'i') });
-}
-
-async function stabilizeUsersTable(page: Page): Promise<void> {
-  const retryButton = page.getByRole('button', { name: 'Reintentar' });
-  await retryButton.click({ timeout: 1500 }).catch(() => {});
-  await waitForNetworkIdle(page).catch(() => {});
 }
 
 test.describe('Waiting Room Flow', () => {
@@ -122,7 +117,7 @@ test.describe('Admin Approval Flow', () => {
     await expect(page.getByRole('columnheader', { name: 'Email' })).toBeVisible();
   });
 
-  test('keeps pending user waiting when admin approval controls are unavailable @waiting @admin', async ({
+  test('keeps pending user waiting until an admin approves them @waiting @admin', async ({
     page,
     browser,
   }) => {
@@ -130,16 +125,39 @@ test.describe('Admin Approval Flow', () => {
 
     try {
       await openAdminPendingUsersPanel(page);
-      await stabilizeUsersTable(page);
-
       const row = pendingUserRow(page, user.email);
-      await expect(row).toHaveCount(0);
-      await expect(page.getByRole('button', { name: /Aprobar|Approve/i })).toHaveCount(0);
-      await expect(page.getByRole('button', { name: /Rechazar|Reject/i })).toHaveCount(0);
+      await expect(row).toBeVisible({ timeout: 10000 });
 
       await userPage.getByRole('button', { name: /Verificar|Check/i }).click();
       await waitForNetworkIdle(userPage).catch(() => {});
       await expectWaitingPage(userPage);
+    } finally {
+      await userContext.close();
+    }
+  });
+
+  test('allows an admin to approve a waiting user and unblock them from the waiting room @waiting @admin', async ({
+    page,
+    browser,
+  }) => {
+    const { user, userContext, userPage } = await createPendingUserContext(browser);
+
+    try {
+      await openAdminPendingUsersPanel(page);
+      const row = pendingUserRow(page, user.email);
+      await expect(row).toBeVisible({ timeout: 10000 });
+
+      await row.getByRole('combobox').selectOption('teacher');
+      await row.getByRole('button', { name: /Aprobar|Approve/i }).click();
+      await waitForNetworkIdle(page).catch(() => {});
+
+      await userPage.getByRole('button', { name: /Verificar|Check/i }).click();
+      await waitForNetworkIdle(userPage).catch(() => {});
+      await waitForPostAuthScreen(userPage);
+
+      await expect(userPage.getByText(/Esperando invitación|Waiting for invitation/i)).toHaveCount(
+        0
+      );
     } finally {
       await userContext.close();
     }

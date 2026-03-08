@@ -95,4 +95,23 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
     assert.strictEqual(json.error?.data?.code, 'FORBIDDEN');
     assert.strictEqual(json.error?.data?.blocked, 'groups.list');
   });
+
+  test('registerGatewayProxyRoutes blocks direct passthrough for residual upstream admin procedures', async () => {
+    const response = await fetch(`${baseUrl}/trpc/setup.getRegistrationToken`);
+
+    assert.strictEqual(response.status, 403);
+
+    const json = (await response.json()) as {
+      error?: {
+        message?: string;
+        code?: string;
+        data?: { code?: string; blocked?: string };
+      };
+    };
+
+    assert.strictEqual(json.error?.message, 'Use /cp/trpc for tenant-scoped data');
+    assert.strictEqual(json.error?.code, 'FORBIDDEN');
+    assert.strictEqual(json.error?.data?.code, 'FORBIDDEN');
+    assert.strictEqual(json.error?.data?.blocked, 'setup.getRegistrationToken');
+  });
 });

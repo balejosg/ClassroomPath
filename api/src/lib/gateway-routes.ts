@@ -127,6 +127,19 @@ export function registerGatewayProxyRoutes(app: Express, options: GatewayProxyRo
 
   app.use((req, res, next) => {
     if (!req.url.startsWith('/trpc')) {
+      if (
+        req.url.startsWith('/api') ||
+        req.url.startsWith('/w') ||
+        req.url.startsWith('/api-docs')
+      ) {
+        res.status(403).json(
+          createGatewayErrorBody('FORBIDDEN', 'Direct upstream passthrough disabled', {
+            path: req.url.split('?')[0],
+          })
+        );
+        return;
+      }
+
       next();
       return;
     }
@@ -143,32 +156,6 @@ export function registerGatewayProxyRoutes(app: Express, options: GatewayProxyRo
       })
     );
   });
-
-  app.use(
-    proxyMiddlewareFactory({
-      target: options.openPathApiTarget,
-      changeOrigin: true,
-      ws: true,
-      pathFilter: ['/api', '/trpc', '/w', '/api-docs'],
-      on: {
-        proxyReq: (
-          proxyReq: { setHeader: (name: string, value: string) => void },
-          req: Request
-        ) => {
-          proxyReq.setHeader(REQUEST_ID_HEADER, getRequestId(req));
-
-          injectEnrollTicketAuth(
-            { setHeader: (name, value) => proxyReq.setHeader(name, value) },
-            {
-              method: req.method,
-              url: req.url,
-              headers: req.headers as Record<string, unknown>,
-            }
-          );
-        },
-      },
-    })
-  );
 }
 
 export function registerGatewayApplicationRoutes(

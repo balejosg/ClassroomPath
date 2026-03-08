@@ -363,6 +363,13 @@ if [ "${VERIFY_ALL:-}" = "1" ]; then
 else
   echo "Running E2E tests (excluding @slow-network and @repro)..."
   E2E_SKIP_DB_PUSH=1 PLAYWRIGHT_WORKERS="$PW_WORKERS" npx playwright test --grep-invert="@slow-network|@repro"
+
+  echo "Running mandatory navigation repro smoke..."
+  E2E_SKIP_DB_PUSH=1 \
+    PLAYWRIGHT_WORKERS=1 \
+    NAV_REPRO_ROUNDS="${NAV_REPRO_ROUNDS:-3}" \
+    NAV_REPRO_TIMEOUT_MS="${NAV_REPRO_TIMEOUT_MS:-120000}" \
+    npx playwright test tests/e2e/navigation-noop-repro.spec.ts --project=chromium
 fi
 
 echo ""

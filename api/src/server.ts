@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createExpressMiddleware } from '@trpc/server/adapters/express';
 
-import { config } from './config.js';
+import { assertRuntimeSecretsConfigured, config } from './config.js';
 import { createGatewayRateLimitRules, createRateLimitMiddleware } from './lib/gateway-hardening.js';
 import { type GatewayAppOptions, resolveGatewayConfig } from './lib/gateway-config.js';
 import { getGatewayReadiness } from './lib/gateway-readiness.js';
@@ -22,6 +22,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export function createGatewayApp(options: GatewayAppOptions = {}) {
+  assertRuntimeSecretsConfigured();
+
   const app = express();
   const gatewayConfig = resolveGatewayConfig(options);
   const reactSpaPath = path.join(__dirname, '../../react-spa/dist');

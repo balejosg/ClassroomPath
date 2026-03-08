@@ -386,6 +386,16 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
       .where(eq(openpathSchema.users.id, targetUserId));
     assert.strictEqual(survivingUsers.length, 1, 'global OpenPath user should remain');
 
+    const survivingRoles = await openpathDb
+      .select()
+      .from(openpathSchema.roles)
+      .where(eq(openpathSchema.roles.userId, targetUserId));
+    assert.strictEqual(
+      survivingRoles.length,
+      0,
+      'effective OpenPath privileges should be removed when tenant membership is deleted'
+    );
+
     const listResp = await trpcQuery(
       integration.baseUrl,
       'users.list',
@@ -490,7 +500,7 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     assert.strictEqual(persistedUser?.isActive, false);
   });
 
-  test('users.assignRole creates or updates OpenPath roles and users.revokeRole removes them', async () => {
+  test('users.assignRole and users.revokeRole keep tenant role state authoritative across ClassroomPath and OpenPath', async () => {
     const orgId = `org-users-role-${Date.now()}`;
     const adminUserId = `u-admin-role-${Date.now()}`;
     const targetUserId = `u-target-role-${Date.now()}`;
@@ -570,6 +580,12 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     assert.strictEqual(createdRole.role, 'teacher');
     assert.deepStrictEqual(createdRole.groupIds, ['group-a']);
 
+    const [teacherMembership] = await db
+      .select()
+      .from(cpSchema.cpMemberships)
+      .where(eq(cpSchema.cpMemberships.userId, targetUserId));
+    assert.strictEqual(teacherMembership?.role, 'teacher');
+
     const updateRoleResp = await trpcMutate(
       integration.baseUrl,
       'users.assignRole',
@@ -584,6 +600,12 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     assert.strictEqual(updatedRole.role, 'admin');
     assert.deepStrictEqual(updatedRole.groupIds, ['group-b']);
 
+    const [adminMembership] = await db
+      .select()
+      .from(cpSchema.cpMemberships)
+      .where(eq(cpSchema.cpMemberships.userId, targetUserId));
+    assert.strictEqual(adminMembership?.role, 'admin');
+
     const revokeRoleResp = await trpcMutate(
       integration.baseUrl,
       'users.revokeRole',
@@ -596,7 +618,15 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
       .select()
       .from(openpathSchema.roles)
       .where(eq(openpathSchema.roles.userId, targetUserId));
-    assert.strictEqual(remainingRoles.length, 0);
+    assert.strictEqual(remainingRoles.length, 1);
+    assert.strictEqual(String(remainingRoles[0]?.role), 'teacher');
+    assert.deepStrictEqual(remainingRoles[0]?.groupIds ?? [], []);
+
+    const [revokedMembership] = await db
+      .select()
+      .from(cpSchema.cpMemberships)
+      .where(eq(cpSchema.cpMemberships.userId, targetUserId));
+    assert.strictEqual(revokedMembership?.role, 'teacher');
   });
 
   test('users.assignRole and users.revokeRole reject users outside the tenant scope', async () => {

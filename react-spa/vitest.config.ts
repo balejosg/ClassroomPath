@@ -15,6 +15,12 @@ export default mergeConfig(
         provider: 'v8',
         reporter: ['text', 'json', 'html'],
         exclude: ['node_modules/**', 'src/test/**', '**/*.d.ts', '**/*.config.*', '**/types/**'],
+        thresholds: {
+          statements: 80,
+          lines: 80,
+          functions: 70,
+          branches: 60,
+        },
       },
       // Important for monorepo/submodule resolution
       deps: {

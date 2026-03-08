@@ -2,6 +2,7 @@ import { eq, and } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { openpathDb, openpathSchema } from '../db/openpath.js';
 import { generateId } from '../lib/id.js';
+import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
 import {
   SINGLE_ORG_MEMBERSHIP_MESSAGE,
@@ -73,7 +74,6 @@ export async function approveUser(
   approvedBy: string
 ): Promise<{ membershipId: string }> {
   const membershipId = generateId('mem');
-  const roleId = `role_${generateId('')}`;
 
   try {
     await db.transaction(async (tx) => {
@@ -122,34 +122,11 @@ export async function approveUser(
     throwConflictOnUniqueViolation(error, SINGLE_ORG_MEMBERSHIP_MESSAGE);
   }
 
-  // Assign role in OpenPath based on membership role
-  const openpathRole = role === 'admin' ? 'admin' : 'teacher';
-
-  const existing = await openpathDb
-    .select()
-    .from(openpathSchema.roles)
-    .where(eq(openpathSchema.roles.userId, userId))
-    .limit(1);
-
-  if (existing.length === 0) {
-    await openpathDb.insert(openpathSchema.roles).values({
-      id: roleId,
-      userId,
-      role: openpathRole,
-      groupIds: [] as any,
-      createdBy: approvedBy,
-    });
-  } else {
-    // Update existing role if the new role is higher privilege
-    const roleHierarchy: Record<string, number> = { admin: 3, teacher: 2, viewer: 1 };
-    const currentRank = roleHierarchy[String(existing[0].role)] ?? 0;
-    if (roleHierarchy[openpathRole] > currentRank) {
-      await openpathDb
-        .update(openpathSchema.roles)
-        .set({ role: openpathRole })
-        .where(eq(openpathSchema.roles.userId, userId));
-    }
-  }
+  await synchronizeOpenPathRole({
+    userId,
+    actedBy: approvedBy,
+    groupIds: [],
+  });
 
   return { membershipId };
 }

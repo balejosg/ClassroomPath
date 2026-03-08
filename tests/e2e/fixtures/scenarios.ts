@@ -41,12 +41,11 @@ export async function openAdminPendingUsersPanel(page: Page): Promise<void> {
   await loginAsAdmin(page);
   await waitForNetworkIdle(page);
 
-  const usersButton = page.getByRole('button', { name: /Usuarios y Roles|Users/i });
-  await expect(usersButton).toBeVisible({ timeout: 10000 });
-  await usersButton.click();
-  await waitForNetworkIdle(page);
+  const reviewButton = page.getByRole('button', { name: /Revisar|Review/i });
+  await expect(reviewButton).toBeVisible({ timeout: 10000 });
+  await reviewButton.click();
 
-  await expect(
-    page.getByRole('heading', { name: /Gestion de Usuarios|Gestión de Usuarios/i })
-  ).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('heading', { name: /Solicitudes de Acceso/i }).last()).toBeVisible({
+    timeout: 10000,
+  });
 }

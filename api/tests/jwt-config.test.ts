@@ -53,6 +53,26 @@ function assertTokenLifetime(
 }
 
 describe('ClassroomPath JWT configuration', () => {
+  it('rejects a missing JWT secret outside test mode', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.JWT_SECRET;
+
+    const tag = `task5-classroompath-missing-secret-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const configModule = await import(`../src/config.ts?${tag}`);
+
+    assert.throws(() => configModule.config.jwtSecret, /JWT_SECRET/i);
+  });
+
+  it('rejects the shared default JWT secret outside test mode', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = 'dev-secret-key-change-me-in-production';
+
+    const tag = `task5-classroompath-default-secret-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const configModule = await import(`../src/config.ts?${tag}`);
+
+    assert.throws(() => configModule.config.jwtSecret, /JWT_SECRET/i);
+  });
+
   it('uses the shared JWT expiry env names for locally re-issued session tokens', async () => {
     process.env.NODE_ENV = 'test';
     process.env.JWT_SECRET = 'task5-classroompath-secret';

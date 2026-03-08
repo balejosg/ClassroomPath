@@ -1,15 +1,18 @@
 import assert from 'node:assert';
 import type { Server } from 'node:http';
-import { after, before, describe, test } from 'node:test';
+import { after, afterEach, before, describe, test } from 'node:test';
 
 import { getAvailablePort, waitForHealth } from './test-utils.js';
 
 const REQUEST_ID = 'req-hardening-test-123';
 const LARGE_TARGET_ORG_ID = 'x'.repeat(70_000);
+const TEST_NODE_ENV = 'test';
+const TEST_JWT_SECRET = 'test-jwt-secret';
 
 let server: Server | undefined;
 let baseUrl = '';
 let app: (typeof import('../src/server.js'))['app'];
+let serverModule: typeof import('../src/server.js');
 
 function requestHeaders(extra: Record<string, string> = {}): HeadersInit {
   return {
@@ -48,11 +51,19 @@ function captureStdout<T>(run: () => Promise<T>): Promise<{ result: T; output: s
     });
 }
 
+afterEach(() => {
+  process.env.JWT_SECRET = TEST_JWT_SECRET;
+  process.env.NODE_ENV = TEST_NODE_ENV;
+});
+
 await describe('gateway server hardening', { concurrency: false }, async () => {
   before(async () => {
+    process.env.JWT_SECRET = TEST_JWT_SECRET;
+    process.env.NODE_ENV = TEST_NODE_ENV;
+
     const port = await getAvailablePort();
     baseUrl = `http://127.0.0.1:${String(port)}`;
-    const serverModule = (await import('../src/server.js')) as typeof import('../src/server.js');
+    serverModule = (await import('../src/server.js')) as typeof import('../src/server.js');
     app = serverModule.createGatewayApp({
       enableRateLimit: true,
       jsonBodyLimit: '1kb',
@@ -206,5 +217,12 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
     assert.strictEqual(body.error?.code, 'TOO_MANY_REQUESTS');
     assert.match(body.error?.message ?? '', /too many requests/i);
     assert.ok(body.error?.data?.requestId);
+  });
+
+  test('createGatewayApp fails fast when JWT_SECRET is missing outside test mode', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.JWT_SECRET;
+
+    assert.throws(() => serverModule.createGatewayApp(), /JWT_SECRET/i);
   });
 });

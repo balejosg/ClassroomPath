@@ -18,6 +18,7 @@ import {
   uniqueEmail,
 } from '../test-utils.js';
 import {
+  isMockOpenPathTokenRevoked,
   resetMockOpenPathUpstreamState,
   revokeMockOpenPathToken,
   setMockOpenPathApiTokensListMode,
@@ -27,9 +28,19 @@ import {
   useIntegrationServer,
 } from './harness.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
-import { ACCESS_COOKIE_NAME } from '../../src/lib/session-cookies.js';
+import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../src/lib/session-cookies.js';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
+
+function getSetCookieHeaders(response: Response): string[] {
+  const headers = response.headers as Headers & { getSetCookie?: () => string[] };
+  if (typeof headers.getSetCookie === 'function') {
+    return headers.getSetCookie();
+  }
+
+  const single = response.headers.get('set-cookie');
+  return single ? [single] : [];
+}
 
 describe('ClassroomPath Gateway Integration', async () => {
   test('should return 401 for unauthenticated requests to /cp/trpc', async () => {
@@ -127,6 +138,136 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.strictEqual(parsed.data?.organization, null);
   });
 
+  test('/cp/trpc/auth.login strips tokens from the response body and sets cookie session headers', async () => {
+    const response = await trpcMutate(integration.baseUrl, 'auth.login', {
+      email: uniqueEmail('login-body'),
+      password: 'password123',
+    });
+
+    assertStatus(response, 200);
+    const parsed = (await parseTRPC(response)) as { data?: Record<string, unknown> };
+    assert.strictEqual('accessToken' in (parsed.data ?? {}), false);
+    assert.strictEqual('refreshToken' in (parsed.data ?? {}), false);
+    assert.ok(parsed.data?.user);
+
+    const setCookies = getSetCookieHeaders(response);
+    assert.ok(setCookies.some((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`)));
+    assert.ok(setCookies.some((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`)));
+    assert.ok(setCookies.every((cookie) => /HttpOnly/i.test(cookie)));
+  });
+
+  test('/cp/trpc/auth.register strips tokens from the response body and sets cookie session headers', async () => {
+    const response = await trpcMutate(integration.baseUrl, 'auth.register', {
+      email: uniqueEmail('register-body'),
+      name: 'Register Body User',
+      password: 'password123',
+    });
+
+    assertStatus(response, 200);
+    const parsed = (await parseTRPC(response)) as { data?: Record<string, unknown> };
+    assert.strictEqual('accessToken' in (parsed.data ?? {}), false);
+    assert.strictEqual('refreshToken' in (parsed.data ?? {}), false);
+    assert.ok(parsed.data?.user);
+
+    const setCookies = getSetCookieHeaders(response);
+    assert.ok(setCookies.some((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`)));
+    assert.ok(setCookies.some((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`)));
+  });
+
+  test('/cp/trpc/auth.register returns service unavailable when upstream responds with invalid JSON', async () => {
+    const response = await trpcMutate(integration.baseUrl, 'auth.register', {
+      email: 'mock-register-invalid-json@test.local',
+      name: 'Broken Register User',
+      password: 'password123',
+    });
+
+    assertStatus(response, 500);
+    const parsed = (await parseTRPC(response)) as { error?: string; code?: string };
+    assert.strictEqual(parsed.code, 'INTERNAL_SERVER_ERROR');
+    assert.strictEqual(parsed.error, 'Registration service unavailable');
+  });
+
+  test('/cp/trpc/auth.googleLogin strips tokens from the response body and sets cookie session headers', async () => {
+    const response = await trpcMutate(integration.baseUrl, 'auth.googleLogin', {
+      idToken: 'google-id-token',
+    });
+
+    assertStatus(response, 200);
+    const parsed = (await parseTRPC(response)) as { data?: Record<string, unknown> };
+    assert.strictEqual('accessToken' in (parsed.data ?? {}), false);
+    assert.strictEqual('refreshToken' in (parsed.data ?? {}), false);
+    assert.ok(parsed.data?.user);
+
+    const setCookies = getSetCookieHeaders(response);
+    assert.ok(setCookies.some((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`)));
+    assert.ok(setCookies.some((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`)));
+  });
+
+  test('/cp/trpc/auth.logout revokes both access and refresh tokens when a cookie session is present', async () => {
+    const accessToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: 'logout-cookie-user',
+      email: uniqueEmail('logout-cookie'),
+      name: 'Logout Cookie User',
+      roles: [],
+    });
+    const refreshToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: 'logout-cookie-user',
+      email: uniqueEmail('logout-cookie-refresh'),
+      name: 'Logout Cookie User',
+      roles: [],
+      type: 'refresh',
+    });
+
+    const response = await trpcMutate(integration.baseUrl, 'auth.logout', undefined, {
+      ...bearerAuth(accessToken),
+      Cookie: `${REFRESH_COOKIE_NAME}=${refreshToken}`,
+    });
+
+    assertStatus(response, 200);
+    assert.strictEqual(isMockOpenPathTokenRevoked(accessToken), true);
+    assert.strictEqual(isMockOpenPathTokenRevoked(refreshToken), true);
+  });
+
+  test('/cp/trpc/auth.resetPassword forwards upstream success payload', async () => {
+    const response = await trpcMutate(integration.baseUrl, 'auth.resetPassword', {
+      email: uniqueEmail('reset-password'),
+      token: 'mock-reset-ok',
+      newPassword: 'password1234',
+    });
+
+    assertStatus(response, 200);
+    const parsed = (await parseTRPC(response)) as { data?: { success?: boolean } };
+    assert.strictEqual(parsed.data?.success, true);
+  });
+
+  test('/cp/trpc/auth.resetPassword preserves upstream bad-request responses', async () => {
+    const response = await trpcMutate(integration.baseUrl, 'auth.resetPassword', {
+      email: uniqueEmail('reset-password-bad-request'),
+      token: 'mock-reset-bad-request',
+      newPassword: 'password1234',
+    });
+
+    assertStatus(response, 400);
+    const parsed = (await parseTRPC(response)) as { error?: string; code?: string };
+    assert.strictEqual(parsed.code, 'BAD_REQUEST');
+    assert.strictEqual(parsed.error, 'Reset token is invalid or expired');
+  });
+
+  test('/cp/trpc/auth.resetPassword returns service unavailable when upstream responds with invalid JSON', async () => {
+    const response = await trpcMutate(integration.baseUrl, 'auth.resetPassword', {
+      email: uniqueEmail('reset-password-invalid-json'),
+      token: 'mock-reset-invalid-json',
+      newPassword: 'password1234',
+    });
+
+    assertStatus(response, 500);
+    const parsed = (await parseTRPC(response)) as { error?: string; code?: string };
+    assert.strictEqual(parsed.code, 'INTERNAL_SERVER_ERROR');
+    assert.strictEqual(parsed.error, 'Authentication service unavailable');
+  });
+
   test('should allow onboarding for new users', async () => {
     const userId = 'user-123';
     const email = uniqueEmail('user');
@@ -168,6 +309,9 @@ describe('ClassroomPath Gateway Integration', async () => {
       bearerAuth(token)
     );
     assertStatus(createResp, 200);
+    const createBody = (await parseTRPC(createResp)) as { data?: Record<string, unknown> };
+    assert.strictEqual('accessToken' in (createBody.data ?? {}), false);
+    assert.strictEqual('refreshToken' in (createBody.data ?? {}), false);
 
     // 3. Verify status now shows membership
     const newStatusResp = await trpcQuery(
@@ -187,6 +331,21 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.strictEqual(resp.status, 403);
     const json = (await resp.json()) as any;
     assert.strictEqual(json.error.message, 'Use /cp/trpc for tenant-scoped data');
+  });
+
+  test('should block direct access to non-tenant upstream admin procedures', async () => {
+    for (const procedure of [
+      'setup.getRegistrationToken',
+      'auth.generateResetToken',
+      'healthReports.list',
+      'auth.me',
+    ]) {
+      const resp = await fetch(`${integration.baseUrl}/trpc/${procedure}`);
+      assert.strictEqual(resp.status, 403, `${procedure} should be blocked`);
+      const json = (await resp.json()) as any;
+      assert.strictEqual(json.error.message, 'Use /cp/trpc for tenant-scoped data');
+      assert.strictEqual(json.error.data.blocked, procedure);
+    }
   });
 
   test('should route /cp/health correctly', async () => {
@@ -308,7 +467,7 @@ describe('ClassroomPath Gateway Integration', async () => {
     const resp = await fetch(`${integration.baseUrl}/trpc/health.check,requests.list`);
     assert.strictEqual(resp.status, 403);
     const json = (await resp.json()) as any;
-    assert.strictEqual(json.error.data.blocked, 'requests.list');
+    assert.strictEqual(json.error.data.blocked, 'health.check');
   });
 
   test('/cp/trpc/requests.listGroups should work for authenticated tenant user', async () => {
@@ -361,11 +520,7 @@ describe('ClassroomPath Gateway Integration', async () => {
   // New Gateway Endpoint Tests (Session 2026-02-07)
   // =========================================
 
-  // NOTE: auth.me, healthcheck.systemInfo, and apiTokens endpoints forward to OpenPath API
-  // which is not running in the gateway-only integration test environment.
-  // These are tested via E2E tests where the full stack is running.
-
-  test('/cp/trpc/auth.me requires OpenPath API (expected to fail without it)', async () => {
+  test('/cp/trpc/auth.me returns the upstream-authenticated user profile', async () => {
     const userId = 'user-auth-me-test';
     const email = uniqueEmail('authme');
     const userName = 'Auth Me Test User';
@@ -397,14 +552,20 @@ describe('ClassroomPath Gateway Integration', async () => {
       bearerAuth(token)
     );
 
-    // Call auth.me - this forwards to OpenPath API which isn't running
-    // So we expect a 500 error (service unavailable)
     const resp = await trpcQuery(integration.baseUrl, 'auth.me', undefined, bearerAuth(token));
-    // Without OpenPath API, this will return 500
-    assert.ok(
-      resp.status === 200 || resp.status === 500,
-      'auth.me should return 200 (with OpenPath) or 500 (without)'
-    );
+    assertStatus(resp, 200);
+    const parsed = (await parseTRPC(resp)) as {
+      data?: {
+        user?: {
+          id?: string;
+          email?: string;
+          name?: string;
+        };
+      };
+    };
+    assert.strictEqual(parsed.data?.user?.id, userId);
+    assert.strictEqual(parsed.data?.user?.email, email);
+    assert.strictEqual(parsed.data?.user?.name, userName);
   });
 
   test('/cp/trpc/healthcheck.systemInfo surfaces degraded upstream state', async () => {
@@ -512,7 +673,7 @@ describe('ClassroomPath Gateway Integration', async () => {
     }
   });
 
-  test('/cp/trpc/apiTokens.create requires OpenPath API (expected to fail without it)', async () => {
+  test('/cp/trpc/apiTokens.create creates an API token through the upstream bridge', async () => {
     const userId = 'user-apitokens-create-test';
     const email = uniqueEmail('apitokenscreate');
 
@@ -543,18 +704,23 @@ describe('ClassroomPath Gateway Integration', async () => {
       bearerAuth(token)
     );
 
-    // Create an API token - this forwards to OpenPath API
     const createResp = await trpcMutate(
       integration.baseUrl,
       'apiTokens.create',
       { name: 'Test Token', expiresInDays: 30 },
       bearerAuth(token)
     );
-    // Without OpenPath API, this will return 500
-    assert.ok(
-      createResp.status === 200 || createResp.status === 500,
-      'apiTokens.create should return 200 (with OpenPath) or 500 (without)'
-    );
+    assertStatus(createResp, 200);
+    const parsed = (await parseTRPC(createResp)) as {
+      data?: {
+        id?: string;
+        name?: string;
+        token?: string;
+      };
+    };
+    assert.strictEqual(parsed.data?.id, 'tok_mock');
+    assert.strictEqual(parsed.data?.name, 'Mock Token');
+    assert.strictEqual(parsed.data?.token, 'tok_mock_secret');
   });
 
   test('/cp/trpc/groups.list should include rule counts (whitelistCount, blockedSubdomainCount, blockedPathCount)', async () => {

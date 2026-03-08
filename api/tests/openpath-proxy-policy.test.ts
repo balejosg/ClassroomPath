@@ -14,19 +14,32 @@ void describe('openpath-proxy-policy', () => {
       findBlockedOpenPathProcedureFromUrl('/trpc/requests.create'),
       'requests.create'
     );
+    assert.strictEqual(
+      findBlockedOpenPathProcedureFromUrl('/trpc/setup.getRegistrationToken'),
+      'setup.getRegistrationToken'
+    );
+    assert.strictEqual(
+      findBlockedOpenPathProcedureFromUrl('/trpc/auth.generateResetToken'),
+      'auth.generateResetToken'
+    );
+    assert.strictEqual(
+      findBlockedOpenPathProcedureFromUrl('/trpc/healthReports.list'),
+      'healthReports.list'
+    );
   });
 
-  test('blocks prefix matches (router-level)', () => {
+  test('blocks any direct upstream tRPC passthrough that is not explicitly approved', () => {
     assert.strictEqual(
       findBlockedOpenPathProcedureFromUrl('/trpc/schedules.list'),
       'schedules.list'
     );
+    assert.strictEqual(findBlockedOpenPathProcedureFromUrl('/trpc/auth.me'), 'auth.me');
   });
 
   test('supports batched procedure paths', () => {
     assert.strictEqual(
       findBlockedOpenPathProcedureFromUrl('/trpc/auth.me,requests.create?batch=1'),
-      'requests.create'
+      'auth.me'
     );
   });
 

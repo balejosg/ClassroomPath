@@ -31,6 +31,20 @@ export interface TestClassroom {
   displayName: string;
 }
 
+async function throwUnexpectedTrpcStatus(
+  action: string,
+  response: Response,
+  expectedStatus: number
+): Promise<never> {
+  const body = await response
+    .clone()
+    .text()
+    .catch(() => '<failed to read response body>');
+  throw new Error(
+    `${action} expected status ${String(expectedStatus)}, got ${String(response.status)}. Body: ${body.slice(0, 800)}`
+  );
+}
+
 function requireJwtSecret(jwtSecret: string | undefined): string {
   if (!jwtSecret) {
     throw new Error('JWT secret is required to create integration test scenarios');
@@ -185,7 +199,9 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
         { name: config.name, displayName },
         bearerAuth(config.token)
       );
-      assertStatus(response, 200);
+      if (response.status !== 200) {
+        await throwUnexpectedTrpcStatus('groups.create', response, 200);
+      }
       const { data } = (await parseTRPC(response)) as { data: { id?: unknown; name?: unknown } };
       assert.ok(data?.id, 'groups.create should return id');
 
@@ -234,7 +250,9 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
         },
         bearerAuth(config.token)
       );
-      assertStatus(response, 200);
+      if (response.status !== 200) {
+        await throwUnexpectedTrpcStatus('classrooms.create', response, 200);
+      }
       const { data } = (await parseTRPC(response)) as { data: { id?: unknown; name?: unknown } };
       assert.ok(data?.id, 'classrooms.create should return id');
 

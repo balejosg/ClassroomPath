@@ -28,6 +28,29 @@ const parseBooleanEnv = (value: string | undefined, defaultValue: boolean) => {
 };
 
 const isProduction = () => process.env.NODE_ENV === 'production';
+export const DEFAULT_JWT_SECRET = 'dev-secret-key-change-me-in-production';
+
+function requireJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim();
+
+  if (process.env.NODE_ENV === 'test') {
+    return secret && secret.length > 0 ? secret : DEFAULT_JWT_SECRET;
+  }
+
+  if (!secret) {
+    throw new Error('JWT_SECRET must be set outside test mode');
+  }
+
+  if (secret === DEFAULT_JWT_SECRET) {
+    throw new Error('JWT_SECRET must not use the default development value outside test mode');
+  }
+
+  return secret;
+}
+
+export function assertRuntimeSecretsConfigured(): void {
+  void requireJwtSecret();
+}
 
 export const config = {
   get port() {
@@ -40,9 +63,7 @@ export const config = {
     return buildDatabaseUrl();
   },
   get jwtSecret() {
-    // Must match OpenPath's Docker env (dev-secret-key-change-me-in-production)
-    // so JWT tokens issued by OpenPath can be verified by ClassroomPath
-    return process.env.JWT_SECRET ?? 'dev-secret-key-change-me-in-production';
+    return requireJwtSecret();
   },
   get allowSelfServiceOrgs() {
     return parseBooleanEnv(process.env.CP_ALLOW_SELF_SERVICE_ORGS, !isProduction());

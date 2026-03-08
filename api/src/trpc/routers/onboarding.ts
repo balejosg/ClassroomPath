@@ -9,7 +9,7 @@ import * as jwt from '../../lib/jwt.js';
 import * as pendingUsersService from '../../services/pending-users.service.js';
 import { db, schema } from '../../db/index.js';
 import { config } from '../../config.js';
-import { setSessionCookies } from '../../lib/session-cookies.js';
+import { setSessionCookies, stripSessionTokens } from '../../lib/session-cookies.js';
 
 export const onboardingRouter = router({
   /**
@@ -72,7 +72,7 @@ export const onboardingRouter = router({
         refreshToken: tokens.refreshToken,
       });
 
-      return {
+      return stripSessionTokens({
         success: true,
         organizationId: result.organizationId,
         accessToken: tokens.accessToken,
@@ -83,7 +83,7 @@ export const onboardingRouter = router({
           name: user.name,
           roles,
         },
-      };
+      });
     }),
 
   /**

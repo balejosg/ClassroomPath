@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
-import { clearSessionCookies, setSessionCookies } from '../../lib/session-cookies.js';
+import {
+  clearSessionCookies,
+  parseCookieValue,
+  REFRESH_COOKIE_NAME,
+  setSessionCookies,
+  stripSessionTokens,
+} from '../../lib/session-cookies.js';
 import {
   buildOpenPathHeaders,
   extractTrpcData,
@@ -74,7 +80,7 @@ export const authRouter = router({
           setSessionCookies(ctx.res, tokenPair);
         }
 
-        return unwrapped;
+        return stripSessionTokens(unwrapped);
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({
@@ -119,7 +125,7 @@ export const authRouter = router({
           setSessionCookies(ctx.res, tokenPair);
         }
 
-        return unwrapped;
+        return stripSessionTokens(unwrapped);
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({
@@ -162,7 +168,7 @@ export const authRouter = router({
           setSessionCookies(ctx.res, tokenPair);
         }
 
-        return unwrapped;
+        return stripSessionTokens(unwrapped);
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({
@@ -253,12 +259,15 @@ export const authRouter = router({
    * Logout endpoint - clears cookie session and forwards token invalidation to OpenPath API
    */
   logout: protectedProcedure.mutation(async ({ ctx }) => {
+    const refreshToken = parseCookieValue(ctx.req.headers.cookie, REFRESH_COOKIE_NAME);
+
     try {
       await fetch(openPathTrpcUrl('auth.logout'), {
         method: 'POST',
         headers: {
           ...buildOpenPathHeaders({ req: ctx.req, includeAuth: true, token: ctx.token }),
         },
+        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
       });
     } finally {
       clearSessionCookies(ctx.res);

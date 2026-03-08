@@ -4,6 +4,7 @@
 
 set -e
 
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-openpath-postgres}"
 DB_USER="${DB_USER:-openpath}"
 DB_PASSWORD="${DB_PASSWORD:-openpath_dev}"
@@ -20,10 +21,10 @@ if ! docker ps --format '{{.Names}}' | grep -q "^${POSTGRES_CONTAINER}$"; then
   exit 1
 fi
 
-echo "1. Creating test database '${TEST_DB}' (if not exists)..."
-docker exec "${POSTGRES_CONTAINER}" psql -U "${DB_USER}" -tc \
-  "SELECT 1 FROM pg_database WHERE datname = '${TEST_DB}'" | grep -q 1 || \
-  docker exec "${POSTGRES_CONTAINER}" psql -U "${DB_USER}" -c \
+echo "1. Recreating test database '${TEST_DB}'..."
+docker exec "${POSTGRES_CONTAINER}" psql -U "${DB_USER}" -c \
+  "DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE);"
+docker exec "${POSTGRES_CONTAINER}" psql -U "${DB_USER}" -c \
   "CREATE DATABASE ${TEST_DB} OWNER ${DB_USER};"
 
 echo "2. Creating test user '${TEST_USER}' (if not exists)..."
@@ -45,12 +46,12 @@ docker exec "${POSTGRES_CONTAINER}" psql -U "${DB_USER}" -d "${TEST_DB}" -c \
   "GRANT ALL ON SCHEMA public TO ${TEST_USER};"
 
 echo "6. Pushing OpenPath schema to test database..."
-cd "$(dirname "$0")/../upstream/openpath/api"
+cd "${ROOT_DIR}/upstream/openpath/api"
 DB_HOST=localhost DB_PORT=5432 DB_NAME="${TEST_DB}" DB_USER="${DB_USER}" DB_PASSWORD="${DB_PASSWORD}" \
   npx drizzle-kit push --force
 
 echo "7. Pushing ClassroomPath schema to test database..."
-cd "$(dirname "$0")/../api"
+cd "${ROOT_DIR}/api"
 DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${TEST_DB}" \
   npx drizzle-kit push --force
 

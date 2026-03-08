@@ -49,6 +49,19 @@ export function clearSessionCookies(res: Pick<Response, 'cookie'>): void {
   });
 }
 
+export function stripSessionTokens<T>(payload: T): T {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return payload;
+  }
+
+  const {
+    accessToken: _accessToken,
+    refreshToken: _refreshToken,
+    ...rest
+  } = payload as Record<string, unknown>;
+  return rest as T;
+}
+
 export function parseCookieValue(cookieHeader: string | undefined, name: string): string | null {
   if (!cookieHeader) return null;
 

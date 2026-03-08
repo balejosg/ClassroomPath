@@ -47,10 +47,7 @@ react-spa/src/components/PasswordStrength.tsx
 
 # React SPA - Views (tested via E2E)
 react-spa/src/views/Waiting.tsx
-react-spa/src/views/Register.tsx
 react-spa/src/views/Onboarding.tsx
-react-spa/src/views/Login.tsx
-react-spa/src/views/PendingUsers.tsx
 
 # React SPA - Lib
 react-spa/src/lib/dual-trpc-provider.tsx

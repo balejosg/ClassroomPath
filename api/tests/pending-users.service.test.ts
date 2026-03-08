@@ -187,6 +187,37 @@ describe('pending-users.service', () => {
     assert.strictEqual(waitingStatus.length, 0);
   });
 
+  test('approveUser demotes an existing higher OpenPath role when the tenant role is lower', async () => {
+    await deleteWaitingStatus(WAITING_USER_ID);
+    await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, WAITING_USER_ID));
+    await openpathDb
+      .delete(openpathSchema.roles)
+      .where(eq(openpathSchema.roles.userId, WAITING_USER_ID));
+
+    await db.insert(schema.cpUserStatus).values({
+      userId: WAITING_USER_ID,
+      status: 'waiting',
+      targetOrganizationId: ORG_ID,
+    });
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-admin-${RUN_ID}`,
+      userId: WAITING_USER_ID,
+      role: 'admin',
+      groupIds: [],
+      createdBy: APPROVER_ID,
+    });
+
+    await approveUser(WAITING_USER_ID, ORG_ID, 'teacher', APPROVER_ID);
+
+    const roles = await openpathDb
+      .select()
+      .from(openpathSchema.roles)
+      .where(eq(openpathSchema.roles.userId, WAITING_USER_ID));
+    assert.strictEqual(roles.length, 1);
+    assert.strictEqual(String(roles[0]?.role), 'teacher');
+  });
+
   test('approveUser rejects users that are not waiting for the organization', async () => {
     await deleteWaitingStatus(WAITING_USER_ID);
     await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, WAITING_USER_ID));

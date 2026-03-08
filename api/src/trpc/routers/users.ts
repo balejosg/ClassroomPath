@@ -9,6 +9,7 @@ import bcrypt from 'bcrypt';
 import { TRPCError } from '@trpc/server';
 import { generateId } from '../../lib/id.js';
 import { getSingleMembershipOrThrow } from '../../lib/tenant-memberships.js';
+import { synchronizeOpenPathRole } from '../../lib/openpath-roles.js';
 
 type RoleInfo = { role: string; groupIds: string[] };
 
@@ -201,12 +202,10 @@ export const usersRouter = router({
       invitedBy: ctx.user.sub,
     });
 
-    await openpathDb.insert(roles).values({
-      id: nanoid(),
+    await synchronizeOpenPathRole({
       userId: user.id,
-      role: input.role,
+      actedBy: ctx.user.sub,
       groupIds: [],
-      createdBy: ctx.user.sub,
     });
 
     // Serialize Date fields for JSON compatibility
@@ -283,6 +282,11 @@ export const usersRouter = router({
         )
       );
 
+    await synchronizeOpenPathRole({
+      userId: input.id,
+      actedBy: ctx.user.sub,
+    });
+
     return { success: true };
   }),
 
@@ -296,53 +300,43 @@ export const usersRouter = router({
 
     await getSingleMembershipOrThrow(input.userId);
 
-    const existingRole = await openpathDb
+    await db
+      .update(schema.cpMemberships)
+      .set({ role: input.role })
+      .where(
+        and(
+          eq(schema.cpMemberships.organizationId, ctx.organizationId!),
+          eq(schema.cpMemberships.userId, input.userId)
+        )
+      );
+
+    const synchronizedRole = await synchronizeOpenPathRole({
+      userId: input.userId,
+      actedBy: ctx.user.sub,
+      groupIds: input.groupIds,
+    });
+
+    if (!synchronizedRole) {
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to synchronize upstream role state',
+      });
+    }
+
+    const [persistedRole] = await openpathDb
       .select()
       .from(roles)
       .where(eq(roles.userId, input.userId))
       .limit(1);
 
-    if (existingRole.length) {
-      const [updated] = await openpathDb
-        .update(roles)
-        .set({
-          role: input.role,
-          groupIds: input.groupIds,
-        })
-        .where(eq(roles.userId, input.userId))
-        .returning();
-
-      // Serialize Date fields for JSON compatibility
-      return {
-        id: updated.id,
-        userId: updated.userId,
-        role: updated.role,
-        groupIds: updated.groupIds,
-        createdBy: updated.createdBy,
-        createdAt: updated.createdAt?.toISOString() ?? null,
-      };
-    } else {
-      const [role] = await openpathDb
-        .insert(roles)
-        .values({
-          id: nanoid(),
-          userId: input.userId,
-          role: input.role,
-          groupIds: input.groupIds,
-          createdBy: ctx.user.sub,
-        })
-        .returning();
-
-      // Serialize Date fields for JSON compatibility
-      return {
-        id: role.id,
-        userId: role.userId,
-        role: role.role,
-        groupIds: role.groupIds,
-        createdBy: role.createdBy,
-        createdAt: role.createdAt?.toISOString() ?? null,
-      };
-    }
+    return {
+      id: persistedRole?.id ?? '',
+      userId: input.userId,
+      role: synchronizedRole.role,
+      groupIds: synchronizedRole.groupIds,
+      createdBy: persistedRole?.createdBy ?? ctx.user.sub,
+      createdAt: persistedRole?.createdAt?.toISOString() ?? null,
+    };
   }),
 
   revokeRole: tenantProcedure
@@ -357,7 +351,21 @@ export const usersRouter = router({
 
       await getSingleMembershipOrThrow(input.userId);
 
-      await openpathDb.delete(roles).where(eq(roles.userId, input.userId));
+      await db
+        .update(schema.cpMemberships)
+        .set({ role: 'teacher' })
+        .where(
+          and(
+            eq(schema.cpMemberships.organizationId, ctx.organizationId!),
+            eq(schema.cpMemberships.userId, input.userId)
+          )
+        );
+
+      await synchronizeOpenPathRole({
+        userId: input.userId,
+        actedBy: ctx.user.sub,
+        groupIds: [],
+      });
 
       return { success: true };
     }),

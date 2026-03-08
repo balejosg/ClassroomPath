@@ -1,15 +1,9 @@
-export const BLOCKED_OPENPATH_PROCEDURES = [
-  // Block schedules to prevent tenant-scoping bypass (ClassroomPath exposes tenant-scoped schedules via /cp/trpc).
-  'schedules',
-  // Block entire routers that are re-exposed via /cp/trpc with tenant + teacher scoping.
-  'groups',
-  'classrooms',
-  'users',
-  'requests',
-] as const;
+export const ALLOWED_OPENPATH_PROCEDURES: readonly string[] = [];
 
-function isBlockedProcedure(proc: string): boolean {
-  return BLOCKED_OPENPATH_PROCEDURES.some((b) => proc === b || proc.startsWith(b + '.'));
+function isAllowedProcedure(proc: string): boolean {
+  return ALLOWED_OPENPATH_PROCEDURES.some(
+    (allowed) => proc === allowed || proc.startsWith(allowed + '.')
+  );
 }
 
 /**
@@ -30,6 +24,6 @@ export function findBlockedOpenPathProcedureFromUrl(reqUrl: string): string | nu
     .split(',')
     .map((p) => p.trim())
     .filter(Boolean);
-  const blocked = procedures.find((proc) => isBlockedProcedure(proc));
+  const blocked = procedures.find((proc) => !isAllowedProcedure(proc));
   return blocked ?? null;
 }

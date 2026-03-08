@@ -120,6 +120,118 @@ async function ensureMockOpenPathServer(): Promise<string> {
     res.json({ status: 'ok', service: 'mock-openpath-api' });
   });
 
+  app.post('/trpc/auth.login', (req, res) => {
+    const body = req.body as { email?: unknown } | undefined;
+    const email = typeof body?.email === 'string' ? body.email : 'login@test.local';
+    const userId = `mock-login-${email.replace(/[^a-z0-9]/gi, '-')}`;
+    const accessToken = signToken({
+      userId,
+      email,
+      name: 'Mock Login User',
+      roles: [],
+    });
+    const refreshToken = signToken({
+      userId,
+      email,
+      name: 'Mock Login User',
+      roles: [],
+      type: 'refresh',
+    });
+
+    res.json({
+      result: {
+        data: {
+          accessToken,
+          refreshToken,
+          tokenType: 'Bearer',
+          expiresIn: 3600,
+          user: {
+            id: userId,
+            email,
+            name: 'Mock Login User',
+            roles: [],
+          },
+        },
+      },
+    });
+  });
+
+  app.post('/trpc/auth.register', (req, res) => {
+    const body = req.body as { email?: unknown; name?: unknown } | undefined;
+    const email = typeof body?.email === 'string' ? body.email : 'register@test.local';
+    if (email === 'mock-register-invalid-json@test.local') {
+      return res.type('text/plain').send('mock register invalid json');
+    }
+
+    const name = typeof body?.name === 'string' ? body.name : 'Mock Register User';
+    const userId = `mock-register-${email.replace(/[^a-z0-9]/gi, '-')}`;
+    const accessToken = signToken({
+      userId,
+      email,
+      name,
+      roles: [],
+    });
+    const refreshToken = signToken({
+      userId,
+      email,
+      name,
+      roles: [],
+      type: 'refresh',
+    });
+
+    return res.json({
+      result: {
+        data: {
+          accessToken,
+          refreshToken,
+          tokenType: 'Bearer',
+          expiresIn: 3600,
+          user: {
+            id: userId,
+            email,
+            name,
+            roles: [],
+          },
+        },
+      },
+    });
+  });
+
+  app.post('/trpc/auth.googleLogin', (_req, res) => {
+    const email = 'google-login@test.local';
+    const userId = 'mock-google-login-user';
+    const accessToken = signToken({
+      userId,
+      email,
+      name: 'Mock Google User',
+      roles: [],
+    });
+    const refreshToken = signToken({
+      userId,
+      email,
+      name: 'Mock Google User',
+      roles: [],
+      type: 'refresh',
+    });
+
+    res.json({
+      result: {
+        data: {
+          accessToken,
+          refreshToken,
+          tokenType: 'Bearer',
+          expiresIn: 3600,
+          user: {
+            id: userId,
+            email,
+            name: 'Mock Google User',
+            roles: [],
+          },
+        },
+      },
+    });
+  });
+
   app.get('/trpc/auth.me', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
@@ -153,6 +265,10 @@ async function ensureMockOpenPathServer(): Promise<string> {
             code: 'UNAUTHORIZED',
           },
         });
+      }
+
+      if (decoded.sub === 'invalid-auth-me-json') {
+        return res.type('text/plain').send('mock auth.me invalid json');
       }
 
       return res.json({
@@ -253,6 +369,30 @@ async function ensureMockOpenPathServer(): Promise<string> {
     res.json({ result: { data: { success: true } } });
   });
 
+  app.post('/trpc/auth.resetPassword', (req, res) => {
+    const body = req.body as { token?: unknown } | undefined;
+    if (body?.token === 'mock-reset-invalid-json') {
+      return res.type('text/plain').send('mock reset invalid json');
+    }
+
+    if (body?.token === 'mock-reset-bad-request') {
+      return res.status(400).json({
+        error: {
+          message: 'Reset token is invalid or expired',
+          code: 'BAD_REQUEST',
+        },
+      });
+    }
+
+    return res.json({
+      result: {
+        data: {
+          success: true,
+        },
+      },
+    });
+  });
+
   app.post('/trpc/apiTokens.create', (_req, res) => {
     res.json({
       result: {
@@ -291,6 +431,10 @@ async function ensureMockOpenPathServer(): Promise<string> {
 
 export function revokeMockOpenPathToken(token: string): void {
   revokedMockTokens.add(token);
+}
+
+export function isMockOpenPathTokenRevoked(token: string): boolean {
+  return revokedMockTokens.has(token);
 }
 
 export function setMockOpenPathReadyMode(mode: typeof mockReadyMode): void {
