@@ -1,23 +1,20 @@
 import type { Response } from 'express';
 import type { TRPC_ERROR_CODE_KEY } from '@trpc/server/rpc';
-import { TRPCError } from '@trpc/server';
-import { OpenPathMeResponseSchema, type OpenPathMeResponse } from './openpath-auth-schema.js';
 import {
-  buildOpenPathHeaders,
-  extractTrpcData,
-  mapUpstreamStatusToTrpcCode,
-  openPathTrpcUrl,
-  readUpstreamErrorMessage,
+  callOpenPathTrpc,
+  fetchOpenPathMeProfile,
+  type OpenPathForwardRequest,
 } from './openpath-upstream.js';
-import { storeSessionFromPayload } from './session-cookies.js';
-
-interface OpenPathRequest {
-  headers: Record<string, unknown>;
-}
+import {
+  clearSessionCookies,
+  parseCookieValue,
+  REFRESH_COOKIE_NAME,
+  storeSessionFromPayload,
+} from './session-cookies.js';
 
 interface OpenPathAuthCallOptions {
   procedure: string;
-  req: OpenPathRequest;
+  req: OpenPathForwardRequest;
   input?: unknown;
   method?: 'GET' | 'POST';
   token?: string | null;
@@ -31,73 +28,55 @@ interface OpenPathSessionMutationOptions extends OpenPathAuthCallOptions {
   res: Pick<Response, 'cookie'>;
 }
 
-async function callOpenPathAuth(options: OpenPathAuthCallOptions): Promise<unknown> {
-  try {
-    const response = await fetch(openPathTrpcUrl(options.procedure), {
-      method: options.method ?? 'POST',
-      headers: buildOpenPathHeaders({
-        req: options.req,
-        includeAuth: options.includeAuth,
-        token: options.token,
-      }),
-      ...(options.input === undefined ? {} : { body: JSON.stringify(options.input) }),
-    });
-
-    if (!response.ok) {
-      const message = await readUpstreamErrorMessage(response, options.upstreamFailureMessage);
-      const code = mapUpstreamStatusToTrpcCode(response.status, options.defaultErrorCode);
-      throw new TRPCError({
-        code,
-        message,
-      });
-    }
-
-    const body: unknown = await response.json();
-    return extractTrpcData<unknown>(body) ?? body;
-  } catch (error) {
-    if (error instanceof TRPCError) throw error;
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: options.unavailableMessage,
-    });
-  }
-}
-
 export async function forwardOpenPathAuthProcedure(
   options: OpenPathAuthCallOptions
 ): Promise<unknown> {
-  return callOpenPathAuth(options);
+  return callOpenPathTrpc(options);
 }
 
 export async function forwardOpenPathSessionMutation(
   options: OpenPathSessionMutationOptions
 ): Promise<unknown> {
-  const payload = await callOpenPathAuth(options);
+  const payload = await callOpenPathTrpc(options);
   return storeSessionFromPayload(options.res, payload);
 }
 
 export async function getOpenPathMeProfile(params: {
-  req: OpenPathRequest;
+  req: OpenPathForwardRequest;
   token: string | null;
-}): Promise<OpenPathMeResponse> {
-  const payload = await callOpenPathAuth({
-    procedure: 'auth.me',
+}) {
+  return fetchOpenPathMeProfile({
     req: params.req,
     token: params.token,
-    includeAuth: true,
-    method: 'GET',
-    defaultErrorCode: 'UNAUTHORIZED',
-    upstreamFailureMessage: 'Failed to get user profile',
-    unavailableMessage: 'Authentication service unavailable',
   });
+}
 
-  const parsed = OpenPathMeResponseSchema.safeParse(payload);
-  if (!parsed.success) {
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'Invalid user profile received from upstream',
+export async function logoutOpenPathSession(params: {
+  req: OpenPathForwardRequest;
+  res: Pick<Response, 'cookie'>;
+  token: string | null;
+  refreshToken?: string | null;
+}): Promise<{ success: true }> {
+  const cookieHeader =
+    typeof params.req.headers.cookie === 'string' ? params.req.headers.cookie : undefined;
+  const refreshToken = params.refreshToken ?? parseCookieValue(cookieHeader, REFRESH_COOKIE_NAME);
+
+  try {
+    await callOpenPathTrpc({
+      procedure: 'auth.logout',
+      req: params.req,
+      token: params.token,
+      includeAuth: true,
+      input: refreshToken ? { refreshToken } : {},
+      defaultErrorCode: 'UNAUTHORIZED',
+      upstreamFailureMessage: 'Logout failed',
+      unavailableMessage: 'Authentication service unavailable',
     });
+  } catch {
+    // Logout should always clear the local cookie session, even if upstream invalidation fails.
+  } finally {
+    clearSessionCookies(params.res);
   }
 
-  return parsed.data;
+  return { success: true };
 }

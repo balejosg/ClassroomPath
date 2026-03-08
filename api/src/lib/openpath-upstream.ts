@@ -1,6 +1,7 @@
+import { TRPCError } from '@trpc/server';
 import type { TRPC_ERROR_CODE_KEY } from '@trpc/server/rpc';
 import { config } from '../config.js';
-import { OpenPathMeResponseSchema } from './openpath-auth-schema.js';
+import { OpenPathMeResponseSchema, type OpenPathMeResponse } from './openpath-auth-schema.js';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null;
@@ -116,6 +117,103 @@ export function mapUpstreamStatusToTrpcCode(
   return defaultCode;
 }
 
+type UpstreamFailureMessage = string | ((status: number) => string);
+
+export interface OpenPathForwardRequest {
+  headers: Record<string, unknown>;
+}
+
+export interface OpenPathTrpcCallOptions {
+  procedure: string;
+  req?: OpenPathForwardRequest;
+  input?: unknown;
+  method?: 'GET' | 'POST';
+  token?: string | null;
+  includeAuth?: boolean;
+  defaultErrorCode: TRPC_ERROR_CODE_KEY;
+  upstreamFailureMessage: UpstreamFailureMessage;
+  unavailableMessage: string;
+  unavailableCode?: TRPC_ERROR_CODE_KEY;
+  mapStatusToCode?: (status: number, defaultCode: TRPC_ERROR_CODE_KEY) => TRPC_ERROR_CODE_KEY;
+  fetchImpl?: typeof fetch;
+}
+
+function resolveUpstreamFailureMessage(message: UpstreamFailureMessage, status: number): string {
+  return typeof message === 'function' ? message(status) : message;
+}
+
+export async function callOpenPathTrpc(options: OpenPathTrpcCallOptions): Promise<unknown> {
+  try {
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const response = await fetchImpl(openPathTrpcUrl(options.procedure), {
+      method: options.method ?? (options.input === undefined ? 'GET' : 'POST'),
+      headers: buildOpenPathHeaders({
+        req: options.req,
+        includeAuth: options.includeAuth,
+        token: options.token,
+      }),
+      ...(options.input === undefined ? {} : { body: JSON.stringify(options.input) }),
+    });
+
+    if (!response.ok) {
+      const message = await readUpstreamErrorMessage(
+        response,
+        resolveUpstreamFailureMessage(options.upstreamFailureMessage, response.status)
+      );
+      const code = (options.mapStatusToCode ?? mapUpstreamStatusToTrpcCode)(
+        response.status,
+        options.defaultErrorCode
+      );
+      throw new TRPCError({
+        code,
+        message,
+      });
+    }
+
+    const body: unknown = await response.json();
+    return extractTrpcData<unknown>(body) ?? body;
+  } catch (error) {
+    if (error instanceof TRPCError) {
+      throw error;
+    }
+
+    throw new TRPCError({
+      code: options.unavailableCode ?? 'INTERNAL_SERVER_ERROR',
+      message: options.unavailableMessage,
+    });
+  }
+}
+
+export async function fetchOpenPathMeProfile(params: {
+  req?: OpenPathForwardRequest;
+  token: string | null;
+  fetchImpl?: typeof fetch;
+  upstreamFailureMessage?: UpstreamFailureMessage;
+  unavailableMessage?: string;
+}): Promise<OpenPathMeResponse> {
+  const payload = await callOpenPathTrpc({
+    procedure: 'auth.me',
+    method: 'GET',
+    req: params.req,
+    token: params.token,
+    includeAuth: true,
+    defaultErrorCode: 'UNAUTHORIZED',
+    upstreamFailureMessage: params.upstreamFailureMessage ?? 'Failed to get user profile',
+    unavailableMessage: params.unavailableMessage ?? 'Authentication service unavailable',
+    fetchImpl: params.fetchImpl,
+  });
+
+  const parsed = OpenPathMeResponseSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Invalid user profile received from upstream',
+    });
+  }
+
+  return parsed.data;
+}
+
 export interface AuthenticatedOpenPathUser {
   sub: string;
   email: string;
@@ -139,43 +237,36 @@ export async function validateOpenPathAccessToken(params: {
   token: string;
 }): Promise<OpenPathAuthValidationResult> {
   try {
-    const response = await fetch(openPathTrpcUrl('auth.me'), {
-      method: 'GET',
-      headers: buildOpenPathHeaders({
-        req: params.req,
-        includeAuth: true,
-        token: params.token,
-      }),
+    const profile = await fetchOpenPathMeProfile({
+      req: params.req,
+      token: params.token,
+      upstreamFailureMessage: (status) =>
+        status >= 500 ? 'Authentication service unavailable' : 'Invalid authentication token',
+      unavailableMessage: 'Authentication service unavailable',
     });
 
-    if (!response.ok) {
-      const message = await readUpstreamErrorMessage(
-        response,
-        response.status >= 500
-          ? 'Authentication service unavailable'
-          : 'Invalid authentication token'
-      );
-
-      if (response.status >= 500) {
+    return {
+      ok: true,
+      user: {
+        sub: profile.user.id,
+        email: profile.user.email,
+        name: profile.user.name,
+        roles: profile.user.roles.map((role) => ({
+          role: role.role,
+          groupIds: role.groupIds,
+        })),
+      },
+    };
+  } catch (error) {
+    if (error instanceof TRPCError) {
+      if (error.code === 'UNAUTHORIZED') {
         return {
           ok: false,
-          code: 'SERVICE_UNAVAILABLE',
-          message,
+          code: 'UNAUTHORIZED',
+          message: error.message,
         };
       }
 
-      return {
-        ok: false,
-        code: 'UNAUTHORIZED',
-        message,
-      };
-    }
-
-    const body: unknown = await response.json();
-    const unwrapped = extractTrpcData<unknown>(body) ?? body;
-    const parsed = OpenPathMeResponseSchema.safeParse(unwrapped);
-
-    if (!parsed.success) {
       return {
         ok: false,
         code: 'SERVICE_UNAVAILABLE',
@@ -183,19 +274,6 @@ export async function validateOpenPathAccessToken(params: {
       };
     }
 
-    return {
-      ok: true,
-      user: {
-        sub: parsed.data.user.id,
-        email: parsed.data.user.email,
-        name: parsed.data.user.name,
-        roles: parsed.data.user.roles.map((role) => ({
-          role: role.role,
-          groupIds: role.groupIds,
-        })),
-      },
-    };
-  } catch {
     return {
       ok: false,
       code: 'SERVICE_UNAVAILABLE',

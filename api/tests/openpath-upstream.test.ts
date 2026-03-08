@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { TRPCError } from '@trpc/server';
 
 import {
   buildOpenPathHeaders,
+  callOpenPathTrpc,
   extractTrpcData,
   extractUpstreamErrorMessage,
   getForwardHeaders,
@@ -114,6 +116,91 @@ describe('openpath-upstream', () => {
       const response = new Response('', { status: 500 });
       const msg = await readUpstreamErrorMessage(response, 'fallback');
       assert.equal(msg, 'fallback');
+    });
+  });
+
+  describe('callOpenPathTrpc', () => {
+    it('forwards auth and body, then unwraps the upstream tRPC payload', async () => {
+      let seenAuthorization = '';
+      let seenBody = '';
+
+      const result = await callOpenPathTrpc({
+        procedure: 'apiTokens.create',
+        req: { headers: {} },
+        token: 'access-token',
+        includeAuth: true,
+        input: {
+          name: 'CLI token',
+        },
+        defaultErrorCode: 'INTERNAL_SERVER_ERROR',
+        upstreamFailureMessage: 'Failed to create API token',
+        unavailableMessage: 'API tokens service unavailable',
+        fetchImpl: async (_input, init) => {
+          const headers = init?.headers as Record<string, string> | undefined;
+          seenAuthorization = String(headers?.Authorization ?? '');
+          seenBody = String(init?.body ?? '');
+
+          return new Response(
+            JSON.stringify({
+              result: {
+                data: {
+                  id: 'tok_1',
+                  name: 'CLI token',
+                },
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+        },
+      });
+
+      assert.equal(seenAuthorization, 'Bearer access-token');
+      assert.deepEqual(JSON.parse(seenBody), { name: 'CLI token' });
+      assert.deepEqual(result, { id: 'tok_1', name: 'CLI token' });
+    });
+
+    it('maps upstream failures and wraps malformed responses as unavailable', async () => {
+      await assert.rejects(
+        () =>
+          callOpenPathTrpc({
+            procedure: 'healthcheck.live',
+            defaultErrorCode: 'INTERNAL_SERVER_ERROR',
+            upstreamFailureMessage: (status) =>
+              status >= 500 ? 'Healthcheck service unavailable' : 'Healthcheck failed',
+            unavailableMessage: 'Healthcheck service unavailable',
+            fetchImpl: async () =>
+              new Response(JSON.stringify({ error: { message: 'Upstream down' } }), {
+                status: 503,
+                headers: { 'Content-Type': 'application/json' },
+              }),
+          }),
+        (error: unknown) =>
+          error instanceof TRPCError &&
+          error.code === 'SERVICE_UNAVAILABLE' &&
+          error.message === 'Upstream down'
+      );
+
+      await assert.rejects(
+        () =>
+          callOpenPathTrpc({
+            procedure: 'healthcheck.ready',
+            defaultErrorCode: 'INTERNAL_SERVER_ERROR',
+            upstreamFailureMessage: 'Healthcheck service unavailable',
+            unavailableMessage: 'Healthcheck service unavailable',
+            fetchImpl: async () =>
+              new Response('not-json', {
+                status: 200,
+                headers: { 'Content-Type': 'text/plain' },
+              }),
+          }),
+        (error: unknown) =>
+          error instanceof TRPCError &&
+          error.code === 'INTERNAL_SERVER_ERROR' &&
+          error.message === 'Healthcheck service unavailable'
+      );
     });
   });
 

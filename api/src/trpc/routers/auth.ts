@@ -1,16 +1,11 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc.js';
 import {
-  clearSessionCookies,
-  parseCookieValue,
-  REFRESH_COOKIE_NAME,
-} from '../../lib/session-cookies.js';
-import {
   forwardOpenPathAuthProcedure,
   forwardOpenPathSessionMutation,
   getOpenPathMeProfile,
+  logoutOpenPathSession,
 } from '../../lib/openpath-auth-client.js';
-import { buildOpenPathHeaders, openPathTrpcUrl } from '../../lib/openpath-upstream.js';
 
 export const authRouter = router({
   /**
@@ -114,21 +109,11 @@ export const authRouter = router({
   /**
    * Logout endpoint - clears cookie session and forwards token invalidation to OpenPath API
    */
-  logout: protectedProcedure.mutation(async ({ ctx }) => {
-    const refreshToken = parseCookieValue(ctx.req.headers.cookie, REFRESH_COOKIE_NAME);
-
-    try {
-      await fetch(openPathTrpcUrl('auth.logout'), {
-        method: 'POST',
-        headers: {
-          ...buildOpenPathHeaders({ req: ctx.req, includeAuth: true, token: ctx.token }),
-        },
-        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
-      });
-    } finally {
-      clearSessionCookies(ctx.res);
-    }
-
-    return { success: true };
-  }),
+  logout: protectedProcedure.mutation(async ({ ctx }) =>
+    logoutOpenPathSession({
+      req: ctx.req,
+      res: ctx.res,
+      token: ctx.token,
+    })
+  ),
 });

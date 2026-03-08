@@ -1,13 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
-import {
-  buildOpenPathHeaders,
-  extractTrpcData,
-  mapUpstreamStatusToTrpcCode,
-  openPathTrpcUrl,
-  readUpstreamErrorMessage,
-} from '../../lib/openpath-upstream.js';
+import { callOpenPathTrpc } from '../../lib/openpath-upstream.js';
 
 type ApiTokenListItem = {
   id: string;
@@ -25,36 +19,19 @@ export const apiTokensRouter = router({
    */
   list: protectedProcedure.query(async ({ ctx }) => {
     try {
-      const response = await fetch(openPathTrpcUrl('apiTokens.list'), {
+      const data = await callOpenPathTrpc({
+        procedure: 'apiTokens.list',
         method: 'GET',
-        headers: {
-          ...buildOpenPathHeaders({ req: ctx.req, includeAuth: true, token: ctx.token }),
-        },
+        req: ctx.req,
+        token: ctx.token,
+        includeAuth: true,
+        defaultErrorCode: 'SERVICE_UNAVAILABLE',
+        upstreamFailureMessage: 'API tokens service unavailable',
+        unavailableMessage: 'API tokens service unavailable',
+        unavailableCode: 'SERVICE_UNAVAILABLE',
       });
 
-      if (!response.ok) {
-        // Preserve auth semantics for invalid/expired tokens.
-        if (response.status === 401) {
-          throw new TRPCError({
-            code: 'UNAUTHORIZED',
-            message: 'Not authenticated',
-          });
-        }
-        if (response.status === 403) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: 'Forbidden',
-          });
-        }
-
-        throw new TRPCError({
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'API tokens service unavailable',
-        });
-      }
-
-      const data: unknown = await response.json();
-      const tokens = extractTrpcData<ApiTokenListItem[]>(data);
+      const tokens = Array.isArray(data) ? (data as ApiTokenListItem[]) : null;
       if (!Array.isArray(tokens)) {
         throw new TRPCError({
           code: 'SERVICE_UNAVAILABLE',
@@ -82,106 +59,52 @@ export const apiTokensRouter = router({
         expiresInDays: z.number().int().positive().max(365).optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      try {
-        const response = await fetch(openPathTrpcUrl('apiTokens.create'), {
-          method: 'POST',
-          headers: {
-            ...buildOpenPathHeaders({ req: ctx.req, includeAuth: true, token: ctx.token }),
-          },
-          body: JSON.stringify(input),
-        });
-
-        if (!response.ok) {
-          const message = await readUpstreamErrorMessage(response, 'Failed to create API token');
-          const code = mapUpstreamStatusToTrpcCode(response.status, 'INTERNAL_SERVER_ERROR');
-          throw new TRPCError({
-            code,
-            message,
-          });
-        }
-
-        const data: unknown = await response.json();
-        return extractTrpcData<unknown>(data) ?? data;
-      } catch (error) {
-        if (error instanceof TRPCError) throw error;
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'API tokens service unavailable',
-        });
-      }
-    }),
+    .mutation(async ({ input, ctx }) =>
+      callOpenPathTrpc({
+        procedure: 'apiTokens.create',
+        req: ctx.req,
+        token: ctx.token,
+        includeAuth: true,
+        input,
+        defaultErrorCode: 'INTERNAL_SERVER_ERROR',
+        upstreamFailureMessage: 'Failed to create API token',
+        unavailableMessage: 'API tokens service unavailable',
+      })
+    ),
 
   /**
    * Revoke an API token - forwards to OpenPath API
    */
   revoke: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
-    .mutation(async ({ input, ctx }) => {
-      try {
-        const response = await fetch(openPathTrpcUrl('apiTokens.revoke'), {
-          method: 'POST',
-          headers: {
-            ...buildOpenPathHeaders({ req: ctx.req, includeAuth: true, token: ctx.token }),
-          },
-          body: JSON.stringify(input),
-        });
-
-        if (!response.ok) {
-          const message = await readUpstreamErrorMessage(response, 'Failed to revoke API token');
-          const code = mapUpstreamStatusToTrpcCode(response.status, 'NOT_FOUND');
-          throw new TRPCError({
-            code,
-            message,
-          });
-        }
-
-        const data: unknown = await response.json();
-        return extractTrpcData<unknown>(data) ?? data;
-      } catch (error) {
-        if (error instanceof TRPCError) throw error;
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'API tokens service unavailable',
-        });
-      }
-    }),
+    .mutation(async ({ input, ctx }) =>
+      callOpenPathTrpc({
+        procedure: 'apiTokens.revoke',
+        req: ctx.req,
+        token: ctx.token,
+        includeAuth: true,
+        input,
+        defaultErrorCode: 'NOT_FOUND',
+        upstreamFailureMessage: 'Failed to revoke API token',
+        unavailableMessage: 'API tokens service unavailable',
+      })
+    ),
 
   /**
    * Regenerate an API token - forwards to OpenPath API
    */
   regenerate: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
-    .mutation(async ({ input, ctx }) => {
-      try {
-        const response = await fetch(openPathTrpcUrl('apiTokens.regenerate'), {
-          method: 'POST',
-          headers: {
-            ...buildOpenPathHeaders({ req: ctx.req, includeAuth: true, token: ctx.token }),
-          },
-          body: JSON.stringify(input),
-        });
-
-        if (!response.ok) {
-          const message = await readUpstreamErrorMessage(
-            response,
-            'Failed to regenerate API token'
-          );
-          const code = mapUpstreamStatusToTrpcCode(response.status, 'NOT_FOUND');
-          throw new TRPCError({
-            code,
-            message,
-          });
-        }
-
-        const data: unknown = await response.json();
-        return extractTrpcData<unknown>(data) ?? data;
-      } catch (error) {
-        if (error instanceof TRPCError) throw error;
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'API tokens service unavailable',
-        });
-      }
-    }),
+    .mutation(async ({ input, ctx }) =>
+      callOpenPathTrpc({
+        procedure: 'apiTokens.regenerate',
+        req: ctx.req,
+        token: ctx.token,
+        includeAuth: true,
+        input,
+        defaultErrorCode: 'NOT_FOUND',
+        upstreamFailureMessage: 'Failed to regenerate API token',
+        unavailableMessage: 'API tokens service unavailable',
+      })
+    ),
 });

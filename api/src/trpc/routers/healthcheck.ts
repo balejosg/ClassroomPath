@@ -1,7 +1,7 @@
 import { router, publicProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 
-import { extractTrpcData, openPathTrpcUrl } from '../../lib/openpath-upstream.js';
+import { callOpenPathTrpc } from '../../lib/openpath-upstream.js';
 
 // Forward healthcheck requests to OpenPath API
 
@@ -51,30 +51,37 @@ const SYSTEM_INFO_FALLBACK: SystemInfo = {
   uptime: 0,
 };
 
+async function forwardHealthcheckProcedure(procedure: 'healthcheck.live' | 'healthcheck.ready') {
+  try {
+    return await callOpenPathTrpc({
+      procedure,
+      method: 'GET',
+      defaultErrorCode: 'INTERNAL_SERVER_ERROR',
+      upstreamFailureMessage: 'Healthcheck service unavailable',
+      unavailableMessage: 'Healthcheck service unavailable',
+    });
+  } catch {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Healthcheck service unavailable',
+    });
+  }
+}
+
 export async function getGatewaySystemInfo(
   fetchImpl: typeof fetch = fetch
 ): Promise<GatewaySystemInfo> {
   try {
-    const response = await fetchImpl(openPathTrpcUrl('healthcheck.systemInfo'), {
+    const systemInfo = (await callOpenPathTrpc({
+      procedure: 'healthcheck.systemInfo',
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+      defaultErrorCode: 'INTERNAL_SERVER_ERROR',
+      upstreamFailureMessage: 'Healthcheck service unavailable',
+      unavailableMessage: 'Healthcheck service unavailable',
+      fetchImpl,
+    })) as SystemInfo;
 
-    if (!response.ok) {
-      return {
-        ...SYSTEM_INFO_FALLBACK,
-        degraded: true,
-        upstreamAvailable: false,
-        databaseConnected: false,
-      };
-    }
-
-    const data: unknown = await response.json();
-    const systemInfo = extractTrpcData<SystemInfo>(data);
-
-    if (!systemInfo) {
+    if (!systemInfo || typeof systemInfo !== 'object' || !systemInfo.database) {
       return {
         ...SYSTEM_INFO_FALLBACK,
         degraded: true,
@@ -103,62 +110,12 @@ export const healthcheckRouter = router({
   /**
    * Liveness probe - forwards to OpenPath API
    */
-  live: publicProcedure.query(async () => {
-    try {
-      const response = await fetch(openPathTrpcUrl('healthcheck.live'), {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Healthcheck service unavailable',
-        });
-      }
-
-      const data: unknown = await response.json();
-      return extractTrpcData<unknown>(data) ?? data;
-    } catch (error) {
-      if (error instanceof TRPCError) throw error;
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Healthcheck service unavailable',
-      });
-    }
-  }),
+  live: publicProcedure.query(async () => forwardHealthcheckProcedure('healthcheck.live')),
 
   /**
    * Readiness probe - forwards to OpenPath API
    */
-  ready: publicProcedure.query(async () => {
-    try {
-      const response = await fetch(openPathTrpcUrl('healthcheck.ready'), {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Healthcheck service unavailable',
-        });
-      }
-
-      const data: unknown = await response.json();
-      return extractTrpcData<unknown>(data) ?? data;
-    } catch (error) {
-      if (error instanceof TRPCError) throw error;
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Healthcheck service unavailable',
-      });
-    }
-  }),
+  ready: publicProcedure.query(async () => forwardHealthcheckProcedure('healthcheck.ready')),
 
   /**
    * System info for Settings page - forwards to OpenPath API
