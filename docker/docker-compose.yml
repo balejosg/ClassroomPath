@@ -26,7 +26,7 @@ services:
     depends_on:
       - api
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:3001/cp/health']
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:3001/cp/ready']
       interval: 5s
       timeout: 3s
       retries: 12

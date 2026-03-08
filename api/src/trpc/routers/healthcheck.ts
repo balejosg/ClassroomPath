@@ -25,6 +25,12 @@ type SystemInfo = {
   uptime: number;
 };
 
+export type GatewaySystemInfo = SystemInfo & {
+  degraded: boolean;
+  upstreamAvailable: boolean;
+  databaseConnected: boolean;
+};
+
 const SYSTEM_INFO_FALLBACK: SystemInfo = {
   version: 'N/A',
   database: {
@@ -44,6 +50,54 @@ const SYSTEM_INFO_FALLBACK: SystemInfo = {
   },
   uptime: 0,
 };
+
+export async function getGatewaySystemInfo(
+  fetchImpl: typeof fetch = fetch
+): Promise<GatewaySystemInfo> {
+  try {
+    const response = await fetchImpl(openPathTrpcUrl('healthcheck.systemInfo'), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      return {
+        ...SYSTEM_INFO_FALLBACK,
+        degraded: true,
+        upstreamAvailable: false,
+        databaseConnected: false,
+      };
+    }
+
+    const data: unknown = await response.json();
+    const systemInfo = extractTrpcData<SystemInfo>(data);
+
+    if (!systemInfo) {
+      return {
+        ...SYSTEM_INFO_FALLBACK,
+        degraded: true,
+        upstreamAvailable: false,
+        databaseConnected: false,
+      };
+    }
+
+    return {
+      ...systemInfo,
+      degraded: !systemInfo.database.connected,
+      upstreamAvailable: true,
+      databaseConnected: systemInfo.database.connected,
+    };
+  } catch {
+    return {
+      ...SYSTEM_INFO_FALLBACK,
+      degraded: true,
+      upstreamAvailable: false,
+      databaseConnected: false,
+    };
+  }
+}
 
 export const healthcheckRouter = router({
   /**
@@ -109,26 +163,5 @@ export const healthcheckRouter = router({
   /**
    * System info for Settings page - forwards to OpenPath API
    */
-  systemInfo: publicProcedure.query(async () => {
-    try {
-      const response = await fetch(openPathTrpcUrl('healthcheck.systemInfo'), {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        // Degrade gracefully for Settings page. Returning fallback avoids
-        // repeated 500s that can flood the console/UI.
-        return SYSTEM_INFO_FALLBACK;
-      }
-
-      const data: unknown = await response.json();
-      return extractTrpcData<SystemInfo>(data) ?? SYSTEM_INFO_FALLBACK;
-    } catch (error) {
-      if (error instanceof TRPCError) throw error;
-      return SYSTEM_INFO_FALLBACK;
-    }
-  }),
+  systemInfo: publicProcedure.query(async () => getGatewaySystemInfo()),
 });

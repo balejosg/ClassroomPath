@@ -31,6 +31,9 @@ export interface IntegrationServerHandle {
 let mockOpenPathServer: Server | undefined;
 let mockOpenPathBaseUrl: string | undefined;
 const revokedMockTokens = new Set<string>();
+let mockReadyMode: 'ready' | 'degraded' | 'unavailable' = 'ready';
+let mockSystemInfoMode: 'healthy' | 'database-down' | 'unavailable' = 'healthy';
+let mockApiTokensListMode: 'ok' | 'unavailable' = 'ok';
 
 async function buildMockAuthMeResponse(token: string): Promise<{
   user: {
@@ -172,15 +175,40 @@ async function ensureMockOpenPathServer(): Promise<string> {
   });
 
   app.get('/trpc/healthcheck.ready', (_req, res) => {
+    if (mockReadyMode === 'unavailable') {
+      return res.status(503).json({
+        error: {
+          message: 'Mock ready unavailable',
+          code: 'SERVICE_UNAVAILABLE',
+        },
+      });
+    }
+
+    if (mockReadyMode === 'degraded') {
+      return res.json({ result: { data: { status: 'degraded' } } });
+    }
+
     res.json({ result: { data: { status: 'ready' } } });
   });
 
   app.get('/trpc/healthcheck.systemInfo', (_req, res) => {
+    if (mockSystemInfoMode === 'unavailable') {
+      return res.status(503).json({
+        error: {
+          message: 'Mock system info unavailable',
+          code: 'SERVICE_UNAVAILABLE',
+        },
+      });
+    }
+
     res.json({
       result: {
         data: {
           version: 'test',
-          database: { connected: true, type: 'postgresql' },
+          database: {
+            connected: mockSystemInfoMode !== 'database-down',
+            type: 'postgresql',
+          },
           session: {
             accessTokenExpiry: '24h',
             accessTokenExpiryHuman: '24 hours',
@@ -199,6 +227,15 @@ async function ensureMockOpenPathServer(): Promise<string> {
   });
 
   app.get('/trpc/apiTokens.list', (_req, res) => {
+    if (mockApiTokensListMode === 'unavailable') {
+      return res.status(503).json({
+        error: {
+          message: 'Mock api tokens unavailable',
+          code: 'SERVICE_UNAVAILABLE',
+        },
+      });
+    }
+
     res.json({ result: { data: [] } });
   });
 
@@ -256,8 +293,23 @@ export function revokeMockOpenPathToken(token: string): void {
   revokedMockTokens.add(token);
 }
 
+export function setMockOpenPathReadyMode(mode: typeof mockReadyMode): void {
+  mockReadyMode = mode;
+}
+
+export function setMockOpenPathSystemInfoMode(mode: typeof mockSystemInfoMode): void {
+  mockSystemInfoMode = mode;
+}
+
+export function setMockOpenPathApiTokensListMode(mode: typeof mockApiTokensListMode): void {
+  mockApiTokensListMode = mode;
+}
+
 export function resetMockOpenPathUpstreamState(): void {
   revokedMockTokens.clear();
+  mockReadyMode = 'ready';
+  mockSystemInfoMode = 'healthy';
+  mockApiTokensListMode = 'ok';
 }
 
 export function signToken(params: {

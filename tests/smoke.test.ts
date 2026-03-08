@@ -162,6 +162,16 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
         `Gateway health endpoint should return 200, got ${response.status}`
       );
     });
+
+    void test('GET /cp/ready (Gateway) returns 200 OK', async () => {
+      const response = await fetchWithTimeout(`${SMOKE_TEST_URL}/cp/ready`);
+
+      assert.strictEqual(
+        response.status,
+        200,
+        `Gateway readiness endpoint should return 200, got ${response.status}`
+      );
+    });
   });
 
   void describe('API Endpoints - Path Preservation', { skip: !SMOKE_TEST_URL }, () => {

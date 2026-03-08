@@ -19,8 +19,6 @@ type ApiTokenListItem = {
   isExpired: boolean;
 };
 
-const EMPTY_API_TOKENS: ApiTokenListItem[] = [];
-
 export const apiTokensRouter = router({
   /**
    * List all active tokens for the current user - forwards to OpenPath API
@@ -49,16 +47,28 @@ export const apiTokensRouter = router({
           });
         }
 
-        // For upstream failures/deploy transitions, degrade gracefully.
-        return EMPTY_API_TOKENS;
+        throw new TRPCError({
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'API tokens service unavailable',
+        });
       }
 
       const data: unknown = await response.json();
       const tokens = extractTrpcData<ApiTokenListItem[]>(data);
-      return Array.isArray(tokens) ? tokens : EMPTY_API_TOKENS;
+      if (!Array.isArray(tokens)) {
+        throw new TRPCError({
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'API tokens service unavailable',
+        });
+      }
+
+      return tokens;
     } catch (error) {
       if (error instanceof TRPCError) throw error;
-      return EMPTY_API_TOKENS;
+      throw new TRPCError({
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'API tokens service unavailable',
+      });
     }
   }),
 

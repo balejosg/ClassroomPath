@@ -5,17 +5,75 @@ import fs from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { createExpressMiddleware } from '@trpc/server/adapters/express';
+import { sql } from 'drizzle-orm';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { config } from './config.js';
 import { findBlockedOpenPathProcedureFromUrl } from './lib/openpath-proxy-policy.js';
 import { logger } from './lib/logger.js';
 import { injectEnrollTicketAuth } from './lib/enroll-ticket-proxy.js';
+import { extractTrpcData, openPathTrpcUrl } from './lib/openpath-upstream.js';
+import { db } from './db/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+export interface GatewayReadiness {
+  ready: boolean;
+  upstreamAvailable: boolean;
+  databaseConnected: boolean;
+}
+
+async function defaultDatabaseCheck(): Promise<boolean> {
+  try {
+    await db.execute(sql`select 1`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function getGatewayReadiness(
+  deps: {
+    checkDatabase?: () => Promise<boolean>;
+    fetchImpl?: typeof fetch;
+  } = {}
+): Promise<GatewayReadiness> {
+  const checkDatabase = deps.checkDatabase ?? defaultDatabaseCheck;
+  const fetchImpl = deps.fetchImpl ?? fetch;
+
+  const databaseConnected = await checkDatabase();
+  let upstreamAvailable = false;
+
+  try {
+    const response = await fetchImpl(openPathTrpcUrl('healthcheck.ready'), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      const payload: unknown = await response.json();
+      const data = extractTrpcData<{ status?: unknown }>(payload) ?? payload;
+      upstreamAvailable =
+        typeof data === 'object' &&
+        data !== null &&
+        'status' in data &&
+        String((data as { status?: unknown }).status) === 'ready';
+    }
+  } catch {
+    upstreamAvailable = false;
+  }
+
+  return {
+    ready: upstreamAvailable && databaseConnected,
+    upstreamAvailable,
+    databaseConnected,
+  };
+}
 
 // Basic security headers for all responses (SPA + API proxy).
 // Note: the OpenPath API also sets headers via Helmet; this ensures the
@@ -129,6 +187,22 @@ app.use(express.json());
 // ClassroomPath-specific health endpoint
 app.get('/cp/health', (_req, res) => {
   res.json({ status: 'ok', service: 'classroompath-gateway' });
+});
+
+app.get('/cp/ready', async (_req, res) => {
+  const readiness = await getGatewayReadiness();
+
+  if (readiness.ready) {
+    return res.json({
+      status: 'ready',
+      ...readiness,
+    });
+  }
+
+  return res.status(503).json({
+    status: 'not_ready',
+    ...readiness,
+  });
 });
 
 // ClassroomPath-specific tRPC endpoints

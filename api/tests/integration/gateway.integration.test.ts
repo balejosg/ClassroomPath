@@ -17,7 +17,15 @@ import {
   resetDb,
   uniqueEmail,
 } from '../test-utils.js';
-import { revokeMockOpenPathToken, signToken, useIntegrationServer } from './harness.js';
+import {
+  resetMockOpenPathUpstreamState,
+  revokeMockOpenPathToken,
+  setMockOpenPathApiTokensListMode,
+  setMockOpenPathReadyMode,
+  setMockOpenPathSystemInfoMode,
+  signToken,
+  useIntegrationServer,
+} from './harness.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { ACCESS_COOKIE_NAME } from '../../src/lib/session-cookies.js';
 
@@ -186,6 +194,37 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.strictEqual(resp.status, 200);
     const json = (await resp.json()) as any;
     assert.strictEqual(json.service, 'classroompath-gateway');
+  });
+
+  test('/cp/health stays live even when upstream readiness is unavailable', async () => {
+    setMockOpenPathReadyMode('unavailable');
+    try {
+      const resp = await fetch(`${integration.baseUrl}/cp/health`);
+      assert.strictEqual(resp.status, 200);
+      const json = (await resp.json()) as { status?: string; service?: string };
+      assert.strictEqual(json.status, 'ok');
+      assert.strictEqual(json.service, 'classroompath-gateway');
+    } finally {
+      resetMockOpenPathUpstreamState();
+    }
+  });
+
+  test('/cp/ready fails when upstream readiness is unavailable', async () => {
+    setMockOpenPathReadyMode('unavailable');
+    try {
+      const resp = await fetch(`${integration.baseUrl}/cp/ready`);
+      assert.strictEqual(resp.status, 503);
+      const json = (await resp.json()) as {
+        status?: string;
+        upstreamAvailable?: boolean;
+        databaseConnected?: boolean;
+      };
+      assert.strictEqual(json.status, 'not_ready');
+      assert.strictEqual(json.upstreamAvailable, false);
+      assert.strictEqual(json.databaseConnected, true);
+    } finally {
+      resetMockOpenPathUpstreamState();
+    }
   });
 
   test('should block requests.list on /trpc (requires /cp/trpc)', async () => {
@@ -368,7 +407,7 @@ describe('ClassroomPath Gateway Integration', async () => {
     );
   });
 
-  test('/cp/trpc/healthcheck.systemInfo degrades gracefully when OpenPath API is unavailable', async () => {
+  test('/cp/trpc/healthcheck.systemInfo surfaces degraded upstream state', async () => {
     const userId = 'user-healthcheck-test';
     const email = uniqueEmail('healthcheck');
 
@@ -399,38 +438,33 @@ describe('ClassroomPath Gateway Integration', async () => {
       bearerAuth(token)
     );
 
-    // Call healthcheck.systemInfo - this forwards to OpenPath API.
-    // If upstream is unavailable, gateway should return fallback data (200), not 500.
-    const resp = await trpcQuery(
-      integration.baseUrl,
-      'healthcheck.systemInfo',
-      undefined,
-      bearerAuth(token)
-    );
-    assertStatus(resp, 200, 'healthcheck.systemInfo should always return 200 with fallback');
-    const parsed = (await parseTRPC(resp)) as {
-      data?: {
-        version?: string;
-        database?: { connected?: boolean; type?: string };
-        session?: {
-          accessTokenExpiry?: string;
-          accessTokenExpiryHuman?: string;
-          refreshTokenExpiry?: string;
-          refreshTokenExpiryHuman?: string;
+    setMockOpenPathSystemInfoMode('unavailable');
+    try {
+      const resp = await trpcQuery(
+        integration.baseUrl,
+        'healthcheck.systemInfo',
+        undefined,
+        bearerAuth(token)
+      );
+      assertStatus(resp, 200);
+      const parsed = (await parseTRPC(resp)) as {
+        data?: {
+          degraded?: boolean;
+          upstreamAvailable?: boolean;
+          databaseConnected?: boolean;
+          version?: string;
         };
-        uptime?: number;
       };
-    };
-    assert.ok(parsed.data, 'healthcheck.systemInfo should return data payload');
-    assert.equal(typeof parsed.data?.version, 'string');
-    assert.equal(typeof parsed.data?.database?.connected, 'boolean');
-    assert.equal(typeof parsed.data?.database?.type, 'string');
-    assert.equal(typeof parsed.data?.session?.accessTokenExpiry, 'string');
-    assert.equal(typeof parsed.data?.session?.refreshTokenExpiry, 'string');
-    assert.equal(typeof parsed.data?.uptime, 'number');
+      assert.strictEqual(parsed.data?.degraded, true);
+      assert.strictEqual(parsed.data?.upstreamAvailable, false);
+      assert.strictEqual(parsed.data?.databaseConnected, false);
+      assert.equal(typeof parsed.data?.version, 'string');
+    } finally {
+      resetMockOpenPathUpstreamState();
+    }
   });
 
-  test('/cp/trpc/apiTokens.list degrades gracefully when OpenPath API is unavailable', async () => {
+  test('/cp/trpc/apiTokens.list returns SERVICE_UNAVAILABLE when OpenPath API is unavailable', async () => {
     const userId = 'user-apitokens-test';
     const email = uniqueEmail('apitokens');
 
@@ -461,17 +495,21 @@ describe('ClassroomPath Gateway Integration', async () => {
       bearerAuth(token)
     );
 
-    // Call apiTokens.list - this forwards to OpenPath API.
-    // If upstream is unavailable, gateway should return [] (200), not 500.
-    const resp = await trpcQuery(
-      integration.baseUrl,
-      'apiTokens.list',
-      undefined,
-      bearerAuth(token)
-    );
-    assertStatus(resp, 200, 'apiTokens.list should return 200 with fallback []');
-    const parsed = (await parseTRPC(resp)) as { data?: unknown };
-    assert.ok(Array.isArray(parsed.data), 'apiTokens.list fallback should be an array');
+    setMockOpenPathApiTokensListMode('unavailable');
+    try {
+      const resp = await trpcQuery(
+        integration.baseUrl,
+        'apiTokens.list',
+        undefined,
+        bearerAuth(token)
+      );
+      assert.strictEqual(resp.status, 503);
+      const parsed = (await parseTRPC(resp)) as { error?: string; code?: string };
+      assert.ok(parsed.error, 'Expected error payload');
+      assert.strictEqual(parsed.code, 'SERVICE_UNAVAILABLE');
+    } finally {
+      resetMockOpenPathUpstreamState();
+    }
   });
 
   test('/cp/trpc/apiTokens.create requires OpenPath API (expected to fail without it)', async () => {
