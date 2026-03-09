@@ -6,15 +6,8 @@ import { sanitizeSlug } from '@openpath/shared/slug';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { isOpenPathGroupEnabled } from '../lib/tenant-access.js';
-import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
-import { normalizeGroupKey, scopedGroupNameForOrg } from './group-name.service.js';
-import {
-  openpathDb,
-  publishWhitelistGroupChanged,
-  roles,
-  whitelistGroups,
-  whitelistRules,
-} from '../db/openpath.js';
+import { openpathDb, whitelistGroups, whitelistRules } from '../db/openpath.js';
+import { createOrganizationGroupFromRules } from './group-write.service.js';
 
 type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
 type TemplateRule = typeof schema.cpGroupTemplateRules.$inferSelect;
@@ -94,143 +87,6 @@ export async function findAvailableTemplateName(baseName: string): Promise<strin
   });
 }
 
-export async function addGroupToTeacherRole(params: {
-  userId: string;
-  groupId: string;
-  createdBy: string;
-}): Promise<void> {
-  const existingRoles = await openpathDb
-    .select()
-    .from(roles)
-    .where(eq(roles.userId, params.userId));
-  const teacherRole = existingRoles.find((r) => r.role === 'teacher');
-
-  if (!teacherRole) {
-    await openpathDb.insert(roles).values({
-      id: nanoid(),
-      userId: params.userId,
-      role: 'teacher',
-      groupIds: [params.groupId],
-      createdBy: params.createdBy,
-    });
-    return;
-  }
-
-  const current = Array.isArray(teacherRole.groupIds) ? teacherRole.groupIds : [];
-  const next = [...new Set([...current, params.groupId])];
-  await openpathDb
-    .update(roles)
-    .set({ groupIds: next as unknown as string[] })
-    .where(eq(roles.id, teacherRole.id));
-}
-
-async function deleteOpenPathGroupCascade(groupId: string): Promise<void> {
-  await openpathDb.delete(whitelistRules).where(eq(whitelistRules.groupId, groupId));
-  await openpathDb.delete(whitelistGroups).where(eq(whitelistGroups.id, groupId));
-}
-
-async function createOrgGroupFromRules(params: {
-  organizationId: string;
-  actorUserId: string;
-  actorRole?: string;
-  publicName: string;
-  displayName: string;
-  rules: RuleSeed[];
-}): Promise<{ id: string; name: string }> {
-  const publicName = normalizeGroupKey(params.publicName);
-  if (!publicName) {
-    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Group name is required' });
-  }
-
-  const name = scopedGroupNameForOrg(params.organizationId, publicName);
-  const groupId = nanoid();
-
-  let group: typeof whitelistGroups.$inferSelect;
-  try {
-    group = await openpathDb.transaction(async (tx) => {
-      const [created] = await tx
-        .insert(whitelistGroups)
-        .values({
-          id: groupId,
-          name,
-          displayName: params.displayName,
-          enabled: 1,
-        })
-        .returning();
-
-      if (params.rules.length > 0) {
-        await tx.insert(whitelistRules).values(
-          params.rules.map((r) => ({
-            id: nanoid(),
-            groupId: created.id,
-            type: r.type,
-            value: r.value,
-            comment: r.comment,
-          }))
-        );
-      }
-
-      return created;
-    });
-  } catch (err) {
-    throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
-    throw err;
-  }
-
-  try {
-    await db.insert(schema.cpOrganizationGroups).values({
-      id: nanoid(),
-      organizationId: params.organizationId,
-      groupId: group.id,
-      publicName,
-      visibility: 'private',
-    });
-  } catch (err) {
-    try {
-      await deleteOpenPathGroupCascade(group.id);
-    } catch {
-      // Best-effort rollback.
-    }
-    throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
-    throw err;
-  }
-
-  if (params.actorRole === 'teacher') {
-    try {
-      await addGroupToTeacherRole({
-        userId: params.actorUserId,
-        groupId: group.id,
-        createdBy: params.actorUserId,
-      });
-    } catch (err) {
-      try {
-        await db
-          .delete(schema.cpOrganizationGroups)
-          .where(
-            and(
-              eq(schema.cpOrganizationGroups.organizationId, params.organizationId),
-              eq(schema.cpOrganizationGroups.groupId, group.id)
-            )
-          );
-      } catch {
-        // Best-effort rollback.
-      }
-
-      try {
-        await deleteOpenPathGroupCascade(group.id);
-      } catch {
-        // Best-effort rollback.
-      }
-
-      throw err;
-    }
-  }
-
-  await publishWhitelistGroupChanged(group.id);
-
-  return { id: group.id, name: publicName };
-}
-
 export async function cloneGroupIntoOrganization(params: {
   organizationId: string;
   actorUserId: string;
@@ -282,7 +138,7 @@ export async function cloneGroupIntoOrganization(params: {
     .from(whitelistRules)
     .where(eq(whitelistRules.groupId, source[0].id));
 
-  return await createOrgGroupFromRules({
+  const { group, publicName: createdPublicName } = await createOrganizationGroupFromRules({
     organizationId: params.organizationId,
     actorUserId: params.actorUserId,
     actorRole: params.actorRole,
@@ -290,6 +146,8 @@ export async function cloneGroupIntoOrganization(params: {
     displayName,
     rules: sourceRules,
   });
+
+  return { id: group.id, name: createdPublicName };
 }
 
 export async function importTemplateIntoOrganization(params: {
@@ -318,7 +176,7 @@ export async function importTemplateIntoOrganization(params: {
   const publicName = params.name?.trim() || `${template[0].name}-import`;
   const displayName = params.displayName?.trim() || template[0].displayName;
 
-  return await createOrgGroupFromRules({
+  const { group, publicName: createdPublicName } = await createOrganizationGroupFromRules({
     organizationId: params.organizationId,
     actorUserId: params.actorUserId,
     actorRole: params.actorRole,
@@ -326,6 +184,8 @@ export async function importTemplateIntoOrganization(params: {
     displayName,
     rules: templateRules.map((r) => ({ type: r.type, value: r.value, comment: r.comment })),
   });
+
+  return { id: group.id, name: createdPublicName };
 }
 
 export async function publishTemplateFromGroup(params: {
