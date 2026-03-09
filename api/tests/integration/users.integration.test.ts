@@ -133,7 +133,7 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     }
   });
 
-  test('users.create grants cp_memberships so the created user is onboarded', async () => {
+  test('users.create creates a pending invitation without creating an OpenPath user upfront', async () => {
     const orgId = `org-users-create-${Date.now()}`;
 
     const adminUserId = `u-admin-create-${Date.now()}`;
@@ -178,68 +178,66 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
       roles: [{ role: 'admin', groupIds: [] }],
     });
 
-    const createdEmail = uniqueEmail('created');
+    const invitedEmail = uniqueEmail('created');
     const createResp = await trpcMutate(
       integration.baseUrl,
       'users.create',
       {
-        email: createdEmail,
+        email: invitedEmail,
         name: 'Created Teacher',
-        password: 'Password123',
         role: 'teacher',
       },
       bearerAuth(adminToken)
     );
     assertStatus(createResp, 200);
 
-    const { data: created } = (await parseTRPC(createResp)) as { data: any };
-    assert.strictEqual(created.email, createdEmail);
-    assert.ok(typeof created.id === 'string' && created.id.length > 0);
+    const { data: invitation } = (await parseTRPC(createResp)) as { data: any };
+    assert.strictEqual(invitation.email, invitedEmail);
+    assert.strictEqual(invitation.status, 'Pending');
+    assert.ok(typeof invitation.id === 'string' && invitation.id.length > 0);
+    assert.ok(typeof invitation.invitationUrl === 'string' && invitation.invitationUrl.length > 0);
 
-    const membership = await db
+    const memberships = await db
       .select()
       .from(cpSchema.cpMemberships)
-      .where(
-        and(
-          eq(cpSchema.cpMemberships.userId, created.id),
-          eq(cpSchema.cpMemberships.organizationId, orgId)
-        )
-      );
-    assert.strictEqual(membership.length, 1);
-    assert.strictEqual(membership[0].role, 'teacher');
+      .where(eq(cpSchema.cpMemberships.organizationId, orgId));
+    assert.strictEqual(
+      memberships.length,
+      1,
+      'only the admin membership should exist before acceptance'
+    );
 
     const orgLinks = await db
       .select()
       .from(cpSchema.cpOrganizationUsers)
-      .where(
-        and(
-          eq(cpSchema.cpOrganizationUsers.organizationId, orgId),
-          eq(cpSchema.cpOrganizationUsers.openpathUserId, created.id)
-        )
-      );
+      .where(eq(cpSchema.cpOrganizationUsers.organizationId, orgId));
     assert.strictEqual(
       orgLinks.length,
       0,
-      'users.create should no longer depend on cp_organization_users for tenant scoping'
+      'invitation flow should not depend on cp_organization_users for tenant scoping'
     );
 
-    const createdToken = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: created.id,
-      email: createdEmail,
-      name: 'Created Teacher',
-      roles: [{ role: 'teacher', groupIds: [] }],
-    });
-    const statusResp = await trpcQuery(
-      integration.baseUrl,
-      'onboarding.status',
-      undefined,
-      bearerAuth(createdToken)
+    const pendingInvitations = await db
+      .select()
+      .from(cpSchema.cpInvitations)
+      .where(
+        and(
+          eq(cpSchema.cpInvitations.organizationId, orgId),
+          eq(cpSchema.cpInvitations.email, invitedEmail)
+        )
+      );
+    assert.strictEqual(pendingInvitations.length, 1);
+    assert.strictEqual(pendingInvitations[0].role, 'teacher');
+
+    const invitedUsers = await openpathDb
+      .select()
+      .from(openpathSchema.users)
+      .where(eq(openpathSchema.users.email, invitedEmail));
+    assert.strictEqual(
+      invitedUsers.length,
+      0,
+      'OpenPath user should only be created when the invitee accepts the invitation'
     );
-    assertStatus(statusResp, 200);
-    const { data: status } = (await parseTRPC(statusResp)) as { data: any };
-    assert.strictEqual(status.hasMembership, true);
-    assert.strictEqual(status.organization.id, orgId);
   });
 
   test('users.list ignores legacy cp_organization_users rows without a tenant membership', async () => {

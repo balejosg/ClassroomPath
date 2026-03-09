@@ -8,6 +8,7 @@ import { reportError } from '../lib/reportError';
 interface LoginProps {
   onLogin: () => void;
   onNavigateToRegister: () => void;
+  onNavigateToResetPassword?: () => void;
 }
 
 type AuthResultWithUser = { user: unknown };
@@ -16,7 +17,7 @@ function isAuthResultWithUser(value: unknown): value is AuthResultWithUser {
   return typeof value === 'object' && value !== null && 'user' in value;
 }
 
-export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
+export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword }: LoginProps) {
   const loginMutation = cpTrpcReact.auth.login.useMutation();
   const googleLoginMutation = cpTrpcReact.auth.googleLogin.useMutation();
 
@@ -125,6 +126,16 @@ export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
                   className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 placeholder-slate-400 transition-all disabled:bg-slate-50"
                   placeholder="••••••••"
                 />
+              </div>
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => onNavigateToResetPassword?.()}
+                  data-testid="navigate-to-reset-password"
+                  className="text-sm text-blue-600 font-medium hover:underline cursor-pointer"
+                >
+                  ¿Necesitas restablecer tu acceso?
+                </button>
               </div>
             </div>
 

@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-
-// Lazy load OpenPathApp so that localStorage.requests_api_url is set BEFORE
-// the module is imported (which evaluates tRPC client URL at import time)
-const OpenPathApp = React.lazy(() => import('@openpath/src/App'));
+import React, { useEffect, useRef, useState } from 'react';
 import { DualTRPCProvider } from './lib/dual-trpc-provider';
 import { useOnboardingStatus } from './lib/hooks';
 import { Login } from './views/Login';
 import { Register } from './views/Register';
+import { ResetPassword } from './views/ResetPassword';
+import { AcceptInvitation } from './views/AcceptInvitation';
 import { Onboarding } from './views/Onboarding';
 import { Waiting } from './views/Waiting';
 import { AdminPanel } from './components/AdminPanel';
@@ -21,14 +19,77 @@ import {
 } from './lib/auth-storage';
 import './index.css';
 
+const ClassroomPathShell = React.lazy(() => import('./ClassroomPathShell'));
+
 const TEACHER_GROUPS_FEATURE_KEY = 'openpath_teacher_groups_enabled';
 
-// Componente que decide qué pantalla mostrar basado en el estado de autenticación y onboarding
+type AuthView = 'login' | 'register' | 'reset-password' | 'accept-invitation';
+
+function normalizePathname(pathname: string): string {
+  const trimmed = pathname.replace(/\/+$/, '');
+  return trimmed.length === 0 ? '/' : trimmed;
+}
+
+function getAuthViewFromPathname(pathname: string): AuthView {
+  const normalized = normalizePathname(pathname);
+
+  if (normalized.startsWith('/register')) return 'register';
+  if (normalized.startsWith('/reset-password')) return 'reset-password';
+  if (normalized.startsWith('/accept-invitation')) return 'accept-invitation';
+  return 'login';
+}
+
+function isAuthPath(pathname: string): boolean {
+  const normalized = normalizePathname(pathname);
+  return (
+    normalized === '/' ||
+    normalized.startsWith('/login') ||
+    normalized.startsWith('/register') ||
+    normalized.startsWith('/reset-password') ||
+    normalized.startsWith('/accept-invitation')
+  );
+}
+
+function getPathForAuthView(view: AuthView): string {
+  switch (view) {
+    case 'register':
+      return '/register';
+    case 'reset-password':
+      return '/reset-password';
+    case 'accept-invitation':
+      return '/accept-invitation';
+    case 'login':
+    default:
+      return '/login';
+  }
+}
+
+function FullScreenLoader({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="text-center">
+        <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600" />
+        <p className="font-medium text-gray-600">{label}</p>
+      </div>
+    </div>
+  );
+}
+
 function AppContent() {
+  const initialPathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+
   const [isAuth, setIsAuth] = useState(hasSessionMarker());
-  const [showRegister, setShowRegister] = useState(false);
+  const [authView, setAuthView] = useState<AuthView>(() =>
+    getAuthViewFromPathname(initialPathname)
+  );
+  const [openPathReady, setOpenPathReady] = useState(false);
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const hasSyncedProfileRef = useRef(false);
+  const isAuthRef = useRef(isAuth);
+
+  useEffect(() => {
+    isAuthRef.current = isAuth;
+  }, [isAuth]);
 
   const clearSessionAndShowLogin = async () => {
     try {
@@ -37,20 +98,21 @@ function AppContent() {
       // Best-effort logout: local cleanup must still happen.
     } finally {
       clearSession();
-      setShowRegister(false);
+      setAuthView('login');
       setIsAuth(false);
     }
   };
 
-  // Configure OpenPath SPA to use ClassroomPath's tenant-scoped tRPC endpoint
-  // This MUST be before any conditional returns to follow React hooks rules
   useEffect(() => {
     setRequestsApiUrl('/cp');
+    setOpenPathReady(true);
+
     try {
       window.localStorage.setItem(TEACHER_GROUPS_FEATURE_KEY, '1');
     } catch {
       // best-effort
     }
+
     return () => {
       clearRequestsApiUrl();
       try {
@@ -60,6 +122,29 @@ function AppContent() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handlePopState = () => {
+      if (isAuthRef.current) return;
+      setAuthView(getAuthViewFromPathname(window.location.pathname));
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || isAuth) return;
+
+    if (authView !== 'login' || isAuthPath(window.location.pathname)) {
+      const nextPath = getPathForAuthView(authView);
+      if (window.location.pathname !== nextPath) {
+        window.history.pushState(null, '', nextPath);
+      }
+    }
+  }, [authView, isAuth]);
 
   const query = useOnboardingStatus({
     enabled: isAuth,
@@ -82,8 +167,6 @@ function AppContent() {
     return () => window.clearTimeout(timeoutId);
   }, [isAuth, isLoading]);
 
-  // After a user gets approved/invited, their stored profile may be stale.
-  // Sync it once so OpenPath UI sees the latest roles.
   useEffect(() => {
     if (!isAuth) {
       hasSyncedProfileRef.current = false;
@@ -104,12 +187,9 @@ function AppContent() {
     })();
   }, [isAuth, status?.hasMembership, status?.isWaiting]);
 
-  // If localStorage has a stale/invalid token, isAuthenticated() will be true,
-  // but protected queries will fail. In that case, clear the session and show Login.
   useEffect(() => {
     if (!isAuth || !isError || !error) return;
 
-    // tRPC React Query wraps errors; check multiple possible locations
     const trpcError = error as any;
     const code = trpcError?.data?.code || trpcError?.shape?.data?.code;
     const httpStatus = trpcError?.data?.httpStatus || trpcError?.shape?.data?.httpStatus;
@@ -122,31 +202,51 @@ function AppContent() {
 
     if (isUnauthorized) {
       clearSession();
+      setAuthView('login');
       setIsAuth(false);
     }
   }, [isAuth, isError, error]);
 
-  // 1. No autenticado -> Mostrar Login (de OpenPath) o Registro (de ClassroomPath)
-  if (!isAuth) {
-    if (showRegister) {
-      return (
-        <Register
-          onLoginClick={() => setShowRegister(false)}
-          onSuccess={() => {
-            // Register now auto-logins (tokens stored) - continue into onboarding flow.
-            setShowRegister(false);
-            setIsAuth(true);
-          }}
-        />
-      );
-    }
-
-    return (
-      <Login onLogin={() => setIsAuth(true)} onNavigateToRegister={() => setShowRegister(true)} />
-    );
+  if (!openPathReady) {
+    return <FullScreenLoader label="Preparando ClassroomPath..." />;
   }
 
-  // 2. Cargando estado de onboarding
+  if (!isAuth) {
+    switch (authView) {
+      case 'register':
+        return (
+          <Register
+            onLoginClick={() => setAuthView('login')}
+            onSuccess={() => {
+              setAuthView('login');
+              setIsAuth(true);
+            }}
+          />
+        );
+      case 'reset-password':
+        return <ResetPassword onLoginClick={() => setAuthView('login')} />;
+      case 'accept-invitation':
+        return (
+          <AcceptInvitation
+            onLoginClick={() => setAuthView('login')}
+            onSuccess={() => {
+              setAuthView('login');
+              setIsAuth(true);
+            }}
+          />
+        );
+      case 'login':
+      default:
+        return (
+          <Login
+            onLogin={() => setIsAuth(true)}
+            onNavigateToRegister={() => setAuthView('register')}
+            onNavigateToResetPassword={() => setAuthView('reset-password')}
+          />
+        );
+    }
+  }
+
   if (isLoading) {
     if (loadingTimedOut) {
       return (
@@ -169,6 +269,7 @@ function AppContent() {
               <button
                 onClick={() => {
                   clearSession();
+                  setAuthView('login');
                   setIsAuth(false);
                 }}
                 className="px-4 py-2 rounded-lg bg-slate-100 text-slate-800 font-medium hover:bg-slate-200"
@@ -181,17 +282,9 @@ function AppContent() {
       );
     }
 
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600 font-medium">Verificando estado...</p>
-        </div>
-      </div>
-    );
+    return <FullScreenLoader label="Verificando estado..." />;
   }
 
-  // If onboarding status fails for non-auth reasons, don't drop the user into onboarding.
   if (isError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
@@ -210,6 +303,7 @@ function AppContent() {
             <button
               onClick={() => {
                 clearSession();
+                setAuthView('login');
                 setIsAuth(false);
               }}
               className="px-4 py-2 rounded-lg bg-slate-100 text-slate-800 font-medium hover:bg-slate-200"
@@ -222,7 +316,6 @@ function AppContent() {
     );
   }
 
-  // 3. Usuario en espera de invitación
   if (status?.isWaiting) {
     return (
       <Waiting
@@ -233,7 +326,6 @@ function AppContent() {
     );
   }
 
-  // 4. Usuario necesita crear organización o esperar invitación
   if (!status?.hasMembership) {
     return (
       <Onboarding
@@ -247,14 +339,11 @@ function AppContent() {
     );
   }
 
-  // 5. Usuario onboarded -> Mostrar aplicación principal
   return (
-    <React.Suspense
-      fallback={<div className="flex justify-center items-center h-screen">Cargando...</div>}
-    >
+    <React.Suspense fallback={<FullScreenLoader label="Cargando tu panel..." />}>
       <AdminPanel userRole={status?.organization?.role} />
       <GroupLibrary userRole={status?.organization?.role} />
-      <OpenPathApp />
+      <ClassroomPathShell />
     </React.Suspense>
   );
 }
@@ -266,3 +355,5 @@ export function ClassroomPathApp() {
     </DualTRPCProvider>
   );
 }
+
+export default ClassroomPathApp;

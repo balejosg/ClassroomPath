@@ -34,7 +34,7 @@ export function AdminPanel({ userRole }: AdminPanelProps) {
     <>
       {/* Notification Bar */}
       {pendingCount > 0 && !isExpanded && (
-        <div className="fixed top-0 left-0 right-0 z-50 md:left-64">
+        <div className="fixed top-0 left-0 right-0 z-40 md:left-64">
           <div className="bg-amber-500 text-amber-950 px-4 py-2 flex items-center justify-between shadow-md">
             <div className="flex items-center gap-3">
               <div className="bg-amber-600 rounded-full p-1.5">
@@ -57,7 +57,7 @@ export function AdminPanel({ userRole }: AdminPanelProps) {
 
       {/* Expanded Panel */}
       {isExpanded && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm">
           <div className="fixed top-0 right-0 bottom-0 w-full max-w-3xl bg-white shadow-2xl overflow-y-auto">
             {/* Header */}
             <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
@@ -75,6 +75,8 @@ export function AdminPanel({ userRole }: AdminPanelProps) {
               </div>
               <button
                 onClick={() => setIsExpanded(false)}
+                aria-label="Cerrar panel"
+                title="Cerrar panel"
                 className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <X size={20} />

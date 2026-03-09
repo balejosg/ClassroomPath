@@ -11,6 +11,7 @@ import {
   deleteOrganizationUser,
   getOrganizationUserById,
   getOrganizationUserRole,
+  listOrganizationInvitations,
   listOrganizationUsers,
   revokeOrganizationUserRole,
   updateOrganizationUser,
@@ -21,6 +22,7 @@ let counter = 0;
 const organizationIds = new Set<string>();
 const membershipIds = new Set<string>();
 const legacyOrgUserIds = new Set<string>();
+const invitationIds = new Set<string>();
 const userIds = new Set<string>();
 const roleIds = new Set<string>();
 const groupIds = new Set<string>();
@@ -83,6 +85,12 @@ after(async () => {
       .where(inArray(schema.cpOrganizationUsers.id, [...legacyOrgUserIds]));
   }
 
+  if (invitationIds.size > 0) {
+    await db
+      .delete(schema.cpInvitations)
+      .where(inArray(schema.cpInvitations.id, [...invitationIds]));
+  }
+
   if (trackedUserIds.length > 0 || roleIds.size > 0) {
     const conditions = [];
     if (roleIds.size > 0) {
@@ -118,7 +126,7 @@ after(async () => {
 });
 
 describe('user.service', () => {
-  it('creates users and returns organization-scoped listings', async () => {
+  it('creates invitations instead of provisioning upstream users immediately', async () => {
     const adminUserId = nextId('admin');
     const organizationId = await seedOrganization('User Service Org', adminUserId);
     await seedMembership({ organizationId, userId: adminUserId, role: 'admin' });
@@ -133,25 +141,32 @@ describe('user.service', () => {
       actedBy: adminUserId,
       email: `teacher-${RUN_ID}@example.com`,
       name: 'Teacher Example',
-      password: 'TeacherPassword123!',
       role: 'teacher',
     });
-    userIds.add(created.id);
+    invitationIds.add(created.id);
 
     const listed = await listOrganizationUsers(organizationId);
-    const fetched = await getOrganizationUserById({
-      organizationId,
-      userId: created.id,
-    });
+    const invitations = await listOrganizationInvitations(organizationId);
+    const [upstreamInvitee] = await openpathDb
+      .select()
+      .from(users)
+      .where(eq(users.email, `teacher-${RUN_ID}@example.com`))
+      .limit(1);
 
     assert.strictEqual(created.email, `teacher-${RUN_ID}@example.com`);
-    assert.strictEqual(created.roles[0]?.role, 'teacher');
+    assert.strictEqual(created.role, 'teacher');
+    assert.strictEqual(created.status, 'Pending');
+    assert.strictEqual(typeof created.invitationUrl, 'string');
+    assert.strictEqual(created.emailSent, false);
     assert.strictEqual(
-      listed.some((user) => user.id === created.id),
+      listed.some((user) => user.email === created.email),
+      false
+    );
+    assert.strictEqual(
+      invitations.some((invitation) => invitation.id === created.id),
       true
     );
-    assert.strictEqual(fetched?.id, created.id);
-    assert.strictEqual(fetched?.roles[0]?.role, 'teacher');
+    assert.strictEqual(upstreamInvitee, undefined);
   });
 
   it('updates, reassigns, revokes, and deletes organization users', async () => {

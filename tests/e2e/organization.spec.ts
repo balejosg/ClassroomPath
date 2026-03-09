@@ -85,6 +85,10 @@ async function mockOnboardingPolicy(page: Page, patch: OnboardingPolicyPatch): P
   });
 }
 
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
+
 test.describe('Organization Creation', () => {
   test('should create new organization during onboarding @org @onboarding', async ({ page }) => {
     const testOrg = createTestOrganization();
@@ -180,40 +184,38 @@ test.describe('Organization Members', () => {
     }
   });
 
-  test('should open new user modal and allow form interaction @org @invite', async ({ page }) => {
+  test('should open invite modal without asking for a password @org @invite', async ({ page }) => {
     const orgPage = new OrganizationPage(page);
     await orgPage.goto();
 
     const newTeacherEmail = `teacher-${Date.now()}@test.local`;
 
-    // Click "+ Nuevo Usuario" button (Spanish UI) and wait for modal
+    // Click the ClassroomPath invite CTA and wait for modal
     await orgPage.newUserButton.click();
 
-    // Wait for modal to appear (OpenPath UI uses shared Modal component)
-    const modalHeading = page.getByRole('dialog').getByRole('heading', { name: 'Nuevo Usuario' });
+    const modalHeading = page.getByRole('dialog').getByRole('heading', { name: 'Invitar usuario' });
     await expect(modalHeading).toBeVisible({ timeout: 5000 });
 
-    // Verify modal form fields are visible
+    // Verify modal form fields are visible and no password is requested.
     await expect(page.getByPlaceholder('Nombre completo')).toBeVisible();
     await expect(page.getByPlaceholder('usuario@dominio.com')).toBeVisible();
-    // Password field placeholder changed to indicate minimum length requirement
-    await expect(page.getByPlaceholder('Mínimo 8 caracteres')).toBeVisible();
+    await expect(page.getByLabel('Rol')).toBeVisible();
+    await expect(page.getByText(/La contraseña no se define aquí/i)).toBeVisible();
+    await expect(page.getByPlaceholder('Mínimo 8 caracteres')).toHaveCount(0);
 
-    // Fill user form (password is required with minimum 8 characters)
     await page.getByPlaceholder('Nombre completo').fill('Test Teacher');
     await page.getByPlaceholder('usuario@dominio.com').fill(newTeacherEmail);
-    await page.getByPlaceholder('Mínimo 8 caracteres').fill('TestPassword123');
+    await page.getByLabel('Rol').selectOption('teacher');
 
-    // Verify Crear Usuario button exists and click it
-    const createButton = page.getByRole('button', { name: 'Crear Usuario' });
-    await expect(createButton).toBeVisible();
-    await createButton.click();
+    const inviteButton = page.getByRole('button', { name: 'Enviar invitación' });
+    await expect(inviteButton).toBeVisible();
+    await inviteButton.click();
 
-    // Modal should close after clicking create (current stub behavior)
     await expect(modalHeading).not.toBeVisible({ timeout: 5000 });
-
-    // Verify we're back on the users table
     await expect(page.getByRole('heading', { name: /Gestión de Usuarios/i })).toBeVisible();
+    await expect(page.getByText(/Invitación enviada|Invitación creada sin correo/i)).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test('should show pending invitations @org @invites', async ({ page }) => {

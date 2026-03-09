@@ -35,6 +35,11 @@ let mockReadyMode: 'ready' | 'degraded' | 'unavailable' = 'ready';
 let mockSystemInfoMode: 'healthy' | 'database-down' | 'unavailable' = 'healthy';
 let mockApiTokensListMode: 'ok' | 'unavailable' = 'ok';
 
+function toMockUserId(prefix: string, email: string): string {
+  const slug = email.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+  return `${prefix}-${slug}`.slice(0, 50);
+}
+
 async function buildMockAuthMeResponse(token: string): Promise<{
   user: {
     id: string;
@@ -123,7 +128,7 @@ async function ensureMockOpenPathServer(): Promise<string> {
   app.post('/trpc/auth.login', (req, res) => {
     const body = req.body as { email?: unknown } | undefined;
     const email = typeof body?.email === 'string' ? body.email : 'login@test.local';
-    const userId = `mock-login-${email.replace(/[^a-z0-9]/gi, '-')}`;
+    const userId = toMockUserId('mock-login', email);
     const accessToken = signToken({
       userId,
       email,
@@ -156,7 +161,7 @@ async function ensureMockOpenPathServer(): Promise<string> {
     });
   });
 
-  app.post('/trpc/auth.register', (req, res) => {
+  app.post('/trpc/auth.register', async (req, res) => {
     const body = req.body as { email?: unknown; name?: unknown } | undefined;
     const email = typeof body?.email === 'string' ? body.email : 'register@test.local';
     if (email === 'mock-register-invalid-json@test.local') {
@@ -164,7 +169,25 @@ async function ensureMockOpenPathServer(): Promise<string> {
     }
 
     const name = typeof body?.name === 'string' ? body.name : 'Mock Register User';
-    const userId = `mock-register-${email.replace(/[^a-z0-9]/gi, '-')}`;
+    const userId = toMockUserId('mock-register', email);
+
+    const existing = await openpathDb
+      .select({ id: openpathSchema.users.id })
+      .from(openpathSchema.users)
+      .where(eq(openpathSchema.users.id, userId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      await openpathDb.insert(openpathSchema.users).values({
+        id: userId,
+        email,
+        name,
+        passwordHash: 'mock-hash',
+        isActive: true,
+        emailVerified: false,
+      });
+    }
+
     const accessToken = signToken({
       userId,
       email,

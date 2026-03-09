@@ -114,7 +114,7 @@ test.describe('Admin Approval Flow', () => {
     });
     await expect(page.getByRole('table')).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Usuario' })).toBeVisible();
-    await expect(page.getByRole('columnheader', { name: 'Email' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: /Correo|Email/i })).toBeVisible();
   });
 
   test('keeps pending user waiting until an admin approves them @waiting @admin', async ({

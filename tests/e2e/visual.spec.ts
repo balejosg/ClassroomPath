@@ -10,6 +10,7 @@ import {
   createTestUser,
   registerUser,
   loginAsOnboardingUser,
+  openRegisterForm,
   waitForNetworkIdle,
 } from './fixtures/test-utils';
 import type { Page } from '@playwright/test';
@@ -135,8 +136,7 @@ async function waitForVisualStability(page: Page): Promise<void> {
 test.describe('Visual Regression - Landing/Register', () => {
   test('register page desktop @visual @smoke', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await openRegisterForm(page);
     await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('register-desktop.png', {
@@ -147,8 +147,7 @@ test.describe('Visual Regression - Landing/Register', () => {
 
   test('register page mobile @visual @mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await openRegisterForm(page);
     await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('register-mobile.png', {
@@ -159,8 +158,7 @@ test.describe('Visual Regression - Landing/Register', () => {
 
   test('register page tablet @visual @responsive', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await openRegisterForm(page);
     await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('register-tablet.png', {
@@ -368,8 +366,7 @@ test.describe('Visual Regression - Dark Mode', () => {
   test('register dark mode @visual @dark', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await openRegisterForm(page);
     await waitForVisualStability(page);
 
     await expect(page).toHaveScreenshot('register-dark.png', {

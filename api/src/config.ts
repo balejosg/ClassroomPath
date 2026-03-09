@@ -27,6 +27,11 @@ const parseBooleanEnv = (value: string | undefined, defaultValue: boolean) => {
   return defaultValue;
 };
 
+const trimToNull = (value: string | undefined): string | null => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+};
+
 const isProduction = () => process.env.NODE_ENV === 'production';
 export const DEFAULT_JWT_SECRET = 'dev-secret-key-change-me-in-production';
 
@@ -62,8 +67,17 @@ export const config = {
   get databaseUrl() {
     return buildDatabaseUrl();
   },
+  get publicUrl() {
+    return (trimToNull(process.env.PUBLIC_URL) ?? 'http://localhost:5173').replace(/\/+$/, '');
+  },
   get jwtSecret() {
     return requireJwtSecret();
+  },
+  get resendApiKey() {
+    return trimToNull(process.env.RESEND_API_KEY);
+  },
+  get resendFromEmail() {
+    return trimToNull(process.env.RESEND_FROM_EMAIL);
   },
   get allowSelfServiceOrgs() {
     return parseBooleanEnv(process.env.CP_ALLOW_SELF_SERVICE_ORGS, !isProduction());

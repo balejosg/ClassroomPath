@@ -8,15 +8,16 @@ import {
   deleteOrganizationUser,
   getOrganizationUserById,
   getOrganizationUserRole,
+  listOrganizationInvitations,
   listOrganizationUsers,
   revokeOrganizationUserRole,
+  revokeOrganizationInvitation,
   updateOrganizationUser,
 } from '../../services/user.service.js';
 
 const CreateUserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(255),
-  password: z.string().min(8),
   role: z.enum(['admin', 'teacher']).default('teacher'),
 });
 
@@ -38,6 +39,11 @@ export const usersRouter = router({
     return listOrganizationUsers(ctx.organizationId);
   }),
 
+  listInvitations: tenantProcedure.query(async ({ ctx }) => {
+    assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
+    return listOrganizationInvitations(ctx.organizationId);
+  }),
+
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
     return getOrganizationUserById({ organizationId: ctx.organizationId, userId: input.id });
@@ -55,7 +61,6 @@ export const usersRouter = router({
       actedBy: ctx.user.sub,
       email: input.email,
       name: input.name,
-      password: input.password,
       role: input.role,
     });
   }),
@@ -78,6 +83,16 @@ export const usersRouter = router({
       actedBy: ctx.user.sub,
     });
   }),
+
+  revokeInvitation: tenantProcedure
+    .input(z.object({ invitationId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
+      return revokeOrganizationInvitation({
+        organizationId: ctx.organizationId,
+        invitationId: input.invitationId,
+      });
+    }),
 
   assignRole: tenantProcedure.input(AssignRoleSchema).mutation(async ({ ctx, input }) => {
     assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');

@@ -62,6 +62,34 @@ export type UserStatus = typeof cpUserStatus.$inferSelect;
 export type NewUserStatus = typeof cpUserStatus.$inferInsert;
 
 // =============================================================================
+// Invitations Table
+// =============================================================================
+
+export const cpInvitations = pgTable(
+  'cp_invitations',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    organizationId: varchar('organization_id', { length: 50 })
+      .notNull()
+      .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
+    email: varchar('email', { length: 255 }).notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    role: varchar('role', { length: 20 }).notNull(),
+    tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+    invitedBy: varchar('invited_by', { length: 50 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    unique('cp_invitations_token_hash_key').on(table.tokenHash),
+    unique('cp_invitations_org_email_key').on(table.organizationId, table.email),
+  ]
+);
+
+export type Invitation = typeof cpInvitations.$inferSelect;
+export type NewInvitation = typeof cpInvitations.$inferInsert;
+
+// =============================================================================
 // Organization-Resource Relation Tables (Multi-tenancy)
 // =============================================================================
 

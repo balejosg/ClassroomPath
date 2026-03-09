@@ -209,6 +209,14 @@ export const requests = pgTable('requests', {
   resolutionNote: text('resolution_note'),
 });
 
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: varchar('id', { length: 50 }).primaryKey(),
+  userId: varchar('user_id', { length: 50 }).notNull(),
+  tokenHash: varchar('token_hash', { length: 255 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
 export const openpathSchema = {
   roles,
   users,
@@ -219,4 +227,5 @@ export const openpathSchema = {
   whitelistGroups,
   whitelistRules,
   requests,
+  passwordResetTokens,
 };

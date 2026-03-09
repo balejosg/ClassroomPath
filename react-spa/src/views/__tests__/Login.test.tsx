@@ -72,6 +72,20 @@ describe('Login View', () => {
     expect(onNavigateToRegister).toHaveBeenCalledTimes(1);
   });
 
+  it('calls reset-password navigation callback when the recovery CTA is clicked', () => {
+    const onNavigateToResetPassword = vi.fn();
+    render(
+      <Login
+        onLogin={vi.fn()}
+        onNavigateToRegister={vi.fn()}
+        onNavigateToResetPassword={onNavigateToResetPassword}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('navigate-to-reset-password'));
+    expect(onNavigateToResetPassword).toHaveBeenCalledTimes(1);
+  });
+
   it('persists the authenticated user and calls onLogin after a successful login', async () => {
     const onLogin = vi.fn();
     mockLoginMutateAsync.mockResolvedValue({

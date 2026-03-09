@@ -1,12 +1,9 @@
 import { TRPCError } from '@trpc/server';
-import bcrypt from 'bcrypt';
 import { and, eq, inArray } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { openpathDb, roles, users } from '../db/openpath.js';
-import { generateId } from '../lib/id.js';
 import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
 import { getSingleMembershipOrThrow } from '../lib/tenant-memberships.js';
 import {
@@ -15,6 +12,11 @@ import {
   presentUserWithRoles,
   type RoleInfo,
 } from './presenters.js';
+import {
+  createOrganizationInvitation,
+  listOrganizationInvitations,
+  revokeOrganizationInvitation,
+} from './invitations.service.js';
 
 async function getOrgScopedUserIds(params: { organizationId: string }): Promise<string[]> {
   const memberships = await db
@@ -113,43 +115,18 @@ export async function createOrganizationUser(params: {
   actedBy: string;
   email: string;
   name: string;
-  password: string;
   role: 'admin' | 'teacher';
 }) {
-  const userId = nanoid();
-  const passwordHash = await bcrypt.hash(params.password, 10);
-
-  const [user] = await openpathDb
-    .insert(users)
-    .values({
-      id: userId,
-      email: params.email,
-      name: params.name,
-      passwordHash,
-      isActive: true,
-    })
-    .returning();
-
-  await db.insert(schema.cpMemberships).values({
-    id: generateId('mem'),
-    userId: user.id,
+  return createOrganizationInvitation({
     organizationId: params.organizationId,
-    role: params.role,
     invitedBy: params.actedBy,
-  });
-
-  await synchronizeOpenPathRole({
-    userId: user.id,
-    actedBy: params.actedBy,
-    groupIds: [],
-  });
-
-  const rolesByUserId = await getRolesByUserId([user.id]);
-  return presentUserWithRoles({
-    user,
-    roles: rolesByUserId.get(user.id) ?? [],
+    email: params.email,
+    name: params.name,
+    role: params.role,
   });
 }
+
+export { listOrganizationInvitations, revokeOrganizationInvitation };
 
 export async function updateOrganizationUser(params: {
   organizationId: string;

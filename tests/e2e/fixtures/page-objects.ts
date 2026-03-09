@@ -193,11 +193,13 @@ export class OrganizationPage {
     this.page = page;
     this.membersList = page.locator('[data-testid="members-list"]');
     this.pendingInvites = page.locator('[data-testid="pending-invites"]');
-    // Spanish UI has "+ Nuevo Usuario" button, not "Invitar"
+    // Accept both legacy and ClassroomPath-owned invite copy while migrations land.
     this.inviteButton = page.getByRole('button', {
-      name: /Nuevo Usuario|\+ Nuevo|Invitar|Invite/i,
+      name: /Invitar usuario|Nuevo Usuario|\+ Nuevo|Invitar|Invite/i,
     });
-    this.newUserButton = page.getByRole('button', { name: '+ Nuevo Usuario' });
+    this.newUserButton = page.getByRole('button', {
+      name: /Invitar usuario|\+ Nuevo Usuario|Nuevo Usuario/i,
+    });
     // Sidebar navigation button (Spanish UI: "Usuarios y Roles")
     this.usersButton = page.getByRole('button', { name: 'Usuarios y Roles' });
 
@@ -228,11 +230,12 @@ export class OrganizationPage {
     await expect(this.usersTable.getByText(/Cargando usuarios/i)).toBeHidden({ timeout: 15000 });
   }
 
-  async inviteMember(email: string, role: 'admin' | 'teacher') {
+  async inviteMember(name: string, email: string, role: 'admin' | 'teacher') {
     await this.inviteButton.click();
+    await this.page.getByLabel(/Nombre/i).fill(name);
     await this.page.getByLabel(/Email|Correo/i).fill(email);
     await this.page.getByRole('combobox', { name: /Rol/i }).selectOption(role);
-    await this.page.getByRole('button', { name: /Enviar|Send/i }).click();
+    await this.page.getByRole('button', { name: /Enviar invitación|Enviar|Send/i }).click();
   }
 
   async approvePendingUser(email: string) {
