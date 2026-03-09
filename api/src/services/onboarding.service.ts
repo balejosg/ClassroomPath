@@ -1,7 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { generateId } from '../lib/id.js';
-import { openpathDb, openpathSchema } from '../db/openpath.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
 import { config } from '../config.js';
 import {
@@ -9,6 +8,7 @@ import {
   getSingleMembershipOrThrow,
   SINGLE_ORG_MEMBERSHIP_MESSAGE,
 } from '../lib/tenant-memberships.js';
+import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
 
 export interface OnboardingStatus {
   hasMembership: boolean;
@@ -85,7 +85,6 @@ export async function createOrganization(
 
   const orgId = generateId('org');
   const membershipId = generateId('mem');
-  const roleId = `role_${generateId('')}`;
 
   try {
     await db.transaction(async (tx) => {
@@ -112,30 +111,11 @@ export async function createOrganization(
     throwConflictOnUniqueViolation(error, SINGLE_ORG_MEMBERSHIP_MESSAGE);
   }
 
-  // Assign admin role in OpenPath - use upsert to handle unique constraint
-  const existing = await openpathDb
-    .select()
-    .from(openpathSchema.roles)
-    .where(eq(openpathSchema.roles.userId, userId))
-    .limit(1);
-
-  if (existing.length === 0) {
-    // No role exists - insert new admin role
-    await openpathDb.insert(openpathSchema.roles).values({
-      id: roleId,
-      userId,
-      role: 'admin',
-      groupIds: [] as string[],
-      createdBy: userId,
-    });
-  } else if (existing[0].role !== 'admin') {
-    // Role exists but is not admin - update to admin
-    await openpathDb
-      .update(openpathSchema.roles)
-      .set({ role: 'admin', groupIds: [] as string[] })
-      .where(eq(openpathSchema.roles.userId, userId));
-  }
-  // If already admin, no action needed
+  await synchronizeOpenPathRole({
+    userId,
+    actedBy: userId,
+    groupIds: [],
+  });
 
   return { organizationId: orgId, membershipId };
 }

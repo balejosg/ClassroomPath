@@ -6,6 +6,8 @@ import { sanitizeSlug } from '@openpath/shared/slug';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { isOpenPathGroupEnabled } from '../lib/tenant-access.js';
+import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
+import { normalizeGroupKey, scopedGroupNameForOrg } from './group-name.service.js';
 import {
   openpathDb,
   publishWhitelistGroupChanged,
@@ -76,22 +78,6 @@ export async function findAvailableName(params: {
   );
 }
 
-export async function findAvailableGroupName(baseName: string): Promise<string> {
-  return findAvailableName({
-    baseName,
-    maxLength: 100,
-    fallbackPrefix: 'group',
-    exists: async (candidate) => {
-      const rows = await openpathDb
-        .select({ id: whitelistGroups.id })
-        .from(whitelistGroups)
-        .where(eq(whitelistGroups.name, candidate))
-        .limit(1);
-      return rows.length > 0;
-    },
-  });
-}
-
 export async function findAvailableTemplateName(baseName: string): Promise<string> {
   return findAvailableName({
     baseName,
@@ -147,44 +133,56 @@ async function createOrgGroupFromRules(params: {
   organizationId: string;
   actorUserId: string;
   actorRole?: string;
-  rawName: string;
+  publicName: string;
   displayName: string;
   rules: RuleSeed[];
 }): Promise<{ id: string; name: string }> {
-  const name = await findAvailableGroupName(params.rawName);
+  const publicName = normalizeGroupKey(params.publicName);
+  if (!publicName) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Group name is required' });
+  }
+
+  const name = scopedGroupNameForOrg(params.organizationId, publicName);
   const groupId = nanoid();
 
-  const group = await openpathDb.transaction(async (tx) => {
-    const [created] = await tx
-      .insert(whitelistGroups)
-      .values({
-        id: groupId,
-        name,
-        displayName: params.displayName,
-        enabled: 1,
-      })
-      .returning();
+  let group: typeof whitelistGroups.$inferSelect;
+  try {
+    group = await openpathDb.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(whitelistGroups)
+        .values({
+          id: groupId,
+          name,
+          displayName: params.displayName,
+          enabled: 1,
+        })
+        .returning();
 
-    if (params.rules.length > 0) {
-      await tx.insert(whitelistRules).values(
-        params.rules.map((r) => ({
-          id: nanoid(),
-          groupId: created.id,
-          type: r.type,
-          value: r.value,
-          comment: r.comment,
-        }))
-      );
-    }
+      if (params.rules.length > 0) {
+        await tx.insert(whitelistRules).values(
+          params.rules.map((r) => ({
+            id: nanoid(),
+            groupId: created.id,
+            type: r.type,
+            value: r.value,
+            comment: r.comment,
+          }))
+        );
+      }
 
-    return created;
-  });
+      return created;
+    });
+  } catch (err) {
+    throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
+    throw err;
+  }
 
   try {
     await db.insert(schema.cpOrganizationGroups).values({
       id: nanoid(),
       organizationId: params.organizationId,
       groupId: group.id,
+      publicName,
       visibility: 'private',
     });
   } catch (err) {
@@ -193,6 +191,7 @@ async function createOrgGroupFromRules(params: {
     } catch {
       // Best-effort rollback.
     }
+    throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
     throw err;
   }
 
@@ -229,7 +228,7 @@ async function createOrgGroupFromRules(params: {
 
   await publishWhitelistGroupChanged(group.id);
 
-  return { id: group.id, name: group.name };
+  return { id: group.id, name: publicName };
 }
 
 export async function cloneGroupIntoOrganization(params: {
@@ -257,11 +256,22 @@ export async function cloneGroupIntoOrganization(params: {
     });
   }
 
-  const rawName = params.name?.trim() || `${source[0].name}-copia`;
-  const name = await findAvailableGroupName(rawName);
+  const sourceOrgGroup = await db
+    .select({ publicName: schema.cpOrganizationGroups.publicName })
+    .from(schema.cpOrganizationGroups)
+    .where(eq(schema.cpOrganizationGroups.groupId, params.sourceGroupId))
+    .limit(1);
+
+  const publicName =
+    params.name?.trim() ||
+    sourceOrgGroup[0]?.publicName ||
+    source[0].displayName?.trim() ||
+    source[0].name;
 
   const rawDisplayName = params.displayName?.trim();
-  const displayName = rawDisplayName || `${source[0].displayName || source[0].name} Copia`;
+  const displayName =
+    rawDisplayName ||
+    `${source[0].displayName || sourceOrgGroup[0]?.publicName || source[0].name} Copia`;
 
   const sourceRules: RuleSeed[] = await openpathDb
     .select({
@@ -276,7 +286,7 @@ export async function cloneGroupIntoOrganization(params: {
     organizationId: params.organizationId,
     actorUserId: params.actorUserId,
     actorRole: params.actorRole,
-    rawName,
+    publicName,
     displayName,
     rules: sourceRules,
   });
@@ -305,14 +315,14 @@ export async function importTemplateIntoOrganization(params: {
     .from(schema.cpGroupTemplateRules)
     .where(eq(schema.cpGroupTemplateRules.templateId, template[0].id));
 
-  const rawName = params.name?.trim() || `${template[0].name}-import`;
+  const publicName = params.name?.trim() || `${template[0].name}-import`;
   const displayName = params.displayName?.trim() || template[0].displayName;
 
   return await createOrgGroupFromRules({
     organizationId: params.organizationId,
     actorUserId: params.actorUserId,
     actorRole: params.actorRole,
-    rawName,
+    publicName,
     displayName,
     rules: templateRules.map((r) => ({ type: r.type, value: r.value, comment: r.comment })),
   });
@@ -320,6 +330,7 @@ export async function importTemplateIntoOrganization(params: {
 
 export async function publishTemplateFromGroup(params: {
   actorUserId: string;
+  organizationId?: string;
   groupId: string;
   name?: string;
   displayName?: string;
@@ -340,7 +351,25 @@ export async function publishTemplateFromGroup(params: {
     .from(whitelistRules)
     .where(eq(whitelistRules.groupId, params.groupId));
 
-  const rawName = params.name?.trim() || `${sourceGroup[0].name}-template`;
+  const sourceOrgGroup =
+    params.organizationId === undefined
+      ? []
+      : await db
+          .select({ publicName: schema.cpOrganizationGroups.publicName })
+          .from(schema.cpOrganizationGroups)
+          .where(
+            and(
+              eq(schema.cpOrganizationGroups.organizationId, params.organizationId),
+              eq(schema.cpOrganizationGroups.groupId, params.groupId)
+            )
+          )
+          .limit(1);
+
+  const rawName =
+    params.name?.trim() ||
+    (sourceOrgGroup[0]?.publicName
+      ? `${sourceOrgGroup[0].publicName}-template`
+      : sourceGroup[0].displayName?.trim() || `${sourceGroup[0].name}-template`);
   const name = await findAvailableTemplateName(rawName);
   const displayName = params.displayName?.trim() || sourceGroup[0].displayName;
 

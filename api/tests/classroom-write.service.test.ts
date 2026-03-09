@@ -79,6 +79,7 @@ describe('classroom-write.service', () => {
       id: `org_group_classroom_write_${RUN_ID}`,
       organizationId: ORG_ID,
       groupId: GROUP_ID,
+      publicName: `classroom-write-group-${RUN_ID}`,
     });
   });
 

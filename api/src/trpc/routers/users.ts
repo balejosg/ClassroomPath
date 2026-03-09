@@ -32,27 +32,13 @@ function normalizeGroupIds(groupIds: unknown): string[] {
   return [];
 }
 
-async function getOrgScopedUserIds(params: { organizationId: string }): Promise<{
-  userIds: string[];
-  sources: { membershipUserIds: Set<string>; orgUserIds: Set<string> };
-}> {
-  const [memberships, orgUsers] = await Promise.all([
-    db
-      .select({ userId: schema.cpMemberships.userId })
-      .from(schema.cpMemberships)
-      .where(eq(schema.cpMemberships.organizationId, params.organizationId)),
-    db
-      .select({ userId: schema.cpOrganizationUsers.openpathUserId })
-      .from(schema.cpOrganizationUsers)
-      .where(eq(schema.cpOrganizationUsers.organizationId, params.organizationId)),
-  ]);
+async function getOrgScopedUserIds(params: { organizationId: string }): Promise<string[]> {
+  const memberships = await db
+    .select({ userId: schema.cpMemberships.userId })
+    .from(schema.cpMemberships)
+    .where(eq(schema.cpMemberships.organizationId, params.organizationId));
 
-  const membershipUserIds = new Set(memberships.map((m) => m.userId));
-  const orgUserIds = new Set(orgUsers.map((u) => u.userId));
-
-  const userIds = [...new Set([...membershipUserIds, ...orgUserIds])];
-
-  return { userIds, sources: { membershipUserIds, orgUserIds } };
+  return memberships.map((membership) => membership.userId);
 }
 
 async function getRolesByUserId(userIds: string[]): Promise<Map<string, RoleInfo[]>> {
@@ -93,7 +79,7 @@ export const usersRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
     requireOrgAdmin(ctx);
 
-    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    const userIds = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
     if (userIds.length === 0) return [];
 
     const [usersList, rolesByUserId] = await Promise.all([
@@ -117,7 +103,7 @@ export const usersRouter = router({
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     requireOrgAdmin(ctx);
 
-    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    const userIds = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
     if (!userIds.includes(input.id)) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
@@ -145,7 +131,7 @@ export const usersRouter = router({
   getRole: tenantProcedure.input(z.object({ userId: z.string() })).query(async ({ ctx, input }) => {
     requireOrgAdmin(ctx);
 
-    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    const userIds = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
     if (!userIds.includes(input.userId)) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
@@ -187,12 +173,6 @@ export const usersRouter = router({
       })
       .returning();
 
-    await db.insert(schema.cpOrganizationUsers).values({
-      id: nanoid(),
-      organizationId: ctx.organizationId!,
-      openpathUserId: user.id,
-    });
-
     // Grant organization membership so the user can actually join the tenant.
     await db.insert(schema.cpMemberships).values({
       id: generateId('mem'),
@@ -225,7 +205,7 @@ export const usersRouter = router({
   update: tenantProcedure.input(UpdateUserSchema).mutation(async ({ ctx, input }) => {
     requireOrgAdmin(ctx);
 
-    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    const userIds = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
     if (!userIds.includes(input.id)) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
@@ -258,7 +238,7 @@ export const usersRouter = router({
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
     requireOrgAdmin(ctx);
 
-    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    const userIds = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
     if (!userIds.includes(input.id)) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
@@ -293,7 +273,7 @@ export const usersRouter = router({
   assignRole: tenantProcedure.input(AssignRoleSchema).mutation(async ({ ctx, input }) => {
     requireOrgAdmin(ctx);
 
-    const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+    const userIds = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
     if (!userIds.includes(input.userId)) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
     }
@@ -344,7 +324,7 @@ export const usersRouter = router({
     .mutation(async ({ ctx, input }) => {
       requireOrgAdmin(ctx);
 
-      const { userIds } = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
+      const userIds = await getOrgScopedUserIds({ organizationId: ctx.organizationId! });
       if (!userIds.includes(input.userId)) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
       }

@@ -120,9 +120,11 @@ export async function resetDb(): Promise<void> {
 }
 
 export const TEST_RUN_ID = `${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`;
+let emailCounter = 0;
 
 export function uniqueEmail(prefix: string): string {
-  return `${prefix}-${TEST_RUN_ID}@test.local`;
+  emailCounter += 1;
+  return `${prefix}-${TEST_RUN_ID}-${String(emailCounter)}@test.local`;
 }
 
 export interface TRPCResponse<T = unknown> {

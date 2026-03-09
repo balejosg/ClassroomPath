@@ -1,0 +1,2 @@
+ALTER TABLE "cp_organization_groups" ADD COLUMN "public_name" varchar(100);--> statement-breakpoint
+ALTER TABLE "cp_organization_groups" ADD CONSTRAINT "cp_org_group_public_name_key" UNIQUE("organization_id","public_name");

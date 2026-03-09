@@ -115,12 +115,23 @@ describe('tenant-access', () => {
     });
 
     await db.insert(schema.cpOrganizationGroups).values([
-      { id: `og_${RUN_ID}_1`, organizationId: ORG_ID, groupId: GROUP_ID },
-      { id: `og_${RUN_ID}_2`, organizationId: ORG_ID, groupId: GROUP_ID_2 },
+      {
+        id: `og_${RUN_ID}_1`,
+        organizationId: ORG_ID,
+        groupId: GROUP_ID,
+        publicName: `tenant-access-group-${RUN_ID}-1`,
+      },
+      {
+        id: `og_${RUN_ID}_2`,
+        organizationId: ORG_ID,
+        groupId: GROUP_ID_2,
+        publicName: `tenant-access-group-${RUN_ID}-2`,
+      },
       {
         id: `og_${RUN_ID}_3`,
         organizationId: ORG_ID,
         groupId: GROUP_ID_3,
+        publicName: `tenant-access-group-${RUN_ID}-3`,
         visibility: 'instance_public',
       },
     ]);

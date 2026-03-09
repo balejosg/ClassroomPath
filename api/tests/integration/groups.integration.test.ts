@@ -20,6 +20,10 @@ import {
 } from '../test-utils.js';
 import { useIntegrationServer } from './harness.js';
 import { createTenantScenario } from './scenario-builder.js';
+import { db } from '../../src/db/index.js';
+import * as cpSchema from '../../src/db/schema.js';
+import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
+import { eq, inArray } from 'drizzle-orm';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
 
@@ -50,6 +54,127 @@ describe('ClassroomPath groups integration (/cp/trpc)', async () => {
     const { code, error } = await parseTRPC(dupResp);
     assert.strictEqual(code, 'CONFLICT');
     assert.ok((error ?? '').toLowerCase().includes('ya existe'));
+  });
+
+  test('groups.create allows the same public slug in different organizations and keeps upstream names isolated', async () => {
+    await resetDb();
+
+    const scenario = buildScenario();
+
+    const { actor: adminA, organization: orgA } = await scenario.createOrgAdmin({
+      userId: 'groups-admin-a',
+      organizationName: 'Groups Test Org A',
+    });
+    const { actor: adminB, organization: orgB } = await scenario.createOrgAdmin({
+      userId: 'groups-admin-b',
+      organizationName: 'Groups Test Org B',
+    });
+
+    const groupA = await scenario.createGroup({
+      token: adminA.token,
+      name: 'shared-public-slug',
+      displayName: 'Shared Public Slug A',
+    });
+    const groupB = await scenario.createGroup({
+      token: adminB.token,
+      name: 'shared-public-slug',
+      displayName: 'Shared Public Slug B',
+    });
+
+    assert.notStrictEqual(groupA.id, groupB.id);
+    assert.strictEqual(groupA.name, 'shared-public-slug');
+    assert.strictEqual(groupB.name, 'shared-public-slug');
+
+    const orgLinks = await db
+      .select({
+        organizationId: cpSchema.cpOrganizationGroups.organizationId,
+        publicName: cpSchema.cpOrganizationGroups.publicName,
+      })
+      .from(cpSchema.cpOrganizationGroups)
+      .where(eq(cpSchema.cpOrganizationGroups.publicName, 'shared-public-slug'));
+
+    assert.deepStrictEqual(
+      orgLinks.map((row) => row.organizationId).sort(),
+      [orgA.organizationId, orgB.organizationId].sort()
+    );
+
+    const upstreamGroups = await openpathDb
+      .select({
+        id: openpathSchema.whitelistGroups.id,
+        name: openpathSchema.whitelistGroups.name,
+      })
+      .from(openpathSchema.whitelistGroups)
+      .where(inArray(openpathSchema.whitelistGroups.id, [groupA.id, groupB.id]));
+
+    assert.strictEqual(upstreamGroups.length, 2);
+    assert.notStrictEqual(upstreamGroups[0].name, upstreamGroups[1].name);
+    assert.ok(upstreamGroups.every((group) => group.name.startsWith('cpg-')));
+  });
+
+  test('groups.create allows the same public slug in different organizations', async () => {
+    await resetDb();
+
+    const scenario = buildScenario();
+
+    const { actor: adminA } = await scenario.createOrgAdmin({
+      userId: 'groups-admin-a',
+      organizationName: 'Groups Test Org A',
+    });
+    const { actor: adminB } = await scenario.createOrgAdmin({
+      userId: 'groups-admin-b',
+      organizationName: 'Groups Test Org B',
+    });
+
+    const groupA = await scenario.createGroup({
+      token: adminA.token,
+      name: 'shared-slug',
+      displayName: 'Shared Slug A',
+    });
+    const groupB = await scenario.createGroup({
+      token: adminB.token,
+      name: 'shared-slug',
+      displayName: 'Shared Slug B',
+    });
+
+    assert.strictEqual(groupA.name, 'shared-slug');
+    assert.strictEqual(groupB.name, 'shared-slug');
+    assert.notStrictEqual(groupA.id, groupB.id);
+
+    const storedGroups = await openpathDb
+      .select({
+        id: openpathSchema.whitelistGroups.id,
+        name: openpathSchema.whitelistGroups.name,
+      })
+      .from(openpathSchema.whitelistGroups)
+      .where(inArray(openpathSchema.whitelistGroups.id, [groupA.id, groupB.id]));
+
+    assert.strictEqual(storedGroups.length, 2);
+    const byId = new Map(storedGroups.map((group) => [group.id, group.name]));
+    assert.notStrictEqual(byId.get(groupA.id), byId.get(groupB.id));
+    assert.notStrictEqual(byId.get(groupA.id), 'shared-slug');
+    assert.notStrictEqual(byId.get(groupB.id), 'shared-slug');
+
+    const lookupA = await trpcQuery(
+      integration.baseUrl,
+      'groups.getByName',
+      { name: 'shared-slug' },
+      bearerAuth(adminA.token)
+    );
+    assertStatus(lookupA, 200);
+    const { data: dataA } = (await parseTRPC(lookupA)) as { data: any };
+    assert.strictEqual(dataA?.id, groupA.id);
+    assert.strictEqual(dataA?.name, 'shared-slug');
+
+    const lookupB = await trpcQuery(
+      integration.baseUrl,
+      'groups.getByName',
+      { name: 'shared-slug' },
+      bearerAuth(adminB.token)
+    );
+    assertStatus(lookupB, 200);
+    const { data: dataB } = (await parseTRPC(lookupB)) as { data: any };
+    assert.strictEqual(dataB?.id, groupB.id);
+    assert.strictEqual(dataB?.name, 'shared-slug');
   });
 
   test('groups.clone blocks inactive sources and exercises rules + templates flows', async () => {

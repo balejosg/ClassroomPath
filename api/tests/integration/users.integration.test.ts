@@ -208,6 +208,21 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     assert.strictEqual(membership.length, 1);
     assert.strictEqual(membership[0].role, 'teacher');
 
+    const orgLinks = await db
+      .select()
+      .from(cpSchema.cpOrganizationUsers)
+      .where(
+        and(
+          eq(cpSchema.cpOrganizationUsers.organizationId, orgId),
+          eq(cpSchema.cpOrganizationUsers.openpathUserId, created.id)
+        )
+      );
+    assert.strictEqual(
+      orgLinks.length,
+      0,
+      'users.create should no longer depend on cp_organization_users for tenant scoping'
+    );
+
     const createdToken = signToken({
       jwtSecret: JWT_SECRET,
       userId: created.id,
@@ -225,6 +240,84 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     const { data: status } = (await parseTRPC(statusResp)) as { data: any };
     assert.strictEqual(status.hasMembership, true);
     assert.strictEqual(status.organization.id, orgId);
+  });
+
+  test('users.list ignores legacy cp_organization_users rows without a tenant membership', async () => {
+    const orgId = `org-users-legacy-link-${Date.now()}`;
+    const adminUserId = `u-admin-legacy-link-${Date.now()}`;
+    const linkedOnlyUserId = `u-linked-only-${Date.now()}`;
+
+    const adminEmail = uniqueEmail('admin-legacy-link');
+    const linkedOnlyEmail = uniqueEmail('linked-only');
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: adminUserId,
+        email: adminEmail,
+        name: 'Admin Legacy Link',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: linkedOnlyUserId,
+        email: linkedOnlyEmail,
+        name: 'Linked Only User',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: false,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${adminUserId}`,
+      userId: adminUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizationUsers).values({
+      id: `org-user-${linkedOnlyUserId}`,
+      organizationId: orgId,
+      openpathUserId: linkedOnlyUserId,
+    });
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin Legacy Link',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'users.list',
+      undefined,
+      bearerAuth(adminToken)
+    );
+    assertStatus(resp, 200);
+
+    const { data } = (await parseTRPC(resp)) as { data: Array<{ id: string }> };
+    assert.ok(
+      data.every((user) => user.id !== linkedOnlyUserId),
+      'legacy cp_organization_users links must not grant tenant visibility without cp_memberships'
+    );
   });
 
   test('users.list is forbidden for non-admin org members', async () => {

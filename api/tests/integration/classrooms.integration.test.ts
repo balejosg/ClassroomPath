@@ -402,6 +402,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       id: `og-b-${groupId}`,
       organizationId: orgB,
       groupId,
+      publicName: `shared-group-delete-test-${orgB}`,
     });
 
     const deleteResp = await trpcMutate(

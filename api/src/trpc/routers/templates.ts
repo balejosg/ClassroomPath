@@ -134,6 +134,7 @@ export const templatesRouter = router({
 
       return publishTemplateFromGroup({
         actorUserId: ctx.user.sub,
+        organizationId: ctx.organizationId!,
         groupId: input.groupId,
         name: input.name,
         displayName: input.displayName,

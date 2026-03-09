@@ -92,6 +92,7 @@ describe('schedule-read.service', () => {
       id: `org_group_schedule_read_${RUN_ID}`,
       organizationId: ORG_ID,
       groupId: GROUP_ID,
+      publicName: `schedule-read-group-${RUN_ID}`,
     });
 
     await openpathDb.insert(openpathSchema.classrooms).values([

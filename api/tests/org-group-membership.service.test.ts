@@ -27,6 +27,7 @@ describe('org-group-membership.service', () => {
       id: `og_${RUN_ID}_1`,
       organizationId: ORG_ID,
       groupId: GROUP_ID,
+      publicName: `org-group-membership-${RUN_ID}`,
     });
   });
 

@@ -68,6 +68,7 @@ async function seedGroupForOrg(params: { orgId: string; groupId: string }) {
     id: `og-${params.orgId}-${params.groupId}`,
     organizationId: params.orgId,
     groupId: params.groupId,
+    publicName: params.groupId,
   });
 }
 

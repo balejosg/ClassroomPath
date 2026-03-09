@@ -35,6 +35,7 @@ import {
   addGroupToTeacherRole,
   cloneGroupIntoOrganization,
 } from '../../services/group-copy.service.js';
+import { normalizeGroupKey, scopedGroupNameForOrg } from '../../services/group-name.service.js';
 import {
   bulkCreateGroupRules,
   createOrReuseGroupRule,
@@ -53,6 +54,11 @@ type RuleCounts = {
   blockedSubdomainCount: number;
   blockedPathCount: number;
 };
+
+type OrganizationGroupMeta = Pick<
+  typeof schema.cpOrganizationGroups.$inferSelect,
+  'groupId' | 'publicName' | 'visibility'
+>;
 
 const EMPTY_RULE_COUNTS: RuleCounts = {
   whitelistCount: 0,
@@ -177,12 +183,12 @@ async function fetchRuleCountsForGroupIds(
 
 function serializeGroupForClient(
   group: OpenPathWhitelistGroup,
-  params: { visibility?: string; counts?: RuleCounts }
+  params: { publicName?: string; visibility?: string; counts?: RuleCounts }
 ) {
   const counts = params.counts ?? EMPTY_RULE_COUNTS;
   return {
     id: group.id,
-    name: group.name,
+    name: params.publicName ?? group.name,
     displayName: group.displayName,
     enabled: isOpenPathGroupEnabled(group.enabled),
     visibility: params.visibility ?? 'private',
@@ -219,6 +225,12 @@ async function createWhitelistRuleForGroup(
   return result;
 }
 
+function indexOrgGroupMeta(
+  rows: readonly OrganizationGroupMeta[]
+): Map<string, OrganizationGroupMeta> {
+  return new Map(rows.map((row) => [row.groupId, row]));
+}
+
 export const groupsRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
     assertTeacherOrAdminTenantProcedureContext(ctx);
@@ -228,7 +240,7 @@ export const groupsRouter = router({
       .where(eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId));
 
     const groupIds = orgGroups.map((og) => og.groupId);
-    const orgGroupMetaById = new Map(orgGroups.map((og) => [og.groupId, og]));
+    const orgGroupMetaById = indexOrgGroupMeta(orgGroups);
 
     if (groupIds.length === 0) return [];
 
@@ -247,6 +259,7 @@ export const groupsRouter = router({
 
     return visibleGroups.map((g) =>
       serializeGroupForClient(g, {
+        publicName: orgGroupMetaById.get(g.id)?.publicName ?? undefined,
         visibility: orgGroupMetaById.get(g.id)?.visibility ?? 'private',
         counts: ruleCounts.get(g.id),
       })
@@ -270,7 +283,7 @@ export const groupsRouter = router({
       );
 
     const groupIds = orgGroups.map((og) => og.groupId);
-    const orgGroupMetaById = new Map(orgGroups.map((og) => [og.groupId, og]));
+    const orgGroupMetaById = indexOrgGroupMeta(orgGroups);
 
     if (groupIds.length === 0) return [];
 
@@ -287,6 +300,7 @@ export const groupsRouter = router({
 
     return groups.map((g) =>
       serializeGroupForClient(g, {
+        publicName: orgGroupMetaById.get(g.id)?.publicName ?? undefined,
         visibility: orgGroupMetaById.get(g.id)?.visibility ?? 'private',
         counts: ruleCounts.get(g.id),
       })
@@ -367,6 +381,20 @@ export const groupsRouter = router({
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     await assertCanViewGroup(ctx, input.id, GROUP_PERMISSION_OPTS);
 
+    const orgGroup = await db
+      .select({
+        publicName: schema.cpOrganizationGroups.publicName,
+        visibility: schema.cpOrganizationGroups.visibility,
+      })
+      .from(schema.cpOrganizationGroups)
+      .where(
+        and(
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId),
+          eq(schema.cpOrganizationGroups.groupId, input.id)
+        )
+      )
+      .limit(1);
+
     const group = await openpathDb
       .select()
       .from(whitelistGroups)
@@ -379,7 +407,7 @@ export const groupsRouter = router({
     const g = group[0];
     return {
       id: g.id,
-      name: g.name,
+      name: orgGroup[0]?.publicName ?? g.name,
       displayName: g.displayName,
       enabled: g.enabled,
       createdAt: g.createdAt?.toISOString() ?? null,
@@ -397,26 +425,70 @@ export const groupsRouter = router({
 
   getByName: tenantProcedure.input(z.object({ name: z.string() })).query(async ({ ctx, input }) => {
     assertTeacherOrAdminTenantProcedureContext(ctx);
-    const group = await openpathDb
-      .select()
-      .from(whitelistGroups)
-      .where(eq(whitelistGroups.name, input.name))
-      .limit(1);
-
-    if (!group.length) return null;
-
+    const publicName = normalizeGroupKey(input.name);
     const orgGroup = await db
-      .select({ id: schema.cpOrganizationGroups.id })
+      .select({
+        groupId: schema.cpOrganizationGroups.groupId,
+        publicName: schema.cpOrganizationGroups.publicName,
+      })
       .from(schema.cpOrganizationGroups)
       .where(
         and(
           eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId),
-          eq(schema.cpOrganizationGroups.groupId, group[0].id)
+          eq(schema.cpOrganizationGroups.publicName, publicName)
         )
       )
       .limit(1);
 
-    if (!orgGroup.length) return null; // Group exists in OpenPath but not in this org
+    if (!orgGroup.length) {
+      const legacyGroup = await openpathDb
+        .select()
+        .from(whitelistGroups)
+        .where(eq(whitelistGroups.name, input.name))
+        .limit(1);
+
+      if (!legacyGroup.length) return null;
+
+      const legacyOrgGroup = await db
+        .select({
+          publicName: schema.cpOrganizationGroups.publicName,
+          groupId: schema.cpOrganizationGroups.groupId,
+        })
+        .from(schema.cpOrganizationGroups)
+        .where(
+          and(
+            eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId),
+            eq(schema.cpOrganizationGroups.groupId, legacyGroup[0].id)
+          )
+        )
+        .limit(1);
+
+      if (!legacyOrgGroup.length) return null;
+
+      if (!isOrgAdmin(ctx)) {
+        const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
+        if (!identifiers.has(legacyGroup[0].id) && !identifiers.has(legacyGroup[0].name)) {
+          return null;
+        }
+      }
+
+      return {
+        id: legacyGroup[0].id,
+        name: legacyOrgGroup[0].publicName ?? legacyGroup[0].name,
+        displayName: legacyGroup[0].displayName,
+        enabled: legacyGroup[0].enabled,
+        createdAt: legacyGroup[0].createdAt?.toISOString() ?? null,
+        updatedAt: legacyGroup[0].updatedAt?.toISOString() ?? null,
+      };
+    }
+
+    const group = await openpathDb
+      .select()
+      .from(whitelistGroups)
+      .where(eq(whitelistGroups.id, orgGroup[0].groupId))
+      .limit(1);
+
+    if (!group.length) return null;
 
     if (!isOrgAdmin(ctx)) {
       const identifiers = await getTeacherGroupIdentifiers(ctx.user.sub);
@@ -429,7 +501,7 @@ export const groupsRouter = router({
     const g = group[0];
     return {
       id: g.id,
-      name: g.name,
+      name: orgGroup[0].publicName,
       displayName: g.displayName,
       enabled: g.enabled,
       createdAt: g.createdAt?.toISOString() ?? null,
@@ -544,6 +616,8 @@ export const groupsRouter = router({
   create: tenantProcedure.input(CreateGroupSchema).mutation(async ({ ctx, input }) => {
     assertTeacherOrAdminTenantProcedureContext(ctx);
     const groupId = nanoid();
+    const publicName = normalizeGroupKey(input.name);
+    const scopedName = scopedGroupNameForOrg(ctx.organizationId, publicName);
 
     let group: OpenPathWhitelistGroup;
     try {
@@ -551,7 +625,7 @@ export const groupsRouter = router({
         .insert(whitelistGroups)
         .values({
           id: groupId,
-          name: input.name,
+          name: scopedName,
           displayName: input.displayName,
           enabled: input.enabled,
         })
@@ -560,11 +634,18 @@ export const groupsRouter = router({
       throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
     }
 
-    await db.insert(schema.cpOrganizationGroups).values({
-      id: nanoid(),
-      organizationId: ctx.organizationId,
-      groupId: group.id,
-    });
+    try {
+      await db.insert(schema.cpOrganizationGroups).values({
+        id: nanoid(),
+        organizationId: ctx.organizationId,
+        groupId: group.id,
+        publicName,
+      });
+    } catch (err: unknown) {
+      await openpathDb.delete(whitelistGroups).where(eq(whitelistGroups.id, group.id));
+      throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
+      throw err;
+    }
 
     if (ctx.userRole === 'teacher') {
       await addGroupToTeacherRole({
@@ -577,7 +658,7 @@ export const groupsRouter = router({
     // Serialize Date fields for JSON compatibility
     return {
       id: group.id,
-      name: group.name,
+      name: publicName,
       displayName: group.displayName,
       enabled: isOpenPathGroupEnabled(group.enabled),
       createdAt: group.createdAt?.toISOString() ?? null,
@@ -590,6 +671,17 @@ export const groupsRouter = router({
     // Allow updating a disabled group (e.g. to re-enable it).
     // "Use" checks are enforced on rule mutations and assignment flows.
     await assertCanAccessGroup(ctx, input.id, 'edit', GROUP_PERMISSION_OPTS);
+
+    const orgGroup = await db
+      .select({ publicName: schema.cpOrganizationGroups.publicName })
+      .from(schema.cpOrganizationGroups)
+      .where(
+        and(
+          eq(schema.cpOrganizationGroups.organizationId, ctx.organizationId),
+          eq(schema.cpOrganizationGroups.groupId, input.id)
+        )
+      )
+      .limit(1);
 
     const updateData: {
       updatedAt: Date;
@@ -630,7 +722,7 @@ export const groupsRouter = router({
     // Serialize Date fields for JSON compatibility
     return {
       id: updated.id,
-      name: updated.name,
+      name: orgGroup[0]?.publicName ?? updated.name,
       displayName: updated.displayName,
       enabled: isOpenPathGroupEnabled(updated.enabled),
       createdAt: updated.createdAt?.toISOString() ?? null,

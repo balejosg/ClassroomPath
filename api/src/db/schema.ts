@@ -88,14 +88,20 @@ export const cpOrganizationGroups = pgTable(
       .notNull()
       .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
     groupId: varchar('group_id', { length: 50 }).notNull(),
+    // Human-facing slug within the organization. Legacy rows may be null and
+    // should fall back to the underlying OpenPath name until backfilled.
+    publicName: varchar('public_name', { length: 100 }),
     // Visibility within the organization (aligned with OpenPath values).
     visibility: varchar('visibility', { length: 20 }).default('private').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   },
-  (table) => [unique('cp_org_group_key').on(table.organizationId, table.groupId)]
+  (table) => [
+    unique('cp_org_group_key').on(table.organizationId, table.groupId),
+    unique('cp_org_group_public_name_key').on(table.organizationId, table.publicName),
+  ]
 );
 
-// Vincular usuarios con organizaciones (ya existe en memberships pero esta es específica para users de OpenPath)
+// Legacy mapping retained for backwards compatibility. Tenant scoping authority lives in cp_memberships.
 export const cpOrganizationUsers = pgTable(
   'cp_organization_users',
   {
