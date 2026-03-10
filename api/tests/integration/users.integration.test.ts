@@ -26,8 +26,16 @@ import * as cpSchema from '../../src/db/schema.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
+const LAST_ADMIN_MESSAGE = /last admin|at least one.*admin/i;
 
-describe('ClassroomPath users integration (/cp/trpc)', async () => {
+async function assertLastAdminConflict(response: Response): Promise<void> {
+  assertStatus(response, 409);
+  const { code, error } = await parseTRPC(response);
+  assert.strictEqual(code, 'CONFLICT');
+  assert.match(error ?? '', LAST_ADMIN_MESSAGE);
+}
+
+describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async () => {
   test('users.list returns SafeUserWithRoles and never exposes passwordHash', async () => {
     const orgId = `org-users-${Date.now()}`;
 
@@ -570,6 +578,80 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     );
   });
 
+  test('users.delete rejects self-delete when the caller is the last tenant admin', async () => {
+    const orgId = `org-users-last-admin-delete-${Date.now()}`;
+    const adminUserId = `u-last-admin-delete-${Date.now()}`;
+    const adminEmail = uniqueEmail('last-admin-delete');
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: adminUserId,
+      email: adminEmail,
+      name: 'Last Admin Delete',
+      passwordHash: 'hashed',
+      isActive: true,
+      emailVerified: true,
+    });
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${adminUserId}`,
+      userId: adminUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizationUsers).values({
+      id: `org-user-${adminUserId}`,
+      organizationId: orgId,
+      openpathUserId: adminUserId,
+    });
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Last Admin Delete',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const deleteResp = await trpcMutate(
+      integration.baseUrl,
+      'users.delete',
+      { id: adminUserId },
+      bearerAuth(adminToken)
+    );
+    await assertLastAdminConflict(deleteResp);
+
+    const memberships = await db
+      .select()
+      .from(cpSchema.cpMemberships)
+      .where(eq(cpSchema.cpMemberships.organizationId, orgId));
+    assert.strictEqual(memberships.length, 1);
+    assert.strictEqual(memberships[0]?.userId, adminUserId);
+    assert.strictEqual(memberships[0]?.role, 'admin');
+
+    const orgLinks = await db
+      .select()
+      .from(cpSchema.cpOrganizationUsers)
+      .where(eq(cpSchema.cpOrganizationUsers.organizationId, orgId));
+    assert.strictEqual(orgLinks.length, 1);
+    assert.strictEqual(orgLinks[0]?.openpathUserId, adminUserId);
+  });
+
   test('users.update mutates tenant-scoped OpenPath profile fields', async () => {
     const orgId = `org-users-update-${Date.now()}`;
     const adminUserId = `u-admin-update-${Date.now()}`;
@@ -787,6 +869,80 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
       .from(cpSchema.cpMemberships)
       .where(eq(cpSchema.cpMemberships.userId, targetUserId));
     assert.strictEqual(revokedMembership?.role, 'teacher');
+  });
+
+  test('users.assignRole and users.revokeRole reject self-demotion for the last tenant admin', async () => {
+    const orgId = `org-users-last-admin-demote-${Date.now()}`;
+    const adminUserId = `u-last-admin-demote-${Date.now()}`;
+    const adminEmail = uniqueEmail('last-admin-demote');
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: adminUserId,
+      email: adminEmail,
+      name: 'Last Admin Demote',
+      passwordHash: 'hashed',
+      isActive: true,
+      emailVerified: true,
+    });
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${adminUserId}`,
+      userId: adminUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: adminUserId,
+    });
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Last Admin Demote',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const assignResp = await trpcMutate(
+      integration.baseUrl,
+      'users.assignRole',
+      { userId: adminUserId, role: 'teacher', groupIds: [] },
+      bearerAuth(adminToken)
+    );
+    await assertLastAdminConflict(assignResp);
+
+    const revokeResp = await trpcMutate(
+      integration.baseUrl,
+      'users.revokeRole',
+      { userId: adminUserId },
+      bearerAuth(adminToken)
+    );
+    await assertLastAdminConflict(revokeResp);
+
+    const [membership] = await db
+      .select()
+      .from(cpSchema.cpMemberships)
+      .where(eq(cpSchema.cpMemberships.userId, adminUserId));
+    assert.strictEqual(membership?.role, 'admin');
+
+    const persistedRoles = await openpathDb
+      .select()
+      .from(openpathSchema.roles)
+      .where(eq(openpathSchema.roles.userId, adminUserId));
+    assert.strictEqual(persistedRoles.length, 1);
+    assert.strictEqual(String(persistedRoles[0]?.role), 'admin');
   });
 
   test('users.assignRole and users.revokeRole reject users outside the tenant scope', async () => {

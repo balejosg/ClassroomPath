@@ -1,5 +1,9 @@
 import type { Server } from 'node:http';
+import { open as openFile, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { after, before } from 'node:test';
+import { tmpdir } from 'node:os';
+import { setTimeout as sleep } from 'node:timers/promises';
 import express from 'express';
 import { eq } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
@@ -35,6 +39,28 @@ const mockVerificationTokens = new Map<string, { token: string; expiresAt: strin
 let mockReadyMode: 'ready' | 'degraded' | 'unavailable' = 'ready';
 let mockSystemInfoMode: 'healthy' | 'database-down' | 'unavailable' = 'healthy';
 let mockApiTokensListMode: 'ok' | 'unavailable' = 'ok';
+const INTEGRATION_SUITE_LOCK_PATH = join(tmpdir(), 'classroompath-api-integration.lock');
+
+async function acquireIntegrationSuiteLock() {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      return await openFile(INTEGRATION_SUITE_LOCK_PATH, 'wx');
+    } catch (error) {
+      if (
+        typeof error !== 'object' ||
+        error === null ||
+        !('code' in error) ||
+        error.code !== 'EEXIST'
+      ) {
+        throw error;
+      }
+
+      await sleep(50);
+    }
+  }
+
+  throw new Error('Timed out waiting for the integration suite database lock');
+}
 
 function toMockUserId(prefix: string, email: string): string {
   const slug = email.replace(/[^a-z0-9]/gi, '-').toLowerCase();
@@ -803,8 +829,10 @@ export async function stopIntegrationServer(server: Server | undefined): Promise
 
 export function useIntegrationServer(options: { resetBeforeStart?: boolean } = {}) {
   let integrationServer: IntegrationServerHandle | undefined;
+  let integrationSuiteLock: Awaited<ReturnType<typeof acquireIntegrationSuiteLock>> | undefined;
 
   before(async () => {
+    integrationSuiteLock = await acquireIntegrationSuiteLock();
     resetMockOpenPathUpstreamState();
 
     if (options.resetBeforeStart) {
@@ -817,7 +845,24 @@ export function useIntegrationServer(options: { resetBeforeStart?: boolean } = {
   after(async () => {
     const currentServer = integrationServer;
     integrationServer = undefined;
-    await stopIntegrationServer(currentServer?.server);
+    try {
+      await stopIntegrationServer(currentServer?.server);
+    } finally {
+      await integrationSuiteLock?.close();
+      integrationSuiteLock = undefined;
+      await unlink(INTEGRATION_SUITE_LOCK_PATH).catch((error: unknown) => {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          error.code === 'ENOENT'
+        ) {
+          return;
+        }
+
+        throw error;
+      });
+    }
   });
 
   return {

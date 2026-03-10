@@ -23,6 +23,8 @@ type OrganizationUserParams = {
   userId: string;
 };
 
+const LAST_ADMIN_CONFLICT_MESSAGE = 'Cannot remove the last admin from the organization';
+
 async function presentOrganizationUserById(userId: string, nowIso?: string) {
   const [userRows, rolesByUserId] = await Promise.all([
     openpathDb.select().from(users).where(eq(users.id, userId)).limit(1),
@@ -47,6 +49,48 @@ async function getPersistedUserRole(userId: string) {
 async function assertManagedOrganizationUser(params: OrganizationUserParams): Promise<void> {
   await assertOrganizationUserAccess(params);
   await getSingleMembershipOrThrow(params.userId);
+}
+
+async function assertOrganizationAdminSurvivability(params: {
+  organizationId: string;
+  userId: string;
+  nextRole?: 'admin' | 'teacher' | null;
+}): Promise<void> {
+  const [membership] = await db
+    .select()
+    .from(schema.cpMemberships)
+    .where(
+      and(
+        eq(schema.cpMemberships.organizationId, params.organizationId),
+        eq(schema.cpMemberships.userId, params.userId)
+      )
+    )
+    .limit(1);
+
+  if (!membership || membership.role !== 'admin') {
+    return;
+  }
+
+  if (params.nextRole === 'admin') {
+    return;
+  }
+
+  const adminMemberships = await db
+    .select({ userId: schema.cpMemberships.userId })
+    .from(schema.cpMemberships)
+    .where(
+      and(
+        eq(schema.cpMemberships.organizationId, params.organizationId),
+        eq(schema.cpMemberships.role, 'admin')
+      )
+    );
+
+  if (adminMemberships.length <= 1) {
+    throw new TRPCError({
+      code: 'CONFLICT',
+      message: LAST_ADMIN_CONFLICT_MESSAGE,
+    });
+  }
 }
 
 async function updateOrganizationMembershipRole(params: {
@@ -158,6 +202,11 @@ export async function deleteOrganizationUser(params: {
   actedBy: string;
 }) {
   await assertOrganizationUserAccess(params);
+  await assertOrganizationAdminSurvivability({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    nextRole: null,
+  });
 
   await db
     .delete(schema.cpOrganizationUsers)
@@ -193,6 +242,11 @@ export async function assignOrganizationUserRole(params: {
   groupIds: string[];
 }) {
   await assertManagedOrganizationUser(params);
+  await assertOrganizationAdminSurvivability({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    nextRole: params.role,
+  });
   await updateOrganizationMembershipRole({
     organizationId: params.organizationId,
     userId: params.userId,
@@ -231,6 +285,11 @@ export async function revokeOrganizationUserRole(params: {
   actedBy: string;
 }) {
   await assertManagedOrganizationUser(params);
+  await assertOrganizationAdminSurvivability({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    nextRole: 'teacher',
+  });
   await updateOrganizationMembershipRole({
     organizationId: params.organizationId,
     userId: params.userId,

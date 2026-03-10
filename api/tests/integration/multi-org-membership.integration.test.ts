@@ -2,6 +2,7 @@ const JWT_SECRET = 'test-jwt-secret';
 process.env.JWT_SECRET = JWT_SECRET;
 process.env.NODE_ENV = 'test';
 
+import { TRPCError } from '@trpc/server';
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
 import { and, eq, sql } from 'drizzle-orm';
@@ -20,16 +21,30 @@ import { signToken, useIntegrationServer } from './harness.js';
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
+import {
+  deleteOrganizationUser,
+  revokeOrganizationUserRole,
+} from '../../src/services/user.service.js';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
 const SINGLE_ORG_CONSTRAINT = 'cp_memberships_user_id_key';
 const CONFLICT_MESSAGE = /single organization|ambiguous/i;
+const LAST_ADMIN_MESSAGE = /last admin|at least one.*admin/i;
 
 async function assertConflictResponse(response: Response): Promise<void> {
   const parsed = await parseTRPC(response);
   assert.ok(parsed.error, 'Expected error payload');
   assert.strictEqual(parsed.code, 'CONFLICT');
   assert.match(parsed.error ?? '', CONFLICT_MESSAGE);
+}
+
+async function assertLastAdminServiceConflict(action: () => Promise<unknown>): Promise<void> {
+  await assert.rejects(action, (error: unknown) => {
+    assert.ok(error instanceof TRPCError);
+    assert.strictEqual(error.code, 'CONFLICT');
+    assert.match(error.message, LAST_ADMIN_MESSAGE);
+    return true;
+  });
 }
 
 async function dropSingleOrgConstraint(): Promise<void> {
@@ -46,7 +61,7 @@ async function restoreSingleOrgConstraint(): Promise<void> {
   );
 }
 
-describe('ClassroomPath multi-org membership hardening', async () => {
+describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, async () => {
   test('onboarding.createOrganization rejects users who already belong to another organization', async () => {
     await resetDb();
 
@@ -556,5 +571,90 @@ describe('ClassroomPath multi-org membership hardening', async () => {
       await resetDb();
       await restoreSingleOrgConstraint();
     }
+  });
+
+  test('tenant-scoped user services reject removing or demoting the last admin membership', async () => {
+    await resetDb();
+
+    const actorUserId = `last-admin-actor-${Date.now()}`;
+    const actorEmail = uniqueEmail('last-admin-actor');
+    const targetUserId = `last-admin-target-${Date.now()}`;
+    const targetEmail = uniqueEmail('last-admin-target');
+    const orgId = `org-last-admin-service-${Date.now()}`;
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: actorUserId,
+        email: actorEmail,
+        name: 'Actor User',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: targetUserId,
+        email: targetEmail,
+        name: 'Target Admin',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${targetUserId}`,
+      userId: targetUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: actorUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: actorUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${targetUserId}`,
+      userId: targetUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: actorUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizationUsers).values({
+      id: `org-user-${targetUserId}`,
+      organizationId: orgId,
+      openpathUserId: targetUserId,
+    });
+
+    await assertLastAdminServiceConflict(() =>
+      deleteOrganizationUser({
+        organizationId: orgId,
+        userId: targetUserId,
+        actedBy: actorUserId,
+      })
+    );
+
+    await assertLastAdminServiceConflict(() =>
+      revokeOrganizationUserRole({
+        organizationId: orgId,
+        userId: targetUserId,
+        actedBy: actorUserId,
+      })
+    );
+
+    const [membership] = await db
+      .select()
+      .from(cpSchema.cpMemberships)
+      .where(eq(cpSchema.cpMemberships.userId, targetUserId));
+    assert.strictEqual(membership?.role, 'admin');
+
+    const orgLinks = await db
+      .select()
+      .from(cpSchema.cpOrganizationUsers)
+      .where(eq(cpSchema.cpOrganizationUsers.openpathUserId, targetUserId));
+    assert.strictEqual(orgLinks.length, 1);
   });
 });
