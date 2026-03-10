@@ -204,7 +204,7 @@ describe('openpath-auth-client', () => {
     );
   });
 
-  it('forwards logout revocation and clears cookies even when upstream logout fails', async () => {
+  it('clears cookies and returns an explicit degraded error when upstream logout revocation fails', async () => {
     process.env.OPENPATH_API_URL = 'http://example.test';
     const cookieCalls: Array<{ name: string; value: string }> = [];
     let seenAuthorization = '';
@@ -222,20 +222,26 @@ describe('openpath-auth-client', () => {
       });
     };
 
-    const result = await logoutOpenPathSession({
-      req: { headers: {} },
-      res: {
-        cookie(name: string, value: string) {
-          cookieCalls.push({ name, value });
-        },
-      } as Pick<Response, 'cookie'>,
-      token: 'access-token',
-      refreshToken: 'refresh-token',
-    });
+    await assert.rejects(
+      () =>
+        logoutOpenPathSession({
+          req: { headers: {} },
+          res: {
+            cookie(name: string, value: string) {
+              cookieCalls.push({ name, value });
+            },
+          } as Pick<Response, 'cookie'>,
+          token: 'access-token',
+          refreshToken: 'refresh-token',
+        }),
+      (error: unknown) =>
+        error instanceof TRPCError &&
+        error.code === 'SERVICE_UNAVAILABLE' &&
+        /sesión local se cerró|logout|revoc/i.test(error.message)
+    );
 
     assert.equal(seenAuthorization, 'Bearer access-token');
     assert.deepStrictEqual(JSON.parse(seenBody), { refreshToken: 'refresh-token' });
-    assert.deepStrictEqual(result, { success: true });
     assert.deepStrictEqual(
       cookieCalls.map((cookie) => cookie.name).sort(),
       [ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME].sort()

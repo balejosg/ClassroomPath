@@ -17,4 +17,11 @@ This removes direct token persistence from `localStorage` while preserving curre
 ## Logout Behavior
 
 - SPA logout clears local marker/user data, removing authenticated UI state.
-- Server-side token invalidation remains tied to OpenPath logout flows and should be expanded in a follow-up hardening pass.
+- Launch policy requires upstream revocation failures to be explicit and observable; silent success is not acceptable.
+- When upstream revocation fails, ClassroomPath now clears local session cookies but returns an explicit degraded `SERVICE_UNAVAILABLE` logout result instead of reporting success.
+
+## Launch Decisions That Affect Session Flows
+
+- Invitation and password-reset flows must keep secret-bearing links server-side even when email delivery fails.
+- Frontend auth and approval failures must be sent to a real backend telemetry sink before launch.
+- Privileged tenant actions must create durable audit events before launch.

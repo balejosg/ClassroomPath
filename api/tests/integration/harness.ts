@@ -48,6 +48,7 @@ const mockVerificationTokens = new Map<string, { token: string; expiresAt: strin
 let mockReadyMode: 'ready' | 'degraded' | 'unavailable' = 'ready';
 let mockSystemInfoMode: 'healthy' | 'database-down' | 'unavailable' = 'healthy';
 let mockApiTokensListMode: 'ok' | 'unavailable' = 'ok';
+let mockLogoutMode: 'ok' | 'unavailable' = 'ok';
 const originalFetch = globalThis.fetch.bind(globalThis);
 const mockEmailDeliveries: MockEmailDelivery[] = [];
 let mockEmailDeliveryCounter = 0;
@@ -620,6 +621,15 @@ async function ensureMockOpenPathServer(): Promise<string> {
   });
 
   app.post('/trpc/auth.logout', (req, res) => {
+    if (mockLogoutMode === 'unavailable') {
+      return res.status(503).json({
+        error: {
+          message: 'Mock logout unavailable',
+          code: 'SERVICE_UNAVAILABLE',
+        },
+      });
+    }
+
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
       revokedMockTokens.add(authHeader.slice(7));
@@ -713,11 +723,16 @@ export function setMockOpenPathApiTokensListMode(mode: typeof mockApiTokensListM
   mockApiTokensListMode = mode;
 }
 
+export function setMockOpenPathLogoutMode(mode: typeof mockLogoutMode): void {
+  mockLogoutMode = mode;
+}
+
 export function resetMockOpenPathUpstreamState(): void {
   revokedMockTokens.clear();
   mockVerificationTokens.clear();
   mockReadyMode = 'ready';
   mockSystemInfoMode = 'healthy';
+  mockLogoutMode = 'ok';
   mockApiTokensListMode = 'ok';
   mockEmailDeliveries.length = 0;
 }

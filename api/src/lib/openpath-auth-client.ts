@@ -1,10 +1,12 @@
 import type { Response } from 'express';
+import { TRPCError } from '@trpc/server';
 import type { TRPC_ERROR_CODE_KEY } from '@trpc/server/rpc';
 import {
   callOpenPathTrpc,
   fetchOpenPathMeProfile,
   type OpenPathForwardRequest,
 } from './openpath-upstream.js';
+import { logger } from './logger.js';
 import {
   clearSessionCookies,
   parseCookieValue,
@@ -52,7 +54,7 @@ export async function getOpenPathMeProfile(params: {
 }
 
 export async function logoutOpenPathSession(params: {
-  req: OpenPathForwardRequest;
+  req: OpenPathForwardRequest & { requestId?: string };
   res: Pick<Response, 'cookie'>;
   token: string | null;
   refreshToken?: string | null;
@@ -72,8 +74,16 @@ export async function logoutOpenPathSession(params: {
       upstreamFailureMessage: 'Logout failed',
       unavailableMessage: 'Authentication service unavailable',
     });
-  } catch {
-    // Logout should always clear the local cookie session, even if upstream invalidation fails.
+  } catch (error) {
+    logger.error('Upstream logout revocation failed', {
+      requestId: typeof params.req.requestId === 'string' ? params.req.requestId : undefined,
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    throw new TRPCError({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'No se pudo revocar la sesión en OpenPath. La sesión local se cerró.',
+    });
   } finally {
     clearSessionCookies(params.res);
   }

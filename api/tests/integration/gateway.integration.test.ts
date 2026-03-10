@@ -22,6 +22,7 @@ import {
   resetMockOpenPathUpstreamState,
   revokeMockOpenPathToken,
   setMockOpenPathApiTokensListMode,
+  setMockOpenPathLogoutMode,
   setMockOpenPathReadyMode,
   setMockOpenPathSystemInfoMode,
   signToken,
@@ -287,6 +288,48 @@ describe('ClassroomPath Gateway Integration', async () => {
     assertStatus(response, 200);
     assert.strictEqual(isMockOpenPathTokenRevoked(accessToken), true);
     assert.strictEqual(isMockOpenPathTokenRevoked(refreshToken), true);
+  });
+
+  test('/cp/trpc/auth.logout clears local cookies but returns an explicit degraded error when upstream revocation fails', async () => {
+    const accessToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: 'logout-cookie-failure-user',
+      email: uniqueEmail('logout-cookie-failure'),
+      name: 'Logout Cookie Failure User',
+      roles: [],
+    });
+    const refreshToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: 'logout-cookie-failure-user',
+      email: uniqueEmail('logout-cookie-failure-refresh'),
+      name: 'Logout Cookie Failure User',
+      roles: [],
+      type: 'refresh',
+    });
+
+    setMockOpenPathLogoutMode('unavailable');
+
+    try {
+      const response = await trpcMutate(integration.baseUrl, 'auth.logout', undefined, {
+        ...bearerAuth(accessToken),
+        Cookie: `${REFRESH_COOKIE_NAME}=${refreshToken}`,
+      });
+
+      assertStatus(response, 503);
+
+      const parsed = (await parseTRPC(response)) as { error?: string; code?: string };
+      assert.strictEqual(parsed.code, 'SERVICE_UNAVAILABLE');
+      assert.match(parsed.error ?? '', /sesión local se cerró|logout|revoc/i);
+      assert.strictEqual(isMockOpenPathTokenRevoked(accessToken), false);
+      assert.strictEqual(isMockOpenPathTokenRevoked(refreshToken), false);
+
+      const setCookies = getSetCookieHeaders(response);
+      assert.ok(setCookies.some((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`)));
+      assert.ok(setCookies.some((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`)));
+      assert.ok(setCookies.every((cookie) => /Max-Age=0|Expires=Thu, 01 Jan 1970/i.test(cookie)));
+    } finally {
+      resetMockOpenPathUpstreamState();
+    }
   });
 
   test('/cp/trpc/auth.resetPassword forwards upstream success payload', async () => {
