@@ -2,10 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Loader2, Mail, ShieldCheck } from 'lucide-react';
 
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
-import { persistSession } from '../lib/auth-storage';
 import { PasswordStrength } from '../components/PasswordStrength';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
-import { isAuthResultWithUser } from './auth-helpers';
+import { getPasswordSetupError, persistAuthSession } from './auth-helpers';
 
 interface AcceptInvitationProps {
   onLoginClick: () => void;
@@ -39,18 +38,16 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
     event.preventDefault();
     setError('');
 
-    if (password.length < 8) {
-      setError('La contraseña debe tener al menos 8 caracteres');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden');
-      return;
-    }
-
-    if (!termsAccepted) {
-      setError('Debes aceptar los terminos para activar tu acceso');
+    const passwordSetupError = getPasswordSetupError({
+      password,
+      confirmPassword,
+      termsAccepted,
+      passwordErrorMessage: 'La contraseña debe tener al menos 8 caracteres',
+      passwordMismatchMessage: 'Las contraseñas no coinciden',
+      termsRequiredMessage: 'Debes aceptar los terminos para activar tu acceso',
+    });
+    if (passwordSetupError) {
+      setError(passwordSetupError);
       return;
     }
 
@@ -61,7 +58,7 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
         termsAccepted: true,
         termsVersion: CURRENT_TERMS_VERSION,
       });
-      persistSession({ user: isAuthResultWithUser(result) ? result.user : undefined });
+      persistAuthSession(result);
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo activar la invitación');

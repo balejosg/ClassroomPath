@@ -7,16 +7,17 @@ import { validateEmail, validatePassword, ERROR_MESSAGES_ES } from '../utils/val
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { reportError } from '../lib/reportError';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
-import { normalizeEmailAddress } from './auth-helpers';
+import {
+  getPasswordSetupError,
+  getVerificationDeliveryMessage,
+  normalizeEmailAddress,
+  normalizeVerificationDeliveryState,
+  shouldShowManualVerificationLink,
+  type VerificationDeliveryState,
+} from './auth-helpers';
 
 interface Props {
   onLoginClick: () => void;
-}
-
-interface RegisterResult {
-  email: string;
-  emailSent: boolean;
-  verificationUrl: string;
 }
 
 export function Register({ onLoginClick }: Props) {
@@ -26,11 +27,9 @@ export function Register({ onLoginClick }: Props) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState('');
-  const [registrationState, setRegistrationState] = useState<null | {
-    email: string;
-    emailSent: boolean;
-    verificationUrl: string;
-  }>(null);
+  const [registrationState, setRegistrationState] = useState<VerificationDeliveryState | null>(
+    null
+  );
 
   const registerMutation = cpTrpcReact.auth.register.useMutation();
 
@@ -47,36 +46,30 @@ export function Register({ onLoginClick }: Props) {
       return;
     }
 
-    const pwdValidation = validatePassword(password);
-    if (!pwdValidation.isValid) {
-      setError(ERROR_MESSAGES_ES.weakPassword);
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError(ERROR_MESSAGES_ES.passwordMismatch);
-      return;
-    }
-
-    if (!termsAccepted) {
-      setError(ERROR_MESSAGES_ES.termsRequired);
+    const passwordSetupError = getPasswordSetupError({
+      password,
+      confirmPassword,
+      termsAccepted,
+      passwordPolicy: (candidatePassword) => validatePassword(candidatePassword).isValid,
+      passwordErrorMessage: ERROR_MESSAGES_ES.weakPassword,
+      passwordMismatchMessage: ERROR_MESSAGES_ES.passwordMismatch,
+      termsRequiredMessage: ERROR_MESSAGES_ES.termsRequired,
+    });
+    if (passwordSetupError) {
+      setError(passwordSetupError);
       return;
     }
 
     try {
-      const result = (await registerMutation.mutateAsync({
+      const result = await registerMutation.mutateAsync({
         email: normalizedEmail,
         name: trimmedName,
         password,
         termsAccepted: true,
         termsVersion: CURRENT_TERMS_VERSION,
-      })) as Partial<RegisterResult>;
-
-      setRegistrationState({
-        email: typeof result?.email === 'string' ? result.email : normalizedEmail,
-        emailSent: result?.emailSent === true,
-        verificationUrl: typeof result?.verificationUrl === 'string' ? result.verificationUrl : '',
       });
+
+      setRegistrationState(normalizeVerificationDeliveryState(result, normalizedEmail));
     } catch (err) {
       setError(err instanceof Error ? err.message : ERROR_MESSAGES_ES.registrationFailed);
       reportError('Failed to register user', err, {
@@ -90,23 +83,17 @@ export function Register({ onLoginClick }: Props) {
   const isBusy = registerMutation.isPending;
 
   if (registrationState) {
-    const shouldShowManualVerificationLink =
-      registrationState.verificationUrl.length > 0 &&
-      (!registrationState.emailSent ||
-        (typeof window !== 'undefined' &&
-          ['localhost', '127.0.0.1'].includes(window.location.hostname)));
+    const shouldShowVerificationLink = shouldShowManualVerificationLink(registrationState);
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <Card className="w-full max-w-md p-8">
           <h1 className="text-2xl font-bold mb-4 text-center">Revisa tu correo</h1>
           <p className="text-sm text-gray-600 text-center leading-relaxed">
-            {registrationState.emailSent
-              ? `Enviamos un enlace de verificacion a ${registrationState.email}.`
-              : `No pudimos confirmar la entrega del correo a ${registrationState.email}. Usa el enlace manual de abajo.`}
+            {getVerificationDeliveryMessage(registrationState)}
           </p>
 
-          {shouldShowManualVerificationLink ? (
+          {shouldShowVerificationLink ? (
             <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
               <p className="font-medium text-amber-900">Enlace manual de verificacion</p>
               <a

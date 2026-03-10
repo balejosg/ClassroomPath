@@ -2,20 +2,18 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import GoogleLoginButton from '@openpath/src/components/GoogleLoginButton';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
-import { persistSession } from '../lib/auth-storage';
 import { reportError } from '../lib/reportError';
-import { isAuthResultWithUser, normalizeEmailAddress } from './auth-helpers';
+import {
+  normalizeEmailAddress,
+  normalizeVerificationDeliveryState,
+  persistAuthSession,
+} from './auth-helpers';
 
 interface LoginProps {
   onLogin: () => void;
   onNavigateToRegister: () => void;
   onNavigateToResetPassword?: () => void;
 }
-
-type VerificationDeliveryResult = {
-  verificationUrl?: string;
-  emailSent?: boolean;
-};
 
 export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword }: LoginProps) {
   const loginMutation = cpTrpcReact.auth.login.useMutation();
@@ -91,13 +89,16 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
     setVerificationUrl('');
 
     try {
-      const result = (await resendVerificationMutation.mutateAsync({
-        email: normalizedEmail,
-      })) as VerificationDeliveryResult;
+      const delivery = normalizeVerificationDeliveryState(
+        await resendVerificationMutation.mutateAsync({
+          email: normalizedEmail,
+        }),
+        normalizedEmail
+      );
       setShowResendVerification(true);
-      setVerificationUrl(typeof result?.verificationUrl === 'string' ? result.verificationUrl : '');
+      setVerificationUrl(delivery.verificationUrl);
       setInfo(
-        result?.emailSent === true
+        delivery.emailSent
           ? 'Te enviamos un nuevo enlace de verificacion.'
           : 'No pudimos confirmar la entrega del correo. Usa el enlace manual.'
       );
@@ -122,7 +123,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
 
     try {
       const result = await loginMutation.mutateAsync({ email: normalizedEmail, password });
-      persistSession({ user: isAuthResultWithUser(result) ? result.user : undefined });
+      persistAuthSession(result);
       onLogin();
     } catch (err) {
       const message = err instanceof Error ? err.message : '';
@@ -150,7 +151,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
     setShowResendVerification(false);
     try {
       const result = await googleLoginMutation.mutateAsync({ idToken });
-      persistSession({ user: isAuthResultWithUser(result) ? result.user : undefined });
+      persistAuthSession(result);
       onLogin();
     } catch (err: any) {
       setError(err?.message || 'Error al iniciar sesión con Google');

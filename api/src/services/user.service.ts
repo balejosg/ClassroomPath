@@ -18,6 +18,53 @@ import {
   getRolesByUserId,
 } from './organization-user-access.service.js';
 
+type OrganizationUserParams = {
+  organizationId: string;
+  userId: string;
+};
+
+async function presentOrganizationUserById(userId: string, nowIso?: string) {
+  const [userRows, rolesByUserId] = await Promise.all([
+    openpathDb.select().from(users).where(eq(users.id, userId)).limit(1),
+    getRolesByUserId([userId]),
+  ]);
+
+  const user = userRows[0];
+  if (!user) return null;
+
+  return presentUserWithRoles({
+    user,
+    roles: rolesByUserId.get(user.id) ?? [],
+    nowIso,
+  });
+}
+
+async function getPersistedUserRole(userId: string) {
+  const [role] = await openpathDb.select().from(roles).where(eq(roles.userId, userId)).limit(1);
+  return role ?? null;
+}
+
+async function assertManagedOrganizationUser(params: OrganizationUserParams): Promise<void> {
+  await assertOrganizationUserAccess(params);
+  await getSingleMembershipOrThrow(params.userId);
+}
+
+async function updateOrganizationMembershipRole(params: {
+  organizationId: string;
+  userId: string;
+  role: 'admin' | 'teacher';
+}) {
+  await db
+    .update(schema.cpMemberships)
+    .set({ role: params.role })
+    .where(
+      and(
+        eq(schema.cpMemberships.organizationId, params.organizationId),
+        eq(schema.cpMemberships.userId, params.userId)
+      )
+    );
+}
+
 export async function listOrganizationUsers(organizationId: string) {
   const userIds = await getOrganizationUserIds({ organizationId });
   if (userIds.length === 0) return [];
@@ -39,29 +86,13 @@ export async function listOrganizationUsers(organizationId: string) {
 
 export async function getOrganizationUserById(params: { organizationId: string; userId: string }) {
   await assertOrganizationUserAccess(params);
-
-  const [userRows, rolesByUserId] = await Promise.all([
-    openpathDb.select().from(users).where(eq(users.id, params.userId)).limit(1),
-    getRolesByUserId([params.userId]),
-  ]);
-
-  const user = userRows[0];
-  if (!user) return null;
-
-  return presentUserWithRoles({
-    user,
-    roles: rolesByUserId.get(user.id) ?? [],
-  });
+  return presentOrganizationUserById(params.userId);
 }
 
 export async function getOrganizationUserRole(params: { organizationId: string; userId: string }) {
   await assertOrganizationUserAccess(params);
 
-  const [role] = await openpathDb
-    .select()
-    .from(roles)
-    .where(eq(roles.userId, params.userId))
-    .limit(1);
+  const role = await getPersistedUserRole(params.userId);
 
   if (!role) return null;
 
@@ -86,8 +117,8 @@ export async function createOrganizationUser(params: {
   return createOrganizationInvitation({
     organizationId: params.organizationId,
     invitedBy: params.actedBy,
-    email: params.email.trim().toLowerCase(),
-    name: params.name.trim(),
+    email: params.email,
+    name: params.name,
     role: params.role,
   });
 }
@@ -100,8 +131,7 @@ export async function updateOrganizationUser(params: {
   name?: string;
   active?: boolean;
 }) {
-  await assertOrganizationUserAccess(params);
-  await getSingleMembershipOrThrow(params.userId);
+  await assertManagedOrganizationUser(params);
 
   const updateData: { name?: string; isActive?: boolean } = {};
   if (params.name !== undefined) updateData.name = params.name.trim();
@@ -113,11 +143,13 @@ export async function updateOrganizationUser(params: {
     .where(eq(users.id, params.userId))
     .returning();
 
-  const rolesByUserId = await getRolesByUserId([updated.id]);
-  return presentUserWithRoles({
-    user: updated,
-    roles: rolesByUserId.get(updated.id) ?? [],
-  });
+  return (
+    (await presentOrganizationUserById(updated.id)) ??
+    presentUserWithRoles({
+      user: updated,
+      roles: [],
+    })
+  );
 }
 
 export async function deleteOrganizationUser(params: {
@@ -160,18 +192,12 @@ export async function assignOrganizationUserRole(params: {
   role: 'admin' | 'teacher';
   groupIds: string[];
 }) {
-  await assertOrganizationUserAccess(params);
-  await getSingleMembershipOrThrow(params.userId);
-
-  await db
-    .update(schema.cpMemberships)
-    .set({ role: params.role })
-    .where(
-      and(
-        eq(schema.cpMemberships.organizationId, params.organizationId),
-        eq(schema.cpMemberships.userId, params.userId)
-      )
-    );
+  await assertManagedOrganizationUser(params);
+  await updateOrganizationMembershipRole({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    role: params.role,
+  });
 
   const synchronizedRole = await synchronizeOpenPathRole({
     userId: params.userId,
@@ -186,11 +212,7 @@ export async function assignOrganizationUserRole(params: {
     });
   }
 
-  const [persistedRole] = await openpathDb
-    .select()
-    .from(roles)
-    .where(eq(roles.userId, params.userId))
-    .limit(1);
+  const persistedRole = await getPersistedUserRole(params.userId);
 
   return presentUserRole({
     role: persistedRole,
@@ -208,18 +230,12 @@ export async function revokeOrganizationUserRole(params: {
   userId: string;
   actedBy: string;
 }) {
-  await assertOrganizationUserAccess(params);
-  await getSingleMembershipOrThrow(params.userId);
-
-  await db
-    .update(schema.cpMemberships)
-    .set({ role: 'teacher' })
-    .where(
-      and(
-        eq(schema.cpMemberships.organizationId, params.organizationId),
-        eq(schema.cpMemberships.userId, params.userId)
-      )
-    );
+  await assertManagedOrganizationUser(params);
+  await updateOrganizationMembershipRole({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    role: 'teacher',
+  });
 
   await synchronizeOpenPathRole({
     userId: params.userId,
