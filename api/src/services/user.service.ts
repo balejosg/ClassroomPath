@@ -6,54 +6,20 @@ import * as schema from '../db/schema.js';
 import { openpathDb, roles, users } from '../db/openpath.js';
 import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
 import { getSingleMembershipOrThrow } from '../lib/tenant-memberships.js';
-import {
-  normalizeRoleGroupIds,
-  presentUserRole,
-  presentUserWithRoles,
-  type RoleInfo,
-} from './presenters.js';
+import { normalizeRoleGroupIds, presentUserRole, presentUserWithRoles } from './presenters.js';
 import {
   createOrganizationInvitation,
   listOrganizationInvitations,
   revokeOrganizationInvitation,
 } from './invitations.service.js';
-
-async function getOrgScopedUserIds(params: { organizationId: string }): Promise<string[]> {
-  const memberships = await db
-    .select({ userId: schema.cpMemberships.userId })
-    .from(schema.cpMemberships)
-    .where(eq(schema.cpMemberships.organizationId, params.organizationId));
-
-  return memberships.map((membership) => membership.userId);
-}
-
-async function assertOrganizationUserAccess(params: { organizationId: string; userId: string }) {
-  const userIds = await getOrgScopedUserIds({ organizationId: params.organizationId });
-  if (!userIds.includes(params.userId)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'User not found or access denied' });
-  }
-}
-
-async function getRolesByUserId(userIds: string[]): Promise<Map<string, RoleInfo[]>> {
-  const result = new Map<string, RoleInfo[]>();
-  if (userIds.length === 0) return result;
-
-  const rows = await openpathDb.select().from(roles).where(inArray(roles.userId, userIds));
-
-  for (const role of rows) {
-    const current = result.get(role.userId) ?? [];
-    current.push({
-      role: String(role.role),
-      groupIds: normalizeRoleGroupIds(role.groupIds),
-    });
-    result.set(role.userId, current);
-  }
-
-  return result;
-}
+import {
+  assertOrganizationUserAccess,
+  getOrganizationUserIds,
+  getRolesByUserId,
+} from './organization-user-access.service.js';
 
 export async function listOrganizationUsers(organizationId: string) {
-  const userIds = await getOrgScopedUserIds({ organizationId });
+  const userIds = await getOrganizationUserIds({ organizationId });
   if (userIds.length === 0) return [];
 
   const [usersList, rolesByUserId] = await Promise.all([

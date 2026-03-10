@@ -4,6 +4,7 @@ import GoogleLoginButton from '@openpath/src/components/GoogleLoginButton';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { persistSession } from '../lib/auth-storage';
 import { reportError } from '../lib/reportError';
+import { isAuthResultWithUser, normalizeEmailAddress } from './auth-helpers';
 
 interface LoginProps {
   onLogin: () => void;
@@ -11,15 +12,10 @@ interface LoginProps {
   onNavigateToResetPassword?: () => void;
 }
 
-type AuthResultWithUser = { user: unknown };
 type VerificationDeliveryResult = {
   verificationUrl?: string;
   emailSent?: boolean;
 };
-
-function isAuthResultWithUser(value: unknown): value is AuthResultWithUser {
-  return typeof value === 'object' && value !== null && 'user' in value;
-}
 
 export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword }: LoginProps) {
   const loginMutation = cpTrpcReact.auth.login.useMutation();
@@ -47,7 +43,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
     if (!token || !emailFromLink) return;
     handledVerificationLinkRef.current = true;
 
-    const normalizedEmail = emailFromLink.trim().toLowerCase();
+    const normalizedEmail = normalizeEmailAddress(emailFromLink);
     setEmail(normalizedEmail);
     setError('');
     setInfo('Verificando tu correo...');
@@ -84,7 +80,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
     verifyEmailMutation.isPending;
 
   const resendVerification = async () => {
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmailAddress(email);
     if (!normalizedEmail) {
       setError('Introduce tu correo para reenviar la verificacion');
       return;
@@ -121,7 +117,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
     setInfo('');
     setVerificationUrl('');
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmailAddress(email);
     setEmail(normalizedEmail);
 
     try {

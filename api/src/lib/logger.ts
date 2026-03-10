@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import winston from 'winston';
 
 import { getClientIp } from './http-request-meta.js';
+import { getRequestId } from './request-id.js';
 
 interface ChildLogger {
   info: (message: string, meta?: Record<string, unknown>) => void;
@@ -90,7 +91,7 @@ function requestMiddleware(req: Request, res: Response, next: NextFunction): voi
 
   res.on('finish', () => {
     logHttpRequest({
-      requestId: req.requestId,
+      requestId: getRequestId(req),
       method: req.method,
       path: req.originalUrl || req.url,
       statusCode: res.statusCode,

@@ -7,6 +7,7 @@ import { validateEmail, validatePassword, ERROR_MESSAGES_ES } from '../utils/val
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { reportError } from '../lib/reportError';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
+import { normalizeEmailAddress } from './auth-helpers';
 
 interface Props {
   onLoginClick: () => void;
@@ -37,7 +38,7 @@ export function Register({ onLoginClick }: Props) {
     e.preventDefault();
     setError('');
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmailAddress(email);
     const trimmedName = name.trim();
 
     // Validaciones

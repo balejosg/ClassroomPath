@@ -167,7 +167,7 @@ export function OrganizationUsers() {
         name: invitation.name,
         email: invitation.email,
         role: invitation.role,
-        status: invitation.status,
+        status: 'Pendiente',
         expiresAt: invitation.expiresAt,
       })),
     [invitationsQuery.data]

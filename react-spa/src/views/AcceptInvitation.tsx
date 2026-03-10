@@ -5,16 +5,11 @@ import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { persistSession } from '../lib/auth-storage';
 import { PasswordStrength } from '../components/PasswordStrength';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
+import { isAuthResultWithUser } from './auth-helpers';
 
 interface AcceptInvitationProps {
   onLoginClick: () => void;
   onSuccess: () => void;
-}
-
-type AuthResultWithUser = { user: unknown };
-
-function isAuthResultWithUser(value: unknown): value is AuthResultWithUser {
-  return typeof value === 'object' && value !== null && 'user' in value;
 }
 
 export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationProps) {
