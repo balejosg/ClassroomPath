@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Client } from 'pg';
 
-import { CP_ORGANIZATION_GROUPS_LEGACY_SCHEMA_REPAIR_SQL } from '../src/db/legacy-schema-repair.js';
+import {
+  CP_MEMBERSHIPS_SINGLE_ORG_REPAIR_SQL,
+  CP_ORGANIZATION_GROUPS_LEGACY_SCHEMA_REPAIR_SQL,
+} from '../src/db/legacy-schema-repair.js';
 
 function getConnectionString(): string {
   return (
@@ -145,6 +148,94 @@ void test('legacy org-group schema repair fails clearly when duplicate public na
     await assert.rejects(
       async () => client.query(CP_ORGANIZATION_GROUPS_LEGACY_SCHEMA_REPAIR_SQL),
       /Cannot add cp_org_group_public_name_key; duplicate cp_organization_groups public_name values exist: org-legacy\/shared-slug \(x2\)/
+    );
+
+    await client.query('ROLLBACK');
+  } finally {
+    await client.end();
+  }
+});
+
+void test('legacy membership schema repair recreates the single-org constraint without truncating rows', async () => {
+  const client = new Client({ connectionString: getConnectionString() });
+
+  await client.connect();
+
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL search_path TO pg_temp, public');
+    await client.query(`
+        CREATE TEMP TABLE "cp_memberships" (
+          "id" varchar(50) PRIMARY KEY NOT NULL,
+          "user_id" varchar(50) NOT NULL,
+          "organization_id" varchar(50) NOT NULL,
+          "role" varchar(20) NOT NULL,
+          "invited_by" varchar(50),
+          "created_at" timestamp with time zone DEFAULT now(),
+          CONSTRAINT "cp_memberships_user_org_key" UNIQUE("user_id", "organization_id")
+        ) ON COMMIT DROP
+      `);
+    await client.query(`
+        INSERT INTO "cp_memberships" ("id", "user_id", "organization_id", "role", "invited_by")
+        VALUES
+          ('legacy-membership-1', 'legacy-user-1', 'org-a', 'admin', 'legacy-user-1'),
+          ('legacy-membership-2', 'legacy-user-2', 'org-b', 'teacher', 'legacy-user-2')
+      `);
+
+    await client.query(CP_MEMBERSHIPS_SINGLE_ORG_REPAIR_SQL);
+
+    const constraint = await client.query<{ conname: string }>(`
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'cp_memberships'::regclass
+          AND conname = 'cp_memberships_user_id_key'
+      `);
+    assert.strictEqual(constraint.rows.length, 1);
+
+    await assert.rejects(
+      async () =>
+        client.query(`
+            INSERT INTO "cp_memberships" ("id", "user_id", "organization_id", "role", "invited_by")
+            VALUES ('legacy-membership-3', 'legacy-user-1', 'org-c', 'teacher', 'legacy-user-1')
+          `),
+      /cp_memberships_user_id_key|duplicate key/i
+    );
+
+    await client.query('ROLLBACK');
+  } finally {
+    await client.end();
+  }
+});
+
+void test('legacy membership schema repair fails clearly when duplicate user memberships would violate the unique constraint', async () => {
+  const client = new Client({ connectionString: getConnectionString() });
+
+  await client.connect();
+
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL search_path TO pg_temp, public');
+    await client.query(`
+        CREATE TEMP TABLE "cp_memberships" (
+          "id" varchar(50) PRIMARY KEY NOT NULL,
+          "user_id" varchar(50) NOT NULL,
+          "organization_id" varchar(50) NOT NULL,
+          "role" varchar(20) NOT NULL,
+          "invited_by" varchar(50),
+          "created_at" timestamp with time zone DEFAULT now(),
+          CONSTRAINT "cp_memberships_user_org_key" UNIQUE("user_id", "organization_id")
+        ) ON COMMIT DROP
+      `);
+    await client.query(`
+        INSERT INTO "cp_memberships" ("id", "user_id", "organization_id", "role", "invited_by")
+        VALUES
+          ('legacy-membership-dup-1', 'legacy-user', 'org-a', 'admin', 'legacy-user'),
+          ('legacy-membership-dup-2', 'legacy-user', 'org-b', 'teacher', 'legacy-user')
+      `);
+
+    await assert.rejects(
+      async () => client.query(CP_MEMBERSHIPS_SINGLE_ORG_REPAIR_SQL),
+      /Cannot add cp_memberships_user_id_key; duplicate cp_memberships user_id values exist: legacy-user \(x2\)/
     );
 
     await client.query('ROLLBACK');

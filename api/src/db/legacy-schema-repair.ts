@@ -58,3 +58,50 @@ EXCEPTION
 END
 $$;
 `.trim();
+
+export const CP_MEMBERSHIPS_SINGLE_ORG_REPAIR_SQL = `
+DO $$
+DECLARE
+  duplicate_sample text;
+BEGIN
+  IF to_regclass('cp_memberships') IS NOT NULL THEN
+    SELECT string_agg(
+      format('%s (x%s)', user_id, duplicate_count),
+      ', '
+      ORDER BY user_id
+    )
+    INTO duplicate_sample
+    FROM (
+      SELECT
+        user_id,
+        count(*)::int AS duplicate_count
+      FROM "cp_memberships"
+      GROUP BY user_id
+      HAVING count(*) > 1
+      ORDER BY user_id
+      LIMIT 10
+    ) duplicates;
+
+    IF duplicate_sample IS NOT NULL THEN
+      RAISE EXCEPTION
+        'Cannot add cp_memberships_user_id_key; duplicate cp_memberships user_id values exist: %',
+        duplicate_sample;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = '"cp_memberships"'::regclass
+        AND conname = 'cp_memberships_user_id_key'
+    ) THEN
+      ALTER TABLE "cp_memberships"
+        ADD CONSTRAINT "cp_memberships_user_id_key"
+        UNIQUE("user_id");
+    END IF;
+  END IF;
+EXCEPTION
+  WHEN duplicate_object THEN
+    NULL;
+END
+$$;
+`.trim();
