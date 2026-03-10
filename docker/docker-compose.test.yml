@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: openpath_dev
       POSTGRES_DB: openpath
     ports:
-      - '5433:5432'
+      - '${TEST_DB_PORT:-5433}:5432'
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U openpath -d openpath']
       interval: 5s

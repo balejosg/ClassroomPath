@@ -206,3 +206,38 @@ void describe('Submodule Structure', () => {
     );
   });
 });
+
+void describe('Migration Tooling', () => {
+  const migrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations-docker.sh');
+  const hostMigrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations.sh');
+
+  void test('ClassroomPath migrations repair legacy org-group schema before db:push', () => {
+    const content = readFileSync(migrationsScriptPath, 'utf-8');
+    const repairStep = 'node --import tsx api/scripts/ensure-legacy-cp-schema.ts';
+    const pushStep = 'npm run db:push -w @classroompath/api';
+
+    assert.ok(
+      content.includes(repairStep),
+      'run-migrations-docker.sh should repair legacy org-group schema before db:push'
+    );
+    assert.ok(
+      content.indexOf(repairStep) < content.indexOf(pushStep),
+      'legacy org-group schema repair should run before db:push'
+    );
+  });
+
+  void test('host fallback migrations also repair legacy org-group schema before db:push', () => {
+    const content = readFileSync(hostMigrationsScriptPath, 'utf-8');
+    const repairStep = 'node --import tsx api/scripts/ensure-legacy-cp-schema.ts';
+    const pushStep = 'npm run db:push -w @classroompath/api';
+
+    assert.ok(
+      content.includes(repairStep),
+      'run-migrations.sh should repair legacy org-group schema before db:push'
+    );
+    assert.ok(
+      content.indexOf(repairStep) < content.indexOf(pushStep),
+      'host fallback should repair legacy org-group schema before db:push'
+    );
+  });
+});

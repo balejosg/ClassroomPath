@@ -22,8 +22,25 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker/docker-compose.test.yml"
 
-# Avoid collisions with other compose projects on the same machine.
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-classroompath_test}"
+pick_test_db_port() {
+  node -e "const net = require('node:net'); const server = net.createServer(); server.listen(0, '127.0.0.1', () => { console.log(server.address().port); server.close(); });"
+}
+
+TEST_DB_PORT="${TEST_DB_PORT:-$(pick_test_db_port)}"
+export TEST_DB_PORT
+
+# Isolate the test compose stack per verification run unless the caller
+# provided a custom project name on purpose. This avoids other local runs
+# stopping the same postgres container mid-hook.
+DEFAULT_COMPOSE_PROJECT_NAME="classroompath_test"
+PROJECT_CKSUM="$(printf '%s' "$ROOT_DIR" | cksum | awk '{print $1}')"
+if [ -n "${COMPOSE_PROJECT_NAME:-}" ] && [ "$COMPOSE_PROJECT_NAME" != "$DEFAULT_COMPOSE_PROJECT_NAME" ]; then
+  VERIFY_COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME"
+else
+  VERIFY_COMPOSE_PROJECT_NAME="${DEFAULT_COMPOSE_PROJECT_NAME}_${PROJECT_CKSUM}_$$"
+fi
+COMPOSE_PROJECT_NAME="$VERIFY_COMPOSE_PROJECT_NAME"
+export COMPOSE_PROJECT_NAME
 
 # Track parallel job failures
 PARALLEL_FAILED=0
@@ -106,6 +123,19 @@ detect_coverage_needs() {
 
 docker_compose() {
   docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
+}
+
+wait_for_test_postgres() {
+  for i in {1..30}; do
+    if docker_compose exec -T postgres pg_isready -U openpath -d openpath >/dev/null 2>&1 \
+      && TEST_DB_PORT="$TEST_DB_PORT" node -e "const net = require('node:net'); const socket = net.connect({ host: '127.0.0.1', port: Number(process.env.TEST_DB_PORT) }); socket.once('connect', () => { socket.end(); process.exit(0); }); socket.once('error', () => process.exit(1)); setTimeout(() => process.exit(1), 1000);" >/dev/null 2>&1; then
+      return 0
+    fi
+
+    sleep 1
+  done
+
+  return 1
 }
 
 require_cmd() {
@@ -191,22 +221,15 @@ npm run build
 
 # Wait for PostgreSQL to be healthy (should be ready by now)
 echo "Waiting for PostgreSQL..."
-for i in {1..30}; do
-  status=$(docker inspect --format='{{json .State.Health.Status}}' "$(docker_compose ps -q postgres)" 2>/dev/null || true)
-  if [ "$status" = '"healthy"' ]; then
-    break
-  fi
-  sleep 1
-  if [ "$i" -eq 30 ]; then
-    echo "PostgreSQL did not become healthy in time" >&2
-    docker_compose logs postgres || true
-    exit 1
-  fi
-done
+if ! wait_for_test_postgres; then
+  echo "PostgreSQL did not become healthy in time" >&2
+  docker_compose logs postgres || true
+  exit 1
+fi
 
-export DATABASE_URL="postgres://openpath:openpath_dev@localhost:5433/openpath"
+export DATABASE_URL="postgres://openpath:openpath_dev@localhost:${TEST_DB_PORT}/openpath"
 export DB_HOST="localhost"
-export DB_PORT="5433"
+export DB_PORT="$TEST_DB_PORT"
 export DB_NAME="openpath"
 export DB_USER="openpath"
 export DB_PASSWORD="openpath_dev"

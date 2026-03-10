@@ -2,6 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { sql } from 'drizzle-orm';
 
 import { db } from '../src/db/index.js';
+import { CP_ORGANIZATION_GROUPS_LEGACY_SCHEMA_REPAIR_SQL } from '../src/db/legacy-schema-repair.js';
 import { openpathDb } from '../src/db/openpath.js';
 
 const TEST_DB_LOCK_KEY = 20260310;
@@ -20,40 +21,7 @@ function isDeadlockError(error: unknown): error is { code: string } {
 
 export async function resetDb(): Promise<void> {
   await withTestDbLock(async () => {
-    await db.execute(
-      sql.raw(`
-      DO $$
-      BEGIN
-        ALTER TABLE "cp_organization_groups"
-          ADD COLUMN IF NOT EXISTS "public_name" varchar(100);
-        ALTER TABLE "cp_organization_groups"
-          ADD COLUMN IF NOT EXISTS "visibility" varchar(20);
-
-        UPDATE "cp_organization_groups"
-        SET "visibility" = 'private'
-        WHERE "visibility" IS NULL;
-
-        ALTER TABLE "cp_organization_groups"
-          ALTER COLUMN "visibility" SET DEFAULT 'private';
-        ALTER TABLE "cp_organization_groups"
-          ALTER COLUMN "visibility" SET NOT NULL;
-
-        IF NOT EXISTS (
-          SELECT 1
-          FROM pg_constraint
-          WHERE conname = 'cp_org_group_public_name_key'
-        ) THEN
-          ALTER TABLE "cp_organization_groups"
-            ADD CONSTRAINT "cp_org_group_public_name_key"
-            UNIQUE("organization_id", "public_name");
-        END IF;
-      EXCEPTION
-        WHEN duplicate_object THEN
-          NULL;
-      END
-      $$;
-    `)
-    );
+    await db.execute(sql.raw(CP_ORGANIZATION_GROUPS_LEGACY_SCHEMA_REPAIR_SQL));
 
     await db.execute(
       sql.raw(`

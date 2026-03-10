@@ -39,6 +39,9 @@ if [ ! -d "node_modules" ]; then
   npm ci -w @classroompath/api
 fi
 
+log_info "Repairing legacy ClassroomPath schema drift..."
+node --import tsx api/scripts/ensure-legacy-cp-schema.ts
+
 log_info "Running drizzle-kit push..."
 npm run db:push -w @classroompath/api
 
