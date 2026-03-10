@@ -108,6 +108,23 @@ describe('AcceptInvitation', () => {
     expect(mockAcceptInvitationMutateAsync).not.toHaveBeenCalled();
   });
 
+  it('requires terms acceptance before activating the invitation', async () => {
+    render(<AcceptInvitation onLoginClick={vi.fn()} onSuccess={vi.fn()} />);
+
+    fireEvent.change(screen.getByTestId('accept-invitation-password'), {
+      target: { value: 'StrongPass1' },
+    });
+    fireEvent.change(screen.getByTestId('accept-invitation-confirm-password'), {
+      target: { value: 'StrongPass1' },
+    });
+    fireEvent.click(screen.getByTestId('accept-invitation-submit'));
+
+    expect(
+      await screen.findByText('Debes aceptar los terminos para activar tu acceso')
+    ).toBeInTheDocument();
+    expect(mockAcceptInvitationMutateAsync).not.toHaveBeenCalled();
+  });
+
   it('shows the expired state when the invitation cannot be loaded', () => {
     invitationQueryState = {
       data: undefined,
@@ -134,6 +151,7 @@ describe('AcceptInvitation', () => {
     fireEvent.change(screen.getByTestId('accept-invitation-confirm-password'), {
       target: { value: 'StrongPass1' },
     });
+    fireEvent.click(screen.getByTestId('accept-invitation-terms'));
     fireEvent.click(screen.getByTestId('accept-invitation-submit'));
 
     expect(await screen.findByText('La invitación ya fue usada')).toBeInTheDocument();
@@ -168,12 +186,15 @@ describe('AcceptInvitation', () => {
     fireEvent.change(screen.getByTestId('accept-invitation-confirm-password'), {
       target: { value: 'StrongPass1' },
     });
+    fireEvent.click(screen.getByTestId('accept-invitation-terms'));
     fireEvent.click(screen.getByTestId('accept-invitation-submit'));
 
     await waitFor(() => {
       expect(mockAcceptInvitationMutateAsync).toHaveBeenCalledWith({
         token: 'invite-token',
         password: 'StrongPass1',
+        termsAccepted: true,
+        termsVersion: '2026-03-09',
       });
     });
 
@@ -199,6 +220,7 @@ describe('AcceptInvitation', () => {
     fireEvent.change(screen.getByTestId('accept-invitation-confirm-password'), {
       target: { value: 'StrongPass1' },
     });
+    fireEvent.click(screen.getByTestId('accept-invitation-terms'));
     fireEvent.click(screen.getByTestId('accept-invitation-submit'));
 
     await waitFor(() => {

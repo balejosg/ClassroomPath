@@ -8,13 +8,13 @@ process.env.NODE_ENV = 'test';
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
+import { eq } from 'drizzle-orm';
 import {
   trpcQuery,
   trpcMutate,
   parseTRPC,
   bearerAuth,
   assertStatus,
-  resetDb,
   uniqueEmail,
 } from '../test-utils.js';
 import {
@@ -27,6 +27,7 @@ import {
   signToken,
   useIntegrationServer,
 } from './harness.js';
+import { db as cpDb, schema as cpSchema } from '../../src/db/index.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../src/lib/session-cookies.js';
 
@@ -139,8 +140,19 @@ describe('ClassroomPath Gateway Integration', async () => {
   });
 
   test('/cp/trpc/auth.login strips tokens from the response body and sets cookie session headers', async () => {
+    const email = uniqueEmail('login-body');
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: `login-body-${Date.now()}`,
+      email,
+      name: 'Login Body User',
+      passwordHash: 'hashed',
+      isActive: true,
+      emailVerified: true,
+    });
+
     const response = await trpcMutate(integration.baseUrl, 'auth.login', {
-      email: uniqueEmail('login-body'),
+      email,
       password: 'password123',
     });
 
@@ -156,22 +168,42 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.ok(setCookies.every((cookie) => /HttpOnly/i.test(cookie)));
   });
 
-  test('/cp/trpc/auth.register strips tokens from the response body and sets cookie session headers', async () => {
+  test('/cp/trpc/auth.register persists consent metadata and returns email verification delivery details', async () => {
+    const email = uniqueEmail('register-body');
     const response = await trpcMutate(integration.baseUrl, 'auth.register', {
-      email: uniqueEmail('register-body'),
+      email,
       name: 'Register Body User',
       password: 'password123',
+      termsAccepted: true,
+      termsVersion: '2026-03-09',
     });
 
     assertStatus(response, 200);
     const parsed = (await parseTRPC(response)) as { data?: Record<string, unknown> };
     assert.strictEqual('accessToken' in (parsed.data ?? {}), false);
     assert.strictEqual('refreshToken' in (parsed.data ?? {}), false);
-    assert.ok(parsed.data?.user);
+    assert.strictEqual(parsed.data?.email, email);
+    assert.strictEqual(parsed.data?.verificationRequired, true);
+    assert.strictEqual(parsed.data?.termsVersion, '2026-03-09');
+    assert.strictEqual(typeof parsed.data?.emailSent, 'boolean');
+    assert.ok(String(parsed.data?.verificationUrl ?? '').includes('/login?email='));
 
     const setCookies = getSetCookieHeaders(response);
-    assert.ok(setCookies.some((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`)));
-    assert.ok(setCookies.some((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`)));
+    assert.strictEqual(setCookies.length, 0);
+
+    const [registeredUser] = await openpathDb
+      .select({ id: openpathSchema.users.id })
+      .from(openpathSchema.users)
+      .where(eq(openpathSchema.users.email, email))
+      .limit(1);
+    assert.ok(registeredUser);
+
+    const consent = await cpDb
+      .select()
+      .from(cpSchema.cpTermsAcceptance)
+      .where(eq(cpSchema.cpTermsAcceptance.userId, registeredUser.id));
+    assert.strictEqual(consent.length, 1);
+    assert.strictEqual(consent[0]?.termsVersion, '2026-03-09');
   });
 
   test('/cp/trpc/auth.register returns service unavailable when upstream responds with invalid JSON', async () => {
@@ -179,12 +211,39 @@ describe('ClassroomPath Gateway Integration', async () => {
       email: 'mock-register-invalid-json@test.local',
       name: 'Broken Register User',
       password: 'password123',
+      termsAccepted: true,
+      termsVersion: '2026-03-09',
     });
 
     assertStatus(response, 500);
     const parsed = (await parseTRPC(response)) as { error?: string; code?: string };
     assert.strictEqual(parsed.code, 'INTERNAL_SERVER_ERROR');
     assert.strictEqual(parsed.error, 'Registration service unavailable');
+  });
+
+  test('/cp/trpc/auth.generateEmailVerificationToken sends a fresh verification payload without creating a session', async () => {
+    const email = uniqueEmail('verify-resend');
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: `verify-resend-${Date.now()}`,
+      email,
+      name: 'Verify Resend User',
+      passwordHash: 'hashed',
+      isActive: true,
+      emailVerified: false,
+    });
+
+    const response = await trpcMutate(integration.baseUrl, 'auth.generateEmailVerificationToken', {
+      email,
+    });
+
+    assertStatus(response, 200);
+    const parsed = (await parseTRPC(response)) as { data?: Record<string, unknown> };
+    assert.strictEqual(parsed.data?.email, email);
+    assert.strictEqual(parsed.data?.verificationRequired, true);
+    assert.strictEqual(typeof parsed.data?.emailSent, 'boolean');
+    assert.ok(String(parsed.data?.verificationUrl ?? '').includes('/login?email='));
+    assert.strictEqual(getSetCookieHeaders(response).length, 0);
   });
 
   test('/cp/trpc/auth.googleLogin strips tokens from the response body and sets cookie session headers', async () => {
@@ -278,6 +337,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       email,
       name: 'Test User',
       passwordHash: 'hashed',
+      emailVerified: true,
     });
 
     const token = signToken({
@@ -483,6 +543,7 @@ describe('ClassroomPath Gateway Integration', async () => {
         email,
         name: 'ListGroups Test User',
         passwordHash: 'hashed',
+        emailVerified: true,
       })
       .onConflictDoNothing();
 
@@ -533,6 +594,7 @@ describe('ClassroomPath Gateway Integration', async () => {
         email,
         name: userName,
         passwordHash: 'hashed',
+        emailVerified: true,
       })
       .onConflictDoNothing();
 
@@ -580,6 +642,7 @@ describe('ClassroomPath Gateway Integration', async () => {
         email,
         name: 'Healthcheck Test User',
         passwordHash: 'hashed',
+        emailVerified: true,
       })
       .onConflictDoNothing();
 
@@ -637,6 +700,7 @@ describe('ClassroomPath Gateway Integration', async () => {
         email,
         name: 'API Tokens Test User',
         passwordHash: 'hashed',
+        emailVerified: true,
       })
       .onConflictDoNothing();
 
@@ -685,6 +749,7 @@ describe('ClassroomPath Gateway Integration', async () => {
         email,
         name: 'API Tokens Create Test User',
         passwordHash: 'hashed',
+        emailVerified: true,
       })
       .onConflictDoNothing();
 
@@ -735,6 +800,7 @@ describe('ClassroomPath Gateway Integration', async () => {
         email,
         name: 'Groups Counts Test User',
         passwordHash: 'hashed',
+        emailVerified: true,
       })
       .onConflictDoNothing();
 
@@ -761,7 +827,9 @@ describe('ClassroomPath Gateway Integration', async () => {
       { name: 'test-group-counts', displayName: 'Test Group with Counts' },
       bearerAuth(token)
     );
-    assertStatus(createResp, 200);
+    const createGroupFailureBody =
+      createResp.status === 200 ? undefined : await createResp.clone().text();
+    assertStatus(createResp, 200, createGroupFailureBody);
     const { data: group } = (await parseTRPC(createResp)) as { data: any };
 
     // Add a whitelist rule
@@ -816,6 +884,7 @@ describe('ClassroomPath Gateway Integration', async () => {
         email,
         name: 'System Status Test User',
         passwordHash: 'hashed',
+        emailVerified: true,
       })
       .onConflictDoNothing();
 

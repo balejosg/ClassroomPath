@@ -4,6 +4,7 @@ import { Loader2, Mail, ShieldCheck } from 'lucide-react';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { persistSession } from '../lib/auth-storage';
 import { PasswordStrength } from '../components/PasswordStrength';
+import { CURRENT_TERMS_VERSION } from '../constants/legal';
 
 interface AcceptInvitationProps {
   onLoginClick: () => void;
@@ -33,6 +34,7 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState('');
 
   const invitation = invitationQuery.data;
@@ -52,8 +54,18 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
       return;
     }
 
+    if (!termsAccepted) {
+      setError('Debes aceptar los terminos para activar tu acceso');
+      return;
+    }
+
     try {
-      const result = await acceptMutation.mutateAsync({ token, password });
+      const result = await acceptMutation.mutateAsync({
+        token,
+        password,
+        termsAccepted: true,
+        termsVersion: CURRENT_TERMS_VERSION,
+      });
       persistSession({ user: isAuthResultWithUser(result) ? result.user : undefined });
       onSuccess();
     } catch (err) {
@@ -193,6 +205,23 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
                 placeholder="Repite tu contraseña"
               />
             </div>
+
+            <label className="flex items-start gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(event) => setTermsAccepted(event.target.checked)}
+                data-testid="accept-invitation-terms"
+                disabled={isBusy}
+                className="mt-1 h-4 w-4 rounded border-slate-300"
+              />
+              <span>
+                Acepto los{' '}
+                <a href="/terms.html" target="_blank" className="text-blue-600 hover:underline">
+                  términos de servicio
+                </a>
+              </span>
+            </label>
 
             <button
               type="submit"

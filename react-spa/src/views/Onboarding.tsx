@@ -190,7 +190,7 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
                   className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600"
                 >
                   Un administrador de tu institución debe autorizar tu acceso. No mostraremos el
-                  directorio de organizaciones desde este portal.
+                  directorio ni los nombres de otras organizaciones desde este portal.
                 </div>
               )}
               <Button

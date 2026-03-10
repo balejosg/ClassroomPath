@@ -120,8 +120,8 @@ export async function createOrganizationUser(params: {
   return createOrganizationInvitation({
     organizationId: params.organizationId,
     invitedBy: params.actedBy,
-    email: params.email,
-    name: params.name,
+    email: params.email.trim().toLowerCase(),
+    name: params.name.trim(),
     role: params.role,
   });
 }
@@ -138,7 +138,7 @@ export async function updateOrganizationUser(params: {
   await getSingleMembershipOrThrow(params.userId);
 
   const updateData: { name?: string; isActive?: boolean } = {};
-  if (params.name !== undefined) updateData.name = params.name;
+  if (params.name !== undefined) updateData.name = params.name.trim();
   if (params.active !== undefined) updateData.isActive = params.active;
 
   const [updated] = await openpathDb

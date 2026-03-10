@@ -44,6 +44,74 @@ async function withRetry<T>(
   throw new Error(`${operationName} failed after ${maxRetries} retries`);
 }
 
+async function waitForAnyVisible(
+  locators: Locator[],
+  timeout: number,
+  description: string
+): Promise<void> {
+  try {
+    await Promise.any(locators.map((locator) => locator.waitFor({ state: 'visible', timeout })));
+  } catch {
+    throw new Error(`Timed out waiting for ${description}`);
+  }
+}
+
+async function waitForVisibleResult<T extends string>(
+  candidates: Array<{ label: T; locator: Locator }>,
+  timeout: number,
+  description: string
+): Promise<T> {
+  try {
+    return await Promise.any(
+      candidates.map(({ label, locator }) =>
+        locator.waitFor({ state: 'visible', timeout }).then(() => label)
+      )
+    );
+  } catch {
+    throw new Error(`Timed out waiting for ${description}`);
+  }
+}
+
+function parseTrpcResult<T>(responseText: string, description: string): T {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch (error) {
+    throw new Error(
+      `Failed to parse ${description}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  const entry = Array.isArray(parsed) ? parsed[0] : parsed;
+  if (!entry || typeof entry !== 'object') {
+    throw new Error(`Invalid ${description}: missing tRPC envelope`);
+  }
+
+  const errorMessage =
+    'error' in entry &&
+    entry.error &&
+    typeof entry.error === 'object' &&
+    'message' in entry.error &&
+    typeof entry.error.message === 'string'
+      ? entry.error.message
+      : null;
+
+  if (errorMessage) {
+    throw new Error(errorMessage);
+  }
+
+  const data =
+    'result' in entry && entry.result && typeof entry.result === 'object' && 'data' in entry.result
+      ? (entry.result.data as T | undefined)
+      : undefined;
+
+  if (data === undefined) {
+    throw new Error(`Invalid ${description}: missing result data`);
+  }
+
+  return data;
+}
+
 // ============================================================================
 // Test Data Factories
 // ============================================================================
@@ -201,7 +269,7 @@ export async function waitForPostAuthScreen(page: Page, timeout = 20000): Promis
     page.getByText('OpenPath'),
   ];
 
-  await Promise.race(candidates.map((l) => l.waitFor({ state: 'visible', timeout })));
+  await waitForAnyVisible(candidates, timeout, 'a post-auth screen');
 }
 
 // ============================================================================
@@ -226,49 +294,99 @@ export async function openRegisterForm(page: Page): Promise<void> {
   await registerEmail.waitFor({ state: 'visible', timeout: 10000 });
 }
 
+interface RegisterResponseData {
+  email?: string;
+  verificationRequired?: boolean;
+  verificationUrl?: string;
+  user?: unknown;
+}
+
 /**
- * Registers a new user through the UI with retry logic for parallel test resilience
+ * Registers a new user through the UI.
+ *
+ * This flow is intentionally single-attempt: creating a user is not idempotent,
+ * and retries with the same email can create false "already registered" failures.
  */
 export async function registerUser(page: Page, user: TestUser): Promise<void> {
-  await withRetry(
-    async () => {
-      await openRegisterForm(page);
+  await openRegisterForm(page);
 
-      // Wait for register form
-      await page.getByTestId('register-email').waitFor({ state: 'visible', timeout: 10000 });
+  await page.getByTestId('register-email').waitFor({ state: 'visible', timeout: 10000 });
 
-      await page.getByTestId('register-email').fill(user.email);
-      await page.getByTestId('register-name').fill(user.name);
-      await page.getByTestId('register-password').fill(user.password);
-      await page.getByTestId('register-confirm-password').fill(user.password);
-      await page.getByTestId('register-terms').check();
-      await page.getByTestId('register-submit').click();
-
-      // Wait for either success or failure
-      const successLocators = [
-        page.getByTestId('onboarding-org-name'),
-        page.getByTestId('onboarding-wait-invite'),
-        page.getByTestId('waiting-check-now'),
-        page.getByRole('button', { name: 'Mi Panel' }),
-        page.getByRole('button', { name: 'Panel de Control' }),
-        page.getByText('OpenPath'),
-      ];
-
-      const errorLocator = page.getByText(/Registration failed|error|falló/i);
-
-      const result = await Promise.race([
-        ...successLocators.map((l) =>
-          l.waitFor({ state: 'visible', timeout: 20000 }).then(() => 'success' as const)
-        ),
-        errorLocator.waitFor({ state: 'visible', timeout: 20000 }).then(() => 'error' as const),
-      ]);
-
-      if (result === 'error') {
-        throw new Error(`Registration failed for ${user.email}`);
-      }
-    },
-    { maxRetries: 3, baseDelay: 1000, operationName: `registerUser(${user.email})` }
+  const registerResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().includes('/cp/trpc/auth.register?batch=1'),
+    { timeout: 20000 }
   );
+
+  await page.getByTestId('register-email').fill(user.email);
+  await page.getByTestId('register-name').fill(user.name);
+  await page.getByTestId('register-password').fill(user.password);
+  await page.getByTestId('register-confirm-password').fill(user.password);
+  await page.getByTestId('register-terms').check();
+  await page.getByTestId('register-submit').click();
+
+  const registerResponse = await registerResponsePromise;
+  const registerPayload = parseTrpcResult<RegisterResponseData>(
+    await registerResponse.text(),
+    `auth.register response for ${user.email}`
+  );
+
+  const successLocators = [
+    page.getByTestId('onboarding-org-name'),
+    page.getByTestId('onboarding-wait-invite'),
+    page.getByTestId('waiting-check-now'),
+    page.getByRole('button', { name: 'Mi Panel' }),
+    page.getByRole('button', { name: 'Panel de Control' }),
+    page.getByText('OpenPath'),
+  ];
+
+  if (registerPayload.verificationRequired !== true) {
+    await waitForAnyVisible(successLocators, 20000, `a post-registration screen for ${user.email}`);
+    return;
+  }
+
+  const verificationUrl =
+    typeof registerPayload.verificationUrl === 'string' ? registerPayload.verificationUrl : '';
+  if (!verificationUrl) {
+    throw new Error(`Registration response for ${user.email} did not include verificationUrl`);
+  }
+
+  const verificationLocator = page.getByText('Revisa tu correo');
+  const manualVerificationLink = page.getByTestId('register-manual-verification-link');
+  const verificationScreenVisible = await verificationLocator
+    .waitFor({ state: 'visible', timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+
+  if (verificationScreenVisible) {
+    const manualLinkVisible = await manualVerificationLink
+      .waitFor({ state: 'visible', timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (manualLinkVisible) {
+      await manualVerificationLink.click();
+    } else {
+      await page.goto(verificationUrl);
+    }
+  } else {
+    await page.goto(verificationUrl);
+  }
+
+  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 10000 });
+  await page.getByText(/Correo verificado|Verificando tu correo/i).waitFor({
+    state: 'visible',
+    timeout: 10000,
+  });
+  await page.getByText(/Correo verificado/i).waitFor({ state: 'visible', timeout: 10000 });
+  await page.goto('/login');
+  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 10000 });
+  await page.getByTestId('login-email').fill(user.email);
+  await page.getByTestId('login-password').fill(user.password);
+  await page.getByTestId('login-submit').click();
+
+  await waitForAnyVisible(successLocators, 20000, `a post-verification screen for ${user.email}`);
 }
 
 /**
@@ -298,15 +416,17 @@ export async function loginUser(page: Page, email: string, password: string): Pr
       ];
 
       const errorLocator = page.getByText(
-        /Credenciales inválidas|Invalid credentials|error de conexión/i
+        /Credenciales inválidas|Invalid credentials|error de conexión|Debes verificar tu correo/i
       );
 
-      const result = await Promise.race([
-        ...successLocators.map((l) =>
-          l.waitFor({ state: 'visible', timeout: 20000 }).then(() => 'success' as const)
-        ),
-        errorLocator.waitFor({ state: 'visible', timeout: 20000 }).then(() => 'error' as const),
-      ]);
+      const result = await waitForVisibleResult(
+        [
+          ...successLocators.map((locator) => ({ label: 'success' as const, locator })),
+          { label: 'error' as const, locator: errorLocator },
+        ],
+        20000,
+        `a login outcome for ${email}`
+      );
 
       if (result === 'error') {
         throw new Error(`Login failed for ${email}: Invalid credentials or connection error`);
@@ -472,8 +592,8 @@ export async function selectWaitForInvite(page: Page): Promise<void> {
 /**
  * Checks if user is on waiting page
  */
-export async function expectWaitingPage(page: Page): Promise<void> {
-  await page.getByTestId('waiting-check-now').waitFor({ state: 'visible', timeout: 10000 });
+export async function expectWaitingPage(page: Page, timeout = 20000): Promise<void> {
+  await page.getByTestId('waiting-check-now').waitFor({ state: 'visible', timeout });
 }
 
 /**

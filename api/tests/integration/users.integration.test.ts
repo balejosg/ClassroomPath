@@ -240,6 +240,75 @@ describe('ClassroomPath users integration (/cp/trpc)', async () => {
     );
   });
 
+  test('users.create normalizes the invited email before persisting the invitation', async () => {
+    const orgId = `org-users-normalize-${Date.now()}`;
+    const adminUserId = `u-admin-normalize-${Date.now()}`;
+    const adminEmail = uniqueEmail('admin-normalize');
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: adminUserId,
+      email: adminEmail,
+      name: 'Admin Normalize',
+      passwordHash: 'hashed',
+      isActive: true,
+      emailVerified: true,
+    });
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${adminUserId}`,
+      userId: adminUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: adminUserId,
+    });
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin Normalize',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const createResp = await trpcMutate(
+      integration.baseUrl,
+      'users.create',
+      {
+        email: ' MixedCaseUser@Example.COM ',
+        name: 'Normalize Invitee',
+        role: 'teacher',
+      },
+      bearerAuth(adminToken)
+    );
+    assertStatus(createResp, 200);
+
+    const { data: invitation } = (await parseTRPC(createResp)) as {
+      data: { email: string };
+    };
+    assert.strictEqual(invitation.email, 'mixedcaseuser@example.com');
+
+    const persistedInvitations = await db
+      .select()
+      .from(cpSchema.cpInvitations)
+      .where(eq(cpSchema.cpInvitations.organizationId, orgId));
+    assert.strictEqual(persistedInvitations.length, 1);
+    assert.strictEqual(persistedInvitations[0]?.email, 'mixedcaseuser@example.com');
+  });
+
   test('users.list ignores legacy cp_organization_users rows without a tenant membership', async () => {
     const orgId = `org-users-legacy-link-${Date.now()}`;
     const adminUserId = `u-admin-legacy-link-${Date.now()}`;

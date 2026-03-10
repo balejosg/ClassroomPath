@@ -48,6 +48,14 @@ export const cpUserStatus = pgTable('cp_user_status', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+export const cpTermsAcceptance = pgTable('cp_terms_acceptance', {
+  userId: varchar('user_id', { length: 50 }).primaryKey(),
+  termsVersion: varchar('terms_version', { length: 50 }).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
 // =============================================================================
 // Type Inference
 // =============================================================================
@@ -60,6 +68,9 @@ export type NewMembership = typeof cpMemberships.$inferInsert;
 
 export type UserStatus = typeof cpUserStatus.$inferSelect;
 export type NewUserStatus = typeof cpUserStatus.$inferInsert;
+
+export type TermsAcceptance = typeof cpTermsAcceptance.$inferSelect;
+export type NewTermsAcceptance = typeof cpTermsAcceptance.$inferInsert;
 
 // =============================================================================
 // Invitations Table

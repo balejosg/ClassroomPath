@@ -3,57 +3,43 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 import { Register } from '../Register';
 import { ERROR_MESSAGES_ES } from '../../utils/validation';
+import { CURRENT_TERMS_VERSION } from '../../constants/legal';
 
-const mockLoginMutateAsync = vi.fn();
-const mockRegisterMutate = vi.fn();
-const mockPersistSession = vi.fn();
-let registerOptions:
-  | {
-      onSuccess?: () => Promise<void> | void;
-      onError?: (error: Error) => void;
-    }
-  | undefined;
+const mockRegisterMutateAsync = vi.fn();
+const mockReportError = vi.fn();
 
 vi.mock('../../lib/dual-trpc-provider', () => ({
   cpTrpcReact: {
     auth: {
-      login: {
+      register: {
         useMutation: vi.fn(() => ({
-          mutateAsync: mockLoginMutateAsync,
+          mutateAsync: mockRegisterMutateAsync,
           isPending: false,
         })),
-      },
-      register: {
-        useMutation: vi.fn((options) => {
-          registerOptions = options;
-          return {
-            mutate: mockRegisterMutate,
-            isPending: false,
-          };
-        }),
       },
     },
   },
 }));
 
-vi.mock('../../lib/auth-storage', () => ({
-  persistSession: (...args: unknown[]) => mockPersistSession(...args),
+vi.mock('../../lib/reportError', () => ({
+  reportError: (...args: unknown[]) => mockReportError(...args),
 }));
 
 describe('Register View', () => {
   const mockOnLoginClick = vi.fn();
-  const mockOnSuccess = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
-    registerOptions = undefined;
-    mockRegisterMutate.mockImplementation(async () => {
-      await registerOptions?.onSuccess?.();
+    mockRegisterMutateAsync.mockResolvedValue({
+      email: 'test@example.com',
+      emailSent: true,
+      verificationRequired: true,
+      verificationUrl: 'https://classroompath.local/login?email=test%40example.com&token=abc123',
     });
   });
 
   it('should render the registration form', () => {
-    render(<Register onLoginClick={mockOnLoginClick} onSuccess={mockOnSuccess} />);
+    render(<Register onLoginClick={mockOnLoginClick} />);
 
     expect(screen.getByText('Crear Cuenta')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('correo@ejemplo.com')).toBeInTheDocument();
@@ -63,7 +49,7 @@ describe('Register View', () => {
   });
 
   it('should show error if email is invalid', async () => {
-    render(<Register onLoginClick={mockOnLoginClick} onSuccess={mockOnSuccess} />);
+    render(<Register onLoginClick={mockOnLoginClick} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'invalid-email' },
@@ -84,7 +70,7 @@ describe('Register View', () => {
   });
 
   it('should show error if password is weak', async () => {
-    render(<Register onLoginClick={mockOnLoginClick} onSuccess={mockOnSuccess} />);
+    render(<Register onLoginClick={mockOnLoginClick} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'test@example.com' },
@@ -101,7 +87,7 @@ describe('Register View', () => {
   });
 
   it('should show error if passwords do not match', async () => {
-    render(<Register onLoginClick={mockOnLoginClick} onSuccess={mockOnSuccess} />);
+    render(<Register onLoginClick={mockOnLoginClick} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'test@example.com' },
@@ -122,7 +108,7 @@ describe('Register View', () => {
   });
 
   it('should disable submit button when terms are not accepted', () => {
-    render(<Register onLoginClick={mockOnLoginClick} onSuccess={mockOnSuccess} />);
+    render(<Register onLoginClick={mockOnLoginClick} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'test@example.com' },
@@ -140,46 +126,14 @@ describe('Register View', () => {
     expect(screen.getByRole('button', { name: /registrarse/i })).toBeDisabled();
   });
 
-  it('should call mutate if form is valid', () => {
-    render(<Register onLoginClick={mockOnLoginClick} onSuccess={mockOnSuccess} />);
+  it('submits normalized email plus terms metadata when the form is valid', async () => {
+    render(<Register onLoginClick={mockOnLoginClick} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
-      target: { value: 'test@example.com' },
+      target: { value: ' Test@Example.COM ' },
     });
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
-      target: { value: 'Test User' },
-    });
-    fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], {
-      target: { value: 'StrongPassword1' },
-    });
-    fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], {
-      target: { value: 'StrongPassword1' },
-    });
-    fireEvent.click(screen.getByLabelText(/Acepto los/));
-    fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
-
-    expect(mockRegisterMutate).toHaveBeenCalledWith({
-      email: 'test@example.com',
-      name: 'Test User',
-      password: 'StrongPassword1',
-    });
-  });
-
-  it('should persist the session after registration triggers the auto-login flow', async () => {
-    mockLoginMutateAsync.mockResolvedValue({
-      user: {
-        id: 'new-user',
-        email: 'test@example.com',
-      },
-    });
-
-    render(<Register onLoginClick={mockOnLoginClick} onSuccess={mockOnSuccess} />);
-
-    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
-      target: { value: 'test@example.com' },
-    });
-    fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
-      target: { value: 'Test User' },
+      target: { value: '  Test User  ' },
     });
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], {
       target: { value: 'StrongPassword1' },
@@ -191,24 +145,18 @@ describe('Register View', () => {
     fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
 
     await waitFor(() => {
-      expect(mockLoginMutateAsync).toHaveBeenCalledWith({
+      expect(mockRegisterMutateAsync).toHaveBeenCalledWith({
         email: 'test@example.com',
+        name: 'Test User',
         password: 'StrongPassword1',
+        termsAccepted: true,
+        termsVersion: CURRENT_TERMS_VERSION,
       });
     });
-    expect(mockPersistSession).toHaveBeenCalledWith({
-      user: {
-        id: 'new-user',
-        email: 'test@example.com',
-      },
-    });
-    expect(mockOnSuccess).toHaveBeenCalledTimes(1);
   });
 
-  it('should surface the auto-login error if registration succeeds but login fails', async () => {
-    mockLoginMutateAsync.mockRejectedValue(new Error('No se pudo iniciar sesión'));
-
-    render(<Register onLoginClick={mockOnLoginClick} onSuccess={mockOnSuccess} />);
+  it('shows a verification success state after registration', async () => {
+    render(<Register onLoginClick={mockOnLoginClick} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'test@example.com' },
@@ -225,12 +173,71 @@ describe('Register View', () => {
     fireEvent.click(screen.getByLabelText(/Acepto los/));
     fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
 
-    expect(await screen.findByText('No se pudo iniciar sesión')).toBeInTheDocument();
-    expect(mockOnSuccess).not.toHaveBeenCalled();
+    expect(await screen.findByText('Revisa tu correo')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Enviamos un enlace de verificacion a test@example.com/i)
+    ).toBeInTheDocument();
   });
 
-  it('should call onLoginClick when login button is clicked', () => {
-    render(<Register onLoginClick={mockOnLoginClick} onSuccess={mockOnSuccess} />);
+  it('shows the manual verification link when delivery could not be confirmed', async () => {
+    mockRegisterMutateAsync.mockResolvedValue({
+      email: 'test@example.com',
+      emailSent: false,
+      verificationRequired: true,
+      verificationUrl: 'https://classroompath.local/login?email=test%40example.com&token=abc123',
+    });
+
+    render(<Register onLoginClick={mockOnLoginClick} />);
+
+    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
+      target: { value: 'test@example.com' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
+      target: { value: 'Test User' },
+    });
+    fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], {
+      target: { value: 'StrongPassword1' },
+    });
+    fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], {
+      target: { value: 'StrongPassword1' },
+    });
+    fireEvent.click(screen.getByLabelText(/Acepto los/));
+    fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
+
+    expect(await screen.findByText('Enlace manual de verificacion')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', {
+        name: 'https://classroompath.local/login?email=test%40example.com&token=abc123',
+      })
+    ).toBeInTheDocument();
+  });
+
+  it('reports registration failures', async () => {
+    mockRegisterMutateAsync.mockRejectedValue(new Error('No se pudo registrar'));
+
+    render(<Register onLoginClick={mockOnLoginClick} />);
+
+    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
+      target: { value: 'test@example.com' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
+      target: { value: 'Test User' },
+    });
+    fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], {
+      target: { value: 'StrongPassword1' },
+    });
+    fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], {
+      target: { value: 'StrongPassword1' },
+    });
+    fireEvent.click(screen.getByLabelText(/Acepto los/));
+    fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
+
+    expect(await screen.findByText('No se pudo registrar')).toBeInTheDocument();
+    expect(mockReportError).toHaveBeenCalled();
+  });
+
+  it('calls onLoginClick when login button is clicked', () => {
+    render(<Register onLoginClick={mockOnLoginClick} />);
     fireEvent.click(screen.getByText('Inicia sesión'));
     expect(mockOnLoginClick).toHaveBeenCalled();
   });

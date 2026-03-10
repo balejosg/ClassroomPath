@@ -12,7 +12,7 @@
     "db:seed:e2e": "tsx scripts/seed-e2e.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:coverage": "NODE_ENV=test node scripts/run-test-coverage.mjs",
-    "test:integration": "node --import tsx --test --test-concurrency=1 tests/integration/*.test.ts"
+    "test:integration": "node scripts/run-integration-tests.mjs"
   },
   "dependencies": {
     "@trpc/server": "^11.8.1",

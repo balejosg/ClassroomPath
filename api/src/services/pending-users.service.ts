@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { openpathDb, openpathSchema } from '../db/openpath.js';
 import { generateId } from '../lib/id.js';
@@ -46,9 +46,9 @@ export async function listPendingUsers(organizationId: string): Promise<PendingU
       email: openpathSchema.users.email,
       name: openpathSchema.users.name,
     })
-    .from(openpathSchema.users);
+    .from(openpathSchema.users)
+    .where(inArray(openpathSchema.users.id, userIds));
 
-  // Filter to only the users we need (drizzle doesn't support IN easily)
   const userMap = new Map(openpathUsers.map((u) => [u.id, u]));
 
   return waitingUsers

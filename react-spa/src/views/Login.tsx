@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import GoogleLoginButton from '@openpath/src/components/GoogleLoginButton';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
@@ -12,6 +12,10 @@ interface LoginProps {
 }
 
 type AuthResultWithUser = { user: unknown };
+type VerificationDeliveryResult = {
+  verificationUrl?: string;
+  emailSent?: boolean;
+};
 
 function isAuthResultWithUser(value: unknown): value is AuthResultWithUser {
   return typeof value === 'object' && value !== null && 'user' in value;
@@ -20,35 +24,144 @@ function isAuthResultWithUser(value: unknown): value is AuthResultWithUser {
 export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword }: LoginProps) {
   const loginMutation = cpTrpcReact.auth.login.useMutation();
   const googleLoginMutation = cpTrpcReact.auth.googleLogin.useMutation();
+  const resendVerificationMutation = cpTrpcReact.auth.generateEmailVerificationToken.useMutation();
+  const verifyEmailMutation = cpTrpcReact.auth.verifyEmail.useMutation();
 
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [verificationUrl, setVerificationUrl] = useState('');
+  const [showResendVerification, setShowResendVerification] = useState(false);
+  const [isVerifyingFromLink, setIsVerifyingFromLink] = useState(false);
+  const handledVerificationLinkRef = useRef(false);
 
-  const isLoading = loginMutation.isPending || googleLoginMutation.isPending;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (handledVerificationLinkRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const emailFromLink = params.get('email');
+
+    if (!token || !emailFromLink) return;
+    handledVerificationLinkRef.current = true;
+
+    const normalizedEmail = emailFromLink.trim().toLowerCase();
+    setEmail(normalizedEmail);
+    setError('');
+    setInfo('Verificando tu correo...');
+    setVerificationUrl('');
+    setShowResendVerification(false);
+    setIsVerifyingFromLink(true);
+
+    void verifyEmailMutation
+      .mutateAsync({ email: normalizedEmail, token })
+      .then(() => {
+        setInfo('Correo verificado. Ya puedes iniciar sesion.');
+        setShowResendVerification(false);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'No se pudo verificar tu correo');
+        setInfo('');
+        setShowResendVerification(true);
+        reportError('Failed to verify email', err, {
+          action: 'verify-email',
+          userRole: 'anonymous',
+          email: normalizedEmail,
+        });
+      })
+      .finally(() => {
+        setIsVerifyingFromLink(false);
+        window.history.replaceState({}, '', '/login');
+      });
+  }, [verifyEmailMutation]);
+
+  const isLoading =
+    loginMutation.isPending ||
+    googleLoginMutation.isPending ||
+    resendVerificationMutation.isPending ||
+    verifyEmailMutation.isPending;
+
+  const resendVerification = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError('Introduce tu correo para reenviar la verificacion');
+      return;
+    }
+
+    setError('');
+    setInfo('');
+    setVerificationUrl('');
+
+    try {
+      const result = (await resendVerificationMutation.mutateAsync({
+        email: normalizedEmail,
+      })) as VerificationDeliveryResult;
+      setShowResendVerification(true);
+      setVerificationUrl(typeof result?.verificationUrl === 'string' ? result.verificationUrl : '');
+      setInfo(
+        result?.emailSent === true
+          ? 'Te enviamos un nuevo enlace de verificacion.'
+          : 'No pudimos confirmar la entrega del correo. Usa el enlace manual.'
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo reenviar la verificacion');
+      reportError('Failed to resend email verification', err, {
+        action: 'resend-email-verification',
+        userRole: 'anonymous',
+        email: normalizedEmail,
+      });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setInfo('');
+    setVerificationUrl('');
+
+    const normalizedEmail = email.trim().toLowerCase();
+    setEmail(normalizedEmail);
+
     try {
-      const result = await loginMutation.mutateAsync({ email, password });
+      const result = await loginMutation.mutateAsync({ email: normalizedEmail, password });
       persistSession({ user: isAuthResultWithUser(result) ? result.user : undefined });
       onLogin();
     } catch (err) {
-      setError('Credenciales inválidas o error de conexión');
-      reportError('Failed to login:', err);
+      const message = err instanceof Error ? err.message : '';
+      const requiresVerification = /verification/i.test(message);
+
+      setShowResendVerification(requiresVerification);
+      setError(
+        requiresVerification
+          ? 'Debes verificar tu correo antes de iniciar sesion.'
+          : 'Credenciales invalidas o error de conexion'
+      );
+      reportError('Failed to login', err, {
+        action: 'login',
+        userRole: 'anonymous',
+        email: normalizedEmail,
+        requiresVerification,
+      });
     }
   };
 
   const handleGoogleSuccess = async (idToken: string) => {
     setError('');
+    setInfo('');
+    setVerificationUrl('');
+    setShowResendVerification(false);
     try {
       const result = await googleLoginMutation.mutateAsync({ idToken });
       persistSession({ user: isAuthResultWithUser(result) ? result.user : undefined });
       onLogin();
     } catch (err: any) {
       setError(err?.message || 'Error al iniciar sesión con Google');
-      reportError('Failed to login with Google:', err);
+      reportError('Failed to login with Google', err, {
+        action: 'google-login',
+        userRole: 'anonymous',
+      });
     }
   };
 
@@ -87,6 +200,24 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
               <span className="font-semibold">Error:</span> {error}
             </div>
           )}
+
+          {info && (
+            <div className="mb-4 p-3 bg-blue-50 text-blue-700 text-sm rounded-lg border border-blue-100">
+              {info}
+            </div>
+          )}
+
+          {verificationUrl ? (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+              <p className="font-semibold text-amber-900">Enlace manual de verificacion</p>
+              <a
+                href={verificationUrl}
+                className="mt-2 block break-all text-blue-600 hover:underline"
+              >
+                {verificationUrl}
+              </a>
+            </div>
+          ) : null}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
@@ -153,6 +284,20 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
                 </>
               )}
             </button>
+
+            {showResendVerification ? (
+              <button
+                type="button"
+                data-testid="login-resend-verification"
+                disabled={isLoading || email.trim().length === 0}
+                onClick={() => void resendVerification()}
+                className="w-full border border-slate-300 text-slate-700 font-medium py-2.5 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isVerifyingFromLink || resendVerificationMutation.isPending
+                  ? 'Procesando...'
+                  : 'Reenviar verificacion'}
+              </button>
+            ) : null}
 
             <div className="relative py-2">
               <div className="absolute inset-0 flex items-center">

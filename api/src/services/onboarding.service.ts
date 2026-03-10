@@ -1,5 +1,7 @@
 import { eq } from 'drizzle-orm';
+import { TRPCError } from '@trpc/server';
 import { db, schema } from '../db/index.js';
+import { openpathDb, openpathSchema } from '../db/openpath.js';
 import { generateId } from '../lib/id.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
 import { config } from '../config.js';
@@ -74,6 +76,23 @@ export async function getOnboardingStatus(userId: string): Promise<OnboardingSta
 }
 
 export async function assertCanStartOnboarding(userId: string): Promise<void> {
+  const [user] = await openpathDb
+    .select({ id: openpathSchema.users.id, emailVerified: openpathSchema.users.emailVerified })
+    .from(openpathSchema.users)
+    .where(eq(openpathSchema.users.id, userId))
+    .limit(1);
+
+  if (!user) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+  }
+
+  if (!user.emailVerified) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Email verification required before onboarding',
+    });
+  }
+
   await assertNoExistingMembershipOrThrow(userId);
 }
 

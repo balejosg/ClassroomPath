@@ -214,15 +214,7 @@ function AppContent() {
   if (!isAuth) {
     switch (authView) {
       case 'register':
-        return (
-          <Register
-            onLoginClick={() => setAuthView('login')}
-            onSuccess={() => {
-              setAuthView('login');
-              setIsAuth(true);
-            }}
-          />
-        );
+        return <Register onLoginClick={() => setAuthView('login')} />;
       case 'reset-password':
         return <ResetPassword onLoginClick={() => setAuthView('login')} />;
       case 'accept-invitation':

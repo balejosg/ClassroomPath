@@ -112,6 +112,8 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
     const acceptResponse = await trpcMutate(integration.baseUrl, 'auth.acceptInvitation', {
       token,
       password: 'InvitePassword123',
+      termsAccepted: true,
+      termsVersion: '2026-03-09',
     });
     assertStatus(acceptResponse, 200);
 
@@ -131,6 +133,7 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
       .where(eq(openpathSchema.users.email, invitedEmail))
       .limit(1);
     assert.ok(createdUser, 'OpenPath user should be created on invitation acceptance');
+    assert.strictEqual(createdUser.emailVerified, true);
 
     const memberships = await db
       .select()

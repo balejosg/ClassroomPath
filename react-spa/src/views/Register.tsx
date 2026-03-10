@@ -5,51 +5,43 @@ import { Card } from '@openpath/src/components/ui/Card';
 import { PasswordStrength } from '../components/PasswordStrength';
 import { validateEmail, validatePassword, ERROR_MESSAGES_ES } from '../utils/validation';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
-import { persistSession } from '../lib/auth-storage';
+import { reportError } from '../lib/reportError';
+import { CURRENT_TERMS_VERSION } from '../constants/legal';
 
 interface Props {
   onLoginClick: () => void;
-  onSuccess: () => void;
 }
 
-type AuthResultWithUser = { user: unknown };
-
-function isAuthResultWithUser(value: unknown): value is AuthResultWithUser {
-  return typeof value === 'object' && value !== null && 'user' in value;
+interface RegisterResult {
+  email: string;
+  emailSent: boolean;
+  verificationUrl: string;
 }
 
-export function Register({ onLoginClick, onSuccess }: Props) {
+export function Register({ onLoginClick }: Props) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState('');
+  const [registrationState, setRegistrationState] = useState<null | {
+    email: string;
+    emailSent: boolean;
+    verificationUrl: string;
+  }>(null);
 
-  const loginMutation = cpTrpcReact.auth.login.useMutation();
+  const registerMutation = cpTrpcReact.auth.register.useMutation();
 
-  const registerMutation = cpTrpcReact.auth.register.useMutation({
-    onSuccess: async () => {
-      // OpenPath register does not return tokens; do auto-login for better UX.
-      try {
-        const result = await loginMutation.mutateAsync({ email, password });
-        persistSession({ user: isAuthResultWithUser(result) ? result.user : undefined });
-        onSuccess();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : ERROR_MESSAGES_ES.loginFailed);
-      }
-    },
-    onError: (err) => {
-      setError(err.message || ERROR_MESSAGES_ES.registrationFailed);
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
+    const normalizedEmail = email.trim().toLowerCase();
+    const trimmedName = name.trim();
+
     // Validaciones
-    if (!validateEmail(email)) {
+    if (!validateEmail(normalizedEmail)) {
       setError(ERROR_MESSAGES_ES.invalidEmail);
       return;
     }
@@ -70,10 +62,69 @@ export function Register({ onLoginClick, onSuccess }: Props) {
       return;
     }
 
-    registerMutation.mutate({ email, name, password });
+    try {
+      const result = (await registerMutation.mutateAsync({
+        email: normalizedEmail,
+        name: trimmedName,
+        password,
+        termsAccepted: true,
+        termsVersion: CURRENT_TERMS_VERSION,
+      })) as Partial<RegisterResult>;
+
+      setRegistrationState({
+        email: typeof result?.email === 'string' ? result.email : normalizedEmail,
+        emailSent: result?.emailSent === true,
+        verificationUrl: typeof result?.verificationUrl === 'string' ? result.verificationUrl : '',
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : ERROR_MESSAGES_ES.registrationFailed);
+      reportError('Failed to register user', err, {
+        action: 'register',
+        userRole: 'anonymous',
+        email: normalizedEmail,
+      });
+    }
   };
 
-  const isBusy = registerMutation.isPending || loginMutation.isPending;
+  const isBusy = registerMutation.isPending;
+
+  if (registrationState) {
+    const shouldShowManualVerificationLink =
+      registrationState.verificationUrl.length > 0 &&
+      (!registrationState.emailSent ||
+        (typeof window !== 'undefined' &&
+          ['localhost', '127.0.0.1'].includes(window.location.hostname)));
+
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <Card className="w-full max-w-md p-8">
+          <h1 className="text-2xl font-bold mb-4 text-center">Revisa tu correo</h1>
+          <p className="text-sm text-gray-600 text-center leading-relaxed">
+            {registrationState.emailSent
+              ? `Enviamos un enlace de verificacion a ${registrationState.email}.`
+              : `No pudimos confirmar la entrega del correo a ${registrationState.email}. Usa el enlace manual de abajo.`}
+          </p>
+
+          {shouldShowManualVerificationLink ? (
+            <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
+              <p className="font-medium text-amber-900">Enlace manual de verificacion</p>
+              <a
+                data-testid="register-manual-verification-link"
+                href={registrationState.verificationUrl}
+                className="mt-2 block break-all text-blue-600 hover:underline"
+              >
+                {registrationState.verificationUrl}
+              </a>
+            </div>
+          ) : null}
+
+          <Button type="button" onClick={onLoginClick} className="mt-6 w-full cursor-pointer">
+            Ir a iniciar sesion
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">

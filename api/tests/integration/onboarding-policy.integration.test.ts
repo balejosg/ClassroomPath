@@ -4,6 +4,7 @@ process.env.NODE_ENV = 'test';
 
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../../src/db/index.js';
 import {
@@ -171,6 +172,61 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
     };
     assert.strictEqual(parsed.data?.isWaiting, true);
     assert.strictEqual(parsed.data?.policy?.allowOrgDirectory, false);
+  });
+
+  test('allows generic waiting when the directory is hidden and multiple orgs exist', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.CP_ALLOW_SELF_SERVICE_ORGS;
+    delete process.env.CP_ALLOW_ORG_DIRECTORY;
+
+    await db.insert(schema.cpOrganizations).values([
+      {
+        id: uniqueOrgId('org_policy_hidden_wait_1'),
+        name: 'Hidden Wait Org 1',
+        createdBy: 'seed-user',
+      },
+      {
+        id: uniqueOrgId('org_policy_hidden_wait_2'),
+        name: 'Hidden Wait Org 2',
+        createdBy: 'seed-user',
+      },
+    ]);
+
+    const userId = 'policy-prod-hidden-generic-wait';
+    const email = uniqueEmail('policy-prod-hidden-generic-wait');
+    const token = await issueToken(userId, email);
+
+    const waitResponse = await trpcMutate(
+      integration.baseUrl,
+      'onboarding.waitForInvitation',
+      {},
+      bearerAuth(token)
+    );
+    assert.strictEqual(waitResponse.status, 200);
+
+    const statusResponse = await trpcQuery(
+      integration.baseUrl,
+      'onboarding.status',
+      undefined,
+      bearerAuth(token)
+    );
+    assert.strictEqual(statusResponse.status, 200);
+    const statusParsed = (await parseTRPC(statusResponse)) as {
+      data?: { isWaiting?: boolean; policy?: { allowOrgDirectory?: boolean } };
+    };
+    assert.strictEqual(statusParsed.data?.isWaiting, true);
+    assert.strictEqual(statusParsed.data?.policy?.allowOrgDirectory, false);
+
+    const [storedStatus] = await db
+      .select({
+        status: schema.cpUserStatus.status,
+        targetOrganizationId: schema.cpUserStatus.targetOrganizationId,
+      })
+      .from(schema.cpUserStatus)
+      .where(eq(schema.cpUserStatus.userId, userId))
+      .limit(1);
+    assert.strictEqual(storedStatus?.status, 'waiting');
+    assert.strictEqual(storedStatus?.targetOrganizationId ?? null, null);
   });
 
   test('re-enables self-service creation and org discovery when feature flags are on', async () => {

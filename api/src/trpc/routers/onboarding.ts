@@ -127,11 +127,7 @@ export const onboardingRouter = router({
             message: 'No hay organizaciones disponibles',
           });
         } else if (!config.allowOrgDirectory) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message:
-              'El directorio de organizaciones está deshabilitado. Solicita una invitación directa a tu administrador',
-          });
+          await onboardingService.setWaitingStatus(ctx.user.sub);
         } else {
           throw new TRPCError({
             code: 'BAD_REQUEST',

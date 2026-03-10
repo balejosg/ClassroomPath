@@ -5,6 +5,8 @@ import { Login } from '../Login';
 
 const mockLoginMutateAsync = vi.fn();
 const mockGoogleLoginMutateAsync = vi.fn();
+const mockResendVerificationMutateAsync = vi.fn();
+const mockVerifyEmailMutateAsync = vi.fn();
 const mockPersistSession = vi.fn();
 const mockReportError = vi.fn();
 
@@ -37,6 +39,18 @@ vi.mock('../../lib/dual-trpc-provider', () => ({
           isPending: false,
         })),
       },
+      generateEmailVerificationToken: {
+        useMutation: vi.fn(() => ({
+          mutateAsync: mockResendVerificationMutateAsync,
+          isPending: false,
+        })),
+      },
+      verifyEmail: {
+        useMutation: vi.fn(() => ({
+          mutateAsync: mockVerifyEmailMutateAsync,
+          isPending: false,
+        })),
+      },
     },
   },
 }));
@@ -52,6 +66,14 @@ vi.mock('../../lib/reportError', () => ({
 describe('Login View', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.pushState({}, '', '/login');
+    mockResendVerificationMutateAsync.mockResolvedValue({
+      email: 'teacher@example.com',
+      emailSent: true,
+      verificationRequired: true,
+      verificationUrl: 'https://classroompath.local/login?email=teacher%40example.com&token=abc',
+    });
+    mockVerifyEmailMutateAsync.mockResolvedValue({ success: true });
   });
 
   it('uses recommended autocomplete attributes for auth fields', () => {
@@ -98,7 +120,7 @@ describe('Login View', () => {
     render(<Login onLogin={onLogin} onNavigateToRegister={vi.fn()} />);
 
     fireEvent.change(screen.getByTestId('login-email'), {
-      target: { value: 'teacher@example.com' },
+      target: { value: ' Teacher@Example.com ' },
     });
     fireEvent.change(screen.getByTestId('login-password'), {
       target: { value: 'password123' },
@@ -134,9 +156,53 @@ describe('Login View', () => {
     fireEvent.click(screen.getByTestId('login-submit'));
 
     expect(
-      await screen.findByText('Credenciales inválidas o error de conexión')
+      await screen.findByText('Credenciales invalidas o error de conexion')
     ).toBeInTheDocument();
     expect(mockReportError).toHaveBeenCalled();
+  });
+
+  it('surfaces the verification gate and allows resending the link', async () => {
+    mockLoginMutateAsync.mockRejectedValue(
+      new Error('Email verification required before signing in')
+    );
+
+    render(<Login onLogin={vi.fn()} onNavigateToRegister={vi.fn()} />);
+
+    fireEvent.change(screen.getByTestId('login-email'), {
+      target: { value: 'teacher@example.com' },
+    });
+    fireEvent.change(screen.getByTestId('login-password'), {
+      target: { value: 'password123' },
+    });
+    fireEvent.click(screen.getByTestId('login-submit'));
+
+    expect(
+      await screen.findByText('Debes verificar tu correo antes de iniciar sesion.')
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('login-resend-verification'));
+
+    await waitFor(() => {
+      expect(mockResendVerificationMutateAsync).toHaveBeenCalledWith({
+        email: 'teacher@example.com',
+      });
+    });
+    expect(await screen.findByText('Te enviamos un nuevo enlace de verificacion.')).toBeVisible();
+  });
+
+  it('verifies the email automatically when the login route receives a token', async () => {
+    window.history.pushState({}, '', '/login?email=teacher%40example.com&token=verify-token-123');
+
+    render(<Login onLogin={vi.fn()} onNavigateToRegister={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(mockVerifyEmailMutateAsync).toHaveBeenCalledWith({
+        email: 'teacher@example.com',
+        token: 'verify-token-123',
+      });
+    });
+
+    expect(await screen.findByText('Correo verificado. Ya puedes iniciar sesion.')).toBeVisible();
   });
 
   it('shows the upstream message when Google login fails', async () => {

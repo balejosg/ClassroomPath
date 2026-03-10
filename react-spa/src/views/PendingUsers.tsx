@@ -44,7 +44,12 @@ export function PendingUsers() {
       await approveMutation.mutateAsync({ userId, role });
       refetch();
     } catch (err) {
-      reportError('Error approving user:', err);
+      reportError('Error approving user', err, {
+        action: 'approve-pending-user',
+        userRole: 'admin',
+        targetUserId: userId,
+        assignedRole: role,
+      });
     } finally {
       setProcessingUser(null);
     }
@@ -58,7 +63,11 @@ export function PendingUsers() {
       await rejectMutation.mutateAsync({ userId });
       refetch();
     } catch (err) {
-      reportError('Error rejecting user:', err);
+      reportError('Error rejecting user', err, {
+        action: 'reject-pending-user',
+        userRole: 'admin',
+        targetUserId: userId,
+      });
     } finally {
       setProcessingUser(null);
     }

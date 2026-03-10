@@ -137,6 +137,48 @@ describe('pending-users.service', () => {
     assert.strictEqual(pendingUsers[0]?.email, `${WAITING_USER_ID}@example.com`);
   });
 
+  test('listPendingUsers scopes the OpenPath lookup to the waiting user ids', async () => {
+    await deleteWaitingStatus(WAITING_USER_ID);
+
+    await db.insert(schema.cpUserStatus).values({
+      userId: WAITING_USER_ID,
+      status: 'waiting',
+      targetOrganizationId: ORG_ID,
+    });
+
+    const originalSelect = openpathDb.select.bind(openpathDb);
+    let scopedLookupSql = '';
+
+    (openpathDb as any).select = (...args: any[]) => {
+      const builder = originalSelect(...args);
+      const originalFrom = builder.from.bind(builder);
+
+      builder.from = (...fromArgs: any[]) => {
+        const result = originalFrom(...fromArgs);
+        const originalWhere = result.where.bind(result);
+
+        result.where = (...whereArgs: any[]) => {
+          const whereResult = originalWhere(...whereArgs);
+          scopedLookupSql = whereResult.toSQL().sql;
+          return whereResult;
+        };
+
+        return result;
+      };
+
+      return builder;
+    };
+
+    try {
+      await listPendingUsers(ORG_ID);
+    } finally {
+      (openpathDb as any).select = originalSelect;
+    }
+
+    assert.match(scopedLookupSql, /where/i);
+    assert.match(scopedLookupSql, / in /i);
+  });
+
   test('approveUser upgrades an existing lower OpenPath role instead of creating a duplicate', async () => {
     await deleteWaitingStatus(WAITING_USER_ID);
     await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, WAITING_USER_ID));

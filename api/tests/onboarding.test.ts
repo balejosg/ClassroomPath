@@ -27,7 +27,7 @@ describe('Onboarding Service', () => {
       name: 'Test User',
       passwordHash: 'hashed_password_placeholder',
       isActive: true,
-      emailVerified: false,
+      emailVerified: true,
     });
   });
 
@@ -91,7 +91,7 @@ describe('Onboarding Service', () => {
       name: 'Regression Test User',
       passwordHash: 'hashed_password_placeholder',
       isActive: true,
-      emailVerified: false,
+      emailVerified: true,
     });
 
     // Create organization (this should assign admin role)
@@ -155,5 +155,27 @@ describe('Onboarding Service', () => {
 
     const status = await onboardingService.getOnboardingStatus(waitingUserId);
     assert.strictEqual(status.isWaiting, false);
+  });
+
+  it('blocks onboarding for unverified users', async () => {
+    const unverifiedUserId = TEST_USER_ID + '-unverified';
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: unverifiedUserId,
+      email: `unverified-${Date.now()}@example.com`,
+      name: 'Unverified User',
+      passwordHash: 'hashed_password_placeholder',
+      isActive: true,
+      emailVerified: false,
+    });
+
+    await assert.rejects(
+      onboardingService.assertCanStartOnboarding(unverifiedUserId),
+      /verification required/i
+    );
+
+    await openpathDb
+      .delete(openpathSchema.users)
+      .where(eq(openpathSchema.users.id, unverifiedUserId));
   });
 });

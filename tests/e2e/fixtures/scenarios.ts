@@ -2,6 +2,7 @@ import { expect, type Browser, type BrowserContext, type Page } from '@playwrigh
 
 import {
   createTestUser,
+  expectWaitingPage,
   getE2EBaseUrl,
   loginAsAdmin,
   registerUser,
@@ -14,14 +15,17 @@ export async function registerAndRequestAccess(page: Page, user: TestUser): Prom
   await expect(page.getByText(/Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
 
   const orgSelect = page.getByTestId('onboarding-target-org');
-  await expect(orgSelect).toBeVisible({ timeout: 10000 });
-  const optionCount = await orgSelect.locator('option').count();
-  if (optionCount > 1) {
-    await orgSelect.selectOption({ index: 1 });
+  const hasDirectorySelector = await orgSelect.isVisible().catch(() => false);
+  if (hasDirectorySelector) {
+    const optionCount = await orgSelect.locator('option').count();
+    if (optionCount > 1) {
+      await orgSelect.selectOption({ index: 1 });
+    }
   }
 
   await page.getByRole('button', { name: /Solicitar Acceso|Request|Esperar/i }).click();
-  await expect(page.getByText(/Esperando|Waiting/i)).toBeVisible({ timeout: 10000 });
+  await waitForNetworkIdle(page);
+  await expectWaitingPage(page);
 }
 
 export async function createPendingUserContext(

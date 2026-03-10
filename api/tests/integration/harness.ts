@@ -31,6 +31,7 @@ export interface IntegrationServerHandle {
 let mockOpenPathServer: Server | undefined;
 let mockOpenPathBaseUrl: string | undefined;
 const revokedMockTokens = new Set<string>();
+const mockVerificationTokens = new Map<string, { token: string; expiresAt: string }>();
 let mockReadyMode: 'ready' | 'degraded' | 'unavailable' = 'ready';
 let mockSystemInfoMode: 'healthy' | 'database-down' | 'unavailable' = 'healthy';
 let mockApiTokensListMode: 'ok' | 'unavailable' = 'ok';
@@ -40,11 +41,19 @@ function toMockUserId(prefix: string, email: string): string {
   return `${prefix}-${slug}`.slice(0, 50);
 }
 
+function issueMockVerificationToken(email: string): { token: string; expiresAt: string } {
+  const token = `verify-${Math.random().toString(36).slice(2, 12)}`;
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  mockVerificationTokens.set(email, { token, expiresAt });
+  return { token, expiresAt };
+}
+
 async function buildMockAuthMeResponse(token: string): Promise<{
   user: {
     id: string;
     email: string;
     name: string;
+    emailVerified: boolean;
     roles: Array<{ role: string; groupIds: string[] }>;
   };
 }> {
@@ -60,6 +69,7 @@ async function buildMockAuthMeResponse(token: string): Promise<{
     .select({
       email: openpathSchema.users.email,
       name: openpathSchema.users.name,
+      emailVerified: openpathSchema.users.emailVerified,
     })
     .from(openpathSchema.users)
     .where(eq(openpathSchema.users.id, sub))
@@ -105,6 +115,7 @@ async function buildMockAuthMeResponse(token: string): Promise<{
       id: sub,
       email,
       name,
+      emailVerified: userRow?.emailVerified ?? false,
       roles,
     },
   };
@@ -127,43 +138,83 @@ async function ensureMockOpenPathServer(): Promise<string> {
 
   app.post('/trpc/auth.login', (req, res) => {
     const body = req.body as { email?: unknown } | undefined;
-    const email = typeof body?.email === 'string' ? body.email : 'login@test.local';
-    const userId = toMockUserId('mock-login', email);
-    const accessToken = signToken({
-      userId,
-      email,
-      name: 'Mock Login User',
-      roles: [],
-    });
-    const refreshToken = signToken({
-      userId,
-      email,
-      name: 'Mock Login User',
-      roles: [],
-      type: 'refresh',
-    });
+    const email =
+      typeof body?.email === 'string' ? body.email.trim().toLowerCase() : 'login@test.local';
 
-    res.json({
-      result: {
-        data: {
-          accessToken,
-          refreshToken,
-          tokenType: 'Bearer',
-          expiresIn: 3600,
-          user: {
-            id: userId,
-            email,
-            name: 'Mock Login User',
-            roles: [],
+    void (async () => {
+      const [user] = await openpathDb
+        .select({
+          id: openpathSchema.users.id,
+          email: openpathSchema.users.email,
+          name: openpathSchema.users.name,
+          emailVerified: openpathSchema.users.emailVerified,
+        })
+        .from(openpathSchema.users)
+        .where(eq(openpathSchema.users.email, email))
+        .limit(1);
+
+      if (!user) {
+        return res.status(401).json({
+          error: {
+            message: 'Invalid credentials',
+            code: 'UNAUTHORIZED',
+          },
+        });
+      }
+
+      if (!user.emailVerified) {
+        return res.status(403).json({
+          error: {
+            message: 'Email verification required before signing in',
+            code: 'FORBIDDEN',
+          },
+        });
+      }
+
+      const accessToken = signToken({
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        roles: [],
+      });
+      const refreshToken = signToken({
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        roles: [],
+        type: 'refresh',
+      });
+
+      return res.json({
+        result: {
+          data: {
+            accessToken,
+            refreshToken,
+            tokenType: 'Bearer',
+            expiresIn: 3600,
+            user: {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              roles: [],
+            },
           },
         },
-      },
+      });
+    })().catch(() => {
+      res.status(500).json({
+        error: {
+          message: 'Mock login failed',
+          code: 'INTERNAL_SERVER_ERROR',
+        },
+      });
     });
   });
 
   app.post('/trpc/auth.register', async (req, res) => {
     const body = req.body as { email?: unknown; name?: unknown } | undefined;
-    const email = typeof body?.email === 'string' ? body.email : 'register@test.local';
+    const email =
+      typeof body?.email === 'string' ? body.email.trim().toLowerCase() : 'register@test.local';
     if (email === 'mock-register-invalid-json@test.local') {
       return res.type('text/plain').send('mock register invalid json');
     }
@@ -186,35 +237,123 @@ async function ensureMockOpenPathServer(): Promise<string> {
         isActive: true,
         emailVerified: false,
       });
+    } else {
+      return res.status(409).json({
+        error: {
+          message: 'Email already registered',
+          code: 'CONFLICT',
+        },
+      });
     }
 
-    const accessToken = signToken({
-      userId,
-      email,
-      name,
-      roles: [],
-    });
-    const refreshToken = signToken({
-      userId,
-      email,
-      name,
-      roles: [],
-      type: 'refresh',
-    });
+    const verification = issueMockVerificationToken(email);
 
     return res.json({
       result: {
         data: {
-          accessToken,
-          refreshToken,
-          tokenType: 'Bearer',
-          expiresIn: 3600,
           user: {
             id: userId,
             email,
             name,
             roles: [],
           },
+          verificationRequired: true,
+          verificationToken: verification.token,
+          verificationExpiresAt: verification.expiresAt,
+        },
+      },
+    });
+  });
+
+  app.post('/trpc/auth.generateEmailVerificationToken', async (req, res) => {
+    const body = req.body as { email?: unknown } | undefined;
+    const email =
+      typeof body?.email === 'string' ? body.email.trim().toLowerCase() : 'verify@test.local';
+
+    const [user] = await openpathDb
+      .select({
+        id: openpathSchema.users.id,
+        email: openpathSchema.users.email,
+        emailVerified: openpathSchema.users.emailVerified,
+      })
+      .from(openpathSchema.users)
+      .where(eq(openpathSchema.users.email, email))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({
+        error: {
+          message: 'User not found',
+          code: 'NOT_FOUND',
+        },
+      });
+    }
+
+    if (user.emailVerified) {
+      return res.status(409).json({
+        error: {
+          message: 'Email is already verified',
+          code: 'CONFLICT',
+        },
+      });
+    }
+
+    const verification = issueMockVerificationToken(email);
+    return res.json({
+      result: {
+        data: {
+          email,
+          verificationRequired: true,
+          verificationToken: verification.token,
+          verificationExpiresAt: verification.expiresAt,
+        },
+      },
+    });
+  });
+
+  app.post('/trpc/auth.verifyEmail', async (req, res) => {
+    const body = req.body as { email?: unknown; token?: unknown } | undefined;
+    const email =
+      typeof body?.email === 'string' ? body.email.trim().toLowerCase() : 'verify@test.local';
+    const token = typeof body?.token === 'string' ? body.token : '';
+
+    const [user] = await openpathDb
+      .select({ emailVerified: openpathSchema.users.emailVerified })
+      .from(openpathSchema.users)
+      .where(eq(openpathSchema.users.email, email))
+      .limit(1);
+
+    if (user?.emailVerified) {
+      return res.json({
+        result: {
+          data: {
+            success: true,
+          },
+        },
+      });
+    }
+
+    const verification = mockVerificationTokens.get(email);
+    if (!verification || verification.token !== token) {
+      return res.status(400).json({
+        error: {
+          message: 'Invalid verification token',
+          code: 'BAD_REQUEST',
+        },
+      });
+    }
+
+    await openpathDb
+      .update(openpathSchema.users)
+      .set({ emailVerified: true })
+      .where(eq(openpathSchema.users.email, email));
+
+    mockVerificationTokens.delete(email);
+
+    return res.json({
+      result: {
+        data: {
+          success: true,
         },
       },
     });
@@ -223,6 +362,19 @@ async function ensureMockOpenPathServer(): Promise<string> {
   app.post('/trpc/auth.googleLogin', (_req, res) => {
     const email = 'google-login@test.local';
     const userId = 'mock-google-login-user';
+
+    void openpathDb
+      .insert(openpathSchema.users)
+      .values({
+        id: userId,
+        email,
+        name: 'Mock Google User',
+        passwordHash: 'mock-google-hash',
+        isActive: true,
+        emailVerified: true,
+      })
+      .onConflictDoNothing();
+
     const accessToken = signToken({
       userId,
       email,
@@ -474,6 +626,7 @@ export function setMockOpenPathApiTokensListMode(mode: typeof mockApiTokensListM
 
 export function resetMockOpenPathUpstreamState(): void {
   revokedMockTokens.clear();
+  mockVerificationTokens.clear();
   mockReadyMode = 'ready';
   mockSystemInfoMode = 'healthy';
   mockApiTokensListMode = 'ok';
@@ -521,6 +674,7 @@ export async function ensureOpenPathUser(user: TestUser): Promise<void> {
       email: user.email,
       name: user.name,
       passwordHash: 'hashed',
+      emailVerified: true,
     })
     .onConflictDoNothing();
 }

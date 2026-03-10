@@ -14,6 +14,7 @@ export const OpenPathMeResponseSchema = z
         id: z.string().min(1),
         email: z.string().min(1),
         name: z.string().min(1),
+        emailVerified: z.boolean().optional(),
         roles: z.array(OpenPathRoleInfoSchema).optional().default([]),
       })
       .passthrough(),

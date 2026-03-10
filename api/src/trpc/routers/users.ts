@@ -16,14 +16,14 @@ import {
 } from '../../services/user.service.js';
 
 const CreateUserSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1).max(255),
+  email: z.string().trim().email(),
+  name: z.string().trim().min(1).max(255),
   role: z.enum(['admin', 'teacher']).default('teacher'),
 });
 
 const UpdateUserSchema = z.object({
   id: z.string(),
-  name: z.string().min(1).max(255).optional(),
+  name: z.string().trim().min(1).max(255).optional(),
   active: z.boolean().optional(),
 });
 
