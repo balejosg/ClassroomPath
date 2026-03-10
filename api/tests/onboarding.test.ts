@@ -1,10 +1,11 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert';
 import { db, schema } from '../src/db/index.js';
 import { openpathDb, openpathSchema } from '../src/db/openpath.js';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import * as onboardingService from '../src/services/onboarding.service.js';
 import * as openpathRolesLib from '../src/lib/openpath-roles.js';
+import { withTestDbLock } from './test-utils.js';
 
 /**
  * Mirrors the isAdminToken check from OpenPath's auth.ts
@@ -15,34 +16,59 @@ function isAdminToken(decoded: { roles?: Array<{ role: string }> } | null): bool
   return decoded.roles.some((r) => r.role === 'admin');
 }
 
-const TEST_USER_ID = 'test-user-' + Date.now();
+const RUN_ID = Date.now().toString(36);
+let userCounter = 0;
+const trackedUserIds = new Set<string>();
+const trackedOrganizationIds = new Set<string>();
+
+function nextUserId(label: string): string {
+  userCounter += 1;
+  return `test-user-${RUN_ID}-${label}-${String(userCounter)}`;
+}
+
+async function seedOpenPathUser(params: {
+  userId: string;
+  email: string;
+  name: string;
+  emailVerified?: boolean;
+}) {
+  trackedUserIds.add(params.userId);
+  await openpathDb.insert(openpathSchema.users).values({
+    id: params.userId,
+    email: params.email,
+    name: params.name,
+    passwordHash: 'hashed_password_placeholder',
+    isActive: true,
+    emailVerified: params.emailVerified ?? true,
+  });
+}
 
 describe('Onboarding Service', () => {
-  // Setup: Create test user in OpenPath users table
-  before(async () => {
-    // Create base test user
-    await openpathDb.insert(openpathSchema.users).values({
-      id: TEST_USER_ID,
-      email: `test-${Date.now()}@example.com`,
-      name: 'Test User',
-      passwordHash: 'hashed_password_placeholder',
-      isActive: true,
-      emailVerified: true,
-    });
-  });
-
   after(async () => {
-    // Clean up in reverse order (respecting foreign keys)
-    await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, TEST_USER_ID));
-    await db.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, TEST_USER_ID));
-    await openpathDb
-      .delete(openpathSchema.roles)
-      .where(eq(openpathSchema.roles.userId, TEST_USER_ID));
-    await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, TEST_USER_ID));
+    const userIds = [...trackedUserIds];
+
+    if (userIds.length > 0) {
+      await db.delete(schema.cpMemberships).where(inArray(schema.cpMemberships.userId, userIds));
+      await db.delete(schema.cpUserStatus).where(inArray(schema.cpUserStatus.userId, userIds));
+      await openpathDb
+        .delete(openpathSchema.roles)
+        .where(inArray(openpathSchema.roles.userId, userIds));
+      await openpathDb
+        .delete(openpathSchema.users)
+        .where(inArray(openpathSchema.users.id, userIds));
+    }
+
+    if (trackedOrganizationIds.size > 0) {
+      await db
+        .delete(schema.cpOrganizations)
+        .where(inArray(schema.cpOrganizations.id, [...trackedOrganizationIds]));
+    }
   });
 
   it('should return no membership for new user', async () => {
-    const status = await onboardingService.getOnboardingStatus(TEST_USER_ID);
+    const userId = nextUserId('new');
+    trackedUserIds.add(userId);
+    const status = await withTestDbLock(() => onboardingService.getOnboardingStatus(userId));
 
     assert.strictEqual(status.hasMembership, false);
     assert.strictEqual(status.isWaiting, false);
@@ -50,27 +76,37 @@ describe('Onboarding Service', () => {
   });
 
   it('should create organization and admin membership', async () => {
-    const result = await onboardingService.createOrganization('Test School', TEST_USER_ID);
+    const userId = nextUserId('org-admin');
+    await withTestDbLock(async () => {
+      await seedOpenPathUser({
+        userId,
+        email: `${userId}@example.com`,
+        name: 'Test User',
+      });
 
-    assert.ok(result.organizationId.startsWith('org_'));
-    assert.ok(result.membershipId.startsWith('mem_'));
+      const result = await onboardingService.createOrganization('Test School', userId);
+      trackedOrganizationIds.add(result.organizationId);
 
-    const status = await onboardingService.getOnboardingStatus(TEST_USER_ID);
-    assert.strictEqual(status.hasMembership, true);
-    assert.strictEqual(status.organization?.name, 'Test School');
-    assert.strictEqual(status.organization?.role, 'admin');
+      assert.ok(result.organizationId.startsWith('org_'));
+      assert.ok(result.membershipId.startsWith('mem_'));
 
-    const openpathRoles = await openpathDb
-      .select()
-      .from(openpathSchema.roles)
-      .where(eq(openpathSchema.roles.userId, TEST_USER_ID));
+      const status = await onboardingService.getOnboardingStatus(userId);
+      assert.strictEqual(status.hasMembership, true);
+      assert.strictEqual(status.organization?.name, 'Test School');
+      assert.strictEqual(status.organization?.role, 'admin');
 
-    assert.strictEqual(openpathRoles.length, 1, 'Should create admin role in OpenPath');
-    assert.strictEqual(
-      openpathRoles[0].role,
-      'admin',
-      'Should assign admin role (not openpath-admin) for auth compatibility'
-    );
+      const openpathRoles = await openpathDb
+        .select()
+        .from(openpathSchema.roles)
+        .where(eq(openpathSchema.roles.userId, userId));
+
+      assert.strictEqual(openpathRoles.length, 1, 'Should create admin role in OpenPath');
+      assert.strictEqual(
+        openpathRoles[0].role,
+        'admin',
+        'Should assign admin role (not openpath-admin) for auth compatibility'
+      );
+    });
   });
 
   /**
@@ -82,23 +118,22 @@ describe('Onboarding Service', () => {
    * This test ensures the created role is compatible with the auth system.
    */
   it('BUG-001 regression: organization creator should pass isAdminToken check', async () => {
-    const regressionUserId = TEST_USER_ID + '-bug001';
+    const regressionUserId = nextUserId('bug001');
+    const roles = await withTestDbLock(async () => {
+      await seedOpenPathUser({
+        userId: regressionUserId,
+        email: `${regressionUserId}@example.com`,
+        name: 'Regression Test User',
+      });
 
-    // Create user in OpenPath first (required for foreign key)
-    await openpathDb.insert(openpathSchema.users).values({
-      id: regressionUserId,
-      email: `regression-${Date.now()}@example.com`,
-      name: 'Regression Test User',
-      passwordHash: 'hashed_password_placeholder',
-      isActive: true,
-      emailVerified: true,
+      const result = await onboardingService.createOrganization(
+        'Bug Test School',
+        regressionUserId
+      );
+      trackedOrganizationIds.add(result.organizationId);
+
+      return openpathRolesLib.getUserRoles(regressionUserId);
     });
-
-    // Create organization (this should assign admin role)
-    await onboardingService.createOrganization('Bug Test School', regressionUserId);
-
-    // Get the roles as the auth system would see them
-    const roles = await openpathRolesLib.getUserRoles(regressionUserId);
 
     // Simulate what the JWT payload would contain
     const mockDecodedToken = {
@@ -123,59 +158,48 @@ describe('Onboarding Service', () => {
       roles.some((r) => r.role === 'admin'),
       'Roles must include exactly "admin" (not "openpath-admin" or other variants)'
     );
-
-    // Cleanup
-    await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, regressionUserId));
-    await openpathDb
-      .delete(openpathSchema.roles)
-      .where(eq(openpathSchema.roles.userId, regressionUserId));
-    await openpathDb
-      .delete(openpathSchema.users)
-      .where(eq(openpathSchema.users.id, regressionUserId));
   });
 
   it('should set waiting status', async () => {
-    const waitingUserId = TEST_USER_ID + '-waiting';
+    const waitingUserId = nextUserId('waiting');
+    trackedUserIds.add(waitingUserId);
 
-    await onboardingService.setWaitingStatus(waitingUserId);
+    await withTestDbLock(async () => {
+      await onboardingService.setWaitingStatus(waitingUserId);
 
-    const status = await onboardingService.getOnboardingStatus(waitingUserId);
-    assert.strictEqual(status.hasMembership, false);
-    assert.strictEqual(status.isWaiting, true);
-
-    // Cleanup
-    await db.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, waitingUserId));
+      const status = await onboardingService.getOnboardingStatus(waitingUserId);
+      assert.strictEqual(status.hasMembership, false);
+      assert.strictEqual(status.isWaiting, true);
+    });
   });
 
   it('should clear waiting status', async () => {
-    const waitingUserId = TEST_USER_ID + '-clear';
+    const waitingUserId = nextUserId('clear');
+    trackedUserIds.add(waitingUserId);
 
-    await onboardingService.setWaitingStatus(waitingUserId);
-    await onboardingService.clearWaitingStatus(waitingUserId);
+    await withTestDbLock(async () => {
+      await onboardingService.setWaitingStatus(waitingUserId);
+      await onboardingService.clearWaitingStatus(waitingUserId);
 
-    const status = await onboardingService.getOnboardingStatus(waitingUserId);
-    assert.strictEqual(status.isWaiting, false);
+      const status = await onboardingService.getOnboardingStatus(waitingUserId);
+      assert.strictEqual(status.isWaiting, false);
+    });
   });
 
   it('blocks onboarding for unverified users', async () => {
-    const unverifiedUserId = TEST_USER_ID + '-unverified';
+    const unverifiedUserId = nextUserId('unverified');
+    await withTestDbLock(async () => {
+      await seedOpenPathUser({
+        userId: unverifiedUserId,
+        email: `${unverifiedUserId}@example.com`,
+        name: 'Unverified User',
+        emailVerified: false,
+      });
 
-    await openpathDb.insert(openpathSchema.users).values({
-      id: unverifiedUserId,
-      email: `unverified-${Date.now()}@example.com`,
-      name: 'Unverified User',
-      passwordHash: 'hashed_password_placeholder',
-      isActive: true,
-      emailVerified: false,
+      await assert.rejects(
+        onboardingService.assertCanStartOnboarding(unverifiedUserId),
+        /verification required/i
+      );
     });
-
-    await assert.rejects(
-      onboardingService.assertCanStartOnboarding(unverifiedUserId),
-      /verification required/i
-    );
-
-    await openpathDb
-      .delete(openpathSchema.users)
-      .where(eq(openpathSchema.users.id, unverifiedUserId));
   });
 });
