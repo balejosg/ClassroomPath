@@ -11,10 +11,13 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert';
 
+import { CURRENT_TERMS_VERSION } from '../api/src/services/legal-consent.service.js';
+
 // Get the target URL from environment
 const SMOKE_TEST_URL = process.env.SMOKE_TEST_URL;
 const SMOKE_TEST_TIMEOUT = parseInt(process.env.SMOKE_TEST_TIMEOUT || '10000', 10);
 const SMOKE_SKIP_CORS = process.env.SMOKE_SKIP_CORS === '1';
+const SMOKE_ALLOW_MUTATIONS = process.env.SMOKE_ALLOW_MUTATIONS === '1';
 const SMOKE_TEST_RETRIES = parseInt(process.env.SMOKE_TEST_RETRIES || '2', 10);
 const SMOKE_TEST_RETRY_DELAY_MS = parseInt(process.env.SMOKE_TEST_RETRY_DELAY_MS || '1000', 10);
 
@@ -47,6 +50,26 @@ interface ErrorResponse {
   };
   message?: string;
   path?: string;
+}
+
+interface TrpcEnvelope<T = unknown> {
+  result?: {
+    data?: T;
+  };
+  error?: {
+    message?: string;
+    code?: string;
+    data?: {
+      code?: string;
+    };
+  };
+}
+
+interface RegistrationSmokeResponse {
+  email?: string;
+  verificationRequired?: boolean;
+  verificationUrl?: string;
+  termsVersion?: string;
 }
 
 /**
@@ -151,6 +174,36 @@ function assertGatewaySecurityHeaders(response: Response): void {
   );
   assert.ok(csp, 'Gateway responses should include a content-security-policy header');
   assert.match(csp, /default-src 'self'/);
+}
+
+function uniqueSmokeEmail(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`;
+}
+
+function parseTrpcEnvelope<T>(payload: unknown): {
+  data?: T;
+  error?: {
+    message?: string;
+    code?: string;
+  };
+} {
+  if (!payload || typeof payload !== 'object') {
+    return {};
+  }
+
+  const envelope = payload as TrpcEnvelope<T>;
+  if (envelope.result !== undefined) {
+    return { data: envelope.result.data };
+  }
+  if (envelope.error !== undefined) {
+    return {
+      error: {
+        message: envelope.error.message,
+        code: envelope.error.data?.code ?? envelope.error.code,
+      },
+    };
+  }
+  return {};
 }
 
 void describe('Smoke Tests - Live Deployment Verification', () => {
@@ -485,6 +538,46 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
       }
     });
   });
+
+  void describe(
+    'Staging-only Registration Flow',
+    {
+      skip: !SMOKE_TEST_URL || !SMOKE_ALLOW_MUTATIONS,
+    },
+    () => {
+      void test('POST /cp/trpc/auth.register succeeds for a fresh user', async () => {
+        const email = uniqueSmokeEmail('smoke-register');
+        const response = await fetchWithRetry(
+          `${SMOKE_TEST_URL}/cp/trpc/auth.register`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email,
+              name: 'Smoke Registration',
+              password: 'SecurePassword123!',
+              termsAccepted: true,
+              termsVersion: CURRENT_TERMS_VERSION,
+            }),
+          },
+          20000
+        );
+
+        assert.strictEqual(response.status, 200, `auth.register returned ${response.status}`);
+
+        const raw = (await response.json()) as unknown;
+        const parsed = parseTrpcEnvelope<RegistrationSmokeResponse>(raw);
+
+        assert.ok(!parsed.error, `Expected auth.register success, got ${JSON.stringify(raw)}`);
+        assert.strictEqual(parsed.data?.email, email);
+        assert.strictEqual(parsed.data?.verificationRequired, true);
+        assert.strictEqual(parsed.data?.termsVersion, CURRENT_TERMS_VERSION);
+        assert.equal(typeof parsed.data?.verificationUrl, 'string');
+      });
+    }
+  );
 });
 
 /**

@@ -24,6 +24,8 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
         ready: false,
         upstreamAvailable: false,
         databaseConnected: true,
+        databaseSchemaReady: false,
+        missingTables: ['cp_terms_acceptance'],
       }),
     });
 
@@ -74,6 +76,8 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
       ready: false,
       upstreamAvailable: false,
       databaseConnected: true,
+      databaseSchemaReady: false,
+      missingTables: ['cp_terms_acceptance'],
     });
   });
 

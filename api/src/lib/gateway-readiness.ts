@@ -1,13 +1,30 @@
-import { sql } from 'drizzle-orm';
+import { getTableName, isTable, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
+import * as schema from '../db/schema.js';
 import { extractTrpcData, openPathTrpcUrl } from './openpath-upstream.js';
+
+export interface GatewayDatabaseStatus {
+  connected: boolean;
+  schemaReady: boolean;
+  missingTables: string[];
+}
 
 export interface GatewayReadiness {
   ready: boolean;
   upstreamAvailable: boolean;
   databaseConnected: boolean;
+  databaseSchemaReady: boolean;
+  missingTables: string[];
 }
+
+const requiredGatewayTableNames = Object.freeze(
+  Object.values(schema)
+    .filter((candidate) => isTable(candidate))
+    .map((table) => getTableName(table))
+    .filter((tableName) => tableName.startsWith('cp_'))
+    .sort()
+);
 
 export function isGatewayUpstreamReadyStatus(status: unknown): status is 'ready' | 'ok' {
   return status === 'ready' || status === 'ok';
@@ -24,25 +41,65 @@ export function parseGatewayUpstreamReadiness(payload: unknown): boolean {
   );
 }
 
-async function defaultDatabaseCheck(): Promise<boolean> {
+function normalizeGatewayDatabaseStatus(
+  result: boolean | GatewayDatabaseStatus
+): GatewayDatabaseStatus {
+  if (typeof result === 'boolean') {
+    return {
+      connected: result,
+      schemaReady: result,
+      missingTables: [],
+    };
+  }
+
+  return result;
+}
+
+async function defaultDatabaseCheck(): Promise<GatewayDatabaseStatus> {
   try {
-    await db.execute(sql`select 1`);
-    return true;
+    const requestedTables = sql.join(
+      requiredGatewayTableNames.map((tableName) => sql`${tableName}`),
+      sql`, `
+    );
+    const result = await db.execute<{ table_name: string }>(sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name in (${requestedTables})
+    `);
+    const presentTables = new Set(
+      result.rows
+        .map((row) => row.table_name)
+        .filter((tableName): tableName is string => Boolean(tableName))
+    );
+    const missingTables = requiredGatewayTableNames.filter(
+      (tableName) => !presentTables.has(tableName)
+    );
+
+    return {
+      connected: true,
+      schemaReady: missingTables.length === 0,
+      missingTables,
+    };
   } catch {
-    return false;
+    return {
+      connected: false,
+      schemaReady: false,
+      missingTables: [],
+    };
   }
 }
 
 export async function getGatewayReadiness(
   deps: {
-    checkDatabase?: () => Promise<boolean>;
+    checkDatabase?: () => Promise<boolean | GatewayDatabaseStatus>;
     fetchImpl?: typeof fetch;
   } = {}
 ): Promise<GatewayReadiness> {
   const checkDatabase = deps.checkDatabase ?? defaultDatabaseCheck;
   const fetchImpl = deps.fetchImpl ?? fetch;
 
-  const databaseConnected = await checkDatabase();
+  const database = normalizeGatewayDatabaseStatus(await checkDatabase());
   let upstreamAvailable = false;
 
   try {
@@ -61,8 +118,10 @@ export async function getGatewayReadiness(
   }
 
   return {
-    ready: upstreamAvailable && databaseConnected,
+    ready: upstreamAvailable && database.connected && database.schemaReady,
     upstreamAvailable,
-    databaseConnected,
+    databaseConnected: database.connected,
+    databaseSchemaReady: database.schemaReady,
+    missingTables: database.missingTables,
   };
 }

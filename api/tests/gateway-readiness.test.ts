@@ -45,6 +45,27 @@ await describe('gateway readiness helpers', async () => {
       ready: true,
       upstreamAvailable: true,
       databaseConnected: true,
+      databaseSchemaReady: true,
+      missingTables: [],
+    });
+  });
+
+  await test('getGatewayReadiness reports not ready when required ClassroomPath tables are missing', async () => {
+    const readiness = await getGatewayReadiness({
+      checkDatabase: async () => ({
+        connected: true,
+        schemaReady: false,
+        missingTables: ['cp_terms_acceptance'],
+      }),
+      fetchImpl: async () => trpcResponse({ status: 'ready' }),
+    });
+
+    assert.deepStrictEqual(readiness, {
+      ready: false,
+      upstreamAvailable: true,
+      databaseConnected: true,
+      databaseSchemaReady: false,
+      missingTables: ['cp_terms_acceptance'],
     });
   });
 });

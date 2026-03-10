@@ -236,19 +236,19 @@ log_info "Running health checks..."
 MAX_ATTEMPTS=30
 ATTEMPT=0
 
-# Check gateway health
+# Check gateway readiness
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     ATTEMPT=$((ATTEMPT + 1))
     
-    HEALTH=$("${SSH_CMD[@]}" "curl -sf http://localhost:3000/cp/health 2>/dev/null" || echo "")
+    HEALTH=$("${SSH_CMD[@]}" "curl -sf http://localhost:3000/cp/ready 2>/dev/null" || echo "")
     
     if [ -n "$HEALTH" ]; then
-        log_success "Gateway healthy (attempt $ATTEMPT)"
+        log_success "Gateway ready (attempt $ATTEMPT)"
         break
     fi
     
     if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
-        log_error "Gateway health check failed after $MAX_ATTEMPTS attempts"
+        log_error "Gateway readiness check failed after $MAX_ATTEMPTS attempts"
         log_error "Debug: ssh deploy@$STAGING_HOST 'docker logs classroompath-gateway --tail 30'"
         exit 1
     fi
@@ -319,6 +319,7 @@ set +e
 SMOKE_TEST_URL="$SMOKE_TARGET_URL" \
 SMOKE_TEST_TIMEOUT="15000" \
 SMOKE_SKIP_CORS="$SMOKE_SKIP_CORS" \
+SMOKE_ALLOW_MUTATIONS="1" \
 npm run test:smoke 2>&1 | tee /tmp/smoke-results.txt
 
 SMOKE_EXIT_CODE=${PIPESTATUS[0]}

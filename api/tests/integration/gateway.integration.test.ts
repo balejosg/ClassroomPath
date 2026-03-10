@@ -437,10 +437,14 @@ describe('ClassroomPath Gateway Integration', async () => {
         status?: string;
         upstreamAvailable?: boolean;
         databaseConnected?: boolean;
+        databaseSchemaReady?: boolean;
+        missingTables?: string[];
       };
       assert.strictEqual(json.status, 'not_ready');
       assert.strictEqual(json.upstreamAvailable, false);
       assert.strictEqual(json.databaseConnected, true);
+      assert.strictEqual(json.databaseSchemaReady, true);
+      assert.deepStrictEqual(json.missingTables, []);
     } finally {
       resetMockOpenPathUpstreamState();
     }
