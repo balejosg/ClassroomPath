@@ -1,94 +1,20 @@
 import { z } from 'zod';
-import { router, tenantProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
-import { nanoid } from 'nanoid';
-import {
-  openpathDb,
-  publishWhitelistGroupChanged,
-  requests,
-  whitelistGroups,
-  whitelistRules,
-} from '../../db/openpath.js';
-import { eq, inArray, and, sql } from 'drizzle-orm';
+import { router, tenantProcedure } from '../trpc.js';
 
-import { orgHasGroup } from '../../services/org-group-membership.service.js';
-
-import { assertCanUseGroup, getAccessibleTenantGroupIds } from '../../lib/tenant-access.js';
 import {
   assertOrgAdminTenantProcedureContext,
   assertTenantProcedureContext,
-  type TenantProcedureContext,
 } from '../tenant-procedure-helpers.js';
-
-async function assertGroupBelongsToTenant(
-  ctx: TenantProcedureContext,
-  groupId: string
-): Promise<void> {
-  const inTenant = await orgHasGroup({ organizationId: ctx.organizationId, groupId });
-  if (!inTenant) {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: 'Group does not belong to tenant',
-    });
-  }
-}
-
-async function assertCanManageGroup(ctx: TenantProcedureContext, groupId: string): Promise<void> {
-  await assertCanUseGroup(ctx, groupId, {
-    notTeacherMessage: 'Insufficient permissions for this group',
-    notAllowedMessage: 'Insufficient permissions for this group',
-  });
-}
-
-async function getRequestById(requestId: string) {
-  const request = await openpathDb
-    .select()
-    .from(requests)
-    .where(eq(requests.id, requestId))
-    .limit(1);
-
-  if (!request[0]) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
-  }
-
-  return request[0];
-}
-
-function assertRequestHasGroupId(request: { groupId: string | null }): string {
-  if (!request.groupId) {
-    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Request has no group assigned' });
-  }
-  return request.groupId;
-}
-
-function assertPendingRequest(request: { status: string }): void {
-  if (request.status !== 'pending') {
-    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Request is not pending' });
-  }
-}
-
-async function assertRequestBelongsToTenant(
-  ctx: TenantProcedureContext,
-  requestGroupId: string
-): Promise<void> {
-  const inTenant = await orgHasGroup({
-    organizationId: ctx.organizationId,
-    groupId: requestGroupId,
-  });
-  if (!inTenant) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Request does not belong to tenant' });
-  }
-}
-
-function serializeRequestDates<T extends { createdAt: Date | null; updatedAt: Date | null }>(
-  request: T
-) {
-  return {
-    ...request,
-    createdAt: request.createdAt?.toISOString() ?? null,
-    updatedAt: request.updatedAt?.toISOString() ?? null,
-  };
-}
+import {
+  approveTenantRequest,
+  createTenantRequest,
+  deleteTenantRequest,
+  getTenantRequestStats,
+  listAccessibleRequestGroups,
+  listTenantRequests,
+  rejectTenantRequest,
+} from '../../services/requests.service.js';
 
 export const requestsRouter = router({
   create: tenantProcedure
@@ -109,205 +35,48 @@ export const requestsRouter = router({
       }
 
       assertTenantProcedureContext(ctx);
-      await assertGroupBelongsToTenant(ctx, input.groupId);
-      await assertCanManageGroup(ctx, input.groupId);
-
-      const pendingRequest = await openpathDb
-        .select({ id: requests.id })
-        .from(requests)
-        .where(
-          and(
-            sql`LOWER(${requests.domain}) = LOWER(${input.domain})`,
-            eq(requests.status, 'pending')
-          )
-        )
-        .limit(1);
-
-      if (pendingRequest.length > 0) {
-        throw new TRPCError({
-          code: 'CONFLICT',
-          message: 'Pending request exists for this domain',
-        });
-      }
-
-      const [created] = await openpathDb
-        .insert(requests)
-        .values({
-          id: `req_${nanoid(8)}`,
-          domain: input.domain.toLowerCase(),
-          reason: input.reason ?? 'No reason provided',
-          requesterEmail: input.requesterEmail ?? ctx.user.email ?? 'anonymous@tenant.local',
+      return createTenantRequest({
+        ctx,
+        input: {
+          domain: input.domain,
           groupId: input.groupId,
-          status: 'pending',
-        })
-        .returning();
-
-      if (!created) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to create request',
-        });
-      }
-
-      return serializeRequestDates(created);
+          reason: input.reason,
+          requesterEmail: input.requesterEmail,
+        },
+      });
     }),
 
-  // List groups for the organization (used by DomainRequests dropdown)
   listGroups: tenantProcedure.query(async ({ ctx }) => {
     assertTenantProcedureContext(ctx);
-    const groupIds = await getAccessibleTenantGroupIds({
-      organizationId: ctx.organizationId,
-      userRole: ctx.userRole,
-      userId: ctx.user.sub,
-    });
-
-    if (groupIds.length === 0) return [];
-
-    const groups = await openpathDb
-      .select()
-      .from(whitelistGroups)
-      .where(inArray(whitelistGroups.id, groupIds));
-
-    // Return shape expected by DomainRequests UI: { name, path }
-    // path = group.id (the stable identifier for approve mutations)
-    return groups.map((g) => ({
-      name: g.displayName ?? g.name,
-      path: g.id,
-    }));
+    return listAccessibleRequestGroups(ctx);
   }),
 
-  /**
-   * Get request statistics for the current organization.
-   * Returns counts by status: total, pending, approved, rejected.
-   */
   stats: tenantProcedure.query(async ({ ctx }) => {
     assertTenantProcedureContext(ctx);
-    const groupIds = await getAccessibleTenantGroupIds({
-      organizationId: ctx.organizationId,
-      userRole: ctx.userRole,
-      userId: ctx.user.sub,
-    });
-
-    if (groupIds.length === 0) {
-      return { total: 0, pending: 0, approved: 0, rejected: 0 };
-    }
-
-    // Get all requests for these groups
-    const allRequests = await openpathDb
-      .select()
-      .from(requests)
-      .where(inArray(requests.groupId, groupIds));
-
-    return {
-      total: allRequests.length,
-      pending: allRequests.filter((r) => r.status === 'pending').length,
-      approved: allRequests.filter((r) => r.status === 'approved').length,
-      rejected: allRequests.filter((r) => r.status === 'rejected').length,
-    };
+    return getTenantRequestStats(ctx);
   }),
 
   list: tenantProcedure
     .input(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
     .query(async ({ ctx, input }) => {
       assertTenantProcedureContext(ctx);
-      const groupIds = await getAccessibleTenantGroupIds({
-        organizationId: ctx.organizationId,
-        userRole: ctx.userRole,
-        userId: ctx.user.sub,
-      });
-
-      if (groupIds.length === 0) return [];
-
-      // Filter requests that belong to one of the organization's groups
-      const conditions = [inArray(requests.groupId, groupIds)];
-      if (input.status) {
-        conditions.push(eq(requests.status, input.status));
-      }
-
-      const results = await openpathDb
-        .select()
-        .from(requests)
-        .where(and(...conditions))
-        .orderBy(requests.createdAt);
-
-      return results.map((request) => serializeRequestDates(request));
+      return listTenantRequests(ctx, input.status);
     }),
 
   approve: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
     assertTenantProcedureContext(ctx);
-
-    const request = await getRequestById(input.id);
-    const requestGroupId = assertRequestHasGroupId(request);
-    assertPendingRequest(request);
-    await assertRequestBelongsToTenant(ctx, requestGroupId);
-    await assertCanManageGroup(ctx, requestGroupId);
-
-    const inserted = await openpathDb
-      .insert(whitelistRules)
-      .values({
-        id: `rule-${nanoid(16)}`,
-        groupId: requestGroupId,
-        type: 'whitelist',
-        value: request.domain,
-      })
-      .onConflictDoNothing({
-        target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
-      })
-      .returning();
-
-    if (inserted.length > 0) {
-      // Touch export version + notify OpenPath SSE via LISTEN/NOTIFY
-      await publishWhitelistGroupChanged(requestGroupId);
-    }
-
-    await openpathDb
-      .update(requests)
-      .set({
-        status: 'approved',
-        updatedAt: new Date(),
-        resolvedAt: new Date(),
-        resolvedBy: ctx.user.name,
-        resolutionNote: 'Approved from tenant gateway',
-      })
-      .where(eq(requests.id, input.id));
-
-    return { success: true };
+    return approveTenantRequest(ctx, input.id);
   }),
 
   reject: tenantProcedure
     .input(z.object({ id: z.string(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       assertTenantProcedureContext(ctx);
-
-      const request = await getRequestById(input.id);
-      const requestGroupId = assertRequestHasGroupId(request);
-      assertPendingRequest(request);
-      await assertRequestBelongsToTenant(ctx, requestGroupId);
-      await assertCanManageGroup(ctx, requestGroupId);
-
-      await openpathDb
-        .update(requests)
-        .set({
-          status: 'rejected',
-          updatedAt: new Date(),
-          resolvedAt: new Date(),
-          resolvedBy: ctx.user.name,
-          resolutionNote: input.reason ?? null,
-        })
-        .where(eq(requests.id, input.id));
-
-      return { success: true };
+      return rejectTenantRequest(ctx, input.id, input.reason);
     }),
 
   delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
     assertOrgAdminTenantProcedureContext(ctx);
-
-    const request = await getRequestById(input.id);
-    const requestGroupId = assertRequestHasGroupId(request);
-    await assertRequestBelongsToTenant(ctx, requestGroupId);
-
-    await openpathDb.delete(requests).where(eq(requests.id, input.id));
-
-    return { success: true };
+    return deleteTenantRequest(ctx, input.id);
   }),
 });

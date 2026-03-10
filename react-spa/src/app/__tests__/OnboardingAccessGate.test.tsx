@@ -1,0 +1,159 @@
+import React from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+
+import { OnboardingAccessGate } from '../OnboardingAccessGate';
+
+vi.mock('../../views/Waiting', () => ({
+  Waiting: ({
+    onStatusChange,
+    onCancelSuccess,
+    onLogout,
+  }: {
+    onStatusChange: () => void;
+    onCancelSuccess: () => void;
+    onLogout: () => void;
+  }) => (
+    <div>
+      <div>Waiting View</div>
+      <button onClick={onStatusChange}>Refresh waiting</button>
+      <button onClick={onCancelSuccess}>Cancel waiting</button>
+      <button onClick={onLogout}>Logout waiting</button>
+    </div>
+  ),
+}));
+
+vi.mock('../../views/Onboarding', () => ({
+  Onboarding: ({
+    onOrgCreated,
+    onWaitClick,
+    onLogout,
+  }: {
+    onOrgCreated: (result: { user: { id: string } }) => void;
+    onWaitClick: () => void;
+    onLogout: () => void;
+  }) => (
+    <div>
+      <div>Onboarding View</div>
+      <button onClick={() => onOrgCreated({ user: { id: 'user-1' } })}>Crear org</button>
+      <button onClick={onWaitClick}>Ir a waiting</button>
+      <button onClick={onLogout}>Logout onboarding</button>
+    </div>
+  ),
+}));
+
+function renderGate(overrides?: Partial<React.ComponentProps<typeof OnboardingAccessGate>>) {
+  const props: React.ComponentProps<typeof OnboardingAccessGate> = {
+    status: { hasMembership: true, isWaiting: false },
+    isLoading: false,
+    loadingTimedOut: false,
+    isError: false,
+    onRetry: () => undefined,
+    onLogoutToLogin: () => undefined,
+    onStatusChange: () => undefined,
+    onCancelWaitingSuccess: () => undefined,
+    onOrgCreated: () => undefined,
+    authenticatedContent: <div>Shell View</div>,
+    ...overrides,
+  };
+
+  return render(<OnboardingAccessGate {...props} />);
+}
+
+describe('OnboardingAccessGate', () => {
+  it('shows loading, timeout, and error states', () => {
+    const onRetry = vi.fn();
+    const onLogoutToLogin = vi.fn();
+
+    const { rerender } = renderGate({ isLoading: true });
+    expect(screen.getByText('Verificando estado...')).toBeInTheDocument();
+
+    rerender(
+      <OnboardingAccessGate
+        status={{ hasMembership: true }}
+        isLoading
+        loadingTimedOut
+        isError={false}
+        onRetry={onRetry}
+        onLogoutToLogin={onLogoutToLogin}
+        onStatusChange={() => undefined}
+        onCancelWaitingSuccess={() => undefined}
+        onOrgCreated={() => undefined}
+        authenticatedContent={<div>Shell View</div>}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Volver a login' }));
+
+    rerender(
+      <OnboardingAccessGate
+        status={{ hasMembership: true }}
+        isLoading={false}
+        loadingTimedOut={false}
+        isError
+        onRetry={onRetry}
+        onLogoutToLogin={onLogoutToLogin}
+        onStatusChange={() => undefined}
+        onCancelWaitingSuccess={() => undefined}
+        onOrgCreated={() => undefined}
+        authenticatedContent={<div>Shell View</div>}
+      />
+    );
+
+    expect(screen.getByText('No se pudo verificar tu acceso')).toBeInTheDocument();
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onLogoutToLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes waiting and onboarding states through their callbacks', () => {
+    const onStatusChange = vi.fn();
+    const onCancelWaitingSuccess = vi.fn();
+    const onLogoutToLogin = vi.fn();
+    const onOrgCreated = vi.fn();
+
+    const { rerender } = renderGate({
+      status: { hasMembership: false, isWaiting: true },
+      onStatusChange,
+      onCancelWaitingSuccess,
+      onLogoutToLogin,
+      onOrgCreated,
+    });
+
+    expect(screen.getByText('Waiting View')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh waiting' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel waiting' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Logout waiting' }));
+
+    rerender(
+      <OnboardingAccessGate
+        status={{ hasMembership: false, isWaiting: false }}
+        isLoading={false}
+        loadingTimedOut={false}
+        isError={false}
+        onRetry={() => undefined}
+        onLogoutToLogin={onLogoutToLogin}
+        onStatusChange={onStatusChange}
+        onCancelWaitingSuccess={onCancelWaitingSuccess}
+        onOrgCreated={onOrgCreated}
+        authenticatedContent={<div>Shell View</div>}
+      />
+    );
+
+    expect(screen.getByText('Onboarding View')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Crear org' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ir a waiting' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Logout onboarding' }));
+
+    expect(onStatusChange).toHaveBeenCalledTimes(2);
+    expect(onCancelWaitingSuccess).toHaveBeenCalledTimes(1);
+    expect(onLogoutToLogin).toHaveBeenCalledTimes(2);
+    expect(onOrgCreated).toHaveBeenCalledWith({ user: { id: 'user-1' } });
+  });
+
+  it('renders the authenticated shell when membership exists', () => {
+    renderGate({ authenticatedContent: <div>Authenticated Shell</div> });
+
+    expect(screen.getByText('Authenticated Shell')).toBeInTheDocument();
+  });
+});

@@ -1,12 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DualTRPCProvider } from './lib/dual-trpc-provider';
 import { useOnboardingStatus } from './lib/hooks';
-import { Login } from './views/Login';
-import { Register } from './views/Register';
-import { ResetPassword } from './views/ResetPassword';
-import { AcceptInvitation } from './views/AcceptInvitation';
-import { Onboarding } from './views/Onboarding';
-import { Waiting } from './views/Waiting';
 import { AdminPanel } from './components/AdminPanel';
 import { GroupLibrary } from './components/GroupLibrary';
 import { cpTrpc } from './lib/cp-trpc';
@@ -17,52 +11,19 @@ import {
   persistSession,
   setRequestsApiUrl,
 } from './lib/auth-storage';
+import { AuthEntryView } from './app/AuthEntryView';
+import { OnboardingAccessGate } from './app/OnboardingAccessGate';
+import {
+  type AuthView,
+  getAuthViewFromPathname,
+  getPathForAuthView,
+  isAuthPath,
+} from './app/classroom-path-auth-routing';
 import './index.css';
 
 const ClassroomPathShell = React.lazy(() => import('./ClassroomPathShell'));
 
 const TEACHER_GROUPS_FEATURE_KEY = 'openpath_teacher_groups_enabled';
-
-type AuthView = 'login' | 'register' | 'reset-password' | 'accept-invitation';
-
-function normalizePathname(pathname: string): string {
-  const trimmed = pathname.replace(/\/+$/, '');
-  return trimmed.length === 0 ? '/' : trimmed;
-}
-
-function getAuthViewFromPathname(pathname: string): AuthView {
-  const normalized = normalizePathname(pathname);
-
-  if (normalized.startsWith('/register')) return 'register';
-  if (normalized.startsWith('/reset-password')) return 'reset-password';
-  if (normalized.startsWith('/accept-invitation')) return 'accept-invitation';
-  return 'login';
-}
-
-function isAuthPath(pathname: string): boolean {
-  const normalized = normalizePathname(pathname);
-  return (
-    normalized === '/' ||
-    normalized.startsWith('/login') ||
-    normalized.startsWith('/register') ||
-    normalized.startsWith('/reset-password') ||
-    normalized.startsWith('/accept-invitation')
-  );
-}
-
-function getPathForAuthView(view: AuthView): string {
-  switch (view) {
-    case 'register':
-      return '/register';
-    case 'reset-password':
-      return '/reset-password';
-    case 'accept-invitation':
-      return '/accept-invitation';
-    case 'login':
-    default:
-      return '/login';
-  }
-}
 
 function FullScreenLoader({ label }: { label: string }) {
   return (
@@ -212,131 +173,47 @@ function AppContent() {
   }
 
   if (!isAuth) {
-    switch (authView) {
-      case 'register':
-        return <Register onLoginClick={() => setAuthView('login')} />;
-      case 'reset-password':
-        return <ResetPassword onLoginClick={() => setAuthView('login')} />;
-      case 'accept-invitation':
-        return (
-          <AcceptInvitation
-            onLoginClick={() => setAuthView('login')}
-            onSuccess={() => {
-              setAuthView('login');
-              setIsAuth(true);
-            }}
-          />
-        );
-      case 'login':
-      default:
-        return (
-          <Login
-            onLogin={() => setIsAuth(true)}
-            onNavigateToRegister={() => setAuthView('register')}
-            onNavigateToResetPassword={() => setAuthView('reset-password')}
-          />
-        );
-    }
-  }
-
-  if (isLoading) {
-    if (loadingTimedOut) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-          <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Esto esta tardando demasiado</h2>
-            <p className="text-sm text-slate-600 mt-2">
-              No se pudo verificar tu estado a tiempo. Reintenta o vuelve a iniciar sesion.
-            </p>
-            <div className="mt-4 flex gap-3">
-              <button
-                onClick={() => {
-                  setLoadingTimedOut(false);
-                  refetch();
-                }}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
-              >
-                Reintentar
-              </button>
-              <button
-                onClick={() => {
-                  clearSession();
-                  setAuthView('login');
-                  setIsAuth(false);
-                }}
-                className="px-4 py-2 rounded-lg bg-slate-100 text-slate-800 font-medium hover:bg-slate-200"
-              >
-                Volver a login
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return <FullScreenLoader label="Verificando estado..." />;
-  }
-
-  if (isError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-        <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">No se pudo verificar tu acceso</h2>
-          <p className="text-sm text-slate-600 mt-2">
-            Reintenta en unos segundos. Si el problema persiste, vuelve a iniciar sesion.
-          </p>
-          <div className="mt-4 flex gap-3">
-            <button
-              onClick={() => refetch()}
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
-            >
-              Reintentar
-            </button>
-            <button
-              onClick={() => {
-                clearSession();
-                setAuthView('login');
-                setIsAuth(false);
-              }}
-              className="px-4 py-2 rounded-lg bg-slate-100 text-slate-800 font-medium hover:bg-slate-200"
-            >
-              Volver a login
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (status?.isWaiting) {
-    return (
-      <Waiting
-        onStatusChange={() => refetch()}
-        onCancelSuccess={() => refetch()}
-        onLogout={clearSessionAndShowLogin}
-      />
-    );
-  }
-
-  if (!status?.hasMembership) {
-    return (
-      <Onboarding
-        onOrgCreated={(result) => {
-          persistSession({ user: result.user });
-          refetch();
+      <AuthEntryView
+        authView={authView}
+        onAuthenticated={() => {
+          setAuthView('login');
+          setIsAuth(true);
         }}
-        onWaitClick={() => refetch()}
-        onLogout={clearSessionAndShowLogin}
+        onSetAuthView={setAuthView}
       />
     );
   }
 
   return (
-    <React.Suspense fallback={<FullScreenLoader label="Cargando tu panel..." />}>
-      <AdminPanel userRole={status?.organization?.role} />
-      <GroupLibrary userRole={status?.organization?.role} />
-      <ClassroomPathShell />
-    </React.Suspense>
+    <OnboardingAccessGate
+      status={status}
+      isLoading={isLoading}
+      loadingTimedOut={loadingTimedOut}
+      isError={isError}
+      onRetry={() => {
+        setLoadingTimedOut(false);
+        refetch();
+      }}
+      onLogoutToLogin={() => {
+        clearSession();
+        setAuthView('login');
+        setIsAuth(false);
+      }}
+      onStatusChange={() => refetch()}
+      onCancelWaitingSuccess={() => refetch()}
+      onOrgCreated={(result) => {
+        persistSession({ user: result.user });
+        refetch();
+      }}
+      authenticatedContent={
+        <React.Suspense fallback={<FullScreenLoader label="Cargando tu panel..." />}>
+          <AdminPanel userRole={status?.organization?.role} />
+          <GroupLibrary userRole={status?.organization?.role} />
+          <ClassroomPathShell />
+        </React.Suspense>
+      }
+    />
   );
 }
 
