@@ -35,14 +35,16 @@ interface HealthResponse {
   uptime?: number;
 }
 
-interface ConfigResponse {
-  publicUrl?: string;
-  version?: string;
-  [key: string]: unknown;
-}
-
 interface ErrorResponse {
-  error?: string;
+  error?: {
+    message?: string;
+    code?: string;
+    data?: {
+      code?: string;
+      path?: string;
+      blocked?: string;
+    };
+  };
   message?: string;
   path?: string;
 }
@@ -212,9 +214,10 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
   void describe('API Endpoints - Path Preservation', { skip: !SMOKE_TEST_URL }, () => {
     /**
      * CRITICAL: This test catches the NPM path-stripping bug
-     * If NPM is misconfigured, /api/config becomes /config and returns 404
+     * If NPM is misconfigured, /api/config becomes /config and returns 404.
+     * The hardened gateway now blocks direct /api passthrough with 403, which is expected.
      */
-    void test('GET /api/config returns 200 (NOT 404 from path stripping)', async () => {
+    void test('GET /api/config is blocked with 403 (NOT 404 from path stripping)', async () => {
       const response = await fetchWithRetry(`${SMOKE_TEST_URL}/api/config`);
 
       // The key assertion: should NOT be 404
@@ -226,24 +229,21 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
           'Check NPM advanced configuration.'
       );
 
-      // Should be 200 for config endpoint
       assert.strictEqual(
         response.status,
-        200,
-        `API config should return 200, got ${response.status}`
+        403,
+        `Direct /api passthrough should be blocked with 403, got ${response.status}`
       );
 
-      // Verify it's returning proper config, not an error page
       if (isJsonResponse(response)) {
-        const data = (await response.json()) as ConfigResponse | ErrorResponse;
+        const data = (await response.json()) as ErrorResponse;
 
-        // Check it's not a "path not found" error
-        if ('path' in data && data.path) {
-          assert.fail(
-            `API returned path error: ${JSON.stringify(data)}. ` +
-              'This indicates NPM is stripping path prefixes.'
-          );
-        }
+        assert.strictEqual(data.error?.code, 'FORBIDDEN');
+        assert.strictEqual(
+          data.error?.data?.path,
+          '/api/config',
+          'Gateway must preserve the /api prefix when blocking direct passthrough.'
+        );
       }
     });
 
@@ -268,7 +268,7 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
   });
 
   void describe('tRPC Endpoints', { skip: !SMOKE_TEST_URL }, () => {
-    void test('GET /trpc/healthcheck.live responds (not 404)', async () => {
+    void test('GET /trpc/healthcheck.live is blocked with 403 (not 404)', async () => {
       const response = await fetchWithRetry(
         `${SMOKE_TEST_URL}/trpc/healthcheck.live?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D`,
         {
@@ -283,20 +283,10 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
         'tRPC endpoint should not return 404. Check NPM configuration.'
       );
 
-      // 502 means the backend is unreachable - this is a critical failure
-      if (response.status === 502) {
-        assert.fail(
-          'tRPC returned 502 Bad Gateway. ' +
-            'The API container may be down or NPM cannot reach it. ' +
-            'Check: docker logs classroompath-api'
-        );
-      }
-
-      // Accept various valid responses (200, 400 for missing input, etc.)
-      // The point is that tRPC router is reachable
-      assert.ok(
-        [200, 400, 401, 500].includes(response.status),
-        `tRPC should be reachable, got ${response.status}`
+      assert.strictEqual(
+        response.status,
+        403,
+        `Direct /trpc passthrough should be blocked with 403, got ${response.status}`
       );
     });
 
@@ -306,7 +296,11 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
         { method: 'GET' }
       );
 
-      assert.notStrictEqual(response.status, 404, 'tRPC batch endpoint should not return 404');
+      assert.strictEqual(
+        response.status,
+        403,
+        `Direct /trpc batch endpoint should be blocked with 403, got ${response.status}`
+      );
     });
 
     void test('GET /trpc/groups.list returns 403 (blocked, must use /cp/trpc)', async () => {
@@ -501,7 +495,7 @@ void describe('Smoke Test Summary', { skip: !SMOKE_TEST_URL }, () => {
     const endpoints = [
       { path: '/health', name: 'API Health' },
       { path: '/cp/health', name: 'Gateway Health' },
-      { path: '/api/config', name: 'API Config' },
+      { path: '/cp/ready', name: 'Gateway Ready' },
       { path: '/', name: 'SPA Root' },
     ];
 
