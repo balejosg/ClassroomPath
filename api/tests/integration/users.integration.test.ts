@@ -203,7 +203,8 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     assert.strictEqual(invitation.email, invitedEmail);
     assert.strictEqual(invitation.status, 'Pending');
     assert.ok(typeof invitation.id === 'string' && invitation.id.length > 0);
-    assert.ok(typeof invitation.invitationUrl === 'string' && invitation.invitationUrl.length > 0);
+    assert.strictEqual(invitation.emailSent, true);
+    assert.strictEqual('invitationUrl' in invitation, false);
 
     const memberships = await db
       .select()

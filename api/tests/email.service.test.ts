@@ -6,6 +6,7 @@ import { sendTransactionalEmail } from '../src/services/email.service.js';
 const originalFetch = globalThis.fetch;
 const originalResendApiKey = process.env.RESEND_API_KEY;
 const originalResendFromEmail = process.env.RESEND_FROM_EMAIL;
+const originalMockEmailDelivery = process.env.CP_FAKE_EMAIL_DELIVERY;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -20,6 +21,12 @@ afterEach(() => {
     delete process.env.RESEND_FROM_EMAIL;
   } else {
     process.env.RESEND_FROM_EMAIL = originalResendFromEmail;
+  }
+
+  if (originalMockEmailDelivery === undefined) {
+    delete process.env.CP_FAKE_EMAIL_DELIVERY;
+  } else {
+    process.env.CP_FAKE_EMAIL_DELIVERY = originalMockEmailDelivery;
   }
 });
 
@@ -42,6 +49,28 @@ describe('email.service', () => {
     });
 
     assert.deepStrictEqual(result, { sent: false, provider: 'disabled' });
+    assert.strictEqual(fetchCalled, false);
+  });
+
+  it('returns a successful mock delivery when test delivery is enabled', async () => {
+    process.env.CP_FAKE_EMAIL_DELIVERY = '1';
+    delete process.env.RESEND_API_KEY;
+    delete process.env.RESEND_FROM_EMAIL;
+
+    let fetchCalled = false;
+    globalThis.fetch = (async () => {
+      fetchCalled = true;
+      throw new Error('fetch should not be called');
+    }) as typeof fetch;
+
+    const result = await sendTransactionalEmail({
+      to: 'teacher@example.com',
+      subject: 'Invite',
+      html: '<p>Hello</p>',
+      text: 'Hello',
+    });
+
+    assert.deepStrictEqual(result, { sent: true, provider: 'mock', id: 'mock-email' });
     assert.strictEqual(fetchCalled, false);
   });
 

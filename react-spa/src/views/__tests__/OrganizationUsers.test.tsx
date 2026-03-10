@@ -138,8 +138,7 @@ describe('OrganizationUsers', () => {
       createdAt: '2026-03-09T10:00:00.000Z',
       expiresAt: '2026-03-12T10:00:00.000Z',
       status: 'Pending',
-      invitationUrl: 'https://classroompath.local/accept-invitation?token=abc123',
-      emailSent: false,
+      emailSent: true,
     });
 
     render(<OrganizationUsers />);
@@ -163,9 +162,9 @@ describe('OrganizationUsers', () => {
 
     expect(mockUsersRefetch).toHaveBeenCalledTimes(1);
     expect(mockInvitationsRefetch).toHaveBeenCalledTimes(1);
-    expect(
-      await screen.findByDisplayValue('https://classroompath.local/accept-invitation?token=abc123')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Invitación enviada')).toBeInTheDocument();
+    expect(screen.getByText('Se envió la invitación a ada@example.com.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Enlace manual')).not.toBeInTheDocument();
   });
 
   it('shows a retry state when the users query fails', () => {
@@ -311,7 +310,6 @@ describe('OrganizationUsers', () => {
       createdAt: '2026-03-09T10:00:00.000Z',
       expiresAt: '2026-03-12T10:00:00.000Z',
       status: 'Pendiente',
-      invitationUrl: 'https://classroompath.local/accept-invitation?token=abc123',
       emailSent: true,
     });
 
@@ -333,6 +331,40 @@ describe('OrganizationUsers', () => {
     await waitFor(() => {
       expect(screen.queryByText('Invitación enviada')).not.toBeInTheDocument();
     });
+  });
+
+  it('closes the invite modal immediately after a successful invite even if the refetch is still pending', async () => {
+    let releaseUsersRefetch: (() => void) | null = null;
+    const usersRefetchPromise = new Promise<void>((resolve) => {
+      releaseUsersRefetch = resolve;
+    });
+
+    mockCreateInvitationMutateAsync.mockResolvedValue({
+      id: 'inv-2',
+      organizationId: 'org-1',
+      email: 'ada@example.com',
+      name: 'Ada Lovelace',
+      role: 'teacher',
+      createdAt: '2026-03-09T10:00:00.000Z',
+      expiresAt: '2026-03-12T10:00:00.000Z',
+      status: 'Pendiente',
+      emailSent: true,
+    });
+    mockUsersRefetch.mockReturnValue(usersRefetchPromise);
+
+    render(<OrganizationUsers />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Invitar usuario' }));
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Ada Lovelace' } });
+    fireEvent.change(screen.getByLabelText('Correo electrónico'), {
+      target: { value: 'ada@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar invitación' }));
+
+    expect(await screen.findByText('Invitación enviada')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Invitar usuario' })).not.toBeInTheDocument();
+
+    releaseUsersRefetch?.();
   });
 
   it('shows invite errors and lets the admin close the modal afterward', async () => {
@@ -360,13 +392,12 @@ describe('OrganizationUsers', () => {
     });
   });
 
-  it('generates a tenant-aware reset link and shows the manual URL when email delivery is disabled', async () => {
-    mockGenerateResetTokenMutateAsync.mockResolvedValue({
-      success: true,
-      emailSent: false,
-      resetUrl:
-        'https://classroompath.local/reset-password?email=admin%40example.com&token=reset123',
-    });
+  it('shows delivery failures for password resets without exposing a manual URL', async () => {
+    mockGenerateResetTokenMutateAsync.mockRejectedValue(
+      new Error(
+        'No se pudo enviar el correo de recuperación. Genera un nuevo correo para reintentar.'
+      )
+    );
 
     render(<OrganizationUsers />);
 
@@ -379,19 +410,16 @@ describe('OrganizationUsers', () => {
       });
     });
 
-    expect(
-      await screen.findByDisplayValue(
-        'https://classroompath.local/reset-password?email=admin%40example.com&token=reset123'
-      )
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No se pudo enviar el correo de recuperación. Genera un nuevo correo para reintentar.'
+    );
+    expect(screen.queryByLabelText('Enlace manual')).not.toBeInTheDocument();
   });
 
   it('shows a success notice when the reset email is delivered', async () => {
     mockGenerateResetTokenMutateAsync.mockResolvedValue({
       success: true,
       emailSent: true,
-      resetUrl:
-        'https://classroompath.local/reset-password?email=admin%40example.com&token=reset123',
     });
 
     render(<OrganizationUsers />);

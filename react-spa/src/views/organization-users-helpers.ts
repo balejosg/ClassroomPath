@@ -23,18 +23,11 @@ export type InvitationRow = {
 
 export type TableRow = MemberRow | InvitationRow;
 
-export type DeliveryNotice =
-  | {
-      tone: 'success';
-      title: string;
-      description: string;
-    }
-  | {
-      tone: 'warning';
-      title: string;
-      description: string;
-      url: string;
-    };
+export type DeliveryNotice = {
+  tone: 'success' | 'warning';
+  title: string;
+  description: string;
+};
 
 type RoleEntry = { role: string };
 
@@ -125,11 +118,9 @@ export function getSummaryLabel(totalRows: number): string {
 export function getDeliveryNoticeFromInvitationResult({
   email,
   emailSent,
-  invitationUrl,
 }: {
   email: string;
   emailSent: boolean;
-  invitationUrl: string;
 }): DeliveryNotice {
   if (emailSent) {
     return {
@@ -141,20 +132,17 @@ export function getDeliveryNoticeFromInvitationResult({
 
   return {
     tone: 'warning',
-    title: 'Invitación creada sin correo',
-    description: `Resend no está configurado o no pudo enviar el correo. Comparte este enlace con ${email}.`,
-    url: invitationUrl,
+    title: 'Invitación pendiente de envío',
+    description: `No se pudo confirmar el envío a ${email}. Reintenta la invitación desde esta pantalla.`,
   };
 }
 
 export function getDeliveryNoticeFromResetResult({
   email,
   emailSent,
-  resetUrl,
 }: {
   email: string;
   emailSent: boolean;
-  resetUrl: string;
 }): DeliveryNotice {
   if (emailSent) {
     return {
@@ -166,9 +154,8 @@ export function getDeliveryNoticeFromResetResult({
 
   return {
     tone: 'warning',
-    title: 'Recuperación generada sin correo',
-    description: `Resend no envió el correo. Comparte este enlace con ${email}.`,
-    url: resetUrl,
+    title: 'Recuperación pendiente de envío',
+    description: `No se pudo confirmar el envío a ${email}. Genera un nuevo correo de recuperación para reintentar.`,
   };
 }
 

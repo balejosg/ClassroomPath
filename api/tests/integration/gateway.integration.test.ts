@@ -314,6 +314,209 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.strictEqual(parsed.error, 'Reset token is invalid or expired');
   });
 
+  test('/cp/trpc/auth.generateResetToken omits secret-bearing reset URLs from the browser response', async () => {
+    const orgId = `org-reset-shape-${Date.now()}`;
+    const adminUserId = `u-admin-reset-shape-${Date.now()}`;
+    const teacherUserId = `u-teacher-reset-shape-${Date.now()}`;
+    const adminEmail = uniqueEmail('admin-reset-shape');
+    const teacherEmail = uniqueEmail('teacher-reset-shape');
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: adminUserId,
+        email: adminEmail,
+        name: 'Admin Reset Shape',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: teacherUserId,
+        email: teacherEmail,
+        name: 'Teacher Reset Shape',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values([
+      {
+        id: `role-${adminUserId}`,
+        userId: adminUserId,
+        role: 'admin',
+        groupIds: [],
+        createdBy: adminUserId,
+      },
+      {
+        id: `role-${teacherUserId}`,
+        userId: teacherUserId,
+        role: 'teacher',
+        groupIds: [],
+        createdBy: adminUserId,
+      },
+    ]);
+
+    await cpDb.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: 'Gateway Reset Shape Org',
+      createdBy: adminUserId,
+    });
+
+    await cpDb.insert(cpSchema.cpMemberships).values([
+      {
+        id: `mem-${adminUserId}`,
+        userId: adminUserId,
+        organizationId: orgId,
+        role: 'admin',
+        invitedBy: adminUserId,
+      },
+      {
+        id: `mem-${teacherUserId}`,
+        userId: teacherUserId,
+        organizationId: orgId,
+        role: 'teacher',
+        invitedBy: adminUserId,
+      },
+    ]);
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin Reset Shape',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const response = await trpcMutate(
+      integration.baseUrl,
+      'auth.generateResetToken',
+      { email: teacherEmail },
+      bearerAuth(adminToken)
+    );
+
+    assertStatus(response, 200);
+    const parsed = (await parseTRPC(response)) as { data?: Record<string, unknown> };
+    assert.strictEqual(parsed.data?.success, true);
+    assert.strictEqual(parsed.data?.emailSent, true);
+    assert.strictEqual('resetUrl' in (parsed.data ?? {}), false);
+  });
+
+  test('/cp/trpc/auth.generateResetToken fails explicitly and rolls back the reset token when delivery is unavailable', async () => {
+    const originalResendApiKey = process.env.RESEND_API_KEY;
+    const originalResendFromEmail = process.env.RESEND_FROM_EMAIL;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.RESEND_FROM_EMAIL;
+
+    try {
+      const orgId = `org-reset-delivery-${Date.now()}`;
+      const adminUserId = `u-admin-reset-delivery-${Date.now()}`;
+      const teacherUserId = `u-teacher-reset-delivery-${Date.now()}`;
+      const adminEmail = uniqueEmail('admin-reset-delivery');
+      const teacherEmail = uniqueEmail('teacher-reset-delivery');
+
+      await openpathDb.insert(openpathSchema.users).values([
+        {
+          id: adminUserId,
+          email: adminEmail,
+          name: 'Admin Reset Delivery',
+          passwordHash: 'hashed',
+          isActive: true,
+          emailVerified: true,
+        },
+        {
+          id: teacherUserId,
+          email: teacherEmail,
+          name: 'Teacher Reset Delivery',
+          passwordHash: 'hashed',
+          isActive: true,
+          emailVerified: true,
+        },
+      ]);
+
+      await openpathDb.insert(openpathSchema.roles).values([
+        {
+          id: `role-${adminUserId}`,
+          userId: adminUserId,
+          role: 'admin',
+          groupIds: [],
+          createdBy: adminUserId,
+        },
+        {
+          id: `role-${teacherUserId}`,
+          userId: teacherUserId,
+          role: 'teacher',
+          groupIds: [],
+          createdBy: adminUserId,
+        },
+      ]);
+
+      await cpDb.insert(cpSchema.cpOrganizations).values({
+        id: orgId,
+        name: 'Gateway Reset Delivery Org',
+        createdBy: adminUserId,
+      });
+
+      await cpDb.insert(cpSchema.cpMemberships).values([
+        {
+          id: `mem-${adminUserId}`,
+          userId: adminUserId,
+          organizationId: orgId,
+          role: 'admin',
+          invitedBy: adminUserId,
+        },
+        {
+          id: `mem-${teacherUserId}`,
+          userId: teacherUserId,
+          organizationId: orgId,
+          role: 'teacher',
+          invitedBy: adminUserId,
+        },
+      ]);
+
+      const adminToken = signToken({
+        jwtSecret: JWT_SECRET,
+        userId: adminUserId,
+        email: adminEmail,
+        name: 'Admin Reset Delivery',
+        roles: [{ role: 'admin', groupIds: [] }],
+      });
+
+      const response = await trpcMutate(
+        integration.baseUrl,
+        'auth.generateResetToken',
+        { email: teacherEmail },
+        bearerAuth(adminToken)
+      );
+
+      assertStatus(response, 503);
+      const parsed = (await parseTRPC(response)) as { error?: string; code?: string };
+      assert.strictEqual(parsed.code, 'SERVICE_UNAVAILABLE');
+      assert.strictEqual(
+        parsed.error,
+        'No se pudo enviar el correo de recuperación. Genera un nuevo correo para reintentar.'
+      );
+
+      const tokens = await openpathDb
+        .select()
+        .from(openpathSchema.passwordResetTokens)
+        .where(eq(openpathSchema.passwordResetTokens.userId, teacherUserId));
+      assert.strictEqual(tokens.length, 0);
+    } finally {
+      if (originalResendApiKey === undefined) {
+        delete process.env.RESEND_API_KEY;
+      } else {
+        process.env.RESEND_API_KEY = originalResendApiKey;
+      }
+
+      if (originalResendFromEmail === undefined) {
+        delete process.env.RESEND_FROM_EMAIL;
+      } else {
+        process.env.RESEND_FROM_EMAIL = originalResendFromEmail;
+      }
+    }
+  });
+
   test('/cp/trpc/auth.resetPassword returns service unavailable when upstream responds with invalid JSON', async () => {
     const response = await trpcMutate(integration.baseUrl, 'auth.resetPassword', {
       email: uniqueEmail('reset-password-invalid-json'),

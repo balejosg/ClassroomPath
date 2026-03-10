@@ -119,13 +119,14 @@ export function OrganizationUsers() {
         role: inviteRole,
       });
 
-      await refetchAll();
-
       setShowInviteModal(false);
       setInviteName('');
       setInviteEmail('');
       setInviteRole('teacher');
       setNotice(getDeliveryNoticeFromInvitationResult(result));
+      void refetchAll().catch((error) => {
+        reportError('Failed to refresh organization users after invitation', error);
+      });
     } catch (error) {
       reportError('Failed to create organization invitation', error);
       setInviteError(error instanceof Error ? error.message : 'No se pudo crear la invitación');

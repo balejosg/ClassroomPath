@@ -4,6 +4,7 @@ process.env.NODE_ENV = 'test';
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
+import { createHash } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
 import {
@@ -22,6 +23,10 @@ import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../src/lib/session-c
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
 
+function hashInvitationToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
 function getSetCookieHeaders(response: Response): string[] {
   const headers = response.headers as Headers & { getSetCookie?: () => string[] };
   if (typeof headers.getSetCookie === 'function') {
@@ -33,7 +38,7 @@ function getSetCookieHeaders(response: Response): string[] {
 }
 
 describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
-  test('auth.getInvitation and auth.acceptInvitation activate a tenant invitation end-to-end', async () => {
+  test('users.create returns delivery metadata without exposing invitation URLs', async () => {
     const orgId = `org-invite-${Date.now()}`;
     const adminUserId = `u-admin-invite-${Date.now()}`;
     const adminEmail = uniqueEmail('admin-invite');
@@ -91,12 +96,73 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
     assertStatus(inviteResponse, 200);
 
     const { data: invite } = (await parseTRPC(inviteResponse)) as {
-      data: { invitationUrl: string; email: string };
+      data: { email: string; emailSent: boolean; expiresAt: string };
     };
     assert.strictEqual(invite.email, invitedEmail);
+    assert.strictEqual(invite.emailSent, true);
+    assert.strictEqual('invitationUrl' in invite, false);
+    assert.strictEqual(typeof invite.expiresAt, 'string');
 
-    const token = new URL(invite.invitationUrl).searchParams.get('token');
-    assert.ok(token, 'invitation URL should include a token');
+    const pendingInvitations = await db
+      .select({
+        id: cpSchema.cpInvitations.id,
+        tokenHash: cpSchema.cpInvitations.tokenHash,
+      })
+      .from(cpSchema.cpInvitations)
+      .where(eq(cpSchema.cpInvitations.email, invitedEmail));
+    assert.strictEqual(pendingInvitations.length, 1);
+    assert.ok(pendingInvitations[0]?.tokenHash.length > 0);
+  });
+
+  test('auth.getInvitation and auth.acceptInvitation activate a tenant invitation end-to-end', async () => {
+    const orgId = `org-invite-accept-${Date.now()}`;
+    const adminUserId = `u-admin-invite-accept-${Date.now()}`;
+    const adminEmail = uniqueEmail('admin-invite-accept');
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: adminUserId,
+      email: adminEmail,
+      name: 'Admin Invite',
+      passwordHash: 'hashed',
+      isActive: true,
+      emailVerified: true,
+    });
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: 'Invite Org',
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${adminUserId}`,
+      userId: adminUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: adminUserId,
+    });
+
+    const invitedEmail = uniqueEmail('invitee-accept');
+    const token = `invite-${Date.now().toString(36)}`;
+
+    await db.insert(cpSchema.cpInvitations).values({
+      id: `inv-${Date.now()}`,
+      organizationId: orgId,
+      email: invitedEmail,
+      name: 'Invitee User',
+      role: 'teacher',
+      tokenHash: hashInvitationToken(token),
+      invitedBy: adminUserId,
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+    });
 
     const previewResponse = await trpcQuery(integration.baseUrl, 'auth.getInvitation', { token });
     assertStatus(previewResponse, 200);
@@ -249,11 +315,11 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
     assertStatus(resetResponse, 200);
 
     const { data: reset } = (await parseTRPC(resetResponse)) as {
-      data: { success: boolean; emailSent: boolean; resetUrl: string };
+      data: { success: boolean; emailSent: boolean };
     };
     assert.strictEqual(reset.success, true);
-    assert.strictEqual(typeof reset.emailSent, 'boolean');
-    assert.ok(reset.resetUrl.includes('/reset-password?email='));
+    assert.strictEqual(reset.emailSent, true);
+    assert.strictEqual('resetUrl' in reset, false);
 
     const tokens = await openpathDb
       .select()

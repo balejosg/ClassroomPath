@@ -15,6 +15,8 @@ import {
 import { sendTransactionalEmail } from './email.service.js';
 
 const INVITATION_TTL_HOURS = 72;
+const INVITATION_DELIVERY_FAILED_MESSAGE =
+  'No se pudo enviar la invitación. Reintenta desde esta pantalla.';
 
 function createInvitationToken(): string {
   return randomBytes(24).toString('base64url');
@@ -125,7 +127,6 @@ export async function createOrganizationInvitation(params: {
   invitedBy: string;
 }): Promise<
   OrganizationInvitationSummary & {
-    invitationUrl: string;
     emailSent: boolean;
   }
 > {
@@ -177,6 +178,13 @@ export async function createOrganizationInvitation(params: {
       ].join(''),
     });
 
+    if (!delivery.sent) {
+      throw new TRPCError({
+        code: 'SERVICE_UNAVAILABLE',
+        message: INVITATION_DELIVERY_FAILED_MESSAGE,
+      });
+    }
+
     return {
       id: invitationId,
       organizationId: params.organizationId,
@@ -186,8 +194,7 @@ export async function createOrganizationInvitation(params: {
       createdAt: new Date().toISOString(),
       expiresAt: expiresAt.toISOString(),
       status: 'Pending',
-      invitationUrl,
-      emailSent: delivery.sent,
+      emailSent: true,
     };
   } catch (error) {
     await db
@@ -195,13 +202,17 @@ export async function createOrganizationInvitation(params: {
       .where(
         and(
           eq(schema.cpInvitations.organizationId, params.organizationId),
-          eq(schema.cpInvitations.email, normalizedEmail)
+          eq(schema.cpInvitations.id, invitationId)
         )
       );
 
+    if (error instanceof TRPCError) {
+      throw error;
+    }
+
     throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'No se pudo enviar la invitación',
+      code: 'SERVICE_UNAVAILABLE',
+      message: INVITATION_DELIVERY_FAILED_MESSAGE,
     });
   }
 }

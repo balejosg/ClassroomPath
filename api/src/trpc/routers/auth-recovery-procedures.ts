@@ -19,10 +19,13 @@ function createPasswordResetToken(): string {
   return randomBytes(6).toString('hex');
 }
 
+const RESET_DELIVERY_FAILED_MESSAGE =
+  'No se pudo enviar el correo de recuperación. Genera un nuevo correo para reintentar.';
+
 async function generateTenantResetToken(params: {
   organizationId: string;
   email: string;
-}): Promise<{ success: true; emailSent: boolean; resetUrl: string }> {
+}): Promise<{ success: true; emailSent: boolean }> {
   const normalizedEmail = normalizeEmailAddress(params.email);
 
   const [user] = await openpathDb
@@ -76,30 +79,51 @@ async function generateTenantResetToken(params: {
     expiresAt,
   });
 
-  const delivery = await sendTransactionalEmail({
-    to: user.email,
-    subject: 'Restablece tu acceso a ClassroomPath',
-    text: [
-      `Hola ${user.name},`,
-      '',
-      'Tu administrador genero un enlace para restablecer tu acceso a ClassroomPath.',
-      `Usalo aqui: ${resetUrl}`,
-      '',
-      `Este enlace vence el ${expiresAt.toISOString()}.`,
-    ].join('\n'),
-    html: [
-      `<p>Hola ${user.name},</p>`,
-      '<p>Tu administrador genero un enlace para restablecer tu acceso a ClassroomPath.</p>',
-      `<p><a href="${resetUrl}">Restablecer acceso</a></p>`,
-      `<p>Este enlace vence el <strong>${expiresAt.toISOString()}</strong>.</p>`,
-    ].join(''),
-  });
+  try {
+    const delivery = await sendTransactionalEmail({
+      to: user.email,
+      subject: 'Restablece tu acceso a ClassroomPath',
+      text: [
+        `Hola ${user.name},`,
+        '',
+        'Tu administrador genero un enlace para restablecer tu acceso a ClassroomPath.',
+        `Usalo aqui: ${resetUrl}`,
+        '',
+        `Este enlace vence el ${expiresAt.toISOString()}.`,
+      ].join('\n'),
+      html: [
+        `<p>Hola ${user.name},</p>`,
+        '<p>Tu administrador genero un enlace para restablecer tu acceso a ClassroomPath.</p>',
+        `<p><a href="${resetUrl}">Restablecer acceso</a></p>`,
+        `<p>Este enlace vence el <strong>${expiresAt.toISOString()}</strong>.</p>`,
+      ].join(''),
+    });
 
-  return {
-    success: true,
-    emailSent: delivery.sent,
-    resetUrl,
-  };
+    if (!delivery.sent) {
+      throw new TRPCError({
+        code: 'SERVICE_UNAVAILABLE',
+        message: RESET_DELIVERY_FAILED_MESSAGE,
+      });
+    }
+
+    return {
+      success: true,
+      emailSent: true,
+    };
+  } catch (error) {
+    await openpathDb
+      .delete(openpathSchema.passwordResetTokens)
+      .where(eq(openpathSchema.passwordResetTokens.userId, user.id));
+
+    if (error instanceof TRPCError) {
+      throw error;
+    }
+
+    throw new TRPCError({
+      code: 'SERVICE_UNAVAILABLE',
+      message: RESET_DELIVERY_FAILED_MESSAGE,
+    });
+  }
 }
 
 export const authRecoveryProcedures = {

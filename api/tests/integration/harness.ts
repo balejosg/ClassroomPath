@@ -32,6 +32,15 @@ export interface IntegrationServerHandle {
   server: Server;
 }
 
+export interface MockEmailDelivery {
+  id: string;
+  from: string;
+  to: string[];
+  subject: string;
+  html: string;
+  text: string;
+}
+
 let mockOpenPathServer: Server | undefined;
 let mockOpenPathBaseUrl: string | undefined;
 const revokedMockTokens = new Set<string>();
@@ -39,7 +48,61 @@ const mockVerificationTokens = new Map<string, { token: string; expiresAt: strin
 let mockReadyMode: 'ready' | 'degraded' | 'unavailable' = 'ready';
 let mockSystemInfoMode: 'healthy' | 'database-down' | 'unavailable' = 'healthy';
 let mockApiTokensListMode: 'ok' | 'unavailable' = 'ok';
+const originalFetch = globalThis.fetch.bind(globalThis);
+const mockEmailDeliveries: MockEmailDelivery[] = [];
+let mockEmailDeliveryCounter = 0;
 const INTEGRATION_SUITE_LOCK_PATH = join(tmpdir(), 'classroompath-api-integration.lock');
+
+function installMockResendDelivery(): void {
+  const patchedFetch = globalThis.fetch as typeof globalThis.fetch & {
+    __classroompathMockResend?: boolean;
+  };
+
+  if (patchedFetch.__classroompathMockResend) {
+    return;
+  }
+
+  const fetchWithMock = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+    if (url === 'https://api.resend.com/emails') {
+      const rawBody =
+        typeof init?.body === 'string'
+          ? init.body
+          : init?.body instanceof URLSearchParams
+            ? init.body.toString()
+            : '';
+      const payload = rawBody ? (JSON.parse(rawBody) as Record<string, unknown>) : {};
+      const deliveryId = `mock-resend-${String(++mockEmailDeliveryCounter)}`;
+
+      mockEmailDeliveries.push({
+        id: deliveryId,
+        from: typeof payload.from === 'string' ? payload.from : '',
+        to: Array.isArray(payload.to)
+          ? payload.to.filter((value): value is string => typeof value === 'string')
+          : [],
+        subject: typeof payload.subject === 'string' ? payload.subject : '',
+        html: typeof payload.html === 'string' ? payload.html : '',
+        text: typeof payload.text === 'string' ? payload.text : '',
+      });
+
+      return new Response(JSON.stringify({ id: deliveryId }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return originalFetch(input, init);
+  }) as typeof globalThis.fetch & {
+    __classroompathMockResend?: boolean;
+  };
+
+  fetchWithMock.__classroompathMockResend = true;
+  globalThis.fetch = fetchWithMock;
+}
+
+installMockResendDelivery();
 
 async function acquireIntegrationSuiteLock() {
   for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -656,6 +719,15 @@ export function resetMockOpenPathUpstreamState(): void {
   mockReadyMode = 'ready';
   mockSystemInfoMode = 'healthy';
   mockApiTokensListMode = 'ok';
+  mockEmailDeliveries.length = 0;
+}
+
+export function getMockEmailDeliveries(): MockEmailDelivery[] {
+  return [...mockEmailDeliveries];
+}
+
+export function resetMockEmailDeliveries(): void {
+  mockEmailDeliveries.length = 0;
 }
 
 export function signToken(params: {
@@ -778,6 +850,8 @@ export async function startIntegrationServer(): Promise<IntegrationServerHandle>
   const baseUrl = `http://localhost:${String(port)}`;
   process.env.CP_PORT = String(port);
   process.env.OPENPATH_API_URL = upstreamBaseUrl;
+  process.env.RESEND_API_KEY ??= 're_test_123';
+  process.env.RESEND_FROM_EMAIL ??= 'noreply@classroompath.test';
 
   const { app } = await import('../../src/server.js');
   const server = app.listen(port);

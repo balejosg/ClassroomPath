@@ -79,6 +79,9 @@ export const config = {
   get resendFromEmail() {
     return trimToNull(process.env.RESEND_FROM_EMAIL);
   },
+  get mockEmailDelivery() {
+    return parseBooleanEnv(process.env.CP_FAKE_EMAIL_DELIVERY, false);
+  },
   get allowSelfServiceOrgs() {
     return parseBooleanEnv(process.env.CP_ALLOW_SELF_SERVICE_ORGS, !isProduction());
   },

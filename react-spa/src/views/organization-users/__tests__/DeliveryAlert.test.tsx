@@ -25,21 +25,19 @@ describe('DeliveryAlert', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it('renders warning notices with a manual url field', () => {
+  it('renders warning notices without any manual url field', () => {
     render(
       <DeliveryAlert
         notice={{
           tone: 'warning',
-          title: 'Invitación creada sin correo',
-          description: 'Comparte este enlace manual.',
-          url: 'https://classroompath.local/invite?token=abc123',
+          title: 'Invitación pendiente de envío',
+          description: 'Reintenta la invitación desde esta pantalla.',
         }}
         onDismiss={() => {}}
       />
     );
 
-    expect(screen.getByLabelText('Enlace manual')).toHaveValue(
-      'https://classroompath.local/invite?token=abc123'
-    );
+    expect(screen.getByRole('status')).toHaveTextContent('Invitación pendiente de envío');
+    expect(screen.queryByLabelText('Enlace manual')).not.toBeInTheDocument();
   });
 });

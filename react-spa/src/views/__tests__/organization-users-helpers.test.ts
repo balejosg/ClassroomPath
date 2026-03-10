@@ -138,7 +138,6 @@ describe('organization-users-helpers', () => {
       getDeliveryNoticeFromInvitationResult({
         email: 'ada@example.com',
         emailSent: true,
-        invitationUrl: 'https://example.com/invite',
       })
     ).toEqual({
       tone: 'success',
@@ -150,21 +149,18 @@ describe('organization-users-helpers', () => {
       getDeliveryNoticeFromInvitationResult({
         email: 'ada@example.com',
         emailSent: false,
-        invitationUrl: 'https://example.com/invite',
       })
     ).toEqual({
       tone: 'warning',
-      title: 'Invitación creada sin correo',
+      title: 'Invitación pendiente de envío',
       description:
-        'Resend no está configurado o no pudo enviar el correo. Comparte este enlace con ada@example.com.',
-      url: 'https://example.com/invite',
+        'No se pudo confirmar el envío a ada@example.com. Reintenta la invitación desde esta pantalla.',
     });
 
     expect(
       getDeliveryNoticeFromResetResult({
         email: 'admin@example.com',
         emailSent: true,
-        resetUrl: 'https://example.com/reset',
       })
     ).toEqual({
       tone: 'success',
@@ -176,13 +172,12 @@ describe('organization-users-helpers', () => {
       getDeliveryNoticeFromResetResult({
         email: 'admin@example.com',
         emailSent: false,
-        resetUrl: 'https://example.com/reset',
       })
     ).toEqual({
       tone: 'warning',
-      title: 'Recuperación generada sin correo',
-      description: 'Resend no envió el correo. Comparte este enlace con admin@example.com.',
-      url: 'https://example.com/reset',
+      title: 'Recuperación pendiente de envío',
+      description:
+        'No se pudo confirmar el envío a admin@example.com. Genera un nuevo correo de recuperación para reintentar.',
     });
   });
 

@@ -10,7 +10,7 @@ export interface SendEmailParams {
 
 export interface SendEmailResult {
   sent: boolean;
-  provider: 'resend' | 'disabled';
+  provider: 'mock' | 'resend' | 'disabled';
   id?: string;
 }
 
@@ -19,6 +19,14 @@ function resendConfigured(): boolean {
 }
 
 export async function sendTransactionalEmail(params: SendEmailParams): Promise<SendEmailResult> {
+  if (config.mockEmailDelivery) {
+    logger.info('Email delivery mocked for test environment', {
+      to: params.to,
+      subject: params.subject,
+    });
+    return { sent: true, provider: 'mock', id: 'mock-email' };
+  }
+
   if (!resendConfigured()) {
     logger.warn('Resend delivery disabled because credentials are not configured', {
       to: params.to,

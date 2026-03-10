@@ -26,6 +26,8 @@ const invitationIds = new Set<string>();
 const userIds = new Set<string>();
 const roleIds = new Set<string>();
 const groupIds = new Set<string>();
+const originalResendApiKey = process.env.RESEND_API_KEY;
+const originalResendFromEmail = process.env.RESEND_FROM_EMAIL;
 
 function nextId(prefix: string): string {
   counter += 1;
@@ -123,10 +125,25 @@ after(async () => {
       .delete(schema.cpOrganizations)
       .where(inArray(schema.cpOrganizations.id, [...organizationIds]));
   }
+
+  if (originalResendApiKey === undefined) {
+    delete process.env.RESEND_API_KEY;
+  } else {
+    process.env.RESEND_API_KEY = originalResendApiKey;
+  }
+
+  if (originalResendFromEmail === undefined) {
+    delete process.env.RESEND_FROM_EMAIL;
+  } else {
+    process.env.RESEND_FROM_EMAIL = originalResendFromEmail;
+  }
 });
 
-describe('user.service', () => {
-  it('creates invitations instead of provisioning upstream users immediately', async () => {
+describe('user.service', { concurrency: 1 }, () => {
+  it('fails explicitly without provisioning upstream users when delivery is unavailable', async () => {
+    delete process.env.RESEND_API_KEY;
+    delete process.env.RESEND_FROM_EMAIL;
+
     const adminUserId = nextId('admin');
     const organizationId = await seedOrganization('User Service Org', adminUserId);
     await seedMembership({ organizationId, userId: adminUserId, role: 'admin' });
@@ -136,14 +153,25 @@ describe('user.service', () => {
       name: 'Admin Creator',
     });
 
-    const created = await createOrganizationUser({
-      organizationId,
-      actedBy: adminUserId,
-      email: `teacher-${RUN_ID}@example.com`,
-      name: 'Teacher Example',
-      role: 'teacher',
-    });
-    invitationIds.add(created.id);
+    await assert.rejects(
+      () =>
+        createOrganizationUser({
+          organizationId,
+          actedBy: adminUserId,
+          email: `teacher-${RUN_ID}@example.com`,
+          name: 'Teacher Example',
+          role: 'teacher',
+        }),
+      (error: unknown) => {
+        assert.ok(error && typeof error === 'object');
+        assert.strictEqual((error as { code?: unknown }).code, 'SERVICE_UNAVAILABLE');
+        assert.strictEqual(
+          (error as { message?: unknown }).message,
+          'No se pudo enviar la invitación. Reintenta desde esta pantalla.'
+        );
+        return true;
+      }
+    );
 
     const listed = await listOrganizationUsers(organizationId);
     const invitations = await listOrganizationInvitations(organizationId);
@@ -153,19 +181,11 @@ describe('user.service', () => {
       .where(eq(users.email, `teacher-${RUN_ID}@example.com`))
       .limit(1);
 
-    assert.strictEqual(created.email, `teacher-${RUN_ID}@example.com`);
-    assert.strictEqual(created.role, 'teacher');
-    assert.strictEqual(created.status, 'Pending');
-    assert.strictEqual(typeof created.invitationUrl, 'string');
-    assert.strictEqual(created.emailSent, false);
     assert.strictEqual(
-      listed.some((user) => user.email === created.email),
+      listed.some((user) => user.email === `teacher-${RUN_ID}@example.com`),
       false
     );
-    assert.strictEqual(
-      invitations.some((invitation) => invitation.id === created.id),
-      true
-    );
+    assert.strictEqual(invitations.length, 0);
     assert.strictEqual(upstreamInvitee, undefined);
   });
 

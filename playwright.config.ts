@@ -134,6 +134,7 @@ export default defineConfig({
             CP_PORT: String(cpGatewayPort),
             OPENPATH_API_URL: `http://localhost:${String(openPathApiPort)}`,
             DATABASE_URL: testDatabaseUrl,
+            CP_FAKE_EMAIL_DELIVERY: '1',
             // Must match OpenPath's JWT_SECRET for token verification
             JWT_SECRET: process.env.JWT_SECRET ?? 'dev-secret-key-change-me-in-production',
           },
