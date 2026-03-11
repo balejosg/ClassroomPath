@@ -246,6 +246,8 @@ async function seed(): Promise<void> {
       waitingUsers.map((user) => ({
         userId: user.id,
         status: 'waiting',
+        // Keep seeded pending accounts reviewable by the seeded tenant admins.
+        targetOrganizationId: ORG.id,
       }))
     );
   }

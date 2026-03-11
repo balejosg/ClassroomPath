@@ -125,7 +125,9 @@ test.describe('Waiting Room Flow', () => {
 
     const waitingPage = new WaitingPage(page);
     await waitingPage.expectLoaded();
-    await expect(page.getByText(/Esperando|Waiting|pendiente/i)).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: /Esperando invitación|Waiting for invitation/i })
+    ).toBeVisible();
   });
 
   test('should allow manual status check @waiting', async ({ page }) => {

@@ -86,6 +86,6 @@ export const config = {
     return parseBooleanEnv(process.env.CP_ALLOW_SELF_SERVICE_ORGS, !isProduction());
   },
   get allowOrgDirectory() {
-    return parseBooleanEnv(process.env.CP_ALLOW_ORG_DIRECTORY, !isProduction());
+    return parseBooleanEnv(process.env.CP_ALLOW_ORG_DIRECTORY, false);
   },
 };

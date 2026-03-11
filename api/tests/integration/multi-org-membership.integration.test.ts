@@ -280,7 +280,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
     assert.match(parsed.error ?? '', /No hay organizaciones disponibles/i);
   });
 
-  test('onboarding.waitForInvitation requires explicit selection when multiple organizations exist', async () => {
+  test('onboarding.waitForInvitation allows generic waiting when multiple organizations exist and the directory is hidden', async () => {
     await resetDb();
 
     const userId = `multi-org-wait-many-${Date.now()}`;
@@ -324,10 +324,15 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
       {},
       bearerAuth(token)
     );
-    const parsed = await parseTRPC(response);
-    assert.ok(parsed.error, 'Expected error payload');
-    assert.strictEqual(parsed.code, 'BAD_REQUEST');
-    assert.match(parsed.error ?? '', /Debes seleccionar una organización/i);
+    assertStatus(response, 200);
+
+    const [waitingStatus] = await db
+      .select()
+      .from(cpSchema.cpUserStatus)
+      .where(eq(cpSchema.cpUserStatus.userId, userId))
+      .limit(1);
+    assert.strictEqual(waitingStatus?.status, 'waiting');
+    assert.strictEqual(waitingStatus?.targetOrganizationId ?? null, null);
   });
 
   test('onboarding.cancelWaiting clears the stored waiting status', async () => {

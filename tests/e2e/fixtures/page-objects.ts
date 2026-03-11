@@ -105,14 +105,17 @@ export class WaitingPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.waitingMessage = page.getByText(/Esperando invitación|Waiting for invitation/i);
-    this.verifyButton = page.getByRole('button', { name: /Verificar ahora|Check now/i });
-    this.cancelButton = page.getByRole('button', { name: /Cambiar de opinión|Cancel/i });
+    this.waitingMessage = page.getByRole('heading', {
+      name: /Esperando invitación|Waiting for invitation/i,
+    });
+    this.verifyButton = page.getByTestId('waiting-check-now');
+    this.cancelButton = page.getByTestId('waiting-cancel');
     this.loadingSpinner = loadingSpinnerLocator(page);
     this.statusMessage = page.getByText(/pendiente|pending|approved|denied/i);
   }
 
   async expectLoaded() {
+    await expect(this.verifyButton).toBeVisible({ timeout: 10000 });
     await expect(this.waitingMessage).toBeVisible({ timeout: 10000 });
   }
 

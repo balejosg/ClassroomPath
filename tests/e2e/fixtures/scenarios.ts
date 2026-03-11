@@ -1,14 +1,9 @@
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
-import {
-  createTestUser,
-  expectWaitingPage,
-  getE2EBaseUrl,
-  loginAsAdmin,
-  registerUser,
-  waitForNetworkIdle,
-  type TestUser,
-} from './test-utils';
+import { expectWaitingPage } from './assertions';
+import { getPendingAccountForWorker, type TestUser } from './accounts';
+import { loginAsAdmin, loginAsPendingUser, registerUser } from './auth';
+import { waitForNetworkIdle } from './waiters';
 
 export async function registerAndRequestAccess(page: Page, user: TestUser): Promise<void> {
   await registerUser(page, user);
@@ -30,15 +25,23 @@ export async function registerAndRequestAccess(page: Page, user: TestUser): Prom
 
 export async function createPendingUserContext(
   browser: Browser,
-  user = createTestUser()
+  variantOffset = 0
 ): Promise<{ user: TestUser; userContext: BrowserContext; userPage: Page }> {
   const userContext = await browser.newContext();
   const userPage = await userContext.newPage();
+  const pendingAccount = getPendingAccountForWorker(variantOffset);
 
-  await userPage.goto(getE2EBaseUrl());
-  await registerAndRequestAccess(userPage, user);
+  await loginAsPendingUser(userPage, variantOffset);
 
-  return { user, userContext, userPage };
+  return {
+    user: {
+      email: pendingAccount.email,
+      password: pendingAccount.password,
+      name: 'E2E User',
+    },
+    userContext,
+    userPage,
+  };
 }
 
 export async function openAdminPendingUsersPanel(page: Page): Promise<void> {
