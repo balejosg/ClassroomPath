@@ -2,7 +2,11 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
 import { publicProcedure } from '../trpc.js';
-import { callOpenPathTrpc } from '../../lib/openpath-upstream.js';
+import {
+  callOpenPathTrpc,
+  loginOpenPathUser,
+  registerOpenPathUser,
+} from '../../lib/openpath-upstream.js';
 import { synchronizeOpenPathRole } from '../../lib/openpath-roles.js';
 import { storeSessionFromPayload } from '../../lib/session-cookies.js';
 import {
@@ -10,11 +14,7 @@ import {
   getInvitationByToken,
 } from '../../services/invitations.service.js';
 import { recordTermsAcceptance } from '../../services/legal-consent.service.js';
-import {
-  assertCurrentTermsVersion,
-  parseOpenPathRegistrationPayload,
-  parseOpenPathSessionPayload,
-} from './auth-payloads.js';
+import { assertCurrentTermsVersion } from './auth-payloads.js';
 import { resolveRegistrationEmailVerification } from './auth-verification-flow.js';
 
 async function getInvitationOrThrow(token: string) {
@@ -52,20 +52,16 @@ export const authInvitationProcedures = {
 
       assertCurrentTermsVersion(input.termsVersion);
 
-      const registrationPayload = await callOpenPathTrpc({
-        procedure: 'auth.register',
+      const registration = await registerOpenPathUser({
         req: ctx.req,
         input: {
           email: invitation.email,
           name: invitation.name,
           password: input.password,
         },
-        defaultErrorCode: 'BAD_REQUEST',
         upstreamFailureMessage: 'Invitation activation failed',
         unavailableMessage: 'Registration service unavailable',
       });
-
-      const registration = parseOpenPathRegistrationPayload(registrationPayload);
 
       await recordTermsAcceptance({
         userId: registration.user.id,
@@ -100,19 +96,15 @@ export const authInvitationProcedures = {
         groupIds: [],
       });
 
-      const loginPayload = await callOpenPathTrpc({
-        procedure: 'auth.login',
+      const sessionPayload = await loginOpenPathUser({
         req: ctx.req,
         input: {
           email: invitation.email,
           password: input.password,
         },
-        defaultErrorCode: 'UNAUTHORIZED',
         upstreamFailureMessage: 'Invitation activation failed',
         unavailableMessage: 'Authentication service unavailable',
       });
-
-      const sessionPayload = parseOpenPathSessionPayload(loginPayload);
       return storeSessionFromPayload(ctx.res, sessionPayload);
     }),
 };

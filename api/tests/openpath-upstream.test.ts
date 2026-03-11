@@ -7,9 +7,12 @@ import {
   callOpenPathTrpc,
   extractTrpcData,
   extractUpstreamErrorMessage,
+  generateOpenPathEmailVerificationToken,
   getForwardHeaders,
+  loginOpenPathUser,
   mapUpstreamStatusToTrpcCode,
   openPathTrpcUrl,
+  registerOpenPathUser,
   readUpstreamErrorMessage,
 } from '../src/lib/openpath-upstream.js';
 
@@ -200,6 +203,165 @@ describe('openpath-upstream', () => {
           error instanceof TRPCError &&
           error.code === 'INTERNAL_SERVER_ERROR' &&
           error.message === 'Healthcheck service unavailable'
+      );
+    });
+  });
+
+  describe('typed auth wrappers', () => {
+    it('registerOpenPathUser validates the upstream registration payload', async () => {
+      const registration = await registerOpenPathUser({
+        req: { headers: {} },
+        input: {
+          email: 'register@example.com',
+          name: 'Register User',
+          password: 'password123',
+        },
+        fetchImpl: async () =>
+          new Response(
+            JSON.stringify({
+              result: {
+                data: {
+                  user: {
+                    id: 'user-1',
+                    email: 'register@example.com',
+                    name: 'Register User',
+                  },
+                  verificationRequired: true,
+                },
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          ),
+      });
+
+      assert.equal(registration.user.id, 'user-1');
+      assert.equal(registration.verificationRequired, true);
+
+      await assert.rejects(
+        () =>
+          registerOpenPathUser({
+            req: { headers: {} },
+            input: {
+              email: 'broken@example.com',
+              name: 'Broken User',
+              password: 'password123',
+            },
+            fetchImpl: async () =>
+              new Response(
+                JSON.stringify({
+                  result: {
+                    data: {
+                      user: {
+                        id: 'user-2',
+                        email: 'broken@example.com',
+                      },
+                      verificationRequired: true,
+                    },
+                  },
+                }),
+                {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' },
+                }
+              ),
+          }),
+        (error: unknown) =>
+          error instanceof TRPCError &&
+          error.code === 'INTERNAL_SERVER_ERROR' &&
+          error.message === 'Invalid registration payload received from upstream'
+      );
+    });
+
+    it('loginOpenPathUser and generateOpenPathEmailVerificationToken fail closed on malformed auth payloads', async () => {
+      const session = await loginOpenPathUser({
+        req: { headers: {} },
+        input: {
+          email: 'teacher@example.com',
+          password: 'password123',
+        },
+        fetchImpl: async () =>
+          new Response(
+            JSON.stringify({
+              result: {
+                data: {
+                  accessToken: 'access-token',
+                  refreshToken: 'refresh-token',
+                  user: {
+                    id: 'user-3',
+                    email: 'teacher@example.com',
+                    name: 'Teacher Example',
+                  },
+                },
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          ),
+      });
+      assert.equal(session.user.id, 'user-3');
+
+      const verification = await generateOpenPathEmailVerificationToken({
+        req: { headers: {} },
+        input: {
+          email: 'teacher@example.com',
+        },
+        fetchImpl: async () =>
+          new Response(
+            JSON.stringify({
+              result: {
+                data: {
+                  email: 'teacher@example.com',
+                  verificationRequired: true,
+                  verificationToken: 'verification-token',
+                  verificationExpiresAt: '2026-03-10T12:00:00.000Z',
+                },
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          ),
+      });
+      assert.equal(verification.verificationToken, 'verification-token');
+
+      await assert.rejects(
+        () =>
+          loginOpenPathUser({
+            req: { headers: {} },
+            input: {
+              email: 'teacher@example.com',
+              password: 'password123',
+            },
+            fetchImpl: async () =>
+              new Response(
+                JSON.stringify({
+                  result: {
+                    data: {
+                      accessToken: 'access-token',
+                      user: {
+                        id: 'user-3',
+                        email: 'teacher@example.com',
+                        name: 'Teacher Example',
+                      },
+                    },
+                  },
+                }),
+                {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' },
+                }
+              ),
+          }),
+        (error: unknown) =>
+          error instanceof TRPCError &&
+          error.code === 'INTERNAL_SERVER_ERROR' &&
+          error.message === 'Invalid session payload received from upstream'
       );
     });
   });

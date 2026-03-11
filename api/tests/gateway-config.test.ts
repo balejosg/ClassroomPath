@@ -15,6 +15,7 @@ await describe('gateway config', async () => {
       jsonBodyLimit: '64kb',
       onboardingRateLimitMax: 5,
       onboardingRateLimitWindowMs: 60_000,
+      serveSpa: true,
     });
   });
 
@@ -31,6 +32,7 @@ await describe('gateway config', async () => {
         CP_AUTH_RATE_LIMIT_WINDOW_MS: '120000',
         CP_ONBOARDING_RATE_LIMIT_MAX: '3',
         CP_ONBOARDING_RATE_LIMIT_WINDOW_MS: '90000',
+        CP_SERVE_SPA: 'false',
         CP_JSON_LIMIT: '32kb',
         CORS_ORIGINS: 'https://a.example, https://b.example',
       }
@@ -44,6 +46,7 @@ await describe('gateway config', async () => {
       jsonBodyLimit: '1kb',
       onboardingRateLimitMax: 9,
       onboardingRateLimitWindowMs: 90_000,
+      serveSpa: false,
     });
   });
 });

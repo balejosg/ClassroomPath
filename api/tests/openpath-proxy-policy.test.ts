@@ -1,11 +1,35 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { findBlockedOpenPathProcedureFromUrl } from '../src/lib/openpath-proxy-policy.js';
+import {
+  OPENPATH_PROXY_MANIFEST,
+  findBlockedOpenPathPassthroughPath,
+  findBlockedOpenPathProcedureFromUrl,
+} from '../src/lib/openpath-proxy-policy.js';
 
 void describe('openpath-proxy-policy', () => {
+  test('exports a single manifest for upstream exposure and blocking policy', () => {
+    assert.deepStrictEqual(
+      OPENPATH_PROXY_MANIFEST.proxyRoutes.map((route) => route.path),
+      ['/health', '/api/machines/events']
+    );
+    assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.notFoundRoutes, ['/v2', '/export']);
+    assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.blockedPassthroughPrefixes, [
+      '/api',
+      '/w',
+      '/api-docs',
+    ]);
+    assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.allowedTrpcProcedures, []);
+  });
+
   test('returns null for non-/trpc URLs', () => {
     assert.strictEqual(findBlockedOpenPathProcedureFromUrl('/cp/trpc/groups.list'), null);
     assert.strictEqual(findBlockedOpenPathProcedureFromUrl('/api/health'), null);
+  });
+
+  test('returns the blocked direct passthrough prefix from the shared manifest', () => {
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/health'), null);
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/users?page=1'), '/api');
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/w/agent/install'), '/w');
   });
 
   test('blocks exact matches', () => {

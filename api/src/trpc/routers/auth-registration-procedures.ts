@@ -4,15 +4,16 @@ import { z } from 'zod';
 import { publicProcedure } from '../trpc.js';
 import { openpathDb, openpathSchema } from '../../db/openpath.js';
 import { forwardOpenPathAuthProcedure } from '../../lib/openpath-auth-client.js';
-import { callOpenPathTrpc } from '../../lib/openpath-upstream.js';
+import {
+  generateOpenPathEmailVerificationToken,
+  registerOpenPathUser,
+} from '../../lib/openpath-upstream.js';
 import { recordTermsAcceptance } from '../../services/legal-consent.service.js';
 import { deliverEmailVerification } from './auth-email-delivery.js';
 import {
   assertCurrentTermsVersion,
   normalizeDisplayName,
   normalizeEmailAddress,
-  parseOpenPathEmailVerificationPayload,
-  parseOpenPathRegistrationPayload,
 } from './auth-payloads.js';
 import { deliverRegistrationEmailVerification } from './auth-verification-flow.js';
 
@@ -51,20 +52,16 @@ export const authRegistrationProcedures = {
 
       assertCurrentTermsVersion(input.termsVersion);
 
-      const payload = await callOpenPathTrpc({
-        procedure: 'auth.register',
+      const registration = await registerOpenPathUser({
         req: ctx.req,
         input: {
           email,
           name,
           password: input.password,
         },
-        defaultErrorCode: 'BAD_REQUEST',
-        upstreamFailureMessage: 'Registration failed',
         unavailableMessage: 'Registration service unavailable',
+        upstreamFailureMessage: 'Registration failed',
       });
-
-      const registration = parseOpenPathRegistrationPayload(payload);
 
       await recordTermsAcceptance({
         userId: registration.user.id,
@@ -87,16 +84,12 @@ export const authRegistrationProcedures = {
     )
     .mutation(async ({ input, ctx }) => {
       const email = normalizeEmailAddress(input.email);
-      const payload = await callOpenPathTrpc({
-        procedure: 'auth.generateEmailVerificationToken',
+      const verification = await generateOpenPathEmailVerificationToken({
         req: ctx.req,
         input: { email },
-        defaultErrorCode: 'BAD_REQUEST',
-        upstreamFailureMessage: 'Verification token generation failed',
         unavailableMessage: 'Authentication service unavailable',
+        upstreamFailureMessage: 'Verification token generation failed',
       });
-
-      const verification = parseOpenPathEmailVerificationPayload(payload);
       const user = await getOpenPathUserByEmail(email);
 
       return deliverEmailVerification({

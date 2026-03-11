@@ -45,6 +45,14 @@ function getSetCookieHeaders(response: Response): string[] {
 }
 
 describe('ClassroomPath Gateway Integration', async () => {
+  test('integration server runs in API-only mode and does not serve SPA routes', async () => {
+    const response = await fetch(`${integration.baseUrl}/classrooms`);
+
+    assert.strictEqual(response.status, 404);
+    assert.match(response.headers.get('content-type') ?? '', /html|json/i);
+    assert.match(await response.text(), /not found|cannot get/i);
+  });
+
   test('should return 401 for unauthenticated requests to /cp/trpc', async () => {
     const resp = await trpcQuery(integration.baseUrl, 'onboarding.status');
     const { error } = (await parseTRPC(resp)) as { error: string };

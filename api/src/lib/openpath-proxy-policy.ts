@@ -1,9 +1,63 @@
-export const ALLOWED_OPENPATH_PROCEDURES: readonly string[] = [];
+export interface OpenPathProxyRoutePolicy {
+  method: 'get' | 'use';
+  path: string;
+  proxyTimeout?: number;
+  timeout?: number;
+}
+
+export interface OpenPathProxyManifest {
+  allowedTrpcProcedures: readonly string[];
+  blockedPassthroughPrefixes: readonly string[];
+  notFoundRoutes: readonly string[];
+  proxyRoutes: readonly OpenPathProxyRoutePolicy[];
+}
+
+export const OPENPATH_PROXY_MANIFEST = {
+  proxyRoutes: [
+    {
+      method: 'get',
+      path: '/health',
+    },
+    {
+      method: 'use',
+      path: '/api/machines/events',
+      proxyTimeout: 0,
+      timeout: 0,
+    },
+  ],
+  notFoundRoutes: ['/v2', '/export'],
+  blockedPassthroughPrefixes: ['/api', '/w', '/api-docs'],
+  allowedTrpcProcedures: [],
+} as const satisfies OpenPathProxyManifest;
+
+function matchesPathPrefix(requestPath: string, candidate: string): boolean {
+  return requestPath === candidate || requestPath.startsWith(candidate + '/');
+}
+
+function normalizeRequestPath(reqUrl: string): string {
+  return reqUrl.split('?')[0] || '/';
+}
 
 function isAllowedProcedure(proc: string): boolean {
-  return ALLOWED_OPENPATH_PROCEDURES.some(
+  return OPENPATH_PROXY_MANIFEST.allowedTrpcProcedures.some(
     (allowed) => proc === allowed || proc.startsWith(allowed + '.')
   );
+}
+
+export function findBlockedOpenPathPassthroughPath(reqUrl: string): string | null {
+  const requestPath = normalizeRequestPath(reqUrl);
+
+  const isKnownProxyRoute = OPENPATH_PROXY_MANIFEST.proxyRoutes.some((route) =>
+    matchesPathPrefix(requestPath, route.path)
+  );
+  if (isKnownProxyRoute) {
+    return null;
+  }
+
+  const blocked = OPENPATH_PROXY_MANIFEST.blockedPassthroughPrefixes.find((prefix) =>
+    matchesPathPrefix(requestPath, prefix)
+  );
+  return blocked ?? null;
 }
 
 /**
@@ -16,8 +70,8 @@ function isAllowedProcedure(proc: string): boolean {
 export function findBlockedOpenPathProcedureFromUrl(reqUrl: string): string | null {
   if (!reqUrl.startsWith('/trpc')) return null;
 
-  const rawPath = reqUrl.slice('/trpc'.length);
-  const procedurePath = rawPath.split('?')[0].replace(/^\//, '');
+  const rawPath = normalizeRequestPath(reqUrl).slice('/trpc'.length);
+  const procedurePath = rawPath.replace(/^\//, '');
   if (!procedurePath) return null;
 
   const procedures = procedurePath

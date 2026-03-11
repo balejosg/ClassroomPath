@@ -226,4 +226,33 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
 
     assert.throws(() => serverModule.createGatewayApp(), /JWT_SECRET/i);
   });
+
+  test('createGatewayApp can skip SPA mounting for API-focused test servers', async () => {
+    const port = await getAvailablePort();
+    const localBaseUrl = `http://127.0.0.1:${String(port)}`;
+    const apiOnlyApp = serverModule.createGatewayApp({
+      serveSpa: false,
+    });
+    const apiOnlyServer = apiOnlyApp.listen(port);
+
+    try {
+      await waitForHealth(localBaseUrl);
+
+      const response = await fetch(`${localBaseUrl}/classrooms`);
+
+      assert.strictEqual(response.status, 404);
+      assert.match(response.headers.get('content-type') ?? '', /html|json/i);
+      assert.match(await response.text(), /not found|cannot get/i);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        apiOnlyServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+  });
 });

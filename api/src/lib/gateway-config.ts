@@ -5,6 +5,7 @@ export interface GatewayAppOptions {
   jsonBodyLimit?: string;
   onboardingRateLimitMax?: number;
   onboardingRateLimitWindowMs?: number;
+  serveSpa?: boolean;
 }
 
 export interface GatewayRuntimeConfig {
@@ -15,6 +16,7 @@ export interface GatewayRuntimeConfig {
   jsonBodyLimit: string;
   onboardingRateLimitMax: number;
   onboardingRateLimitWindowMs: number;
+  serveSpa: boolean;
 }
 
 function parseIntegerEnv(value: string | undefined, fallback: number): number {
@@ -63,5 +65,6 @@ export function resolveGatewayConfig(
     jsonBodyLimit: options.jsonBodyLimit ?? env.CP_JSON_LIMIT ?? '64kb',
     onboardingRateLimitMax,
     onboardingRateLimitWindowMs,
+    serveSpa: options.serveSpa ?? env.CP_SERVE_SPA !== 'false',
   };
 }

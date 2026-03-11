@@ -1,7 +1,17 @@
 import { TRPCError } from '@trpc/server';
 import type { TRPC_ERROR_CODE_KEY } from '@trpc/server/rpc';
+import type { ZodType } from 'zod';
 import { config } from '../config.js';
-import { OpenPathMeResponseSchema, type OpenPathMeResponse } from './openpath-auth-schema.js';
+import {
+  OpenPathEmailVerificationPayloadSchema,
+  OpenPathMeResponseSchema,
+  OpenPathRegistrationPayloadSchema,
+  OpenPathSessionPayloadSchema,
+  type OpenPathEmailVerificationPayload,
+  type OpenPathMeResponse,
+  type OpenPathRegistrationPayload,
+  type OpenPathSessionPayload,
+} from './openpath-auth-schema.js';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null;
@@ -142,6 +152,22 @@ function resolveUpstreamFailureMessage(message: UpstreamFailureMessage, status: 
   return typeof message === 'function' ? message(status) : message;
 }
 
+function parseUpstreamPayload<T>(
+  payload: unknown,
+  schema: ZodType<T>,
+  invalidMessage: string
+): T {
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: invalidMessage,
+    });
+  }
+
+  return parsed.data;
+}
+
 export async function callOpenPathTrpc(options: OpenPathTrpcCallOptions): Promise<unknown> {
   try {
     const fetchImpl = options.fetchImpl ?? fetch;
@@ -212,6 +238,88 @@ export async function fetchOpenPathMeProfile(params: {
   }
 
   return parsed.data;
+}
+
+export async function registerOpenPathUser(params: {
+  req?: OpenPathForwardRequest;
+  input: {
+    email: string;
+    name: string;
+    password: string;
+  };
+  fetchImpl?: typeof fetch;
+  unavailableMessage?: string;
+  upstreamFailureMessage?: UpstreamFailureMessage;
+}): Promise<OpenPathRegistrationPayload> {
+  const payload = await callOpenPathTrpc({
+    procedure: 'auth.register',
+    req: params.req,
+    input: params.input,
+    defaultErrorCode: 'BAD_REQUEST',
+    upstreamFailureMessage: params.upstreamFailureMessage ?? 'Registration failed',
+    unavailableMessage: params.unavailableMessage ?? 'Registration service unavailable',
+    fetchImpl: params.fetchImpl,
+  });
+
+  return parseUpstreamPayload(
+    payload,
+    OpenPathRegistrationPayloadSchema,
+    'Invalid registration payload received from upstream'
+  );
+}
+
+export async function loginOpenPathUser(params: {
+  req?: OpenPathForwardRequest;
+  input: {
+    email: string;
+    password: string;
+  };
+  fetchImpl?: typeof fetch;
+  unavailableMessage?: string;
+  upstreamFailureMessage?: UpstreamFailureMessage;
+}): Promise<OpenPathSessionPayload> {
+  const payload = await callOpenPathTrpc({
+    procedure: 'auth.login',
+    req: params.req,
+    input: params.input,
+    defaultErrorCode: 'UNAUTHORIZED',
+    upstreamFailureMessage: params.upstreamFailureMessage ?? 'Login failed',
+    unavailableMessage: params.unavailableMessage ?? 'Authentication service unavailable',
+    fetchImpl: params.fetchImpl,
+  });
+
+  return parseUpstreamPayload(
+    payload,
+    OpenPathSessionPayloadSchema,
+    'Invalid session payload received from upstream'
+  );
+}
+
+export async function generateOpenPathEmailVerificationToken(params: {
+  req?: OpenPathForwardRequest;
+  input: {
+    email: string;
+  };
+  fetchImpl?: typeof fetch;
+  unavailableMessage?: string;
+  upstreamFailureMessage?: UpstreamFailureMessage;
+}): Promise<OpenPathEmailVerificationPayload> {
+  const payload = await callOpenPathTrpc({
+    procedure: 'auth.generateEmailVerificationToken',
+    req: params.req,
+    input: params.input,
+    defaultErrorCode: 'BAD_REQUEST',
+    upstreamFailureMessage:
+      params.upstreamFailureMessage ?? 'Verification token generation failed',
+    unavailableMessage: params.unavailableMessage ?? 'Authentication service unavailable',
+    fetchImpl: params.fetchImpl,
+  });
+
+  return parseUpstreamPayload(
+    payload,
+    OpenPathEmailVerificationPayloadSchema,
+    'Invalid email verification payload received from upstream'
+  );
 }
 
 export interface AuthenticatedOpenPathUser {

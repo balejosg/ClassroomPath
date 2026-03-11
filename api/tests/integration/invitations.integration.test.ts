@@ -16,12 +16,17 @@ import {
   uniqueEmail,
 } from '../test-utils.js';
 import { signToken, useIntegrationServer } from './harness.js';
+import { createTenantScenario } from './scenario-builder.js';
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../src/lib/session-cookies.js';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
+
+function getScenario() {
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+}
 
 function hashInvitationToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -39,47 +44,12 @@ function getSetCookieHeaders(response: Response): string[] {
 
 describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
   test('users.create returns delivery metadata without exposing invitation URLs', async () => {
-    const orgId = `org-invite-${Date.now()}`;
     const adminUserId = `u-admin-invite-${Date.now()}`;
-    const adminEmail = uniqueEmail('admin-invite');
-
-    await openpathDb.insert(openpathSchema.users).values({
-      id: adminUserId,
-      email: adminEmail,
+    const scenario = getScenario();
+    const { actor: admin } = await scenario.seedOrgAdmin({
+      userId: adminUserId,
       name: 'Admin Invite',
-      passwordHash: 'hashed',
-      isActive: true,
-      emailVerified: true,
-    });
-
-    await openpathDb.insert(openpathSchema.roles).values({
-      id: `role-${adminUserId}`,
-      userId: adminUserId,
-      role: 'admin',
-      groupIds: [],
-      createdBy: adminUserId,
-    });
-
-    await db.insert(cpSchema.cpOrganizations).values({
-      id: orgId,
-      name: 'Invite Org',
-      createdBy: adminUserId,
-    });
-
-    await db.insert(cpSchema.cpMemberships).values({
-      id: `mem-${adminUserId}`,
-      userId: adminUserId,
-      organizationId: orgId,
-      role: 'admin',
-      invitedBy: adminUserId,
-    });
-
-    const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: adminUserId,
-      email: adminEmail,
-      name: 'Admin Invite',
-      roles: [{ role: 'admin', groupIds: [] }],
+      organizationName: 'Invite Org',
     });
 
     const invitedEmail = uniqueEmail('invitee');
@@ -91,7 +61,7 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
         name: 'Invitee User',
         role: 'teacher',
       },
-      bearerAuth(adminToken)
+      bearerAuth(admin.token)
     );
     assertStatus(inviteResponse, 200);
 

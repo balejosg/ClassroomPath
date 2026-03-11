@@ -20,6 +20,7 @@ import {
   uniqueEmail,
 } from '../test-utils.js';
 import { signToken, useIntegrationServer } from './harness.js';
+import { createTenantScenario } from './scenario-builder.js';
 
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
@@ -27,6 +28,10 @@ import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
 const LAST_ADMIN_MESSAGE = /last admin|at least one.*admin/i;
+
+function getScenario() {
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+}
 
 async function assertLastAdminConflict(response: Response): Promise<void> {
   assertStatus(response, 409);
@@ -55,93 +60,34 @@ function requireAuditEvent(
 
 describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async () => {
   test('users.list returns SafeUserWithRoles and never exposes passwordHash', async () => {
-    const orgId = `org-users-${Date.now()}`;
-
     const adminUserId = `u-admin-${Date.now()}`;
     const teacherUserId = `u-teacher-${Date.now()}`;
-
-    const adminEmail = uniqueEmail('admin');
-    const teacherEmail = uniqueEmail('teacher');
-
-    // Seed OpenPath users
-    await openpathDb.insert(openpathSchema.users).values([
-      {
-        id: adminUserId,
-        email: adminEmail,
-        name: 'Admin User',
-        passwordHash: 'hashed',
-        isActive: true,
-        emailVerified: true,
-      },
-      {
-        id: teacherUserId,
-        email: teacherEmail,
-        name: 'Teacher User',
-        passwordHash: 'hashed',
-        isActive: true,
-        emailVerified: false,
-      },
-    ]);
-
-    // Seed OpenPath roles
-    await openpathDb.insert(openpathSchema.roles).values([
-      {
-        id: `role-${adminUserId}`,
-        userId: adminUserId,
-        role: 'admin',
-        groupIds: [],
-        createdBy: adminUserId,
-      },
-      {
-        id: `role-${teacherUserId}`,
-        userId: teacherUserId,
-        role: 'teacher',
-        groupIds: [],
-        createdBy: adminUserId,
-      },
-    ]);
-
-    // Seed CP org + memberships
-    await db.insert(cpSchema.cpOrganizations).values({
-      id: orgId,
-      name: `Org ${orgId}`,
-      createdBy: adminUserId,
-    });
-
-    await db.insert(cpSchema.cpMemberships).values([
-      {
-        id: `mem-${adminUserId}`,
-        userId: adminUserId,
-        organizationId: orgId,
-        role: 'admin',
-        invitedBy: adminUserId,
-      },
-      {
-        id: `mem-${teacherUserId}`,
-        userId: teacherUserId,
-        organizationId: orgId,
-        role: 'teacher',
-        invitedBy: adminUserId,
-      },
-    ]);
-
-    const token = signToken({
-      jwtSecret: JWT_SECRET,
+    const scenario = getScenario();
+    const { actor: admin, organization } = await scenario.seedOrgAdmin({
       userId: adminUserId,
-      email: adminEmail,
-      name: 'Admin User',
-      roles: [{ role: 'admin', groupIds: [] }],
+      organizationName: `Org users ${Date.now()}`,
+    });
+    const teacher = await scenario.seedMember({
+      organizationId: organization.organizationId,
+      invitedBy: admin.userId,
+      role: 'teacher',
+      userId: teacherUserId,
     });
 
-    const resp = await trpcQuery(integration.baseUrl, 'users.list', undefined, bearerAuth(token));
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'users.list',
+      undefined,
+      bearerAuth(admin.token)
+    );
     assertStatus(resp, 200);
 
     const { data } = (await parseTRPC(resp)) as { data: any };
     assert.ok(Array.isArray(data), 'users.list must return an array');
 
     const byEmail = new Map<string, any>(data.map((u: any) => [u.email, u]));
-    assert.ok(byEmail.has(adminEmail), 'admin user should be present in users.list');
-    assert.ok(byEmail.has(teacherEmail), 'teacher user should be present in users.list');
+    assert.ok(byEmail.has(admin.email), 'admin user should be present in users.list');
+    assert.ok(byEmail.has(teacher.email), 'teacher user should be present in users.list');
 
     for (const u of data as any[]) {
       assert.strictEqual('passwordHash' in u, false, 'passwordHash must never be exposed');

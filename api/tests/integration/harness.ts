@@ -868,8 +868,8 @@ export async function startIntegrationServer(): Promise<IntegrationServerHandle>
   process.env.RESEND_API_KEY ??= 're_test_123';
   process.env.RESEND_FROM_EMAIL ??= 'noreply@classroompath.test';
 
-  const { app } = await import('../../src/server.js');
-  const server = app.listen(port);
+  const { createGatewayApp } = await import('../../src/server.js');
+  const server = createGatewayApp({ serveSpa: false }).listen(port);
 
   await waitForHealth(baseUrl);
 

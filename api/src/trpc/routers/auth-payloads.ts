@@ -1,36 +1,14 @@
 import { TRPCError } from '@trpc/server';
 
+import {
+  OpenPathEmailVerificationPayloadSchema,
+  OpenPathRegistrationPayloadSchema,
+  OpenPathSessionPayloadSchema,
+  type OpenPathEmailVerificationPayload,
+  type OpenPathRegistrationPayload,
+  type OpenPathSessionPayload,
+} from '../../lib/openpath-auth-schema.js';
 import { CURRENT_TERMS_VERSION } from '../../services/legal-consent.service.js';
-
-export type OpenPathSessionPayload = {
-  accessToken: string;
-  refreshToken: string;
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    roles?: unknown;
-  };
-};
-
-export type OpenPathRegistrationPayload = {
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    roles?: unknown;
-  };
-  verificationRequired: true;
-  verificationToken?: string;
-  verificationExpiresAt?: string;
-};
-
-export type OpenPathEmailVerificationPayload = {
-  email: string;
-  verificationRequired: true;
-  verificationToken: string;
-  verificationExpiresAt: string;
-};
 
 function invalidUpstreamPayload(message: string): never {
   throw new TRPCError({
@@ -40,113 +18,32 @@ function invalidUpstreamPayload(message: string): never {
 }
 
 export function parseOpenPathSessionPayload(payload: unknown): OpenPathSessionPayload {
-  if (!payload || typeof payload !== 'object') {
+  const parsed = OpenPathSessionPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
     invalidUpstreamPayload('Invalid session payload received from upstream');
   }
 
-  const candidate = payload as Record<string, unknown>;
-  const user = candidate.user;
-
-  if (
-    typeof candidate.accessToken !== 'string' ||
-    typeof candidate.refreshToken !== 'string' ||
-    !user ||
-    typeof user !== 'object'
-  ) {
-    invalidUpstreamPayload('Invalid session payload received from upstream');
-  }
-
-  const userRecord = user as Record<string, unknown>;
-  if (
-    typeof userRecord.id !== 'string' ||
-    typeof userRecord.email !== 'string' ||
-    typeof userRecord.name !== 'string'
-  ) {
-    invalidUpstreamPayload('Invalid session payload received from upstream');
-  }
-
-  return {
-    accessToken: candidate.accessToken,
-    refreshToken: candidate.refreshToken,
-    user: {
-      id: userRecord.id,
-      email: userRecord.email,
-      name: userRecord.name,
-      roles: userRecord.roles,
-    },
-  };
+  return parsed.data;
 }
 
 export function parseOpenPathRegistrationPayload(payload: unknown): OpenPathRegistrationPayload {
-  if (!payload || typeof payload !== 'object') {
+  const parsed = OpenPathRegistrationPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
     invalidUpstreamPayload('Invalid registration payload received from upstream');
   }
 
-  const candidate = payload as Record<string, unknown>;
-  const user = candidate.user;
-  const hasVerificationToken = candidate.verificationToken !== undefined;
-  const hasVerificationExpiry = candidate.verificationExpiresAt !== undefined;
-
-  if (
-    candidate.verificationRequired !== true ||
-    hasVerificationToken !== hasVerificationExpiry ||
-    (hasVerificationToken && typeof candidate.verificationToken !== 'string') ||
-    (hasVerificationExpiry && typeof candidate.verificationExpiresAt !== 'string') ||
-    !user ||
-    typeof user !== 'object'
-  ) {
-    invalidUpstreamPayload('Invalid registration payload received from upstream');
-  }
-
-  const userRecord = user as Record<string, unknown>;
-  if (
-    typeof userRecord.id !== 'string' ||
-    typeof userRecord.email !== 'string' ||
-    typeof userRecord.name !== 'string'
-  ) {
-    invalidUpstreamPayload('Invalid registration payload received from upstream');
-  }
-
-  return {
-    verificationRequired: true,
-    verificationToken:
-      typeof candidate.verificationToken === 'string' ? candidate.verificationToken : undefined,
-    verificationExpiresAt:
-      typeof candidate.verificationExpiresAt === 'string'
-        ? candidate.verificationExpiresAt
-        : undefined,
-    user: {
-      id: userRecord.id,
-      email: userRecord.email,
-      name: userRecord.name,
-      roles: userRecord.roles,
-    },
-  };
+  return parsed.data;
 }
 
 export function parseOpenPathEmailVerificationPayload(
   payload: unknown
 ): OpenPathEmailVerificationPayload {
-  if (!payload || typeof payload !== 'object') {
+  const parsed = OpenPathEmailVerificationPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
     invalidUpstreamPayload('Invalid email verification payload received from upstream');
   }
 
-  const candidate = payload as Record<string, unknown>;
-  if (
-    typeof candidate.email !== 'string' ||
-    candidate.verificationRequired !== true ||
-    typeof candidate.verificationToken !== 'string' ||
-    typeof candidate.verificationExpiresAt !== 'string'
-  ) {
-    invalidUpstreamPayload('Invalid email verification payload received from upstream');
-  }
-
-  return {
-    email: candidate.email,
-    verificationRequired: true,
-    verificationToken: candidate.verificationToken,
-    verificationExpiresAt: candidate.verificationExpiresAt,
-  };
+  return parsed.data;
 }
 
 export function normalizeEmailAddress(email: string): string {

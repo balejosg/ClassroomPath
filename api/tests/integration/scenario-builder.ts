@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import { db } from '../../src/db/index.js';
+import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import * as cpSchema from '../../src/db/schema.js';
 import { assertStatus, bearerAuth, parseTRPC, trpcMutate, uniqueEmail } from '../test-utils.js';
 import {
@@ -30,6 +31,8 @@ export interface TestClassroom {
   name: string;
   displayName: string;
 }
+
+type TestRole = 'admin' | 'teacher' | 'student';
 
 async function throwUnexpectedTrpcStatus(
   action: string,
@@ -82,6 +85,21 @@ export function withFrozenDate<T>(date: Date, fn: () => Promise<T>): Promise<T> 
 export function createTenantScenario(params: { baseUrl: string; jwtSecret?: string }) {
   const jwtSecret = requireJwtSecret(params.jwtSecret ?? process.env.JWT_SECRET);
 
+  async function seedOpenPathRole(config: {
+    userId: string;
+    role: TestRole;
+    createdBy: string;
+    groupIds?: string[];
+  }): Promise<void> {
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${config.userId}`,
+      userId: config.userId,
+      role: config.role,
+      groupIds: config.groupIds ?? [],
+      createdBy: config.createdBy,
+    });
+  }
+
   async function createActor(config: {
     userId: string;
     name: string;
@@ -133,6 +151,91 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
           name: config.organizationName,
         },
       };
+    },
+
+    async seedOrgAdmin(config: {
+      userId: string;
+      name?: string;
+      emailPrefix?: string;
+      organizationName: string;
+    }): Promise<{ actor: TestActor; organization: TestOrganization }> {
+      const actor = await createActor({
+        userId: config.userId,
+        name: config.name ?? 'Admin User',
+        emailPrefix: config.emailPrefix ?? 'admin',
+        roles: [{ role: 'admin', groupIds: [] }],
+      });
+      const organizationId = `org-${actor.userId}`;
+
+      await db.insert(cpSchema.cpOrganizations).values({
+        id: organizationId,
+        name: config.organizationName,
+        createdBy: actor.userId,
+      });
+      await db.insert(cpSchema.cpMemberships).values({
+        id: `mem-${actor.userId}`,
+        userId: actor.userId,
+        organizationId,
+        role: 'admin',
+        invitedBy: actor.userId,
+      });
+      await seedOpenPathRole({
+        userId: actor.userId,
+        role: 'admin',
+        createdBy: actor.userId,
+      });
+
+      return {
+        actor,
+        organization: {
+          organizationId,
+          name: config.organizationName,
+        },
+      };
+    },
+
+    async seedMember(config: {
+      organizationId: string;
+      invitedBy: string;
+      role: TestRole;
+      userId: string;
+      name?: string;
+      emailPrefix?: string;
+      groupIds?: string[];
+    }): Promise<TestActor> {
+      const actor = await createActor({
+        userId: config.userId,
+        name:
+          config.name ??
+          (config.role === 'teacher'
+            ? 'Teacher User'
+            : config.role === 'student'
+              ? 'Student User'
+              : 'Admin User'),
+        emailPrefix: config.emailPrefix ?? config.role,
+        roles: [
+          {
+            role: config.role,
+            groupIds: config.groupIds ?? [],
+          },
+        ],
+      });
+
+      await db.insert(cpSchema.cpMemberships).values({
+        id: `mem-${actor.userId}`,
+        userId: actor.userId,
+        organizationId: config.organizationId,
+        role: config.role,
+        invitedBy: config.invitedBy,
+      });
+      await seedOpenPathRole({
+        userId: actor.userId,
+        role: config.role,
+        createdBy: config.invitedBy,
+        groupIds: config.groupIds,
+      });
+
+      return actor;
     },
 
     async addTeacher(config: {

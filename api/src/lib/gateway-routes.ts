@@ -18,7 +18,11 @@ import {
 import { getClientIp } from './http-request-meta.js';
 import { injectEnrollTicketAuth } from './enroll-ticket-proxy.js';
 import { logger } from './logger.js';
-import { findBlockedOpenPathProcedureFromUrl } from './openpath-proxy-policy.js';
+import {
+  OPENPATH_PROXY_MANIFEST,
+  findBlockedOpenPathPassthroughPath,
+  findBlockedOpenPathProcedureFromUrl,
+} from './openpath-proxy-policy.js';
 import type { GatewayReadiness } from './gateway-readiness.js';
 import { assignRequestId, getRequestId, REQUEST_ID_HEADER } from './request-id.js';
 
@@ -99,42 +103,35 @@ export function registerGatewayProxyRoutes(app: Express, options: GatewayProxyRo
   const proxyMiddlewareFactory =
     options.proxyMiddlewareFactory ?? (createProxyMiddleware as ProxyMiddlewareFactory);
 
-  app.use('/v2', (_req, res) => {
-    res.status(404).type('text/plain').send('Not found');
-  });
+  for (const route of OPENPATH_PROXY_MANIFEST.notFoundRoutes) {
+    app.use(route, (_req, res) => {
+      res.status(404).type('text/plain').send('Not found');
+    });
+  }
 
-  app.use('/export', (_req, res) => {
-    res.status(404).type('text/plain').send('Not found');
-  });
-
-  app.get(
-    '/health',
-    proxyMiddlewareFactory({
+  for (const route of OPENPATH_PROXY_MANIFEST.proxyRoutes) {
+    const handler = proxyMiddlewareFactory({
       target: options.openPathApiTarget,
       changeOrigin: true,
-    })
-  );
+      ...('proxyTimeout' in route ? { proxyTimeout: route.proxyTimeout } : {}),
+      ...('timeout' in route ? { timeout: route.timeout } : {}),
+    });
 
-  app.use(
-    '/api/machines/events',
-    proxyMiddlewareFactory({
-      target: options.openPathApiTarget,
-      changeOrigin: true,
-      proxyTimeout: 0,
-      timeout: 0,
-    })
-  );
+    if (route.method === 'get') {
+      app.get(route.path, handler);
+      continue;
+    }
+
+    app.use(route.path, handler);
+  }
 
   app.use((req, res, next) => {
     if (!req.url.startsWith('/trpc')) {
-      if (
-        req.url.startsWith('/api') ||
-        req.url.startsWith('/w') ||
-        req.url.startsWith('/api-docs')
-      ) {
+      const blockedPath = findBlockedOpenPathPassthroughPath(req.url);
+      if (blockedPath) {
         res.status(403).json(
           createGatewayErrorBody('FORBIDDEN', 'Direct upstream passthrough disabled', {
-            path: req.url.split('?')[0],
+            path: blockedPath,
           })
         );
         return;

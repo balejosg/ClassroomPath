@@ -49,9 +49,11 @@ export function createGatewayApp(options: GatewayAppOptions = {}) {
     jsonBodyLimit: gatewayConfig.jsonBodyLimit,
     trpcMiddleware,
   });
-  registerGatewaySpaRoutes(app, {
-    reactSpaPath,
-  });
+  if (gatewayConfig.serveSpa) {
+    registerGatewaySpaRoutes(app, {
+      reactSpaPath,
+    });
+  }
 
   return app;
 }

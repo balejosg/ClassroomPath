@@ -4,7 +4,7 @@ import {
   type EmailVerificationDeliveryResult,
   type EmailVerificationTokenIssueResult,
 } from './auth-email-delivery.js';
-import type { OpenPathRegistrationPayload } from './auth-payloads.js';
+import type { OpenPathRegistrationPayload } from '../../lib/openpath-auth-schema.js';
 
 type ResolveRegistrationEmailVerificationParams = {
   registration: OpenPathRegistrationPayload;
