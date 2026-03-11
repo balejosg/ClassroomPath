@@ -108,7 +108,7 @@ export default defineConfig({
           // Use the built server during E2E to avoid tsx watch IPC failures and
           // predev rebuild races that can temporarily remove shared dist files.
           command:
-            'cd upstream/openpath/api && if [ ! -f dist/src/server.js ]; then npm run build; fi && node dist/src/server.js',
+            'node --import tsx tests/e2e/setup/ensure-build.ts openpath-api && node upstream/openpath/api/dist/src/server.js',
           port: openPathApiPort,
           // Force fresh servers to avoid stale state and JWT secret mismatches
           reuseExistingServer: false,
@@ -129,7 +129,7 @@ export default defineConfig({
           // Use the built gateway for the same reason as OpenPath above: E2E
           // should exercise a deterministic server process, not a file watcher.
           command:
-            'cd api && if [ ! -f dist/server.js ]; then npm run build; fi && node dist/server.js',
+            'node --import tsx tests/e2e/setup/ensure-build.ts gateway && node api/dist/server.js',
           port: cpGatewayPort,
           // Force fresh servers to avoid stale state and JWT secret mismatches
           reuseExistingServer: false,

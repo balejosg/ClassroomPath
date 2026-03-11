@@ -8,6 +8,10 @@
 
 import bcrypt from 'bcrypt';
 import { sql } from 'drizzle-orm';
+import {
+  CLASSROOMPATH_TEST_RESET_TABLES,
+  OPENPATH_TEST_RESET_TABLES,
+} from '../src/db/test-table-inventory.js';
 import { db, schema } from '../src/db/index.js';
 import { openpathDb, openpathSchema } from '../src/db/openpath.js';
 
@@ -104,31 +108,11 @@ const ORG = {
 };
 
 async function truncateAll(): Promise<void> {
-  const cpTables = [
-    'cp_organization_users',
-    'cp_organization_groups',
-    'cp_organization_classrooms',
-    'cp_memberships',
-    'cp_organizations',
-    'cp_user_status',
-  ];
-
-  for (const table of cpTables) {
+  for (const table of CLASSROOMPATH_TEST_RESET_TABLES) {
     await db.execute(sql.raw(`TRUNCATE TABLE "${table}" CASCADE`));
   }
 
-  const opTables = [
-    'users',
-    'roles',
-    'tokens',
-    'classrooms',
-    'schedules',
-    'requests',
-    'machines',
-    'settings',
-  ];
-
-  for (const table of opTables) {
+  for (const table of OPENPATH_TEST_RESET_TABLES) {
     await openpathDb.execute(sql.raw(`TRUNCATE TABLE "${table}" CASCADE`));
   }
 }

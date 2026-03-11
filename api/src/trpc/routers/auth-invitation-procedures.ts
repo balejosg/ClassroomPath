@@ -15,7 +15,7 @@ import {
   parseOpenPathRegistrationPayload,
   parseOpenPathSessionPayload,
 } from './auth-payloads.js';
-import { issueOpenPathEmailVerificationToken } from './auth-email-delivery.js';
+import { resolveRegistrationEmailVerification } from './auth-verification-flow.js';
 
 async function getInvitationOrThrow(token: string) {
   const invitation = await getInvitationByToken(token);
@@ -72,13 +72,7 @@ export const authInvitationProcedures = {
         termsVersion: input.termsVersion,
       });
 
-      const verification =
-        typeof registration.verificationToken === 'string' &&
-        typeof registration.verificationExpiresAt === 'string'
-          ? {
-              verificationToken: registration.verificationToken,
-            }
-          : await issueOpenPathEmailVerificationToken(registration.user.id);
+      const verification = await resolveRegistrationEmailVerification({ registration });
 
       await callOpenPathTrpc({
         procedure: 'auth.verifyEmail',

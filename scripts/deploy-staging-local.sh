@@ -188,6 +188,9 @@ echo "[DEPLOY] Updating submodules..."
 git submodule sync --recursive
 git submodule update --init --recursive --force
 
+echo "[DEPLOY] Validating runtime config..."
+node --import tsx api/scripts/validate-runtime-config.ts
+
 echo "[DEPLOY] Running database migrations..."
 cd "$APP_DIR"
 

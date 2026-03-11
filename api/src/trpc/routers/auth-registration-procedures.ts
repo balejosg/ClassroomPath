@@ -6,7 +6,7 @@ import { openpathDb, openpathSchema } from '../../db/openpath.js';
 import { forwardOpenPathAuthProcedure } from '../../lib/openpath-auth-client.js';
 import { callOpenPathTrpc } from '../../lib/openpath-upstream.js';
 import { recordTermsAcceptance } from '../../services/legal-consent.service.js';
-import { deliverEmailVerification, issueEmailVerificationDelivery } from './auth-email-delivery.js';
+import { deliverEmailVerification } from './auth-email-delivery.js';
 import {
   assertCurrentTermsVersion,
   normalizeDisplayName,
@@ -14,6 +14,7 @@ import {
   parseOpenPathEmailVerificationPayload,
   parseOpenPathRegistrationPayload,
 } from './auth-payloads.js';
+import { deliverRegistrationEmailVerification } from './auth-verification-flow.js';
 
 async function getOpenPathUserByEmail(email: string): Promise<{
   id: string;
@@ -70,20 +71,7 @@ export const authRegistrationProcedures = {
         termsVersion: input.termsVersion,
       });
 
-      const delivery =
-        typeof registration.verificationToken === 'string' &&
-        typeof registration.verificationExpiresAt === 'string'
-          ? await deliverEmailVerification({
-              email: registration.user.email,
-              name: registration.user.name,
-              verificationToken: registration.verificationToken,
-              verificationExpiresAt: registration.verificationExpiresAt,
-            })
-          : await issueEmailVerificationDelivery({
-              userId: registration.user.id,
-              email: registration.user.email,
-              name: registration.user.name,
-            });
+      const delivery = await deliverRegistrationEmailVerification({ registration });
 
       return {
         ...delivery,

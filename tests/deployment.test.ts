@@ -107,6 +107,15 @@ void describe('Environment Configuration', () => {
     }
   });
 
+  void test('.env.example documents the email delivery contract for deployed environments', () => {
+    const content = readFileSync(envExamplePath, 'utf-8');
+    const requiredVars = ['RESEND_API_KEY', 'RESEND_FROM_EMAIL', 'CP_FAKE_EMAIL_DELIVERY'];
+
+    for (const envVar of requiredVars) {
+      assert.ok(content.includes(envVar), `Email delivery variable ${envVar} should be documented`);
+    }
+  });
+
   void test('.env.example does not contain actual secrets', () => {
     const content = readFileSync(envExamplePath, 'utf-8');
     const lines = content.split('\n');
@@ -210,6 +219,7 @@ void describe('Submodule Structure', () => {
 void describe('Migration Tooling', () => {
   const migrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations-docker.sh');
   const hostMigrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations.sh');
+  const stagingDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
 
   void test('ClassroomPath migrations repair legacy ClassroomPath schema before db:push', () => {
     const content = readFileSync(migrationsScriptPath, 'utf-8');
@@ -238,6 +248,21 @@ void describe('Migration Tooling', () => {
     assert.ok(
       content.indexOf(repairStep) < content.indexOf(pushStep),
       'host fallback should repair legacy ClassroomPath schema before db:push'
+    );
+  });
+
+  void test('staging deploy validates the gateway runtime contract before migrations', () => {
+    const content = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const validateStep = 'node --import tsx api/scripts/validate-runtime-config.ts';
+    const pushStep = 'bash scripts/run-migrations-docker.sh --cp --openpath';
+
+    assert.ok(
+      content.includes(validateStep),
+      'deploy-staging-local.sh should validate runtime config before migrations'
+    );
+    assert.ok(
+      content.indexOf(validateStep) < content.indexOf(pushStep),
+      'runtime config validation should happen before migrations'
     );
   });
 });

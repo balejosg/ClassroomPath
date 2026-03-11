@@ -221,6 +221,7 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
 
   test('createGatewayApp fails fast when JWT_SECRET is missing outside test mode', async () => {
     process.env.NODE_ENV = 'production';
+    process.env.PUBLIC_URL = 'https://classroompath.test';
     delete process.env.JWT_SECRET;
 
     assert.throws(() => serverModule.createGatewayApp(), /JWT_SECRET/i);

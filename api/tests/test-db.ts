@@ -1,6 +1,10 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { sql } from 'drizzle-orm';
 
+import {
+  CLASSROOMPATH_TEST_RESET_TABLES,
+  OPENPATH_TEST_RESET_TABLES,
+} from '../src/db/test-table-inventory.js';
 import { db } from '../src/db/index.js';
 import { CP_ORGANIZATION_GROUPS_LEGACY_SCHEMA_REPAIR_SQL } from '../src/db/legacy-schema-repair.js';
 import { openpathDb } from '../src/db/openpath.js';
@@ -92,38 +96,10 @@ export async function resetDb(): Promise<void> {
     `)
     );
 
-    const cpTables = [
-      'cp_audit_events',
-      'cp_organization_users',
-      'cp_organization_groups',
-      'cp_organization_classrooms',
-      'cp_invitations',
-      'cp_terms_acceptance',
-      'cp_group_template_rules',
-      'cp_group_templates',
-      'cp_memberships',
-      'cp_organizations',
-      'cp_user_status',
-    ];
-
-    const opTables = [
-      'whitelist_rules',
-      'whitelist_groups',
-      'users',
-      'roles',
-      'tokens',
-      'email_verification_tokens',
-      'classrooms',
-      'schedules',
-      'requests',
-      'machines',
-      'settings',
-    ];
-
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
-        await truncateTables(cpTables, db);
-        await truncateTables(opTables, openpathDb);
+        await truncateTables(CLASSROOMPATH_TEST_RESET_TABLES, db);
+        await truncateTables(OPENPATH_TEST_RESET_TABLES, openpathDb);
         return;
       } catch (error) {
         if (!isDeadlockError(error) || attempt === 3) {
