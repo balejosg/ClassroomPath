@@ -152,11 +152,7 @@ function resolveUpstreamFailureMessage(message: UpstreamFailureMessage, status: 
   return typeof message === 'function' ? message(status) : message;
 }
 
-function parseUpstreamPayload<T>(
-  payload: unknown,
-  schema: ZodType<T>,
-  invalidMessage: string
-): T {
+function parseUpstreamPayload<T>(payload: unknown, schema: ZodType<T>, invalidMessage: string): T {
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
     throw new TRPCError({
@@ -309,8 +305,7 @@ export async function generateOpenPathEmailVerificationToken(params: {
     req: params.req,
     input: params.input,
     defaultErrorCode: 'BAD_REQUEST',
-    upstreamFailureMessage:
-      params.upstreamFailureMessage ?? 'Verification token generation failed',
+    upstreamFailureMessage: params.upstreamFailureMessage ?? 'Verification token generation failed',
     unavailableMessage: params.unavailableMessage ?? 'Authentication service unavailable',
     fetchImpl: params.fetchImpl,
   });
