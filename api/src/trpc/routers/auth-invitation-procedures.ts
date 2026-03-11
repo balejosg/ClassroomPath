@@ -15,6 +15,7 @@ import {
   parseOpenPathRegistrationPayload,
   parseOpenPathSessionPayload,
 } from './auth-payloads.js';
+import { issueOpenPathEmailVerificationToken } from './auth-email-delivery.js';
 
 async function getInvitationOrThrow(token: string) {
   const invitation = await getInvitationByToken(token);
@@ -71,12 +72,20 @@ export const authInvitationProcedures = {
         termsVersion: input.termsVersion,
       });
 
+      const verification =
+        typeof registration.verificationToken === 'string' &&
+        typeof registration.verificationExpiresAt === 'string'
+          ? {
+              verificationToken: registration.verificationToken,
+            }
+          : await issueOpenPathEmailVerificationToken(registration.user.id);
+
       await callOpenPathTrpc({
         procedure: 'auth.verifyEmail',
         req: ctx.req,
         input: {
           email: invitation.email,
-          token: registration.verificationToken,
+          token: verification.verificationToken,
         },
         defaultErrorCode: 'BAD_REQUEST',
         upstreamFailureMessage: 'Invitation activation failed',

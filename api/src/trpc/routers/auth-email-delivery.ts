@@ -1,4 +1,10 @@
+import { randomUUID } from 'node:crypto';
+
+import bcrypt from 'bcrypt';
+import { eq } from 'drizzle-orm';
+
 import { config } from '../../config.js';
+import { openpathDb, openpathSchema } from '../../db/openpath.js';
 import { logger } from '../../lib/logger.js';
 import { sendTransactionalEmail } from '../../services/email.service.js';
 
@@ -10,8 +16,40 @@ export interface EmailVerificationDeliveryResult {
   verificationExpiresAt: string;
 }
 
+export interface EmailVerificationTokenIssueResult {
+  verificationToken: string;
+  verificationExpiresAt: string;
+}
+
+const EMAIL_VERIFICATION_TTL_HOURS = 24;
+const EMAIL_VERIFICATION_BCRYPT_ROUNDS = 12;
+
 function buildEmailVerificationUrl(params: { email: string; token: string }): string {
   return `${config.publicUrl}/login?email=${encodeURIComponent(params.email)}&token=${encodeURIComponent(params.token)}`;
+}
+
+export async function issueOpenPathEmailVerificationToken(
+  userId: string
+): Promise<EmailVerificationTokenIssueResult> {
+  const verificationToken = randomUUID().replace(/-/g, '').slice(0, 12);
+  const verificationExpiresAt = new Date();
+  verificationExpiresAt.setHours(verificationExpiresAt.getHours() + EMAIL_VERIFICATION_TTL_HOURS);
+
+  await openpathDb
+    .delete(openpathSchema.emailVerificationTokens)
+    .where(eq(openpathSchema.emailVerificationTokens.userId, userId));
+
+  await openpathDb.insert(openpathSchema.emailVerificationTokens).values({
+    id: `verify_${randomUUID().slice(0, 8)}`,
+    userId,
+    tokenHash: await bcrypt.hash(verificationToken, EMAIL_VERIFICATION_BCRYPT_ROUNDS),
+    expiresAt: verificationExpiresAt,
+  });
+
+  return {
+    verificationToken,
+    verificationExpiresAt: verificationExpiresAt.toISOString(),
+  };
 }
 
 export async function deliverEmailVerification(params: {
@@ -61,4 +99,18 @@ export async function deliverEmailVerification(params: {
     verificationUrl,
     verificationExpiresAt: params.verificationExpiresAt,
   };
+}
+
+export async function issueEmailVerificationDelivery(params: {
+  userId: string;
+  email: string;
+  name: string;
+}): Promise<EmailVerificationDeliveryResult> {
+  const verification = await issueOpenPathEmailVerificationToken(params.userId);
+  return deliverEmailVerification({
+    email: params.email,
+    name: params.name,
+    verificationToken: verification.verificationToken,
+    verificationExpiresAt: verification.verificationExpiresAt,
+  });
 }

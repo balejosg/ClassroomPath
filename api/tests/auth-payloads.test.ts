@@ -39,6 +39,21 @@ describe('auth-payloads', () => {
     assert.equal(registration.verificationRequired, true);
   });
 
+  it('accepts public registration payloads that no longer expose verification tokens', () => {
+    const registration = parseOpenPathRegistrationPayload({
+      user: {
+        id: 'user-3',
+        email: 'student@example.com',
+        name: 'Student Example',
+      },
+      verificationRequired: true,
+    });
+
+    assert.equal(registration.user.id, 'user-3');
+    assert.equal(registration.verificationToken, undefined);
+    assert.equal(registration.verificationExpiresAt, undefined);
+  });
+
   it('normalizes auth payload strings and validates the current terms version', () => {
     assert.equal(normalizeEmailAddress(' Teacher@Example.com '), 'teacher@example.com');
     assert.equal(normalizeDisplayName('  Teacher Example  '), 'Teacher Example');

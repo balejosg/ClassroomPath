@@ -21,8 +21,8 @@ export type OpenPathRegistrationPayload = {
     roles?: unknown;
   };
   verificationRequired: true;
-  verificationToken: string;
-  verificationExpiresAt: string;
+  verificationToken?: string;
+  verificationExpiresAt?: string;
 };
 
 export type OpenPathEmailVerificationPayload = {
@@ -84,11 +84,14 @@ export function parseOpenPathRegistrationPayload(payload: unknown): OpenPathRegi
 
   const candidate = payload as Record<string, unknown>;
   const user = candidate.user;
+  const hasVerificationToken = candidate.verificationToken !== undefined;
+  const hasVerificationExpiry = candidate.verificationExpiresAt !== undefined;
 
   if (
     candidate.verificationRequired !== true ||
-    typeof candidate.verificationToken !== 'string' ||
-    typeof candidate.verificationExpiresAt !== 'string' ||
+    hasVerificationToken !== hasVerificationExpiry ||
+    (hasVerificationToken && typeof candidate.verificationToken !== 'string') ||
+    (hasVerificationExpiry && typeof candidate.verificationExpiresAt !== 'string') ||
     !user ||
     typeof user !== 'object'
   ) {
@@ -106,8 +109,12 @@ export function parseOpenPathRegistrationPayload(payload: unknown): OpenPathRegi
 
   return {
     verificationRequired: true,
-    verificationToken: candidate.verificationToken,
-    verificationExpiresAt: candidate.verificationExpiresAt,
+    verificationToken:
+      typeof candidate.verificationToken === 'string' ? candidate.verificationToken : undefined,
+    verificationExpiresAt:
+      typeof candidate.verificationExpiresAt === 'string'
+        ? candidate.verificationExpiresAt
+        : undefined,
     user: {
       id: userRecord.id,
       email: userRecord.email,

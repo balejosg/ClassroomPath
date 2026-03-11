@@ -112,6 +112,7 @@ export async function resetDb(): Promise<void> {
       'users',
       'roles',
       'tokens',
+      'email_verification_tokens',
       'classrooms',
       'schedules',
       'requests',
