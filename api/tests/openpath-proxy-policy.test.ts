@@ -26,10 +26,10 @@ void describe('openpath-proxy-policy', () => {
     assert.strictEqual(findBlockedOpenPathProcedureFromUrl('/api/health'), null);
   });
 
-  test('returns the blocked direct passthrough prefix from the shared manifest', () => {
+  test('returns the normalized blocked passthrough path while using the shared manifest', () => {
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/health'), null);
-    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/users?page=1'), '/api');
-    assert.strictEqual(findBlockedOpenPathPassthroughPath('/w/agent/install'), '/w');
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/users?page=1'), '/api/users');
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/w/agent/install'), '/w/agent/install');
   });
 
   test('blocks exact matches', () => {

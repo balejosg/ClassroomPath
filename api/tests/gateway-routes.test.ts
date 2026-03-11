@@ -118,4 +118,23 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
     assert.strictEqual(json.error?.data?.code, 'FORBIDDEN');
     assert.strictEqual(json.error?.data?.blocked, 'setup.getRegistrationToken');
   });
+
+  test('registerGatewayProxyRoutes preserves the normalized /api path when blocking passthrough', async () => {
+    const response = await fetch(`${baseUrl}/api/config?source=smoke`);
+
+    assert.strictEqual(response.status, 403);
+
+    const json = (await response.json()) as {
+      error?: {
+        message?: string;
+        code?: string;
+        data?: { code?: string; path?: string };
+      };
+    };
+
+    assert.strictEqual(json.error?.message, 'Direct upstream passthrough disabled');
+    assert.strictEqual(json.error?.code, 'FORBIDDEN');
+    assert.strictEqual(json.error?.data?.code, 'FORBIDDEN');
+    assert.strictEqual(json.error?.data?.path, '/api/config');
+  });
 });

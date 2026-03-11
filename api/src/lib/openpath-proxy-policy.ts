@@ -57,7 +57,7 @@ export function findBlockedOpenPathPassthroughPath(reqUrl: string): string | nul
   const blocked = OPENPATH_PROXY_MANIFEST.blockedPassthroughPrefixes.find((prefix) =>
     matchesPathPrefix(requestPath, prefix)
   );
-  return blocked ?? null;
+  return blocked ? requestPath : null;
 }
 
 /**
