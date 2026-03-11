@@ -91,6 +91,7 @@ export const usersRouter = router({
       return revokeOrganizationInvitation({
         organizationId: ctx.organizationId,
         invitationId: input.invitationId,
+        actedBy: ctx.user.sub,
       });
     }),
 

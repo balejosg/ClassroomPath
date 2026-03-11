@@ -10,6 +10,10 @@ import { openpathDb, openpathSchema } from '../../db/openpath.js';
 import { config } from '../../config.js';
 import { generateId } from '../../lib/id.js';
 import { forwardOpenPathAuthProcedure } from '../../lib/openpath-auth-client.js';
+import {
+  deleteAuditEventById,
+  recordResetTokenGeneratedAuditEvent,
+} from '../../services/audit.service.js';
 import { sendTransactionalEmail } from '../../services/email.service.js';
 import { assertOrgAdminTenantProcedureContext } from '../tenant-procedure-helpers.js';
 import { publicProcedure, tenantProcedure } from '../trpc.js';
@@ -25,6 +29,7 @@ const RESET_DELIVERY_FAILED_MESSAGE =
 async function generateTenantResetToken(params: {
   organizationId: string;
   email: string;
+  actedBy: string;
 }): Promise<{ success: true; emailSent: boolean }> {
   const normalizedEmail = normalizeEmailAddress(params.email);
 
@@ -79,6 +84,13 @@ async function generateTenantResetToken(params: {
     expiresAt,
   });
 
+  const resetAuditEventId = await recordResetTokenGeneratedAuditEvent({
+    organizationId: params.organizationId,
+    actorUserId: params.actedBy,
+    userId: user.id,
+    email: user.email,
+  });
+
   try {
     const delivery = await sendTransactionalEmail({
       to: user.email,
@@ -114,6 +126,7 @@ async function generateTenantResetToken(params: {
     await openpathDb
       .delete(openpathSchema.passwordResetTokens)
       .where(eq(openpathSchema.passwordResetTokens.userId, user.id));
+    await deleteAuditEventById(resetAuditEventId);
 
     if (error instanceof TRPCError) {
       throw error;
@@ -138,6 +151,7 @@ export const authRecoveryProcedures = {
       return generateTenantResetToken({
         organizationId: ctx.organizationId,
         email: input.email,
+        actedBy: ctx.user.sub,
       });
     }),
 

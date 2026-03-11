@@ -12,6 +12,11 @@ import {
   SINGLE_ORG_MEMBERSHIP_MESSAGE,
   throwMembershipConflict,
 } from '../lib/tenant-memberships.js';
+import {
+  deleteAuditEventById,
+  recordInvitationCreatedAuditEvent,
+  recordInvitationRevokedAuditEvent,
+} from './audit.service.js';
 import { sendTransactionalEmail } from './email.service.js';
 
 const INVITATION_TTL_HOURS = 72;
@@ -158,6 +163,15 @@ export async function createOrganizationInvitation(params: {
     throw error;
   }
 
+  const invitationAuditEventId = await recordInvitationCreatedAuditEvent({
+    organizationId: params.organizationId,
+    actorUserId: params.invitedBy,
+    invitationId,
+    email: normalizedEmail,
+    name: trimmedName,
+    role: params.role,
+  });
+
   try {
     const delivery = await sendTransactionalEmail({
       to: normalizedEmail,
@@ -205,6 +219,7 @@ export async function createOrganizationInvitation(params: {
           eq(schema.cpInvitations.id, invitationId)
         )
       );
+    await deleteAuditEventById(invitationAuditEventId);
 
     if (error instanceof TRPCError) {
       throw error;
@@ -220,6 +235,7 @@ export async function createOrganizationInvitation(params: {
 export async function revokeOrganizationInvitation(params: {
   organizationId: string;
   invitationId: string;
+  actedBy: string;
 }): Promise<{ success: true }> {
   const deleted = await db
     .delete(schema.cpInvitations)
@@ -229,7 +245,10 @@ export async function revokeOrganizationInvitation(params: {
         eq(schema.cpInvitations.id, params.invitationId)
       )
     )
-    .returning({ id: schema.cpInvitations.id });
+    .returning({
+      id: schema.cpInvitations.id,
+      email: schema.cpInvitations.email,
+    });
 
   if (deleted.length === 0) {
     throw new TRPCError({
@@ -237,6 +256,13 @@ export async function revokeOrganizationInvitation(params: {
       message: 'Invitation not found',
     });
   }
+
+  await recordInvitationRevokedAuditEvent({
+    organizationId: params.organizationId,
+    actorUserId: params.actedBy,
+    invitationId: deleted[0].id,
+    email: deleted[0].email,
+  });
 
   return { success: true };
 }

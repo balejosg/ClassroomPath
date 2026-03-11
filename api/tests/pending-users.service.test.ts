@@ -279,7 +279,7 @@ describe('pending-users.service', () => {
       targetOrganizationId: ORG_ID,
     });
 
-    await rejectUser(REJECTED_USER_ID, ORG_ID);
+    await rejectUser(REJECTED_USER_ID, ORG_ID, APPROVER_ID);
 
     const waitingStatus = await db
       .select()

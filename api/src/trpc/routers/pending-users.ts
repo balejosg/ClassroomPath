@@ -77,7 +77,7 @@ export const pendingUsersRouter = router({
         });
       }
 
-      await pendingUsersService.rejectUser(input.userId, ctx.organizationId);
+      await pendingUsersService.rejectUser(input.userId, ctx.organizationId, ctx.user.sub);
 
       return { success: true };
     }),

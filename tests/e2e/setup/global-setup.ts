@@ -35,15 +35,27 @@ function isExternalBaseUrl(): boolean {
 /**
  * Build test database URL from components to avoid secretlint false positive
  */
-function buildTestDatabaseUrl(): string {
+function getTestDatabaseConfig(): {
+  user: string;
+  password: string;
+  host: string;
+  port: string;
+  database: string;
+} {
   // Use the owner user for schema pushes (drizzle-kit requires table ownership).
   // The test user can still be granted privileges separately if needed.
-  const user = 'openpath';
-  const pass = 'openpath_dev';
-  const host = 'localhost';
-  const port = '5432';
-  const db = 'classroompath_test';
-  return `postgresql://${user}:${pass}@${host}:${port}/${db}`;
+  return {
+    user: process.env.DB_USER ?? 'openpath',
+    password: process.env.DB_PASSWORD ?? 'openpath_dev',
+    host: process.env.DB_HOST ?? 'localhost',
+    port: process.env.DB_PORT ?? '5432',
+    database: process.env.DB_NAME ?? 'classroompath_test',
+  };
+}
+
+function buildTestDatabaseUrl(): string {
+  const { user, password, host, port, database } = getTestDatabaseConfig();
+  return `postgresql://${user}:${password}@${host}:${port}/${database}`;
 }
 
 /**
@@ -117,6 +129,33 @@ async function runClassroomPathDbPush(): Promise<boolean> {
   }
 }
 
+async function runOpenPathDbPush(): Promise<boolean> {
+  const openPathApiDir = join(__dirname, '..', '..', '..', 'upstream', 'openpath', 'api');
+  const database = getTestDatabaseConfig();
+
+  try {
+    console.log('Running OpenPath drizzle-kit push --force for shared test DB...');
+    execSync('npx drizzle-kit push --force', {
+      cwd: openPathApiDir,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        DATABASE_URL: process.env.DATABASE_URL ?? buildTestDatabaseUrl(),
+        DB_HOST: database.host,
+        DB_PORT: database.port,
+        DB_NAME: database.database,
+        DB_USER: database.user,
+        DB_PASSWORD: database.password,
+      },
+    });
+    console.log('OpenPath db:push completed successfully');
+    return true;
+  } catch (error) {
+    console.error('Failed to run OpenPath db:push:', error);
+    return false;
+  }
+}
+
 /**
  * Main global setup function
  */
@@ -154,6 +193,13 @@ async function globalSetup(_config: FullConfig): Promise<void> {
   const truncateSuccess = await runTruncateOnly();
   if (!truncateSuccess) {
     console.warn('WARNING: Pre-push truncate failed; seed may be non-deterministic');
+  }
+
+  const openPathPushSuccess = await runOpenPathDbPush();
+  if (!openPathPushSuccess) {
+    console.warn(
+      'WARNING: OpenPath db:push failed; registration flows may fail due to schema mismatch'
+    );
   }
 
   if (shouldSkipDbPush()) {

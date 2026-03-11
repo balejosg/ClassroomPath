@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, unique, text } from 'drizzle-orm/pg-core';
+import { jsonb, pgTable, text, timestamp, unique, varchar } from 'drizzle-orm/pg-core';
 
 // =============================================================================
 // Organizations Table
@@ -56,6 +56,19 @@ export const cpTermsAcceptance = pgTable('cp_terms_acceptance', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+export const cpAuditEvents = pgTable('cp_audit_events', {
+  id: varchar('id', { length: 50 }).primaryKey(),
+  organizationId: varchar('organization_id', { length: 50 })
+    .notNull()
+    .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
+  actorUserId: varchar('actor_user_id', { length: 50 }).notNull(),
+  action: varchar('action', { length: 100 }).notNull(),
+  targetType: varchar('target_type', { length: 50 }).notNull(),
+  targetId: varchar('target_id', { length: 50 }).notNull(),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
 // =============================================================================
 // Type Inference
 // =============================================================================
@@ -71,6 +84,9 @@ export type NewUserStatus = typeof cpUserStatus.$inferInsert;
 
 export type TermsAcceptance = typeof cpTermsAcceptance.$inferSelect;
 export type NewTermsAcceptance = typeof cpTermsAcceptance.$inferInsert;
+
+export type AuditEvent = typeof cpAuditEvents.$inferSelect;
+export type NewAuditEvent = typeof cpAuditEvents.$inferInsert;
 
 // =============================================================================
 // Invitations Table

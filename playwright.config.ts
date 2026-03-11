@@ -105,7 +105,10 @@ export default defineConfig({
         },
         // OpenPath API server (required for SPA proxy /trpc)
         {
-          command: 'cd upstream/openpath/api && npm run dev',
+          // Use the built server during E2E to avoid tsx watch IPC failures and
+          // predev rebuild races that can temporarily remove shared dist files.
+          command:
+            'cd upstream/openpath/api && if [ ! -f dist/src/server.js ]; then npm run build; fi && node dist/src/server.js',
           port: openPathApiPort,
           // Force fresh servers to avoid stale state and JWT secret mismatches
           reuseExistingServer: false,
@@ -114,6 +117,7 @@ export default defineConfig({
             ...process.env,
             // NODE_ENV=test disables rate limiting for parallel E2E tests
             NODE_ENV: 'test',
+            HOST: '127.0.0.1',
             PORT: String(openPathApiPort),
             DATABASE_URL: testDatabaseUrl,
             // Match ClassroomPath's JWT_SECRET so tokens can be verified across services
@@ -122,7 +126,10 @@ export default defineConfig({
         },
         // ClassroomPath Gateway API server (required for SPA proxy /cp/trpc)
         {
-          command: 'cd api && npm run dev',
+          // Use the built gateway for the same reason as OpenPath above: E2E
+          // should exercise a deterministic server process, not a file watcher.
+          command:
+            'cd api && if [ ! -f dist/server.js ]; then npm run build; fi && node dist/server.js',
           port: cpGatewayPort,
           // Force fresh servers to avoid stale state and JWT secret mismatches
           reuseExistingServer: false,

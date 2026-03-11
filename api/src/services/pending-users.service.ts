@@ -1,4 +1,4 @@
-import { eq, and, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { openpathDb, openpathSchema } from '../db/openpath.js';
 import { generateId } from '../lib/id.js';
@@ -8,6 +8,10 @@ import {
   SINGLE_ORG_MEMBERSHIP_MESSAGE,
   throwMembershipConflict,
 } from '../lib/tenant-memberships.js';
+import {
+  recordPendingUserApprovedAuditEvent,
+  recordPendingUserRejectedAuditEvent,
+} from './audit.service.js';
 
 export interface PendingUser {
   userId: string;
@@ -128,14 +132,26 @@ export async function approveUser(
     groupIds: [],
   });
 
+  await recordPendingUserApprovedAuditEvent({
+    organizationId,
+    actorUserId: approvedBy,
+    userId,
+    membershipId,
+    role,
+  });
+
   return { membershipId };
 }
 
 /**
  * Reject a pending user - remove their waiting status
  */
-export async function rejectUser(userId: string, organizationId: string): Promise<void> {
-  const result = await db
+export async function rejectUser(
+  userId: string,
+  organizationId: string,
+  rejectedBy: string
+): Promise<void> {
+  const deleted = await db
     .delete(schema.cpUserStatus)
     .where(
       and(
@@ -143,7 +159,18 @@ export async function rejectUser(userId: string, organizationId: string): Promis
         eq(schema.cpUserStatus.status, 'waiting'),
         eq(schema.cpUserStatus.targetOrganizationId, organizationId)
       )
-    );
+    )
+    .returning({ userId: schema.cpUserStatus.userId });
+
+  if (deleted.length === 0) {
+    return;
+  }
+
+  await recordPendingUserRejectedAuditEvent({
+    organizationId,
+    actorUserId: rejectedBy,
+    userId,
+  });
 
   // Note: User will need to request access again or create their own org
 }

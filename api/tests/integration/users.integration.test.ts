@@ -35,6 +35,24 @@ async function assertLastAdminConflict(response: Response): Promise<void> {
   assert.match(error ?? '', LAST_ADMIN_MESSAGE);
 }
 
+function requireAuditEvent(
+  events: Array<{
+    action: string;
+    actorUserId: string;
+    targetType: string;
+    targetId: string;
+    metadata: Record<string, unknown>;
+  }>,
+  action: string,
+  targetId: string
+) {
+  const event = events.find(
+    (candidate) => candidate.action === action && candidate.targetId === targetId
+  );
+  assert.ok(event, `expected audit event ${action} for ${targetId}`);
+  return event!;
+}
+
 describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async () => {
   test('users.list returns SafeUserWithRoles and never exposes passwordHash', async () => {
     const orgId = `org-users-${Date.now()}`;
@@ -238,6 +256,19 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     assert.strictEqual(pendingInvitations.length, 1);
     assert.strictEqual(pendingInvitations[0].role, 'teacher');
 
+    const auditEvents = await db
+      .select()
+      .from(cpSchema.cpAuditEvents)
+      .where(eq(cpSchema.cpAuditEvents.organizationId, orgId));
+    const invitationCreated = requireAuditEvent(auditEvents, 'invitation.created', invitation.id);
+    assert.strictEqual(invitationCreated.actorUserId, adminUserId);
+    assert.strictEqual(invitationCreated.targetType, 'invitation');
+    assert.deepStrictEqual(invitationCreated.metadata, {
+      email: invitedEmail,
+      name: 'Created Teacher',
+      role: 'teacher',
+    });
+
     const invitedUsers = await openpathDb
       .select()
       .from(openpathSchema.users)
@@ -247,6 +278,91 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       0,
       'OpenPath user should only be created when the invitee accepts the invitation'
     );
+  });
+
+  test('users.revokeInvitation removes the invitation and emits a durable audit event', async () => {
+    const orgId = `org-users-revoke-invite-${Date.now()}`;
+    const adminUserId = `u-admin-revoke-invite-${Date.now()}`;
+    const adminEmail = uniqueEmail('admin-revoke-invite');
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: adminUserId,
+      email: adminEmail,
+      name: 'Admin Revoke Invite',
+      passwordHash: 'hashed',
+      isActive: true,
+      emailVerified: true,
+    });
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${adminUserId}`,
+      userId: adminUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: adminUserId,
+    });
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin Revoke Invite',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const invitedEmail = uniqueEmail('revoked-invitee');
+    const createResp = await trpcMutate(
+      integration.baseUrl,
+      'users.create',
+      {
+        email: invitedEmail,
+        name: 'Revoked Invitee',
+        role: 'teacher',
+      },
+      bearerAuth(adminToken)
+    );
+    assertStatus(createResp, 200);
+
+    const { data: invitation } = (await parseTRPC(createResp)) as {
+      data: { id: string };
+    };
+
+    const revokeResp = await trpcMutate(
+      integration.baseUrl,
+      'users.revokeInvitation',
+      { invitationId: invitation.id },
+      bearerAuth(adminToken)
+    );
+    assertStatus(revokeResp, 200);
+
+    const invitations = await db
+      .select()
+      .from(cpSchema.cpInvitations)
+      .where(eq(cpSchema.cpInvitations.organizationId, orgId));
+    assert.strictEqual(invitations.length, 0);
+
+    const auditEvents = await db
+      .select()
+      .from(cpSchema.cpAuditEvents)
+      .where(eq(cpSchema.cpAuditEvents.organizationId, orgId));
+    const invitationRevoked = requireAuditEvent(auditEvents, 'invitation.revoked', invitation.id);
+    assert.strictEqual(invitationRevoked.actorUserId, adminUserId);
+    assert.strictEqual(invitationRevoked.targetType, 'invitation');
+    assert.strictEqual(invitationRevoked.metadata.email, invitedEmail);
   });
 
   test('users.create normalizes the invited email before persisting the invitation', async () => {
@@ -577,6 +693,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       users.every((user) => user.id !== targetUserId),
       'detached user should disappear from tenant list'
     );
+
+    const auditEvents = await db
+      .select()
+      .from(cpSchema.cpAuditEvents)
+      .where(eq(cpSchema.cpAuditEvents.organizationId, orgId));
+    const userDeleted = requireAuditEvent(auditEvents, 'user.deleted', targetUserId);
+    assert.strictEqual(userDeleted.actorUserId, adminUserId);
+    assert.strictEqual(userDeleted.targetType, 'user');
+    assert.deepStrictEqual(userDeleted.metadata, { role: 'teacher' });
   });
 
   test('users.delete rejects self-delete when the caller is the last tenant admin', async () => {
@@ -870,6 +995,163 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       .from(cpSchema.cpMemberships)
       .where(eq(cpSchema.cpMemberships.userId, targetUserId));
     assert.strictEqual(revokedMembership?.role, 'teacher');
+
+    const auditEvents = await db
+      .select()
+      .from(cpSchema.cpAuditEvents)
+      .where(eq(cpSchema.cpAuditEvents.organizationId, orgId));
+    const assignedEvents = auditEvents.filter(
+      (event) => event.action === 'user.role-assigned' && event.targetId === targetUserId
+    );
+    assert.strictEqual(assignedEvents.length, 2);
+    assert.ok(
+      assignedEvents.some(
+        (event) =>
+          event.actorUserId === adminUserId &&
+          event.targetType === 'user' &&
+          event.metadata.role === 'teacher' &&
+          Array.isArray(event.metadata.groupIds) &&
+          event.metadata.groupIds.length === 1 &&
+          event.metadata.groupIds[0] === 'group-a'
+      )
+    );
+    assert.ok(
+      assignedEvents.some(
+        (event) =>
+          event.actorUserId === adminUserId &&
+          event.targetType === 'user' &&
+          event.metadata.role === 'admin' &&
+          Array.isArray(event.metadata.groupIds) &&
+          event.metadata.groupIds.length === 1 &&
+          event.metadata.groupIds[0] === 'group-b'
+      )
+    );
+
+    const revokedEvent = requireAuditEvent(auditEvents, 'user.role-revoked', targetUserId);
+    assert.strictEqual(revokedEvent.actorUserId, adminUserId);
+    assert.strictEqual(revokedEvent.targetType, 'user');
+    assert.deepStrictEqual(revokedEvent.metadata, {
+      role: 'teacher',
+      groupIds: [],
+    });
+  });
+
+  test('pendingUsers.approve and pendingUsers.reject emit durable audit events', async () => {
+    const orgId = `org-users-pending-audit-${Date.now()}`;
+    const adminUserId = `u-admin-pending-audit-${Date.now()}`;
+    const approvedUserId = `u-approved-pending-audit-${Date.now()}`;
+    const rejectedUserId = `u-rejected-pending-audit-${Date.now()}`;
+
+    const adminEmail = uniqueEmail('admin-pending-audit');
+    const approvedEmail = uniqueEmail('approved-pending-audit');
+    const rejectedEmail = uniqueEmail('rejected-pending-audit');
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: adminUserId,
+        email: adminEmail,
+        name: 'Admin Pending Audit',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: approvedUserId,
+        email: approvedEmail,
+        name: 'Approved Pending Audit',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: rejectedUserId,
+        email: rejectedEmail,
+        name: 'Rejected Pending Audit',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role-${adminUserId}`,
+      userId: adminUserId,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: `Org ${orgId}`,
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${adminUserId}`,
+      userId: adminUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpUserStatus).values([
+      {
+        userId: approvedUserId,
+        status: 'waiting',
+        targetOrganizationId: orgId,
+      },
+      {
+        userId: rejectedUserId,
+        status: 'waiting',
+        targetOrganizationId: orgId,
+      },
+    ]);
+
+    const adminToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin Pending Audit',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const approveResp = await trpcMutate(
+      integration.baseUrl,
+      'pendingUsers.approve',
+      { userId: approvedUserId, role: 'teacher' },
+      bearerAuth(adminToken)
+    );
+    assertStatus(approveResp, 200);
+    const { data: approved } = (await parseTRPC(approveResp)) as {
+      data: { membershipId: string; success: boolean };
+    };
+    assert.strictEqual(approved.success, true);
+
+    const rejectResp = await trpcMutate(
+      integration.baseUrl,
+      'pendingUsers.reject',
+      { userId: rejectedUserId },
+      bearerAuth(adminToken)
+    );
+    assertStatus(rejectResp, 200);
+
+    const auditEvents = await db
+      .select()
+      .from(cpSchema.cpAuditEvents)
+      .where(eq(cpSchema.cpAuditEvents.organizationId, orgId));
+    const pendingApproved = requireAuditEvent(auditEvents, 'pending-user.approved', approvedUserId);
+    assert.strictEqual(pendingApproved.actorUserId, adminUserId);
+    assert.strictEqual(pendingApproved.targetType, 'user');
+    assert.deepStrictEqual(pendingApproved.metadata, {
+      membershipId: approved.membershipId,
+      role: 'teacher',
+    });
+
+    const pendingRejected = requireAuditEvent(auditEvents, 'pending-user.rejected', rejectedUserId);
+    assert.strictEqual(pendingRejected.actorUserId, adminUserId);
+    assert.strictEqual(pendingRejected.targetType, 'user');
+    assert.deepStrictEqual(pendingRejected.metadata, {});
   });
 
   test('users.assignRole and users.revokeRole reject self-demotion for the last tenant admin', async () => {

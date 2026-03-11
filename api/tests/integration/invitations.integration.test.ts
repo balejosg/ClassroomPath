@@ -326,5 +326,19 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
       .from(openpathSchema.passwordResetTokens)
       .where(eq(openpathSchema.passwordResetTokens.userId, teacherUserId));
     assert.strictEqual(tokens.length, 1);
+
+    const auditEvents = await db
+      .select()
+      .from(cpSchema.cpAuditEvents)
+      .where(eq(cpSchema.cpAuditEvents.organizationId, orgId));
+    const resetGenerated = auditEvents.find(
+      (event) => event.action === 'user.reset-token-generated' && event.targetId === teacherUserId
+    );
+    assert.ok(resetGenerated);
+    assert.strictEqual(resetGenerated.actorUserId, adminUserId);
+    assert.strictEqual(resetGenerated.targetType, 'user');
+    assert.deepStrictEqual(resetGenerated.metadata, {
+      email: teacherEmail,
+    });
   });
 });

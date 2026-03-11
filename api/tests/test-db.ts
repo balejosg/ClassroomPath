@@ -70,7 +70,30 @@ export async function resetDb(): Promise<void> {
     `)
     );
 
+    await db.execute(
+      sql.raw(`
+      DO $$
+      BEGIN
+        CREATE TABLE "cp_audit_events" (
+          "id" varchar(50) PRIMARY KEY NOT NULL,
+          "organization_id" varchar(50) NOT NULL,
+          "actor_user_id" varchar(50) NOT NULL,
+          "action" varchar(100) NOT NULL,
+          "target_type" varchar(50) NOT NULL,
+          "target_id" varchar(50) NOT NULL,
+          "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
+          "created_at" timestamp with time zone DEFAULT now()
+        );
+      EXCEPTION
+        WHEN duplicate_table OR unique_violation THEN
+          NULL;
+      END
+      $$;
+    `)
+    );
+
     const cpTables = [
+      'cp_audit_events',
       'cp_organization_users',
       'cp_organization_groups',
       'cp_organization_classrooms',

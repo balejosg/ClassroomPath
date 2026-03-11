@@ -152,6 +152,7 @@ describe('invitations.service', { concurrency: 1 }, () => {
     await revokeOrganizationInvitation({
       organizationId,
       invitationId,
+      actedBy: invitedBy,
     });
 
     const listed = await listOrganizationInvitations(organizationId);

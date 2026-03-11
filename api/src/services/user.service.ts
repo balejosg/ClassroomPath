@@ -10,8 +10,13 @@ import { normalizeRoleGroupIds, presentUserRole, presentUserWithRoles } from './
 import {
   createOrganizationInvitation,
   listOrganizationInvitations,
-  revokeOrganizationInvitation,
+  revokeOrganizationInvitation as revokeTenantInvitation,
 } from './invitations.service.js';
+import {
+  recordUserDeletedAuditEvent,
+  recordUserRoleAssignedAuditEvent,
+  recordUserRoleRevokedAuditEvent,
+} from './audit.service.js';
 import {
   assertOrganizationUserAccess,
   getOrganizationUserIds,
@@ -167,7 +172,15 @@ export async function createOrganizationUser(params: {
   });
 }
 
-export { listOrganizationInvitations, revokeOrganizationInvitation };
+export { listOrganizationInvitations };
+
+export async function revokeOrganizationInvitation(params: {
+  organizationId: string;
+  invitationId: string;
+  actedBy: string;
+}) {
+  return revokeTenantInvitation(params);
+}
 
 export async function updateOrganizationUser(params: {
   organizationId: string;
@@ -208,6 +221,17 @@ export async function deleteOrganizationUser(params: {
     nextRole: null,
   });
 
+  const [membership] = await db
+    .select({ role: schema.cpMemberships.role })
+    .from(schema.cpMemberships)
+    .where(
+      and(
+        eq(schema.cpMemberships.organizationId, params.organizationId),
+        eq(schema.cpMemberships.userId, params.userId)
+      )
+    )
+    .limit(1);
+
   await db
     .delete(schema.cpOrganizationUsers)
     .where(
@@ -230,6 +254,15 @@ export async function deleteOrganizationUser(params: {
     userId: params.userId,
     actedBy: params.actedBy,
   });
+
+  if (membership) {
+    await recordUserDeletedAuditEvent({
+      organizationId: params.organizationId,
+      actorUserId: params.actedBy,
+      userId: params.userId,
+      role: membership.role,
+    });
+  }
 
   return { success: true };
 }
@@ -268,6 +301,14 @@ export async function assignOrganizationUserRole(params: {
 
   const persistedRole = await getPersistedUserRole(params.userId);
 
+  await recordUserRoleAssignedAuditEvent({
+    organizationId: params.organizationId,
+    actorUserId: params.actedBy,
+    userId: params.userId,
+    role: params.role,
+    groupIds: [...params.groupIds],
+  });
+
   return presentUserRole({
     role: persistedRole,
     fallback: {
@@ -299,6 +340,14 @@ export async function revokeOrganizationUserRole(params: {
   await synchronizeOpenPathRole({
     userId: params.userId,
     actedBy: params.actedBy,
+    groupIds: [],
+  });
+
+  await recordUserRoleRevokedAuditEvent({
+    organizationId: params.organizationId,
+    actorUserId: params.actedBy,
+    userId: params.userId,
+    role: 'teacher',
     groupIds: [],
   });
 
