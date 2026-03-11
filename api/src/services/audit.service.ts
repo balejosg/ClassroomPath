@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { generateId } from '../lib/id.js';
+import { logger } from '../lib/logger.js';
 
 type AuditTargetType = 'invitation' | 'user';
 
@@ -35,6 +36,27 @@ async function recordAuditEvent<Metadata extends Record<string, unknown>>(
 
 export async function deleteAuditEventById(auditEventId: string): Promise<void> {
   await db.delete(schema.cpAuditEvents).where(eq(schema.cpAuditEvents.id, auditEventId));
+}
+
+export async function deleteAuditEventByIdBestEffort(params: {
+  auditEventId: string;
+  action: string;
+  targetId: string;
+}): Promise<void> {
+  try {
+    await deleteAuditEventById(params.auditEventId);
+  } catch (error) {
+    logger.warn('Failed to delete audit event during rollback', {
+      auditEventId: params.auditEventId,
+      action: params.action,
+      targetId: params.targetId,
+      error: error instanceof Error ? error.message : String(error),
+      code:
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code: unknown }).code)
+          : undefined,
+    });
+  }
 }
 
 export async function recordInvitationCreatedAuditEvent(params: {

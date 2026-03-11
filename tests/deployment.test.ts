@@ -253,7 +253,7 @@ void describe('Migration Tooling', () => {
 
   void test('staging deploy validates the gateway runtime contract before migrations', () => {
     const content = readFileSync(stagingDeployScriptPath, 'utf-8');
-    const validateStep = 'node --import tsx api/scripts/validate-runtime-config.ts';
+    const validateStep = 'bash scripts/validate-runtime-config-docker.sh';
     const pushStep = 'bash scripts/run-migrations-docker.sh --cp --openpath';
 
     assert.ok(
@@ -263,6 +263,20 @@ void describe('Migration Tooling', () => {
     assert.ok(
       content.indexOf(validateStep) < content.indexOf(pushStep),
       'runtime config validation should happen before migrations'
+    );
+  });
+
+  void test('dockerized runtime validation executes the TypeScript runtime contract check', () => {
+    const validationScriptPath = resolve(projectRoot, 'scripts/validate-runtime-config-docker.sh');
+    const content = readFileSync(validationScriptPath, 'utf-8');
+
+    assert.ok(
+      content.includes('node --import tsx api/scripts/validate-runtime-config.ts'),
+      'validate-runtime-config-docker.sh should execute the runtime config validation entrypoint'
+    );
+    assert.ok(
+      content.includes('npm ci --silent -w @classroompath/api'),
+      'validate-runtime-config-docker.sh should install the ClassroomPath API workspace before validating'
     );
   });
 });

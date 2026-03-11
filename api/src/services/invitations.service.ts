@@ -13,7 +13,7 @@ import {
   throwMembershipConflict,
 } from '../lib/tenant-memberships.js';
 import {
-  deleteAuditEventById,
+  deleteAuditEventByIdBestEffort,
   recordInvitationCreatedAuditEvent,
   recordInvitationRevokedAuditEvent,
 } from './audit.service.js';
@@ -219,7 +219,11 @@ export async function createOrganizationInvitation(params: {
           eq(schema.cpInvitations.id, invitationId)
         )
       );
-    await deleteAuditEventById(invitationAuditEventId);
+    await deleteAuditEventByIdBestEffort({
+      auditEventId: invitationAuditEventId,
+      action: 'invitation.created',
+      targetId: invitationId,
+    });
 
     if (error instanceof TRPCError) {
       throw error;

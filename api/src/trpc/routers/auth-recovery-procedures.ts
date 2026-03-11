@@ -11,7 +11,7 @@ import { config } from '../../config.js';
 import { generateId } from '../../lib/id.js';
 import { forwardOpenPathAuthProcedure } from '../../lib/openpath-auth-client.js';
 import {
-  deleteAuditEventById,
+  deleteAuditEventByIdBestEffort,
   recordResetTokenGeneratedAuditEvent,
 } from '../../services/audit.service.js';
 import { sendTransactionalEmail } from '../../services/email.service.js';
@@ -126,7 +126,11 @@ async function generateTenantResetToken(params: {
     await openpathDb
       .delete(openpathSchema.passwordResetTokens)
       .where(eq(openpathSchema.passwordResetTokens.userId, user.id));
-    await deleteAuditEventById(resetAuditEventId);
+    await deleteAuditEventByIdBestEffort({
+      auditEventId: resetAuditEventId,
+      action: 'user.reset-token-generated',
+      targetId: user.id,
+    });
 
     if (error instanceof TRPCError) {
       throw error;
