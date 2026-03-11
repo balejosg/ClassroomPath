@@ -4,6 +4,8 @@ import { useOnboardingStatus } from './lib/hooks';
 import { AdminPanel } from './components/AdminPanel';
 import { GroupLibrary } from './components/GroupLibrary';
 import { cpTrpc } from './lib/cp-trpc';
+import { setReportErrorSink } from './lib/reportError';
+import { createReportErrorSink } from './lib/reportErrorSink';
 import {
   clearRequestsApiUrl,
   clearSession,
@@ -63,6 +65,14 @@ function AppContent() {
       setIsAuth(false);
     }
   };
+
+  useEffect(() => {
+    setReportErrorSink(createReportErrorSink());
+
+    return () => {
+      setReportErrorSink(null);
+    };
+  }, []);
 
   useEffect(() => {
     setRequestsApiUrl('/cp');

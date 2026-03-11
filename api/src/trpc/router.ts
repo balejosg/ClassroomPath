@@ -10,6 +10,7 @@ import { healthcheckRouter } from './routers/healthcheck.js';
 import { apiTokensRouter } from './routers/api-tokens.js';
 import { schedulesRouter } from './routers/schedules.js';
 import { templatesRouter } from './routers/templates.js';
+import { clientTelemetryRouter } from './routers/client-telemetry.js';
 
 export const appRouter = router({
   auth: authRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   pendingUsers: pendingUsersRouter,
   healthcheck: healthcheckRouter,
   apiTokens: apiTokensRouter,
+  clientTelemetry: clientTelemetryRouter,
 });
 
 export type AppRouter = typeof appRouter;

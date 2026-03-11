@@ -17,11 +17,11 @@ export interface ReportErrorEvent {
 
 export type ReportErrorSink = (event: ReportErrorEvent) => void;
 
-function defaultSink(event: ReportErrorEvent): void {
+export function defaultReportErrorSink(event: ReportErrorEvent): void {
   console.error(event);
 }
 
-let reportErrorSink: ReportErrorSink = defaultSink;
+let reportErrorSink: ReportErrorSink = defaultReportErrorSink;
 
 function getRoute(): string | null {
   if (typeof window === 'undefined') return null;
@@ -47,7 +47,7 @@ function normalizeError(error: unknown): ReportErrorEvent['error'] {
 }
 
 export function setReportErrorSink(sink: ReportErrorSink | null): void {
-  reportErrorSink = sink ?? defaultSink;
+  reportErrorSink = sink ?? defaultReportErrorSink;
 }
 
 /**

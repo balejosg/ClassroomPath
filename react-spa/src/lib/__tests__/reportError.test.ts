@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { reportError, setReportErrorSink, type ReportErrorEvent } from '../reportError';
+import { createReportErrorSink } from '../reportErrorSink';
 
 describe('reportError', () => {
   afterEach(() => {
@@ -52,6 +53,51 @@ describe('reportError', () => {
       route: '/',
       meta: {},
     });
+  });
+
+  it('sends structured events to the backend telemetry sink when installed', async () => {
+    window.history.pushState({}, '', '/login');
+    const mutate = vi.fn().mockResolvedValue({ success: true });
+    const fallback = vi.fn();
+
+    setReportErrorSink(
+      createReportErrorSink({
+        client: {
+          clientTelemetry: {
+            report: {
+              mutate,
+            },
+          },
+        },
+        fallback,
+      })
+    );
+
+    reportError('Failed to login', new Error('bad password'), {
+      action: 'login',
+      userRole: 'anonymous',
+      source: 'LoginForm',
+    });
+
+    await vi.waitFor(() => expect(mutate).toHaveBeenCalledTimes(1));
+    expect(mutate.mock.calls[0]?.[0]).toMatchObject({
+      app: 'classroompath-spa',
+      message: 'Failed to login',
+      route: '/login',
+      action: 'login',
+      userRole: 'anonymous',
+      meta: {
+        action: 'login',
+        userRole: 'anonymous',
+        source: 'LoginForm',
+      },
+      error: {
+        name: 'Error',
+        message: 'bad password',
+      },
+    });
+    expect(typeof mutate.mock.calls[0]?.[0]?.timestamp).toBe('string');
+    expect(fallback).not.toHaveBeenCalled();
   });
 
   it('includes error codes when the error object exposes one', () => {
