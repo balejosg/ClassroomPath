@@ -9,8 +9,9 @@
  */
 
 import { FullConfig } from '@playwright/test';
-import { execSync } from 'child_process';
+import * as childProcess from 'node:child_process';
 import { join, dirname } from 'path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'url';
 
 // ESM-compatible __dirname
@@ -18,6 +19,30 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const API_URL = process.env.OPENPATH_API_URL ?? 'http://localhost:3010';
+
+export const commandRunner = {
+  execSync(command: string, options: childProcess.ExecSyncOptions): Buffer {
+    return childProcess.execSync(command, options);
+  },
+};
+
+function getHealthcheckAttempts(): number {
+  const attempts = Number.parseInt(process.env.E2E_SETUP_HEALTHCHECK_ATTEMPTS ?? '30', 10);
+  return Number.isFinite(attempts) && attempts > 0 ? attempts : 30;
+}
+
+function getHealthcheckDelayMs(): number {
+  const delayMs = Number.parseInt(process.env.E2E_SETUP_HEALTHCHECK_DELAY_MS ?? '1000', 10);
+  return Number.isFinite(delayMs) && delayMs >= 0 ? delayMs : 1000;
+}
+
+function formatError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return String(error);
+}
 
 function shouldSkipDbPush(): boolean {
   const raw = process.env.E2E_SKIP_DB_PUSH;
@@ -61,12 +86,12 @@ function buildTestDatabaseUrl(): string {
 /**
  * Runs the seed-e2e.ts script to properly set up all test data
  */
-async function runSeedScript(): Promise<boolean> {
+async function runSeedScript(): Promise<void> {
   const apiDir = join(__dirname, '..', '..', '..', 'api');
 
   try {
     console.log('Running seed-e2e.ts script...');
-    execSync('npm run db:seed:e2e', {
+    commandRunner.execSync('npm run db:seed:e2e', {
       cwd: apiDir,
       stdio: 'inherit',
       env: {
@@ -76,19 +101,17 @@ async function runSeedScript(): Promise<boolean> {
       },
     });
     console.log('Seed script completed successfully');
-    return true;
   } catch (error) {
-    console.error('Failed to run seed script:', error);
-    return false;
+    throw new Error(`E2E global setup failed: seed script failed: ${formatError(error)}`);
   }
 }
 
-async function runTruncateOnly(): Promise<boolean> {
+async function runTruncateOnly(): Promise<void> {
   const apiDir = join(__dirname, '..', '..', '..', 'api');
 
   try {
     console.log('Truncating E2E tables (pre-push cleanup)...');
-    execSync('npm run db:seed:e2e', {
+    commandRunner.execSync('npm run db:seed:e2e', {
       cwd: apiDir,
       stdio: 'inherit',
       env: {
@@ -98,22 +121,20 @@ async function runTruncateOnly(): Promise<boolean> {
       },
     });
     console.log('Truncate-only completed successfully');
-    return true;
   } catch (error) {
-    console.error('Failed to truncate E2E tables:', error);
-    return false;
+    throw new Error(`E2E global setup failed: pre-seed truncate failed: ${formatError(error)}`);
   }
 }
 
 /**
  * Ensures ClassroomPath (cp_*) tables are up to date before seeding.
  */
-async function runClassroomPathDbPush(): Promise<boolean> {
+async function runClassroomPathDbPush(): Promise<void> {
   const apiDir = join(__dirname, '..', '..', '..', 'api');
 
   try {
     console.log('Running drizzle-kit push --force for cp_* tables...');
-    execSync('npx drizzle-kit push --force', {
+    commandRunner.execSync('npx drizzle-kit push --force', {
       cwd: apiDir,
       stdio: 'inherit',
       env: {
@@ -122,20 +143,18 @@ async function runClassroomPathDbPush(): Promise<boolean> {
       },
     });
     console.log('db:push completed successfully');
-    return true;
   } catch (error) {
-    console.error('Failed to run db:push:', error);
-    return false;
+    throw new Error(`E2E global setup failed: ClassroomPath db:push failed: ${formatError(error)}`);
   }
 }
 
-async function runOpenPathDbPush(): Promise<boolean> {
+async function runOpenPathDbPush(): Promise<void> {
   const openPathApiDir = join(__dirname, '..', '..', '..', 'upstream', 'openpath', 'api');
   const database = getTestDatabaseConfig();
 
   try {
     console.log('Running OpenPath drizzle-kit push --force for shared test DB...');
-    execSync('npx drizzle-kit push --force', {
+    commandRunner.execSync('npx drizzle-kit push --force', {
       cwd: openPathApiDir,
       stdio: 'inherit',
       env: {
@@ -149,10 +168,8 @@ async function runOpenPathDbPush(): Promise<boolean> {
       },
     });
     console.log('OpenPath db:push completed successfully');
-    return true;
   } catch (error) {
-    console.error('Failed to run OpenPath db:push:', error);
-    return false;
+    throw new Error(`E2E global setup failed: OpenPath db:push failed: ${formatError(error)}`);
   }
 }
 
@@ -171,7 +188,10 @@ async function globalSetup(_config: FullConfig): Promise<void> {
 
   // Wait for API to be ready
   let apiReady = false;
-  for (let i = 0; i < 30; i++) {
+  const healthcheckAttempts = getHealthcheckAttempts();
+  const healthcheckDelayMs = getHealthcheckDelayMs();
+
+  for (let i = 0; i < healthcheckAttempts; i++) {
     try {
       const response = await fetch(`${API_URL}/health`);
       if (response.ok) {
@@ -181,45 +201,29 @@ async function globalSetup(_config: FullConfig): Promise<void> {
     } catch {
       // API not ready yet
     }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await sleep(healthcheckDelayMs);
   }
 
   if (!apiReady) {
-    console.warn('WARNING: API not responding, skipping seed setup');
-    return;
+    throw new Error(`E2E global setup failed: OpenPath API not ready at ${API_URL}/health`);
   }
 
   // Ensure tables are empty so seeding is deterministic and db:push never prompts.
-  const truncateSuccess = await runTruncateOnly();
-  if (!truncateSuccess) {
-    console.warn('WARNING: Pre-push truncate failed; seed may be non-deterministic');
-  }
+  await runTruncateOnly();
 
-  const openPathPushSuccess = await runOpenPathDbPush();
-  if (!openPathPushSuccess) {
-    console.warn(
-      'WARNING: OpenPath db:push failed; registration flows may fail due to schema mismatch'
-    );
-  }
+  await runOpenPathDbPush();
 
   if (shouldSkipDbPush()) {
     console.log('Skipping db:push (E2E_SKIP_DB_PUSH is enabled)');
   } else {
-    const pushSuccess = await runClassroomPathDbPush();
-    if (!pushSuccess) {
-      console.warn('WARNING: db:push failed, seed may fail due to schema mismatch');
-    }
+    await runClassroomPathDbPush();
   }
 
   // Run the seed script which properly sets up:
   // - Admin user with organization
   // - Teacher user as member of admin's organization
   // - Pending user in waiting state
-  const seedSuccess = await runSeedScript();
-
-  if (!seedSuccess) {
-    console.warn('WARNING: Seed script failed, tests may fail due to missing data');
-  }
+  await runSeedScript();
 
   console.log('\n=== E2E Global Setup Complete ===\n');
 }

@@ -18,8 +18,8 @@ export default mergeConfig(
         thresholds: {
           statements: 80,
           lines: 80,
-          functions: 70,
-          branches: 60,
+          functions: 75,
+          branches: 70,
         },
       },
       // Important for monorepo/submodule resolution

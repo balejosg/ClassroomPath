@@ -24,8 +24,8 @@ const DEFAULT_DATABASE_URL =
 const COVERAGE_THRESHOLDS = {
   statements: Number.parseFloat(process.env.API_COVERAGE_STATEMENTS ?? '80'),
   lines: Number.parseFloat(process.env.API_COVERAGE_LINES ?? '80'),
-  functions: Number.parseFloat(process.env.API_COVERAGE_FUNCTIONS ?? '70'),
-  branches: Number.parseFloat(process.env.API_COVERAGE_BRANCHES ?? '60'),
+  functions: Number.parseFloat(process.env.API_COVERAGE_FUNCTIONS ?? '75'),
+  branches: Number.parseFloat(process.env.API_COVERAGE_BRANCHES ?? '70'),
 };
 
 async function collectTestFiles(dir) {

@@ -7,7 +7,7 @@
 #   [2/5] Static Analysis (parallel: typecheck, lint, format)
 #   [3/5] Security & Size (parallel: audit, secrets, size)
 #   [4/5] Unit & Integration Tests (DB-dependent)
-#         Coverage is generated only when needed by the 80% gate
+#         Coverage is generated only when needed by the 80/75/70 gate
 #         Coverage gate on changed files (fail fast before E2E)
 #   [5/5] E2E Playwright Tests
 #
@@ -57,6 +57,10 @@ SKIP_OPENPATH_STATIC=0
 # coverage gate evaluates (api/src/** and react-spa/src/**).
 NEEDS_API_COVERAGE=0
 NEEDS_SPA_COVERAGE=0
+export API_COVERAGE_STATEMENTS="${API_COVERAGE_STATEMENTS:-80}"
+export API_COVERAGE_LINES="${API_COVERAGE_LINES:-80}"
+export API_COVERAGE_FUNCTIONS="${API_COVERAGE_FUNCTIONS:-75}"
+export API_COVERAGE_BRANCHES="${API_COVERAGE_BRANCHES:-70}"
 
 detect_change_type() {
   local staged_files
@@ -328,6 +332,9 @@ if ! wait $SPA_PID; then
   echo "SPA unit tests failed!" >&2
   exit 1
 fi
+
+echo "Running Playwright setup hard-failure tests..."
+node --import tsx --test tests/e2e/setup/global-setup.test.ts
 
 echo ""
 echo "[4/5] Checking coverage on changed files (if any)..."

@@ -21,9 +21,6 @@ api/src/trpc/router.ts
 # API - Routers (tested via integration tests)
 api/src/trpc/routers/requests.ts
 api/src/trpc/routers/classrooms.ts
-api/src/trpc/routers/auth.ts
-api/src/trpc/routers/pending-users.ts
-api/src/trpc/routers/users.ts
 api/src/trpc/routers/groups.ts
 
 # API - Lib
@@ -41,13 +38,11 @@ api/src/db/schema.ts
 api/src/db/openpath.ts
 
 # React SPA - Components
-react-spa/src/ClassroomPathApp.tsx
 react-spa/src/components/AdminPanel.tsx
 react-spa/src/components/PasswordStrength.tsx
 
 # React SPA - Views (tested via E2E)
 react-spa/src/views/Waiting.tsx
-react-spa/src/views/Onboarding.tsx
 
 # React SPA - Lib
 react-spa/src/lib/dual-trpc-provider.tsx

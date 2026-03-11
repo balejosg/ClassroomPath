@@ -61,6 +61,34 @@ async function expectTrpcError(
 }
 
 describe('pendingUsersRouter', { concurrency: 1 }, () => {
+  test('list rejects non-admin tenant members', async () => {
+    await resetDb();
+
+    const organizationId = 'org_pending_router_list';
+    const teacherUserId = 'teacher_pending_router_list';
+
+    await seedMembership({
+      organizationId,
+      userId: teacherUserId,
+      role: 'teacher',
+    });
+
+    await expectTrpcError(
+      pendingUsersRouter
+        .createCaller(
+          createContext({
+            userId: teacherUserId,
+            email: 'teacher-list@example.com',
+            name: 'Teacher Pending List Router',
+            role: 'teacher',
+          })
+        )
+        .list(),
+      'FORBIDDEN',
+      /only admins can view pending users/i
+    );
+  });
+
   test('approve rejects non-admin tenant members', async () => {
     await resetDb();
 
