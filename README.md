@@ -162,9 +162,15 @@ npm run deploy:staging
 
 Staging deploy configuration is local-only via `.env.local` (see `.env.local.example`).
 
+Before promoting to production, staging should pass the automated release gate:
+
+```bash
+npm run test:release-gate:staging
+```
+
 ### Production (GitHub Actions)
 
-Production deploys automatically on git tags `v*`.
+Production deploys are triggered by git tags `v*`, but the workflow now runs a staging release gate first. The production rollout only starts if `npm run test:release-gate:staging` passes inside GitHub Actions.
 
 Required GitHub Secrets (production only):
 

@@ -111,23 +111,23 @@ ClassroomPath ──depends on──▶ OpenPath
 
 ### Environments
 
-| Environment    | URL                                         | Trigger                  | Method             |
-| -------------- | ------------------------------------------- | ------------------------ | ------------------ |
-| **Staging**    | `https://classroompath-staging.duckdns.org` | `npm run deploy:staging` | Local script (SSH) |
-| **Production** | `https://classroompath.duckdns.org`         | Tag `v*`                 | GitHub Actions     |
+| Environment    | URL                                         | Trigger                  | Method                                    |
+| -------------- | ------------------------------------------- | ------------------------ | ----------------------------------------- |
+| **Staging**    | `https://classroompath-staging.duckdns.org` | `npm run deploy:staging` | Local script (SSH)                        |
+| **Production** | `https://classroompath.duckdns.org`         | Tag `v*`                 | GitHub Actions after staging release gate |
 
 ### ⚠️ CRITICAL: Identifying Environments
 
 **LLM Agents: Use these URLs to verify which environment you're working with:**
 
-| Check                | Staging                                               | Production                                    |
-| -------------------- | ----------------------------------------------------- | --------------------------------------------- |
-| **URL**              | `classroompath-staging.duckdns.org`                   | `classroompath.duckdns.org`                   |
-| **Gateway Health**   | `https://classroompath-staging.duckdns.org/cp/health` | `https://classroompath.duckdns.org/cp/health` |
-| **Proxmox CT (App)** | CT 114 (`classroompath-app-staging`)                  | CT 111 (`classroompath-app`)                  |
-| **Proxmox CT (DB)**  | CT 113 (`classroompath-db-staging`)                   | CT 110 (`classroompath-db`)                   |
-| **Database Name**    | `classroompath_staging`                               | `classroompath`                               |
-| **Deploy Trigger**   | `npm run deploy:staging`                              | Git tag starting with `v`                     |
+| Check                | Staging                                               | Production                                                  |
+| -------------------- | ----------------------------------------------------- | ----------------------------------------------------------- |
+| **URL**              | `classroompath-staging.duckdns.org`                   | `classroompath.duckdns.org`                                 |
+| **Gateway Health**   | `https://classroompath-staging.duckdns.org/cp/health` | `https://classroompath.duckdns.org/cp/health`               |
+| **Proxmox CT (App)** | CT 114 (`classroompath-app-staging`)                  | CT 111 (`classroompath-app`)                                |
+| **Proxmox CT (DB)**  | CT 113 (`classroompath-db-staging`)                   | CT 110 (`classroompath-db`)                                 |
+| **Database Name**    | `classroompath_staging`                               | `classroompath`                                             |
+| **Deploy Trigger**   | `npm run deploy:staging`                              | Git tag starting with `v` -> staging release gate -> deploy |
 
 **When debugging issues:**
 
@@ -148,7 +148,7 @@ git add upstream/openpath
 git commit -m "chore: update openpath submodule"
 git push origin main
 
-# Production deploy is triggered by tags v*
+# Production deploy is triggered by tags v* and first runs the staging release gate
 # git tag v1.2.3 && git push origin v1.2.3
 ```
 
@@ -190,11 +190,11 @@ npm run deploy:staging
 
 #### Staging vs Production Deployment
 
-| Scenario             | Command / Action                                 |
-| -------------------- | ------------------------------------------------ |
-| Deploy to staging    | `npm run deploy:staging`                         |
-| Deploy to production | `git tag v1.x.x && git push --tags` (GH Actions) |
-| Debug staging issues | SSH to CT 114                                    |
+| Scenario             | Command / Action                                                                |
+| -------------------- | ------------------------------------------------------------------------------- |
+| Deploy to staging    | `npm run deploy:staging`                                                        |
+| Deploy to production | `git tag v1.x.x && git push --tags` (staging release gate -> GH Actions deploy) |
+| Debug staging issues | SSH to CT 114                                                                   |
 
 #### Troubleshooting
 

@@ -30,6 +30,20 @@ npm run deploy:staging
   - `https://classroompath-staging.duckdns.org/health`
 - Smoke tests pass (script prints the summary)
 
+## Promotion Gate
+
+Before creating a production tag, run the staging release gate and keep its output with the UAT evidence:
+
+```bash
+npm run test:release-gate:staging
+```
+
+This gate performs live mutable checks for:
+
+- `auth.register` returning `emailSent: true`
+- `auth.register` returning a public verification URL on the staging origin
+- `auth.generateEmailVerificationToken` returning a fresh public verification URL
+
 ## Debugging
 
 The deploy script prints the exact SSH + docker commands it runs. If needed:

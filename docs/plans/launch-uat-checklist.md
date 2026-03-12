@@ -8,7 +8,7 @@ Date baseline: 2026-03-09
 - Confirm the registration screen does not log the user in automatically.
 - Confirm a verification email is sent through ClassroomPath's configured mail provider.
 - Open the verification link and confirm login succeeds only after verification.
-- Trigger "Reenviar verificacion" from login and confirm a fresh link is delivered.
+- Trigger "Reenviar verificacion" from login and confirm a fresh link is delivered, and that the browser only exposes a manual verification link when delivery cannot be confirmed (or on localhost/dev).
 - Accept an invitation, set the password, and confirm the invited user lands in the correct tenant.
 - Trigger password recovery from the tenant admin view and from the reset screen.
 - Confirm neither invitations nor password recovery ever expose secret-bearing links in the browser UI, even when delivery fails.
@@ -107,3 +107,43 @@ Results:
 Launch outcome:
 
 - `BLOCKED` Do not sign off for production while staging still emits localhost verification links and cannot deliver verification email.
+
+## Revalidation Record: 2026-03-12
+
+Environment tested: `staging` (`https://classroompath-staging.duckdns.org`)
+
+Scope:
+
+- Re-check the blocking identity-and-access findings from 2026-03-11 after the follow-up auth/runtime fixes landed.
+- Keep the rest of the checklist as the active manual sign-off list; non-blocking items from 2026-03-11 remain historical evidence, not same-day revalidation.
+
+Evidence captured:
+
+- `2026-03-12T18:00:00+01:00` approximate rerun window
+- `SMOKE_TEST_URL=https://classroompath-staging.duckdns.org SMOKE_ALLOW_MUTATIONS=1 npm run test:smoke` -> `18/18` pass
+- Live `auth.register` call for `uat-signoff-1773294829115@test.local`
+- Live `auth.generateEmailVerificationToken` call for `uat-signoff-1773294829115@test.local`
+- ClassroomPath HEAD during revalidation: `3494ba4` (`fix(auth): keep resend verification local`)
+
+Accounts used:
+
+- `uat-signoff-1773294829115@test.local` / `UatPassword123!`
+
+Results:
+
+- `PASS` Confirm a verification email is sent through ClassroomPath's configured mail provider.
+  Evidence: the live `auth.register` response returned `emailSent: true`.
+- `PASS` Open the verification link and confirm login succeeds only after verification uses a public staging URL.
+  Evidence: the live `auth.register` response returned `verificationUrl: "https://classroompath-staging.duckdns.org/login?..."`
+- `PASS (API LIVE)` Trigger a fresh verification delivery and confirm the backend returns a new public staging link.
+  Evidence: the live `auth.generateEmailVerificationToken` response returned `emailSent: true` and `verificationUrl: "https://classroompath-staging.duckdns.org/login?..."`
+  Note: the manual login-screen click path was not re-run in this revalidation pass and should still be exercised during final human sign-off.
+- `PASS` Smoke coverage still exercises the staging registration contract with the current terms version `2026-03-09`.
+  Evidence: `tests/smoke.test.ts` passed live against staging and the registration assertion still requires `termsVersion === CURRENT_TERMS_VERSION`.
+
+Current status:
+
+- `ACTIVE` The manual UAT checklist remains valid and should still be used for final sign-off.
+- `AUTOMATED GATE` Production deploys now run an automated staging release gate that covers live `auth.register` and `auth.generateEmailVerificationToken` delivery assertions before rollout.
+- `UNBLOCKED` The specific 2026-03-11 staging blocker (email delivery false + localhost verification URL) no longer reproduces.
+- `PENDING MANUAL RE-RUN` Finish the remaining manual UI-only checks before production sign-off, especially the login-screen resend path and the rest of the tenant/admin flows.
