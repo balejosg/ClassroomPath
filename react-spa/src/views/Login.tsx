@@ -7,6 +7,7 @@ import {
   normalizeEmailAddress,
   normalizeVerificationDeliveryState,
   persistAuthSession,
+  shouldShowManualVerificationLink,
 } from './auth-helpers';
 
 interface LoginProps {
@@ -96,7 +97,9 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
         normalizedEmail
       );
       setShowResendVerification(true);
-      setVerificationUrl(delivery.verificationUrl);
+      setVerificationUrl(
+        shouldShowManualVerificationLink(delivery) ? delivery.verificationUrl : ''
+      );
       setInfo(
         delivery.emailSent
           ? 'Te enviamos un nuevo enlace de verificacion.'

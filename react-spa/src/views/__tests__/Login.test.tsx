@@ -9,6 +9,7 @@ const mockResendVerificationMutateAsync = vi.fn();
 const mockVerifyEmailMutateAsync = vi.fn();
 const mockPersistSession = vi.fn();
 const mockReportError = vi.fn();
+const mockShouldShowManualVerificationLink = vi.fn();
 
 vi.mock('@openpath/src/components/GoogleLoginButton', () => ({
   default: ({
@@ -63,10 +64,22 @@ vi.mock('../../lib/reportError', () => ({
   reportError: (...args: unknown[]) => mockReportError(...args),
 }));
 
+vi.mock('../auth-helpers', async () => {
+  const actual = await vi.importActual<typeof import('../auth-helpers')>('../auth-helpers');
+
+  return {
+    ...actual,
+    shouldShowManualVerificationLink: (
+      ...args: Parameters<typeof actual.shouldShowManualVerificationLink>
+    ) => mockShouldShowManualVerificationLink(...args),
+  };
+});
+
 describe('Login View', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.history.pushState({}, '', '/login');
+    mockShouldShowManualVerificationLink.mockReturnValue(false);
     mockResendVerificationMutateAsync.mockResolvedValue({
       email: 'teacher@example.com',
       emailSent: true,
@@ -188,6 +201,36 @@ describe('Login View', () => {
       });
     });
     expect(await screen.findByText('Te enviamos un nuevo enlace de verificacion.')).toBeVisible();
+    expect(screen.queryByText('Enlace manual de verificacion')).not.toBeInTheDocument();
+  });
+
+  it('shows a manual verification link when resend delivery cannot be confirmed', async () => {
+    mockLoginMutateAsync.mockRejectedValue(
+      new Error('Email verification required before signing in')
+    );
+    mockShouldShowManualVerificationLink.mockReturnValue(true);
+    mockResendVerificationMutateAsync.mockResolvedValue({
+      email: 'teacher@example.com',
+      emailSent: false,
+      verificationRequired: true,
+      verificationUrl: 'https://classroompath.local/login?email=teacher%40example.com&token=abc',
+    });
+
+    render(<Login onLogin={vi.fn()} onNavigateToRegister={vi.fn()} />);
+
+    fireEvent.change(screen.getByTestId('login-email'), {
+      target: { value: 'teacher@example.com' },
+    });
+    fireEvent.change(screen.getByTestId('login-password'), {
+      target: { value: 'password123' },
+    });
+    fireEvent.click(screen.getByTestId('login-submit'));
+    fireEvent.click(await screen.findByTestId('login-resend-verification'));
+
+    expect(
+      await screen.findByText('No pudimos confirmar la entrega del correo. Usa el enlace manual.')
+    ).toBeVisible();
+    expect(await screen.findByText('Enlace manual de verificacion')).toBeVisible();
   });
 
   it('verifies the email automatically when the login route receives a token', async () => {
