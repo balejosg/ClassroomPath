@@ -356,6 +356,58 @@ async function ensureMockOpenPathServer(): Promise<string> {
   });
 
   app.post('/trpc/auth.generateEmailVerificationToken', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({
+        error: {
+          message: 'Authentication required',
+          code: 'UNAUTHORIZED',
+        },
+      });
+    }
+
+    const token = authHeader.slice(7);
+    if (revokedMockTokens.has(token)) {
+      return res.status(401).json({
+        error: {
+          message: 'Token revoked',
+          code: 'UNAUTHORIZED',
+        },
+      });
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET ?? '', {
+        issuer: 'openpath-api',
+      }) as jwt.JwtPayload & { type?: string };
+
+      if (decoded.type !== 'access') {
+        return res.status(401).json({
+          error: {
+            message: 'Authentication required',
+            code: 'UNAUTHORIZED',
+          },
+        });
+      }
+
+      const me = await buildMockAuthMeResponse(token);
+      if (!me.user.roles.some((role) => role.role === 'admin')) {
+        return res.status(403).json({
+          error: {
+            message: 'Admin access required',
+            code: 'FORBIDDEN',
+          },
+        });
+      }
+    } catch {
+      return res.status(401).json({
+        error: {
+          message: 'Authentication required',
+          code: 'UNAUTHORIZED',
+        },
+      });
+    }
+
     const body = req.body as { email?: unknown } | undefined;
     const email =
       typeof body?.email === 'string' ? body.email.trim().toLowerCase() : 'verify@test.local';

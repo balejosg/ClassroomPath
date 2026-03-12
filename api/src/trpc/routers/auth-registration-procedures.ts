@@ -1,15 +1,16 @@
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 
 import { publicProcedure } from '../trpc.js';
 import { openpathDb, openpathSchema } from '../../db/openpath.js';
 import { forwardOpenPathAuthProcedure } from '../../lib/openpath-auth-client.js';
-import {
-  generateOpenPathEmailVerificationToken,
-  registerOpenPathUser,
-} from '../../lib/openpath-upstream.js';
+import { registerOpenPathUser } from '../../lib/openpath-upstream.js';
 import { recordTermsAcceptance } from '../../services/legal-consent.service.js';
-import { deliverEmailVerification } from './auth-email-delivery.js';
+import {
+  deliverEmailVerification,
+  issueOpenPathEmailVerificationToken,
+} from './auth-email-delivery.js';
 import {
   assertCurrentTermsVersion,
   normalizeDisplayName,
@@ -21,12 +22,14 @@ async function getOpenPathUserByEmail(email: string): Promise<{
   id: string;
   email: string;
   name: string;
+  emailVerified: boolean;
 } | null> {
   const [user] = await openpathDb
     .select({
       id: openpathSchema.users.id,
       email: openpathSchema.users.email,
       name: openpathSchema.users.name,
+      emailVerified: openpathSchema.users.emailVerified,
     })
     .from(openpathSchema.users)
     .where(eq(openpathSchema.users.email, email))
@@ -82,19 +85,28 @@ export const authRegistrationProcedures = {
         email: z.string().trim().email(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input }) => {
       const email = normalizeEmailAddress(input.email);
-      const verification = await generateOpenPathEmailVerificationToken({
-        req: ctx.req,
-        input: { email },
-        unavailableMessage: 'Authentication service unavailable',
-        upstreamFailureMessage: 'Verification token generation failed',
-      });
       const user = await getOpenPathUserByEmail(email);
+      if (!user) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'User not found',
+        });
+      }
+
+      if (user.emailVerified) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'Email is already verified',
+        });
+      }
+
+      const verification = await issueOpenPathEmailVerificationToken(user.id);
 
       return deliverEmailVerification({
-        email: verification.email,
-        name: user?.name ?? verification.email,
+        email: user.email,
+        name: user.name,
         verificationToken: verification.verificationToken,
         verificationExpiresAt: verification.verificationExpiresAt,
       });
