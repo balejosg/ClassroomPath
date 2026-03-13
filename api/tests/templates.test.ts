@@ -38,7 +38,7 @@ async function cleanupTemplates() {
   await db.delete(schema.cpGroupTemplates).where(inArray(schema.cpGroupTemplates.id, templateIds));
 }
 
-describe('Templates Router', () => {
+describe('Templates Router', { concurrency: false }, () => {
   before(async () => {
     await cleanupTemplates();
     await db
