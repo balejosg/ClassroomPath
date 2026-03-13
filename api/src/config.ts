@@ -147,7 +147,7 @@ export function resolveRuntimeConfig(env: RuntimeEnv = process.env): RuntimeConf
     resendFromEmail,
     mockEmailDelivery: resolveMockEmailDelivery(env),
     emailDeliveryMode: resolveEmailDeliveryMode(env),
-    allowSelfServiceOrgs: parseBooleanEnv(env.CP_ALLOW_SELF_SERVICE_ORGS, !isProduction(env)),
+    allowSelfServiceOrgs: parseBooleanEnv(env.CP_ALLOW_SELF_SERVICE_ORGS, true),
     allowOrgDirectory: parseBooleanEnv(env.CP_ALLOW_ORG_DIRECTORY, false),
   };
 }
@@ -187,7 +187,7 @@ export const config = {
     return resolveEmailDeliveryMode(process.env);
   },
   get allowSelfServiceOrgs() {
-    return parseBooleanEnv(process.env.CP_ALLOW_SELF_SERVICE_ORGS, !isProduction(process.env));
+    return parseBooleanEnv(process.env.CP_ALLOW_SELF_SERVICE_ORGS, true);
   },
   get allowOrgDirectory() {
     return parseBooleanEnv(process.env.CP_ALLOW_ORG_DIRECTORY, false);
