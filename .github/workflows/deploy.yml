@@ -10,10 +10,36 @@ on:
 # reconciled exclusively through GitHub Actions.
 
 jobs:
+  verify-openpath-upstream:
+    name: Verify OpenPath Upstream Checks
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify required OpenPath checks for submodule SHA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENPATH_REQUIRED_CHECKS: CI Success,E2E Summary
+        run: |
+          export OPENPATH_SHA="$(git -C upstream/openpath rev-parse HEAD)"
+          echo "Verifying OpenPath checks for $OPENPATH_SHA"
+          node scripts/openpath-required-checks.mjs
+
   release-gate-staging:
     name: Release Gate Staging
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify-openpath-upstream
+    if: needs.verify-openpath-upstream.result == 'success' && startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout
