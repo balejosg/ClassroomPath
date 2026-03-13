@@ -160,8 +160,18 @@ function assertGatewaySecurityHeaders(response: Response): void {
   );
   assert.strictEqual(
     response.headers.get('referrer-policy'),
-    'no-referrer',
-    'Gateway should send Referrer-Policy: no-referrer'
+    'strict-origin-when-cross-origin',
+    'Gateway should send Referrer-Policy: strict-origin-when-cross-origin'
+  );
+  assert.strictEqual(
+    response.headers.get('cross-origin-opener-policy'),
+    'same-origin-allow-popups',
+    'Gateway should send Cross-Origin-Opener-Policy: same-origin-allow-popups'
+  );
+  assert.strictEqual(
+    response.headers.get('cross-origin-resource-policy'),
+    'cross-origin',
+    'Gateway should send Cross-Origin-Resource-Policy: cross-origin'
   );
   assert.ok(
     response.headers.get('x-request-id'),
@@ -268,9 +278,9 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
     /**
      * CRITICAL: This test catches the NPM path-stripping bug
      * If NPM is misconfigured, /api/config becomes /config and returns 404.
-     * The hardened gateway now blocks direct /api passthrough with 403, which is expected.
+     * The hardened gateway now exposes the public upstream config endpoint, which is expected.
      */
-    void test('GET /api/config is blocked with 403 (NOT 404 from path stripping)', async () => {
+    void test('GET /api/config returns public config (NOT 404 from path stripping)', async () => {
       const response = await fetchWithRetry(`${SMOKE_TEST_URL}/api/config`);
 
       // The key assertion: should NOT be 404
@@ -284,19 +294,14 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
 
       assert.strictEqual(
         response.status,
-        403,
-        `Direct /api passthrough should be blocked with 403, got ${response.status}`
+        200,
+        `Public /api/config should return 200, got ${response.status}`
       );
 
       if (isJsonResponse(response)) {
-        const data = (await response.json()) as ErrorResponse;
+        const data = (await response.json()) as { googleClientId?: string };
 
-        assert.strictEqual(data.error?.code, 'FORBIDDEN');
-        assert.strictEqual(
-          data.error?.data?.path,
-          '/api/config',
-          'Gateway must preserve the /api prefix when blocking direct passthrough.'
-        );
+        assert.ok('googleClientId' in data, 'Public config should expose the Google client id key');
       }
     });
 

@@ -10,7 +10,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed:e2e": "tsx scripts/seed-e2e.ts",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:coverage": "NODE_ENV=test node scripts/run-test-coverage.mjs",
     "test:integration": "node scripts/run-integration-tests.mjs"
   },
