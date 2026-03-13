@@ -22,6 +22,7 @@ await describe('gateway hardening helpers', async () => {
 
     assert.doesNotMatch(policy, /localhost/);
     assert.doesNotMatch(policy, /ws:\/\//);
+    assert.match(policy, /style-src[^;]*accounts\.google\.com/);
   });
 
   await test('createGatewayRateLimitRules matches the hardened auth and onboarding procedures', () => {

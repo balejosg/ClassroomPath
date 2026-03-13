@@ -27,6 +27,7 @@ type GatewayErrorCode = 'FORBIDDEN' | 'PAYLOAD_TOO_LARGE' | 'TOO_MANY_REQUESTS';
 
 export function buildGatewayContentSecurityPolicy(nodeEnv = process.env.NODE_ENV): string {
   const connectSources = ["'self'", 'https://accounts.google.com'];
+  const styleSources = ["'self'", "'unsafe-inline'", 'https://accounts.google.com'];
 
   if (nodeEnv !== 'production') {
     connectSources.push('http://localhost:*', 'http://127.0.0.1:*', 'ws://localhost:*');
@@ -38,7 +39,7 @@ export function buildGatewayContentSecurityPolicy(nodeEnv = process.env.NODE_ENV
     "frame-ancestors 'none'",
     "object-src 'none'",
     "img-src 'self' data: https:",
-    "style-src 'self' 'unsafe-inline'",
+    `style-src ${styleSources.join(' ')}`,
     "font-src 'self' data: https://fonts.gstatic.com",
     "script-src 'self' https://accounts.google.com/gsi/client",
     "frame-src 'self' https://accounts.google.com",
@@ -48,11 +49,11 @@ export function buildGatewayContentSecurityPolicy(nodeEnv = process.env.NODE_ENV
 
 export const applyGatewaySecurityHeaders: RequestHandler = (_req, res, next) => {
   res.setHeader('Content-Security-Policy', buildGatewayContentSecurityPolicy());
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-DNS-Prefetch-Control', 'off');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   next();

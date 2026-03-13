@@ -19,6 +19,10 @@ export const OPENPATH_PROXY_MANIFEST = {
       path: '/health',
     },
     {
+      method: 'get',
+      path: '/api/config',
+    },
+    {
       method: 'use',
       path: '/api/machines/events',
       proxyTimeout: 0,

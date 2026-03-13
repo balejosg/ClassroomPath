@@ -106,7 +106,12 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
     assert.strictEqual(response.status, 200);
     assert.strictEqual(response.headers.get('x-content-type-options'), 'nosniff');
     assert.strictEqual(response.headers.get('x-frame-options'), 'DENY');
-    assert.strictEqual(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.strictEqual(response.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
+    assert.strictEqual(
+      response.headers.get('cross-origin-opener-policy'),
+      'same-origin-allow-popups'
+    );
+    assert.strictEqual(response.headers.get('cross-origin-resource-policy'), 'cross-origin');
     assert.strictEqual(response.headers.get('x-request-id'), REQUEST_ID);
     assert.strictEqual(response.headers.get('x-powered-by'), null);
     assert.match(output, /HTTP request completed/i);

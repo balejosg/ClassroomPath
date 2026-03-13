@@ -10,7 +10,7 @@ void describe('openpath-proxy-policy', () => {
   test('exports a single manifest for upstream exposure and blocking policy', () => {
     assert.deepStrictEqual(
       OPENPATH_PROXY_MANIFEST.proxyRoutes.map((route) => route.path),
-      ['/health', '/api/machines/events']
+      ['/health', '/api/config', '/api/machines/events']
     );
     assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.notFoundRoutes, ['/v2', '/export']);
     assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.blockedPassthroughPrefixes, [
@@ -28,6 +28,7 @@ void describe('openpath-proxy-policy', () => {
 
   test('returns the normalized blocked passthrough path while using the shared manifest', () => {
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/health'), null);
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/config?source=smoke'), null);
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/users?page=1'), '/api/users');
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/w/agent/install'), '/w/agent/install');
   });
