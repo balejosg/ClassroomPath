@@ -10,6 +10,7 @@ services:
   # The gateway is the public-facing entry point. The upstream SSL proxy
   # forwards to host port 3000, so the gateway MUST be mapped there.
   gateway:
+    image: ${CLASSROOMPATH_GATEWAY_IMAGE:-classroompath-gateway:local}
     build:
       context: ..
       dockerfile: docker/Dockerfile.cp-api
@@ -39,6 +40,7 @@ services:
   # OpenPath API (core functionality)
   # Internal only - accessed by gateway via Docker network (http://api:3000)
   api:
+    image: ${OPENPATH_API_IMAGE:-classroompath-api:local}
     build:
       context: ../upstream/openpath
       dockerfile: ../../docker/Dockerfile.api
@@ -66,6 +68,7 @@ services:
 
   # SPA static server (nginx)
   spa:
+    image: ${CLASSROOMPATH_SPA_IMAGE:-classroompath-spa:local}
     build:
       context: ..
       dockerfile: docker/Dockerfile.spa

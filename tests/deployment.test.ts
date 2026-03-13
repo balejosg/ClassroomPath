@@ -60,6 +60,10 @@ void describe('Docker Compose Configuration', () => {
     const api = compose.services['api'];
     assert.ok(api.build, 'API should have build configuration');
     assert.ok(
+      api.image?.includes('${OPENPATH_API_IMAGE'),
+      'API should support immutable image overrides via OPENPATH_API_IMAGE'
+    );
+    assert.ok(
       api.ports?.some((p) => String(p).includes('3000')) ||
         api.expose?.some((p) => String(p).includes('3000')),
       'API should expose or publish port 3000'
@@ -80,6 +84,10 @@ void describe('Docker Compose Configuration', () => {
 
     const gateway = compose.services['gateway'];
     assert.ok(
+      gateway.image?.includes('${CLASSROOMPATH_GATEWAY_IMAGE'),
+      'Gateway should support immutable image overrides via CLASSROOMPATH_GATEWAY_IMAGE'
+    );
+    assert.ok(
       gateway.extra_hosts?.includes('host.docker.internal:host-gateway'),
       'Gateway should resolve host.docker.internal for host-backed infrastructure'
     );
@@ -92,6 +100,10 @@ void describe('Docker Compose Configuration', () => {
     assert.ok(compose.services['spa'], 'SPA service should exist');
 
     const spa = compose.services['spa'];
+    assert.ok(
+      spa.image?.includes('${CLASSROOMPATH_SPA_IMAGE'),
+      'SPA should support immutable image overrides via CLASSROOMPATH_SPA_IMAGE'
+    );
     assert.ok(
       spa.image?.includes('nginx') ||
         (spa.build && spa.build.dockerfile.includes('Dockerfile.spa')),

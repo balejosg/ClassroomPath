@@ -5,6 +5,14 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 # NOTE: Staging deploys are handled locally via `npm run deploy:staging`.
 # Production rollouts are intentionally tag-only (`v*`) so the server can be
 # reconciled exclusively through GitHub Actions.
@@ -63,8 +71,8 @@ jobs:
           echo "🔐 Running staging release gate against $RELEASE_GATE_URL"
           npm run test:release-gate 2>&1 | tee release-gate-results.txt
           exit_code=${PIPESTATUS[0]}
-          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
-          exit $exit_code
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit "$exit_code"
 
       - name: Upload release gate results
         if: always()
@@ -74,12 +82,110 @@ jobs:
           path: release-gate-results.txt
           retention-days: 7
 
-  deploy-production:
-    name: Deploy to Production
+  build-release-images:
+    name: Build Release Images
     runs-on: ubuntu-latest
     needs: release-gate-staging
     if: needs.release-gate-staging.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      gateway_image: ${{ steps.release-images.outputs.gateway_image }}
+      openpath_api_image: ${{ steps.release-images.outputs.openpath_api_image }}
+      spa_image: ${{ steps.release-images.outputs.spa_image }}
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Derive image repositories
+        id: image-repos
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          echo "gateway_repo=ghcr.io/${owner}/classroompath-gateway" >> "$GITHUB_OUTPUT"
+          echo "openpath_api_repo=ghcr.io/${owner}/classroompath-openpath-api" >> "$GITHUB_OUTPUT"
+          echo "spa_repo=ghcr.io/${owner}/classroompath-spa" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push gateway image
+        id: build-gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.cp-api
+          push: true
+          tags: ${{ steps.image-repos.outputs.gateway_repo }}:${{ github.sha }}
+
+      - name: Build and push OpenPath API image
+        id: build-openpath-api
+        uses: docker/build-push-action@v6
+        with:
+          context: ./upstream/openpath
+          file: ./docker/Dockerfile.api
+          push: true
+          tags: ${{ steps.image-repos.outputs.openpath_api_repo }}:${{ github.sha }}
+
+      - name: Build and push SPA image
+        id: build-spa
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.spa
+          push: true
+          tags: ${{ steps.image-repos.outputs.spa_repo }}:${{ github.sha }}
+
+      - name: Persist immutable image refs
+        id: release-images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gateway_image="${{ steps.image-repos.outputs.gateway_repo }}@${{ steps.build-gateway.outputs.digest }}"
+          openpath_api_image="${{ steps.image-repos.outputs.openpath_api_repo }}@${{ steps.build-openpath-api.outputs.digest }}"
+          spa_image="${{ steps.image-repos.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}"
+
+          echo "gateway_image=$gateway_image" >> "$GITHUB_OUTPUT"
+          echo "openpath_api_image=$openpath_api_image" >> "$GITHUB_OUTPUT"
+          echo "spa_image=$spa_image" >> "$GITHUB_OUTPUT"
+
+          cat > release-images.env <<EOF
+          CLASSROOMPATH_GATEWAY_IMAGE=$gateway_image
+          OPENPATH_API_IMAGE=$openpath_api_image
+          CLASSROOMPATH_SPA_IMAGE=$spa_image
+          APP_SHA=${{ github.sha }}
+          TAG_NAME=${{ github.ref_name }}
+          EOF
+
+      - name: Upload release image manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-image-metadata-${{ github.ref_name }}
+          path: release-images.env
+          retention-days: 14
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [release-gate-staging, build-release-images]
+    if: needs.release-gate-staging.result == 'success' && needs.build-release-images.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     environment: production
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Checkout with submodules
@@ -96,13 +202,12 @@ jobs:
 
           if [ -z "$HOST" ]; then
             echo "DEPLOY_HOST not configured. Skipping deployment."
-            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Try to resolve hostname
           MAX_RETRIES=3
-          for i in $(seq 1 $MAX_RETRIES); do
+          for i in $(seq 1 "$MAX_RETRIES"); do
             echo "DNS resolution attempt $i of $MAX_RETRIES..."
             IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1}' | head -1)
 
@@ -112,9 +217,9 @@ jobs:
 
             if [ -n "$IP" ]; then
               echo "Resolved $HOST to $IP"
-              echo "ip=$IP" >> $GITHUB_OUTPUT
-              echo "port=$PORT" >> $GITHUB_OUTPUT
-              echo "skip=false" >> $GITHUB_OUTPUT
+              echo "ip=$IP" >> "$GITHUB_OUTPUT"
+              echo "port=$PORT" >> "$GITHUB_OUTPUT"
+              echo "skip=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
 
@@ -122,10 +227,16 @@ jobs:
           done
 
           echo "Could not resolve $HOST"
-          echo "skip=true" >> $GITHUB_OUTPUT
+          echo "skip=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy via SSH
         if: steps.resolve.outputs.skip != 'true'
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.build-release-images.outputs.gateway_image }}
+          OPENPATH_API_IMAGE: ${{ needs.build-release-images.outputs.openpath_api_image }}
+          CLASSROOMPATH_SPA_IMAGE: ${{ needs.build-release-images.outputs.spa_image }}
         uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ steps.resolve.outputs.ip }}
@@ -133,17 +244,19 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
-          command_timeout: 15m
+          command_timeout: 20m
+          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_GATEWAY_IMAGE,OPENPATH_API_IMAGE,CLASSROOMPATH_SPA_IMAGE
           script: |
-            set -e
+            set -euo pipefail
             echo "Starting ClassroomPath Docker deployment..."
 
             DEPLOY_DIR="/opt/classroompath"
             APP_DIR="$DEPLOY_DIR/app"
+            STATE_DIR="$DEPLOY_DIR/release-state"
+            mkdir -p "$STATE_DIR"
 
             cd "$APP_DIR"
 
-            # Pull latest changes with submodules
             echo "Pulling latest changes..."
             DEPLOY_REF="${{ github.ref }}"
             DEPLOY_SHA="${{ github.sha }}"
@@ -155,37 +268,43 @@ jobs:
 
             TARGET_SHA=""
 
-            # Tag pushes: deploy the tag commit (not whatever origin/main currently is).
             if [[ "$DEPLOY_REF" == refs/tags/* ]]; then
               TAG_NAME="${DEPLOY_REF#refs/tags/}"
               TARGET_SHA=$(git rev-parse "${TAG_NAME}^{commit}" 2>/dev/null || true)
               if [ -z "$TARGET_SHA" ]; then
-                # Fallback: explicitly fetch the tag ref (helps if server repo lacks tags).
                 git fetch origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}" || true
                 TARGET_SHA=$(git rev-parse "${TAG_NAME}^{commit}" 2>/dev/null || true)
               fi
             fi
 
-            # Unexpected refs: deploy the triggering SHA.
             if [ -z "$TARGET_SHA" ]; then
               TARGET_SHA=$(git rev-parse "${DEPLOY_SHA}^{commit}" 2>/dev/null || true)
             fi
 
-            # Final fallback: deploy origin/main.
             if [ -z "$TARGET_SHA" ]; then
               TARGET_SHA=$(git rev-parse origin/main)
             fi
 
             echo "Deploying ClassroomPath commit: $TARGET_SHA"
+
+            if [ -f "$STATE_DIR/current-images.env" ]; then
+              cp "$STATE_DIR/current-images.env" "$STATE_DIR/previous-images.env"
+            fi
+
+            cat > "$STATE_DIR/current-images.env" <<EOF
+            APP_SHA=$TARGET_SHA
+            CLASSROOMPATH_GATEWAY_IMAGE=$CLASSROOMPATH_GATEWAY_IMAGE
+            OPENPATH_API_IMAGE=$OPENPATH_API_IMAGE
+            CLASSROOMPATH_SPA_IMAGE=$CLASSROOMPATH_SPA_IMAGE
+            EOF
+
             git checkout --detach "$TARGET_SHA"
             git reset --hard "$TARGET_SHA"
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
 
-            # Run database migrations using Node.js Docker container
             echo "Running database migrations..."
 
-            # ClassroomPath API migrations (multi-tenancy tables)
             echo "- ClassroomPath API schema..."
             docker run --rm -v "$APP_DIR/api:/app" -w /app node:20-alpine rm -rf node_modules
             docker run --rm \
@@ -196,15 +315,12 @@ jobs:
               node:20-alpine \
               sh -c "npm install && npm run db:push"
 
-            # OpenPath API migrations (core tables)
             echo "- OpenPath API schema..."
             docker run --rm -v "$APP_DIR/upstream/openpath/api:/app" -w /app node:20-alpine rm -rf node_modules
 
-            # OpenPath drizzle config expects DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD.
-            # Derive them from DATABASE_URL in the shared production env file.
             eval "$(python3 <<'PY'
             from pathlib import Path
-            from urllib.parse import urlparse, unquote
+            from urllib.parse import unquote, urlparse
 
             env = {}
             for line in Path('config/.env').read_text(encoding='utf-8').splitlines():
@@ -235,28 +351,29 @@ jobs:
               node:20-alpine \
               sh -c "npm install --include=dev && npm run db:push"
 
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+
             cd "$APP_DIR/docker"
             export COMPOSE_PROJECT_NAME=classroompath-production
+
+            echo "Pulling immutable release images..."
+            docker compose pull gateway api spa
+
             echo "Stopping existing containers..."
             docker compose down --remove-orphans || true
-            # Remove containers with both naming conventions (with and without project prefix)
             docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
             docker rm -f classroompath-production-api-1 classroompath-production-gateway-1 classroompath-production-spa-1 2>/dev/null || true
 
-            echo "Rebuilding Docker images..."
-            docker compose build --no-cache
+            echo "Starting containers from immutable images..."
+            docker compose up -d --force-recreate --no-build
 
-            echo "Starting containers..."
-            docker compose up -d --force-recreate
-
-            # Wait for containers to be healthy
             echo "Waiting for services to be healthy..."
             timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done' || {
               echo "⚠️ Warning: Timeout waiting for health checks"
               docker compose ps
             }
 
-            # Health check - Gateway is the primary entry point now
             for i in 1 2 3 4 5; do
               if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
                 echo "✅ Gateway health check passed!"
@@ -272,8 +389,6 @@ jobs:
               exit 1
             fi
 
-            # Database connectivity check - verify API can reach PostgreSQL
-            # Retry up to 12 times with 5s delay until the full gateway readiness check passes.
             echo "Checking full application readiness..."
             READY_CHECK=''
             for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
@@ -333,8 +448,8 @@ jobs:
           echo "🔍 Running smoke tests against $SMOKE_TEST_URL"
           npm run test:smoke 2>&1 | tee smoke-results.txt
           exit_code=${PIPESTATUS[0]}
-          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
-          exit $exit_code
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit "$exit_code"
 
       - name: Upload smoke test results
         if: always()
@@ -359,3 +474,115 @@ jobs:
           echo "  curl -i https://classroompath.eu/cp/health"
           echo "  curl -i https://classroompath.eu/cp/ready"
           echo "  docker logs classroompath-api --tail 50"
+
+  rollback-production:
+    name: Roll Back Production
+    runs-on: ubuntu-latest
+    needs: [deploy-production, smoke-test-production]
+    if: always() && needs.deploy-production.result == 'success' && needs.smoke-test-production.result == 'failure'
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Resolve deploy host
+        id: resolve
+        run: |
+          HOST="${{ secrets.DEPLOY_HOST }}"
+          PORT="${{ secrets.DEPLOY_PORT }}"
+          PORT="${PORT:-22}"
+
+          if [ -z "$HOST" ]; then
+            echo "DEPLOY_HOST not configured. Cannot roll back."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          MAX_RETRIES=3
+          for i in $(seq 1 "$MAX_RETRIES"); do
+            IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1}' | head -1)
+
+            if [ -z "$IP" ]; then
+              IP=$(dig +short "$HOST" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            fi
+
+            if [ -n "$IP" ]; then
+              echo "ip=$IP" >> "$GITHUB_OUTPUT"
+              echo "port=$PORT" >> "$GITHUB_OUTPUT"
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+
+      - name: Roll back via SSH
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: appleboy/ssh-action@v1.2.4
+        with:
+          host: ${{ steps.resolve.outputs.ip }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.resolve.outputs.port }}
+          timeout: 60s
+          command_timeout: 15m
+          envs: GHCR_USERNAME,GHCR_TOKEN
+          script: |
+            set -euo pipefail
+
+            DEPLOY_DIR="/opt/classroompath"
+            APP_DIR="$DEPLOY_DIR/app"
+            STATE_DIR="$DEPLOY_DIR/release-state"
+            PREVIOUS_FILE="$STATE_DIR/previous-images.env"
+            CURRENT_FILE="$STATE_DIR/current-images.env"
+
+            if [ ! -f "$PREVIOUS_FILE" ]; then
+              echo "No previous release metadata available for rollback"
+              exit 1
+            fi
+
+            set -a
+            . "$PREVIOUS_FILE"
+            set +a
+
+            if [ -z "${APP_SHA:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
+              echo "Previous release metadata is incomplete"
+              exit 1
+            fi
+
+            cd "$APP_DIR"
+            git fetch origin --tags --prune
+            git fetch origin main --prune
+            git checkout --detach "$APP_SHA"
+            git reset --hard "$APP_SHA"
+            git submodule deinit -f --all || true
+            git submodule update --init --recursive --force
+
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+
+            cd "$APP_DIR/docker"
+            export COMPOSE_PROJECT_NAME=classroompath-production
+
+            docker compose pull gateway api spa
+            docker compose up -d --force-recreate --no-build
+
+            cp "$PREVIOUS_FILE" "$CURRENT_FILE"
+
+            if ! curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
+              echo "Rollback health check failed"
+              docker logs classroompath-gateway --tail 50
+              exit 1
+            fi
+
+            echo "Rollback completed successfully"
+
+      - name: Report rollback skip
+        if: steps.resolve.outputs.skip == 'true'
+        run: |
+          echo "::warning::Rollback skipped - deploy host could not be resolved."
