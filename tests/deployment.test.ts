@@ -22,6 +22,7 @@ interface DockerComposeService {
   ports?: Array<string | number>;
   expose?: Array<string | number>;
   env_file?: string[];
+  extra_hosts?: string[];
   healthcheck?: {
     test: string[];
     interval: string;
@@ -65,6 +66,23 @@ void describe('Docker Compose Configuration', () => {
     );
     assert.ok(api.healthcheck, 'API should have healthcheck');
     assert.ok(api.env_file, 'API should use env_file');
+    assert.ok(
+      api.extra_hosts?.includes('host.docker.internal:host-gateway'),
+      'API should resolve host.docker.internal for host services like PostgreSQL'
+    );
+  });
+
+  void test('gateway resolves host.docker.internal for host-backed infrastructure', () => {
+    const content = readFileSync(composePath, 'utf-8');
+    const compose = parseYaml(content) as DockerCompose;
+
+    assert.ok(compose.services['gateway'], 'Gateway service should exist');
+
+    const gateway = compose.services['gateway'];
+    assert.ok(
+      gateway.extra_hosts?.includes('host.docker.internal:host-gateway'),
+      'Gateway should resolve host.docker.internal for host-backed infrastructure'
+    );
   });
 
   void test('SPA service is properly configured', () => {

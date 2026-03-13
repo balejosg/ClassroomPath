@@ -23,6 +23,8 @@ services:
     environment:
       - CP_PORT=3001
       - OPENPATH_API_URL=http://api:3000
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       - api
     healthcheck:
@@ -49,6 +51,8 @@ services:
     environment:
       # OpenPath runs behind the ClassroomPath gateway; trust one proxy hop.
       - TRUST_PROXY=1
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     volumes:
       - api-data:/app/data
     healthcheck:
