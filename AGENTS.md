@@ -109,34 +109,42 @@ ClassroomPath ──depends on──▶ OpenPath
 
 ## Deployment
 
+Canonical production deployment instructions live in `docs/runbooks/deploy-production.md`.
+
 ### Environments
 
 | Environment    | URL                                         | Trigger                  | Method                                    |
 | -------------- | ------------------------------------------- | ------------------------ | ----------------------------------------- |
 | **Staging**    | `https://classroompath-staging.duckdns.org` | `npm run deploy:staging` | Local script (SSH)                        |
-| **Production** | `https://classroompath.duckdns.org`         | Tag `v*`                 | GitHub Actions after staging release gate |
+| **Production** | `https://classroompath.eu`                  | Tag `v*`                 | GitHub Actions after staging release gate |
 
 ### ⚠️ CRITICAL: Identifying Environments
 
 **LLM Agents: Use these URLs to verify which environment you're working with:**
 
-| Check                | Staging                                               | Production                                                  |
-| -------------------- | ----------------------------------------------------- | ----------------------------------------------------------- |
-| **URL**              | `classroompath-staging.duckdns.org`                   | `classroompath.duckdns.org`                                 |
-| **Gateway Health**   | `https://classroompath-staging.duckdns.org/cp/health` | `https://classroompath.duckdns.org/cp/health`               |
-| **Proxmox CT (App)** | CT 114 (`classroompath-app-staging`)                  | CT 111 (`classroompath-app`)                                |
-| **Proxmox CT (DB)**  | CT 113 (`classroompath-db-staging`)                   | CT 110 (`classroompath-db`)                                 |
-| **Database Name**    | `classroompath_staging`                               | `classroompath`                                             |
-| **Deploy Trigger**   | `npm run deploy:staging`                              | Git tag starting with `v` -> staging release gate -> deploy |
+| Check              | Staging                                               | Production                                                      |
+| ------------------ | ----------------------------------------------------- | --------------------------------------------------------------- |
+| **URL**            | `classroompath-staging.duckdns.org`                   | `classroompath.eu`                                              |
+| **Gateway Health** | `https://classroompath-staging.duckdns.org/cp/health` | `https://classroompath.eu/cp/health`                            |
+| **Host**           | CT 114 (`classroompath-app-staging`)                  | Oracle VM (`classroompath.eu`, app at `/opt/classroompath/app`) |
+| **Database**       | CT 113 PostgreSQL (`classroompath_staging`)           | PostgreSQL on production host (`classroompath`)                 |
+| **Database Name**  | `classroompath_staging`                               | `classroompath`                                                 |
+| **Deploy Trigger** | `npm run deploy:staging`                              | Git tag starting with `v` -> staging release gate -> deploy     |
+
+### Production Policy
+
+- Production is tag-only. Do not use `workflow_dispatch` or ad-hoc SSH code deploys as the canonical path.
+- Required sequence: push `main` -> `npm run deploy:staging` -> tag `v*` -> GitHub Actions deploy.
+- If server drift is discovered, backport the change into git and reconcile production with a new tag.
 
 **When debugging issues:**
 
 1. Always confirm which environment is affected by checking the URL
 2. Staging issues → investigate CT 113/114
-3. Production issues → investigate CT 110/111
+3. Production issues → investigate the Oracle host via `docs/runbooks/deploy-production.md`
 4. Never apply staging fixes to production without explicit user confirmation
 
-### Manual Sync + Deploy
+### Manual Sync + Promote
 
 ```bash
 # Via GitHub Actions (recommended)
@@ -147,6 +155,9 @@ npm run submodule:update
 git add upstream/openpath
 git commit -m "chore: update openpath submodule"
 git push origin main
+
+# Mandatory local staging verification
+npm run deploy:staging
 
 # Production deploy is triggered by tags v* and first runs the staging release gate
 # git tag v1.2.3 && git push origin v1.2.3
@@ -190,11 +201,11 @@ npm run deploy:staging
 
 #### Staging vs Production Deployment
 
-| Scenario             | Command / Action                                                                |
-| -------------------- | ------------------------------------------------------------------------------- |
-| Deploy to staging    | `npm run deploy:staging`                                                        |
-| Deploy to production | `git tag v1.x.x && git push --tags` (staging release gate -> GH Actions deploy) |
-| Debug staging issues | SSH to CT 114                                                                   |
+| Scenario             | Command / Action                                                                       |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| Deploy to staging    | `npm run deploy:staging`                                                               |
+| Deploy to production | `git tag v1.x.x && git push origin v1.x.x` (staging release gate -> GH Actions deploy) |
+| Debug staging issues | SSH to CT 114                                                                          |
 
 #### Troubleshooting
 
@@ -272,6 +283,14 @@ PLAYWRIGHT_WORKERS=2 npm run verify:full
 
 > **Note:** `STAGING_DEPLOY_*` secrets are no longer used. Staging deploys via local script.
 
+## Production Runtime Notes
+
+- Production app path: `/opt/classroompath/app`
+- Production compose path: `/opt/classroompath/app/docker`
+- Production env path: `/opt/classroompath/app/config/.env`
+- `config/.env` and Nginx Proxy Manager remain server-local and are not committed
+- `docker/docker-compose.yml` is authoritative for production code deploys; do not rely on a local-only override for normal releases
+
 ## Nginx Integration
 
 Optimized for Nginx Proxy Manager. See `docker/npm-advanced-config.txt` for:
@@ -290,7 +309,7 @@ ClassroomPath requires PostgreSQL via `DATABASE_URL`. Both the gateway and the u
 | Environment                  | Database       | Location                            |
 | ---------------------------- | -------------- | ----------------------------------- |
 | **ClassroomPath Staging**    | **PostgreSQL** | CT 113 (`classroompath-db-staging`) |
-| **ClassroomPath Production** | **PostgreSQL** | CT 110 (`classroompath-db`)         |
+| **ClassroomPath Production** | **PostgreSQL** | Oracle host (`classroompath.eu`)    |
 
 ### Database Connection
 
@@ -303,12 +322,12 @@ DATABASE_URL=postgresql://classroompath:<PASSWORD>@<DB_HOST>:5432/classroompath_
 
 ### Proxmox Container Layout
 
-| CT ID | Name                        | Purpose                      |
-| ----- | --------------------------- | ---------------------------- |
-| 110   | `classroompath-db`          | Production PostgreSQL        |
-| 111   | `classroompath-app`         | Production Docker (API, SPA) |
-| 113   | `classroompath-db-staging`  | **Staging PostgreSQL**       |
-| 114   | `classroompath-app-staging` | Staging Docker (API, SPA)    |
+| CT ID | Name                        | Purpose                   |
+| ----- | --------------------------- | ------------------------- |
+| 113   | `classroompath-db-staging`  | **Staging PostgreSQL**    |
+| 114   | `classroompath-app-staging` | Staging Docker (API, SPA) |
+
+Production is no longer on Proxmox. It runs on the Oracle host behind `classroompath.eu` with the app repo at `/opt/classroompath/app` and PostgreSQL on the same host.
 
 ### Database Operations
 
@@ -321,8 +340,8 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
   psql -U classroompath -d classroompath_staging -c "SELECT * FROM users;"
 
 # Query PRODUCTION database
-pct exec 110 -- docker exec classroompath-postgres \
-  psql -U classroompath -d classroompath -c "SELECT * FROM users;"
+ssh deploy@classroompath.eu "docker exec classroompath-postgres \
+  psql -U classroompath -d classroompath -c 'SELECT * FROM users;'"
 
 # Clear staging database (CAREFUL!)
 pct exec 113 -- docker exec classroompath-postgres-staging \
@@ -331,11 +350,12 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
 
 ### Common Mistakes to Avoid
 
-| ❌ Wrong                                  | ✅ Correct                   |
-| ----------------------------------------- | ---------------------------- |
-| Looking for `.db` files in containers     | Use PostgreSQL in CT 113/110 |
-| Assuming the wrong DB/CT                  | Verify URL + CT + db name    |
-| Debugging without checking `DATABASE_URL` | Inspect `config/.env`        |
+| ❌ Wrong                                  | ✅ Correct                              |
+| ----------------------------------------- | --------------------------------------- |
+| Looking for `.db` files in containers     | Use PostgreSQL on the staging/prod host |
+| Assuming the wrong host/DB                | Verify URL + host + db name             |
+| Debugging without checking `DATABASE_URL` | Inspect `config/.env`                   |
+| Hotfixing prod code only on the server    | Backport to git, redeploy by `v*` tag   |
 
 ## Anti-Patterns
 
@@ -343,7 +363,7 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
 - Committing `.env` files
 - Deploying without verifying submodule is updated
 - Using staging secrets in production
-- **Assuming the wrong DB/config** (always verify `DATABASE_URL` and the target CT)
+- **Assuming the wrong DB/config** (always verify `DATABASE_URL` and the target host)
 - **Confusing staging and production environments** (always verify URL first)
 
 ## Quick Reference: Environment Identification
@@ -352,8 +372,8 @@ pct exec 113 -- docker exec classroompath-postgres-staging \
 ┌─────────────────────────────────────────────────────────────────────┐
 │ STAGING                          │ PRODUCTION                       │
 ├──────────────────────────────────┼──────────────────────────────────┤
-│ classroompath-staging.duckdns.org│ classroompath.duckdns.org        │
-│ CT 114 (app) + CT 113 (db)       │ CT 111 (app) + CT 110 (db)       │
+│ classroompath-staging.duckdns.org│ classroompath.eu                 │
+│ CT 114 (app) + CT 113 (db)       │ Oracle VM + local PostgreSQL     │
 │ DB: classroompath_staging        │ DB: classroompath                │
 │ Deploy: npm run deploy:staging   │ Deploy: git tag v* (GH Actions)  │
 └──────────────────────────────────┴──────────────────────────────────┘

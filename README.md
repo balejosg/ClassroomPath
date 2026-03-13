@@ -12,7 +12,7 @@ Built on [OpenPath](https://github.com/balejosg/openpath) (OSS).
 
 | Environment    | URL                                       | Deploy Trigger           |
 | -------------- | ----------------------------------------- | ------------------------ |
-| **Production** | https://classroompath.duckdns.org         | Git tag `v*`             |
+| **Production** | https://classroompath.eu                  | Git tag `v*`             |
 | **Staging**    | https://classroompath-staging.duckdns.org | `npm run deploy:staging` |
 
 ## Docs
@@ -24,35 +24,19 @@ Built on [OpenPath](https://github.com/balejosg/openpath) (OSS).
 ```
                     Internet
                        │
-                       ▼
-              ┌────────────────┐
-              │   DuckDNS      │
-              │ *.duckdns.org  │
-              └───────┬────────┘
-                      │
-         ┌────────────┴────────────┐
-         ▼                         ▼
-   Production                  Staging
-         │                         │
-         └──────────┬──────────────┘
-                    ▼
-         ┌─────────────────────┐
-         │  Nginx Proxy Manager │
-         │  SSL termination     │
-         └──────────┬───────────┘
-                    │
-      ┌─────────────┴─────────────┐
-      ▼                           ▼
-┌───────────────┐         ┌───────────────┐
-│ App Prod      │         │ App Staging   │
-│ Docker        │         │ Docker        │
-└──────┬────────┘         └──────┬────────┘
-       │                         │
-       ▼                         ▼
-┌───────────────┐         ┌───────────────┐
-│ PostgreSQL    │         │ PostgreSQL    │
-│ Production    │         │ Staging       │
-└───────────────┘         └───────────────┘
+         ┌─────────────┴─────────────┐
+         ▼                           ▼
+  classroompath.eu         classroompath-staging.duckdns.org
+   (Oracle production)              (local staging)
+         │                           │
+         ▼                           ▼
+┌──────────────────────┐     ┌──────────────────────┐
+│ Nginx Proxy Manager  │     │ Staging app host     │
+│ + Docker Compose     │     │ + Docker Compose     │
+└──────────┬───────────┘     └──────────┬───────────┘
+           │                            │
+           ▼                            ▼
+   PostgreSQL on host            PostgreSQL on staging
 ```
 
 ### API Routes
@@ -71,7 +55,7 @@ ClassroomPath adds organization-based multi-tenancy on top of OpenPath:
 
 ### User Flow
 
-1. User logs in with Google (via OpenPath auth)
+1. User signs in with email/password or Google (Google is optional and only works for existing/preapproved accounts)
 2. ClassroomPath checks for organization membership
 3. If no membership:
    - Option A: Create new organization (becomes admin)
@@ -151,6 +135,11 @@ PLAYWRIGHT_WORKERS=2 npm run verify:full
 
 ## Deployment
 
+Canonical runbooks:
+
+- Staging: `docs/runbooks/deploy-staging.md`
+- Production: `docs/runbooks/deploy-production.md`
+
 ### Staging (Local SSH)
 
 Staging is deployed from a developer machine via `npm run deploy:staging` (SSH to the staging host). It always deploys `origin/main`.
@@ -170,7 +159,7 @@ npm run test:release-gate:staging
 
 ### Production (GitHub Actions)
 
-Production deploys are triggered by git tags `v*`, but the workflow now runs a staging release gate first. The production rollout only starts if `npm run test:release-gate:staging` passes inside GitHub Actions.
+Production deploys are triggered by git tags `v*` only. The workflow runs a staging release gate first and only then rolls out to `https://classroompath.eu`.
 
 Required GitHub Secrets (production only):
 
@@ -185,6 +174,8 @@ Required GitHub Secrets (production only):
 git tag v1.0.1
 git push origin v1.0.1
 ```
+
+Do not use manual SSH deploys as the normal production path; use the production runbook and tags.
 
 ## Server Management
 

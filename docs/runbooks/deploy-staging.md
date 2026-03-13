@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: staging environment
-> Last verified: 2026-03-05
+> Last verified: 2026-03-13
 > Source of truth: `docs/runbooks/deploy-staging.md`
 
 Staging deploys are executed locally via SSH and always deploy `origin/main`.
@@ -43,6 +43,10 @@ This gate performs live mutable checks for:
 - `auth.register` returning `emailSent: true`
 - `auth.register` returning a public verification URL on the staging origin
 - `auth.generateEmailVerificationToken` returning a fresh public verification URL
+
+After staging is green, promote using the canonical production runbook:
+
+- [`docs/runbooks/deploy-production.md`](deploy-production.md)
 
 ## Debugging
 

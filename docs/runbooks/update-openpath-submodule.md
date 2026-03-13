@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: ClassroomPath -> OpenPath updates
-> Last verified: 2026-03-05
+> Last verified: 2026-03-13
 > Source of truth: `docs/runbooks/update-openpath-submodule.md`
 
 ClassroomPath consumes OpenPath as a git submodule at `upstream/openpath/`.
@@ -24,6 +24,10 @@ git push origin main
 ```bash
 npm run deploy:staging
 ```
+
+4. If staging passes and the change is approved for production, promote using:
+
+- [`docs/runbooks/deploy-production.md`](deploy-production.md)
 
 ## Notes
 
