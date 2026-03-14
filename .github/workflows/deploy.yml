@@ -127,6 +127,7 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile.cp-api
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.image-repos.outputs.gateway_repo }}:${{ github.sha }}
 
@@ -136,6 +137,7 @@ jobs:
         with:
           context: ./upstream/openpath
           file: ./docker/Dockerfile.api
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.image-repos.outputs.openpath_api_repo }}:${{ github.sha }}
 
@@ -145,6 +147,7 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile.spa
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.image-repos.outputs.spa_repo }}:${{ github.sha }}
 
@@ -311,6 +314,7 @@ jobs:
               -v "$APP_DIR/api:/app" \
               -v "$APP_DIR/config/.env:/app/.env:ro" \
               -w /app \
+              --add-host host.docker.internal:host-gateway \
               --env-file "$APP_DIR/config/.env" \
               node:20-alpine \
               sh -c "npm install && npm run db:push"
@@ -342,6 +346,7 @@ jobs:
               -v "$APP_DIR/upstream/openpath/api:/app" \
               -v "$APP_DIR/config/.env:/app/.env:ro" \
               -w /app \
+              --add-host host.docker.internal:host-gateway \
               --env-file "$APP_DIR/config/.env" \
               -e DB_HOST="$DB_HOST" \
               -e DB_PORT="$DB_PORT" \
