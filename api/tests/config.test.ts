@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 const ORIGINAL_ENV = {
+  CP_ALLOW_ORG_DIRECTORY: process.env.CP_ALLOW_ORG_DIRECTORY,
+  CP_ALLOW_SELF_SERVICE_ORGS: process.env.CP_ALLOW_SELF_SERVICE_ORGS,
   CP_FAKE_EMAIL_DELIVERY: process.env.CP_FAKE_EMAIL_DELIVERY,
   JWT_SECRET: process.env.JWT_SECRET,
   NODE_ENV: process.env.NODE_ENV,
@@ -11,6 +13,8 @@ const ORIGINAL_ENV = {
 };
 
 function restoreEnv(): void {
+  setEnv('CP_ALLOW_ORG_DIRECTORY', ORIGINAL_ENV.CP_ALLOW_ORG_DIRECTORY);
+  setEnv('CP_ALLOW_SELF_SERVICE_ORGS', ORIGINAL_ENV.CP_ALLOW_SELF_SERVICE_ORGS);
   setEnv('CP_FAKE_EMAIL_DELIVERY', ORIGINAL_ENV.CP_FAKE_EMAIL_DELIVERY);
   setEnv('JWT_SECRET', ORIGINAL_ENV.JWT_SECRET);
   setEnv('NODE_ENV', ORIGINAL_ENV.NODE_ENV);
@@ -68,6 +72,23 @@ describe('runtime config contract', () => {
     const configModule = await import(`../src/config.ts?${tag}`);
 
     assert.throws(() => configModule.resolveRuntimeConfig(), /PUBLIC_URL/i);
+  });
+
+  it('enables self-service organization creation by default in production while keeping the directory hidden', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = 'production-secret-value';
+    process.env.PUBLIC_URL = 'https://classroompath.eu';
+    delete process.env.CP_ALLOW_SELF_SERVICE_ORGS;
+    delete process.env.CP_ALLOW_ORG_DIRECTORY;
+
+    const tag = `runtime-config-production-onboarding-policy-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`;
+    const configModule = await import(`../src/config.ts?${tag}`);
+    const runtimeConfig = configModule.resolveRuntimeConfig();
+
+    assert.equal(runtimeConfig.allowSelfServiceOrgs, true);
+    assert.equal(runtimeConfig.allowOrgDirectory, false);
   });
 
   it('derives the email delivery mode from the runtime env contract', async () => {

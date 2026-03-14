@@ -65,7 +65,7 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
     restorePolicyEnv();
   });
 
-  test('disables self-service organization creation by default in production', async () => {
+  test('keeps self-service organization creation enabled by default in production while hiding the directory', async () => {
     process.env.NODE_ENV = 'production';
     delete process.env.CP_ALLOW_SELF_SERVICE_ORGS;
     delete process.env.CP_ALLOW_ORG_DIRECTORY;
@@ -75,14 +75,11 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
     const response = await trpcMutate(
       integration.baseUrl,
       'onboarding.createOrganization',
-      { name: 'Blocked Production Org' },
+      { name: 'Default Production Org' },
       bearerAuth(token)
     );
 
-    assert.strictEqual(response.status, 403);
-    const parsed = (await parseTRPC(response)) as { error?: string; code?: string };
-    assert.strictEqual(parsed.code, 'FORBIDDEN');
-    assert.match(parsed.error ?? '', /self-service|crear organizaciones|disabled|deshabilitada/i);
+    assert.strictEqual(response.status, 200);
 
     const statusResponse = await trpcQuery(
       integration.baseUrl,
@@ -96,8 +93,20 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
         policy?: { allowSelfServiceOrgs?: boolean; allowOrgDirectory?: boolean };
       };
     };
-    assert.strictEqual(statusParsed.data?.policy?.allowSelfServiceOrgs, false);
+    assert.strictEqual(statusParsed.data?.policy?.allowSelfServiceOrgs, true);
     assert.strictEqual(statusParsed.data?.policy?.allowOrgDirectory, false);
+
+    const listResponse = await trpcQuery(
+      integration.baseUrl,
+      'onboarding.listOrganizations',
+      undefined,
+      bearerAuth(token)
+    );
+    assert.strictEqual(listResponse.status, 200);
+    const listParsed = (await parseTRPC(listResponse)) as {
+      data?: Array<{ id: string; name: string }>;
+    };
+    assert.deepStrictEqual(listParsed.data, []);
   });
 
   test('hides the organization directory by default in production', async () => {
