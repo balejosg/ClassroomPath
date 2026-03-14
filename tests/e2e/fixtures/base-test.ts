@@ -1,9 +1,11 @@
 import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
 
+import { createMailTmMailboxFixture, type MailboxFixture } from './mailtm';
 import { NavigationDebugger } from './navigation-debug';
 
 type Fixtures = {
   navdbg: NavigationDebugger;
+  mailbox: MailboxFixture;
 };
 
 export const test = base.extend<Fixtures>({
@@ -12,6 +14,14 @@ export const test = base.extend<Fixtures>({
     const dbg = new NavigationDebugger(page, context, { maxEntries: 250, enabled });
     await dbg.install();
     await use(dbg);
+  },
+  mailbox: async ({}, use) => {
+    const fixture = await createMailTmMailboxFixture();
+    try {
+      await use(fixture.mailbox);
+    } finally {
+      await fixture.cleanup();
+    }
   },
 });
 

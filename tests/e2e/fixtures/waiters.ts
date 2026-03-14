@@ -8,6 +8,8 @@ export async function waitForPostAuthScreen(page: Page, timeout = 20000): Promis
     page.getByTestId('onboarding-wait-invite'),
     page.getByTestId('waiting-check-now'),
     page.getByText('No se pudo verificar tu acceso'),
+    page.getByText('Mi Panel'),
+    page.getByText('Control Mando de Aula'),
     page.getByRole('button', { name: 'Mi Panel' }),
     page.getByRole('button', { name: 'Panel de Control' }),
     page.getByText('OpenPath'),
