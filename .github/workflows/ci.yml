@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  detect-relevant-changes:
+    name: Detect Relevant Changes
+    runs-on: ubuntu-latest
+    outputs:
+      ci_relevant: ${{ steps.filter.outputs.ci_relevant }}
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Detect changed paths
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
+          fi
+
+          changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
+
+          echo "Changed files:"
+          if [ -n "$changed_files" ]; then
+            echo "$changed_files"
+          else
+            echo "(none)"
+          fi
+
+          ci_relevant=false
+
+          if echo "$changed_files" | grep -Eq '^(api/|react-spa/|docker/|scripts/|tests/|config/|\.github/workflows/|package\.json$|package-lock\.json$|upstream/openpath$|\.gitmodules$)'; then
+            ci_relevant=true
+          fi
+
+          echo "ci_relevant=$ci_relevant" >> "$GITHUB_OUTPUT"
+
+  build-and-validate:
+    name: Build And Validate ClassroomPath
+    runs-on: ubuntu-latest
+    needs: detect-relevant-changes
+    if: needs.detect-relevant-changes.outputs.ci_relevant == 'true'
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build ClassroomPath
+        run: npm run build
+
+      - name: Run CI regression tests
+        run: |
+          node --import tsx --test \
+            tests/deployment.test.ts \
+            tests/openpath-required-checks.test.ts \
+            tests/release-gate-policy.test.ts \
+            tests/workflow-config.test.ts
+
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [detect-relevant-changes, build-and-validate]
+    if: always()
+
+    steps:
+      - name: Check all jobs
+        run: |
+          echo "CI relevant: ${{ needs.detect-relevant-changes.outputs.ci_relevant }}"
+
+          if [[ "${{ needs.build-and-validate.result }}" == "failure" ]] || \
+             [[ "${{ needs.build-and-validate.result }}" == "cancelled" ]]; then
+            echo "CI failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.build-and-validate.result }}" == "skipped" ]]; then
+            echo "Build and validation skipped: no relevant changes"
+          fi
+
+          echo "All CI checks passed"
