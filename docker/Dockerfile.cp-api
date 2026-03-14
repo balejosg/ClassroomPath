@@ -27,9 +27,10 @@ RUN apk add --no-cache curl
 WORKDIR /app
 COPY package*.json ./
 COPY api/package*.json ./api/
+COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
 
-# Install production dependencies for the gateway
-RUN npm ci --workspace=@classroompath/api --omit=dev
+# Install production dependencies for the gateway and shared runtime package
+RUN npm ci --workspace=@classroompath/api --workspace=@openpath/shared --omit=dev
 
 # Copy built files
 COPY --from=builder /app/api/dist ./api/dist
