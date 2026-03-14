@@ -757,7 +757,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       version: '1.0.0',
     });
 
-    const scheduleId = '00000000-0000-0000-0000-000000000001';
+    const scheduleId = '00000000-0000-4000-8000-000000000001';
     await openpathDb.insert(openpathSchema.schedules).values({
       id: scheduleId,
       classroomId,
@@ -870,7 +870,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
         {
           machineId,
           classroomId,
-          scheduleId: '00000000-0000-0000-0000-000000000002',
+          scheduleId: '00000000-0000-4000-8000-000000000002',
         },
         bearerAuth(adminToken)
       );

@@ -17,7 +17,7 @@ const ClientTelemetryEventSchema = z.object({
   route: z.string().max(2_000).nullable(),
   action: z.string().max(200).optional(),
   userRole: z.string().max(100).optional(),
-  meta: z.record(z.unknown()),
+  meta: z.record(z.string(), z.unknown()),
   error: ClientTelemetryErrorSchema,
   timestamp: z.string().datetime({ offset: true }),
 });
