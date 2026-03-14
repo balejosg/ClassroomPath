@@ -1,0 +1,5 @@
+set -e
+
+bash scripts/require-main-branch.sh pre-push ClassroomPath
+
+echo "Pre-push: trunk policy verified"

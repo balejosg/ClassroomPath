@@ -1,5 +1,7 @@
 set -e
 
+bash scripts/require-main-branch.sh pre-commit ClassroomPath
+
 echo "🔍 Running pre-commit verification..."
 echo ""
 

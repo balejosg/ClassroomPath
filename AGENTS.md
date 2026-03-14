@@ -10,6 +10,18 @@ Docs index: `docs/INDEX.md`
 
 This is NON-NEGOTIABLE. Do NOT rely on GitHub Actions for staging feedback.
 
+## ⛔ Trunk-Based Workflow (CRITICAL)
+
+**LLM work in ClassroomPath is trunk-based: `main` is the only allowed working branch.**
+
+- ❌ Do not create feature branches, integration branches, or PR branches
+- ❌ Do not commit from detached HEAD
+- ❌ Do not push to any remote branch other than `main`
+- ✅ If you need a parallel clean checkout, use a detached worktree based on `main`
+- ✅ If you discover a non-`main` branch, preserve any needed work with a stash/patch, switch back to `main`, and continue there
+
+**Technical enforcement:** `.husky/pre-commit` and `.husky/pre-push` call `scripts/require-main-branch.sh`.
+
 ### Required Workflow
 
 ```bash
