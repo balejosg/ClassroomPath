@@ -7,6 +7,7 @@
 export * from './accounts';
 export * from './assertions';
 export * from './auth';
+export * from './mailtm';
 export * from './navigation';
 export * from './onboarding';
 export * from './retry';

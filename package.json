@@ -33,6 +33,8 @@
     "start": "cd upstream/openpath/api && npm start",
     "test": "cd upstream/openpath && npm test",
     "test:e2e": "npx playwright test",
+    "test:e2e:auth-email": "CP_FAKE_EMAIL_DELIVERY=0 E2E_REAL_EMAIL=1 PLAYWRIGHT_WORKERS=1 npx playwright test tests/e2e/auth-email.spec.ts --retries=0",
+    "test:e2e:auth-email:staging": "BASE_URL=https://classroompath-staging.duckdns.org npm run test:e2e:auth-email",
     "test:e2e:verify-fast": "E2E_SKIP_DB_PUSH=1 npx playwright test --grep-invert=\"@slow-network|@repro\"",
     "test:e2e:full": "E2E_SKIP_DB_PUSH=1 npx playwright test",
     "test:e2e:mobile": "E2E_SKIP_DB_PUSH=1 npx playwright test --project=chromium --grep=\"@mobile|@responsive\"",

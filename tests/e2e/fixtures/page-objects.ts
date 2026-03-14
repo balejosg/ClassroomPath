@@ -241,6 +241,24 @@ export class OrganizationPage {
     await this.page.getByRole('button', { name: /Enviar invitación|Enviar|Send/i }).click();
   }
 
+  rowForEmail(email: string): Locator {
+    return this.page.getByRole('row', { name: new RegExp(escapeRegExp(email), 'i') });
+  }
+
+  async requestPasswordReset(email: string) {
+    const row = this.rowForEmail(email);
+    await expect(row).toBeVisible({ timeout: 15000 });
+    await row.getByRole('button', { name: /Restablecer acceso/i }).click();
+    await this.page
+      .getByRole('dialog')
+      .getByText(/Se generará un enlace de recuperación/i)
+      .waitFor({
+        state: 'visible',
+        timeout: 10000,
+      });
+    await this.page.getByRole('button', { name: 'Generar enlace' }).click();
+  }
+
   async approvePendingUser(email: string) {
     const userRow = this.page.getByRole('row', { name: new RegExp(escapeRegExp(email), 'i') });
     await userRow.getByRole('button', { name: /Aprobar|Approve/i }).click();
@@ -249,5 +267,70 @@ export class OrganizationPage {
   async rejectPendingUser(email: string) {
     const userRow = this.page.getByRole('row', { name: new RegExp(escapeRegExp(email), 'i') });
     await userRow.getByRole('button', { name: /Rechazar|Reject/i }).click();
+  }
+}
+
+export class AcceptInvitationPage {
+  readonly page: Page;
+  readonly passwordInput: Locator;
+  readonly confirmPasswordInput: Locator;
+  readonly termsCheckbox: Locator;
+  readonly submitButton: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.passwordInput = page.getByTestId('accept-invitation-password');
+    this.confirmPasswordInput = page.getByTestId('accept-invitation-confirm-password');
+    this.termsCheckbox = page.getByTestId('accept-invitation-terms');
+    this.submitButton = page.getByTestId('accept-invitation-submit');
+  }
+
+  async expectLoaded() {
+    await expect(this.page.getByRole('heading', { name: /Completa tu registro/i })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(this.passwordInput).toBeVisible({ timeout: 15000 });
+  }
+
+  async accept(password: string) {
+    await this.passwordInput.fill(password);
+    await this.confirmPasswordInput.fill(password);
+    await this.termsCheckbox.check();
+    await this.submitButton.click();
+  }
+}
+
+export class ResetPasswordPage {
+  readonly page: Page;
+  readonly emailInput: Locator;
+  readonly tokenInput: Locator;
+  readonly passwordInput: Locator;
+  readonly confirmPasswordInput: Locator;
+  readonly submitButton: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.emailInput = page.locator('#reset-email');
+    this.tokenInput = page.locator('#reset-token');
+    this.passwordInput = page.locator('#reset-password');
+    this.confirmPasswordInput = page.locator('#reset-confirm-password');
+    this.submitButton = page.getByRole('button', { name: /Actualizar contraseña|Actualizando/i });
+  }
+
+  async expectLoaded(email?: string) {
+    await expect(this.page.getByRole('heading', { name: /Restablecer contraseña/i })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(this.emailInput).toBeVisible({ timeout: 15000 });
+    await expect(this.tokenInput).toBeVisible({ timeout: 15000 });
+    if (email) {
+      await expect(this.emailInput).toHaveValue(email, { timeout: 15000 });
+    }
+  }
+
+  async resetPassword(password: string) {
+    await this.passwordInput.fill(password);
+    await this.confirmPasswordInput.fill(password);
+    await this.submitButton.click();
   }
 }
