@@ -6,7 +6,23 @@ import { ERROR_MESSAGES_ES } from '../../utils/validation';
 import { CURRENT_TERMS_VERSION } from '../../constants/legal';
 
 const mockRegisterMutateAsync = vi.fn();
+const mockGoogleSignupMutateAsync = vi.fn();
+const mockPersistSession = vi.fn();
 const mockReportError = vi.fn();
+
+vi.mock('@openpath/src/components/GoogleLoginButton', () => ({
+  default: ({
+    disabled,
+    onSuccess,
+  }: {
+    disabled?: boolean;
+    onSuccess: (idToken: string) => void;
+  }) => (
+    <button type="button" disabled={disabled} onClick={() => onSuccess('google-id-token')}>
+      Continuar con Google
+    </button>
+  ),
+}));
 
 vi.mock('../../lib/dual-trpc-provider', () => ({
   cpTrpcReact: {
@@ -17,8 +33,18 @@ vi.mock('../../lib/dual-trpc-provider', () => ({
           isPending: false,
         })),
       },
+      googleSignup: {
+        useMutation: vi.fn(() => ({
+          mutateAsync: mockGoogleSignupMutateAsync,
+          isPending: false,
+        })),
+      },
     },
   },
+}));
+
+vi.mock('../../lib/auth-storage', () => ({
+  persistSession: (...args: unknown[]) => mockPersistSession(...args),
 }));
 
 vi.mock('../../lib/reportError', () => ({
@@ -27,6 +53,7 @@ vi.mock('../../lib/reportError', () => ({
 
 describe('Register View', () => {
   const mockOnLoginClick = vi.fn();
+  const mockOnAuthenticated = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -36,12 +63,20 @@ describe('Register View', () => {
       verificationRequired: true,
       verificationUrl: 'https://classroompath.local/login?email=test%40example.com&token=abc123',
     });
+    mockGoogleSignupMutateAsync.mockResolvedValue({
+      user: {
+        id: 'google-user',
+        email: 'test@example.com',
+        name: 'Test User',
+      },
+    });
   });
 
   it('should render the registration form', () => {
-    render(<Register onLoginClick={mockOnLoginClick} />);
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
     expect(screen.getByText('Crear Cuenta')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continuar con google/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('correo@ejemplo.com')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Tu nombre completo')).toBeInTheDocument();
     expect(screen.getAllByPlaceholderText('••••••••')).toHaveLength(2);
@@ -49,7 +84,7 @@ describe('Register View', () => {
   });
 
   it('should show error if email is invalid', async () => {
-    render(<Register onLoginClick={mockOnLoginClick} />);
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'invalid-email' },
@@ -70,7 +105,7 @@ describe('Register View', () => {
   });
 
   it('should show error if password is weak', async () => {
-    render(<Register onLoginClick={mockOnLoginClick} />);
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'test@example.com' },
@@ -87,7 +122,7 @@ describe('Register View', () => {
   });
 
   it('should show error if passwords do not match', async () => {
-    render(<Register onLoginClick={mockOnLoginClick} />);
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'test@example.com' },
@@ -108,7 +143,7 @@ describe('Register View', () => {
   });
 
   it('should disable submit button when terms are not accepted', () => {
-    render(<Register onLoginClick={mockOnLoginClick} />);
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'test@example.com' },
@@ -127,7 +162,7 @@ describe('Register View', () => {
   });
 
   it('submits normalized email plus terms metadata when the form is valid', async () => {
-    render(<Register onLoginClick={mockOnLoginClick} />);
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: ' Test@Example.COM ' },
@@ -156,7 +191,7 @@ describe('Register View', () => {
   });
 
   it('shows a verification success state after registration', async () => {
-    render(<Register onLoginClick={mockOnLoginClick} />);
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'test@example.com' },
@@ -187,7 +222,7 @@ describe('Register View', () => {
       verificationUrl: 'https://classroompath.local/login?email=test%40example.com&token=abc123',
     });
 
-    render(<Register onLoginClick={mockOnLoginClick} />);
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'test@example.com' },
@@ -215,7 +250,7 @@ describe('Register View', () => {
   it('reports registration failures', async () => {
     mockRegisterMutateAsync.mockRejectedValue(new Error('No se pudo registrar'));
 
-    render(<Register onLoginClick={mockOnLoginClick} />);
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
     fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
       target: { value: 'test@example.com' },
@@ -236,8 +271,41 @@ describe('Register View', () => {
     expect(mockReportError).toHaveBeenCalled();
   });
 
+  it('blocks Google signup until terms are accepted', async () => {
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /continuar con google/i }));
+
+    expect(await screen.findByText(ERROR_MESSAGES_ES.termsRequired)).toBeInTheDocument();
+    expect(mockGoogleSignupMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('authenticates immediately after a successful Google signup', async () => {
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
+
+    fireEvent.click(screen.getByLabelText(/Acepto los/));
+    fireEvent.click(screen.getByRole('button', { name: /continuar con google/i }));
+
+    await waitFor(() => {
+      expect(mockGoogleSignupMutateAsync).toHaveBeenCalledWith({
+        idToken: 'google-id-token',
+        termsAccepted: true,
+        termsVersion: CURRENT_TERMS_VERSION,
+      });
+    });
+
+    expect(mockPersistSession).toHaveBeenCalledWith({
+      user: {
+        id: 'google-user',
+        email: 'test@example.com',
+        name: 'Test User',
+      },
+    });
+    expect(mockOnAuthenticated).toHaveBeenCalledTimes(1);
+  });
+
   it('calls onLoginClick when login button is clicked', () => {
-    render(<Register onLoginClick={mockOnLoginClick} />);
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
     fireEvent.click(screen.getByText('Inicia sesión'));
     expect(mockOnLoginClick).toHaveBeenCalled();
   });

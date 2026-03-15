@@ -9,6 +9,7 @@ process.env.NODE_ENV = 'test';
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { eq } from 'drizzle-orm';
+import { OAuth2Client, type LoginTicket } from 'google-auth-library';
 import {
   trpcQuery,
   trpcMutate,
@@ -255,6 +256,52 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.strictEqual(getSetCookieHeaders(response).length, 0);
   });
 
+  test('/cp/trpc/auth.verifyEmail forwards success and marks the user as verified', async () => {
+    const email = uniqueEmail('verify-email');
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: `verify-email-${Date.now()}`,
+      email,
+      name: 'Verify Email User',
+      passwordHash: 'hashed',
+      isActive: true,
+      emailVerified: false,
+    });
+
+    const tokenResponse = await trpcMutate(
+      integration.baseUrl,
+      'auth.generateEmailVerificationToken',
+      {
+        email,
+      }
+    );
+
+    assertStatus(tokenResponse, 200);
+    const tokenPayload = (await parseTRPC(tokenResponse)) as {
+      data?: { verificationUrl?: string };
+    };
+    const verificationUrl = String(tokenPayload.data?.verificationUrl ?? '');
+    const verificationToken = new URL(verificationUrl).searchParams.get('token');
+    assert.ok(verificationToken);
+
+    const verifyResponse = await trpcMutate(integration.baseUrl, 'auth.verifyEmail', {
+      email,
+      token: verificationToken,
+    });
+
+    assertStatus(verifyResponse, 200);
+    const parsed = (await parseTRPC(verifyResponse)) as { data?: { success?: boolean } };
+    assert.strictEqual(parsed.data?.success, true);
+
+    const [user] = await openpathDb
+      .select({ emailVerified: openpathSchema.users.emailVerified })
+      .from(openpathSchema.users)
+      .where(eq(openpathSchema.users.email, email))
+      .limit(1);
+
+    assert.strictEqual(user?.emailVerified, true);
+  });
+
   test('/cp/trpc/auth.googleLogin strips tokens from the response body and sets cookie session headers', async () => {
     const response = await trpcMutate(integration.baseUrl, 'auth.googleLogin', {
       idToken: 'google-id-token',
@@ -269,6 +316,168 @@ describe('ClassroomPath Gateway Integration', async () => {
     const setCookies = getSetCookieHeaders(response);
     assert.ok(setCookies.some((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`)));
     assert.ok(setCookies.some((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`)));
+  });
+
+  test('/cp/trpc/auth.googleSignup provisions a Google user, records consent metadata, and sets cookie session headers', async () => {
+    const originalGoogleClientId = process.env.GOOGLE_CLIENT_ID;
+    const originalVerifyIdToken = Reflect.get(OAuth2Client.prototype, 'verifyIdToken');
+
+    process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
+    OAuth2Client.prototype.verifyIdToken = ((): Promise<LoginTicket> =>
+      Promise.resolve({
+        getPayload: () => ({
+          email: 'new-google-signup@test.local',
+          sub: 'google-signup-sub',
+          name: 'New Google Signup',
+        }),
+      } as unknown as LoginTicket)) as typeof OAuth2Client.prototype.verifyIdToken;
+
+    try {
+      const response = await trpcMutate(integration.baseUrl, 'auth.googleSignup', {
+        idToken: 'new-google-signup-token',
+        termsAccepted: true,
+        termsVersion: '2026-03-09',
+      });
+
+      assertStatus(response, 200);
+      const parsed = (await parseTRPC(response)) as { data?: Record<string, unknown> };
+      assert.strictEqual('accessToken' in (parsed.data ?? {}), false);
+      assert.strictEqual('refreshToken' in (parsed.data ?? {}), false);
+      assert.strictEqual(
+        (parsed.data?.user as { email?: string } | undefined)?.email,
+        'new-google-signup@test.local'
+      );
+
+      const [user] = await openpathDb
+        .select({
+          id: openpathSchema.users.id,
+          email: openpathSchema.users.email,
+          emailVerified: openpathSchema.users.emailVerified,
+          googleId: openpathSchema.users.googleId,
+        })
+        .from(openpathSchema.users)
+        .where(eq(openpathSchema.users.email, 'new-google-signup@test.local'))
+        .limit(1);
+
+      assert.ok(user);
+      assert.strictEqual(user.googleId, 'google-signup-sub');
+      assert.strictEqual(user.emailVerified, true);
+
+      const [consent] = await cpDb
+        .select({
+          userId: cpSchema.cpTermsAcceptance.userId,
+          termsVersion: cpSchema.cpTermsAcceptance.termsVersion,
+        })
+        .from(cpSchema.cpTermsAcceptance)
+        .where(eq(cpSchema.cpTermsAcceptance.userId, user.id))
+        .limit(1);
+
+      assert.deepStrictEqual(consent, {
+        userId: user.id,
+        termsVersion: '2026-03-09',
+      });
+
+      const setCookies = getSetCookieHeaders(response);
+      assert.ok(setCookies.some((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`)));
+      assert.ok(setCookies.some((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`)));
+    } finally {
+      if (originalGoogleClientId === undefined) {
+        delete process.env.GOOGLE_CLIENT_ID;
+      } else {
+        process.env.GOOGLE_CLIENT_ID = originalGoogleClientId;
+      }
+      OAuth2Client.prototype.verifyIdToken = originalVerifyIdToken;
+    }
+  });
+
+  test('/cp/trpc/auth.googleSignup links an existing email user, verifies it, and keeps the cookie session flow', async () => {
+    const originalGoogleClientId = process.env.GOOGLE_CLIENT_ID;
+    const originalVerifyIdToken = Reflect.get(OAuth2Client.prototype, 'verifyIdToken');
+
+    process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: 'existing-email-google-signup-user',
+      email: 'existing-email-google-signup@test.local',
+      name: 'Existing Email Signup User',
+      passwordHash: 'hashed',
+      isActive: true,
+      emailVerified: false,
+    });
+
+    OAuth2Client.prototype.verifyIdToken = ((): Promise<LoginTicket> =>
+      Promise.resolve({
+        getPayload: () => ({
+          email: 'existing-email-google-signup@test.local',
+          sub: 'existing-email-google-signup-sub',
+          name: '',
+        }),
+      } as unknown as LoginTicket)) as typeof OAuth2Client.prototype.verifyIdToken;
+
+    try {
+      const response = await trpcMutate(integration.baseUrl, 'auth.googleSignup', {
+        idToken: 'existing-email-google-signup-token',
+        termsAccepted: true,
+        termsVersion: '2026-03-09',
+      });
+
+      assertStatus(response, 200);
+      const parsed = (await parseTRPC(response)) as { data?: Record<string, unknown> };
+      assert.strictEqual('accessToken' in (parsed.data ?? {}), false);
+      assert.strictEqual('refreshToken' in (parsed.data ?? {}), false);
+      assert.strictEqual(
+        (parsed.data?.user as { email?: string } | undefined)?.email,
+        'existing-email-google-signup@test.local'
+      );
+
+      const [user] = await openpathDb
+        .select({
+          emailVerified: openpathSchema.users.emailVerified,
+          googleId: openpathSchema.users.googleId,
+        })
+        .from(openpathSchema.users)
+        .where(eq(openpathSchema.users.email, 'existing-email-google-signup@test.local'))
+        .limit(1);
+
+      assert.strictEqual(user?.emailVerified, true);
+      assert.strictEqual(user?.googleId, 'existing-email-google-signup-sub');
+
+      const setCookies = getSetCookieHeaders(response);
+      assert.ok(setCookies.some((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`)));
+      assert.ok(setCookies.some((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`)));
+    } finally {
+      if (originalGoogleClientId === undefined) {
+        delete process.env.GOOGLE_CLIENT_ID;
+      } else {
+        process.env.GOOGLE_CLIENT_ID = originalGoogleClientId;
+      }
+      OAuth2Client.prototype.verifyIdToken = originalVerifyIdToken;
+    }
+  });
+
+  test('/cp/trpc/auth.googleSignup fails closed when Google OAuth is not configured', async () => {
+    const originalGoogleClientId = process.env.GOOGLE_CLIENT_ID;
+
+    delete process.env.GOOGLE_CLIENT_ID;
+
+    try {
+      const response = await trpcMutate(integration.baseUrl, 'auth.googleSignup', {
+        idToken: 'missing-google-config-token',
+        termsAccepted: true,
+        termsVersion: '2026-03-09',
+      });
+
+      assertStatus(response, 401);
+      const parsed = (await parseTRPC(response)) as { error?: string; code?: string };
+      assert.strictEqual(parsed.code, 'UNAUTHORIZED');
+      assert.match(parsed.error ?? '', /google oauth not configured/i);
+    } finally {
+      if (originalGoogleClientId === undefined) {
+        delete process.env.GOOGLE_CLIENT_ID;
+      } else {
+        process.env.GOOGLE_CLIENT_ID = originalGoogleClientId;
+      }
+    }
   });
 
   test('/cp/trpc/auth.logout revokes both access and refresh tokens when a cookie session is present', async () => {

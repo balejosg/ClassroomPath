@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { after, before } from 'node:test';
 import { tmpdir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
+import bcrypt from 'bcrypt';
 import express from 'express';
 import { eq } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
@@ -460,7 +461,7 @@ async function ensureMockOpenPathServer(): Promise<string> {
     const token = typeof body?.token === 'string' ? body.token : '';
 
     const [user] = await openpathDb
-      .select({ emailVerified: openpathSchema.users.emailVerified })
+      .select({ id: openpathSchema.users.id, emailVerified: openpathSchema.users.emailVerified })
       .from(openpathSchema.users)
       .where(eq(openpathSchema.users.email, email))
       .limit(1);
@@ -476,7 +477,16 @@ async function ensureMockOpenPathServer(): Promise<string> {
     }
 
     const verification = mockVerificationTokens.get(email);
-    if (!verification || verification.token !== token) {
+    const [storedToken] = user
+      ? await openpathDb
+          .select({ tokenHash: openpathSchema.emailVerificationTokens.tokenHash })
+          .from(openpathSchema.emailVerificationTokens)
+          .where(eq(openpathSchema.emailVerificationTokens.userId, user.id))
+          .limit(1)
+      : [];
+    const tokenMatchesDb = storedToken ? await bcrypt.compare(token, storedToken.tokenHash) : false;
+
+    if ((!verification || verification.token !== token) && !tokenMatchesDb) {
       return res.status(400).json({
         error: {
           message: 'Invalid verification token',
@@ -491,6 +501,11 @@ async function ensureMockOpenPathServer(): Promise<string> {
       .where(eq(openpathSchema.users.email, email));
 
     mockVerificationTokens.delete(email);
+    if (user) {
+      await openpathDb
+        .delete(openpathSchema.emailVerificationTokens)
+        .where(eq(openpathSchema.emailVerificationTokens.userId, user.id));
+    }
 
     return res.json({
       result: {
@@ -501,7 +516,66 @@ async function ensureMockOpenPathServer(): Promise<string> {
     });
   });
 
-  app.post('/trpc/auth.googleLogin', (_req, res) => {
+  app.post('/trpc/auth.googleLogin', async (req, res) => {
+    if (
+      req.body?.idToken === 'new-google-signup-token' ||
+      req.body?.idToken === 'existing-email-google-signup-token'
+    ) {
+      const email =
+        req.body?.idToken === 'new-google-signup-token'
+          ? 'new-google-signup@test.local'
+          : 'existing-email-google-signup@test.local';
+      const [user] = await openpathDb
+        .select({
+          id: openpathSchema.users.id,
+          email: openpathSchema.users.email,
+          name: openpathSchema.users.name,
+        })
+        .from(openpathSchema.users)
+        .where(eq(openpathSchema.users.email, email))
+        .limit(1);
+
+      if (!user) {
+        return res.status(403).json({
+          error: {
+            message: 'Google sign-in is only available for existing or preapproved accounts',
+            code: 'FORBIDDEN',
+          },
+        });
+      }
+
+      const accessToken = signToken({
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        roles: [],
+      });
+      const refreshToken = signToken({
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        roles: [],
+        type: 'refresh',
+      });
+
+      return res.json({
+        result: {
+          data: {
+            accessToken,
+            refreshToken,
+            tokenType: 'Bearer',
+            expiresIn: 3600,
+            user: {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              roles: [],
+            },
+          },
+        },
+      });
+    }
+
     const email = 'google-login@test.local';
     const userId = 'mock-google-login-user';
 
@@ -512,6 +586,7 @@ async function ensureMockOpenPathServer(): Promise<string> {
         email,
         name: 'Mock Google User',
         passwordHash: 'mock-google-hash',
+        googleId: 'mock-google-sub',
         isActive: true,
         emailVerified: true,
       })

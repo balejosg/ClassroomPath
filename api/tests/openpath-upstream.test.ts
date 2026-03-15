@@ -8,6 +8,7 @@ import {
   extractTrpcData,
   extractUpstreamErrorMessage,
   generateOpenPathEmailVerificationToken,
+  googleLoginOpenPathUser,
   getForwardHeaders,
   loginOpenPathUser,
   mapUpstreamStatusToTrpcCode,
@@ -275,7 +276,7 @@ describe('openpath-upstream', () => {
       );
     });
 
-    it('loginOpenPathUser and generateOpenPathEmailVerificationToken fail closed on malformed auth payloads', async () => {
+    it('loginOpenPathUser, googleLoginOpenPathUser, and generateOpenPathEmailVerificationToken fail closed on malformed auth payloads', async () => {
       const session = await loginOpenPathUser({
         req: { headers: {} },
         input: {
@@ -304,6 +305,34 @@ describe('openpath-upstream', () => {
           ),
       });
       assert.equal(session.user.id, 'user-3');
+
+      const googleSession = await googleLoginOpenPathUser({
+        req: { headers: {} },
+        input: {
+          idToken: 'google-id-token',
+        },
+        fetchImpl: async () =>
+          new Response(
+            JSON.stringify({
+              result: {
+                data: {
+                  accessToken: 'google-access-token',
+                  refreshToken: 'google-refresh-token',
+                  user: {
+                    id: 'user-4',
+                    email: 'teacher@example.com',
+                    name: 'Teacher Example',
+                  },
+                },
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          ),
+      });
+      assert.equal(googleSession.user.id, 'user-4');
 
       const verification = await generateOpenPathEmailVerificationToken({
         req: { headers: {} },
@@ -337,6 +366,39 @@ describe('openpath-upstream', () => {
             input: {
               email: 'teacher@example.com',
               password: 'password123',
+            },
+            fetchImpl: async () =>
+              new Response(
+                JSON.stringify({
+                  result: {
+                    data: {
+                      accessToken: 'access-token',
+                      user: {
+                        id: 'user-3',
+                        email: 'teacher@example.com',
+                        name: 'Teacher Example',
+                      },
+                    },
+                  },
+                }),
+                {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' },
+                }
+              ),
+          }),
+        (error: unknown) =>
+          error instanceof TRPCError &&
+          error.code === 'INTERNAL_SERVER_ERROR' &&
+          error.message === 'Invalid session payload received from upstream'
+      );
+
+      await assert.rejects(
+        () =>
+          googleLoginOpenPathUser({
+            req: { headers: {} },
+            input: {
+              idToken: 'broken-google-id-token',
             },
             fetchImpl: async () =>
               new Response(

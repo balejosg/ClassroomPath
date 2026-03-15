@@ -35,6 +35,7 @@ describe('authRouter', () => {
 
     assert.strictEqual(typeof caller.login, 'function');
     assert.strictEqual(typeof caller.googleLogin, 'function');
+    assert.strictEqual(typeof caller.googleSignup, 'function');
     assert.strictEqual(typeof caller.me, 'function');
     assert.strictEqual(typeof caller.logout, 'function');
     assert.strictEqual(typeof caller.register, 'function');

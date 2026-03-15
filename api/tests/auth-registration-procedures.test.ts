@@ -7,6 +7,7 @@ describe('auth-registration-procedures', () => {
   it('exposes the self-service registration procedures through the split router module', () => {
     assert.deepStrictEqual(Object.keys(authRegistrationProcedures).sort(), [
       'generateEmailVerificationToken',
+      'googleSignup',
       'register',
       'verifyEmail',
     ]);

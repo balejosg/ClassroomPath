@@ -39,6 +39,7 @@ await describe('gateway hardening helpers', async () => {
     assert.ok(authRule);
     assert.ok(onboardingRule);
     assert.strictEqual(authRule?.matches('/cp/trpc/auth.login'), true);
+    assert.strictEqual(authRule?.matches('/cp/trpc/auth.googleSignup'), true);
     assert.strictEqual(authRule?.matches('/trpc/auth.resetPassword?batch=1'), true);
     assert.strictEqual(authRule?.matches('/cp/trpc/onboarding.waitForInvitation'), false);
     assert.strictEqual(onboardingRule?.matches('/cp/trpc/onboarding.waitForInvitation'), true);

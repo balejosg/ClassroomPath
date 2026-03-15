@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import GoogleLoginButton from '@openpath/src/components/GoogleLoginButton';
 import { Button } from '@openpath/src/components/ui/Button';
 import { Input } from '@openpath/src/components/ui/Input';
 import { Card } from '@openpath/src/components/ui/Card';
@@ -12,15 +13,17 @@ import {
   getVerificationDeliveryMessage,
   normalizeEmailAddress,
   normalizeVerificationDeliveryState,
+  persistAuthSession,
   shouldShowManualVerificationLink,
   type VerificationDeliveryState,
 } from './auth-helpers';
 
 interface Props {
   onLoginClick: () => void;
+  onAuthenticated: () => void;
 }
 
-export function Register({ onLoginClick }: Props) {
+export function Register({ onLoginClick, onAuthenticated }: Props) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -32,6 +35,7 @@ export function Register({ onLoginClick }: Props) {
   );
 
   const registerMutation = cpTrpcReact.auth.register.useMutation();
+  const googleSignupMutation = cpTrpcReact.auth.googleSignup.useMutation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +84,33 @@ export function Register({ onLoginClick }: Props) {
     }
   };
 
-  const isBusy = registerMutation.isPending;
+  const handleGoogleSuccess = async (idToken: string) => {
+    setError('');
+
+    if (!termsAccepted) {
+      setError(ERROR_MESSAGES_ES.termsRequired);
+      return;
+    }
+
+    try {
+      const result = await googleSignupMutation.mutateAsync({
+        idToken,
+        termsAccepted: true,
+        termsVersion: CURRENT_TERMS_VERSION,
+      });
+
+      persistAuthSession(result);
+      onAuthenticated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo continuar con Google');
+      reportError('Failed to register user with Google', err, {
+        action: 'google-signup',
+        userRole: 'anonymous',
+      });
+    }
+  };
+
+  const isBusy = registerMutation.isPending || googleSignupMutation.isPending;
 
   if (registrationState) {
     const shouldShowVerificationLink = shouldShowManualVerificationLink(registrationState);
@@ -122,6 +152,30 @@ export function Register({ onLoginClick }: Props) {
         {error && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm">{error}</div>
         )}
+
+        <div className="mb-6">
+          <p className="text-center text-sm text-gray-600">
+            Tambien puedes crear tu cuenta con Google y entrar al instante.
+          </p>
+          <GoogleLoginButton
+            onSuccess={(token) => {
+              void handleGoogleSuccess(token);
+            }}
+            disabled={isBusy}
+          />
+          <p className="mt-2 text-center text-xs text-gray-500">
+            Antes de continuar con Google, acepta los terminos de servicio.
+          </p>
+        </div>
+
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-white px-2 text-gray-400">o registrate con correo</span>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
@@ -215,6 +269,7 @@ export function Register({ onLoginClick }: Props) {
         <p className="mt-6 text-center text-sm text-gray-600">
           ¿Ya tienes cuenta?{' '}
           <button
+            type="button"
             onClick={onLoginClick}
             className="text-blue-600 font-medium hover:underline cursor-pointer"
           >

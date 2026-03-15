@@ -15,7 +15,12 @@ type AuthEntryViewProps = {
 export function AuthEntryView(props: AuthEntryViewProps) {
   switch (props.authView) {
     case 'register':
-      return <Register onLoginClick={() => props.onSetAuthView('login')} />;
+      return (
+        <Register
+          onLoginClick={() => props.onSetAuthView('login')}
+          onAuthenticated={props.onAuthenticated}
+        />
+      );
     case 'reset-password':
       return <ResetPassword onLoginClick={() => props.onSetAuthView('login')} />;
     case 'accept-invitation':

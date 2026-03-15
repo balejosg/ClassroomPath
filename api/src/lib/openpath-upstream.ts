@@ -291,6 +291,32 @@ export async function loginOpenPathUser(params: {
   );
 }
 
+export async function googleLoginOpenPathUser(params: {
+  req?: OpenPathForwardRequest;
+  input: {
+    idToken: string;
+  };
+  fetchImpl?: typeof fetch;
+  unavailableMessage?: string;
+  upstreamFailureMessage?: UpstreamFailureMessage;
+}): Promise<OpenPathSessionPayload> {
+  const payload = await callOpenPathTrpc({
+    procedure: 'auth.googleLogin',
+    req: params.req,
+    input: params.input,
+    defaultErrorCode: 'UNAUTHORIZED',
+    upstreamFailureMessage: params.upstreamFailureMessage ?? 'Google login failed',
+    unavailableMessage: params.unavailableMessage ?? 'Authentication service unavailable',
+    fetchImpl: params.fetchImpl,
+  });
+
+  return parseUpstreamPayload(
+    payload,
+    OpenPathSessionPayloadSchema,
+    'Invalid session payload received from upstream'
+  );
+}
+
 export async function generateOpenPathEmailVerificationToken(params: {
   req?: OpenPathForwardRequest;
   input: {
