@@ -10,8 +10,16 @@ COPY package*.json ./
 COPY react-spa/package*.json ./react-spa/
 COPY api/package*.json ./api/
 
-# Install dependencies
-RUN npm ci
+# Install dependencies.
+# Retry to tolerate transient multi-arch registry failures in CI.
+RUN set -eux; \
+  for attempt in 1 2 3; do \
+    npm ci --no-audit --no-fund && break; \
+    if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+    echo "npm ci failed on attempt $attempt, retrying..." >&2; \
+    rm -rf node_modules; \
+    sleep $((attempt * 5)); \
+  done
 
 # Copy source
 COPY . .

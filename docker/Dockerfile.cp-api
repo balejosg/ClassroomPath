@@ -11,8 +11,17 @@ COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
 COPY upstream/openpath/react-spa/package*.json ./upstream/openpath/react-spa/
 COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
 
-# Use npm ci so workspaces are linked deterministically
-RUN npm ci
+# Use npm ci so workspaces are linked deterministically.
+# Multi-arch GH builds occasionally hit transient registry resets under QEMU,
+# so retry before failing the image build.
+RUN set -eux; \
+  for attempt in 1 2 3; do \
+    npm ci --no-audit --no-fund && break; \
+    if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+    echo "npm ci failed on attempt $attempt, retrying..." >&2; \
+    rm -rf node_modules; \
+    sleep $((attempt * 5)); \
+  done
 
 # Copy all source
 COPY . .
@@ -29,8 +38,16 @@ COPY package*.json ./
 COPY api/package*.json ./api/
 COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
 
-# Install production dependencies for the gateway and shared runtime package
-RUN npm ci --workspace=@classroompath/api --workspace=@openpath/shared --omit=dev
+# Install production dependencies for the gateway and shared runtime package.
+# Retry here too because the release workflow builds linux/arm64 images under emulation.
+RUN set -eux; \
+  for attempt in 1 2 3; do \
+    npm ci --no-audit --no-fund --workspace=@classroompath/api --workspace=@openpath/shared --omit=dev && break; \
+    if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+    echo "npm ci failed on attempt $attempt, retrying..." >&2; \
+    rm -rf node_modules; \
+    sleep $((attempt * 5)); \
+  done
 
 # Copy built files
 COPY --from=builder /app/api/dist ./api/dist

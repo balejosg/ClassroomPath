@@ -12,8 +12,16 @@ COPY tsconfig.base.json ./
 COPY shared/package*.json ./shared/
 COPY api/package*.json ./api/
 
-# Install ALL dependencies for building
-RUN npm ci
+# Install ALL dependencies for building.
+# Retry to tolerate transient multi-arch registry failures in CI.
+RUN set -eux; \
+  for attempt in 1 2 3; do \
+    npm ci --no-audit --no-fund && break; \
+    if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+    echo "npm ci failed on attempt $attempt, retrying..." >&2; \
+    rm -rf node_modules; \
+    sleep $((attempt * 5)); \
+  done
 
 # Copy source
 COPY shared/ ./shared/
@@ -32,9 +40,16 @@ COPY package*.json ./
 COPY shared/package*.json ./shared/
 COPY api/package*.json ./api/
 
-# Install production dependencies only
-# This will link shared because of the "file:" dependency in api/package.json
-RUN npm ci --workspace=@openpath/api --omit=dev
+# Install production dependencies only.
+# This links shared because of the "file:" dependency in api/package.json.
+RUN set -eux; \
+  for attempt in 1 2 3; do \
+    npm ci --no-audit --no-fund --workspace=@openpath/api --omit=dev && break; \
+    if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+    echo "npm ci failed on attempt $attempt, retrying..." >&2; \
+    rm -rf node_modules; \
+    sleep $((attempt * 5)); \
+  done
 
 # Copy the built files into the locations where Node expects them
 COPY --from=builder /app/api/dist ./api/dist
