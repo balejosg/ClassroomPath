@@ -11,7 +11,7 @@ const mockPersistSession = vi.fn();
 const mockReportError = vi.fn();
 const mockShouldShowManualVerificationLink = vi.fn();
 
-vi.mock('@openpath/src/components/GoogleLoginButton', () => ({
+vi.mock('../../components/GoogleLoginButton', () => ({
   default: ({
     disabled,
     onSuccess,

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import GoogleLoginButton from '@openpath/src/components/GoogleLoginButton';
 import { Button } from '@openpath/src/components/ui/Button';
 import { Input } from '@openpath/src/components/ui/Input';
 import { Card } from '@openpath/src/components/ui/Card';
 import { PasswordStrength } from '../components/PasswordStrength';
+import GoogleLoginButton from '../components/GoogleLoginButton';
 import { validateEmail, validatePassword, ERROR_MESSAGES_ES } from '../utils/validation';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { reportError } from '../lib/reportError';
@@ -162,6 +162,7 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
               void handleGoogleSuccess(token);
             }}
             disabled={isBusy}
+            text="signup_with"
           />
           <p className="mt-2 text-center text-xs text-gray-500">
             Antes de continuar con Google, acepta los terminos de servicio.

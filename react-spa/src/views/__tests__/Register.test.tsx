@@ -10,7 +10,7 @@ const mockGoogleSignupMutateAsync = vi.fn();
 const mockPersistSession = vi.fn();
 const mockReportError = vi.fn();
 
-vi.mock('@openpath/src/components/GoogleLoginButton', () => ({
+vi.mock('../../components/GoogleLoginButton', () => ({
   default: ({
     disabled,
     onSuccess,

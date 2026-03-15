@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
-import GoogleLoginButton from '@openpath/src/components/GoogleLoginButton';
+import GoogleLoginButton from '../components/GoogleLoginButton';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { reportError } from '../lib/reportError';
 import {
