@@ -149,6 +149,16 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
       <Card className="w-full max-w-md p-8">
         <h1 className="text-2xl font-bold mb-6 text-center">Crear Cuenta</h1>
 
+        <p className="mb-4 text-center text-sm text-gray-600">
+          Crea tu cuenta para gestionar acceso institucional con una base open source y flujos
+          trazables.
+        </p>
+
+        <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          ClassroomPath se apoya en OpenPath, su core open source. La produccion oficial en
+          classroompath.eu esta alojada en servidores de la UE.
+        </div>
+
         {error && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm">{error}</div>
         )}

@@ -1,12 +1,51 @@
 # ClassroomPath
 
-DNS whitelist management SaaS for educational institutions.
+Multi-tenant digital access management for educational institutions.
 
-Built on [OpenPath](https://github.com/balejosg/openpath) (OSS).
+Built on [OpenPath](https://github.com/balejosg/openpath) (OSS), ClassroomPath adds the
+organizational workflows, delegated administration, and production-ready operations that schools need
+to run intentional internet access policies at institution scale with a more transparent technical
+foundation.
 
 > WARNING: ClassroomPath is distributed under Business Source License 1.1 (`BUSL-1.1`).
 > Use is restricted by the terms in `LICENSE` (including non-production limits before the change date).
 > Deploy and operate this software only in systems and networks where you have explicit authorization.
+
+## Why ClassroomPath?
+
+Schools do not just need blocking rules. They need an operating model that can:
+
+- keep institution-managed devices aligned with teaching goals,
+- separate organizations, admins, and data boundaries,
+- handle invites, approvals, and recovery flows without ad-hoc work,
+- give IT teams and school leaders a workflow they can explain and sustain,
+- combine operational control with stronger transparency signals for institutions.
+
+ClassroomPath is the SaaS and operational wrapper around OpenPath for that job. It helps educational
+institutions turn digital policy into day-to-day operations across organizations, classrooms, and
+support flows while reducing digital noise on institution-managed devices.
+
+## OpenPath vs. ClassroomPath
+
+| Product           | Role                                                                                                                                               |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OpenPath**      | OSS core for default-deny internet access control, endpoint enforcement, and dashboard-driven approval workflows                                   |
+| **ClassroomPath** | Multi-tenant distribution for educational institutions that adds onboarding, delegated administration, and deployment workflows on top of OpenPath |
+
+## What institutions get
+
+- A clearer way to apply digital access policy on institution-managed devices.
+- Separate organizations with independent users, roles, and approval queues.
+- Lower operational overhead for onboarding, invitations, and account recovery.
+- A production path that wraps OpenPath in a deployable SaaS workflow.
+- An open-source core in OpenPath for stronger transparency and lower vendor opacity.
+- A production deployment at `https://classroompath.eu`, hosted on EU servers.
+
+## Transparency and trust
+
+- **Open-source core**: ClassroomPath is built on OpenPath, the OSS core of the stack.
+- **Auditable operations**: policy changes and approval workflows are designed to be explainable and traceable.
+- **EU-hosted production**: ClassroomPath is hosted on EU servers and served from `https://classroompath.eu`.
 
 ## Live URLs
 
@@ -53,7 +92,9 @@ Machine-readable source of truth: `config/deploy-targets.json`
 
 ## Multi-tenancy
 
-ClassroomPath adds organization-based multi-tenancy on top of OpenPath:
+ClassroomPath adds organization-based multi-tenancy on top of OpenPath so multiple institutions or
+organizational units can operate independently while sharing one managed deployment. This keeps access
+boundaries clear, supports delegated administration, and reduces manual coordination.
 
 ### User Flow
 
@@ -85,6 +126,14 @@ Gateway API runs on port 3001 with prefix `/cp/`:
 | `/cp/trpc/onboarding.createOrganization` | POST   | Create new org                   |
 | `/cp/trpc/onboarding.waitForInvitation`  | POST   | Set waiting status               |
 | `/cp/trpc/onboarding.cancelWaiting`      | POST   | Clear waiting status             |
+
+## Operational outcomes
+
+- Consistent digital access policy across organizations and classrooms.
+- Clear user lifecycle flows for self-service onboarding, invitations, and waiting-room approvals.
+- Delegated administration without sharing a single global operator account.
+- Safer support workflows for recovery, revocation, and tenant-scoped user management.
+- A reproducible promotion path from local verification to staging and production.
 
 ## Quick Start (Development)
 

@@ -136,6 +136,10 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
             Esta invitación te incorpora a {invitation.organizationName}. Define tu contraseña para
             entrar a ClassroomPath.
           </p>
+          <p className="mt-6 max-w-md text-sm leading-relaxed text-slate-300">
+            OpenPath aporta la base open source; ClassroomPath añade el flujo institucional trazable
+            y esta alojado en servidores de la UE.
+          </p>
         </div>
       </div>
 
@@ -146,6 +150,10 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
             <p className="text-slate-500 text-sm mt-2">
               Tu acceso ya fue invitado por tu organización
             </p>
+          </div>
+
+          <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 lg:hidden">
+            Base open source con OpenPath, flujo auditable y alojamiento en servidores de la UE.
           </div>
 
           <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">

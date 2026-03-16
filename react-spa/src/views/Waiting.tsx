@@ -45,6 +45,10 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
             Un administrador de tu institución debe agregarte a la organización. Te redirigiremos
             automáticamente cuando esto suceda.
           </p>
+          <p className="mt-3 text-sm text-slate-500">
+            Tu solicitud sigue un flujo institucional trazable sobre una base open source con
+            alojamiento en servidores de la UE.
+          </p>
           {data?.policy?.allowOrgDirectory === false ? (
             <p className="mt-3 text-sm text-slate-500">
               Por privacidad, este portal no mostrará el directorio de organizaciones mientras tu

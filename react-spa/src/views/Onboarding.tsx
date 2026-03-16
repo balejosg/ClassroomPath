@@ -98,6 +98,21 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
           Elige cómo quieres comenzar a gestionar tus salas
         </p>
 
+        <div className="mb-8 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm md:grid-cols-3">
+          <div>
+            <p className="font-semibold text-slate-900">Open source en la base</p>
+            <p className="mt-1">OpenPath aporta un core auditable para la politica digital.</p>
+          </div>
+          <div>
+            <p className="font-semibold text-slate-900">Flujos trazables</p>
+            <p className="mt-1">Invitaciones, aprobaciones y cambios siguen un proceso claro.</p>
+          </div>
+          <div>
+            <p className="font-semibold text-slate-900">Produccion oficial en la UE</p>
+            <p className="mt-1">ClassroomPath esta alojado en servidores de la UE.</p>
+          </div>
+        </div>
+
         {error && (
           <div className="mb-8 p-4 bg-red-100 text-red-700 rounded-lg text-sm border border-red-200">
             {error}
@@ -115,7 +130,7 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
               </div>
               <p className="text-gray-600 mb-8 leading-relaxed">
                 Crea una nueva organización para tu institución y comienza a configurar tus grupos y
-                políticas de filtrado.
+                politicas de filtrado con un flujo institucional claro y trazable.
               </p>
               <form onSubmit={handleCreateOrg} className="space-y-4 mt-auto" noValidate>
                 <div>
@@ -155,7 +170,7 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
             </div>
             <p className="text-gray-600 mb-8 leading-relaxed">
               Si tu institución ya utiliza ClassroomPath, puedes solicitar acceso y esperar a que un
-              administrador te agregue.
+              administrador te agregue. Tu solicitud seguira un flujo institucional trazable.
             </p>
             <div className="mt-auto">
               {allowOrgDirectory ? (

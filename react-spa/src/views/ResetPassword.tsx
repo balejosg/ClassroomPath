@@ -105,6 +105,10 @@ export function ResetPassword({ onLoginClick }: ResetPasswordProps) {
             Tu administrador puede enviarte un enlace de recuperación. Si ya lo recibiste, pega el
             token y define una nueva contraseña.
           </p>
+          <p className="mt-6 max-w-md text-sm leading-relaxed text-slate-300">
+            OpenPath aporta la base open source; ClassroomPath añade un flujo de soporte trazable y
+            una plataforma alojada en servidores de la UE.
+          </p>
         </div>
       </div>
 
@@ -126,6 +130,10 @@ export function ResetPassword({ onLoginClick }: ResetPasswordProps) {
                 ? 'Completa tu nueva contraseña para activar el enlace recibido.'
                 : 'Solicita el enlace a tu administrador y luego pega aquí el correo y el token.'}
             </p>
+          </div>
+
+          <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 lg:hidden">
+            Base open source con OpenPath, soporte trazable y alojamiento en servidores de la UE.
           </div>
 
           {!hasPrefilledRecoveryLink ? (
