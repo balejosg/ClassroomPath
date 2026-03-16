@@ -71,7 +71,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
+      - name: Install ClassroomPath dependencies
+        run: npm ci
+
+      - name: Install OpenPath submodule dependencies
+        working-directory: upstream/openpath
         run: npm ci
 
       - name: Build ClassroomPath

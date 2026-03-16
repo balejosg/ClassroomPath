@@ -9,6 +9,11 @@ import { parse as parseYaml } from 'yaml';
 type WorkflowJob = {
   name?: string;
   needs?: string | string[];
+  steps?: Array<{
+    name?: string;
+    run?: string;
+    'working-directory'?: string;
+  }>;
 };
 
 type WorkflowDefinition = {
@@ -41,6 +46,23 @@ describe('Workflow configuration hardening', () => {
 
     assert.ok(jobs['detect-relevant-changes'], 'CI workflow should detect relevant changes');
     assert.equal(jobs['ci-success']?.name, 'CI Success');
+  });
+
+  test('CI workflow installs OpenPath submodule dependencies before building', () => {
+    const workflow = readWorkflow('.github/workflows/ci.yml');
+    const buildJob = workflow.jobs?.['build-and-validate'];
+    const steps = buildJob?.steps ?? [];
+
+    const classroomPathInstall = steps.find(
+      (step) => step.name === 'Install ClassroomPath dependencies'
+    );
+    const openPathInstall = steps.find(
+      (step) => step.name === 'Install OpenPath submodule dependencies'
+    );
+
+    assert.equal(classroomPathInstall?.run, 'npm ci');
+    assert.equal(openPathInstall?.run, 'npm ci');
+    assert.equal(openPathInstall?.['working-directory'], 'upstream/openpath');
   });
 
   test('Deploy workflow serializes production releases', () => {
