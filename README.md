@@ -7,8 +7,9 @@ organizational workflows, delegated administration, and production-ready operati
 to run intentional internet access policies at institution scale with a more transparent technical
 foundation.
 
-> WARNING: ClassroomPath is distributed under Business Source License 1.1 (`BUSL-1.1`).
-> Use is restricted by the terms in `LICENSE` (including non-production limits before the change date).
+> WARNING: ClassroomPath is distributed under the ClassroomPath Source-Available License 1.0.
+> The source is published for transparency, auditability, and private modification, but the license does not permit reproducing the service.
+> No production use, self-hosting, redistribution, white-labeling, or hosted replicas are allowed without written permission.
 > Deploy and operate this software only in systems and networks where you have explicit authorization.
 
 ## Why ClassroomPath?
@@ -44,6 +45,7 @@ support flows while reducing digital noise on institution-managed devices.
 ## Transparency and trust
 
 - **Open-source core**: ClassroomPath is built on OpenPath, the OSS core of the stack.
+- **Source-available service layer**: ClassroomPath-owned code is visible for audit and private modification, not for independent reproduction.
 - **Auditable operations**: policy changes and approval workflows are designed to be explainable and traceable.
 - **EU-hosted production**: ClassroomPath is hosted on EU servers and served from `https://classroompath.eu`.
 
@@ -273,12 +275,12 @@ npm run deploy:staging
 
 ## License
 
-Business Source License 1.1 (`BUSL-1.1`).
+ClassroomPath Source-Available License 1.0.
 
 See `LICENSE` for full terms, including:
 
-- non-production-only use by default before the Change Date,
-- conditions for production/commercial usage,
-- Additional Use Grant: `None` (no production grant),
-- Change Date: `2031-02-18`,
-- Change License: `AGPL-3.0-or-later`.
+- source access for review, audit, and private modification,
+- local private development and test use only,
+- no production use or self-hosting,
+- no redistribution, white-labeling, SaaS resale, or hosted replicas, and
+- separate licensing for `OpenPath`, which remains under `AGPL-3.0-or-later`.
