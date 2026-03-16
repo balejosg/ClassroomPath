@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -34,11 +34,6 @@ export function ResetPassword({ onLoginClick }: ResetPasswordProps) {
   const [success, setSuccess] = useState(false);
 
   const resetMutation = cpTrpcReact.auth.resetPassword.useMutation();
-
-  const hasPrefilledRecoveryLink = useMemo(
-    () => email.length > 0 || token.length > 0,
-    [email, token]
-  );
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -101,14 +96,6 @@ export function ResetPassword({ onLoginClick }: ResetPasswordProps) {
             <ShieldCheck size={32} className="text-white" />
           </div>
           <h1 className="text-4xl font-bold text-white">Recupera tu acceso</h1>
-          <p className="mt-6 max-w-md text-lg leading-relaxed text-slate-400">
-            Tu administrador puede enviarte un enlace de recuperación. Si ya lo recibiste, pega el
-            token y define una nueva contraseña.
-          </p>
-          <p className="mt-6 max-w-md text-sm leading-relaxed text-slate-300">
-            OpenPath aporta la base open source; ClassroomPath añade un flujo de soporte trazable y
-            una plataforma alojada en servidores de la UE.
-          </p>
         </div>
       </div>
 
@@ -125,23 +112,7 @@ export function ResetPassword({ onLoginClick }: ResetPasswordProps) {
 
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-slate-900">Restablecer contraseña</h2>
-            <p className="mt-2 text-sm text-slate-500">
-              {hasPrefilledRecoveryLink
-                ? 'Completa tu nueva contraseña para activar el enlace recibido.'
-                : 'Solicita el enlace a tu administrador y luego pega aquí el correo y el token.'}
-            </p>
           </div>
-
-          <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 lg:hidden">
-            Base open source con OpenPath, soporte trazable y alojamiento en servidores de la UE.
-          </div>
-
-          {!hasPrefilledRecoveryLink ? (
-            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              ClassroomPath no te pide una contraseña temporal. El enlace de recuperación se emite
-              desde tu organización y se envía por correo.
-            </div>
-          ) : null}
 
           {error ? (
             <div

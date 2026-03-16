@@ -180,21 +180,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-8 shadow-lg shadow-blue-900/50">
             <ShieldCheck size={32} className="text-white" />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-6 leading-tight">ClassroomPath</h1>
-          <p className="text-slate-400 text-lg leading-relaxed max-w-md">
-            Accede a tu panel y aplica una politica digital clara para los dispositivos de tu
-            institucion. Si es tu primera vez, crea una cuenta y completa el onboarding.
-          </p>
-          <div className="mt-8 max-w-md rounded-2xl border border-white/10 bg-white/5 p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-200">
-              Senales de confianza
-            </p>
-            <ul className="mt-3 space-y-2 text-sm leading-relaxed text-slate-300">
-              <li>Basado en OpenPath, el core open source del stack.</li>
-              <li>Cambios de politica y aprobaciones con un flujo trazable.</li>
-              <li>ClassroomPath esta alojado en servidores de la UE.</li>
-            </ul>
-          </div>
+          <h1 className="text-4xl font-bold text-white leading-tight">ClassroomPath</h1>
         </div>
       </div>
 
@@ -202,11 +188,6 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
         <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-slate-200">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold text-slate-900">Acceso</h2>
-            <p className="text-slate-500 text-sm mt-2">Inicia sesión para continuar</p>
-          </div>
-
-          <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 lg:hidden">
-            Basado en OpenPath, con flujos trazables y alojado en servidores de la UE.
           </div>
 
           {error && (

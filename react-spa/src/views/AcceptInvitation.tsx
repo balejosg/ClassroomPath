@@ -131,15 +131,7 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-8 shadow-lg shadow-blue-900/50">
             <ShieldCheck size={32} className="text-white" />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-6 leading-tight">Activa tu acceso</h1>
-          <p className="text-slate-400 text-lg leading-relaxed max-w-md">
-            Esta invitación te incorpora a {invitation.organizationName}. Define tu contraseña para
-            entrar a ClassroomPath.
-          </p>
-          <p className="mt-6 max-w-md text-sm leading-relaxed text-slate-300">
-            OpenPath aporta la base open source; ClassroomPath añade el flujo institucional trazable
-            y esta alojado en servidores de la UE.
-          </p>
+          <h1 className="text-4xl font-bold text-white leading-tight">Activa tu acceso</h1>
         </div>
       </div>
 
@@ -147,13 +139,6 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
         <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-slate-200">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold text-slate-900">Completa tu registro</h2>
-            <p className="text-slate-500 text-sm mt-2">
-              Tu acceso ya fue invitado por tu organización
-            </p>
-          </div>
-
-          <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 lg:hidden">
-            Base open source con OpenPath, flujo auditable y alojamiento en servidores de la UE.
           </div>
 
           <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">

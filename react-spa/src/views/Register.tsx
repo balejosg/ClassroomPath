@@ -149,24 +149,11 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
       <Card className="w-full max-w-md p-8">
         <h1 className="text-2xl font-bold mb-6 text-center">Crear Cuenta</h1>
 
-        <p className="mb-4 text-center text-sm text-gray-600">
-          Crea tu cuenta para gestionar acceso institucional con una base open source y flujos
-          trazables.
-        </p>
-
-        <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-          ClassroomPath se apoya en OpenPath, su core open source. La produccion oficial en
-          classroompath.eu esta alojada en servidores de la UE.
-        </div>
-
         {error && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm">{error}</div>
         )}
 
         <div className="mb-6">
-          <p className="text-center text-sm text-gray-600">
-            Tambien puedes crear tu cuenta con Google y entrar al instante.
-          </p>
           <GoogleLoginButton
             onSuccess={(token) => {
               void handleGoogleSuccess(token);
@@ -174,17 +161,11 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
             disabled={isBusy}
             text="signup_with"
           />
-          <p className="mt-2 text-center text-xs text-gray-500">
-            Antes de continuar con Google, acepta los terminos de servicio.
-          </p>
         </div>
 
         <div className="relative mb-6">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-gray-200" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-2 text-gray-400">o registrate con correo</span>
           </div>
         </div>
 

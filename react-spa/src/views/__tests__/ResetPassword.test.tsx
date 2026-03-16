@@ -33,21 +33,22 @@ describe('ResetPassword', () => {
     expect(screen.getByLabelText('Token de recuperación')).toHaveValue('token-123');
   });
 
-  it('shows the manual recovery instructions when there is no prefilled link', () => {
+  it('renders the reset form without the old support copy when there is no prefilled link', () => {
     window.history.pushState({}, '', '/reset-password');
 
     render(<ResetPassword onLoginClick={vi.fn()} />);
 
+    expect(screen.getByText('Restablecer contraseña')).toBeInTheDocument();
     expect(
-      screen.getByText(
+      screen.queryByText(
         'Solicita el enlace a tu administrador y luego pega aquí el correo y el token.'
       )
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText(
+      screen.queryByText(
         'ClassroomPath no te pide una contraseña temporal. El enlace de recuperación se emite desde tu organización y se envía por correo.'
       )
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
   });
 
   it('validates the minimum password length before submitting', async () => {
