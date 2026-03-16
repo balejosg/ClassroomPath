@@ -9,7 +9,7 @@ ClassroomPath deploys as Docker Compose with three services:
 ## Architecture
 
 ```
-classroompath.duckdns.org (or -staging)
+classroompath.eu (or classroompath-staging.duckdns.org)
          │
          ▼
    ┌─────────────────┐
@@ -60,13 +60,13 @@ docker compose logs -f gateway
 
 Details tab:
 
-| Field                 | Value                       |
-| --------------------- | --------------------------- |
-| Domain Names          | `classroompath.duckdns.org` |
-| Scheme                | `http`                      |
-| Forward Hostname/IP   | `classroompath-spa`         |
-| Forward Port          | `80`                        |
-| Block Common Exploits | ✅                          |
+| Field                 | Value               |
+| --------------------- | ------------------- |
+| Domain Names          | `classroompath.eu`  |
+| Scheme                | `http`              |
+| Forward Hostname/IP   | `classroompath-spa` |
+| Forward Port          | `80`                |
+| Block Common Exploits | ✅                  |
 
 SSL tab:
 

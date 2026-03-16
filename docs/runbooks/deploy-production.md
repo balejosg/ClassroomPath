@@ -12,6 +12,7 @@ This is the canonical production promotion path for ClassroomPath. Future LLMs s
 ## Canonical Facts
 
 - Production URL: `https://classroompath.eu`
+- Canonical deploy targets: `config/deploy-targets.json`
 - Production health:
   - `https://classroompath.eu/cp/health`
   - `https://classroompath.eu/cp/ready`
@@ -63,6 +64,8 @@ git push origin v1.2.4
 gh run watch --workflow Deploy
 ```
 
+Inspect the workflow summary and `release-evidence-<tag>` artifact before calling the release complete.
+
 6. Verify production after the workflow finishes.
 
 ```bash
@@ -75,6 +78,7 @@ Expected result:
 - release gate passes against staging
 - GitHub Actions deploys to production through SSH
 - production smoke tests pass
+- `release-evidence-<tag>` captures the exact SHA, OpenPath SHA, gate results, and immutable image refs
 - `/cp/ready` returns `ready: true`
 
 ## What the Workflow Does

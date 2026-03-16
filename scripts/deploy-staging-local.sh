@@ -68,13 +68,16 @@ load_env_file "$ENV_FILE" || true
 STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
 STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
-STAGING_SMOKE_URL="${STAGING_SMOKE_URL:-https://classroompath-staging.duckdns.org}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
 APP_DIR="/opt/classroompath/app"
 
 require_cmd git
 require_cmd ssh
 require_cmd npm
+require_cmd node
+
+CANONICAL_STAGING_URL="$(node "$SCRIPT_DIR/deploy-targets.mjs" get staging publicUrl)"
+STAGING_SMOKE_URL="${STAGING_SMOKE_URL:-$CANONICAL_STAGING_URL}"
 
 # Validate required env vars
 if [ -z "${STAGING_SSH_KEY:-}" ]; then
@@ -294,6 +297,7 @@ cd "$SCRIPT_DIR/.."
 
 SMOKE_TARGET_URL="$STAGING_SMOKE_URL"
 SMOKE_SKIP_CORS="0"
+STAGING_VERIFICATION_STATUS="PASS"
 
 SMOKE_TARGET_HOST=$(printf '%s\n' "$SMOKE_TARGET_URL" | sed -E 's#^[A-Za-z]+://([^/:]+).*#\1#')
 
@@ -309,6 +313,7 @@ if [ -n "$SMOKE_TARGET_HOST" ] && ! getent hosts "$SMOKE_TARGET_HOST" >/dev/null
 
     SMOKE_TARGET_URL="http://$STAGING_HOST:3001"
     SMOKE_SKIP_CORS="1"
+    STAGING_VERIFICATION_STATUS="PASS_WITH_FALLBACK"
     log_warn "Falling back smoke target to direct staging gateway: $SMOKE_TARGET_URL"
 fi
 
@@ -330,6 +335,10 @@ set -e
 
 if [ $SMOKE_EXIT_CODE -eq 0 ]; then
     log_success "Smoke tests passed"
+    log_info "Verification status: $STAGING_VERIFICATION_STATUS"
+    if [ "$STAGING_VERIFICATION_STATUS" = "PASS_WITH_FALLBACK" ]; then
+        log_warn "Fallback mode used; rerun once public DNS recovers before cutting a production tag"
+    fi
 else
     log_error "Smoke tests FAILED (exit code: $SMOKE_EXIT_CODE)"
     log_error "Review output above for details"
@@ -359,8 +368,12 @@ echo "========================================"
 echo ""
 echo "  Duration: ${DURATION}s"
 echo "  URL: $SMOKE_TARGET_URL"
+echo "  Verification Status: $STAGING_VERIFICATION_STATUS"
 echo "  Gateway: http://$STAGING_HOST:3001/cp/health"
 echo "  API: http://$STAGING_HOST:3000/health"
+if [ "$STAGING_VERIFICATION_STATUS" = "PASS_WITH_FALLBACK" ]; then
+    echo "  Note: public-domain smoke required direct-IP fallback; rerun strict smoke before production promotion."
+fi
 echo ""
 echo "  All smoke tests passed - deployment verified!"
 echo ""

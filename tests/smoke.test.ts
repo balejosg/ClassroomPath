@@ -5,7 +5,7 @@
  * These tests verify that the deployment is working correctly through the full stack
  * (NPM reverse proxy -> Docker containers -> API).
  *
- * Run with: SMOKE_TEST_URL=https://classroompath-staging.duckdns.org npm run test:smoke
+ * Run with: npm run test:smoke:staging
  */
 
 import { test, describe, before } from 'node:test';
@@ -31,6 +31,7 @@ function isIpAddress(hostname: string): boolean {
 
 const SMOKE_HOSTNAME = SMOKE_TEST_URL ? new URL(SMOKE_TEST_URL).hostname : '';
 const SMOKE_RELAX_CORS = SMOKE_SKIP_CORS || (SMOKE_HOSTNAME ? isIpAddress(SMOKE_HOSTNAME) : false);
+const SMOKE_VERIFICATION_STATUS = SMOKE_RELAX_CORS ? 'PASS_WITH_FALLBACK' : 'PASS';
 
 interface HealthResponse {
   status: string;
@@ -221,6 +222,15 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
     if (!SMOKE_TEST_URL) {
       console.log('\nWARN: SMOKE_TEST_URL not set. Skipping smoke tests.');
       console.log('   Set SMOKE_TEST_URL=https://your-staging-url.com to run these tests.\n');
+      return;
+    }
+
+    if (SMOKE_RELAX_CORS) {
+      console.log(
+        `\nWARN: smoke verification is running in fallback mode and will be reported as ${SMOKE_VERIFICATION_STATUS}.`
+      );
+    } else {
+      console.log(`\nSmoke verification mode: STRICT (${SMOKE_VERIFICATION_STATUS})`);
     }
   });
 
@@ -622,6 +632,7 @@ void describe('Smoke Test Summary', { skip: !SMOKE_TEST_URL }, () => {
       const icon = result.ok ? '✅' : '❌';
       console.log(`${icon} ${result.name}: ${result.status || 'FAILED'}`);
     }
+    console.log(`Verification status on success: ${SMOKE_VERIFICATION_STATUS}`);
     console.log('─'.repeat(50));
 
     const allPassed = results.every((r) => r.ok);

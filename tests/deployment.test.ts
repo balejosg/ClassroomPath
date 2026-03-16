@@ -123,6 +123,7 @@ void describe('Docker Compose Configuration', () => {
 
 void describe('Environment Configuration', () => {
   const envExamplePath = resolve(projectRoot, 'config/.env.example');
+  const deployTargetsPath = resolve(projectRoot, 'config/deploy-targets.json');
 
   void test('.env.example exists', () => {
     assert.ok(existsSync(envExamplePath), '.env.example should exist');
@@ -164,6 +165,39 @@ void describe('Environment Configuration', () => {
         }
       }
     }
+  });
+
+  void test('deploy-targets.json captures the canonical public URLs', () => {
+    assert.ok(existsSync(deployTargetsPath), 'config/deploy-targets.json should exist');
+
+    const targets = JSON.parse(readFileSync(deployTargetsPath, 'utf-8')) as {
+      staging?: { publicUrl?: string };
+      production?: { publicUrl?: string };
+    };
+
+    assert.strictEqual(
+      targets.staging?.publicUrl,
+      'https://classroompath-staging.duckdns.org',
+      'Staging public URL should stay centralized in deploy-targets.json'
+    );
+    assert.strictEqual(
+      targets.production?.publicUrl,
+      'https://classroompath.eu',
+      'Production public URL should stay centralized in deploy-targets.json'
+    );
+  });
+
+  void test('package scripts resolve smoke and release targets from deploy-targets.mjs', () => {
+    const packageJson = readFileSync(resolve(projectRoot, 'package.json'), 'utf-8');
+
+    assert.ok(
+      packageJson.includes('scripts/deploy-targets.mjs get staging publicUrl'),
+      'Staging scripts should resolve the canonical URL from deploy-targets.mjs'
+    );
+    assert.ok(
+      packageJson.includes('scripts/deploy-targets.mjs get production publicUrl'),
+      'Production smoke script should resolve the canonical URL from deploy-targets.mjs'
+    );
   });
 });
 

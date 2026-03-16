@@ -11,7 +11,7 @@ Settings → Secrets and variables → Actions → New repository secret
 
 | Secret           | Description                        | Example                                  |
 | ---------------- | ---------------------------------- | ---------------------------------------- |
-| `DEPLOY_HOST`    | Production hostname/IP             | `classroompath.duckdns.org`              |
+| `DEPLOY_HOST`    | Production hostname/IP             | `classroompath.eu`                       |
 | `DEPLOY_USER`    | SSH user on the server             | `deploy`                                 |
 | `DEPLOY_SSH_KEY` | Private SSH key for authentication | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
 | `DEPLOY_PORT`    | SSH port (optional, default 22)    | `22`                                     |

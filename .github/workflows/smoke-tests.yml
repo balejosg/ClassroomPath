@@ -32,12 +32,16 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
+
+      - name: Load staging deploy target
+        id: staging-target
+        run: node scripts/deploy-targets.mjs outputs staging >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: npm ci
@@ -45,7 +49,7 @@ jobs:
       - name: Run smoke tests against staging
         id: smoke
         env:
-          SMOKE_TEST_URL: https://classroompath-staging.duckdns.org
+          SMOKE_TEST_URL: ${{ steps.staging-target.outputs.public_url }}
           SMOKE_TEST_TIMEOUT: '30000'
         run: |
           echo "🔍 Running smoke tests against $SMOKE_TEST_URL"
@@ -58,7 +62,7 @@ jobs:
 
       - name: Upload smoke test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-test-staging-${{ github.run_id }}
           path: smoke-results.txt
@@ -85,14 +89,14 @@ jobs:
             ### Debug Commands
             \`\`\`bash
             # On staging server
-            curl -i https://classroompath-staging.duckdns.org/health
-            curl -i https://classroompath-staging.duckdns.org/api/config
+            curl -i ${{ steps.staging-target.outputs.api_health_url }}
+            curl -i ${{ steps.staging-target.outputs.api_config_url }}
             docker logs classroompath-api --tail 50
             \`\`\`
 
             ### Quick Fixes
             1. Check NPM advanced configuration
-            2. Verify \`CORS_ORIGINS\` env var includes \`https://classroompath-staging.duckdns.org\`
+            2. Verify \`CORS_ORIGINS\` env var includes \`${{ steps.staging-target.outputs.public_url }}\`
             3. Check if containers are healthy: \`docker compose ps\`
             `;
 
@@ -159,12 +163,16 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
+
+      - name: Load production deploy target
+        id: production-target
+        run: node scripts/deploy-targets.mjs outputs production >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: npm ci
@@ -172,7 +180,7 @@ jobs:
       - name: Run smoke tests against production
         id: smoke
         env:
-          SMOKE_TEST_URL: https://classroompath.duckdns.org
+          SMOKE_TEST_URL: ${{ steps.production-target.outputs.public_url }}
           SMOKE_TEST_TIMEOUT: '30000'
         run: |
           echo "🔍 Running smoke tests against $SMOKE_TEST_URL"
@@ -185,7 +193,7 @@ jobs:
 
       - name: Upload smoke test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-test-production-${{ github.run_id }}
           path: smoke-results.txt
@@ -214,8 +222,8 @@ jobs:
             ### Debug Commands
             \`\`\`bash
             # On production server
-            curl -i https://classroompath.duckdns.org/health
-            curl -i https://classroompath.duckdns.org/api/config
+            curl -i ${{ steps.production-target.outputs.api_health_url }}
+            curl -i ${{ steps.production-target.outputs.api_config_url }}
             docker logs classroompath-api --tail 50
             \`\`\`
             `;

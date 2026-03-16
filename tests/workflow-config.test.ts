@@ -84,5 +84,24 @@ describe('Workflow configuration hardening', () => {
       deployNeeds.includes('release-gate-staging'),
       'deploy-production should still depend on release-gate-staging'
     );
+
+    assert.ok(
+      jobs['release-evidence'],
+      'Deploy workflow should publish a release-evidence summary artifact'
+    );
+
+    const evidenceNeeds = normalizeNeeds(jobs['release-evidence']?.needs);
+    assert.ok(
+      evidenceNeeds.includes('deploy-production'),
+      'release-evidence should depend on deploy-production'
+    );
+    assert.ok(
+      evidenceNeeds.includes('smoke-test-production'),
+      'release-evidence should depend on smoke-test-production'
+    );
+    assert.ok(
+      evidenceNeeds.includes('rollback-production'),
+      'release-evidence should depend on rollback-production'
+    );
   });
 });

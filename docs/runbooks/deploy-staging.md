@@ -7,6 +7,8 @@
 
 Staging deploys are executed locally via SSH and always deploy `origin/main`.
 
+Canonical public targets live in `config/deploy-targets.json`.
+
 ## Prerequisites
 
 - `.env.local` configured (copy from `.env.local.example`)
@@ -25,10 +27,13 @@ npm run deploy:staging
 ## Expected Result
 
 - Script exits `0`
+- Script prints `Verification Status: PASS` or `Verification Status: PASS_WITH_FALLBACK`
 - Health checks pass:
   - `https://classroompath-staging.duckdns.org/cp/health`
   - `https://classroompath-staging.duckdns.org/health`
 - Smoke tests pass (script prints the summary)
+
+If the script reports `PASS_WITH_FALLBACK`, local smoke had to fall back to direct IP / relaxed CORS. Treat that as deploy evidence, but rerun a strict public-domain smoke pass before tagging production when possible.
 
 ## Promotion Gate
 

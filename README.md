@@ -10,6 +10,8 @@ Built on [OpenPath](https://github.com/balejosg/openpath) (OSS).
 
 ## Live URLs
 
+Machine-readable source of truth: `config/deploy-targets.json`
+
 | Environment    | URL                                       | Deploy Trigger           |
 | -------------- | ----------------------------------------- | ------------------------ |
 | **Production** | https://classroompath.eu                  | Git tag `v*`             |
@@ -133,6 +135,15 @@ npm run test:e2e:mobile
 PLAYWRIGHT_WORKERS=2 npm run verify:full
 ```
 
+## Release-Ready Definition
+
+- Local `verify:full` is green before push.
+- `npm run deploy:staging` exits `0` and reports `PASS` or `PASS_WITH_FALLBACK`.
+- `npm run test:release-gate:staging` is green before tagging.
+- The production tag workflow finishes green and publishes `release-evidence-<tag>`.
+
+If staging reports `PASS_WITH_FALLBACK`, the smoke run used direct-IP fallback and should be rerun in strict public-URL mode before the production tag whenever possible.
+
 ## Deployment
 
 Canonical runbooks:
@@ -150,6 +161,7 @@ npm run deploy:staging
 ```
 
 Staging deploy configuration is local-only via `.env.local` (see `.env.local.example`).
+Canonical public targets stay in `config/deploy-targets.json`.
 
 Before promoting to production, staging should pass the automated release gate:
 
@@ -160,6 +172,7 @@ npm run test:release-gate:staging
 ### Production (GitHub Actions)
 
 Production deploys are triggered by git tags `v*` only. The workflow runs a staging release gate first and only then rolls out to `https://classroompath.eu`.
+Each successful or failed tagged release now publishes a `release-evidence-<tag>` artifact plus a job summary showing the exact SHA, OpenPath SHA, immutable images, and deploy/smoke results.
 
 Required GitHub Secrets (production only):
 

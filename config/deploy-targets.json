@@ -1,0 +1,16 @@
+{
+  "staging": {
+    "publicUrl": "https://classroompath-staging.duckdns.org",
+    "gatewayHealthUrl": "https://classroompath-staging.duckdns.org/cp/health",
+    "readyUrl": "https://classroompath-staging.duckdns.org/cp/ready",
+    "apiHealthUrl": "https://classroompath-staging.duckdns.org/health",
+    "apiConfigUrl": "https://classroompath-staging.duckdns.org/api/config"
+  },
+  "production": {
+    "publicUrl": "https://classroompath.eu",
+    "gatewayHealthUrl": "https://classroompath.eu/cp/health",
+    "readyUrl": "https://classroompath.eu/cp/ready",
+    "apiHealthUrl": "https://classroompath.eu/health",
+    "apiConfigUrl": "https://classroompath.eu/api/config"
+  }
+}

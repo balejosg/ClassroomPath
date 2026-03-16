@@ -1,0 +1,47 @@
+# Verification Matrix
+
+> Status: maintained
+> Applies to: ClassroomPath release flow
+> Last verified: 2026-03-15
+> Source of truth: `docs/verification-matrix.md`
+
+This matrix is optimized for a solo-dev workflow: trust comes from clear evidence, not from duplicating the same checks in slower lanes.
+
+## Verification Lanes
+
+| Lane              | Purpose                                                         | Command / Source                                                       | Blocks release |
+| ----------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------- |
+| Commit            | Deterministic local confidence before pushing                   | `npm run verify:full` via pre-commit hook                              | Yes            |
+| Staging           | Verify the real deployed stack from a developer machine         | `npm run deploy:staging`                                               | Yes            |
+| Release gate      | Verify the public auth/verification payload contract on staging | `npm run test:release-gate:staging` and `.github/workflows/deploy.yml` | Yes            |
+| Production deploy | Roll out immutable images by tag only                           | `.github/workflows/deploy.yml`                                         | Yes            |
+| Production smoke  | Verify the live public stack after deploy                       | `tests/smoke.test.ts` in `.github/workflows/deploy.yml`                | Yes            |
+| Release evidence  | Publish a transparent summary of what passed                    | `release-evidence-<tag>` artifact + job summary                        | No             |
+
+## Risk To Proof Mapping
+
+| Risk                                      | Primary proof                            | Where it runs                     | Notes                                                           |
+| ----------------------------------------- | ---------------------------------------- | --------------------------------- | --------------------------------------------------------------- |
+| Broken build or type/lint regression      | `verify:full`                            | Developer machine                 | Fast local gate; intentionally not duplicated in GitHub Actions |
+| Regressed browser/UI flow                 | Playwright in `verify:full`              | Developer machine                 | Fast lane by default; stress suites stay opt-in                 |
+| Broken staging deployment                 | `npm run deploy:staging`                 | Developer machine + staging host  | Deploys `origin/main` and runs live smoke                       |
+| Public auth payload unsafe                | `tests/release-gate.test.ts`             | Staging                           | Confirms launch-safe verification URLs and fresh resend tokens  |
+| Production image mismatch                 | Immutable digest refs in deploy workflow | GitHub Actions                    | Digests are saved in `release-image-metadata-<tag>`             |
+| Production deploy drift                   | Tag-only deploy workflow                 | GitHub Actions                    | Production reconciles to the tagged commit only                 |
+| Production stack unavailable after deploy | `tests/smoke.test.ts`                    | GitHub Actions against production | Rollback remains available if smoke fails                       |
+
+## Reading Results
+
+- `PASS`: strict smoke verification used the canonical public URL.
+- `PASS_WITH_FALLBACK`: staging smoke had to fall back to direct IP / relaxed CORS and should be rerun in strict mode before tagging a release.
+- `FAIL`: the lane did not meet the release bar.
+
+## Release-Ready Definition
+
+Treat a release candidate as ready when all of these are true:
+
+1. Local `verify:full` passed before push.
+2. `npm run deploy:staging` exited `0` with `PASS` or a consciously reviewed `PASS_WITH_FALLBACK`.
+3. The staging release gate passed.
+4. The production tag workflow finished with production smoke green.
+5. The `release-evidence-<tag>` artifact matches the intended commit, OpenPath SHA, and image digests.
