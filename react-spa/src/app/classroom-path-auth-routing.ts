@@ -1,4 +1,4 @@
-export type AuthView = 'login' | 'register' | 'reset-password' | 'accept-invitation';
+export type AuthView = 'landing' | 'login' | 'register' | 'reset-password' | 'accept-invitation';
 
 export function normalizePathname(pathname: string): string {
   const trimmed = pathname.replace(/\/+$/, '');
@@ -11,7 +11,8 @@ export function getAuthViewFromPathname(pathname: string): AuthView {
   if (normalized.startsWith('/register')) return 'register';
   if (normalized.startsWith('/reset-password')) return 'reset-password';
   if (normalized.startsWith('/accept-invitation')) return 'accept-invitation';
-  return 'login';
+  if (normalized.startsWith('/login')) return 'login';
+  return 'landing';
 }
 
 export function isAuthPath(pathname: string): boolean {
@@ -34,7 +35,9 @@ export function getPathForAuthView(view: AuthView): string {
     case 'accept-invitation':
       return '/accept-invitation';
     case 'login':
-    default:
       return '/login';
+    case 'landing':
+    default:
+      return '/';
   }
 }

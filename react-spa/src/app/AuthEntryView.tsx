@@ -4,6 +4,7 @@ import { Login } from '../views/Login';
 import { Register } from '../views/Register';
 import { ResetPassword } from '../views/ResetPassword';
 import { AcceptInvitation } from '../views/AcceptInvitation';
+import { ClassroomPathLandingPage } from '../views/Landing';
 import type { AuthView } from './classroom-path-auth-routing';
 
 type AuthEntryViewProps = {
@@ -31,7 +32,6 @@ export function AuthEntryView(props: AuthEntryViewProps) {
         />
       );
     case 'login':
-    default:
       return (
         <Login
           onLogin={props.onAuthenticated}
@@ -39,5 +39,8 @@ export function AuthEntryView(props: AuthEntryViewProps) {
           onNavigateToResetPassword={() => props.onSetAuthView('reset-password')}
         />
       );
+    case 'landing':
+    default:
+      return <ClassroomPathLandingPage onNavigateToLogin={() => props.onSetAuthView('login')} />;
   }
 }
