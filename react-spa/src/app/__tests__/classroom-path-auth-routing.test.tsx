@@ -17,7 +17,9 @@ describe('classroom-path-auth-routing', () => {
     expect(getAuthViewFromPathname('/register')).toBe('register');
     expect(getAuthViewFromPathname('/reset-password/token')).toBe('reset-password');
     expect(getAuthViewFromPathname('/accept-invitation')).toBe('accept-invitation');
-    expect(getAuthViewFromPathname('/anything-else')).toBe('login');
+    expect(getAuthViewFromPathname('/login')).toBe('login');
+    expect(getAuthViewFromPathname('/')).toBe('landing');
+    expect(getAuthViewFromPathname('/anything-else')).toBe('landing');
   });
 
   it('recognizes auth-only paths', () => {
@@ -32,5 +34,6 @@ describe('classroom-path-auth-routing', () => {
     expect(getPathForAuthView('register')).toBe('/register');
     expect(getPathForAuthView('reset-password')).toBe('/reset-password');
     expect(getPathForAuthView('accept-invitation')).toBe('/accept-invitation');
+    expect(getPathForAuthView('landing')).toBe('/');
   });
 });
