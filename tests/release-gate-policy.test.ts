@@ -63,7 +63,7 @@ describe('release-gate policy', () => {
           payload: {
             verificationRequired: true,
             emailSent: true,
-            verificationUrl: 'https://classroompath.duckdns.org/login?token=abc123',
+            verificationUrl: 'https://classroompath.eu/login?token=abc123',
           },
         }),
       /expected origin/

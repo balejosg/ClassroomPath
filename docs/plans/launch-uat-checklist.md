@@ -2,6 +2,8 @@
 
 Date baseline: 2026-03-09
 
+Non-authoritative note: canonical deploy targets now live in `config/deploy-targets.json`.
+
 ## Identity and access
 
 - Register a new self-service user and confirm the terms version `2026-03-09` is persisted.
@@ -67,7 +69,7 @@ Environment tested: `staging` (`https://classroompath-staging.duckdns.org`)
 Evidence captured:
 
 - `2026-03-11T17:09:24+01:00`
-- `SMOKE_TEST_URL=https://classroompath-staging.duckdns.org SMOKE_ALLOW_MUTATIONS=1 npm run test:smoke`
+- `SMOKE_ALLOW_MUTATIONS=1 npm run test:smoke:staging`
 - Live `auth.register` call for `uat-admin-mmm8ghh5@test.local`
 - Local deterministic evidence from `ClassroomPath` commit `4e9f0fc` (`verify:full`, gateway/users integrations, waiting-room/org E2E)
 
@@ -141,7 +143,7 @@ Scope:
 Evidence captured:
 
 - `2026-03-12T18:00:00+01:00` approximate rerun window
-- `SMOKE_TEST_URL=https://classroompath-staging.duckdns.org SMOKE_ALLOW_MUTATIONS=1 npm run test:smoke` -> `18/18` pass
+- `SMOKE_ALLOW_MUTATIONS=1 npm run test:smoke:staging` -> `18/18` pass
 - Live `auth.register` call for `uat-signoff-1773294829115@test.local`
 - Live `auth.generateEmailVerificationToken` call for `uat-signoff-1773294829115@test.local`
 - ClassroomPath HEAD during revalidation: `3494ba4` (`fix(auth): keep resend verification local`)
@@ -205,7 +207,7 @@ Evidence captured:
 
 - `SMOKE_ALLOW_MUTATIONS=1 npm run test:smoke:staging` -> `18/18` pass
 - `npm run test:release-gate:staging` -> `2/2` pass
-- `BASE_URL=https://classroompath-staging.duckdns.org PLAYWRIGHT_WORKERS=1 npx playwright test tests/e2e/waiting-room.spec.ts --grep "should show waiting screen after requesting access" --retries=0` -> `1 passed`
+- `BASE_URL=$(node scripts/deploy-targets.mjs get staging publicUrl) PLAYWRIGHT_WORKERS=1 npx playwright test tests/e2e/waiting-room.spec.ts --grep "should show waiting screen after requesting access" --retries=0` -> `1 passed`
 - `npx playwright test tests/e2e/onboarding.spec.ts --retries=0` -> `1 passed`
 - `npx playwright test tests/e2e/waiting-room.spec.ts --retries=0` -> `8 passed`
 - `npx playwright test tests/e2e/organization.spec.ts --retries=0` -> `11 passed`

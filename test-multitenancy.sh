@@ -1,7 +1,13 @@
 #!/bin/bash
 set -e
 
-BASE_URL="${1:-https://classroompath-staging.duckdns.org}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -n "$1" ]; then
+  BASE_URL="$1"
+else
+  BASE_URL="$(node "$SCRIPT_DIR/scripts/deploy-targets.mjs" get staging publicUrl)"
+fi
 
 echo "=== Multi-Tenancy Isolation Test ==="
 echo "Target: $BASE_URL"

@@ -7,7 +7,7 @@
  *   E2E_NAV_DEBUG=1 npx playwright test tests/e2e/navigation-noop-repro.spec.ts --project=chromium --retries=0
  *
  * Usage (external env like staging/prod):
- *   BASE_URL=https://classroompath-staging.duckdns.org \
+ *   BASE_URL=$(node scripts/deploy-targets.mjs get staging publicUrl) \
  *   E2E_EMAIL=<email> E2E_PASSWORD=<password> \
  *   E2E_NAV_DEBUG=1 npx playwright test tests/e2e/navigation-noop-repro.spec.ts --project=chromium --retries=0
  */
