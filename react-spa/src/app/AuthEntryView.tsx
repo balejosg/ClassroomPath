@@ -5,6 +5,7 @@ import { Register } from '../views/Register';
 import { ResetPassword } from '../views/ResetPassword';
 import { AcceptInvitation } from '../views/AcceptInvitation';
 import { ClassroomPathLandingPage } from '../views/Landing';
+import { ClassroomPathPricingPage } from '../views/Pricing';
 import type { AuthView } from './classroom-path-auth-routing';
 
 type AuthEntryViewProps = {
@@ -39,6 +40,8 @@ export function AuthEntryView(props: AuthEntryViewProps) {
           onNavigateToResetPassword={() => props.onSetAuthView('reset-password')}
         />
       );
+    case 'pricing':
+      return <ClassroomPathPricingPage onNavigateToLogin={() => props.onSetAuthView('login')} />;
     case 'landing':
     default:
       return <ClassroomPathLandingPage onNavigateToLogin={() => props.onSetAuthView('login')} />;

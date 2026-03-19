@@ -4,15 +4,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { ClassroomPathLandingPage } from '../Landing';
 
 describe('ClassroomPathLandingPage', () => {
-  it('renders the updated trust messaging and managed service copy', () => {
+  it('renders the trust messaging and pricing entry point', () => {
     render(<ClassroomPathLandingPage onNavigateToLogin={vi.fn()} />);
 
     expect(screen.getByText('Transparencia basada en Software Libre')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Basado en OpenPath, ClassroomPath resuelve el mantenimiento e infraestructura para equipos educativos que necesitan fiabilidad, no complejidad.'
+        'Basado en OpenPath, ClassroomPath resuelve el mantenimiento y la infraestructura para equipos educativos que necesitan fiabilidad, no complejidad.'
       )
     ).toBeInTheDocument();
+    expect(screen.getByText('Cuando haya pantalla, que haya propósito.')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Ver precios' }).length).toBeGreaterThan(0);
   });
 
   it('navigates to login when the access CTA is clicked', () => {

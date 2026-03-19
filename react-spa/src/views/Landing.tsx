@@ -17,7 +17,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
     },
     {
       title: 'Servicio gestionado',
-      text: 'Basado en OpenPath, ClassroomPath resuelve el mantenimiento e infraestructura para equipos educativos que necesitan fiabilidad, no complejidad.',
+      text: 'Basado en OpenPath, ClassroomPath resuelve el mantenimiento y la infraestructura para equipos educativos que necesitan fiabilidad, no complejidad.',
     },
   ];
 
@@ -76,8 +76,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      {/* NAVBAR */}
-      <section className="bg-slate-900 border-b border-white/10 relative z-20">
+      <section className="relative z-20 border-b border-white/10 bg-slate-900">
         <div className="mx-auto max-w-7xl px-6 py-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -92,16 +91,22 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               </div>
             </div>
             <div className="flex items-center gap-6">
+              <a
+                href="/pricing"
+                className="text-sm font-medium text-slate-300 transition hover:text-white"
+              >
+                Precios
+              </a>
               <button
                 type="button"
                 onClick={onNavigateToLogin}
-                className="text-sm font-medium text-slate-300 hover:text-white transition"
+                className="text-sm font-medium text-slate-300 transition hover:text-white"
               >
                 Acceder
               </button>
               <a
                 href="#demo"
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 shadow-lg shadow-blue-900/50"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-blue-900/50 transition hover:bg-blue-700"
               >
                 Solicitar demo
               </a>
@@ -110,7 +115,6 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
         </div>
       </section>
 
-      {/* HERO (DARK) */}
       <section className="relative overflow-hidden bg-slate-900">
         <div
           className="absolute inset-0 opacity-5"
@@ -142,6 +146,12 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                 className="rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-900/50 transition hover:bg-blue-700"
               >
                 Reservar una demo
+              </a>
+              <a
+                href="/pricing"
+                className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Ver precios
               </a>
               <a
                 href="#como-funciona"
@@ -178,9 +188,9 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                   <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
                     <div className="text-sm font-medium text-white">Lo que no</div>
                     <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                      <li>• Navegación improductiva</li>
+                      <li>• Navegacion improductiva</li>
                       <li>• Distracciones no curriculares</li>
-                      <li>• Dependencia de supervisión constante</li>
+                      <li>• Dependencia de supervision constante</li>
                     </ul>
                   </div>
                 </div>
@@ -196,8 +206,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
         </div>
       </section>
 
-      {/* PILLARS (LIGHT) */}
-      <section className="bg-white border-b border-slate-200">
+      <section className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
           <div className="grid gap-6 md:grid-cols-3">
             {pillars.map((item) => (
@@ -213,8 +222,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
         </div>
       </section>
 
-      {/* WHY NOW (LIGHT) */}
-      <section className="mx-auto max-w-7xl px-6 py-20 lg:px-8 bg-slate-50">
+      <section className="mx-auto max-w-7xl bg-slate-50 px-6 py-20 lg:px-8">
         <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr]">
           <div>
             <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">
@@ -231,7 +239,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
             </p>
             <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600">
               Por eso hablamos de Internet intencional: un entorno donde el centro decide qué acceso
-              tiene sentido y dónde la tecnología deja de competir por la atención del alumnado.
+              tiene sentido y donde la tecnología deja de competir por la atención del alumnado.
             </p>
           </div>
 
@@ -249,7 +257,6 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
         </div>
       </section>
 
-      {/* WHAT IT OFFERS (LIGHT) */}
       <section className="border-y border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
           <div className="max-w-3xl">
@@ -264,7 +271,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
             {features.map((feature) => (
               <div
                 key={feature}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-7 text-slate-700 font-medium"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-medium leading-7 text-slate-700"
               >
                 {feature}
               </div>
@@ -273,8 +280,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
         </div>
       </section>
 
-      {/* HOW IT WORKS (LIGHT) */}
-      <section id="como-funciona" className="mx-auto max-w-7xl px-6 py-20 lg:px-8 bg-slate-50">
+      <section id="como-funciona" className="mx-auto max-w-7xl bg-slate-50 px-6 py-20 lg:px-8">
         <div className="max-w-3xl">
           <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">
             Cómo funciona
@@ -297,7 +303,6 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
         </div>
       </section>
 
-      {/* POSITIONING (MIXED TO DARK) */}
       <section className="border-y border-slate-200 bg-slate-900 text-white">
         <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
           <div className="grid gap-10 lg:grid-cols-[1fr_0.9fr] lg:items-center">
@@ -306,7 +311,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                 Posicionamiento
               </div>
               <h2 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                No somos “más edtech”. Somos una capa de sobriedad digital para el centro.
+                No somos más edtech. Somos una capa de sobriedad digital para el centro.
               </h2>
               <p className="mt-6 text-base leading-8 text-slate-300">
                 ClassroomPath no compite por atención. No busca multiplicar apps, contenidos o
@@ -317,15 +322,14 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
             <div className="rounded-xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur">
               <div className="text-sm font-medium text-slate-400">En una frase</div>
               <p className="mt-4 text-2xl font-semibold leading-10 text-white">
-                “Cuando haya pantalla, que haya propósito.”
+                Cuando haya pantalla, que haya propósito.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* FAQ (LIGHT) */}
-      <section className="mx-auto max-w-7xl px-6 py-20 lg:px-8 bg-slate-50">
+      <section className="mx-auto max-w-7xl bg-slate-50 px-6 py-20 lg:px-8">
         <div className="max-w-3xl">
           <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">
             Preguntas frecuentes
@@ -344,8 +348,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
         </div>
       </section>
 
-      {/* CTA (LIGHT) */}
-      <section id="demo" className="pb-24 bg-slate-50">
+      <section id="demo" className="bg-slate-50 pb-24">
         <div className="mx-auto max-w-5xl px-6 lg:px-8">
           <div className="rounded-2xl border border-blue-100 bg-white px-8 py-16 text-center shadow-lg">
             <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50">
@@ -363,6 +366,12 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
             </p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
               <a
+                href="/pricing"
+                className="rounded-lg border border-slate-300 bg-white px-6 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Ver precios
+              </a>
+              <a
                 href="mailto:hola@classroompath.com"
                 className="rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white shadow-md transition hover:bg-blue-700"
               >
@@ -371,7 +380,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               <button
                 type="button"
                 onClick={onNavigateToLogin}
-                className="rounded-lg border border-slate-300 bg-white px-6 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 flex items-center gap-2"
+                className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-6 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 Acceder al panel <ArrowRight size={16} />
               </button>

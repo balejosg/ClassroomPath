@@ -50,6 +50,18 @@ vi.mock('../../views/AcceptInvitation', () => ({
   ),
 }));
 
+vi.mock('../../views/Landing', () => ({
+  ClassroomPathLandingPage: ({ onNavigateToLogin }: { onNavigateToLogin: () => void }) => (
+    <button onClick={onNavigateToLogin}>Acceder desde landing</button>
+  ),
+}));
+
+vi.mock('../../views/Pricing', () => ({
+  ClassroomPathPricingPage: ({ onNavigateToLogin }: { onNavigateToLogin: () => void }) => (
+    <button onClick={onNavigateToLogin}>Acceder desde pricing</button>
+  ),
+}));
+
 describe('AuthEntryView', () => {
   it('renders login and forwards navigation callbacks', () => {
     const onAuthenticated = vi.fn();
@@ -118,5 +130,32 @@ describe('AuthEntryView', () => {
 
     expect(onSetAuthView).toHaveBeenCalledWith('login');
     expect(onAuthenticated).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders landing and pricing views with login navigation', () => {
+    const onSetAuthView = vi.fn();
+
+    const { rerender } = render(
+      <AuthEntryView
+        authView="landing"
+        onAuthenticated={() => undefined}
+        onSetAuthView={onSetAuthView}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Acceder desde landing' }));
+
+    rerender(
+      <AuthEntryView
+        authView="pricing"
+        onAuthenticated={() => undefined}
+        onSetAuthView={onSetAuthView}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Acceder desde pricing' }));
+
+    expect(onSetAuthView).toHaveBeenNthCalledWith(1, 'login');
+    expect(onSetAuthView).toHaveBeenNthCalledWith(2, 'login');
   });
 });
