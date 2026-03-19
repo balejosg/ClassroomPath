@@ -8,69 +8,69 @@ interface ClassroomPathLandingPageProps {
 export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLandingPageProps) {
   const pillars = [
     {
-      title: "Internet intencional",
-      text: "ClassroomPath convierte el acceso a Internet en una decisión pedagógica: solo lo necesario, cuando aporta valor al aprendizaje.",
+      title: 'Internet intencional',
+      text: 'ClassroomPath convierte el acceso a Internet en una decisión pedagógica: solo lo necesario, cuando aporta valor al aprendizaje.',
     },
     {
-      title: "Menos ruido digital",
-      text: "Ayuda a reducir distracciones, navegación improductiva y fricción en el aula sin convertir el centro en un entorno de vigilancia.",
+      title: 'Menos ruido digital',
+      text: 'Ayuda a reducir distracciones, navegación improductiva y fricción en el aula sin convertir el centro en un entorno de vigilancia.',
     },
     {
-      title: "Servicio gestionado",
-      text: "Basado en OpenPath, ClassroomPath añade operación, despliegue, soporte y gestión multi-centro para equipos educativos que necesitan fiabilidad, no complejidad.",
+      title: 'Servicio gestionado',
+      text: 'Basado en OpenPath, ClassroomPath resuelve el mantenimiento e infraestructura para equipos educativos que necesitan fiabilidad, no complejidad.',
     },
   ];
 
   const audiences = [
-    "Dirección que quiere una política digital clara y defendible",
-    "Equipos TIC que necesitan control real sin sobrecarga operativa",
-    "Profesorado que quiere abrir recursos útiles y bloquear distracciones",
-    "Centros que buscan una alternativa europea, transparente y sobria",
+    'Dirección que quiere una política digital clara y defendible',
+    'Equipos TIC que necesitan control real sin sobrecarga operativa',
+    'Profesorado que quiere abrir recursos útiles y bloquear distracciones',
+    'Centros que buscan una alternativa europea, transparente y sobria',
   ];
 
   const features = [
-    "Acceso por defecto cerrado y apertura de recursos con criterio",
-    "Políticas alineadas con el proyecto pedagógico del centro",
-    "Gestión centralizada para organizaciones y varios espacios educativos",
-    "Base técnica transparente sobre OpenPath",
-    "Implementación y soporte como servicio gestionado",
-    "Diseñado para entornos institucionales, no para alimentar más tiempo de pantalla",
+    'Acceso por defecto cerrado y apertura de recursos con criterio',
+    'Políticas alineadas con el proyecto pedagógico del centro',
+    'Gestión centralizada para organizaciones y varios espacios educativos',
+    'Base técnica transparente sobre OpenPath',
+    'Implementación y soporte como servicio gestionado',
+    'Diseñado para entornos institucionales, no para alimentar más tiempo de pantalla',
   ];
 
   const steps = [
     {
-      step: "01",
-      title: "Definimos la política",
-      text: "Mapeamos qué recursos necesita cada etapa, aula o equipo docente.",
+      step: '01',
+      title: 'Definimos la política',
+      text: 'Mapeamos qué recursos necesita cada etapa, aula o equipo docente.',
     },
     {
-      step: "02",
-      title: "Desplegamos y operamos",
-      text: "Configuramos ClassroomPath como servicio gestionado para que el centro no tenga que sostener la complejidad técnica.",
+      step: '02',
+      title: 'Desplegamos y operamos',
+      text: 'Configuramos ClassroomPath como servicio gestionado para que el centro no tenga que sostener la complejidad técnica.',
     },
     {
-      step: "03",
-      title: "Medimos foco y estabilidad",
-      text: "El centro gana una infraestructura más calmada, más gobernable y más coherente con una cultura de uso digital responsable.",
+      step: '03',
+      title: 'Medimos foco y estabilidad',
+      text: 'El centro gana una infraestructura más calmada, más gobernable y más coherente con una cultura de uso digital responsable.',
     },
   ];
 
   const faqs = [
     {
-      q: "¿ClassroomPath promueve más uso de pantallas?",
-      a: "No. ClassroomPath está pensado para centros que quieren usar tecnología con más criterio. No vende más exposición digital; ayuda a limitar Internet a contextos y recursos que sí tienen sentido pedagógico.",
+      q: '¿ClassroomPath promueve más uso de pantallas?',
+      a: 'No. ClassroomPath está pensado para centros que quieren usar tecnología con más criterio. No vende más exposición digital; ayuda a limitar Internet a contextos y recursos que sí tienen sentido pedagógico.',
     },
     {
-      q: "¿Es un filtro escolar más?",
-      a: "Es una propuesta distinta: menos enfoque en vigilancia, más enfoque en gobernanza, propósito educativo y operación fiable como servicio gestionado.",
+      q: '¿Es un filtro escolar más?',
+      a: 'Es una propuesta distinta: menos enfoque en vigilancia, más enfoque en gobernanza, propósito educativo y operación fiable como servicio gestionado.',
     },
     {
-      q: "¿Qué relación tiene con OpenPath?",
-      a: "OpenPath es la base tecnológica. ClassroomPath es la capa de servicio gestionado: despliegue, operación, soporte y experiencia pensada para instituciones educativas.",
+      q: '¿Qué relación tiene con OpenPath?',
+      a: 'OpenPath es la base tecnológica. ClassroomPath es la capa de servicio gestionado: despliegue, operación, soporte y experiencia pensada para instituciones educativas.',
     },
     {
-      q: "¿Para qué centros encaja mejor?",
-      a: "Especialmente para centros con dispositivos institucionales, aulas de informática, FP, laboratorios o entornos donde el centro necesita control claro sobre el acceso a Internet.",
+      q: '¿Para qué centros encaja mejor?',
+      a: 'Especialmente para centros con dispositivos institucionales, aulas de informática, FP, laboratorios o entornos donde el centro necesita control claro sobre el acceso a Internet.',
     },
   ];
 
@@ -85,8 +85,10 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                 <ShieldCheck size={24} className="text-white" />
               </div>
               <div>
-                <div className="text-base font-semibold tracking-tight text-white">ClassroomPath</div>
-                <div className="text-sm text-slate-400">Managed service sobre OpenPath</div>
+                <div className="text-base font-semibold tracking-tight text-white">
+                  ClassroomPath
+                </div>
+                <div className="text-sm text-slate-400">Transparencia basada en Software Libre</div>
               </div>
             </div>
             <div className="flex items-center gap-6">
@@ -126,10 +128,13 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               La forma serena de gestionar Internet en el centro educativo.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-8 text-slate-300">
-              ClassroomPath ayuda a los centros a recuperar el control sobre el acceso a Internet en dispositivos institucionales. No para añadir más tecnología, sino para usarla mejor.
+              ClassroomPath ayuda a los centros a recuperar el control sobre el acceso a Internet en
+              dispositivos institucionales. No para añadir más tecnología, sino para usarla mejor.
             </p>
             <p className="mt-4 max-w-xl text-base leading-7 text-slate-400">
-              Un servicio gestionado construido sobre OpenPath para crear entornos digitales más enfocados, más gobernables y más coherentes con la nueva sensibilidad educativa frente al exceso de pantallas.
+              Un servicio gestionado construido sobre OpenPath para crear entornos digitales más
+              enfocados, más gobernables y más coherentes con la nueva sensibilidad educativa frente
+              al exceso de pantallas.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <a
@@ -144,11 +149,6 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               >
                 Ver cómo funciona
               </a>
-            </div>
-            <div className="mt-8 grid gap-3 text-sm text-slate-400 sm:grid-cols-3">
-              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">Default-deny con propósito pedagógico</div>
-              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">Operado como servicio gestionado</div>
-              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">Transparencia técnica sobre OpenPath</div>
             </div>
           </div>
 
@@ -201,7 +201,10 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
         <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
           <div className="grid gap-6 md:grid-cols-3">
             {pillars.map((item) => (
-              <div key={item.title} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div
+                key={item.title}
+                className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+              >
                 <div className="text-lg font-bold text-slate-900">{item.title}</div>
                 <p className="mt-3 text-sm leading-7 text-slate-600">{item.text}</p>
               </div>
@@ -214,15 +217,21 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
       <section className="mx-auto max-w-7xl px-6 py-20 lg:px-8 bg-slate-50">
         <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr]">
           <div>
-            <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">Por qué ahora</div>
+            <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">
+              Por qué ahora
+            </div>
             <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              Cuando los centros quieren reducir el exceso digital, necesitan mejor infraestructura, no más ruido.
+              Cuando los centros quieren reducir el exceso digital, necesitan mejor infraestructura,
+              no más ruido.
             </h2>
             <p className="mt-6 max-w-2xl text-base leading-8 text-slate-600">
-              ClassroomPath nace para un momento en el que muchas instituciones educativas están revisando el papel de las pantallas. La respuesta no es eliminar todo uso digital, sino hacer que el uso inevitable sea más claro, más limitado y más pedagógico.
+              ClassroomPath nace para un momento en el que muchas instituciones educativas están
+              revisando el papel de las pantallas. La respuesta no es eliminar todo uso digital,
+              sino hacer que el uso inevitable sea más claro, más limitado y más pedagógico.
             </p>
             <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600">
-              Por eso hablamos de Internet intencional: un entorno donde el centro decide qué acceso tiene sentido y dónde la tecnología deja de competir por la atención del alumnado.
+              Por eso hablamos de Internet intencional: un entorno donde el centro decide qué acceso
+              tiene sentido y dónde la tecnología deja de competir por la atención del alumnado.
             </p>
           </div>
 
@@ -244,14 +253,19 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
       <section className="border-y border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
           <div className="max-w-3xl">
-            <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">Qué ofrece</div>
+            <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">
+              Qué ofrece
+            </div>
             <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
               Control útil para el centro. Experiencia simple para quien enseña.
             </h2>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2">
             {features.map((feature) => (
-              <div key={feature} className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-7 text-slate-700 font-medium">
+              <div
+                key={feature}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-7 text-slate-700 font-medium"
+              >
                 {feature}
               </div>
             ))}
@@ -262,14 +276,19 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
       {/* HOW IT WORKS (LIGHT) */}
       <section id="como-funciona" className="mx-auto max-w-7xl px-6 py-20 lg:px-8 bg-slate-50">
         <div className="max-w-3xl">
-          <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">Cómo funciona</div>
+          <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">
+            Cómo funciona
+          </div>
           <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
             Una implantación pensada para centros que quieren gobernanza, no más carga operativa.
           </h2>
         </div>
         <div className="mt-12 grid gap-6 lg:grid-cols-3">
           {steps.map((item) => (
-            <div key={item.step} className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+            <div
+              key={item.step}
+              className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm"
+            >
               <div className="text-sm font-bold text-blue-600">{item.step}</div>
               <div className="mt-4 text-xl font-bold text-slate-900">{item.title}</div>
               <p className="mt-3 text-sm leading-7 text-slate-600">{item.text}</p>
@@ -283,12 +302,16 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
         <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
           <div className="grid gap-10 lg:grid-cols-[1fr_0.9fr] lg:items-center">
             <div>
-              <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-400">Posicionamiento</div>
+              <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-400">
+                Posicionamiento
+              </div>
               <h2 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl">
                 No somos “más edtech”. Somos una capa de sobriedad digital para el centro.
               </h2>
               <p className="mt-6 text-base leading-8 text-slate-300">
-                ClassroomPath no compite por atención. No busca multiplicar apps, contenidos o estímulos. Su papel es hacer posible una política digital más tranquila y defendible para equipos directivos, docentes y familias.
+                ClassroomPath no compite por atención. No busca multiplicar apps, contenidos o
+                estímulos. Su papel es hacer posible una política digital más tranquila y defendible
+                para equipos directivos, docentes y familias.
               </p>
             </div>
             <div className="rounded-xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur">
@@ -304,7 +327,9 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
       {/* FAQ (LIGHT) */}
       <section className="mx-auto max-w-7xl px-6 py-20 lg:px-8 bg-slate-50">
         <div className="max-w-3xl">
-          <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">Preguntas frecuentes</div>
+          <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">
+            Preguntas frecuentes
+          </div>
           <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
             Lo que suelen preguntar los centros.
           </h2>
@@ -326,12 +351,15 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
             <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50">
               <ShieldCheck size={32} className="text-blue-600" />
             </div>
-            <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">Pasos siguientes</div>
+            <div className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">
+              Pasos siguientes
+            </div>
             <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
               Descubre cómo sería una política de Internet más clara para tu centro.
             </h2>
             <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600">
-              Te mostramos cómo implantar ClassroomPath, qué tipo de centros encajan mejor y cómo plantear un piloto sin añadir complejidad innecesaria al equipo.
+              Te mostramos cómo implantar ClassroomPath, qué tipo de centros encajan mejor y cómo
+              plantear un piloto sin añadir complejidad innecesaria al equipo.
             </p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
               <a

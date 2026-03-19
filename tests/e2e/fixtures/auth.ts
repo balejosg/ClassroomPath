@@ -11,13 +11,16 @@ import { parseTrpcResult, waitForAnyVisible, waitForVisibleResult, withRetry } f
 import { waitForPostAuthScreen } from './waiters';
 
 export async function openRegisterForm(page: Page): Promise<void> {
-  await page.goto('/');
+  await page.goto('/register');
   await page.waitForLoadState('domcontentloaded');
 
   const registerEmail = page.getByTestId('register-email');
   if (await registerEmail.isVisible().catch(() => false)) {
     return;
   }
+
+  await page.goto('/');
+  await page.waitForLoadState('domcontentloaded');
 
   const registerCta = page.getByTestId('navigate-to-register');
   await expect(registerCta).toBeVisible({ timeout: 10000 });
@@ -114,13 +117,28 @@ export async function registerUser(page: Page, user: TestUser): Promise<void> {
   await waitForAnyVisible(successLocators, 20000, `a post-verification screen for ${user.email}`);
 }
 
+async function openLoginForm(page: Page): Promise<void> {
+  await page.goto('/login');
+  await page.waitForLoadState('domcontentloaded');
+
+  const loginEmail = page.getByTestId('login-email');
+  if (await loginEmail.isVisible().catch(() => false)) {
+    return;
+  }
+
+  await page.goto('/');
+  await page.waitForLoadState('domcontentloaded');
+
+  const loginCta = page.getByRole('button', { name: 'Acceder', exact: true });
+  await expect(loginCta).toBeVisible({ timeout: 10000 });
+  await loginCta.click();
+  await loginEmail.waitFor({ state: 'visible', timeout: 10000 });
+}
+
 export async function loginUser(page: Page, email: string, password: string): Promise<void> {
   await withRetry(
     async () => {
-      await page.goto('/');
-      await page.waitForLoadState('domcontentloaded');
-
-      await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 10000 });
+      await openLoginForm(page);
 
       await page.getByTestId('login-email').fill(email);
       await page.getByTestId('login-password').fill(password);

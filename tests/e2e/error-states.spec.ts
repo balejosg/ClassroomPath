@@ -118,10 +118,25 @@ test.describe('Session Error Handling', () => {
     // Clear session (ClassroomPath persists auth in localStorage)
     await clearAuth(context);
 
-    // Reload; app should show login screen
+    // Reload; app should show an unauthenticated entry point.
     await page.reload();
+    await expect
+      .poll(
+        async () => {
+          const loginVisible = await page
+            .getByTestId('login-email')
+            .isVisible()
+            .catch(() => false);
+          const landingEntryVisible = await page
+            .getByRole('button', { name: 'Acceder', exact: true })
+            .isVisible()
+            .catch(() => false);
 
-    await expect(page.getByTestId('login-email')).toBeVisible({ timeout: 15000 });
+          return loginVisible || landingEntryVisible;
+        },
+        { timeout: 15000, message: 'Expected an unauthenticated entry point after session expiry' }
+      )
+      .toBe(true);
   });
 
   test('should handle concurrent session gracefully @errors @session', async ({
@@ -148,9 +163,13 @@ test.describe('Session Error Handling', () => {
       .getByTestId('login-email')
       .isVisible()
       .catch(() => false);
+    const isBackAtLanding = await page
+      .getByRole('button', { name: 'Acceder', exact: true })
+      .isVisible()
+      .catch(() => false);
     const hasSessionWarning = await page.getByText(/sesión|session|otro dispositivo/i).isVisible();
 
-    expect(isStillLoggedIn || isBackAtLogin || hasSessionWarning).toBe(true);
+    expect(isStillLoggedIn || isBackAtLogin || isBackAtLanding || hasSessionWarning).toBe(true);
 
     await context2.close();
   });
@@ -190,6 +209,10 @@ test.describe('Session Error Handling', () => {
             .getByTestId('login-email')
             .isVisible()
             .catch(() => false);
+          const hasLandingRedirect = await page
+            .getByRole('button', { name: 'Acceder', exact: true })
+            .isVisible()
+            .catch(() => false);
           const hasErrorDisplay = await page
             .locator('[role="alert"]')
             .first()
@@ -205,6 +228,7 @@ test.describe('Session Error Handling', () => {
             hasDenied ||
             hasAccessCheckError ||
             hasLoginRedirect ||
+            hasLandingRedirect ||
             hasErrorDisplay ||
             hasGenericError
           );
