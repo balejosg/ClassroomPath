@@ -24,9 +24,25 @@ export const OPENPATH_PROXY_MANIFEST = {
     },
     {
       method: 'use',
+      path: '/api/enroll',
+    },
+    {
+      method: 'use',
+      path: '/api/agent/windows/bootstrap',
+    },
+    {
+      method: 'use',
       path: '/api/machines/events',
       proxyTimeout: 0,
       timeout: 0,
+    },
+    {
+      method: 'use',
+      path: '/api/machines',
+    },
+    {
+      method: 'use',
+      path: '/w',
     },
   ],
   notFoundRoutes: ['/v2', '/export'],

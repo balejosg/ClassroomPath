@@ -12,6 +12,7 @@ import {
 
 let server: Server | undefined;
 let baseUrl = '';
+const proxyOptions: unknown[] = [];
 
 await describe('gateway route registrars', { concurrency: false }, async () => {
   before(async () => {
@@ -31,7 +32,8 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
 
     registerGatewayProxyRoutes(app, {
       openPathApiTarget: 'http://openpath.test',
-      proxyMiddlewareFactory: (() => {
+      proxyMiddlewareFactory: ((options: unknown) => {
+        proxyOptions.push(options);
         const handler: RequestHandler = (_req, res) => {
           res.status(418).json({ proxied: true });
         };
@@ -124,5 +126,41 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
 
     assert.strictEqual(response.status, 418);
     assert.deepStrictEqual(await response.json(), { proxied: true });
+  });
+
+  test('registerGatewayProxyRoutes proxies the classroom enrollment ticket flow', async () => {
+    const response = await fetch(`${baseUrl}/api/enroll/cls_123/ticket`, {
+      method: 'POST',
+      headers: {
+        Cookie: 'cp_access_token=test-token',
+      },
+    });
+
+    assert.strictEqual(response.status, 418);
+    assert.deepStrictEqual(await response.json(), { proxied: true });
+  });
+
+  test('registerGatewayProxyRoutes proxies enrollment scripts and tokenized downloads', async () => {
+    const enrollResponse = await fetch(`${baseUrl}/api/enroll/cls_123`);
+    assert.strictEqual(enrollResponse.status, 418);
+
+    const bootstrapResponse = await fetch(`${baseUrl}/api/agent/windows/bootstrap/latest.json`);
+    assert.strictEqual(bootstrapResponse.status, 418);
+
+    const whitelistResponse = await fetch(`${baseUrl}/w/token-123/whitelist.txt`);
+    assert.strictEqual(whitelistResponse.status, 418);
+  });
+
+  test('registerGatewayProxyRoutes configures proxy request auth injection for enrollment tickets', () => {
+    const hasProxyReqHook = proxyOptions.some((options) => {
+      const maybeOptions = options as {
+        on?: {
+          proxyReq?: unknown;
+        };
+      };
+      return typeof maybeOptions.on?.proxyReq === 'function';
+    });
+
+    assert.strictEqual(hasProxyReqHook, true);
   });
 });

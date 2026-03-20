@@ -113,6 +113,9 @@ export function registerGatewayProxyRoutes(app: Express, options: GatewayProxyRo
     const handler = proxyMiddlewareFactory({
       target: options.openPathApiTarget,
       changeOrigin: true,
+      on: {
+        proxyReq: injectEnrollTicketAuth,
+      },
       ...('proxyTimeout' in route ? { proxyTimeout: route.proxyTimeout } : {}),
       ...('timeout' in route ? { timeout: route.timeout } : {}),
     });

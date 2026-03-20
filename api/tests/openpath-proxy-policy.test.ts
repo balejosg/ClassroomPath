@@ -10,7 +10,15 @@ void describe('openpath-proxy-policy', () => {
   test('exports a single manifest for upstream exposure and blocking policy', () => {
     assert.deepStrictEqual(
       OPENPATH_PROXY_MANIFEST.proxyRoutes.map((route) => route.path),
-      ['/health', '/api/config', '/api/machines/events']
+      [
+        '/health',
+        '/api/config',
+        '/api/enroll',
+        '/api/agent/windows/bootstrap',
+        '/api/machines/events',
+        '/api/machines',
+        '/w',
+      ]
     );
     assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.notFoundRoutes, ['/v2', '/export']);
     assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.blockedPassthroughPrefixes, [
@@ -29,8 +37,18 @@ void describe('openpath-proxy-policy', () => {
   test('returns the normalized blocked passthrough path while using the shared manifest', () => {
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/health'), null);
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/config?source=smoke'), null);
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/enroll/cls_123/ticket'), null);
+    assert.strictEqual(
+      findBlockedOpenPathPassthroughPath('/api/agent/windows/bootstrap/latest.json'),
+      null
+    );
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/machines/register'), null);
+    assert.strictEqual(
+      findBlockedOpenPathPassthroughPath('/api/machines/pc-01/rotate-download-token'),
+      null
+    );
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/w/token-123/whitelist.txt'), null);
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/users?page=1'), '/api/users');
-    assert.strictEqual(findBlockedOpenPathPassthroughPath('/w/agent/install'), '/w/agent/install');
   });
 
   test('blocks exact matches', () => {
