@@ -26,6 +26,8 @@ RUN set -eux; \
 # Copy source
 COPY shared/ ./shared/
 COPY api/ ./api/
+COPY windows/ ./windows/
+COPY VERSION ./VERSION
 
 # Build everything
 RUN npm run build -w @openpath/shared
@@ -54,7 +56,9 @@ RUN set -eux; \
 # Copy the built files into the locations where Node expects them
 COPY --from=builder /app/api/dist ./api/dist
 COPY --from=builder /app/shared/dist ./shared/dist
+COPY --from=builder /app/windows ./windows
+COPY --from=builder /app/VERSION ./VERSION
 
 EXPOSE 3000
-# Updated CMD to match actual build structure (dist/src/server.js)
-CMD ["node", "api/dist/src/server.js"]
+WORKDIR /app/api
+CMD ["node", "dist/src/server.js"]

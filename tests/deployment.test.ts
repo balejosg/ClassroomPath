@@ -40,6 +40,7 @@ interface DockerCompose {
 
 void describe('Docker Compose Configuration', () => {
   const composePath = resolve(projectRoot, 'docker/docker-compose.yml');
+  const apiDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.api');
 
   void test('docker-compose.yml exists', () => {
     assert.ok(existsSync(composePath), 'docker-compose.yml should exist');
@@ -117,6 +118,35 @@ void describe('Docker Compose Configuration', () => {
     assert.ok(
       content.includes('upstream/openpath'),
       'Should reference OpenPath submodule for builds/volumes'
+    );
+  });
+
+  void test('OpenPath API runtime image preserves Windows bootstrap assets and cwd', () => {
+    const content = readFileSync(apiDockerfilePath, 'utf-8');
+
+    assert.ok(
+      content.includes('COPY windows/ ./windows/'),
+      'Builder image should copy Windows agent sources into the build context'
+    );
+    assert.ok(
+      content.includes('COPY VERSION ./VERSION'),
+      'Builder image should copy VERSION so runtime can report the server version'
+    );
+    assert.ok(
+      content.includes('COPY --from=builder /app/windows ./windows'),
+      'Runtime image should include the Windows bootstrap scripts'
+    );
+    assert.ok(
+      content.includes('COPY --from=builder /app/VERSION ./VERSION'),
+      'Runtime image should include VERSION for readServerVersion()'
+    );
+    assert.ok(
+      content.includes('WORKDIR /app/api'),
+      'Runtime image should start from /app/api so ../windows resolves correctly'
+    );
+    assert.ok(
+      content.includes('CMD ["node", "dist/src/server.js"]'),
+      'Runtime image should execute the API from the /app/api working directory'
     );
   });
 });
