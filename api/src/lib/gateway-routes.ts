@@ -113,6 +113,7 @@ export function registerGatewayProxyRoutes(app: Express, options: GatewayProxyRo
     const handler = proxyMiddlewareFactory({
       target: options.openPathApiTarget,
       changeOrigin: true,
+      pathRewrite: (_path: string, req: Request) => req.originalUrl || req.url,
       on: {
         proxyReq: injectEnrollTicketAuth,
       },

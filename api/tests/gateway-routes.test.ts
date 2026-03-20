@@ -34,8 +34,18 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
       openPathApiTarget: 'http://openpath.test',
       proxyMiddlewareFactory: ((options: unknown) => {
         proxyOptions.push(options);
-        const handler: RequestHandler = (_req, res) => {
-          res.status(418).json({ proxied: true });
+        const proxyConfig = options as {
+          pathRewrite?: (path: string, req: { originalUrl?: string; url: string }) => string;
+        };
+        const handler: RequestHandler = (req, res) => {
+          const proxiedPath =
+            typeof proxyConfig.pathRewrite === 'function'
+              ? proxyConfig.pathRewrite(req.url, {
+                  originalUrl: req.originalUrl,
+                  url: req.url,
+                })
+              : req.url;
+          res.status(418).json({ proxied: true, path: proxiedPath });
         };
         return handler;
       }) as never,
@@ -125,7 +135,10 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
     const response = await fetch(`${baseUrl}/api/config?source=smoke`);
 
     assert.strictEqual(response.status, 418);
-    assert.deepStrictEqual(await response.json(), { proxied: true });
+    assert.deepStrictEqual(await response.json(), {
+      proxied: true,
+      path: '/api/config?source=smoke',
+    });
   });
 
   test('registerGatewayProxyRoutes proxies the classroom enrollment ticket flow', async () => {
@@ -137,18 +150,33 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
     });
 
     assert.strictEqual(response.status, 418);
-    assert.deepStrictEqual(await response.json(), { proxied: true });
+    assert.deepStrictEqual(await response.json(), {
+      proxied: true,
+      path: '/api/enroll/cls_123/ticket',
+    });
   });
 
   test('registerGatewayProxyRoutes proxies enrollment scripts and tokenized downloads', async () => {
     const enrollResponse = await fetch(`${baseUrl}/api/enroll/cls_123`);
     assert.strictEqual(enrollResponse.status, 418);
+    assert.deepStrictEqual(await enrollResponse.json(), {
+      proxied: true,
+      path: '/api/enroll/cls_123',
+    });
 
     const bootstrapResponse = await fetch(`${baseUrl}/api/agent/windows/bootstrap/latest.json`);
     assert.strictEqual(bootstrapResponse.status, 418);
+    assert.deepStrictEqual(await bootstrapResponse.json(), {
+      proxied: true,
+      path: '/api/agent/windows/bootstrap/latest.json',
+    });
 
     const whitelistResponse = await fetch(`${baseUrl}/w/token-123/whitelist.txt`);
     assert.strictEqual(whitelistResponse.status, 418);
+    assert.deepStrictEqual(await whitelistResponse.json(), {
+      proxied: true,
+      path: '/w/token-123/whitelist.txt',
+    });
   });
 
   test('registerGatewayProxyRoutes configures proxy request auth injection for enrollment tickets', () => {
