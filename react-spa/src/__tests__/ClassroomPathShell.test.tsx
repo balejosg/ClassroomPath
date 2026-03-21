@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockIsAdmin = vi.fn();
+const mockSetPendingSelectedClassroomId = vi.fn();
 
 vi.mock('@openpath/src/components/Sidebar', () => ({
   default: ({
@@ -34,13 +35,18 @@ vi.mock('@openpath/src/components/Header', () => ({
 vi.mock('@openpath/src/views/Dashboard', () => ({
   default: ({
     onNavigateToRules,
+    onNavigateToClassroom,
   }: {
     onNavigateToRules: (group: { id: string; name: string; readOnly?: boolean }) => void;
+    onNavigateToClassroom?: (classroom: { id: string; name: string }) => void;
   }) => (
     <div>
       <div>Dashboard View</div>
       <button onClick={() => onNavigateToRules({ id: 'grp-1', name: 'Grupo Demo' })}>
         Dashboard a reglas
+      </button>
+      <button onClick={() => onNavigateToClassroom?.({ id: 'classroom-1', name: 'Informática 3' })}>
+        Dashboard a aula
       </button>
     </div>
   ),
@@ -110,6 +116,11 @@ vi.mock('@openpath/src/lib/auth', () => ({
   isAdmin: () => mockIsAdmin(),
 }));
 
+vi.mock('@openpath/src/hooks/useClassroomsViewModel', () => ({
+  setPendingSelectedClassroomId: (classroomId: string | null) =>
+    mockSetPendingSelectedClassroomId(classroomId),
+}));
+
 vi.mock('../views/OrganizationUsers', () => ({
   OrganizationUsers: () => <div>Organization Users View</div>,
 }));
@@ -120,6 +131,7 @@ describe('ClassroomPathShell', () => {
   beforeEach(() => {
     mockIsAdmin.mockReset();
     mockIsAdmin.mockReturnValue(true);
+    mockSetPendingSelectedClassroomId.mockReset();
     window.history.pushState({}, '', '/usuarios');
   });
 
@@ -192,6 +204,19 @@ describe('ClassroomPathShell', () => {
     expect(screen.getByRole('heading', { name: 'Grupos y Políticas' })).toBeInTheDocument();
     expect(screen.getByText('Groups View')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/politicas');
+  });
+
+  it('navigates to classrooms for a selected classroom from the dashboard', () => {
+    window.history.pushState({}, '', '/');
+
+    render(<ClassroomPathShell />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard a aula' }));
+
+    expect(screen.getByRole('heading', { name: 'Gestión de Aulas' })).toBeInTheDocument();
+    expect(screen.getByText('Classrooms View')).toBeInTheDocument();
+    expect(mockSetPendingSelectedClassroomId).toHaveBeenCalledWith('classroom-1');
+    expect(window.location.pathname).toBe('/aulas');
   });
 
   it('falls back to the dashboard when an unknown tab is requested', () => {

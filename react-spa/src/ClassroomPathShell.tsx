@@ -10,6 +10,7 @@ import Settings from '@openpath/src/views/Settings';
 import DomainRequests from '@openpath/src/views/DomainRequests';
 import RulesManager from '@openpath/src/views/RulesManager';
 import { isAdmin } from '@openpath/src/lib/auth';
+import { setPendingSelectedClassroomId } from '@openpath/src/hooks/useClassroomsViewModel';
 
 import { OrganizationUsers } from './views/OrganizationUsers';
 
@@ -101,11 +102,19 @@ export default function ClassroomPathShell() {
     setActiveTab('groups');
   };
 
+  const handleNavigateToClassroom = (classroom: { id: string; name: string }) => {
+    setPendingSelectedClassroomId(classroom.id);
+    setActiveTab('classrooms');
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
         return admin ? (
-          <Dashboard onNavigateToRules={handleNavigateToRules} />
+          <Dashboard
+            onNavigateToRules={handleNavigateToRules}
+            onNavigateToClassroom={handleNavigateToClassroom}
+          />
         ) : (
           <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
         );
@@ -140,7 +149,10 @@ export default function ClassroomPathShell() {
         return <Settings />;
       default:
         return admin ? (
-          <Dashboard onNavigateToRules={handleNavigateToRules} />
+          <Dashboard
+            onNavigateToRules={handleNavigateToRules}
+            onNavigateToClassroom={handleNavigateToClassroom}
+          />
         ) : (
           <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
         );
@@ -173,6 +185,7 @@ export default function ClassroomPathShell() {
       <Sidebar
         activeTab={activeTab}
         setActiveTab={(tab) => {
+          setPendingSelectedClassroomId(null);
           setActiveTab(tab as AppTab);
           setSidebarOpen(false);
         }}
