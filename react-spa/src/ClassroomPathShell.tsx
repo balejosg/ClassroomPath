@@ -10,7 +10,6 @@ import Settings from '@openpath/src/views/Settings';
 import DomainRequests from '@openpath/src/views/DomainRequests';
 import RulesManager from '@openpath/src/views/RulesManager';
 import { isAdmin } from '@openpath/src/lib/auth';
-import { setPendingSelectedClassroomId } from '@openpath/src/hooks/useClassroomsViewModel';
 
 import { OrganizationUsers } from './views/OrganizationUsers';
 
@@ -69,6 +68,7 @@ export default function ClassroomPathShell() {
   const [activeTab, setActiveTab] = useState<AppTab>(() => getTabFromPathname(initialPathname));
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<SelectedGroup | null>(null);
+  const [pendingSelectedClassroomId, setPendingSelectedClassroomId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -107,6 +107,16 @@ export default function ClassroomPathShell() {
     setActiveTab('classrooms');
   };
 
+  const handlePendingSelectedClassroomIdConsumed = () => {
+    setPendingSelectedClassroomId(null);
+  };
+
+  const handleSidebarTabChange = (tab: string) => {
+    setPendingSelectedClassroomId(null);
+    setActiveTab(tab as AppTab);
+    setSidebarOpen(false);
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -119,7 +129,12 @@ export default function ClassroomPathShell() {
           <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
         );
       case 'classrooms':
-        return <Classrooms />;
+        return (
+          <Classrooms
+            initialSelectedClassroomId={pendingSelectedClassroomId}
+            onInitialSelectedClassroomIdConsumed={handlePendingSelectedClassroomIdConsumed}
+          />
+        );
       case 'groups':
         return <Groups onNavigateToRules={handleNavigateToRules} />;
       case 'rules':
@@ -182,15 +197,7 @@ export default function ClassroomPathShell() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={(tab) => {
-          setPendingSelectedClassroomId(null);
-          setActiveTab(tab as AppTab);
-          setSidebarOpen(false);
-        }}
-        isOpen={sidebarOpen}
-      />
+      <Sidebar activeTab={activeTab} setActiveTab={handleSidebarTabChange} isOpen={sidebarOpen} />
 
       {sidebarOpen ? (
         <div

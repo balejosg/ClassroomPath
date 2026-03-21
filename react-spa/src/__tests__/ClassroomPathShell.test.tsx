@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockIsAdmin = vi.fn();
-const mockSetPendingSelectedClassroomId = vi.fn();
 
 vi.mock('@openpath/src/components/Sidebar', () => ({
   default: ({
@@ -68,7 +67,21 @@ vi.mock('@openpath/src/views/TeacherDashboard', () => ({
 }));
 
 vi.mock('@openpath/src/views/Classrooms', () => ({
-  default: () => <div>Classrooms View</div>,
+  default: ({
+    initialSelectedClassroomId,
+    onInitialSelectedClassroomIdConsumed,
+  }: {
+    initialSelectedClassroomId?: string | null;
+    onInitialSelectedClassroomIdConsumed?: () => void;
+  }) => (
+    <div>
+      <div>Classrooms View</div>
+      <div>Initial classroom: {initialSelectedClassroomId ?? 'none'}</div>
+      <button onClick={() => onInitialSelectedClassroomIdConsumed?.()}>
+        Consumir selección inicial
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('@openpath/src/views/Groups', () => ({
@@ -116,11 +129,6 @@ vi.mock('@openpath/src/lib/auth', () => ({
   isAdmin: () => mockIsAdmin(),
 }));
 
-vi.mock('@openpath/src/hooks/useClassroomsViewModel', () => ({
-  setPendingSelectedClassroomId: (classroomId: string | null) =>
-    mockSetPendingSelectedClassroomId(classroomId),
-}));
-
 vi.mock('../views/OrganizationUsers', () => ({
   OrganizationUsers: () => <div>Organization Users View</div>,
 }));
@@ -131,7 +139,6 @@ describe('ClassroomPathShell', () => {
   beforeEach(() => {
     mockIsAdmin.mockReset();
     mockIsAdmin.mockReturnValue(true);
-    mockSetPendingSelectedClassroomId.mockReset();
     window.history.pushState({}, '', '/usuarios');
   });
 
@@ -215,8 +222,14 @@ describe('ClassroomPathShell', () => {
 
     expect(screen.getByRole('heading', { name: 'Gestión de Aulas' })).toBeInTheDocument();
     expect(screen.getByText('Classrooms View')).toBeInTheDocument();
-    expect(mockSetPendingSelectedClassroomId).toHaveBeenCalledWith('classroom-1');
+    expect(screen.getByText('Initial classroom: classroom-1')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/aulas');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Consumir selección inicial' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Usuarios y Roles' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aulas' }));
+
+    expect(screen.getByText('Initial classroom: none')).toBeInTheDocument();
   });
 
   it('falls back to the dashboard when an unknown tab is requested', () => {
