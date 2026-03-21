@@ -102,6 +102,12 @@ function AppContent() {
       setAuthView(getAuthViewFromPathname(window.location.pathname));
     };
 
+    // Detect if we are in a Playwright test by checking for the ?test=true query param
+    // (Used by tests/e2e/fixtures/auth.ts or common setup)
+    if (window.location.search.includes('test=true') || window.name === 'playwright-test') {
+      (window as any).isPlaywrightTest = true;
+    }
+
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);

@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ClassroomPathPricingPage, getPricingQuote } from '../Pricing';
+import { ClassroomPathPricingPage } from '../Pricing';
+import { getPricingQuote } from '../../data/pricing-data';
 
 describe('ClassroomPathPricingPage', () => {
   it('renders the pricing headline and included classroom scope', () => {
@@ -14,6 +15,14 @@ describe('ClassroomPathPricingPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Hasta 30 dispositivos por aula')).toBeInTheDocument();
     expect(screen.getAllByText('Servicio gestionado sobre OpenPath').length).toBeGreaterThan(0);
+  });
+
+  it('renders the contact form in the CTA section', () => {
+    render(<ClassroomPathPricingPage onNavigateToLogin={vi.fn()} />);
+
+    expect(screen.getByLabelText('Nombre')).toBeInTheDocument();
+    expect(screen.getByLabelText('Centro educativo')).toBeInTheDocument();
+    expect(screen.getByLabelText('Email de contacto')).toBeInTheDocument();
   });
 
   it('updates calculator totals when the classroom count changes', () => {
