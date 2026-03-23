@@ -18,6 +18,7 @@ void describe('openpath-proxy-policy', () => {
         '/api/machines/events',
         '/api/machines',
         '/w',
+        '/trpc/healthReports.submit',
       ]
     );
     assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.notFoundRoutes, ['/v2', '/export']);
@@ -26,7 +27,7 @@ void describe('openpath-proxy-policy', () => {
       '/w',
       '/api-docs',
     ]);
-    assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.allowedTrpcProcedures, []);
+    assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.allowedTrpcProcedures, ['healthReports.submit']);
   });
 
   test('returns null for non-/trpc URLs', () => {
@@ -77,6 +78,14 @@ void describe('openpath-proxy-policy', () => {
       'schedules.list'
     );
     assert.strictEqual(findBlockedOpenPathProcedureFromUrl('/trpc/auth.me'), 'auth.me');
+  });
+
+  test('allows machine health report submission through the upstream proxy', () => {
+    assert.strictEqual(findBlockedOpenPathProcedureFromUrl('/trpc/healthReports.submit'), null);
+    assert.strictEqual(
+      findBlockedOpenPathProcedureFromUrl('/trpc/healthReports.submit?batch=1'),
+      null
+    );
   });
 
   test('supports batched procedure paths', () => {

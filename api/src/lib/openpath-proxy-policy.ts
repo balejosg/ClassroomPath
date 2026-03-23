@@ -44,10 +44,14 @@ export const OPENPATH_PROXY_MANIFEST = {
       method: 'use',
       path: '/w',
     },
+    {
+      method: 'use',
+      path: '/trpc/healthReports.submit',
+    },
   ],
   notFoundRoutes: ['/v2', '/export'],
   blockedPassthroughPrefixes: ['/api', '/w', '/api-docs'],
-  allowedTrpcProcedures: [],
+  allowedTrpcProcedures: ['healthReports.submit'],
 } as const satisfies OpenPathProxyManifest;
 
 function matchesPathPrefix(requestPath: string, candidate: string): boolean {

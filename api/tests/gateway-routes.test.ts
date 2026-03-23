@@ -131,6 +131,23 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
     assert.strictEqual(json.error?.data?.blocked, 'setup.getRegistrationToken');
   });
 
+  test('registerGatewayProxyRoutes forwards machine health report submission to upstream', async () => {
+    const response = await fetch(`${baseUrl}/trpc/healthReports.submit`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer machine-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ json: { hostname: 'room-01', status: 'HEALTHY' } }),
+    });
+
+    assert.strictEqual(response.status, 418);
+    assert.deepStrictEqual(await response.json(), {
+      proxied: true,
+      path: '/trpc/healthReports.submit',
+    });
+  });
+
   test('registerGatewayProxyRoutes allows the public upstream config passthrough', async () => {
     const response = await fetch(`${baseUrl}/api/config?source=smoke`);
 
