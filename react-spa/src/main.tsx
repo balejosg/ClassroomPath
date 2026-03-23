@@ -1,10 +1,23 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { createRoot, hydrateRoot } from 'react-dom/client';
+
 import { ClassroomPathApp } from './ClassroomPathApp';
 import '@openpath/src/index.css'; // Estilos de OpenPath
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  throw new Error('Missing root element for ClassroomPath React app');
+}
+
+const app = (
   <React.StrictMode>
     <ClassroomPathApp />
   </React.StrictMode>
 );
+
+if (rootElement.hasChildNodes()) {
+  hydrateRoot(rootElement, app);
+} else {
+  createRoot(rootElement).render(app);
+}

@@ -127,13 +127,16 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               >
                 Precios
               </a>
-              <button
-                type="button"
-                onClick={onNavigateToLogin}
+              <a
+                href="/login"
+                onClick={(event) => {
+                  event.preventDefault();
+                  onNavigateToLogin();
+                }}
                 className="text-sm font-medium text-slate-400 transition hover:text-white"
               >
                 Acceder
-              </button>
+              </a>
               <a
                 href="#demo"
                 data-testid="navigate-to-register"
@@ -476,13 +479,16 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               </div>
               <p className="mt-8 text-center text-xs text-slate-400">
                 ¿Ya tienes cuenta?{' '}
-                <button
-                  type="button"
-                  onClick={onNavigateToLogin}
+                <a
+                  href="/login"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onNavigateToLogin();
+                  }}
                   className="underline transition hover:text-slate-600"
                 >
                   Acceder al panel
-                </button>
+                </a>
               </p>
             </div>
           </div>

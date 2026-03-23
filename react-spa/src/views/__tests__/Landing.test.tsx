@@ -38,7 +38,7 @@ describe('ClassroomPathLandingPage', () => {
 
     render(<ClassroomPathLandingPage onNavigateToLogin={onNavigateToLogin} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Acceder' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Acceder' }));
 
     expect(onNavigateToLogin).toHaveBeenCalledTimes(1);
   });

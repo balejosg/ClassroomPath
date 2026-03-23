@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run build:client && npm run build:ssr",
+    "build:client": "vite build",
+    "build:ssr": "vite build --ssr src/ssr-entry.tsx --outDir dist-ssr",
     "lint": "eslint src/ --max-warnings=0",
     "lint:fix": "eslint src/ --fix --max-warnings=0",
     "test": "vitest run",

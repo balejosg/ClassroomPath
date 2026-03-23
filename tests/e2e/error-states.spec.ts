@@ -128,7 +128,7 @@ test.describe('Session Error Handling', () => {
             .isVisible()
             .catch(() => false);
           const landingEntryVisible = await page
-            .getByRole('button', { name: 'Acceder', exact: true })
+            .getByRole('link', { name: 'Acceder', exact: true })
             .isVisible()
             .catch(() => false);
 
@@ -164,7 +164,7 @@ test.describe('Session Error Handling', () => {
       .isVisible()
       .catch(() => false);
     const isBackAtLanding = await page
-      .getByRole('button', { name: 'Acceder', exact: true })
+      .getByRole('link', { name: 'Acceder', exact: true })
       .isVisible()
       .catch(() => false);
     const hasSessionWarning = await page.getByText(/sesión|session|otro dispositivo/i).isVisible();
@@ -210,7 +210,7 @@ test.describe('Session Error Handling', () => {
             .isVisible()
             .catch(() => false);
           const hasLandingRedirect = await page
-            .getByRole('button', { name: 'Acceder', exact: true })
+            .getByRole('link', { name: 'Acceder', exact: true })
             .isVisible()
             .catch(() => false);
           const hasErrorDisplay = await page

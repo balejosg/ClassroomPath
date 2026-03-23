@@ -75,13 +75,16 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
               >
                 ← Inicio
               </a>
-              <button
-                type="button"
-                onClick={onNavigateToLogin}
+              <a
+                href="/login"
+                onClick={(event) => {
+                  event.preventDefault();
+                  onNavigateToLogin();
+                }}
                 className="hidden text-sm text-slate-400 transition hover:text-white sm:inline"
               >
                 Acceder
-              </button>
+              </a>
               <a
                 href="#demo"
                 className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-900/50 transition hover:bg-sky-500"
@@ -587,13 +590,16 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
               </div>
               <p className="mt-8 text-center text-xs leading-6 text-slate-400">
                 ¿Ya tienes cuenta?{' '}
-                <button
-                  type="button"
-                  onClick={onNavigateToLogin}
+                <a
+                  href="/login"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onNavigateToLogin();
+                  }}
                   className="underline transition hover:text-slate-600"
                 >
                   Acceder al panel
-                </button>
+                </a>
                 {' · '}
                 Precios orientativos para contratación anual. IVA no incluido. La comparación con
                 otras soluciones se basa en referencias públicas visibles y puede variar según país,

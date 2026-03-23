@@ -36,13 +36,14 @@ RUN apk add --no-cache curl
 WORKDIR /app
 COPY package*.json ./
 COPY api/package*.json ./api/
+COPY react-spa/package*.json ./react-spa/
 COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
 
 # Install production dependencies for the gateway and shared runtime package.
 # Retry here too because the release workflow builds linux/arm64 images under emulation.
 RUN set -eux; \
   for attempt in 1 2 3; do \
-    npm ci --no-audit --no-fund --workspace=@classroompath/api --workspace=@openpath/shared --omit=dev && break; \
+    npm ci --no-audit --no-fund --workspace=@classroompath/api --workspace=@classroompath/react-spa --workspace=@openpath/shared --omit=dev && break; \
     if [ "$attempt" -eq 3 ]; then exit 1; fi; \
     echo "npm ci failed on attempt $attempt, retrying..." >&2; \
     rm -rf node_modules; \
@@ -53,6 +54,7 @@ RUN set -eux; \
 COPY --from=builder /app/api/dist ./api/dist
 # Place SPA dist to match server.ts expectation (../../react-spa/dist from api/dist)
 COPY --from=builder /app/react-spa/dist /app/react-spa/dist
+COPY --from=builder /app/react-spa/dist-ssr /app/react-spa/dist-ssr
 
 # Shared dependency for production resolution.
 # The gateway imports from "@openpath/shared" at runtime, so we must provide it

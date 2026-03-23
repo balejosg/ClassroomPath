@@ -23,6 +23,7 @@ import {
   findBlockedOpenPathPassthroughPath,
   findBlockedOpenPathProcedureFromUrl,
 } from './openpath-proxy-policy.js';
+import { createPublicSpaRenderer } from './public-spa-ssr.js';
 import type { GatewayReadiness } from './gateway-readiness.js';
 import { assignRequestId, getRequestId, REQUEST_ID_HEADER } from './request-id.js';
 
@@ -196,7 +197,33 @@ export function registerGatewaySpaRoutes(app: Express, options: GatewaySpaRoutes
   }
 
   logger.info('Serving ClassroomPath React SPA', { path: options.reactSpaPath });
-  app.use(express.static(options.reactSpaPath));
+  const publicSpaRenderer = createPublicSpaRenderer(options.reactSpaPath);
+
+  app.get(['/', '/pricing', '/pricing/'], async (req, res) => {
+    if (publicSpaRenderer.canRender) {
+      try {
+        const origin = `${req.protocol}://${req.get('host') ?? 'localhost'}`;
+        const renderedHtml = await publicSpaRenderer.render({
+          origin,
+          pathname: req.path,
+        });
+
+        if (renderedHtml) {
+          res.type('html').send(renderedHtml);
+          return;
+        }
+      } catch (error) {
+        logger.warn('ClassroomPath public SSR failed, falling back to SPA shell', {
+          error: error instanceof Error ? error.message : String(error),
+          path: req.path,
+        });
+      }
+    }
+
+    res.sendFile(path.join(options.reactSpaPath, 'index.html'));
+  });
+
+  app.use(express.static(options.reactSpaPath, { index: false }));
 
   app.get('/*', (req, res) => {
     if (

@@ -129,7 +129,7 @@ async function openLoginForm(page: Page): Promise<void> {
   await page.goto('/');
   await page.waitForLoadState('domcontentloaded');
 
-  const loginCta = page.getByRole('button', { name: 'Acceder', exact: true });
+  const loginCta = page.getByRole('link', { name: 'Acceder', exact: true });
   await expect(loginCta).toBeVisible({ timeout: 10000 });
   await loginCta.click();
   await loginEmail.waitFor({ state: 'visible', timeout: 10000 });

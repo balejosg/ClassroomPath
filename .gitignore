@@ -8,6 +8,8 @@ config/.env
 
 # Build artifacts
 dist/
+dist-ssr/
+**/dist-ssr/
 *.tsbuildinfo
 
 # Logs
