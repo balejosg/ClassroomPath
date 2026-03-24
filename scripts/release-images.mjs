@@ -66,6 +66,7 @@ export function deriveImageRepos({ repositoryOwner, repository, remoteUrl, cwd }
   return {
     repositoryOwner: owner,
     gatewayRepo: `ghcr.io/${owner}/classroompath-gateway`,
+    migrationsRepo: `ghcr.io/${owner}/classroompath-migrations`,
     openpathApiRepo: `ghcr.io/${owner}/classroompath-openpath-api`,
     spaRepo: `ghcr.io/${owner}/classroompath-spa`,
   };
@@ -82,9 +83,11 @@ export function deriveTaggedImageRefs({ sha, repositoryOwner, repository, remote
   return {
     repositoryOwner: repos.repositoryOwner,
     gatewayRepo: repos.gatewayRepo,
+    migrationsRepo: repos.migrationsRepo,
     openpathApiRepo: repos.openpathApiRepo,
     spaRepo: repos.spaRepo,
     gatewayTag: `${repos.gatewayRepo}:${trimmedSha}`,
+    migrationsTag: `${repos.migrationsRepo}:${trimmedSha}`,
     openpathApiTag: `${repos.openpathApiRepo}:${trimmedSha}`,
     spaTag: `${repos.spaRepo}:${trimmedSha}`,
   };
@@ -137,9 +140,11 @@ function main() {
   const outputMap = {
     repository_owner: refs.repositoryOwner,
     gateway_repo: refs.gatewayRepo,
+    migrations_repo: refs.migrationsRepo,
     openpath_api_repo: refs.openpathApiRepo,
     spa_repo: refs.spaRepo,
     gateway_tag: refs.gatewayTag,
+    migrations_tag: refs.migrationsTag,
     openpath_api_tag: refs.openpathApiTag,
     spa_tag: refs.spaTag,
   };

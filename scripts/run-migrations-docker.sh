@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# run-migrations-docker.sh - Run DB schema pushes using Docker + npm workspaces
+# run-migrations-docker.sh - Run DB schema pushes using Docker
 #
 # Why this exists:
-# - Avoid per-package lockfile drift (install from workspace root)
+# - Prefer prebuilt migration runner images for staging/prod promotion
+# - Fall back to workspace-root npm installs when a runner image is unavailable
 # - Avoid requiring Node/npm on the host
 # - Keep staging/prod migrations consistent with deploy scripts
 
@@ -23,7 +24,7 @@ MIGRATIONS_NODE_IMAGE_FALLBACK="node:20-alpine"
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/run-migrations-docker.sh [--cp] [--openpath] [--app-dir <dir>] [--env-file <path>] [--node-image <image>]
+  scripts/run-migrations-docker.sh [--cp] [--openpath] [--app-dir <dir>] [--env-file <path>] [--node-image <image>] [--runner-image <image>]
 
 Options:
   --cp                 Run ClassroomPath gateway API schema push (@classroompath/api)
@@ -31,10 +32,11 @@ Options:
   --app-dir <dir>      Root directory (default: repo root)
   --env-file <path>    Env file to pass to containers (default: <app-dir>/config/.env)
   --node-image <img>   Node image to use (default: pinned digest)
+  --runner-image <img> Prebuilt migration runner image to use instead of npm-installing in a generic Node image
 
 Notes:
   - If no schema flags are provided, both --cp and --openpath are run.
-  - This script installs dependencies via npm workspaces at the workspace root.
+  - Without --runner-image, this script installs dependencies via npm workspaces at the workspace root.
 EOF
 }
 
@@ -43,6 +45,7 @@ RUN_CP=0
 RUN_OPENPATH=0
 ENV_FILE=""
 NODE_IMAGE="${MIGRATIONS_NODE_IMAGE:-$MIGRATIONS_NODE_IMAGE_DEFAULT}"
+RUNNER_IMAGE=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -64,6 +67,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --node-image)
       NODE_IMAGE="$2"
+      shift 2
+      ;;
+    --runner-image)
+      RUNNER_IMAGE="$2"
       shift 2
       ;;
     -h|--help)
@@ -97,6 +104,26 @@ if [ ! -f "$ENV_FILE" ]; then
   die "Env file not found: $ENV_FILE" 1
 fi
 
+run_prebuilt_runner_image() {
+  log_info "[MIGRATIONS] Using prebuilt migration runner image: $RUNNER_IMAGE"
+
+  local args=()
+  if [ "$RUN_CP" = "1" ]; then
+    args+=("--cp")
+  fi
+  if [ "$RUN_OPENPATH" = "1" ]; then
+    args+=("--openpath")
+  fi
+
+  docker pull "$RUNNER_IMAGE" >/dev/null
+
+  docker run --rm \
+    --add-host host.docker.internal:host-gateway \
+    --env-file "$ENV_FILE" \
+    "$RUNNER_IMAGE" \
+    "${args[@]}"
+}
+
 ensure_node_image() {
   local img="$1"
 
@@ -115,6 +142,11 @@ if ! ensure_node_image "$NODE_IMAGE"; then
     log_error "Unable to fetch node image: $NODE_IMAGE"
     exit 1
   }
+fi
+
+if [ -n "$RUNNER_IMAGE" ]; then
+  run_prebuilt_runner_image
+  exit 0
 fi
 
 run_cp_migrations() {

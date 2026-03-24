@@ -47,60 +47,17 @@ jobs:
           echo "Verifying OpenPath checks for $OPENPATH_SHA"
           node scripts/openpath-required-checks.mjs
 
-  release-gate-staging:
-    name: Release Gate Staging
-    runs-on: ubuntu-latest
-    needs: verify-openpath-upstream
-    if: needs.verify-openpath-upstream.result == 'success' && startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: npm
-
-      - name: Load staging deploy target
-        id: staging-target
-        run: node scripts/deploy-targets.mjs outputs staging >> "$GITHUB_OUTPUT"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run release gate against staging
-        id: gate
-        env:
-          RELEASE_GATE_URL: ${{ steps.staging-target.outputs.public_url }}
-          RELEASE_GATE_TIMEOUT: '30000'
-          RELEASE_GATE_ALLOW_MUTATIONS: '1'
-        run: |
-          echo "🔐 Running staging release gate against $RELEASE_GATE_URL"
-          npm run test:release-gate 2>&1 | tee release-gate-results.txt
-          exit_code=${PIPESTATUS[0]}
-          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
-          exit "$exit_code"
-
-      - name: Upload release gate results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-gate-results-staging
-          path: release-gate-results.txt
-          retention-days: 7
-
   resolve-release-images:
     name: Resolve Release Images
     runs-on: ubuntu-latest
-    needs: release-gate-staging
-    if: needs.release-gate-staging.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    needs: verify-openpath-upstream
+    if: needs.verify-openpath-upstream.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
       packages: read
     outputs:
       gateway_image: ${{ steps.release-images.outputs.gateway_image }}
+      migrations_image: ${{ steps.release-images.outputs.migrations_image }}
       openpath_api_image: ${{ steps.release-images.outputs.openpath_api_image }}
       spa_image: ${{ steps.release-images.outputs.spa_image }}
 
@@ -151,15 +108,18 @@ jobs:
           }
 
           gateway_image="$(resolve_digest "${{ steps.image-refs.outputs.gateway_tag }}" "${{ steps.image-refs.outputs.gateway_repo }}")"
+          migrations_image="$(resolve_digest "${{ steps.image-refs.outputs.migrations_tag }}" "${{ steps.image-refs.outputs.migrations_repo }}")"
           openpath_api_image="$(resolve_digest "${{ steps.image-refs.outputs.openpath_api_tag }}" "${{ steps.image-refs.outputs.openpath_api_repo }}")"
           spa_image="$(resolve_digest "${{ steps.image-refs.outputs.spa_tag }}" "${{ steps.image-refs.outputs.spa_repo }}")"
 
           echo "gateway_image=$gateway_image" >> "$GITHUB_OUTPUT"
+          echo "migrations_image=$migrations_image" >> "$GITHUB_OUTPUT"
           echo "openpath_api_image=$openpath_api_image" >> "$GITHUB_OUTPUT"
           echo "spa_image=$spa_image" >> "$GITHUB_OUTPUT"
 
           cat > release-images.env <<EOF
           CLASSROOMPATH_GATEWAY_IMAGE=$gateway_image
+          CLASSROOMPATH_MIGRATIONS_IMAGE=$migrations_image
           OPENPATH_API_IMAGE=$openpath_api_image
           CLASSROOMPATH_SPA_IMAGE=$spa_image
           APP_SHA=${{ github.sha }}
@@ -173,11 +133,165 @@ jobs:
           path: release-images.env
           retention-days: 14
 
+  verify-staging-release-state:
+    name: Verify Staging Release State
+    runs-on: ubuntu-latest
+    needs: resolve-release-images
+    if: needs.resolve-release-images.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Resolve staging host
+        id: resolve
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          STAGING_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          STAGING_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$STAGING_HOST" ] || [ -z "$STAGING_USER" ] || [ -z "$STAGING_SSH_KEY" ]; then
+            echo "::error::STAGING_DEPLOY_HOST, STAGING_DEPLOY_USER, and STAGING_DEPLOY_SSH_KEY must be configured for production promotion"
+            exit 1
+          fi
+
+          PORT="${STAGING_PORT:-22}"
+
+          for i in 1 2 3; do
+            IP=$(getent hosts "$STAGING_HOST" 2>/dev/null | awk '{print $1}' | head -1)
+
+            if [ -z "$IP" ]; then
+              IP=$(dig +short "$STAGING_HOST" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            fi
+
+            if [ -n "$IP" ]; then
+              echo "ip=$IP" >> "$GITHUB_OUTPUT"
+              echo "port=$PORT" >> "$GITHUB_OUTPUT"
+              echo "user=$STAGING_USER" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "::error::Could not resolve staging deploy host $STAGING_HOST"
+          exit 1
+
+      - name: Install staging SSH key
+        env:
+          STAGING_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$STAGING_SSH_KEY" > ~/.ssh/classroompath-staging-release
+          chmod 600 ~/.ssh/classroompath-staging-release
+
+      - name: Read staging release state
+        run: |
+          ssh \
+            -o ConnectTimeout=10 \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -i ~/.ssh/classroompath-staging-release \
+            -p "${{ steps.resolve.outputs.port }}" \
+            "${{ steps.resolve.outputs.user }}@${{ steps.resolve.outputs.ip }}" \
+            "cat /opt/classroompath/release-state/current-images.env" > staging-release-state.env
+
+      - name: Compare staging release state
+        shell: bash
+        env:
+          EXPECTED_APP_SHA: ${{ github.sha }}
+          EXPECTED_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
+          EXPECTED_MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
+          EXPECTED_OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
+          EXPECTED_SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
+        run: |
+          set -euo pipefail
+          set -a
+          . ./staging-release-state.env
+          set +a
+
+          if [ "${IMAGE_SOURCE:-}" != "release-candidate" ]; then
+            echo "::error::Staging is not running release candidate images (IMAGE_SOURCE=${IMAGE_SOURCE:-unset})"
+            exit 1
+          fi
+
+          if [ "${APP_SHA:-}" != "$EXPECTED_APP_SHA" ]; then
+            echo "::error::Staging APP_SHA (${APP_SHA:-unset}) does not match tag SHA ($EXPECTED_APP_SHA)"
+            exit 1
+          fi
+
+          compare_image() {
+            local label="$1"
+            local expected="$2"
+            local actual="$3"
+
+            if [ "$expected" != "$actual" ]; then
+              echo "::error::$label mismatch. expected=$expected actual=$actual"
+              exit 1
+            fi
+          }
+
+          compare_image "Gateway image" "$EXPECTED_GATEWAY_IMAGE" "${CLASSROOMPATH_GATEWAY_IMAGE:-}"
+          compare_image "Migrations image" "$EXPECTED_MIGRATIONS_IMAGE" "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}"
+          compare_image "OpenPath API image" "$EXPECTED_OPENPATH_API_IMAGE" "${OPENPATH_API_IMAGE:-}"
+          compare_image "SPA image" "$EXPECTED_SPA_IMAGE" "${CLASSROOMPATH_SPA_IMAGE:-}"
+
+      - name: Upload staging release state
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-release-state-${{ github.ref_name }}
+          path: staging-release-state.env
+          retention-days: 7
+
+  release-gate-staging:
+    name: Release Gate Staging
+    runs-on: ubuntu-latest
+    needs: [verify-openpath-upstream, verify-staging-release-state]
+    if: needs.verify-openpath-upstream.result == 'success' && needs.verify-staging-release-state.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Load staging deploy target
+        id: staging-target
+        run: node scripts/deploy-targets.mjs outputs staging >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release gate against staging
+        id: gate
+        env:
+          RELEASE_GATE_URL: ${{ steps.staging-target.outputs.public_url }}
+          RELEASE_GATE_TIMEOUT: '30000'
+          RELEASE_GATE_ALLOW_MUTATIONS: '1'
+        run: |
+          echo "🔐 Running staging release gate against $RELEASE_GATE_URL"
+          npm run test:release-gate 2>&1 | tee release-gate-results.txt
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit "$exit_code"
+
+      - name: Upload release gate results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-gate-results-staging
+          path: release-gate-results.txt
+          retention-days: 7
+
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [release-gate-staging, resolve-release-images]
-    if: needs.release-gate-staging.result == 'success' && needs.resolve-release-images.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    needs: [release-gate-staging, resolve-release-images, verify-staging-release-state]
+    if: needs.release-gate-staging.result == 'success' && needs.resolve-release-images.result == 'success' && needs.verify-staging-release-state.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     environment: production
     permissions:
       contents: read
@@ -231,6 +345,7 @@ jobs:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
+          CLASSROOMPATH_MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
           OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
           CLASSROOMPATH_SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
         uses: appleboy/ssh-action@v1.2.4
@@ -241,7 +356,7 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 20m
-          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_GATEWAY_IMAGE,OPENPATH_API_IMAGE,CLASSROOMPATH_SPA_IMAGE
+          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_GATEWAY_IMAGE,CLASSROOMPATH_MIGRATIONS_IMAGE,OPENPATH_API_IMAGE,CLASSROOMPATH_SPA_IMAGE
           script: |
             set -euo pipefail
             echo "Starting ClassroomPath Docker deployment..."
@@ -287,70 +402,16 @@ jobs:
               cp "$STATE_DIR/current-images.env" "$STATE_DIR/previous-images.env"
             fi
 
-            cat > "$STATE_DIR/current-images.env" <<EOF
-            APP_SHA=$TARGET_SHA
-            CLASSROOMPATH_GATEWAY_IMAGE=$CLASSROOMPATH_GATEWAY_IMAGE
-            OPENPATH_API_IMAGE=$OPENPATH_API_IMAGE
-            CLASSROOMPATH_SPA_IMAGE=$CLASSROOMPATH_SPA_IMAGE
-            EOF
-
             git checkout --detach "$TARGET_SHA"
             git reset --hard "$TARGET_SHA"
             git submodule deinit -f --all || true
             git submodule update --init --recursive --force
 
-            echo "Running database migrations..."
-
-            echo "- ClassroomPath API schema..."
-            docker run --rm -v "$APP_DIR/api:/app" -w /app node:20-alpine rm -rf node_modules
-            docker run --rm \
-              -v "$APP_DIR/api:/app" \
-              -v "$APP_DIR/config/.env:/app/.env:ro" \
-              -w /app \
-              --add-host host.docker.internal:host-gateway \
-              --env-file "$APP_DIR/config/.env" \
-              node:20-alpine \
-              sh -c "npm install && npm run db:push"
-
-            echo "- OpenPath API schema..."
-            docker run --rm -v "$APP_DIR/upstream/openpath/api:/app" -w /app node:20-alpine rm -rf node_modules
-
-            eval "$(python3 <<'PY'
-            from pathlib import Path
-            from urllib.parse import unquote, urlparse
-
-            env = {}
-            for line in Path('config/.env').read_text(encoding='utf-8').splitlines():
-                if not line or line.startswith('#') or '=' not in line:
-                    continue
-                key, value = line.split('=', 1)
-                env[key] = value
-
-            parsed = urlparse(env['DATABASE_URL'])
-            print(f'export DB_HOST={parsed.hostname}')
-            print(f'export DB_PORT={parsed.port or 5432}')
-            print(f'export DB_NAME={parsed.path.lstrip("/")}')
-            print(f'export DB_USER={parsed.username}')
-            print(f'export DB_PASSWORD={unquote(parsed.password or "")}')
-            PY
-            )"
-
-            docker run --rm \
-              -v "$APP_DIR/upstream/openpath/api:/app" \
-              -v "$APP_DIR/config/.env:/app/.env:ro" \
-              -w /app \
-              --add-host host.docker.internal:host-gateway \
-              --env-file "$APP_DIR/config/.env" \
-              -e DB_HOST="$DB_HOST" \
-              -e DB_PORT="$DB_PORT" \
-              -e DB_NAME="$DB_NAME" \
-              -e DB_USER="$DB_USER" \
-              -e DB_PASSWORD="$DB_PASSWORD" \
-              node:20-alpine \
-              sh -c "npm install --include=dev && npm run db:push"
-
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
             trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+
+            echo "Running database migrations from the release candidate runner..."
+            bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"
 
             cd "$APP_DIR/docker"
             export COMPOSE_PROJECT_NAME=classroompath-production
@@ -365,6 +426,15 @@ jobs:
 
             echo "Starting containers from immutable images..."
             docker compose up -d --force-recreate --no-build
+
+            cat > "$STATE_DIR/current-images.env" <<EOF
+            APP_SHA=$TARGET_SHA
+            IMAGE_SOURCE=release-candidate
+            CLASSROOMPATH_GATEWAY_IMAGE=$CLASSROOMPATH_GATEWAY_IMAGE
+            CLASSROOMPATH_MIGRATIONS_IMAGE=$CLASSROOMPATH_MIGRATIONS_IMAGE
+            OPENPATH_API_IMAGE=$OPENPATH_API_IMAGE
+            CLASSROOMPATH_SPA_IMAGE=$CLASSROOMPATH_SPA_IMAGE
+            EOF
 
             echo "Waiting for services to be healthy..."
             timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done' || {
@@ -484,8 +554,9 @@ jobs:
     needs:
       [
         verify-openpath-upstream,
-        release-gate-staging,
         resolve-release-images,
+        verify-staging-release-state,
+        release-gate-staging,
         deploy-production,
         smoke-test-production,
         rollback-production,
@@ -523,12 +594,14 @@ jobs:
           PRODUCTION_READY_URL: ${{ steps.production-target.outputs.ready_url }}
           PRODUCTION_API_CONFIG_URL: ${{ steps.production-target.outputs.api_config_url }}
           VERIFY_OPENPATH_RESULT: ${{ needs.verify-openpath-upstream.result }}
-          RELEASE_GATE_RESULT: ${{ needs.release-gate-staging.result }}
           RESOLVE_IMAGES_RESULT: ${{ needs.resolve-release-images.result }}
+          VERIFY_STAGING_RESULT: ${{ needs.verify-staging-release-state.result }}
+          RELEASE_GATE_RESULT: ${{ needs.release-gate-staging.result }}
           DEPLOY_RESULT: ${{ needs.deploy-production.result }}
           PRODUCTION_SMOKE_RESULT: ${{ needs.smoke-test-production.result }}
           ROLLBACK_RESULT: ${{ needs.rollback-production.result }}
           GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
+          MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
           OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
           SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
         run: |

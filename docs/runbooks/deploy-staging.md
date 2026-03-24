@@ -6,7 +6,7 @@
 > Source of truth: `docs/runbooks/deploy-staging.md`
 
 Staging deploys are executed locally via SSH and always deploy `origin/main`.
-When release-candidate images for `origin/main` already exist in GHCR, the script prefers those images before falling back to a source build on the staging host.
+When release-candidate images for `origin/main` already exist in GHCR, the script deploys those exact images by default, runs migrations from the matching prebuilt migrations image, and fails if those artifacts are missing. `source-build` remains available only as an explicit debug/recovery mode.
 
 Canonical public targets live in `config/deploy-targets.json`.
 

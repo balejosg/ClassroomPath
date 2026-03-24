@@ -26,6 +26,7 @@ describe('release image helpers', () => {
     assert.deepEqual(deriveImageRepos({ repositoryOwner: 'BalejosG' }), {
       repositoryOwner: 'balejosg',
       gatewayRepo: 'ghcr.io/balejosg/classroompath-gateway',
+      migrationsRepo: 'ghcr.io/balejosg/classroompath-migrations',
       openpathApiRepo: 'ghcr.io/balejosg/classroompath-openpath-api',
       spaRepo: 'ghcr.io/balejosg/classroompath-spa',
     });
@@ -40,10 +41,13 @@ describe('release image helpers', () => {
       {
         repositoryOwner: 'balejosg',
         gatewayRepo: 'ghcr.io/balejosg/classroompath-gateway',
+        migrationsRepo: 'ghcr.io/balejosg/classroompath-migrations',
         openpathApiRepo: 'ghcr.io/balejosg/classroompath-openpath-api',
         spaRepo: 'ghcr.io/balejosg/classroompath-spa',
         gatewayTag:
           'ghcr.io/balejosg/classroompath-gateway:9765eec8fe9b1ca1dce5671406dde86bded437d8',
+        migrationsTag:
+          'ghcr.io/balejosg/classroompath-migrations:9765eec8fe9b1ca1dce5671406dde86bded437d8',
         openpathApiTag:
           'ghcr.io/balejosg/classroompath-openpath-api:9765eec8fe9b1ca1dce5671406dde86bded437d8',
         spaTag: 'ghcr.io/balejosg/classroompath-spa:9765eec8fe9b1ca1dce5671406dde86bded437d8',

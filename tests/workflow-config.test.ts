@@ -96,6 +96,10 @@ describe('Workflow configuration hardening', () => {
       jobs['resolve-release-images'],
       'Deploy workflow should resolve immutable release images'
     );
+    assert.ok(
+      jobs['verify-staging-release-state'],
+      'Deploy workflow should verify staging is already running the exact release candidate images'
+    );
     assert.ok(jobs['deploy-production'], 'Deploy workflow should still deploy to production');
     assert.ok(jobs['smoke-test-production'], 'Deploy workflow should smoke test production');
     assert.ok(
@@ -109,8 +113,18 @@ describe('Workflow configuration hardening', () => {
       'deploy-production should depend on resolve-release-images'
     );
     assert.ok(
+      deployNeeds.includes('verify-staging-release-state'),
+      'deploy-production should depend on verify-staging-release-state'
+    );
+    assert.ok(
       deployNeeds.includes('release-gate-staging'),
       'deploy-production should still depend on release-gate-staging'
+    );
+
+    const releaseGateNeeds = normalizeNeeds(jobs['release-gate-staging']?.needs);
+    assert.ok(
+      releaseGateNeeds.includes('verify-staging-release-state'),
+      'release-gate-staging should only run after staging is confirmed to match the release candidate images'
     );
 
     assert.ok(
@@ -126,6 +140,10 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       evidenceNeeds.includes('resolve-release-images'),
       'release-evidence should depend on resolve-release-images'
+    );
+    assert.ok(
+      evidenceNeeds.includes('verify-staging-release-state'),
+      'release-evidence should depend on verify-staging-release-state'
     );
     assert.ok(
       evidenceNeeds.includes('smoke-test-production'),
@@ -146,8 +164,24 @@ describe('Workflow configuration hardening', () => {
       'release candidate workflow should trigger on pushes to main'
     );
     assert.ok(
-      jobs['build-release-candidates'],
-      'release candidate workflow should build candidate images'
+      jobs['build-gateway-release-candidate'],
+      'release candidate workflow should build the gateway image in its own job'
+    );
+    assert.ok(
+      jobs['build-openpath-api-release-candidate'],
+      'release candidate workflow should build the OpenPath API image in its own job'
+    );
+    assert.ok(
+      jobs['build-spa-release-candidate'],
+      'release candidate workflow should build the SPA image in its own job'
+    );
+    assert.ok(
+      jobs['build-migrations-release-candidate'],
+      'release candidate workflow should build the migrations runner image in its own job'
+    );
+    assert.ok(
+      jobs['publish-release-candidate-manifest'],
+      'release candidate workflow should publish a manifest after all parallel builds finish'
     );
 
     const concurrency = workflow.concurrency;
@@ -160,6 +194,18 @@ describe('Workflow configuration hardening', () => {
       (concurrency as { 'cancel-in-progress'?: boolean })['cancel-in-progress'],
       true,
       'release candidate workflow should cancel superseded main builds'
+    );
+
+    const manifestNeeds = normalizeNeeds(jobs['publish-release-candidate-manifest']?.needs);
+    assert.deepEqual(
+      manifestNeeds.sort(),
+      [
+        'build-gateway-release-candidate',
+        'build-migrations-release-candidate',
+        'build-openpath-api-release-candidate',
+        'build-spa-release-candidate',
+      ].sort(),
+      'manifest publication should wait for all parallel image builds'
     );
   });
 });

@@ -72,14 +72,16 @@ const evidence = {
   },
   jobs: {
     verifyOpenPathUpstream: valueOrNull(process.env.VERIFY_OPENPATH_RESULT),
-    releaseGateStaging: valueOrNull(process.env.RELEASE_GATE_RESULT),
     resolveReleaseImages: valueOrNull(process.env.RESOLVE_IMAGES_RESULT),
+    verifyStagingReleaseState: valueOrNull(process.env.VERIFY_STAGING_RESULT),
+    releaseGateStaging: valueOrNull(process.env.RELEASE_GATE_RESULT),
     deployProduction: valueOrNull(process.env.DEPLOY_RESULT),
     smokeTestProduction: valueOrNull(process.env.PRODUCTION_SMOKE_RESULT),
     rollbackProduction: valueOrNull(process.env.ROLLBACK_RESULT),
   },
   immutableImages: {
     gateway: valueOrNull(process.env.GATEWAY_IMAGE),
+    migrations: valueOrNull(process.env.MIGRATIONS_IMAGE),
     openPathApi: valueOrNull(process.env.OPENPATH_API_IMAGE),
     spa: valueOrNull(process.env.SPA_IMAGE),
   },
@@ -87,6 +89,9 @@ const evidence = {
     releaseGateResults: 'release-gate-results-staging',
     releaseImageMetadata: valueOrNull(process.env.TAG_NAME)
       ? `release-image-metadata-${process.env.TAG_NAME}`
+      : null,
+    stagingReleaseState: valueOrNull(process.env.TAG_NAME)
+      ? `staging-release-state-${process.env.TAG_NAME}`
       : null,
     productionSmokeResults: 'smoke-test-results-production',
     releaseEvidence: valueOrNull(process.env.TAG_NAME)
@@ -107,8 +112,9 @@ const summaryLines = [
   '| Gate | Result |',
   '| --- | --- |',
   `| Verify OpenPath upstream | ${evidence.jobs.verifyOpenPathUpstream ?? 'n/a'} |`,
-  `| Release gate (staging) | ${evidence.jobs.releaseGateStaging ?? 'n/a'} |`,
   `| Resolve release images | ${evidence.jobs.resolveReleaseImages ?? 'n/a'} |`,
+  `| Verify staging release state | ${evidence.jobs.verifyStagingReleaseState ?? 'n/a'} |`,
+  `| Release gate (staging) | ${evidence.jobs.releaseGateStaging ?? 'n/a'} |`,
   `| Deploy production | ${evidence.jobs.deployProduction ?? 'n/a'} |`,
   `| Production smoke | ${evidence.jobs.smokeTestProduction ?? 'n/a'} |`,
   `| Rollback | ${evidence.jobs.rollbackProduction ?? 'n/a'} |`,
@@ -121,6 +127,7 @@ const summaryLines = [
   '### Immutable Images',
   '',
   `- Gateway: \`${evidence.immutableImages.gateway ?? 'n/a'}\``,
+  `- Migrations: \`${evidence.immutableImages.migrations ?? 'n/a'}\``,
   `- OpenPath API: \`${evidence.immutableImages.openPathApi ?? 'n/a'}\``,
   `- SPA: \`${evidence.immutableImages.spa ?? 'n/a'}\``,
   '',
@@ -128,6 +135,7 @@ const summaryLines = [
   '',
   `- Release gate results: \`${evidence.artifacts.releaseGateResults}\``,
   `- Release image metadata: \`${evidence.artifacts.releaseImageMetadata ?? 'n/a'}\``,
+  `- Staging release state: \`${evidence.artifacts.stagingReleaseState ?? 'n/a'}\``,
   `- Production smoke results: \`${evidence.artifacts.productionSmokeResults}\``,
   `- Release evidence bundle: \`${evidence.artifacts.releaseEvidence ?? 'n/a'}\``,
   '',

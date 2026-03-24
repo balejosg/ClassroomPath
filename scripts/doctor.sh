@@ -33,6 +33,15 @@ STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
 STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
+STAGING_IMAGE_MODE="${STAGING_IMAGE_MODE:-release-candidate}"
+
+case "$STAGING_IMAGE_MODE" in
+  release-candidate|source-build)
+    ;;
+  *)
+    die "Invalid STAGING_IMAGE_MODE=$STAGING_IMAGE_MODE (allowed: release-candidate, source-build)" 1
+    ;;
+esac
 
 if [ -z "${STAGING_SSH_KEY:-}" ]; then
   die "STAGING_SSH_KEY not set (set it in .env.local or export it)" 1
@@ -40,6 +49,10 @@ fi
 
 if [ -n "${STAGING_GHCR_TOKEN:-}" ] && [ -z "${STAGING_GHCR_USERNAME:-}" ]; then
   die "STAGING_GHCR_USERNAME must be set when STAGING_GHCR_TOKEN is provided" 1
+fi
+
+if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
+  log_warn "STAGING_IMAGE_MODE=source-build is a debug/recovery mode and should not be used for normal promotion checks"
 fi
 
 STAGING_SSH_KEY="$(expand_tilde "$STAGING_SSH_KEY")"

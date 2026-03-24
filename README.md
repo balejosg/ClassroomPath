@@ -205,7 +205,7 @@ Canonical runbooks:
 ### Staging (Local SSH)
 
 Staging is deployed from a developer machine via `npm run deploy:staging` (SSH to the staging host). It always deploys `origin/main`.
-When release-candidate images for `origin/main` are already published, the script prefers pulling those exact images before falling back to a local source build.
+When release-candidate images for `origin/main` are already published, the script deploys those exact images by default and fails if they are missing or drifted. Use `STAGING_IMAGE_MODE=source-build` only as an explicit debug/recovery escape hatch.
 
 ```bash
 git push origin main

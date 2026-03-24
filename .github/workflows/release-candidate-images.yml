@@ -13,12 +13,15 @@ concurrency:
   group: release-candidate-images-main
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
-  build-release-candidates:
-    name: Build Release Candidate Images
+  build-gateway-release-candidate:
+    name: Build Gateway Release Candidate
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+    outputs:
+      gateway_image: ${{ steps.publish-manifest.outputs.gateway_image }}
 
     steps:
       - name: Checkout with submodules
@@ -60,6 +63,96 @@ jobs:
           cache-from: type=gha,scope=release-candidate-gateway
           cache-to: type=gha,mode=max,scope=release-candidate-gateway
 
+      - name: Publish gateway manifest output
+        id: publish-manifest
+        run: |
+          echo "gateway_image=${{ steps.image-refs.outputs.gateway_repo }}@${{ steps.build-gateway.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+  build-migrations-release-candidate:
+    name: Build Migrations Release Candidate
+    runs-on: ubuntu-latest
+    outputs:
+      migrations_image: ${{ steps.publish-manifest.outputs.migrations_image }}
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Derive release image refs
+        id: image-refs
+        run: |
+          node scripts/release-images.mjs outputs \
+            --sha "${{ github.sha }}" \
+            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push migrations image
+        id: build-migrations
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.migrations
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.image-refs.outputs.migrations_tag }}
+          cache-from: type=gha,scope=release-candidate-migrations
+          cache-to: type=gha,mode=max,scope=release-candidate-migrations
+
+      - name: Publish migrations manifest output
+        id: publish-manifest
+        run: |
+          echo "migrations_image=${{ steps.image-refs.outputs.migrations_repo }}@${{ steps.build-migrations.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+  build-openpath-api-release-candidate:
+    name: Build OpenPath API Release Candidate
+    runs-on: ubuntu-latest
+    outputs:
+      openpath_api_image: ${{ steps.publish-manifest.outputs.openpath_api_image }}
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Derive release image refs
+        id: image-refs
+        run: |
+          node scripts/release-images.mjs outputs \
+            --sha "${{ github.sha }}" \
+            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and push OpenPath API image
         id: build-openpath-api
         uses: docker/build-push-action@v6
@@ -71,6 +164,45 @@ jobs:
           tags: ${{ steps.image-refs.outputs.openpath_api_tag }}
           cache-from: type=gha,scope=release-candidate-openpath-api
           cache-to: type=gha,mode=max,scope=release-candidate-openpath-api
+
+      - name: Publish OpenPath API manifest output
+        id: publish-manifest
+        run: |
+          echo "openpath_api_image=${{ steps.image-refs.outputs.openpath_api_repo }}@${{ steps.build-openpath-api.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+  build-spa-release-candidate:
+    name: Build SPA Release Candidate
+    runs-on: ubuntu-latest
+    outputs:
+      spa_image: ${{ steps.publish-manifest.outputs.spa_image }}
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Derive release image refs
+        id: image-refs
+        run: |
+          node scripts/release-images.mjs outputs \
+            --sha "${{ github.sha }}" \
+            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push SPA image
         id: build-spa
@@ -84,13 +216,29 @@ jobs:
           cache-from: type=gha,scope=release-candidate-spa
           cache-to: type=gha,mode=max,scope=release-candidate-spa
 
+      - name: Publish SPA manifest output
+        id: publish-manifest
+        run: |
+          echo "spa_image=${{ steps.image-refs.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+  publish-release-candidate-manifest:
+    name: Publish Release Candidate Manifest
+    runs-on: ubuntu-latest
+    needs:
+      - build-gateway-release-candidate
+      - build-migrations-release-candidate
+      - build-openpath-api-release-candidate
+      - build-spa-release-candidate
+
+    steps:
       - name: Persist release candidate image manifest
         run: |
           cat > release-candidate-images.env <<EOF
           APP_SHA=${{ github.sha }}
-          CLASSROOMPATH_GATEWAY_IMAGE=${{ steps.image-refs.outputs.gateway_repo }}@${{ steps.build-gateway.outputs.digest }}
-          OPENPATH_API_IMAGE=${{ steps.image-refs.outputs.openpath_api_repo }}@${{ steps.build-openpath-api.outputs.digest }}
-          CLASSROOMPATH_SPA_IMAGE=${{ steps.image-refs.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}
+          CLASSROOMPATH_GATEWAY_IMAGE=${{ needs.build-gateway-release-candidate.outputs.gateway_image }}
+          CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.build-migrations-release-candidate.outputs.migrations_image }}
+          OPENPATH_API_IMAGE=${{ needs.build-openpath-api-release-candidate.outputs.openpath_api_image }}
+          CLASSROOMPATH_SPA_IMAGE=${{ needs.build-spa-release-candidate.outputs.spa_image }}
           EOF
 
       - name: Upload release candidate image manifest

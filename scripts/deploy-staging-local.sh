@@ -70,7 +70,6 @@ STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
 STAGING_IMAGE_MODE="${STAGING_IMAGE_MODE:-release-candidate}"
-STAGING_RELEASE_CANDIDATE_FALLBACK="${STAGING_RELEASE_CANDIDATE_FALLBACK:-1}"
 STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-}"
 STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-}"
 APP_DIR="/opt/classroompath/app"
@@ -99,6 +98,16 @@ if [ ! -f "$STAGING_SSH_KEY" ]; then
     log_error "SSH key not found: $STAGING_SSH_KEY"
     exit 1
 fi
+
+case "$STAGING_IMAGE_MODE" in
+    release-candidate|source-build)
+        ;;
+    *)
+        log_error "Invalid STAGING_IMAGE_MODE: $STAGING_IMAGE_MODE"
+        log_error "Allowed values: release-candidate, source-build"
+        exit 2
+        ;;
+esac
 
 log_info "Staging deployment to $STAGING_HOST"
 echo ""
@@ -154,16 +163,20 @@ fi
 STAGING_USE_RELEASE_CANDIDATE=0
 STAGING_RELEASE_SHA=""
 STAGING_GATEWAY_IMAGE=""
+STAGING_MIGRATIONS_IMAGE=""
 STAGING_OPENPATH_API_IMAGE=""
 STAGING_SPA_IMAGE=""
 
-if [ "$STAGING_IMAGE_MODE" != "source-build" ] && [ "$REMOTE_SHA" != "unknown" ]; then
+if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
     RELEASE_IMAGE_OUTPUT="$(node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA")"
 
     while IFS='=' read -r key value; do
         case "$key" in
             gateway_tag)
                 STAGING_GATEWAY_IMAGE="$value"
+                ;;
+            migrations_tag)
+                STAGING_MIGRATIONS_IMAGE="$value"
                 ;;
             openpath_api_tag)
                 STAGING_OPENPATH_API_IMAGE="$value"
@@ -176,7 +189,12 @@ if [ "$STAGING_IMAGE_MODE" != "source-build" ] && [ "$REMOTE_SHA" != "unknown" ]
 
     STAGING_USE_RELEASE_CANDIDATE=1
     STAGING_RELEASE_SHA="$REMOTE_SHA"
-    log_info "Staging will try release candidate images for $STAGING_RELEASE_SHA before any source build fallback"
+    log_info "Staging will deploy release candidate images for $STAGING_RELEASE_SHA"
+elif [ "$STAGING_IMAGE_MODE" = "release-candidate" ]; then
+    log_error "STAGING_IMAGE_MODE=release-candidate requires origin/main to be reachable"
+    exit 1
+else
+    log_warn "STAGING_IMAGE_MODE=source-build skips release candidates and is intended only for debug or recovery"
 fi
 
 log_success "Git state checked"
@@ -214,10 +232,11 @@ remote_assignment() {
 }
 
 REMOTE_ENV_CMD="$(
+    remote_assignment STAGING_IMAGE_MODE "$STAGING_IMAGE_MODE"
     remote_assignment STAGING_USE_RELEASE_CANDIDATE "$STAGING_USE_RELEASE_CANDIDATE"
     remote_assignment STAGING_RELEASE_SHA "$STAGING_RELEASE_SHA"
-    remote_assignment STAGING_RELEASE_CANDIDATE_FALLBACK "$STAGING_RELEASE_CANDIDATE_FALLBACK"
     remote_assignment STAGING_GATEWAY_IMAGE "$STAGING_GATEWAY_IMAGE"
+    remote_assignment STAGING_MIGRATIONS_IMAGE "$STAGING_MIGRATIONS_IMAGE"
     remote_assignment STAGING_OPENPATH_API_IMAGE "$STAGING_OPENPATH_API_IMAGE"
     remote_assignment STAGING_SPA_IMAGE "$STAGING_SPA_IMAGE"
     remote_assignment STAGING_GHCR_USERNAME "$STAGING_GHCR_USERNAME"
@@ -233,6 +252,7 @@ mkdir -p "$STATE_DIR"
 
 IMAGE_SOURCE="source-build"
 RESOLVED_GATEWAY_IMAGE="classroompath-gateway:local"
+RESOLVED_MIGRATIONS_IMAGE="classroompath-migrations:local"
 RESOLVED_OPENPATH_API_IMAGE="classroompath-api:local"
 RESOLVED_SPA_IMAGE="classroompath-spa:local"
 
@@ -248,6 +268,7 @@ write_release_state() {
 APP_SHA=${STAGING_RELEASE_SHA:-origin-main}
 IMAGE_SOURCE=$IMAGE_SOURCE
 CLASSROOMPATH_GATEWAY_IMAGE=$RESOLVED_GATEWAY_IMAGE
+CLASSROOMPATH_MIGRATIONS_IMAGE=$RESOLVED_MIGRATIONS_IMAGE
 OPENPATH_API_IMAGE=$RESOLVED_OPENPATH_API_IMAGE
 CLASSROOMPATH_SPA_IMAGE=$RESOLVED_SPA_IMAGE
 EOF
@@ -270,7 +291,7 @@ deploy_with_release_candidates() {
         return 1
     fi
 
-    if [ -z "${STAGING_GATEWAY_IMAGE:-}" ] || [ -z "${STAGING_OPENPATH_API_IMAGE:-}" ] || [ -z "${STAGING_SPA_IMAGE:-}" ]; then
+    if [ -z "${STAGING_GATEWAY_IMAGE:-}" ] || [ -z "${STAGING_MIGRATIONS_IMAGE:-}" ] || [ -z "${STAGING_OPENPATH_API_IMAGE:-}" ] || [ -z "${STAGING_SPA_IMAGE:-}" ]; then
         echo "[DEPLOY] Release candidate image refs are incomplete"
         return 1
     fi
@@ -286,8 +307,15 @@ deploy_with_release_candidates() {
 
     export COMPOSE_PROJECT_NAME=classroompath-staging
     export CLASSROOMPATH_GATEWAY_IMAGE="$STAGING_GATEWAY_IMAGE"
+    export CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"
     export OPENPATH_API_IMAGE="$STAGING_OPENPATH_API_IMAGE"
     export CLASSROOMPATH_SPA_IMAGE="$STAGING_SPA_IMAGE"
+
+    echo "[DEPLOY] Pulling release candidate migrations image for ${STAGING_RELEASE_SHA:-origin-main}..."
+    if ! docker pull "$CLASSROOMPATH_MIGRATIONS_IMAGE"; then
+        echo "[DEPLOY] Pulling release candidate migrations image failed"
+        return 1
+    fi
 
     echo "[DEPLOY] Pulling release candidate images for ${STAGING_RELEASE_SHA:-origin-main}..."
     if ! docker compose pull gateway api spa; then
@@ -303,6 +331,7 @@ deploy_with_release_candidates() {
 
     IMAGE_SOURCE="release-candidate"
     RESOLVED_GATEWAY_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_GATEWAY_IMAGE")"
+    RESOLVED_MIGRATIONS_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_MIGRATIONS_IMAGE")"
     RESOLVED_OPENPATH_API_IMAGE="$(resolve_pulled_digest "$OPENPATH_API_IMAGE")"
     RESOLVED_SPA_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_SPA_IMAGE")"
     write_release_state
@@ -326,6 +355,7 @@ deploy_from_source() {
     docker compose up -d --force-recreate
     IMAGE_SOURCE="source-build"
     RESOLVED_GATEWAY_IMAGE="classroompath-gateway:local"
+    RESOLVED_MIGRATIONS_IMAGE="classroompath-migrations:local"
     RESOLVED_OPENPATH_API_IMAGE="classroompath-api:local"
     RESOLVED_SPA_IMAGE="classroompath-spa:local"
     write_release_state
@@ -346,12 +376,7 @@ git submodule update --init --recursive --force
 echo "[DEPLOY] Validating runtime config..."
 bash scripts/validate-runtime-config-docker.sh
 
-echo "[DEPLOY] Running database migrations..."
 cd "$APP_DIR"
-
-# Run schema pushes outside production containers.
-# Uses Docker + npm workspaces to avoid per-package lockfile drift.
-bash scripts/run-migrations-docker.sh --cp --openpath
 
 echo "[DEPLOY] Checking disk space..."
 DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
@@ -367,18 +392,19 @@ else
     echo "[DEPLOY] Disk usage OK, skipping cleanup"
 fi
 
-cd "$APP_DIR/docker"
-if ! deploy_with_release_candidates; then
-    if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ] && [ "${STAGING_RELEASE_CANDIDATE_FALLBACK:-1}" != "1" ]; then
-        echo "[DEPLOY] Release candidate deploy failed and fallback is disabled"
+if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
+    echo "[DEPLOY] Running database migrations from workspace sources..."
+    bash scripts/run-migrations-docker.sh --cp --openpath
+    cd "$APP_DIR/docker"
+    deploy_from_source
+else
+    echo "[DEPLOY] Running database migrations from release candidate image..."
+    bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"
+    cd "$APP_DIR/docker"
+    if ! deploy_with_release_candidates; then
+        echo "[DEPLOY] Release candidate deploy failed"
         exit 1
     fi
-
-    if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ]; then
-        echo "[DEPLOY] Falling back to source build for staging"
-    fi
-
-    deploy_from_source
 fi
 
 echo "[DEPLOY] Containers started from ${IMAGE_SOURCE}, waiting for health..."

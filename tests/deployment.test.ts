@@ -313,8 +313,11 @@ void describe('Submodule Structure', () => {
 void describe('Migration Tooling', () => {
   const migrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations-docker.sh');
   const hostMigrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations.sh');
+  const migrationsImageScriptPath = resolve(projectRoot, 'scripts/run-migrations-image.sh');
+  const migrationsDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.migrations');
   const stagingDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
   const releaseImagesScriptPath = resolve(projectRoot, 'scripts/release-images.mjs');
+  const deployWorkflowPath = resolve(projectRoot, '.github/workflows/deploy.yml');
 
   void test('ClassroomPath migrations repair legacy ClassroomPath schema before db:push', () => {
     const content = readFileSync(migrationsScriptPath, 'utf-8');
@@ -349,7 +352,8 @@ void describe('Migration Tooling', () => {
   void test('staging deploy validates the gateway runtime contract before migrations', () => {
     const content = readFileSync(stagingDeployScriptPath, 'utf-8');
     const validateStep = 'bash scripts/validate-runtime-config-docker.sh';
-    const pushStep = 'bash scripts/run-migrations-docker.sh --cp --openpath';
+    const pushStep =
+      'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"';
 
     assert.ok(
       content.includes(validateStep),
@@ -378,8 +382,89 @@ void describe('Migration Tooling', () => {
       'staging deploy should try pulling prebuilt candidate images'
     );
     assert.ok(
-      content.includes('deploy_from_source'),
-      'staging deploy should retain a source-build fallback path'
+      content.includes('STAGING_MIGRATIONS_IMAGE'),
+      'staging deploy should resolve a prebuilt migrations image alongside the runtime images'
+    );
+    assert.ok(
+      content.includes('CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"'),
+      'staging deploy should export the release-candidate migrations image into the remote deploy path'
+    );
+    assert.ok(
+      content.includes('if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then'),
+      'staging deploy should keep source-build as an explicit opt-in mode'
+    );
+    assert.ok(
+      !content.includes('Falling back to source build for staging'),
+      'staging deploy should not silently fall back from release candidates to source builds'
+    );
+  });
+
+  void test('migration runner image packages the workspace migration entrypoint', () => {
+    assert.ok(existsSync(migrationsDockerfilePath), 'Dockerfile.migrations should exist');
+    assert.ok(existsSync(migrationsImageScriptPath), 'run-migrations-image.sh should exist');
+
+    const dockerfile = readFileSync(migrationsDockerfilePath, 'utf-8');
+    const script = readFileSync(migrationsImageScriptPath, 'utf-8');
+
+    assert.ok(
+      dockerfile.includes('COPY . .'),
+      'migration runner image should copy the workspace sources it migrates'
+    );
+    assert.ok(
+      dockerfile.includes('ENTRYPOINT ["sh", "scripts/run-migrations-image.sh"]'),
+      'migration runner image should execute the dedicated migrations entrypoint'
+    );
+    assert.ok(
+      script.includes('node --import tsx api/scripts/ensure-legacy-cp-schema.ts'),
+      'migration runner should repair legacy ClassroomPath schema drift before the ClassroomPath push'
+    );
+    assert.ok(
+      script.includes('npm run db:push -w @classroompath/api'),
+      'migration runner should push the ClassroomPath schema from the prebuilt image'
+    );
+    assert.ok(
+      script.includes('npm run db:push -w @openpath/api'),
+      'migration runner should push the OpenPath schema from the prebuilt image'
+    );
+    assert.ok(
+      script.includes('DATABASE_URL') && script.includes('DB_HOST'),
+      'migration runner should derive OpenPath DB_* env vars from DATABASE_URL when needed'
+    );
+  });
+
+  void test('dockerized migration wrapper can delegate to a prebuilt migration runner image', () => {
+    const content = readFileSync(migrationsScriptPath, 'utf-8');
+
+    assert.ok(
+      content.includes('--runner-image <image>'),
+      'run-migrations-docker.sh should document the prebuilt runner image flag'
+    );
+    assert.ok(
+      content.includes('RUNNER_IMAGE=""'),
+      'run-migrations-docker.sh should track the optional runner image'
+    );
+    assert.ok(
+      content.includes('"$RUNNER_IMAGE"'),
+      'run-migrations-docker.sh should execute the requested prebuilt runner image'
+    );
+  });
+
+  void test('production deploy uses release-candidate migrations and verifies staging state first', () => {
+    const content = readFileSync(deployWorkflowPath, 'utf-8');
+
+    assert.ok(
+      content.includes('CLASSROOMPATH_MIGRATIONS_IMAGE'),
+      'deploy workflow should propagate the prebuilt migrations image into production deployment'
+    );
+    assert.ok(
+      content.includes('verify-staging-release-state'),
+      'deploy workflow should verify staging release state before production rollout'
+    );
+    assert.ok(
+      content.includes(
+        'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
+      ),
+      'production deploy should run migrations from the prebuilt runner image instead of npm-installing on the host'
     );
   });
 
