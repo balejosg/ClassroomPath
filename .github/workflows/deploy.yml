@@ -61,6 +61,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          cache: npm
 
       - name: Load staging deploy target
         id: staging-target
@@ -90,37 +91,34 @@ jobs:
           path: release-gate-results.txt
           retention-days: 7
 
-  build-release-images:
-    name: Build Release Images
+  resolve-release-images:
+    name: Resolve Release Images
     runs-on: ubuntu-latest
     needs: release-gate-staging
     if: needs.release-gate-staging.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
-      packages: write
-    env:
-      # Opt Docker-maintained JS actions into Node 24 ahead of the runner default switch.
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      packages: read
     outputs:
       gateway_image: ${{ steps.release-images.outputs.gateway_image }}
       openpath_api_image: ${{ steps.release-images.outputs.openpath_api_image }}
       spa_image: ${{ steps.release-images.outputs.spa_image }}
 
     steps:
-      - name: Checkout with submodules
+      - name: Checkout
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
-      - name: Derive image repositories
-        id: image-repos
-        shell: bash
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Derive release image refs
+        id: image-refs
         run: |
-          set -euo pipefail
-          owner="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
-          echo "gateway_repo=ghcr.io/${owner}/classroompath-gateway" >> "$GITHUB_OUTPUT"
-          echo "openpath_api_repo=ghcr.io/${owner}/classroompath-openpath-api" >> "$GITHUB_OUTPUT"
-          echo "spa_repo=ghcr.io/${owner}/classroompath-spa" >> "$GITHUB_OUTPUT"
+          node scripts/release-images.mjs outputs \
+            --sha "${{ github.sha }}" \
+            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -132,45 +130,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push gateway image
-        id: build-gateway
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.cp-api
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.image-repos.outputs.gateway_repo }}:${{ github.sha }}
-
-      - name: Build and push OpenPath API image
-        id: build-openpath-api
-        uses: docker/build-push-action@v6
-        with:
-          context: ./upstream/openpath
-          file: ./docker/Dockerfile.api
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.image-repos.outputs.openpath_api_repo }}:${{ github.sha }}
-
-      - name: Build and push SPA image
-        id: build-spa
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.spa
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.image-repos.outputs.spa_repo }}:${{ github.sha }}
-
-      - name: Persist immutable image refs
+      - name: Resolve immutable image refs
         id: release-images
         shell: bash
         run: |
           set -euo pipefail
 
-          gateway_image="${{ steps.image-repos.outputs.gateway_repo }}@${{ steps.build-gateway.outputs.digest }}"
-          openpath_api_image="${{ steps.image-repos.outputs.openpath_api_repo }}@${{ steps.build-openpath-api.outputs.digest }}"
-          spa_image="${{ steps.image-repos.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}"
+          resolve_digest() {
+            local image_tag="$1"
+            local image_repo="$2"
+            local digest=""
+            digest="$(docker buildx imagetools inspect "$image_tag" | awk '/^Digest:/ { print $2; exit }')"
+
+            if [ -z "$digest" ]; then
+              echo "::error::Could not resolve immutable digest for $image_tag"
+              exit 1
+            fi
+
+            printf '%s@%s' "$image_repo" "$digest"
+          }
+
+          gateway_image="$(resolve_digest "${{ steps.image-refs.outputs.gateway_tag }}" "${{ steps.image-refs.outputs.gateway_repo }}")"
+          openpath_api_image="$(resolve_digest "${{ steps.image-refs.outputs.openpath_api_tag }}" "${{ steps.image-refs.outputs.openpath_api_repo }}")"
+          spa_image="$(resolve_digest "${{ steps.image-refs.outputs.spa_tag }}" "${{ steps.image-refs.outputs.spa_repo }}")"
 
           echo "gateway_image=$gateway_image" >> "$GITHUB_OUTPUT"
           echo "openpath_api_image=$openpath_api_image" >> "$GITHUB_OUTPUT"
@@ -194,8 +176,8 @@ jobs:
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [release-gate-staging, build-release-images]
-    if: needs.release-gate-staging.result == 'success' && needs.build-release-images.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    needs: [release-gate-staging, resolve-release-images]
+    if: needs.release-gate-staging.result == 'success' && needs.resolve-release-images.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     environment: production
     permissions:
       contents: read
@@ -248,9 +230,9 @@ jobs:
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.build-release-images.outputs.gateway_image }}
-          OPENPATH_API_IMAGE: ${{ needs.build-release-images.outputs.openpath_api_image }}
-          CLASSROOMPATH_SPA_IMAGE: ${{ needs.build-release-images.outputs.spa_image }}
+          CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
+          OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
+          CLASSROOMPATH_SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
         uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ steps.resolve.outputs.ip }}
@@ -448,6 +430,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          cache: npm
 
       - name: Load production deploy target
         id: production-target
@@ -502,7 +485,7 @@ jobs:
       [
         verify-openpath-upstream,
         release-gate-staging,
-        build-release-images,
+        resolve-release-images,
         deploy-production,
         smoke-test-production,
         rollback-production,
@@ -541,13 +524,13 @@ jobs:
           PRODUCTION_API_CONFIG_URL: ${{ steps.production-target.outputs.api_config_url }}
           VERIFY_OPENPATH_RESULT: ${{ needs.verify-openpath-upstream.result }}
           RELEASE_GATE_RESULT: ${{ needs.release-gate-staging.result }}
-          BUILD_IMAGES_RESULT: ${{ needs.build-release-images.result }}
+          RESOLVE_IMAGES_RESULT: ${{ needs.resolve-release-images.result }}
           DEPLOY_RESULT: ${{ needs.deploy-production.result }}
           PRODUCTION_SMOKE_RESULT: ${{ needs.smoke-test-production.result }}
           ROLLBACK_RESULT: ${{ needs.rollback-production.result }}
-          GATEWAY_IMAGE: ${{ needs.build-release-images.outputs.gateway_image }}
-          OPENPATH_API_IMAGE: ${{ needs.build-release-images.outputs.openpath_api_image }}
-          SPA_IMAGE: ${{ needs.build-release-images.outputs.spa_image }}
+          GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
+          OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
+          SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
         run: |
           node scripts/write-release-evidence.mjs
           cat release-evidence.md >> "$GITHUB_STEP_SUMMARY"

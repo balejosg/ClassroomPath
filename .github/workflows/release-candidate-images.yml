@@ -1,0 +1,101 @@
+name: Release Candidate Images
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-candidate-images-main
+  cancel-in-progress: true
+
+jobs:
+  build-release-candidates:
+    name: Build Release Candidate Images
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Derive release image refs
+        id: image-refs
+        run: |
+          node scripts/release-images.mjs outputs \
+            --sha "${{ github.sha }}" \
+            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push gateway image
+        id: build-gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.cp-api
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.image-refs.outputs.gateway_tag }}
+          cache-from: type=gha,scope=release-candidate-gateway
+          cache-to: type=gha,mode=max,scope=release-candidate-gateway
+
+      - name: Build and push OpenPath API image
+        id: build-openpath-api
+        uses: docker/build-push-action@v6
+        with:
+          context: ./upstream/openpath
+          file: ./docker/Dockerfile.api
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.image-refs.outputs.openpath_api_tag }}
+          cache-from: type=gha,scope=release-candidate-openpath-api
+          cache-to: type=gha,mode=max,scope=release-candidate-openpath-api
+
+      - name: Build and push SPA image
+        id: build-spa
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.spa
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.image-refs.outputs.spa_tag }}
+          cache-from: type=gha,scope=release-candidate-spa
+          cache-to: type=gha,mode=max,scope=release-candidate-spa
+
+      - name: Persist release candidate image manifest
+        run: |
+          cat > release-candidate-images.env <<EOF
+          APP_SHA=${{ github.sha }}
+          CLASSROOMPATH_GATEWAY_IMAGE=${{ steps.image-refs.outputs.gateway_repo }}@${{ steps.build-gateway.outputs.digest }}
+          OPENPATH_API_IMAGE=${{ steps.image-refs.outputs.openpath_api_repo }}@${{ steps.build-openpath-api.outputs.digest }}
+          CLASSROOMPATH_SPA_IMAGE=${{ steps.image-refs.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}
+          EOF
+
+      - name: Upload release candidate image manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-images-${{ github.sha }}
+          path: release-candidate-images.env
+          retention-days: 7

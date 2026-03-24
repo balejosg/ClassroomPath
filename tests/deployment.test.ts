@@ -314,6 +314,7 @@ void describe('Migration Tooling', () => {
   const migrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations-docker.sh');
   const hostMigrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations.sh');
   const stagingDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
+  const releaseImagesScriptPath = resolve(projectRoot, 'scripts/release-images.mjs');
 
   void test('ClassroomPath migrations repair legacy ClassroomPath schema before db:push', () => {
     const content = readFileSync(migrationsScriptPath, 'utf-8');
@@ -357,6 +358,28 @@ void describe('Migration Tooling', () => {
     assert.ok(
       content.indexOf(validateStep) < content.indexOf(pushStep),
       'runtime config validation should happen before migrations'
+    );
+  });
+
+  void test('staging deploy resolves release-candidate image refs before source-build fallback', () => {
+    const content = readFileSync(stagingDeployScriptPath, 'utf-8');
+
+    assert.ok(existsSync(releaseImagesScriptPath), 'release-images.mjs should exist');
+    assert.ok(
+      content.includes('node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA"'),
+      'deploy-staging-local.sh should derive release image refs for origin/main'
+    );
+    assert.ok(
+      content.includes('deploy_with_release_candidates'),
+      'deploy-staging-local.sh should define a release-candidate deploy path'
+    );
+    assert.ok(
+      content.includes('docker compose pull gateway api spa'),
+      'staging deploy should try pulling prebuilt candidate images'
+    );
+    assert.ok(
+      content.includes('deploy_from_source'),
+      'staging deploy should retain a source-build fallback path'
     );
   });
 

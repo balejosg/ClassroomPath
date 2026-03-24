@@ -205,6 +205,7 @@ Canonical runbooks:
 ### Staging (Local SSH)
 
 Staging is deployed from a developer machine via `npm run deploy:staging` (SSH to the staging host). It always deploys `origin/main`.
+When release-candidate images for `origin/main` are already published, the script prefers pulling those exact images before falling back to a local source build.
 
 ```bash
 git push origin main
@@ -224,6 +225,7 @@ npm run test:release-gate:staging
 
 Production deploys are triggered by git tags `v*` only. The workflow runs a staging release gate first and only then rolls out to `https://classroompath.eu`.
 Each successful or failed tagged release now publishes a `release-evidence-<tag>` artifact plus a job summary showing the exact SHA, OpenPath SHA, immutable images, and deploy/smoke results.
+Immutable release images are now built on every push to `main`; the production tag resolves and deploys those existing images instead of rebuilding on the tag.
 
 Required GitHub Secrets (production only):
 

@@ -6,6 +6,7 @@
 > Source of truth: `docs/runbooks/deploy-staging.md`
 
 Staging deploys are executed locally via SSH and always deploy `origin/main`.
+When release-candidate images for `origin/main` already exist in GHCR, the script prefers those images before falling back to a source build on the staging host.
 
 Canonical public targets live in `config/deploy-targets.json`.
 
@@ -28,6 +29,7 @@ npm run deploy:staging
 
 - Script exits `0`
 - Script prints `Verification Status: PASS` or `Verification Status: PASS_WITH_FALLBACK`
+- Script reports `Image Source: release-candidate` when it deployed the prebuilt candidate images
 - Health checks pass:
   - `https://classroompath-staging.duckdns.org/cp/health`
   - `https://classroompath-staging.duckdns.org/health`

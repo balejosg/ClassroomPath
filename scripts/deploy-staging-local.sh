@@ -69,6 +69,10 @@ STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
 STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
+STAGING_IMAGE_MODE="${STAGING_IMAGE_MODE:-release-candidate}"
+STAGING_RELEASE_CANDIDATE_FALLBACK="${STAGING_RELEASE_CANDIDATE_FALLBACK:-1}"
+STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-}"
+STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-}"
 APP_DIR="/opt/classroompath/app"
 
 require_cmd git
@@ -147,6 +151,34 @@ if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
     log_info "Remote: $REMOTE_SHA"
 fi
 
+STAGING_USE_RELEASE_CANDIDATE=0
+STAGING_RELEASE_SHA=""
+STAGING_GATEWAY_IMAGE=""
+STAGING_OPENPATH_API_IMAGE=""
+STAGING_SPA_IMAGE=""
+
+if [ "$STAGING_IMAGE_MODE" != "source-build" ] && [ "$REMOTE_SHA" != "unknown" ]; then
+    RELEASE_IMAGE_OUTPUT="$(node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA")"
+
+    while IFS='=' read -r key value; do
+        case "$key" in
+            gateway_tag)
+                STAGING_GATEWAY_IMAGE="$value"
+                ;;
+            openpath_api_tag)
+                STAGING_OPENPATH_API_IMAGE="$value"
+                ;;
+            spa_tag)
+                STAGING_SPA_IMAGE="$value"
+                ;;
+        esac
+    done <<< "$RELEASE_IMAGE_OUTPUT"
+
+    STAGING_USE_RELEASE_CANDIDATE=1
+    STAGING_RELEASE_SHA="$REMOTE_SHA"
+    log_info "Staging will try release candidate images for $STAGING_RELEASE_SHA before any source build fallback"
+fi
+
 log_success "Git state checked"
 
 # =============================================================================
@@ -175,10 +207,130 @@ fi
 log_success "Connected to staging"
 log_info "Deploying..."
 
-"${SSH_CMD[@]}" << 'DEPLOY_SCRIPT'
+remote_assignment() {
+    local key="$1"
+    local value="$2"
+    printf '%s=%q ' "$key" "$value"
+}
+
+REMOTE_ENV_CMD="$(
+    remote_assignment STAGING_USE_RELEASE_CANDIDATE "$STAGING_USE_RELEASE_CANDIDATE"
+    remote_assignment STAGING_RELEASE_SHA "$STAGING_RELEASE_SHA"
+    remote_assignment STAGING_RELEASE_CANDIDATE_FALLBACK "$STAGING_RELEASE_CANDIDATE_FALLBACK"
+    remote_assignment STAGING_GATEWAY_IMAGE "$STAGING_GATEWAY_IMAGE"
+    remote_assignment STAGING_OPENPATH_API_IMAGE "$STAGING_OPENPATH_API_IMAGE"
+    remote_assignment STAGING_SPA_IMAGE "$STAGING_SPA_IMAGE"
+    remote_assignment STAGING_GHCR_USERNAME "$STAGING_GHCR_USERNAME"
+    remote_assignment STAGING_GHCR_TOKEN "$STAGING_GHCR_TOKEN"
+)"
+
+"${SSH_CMD[@]}" "${REMOTE_ENV_CMD}bash -s" << 'DEPLOY_SCRIPT'
 set -euo pipefail
 
 APP_DIR="/opt/classroompath/app"
+STATE_DIR="/opt/classroompath/release-state"
+mkdir -p "$STATE_DIR"
+
+IMAGE_SOURCE="source-build"
+RESOLVED_GATEWAY_IMAGE="classroompath-gateway:local"
+RESOLVED_OPENPATH_API_IMAGE="classroompath-api:local"
+RESOLVED_SPA_IMAGE="classroompath-spa:local"
+
+copy_release_state() {
+    if [ -f "$STATE_DIR/current-images.env" ]; then
+        cp "$STATE_DIR/current-images.env" "$STATE_DIR/previous-images.env"
+    fi
+}
+
+write_release_state() {
+    copy_release_state
+    cat > "$STATE_DIR/current-images.env" <<EOF
+APP_SHA=${STAGING_RELEASE_SHA:-origin-main}
+IMAGE_SOURCE=$IMAGE_SOURCE
+CLASSROOMPATH_GATEWAY_IMAGE=$RESOLVED_GATEWAY_IMAGE
+OPENPATH_API_IMAGE=$RESOLVED_OPENPATH_API_IMAGE
+CLASSROOMPATH_SPA_IMAGE=$RESOLVED_SPA_IMAGE
+EOF
+}
+
+resolve_pulled_digest() {
+    local image_ref="$1"
+    local repo_digest=""
+    repo_digest="$(docker image inspect "$image_ref" --format '{{index .RepoDigests 0}}' 2>/dev/null || true)"
+    if [ -n "$repo_digest" ]; then
+        printf '%s' "$repo_digest"
+        return
+    fi
+
+    printf '%s' "$image_ref"
+}
+
+deploy_with_release_candidates() {
+    if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" != "1" ]; then
+        return 1
+    fi
+
+    if [ -z "${STAGING_GATEWAY_IMAGE:-}" ] || [ -z "${STAGING_OPENPATH_API_IMAGE:-}" ] || [ -z "${STAGING_SPA_IMAGE:-}" ]; then
+        echo "[DEPLOY] Release candidate image refs are incomplete"
+        return 1
+    fi
+
+    if [ -n "${STAGING_GHCR_TOKEN:-}" ]; then
+        if [ -z "${STAGING_GHCR_USERNAME:-}" ]; then
+            echo "[DEPLOY] STAGING_GHCR_TOKEN is set but STAGING_GHCR_USERNAME is missing"
+            return 1
+        fi
+
+        echo "$STAGING_GHCR_TOKEN" | docker login ghcr.io -u "$STAGING_GHCR_USERNAME" --password-stdin
+    fi
+
+    export COMPOSE_PROJECT_NAME=classroompath-staging
+    export CLASSROOMPATH_GATEWAY_IMAGE="$STAGING_GATEWAY_IMAGE"
+    export OPENPATH_API_IMAGE="$STAGING_OPENPATH_API_IMAGE"
+    export CLASSROOMPATH_SPA_IMAGE="$STAGING_SPA_IMAGE"
+
+    echo "[DEPLOY] Pulling release candidate images for ${STAGING_RELEASE_SHA:-origin-main}..."
+    if ! docker compose pull gateway api spa; then
+        echo "[DEPLOY] Pulling release candidate images failed"
+        return 1
+    fi
+
+    echo "[DEPLOY] Starting staging from release candidate images..."
+    docker compose down --remove-orphans 2>/dev/null || true
+    docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
+    docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
+    docker compose up -d --force-recreate --no-build
+
+    IMAGE_SOURCE="release-candidate"
+    RESOLVED_GATEWAY_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_GATEWAY_IMAGE")"
+    RESOLVED_OPENPATH_API_IMAGE="$(resolve_pulled_digest "$OPENPATH_API_IMAGE")"
+    RESOLVED_SPA_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_SPA_IMAGE")"
+    write_release_state
+    return 0
+}
+
+deploy_from_source() {
+    echo "[DEPLOY] Rebuilding containers from source..."
+    export COMPOSE_PROJECT_NAME=classroompath-staging
+    unset CLASSROOMPATH_GATEWAY_IMAGE OPENPATH_API_IMAGE CLASSROOMPATH_SPA_IMAGE
+
+    docker compose down --remove-orphans 2>/dev/null || true
+    docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
+    docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
+
+    if ! docker compose build --quiet; then
+        echo "[DEPLOY] Build failed; retrying with verbose output..."
+        docker compose build
+    fi
+
+    docker compose up -d --force-recreate
+    IMAGE_SOURCE="source-build"
+    RESOLVED_GATEWAY_IMAGE="classroompath-gateway:local"
+    RESOLVED_OPENPATH_API_IMAGE="classroompath-api:local"
+    RESOLVED_SPA_IMAGE="classroompath-spa:local"
+    write_release_state
+}
+
 cd "$APP_DIR"
 
 echo "[DEPLOY] Fetching latest from origin..."
@@ -215,21 +367,21 @@ else
     echo "[DEPLOY] Disk usage OK, skipping cleanup"
 fi
 
-echo "[DEPLOY] Rebuilding containers..."
 cd "$APP_DIR/docker"
-export COMPOSE_PROJECT_NAME=classroompath-staging
+if ! deploy_with_release_candidates; then
+    if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ] && [ "${STAGING_RELEASE_CANDIDATE_FALLBACK:-1}" != "1" ]; then
+        echo "[DEPLOY] Release candidate deploy failed and fallback is disabled"
+        exit 1
+    fi
 
-docker compose down --remove-orphans 2>/dev/null || true
-docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
-docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
+    if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ]; then
+        echo "[DEPLOY] Falling back to source build for staging"
+    fi
 
-if ! docker compose build --quiet; then
-    echo "[DEPLOY] Build failed; retrying with verbose output..."
-    docker compose build
+    deploy_from_source
 fi
-docker compose up -d --force-recreate
 
-echo "[DEPLOY] Containers started, waiting for health..."
+echo "[DEPLOY] Containers started from ${IMAGE_SOURCE}, waiting for health..."
 DEPLOY_SCRIPT
 
 log_success "Deploy commands executed"
@@ -287,6 +439,11 @@ while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     
     sleep 1
 done
+
+STAGING_DEPLOY_IMAGE_SOURCE=$("${SSH_CMD[@]}" "awk -F= '/^IMAGE_SOURCE=/{print \$2}' /opt/classroompath/release-state/current-images.env 2>/dev/null || true")
+if [ -n "$STAGING_DEPLOY_IMAGE_SOURCE" ]; then
+    log_info "Staging image source: $STAGING_DEPLOY_IMAGE_SOURCE"
+fi
 
 # =============================================================================
 # Step 4: Run smoke tests against staging
@@ -369,6 +526,9 @@ echo ""
 echo "  Duration: ${DURATION}s"
 echo "  URL: $SMOKE_TARGET_URL"
 echo "  Verification Status: $STAGING_VERIFICATION_STATUS"
+if [ -n "${STAGING_DEPLOY_IMAGE_SOURCE:-}" ]; then
+    echo "  Image Source: $STAGING_DEPLOY_IMAGE_SOURCE"
+fi
 echo "  Gateway: http://$STAGING_HOST:3001/cp/health"
 echo "  API: http://$STAGING_HOST:3000/health"
 if [ "$STAGING_VERIFICATION_STATUS" = "PASS_WITH_FALLBACK" ]; then

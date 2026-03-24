@@ -38,6 +38,10 @@ if [ -z "${STAGING_SSH_KEY:-}" ]; then
   die "STAGING_SSH_KEY not set (set it in .env.local or export it)" 1
 fi
 
+if [ -n "${STAGING_GHCR_TOKEN:-}" ] && [ -z "${STAGING_GHCR_USERNAME:-}" ]; then
+  die "STAGING_GHCR_USERNAME must be set when STAGING_GHCR_TOKEN is provided" 1
+fi
+
 STAGING_SSH_KEY="$(expand_tilde "$STAGING_SSH_KEY")"
 if [ ! -f "$STAGING_SSH_KEY" ]; then
   die "SSH key not found: $STAGING_SSH_KEY" 1

@@ -18,6 +18,12 @@ type WorkflowJob = {
 
 type WorkflowDefinition = {
   concurrency?: string | { group?: string; 'cancel-in-progress'?: boolean };
+  on?: {
+    push?: {
+      branches?: string[];
+      tags?: string[];
+    };
+  };
   jobs?: Record<string, WorkflowJob>;
 };
 
@@ -87,8 +93,8 @@ describe('Workflow configuration hardening', () => {
     const jobs = workflow.jobs ?? {};
 
     assert.ok(
-      jobs['build-release-images'],
-      'Deploy workflow should build immutable release images'
+      jobs['resolve-release-images'],
+      'Deploy workflow should resolve immutable release images'
     );
     assert.ok(jobs['deploy-production'], 'Deploy workflow should still deploy to production');
     assert.ok(jobs['smoke-test-production'], 'Deploy workflow should smoke test production');
@@ -99,8 +105,8 @@ describe('Workflow configuration hardening', () => {
 
     const deployNeeds = normalizeNeeds(jobs['deploy-production']?.needs);
     assert.ok(
-      deployNeeds.includes('build-release-images'),
-      'deploy-production should depend on build-release-images'
+      deployNeeds.includes('resolve-release-images'),
+      'deploy-production should depend on resolve-release-images'
     );
     assert.ok(
       deployNeeds.includes('release-gate-staging'),
@@ -118,12 +124,42 @@ describe('Workflow configuration hardening', () => {
       'release-evidence should depend on deploy-production'
     );
     assert.ok(
+      evidenceNeeds.includes('resolve-release-images'),
+      'release-evidence should depend on resolve-release-images'
+    );
+    assert.ok(
       evidenceNeeds.includes('smoke-test-production'),
       'release-evidence should depend on smoke-test-production'
     );
     assert.ok(
       evidenceNeeds.includes('rollback-production'),
       'release-evidence should depend on rollback-production'
+    );
+  });
+
+  test('Release candidate workflow builds images for main before a production tag exists', () => {
+    const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
+    const jobs = workflow.jobs ?? {};
+
+    assert.ok(
+      workflow.on?.push?.branches?.includes('main'),
+      'release candidate workflow should trigger on pushes to main'
+    );
+    assert.ok(
+      jobs['build-release-candidates'],
+      'release candidate workflow should build candidate images'
+    );
+
+    const concurrency = workflow.concurrency;
+    assert.equal(
+      typeof concurrency,
+      'object',
+      'release candidate workflow should define object concurrency'
+    );
+    assert.equal(
+      (concurrency as { 'cancel-in-progress'?: boolean })['cancel-in-progress'],
+      true,
+      'release candidate workflow should cancel superseded main builds'
     );
   });
 });

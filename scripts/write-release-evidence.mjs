@@ -73,7 +73,7 @@ const evidence = {
   jobs: {
     verifyOpenPathUpstream: valueOrNull(process.env.VERIFY_OPENPATH_RESULT),
     releaseGateStaging: valueOrNull(process.env.RELEASE_GATE_RESULT),
-    buildReleaseImages: valueOrNull(process.env.BUILD_IMAGES_RESULT),
+    resolveReleaseImages: valueOrNull(process.env.RESOLVE_IMAGES_RESULT),
     deployProduction: valueOrNull(process.env.DEPLOY_RESULT),
     smokeTestProduction: valueOrNull(process.env.PRODUCTION_SMOKE_RESULT),
     rollbackProduction: valueOrNull(process.env.ROLLBACK_RESULT),
@@ -108,7 +108,7 @@ const summaryLines = [
   '| --- | --- |',
   `| Verify OpenPath upstream | ${evidence.jobs.verifyOpenPathUpstream ?? 'n/a'} |`,
   `| Release gate (staging) | ${evidence.jobs.releaseGateStaging ?? 'n/a'} |`,
-  `| Build immutable images | ${evidence.jobs.buildReleaseImages ?? 'n/a'} |`,
+  `| Resolve release images | ${evidence.jobs.resolveReleaseImages ?? 'n/a'} |`,
   `| Deploy production | ${evidence.jobs.deployProduction ?? 'n/a'} |`,
   `| Production smoke | ${evidence.jobs.smokeTestProduction ?? 'n/a'} |`,
   `| Rollback | ${evidence.jobs.rollbackProduction ?? 'n/a'} |`,
