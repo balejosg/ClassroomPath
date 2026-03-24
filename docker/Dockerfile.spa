@@ -9,6 +9,10 @@ WORKDIR /app
 COPY package*.json ./
 COPY react-spa/package*.json ./react-spa/
 COPY api/package*.json ./api/
+COPY upstream/openpath/tsconfig.base.json ./upstream/openpath/tsconfig.base.json
+COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
+COPY upstream/openpath/react-spa/package*.json ./upstream/openpath/react-spa/
+COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
 
 # Install dependencies.
 # Retry to tolerate transient multi-arch registry failures in CI.
@@ -21,8 +25,21 @@ RUN set -eux; \
     sleep $((attempt * 5)); \
   done
 
-# Copy source
-COPY . .
+# Copy only the SPA build inputs so unrelated workspace changes do not
+# invalidate the release-candidate cache.
+COPY react-spa/tsconfig.json ./react-spa/tsconfig.json
+COPY react-spa/vite.config.ts ./react-spa/vite.config.ts
+COPY react-spa/postcss.config.js ./react-spa/postcss.config.js
+COPY react-spa/index.html ./react-spa/index.html
+COPY react-spa/public ./react-spa/public
+COPY react-spa/src ./react-spa/src
+COPY upstream/openpath/shared/tsconfig.json ./upstream/openpath/shared/tsconfig.json
+COPY upstream/openpath/shared/src ./upstream/openpath/shared/src
+COPY upstream/openpath/react-spa/tsconfig.json ./upstream/openpath/react-spa/tsconfig.json
+COPY upstream/openpath/react-spa/vite.config.ts ./upstream/openpath/react-spa/vite.config.ts
+COPY upstream/openpath/react-spa/postcss.config.js ./upstream/openpath/react-spa/postcss.config.js
+COPY upstream/openpath/react-spa/index.html ./upstream/openpath/react-spa/index.html
+COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src
 
 # Build SPA
 RUN npm run build --workspace=@classroompath/react-spa

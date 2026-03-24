@@ -315,6 +315,10 @@ void describe('Migration Tooling', () => {
   const hostMigrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations.sh');
   const migrationsImageScriptPath = resolve(projectRoot, 'scripts/run-migrations-image.sh');
   const migrationsDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.migrations');
+  const gatewayDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.cp-api');
+  const gatewayDockerignorePath = resolve(projectRoot, 'docker/Dockerfile.cp-api.dockerignore');
+  const spaDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.spa');
+  const spaDockerignorePath = resolve(projectRoot, 'docker/Dockerfile.spa.dockerignore');
   const verifierDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.release-verifier');
   const stagingDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
   const releaseImagesScriptPath = resolve(projectRoot, 'scripts/release-images.mjs');
@@ -441,6 +445,76 @@ void describe('Migration Tooling', () => {
     assert.ok(
       script.includes('DATABASE_URL') && script.includes('DB_HOST'),
       'migration runner should derive OpenPath DB_* env vars from DATABASE_URL when needed'
+    );
+  });
+
+  void test('gateway release image narrows its build inputs to avoid unrelated cache invalidation', () => {
+    assert.ok(existsSync(gatewayDockerfilePath), 'Dockerfile.cp-api should exist');
+    assert.ok(existsSync(gatewayDockerignorePath), 'Dockerfile.cp-api.dockerignore should exist');
+
+    const dockerfile = readFileSync(gatewayDockerfilePath, 'utf-8');
+    const dockerignore = readFileSync(gatewayDockerignorePath, 'utf-8');
+
+    assert.ok(
+      !dockerfile.includes('COPY . .'),
+      'gateway release image should not copy the entire repository into the build stage'
+    );
+    assert.ok(
+      dockerfile.includes('COPY api/src ./api/src'),
+      'gateway release image should copy only the ClassroomPath API sources it builds'
+    );
+    assert.ok(
+      dockerfile.includes('COPY react-spa/src ./react-spa/src'),
+      'gateway release image should copy the ClassroomPath SPA sources it renders'
+    );
+    assert.ok(
+      dockerfile.includes('COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src'),
+      'gateway release image should copy the upstream OpenPath SPA sources it imports'
+    );
+    assert.ok(
+      dockerignore.includes('tests/**'),
+      'gateway release image should ignore repo-level tests from its Docker context'
+    );
+    assert.ok(
+      dockerignore.includes('react-spa/src/**/__tests__/**'),
+      'gateway release image should ignore ClassroomPath SPA unit tests from its Docker context'
+    );
+    assert.ok(
+      dockerignore.includes('upstream/openpath/react-spa/src/**/__tests__/**'),
+      'gateway release image should ignore OpenPath SPA unit tests from its Docker context'
+    );
+  });
+
+  void test('spa release image narrows its build inputs to avoid unrelated cache invalidation', () => {
+    assert.ok(existsSync(spaDockerfilePath), 'Dockerfile.spa should exist');
+    assert.ok(existsSync(spaDockerignorePath), 'Dockerfile.spa.dockerignore should exist');
+
+    const dockerfile = readFileSync(spaDockerfilePath, 'utf-8');
+    const dockerignore = readFileSync(spaDockerignorePath, 'utf-8');
+
+    assert.ok(
+      !dockerfile.includes('COPY . .'),
+      'spa release image should not copy the entire repository into the build stage'
+    );
+    assert.ok(
+      dockerfile.includes('COPY react-spa/src ./react-spa/src'),
+      'spa release image should copy only the ClassroomPath SPA sources it builds'
+    );
+    assert.ok(
+      dockerfile.includes('COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src'),
+      'spa release image should copy the upstream OpenPath SPA sources it imports'
+    );
+    assert.ok(
+      dockerignore.includes('tests/**'),
+      'spa release image should ignore repo-level tests from its Docker context'
+    );
+    assert.ok(
+      dockerignore.includes('react-spa/src/**/__tests__/**'),
+      'spa release image should ignore ClassroomPath SPA unit tests from its Docker context'
+    );
+    assert.ok(
+      dockerignore.includes('upstream/openpath/react-spa/src/**/__tests__/**'),
+      'spa release image should ignore OpenPath SPA unit tests from its Docker context'
     );
   });
 

@@ -23,8 +23,23 @@ RUN set -eux; \
     sleep $((attempt * 5)); \
   done
 
-# Copy all source
-COPY . .
+# Copy only the build inputs for the gateway so workflow/test changes do not
+# invalidate the slow multi-arch image cache.
+COPY api/tsconfig.json ./api/tsconfig.json
+COPY api/src ./api/src
+COPY react-spa/tsconfig.json ./react-spa/tsconfig.json
+COPY react-spa/vite.config.ts ./react-spa/vite.config.ts
+COPY react-spa/postcss.config.js ./react-spa/postcss.config.js
+COPY react-spa/index.html ./react-spa/index.html
+COPY react-spa/public ./react-spa/public
+COPY react-spa/src ./react-spa/src
+COPY upstream/openpath/shared/tsconfig.json ./upstream/openpath/shared/tsconfig.json
+COPY upstream/openpath/shared/src ./upstream/openpath/shared/src
+COPY upstream/openpath/react-spa/tsconfig.json ./upstream/openpath/react-spa/tsconfig.json
+COPY upstream/openpath/react-spa/vite.config.ts ./upstream/openpath/react-spa/vite.config.ts
+COPY upstream/openpath/react-spa/postcss.config.js ./upstream/openpath/react-spa/postcss.config.js
+COPY upstream/openpath/react-spa/index.html ./upstream/openpath/react-spa/index.html
+COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src
 
 # Build everything
 RUN npm run build --workspace=@openpath/shared

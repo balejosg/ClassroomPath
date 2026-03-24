@@ -1,0 +1,45 @@
+# Keep the gateway candidate context focused on files copied by Dockerfile.cp-api.
+**/node_modules
+**/dist
+**/coverage
+**/.turbo
+**/.vite
+**/.eslintcache
+**/test-results
+**/playwright-report
+**/*.log
+.git
+.github
+.vscode
+.DS_Store
+docs/**
+tests/**
+**/e2e/**
+
+# Dev/test files inside copied trees still bust the gateway cache unless we
+# exclude them here.
+react-spa/src/**/__tests__/**
+react-spa/src/**/*.test.ts
+react-spa/src/**/*.test.tsx
+react-spa/src/test/**
+react-spa/vitest.config.ts
+upstream/openpath/shared/tests/**
+upstream/openpath/react-spa/playwright.config.ts
+upstream/openpath/react-spa/vitest.config.ts
+upstream/openpath/react-spa/e2e/**
+upstream/openpath/react-spa/src/**/__tests__/**
+upstream/openpath/react-spa/src/**/*.test.ts
+upstream/openpath/react-spa/src/**/*.test.tsx
+upstream/openpath/react-spa/src/test/**
+upstream/openpath/react-spa/src/test-utils/**
+
+# Unused upstream packages and docs are not part of the gateway build.
+upstream/openpath/.opencode/**
+upstream/openpath/build/**
+upstream/openpath/dashboard/**
+upstream/openpath/data/**
+upstream/openpath/docs/**
+upstream/openpath/firefox-extension/**
+upstream/openpath/linux/**
+upstream/openpath/spa/**
+upstream/openpath/windows/**
