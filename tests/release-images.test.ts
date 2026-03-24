@@ -101,6 +101,30 @@ describe('release image helpers', () => {
     assert.equal(run.id, 104);
   });
 
+  test('selects the newest successful release-candidate run from gh run list JSON', () => {
+    const run = selectSuccessfulReleaseCandidateRun(
+      [
+        {
+          databaseId: 201,
+          headSha: 'target-sha',
+          event: 'push',
+          conclusion: 'success',
+          updatedAt: '2026-03-24T11:00:00Z',
+        },
+        {
+          databaseId: 202,
+          headSha: 'target-sha',
+          event: 'push',
+          conclusion: 'success',
+          updatedAt: '2026-03-24T12:00:00Z',
+        },
+      ],
+      { sha: 'target-sha' }
+    );
+
+    assert.equal(run.id, 202);
+  });
+
   test('parses and validates a release candidate manifest for the target SHA', () => {
     assert.deepEqual(
       parseReleaseCandidateManifest(

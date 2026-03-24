@@ -82,10 +82,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          gh api repos/${{ github.repository }}/actions/workflows/release-candidate-images.yml/runs \
-            -f head_sha="$TARGET_SHA" \
-            -f status=completed \
-            -f per_page=20 > workflow-runs.json
+          gh run list \
+            --repo "${{ github.repository }}" \
+            --workflow release-candidate-images.yml \
+            --commit "$TARGET_SHA" \
+            --limit 20 \
+            --json databaseId,headSha,status,conclusion,event,createdAt,updatedAt > workflow-runs.json
 
           node scripts/release-images.mjs select-run-id \
             --sha "$TARGET_SHA" \

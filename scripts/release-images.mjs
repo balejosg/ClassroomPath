@@ -125,25 +125,43 @@ export function selectSuccessfulReleaseCandidateRun(payload, { sha } = {}) {
     throw new Error('Target SHA is required to select a release candidate workflow run');
   }
 
-  const workflowRuns = Array.isArray(payload?.workflow_runs) ? payload.workflow_runs : [];
+  const workflowRuns = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.workflow_runs)
+      ? payload.workflow_runs
+      : [];
   const candidates = workflowRuns
-    .filter(
-      (run) =>
-        run &&
-        run.head_sha === targetSha &&
-        run.event === 'push' &&
-        run.conclusion === 'success' &&
-        run.id
-    )
-    .sort((left, right) => {
-      const leftTime = Date.parse(left.updated_at ?? left.created_at ?? 0);
-      const rightTime = Date.parse(right.updated_at ?? right.created_at ?? 0);
+    .filter((rawRun) => {
+      if (!rawRun) {
+        return false;
+      }
+
+      const headSha = rawRun.head_sha ?? rawRun.headSha;
+      const runId = rawRun.id ?? rawRun.databaseId;
+      return (
+        headSha === targetSha && rawRun.event === 'push' && rawRun.conclusion === 'success' && runId
+      );
+    })
+    .sort((leftRaw, rightRaw) => {
+      const leftTime = Date.parse(
+        leftRaw.updated_at ?? leftRaw.updatedAt ?? leftRaw.created_at ?? leftRaw.createdAt ?? 0
+      );
+      const rightTime = Date.parse(
+        rightRaw.updated_at ?? rightRaw.updatedAt ?? rightRaw.created_at ?? rightRaw.createdAt ?? 0
+      );
       return rightTime - leftTime;
     });
 
   const selected = candidates[0];
   if (!selected) {
     throw new Error(`No successful release candidate workflow run found for SHA ${targetSha}`);
+  }
+
+  if (!selected.id && selected.databaseId) {
+    return {
+      ...selected,
+      id: selected.databaseId,
+    };
   }
 
   return selected;

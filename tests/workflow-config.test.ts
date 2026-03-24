@@ -159,10 +159,16 @@ describe('Workflow configuration hardening', () => {
     const resolveSteps = jobs['resolve-release-images']?.steps ?? [];
     const resolveRun = resolveSteps.map((step) => step.run ?? '').join('\n');
     assert.ok(
-      resolveRun.includes(
-        'gh api repos/${{ github.repository }}/actions/workflows/release-candidate-images.yml/runs'
-      ),
+      resolveRun.includes('gh run list'),
       'resolve-release-images should look up the successful release-candidate workflow run for the exact SHA'
+    );
+    assert.ok(
+      resolveRun.includes('--workflow release-candidate-images.yml'),
+      'resolve-release-images should scope run lookup to the release-candidate workflow file'
+    );
+    assert.ok(
+      resolveRun.includes('--commit "$TARGET_SHA"'),
+      'resolve-release-images should scope run lookup to the exact target SHA'
     );
     assert.ok(
       resolveRun.includes('gh run download "$run_id"'),
