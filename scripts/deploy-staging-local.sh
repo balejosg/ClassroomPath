@@ -398,6 +398,12 @@ if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
     cd "$APP_DIR/docker"
     deploy_from_source
 else
+    if [ -z "${STAGING_MIGRATIONS_IMAGE:-}" ]; then
+        echo "[DEPLOY] Release candidate migrations image ref is missing"
+        exit 1
+    fi
+
+    export CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"
     echo "[DEPLOY] Running database migrations from release candidate image..."
     bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"
     cd "$APP_DIR/docker"

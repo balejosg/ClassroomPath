@@ -395,6 +395,13 @@ void describe('Migration Tooling', () => {
       'staging deploy should export the release-candidate migrations image into the remote deploy path'
     );
     assert.ok(
+      content.indexOf('CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"') <
+        content.indexOf(
+          'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
+        ),
+      'staging deploy should export the release-candidate migrations image before running migrations'
+    );
+    assert.ok(
       content.includes('if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then'),
       'staging deploy should keep source-build as an explicit opt-in mode'
     );
