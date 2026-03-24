@@ -84,6 +84,7 @@ const evidence = {
     migrations: valueOrNull(process.env.MIGRATIONS_IMAGE),
     openPathApi: valueOrNull(process.env.OPENPATH_API_IMAGE),
     spa: valueOrNull(process.env.SPA_IMAGE),
+    verifier: valueOrNull(process.env.VERIFIER_IMAGE),
   },
   artifacts: {
     releaseGateResults: 'release-gate-results-staging',
@@ -130,6 +131,7 @@ const summaryLines = [
   `- Migrations: \`${evidence.immutableImages.migrations ?? 'n/a'}\``,
   `- OpenPath API: \`${evidence.immutableImages.openPathApi ?? 'n/a'}\``,
   `- SPA: \`${evidence.immutableImages.spa ?? 'n/a'}\``,
+  `- Release verifier: \`${evidence.immutableImages.verifier ?? 'n/a'}\``,
   '',
   '### Evidence Artifacts',
   '',

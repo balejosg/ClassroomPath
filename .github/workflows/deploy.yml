@@ -6,6 +6,7 @@ on:
       - 'v*'
 
 permissions:
+  actions: read
   contents: read
   packages: write
 
@@ -53,6 +54,7 @@ jobs:
     needs: verify-openpath-upstream
     if: needs.verify-openpath-upstream.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     permissions:
+      actions: read
       contents: read
       packages: read
     outputs:
@@ -60,6 +62,7 @@ jobs:
       migrations_image: ${{ steps.release-images.outputs.migrations_image }}
       openpath_api_image: ${{ steps.release-images.outputs.openpath_api_image }}
       spa_image: ${{ steps.release-images.outputs.spa_image }}
+      verifier_image: ${{ steps.release-images.outputs.verifier_image }}
 
     steps:
       - name: Checkout
@@ -70,61 +73,59 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Derive release image refs
-        id: image-refs
-        run: |
-          node scripts/release-images.mjs outputs \
-            --sha "${{ github.sha }}" \
-            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve immutable image refs
-        id: release-images
+      - name: Find successful release candidate workflow run
+        id: workflow-run
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
-          resolve_digest() {
-            local image_tag="$1"
-            local image_repo="$2"
-            local digest=""
-            digest="$(docker buildx imagetools inspect "$image_tag" | awk '/^Digest:/ { print $2; exit }')"
+          gh api repos/${{ github.repository }}/actions/workflows/release-candidate-images.yml/runs \
+            -f head_sha="$TARGET_SHA" \
+            -f status=completed \
+            -f per_page=20 > workflow-runs.json
 
-            if [ -z "$digest" ]; then
-              echo "::error::Could not resolve immutable digest for $image_tag"
-              exit 1
-            fi
+          node scripts/release-images.mjs select-run-id \
+            --sha "$TARGET_SHA" \
+            --runs-file workflow-runs.json >> "$GITHUB_OUTPUT"
 
-            printf '%s@%s' "$image_repo" "$digest"
-          }
+      - name: Download release candidate manifest artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
 
-          gateway_image="$(resolve_digest "${{ steps.image-refs.outputs.gateway_tag }}" "${{ steps.image-refs.outputs.gateway_repo }}")"
-          migrations_image="$(resolve_digest "${{ steps.image-refs.outputs.migrations_tag }}" "${{ steps.image-refs.outputs.migrations_repo }}")"
-          openpath_api_image="$(resolve_digest "${{ steps.image-refs.outputs.openpath_api_tag }}" "${{ steps.image-refs.outputs.openpath_api_repo }}")"
-          spa_image="$(resolve_digest "${{ steps.image-refs.outputs.spa_tag }}" "${{ steps.image-refs.outputs.spa_repo }}")"
+          run_id="${{ steps.workflow-run.outputs.run_id }}"
+          mkdir -p release-candidate-artifact
 
-          echo "gateway_image=$gateway_image" >> "$GITHUB_OUTPUT"
-          echo "migrations_image=$migrations_image" >> "$GITHUB_OUTPUT"
-          echo "openpath_api_image=$openpath_api_image" >> "$GITHUB_OUTPUT"
-          echo "spa_image=$spa_image" >> "$GITHUB_OUTPUT"
+          gh run download "$run_id" \
+            --name "release-candidate-images-$TARGET_SHA" \
+            --dir release-candidate-artifact
 
-          cat > release-images.env <<EOF
-          CLASSROOMPATH_GATEWAY_IMAGE=$gateway_image
-          CLASSROOMPATH_MIGRATIONS_IMAGE=$migrations_image
-          OPENPATH_API_IMAGE=$openpath_api_image
-          CLASSROOMPATH_SPA_IMAGE=$spa_image
-          APP_SHA=${{ github.sha }}
-          TAG_NAME=${{ github.ref_name }}
-          EOF
+      - name: Load approved release candidate manifest
+        id: release-images
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          manifest_file="release-candidate-artifact/release-candidate-images.env"
+          if [ ! -f "$manifest_file" ]; then
+            echo "::error::Missing release candidate manifest artifact for $TARGET_SHA"
+            exit 1
+          fi
+
+          node scripts/release-images.mjs manifest-outputs \
+            --sha "$TARGET_SHA" \
+            --file "$manifest_file" >> "$GITHUB_OUTPUT"
+
+          cp "$manifest_file" release-images.env
+          printf 'TAG_NAME=%s\n' '${{ github.ref_name }}' >> release-images.env
 
       - name: Upload release image manifest
         uses: actions/upload-artifact@v7
@@ -246,8 +247,11 @@ jobs:
   release-gate-staging:
     name: Release Gate Staging
     runs-on: ubuntu-latest
-    needs: [verify-openpath-upstream, verify-staging-release-state]
-    if: needs.verify-openpath-upstream.result == 'success' && needs.verify-staging-release-state.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    needs: [verify-openpath-upstream, resolve-release-images, verify-staging-release-state]
+    if: needs.verify-openpath-upstream.result == 'success' && needs.resolve-release-images.result == 'success' && needs.verify-staging-release-state.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Checkout
@@ -263,8 +267,12 @@ jobs:
         id: staging-target
         run: node scripts/deploy-targets.mjs outputs staging >> "$GITHUB_OUTPUT"
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run release gate against staging
         id: gate
@@ -272,9 +280,15 @@ jobs:
           RELEASE_GATE_URL: ${{ steps.staging-target.outputs.public_url }}
           RELEASE_GATE_TIMEOUT: '30000'
           RELEASE_GATE_ALLOW_MUTATIONS: '1'
+          CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
         run: |
-          echo "🔐 Running staging release gate against $RELEASE_GATE_URL"
-          npm run test:release-gate 2>&1 | tee release-gate-results.txt
+          echo "🔐 Running staging release gate against $RELEASE_GATE_URL via $CLASSROOMPATH_VERIFIER_IMAGE"
+          docker run --rm \
+            -e RELEASE_GATE_URL \
+            -e RELEASE_GATE_TIMEOUT \
+            -e RELEASE_GATE_ALLOW_MUTATIONS \
+            "$CLASSROOMPATH_VERIFIER_IMAGE" \
+            npm run test:release-gate 2>&1 | tee release-gate-results.txt
           exit_code=${PIPESTATUS[0]}
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           exit "$exit_code"
@@ -489,8 +503,11 @@ jobs:
   smoke-test-production:
     name: Smoke Test Production
     runs-on: ubuntu-latest
-    needs: deploy-production
-    if: always() && needs.deploy-production.result == 'success'
+    needs: [deploy-production, resolve-release-images]
+    if: always() && needs.deploy-production.result == 'success' && needs.resolve-release-images.result == 'success'
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Checkout
@@ -506,20 +523,49 @@ jobs:
         id: production-target
         run: node scripts/deploy-targets.mjs outputs production >> "$GITHUB_OUTPUT"
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Wait for deployment to stabilize
-        run: sleep 30
+      - name: Wait for production readiness
+        shell: bash
+        env:
+          PRODUCTION_READY_URL: ${{ steps.production-target.outputs.ready_url }}
+        run: |
+          set -euo pipefail
+
+          last_response=''
+          for attempt in $(seq 1 30); do
+            last_response="$(curl -fsS "$PRODUCTION_READY_URL" 2>/dev/null || true)"
+            if printf '%s' "$last_response" | grep -q '"ready":true'; then
+              echo "✅ Production ready after attempt $attempt"
+              exit 0
+            fi
+
+            echo "⏳ Production not ready yet (attempt $attempt/30)"
+            sleep 2
+          done
+
+          echo "::error::Production readiness did not converge within 60 seconds"
+          printf '%s\n' "$last_response"
+          exit 1
 
       - name: Run smoke tests against production
         id: smoke
         env:
           SMOKE_TEST_URL: ${{ steps.production-target.outputs.public_url }}
           SMOKE_TEST_TIMEOUT: '30000'
+          CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
         run: |
-          echo "🔍 Running smoke tests against $SMOKE_TEST_URL"
-          npm run test:smoke 2>&1 | tee smoke-results.txt
+          echo "🔍 Running smoke tests against $SMOKE_TEST_URL via $CLASSROOMPATH_VERIFIER_IMAGE"
+          docker run --rm \
+            -e SMOKE_TEST_URL \
+            -e SMOKE_TEST_TIMEOUT \
+            "$CLASSROOMPATH_VERIFIER_IMAGE" \
+            npm run test:smoke 2>&1 | tee smoke-results.txt
           exit_code=${PIPESTATUS[0]}
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           exit "$exit_code"
@@ -604,6 +650,7 @@ jobs:
           MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
           OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
           SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
+          VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
         run: |
           node scripts/write-release-evidence.mjs
           cat release-evidence.md >> "$GITHUB_STEP_SUMMARY"

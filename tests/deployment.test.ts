@@ -315,9 +315,14 @@ void describe('Migration Tooling', () => {
   const hostMigrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations.sh');
   const migrationsImageScriptPath = resolve(projectRoot, 'scripts/run-migrations-image.sh');
   const migrationsDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.migrations');
+  const verifierDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.release-verifier');
   const stagingDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
   const releaseImagesScriptPath = resolve(projectRoot, 'scripts/release-images.mjs');
   const deployWorkflowPath = resolve(projectRoot, '.github/workflows/deploy.yml');
+  const releaseCandidateWorkflowPath = resolve(
+    projectRoot,
+    '.github/workflows/release-candidate-images.yml'
+  );
 
   void test('ClassroomPath migrations repair legacy ClassroomPath schema before db:push', () => {
     const content = readFileSync(migrationsScriptPath, 'utf-8');
@@ -432,6 +437,27 @@ void describe('Migration Tooling', () => {
     );
   });
 
+  void test('release verifier image packages the repo test entrypoints for tag promotion gates', () => {
+    assert.ok(existsSync(verifierDockerfilePath), 'Dockerfile.release-verifier should exist');
+
+    const dockerfile = readFileSync(verifierDockerfilePath, 'utf-8');
+
+    assert.ok(
+      dockerfile.includes('COPY . .'),
+      'release verifier image should copy the repository sources needed by the gate tests'
+    );
+    assert.ok(
+      dockerfile.includes('npm ci'),
+      'release verifier image should install dependencies during the candidate build, not on the tag workflow'
+    );
+    assert.ok(
+      dockerfile.includes('tests/release-gate.test.ts') ||
+        dockerfile.includes('tests/smoke.test.ts') ||
+        dockerfile.includes('WORKDIR /app'),
+      'release verifier image should target the repository test workspace'
+    );
+  });
+
   void test('dockerized migration wrapper can delegate to a prebuilt migration runner image', () => {
     const content = readFileSync(migrationsScriptPath, 'utf-8');
 
@@ -465,6 +491,39 @@ void describe('Migration Tooling', () => {
         'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
       ),
       'production deploy should run migrations from the prebuilt runner image instead of npm-installing on the host'
+    );
+    assert.ok(
+      content.includes('CLASSROOMPATH_VERIFIER_IMAGE'),
+      'deploy workflow should propagate the prebuilt verifier image into the release gate and smoke jobs'
+    );
+    assert.ok(
+      content.includes('gh run download "$run_id"'),
+      'deploy workflow should consume the previously published release candidate manifest artifact'
+    );
+    assert.ok(
+      !content.includes('docker buildx imagetools inspect'),
+      'deploy workflow should not re-resolve digests from image tags during tag promotion'
+    );
+    assert.ok(
+      !content.includes('run: sleep 30'),
+      'deploy workflow should replace the fixed smoke delay with readiness polling'
+    );
+  });
+
+  void test('release candidate workflow publishes a verifier image in the manifest artifact', () => {
+    const content = readFileSync(releaseCandidateWorkflowPath, 'utf-8');
+
+    assert.ok(
+      content.includes('build-verifier-release-candidate'),
+      'release candidate workflow should include a dedicated verifier image build job'
+    );
+    assert.ok(
+      content.includes('docker/Dockerfile.release-verifier'),
+      'release candidate workflow should build the verifier image from Dockerfile.release-verifier'
+    );
+    assert.ok(
+      content.includes('CLASSROOMPATH_VERIFIER_IMAGE='),
+      'release candidate manifest artifact should include the verifier image reference'
     );
   });
 

@@ -17,6 +17,8 @@
 **/e2e
 .github
 .vscode
+!tests/
+!tests/**/*.ts
 
 # Upstream OpenPath: exclude non-workspace dirs from build context
 upstream/openpath/.opencode

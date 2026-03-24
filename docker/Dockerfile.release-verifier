@@ -1,0 +1,25 @@
+# ClassroomPath release verifier image
+ARG NODE_IMAGE=node@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
+
+FROM ${NODE_IMAGE}
+WORKDIR /app
+
+COPY package*.json ./
+COPY upstream/openpath/tsconfig.base.json ./upstream/openpath/tsconfig.base.json
+COPY api/package*.json ./api/
+COPY react-spa/package*.json ./react-spa/
+COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
+COPY upstream/openpath/react-spa/package*.json ./upstream/openpath/react-spa/
+COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
+
+RUN set -eux; \
+  for attempt in 1 2 3; do \
+    npm ci --no-audit --no-fund && break; \
+    if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+    echo "npm ci failed on attempt $attempt, retrying..." >&2; \
+    rm -rf node_modules; \
+    sleep $((attempt * 5)); \
+  done
+
+COPY . .
+CMD ["node", "--version"]

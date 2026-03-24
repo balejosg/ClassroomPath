@@ -221,6 +221,57 @@ jobs:
         run: |
           echo "spa_image=${{ steps.image-refs.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
+  build-verifier-release-candidate:
+    name: Build Release Verifier Candidate
+    runs-on: ubuntu-latest
+    outputs:
+      verifier_image: ${{ steps.publish-manifest.outputs.verifier_image }}
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Derive release image refs
+        id: image-refs
+        run: |
+          node scripts/release-images.mjs outputs \
+            --sha "${{ github.sha }}" \
+            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push verifier image
+        id: build-verifier
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.release-verifier
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.image-refs.outputs.verifier_tag }}
+          cache-from: type=gha,scope=release-candidate-verifier
+          cache-to: type=gha,mode=max,scope=release-candidate-verifier
+
+      - name: Publish verifier manifest output
+        id: publish-manifest
+        run: |
+          echo "verifier_image=${{ steps.image-refs.outputs.verifier_repo }}@${{ steps.build-verifier.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
   publish-release-candidate-manifest:
     name: Publish Release Candidate Manifest
     runs-on: ubuntu-latest
@@ -229,6 +280,7 @@ jobs:
       - build-migrations-release-candidate
       - build-openpath-api-release-candidate
       - build-spa-release-candidate
+      - build-verifier-release-candidate
 
     steps:
       - name: Persist release candidate image manifest
@@ -239,6 +291,7 @@ jobs:
           CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.build-migrations-release-candidate.outputs.migrations_image }}
           OPENPATH_API_IMAGE=${{ needs.build-openpath-api-release-candidate.outputs.openpath_api_image }}
           CLASSROOMPATH_SPA_IMAGE=${{ needs.build-spa-release-candidate.outputs.spa_image }}
+          CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.build-verifier-release-candidate.outputs.verifier_image }}
           EOF
 
       - name: Upload release candidate image manifest

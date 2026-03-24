@@ -11,7 +11,9 @@ type WorkflowJob = {
   needs?: string | string[];
   steps?: Array<{
     name?: string;
+    id?: string;
     run?: string;
+    uses?: string;
     'working-directory'?: string;
   }>;
 };
@@ -153,6 +155,49 @@ describe('Workflow configuration hardening', () => {
       evidenceNeeds.includes('rollback-production'),
       'release-evidence should depend on rollback-production'
     );
+
+    const resolveSteps = jobs['resolve-release-images']?.steps ?? [];
+    const resolveRun = resolveSteps.map((step) => step.run ?? '').join('\n');
+    assert.ok(
+      resolveRun.includes(
+        'gh api repos/${{ github.repository }}/actions/workflows/release-candidate-images.yml/runs'
+      ),
+      'resolve-release-images should look up the successful release-candidate workflow run for the exact SHA'
+    );
+    assert.ok(
+      resolveRun.includes('gh run download "$run_id"'),
+      'resolve-release-images should download the prebuilt release candidate manifest artifact'
+    );
+    assert.ok(
+      !resolveRun.includes('docker buildx imagetools inspect'),
+      'resolve-release-images should not re-resolve image digests from tags during tag promotion'
+    );
+
+    const releaseGateSteps = jobs['release-gate-staging']?.steps ?? [];
+    const releaseGateRun = releaseGateSteps.map((step) => step.run ?? '').join('\n');
+    assert.ok(
+      releaseGateRun.includes('CLASSROOMPATH_VERIFIER_IMAGE'),
+      'release-gate-staging should execute from the prebuilt verifier image'
+    );
+    assert.ok(
+      !releaseGateRun.includes('npm ci'),
+      'release-gate-staging should not reinstall dependencies during tag promotion'
+    );
+
+    const smokeSteps = jobs['smoke-test-production']?.steps ?? [];
+    const smokeRun = smokeSteps.map((step) => step.run ?? '').join('\n');
+    assert.ok(
+      smokeRun.includes('CLASSROOMPATH_VERIFIER_IMAGE'),
+      'smoke-test-production should execute from the prebuilt verifier image'
+    );
+    assert.ok(
+      smokeRun.includes('for attempt in $(seq 1 30)'),
+      'smoke-test-production should poll readiness instead of sleeping for a fixed delay'
+    );
+    assert.ok(
+      !smokeRun.includes('sleep 30'),
+      'smoke-test-production should not use a fixed 30 second stabilization sleep'
+    );
   });
 
   test('Release candidate workflow builds images for main before a production tag exists', () => {
@@ -180,6 +225,10 @@ describe('Workflow configuration hardening', () => {
       'release candidate workflow should build the migrations runner image in its own job'
     );
     assert.ok(
+      jobs['build-verifier-release-candidate'],
+      'release candidate workflow should build the verifier image in its own job'
+    );
+    assert.ok(
       jobs['publish-release-candidate-manifest'],
       'release candidate workflow should publish a manifest after all parallel builds finish'
     );
@@ -204,8 +253,17 @@ describe('Workflow configuration hardening', () => {
         'build-migrations-release-candidate',
         'build-openpath-api-release-candidate',
         'build-spa-release-candidate',
+        'build-verifier-release-candidate',
       ].sort(),
       'manifest publication should wait for all parallel image builds'
+    );
+
+    const publishManifestRun =
+      jobs['publish-release-candidate-manifest']?.steps?.map((step) => step.run ?? '').join('\n') ??
+      '';
+    assert.ok(
+      publishManifestRun.includes('CLASSROOMPATH_VERIFIER_IMAGE='),
+      'release candidate manifest should publish the verifier image alongside the runtime images'
     );
   });
 });
