@@ -6,6 +6,8 @@ export type PricingTier = {
   pricePerClassroomPerYear: number;
   approxPricePerDevicePerYear: number;
   tagline: string;
+  bestFor: string;
+  recommended?: boolean;
 };
 
 export type OnboardingTier = {
@@ -37,7 +39,8 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: 10,
     pricePerClassroomPerYear: 55,
     approxPricePerDevicePerYear: 1.83,
-    tagline: 'Una forma simple de ordenar la política digital del centro.',
+    tagline: 'Una entrada clara para centros que empiezan con pocas aulas controladas.',
+    bestFor: 'Primer despliegue o un único espacio docente con dispositivos institucionales.',
   },
   {
     name: 'Centro mediano',
@@ -46,7 +49,9 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: 25,
     pricePerClassroomPerYear: 45,
     approxPricePerDevicePerYear: 1.5,
-    tagline: 'El tramo más común para centros en expansión.',
+    tagline: 'El tramo más habitual para centros que ya quieren una política estable por aula.',
+    bestFor: 'Centros completos o etapas con varias aulas y necesidad de criterio homogéneo.',
+    recommended: true,
   },
   {
     name: 'Centro grande',
@@ -55,7 +60,8 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: 50,
     pricePerClassroomPerYear: 37,
     approxPricePerDevicePerYear: 1.23,
-    tagline: 'Optimizado para aulas de FP, laboratorios y ciclos.',
+    tagline: 'Optimizado para despliegues amplios con varias áreas, laboratorios o FP.',
+    bestFor: 'Centros con varias líneas, laboratorios o crecimiento por etapas.',
   },
   {
     name: 'Organización educativa',
@@ -64,7 +70,8 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: 100,
     pricePerClassroomPerYear: 32,
     approxPricePerDevicePerYear: 1.07,
-    tagline: 'Para centros que necesitan gestión centralizada y fiable.',
+    tagline: 'Pensado para organizaciones educativas que necesitan gobernanza centralizada.',
+    bestFor: 'Titularidades con varias sedes o estructuras con coordinación TIC central.',
   },
   {
     name: 'Red de centros',
@@ -73,7 +80,8 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: null,
     pricePerClassroomPerYear: 27,
     approxPricePerDevicePerYear: 0.9,
-    tagline: 'Precio optimizado para multi-sede o gran despliegue.',
+    tagline: 'Precio optimizado para redes de centros y despliegues multi-sede.',
+    bestFor: 'Implantaciones grandes con alcance por sedes, etapas o ritmo progresivo.',
   },
 ];
 
@@ -120,12 +128,11 @@ export const NOT_INCLUDED_BASE_PLAN = [
 ];
 
 export const VALUE_BULLETS = [
-  'Internet intencional para centros educativos',
-  'Menos ruido digital',
-  'Política digital clara y defendible',
-  'Código abierto y auditable, de principio a fin',
-  'Sin vendor lock-in: migración a OpenPath siempre posible',
-  'Operación simple para el equipo TIC',
+  'Hasta 30 dispositivos por aula controlada',
+  'Onboarding guiado desde la primera semana',
+  'Piloto de 90 días para validar encaje',
+  'Código abierto y sin vendor lock-in',
+  'Servicio gestionado para no cargar más al equipo TIC',
 ];
 
 export const PER_CLASSROOM_POINTS = [

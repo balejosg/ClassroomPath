@@ -30,7 +30,6 @@ import {
   getPricingQuote,
 } from '../data/pricing-data';
 
-// Re-export for tests that import from this module
 export { getPricingQuote } from '../data/pricing-data';
 
 interface ClassroomPathPricingPageProps {
@@ -43,15 +42,39 @@ function parsePositiveInteger(value: string) {
   return parsed;
 }
 
+const nextStepCards = [
+  {
+    icon: <Calculator size={18} className="text-sky-600" />,
+    title: 'Calcular',
+    text: 'Si necesitas presupuesto, calcula el tramo por aulas y obtén una estimación del primer año.',
+    href: '#calculator',
+    cta: 'Ir a calculadora',
+  },
+  {
+    icon: <School size={18} className="text-sky-600" />,
+    title: 'Piloto',
+    text: 'Si necesitas evidencias internas, empieza por 5 aulas durante 90 días antes de escalar.',
+    href: '#pilot',
+    cta: 'Ver piloto',
+  },
+  {
+    icon: <Building2 size={18} className="text-sky-600" />,
+    title: 'Demo',
+    text: 'Si ya estás comparando opciones, agenda una demo para revisar política, alcance y encaje.',
+    href: '#demo',
+    cta: 'Solicitar demo',
+  },
+];
+
 export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPricingPageProps) {
   const [classroomsInput, setClassroomsInput] = React.useState('12');
   const classroomsInputId = React.useId();
   const parsedClassrooms = parsePositiveInteger(classroomsInput);
   const quote = getPricingQuote(parsedClassrooms ?? 12);
+  const recommendedTier = PRICING_TIERS.find((tier) => tier.recommended) ?? PRICING_TIERS[1];
 
   return (
     <div className="min-h-screen scroll-smooth bg-slate-50 text-slate-900">
-      {/* ── Sticky nav (simplified: 2 actions) ── */}
       <header className="sticky top-0 z-30 border-b border-white/10 bg-slate-900">
         <div className="mx-auto max-w-7xl px-6 py-5 lg:px-8">
           <div className="flex items-center justify-between">
@@ -97,7 +120,6 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
       </header>
 
       <main>
-        {/* ── Hero ── */}
         <section className="relative overflow-hidden border-b border-white/10 bg-slate-900">
           <div
             className="absolute inset-0 opacity-90"
@@ -114,21 +136,22 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
             }}
           />
 
-          <div className="relative mx-auto grid max-w-7xl gap-12 px-6 pb-20 pt-10 lg:grid-cols-[1.1fr_0.9fr] lg:px-8 lg:pb-28 lg:pt-16">
+          <div className="relative mx-auto grid max-w-7xl gap-12 px-6 pb-20 pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-28 lg:pt-16">
             <div className="max-w-3xl">
               <div className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-sky-300">
-                Cuando haya pantalla, que haya propósito
+                Precios claros para filtrado web escolar por aula
               </div>
               <h1 className="mt-6 text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
-                Precios simples por aula, para una política digital más clara
+                Calcula el coste por aula y elige el siguiente paso.
               </h1>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
-                ClassroomPath ayuda a los centros a gestionar Internet con criterio en dispositivos
-                institucionales, sin añadir complejidad al equipo TIC.
+                ClassroomPath traduce la política digital del centro a un precio fácil de
+                presupuestar: una cuota anual por aula controlada y un onboarding separado para no
+                inflar el recurrente.
               </p>
               <p className="mt-4 max-w-2xl text-base leading-8 text-slate-300">
-                Decide qué Internet tiene sentido en cada aula. El centro fija la política; nosotros
-                la desplegamos y la mantenemos operativa. Código abierto, sin ataduras.
+                Si necesitas una cifra rápida, usa la calculadora. Si necesitas reducir riesgo
+                interno, empieza por un piloto. Si ya estás evaluando despliegue, pide una demo.
               </p>
               <div className="mt-8 flex flex-wrap gap-3 text-sm text-slate-200">
                 {VALUE_BULLETS.map((item) => (
@@ -142,16 +165,16 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
               </div>
               <div className="mt-10 flex flex-wrap gap-4">
                 <a
-                  href="#demo"
+                  href="#calculator"
                   className="rounded-lg bg-sky-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-900/50 transition hover:bg-sky-500"
                 >
-                  Solicitar demo
+                  Calcular mi precio
                 </a>
                 <a
-                  href="#pilot"
+                  href="#demo"
                   className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
-                  Empezar un piloto
+                  Solicitar una demo
                 </a>
               </div>
             </div>
@@ -159,27 +182,32 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
             <div className="grid gap-5 self-start">
               <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-950/40 backdrop-blur">
                 <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-300">
-                  Unidad comercial
+                  Tramo de referencia
                 </div>
-                <div className="mt-3 text-3xl font-semibold text-white">Aula controlada</div>
-                <p className="mt-3 text-sm leading-7 text-slate-300">
-                  Hasta 30 dispositivos gestionados bajo una política de acceso definida.
-                </p>
+                <div className="mt-3 text-3xl font-semibold text-white">{recommendedTier.name}</div>
+                <p className="mt-2 text-sm leading-7 text-slate-300">{recommendedTier.tagline}</p>
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
-                    <div className="text-sm text-slate-300">Desde</div>
-                    <div className="mt-2 text-3xl font-semibold text-white">27 €</div>
+                    <div className="text-sm text-slate-300">Precio</div>
+                    <div className="mt-2 text-3xl font-semibold text-white">
+                      {formatCurrency(recommendedTier.pricePerClassroomPerYear)}
+                    </div>
                     <div className="mt-1 text-sm text-slate-400">por aula / año</div>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
                     <div className="text-sm text-slate-300">Piloto</div>
-                    <div className="mt-2 text-3xl font-semibold text-white">290 €</div>
-                    <div className="mt-1 text-sm text-slate-400">5 aulas durante 90 días</div>
+                    <div className="mt-2 text-3xl font-semibold text-white">
+                      {formatCurrency(PILOT.totalPrice)}
+                    </div>
+                    <div className="mt-1 text-sm text-slate-400">
+                      {PILOT.classrooms} aulas durante {PILOT.durationDays} días
+                    </div>
                   </div>
                 </div>
                 <div className="mt-6 rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
                   <div className="text-sm font-medium text-sky-300">
-                    Política digital defendible, sin convertir la operación en un proyecto extra.
+                    Precio orientativo para decidir rápido; validación comercial si el alcance es
+                    especial o multi-sede.
                   </div>
                 </div>
               </div>
@@ -187,20 +215,22 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-xl border border-slate-700 bg-slate-800/80 p-5">
                   <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-400">
-                    Facturación
+                    Onboarding
                   </div>
-                  <div className="mt-3 text-2xl font-semibold text-white">Anual</div>
+                  <div className="mt-3 text-2xl font-semibold text-white">Separado</div>
                   <p className="mt-2 text-sm leading-7 text-slate-400">
-                    Contratación mínima de 1 año. IVA no incluido.
+                    Desde {formatCurrency(ONBOARDING_TIERS[0].oneTimeFee ?? 0)} para mantener el
+                    recurrente por aula lo más limpio posible.
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-700 bg-slate-800/80 p-5">
                   <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-400">
                     Enfoque
                   </div>
-                  <div className="mt-3 text-2xl font-semibold text-white">Calmado</div>
+                  <div className="mt-3 text-2xl font-semibold text-white">Sobrio</div>
                   <p className="mt-2 text-sm leading-7 text-slate-400">
-                    Menos ruido digital, más aprendizaje con criterio.
+                    Control de acceso por aula para dispositivos institucionales, sin complejidad
+                    extra.
                   </p>
                 </div>
               </div>
@@ -208,8 +238,45 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
           </div>
         </section>
 
-        {/* ── Qué incluye cada aula ── */}
-        <RevealSection className="border-b border-slate-200 bg-white">
+        <RevealSection id="next-step" className="border-b border-slate-200 bg-white">
+          <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
+            <div className="max-w-3xl">
+              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
+                Decisión rápida
+              </div>
+              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+                Qué paso te conviene ahora
+              </h2>
+              <p className="mt-5 text-base leading-8 text-slate-600">
+                La página de precios tiene que ayudarte a decidir, no solo a leer una tabla. Elige
+                el recorrido que mejor encaja con tu momento de compra.
+              </p>
+            </div>
+
+            <div className="mt-10 grid gap-6 lg:grid-cols-3">
+              {nextStepCards.map((item) => (
+                <div
+                  key={item.title}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm"
+                >
+                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-sky-50">
+                    {item.icon}
+                  </div>
+                  <div className="text-lg font-semibold text-slate-900">{item.title}</div>
+                  <p className="mt-3 text-sm leading-7 text-slate-600">{item.text}</p>
+                  <a
+                    href={item.href}
+                    className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-sky-700 transition hover:text-sky-600"
+                  >
+                    {item.cta} <ArrowRight size={16} />
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        </RevealSection>
+
+        <RevealSection className="border-b border-slate-200 bg-slate-50">
           <div className="mx-auto grid max-w-7xl gap-8 px-6 py-20 lg:grid-cols-[1.15fr_0.85fr] lg:px-8">
             <div>
               <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
@@ -223,7 +290,7 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 {INCLUDED_PER_CLASSROOM.map((item) => (
                   <div
                     key={item}
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-medium leading-7 text-slate-700 transition duration-300 hover:-translate-y-0.5 hover:shadow-md"
+                    className="rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm font-medium leading-7 text-slate-700 transition duration-300 hover:-translate-y-0.5 hover:shadow-md"
                   >
                     {item}
                   </div>
@@ -232,7 +299,6 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
             </div>
 
             <div className="grid gap-5 self-start">
-              {/* Compact public campaign banner (full version lives on Landing) */}
               <a
                 href="/#centros-publicos"
                 className="group block rounded-2xl border-2 border-emerald-300 bg-emerald-50 px-6 py-5 shadow-sm transition hover:shadow-md"
@@ -267,19 +333,21 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   {PILOT.classrooms} aulas durante {PILOT.durationDays} días por{' '}
                   {formatCurrency(PILOT.totalPrice)}
                 </h3>
-                <p className="mt-3 text-sm leading-7 text-slate-700">{PILOT.tagline}</p>
+                <p className="mt-3 text-sm leading-7 text-slate-700">
+                  {PILOT.tagline} Es la opción más útil cuando necesitas validar uso real antes de
+                  pasar a contratación anual.
+                </p>
                 <a
                   href="#demo"
                   className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
                 >
-                  Empezar un piloto <ArrowRight size={16} />
+                  Solicitar piloto <ArrowRight size={16} />
                 </a>
               </div>
             </div>
           </div>
         </RevealSection>
 
-        {/* ── Tramos de precio ── */}
         <RevealSection id="pricing" className="bg-slate-50">
           <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
             <div className="max-w-3xl">
@@ -291,8 +359,8 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
               </h2>
               <p className="mt-5 text-base leading-8 text-slate-600">
                 ClassroomPath cobra por aula controlada, no por licencias sueltas. Así el centro
-                puede entender el coste con rapidez y decidir a qué ritmo quiere implantar la
-                política digital.
+                entiende el coste rápido, identifica el tramo habitual y sabe cuándo necesita una
+                validación comercial más específica.
               </p>
             </div>
 
@@ -301,13 +369,20 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 <div
                   key={tier.name}
                   className={`rounded-[2rem] border p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg ${
-                    tier.name === 'Centro mediano'
+                    tier.recommended
                       ? 'border-sky-300 bg-white ring-1 ring-inset ring-sky-200'
                       : 'border-slate-200 bg-white'
                   }`}
                 >
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                    {tier.rangeLabel}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                      {tier.rangeLabel}
+                    </div>
+                    {tier.recommended ? (
+                      <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+                        Más habitual
+                      </span>
+                    ) : null}
                   </div>
                   <h3 className="mt-3 text-lg font-semibold text-slate-900">{tier.name}</h3>
                   <div className="mt-5 text-4xl font-semibold tracking-tight text-slate-950">
@@ -317,15 +392,17 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   <p className="mt-4 text-sm leading-7 text-slate-600">{tier.tagline}</p>
                   <div className="mt-5 rounded-xl bg-slate-50 px-4 py-4">
                     <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Aprox. por dispositivo
+                      Aproximado por dispositivo
                     </div>
                     <div className="mt-2 text-base font-semibold text-slate-900">
                       {formatPricePerDevice(tier.approxPricePerDevicePerYear)} / año
                     </div>
                   </div>
+                  <p className="mt-4 text-sm leading-7 text-slate-500">{tier.bestFor}</p>
                 </div>
               ))}
             </div>
+
             <p className="mt-5 text-sm text-slate-500">
               Todos los tramos requieren un{' '}
               <a href="#onboarding" className="underline hover:text-slate-700">
@@ -333,7 +410,7 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
               </a>{' '}
               (coste único, ver más abajo). IVA no incluido.{' '}
               <a href="#calculator" className="font-medium text-sky-700 hover:text-sky-600">
-                Calcular mi precio estimado →
+                Ir a calculadora →
               </a>
             </p>
 
@@ -343,7 +420,8 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   Onboarding (pago único)
                 </div>
                 <p className="mt-2 text-sm text-slate-500">
-                  Se separa del recurrente para mantener el precio por aula lo más bajo posible.
+                  Se separa del recurrente para que el centro compare el coste anual por aula de
+                  forma más limpia y entienda el esfuerzo inicial por separado.
                 </p>
                 <div className="mt-5 grid gap-4 md:grid-cols-3">
                   {ONBOARDING_TIERS.map((tier) => (
@@ -377,7 +455,6 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
           </div>
         </RevealSection>
 
-        {/* ── Calculadora ── */}
         <section id="calculator" className="border-y border-slate-200 bg-slate-900 text-white">
           <div className="mx-auto grid max-w-7xl gap-8 px-6 py-20 lg:grid-cols-[0.95fr_1.05fr] lg:px-8">
             <div className="max-w-2xl">
@@ -390,7 +467,7 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
               </h2>
               <p className="mt-5 text-base leading-8 text-slate-300">
                 Aplica el tramo que corresponde al número de aulas, añade el onboarding y obtén una
-                referencia clara del primer año.
+                referencia clara del primer año antes de pedir una propuesta detallada.
               </p>
 
               <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-6">
@@ -416,7 +493,10 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
             </div>
 
             <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-950/50 backdrop-blur">
-              <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-300">
+                Estimación del primer año
+              </div>
+              <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-300">
                     Tramo aplicado
@@ -469,7 +549,6 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
           </div>
         </section>
 
-        {/* ── Por qué aula + benchmarks ── */}
         <RevealSection className="bg-white">
           <div className="mx-auto grid max-w-7xl gap-8 px-6 py-20 lg:grid-cols-[1.05fr_0.95fr] lg:px-8">
             <div className="rounded-[2rem] border border-slate-200 bg-slate-50 px-6 py-7 shadow-sm">
@@ -522,7 +601,6 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
           </div>
         </RevealSection>
 
-        {/* ── Transparencia: No incluido ── */}
         <RevealSection className="border-y border-slate-200 bg-slate-50">
           <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
             <div className="max-w-3xl">
@@ -559,14 +637,12 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
           </div>
         </RevealSection>
 
-        {/* ── FAQ ── */}
         <FaqAccordion
           items={PRICING_FAQS}
           sectionLabel="FAQ"
           sectionTitle="Respuestas directas para evaluación institucional"
         />
 
-        {/* ── CTA final with contact form ── */}
         <section id="demo" className="bg-slate-50 py-20">
           <div className="mx-auto max-w-5xl px-6 lg:px-8">
             <div className="rounded-[2.25rem] border border-sky-100 bg-white px-8 py-14 shadow-lg shadow-sky-100/60">

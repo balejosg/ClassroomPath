@@ -5,16 +5,18 @@ import { ClassroomPathPricingPage } from '../Pricing';
 import { getPricingQuote } from '../../data/pricing-data';
 
 describe('ClassroomPathPricingPage', () => {
-  it('renders the pricing headline and included classroom scope', () => {
+  it('renders the new pricing guidance, calculator path, and recommended tier', () => {
     render(<ClassroomPathPricingPage onNavigateToLogin={vi.fn()} />);
 
     expect(
       screen.getByRole('heading', {
-        name: 'Precios simples por aula, para una política digital más clara',
+        name: 'Calcula el coste por aula y elige el siguiente paso.',
       })
     ).toBeInTheDocument();
     expect(screen.getByText('Hasta 30 dispositivos por aula')).toBeInTheDocument();
-    expect(screen.getAllByText('Servicio gestionado sobre OpenPath').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'Calcular mi precio' })).toBeInTheDocument();
+    expect(screen.getByText('Más habitual')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Qué paso te conviene ahora' })).toBeInTheDocument();
   });
 
   it('renders the contact form in the CTA section', () => {
@@ -38,6 +40,7 @@ describe('ClassroomPathPricingPage', () => {
     expect(quote.onboardingFee).toBe(890);
     expect(quote.totalFirstYear).toBe(2370);
     expect(quote.approxPricePerDevicePerYear).toBe(1.23);
+    expect(screen.getByText('Estimación del primer año')).toBeInTheDocument();
   });
 
   it('navigates to login when the access CTA is clicked', () => {

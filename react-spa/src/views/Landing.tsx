@@ -5,11 +5,9 @@ import {
   Building2,
   Code2,
   Unlock,
-  Mail,
   School,
   Target,
   Layers,
-  Globe,
   Rocket,
   Users,
 } from 'lucide-react';
@@ -24,88 +22,98 @@ interface ClassroomPathLandingPageProps {
   onNavigateToLogin: () => void;
 }
 
-// ── Static data ─────────────────────────────────────────────────────────────────
+const trustSignals = [
+  {
+    title: 'Hasta 30 dispositivos institucionales por aula',
+    text: 'Una unidad clara para presupuestar, implantar y escalar sin licencias dispersas.',
+  },
+  {
+    title: 'Onboarding guiado en la primera semana',
+    text: 'Sesión inicial, acompañamiento y arranque sin convertir el despliegue en un proyecto paralelo.',
+  },
+  {
+    title: 'Código abierto y sin vendor lock-in',
+    text: 'ClassroomPath opera sobre OpenPath para que el centro mantenga una salida viable y auditable.',
+  },
+];
 
-const pillars = [
+const fitSignals = [
   {
     icon: <Target size={20} className="text-sky-600" />,
-    title: 'Internet intencional',
-    text: 'ClassroomPath convierte el acceso a Internet en una decisión pedagógica: solo lo necesario, cuando aporta valor al aprendizaje.',
+    title: 'Filtrado web escolar por aula',
+    text: 'Necesitas decidir qué recursos se abren y cuáles no, según etapa, aula o uso docente.',
   },
   {
     icon: <Layers size={20} className="text-sky-600" />,
-    title: 'Menos ruido digital',
-    text: 'Ayuda a reducir distracciones, navegación improductiva y fricción en el aula sin convertir el centro en un entorno de vigilancia.',
+    title: 'Control para dispositivos institucionales',
+    text: 'El centro quiere una política digital defendible para portátiles, carros o aulas compartidas.',
   },
   {
-    icon: <Globe size={20} className="text-sky-600" />,
-    title: 'Servicio gestionado',
-    text: 'Un servicio que el centro contrata sin mantener infraestructura propia. Tanto la tecnología base como el propio ClassroomPath son código abierto: transparencia completa, sin cajas negras.',
+    icon: <Rocket size={20} className="text-sky-600" />,
+    title: 'Despliegue sin infraestructura propia',
+    text: 'Quieres una operación gestionada para no cargar más trabajo diario al equipo TIC.',
+  },
+  {
+    icon: <Unlock size={20} className="text-sky-600" />,
+    title: 'Transparencia y salida futura',
+    text: 'Buscas software auditable y sin dependencia obligatoria de un proveedor cerrado.',
   },
 ];
 
-const audiences = [
-  'Dirección que quiere una política digital clara y defendible',
-  'Equipos TIC que necesitan control real sin sobrecarga operativa',
-  'Profesorado que quiere abrir recursos útiles y bloquear distracciones',
-  'Centros que buscan una alternativa europea, transparente y sobria',
+const roleBenefits = [
+  {
+    icon: <Building2 size={20} className="text-sky-600" />,
+    title: 'Dirección',
+    text: 'Puede defender una política digital clara, coherente con el proyecto educativo y fácil de explicar.',
+  },
+  {
+    icon: <Users size={20} className="text-sky-600" />,
+    title: 'Profesorado',
+    text: 'Abre recursos útiles sin pelear cada clase con distracciones o navegación improductiva.',
+  },
+  {
+    icon: <School size={20} className="text-sky-600" />,
+    title: 'Equipo TIC',
+    text: 'Mantiene control de acceso por aula con menos tickets manuales y una operación más previsible.',
+  },
 ];
 
-const features: { icon: React.ReactNode; text: string }[] = [
+const operatingPrinciples = [
   {
     icon: <Lock size={16} className="shrink-0 text-sky-600" />,
-    text: 'Acceso por defecto cerrado y apertura de recursos con criterio',
+    text: 'Acceso por defecto controlado y aperturas con criterio pedagógico.',
   },
   {
     icon: <BookOpen size={16} className="shrink-0 text-sky-600" />,
-    text: 'Políticas alineadas con el proyecto pedagógico del centro',
-  },
-  {
-    icon: <Building2 size={16} className="shrink-0 text-sky-600" />,
-    text: 'Gestión centralizada para organizaciones y varios espacios educativos',
+    text: 'Políticas alineadas con etapa, asignatura o contexto de aula.',
   },
   {
     icon: <Code2 size={16} className="shrink-0 text-sky-600" />,
-    text: 'Código abierto de principio a fin: OpenPath y ClassroomPath son auditables',
-  },
-  {
-    icon: <Unlock size={16} className="shrink-0 text-sky-600" />,
-    text: 'Sin vendor lock-in: el centro puede migrar a OpenPath autogestionado cuando quiera',
-  },
-  {
-    icon: <Mail size={16} className="shrink-0 text-sky-600" />,
-    text: 'Arranque guiado y soporte asíncrono por email (respuesta en 48 h)',
-  },
-  {
-    icon: <School size={16} className="shrink-0 text-sky-600" />,
-    text: 'Diseñado para entornos institucionales, no para alimentar más tiempo de pantalla',
+    text: 'OpenPath + ClassroomPath auditables de principio a fin.',
   },
 ];
 
-const steps = [
+const milestones = [
   {
-    step: '01',
-    title: 'Definimos la política',
-    text: 'Mapeamos qué recursos necesita cada etapa, aula o equipo docente.',
+    step: 'Semana 1',
+    title: 'Definimos qué acceso tiene sentido',
+    text: 'Aterrizamos la política digital del centro en reglas concretas por aula, etapa o necesidad operativa.',
   },
   {
-    step: '02',
-    title: 'Arranque guiado',
-    text: 'El centro pone en marcha ClassroomPath con una sesión de arranque guiada. La infraestructura corre de forma autónoma; no hay que mantenerla activamente día a día.',
+    step: 'Semana 2',
+    title: 'Arranca el servicio con onboarding guiado',
+    text: 'Ponemos en marcha el entorno y resolvemos el primer despliegue sin dejar al centro solo con la configuración.',
   },
   {
-    step: '03',
-    title: 'Medimos foco y estabilidad',
-    text: 'El centro gana una infraestructura más calmada, más gobernable y más coherente con una cultura de uso digital responsable.',
+    step: 'Semana 3+',
+    title: 'El centro opera con menos fricción',
+    text: 'La política se vuelve estable, medible y más fácil de sostener sin supervisión constante.',
   },
 ];
-
-// ── Component ───────────────────────────────────────────────────────────────────
 
 export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLandingPageProps) {
   return (
     <div className="min-h-screen scroll-smooth bg-slate-50 text-slate-900">
-      {/* ── Sticky header ── */}
       <header className="sticky top-0 z-30 border-b border-white/10 bg-slate-900">
         <div className="mx-auto max-w-7xl px-6 py-5 lg:px-8">
           <div className="flex items-center justify-between">
@@ -150,7 +158,6 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
       </header>
 
       <main>
-        {/* ── Hero ── */}
         <section className="relative overflow-hidden bg-slate-900">
           <div
             className="absolute inset-0 opacity-5"
@@ -159,146 +166,102 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               backgroundSize: '30px 30px',
             }}
           />
-          <div className="relative mx-auto grid max-w-7xl gap-12 px-6 py-20 lg:grid-cols-2 lg:px-8 lg:py-28">
+          <div className="relative mx-auto grid max-w-7xl gap-12 px-6 py-20 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:py-28">
             <div className="max-w-2xl">
               <div className="mb-4 inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-sky-300">
-                Menos ruido digital. Más aprendizaje con criterio.
+                Filtrado web escolar para dispositivos institucionales
               </div>
               <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
-                La forma serena de gestionar Internet en el centro educativo.
+                Controla Internet por aula sin sobrecargar TIC.
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-8 text-slate-300">
-                ClassroomPath ayuda a los centros a recuperar el control sobre el acceso a Internet
-                en dispositivos institucionales. No para añadir más tecnología, sino para usarla
-                mejor.
+                ClassroomPath ayuda a los centros a definir una política digital clara y llevarla a
+                dispositivos institucionales con control de acceso por aula, despliegue guiado y
+                operación gestionada.
               </p>
               <p className="mt-4 max-w-xl text-base leading-7 text-slate-400">
-                Construido sobre tecnología abierta y auditada. Desplegado y operado como servicio
-                para que el centro no necesite dedicar recursos a mantenerlo. Y sin ataduras: si
-                algún día el centro quiere operar por su cuenta, puede hacerlo sobre OpenPath.
+                Empieza por precio si necesitas presupuesto. Empieza por piloto si antes quieres
+                validar el encaje en pocas aulas. En ambos casos, el centro mantiene transparencia,
+                trazabilidad y una salida viable sobre OpenPath.
               </p>
               <div className="mt-8 flex flex-wrap gap-4">
                 <a
-                  href="#demo"
+                  href="/pricing"
                   className="rounded-lg bg-sky-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-900/50 transition hover:bg-sky-500"
                 >
-                  Solicitar demo
+                  Calcular precio por aulas
                 </a>
                 <a
-                  href="/pricing"
+                  href="#demo"
                   className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
-                  Ver precios
+                  Solicitar piloto guiado
                 </a>
+              </div>
+              <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                {trustSignals.map((item) => (
+                  <div
+                    key={item.title}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-200"
+                  >
+                    <div className="font-semibold text-white">{item.title}</div>
+                    <div className="mt-2 leading-6 text-slate-300">{item.text}</div>
+                  </div>
+                ))}
               </div>
             </div>
 
             <div className="lg:pl-8">
               <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur">
-                <div className="mb-6 flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full bg-slate-700" />
-                  <div className="h-3 w-3 rounded-full bg-slate-800" />
-                  <div className="h-3 w-3 rounded-full bg-slate-800" />
+                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-300">
+                  Qué cambia con ClassroomPath
                 </div>
-                <div className="space-y-4">
+                <div className="mt-5 space-y-4">
                   <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
-                    <div className="text-sm font-medium text-sky-300">Política del centro</div>
-                    <div className="mt-2 text-sm text-slate-300">
-                      Abrir solo recursos alineados con la actividad académica.
-                    </div>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
-                      <div className="text-sm font-medium text-white">Lo que sí</div>
-                      <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                        <li>• Recursos didácticos aprobados</li>
-                        <li>• Herramientas necesarias para clase</li>
-                        <li>• Acceso alineado con proyecto pedagógico</li>
-                      </ul>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
-                      <div className="text-sm font-medium text-white">Lo que no</div>
-                      <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                        <li>• Navegación improductiva</li>
-                        <li>• Distracciones no curriculares</li>
-                        <li>• Dependencia de supervisión constante</li>
-                      </ul>
+                    <div className="text-sm font-medium text-sky-300">Dirección</div>
+                    <div className="mt-2 text-sm leading-7 text-slate-300">
+                      Pasa de una norma abstracta a una política digital que se puede defender y
+                      aplicar.
                     </div>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-white">Resultado</span>
-                      <span className="text-sky-300">Menos fricción. Más foco.</span>
+                    <div className="text-sm font-medium text-white">Profesorado</div>
+                    <div className="mt-2 text-sm leading-7 text-slate-400">
+                      Trabaja con recursos útiles y menos ruido durante la clase.
                     </div>
                   </div>
+                  <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
+                    <div className="text-sm font-medium text-white">Equipo TIC</div>
+                    <div className="mt-2 text-sm leading-7 text-slate-400">
+                      Gana control por aula sin convertir el mantenimiento en otra carga diaria.
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6 rounded-xl border border-white/10 bg-slate-800/80 p-4">
+                  <div className="text-sm font-medium text-white">Ruta recomendada</div>
+                  <ol className="mt-3 space-y-2 text-sm leading-7 text-slate-400">
+                    <li>1. Calcula el precio orientativo por número de aulas.</li>
+                    <li>2. Valora un piloto si necesitas evidencias internas.</li>
+                    <li>3. Agenda una demo para revisar encaje y despliegue.</li>
+                  </ol>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ── Social proof / Early access ── */}
-        <section className="border-b border-slate-200 bg-white">
-          <div className="mx-auto max-w-7xl px-6 py-12 lg:px-8">
-            <div className="flex flex-col items-center gap-8 md:flex-row md:justify-between">
-              <div className="flex items-center gap-6">
-                <div className="flex -space-x-3">
-                  {[
-                    { bg: 'bg-sky-100', color: 'text-sky-600', icon: <School size={18} /> },
-                    {
-                      bg: 'bg-emerald-100',
-                      color: 'text-emerald-600',
-                      icon: <Building2 size={18} />,
-                    },
-                    { bg: 'bg-amber-100', color: 'text-amber-600', icon: <Users size={18} /> },
-                  ].map((item, i) => (
-                    <div
-                      key={i}
-                      className={`flex h-10 w-10 items-center justify-center rounded-full border-2 border-white ${item.bg}`}
-                    >
-                      <span className={item.color}>{item.icon}</span>
-                    </div>
-                  ))}
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-slate-900">En fase early access</div>
-                  <div className="text-sm text-slate-500">
-                    Primeros centros pilotando en Primaria, ESO y FP
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-6">
-                {[
-                  { label: 'Código abierto', icon: <Code2 size={16} className="text-sky-600" /> },
-                  { label: 'Sin ataduras', icon: <Unlock size={16} className="text-sky-600" /> },
-                  {
-                    label: 'Servicio gestionado',
-                    icon: <Rocket size={16} className="text-sky-600" />,
-                  },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center gap-2 text-sm text-slate-700">
-                    {item.icon}
-                    <span className="font-medium">{item.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Pillars ── */}
-        <RevealSection className="border-b border-slate-200 bg-slate-50">
+        <RevealSection className="border-b border-slate-200 bg-white">
           <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
             <div className="grid gap-6 md:grid-cols-3">
-              {pillars.map((item) => (
+              {roleBenefits.map((item) => (
                 <div
                   key={item.title}
-                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:shadow-md"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm"
                 >
                   <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-sky-50">
                     {item.icon}
                   </div>
-                  <div className="text-lg font-bold text-slate-900">{item.title}</div>
+                  <div className="text-lg font-semibold text-slate-900">{item.title}</div>
                   <p className="mt-3 text-sm leading-7 text-slate-600">{item.text}</p>
                 </div>
               ))}
@@ -306,7 +269,38 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
           </div>
         </RevealSection>
 
-        {/* ── Campaña centros públicos ── */}
+        <RevealSection className="bg-slate-50">
+          <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
+            <div className="max-w-3xl">
+              <div className="text-sm font-bold uppercase tracking-[0.2em] text-sky-700">
+                Señales de encaje
+              </div>
+              <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                Encaja mejor si tu centro necesita
+              </h2>
+              <p className="mt-5 text-base leading-8 text-slate-600">
+                ClassroomPath no intenta vender más tiempo de pantalla. Encaja cuando el centro ya
+                ha decidido que necesita una política de acceso más clara y una operación más
+                sobria.
+              </p>
+            </div>
+            <div className="mt-10 grid gap-6 md:grid-cols-2">
+              {fitSignals.map((item) => (
+                <div
+                  key={item.title}
+                  className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-sky-50">
+                    {item.icon}
+                  </div>
+                  <div className="text-lg font-semibold text-slate-900">{item.title}</div>
+                  <p className="mt-3 text-sm leading-7 text-slate-600">{item.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </RevealSection>
+
         <RevealSection
           id="centros-publicos"
           className="relative overflow-hidden border-y border-emerald-200 bg-emerald-50"
@@ -329,7 +323,8 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               <p className="mt-5 text-base leading-8 text-slate-700">
                 Si tu centro es de titularidad pública, puedes acceder a ClassroomPath sin coste
                 para <strong>hasta 5 aulas</strong> mientras dure la campaña. Incluye sesión de
-                arranque (videollamada + guía) y soporte por email. Sin compromiso posterior.
+                arranque, guía de implantación y soporte estándar por email. Sin compromiso
+                posterior.
               </p>
               <p className="mt-2 text-sm text-slate-500">
                 Plazas sujetas a disponibilidad. Verificación de titularidad pública al contactar.
@@ -344,118 +339,75 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
           </div>
         </RevealSection>
 
-        {/* ── Por qué ahora ── */}
-        <RevealSection className="bg-slate-50">
+        <RevealSection className="border-y border-slate-200 bg-white">
           <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
-            <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="grid gap-12 lg:grid-cols-[1.05fr_0.95fr]">
               <div>
                 <div className="text-sm font-bold uppercase tracking-[0.2em] text-sky-700">
-                  Por qué ahora
+                  Qué cambia durante la implantación
                 </div>
                 <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                  Cuando los centros quieren reducir el exceso digital, necesitan mejor
-                  infraestructura, no más ruido.
+                  Qué cambia durante las primeras semanas
                 </h2>
-                <p className="mt-6 max-w-2xl text-base leading-8 text-slate-600">
-                  ClassroomPath nace para un momento en el que muchas instituciones educativas están
-                  revisando el papel de las pantallas. La respuesta no es eliminar todo uso digital,
-                  sino hacer que el uso inevitable sea más claro, más limitado y más pedagógico.
+                <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600">
+                  La mejora no está solo en bloquear. Está en convertir una intención institucional
+                  en una operación clara: quién decide, qué se permite y cómo se sostiene sin
+                  improvisación continua.
                 </p>
-                <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600">
-                  Por eso hablamos de Internet intencional: un entorno donde el centro decide qué
-                  acceso tiene sentido y donde la tecnología deja de competir por la atención del
-                  alumnado.
-                </p>
+                <div className="mt-10 grid gap-5">
+                  {milestones.map((item) => (
+                    <div
+                      key={item.step}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm"
+                    >
+                      <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
+                        {item.step}
+                      </div>
+                      <div className="mt-3 text-xl font-semibold text-slate-900">{item.title}</div>
+                      <p className="mt-3 text-sm leading-7 text-slate-600">{item.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-8 shadow-sm">
+                <div className="text-sm font-bold uppercase tracking-[0.2em] text-sky-700">
+                  Principios de operación
+                </div>
+                <h3 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">
+                  Menos ruido digital, más criterio operativo
+                </h3>
+                <div className="mt-8 space-y-4">
+                  {operatingPrinciples.map((item) => (
+                    <div
+                      key={item.text}
+                      className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm font-medium leading-7 text-slate-700"
+                    >
+                      {item.icon}
+                      <span>{item.text}</span>
+                    </div>
+                  ))}
+                </div>
                 <blockquote className="mt-8 rounded-xl border border-sky-100 bg-white px-6 py-5 shadow-sm">
                   <p className="text-xl font-semibold leading-9 text-slate-900">
-                    "No somos más edtech. Somos una capa de sobriedad digital para el centro."
+                    "No añadimos otra capa de ruido. Hacemos que el acceso a Internet vuelva a ser
+                    una decisión del centro."
                   </p>
                   <p className="mt-3 text-sm text-slate-500">
-                    Cuando haya pantalla, que haya propósito.
+                    ClassroomPath para centros con una política digital que quieren hacer operativa.
                   </p>
                 </blockquote>
               </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-                <div className="text-lg font-bold text-slate-900">Pensado para</div>
-                <ul className="mt-6 space-y-4 text-sm leading-7 text-slate-600">
-                  {audiences.map((item) => (
-                    <li key={item} className="flex gap-3">
-                      <span className="mt-1 text-sky-600">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
             </div>
           </div>
         </RevealSection>
 
-        {/* ── Features ── */}
-        <RevealSection className="border-y border-slate-200 bg-white">
-          <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
-            <div className="max-w-3xl">
-              <div className="text-sm font-bold uppercase tracking-[0.2em] text-sky-700">
-                Qué ofrece
-              </div>
-              <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                Control útil para el centro. Experiencia simple para quien enseña.
-              </h2>
-            </div>
-            <div className="mt-10 grid gap-4 md:grid-cols-2">
-              {features.map((feature) => (
-                <div
-                  key={feature.text}
-                  className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-medium leading-7 text-slate-700 transition duration-300 hover:-translate-y-0.5 hover:shadow-md"
-                >
-                  {feature.icon}
-                  <span>{feature.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </RevealSection>
-
-        {/* ── Steps ── */}
-        <RevealSection id="como-funciona" className="bg-gradient-to-br from-slate-50 to-sky-50/40">
-          <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
-            <div className="max-w-3xl">
-              <div className="text-sm font-bold uppercase tracking-[0.2em] text-sky-700">
-                Cómo funciona
-              </div>
-              <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                Una implantación pensada para centros que quieren gobernanza, no más carga
-                operativa.
-              </h2>
-            </div>
-            <div className="relative mt-12">
-              <div className="absolute left-0 right-0 top-[2.6rem] hidden h-px bg-slate-200 lg:block" />
-              <div className="grid gap-6 lg:grid-cols-3">
-                {steps.map((item) => (
-                  <div
-                    key={item.step}
-                    className="relative rounded-xl border border-slate-200 bg-white p-8 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:shadow-md"
-                  >
-                    <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-full border-2 border-sky-200 bg-sky-50 text-sm font-bold text-sky-700">
-                      {item.step}
-                    </div>
-                    <div className="text-xl font-bold text-slate-900">{item.title}</div>
-                    <p className="mt-3 text-sm leading-7 text-slate-600">{item.text}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </RevealSection>
-
-        {/* ── FAQ ── */}
         <FaqAccordion
           items={LANDING_FAQS}
           sectionLabel="Preguntas frecuentes"
           sectionTitle="Lo que suelen preguntar los centros."
         />
 
-        {/* ── CTA final with contact form ── */}
         <section id="demo" className="bg-slate-50 pb-24 pt-20">
           <div className="mx-auto max-w-5xl px-6 lg:px-8">
             <div className="rounded-2xl border border-sky-100 bg-white px-8 py-16 shadow-lg">
@@ -464,14 +416,14 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                   <ShieldCheck size={32} className="text-sky-600" />
                 </div>
                 <div className="text-sm font-bold uppercase tracking-[0.2em] text-sky-700">
-                  Solicitar demo
+                  Solicitar demo o piloto
                 </div>
                 <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                  Descubre cómo sería una política de Internet más clara para tu centro.
+                  Revisa si encaja en tu centro antes de desplegar
                 </h2>
                 <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600">
-                  Una videollamada inicial de 30 minutos para ver si encaja en tu centro. Si
-                  avanzamos, recibes una guía de configuración paso a paso.
+                  Cuéntanos el número de aulas, el tipo de dispositivos institucionales y si buscas
+                  un presupuesto orientativo, una demo o un piloto con pocas aulas.
                 </p>
               </div>
               <div className="mx-auto mt-10 max-w-2xl">

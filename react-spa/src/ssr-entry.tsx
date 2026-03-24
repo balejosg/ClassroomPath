@@ -22,8 +22,8 @@ export function renderPublicPage(pathname: string): PublicPageMetadata | null {
       appHtml: renderToString(<ClassroomPathLandingPage onNavigateToLogin={NOOP} />),
       canonicalPath: '/',
       description:
-        'ClassroomPath ayuda a los centros educativos a gestionar Internet con criterio, menos ruido digital y una operacion simple basada en software libre.',
-      title: 'ClassroomPath | Internet intencional para centros educativos',
+        'Filtrado web escolar con control de acceso por aula para dispositivos institucionales, onboarding guiado y operacion gestionada.',
+      title: 'Filtrado web escolar por aula | ClassroomPath',
     };
   }
 
@@ -32,8 +32,8 @@ export function renderPublicPage(pathname: string): PublicPageMetadata | null {
       appHtml: renderToString(<ClassroomPathPricingPage onNavigateToLogin={NOOP} />),
       canonicalPath: '/pricing',
       description:
-        'Consulta los precios de ClassroomPath por aula, pilotos disponibles y el alcance del servicio gestionado sobre OpenPath.',
-      title: 'Precios | ClassroomPath',
+        'Consulta precios por aula, onboarding y piloto de ClassroomPath para desplegar control de acceso escolar con criterio.',
+      title: 'Precios por aula y piloto | ClassroomPath',
     };
   }
 
