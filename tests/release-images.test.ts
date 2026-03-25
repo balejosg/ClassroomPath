@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  detectRepositorySlug,
   deriveImageRepos,
   deriveTaggedImageRefs,
   parseReleaseCandidateManifest,
   parseGitHubOwnerFromRemote,
+  parseGitHubRepositoryFromRemote,
+  selectLatestReleaseCandidateRun,
   selectSuccessfulReleaseCandidateRun,
 } from '../scripts/release-images.mjs';
 
@@ -21,6 +24,20 @@ describe('release image helpers', () => {
     assert.equal(
       parseGitHubOwnerFromRemote('git@github.com:BalejosG/ClassroomPath.git'),
       'balejosg'
+    );
+  });
+
+  test('parses GitHub repository slugs from remotes', () => {
+    assert.equal(
+      parseGitHubRepositoryFromRemote('git@github.com:BalejosG/ClassroomPath.git'),
+      'balejosg/ClassroomPath'
+    );
+  });
+
+  test('detects repository slugs from explicit repository metadata', () => {
+    assert.equal(
+      detectRepositorySlug({ repository: 'BalejosG/ClassroomPath' }),
+      'BalejosG/ClassroomPath'
     );
   });
 
@@ -99,6 +116,33 @@ describe('release image helpers', () => {
     );
 
     assert.equal(run.id, 104);
+  });
+
+  test('selects the latest matching release-candidate run even before it succeeds', () => {
+    const run = selectLatestReleaseCandidateRun(
+      [
+        {
+          databaseId: 301,
+          headSha: 'target-sha',
+          event: 'push',
+          status: 'completed',
+          conclusion: 'failure',
+          updatedAt: '2026-03-24T11:00:00Z',
+        },
+        {
+          databaseId: 302,
+          headSha: 'target-sha',
+          event: 'push',
+          status: 'in_progress',
+          conclusion: '',
+          updatedAt: '2026-03-24T12:00:00Z',
+        },
+      ],
+      { sha: 'target-sha' }
+    );
+
+    assert.equal(run.id, 302);
+    assert.equal(run.status, 'in_progress');
   });
 
   test('selects the newest successful release-candidate run from gh run list JSON', () => {

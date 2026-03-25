@@ -63,6 +63,14 @@ jobs:
       openpath_api_image: ${{ steps.release-images.outputs.openpath_api_image }}
       spa_image: ${{ steps.release-images.outputs.spa_image }}
       verifier_image: ${{ steps.release-images.outputs.verifier_image }}
+      staging_public_url: ${{ steps.deploy-targets.outputs.staging_public_url }}
+      staging_gateway_health_url: ${{ steps.deploy-targets.outputs.staging_gateway_health_url }}
+      staging_ready_url: ${{ steps.deploy-targets.outputs.staging_ready_url }}
+      staging_api_config_url: ${{ steps.deploy-targets.outputs.staging_api_config_url }}
+      production_public_url: ${{ steps.deploy-targets.outputs.production_public_url }}
+      production_gateway_health_url: ${{ steps.deploy-targets.outputs.production_gateway_health_url }}
+      production_ready_url: ${{ steps.deploy-targets.outputs.production_ready_url }}
+      production_api_config_url: ${{ steps.deploy-targets.outputs.production_api_config_url }}
 
     steps:
       - name: Checkout
@@ -73,61 +81,37 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Find successful release candidate workflow run
-        id: workflow-run
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARGET_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-
-          gh run list \
-            --repo "${{ github.repository }}" \
-            --workflow release-candidate-images.yml \
-            --commit "$TARGET_SHA" \
-            --limit 20 \
-            --json databaseId,headSha,status,conclusion,event,createdAt,updatedAt > workflow-runs.json
-
-          node scripts/release-images.mjs select-run-id \
-            --sha "$TARGET_SHA" \
-            --runs-file workflow-runs.json >> "$GITHUB_OUTPUT"
-
-      - name: Download release candidate manifest artifact
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARGET_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-
-          run_id="${{ steps.workflow-run.outputs.run_id }}"
-          mkdir -p release-candidate-artifact
-
-          gh run download "$run_id" \
-            --name "release-candidate-images-$TARGET_SHA" \
-            --dir release-candidate-artifact
-
-      - name: Load approved release candidate manifest
+      - name: Resolve approved release candidate manifest
         id: release-images
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
-          manifest_file="release-candidate-artifact/release-candidate-images.env"
-          if [ ! -f "$manifest_file" ]; then
-            echo "::error::Missing release candidate manifest artifact for $TARGET_SHA"
-            exit 1
-          fi
-
-          node scripts/release-images.mjs manifest-outputs \
+          node scripts/wait-for-release-candidate.mjs resolve-manifest \
             --sha "$TARGET_SHA" \
-            --file "$manifest_file" >> "$GITHUB_OUTPUT"
+            --repo "${{ github.repository }}" \
+            --timeout-seconds 60 \
+            --interval-seconds 5 \
+            --output-file release-images.env >> "$GITHUB_OUTPUT"
 
-          cp "$manifest_file" release-images.env
           printf 'TAG_NAME=%s\n' '${{ github.ref_name }}' >> release-images.env
+
+      - name: Resolve deploy targets
+        id: deploy-targets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          while IFS='=' read -r key value; do
+            echo "staging_${key}=$value" >> "$GITHUB_OUTPUT"
+          done < <(node scripts/deploy-targets.mjs outputs staging)
+
+          while IFS='=' read -r key value; do
+            echo "production_${key}=$value" >> "$GITHUB_OUTPUT"
+          done < <(node scripts/deploy-targets.mjs outputs production)
 
       - name: Upload release image manifest
         uses: actions/upload-artifact@v7
@@ -256,19 +240,6 @@ jobs:
       packages: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: npm
-
-      - name: Load staging deploy target
-        id: staging-target
-        run: node scripts/deploy-targets.mjs outputs staging >> "$GITHUB_OUTPUT"
-
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -279,7 +250,7 @@ jobs:
       - name: Run release gate against staging
         id: gate
         env:
-          RELEASE_GATE_URL: ${{ steps.staging-target.outputs.public_url }}
+          RELEASE_GATE_URL: ${{ needs.resolve-release-images.outputs.staging_public_url }}
           RELEASE_GATE_TIMEOUT: '30000'
           RELEASE_GATE_ALLOW_MUTATIONS: '1'
           CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
@@ -314,11 +285,6 @@ jobs:
       packages: read
 
     steps:
-      - name: Checkout with submodules
-        uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
       - name: Resolve deploy host
         id: resolve
         run: |
@@ -512,19 +478,6 @@ jobs:
       packages: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: npm
-
-      - name: Load production deploy target
-        id: production-target
-        run: node scripts/deploy-targets.mjs outputs production >> "$GITHUB_OUTPUT"
-
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -535,7 +488,7 @@ jobs:
       - name: Wait for production readiness
         shell: bash
         env:
-          PRODUCTION_READY_URL: ${{ steps.production-target.outputs.ready_url }}
+          PRODUCTION_READY_URL: ${{ needs.resolve-release-images.outputs.production_ready_url }}
         run: |
           set -euo pipefail
 
@@ -558,7 +511,7 @@ jobs:
       - name: Run smoke tests against production
         id: smoke
         env:
-          SMOKE_TEST_URL: ${{ steps.production-target.outputs.public_url }}
+          SMOKE_TEST_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
           SMOKE_TEST_TIMEOUT: '30000'
           CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
         run: |
@@ -592,8 +545,8 @@ jobs:
           echo "  - Container health check passed but service not fully ready"
           echo ""
           echo "Debug commands (run on production server):"
-          echo "  curl -i ${{ steps.production-target.outputs.gateway_health_url }}"
-          echo "  curl -i ${{ steps.production-target.outputs.ready_url }}"
+          echo "  curl -i ${{ needs.resolve-release-images.outputs.production_gateway_health_url }}"
+          echo "  curl -i ${{ needs.resolve-release-images.outputs.production_ready_url }}"
           echo "  docker logs classroompath-api --tail 50"
 
   release-evidence:

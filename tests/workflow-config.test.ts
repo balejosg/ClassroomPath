@@ -159,20 +159,16 @@ describe('Workflow configuration hardening', () => {
     const resolveSteps = jobs['resolve-release-images']?.steps ?? [];
     const resolveRun = resolveSteps.map((step) => step.run ?? '').join('\n');
     assert.ok(
-      resolveRun.includes('gh run list'),
-      'resolve-release-images should look up the successful release-candidate workflow run for the exact SHA'
+      resolveRun.includes('node scripts/wait-for-release-candidate.mjs resolve-manifest'),
+      'resolve-release-images should delegate manifest resolution to the shared release-candidate helper'
     );
     assert.ok(
-      resolveRun.includes('--workflow release-candidate-images.yml'),
-      'resolve-release-images should scope run lookup to the release-candidate workflow file'
+      resolveRun.includes('--sha "$TARGET_SHA"'),
+      'resolve-release-images should resolve the exact release-candidate manifest for the target SHA'
     );
     assert.ok(
-      resolveRun.includes('--commit "$TARGET_SHA"'),
-      'resolve-release-images should scope run lookup to the exact target SHA'
-    );
-    assert.ok(
-      resolveRun.includes('gh run download "$run_id"'),
-      'resolve-release-images should download the prebuilt release candidate manifest artifact'
+      resolveRun.includes('--output-file release-images.env'),
+      'resolve-release-images should persist the approved manifest for downstream jobs and evidence'
     );
     assert.ok(
       !resolveRun.includes('docker buildx imagetools inspect'),
@@ -181,6 +177,14 @@ describe('Workflow configuration hardening', () => {
 
     const releaseGateSteps = jobs['release-gate-staging']?.steps ?? [];
     const releaseGateRun = releaseGateSteps.map((step) => step.run ?? '').join('\n');
+    assert.ok(
+      !releaseGateSteps.some((step) => step.uses === 'actions/checkout@v6'),
+      'release-gate-staging should not checkout the repository when the verifier image already contains the tests'
+    );
+    assert.ok(
+      !releaseGateSteps.some((step) => step.uses === 'actions/setup-node@v6'),
+      'release-gate-staging should not install Node when the verifier image already contains the runtime'
+    );
     assert.ok(
       releaseGateRun.includes('CLASSROOMPATH_VERIFIER_IMAGE'),
       'release-gate-staging should execute from the prebuilt verifier image'
@@ -192,6 +196,14 @@ describe('Workflow configuration hardening', () => {
 
     const smokeSteps = jobs['smoke-test-production']?.steps ?? [];
     const smokeRun = smokeSteps.map((step) => step.run ?? '').join('\n');
+    assert.ok(
+      !smokeSteps.some((step) => step.uses === 'actions/checkout@v6'),
+      'smoke-test-production should not checkout the repository when the verifier image already contains the tests'
+    );
+    assert.ok(
+      !smokeSteps.some((step) => step.uses === 'actions/setup-node@v6'),
+      'smoke-test-production should not install Node when the verifier image already contains the runtime'
+    );
     assert.ok(
       smokeRun.includes('CLASSROOMPATH_VERIFIER_IMAGE'),
       'smoke-test-production should execute from the prebuilt verifier image'
@@ -213,6 +225,10 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflow.on?.push?.branches?.includes('main'),
       'release candidate workflow should trigger on pushes to main'
+    );
+    assert.ok(
+      jobs['derive-release-image-refs'],
+      'release candidate workflow should derive immutable image refs once before the parallel image builds'
     );
     assert.ok(
       jobs['build-gateway-release-candidate'],
@@ -263,6 +279,24 @@ describe('Workflow configuration hardening', () => {
       ].sort(),
       'manifest publication should wait for all parallel image builds'
     );
+
+    for (const jobName of [
+      'build-gateway-release-candidate',
+      'build-migrations-release-candidate',
+      'build-openpath-api-release-candidate',
+      'build-spa-release-candidate',
+      'build-verifier-release-candidate',
+    ]) {
+      const jobNeeds = normalizeNeeds(jobs[jobName]?.needs);
+      assert.ok(
+        jobNeeds.includes('derive-release-image-refs'),
+        `${jobName} should depend on the shared image-ref derivation job`
+      );
+      assert.ok(
+        !(jobs[jobName]?.steps ?? []).some((step) => step.uses === 'actions/setup-node@v6'),
+        `${jobName} should not install Node once image refs are derived centrally`
+      );
+    }
 
     const publishManifestRun =
       jobs['publish-release-candidate-manifest']?.steps?.map((step) => step.run ?? '').join('\n') ??

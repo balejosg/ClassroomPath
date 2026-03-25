@@ -57,6 +57,7 @@ SKIP_OPENPATH_STATIC=0
 # coverage gate evaluates (api/src/** and react-spa/src/**).
 NEEDS_API_COVERAGE=0
 NEEDS_SPA_COVERAGE=0
+NEEDS_COVERAGE_GATE=0
 export API_COVERAGE_STATEMENTS="${API_COVERAGE_STATEMENTS:-80}"
 export API_COVERAGE_LINES="${API_COVERAGE_LINES:-80}"
 export API_COVERAGE_FUNCTIONS="${API_COVERAGE_FUNCTIONS:-75}"
@@ -114,6 +115,7 @@ detect_coverage_needs() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
   else
+    NEEDS_COVERAGE_GATE=1
     echo "Coverage will be generated for:"
     if [ "$NEEDS_API_COVERAGE" = "1" ]; then
       echo "  - api"
@@ -304,8 +306,10 @@ echo "[4/5] Running tests..."
 echo "Running migrations..."
 npm run db:push --workspace=@classroompath/api --workspace=@openpath/api
 
-# Ensure coverage artifacts reflect THIS run
-rm -rf api/coverage api/.nyc_output react-spa/coverage react-spa/.nyc_output
+if [ "$NEEDS_COVERAGE_GATE" = "1" ]; then
+  # Ensure coverage artifacts reflect THIS run.
+  rm -rf api/coverage api/.nyc_output react-spa/coverage react-spa/.nyc_output
+fi
 
 # SPA tests don't need DB, can run in parallel with API tests setup
 if [ "$NEEDS_SPA_COVERAGE" = "1" ]; then
@@ -338,7 +342,11 @@ node --import tsx --test tests/e2e/setup/global-setup.test.ts
 
 echo ""
 echo "[4/5] Checking coverage on changed files (if any)..."
-node scripts/check-new-file-coverage.js
+if [ "$NEEDS_COVERAGE_GATE" = "1" ]; then
+  node scripts/check-new-file-coverage.js
+else
+  echo "Skipping coverage gate (no changed API/SPA source files)."
+fi
 
 # =============================================================================
 # [5/5] E2E PLAYWRIGHT TESTS

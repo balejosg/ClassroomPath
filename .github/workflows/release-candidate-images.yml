@@ -17,17 +17,25 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
-  build-gateway-release-candidate:
-    name: Build Gateway Release Candidate
+  derive-release-image-refs:
+    name: Derive Release Image Refs
     runs-on: ubuntu-latest
     outputs:
-      gateway_image: ${{ steps.publish-manifest.outputs.gateway_image }}
+      repository_owner: ${{ steps.image-refs.outputs.repository_owner }}
+      gateway_repo: ${{ steps.image-refs.outputs.gateway_repo }}
+      migrations_repo: ${{ steps.image-refs.outputs.migrations_repo }}
+      openpath_api_repo: ${{ steps.image-refs.outputs.openpath_api_repo }}
+      spa_repo: ${{ steps.image-refs.outputs.spa_repo }}
+      verifier_repo: ${{ steps.image-refs.outputs.verifier_repo }}
+      gateway_tag: ${{ steps.image-refs.outputs.gateway_tag }}
+      migrations_tag: ${{ steps.image-refs.outputs.migrations_tag }}
+      openpath_api_tag: ${{ steps.image-refs.outputs.openpath_api_tag }}
+      spa_tag: ${{ steps.image-refs.outputs.spa_tag }}
+      verifier_tag: ${{ steps.image-refs.outputs.verifier_tag }}
 
     steps:
-      - name: Checkout with submodules
+      - name: Checkout
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -40,6 +48,19 @@ jobs:
           node scripts/release-images.mjs outputs \
             --sha "${{ github.sha }}" \
             --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
+
+  build-gateway-release-candidate:
+    name: Build Gateway Release Candidate
+    runs-on: ubuntu-latest
+    needs: derive-release-image-refs
+    outputs:
+      gateway_image: ${{ steps.publish-manifest.outputs.gateway_image }}
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -59,18 +80,19 @@ jobs:
           file: docker/Dockerfile.cp-api
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.image-refs.outputs.gateway_tag }}
+          tags: ${{ needs.derive-release-image-refs.outputs.gateway_tag }}
           cache-from: type=gha,scope=release-candidate-gateway
           cache-to: type=gha,mode=max,scope=release-candidate-gateway
 
       - name: Publish gateway manifest output
         id: publish-manifest
         run: |
-          echo "gateway_image=${{ steps.image-refs.outputs.gateway_repo }}@${{ steps.build-gateway.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          echo "gateway_image=${{ needs.derive-release-image-refs.outputs.gateway_repo }}@${{ steps.build-gateway.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
   build-migrations-release-candidate:
     name: Build Migrations Release Candidate
     runs-on: ubuntu-latest
+    needs: derive-release-image-refs
     outputs:
       migrations_image: ${{ steps.publish-manifest.outputs.migrations_image }}
 
@@ -79,18 +101,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Derive release image refs
-        id: image-refs
-        run: |
-          node scripts/release-images.mjs outputs \
-            --sha "${{ github.sha }}" \
-            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -110,18 +120,19 @@ jobs:
           file: docker/Dockerfile.migrations
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.image-refs.outputs.migrations_tag }}
+          tags: ${{ needs.derive-release-image-refs.outputs.migrations_tag }}
           cache-from: type=gha,scope=release-candidate-migrations
           cache-to: type=gha,mode=max,scope=release-candidate-migrations
 
       - name: Publish migrations manifest output
         id: publish-manifest
         run: |
-          echo "migrations_image=${{ steps.image-refs.outputs.migrations_repo }}@${{ steps.build-migrations.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          echo "migrations_image=${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ steps.build-migrations.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
   build-openpath-api-release-candidate:
     name: Build OpenPath API Release Candidate
     runs-on: ubuntu-latest
+    needs: derive-release-image-refs
     outputs:
       openpath_api_image: ${{ steps.publish-manifest.outputs.openpath_api_image }}
 
@@ -130,18 +141,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Derive release image refs
-        id: image-refs
-        run: |
-          node scripts/release-images.mjs outputs \
-            --sha "${{ github.sha }}" \
-            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -161,18 +160,19 @@ jobs:
           file: ./docker/Dockerfile.api
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.image-refs.outputs.openpath_api_tag }}
+          tags: ${{ needs.derive-release-image-refs.outputs.openpath_api_tag }}
           cache-from: type=gha,scope=release-candidate-openpath-api
           cache-to: type=gha,mode=max,scope=release-candidate-openpath-api
 
       - name: Publish OpenPath API manifest output
         id: publish-manifest
         run: |
-          echo "openpath_api_image=${{ steps.image-refs.outputs.openpath_api_repo }}@${{ steps.build-openpath-api.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          echo "openpath_api_image=${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}@${{ steps.build-openpath-api.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
   build-spa-release-candidate:
     name: Build SPA Release Candidate
     runs-on: ubuntu-latest
+    needs: derive-release-image-refs
     outputs:
       spa_image: ${{ steps.publish-manifest.outputs.spa_image }}
 
@@ -181,18 +181,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Derive release image refs
-        id: image-refs
-        run: |
-          node scripts/release-images.mjs outputs \
-            --sha "${{ github.sha }}" \
-            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -212,18 +200,19 @@ jobs:
           file: docker/Dockerfile.spa
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.image-refs.outputs.spa_tag }}
+          tags: ${{ needs.derive-release-image-refs.outputs.spa_tag }}
           cache-from: type=gha,scope=release-candidate-spa
           cache-to: type=gha,mode=max,scope=release-candidate-spa
 
       - name: Publish SPA manifest output
         id: publish-manifest
         run: |
-          echo "spa_image=${{ steps.image-refs.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          echo "spa_image=${{ needs.derive-release-image-refs.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
   build-verifier-release-candidate:
     name: Build Release Verifier Candidate
     runs-on: ubuntu-latest
+    needs: derive-release-image-refs
     outputs:
       verifier_image: ${{ steps.publish-manifest.outputs.verifier_image }}
 
@@ -232,18 +221,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Derive release image refs
-        id: image-refs
-        run: |
-          node scripts/release-images.mjs outputs \
-            --sha "${{ github.sha }}" \
-            --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -263,14 +240,14 @@ jobs:
           file: docker/Dockerfile.release-verifier
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.image-refs.outputs.verifier_tag }}
+          tags: ${{ needs.derive-release-image-refs.outputs.verifier_tag }}
           cache-from: type=gha,scope=release-candidate-verifier
           cache-to: type=gha,mode=max,scope=release-candidate-verifier
 
       - name: Publish verifier manifest output
         id: publish-manifest
         run: |
-          echo "verifier_image=${{ steps.image-refs.outputs.verifier_repo }}@${{ steps.build-verifier.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          echo "verifier_image=${{ needs.derive-release-image-refs.outputs.verifier_repo }}@${{ steps.build-verifier.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
   publish-release-candidate-manifest:
     name: Publish Release Candidate Manifest

@@ -70,6 +70,8 @@ STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
 STAGING_IMAGE_MODE="${STAGING_IMAGE_MODE:-release-candidate}"
+STAGING_RELEASE_WAIT_TIMEOUT_SECONDS="${STAGING_RELEASE_WAIT_TIMEOUT_SECONDS:-900}"
+STAGING_RELEASE_POLL_SECONDS="${STAGING_RELEASE_POLL_SECONDS:-10}"
 STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-}"
 STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-}"
 APP_DIR="/opt/classroompath/app"
@@ -162,26 +164,34 @@ fi
 
 STAGING_USE_RELEASE_CANDIDATE=0
 STAGING_RELEASE_SHA=""
+STAGING_RELEASE_RUN_ID=""
 STAGING_GATEWAY_IMAGE=""
 STAGING_MIGRATIONS_IMAGE=""
 STAGING_OPENPATH_API_IMAGE=""
 STAGING_SPA_IMAGE=""
 
 if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
-    RELEASE_IMAGE_OUTPUT="$(node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA")"
+    require_cmd gh
+    RELEASE_IMAGE_OUTPUT="$(node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest \
+        --sha "$REMOTE_SHA" \
+        --timeout-seconds "$STAGING_RELEASE_WAIT_TIMEOUT_SECONDS" \
+        --interval-seconds "$STAGING_RELEASE_POLL_SECONDS")"
 
     while IFS='=' read -r key value; do
         case "$key" in
-            gateway_tag)
+            run_id)
+                STAGING_RELEASE_RUN_ID="$value"
+                ;;
+            gateway_image)
                 STAGING_GATEWAY_IMAGE="$value"
                 ;;
-            migrations_tag)
+            migrations_image)
                 STAGING_MIGRATIONS_IMAGE="$value"
                 ;;
-            openpath_api_tag)
+            openpath_api_image)
                 STAGING_OPENPATH_API_IMAGE="$value"
                 ;;
-            spa_tag)
+            spa_image)
                 STAGING_SPA_IMAGE="$value"
                 ;;
         esac
@@ -190,6 +200,9 @@ if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknow
     STAGING_USE_RELEASE_CANDIDATE=1
     STAGING_RELEASE_SHA="$REMOTE_SHA"
     log_info "Staging will deploy release candidate images for $STAGING_RELEASE_SHA"
+    if [ -n "$STAGING_RELEASE_RUN_ID" ]; then
+        log_info "Release candidate workflow run: $STAGING_RELEASE_RUN_ID"
+    fi
 elif [ "$STAGING_IMAGE_MODE" = "release-candidate" ]; then
     log_error "STAGING_IMAGE_MODE=release-candidate requires origin/main to be reachable"
     exit 1

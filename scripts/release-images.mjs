@@ -18,6 +18,22 @@ function normalizeOwner(owner) {
   return normalized;
 }
 
+export function parseGitHubRepositoryFromRemote(remoteUrl) {
+  const value = String(remoteUrl ?? '').trim();
+
+  const httpsMatch = value.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  if (httpsMatch) {
+    return `${normalizeOwner(httpsMatch[1])}/${httpsMatch[2]}`;
+  }
+
+  const sshMatch = value.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  if (sshMatch) {
+    return `${normalizeOwner(sshMatch[1])}/${sshMatch[2]}`;
+  }
+
+  throw new Error(`Unsupported Git remote for GitHub repository detection: ${value}`);
+}
+
 export function parseGitHubOwnerFromRemote(remoteUrl) {
   const value = String(remoteUrl ?? '').trim();
 
@@ -32,6 +48,23 @@ export function parseGitHubOwnerFromRemote(remoteUrl) {
   }
 
   throw new Error(`Unsupported Git remote for GitHub owner detection: ${value}`);
+}
+
+export function detectRepositorySlug({ repository, remoteUrl, cwd = projectRoot } = {}) {
+  if (repository) {
+    return String(repository).trim();
+  }
+
+  if (remoteUrl) {
+    return parseGitHubRepositoryFromRemote(remoteUrl);
+  }
+
+  const detectedRemote = execFileSync('git', ['remote', 'get-url', 'origin'], {
+    cwd,
+    encoding: 'utf8',
+  }).trim();
+
+  return parseGitHubRepositoryFromRemote(detectedRemote);
 }
 
 export function detectRepositoryOwner({
@@ -119,52 +152,112 @@ function parseManifestAssignments(content) {
   return assignments;
 }
 
-export function selectSuccessfulReleaseCandidateRun(payload, { sha } = {}) {
+function normalizeWorkflowRuns(payload) {
+  return Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.workflow_runs)
+      ? payload.workflow_runs
+      : [];
+}
+
+function normalizeWorkflowRunId(run) {
+  return run.id ?? run.databaseId;
+}
+
+function normalizeWorkflowRunHeadSha(run) {
+  return run.head_sha ?? run.headSha;
+}
+
+function normalizeWorkflowRunUpdatedAt(run) {
+  return run.updated_at ?? run.updatedAt ?? run.created_at ?? run.createdAt ?? 0;
+}
+
+function withNormalizedWorkflowRunId(run) {
+  const runId = normalizeWorkflowRunId(run);
+  if (!runId) {
+    return run;
+  }
+
+  if (run.id) {
+    return run;
+  }
+
+  return {
+    ...run,
+    id: runId,
+  };
+}
+
+export function selectLatestReleaseCandidateRun(payload, { sha } = {}) {
   const targetSha = String(sha ?? '').trim();
   if (!targetSha) {
     throw new Error('Target SHA is required to select a release candidate workflow run');
   }
 
-  const workflowRuns = Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.workflow_runs)
-      ? payload.workflow_runs
-      : [];
-  const candidates = workflowRuns
+  const selected = normalizeWorkflowRuns(payload)
     .filter((rawRun) => {
       if (!rawRun) {
         return false;
       }
 
-      const headSha = rawRun.head_sha ?? rawRun.headSha;
-      const runId = rawRun.id ?? rawRun.databaseId;
       return (
-        headSha === targetSha && rawRun.event === 'push' && rawRun.conclusion === 'success' && runId
+        normalizeWorkflowRunHeadSha(rawRun) === targetSha &&
+        rawRun.event === 'push' &&
+        normalizeWorkflowRunId(rawRun)
       );
     })
     .sort((leftRaw, rightRaw) => {
-      const leftTime = Date.parse(
-        leftRaw.updated_at ?? leftRaw.updatedAt ?? leftRaw.created_at ?? leftRaw.createdAt ?? 0
-      );
-      const rightTime = Date.parse(
-        rightRaw.updated_at ?? rightRaw.updatedAt ?? rightRaw.created_at ?? rightRaw.createdAt ?? 0
-      );
+      const leftTime = Date.parse(normalizeWorkflowRunUpdatedAt(leftRaw));
+      const rightTime = Date.parse(normalizeWorkflowRunUpdatedAt(rightRaw));
       return rightTime - leftTime;
-    });
+    })[0];
 
-  const selected = candidates[0];
   if (!selected) {
-    throw new Error(`No successful release candidate workflow run found for SHA ${targetSha}`);
+    throw new Error(`No release candidate workflow run found for SHA ${targetSha}`);
   }
 
-  if (!selected.id && selected.databaseId) {
-    return {
-      ...selected,
-      id: selected.databaseId,
-    };
+  return withNormalizedWorkflowRunId(selected);
+}
+
+export function selectSuccessfulReleaseCandidateRun(payload, { sha } = {}) {
+  const candidate = withNormalizedWorkflowRunId(
+    normalizeWorkflowRuns(payload)
+      .filter((rawRun) => {
+        if (!rawRun) {
+          return false;
+        }
+
+        return (
+          normalizeWorkflowRunHeadSha(rawRun) === String(sha ?? '').trim() &&
+          rawRun.event === 'push' &&
+          rawRun.conclusion === 'success' &&
+          normalizeWorkflowRunId(rawRun)
+        );
+      })
+      .sort((leftRaw, rightRaw) => {
+        const leftTime = Date.parse(normalizeWorkflowRunUpdatedAt(leftRaw));
+        const rightTime = Date.parse(normalizeWorkflowRunUpdatedAt(rightRaw));
+        return rightTime - leftTime;
+      })[0]
+  );
+
+  if (!candidate) {
+    throw new Error(`No successful release candidate workflow run found for SHA ${sha}`);
   }
 
-  return selected;
+  if (candidate.conclusion !== 'success') {
+    throw new Error(
+      `Latest release candidate workflow run for SHA ${sha} is not successful (status=${candidate.status ?? 'unknown'}, conclusion=${candidate.conclusion ?? 'unknown'})`
+    );
+  }
+
+  if (candidate.status && candidate.status !== 'completed') {
+    throw new Error(
+      `Latest release candidate workflow run for SHA ${sha} has not completed yet (status=${candidate.status ?? 'unknown'})`
+    );
+  }
+
+  return candidate;
 }
 
 export function parseReleaseCandidateManifest(content, { sha } = {}) {

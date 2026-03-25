@@ -321,7 +321,12 @@ void describe('Migration Tooling', () => {
   const spaDockerignorePath = resolve(projectRoot, 'docker/Dockerfile.spa.dockerignore');
   const verifierDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.release-verifier');
   const stagingDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
+  const verifyFullScriptPath = resolve(projectRoot, 'scripts/verify-full.sh');
   const releaseImagesScriptPath = resolve(projectRoot, 'scripts/release-images.mjs');
+  const waitForReleaseCandidateScriptPath = resolve(
+    projectRoot,
+    'scripts/wait-for-release-candidate.mjs'
+  );
   const deployWorkflowPath = resolve(projectRoot, '.github/workflows/deploy.yml');
   const releaseCandidateWorkflowPath = resolve(
     projectRoot,
@@ -374,13 +379,34 @@ void describe('Migration Tooling', () => {
     );
   });
 
-  void test('staging deploy resolves release-candidate image refs before source-build fallback', () => {
+  void test('verify-full skips coverage cleanup and gating when no API/SPA source coverage is needed', () => {
+    const content = readFileSync(verifyFullScriptPath, 'utf-8');
+
+    assert.ok(
+      content.includes('NEEDS_COVERAGE_GATE=0'),
+      'verify-full.sh should track whether the changed-file coverage gate is actually needed'
+    );
+    assert.ok(
+      content.includes('if [ "$NEEDS_COVERAGE_GATE" = "1" ]; then'),
+      'verify-full.sh should guard coverage cleanup and gating behind NEEDS_COVERAGE_GATE'
+    );
+    assert.ok(
+      content.includes('Skipping coverage gate (no changed API/SPA source files).'),
+      'verify-full.sh should report when it skips the changed-file coverage gate'
+    );
+  });
+
+  void test('staging deploy waits for the successful release-candidate manifest before source-build fallback', () => {
     const content = readFileSync(stagingDeployScriptPath, 'utf-8');
 
     assert.ok(existsSync(releaseImagesScriptPath), 'release-images.mjs should exist');
     assert.ok(
-      content.includes('node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA"'),
-      'deploy-staging-local.sh should derive release image refs for origin/main'
+      existsSync(waitForReleaseCandidateScriptPath),
+      'wait-for-release-candidate.mjs should exist'
+    );
+    assert.ok(
+      content.includes('node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest'),
+      'deploy-staging-local.sh should wait for a successful release-candidate manifest for origin/main'
     );
     assert.ok(
       content.includes('deploy_with_release_candidates'),
@@ -393,6 +419,10 @@ void describe('Migration Tooling', () => {
     assert.ok(
       content.includes('STAGING_MIGRATIONS_IMAGE'),
       'staging deploy should resolve a prebuilt migrations image alongside the runtime images'
+    );
+    assert.ok(
+      content.includes('STAGING_RELEASE_WAIT_TIMEOUT_SECONDS'),
+      'staging deploy should expose a bounded wait timeout for release candidate availability'
     );
     assert.ok(
       content.includes('CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"'),
@@ -408,6 +438,10 @@ void describe('Migration Tooling', () => {
     assert.ok(
       content.includes('if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then'),
       'staging deploy should keep source-build as an explicit opt-in mode'
+    );
+    assert.ok(
+      !content.includes('node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA"'),
+      'staging deploy should consume the manifest digests instead of guessing image tags locally'
     );
     assert.ok(
       !content.includes('Falling back to source build for staging'),
@@ -578,8 +612,8 @@ void describe('Migration Tooling', () => {
       'deploy workflow should propagate the prebuilt verifier image into the release gate and smoke jobs'
     );
     assert.ok(
-      content.includes('gh run download "$run_id"'),
-      'deploy workflow should consume the previously published release candidate manifest artifact'
+      content.includes('node scripts/wait-for-release-candidate.mjs resolve-manifest'),
+      'deploy workflow should resolve the previously published release candidate manifest through the shared helper'
     );
     assert.ok(
       !content.includes('docker buildx imagetools inspect'),
