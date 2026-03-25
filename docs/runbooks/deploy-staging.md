@@ -29,27 +29,25 @@ npm run deploy:staging
 
 - Script exits `0`
 - Script prints `Verification Status: PASS` or `Verification Status: PASS_WITH_FALLBACK`
+- Script prints `Release Gate: success`
 - Script reports `Image Source: release-candidate` when it deployed the prebuilt candidate images
 - Health checks pass:
   - `https://classroompath-staging.duckdns.org/cp/health`
   - `https://classroompath-staging.duckdns.org/health`
 - Smoke tests pass (script prints the summary)
+- The staging host stores `/opt/classroompath/release-state/staging-verification.env` for the promoted SHA
 
 If the script reports `PASS_WITH_FALLBACK`, local smoke had to fall back to direct IP / relaxed CORS. Treat that as deploy evidence, but rerun a strict public-domain smoke pass before tagging production when possible.
 
 ## Promotion Gate
 
-Before creating a production tag, run the staging release gate and keep its output with the UAT evidence:
+`npm run deploy:staging` now runs the staging release gate by default and records the result in `staging-verification.env`. Production promotion reuses that evidence instead of rerunning the same gate in GitHub Actions.
+
+If you need to rerun the gate diagnostically without redeploying staging, you can still run:
 
 ```bash
 npm run test:release-gate:staging
 ```
-
-This gate performs live mutable checks for:
-
-- `auth.register` returning `emailSent: true`
-- `auth.register` returning a public verification URL on the staging origin
-- `auth.generateEmailVerificationToken` returning a fresh public verification URL
 
 After staging is green, promote using the canonical production runbook:
 

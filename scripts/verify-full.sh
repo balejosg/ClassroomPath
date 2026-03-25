@@ -354,6 +354,8 @@ fi
 echo ""
 echo "[5/5] E2E Playwright tests..."
 
+VERIFY_MODE="${VERIFY_MODE:-release}"
+
 # Stop any Docker containers that might occupy Playwright's ports (3001, 3010, 5173).
 docker stop openpath-api 2>/dev/null || true
 
@@ -394,8 +396,13 @@ detect_playwright_workers() {
 PW_WORKERS=$(detect_playwright_workers)
 echo "Using Playwright workers: $PW_WORKERS"
 
+# Commit mode keeps a short cross-stack smoke in the hook and leaves the
+# broad Playwright lane for explicit release verification.
+if [ "$VERIFY_MODE" = "commit" ]; then
+  echo "Running commit-smoke E2E tests..."
+  E2E_SKIP_DB_PUSH=1 PLAYWRIGHT_WORKERS="$PW_WORKERS" npx playwright test --grep="@commit-smoke"
 # Run with VERIFY_ALL=1 to include all tests
-if [ "${VERIFY_ALL:-}" = "1" ]; then
+elif [ "${VERIFY_ALL:-}" = "1" ]; then
   echo "Running ALL E2E tests (including @slow-network and @repro)..."
   E2E_SKIP_DB_PUSH=1 PLAYWRIGHT_WORKERS="$PW_WORKERS" npx playwright test
 else

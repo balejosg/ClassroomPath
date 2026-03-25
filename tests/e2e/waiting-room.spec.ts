@@ -118,7 +118,9 @@ async function mockHiddenDirectoryWaitingFlow(page: Page): Promise<void> {
 
 test.describe('Waiting Room Flow', () => {
   // Keep one registration-based flow to cover request-access onboarding path.
-  test('should show waiting screen after requesting access @waiting', async ({ page }) => {
+  test('should show waiting screen after requesting access @waiting @commit-smoke', async ({
+    page,
+  }) => {
     const testUser = createTestUser();
 
     await registerAndRequestAccess(page, testUser);

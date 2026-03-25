@@ -184,7 +184,9 @@ test.describe('Organization Members', () => {
     }
   });
 
-  test('should open invite modal without asking for a password @org @invite', async ({ page }) => {
+  test('should open invite modal without asking for a password @org @invite @commit-smoke', async ({
+    page,
+  }) => {
     const orgPage = new OrganizationPage(page);
     await orgPage.goto();
 

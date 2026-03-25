@@ -120,14 +120,8 @@ describe('Workflow configuration hardening', () => {
       'deploy-production should depend on verify-staging-release-state'
     );
     assert.ok(
-      deployNeeds.includes('release-gate-staging'),
-      'deploy-production should still depend on release-gate-staging'
-    );
-
-    const releaseGateNeeds = normalizeNeeds(jobs['release-gate-staging']?.needs);
-    assert.ok(
-      releaseGateNeeds.includes('verify-staging-release-state'),
-      'release-gate-staging should only run after staging is confirmed to match the release candidate images'
+      !deployNeeds.includes('release-gate-staging'),
+      'deploy-production should reuse staging verification evidence instead of depending on a duplicate release-gate job'
     );
 
     assert.ok(
@@ -147,6 +141,10 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       evidenceNeeds.includes('verify-staging-release-state'),
       'release-evidence should depend on verify-staging-release-state'
+    );
+    assert.ok(
+      !evidenceNeeds.includes('release-gate-staging'),
+      'release-evidence should rely on staging verification evidence instead of a removed release-gate job'
     );
     assert.ok(
       evidenceNeeds.includes('smoke-test-production'),
@@ -176,23 +174,21 @@ describe('Workflow configuration hardening', () => {
       'resolve-release-images should not re-resolve image digests from tags during tag promotion'
     );
 
-    const releaseGateSteps = jobs['release-gate-staging']?.steps ?? [];
-    const releaseGateRun = releaseGateSteps.map((step) => step.run ?? '').join('\n');
+    const stagingVerificationSteps = jobs['verify-staging-release-state']?.steps ?? [];
+    const stagingVerificationRun = stagingVerificationSteps
+      .map((step) => step.run ?? '')
+      .join('\n');
     assert.ok(
-      !releaseGateSteps.some((step) => step.uses === 'actions/checkout@v6'),
-      'release-gate-staging should not checkout the repository when the verifier image already contains the tests'
+      stagingVerificationRun.includes('staging-verification.env'),
+      'verify-staging-release-state should fetch the persisted staging verification evidence'
     );
     assert.ok(
-      !releaseGateSteps.some((step) => step.uses === 'actions/setup-node@v6'),
-      'release-gate-staging should not install Node when the verifier image already contains the runtime'
+      stagingVerificationRun.includes('STAGING_RELEASE_GATE_RESULT'),
+      'verify-staging-release-state should require successful staging release-gate evidence'
     );
     assert.ok(
-      releaseGateRun.includes('CLASSROOMPATH_VERIFIER_IMAGE'),
-      'release-gate-staging should execute from the prebuilt verifier image'
-    );
-    assert.ok(
-      !releaseGateRun.includes('npm ci'),
-      'release-gate-staging should not reinstall dependencies during tag promotion'
+      stagingVerificationRun.includes('staging_smoke_result='),
+      'verify-staging-release-state should expose staging smoke evidence to downstream jobs'
     );
 
     const smokeSteps = jobs['smoke-test-production']?.steps ?? [];

@@ -45,20 +45,14 @@ git push origin main
 npm run deploy:staging
 ```
 
-3. If needed, keep the release-gate/UAT evidence for the promotion.
-
-```bash
-npm run test:release-gate:staging
-```
-
-4. Create and push the production tag.
+3. Create and push the production tag.
 
 ```bash
 git tag v1.2.4
 git push origin v1.2.4
 ```
 
-5. Monitor the workflow.
+4. Monitor the workflow.
 
 ```bash
 gh run watch --workflow Deploy
@@ -66,7 +60,7 @@ gh run watch --workflow Deploy
 
 Inspect the workflow summary and `release-evidence-<tag>` artifact before calling the release complete.
 
-6. Verify production after the workflow finishes.
+5. Verify production after the workflow finishes.
 
 ```bash
 curl -sS https://classroompath.eu/cp/ready
@@ -75,17 +69,17 @@ curl -sS https://classroompath.eu/api/config
 
 Expected result:
 
-- release gate passes against staging
+- staging verification evidence matches the exact promoted SHA and image digests
 - GitHub Actions deploys to production through SSH
 - production smoke tests pass
-- `release-evidence-<tag>` captures the exact SHA, OpenPath SHA, gate results, and immutable image refs
+- `release-evidence-<tag>` captures the exact SHA, OpenPath SHA, staging verification evidence, and immutable image refs
 - `/cp/ready` returns `ready: true`
 
 ## What the Workflow Does
 
 The production workflow performs these steps automatically:
 
-1. Run the staging release gate in GitHub Actions
+1. Verify the staging release state and persisted staging verification evidence
 2. SSH into production using `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PORT`, `DEPLOY_SSH_KEY`
 3. Check out the exact tag commit in `/opt/classroompath/app`
 4. Update the OpenPath submodule recursively

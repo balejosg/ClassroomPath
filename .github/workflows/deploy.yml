@@ -125,6 +125,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: resolve-release-images
     if: needs.resolve-release-images.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    outputs:
+      staging_smoke_result: ${{ steps.compare.outputs.staging_smoke_result }}
+      staging_smoke_status: ${{ steps.compare.outputs.staging_smoke_status }}
+      staging_release_gate_result: ${{ steps.compare.outputs.staging_release_gate_result }}
+      staging_verified_at: ${{ steps.compare.outputs.staging_verified_at }}
 
     steps:
       - name: Resolve staging host
@@ -182,7 +187,20 @@ jobs:
             "${{ steps.resolve.outputs.user }}@${{ steps.resolve.outputs.ip }}" \
             "cat /opt/classroompath/release-state/current-images.env" > staging-release-state.env
 
+      - name: Read staging verification evidence
+        run: |
+          ssh \
+            -o ConnectTimeout=10 \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -i ~/.ssh/classroompath-staging-release \
+            -p "${{ steps.resolve.outputs.port }}" \
+            "${{ steps.resolve.outputs.user }}@${{ steps.resolve.outputs.ip }}" \
+            "cat /opt/classroompath/release-state/staging-verification.env" > staging-verification.env
+
       - name: Compare staging release state
+        id: compare
         shell: bash
         env:
           EXPECTED_APP_SHA: ${{ github.sha }}
@@ -194,6 +212,7 @@ jobs:
           set -euo pipefail
           set -a
           . ./staging-release-state.env
+          . ./staging-verification.env
           set +a
 
           if [ "${IMAGE_SOURCE:-}" != "release-candidate" ]; then
@@ -222,63 +241,51 @@ jobs:
           compare_image "OpenPath API image" "$EXPECTED_OPENPATH_API_IMAGE" "${OPENPATH_API_IMAGE:-}"
           compare_image "SPA image" "$EXPECTED_SPA_IMAGE" "${CLASSROOMPATH_SPA_IMAGE:-}"
 
+          if [ "${STAGING_SMOKE_RESULT:-}" != "success" ]; then
+            echo "::error::Staging smoke evidence is missing or failed (STAGING_SMOKE_RESULT=${STAGING_SMOKE_RESULT:-unset})"
+            exit 1
+          fi
+
+          if [ "${STAGING_RELEASE_GATE_RESULT:-}" != "success" ]; then
+            echo "::error::Staging release-gate evidence is missing or failed (STAGING_RELEASE_GATE_RESULT=${STAGING_RELEASE_GATE_RESULT:-unset})"
+            exit 1
+          fi
+
+          if [ "${STAGING_VERIFIED_IMAGE_SOURCE:-}" != "release-candidate" ]; then
+            echo "::error::Staging verification evidence does not point to release candidate images (STAGING_VERIFIED_IMAGE_SOURCE=${STAGING_VERIFIED_IMAGE_SOURCE:-unset})"
+            exit 1
+          fi
+
+          if [ "${STAGING_VERIFIED_APP_SHA:-}" != "$EXPECTED_APP_SHA" ]; then
+            echo "::error::Staging verification SHA (${STAGING_VERIFIED_APP_SHA:-unset}) does not match tag SHA ($EXPECTED_APP_SHA)"
+            exit 1
+          fi
+
+          compare_image "Verified gateway image" "$EXPECTED_GATEWAY_IMAGE" "${STAGING_VERIFIED_GATEWAY_IMAGE:-}"
+          compare_image "Verified migrations image" "$EXPECTED_MIGRATIONS_IMAGE" "${STAGING_VERIFIED_MIGRATIONS_IMAGE:-}"
+          compare_image "Verified OpenPath API image" "$EXPECTED_OPENPATH_API_IMAGE" "${STAGING_VERIFIED_OPENPATH_API_IMAGE:-}"
+          compare_image "Verified SPA image" "$EXPECTED_SPA_IMAGE" "${STAGING_VERIFIED_SPA_IMAGE:-}"
+
+          echo "staging_smoke_result=${STAGING_SMOKE_RESULT:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "staging_smoke_status=${STAGING_SMOKE_STATUS:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "staging_release_gate_result=${STAGING_RELEASE_GATE_RESULT:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "staging_verified_at=${STAGING_VERIFIED_AT:-unknown}" >> "$GITHUB_OUTPUT"
+
       - name: Upload staging release state
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: staging-release-state-${{ github.ref_name }}
-          path: staging-release-state.env
-          retention-days: 7
-
-  release-gate-staging:
-    name: Release Gate Staging
-    runs-on: ubuntu-latest
-    needs: [verify-openpath-upstream, resolve-release-images, verify-staging-release-state]
-    if: needs.verify-openpath-upstream.result == 'success' && needs.resolve-release-images.result == 'success' && needs.verify-staging-release-state.result == 'success' && startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: read
-      packages: read
-
-    steps:
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run release gate against staging
-        id: gate
-        env:
-          RELEASE_GATE_URL: ${{ needs.resolve-release-images.outputs.staging_public_url }}
-          RELEASE_GATE_TIMEOUT: '30000'
-          RELEASE_GATE_ALLOW_MUTATIONS: '1'
-          CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
-        run: |
-          echo "🔐 Running staging release gate against $RELEASE_GATE_URL via $CLASSROOMPATH_VERIFIER_IMAGE"
-          docker run --rm \
-            -e RELEASE_GATE_URL \
-            -e RELEASE_GATE_TIMEOUT \
-            -e RELEASE_GATE_ALLOW_MUTATIONS \
-            "$CLASSROOMPATH_VERIFIER_IMAGE" \
-            npm run test:release-gate 2>&1 | tee release-gate-results.txt
-          exit_code=${PIPESTATUS[0]}
-          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
-          exit "$exit_code"
-
-      - name: Upload release gate results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-gate-results-staging
-          path: release-gate-results.txt
+          path: |
+            staging-release-state.env
+            staging-verification.env
           retention-days: 7
 
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [release-gate-staging, resolve-release-images, verify-staging-release-state]
-    if: needs.release-gate-staging.result == 'success' && needs.resolve-release-images.result == 'success' && needs.verify-staging-release-state.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    needs: [resolve-release-images, verify-staging-release-state]
+    if: needs.resolve-release-images.result == 'success' && needs.verify-staging-release-state.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     environment: production
     permissions:
       contents: read
@@ -557,7 +564,6 @@ jobs:
         verify-openpath-upstream,
         resolve-release-images,
         verify-staging-release-state,
-        release-gate-staging,
         deploy-production,
         smoke-test-production,
         rollback-production,
@@ -597,7 +603,10 @@ jobs:
           VERIFY_OPENPATH_RESULT: ${{ needs.verify-openpath-upstream.result }}
           RESOLVE_IMAGES_RESULT: ${{ needs.resolve-release-images.result }}
           VERIFY_STAGING_RESULT: ${{ needs.verify-staging-release-state.result }}
-          RELEASE_GATE_RESULT: ${{ needs.release-gate-staging.result }}
+          STAGING_SMOKE_RESULT: ${{ needs.verify-staging-release-state.outputs.staging_smoke_result }}
+          STAGING_SMOKE_STATUS: ${{ needs.verify-staging-release-state.outputs.staging_smoke_status }}
+          STAGING_RELEASE_GATE_RESULT: ${{ needs.verify-staging-release-state.outputs.staging_release_gate_result }}
+          STAGING_VERIFIED_AT: ${{ needs.verify-staging-release-state.outputs.staging_verified_at }}
           DEPLOY_RESULT: ${{ needs.deploy-production.result }}
           PRODUCTION_SMOKE_RESULT: ${{ needs.smoke-test-production.result }}
           ROLLBACK_RESULT: ${{ needs.rollback-production.result }}

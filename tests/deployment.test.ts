@@ -346,6 +346,8 @@ void describe('Migration Tooling', () => {
   const verifierDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.release-verifier');
   const stagingDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
   const verifyFullScriptPath = resolve(projectRoot, 'scripts/verify-full.sh');
+  const classroomPathPackagePath = resolve(projectRoot, 'package.json');
+  const preCommitHookPath = resolve(projectRoot, '.husky/pre-commit');
   const releaseImagesScriptPath = resolve(projectRoot, 'scripts/release-images.mjs');
   const waitForReleaseCandidateScriptPath = resolve(
     projectRoot,
@@ -420,6 +422,37 @@ void describe('Migration Tooling', () => {
     );
   });
 
+  void test('pre-commit uses verify:commit and the release lane remains available explicitly', () => {
+    const packageJson = JSON.parse(readFileSync(classroomPathPackagePath, 'utf-8')) as {
+      scripts?: Record<string, string>;
+    };
+    const hook = readFileSync(preCommitHookPath, 'utf-8');
+    const verifyScript = readFileSync(verifyFullScriptPath, 'utf-8');
+
+    assert.equal(
+      packageJson.scripts?.['verify:commit'],
+      'VERIFY_MODE=commit bash scripts/verify-full.sh',
+      'package.json should expose a dedicated fast verify:commit lane'
+    );
+    assert.equal(
+      packageJson.scripts?.['verify:release'],
+      'VERIFY_MODE=release bash scripts/verify-full.sh',
+      'package.json should expose a dedicated release verify lane'
+    );
+    assert.ok(
+      hook.includes('npm run verify:commit'),
+      'pre-commit should execute verify:commit instead of the release lane'
+    );
+    assert.ok(
+      verifyScript.includes('if [ "$VERIFY_MODE" = "commit" ]; then'),
+      'verify-full.sh should support a dedicated commit verification mode'
+    );
+    assert.ok(
+      verifyScript.includes('npx playwright test --grep="@commit-smoke"'),
+      'commit verification mode should use the reduced Playwright smoke subset'
+    );
+  });
+
   void test('staging deploy waits for the successful release-candidate manifest before source-build fallback', () => {
     const content = readFileSync(stagingDeployScriptPath, 'utf-8');
 
@@ -470,6 +503,32 @@ void describe('Migration Tooling', () => {
     assert.ok(
       !content.includes('Falling back to source build for staging'),
       'staging deploy should not silently fall back from release candidates to source builds'
+    );
+  });
+
+  void test('staging deploy records reusable verification evidence after smoke and release gate pass', () => {
+    const content = readFileSync(stagingDeployScriptPath, 'utf-8');
+
+    assert.ok(
+      content.includes('STAGING_RUN_RELEASE_GATE="${STAGING_RUN_RELEASE_GATE:-1}"'),
+      'deploy-staging-local.sh should default to running the staging release gate during promotion prep'
+    );
+    assert.ok(
+      content.includes('RELEASE_GATE_URL="$CANONICAL_STAGING_URL"'),
+      'staging deploy should run the release gate against the canonical staging URL'
+    );
+    assert.ok(
+      content.includes('STAGING_RELEASE_GATE_RESULT=success') ||
+        content.includes('STAGING_GATE_RESULT="success"'),
+      'staging deploy should capture a successful release-gate result'
+    );
+    assert.ok(
+      content.includes('staging-verification.env'),
+      'staging deploy should persist staging-verification.env on the staging host'
+    );
+    assert.ok(
+      content.includes('STAGING_VERIFIED_GATEWAY_IMAGE'),
+      'staging verification evidence should record the deployed immutable image digests'
     );
   });
 
@@ -632,12 +691,16 @@ void describe('Migration Tooling', () => {
       'production deploy should run migrations from the prebuilt runner image instead of npm-installing on the host'
     );
     assert.ok(
-      content.includes('CLASSROOMPATH_VERIFIER_IMAGE'),
-      'deploy workflow should propagate the prebuilt verifier image into the release gate and smoke jobs'
+      content.includes('staging-verification.env'),
+      'deploy workflow should read the persisted staging verification evidence before production rollout'
     );
     assert.ok(
-      content.includes('node scripts/wait-for-release-candidate.mjs resolve-manifest'),
-      'deploy workflow should resolve the previously published release candidate manifest through the shared helper'
+      content.includes('STAGING_RELEASE_GATE_RESULT'),
+      'deploy workflow should require successful staging release-gate evidence instead of rerunning the same gate'
+    );
+    assert.ok(
+      !content.includes('name: Release Gate Staging'),
+      'deploy workflow should not rerun a separate staging release-gate job during production promotion'
     );
     assert.ok(
       !content.includes('docker buildx imagetools inspect'),

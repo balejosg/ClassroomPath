@@ -70,11 +70,13 @@ STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
 STAGING_IMAGE_MODE="${STAGING_IMAGE_MODE:-release-candidate}"
+STAGING_RUN_RELEASE_GATE="${STAGING_RUN_RELEASE_GATE:-1}"
 STAGING_RELEASE_WAIT_TIMEOUT_SECONDS="${STAGING_RELEASE_WAIT_TIMEOUT_SECONDS:-900}"
 STAGING_RELEASE_POLL_SECONDS="${STAGING_RELEASE_POLL_SECONDS:-10}"
 STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-}"
 STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-}"
 APP_DIR="/opt/classroompath/app"
+STATE_DIR="/opt/classroompath/release-state"
 
 require_cmd git
 require_cmd ssh
@@ -558,6 +560,74 @@ else
 fi
 
 # =============================================================================
+# Step 5: Run release gate and persist staging verification evidence
+# =============================================================================
+STAGING_GATE_RESULT="skipped"
+
+if [ "$STAGING_RUN_RELEASE_GATE" = "1" ]; then
+    log_info "Running release gate against staging..."
+
+    set +e
+    RELEASE_GATE_URL="$CANONICAL_STAGING_URL" \
+    RELEASE_GATE_TIMEOUT="30000" \
+    RELEASE_GATE_ALLOW_MUTATIONS="1" \
+    npm run test:release-gate 2>&1 | tee /tmp/release-gate-results.txt
+
+    GATE_EXIT_CODE=${PIPESTATUS[0]}
+    set -e
+
+    if [ $GATE_EXIT_CODE -ne 0 ]; then
+        log_error "Release gate FAILED (exit code: $GATE_EXIT_CODE)"
+        log_error "Staging was deployed, but promotion evidence was not recorded"
+        exit 1
+    fi
+
+    STAGING_GATE_RESULT="success"
+    log_success "Release gate passed"
+
+    STAGING_VERIFIED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    log_info "Persisting staging verification evidence..."
+
+    "${SSH_CMD[@]}" \
+      "STATE_DIR='$STATE_DIR' APP_DIR='$APP_DIR' STAGING_VERIFIED_AT='$STAGING_VERIFIED_AT' STAGING_SMOKE_STATUS='$STAGING_VERIFICATION_STATUS' bash -s" <<'VERIFY_STATE'
+set -euo pipefail
+
+mkdir -p "$STATE_DIR"
+
+if [ ! -f "$STATE_DIR/current-images.env" ]; then
+    echo "current-images.env is missing"
+    exit 1
+fi
+
+set -a
+. "$STATE_DIR/current-images.env"
+set +a
+
+OPENPATH_SHA="$(git -C "$APP_DIR/upstream/openpath" rev-parse HEAD)"
+
+cat > "$STATE_DIR/staging-verification.env" <<EOF
+STAGING_VERIFIED_AT=$STAGING_VERIFIED_AT
+STAGING_VERIFIED_BY=deploy-staging-local.sh
+STAGING_VERIFIED_APP_SHA=${APP_SHA:-}
+STAGING_VERIFIED_OPENPATH_SHA=${OPENPATH_SHA:-}
+STAGING_VERIFIED_IMAGE_SOURCE=${IMAGE_SOURCE:-}
+STAGING_VERIFIED_GATEWAY_IMAGE=${CLASSROOMPATH_GATEWAY_IMAGE:-}
+STAGING_VERIFIED_MIGRATIONS_IMAGE=${CLASSROOMPATH_MIGRATIONS_IMAGE:-}
+STAGING_VERIFIED_OPENPATH_API_IMAGE=${OPENPATH_API_IMAGE:-}
+STAGING_VERIFIED_SPA_IMAGE=${CLASSROOMPATH_SPA_IMAGE:-}
+STAGING_SMOKE_RESULT=success
+STAGING_SMOKE_STATUS=$STAGING_SMOKE_STATUS
+STAGING_RELEASE_GATE_RESULT=success
+EOF
+VERIFY_STATE
+
+    log_success "Staging verification evidence saved"
+else
+    log_warn "Skipping staging release gate because STAGING_RUN_RELEASE_GATE=$STAGING_RUN_RELEASE_GATE"
+    log_warn "Production tag workflow will fail until staging verification evidence is refreshed"
+fi
+
+# =============================================================================
 # Done
 # =============================================================================
 END_TIME=$(date +%s)
@@ -571,6 +641,7 @@ echo ""
 echo "  Duration: ${DURATION}s"
 echo "  URL: $SMOKE_TARGET_URL"
 echo "  Verification Status: $STAGING_VERIFICATION_STATUS"
+echo "  Release Gate: $STAGING_GATE_RESULT"
 if [ -n "${STAGING_DEPLOY_IMAGE_SOURCE:-}" ]; then
     echo "  Image Source: $STAGING_DEPLOY_IMAGE_SOURCE"
 fi

@@ -7,7 +7,7 @@ import {
 } from './fixtures/test-utils';
 
 test.describe('Happy Path: User Registration & Onboarding', () => {
-  test('should allow a new user to register and create an organization @onboarding @smoke', async ({
+  test('should allow a new user to register and create an organization @onboarding @smoke @commit-smoke', async ({
     page,
   }) => {
     const testUser = createTestUser();
