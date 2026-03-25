@@ -34,8 +34,12 @@ cd "$OPENPATH_DIR/dashboard"
 npm run build
 
 # 5. Build firefox-extension
-echo "[5/5] Building @openpath/firefox-extension..."
+echo "[5/6] Building @openpath/firefox-extension..."
 cd "$OPENPATH_DIR/firefox-extension"
 npm run build
+
+# 6. Prepare managed Chromium artifacts when the environment supports packaging
+echo "[6/6] Preparing managed Chromium extension artifacts..."
+npm run build:chromium-managed
 
 echo "All OpenPath packages built successfully!"

@@ -24,6 +24,10 @@ export const OPENPATH_PROXY_MANIFEST = {
     },
     {
       method: 'use',
+      path: '/api/extensions/chromium',
+    },
+    {
+      method: 'use',
       path: '/api/enroll',
     },
     {

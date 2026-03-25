@@ -31,6 +31,7 @@ RUN --mount=type=cache,target=/root/.npm set -eux; \
 COPY shared/ ./shared/
 COPY api/ ./api/
 COPY windows/ ./windows/
+COPY firefox-extension/ ./firefox-extension/
 COPY VERSION ./VERSION
 
 # Build everything
@@ -64,6 +65,7 @@ COPY --from=builder /app/shared/package.json ./shared/package.json
 COPY --from=builder /app/api/dist ./api/dist
 COPY --from=builder /app/shared/dist ./shared/dist
 COPY --from=builder /app/windows ./windows
+COPY --from=builder /app/firefox-extension ./firefox-extension
 COPY --from=builder /app/VERSION ./VERSION
 
 EXPOSE 3000

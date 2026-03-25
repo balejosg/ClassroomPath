@@ -188,6 +188,13 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
       path: '/api/agent/windows/bootstrap/latest.json',
     });
 
+    const chromiumResponse = await fetch(`${baseUrl}/api/extensions/chromium/updates.xml`);
+    assert.strictEqual(chromiumResponse.status, 418);
+    assert.deepStrictEqual(await chromiumResponse.json(), {
+      proxied: true,
+      path: '/api/extensions/chromium/updates.xml',
+    });
+
     const whitelistResponse = await fetch(`${baseUrl}/w/token-123/whitelist.txt`);
     assert.strictEqual(whitelistResponse.status, 418);
     assert.deepStrictEqual(await whitelistResponse.json(), {

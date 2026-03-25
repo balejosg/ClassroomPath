@@ -13,6 +13,7 @@ void describe('openpath-proxy-policy', () => {
       [
         '/health',
         '/api/config',
+        '/api/extensions/chromium',
         '/api/enroll',
         '/api/agent/windows/bootstrap',
         '/api/machines/events',
@@ -38,6 +39,10 @@ void describe('openpath-proxy-policy', () => {
   test('returns the normalized blocked passthrough path while using the shared manifest', () => {
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/health'), null);
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/config?source=smoke'), null);
+    assert.strictEqual(
+      findBlockedOpenPathPassthroughPath('/api/extensions/chromium/updates.xml'),
+      null
+    );
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/enroll/cls_123/ticket'), null);
     assert.strictEqual(
       findBlockedOpenPathPassthroughPath('/api/agent/windows/bootstrap/latest.json'),

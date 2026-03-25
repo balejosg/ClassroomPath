@@ -149,12 +149,20 @@ void describe('Docker Compose Configuration', () => {
       'Builder image should copy Windows agent sources into the build context'
     );
     assert.ok(
+      content.includes('COPY firefox-extension/ ./firefox-extension/'),
+      'Builder image should copy Firefox/Chromium browser extension assets into the build context'
+    );
+    assert.ok(
       content.includes('COPY VERSION ./VERSION'),
       'Builder image should copy VERSION so runtime can report the server version'
     );
     assert.ok(
       content.includes('COPY --from=builder /app/windows ./windows'),
       'Runtime image should include the Windows bootstrap scripts'
+    );
+    assert.ok(
+      content.includes('COPY --from=builder /app/firefox-extension ./firefox-extension'),
+      'Runtime image should include browser extension assets for Windows bootstrap and Chromium rollout'
     );
     assert.ok(
       content.includes('COPY --from=builder /app/shared/package.json ./shared/package.json'),
