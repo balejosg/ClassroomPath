@@ -125,6 +125,26 @@ void describe('Docker Compose Configuration', () => {
     const content = readFileSync(apiDockerfilePath, 'utf-8');
 
     assert.ok(
+      content.includes('COPY package-lock.json ./'),
+      'Dockerfile.api should copy the lockfile explicitly for deterministic installs'
+    );
+    assert.ok(
+      content.includes('COPY package.docker.json ./package.json'),
+      'Dockerfile.api should use the dependency-only root manifest to avoid busting install cache on script-only changes'
+    );
+    assert.ok(
+      content.includes('COPY shared/package.docker.json ./shared/package.json'),
+      'Dockerfile.api should use the dependency-only shared manifest during npm ci'
+    );
+    assert.ok(
+      content.includes('COPY api/package.docker.json ./api/package.json'),
+      'Dockerfile.api should use the dependency-only api manifest during npm ci'
+    );
+    assert.ok(
+      content.includes('--mount=type=cache,target=/root/.npm'),
+      'Dockerfile.api should cache npm downloads across image builds'
+    );
+    assert.ok(
       content.includes('COPY windows/ ./windows/'),
       'Builder image should copy Windows agent sources into the build context'
     );
@@ -135,6 +155,10 @@ void describe('Docker Compose Configuration', () => {
     assert.ok(
       content.includes('COPY --from=builder /app/windows ./windows'),
       'Runtime image should include the Windows bootstrap scripts'
+    );
+    assert.ok(
+      content.includes('COPY --from=builder /app/shared/package.json ./shared/package.json'),
+      'Runtime image should restore the full shared package metadata after installing from the dependency-only manifest'
     );
     assert.ok(
       content.includes('COPY --from=builder /app/VERSION ./VERSION'),

@@ -9,6 +9,7 @@ import { parse as parseYaml } from 'yaml';
 type WorkflowJob = {
   name?: string;
   needs?: string | string[];
+  'runs-on'?: string | string[];
   steps?: Array<{
     name?: string;
     id?: string;
@@ -235,8 +236,16 @@ describe('Workflow configuration hardening', () => {
       'release candidate workflow should build the gateway image in its own job'
     );
     assert.ok(
+      jobs['build-openpath-api-release-candidate-amd64'],
+      'release candidate workflow should build the OpenPath API amd64 image in its own job'
+    );
+    assert.ok(
+      jobs['build-openpath-api-release-candidate-arm64'],
+      'release candidate workflow should build the OpenPath API arm64 image in its own job'
+    );
+    assert.ok(
       jobs['build-openpath-api-release-candidate'],
-      'release candidate workflow should build the OpenPath API image in its own job'
+      'release candidate workflow should merge the OpenPath API per-architecture images into a release-candidate manifest'
     );
     assert.ok(
       jobs['build-spa-release-candidate'],
@@ -283,7 +292,8 @@ describe('Workflow configuration hardening', () => {
     for (const jobName of [
       'build-gateway-release-candidate',
       'build-migrations-release-candidate',
-      'build-openpath-api-release-candidate',
+      'build-openpath-api-release-candidate-amd64',
+      'build-openpath-api-release-candidate-arm64',
       'build-spa-release-candidate',
       'build-verifier-release-candidate',
     ]) {
@@ -297,6 +307,38 @@ describe('Workflow configuration hardening', () => {
         `${jobName} should not install Node once image refs are derived centrally`
       );
     }
+
+    assert.equal(
+      jobs['build-openpath-api-release-candidate-arm64']?.['runs-on'],
+      'ubuntu-24.04-arm',
+      'release candidate workflow should build the OpenPath API arm64 image on a native arm64 runner'
+    );
+
+    const openPathManifestNeeds = normalizeNeeds(
+      jobs['build-openpath-api-release-candidate']?.needs
+    );
+    assert.deepEqual(
+      openPathManifestNeeds.sort(),
+      [
+        'build-openpath-api-release-candidate-amd64',
+        'build-openpath-api-release-candidate-arm64',
+        'derive-release-image-refs',
+      ].sort(),
+      'OpenPath API manifest merge should wait for both per-architecture builds and the shared image refs'
+    );
+
+    const openPathManifestRun =
+      jobs['build-openpath-api-release-candidate']?.steps
+        ?.map((step) => step.run ?? '')
+        .join('\n') ?? '';
+    assert.ok(
+      openPathManifestRun.includes('docker buildx imagetools create'),
+      'OpenPath API manifest merge should assemble the final multi-architecture tag from per-architecture digests'
+    );
+    assert.ok(
+      openPathManifestRun.includes('docker buildx imagetools inspect'),
+      'OpenPath API manifest merge should resolve the final immutable digest after merging the per-architecture images'
+    );
 
     const publishManifestRun =
       jobs['publish-release-candidate-manifest']?.steps?.map((step) => step.run ?? '').join('\n') ??

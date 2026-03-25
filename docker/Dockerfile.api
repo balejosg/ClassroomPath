@@ -1,20 +1,24 @@
+# syntax=docker/dockerfile:1.7
+
 # OpenPath Core API
 ARG NODE_IMAGE=node@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
 
 FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 
-# Copy root configuration
-COPY package*.json ./
+# Copy dependency manifests separately so script-only metadata changes in the
+# OpenPath monorepo do not invalidate the expensive install layers.
+COPY package-lock.json ./
+COPY package.docker.json ./package.json
 COPY tsconfig.base.json ./
 
 # Copy manifests
-COPY shared/package*.json ./shared/
-COPY api/package*.json ./api/
+COPY shared/package.docker.json ./shared/package.json
+COPY api/package.docker.json ./api/package.json
 
 # Install ALL dependencies for building.
 # Retry to tolerate transient multi-arch registry failures in CI.
-RUN set -eux; \
+RUN --mount=type=cache,target=/root/.npm set -eux; \
   for attempt in 1 2 3; do \
     npm ci --no-audit --no-fund && break; \
     if [ "$attempt" -eq 3 ]; then exit 1; fi; \
@@ -37,14 +41,15 @@ RUN npm run build -w @openpath/api
 FROM ${NODE_IMAGE}
 WORKDIR /app
 
-# Copy package manifests
-COPY package*.json ./
-COPY shared/package*.json ./shared/
-COPY api/package*.json ./api/
+# Copy dependency manifests
+COPY package-lock.json ./
+COPY package.docker.json ./package.json
+COPY shared/package.docker.json ./shared/package.json
+COPY api/package.docker.json ./api/package.json
 
 # Install production dependencies only.
 # This links shared because of the "file:" dependency in api/package.json.
-RUN set -eux; \
+RUN --mount=type=cache,target=/root/.npm set -eux; \
   for attempt in 1 2 3; do \
     npm ci --no-audit --no-fund --workspace=@openpath/api --omit=dev && break; \
     if [ "$attempt" -eq 3 ]; then exit 1; fi; \
@@ -53,7 +58,9 @@ RUN set -eux; \
     sleep $((attempt * 5)); \
   done
 
-# Copy the built files into the locations where Node expects them
+# Restore runtime package metadata and built files
+COPY --from=builder /app/api/package.json ./api/package.json
+COPY --from=builder /app/shared/package.json ./shared/package.json
 COPY --from=builder /app/api/dist ./api/dist
 COPY --from=builder /app/shared/dist ./shared/dist
 COPY --from=builder /app/windows ./windows

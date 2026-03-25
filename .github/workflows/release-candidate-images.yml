@@ -129,12 +129,12 @@ jobs:
         run: |
           echo "migrations_image=${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ steps.build-migrations.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
-  build-openpath-api-release-candidate:
-    name: Build OpenPath API Release Candidate
+  build-openpath-api-release-candidate-amd64:
+    name: Build OpenPath API Release Candidate (amd64)
     runs-on: ubuntu-latest
     needs: derive-release-image-refs
     outputs:
-      openpath_api_image: ${{ steps.publish-manifest.outputs.openpath_api_image }}
+      image_digest: ${{ steps.build-openpath-api.outputs.digest }}
 
     steps:
       - name: Checkout with submodules
@@ -158,16 +158,79 @@ jobs:
         with:
           context: ./upstream/openpath
           file: ./docker/Dockerfile.api
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ needs.derive-release-image-refs.outputs.openpath_api_tag }}
-          cache-from: type=gha,scope=release-candidate-openpath-api
-          cache-to: type=gha,mode=max,scope=release-candidate-openpath-api
+          platforms: linux/amd64
+          outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.openpath_api_repo }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-candidate-openpath-api-amd64
+          cache-to: type=gha,mode=max,scope=release-candidate-openpath-api-amd64
+
+  build-openpath-api-release-candidate-arm64:
+    name: Build OpenPath API Release Candidate (arm64)
+    runs-on: ubuntu-24.04-arm
+    needs: derive-release-image-refs
+    outputs:
+      image_digest: ${{ steps.build-openpath-api.outputs.digest }}
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push OpenPath API image
+        id: build-openpath-api
+        uses: docker/build-push-action@v6
+        with:
+          context: ./upstream/openpath
+          file: ./docker/Dockerfile.api
+          platforms: linux/arm64
+          outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.openpath_api_repo }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-candidate-openpath-api-arm64
+          cache-to: type=gha,mode=max,scope=release-candidate-openpath-api-arm64
+
+  build-openpath-api-release-candidate:
+    name: Publish OpenPath API Release Candidate Manifest
+    runs-on: ubuntu-latest
+    needs:
+      - derive-release-image-refs
+      - build-openpath-api-release-candidate-amd64
+      - build-openpath-api-release-candidate-arm64
+    outputs:
+      openpath_api_image: ${{ steps.publish-manifest.outputs.openpath_api_image }}
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge OpenPath API per-architecture digests
+        run: |
+          docker buildx imagetools create \
+            --tag "${{ needs.derive-release-image-refs.outputs.openpath_api_tag }}" \
+            "${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}@${{ needs.build-openpath-api-release-candidate-amd64.outputs.image_digest }}" \
+            "${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}@${{ needs.build-openpath-api-release-candidate-arm64.outputs.image_digest }}"
 
       - name: Publish OpenPath API manifest output
         id: publish-manifest
         run: |
-          echo "openpath_api_image=${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}@${{ steps.build-openpath-api.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          manifest_digest="$(docker buildx imagetools inspect "${{ needs.derive-release-image-refs.outputs.openpath_api_tag }}" | awk '/^Digest:/ {print $2; exit}')"
+          test -n "$manifest_digest"
+          echo "openpath_api_image=${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}@$manifest_digest" >> "$GITHUB_OUTPUT"
 
   build-spa-release-candidate:
     name: Build SPA Release Candidate
