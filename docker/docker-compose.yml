@@ -26,6 +26,8 @@ services:
       - OPENPATH_API_URL=http://api:3000
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    volumes:
+      - /opt/classroompath/downloads:/app/react-spa/dist/downloads:ro
     depends_on:
       - api
     healthcheck:
@@ -58,7 +60,7 @@ services:
     volumes:
       - api-data:/app/data
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:3000/health']
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://127.0.0.1:3000/health']
       interval: 5s
       timeout: 3s
       retries: 12

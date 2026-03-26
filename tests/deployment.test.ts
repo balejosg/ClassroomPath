@@ -70,6 +70,11 @@ void describe('Docker Compose Configuration', () => {
       'API should expose or publish port 3000'
     );
     assert.ok(api.healthcheck, 'API should have healthcheck');
+    assert.deepStrictEqual(
+      api.healthcheck?.test,
+      ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://127.0.0.1:3000/health'],
+      'API healthcheck should use wget because the runtime image does not include curl'
+    );
     assert.ok(api.env_file, 'API should use env_file');
     assert.ok(
       api.extra_hosts?.includes('host.docker.internal:host-gateway'),
@@ -91,6 +96,10 @@ void describe('Docker Compose Configuration', () => {
     assert.ok(
       gateway.extra_hosts?.includes('host.docker.internal:host-gateway'),
       'Gateway should resolve host.docker.internal for host-backed infrastructure'
+    );
+    assert.ok(
+      gateway.volumes?.includes('/opt/classroompath/downloads:/app/react-spa/dist/downloads:ro'),
+      'Gateway should mount the signed Firefox distribution directory into the public SPA asset root'
     );
   });
 
