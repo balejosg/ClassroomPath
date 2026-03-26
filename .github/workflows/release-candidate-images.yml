@@ -150,12 +150,22 @@ jobs:
         working-directory: upstream/openpath
         run: npm run build --workspace=@openpath/firefox-extension
 
+      - name: Derive unique Firefox release version
+        working-directory: upstream/openpath
+        run: |
+          base_version="$(node --input-type=module -e "import fs from 'node:fs'; const manifest = JSON.parse(fs.readFileSync('firefox-extension/manifest.json', 'utf8')); process.stdout.write(String(manifest.version ?? '').trim());")"
+          test -n "$base_version"
+          echo "OPENPATH_FIREFOX_RELEASE_VERSION=${base_version}.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          echo "Signing Firefox release as version ${base_version}.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+
       - name: Sign Firefox release bundle
         working-directory: upstream/openpath
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
-        run: npm run sign:firefox-release --workspace=@openpath/firefox-extension
+        run: |
+          npm run sign:firefox-release --workspace=@openpath/firefox-extension -- \
+            --version "$OPENPATH_FIREFOX_RELEASE_VERSION"
 
       - name: Verify Firefox release artifacts
         working-directory: upstream/openpath

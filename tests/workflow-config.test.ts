@@ -397,6 +397,14 @@ describe('Workflow configuration hardening', () => {
       'Firefox asset preparation should build the Firefox extension dist before signing'
     );
     assert.ok(
+      firefoxPrepRun.includes('OPENPATH_FIREFOX_RELEASE_VERSION='),
+      'Firefox asset preparation should derive a unique Firefox release version for AMO signing'
+    );
+    assert.ok(
+      firefoxPrepRun.includes('--version "$OPENPATH_FIREFOX_RELEASE_VERSION"'),
+      'Firefox asset preparation should pass the unique Firefox release version into the signing step'
+    );
+    assert.ok(
       firefoxPrepRun.includes(
         'npm run sign:firefox-release --workspace=@openpath/firefox-extension'
       ),
