@@ -60,7 +60,7 @@ const nextStepCards = [
   {
     icon: <Building2 size={18} className="text-sky-600" />,
     title: 'Demo',
-    text: 'Si ya estás comparando opciones, agenda una demo para revisar política, alcance y encaje.',
+    text: 'Si ya estás comparando opciones, agenda una demo para revisar política, alcance y despliegue.',
     href: '#demo',
     cta: 'Solicitar demo',
   },
@@ -87,7 +87,9 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   <div className="text-base font-semibold tracking-tight text-white">
                     ClassroomPath
                   </div>
-                  <div className="text-xs text-slate-400">Servicio gestionado sobre OpenPath</div>
+                  <div className="text-xs text-slate-400">
+                    Filtrado web escolar · Código abierto
+                  </div>
                 </div>
               </a>
             </div>
@@ -139,15 +141,14 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
           <div className="relative mx-auto grid max-w-7xl gap-12 px-6 pb-20 pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-28 lg:pt-16">
             <div className="max-w-3xl">
               <div className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-sky-300">
-                Precios claros para filtrado web escolar por aula
+                Precios por aula · Sin sorpresas
               </div>
               <h1 className="mt-6 text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
                 Calcula el coste por aula y elige el siguiente paso.
               </h1>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
-                ClassroomPath traduce la política digital del centro a un precio fácil de
-                presupuestar: una cuota anual por aula controlada y un onboarding separado para no
-                inflar el recurrente.
+                Un precio por aula al año, fácil de explicar en un presupuesto. El onboarding va
+                aparte para que el coste anual sea siempre el mismo.
               </p>
               <p className="mt-4 max-w-2xl text-base leading-8 text-slate-300">
                 Si necesitas una cifra rápida, usa la calculadora. Si necesitas reducir riesgo
@@ -227,10 +228,10 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-400">
                     Enfoque
                   </div>
-                  <div className="mt-3 text-2xl font-semibold text-white">Sobrio</div>
+                  <div className="mt-3 text-2xl font-semibold text-white">Esencial</div>
                   <p className="mt-2 text-sm leading-7 text-slate-400">
-                    Control de acceso por aula para dispositivos institucionales, sin complejidad
-                    extra.
+                    Lo que necesitas para controlar el acceso por aula. Sin módulos que no vas a
+                    usar.
                   </p>
                 </div>
               </div>
@@ -248,8 +249,8 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 Qué paso te conviene ahora
               </h2>
               <p className="mt-5 text-base leading-8 text-slate-600">
-                La página de precios tiene que ayudarte a decidir, no solo a leer una tabla. Elige
-                el recorrido que mejor encaja con tu momento de compra.
+                Cada centro llega con una necesidad distinta. Elige el recorrido que mejor te
+                convenga ahora.
               </p>
             </div>
 
@@ -355,7 +356,7 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 Tramos de precio
               </div>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                Un modelo simple para presupuestar por aula y escalar con criterio
+                Un precio por aula. Más aulas, menos coste por cada una.
               </h2>
               <p className="mt-5 text-base leading-8 text-slate-600">
                 ClassroomPath cobra por aula controlada, no por licencias sueltas. Así el centro
@@ -463,7 +464,7 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 Calculadora por aulas
               </div>
               <h2 className="mt-5 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                Una estimación rápida para equipos directivos y responsables TIC
+                Estima el coste del primer año en 10 segundos
               </h2>
               <p className="mt-5 text-base leading-8 text-slate-300">
                 Aplica el tramo que corresponde al número de aulas, añade el onboarding y obtén una
@@ -575,8 +576,8 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 Referencias públicas (precios convertidos a € aprox.)
               </div>
               <h3 className="mt-4 text-2xl font-semibold text-slate-900">
-                Frente a suites más amplias, ClassroomPath busca una propuesta más sobria y más
-                asequible
+                Frente a suites con más módulos, ClassroomPath ofrece lo esencial a un precio más
+                bajo
               </h3>
               <div className="mt-6 space-y-4">
                 {MARKET_BENCHMARKS.map((item) => (
@@ -654,10 +655,10 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   Solicitar demo
                 </div>
                 <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                  Solicita una demo o plantea un piloto con unas pocas aulas
+                  Solicita una demo o empieza con un piloto de 5 aulas
                 </h2>
                 <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600">
-                  Revisamos el número de aulas, la política de acceso prevista y el encaje operativo
+                  Revisamos el número de aulas, la política de acceso prevista y el siguiente paso
                   para tu centro o red de centros.
                 </p>
               </div>

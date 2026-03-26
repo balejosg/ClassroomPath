@@ -39,8 +39,8 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: 10,
     pricePerClassroomPerYear: 55,
     approxPricePerDevicePerYear: 1.83,
-    tagline: 'Una entrada clara para centros que empiezan con pocas aulas controladas.',
-    bestFor: 'Primer despliegue o un único espacio docente con dispositivos institucionales.',
+    tagline: 'Para centros que empiezan con un aula o unas pocas.',
+    bestFor: 'Primer despliegue o un único espacio docente con dispositivos del centro.',
   },
   {
     name: 'Centro mediano',
@@ -60,7 +60,7 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: 50,
     pricePerClassroomPerYear: 37,
     approxPricePerDevicePerYear: 1.23,
-    tagline: 'Optimizado para despliegues amplios con varias áreas, laboratorios o FP.',
+    tagline: 'Mejor precio por aula para centros con laboratorios, FP o varias líneas.',
     bestFor: 'Centros con varias líneas, laboratorios o crecimiento por etapas.',
   },
   {
@@ -70,7 +70,7 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: 100,
     pricePerClassroomPerYear: 32,
     approxPricePerDevicePerYear: 1.07,
-    tagline: 'Pensado para organizaciones educativas que necesitan gobernanza centralizada.',
+    tagline: 'Pensado para organizaciones educativas que necesitan coordinación central.',
     bestFor: 'Titularidades con varias sedes o estructuras con coordinación TIC central.',
   },
   {
@@ -111,8 +111,8 @@ export const INCLUDED_PER_CLASSROOM = [
   'Hasta 30 dispositivos por aula',
   'Políticas de acceso a Internet',
   'Cola de solicitudes de desbloqueo',
-  'Administración básica',
-  'Hosting y operación estándar',
+  'Panel de administración',
+  'Hosting y operación incluidos',
   'Actualizaciones incluidas',
   'Soporte por email · respuesta en 2 días hábiles',
   'Servicio gestionado sobre OpenPath',
@@ -130,8 +130,8 @@ export const NOT_INCLUDED_BASE_PLAN = [
 export const VALUE_BULLETS = [
   'Hasta 30 dispositivos por aula controlada',
   'Onboarding guiado desde la primera semana',
-  'Piloto de 90 días para validar encaje',
-  'Código abierto y sin vendor lock-in',
+  'Piloto de 90 días para validar el modelo',
+  'Código abierto y sin ataduras',
   'Servicio gestionado para no cargar más al equipo TIC',
 ];
 
@@ -142,7 +142,7 @@ export const PER_CLASSROOM_POINTS = [
 ];
 
 export const COMPETITIVE_CLAIMS = [
-  'Precio por aula inferior al de las principales suites de control escolar del mercado, sin añadir funcionalidades que el centro no necesita.',
+  'Precio por aula más bajo que las principales suites del mercado. Solo pagas lo que tu centro realmente necesita.',
   'Una de las formas más asequibles de implantar acceso a Internet intencional en el centro.',
   'Servicio gestionado con un coste por aula especialmente competitivo.',
 ];

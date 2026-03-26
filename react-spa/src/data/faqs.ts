@@ -11,15 +11,15 @@ export const LANDING_FAQS: FaqItem[] = [
   },
   {
     q: '¿Es un filtro escolar más?',
-    a: 'Es una propuesta distinta: menos enfoque en vigilancia, más enfoque en gobernanza, propósito educativo y operación fiable como servicio gestionado.',
+    a: 'No es solo filtrar. ClassroomPath añade gestión: quién decide qué se abre, por qué, y una operación que no depende de intervención manual constante.',
   },
   {
     q: '¿Es software libre o propietario?',
-    a: 'Ambos proyectos son de código abierto. OpenPath es el motor que gestiona el acceso a Internet. ClassroomPath es el servicio gestionado que lo envuelve, y también es auditable. Cualquiera puede revisar cómo funciona el sistema. Y si el centro decide en algún momento operar de forma autónoma, puede migrar a OpenPath sin depender de nosotros.',
+    a: 'OpenPath (el motor) y ClassroomPath (el servicio) son código abierto. Cualquiera puede auditar cómo funcionan. Y si el centro quiere operar por su cuenta, puede migrar a OpenPath sin depender de nosotros.',
   },
   {
     q: '¿Para qué centros encaja mejor?',
-    a: 'Especialmente para centros con dispositivos institucionales, aulas de informática, FP, laboratorios o entornos donde el centro necesita control claro sobre el acceso a Internet.',
+    a: 'Especialmente para centros con dispositivos del centro, aulas de informática, FP, laboratorios o entornos donde se necesita control claro sobre el acceso a Internet.',
   },
   {
     q: '¿Cuánto tiempo lleva implantar ClassroomPath?',
@@ -31,7 +31,7 @@ export const LANDING_FAQS: FaqItem[] = [
 export const PRICING_FAQS: FaqItem[] = [
   {
     q: '¿Qué cuenta como un aula?',
-    a: 'Un conjunto de hasta 30 dispositivos institucionales bajo una política de acceso definida.',
+    a: 'Un conjunto de hasta 30 dispositivos bajo una política de acceso definida.',
   },
   {
     q: '¿Puedo empezar con un piloto?',
@@ -59,6 +59,6 @@ export const PRICING_FAQS: FaqItem[] = [
   },
   {
     q: '¿Qué diferencia a ClassroomPath de un proxy o un filtro DNS estándar?',
-    a: 'ClassroomPath añade gobernanza: políticas alineadas con el proyecto pedagógico, cola de solicitudes de desbloqueo para el profesorado, y una capa de operación gestionada sobre OpenPath. No es solo filtrado, es gestión de acceso con criterio.',
+    a: 'ClassroomPath añade gestión: políticas alineadas con el proyecto pedagógico, cola de solicitudes de desbloqueo para el profesorado y una capa de operación gestionada sobre OpenPath. No es solo filtrado, es gestión de acceso con criterio.',
   },
 ];

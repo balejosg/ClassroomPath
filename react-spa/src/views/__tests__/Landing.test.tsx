@@ -9,26 +9,26 @@ describe('ClassroomPathLandingPage', () => {
 
     expect(
       screen.getByRole('heading', {
-        name: 'Controla Internet por aula sin sobrecargar TIC.',
+        name: 'Controla el acceso a Internet por aula sin sobrecargar al equipo TIC.',
       })
     ).toBeInTheDocument();
-    expect(screen.getByText('Transparencia basada en Software Libre')).toBeInTheDocument();
+    expect(screen.getByText('Filtrado web escolar · Código abierto')).toBeInTheDocument();
     expect(
-      screen.getByText('Filtrado web escolar para dispositivos institucionales')
+      screen.getByText('Control de Internet por aula · Servicio gestionado')
     ).toBeInTheDocument();
-    expect(screen.getByText('Hasta 30 dispositivos institucionales por aula')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Calcular precio por aulas' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Solicitar piloto guiado' })).toBeInTheDocument();
+    expect(screen.getByText('30 dispositivos por aula, una sola cuota')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Calcular precio' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Probar con un piloto' })).toBeInTheDocument();
   });
 
   it('renders the fit and outcome sections for institutional buyers', () => {
     render(<ClassroomPathLandingPage onNavigateToLogin={vi.fn()} />);
 
     expect(
-      screen.getByRole('heading', { name: 'Encaja mejor si tu centro necesita' })
+      screen.getByRole('heading', { name: 'ClassroomPath encaja si tu centro necesita...' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Qué cambia durante las primeras semanas' })
+      screen.getByRole('heading', { name: 'Qué cambia en las primeras semanas' })
     ).toBeInTheDocument();
   });
 

@@ -10,7 +10,7 @@ describe('renderPublicPage', () => {
     expect(rendered?.canonicalPath).toBe('/');
     expect(rendered?.title).toContain('Filtrado web escolar');
     expect(rendered?.description).toContain('control de acceso por aula');
-    expect(rendered?.appHtml).toContain('Controla Internet por aula');
+    expect(rendered?.appHtml).toContain('Controla el acceso a Internet por aula');
   });
 
   it('renders metadata and HTML for pricing', () => {

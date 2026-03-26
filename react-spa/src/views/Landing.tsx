@@ -24,16 +24,16 @@ interface ClassroomPathLandingPageProps {
 
 const trustSignals = [
   {
-    title: 'Hasta 30 dispositivos institucionales por aula',
-    text: 'Una unidad clara para presupuestar, implantar y escalar sin licencias dispersas.',
+    title: '30 dispositivos por aula, una sola cuota',
+    text: 'Sin licencias por puesto. El centro presupuesta y escala con una unidad que entiende: el aula.',
   },
   {
     title: 'Onboarding guiado en la primera semana',
-    text: 'Sesión inicial, acompañamiento y arranque sin convertir el despliegue en un proyecto paralelo.',
+    text: 'Te acompañamos en el primer despliegue para que no se convierta en otro proyecto paralelo.',
   },
   {
-    title: 'Código abierto y sin vendor lock-in',
-    text: 'ClassroomPath opera sobre OpenPath para que el centro mantenga una salida viable y auditable.',
+    title: 'Código abierto, sin ataduras',
+    text: 'ClassroomPath opera sobre OpenPath. El centro puede auditar el código y migrar a operación propia si lo necesita.',
   },
 ];
 
@@ -45,7 +45,7 @@ const fitSignals = [
   },
   {
     icon: <Layers size={20} className="text-sky-600" />,
-    title: 'Control para dispositivos institucionales',
+    title: 'Control para dispositivos del centro',
     text: 'El centro quiere una política digital defendible para portátiles, carros o aulas compartidas.',
   },
   {
@@ -55,8 +55,8 @@ const fitSignals = [
   },
   {
     icon: <Unlock size={20} className="text-sky-600" />,
-    title: 'Transparencia y salida futura',
-    text: 'Buscas software auditable y sin dependencia obligatoria de un proveedor cerrado.',
+    title: 'Transparencia y autonomía',
+    text: 'El código es abierto. Si el centro quiere operar por su cuenta, puede migrar a OpenPath sin restricciones.',
   },
 ];
 
@@ -125,7 +125,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                 <div className="text-base font-semibold tracking-tight text-white">
                   ClassroomPath
                 </div>
-                <div className="text-xs text-slate-400">Transparencia basada en Software Libre</div>
+                <div className="text-xs text-slate-400">Filtrado web escolar · Código abierto</div>
               </div>
             </div>
             <div className="flex items-center gap-5">
@@ -169,33 +169,32 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
           <div className="relative mx-auto grid max-w-7xl gap-12 px-6 py-20 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:py-28">
             <div className="max-w-2xl">
               <div className="mb-4 inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-sky-300">
-                Filtrado web escolar para dispositivos institucionales
+                Control de Internet por aula · Servicio gestionado
               </div>
               <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
-                Controla Internet por aula sin sobrecargar TIC.
+                Controla el acceso a Internet por aula sin sobrecargar al equipo TIC.
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-8 text-slate-300">
-                ClassroomPath ayuda a los centros a definir una política digital clara y llevarla a
-                dispositivos institucionales con control de acceso por aula, despliegue guiado y
-                operación gestionada.
+                ClassroomPath convierte la política digital del centro en reglas operativas reales:
+                qué se abre, qué se bloquea y quién decide, aula por aula.
               </p>
               <p className="mt-4 max-w-xl text-base leading-7 text-slate-400">
-                Empieza por precio si necesitas presupuesto. Empieza por piloto si antes quieres
-                validar el encaje en pocas aulas. En ambos casos, el centro mantiene transparencia,
-                trazabilidad y una salida viable sobre OpenPath.
+                ¿Necesitas una cifra para presupuesto? Calcula por aulas. ¿Prefieres validar antes?
+                Arranca un piloto con pocas aulas. En ambos casos, código abierto y sin dependencia
+                de proveedor.
               </p>
               <div className="mt-8 flex flex-wrap gap-4">
                 <a
                   href="/pricing"
                   className="rounded-lg bg-sky-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-900/50 transition hover:bg-sky-500"
                 >
-                  Calcular precio por aulas
+                  Calcular precio
                 </a>
                 <a
                   href="#demo"
                   className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
-                  Solicitar piloto guiado
+                  Probar con un piloto
                 </a>
               </div>
               <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -220,8 +219,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                   <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
                     <div className="text-sm font-medium text-sky-300">Dirección</div>
                     <div className="mt-2 text-sm leading-7 text-slate-300">
-                      Pasa de una norma abstracta a una política digital que se puede defender y
-                      aplicar.
+                      De la norma en papel a una política digital defendible y aplicable.
                     </div>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
@@ -242,7 +240,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                   <ol className="mt-3 space-y-2 text-sm leading-7 text-slate-400">
                     <li>1. Calcula el precio orientativo por número de aulas.</li>
                     <li>2. Valora un piloto si necesitas evidencias internas.</li>
-                    <li>3. Agenda una demo para revisar encaje y despliegue.</li>
+                    <li>3. Agenda una demo para revisar alcance y despliegue.</li>
                   </ol>
                 </div>
               </div>
@@ -273,15 +271,14 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
           <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
             <div className="max-w-3xl">
               <div className="text-sm font-bold uppercase tracking-[0.2em] text-sky-700">
-                Señales de encaje
+                ¿Es para tu centro?
               </div>
               <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                Encaja mejor si tu centro necesita
+                ClassroomPath encaja si tu centro necesita...
               </h2>
               <p className="mt-5 text-base leading-8 text-slate-600">
-                ClassroomPath no intenta vender más tiempo de pantalla. Encaja cuando el centro ya
-                ha decidido que necesita una política de acceso más clara y una operación más
-                sobria.
+                No vendemos más tiempo de pantalla. ClassroomPath es para centros que ya han
+                decidido que necesitan una política de acceso clara y una operación más sencilla.
               </p>
             </div>
             <div className="mt-10 grid gap-6 md:grid-cols-2">
@@ -323,9 +320,9 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               <p className="mt-5 text-base leading-8 text-slate-700">
                 Si tu centro es de titularidad pública, puedes acceder a ClassroomPath sin coste
                 para <strong>hasta 5 aulas</strong> mientras dure la campaña. Incluye sesión de
-                arranque, guía de implantación y soporte estándar por email. Sin compromiso
-                posterior.
+                arranque, guía de implantación y soporte estándar por email.
               </p>
+              <p className="mt-3 text-sm font-medium text-emerald-800">Sin compromiso posterior.</p>
               <p className="mt-2 text-sm text-slate-500">
                 Plazas sujetas a disponibilidad. Verificación de titularidad pública al contactar.
               </p>
@@ -344,10 +341,10 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
             <div className="grid gap-12 lg:grid-cols-[1.05fr_0.95fr]">
               <div>
                 <div className="text-sm font-bold uppercase tracking-[0.2em] text-sky-700">
-                  Qué cambia durante la implantación
+                  Implantación
                 </div>
                 <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                  Qué cambia durante las primeras semanas
+                  Qué cambia en las primeras semanas
                 </h2>
                 <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600">
                   La mejora no está solo en bloquear. Está en convertir una intención institucional
@@ -394,7 +391,8 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                     una decisión del centro."
                   </p>
                   <p className="mt-3 text-sm text-slate-500">
-                    ClassroomPath para centros con una política digital que quieren hacer operativa.
+                    — La propuesta ClassroomPath: política digital que se puede operar, no solo
+                    escribir.
                   </p>
                 </blockquote>
               </div>
@@ -422,8 +420,8 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                   Revisa si encaja en tu centro antes de desplegar
                 </h2>
                 <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600">
-                  Cuéntanos el número de aulas, el tipo de dispositivos institucionales y si buscas
-                  un presupuesto orientativo, una demo o un piloto con pocas aulas.
+                  Cuéntanos cuántas aulas tienes y qué necesitas: presupuesto, demo o piloto.
+                  Respondemos en 48 h.
                 </p>
               </div>
               <div className="mx-auto mt-10 max-w-2xl">
