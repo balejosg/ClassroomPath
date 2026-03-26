@@ -567,8 +567,32 @@ STAGING_GATE_RESULT="skipped"
 if [ "$STAGING_RUN_RELEASE_GATE" = "1" ]; then
     log_info "Running release gate against staging..."
 
+    RELEASE_GATE_TARGET_URL="$CANONICAL_STAGING_URL"
+    RELEASE_GATE_EXPECTED_ORIGIN="$(node -e 'console.log(new URL(process.argv[1]).origin)' "$CANONICAL_STAGING_URL")"
+    RELEASE_GATE_REQUEST_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN"
+    RELEASE_GATE_TARGET_HOST=$(printf '%s\n' "$CANONICAL_STAGING_URL" | sed -E 's#^[A-Za-z]+://([^/:]+).*#\1#')
+
+    if [ -n "$RELEASE_GATE_TARGET_HOST" ] && ! getent hosts "$RELEASE_GATE_TARGET_HOST" >/dev/null 2>&1; then
+        log_warn "Release gate host does not resolve locally: $RELEASE_GATE_TARGET_HOST"
+        REMOTE_GATE_DNS_STATUS=$("${SSH_CMD[@]}" "getent hosts '$RELEASE_GATE_TARGET_HOST' >/dev/null 2>&1 && echo ok || echo fail")
+
+        if [ "$REMOTE_GATE_DNS_STATUS" = "ok" ]; then
+            log_warn "Host resolves on staging host but not locally; using direct IP fallback for local release gate runner"
+        else
+            log_warn "Host does not resolve on staging host either; likely DNS outage/missing record"
+        fi
+
+        RELEASE_GATE_TARGET_URL="http://$STAGING_HOST:3001"
+        log_warn "Falling back release gate target to direct staging gateway: $RELEASE_GATE_TARGET_URL"
+    fi
+
+    log_info "Release gate target URL: $RELEASE_GATE_TARGET_URL"
+    log_info "Release gate expected origin: $RELEASE_GATE_EXPECTED_ORIGIN"
+
     set +e
-    RELEASE_GATE_URL="$CANONICAL_STAGING_URL" \
+    RELEASE_GATE_URL="$RELEASE_GATE_TARGET_URL" \
+    RELEASE_GATE_EXPECTED_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN" \
+    RELEASE_GATE_REQUEST_ORIGIN="$RELEASE_GATE_REQUEST_ORIGIN" \
     RELEASE_GATE_TIMEOUT="30000" \
     RELEASE_GATE_ALLOW_MUTATIONS="1" \
     npm run test:release-gate 2>&1 | tee /tmp/release-gate-results.txt

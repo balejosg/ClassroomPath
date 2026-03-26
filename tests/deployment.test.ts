@@ -531,8 +531,20 @@ void describe('Migration Tooling', () => {
       'deploy-staging-local.sh should default to running the staging release gate during promotion prep'
     );
     assert.ok(
-      content.includes('RELEASE_GATE_URL="$CANONICAL_STAGING_URL"'),
-      'staging deploy should run the release gate against the canonical staging URL'
+      content.includes('RELEASE_GATE_URL="$RELEASE_GATE_TARGET_URL"'),
+      'staging deploy should allow the release gate to target either the canonical staging URL or a direct-IP fallback'
+    );
+    assert.ok(
+      content.includes('RELEASE_GATE_EXPECTED_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN"'),
+      'staging deploy should pass the canonical public origin separately from the transport target'
+    );
+    assert.ok(
+      content.includes('Release gate host does not resolve locally'),
+      'staging deploy should detect when the canonical staging host is not resolvable locally'
+    );
+    assert.ok(
+      content.includes('Falling back release gate target to direct staging gateway'),
+      'staging deploy should fall back the release gate transport to the staging IP when local DNS is unavailable'
     );
     assert.ok(
       content.includes('STAGING_RELEASE_GATE_RESULT=success') ||

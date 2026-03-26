@@ -22,9 +22,13 @@ type VerificationPayload = {
 };
 
 const RELEASE_GATE_URL = process.env.RELEASE_GATE_URL;
+const RELEASE_GATE_EXPECTED_ORIGIN =
+  process.env.RELEASE_GATE_EXPECTED_ORIGIN ??
+  (RELEASE_GATE_URL ? new URL(RELEASE_GATE_URL).origin : '');
+const RELEASE_GATE_REQUEST_ORIGIN =
+  process.env.RELEASE_GATE_REQUEST_ORIGIN ?? RELEASE_GATE_EXPECTED_ORIGIN;
 const RELEASE_GATE_TIMEOUT = Number.parseInt(process.env.RELEASE_GATE_TIMEOUT ?? '30000', 10);
 const RELEASE_GATE_ALLOW_MUTATIONS = process.env.RELEASE_GATE_ALLOW_MUTATIONS === '1';
-const RELEASE_GATE_ORIGIN = RELEASE_GATE_URL ? new URL(RELEASE_GATE_URL).origin : '';
 
 function uniqueReleaseGateEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`;
@@ -78,12 +82,17 @@ async function fetchWithRetry(
 
 async function postTrpc<T>(procedure: string, payload: Record<string, unknown>): Promise<T> {
   assert.ok(RELEASE_GATE_URL, 'RELEASE_GATE_URL must be set');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (RELEASE_GATE_REQUEST_ORIGIN) {
+    headers.Origin = RELEASE_GATE_REQUEST_ORIGIN;
+  }
 
   const response = await fetchWithRetry(`${RELEASE_GATE_URL}/cp/trpc/${procedure}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -118,7 +127,7 @@ async function registerFreshUser(email = uniqueReleaseGateEmail('release-gate'))
 
   assertVerificationDeliveryPolicy({
     context: 'auth.register',
-    expectedOrigin: RELEASE_GATE_ORIGIN,
+    expectedOrigin: RELEASE_GATE_EXPECTED_ORIGIN,
     expectedTermsVersion: CURRENT_TERMS_VERSION,
     payload,
   });
@@ -150,7 +159,7 @@ describe(
 
       assertVerificationDeliveryPolicy({
         context: 'auth.generateEmailVerificationToken',
-        expectedOrigin: RELEASE_GATE_ORIGIN,
+        expectedOrigin: RELEASE_GATE_EXPECTED_ORIGIN,
         payload: resendPayload,
       });
       assert.strictEqual(resendPayload.email, email);
