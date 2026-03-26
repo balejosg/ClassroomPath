@@ -48,7 +48,64 @@ function normalizeNeeds(needs: WorkflowJob['needs']): string[] {
   return Array.isArray(needs) ? needs : [needs];
 }
 
+function readText(relativePath: string): string {
+  const filePath = resolve(projectRoot, relativePath);
+  assert.ok(existsSync(filePath), `${relativePath} should exist`);
+  return readFileSync(filePath, 'utf-8');
+}
+
 describe('Workflow configuration hardening', () => {
+  test('GitHub Actions workflows pin Node 24 compatible action majors', () => {
+    const cases = [
+      {
+        relativePath: '.github/workflows/ci.yml',
+        required: ['actions/checkout@v6', 'actions/setup-node@v6'],
+        forbidden: ['actions/checkout@v4', 'actions/setup-node@v4'],
+      },
+      {
+        relativePath: '.github/workflows/sync-openpath.yml',
+        required: ['actions/checkout@v6', 'actions/setup-node@v6'],
+        forbidden: ['actions/checkout@v4', 'actions/setup-node@v4'],
+      },
+      {
+        relativePath: '.github/workflows/verify-trailers.yml',
+        required: ['actions/checkout@v6'],
+        forbidden: ['actions/checkout@v4'],
+      },
+      {
+        relativePath: '.github/workflows/release-candidate-images.yml',
+        required: [
+          'docker/setup-buildx-action@v4',
+          'docker/login-action@v4',
+          'docker/build-push-action@v7',
+        ],
+        forbidden: [
+          'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24',
+          'docker/setup-buildx-action@v3',
+          'docker/login-action@v3',
+          'docker/build-push-action@v6',
+        ],
+      },
+      {
+        relativePath: '.github/workflows/deploy.yml',
+        required: ['docker/login-action@v4'],
+        forbidden: ['docker/login-action@v3'],
+      },
+    ];
+
+    for (const { relativePath, required, forbidden } of cases) {
+      const content = readText(relativePath);
+
+      for (const version of required) {
+        assert.ok(content.includes(version), `${relativePath} should include ${version}`);
+      }
+
+      for (const version of forbidden) {
+        assert.ok(!content.includes(version), `${relativePath} should not include ${version}`);
+      }
+    }
+  });
+
   test('CI workflow exists and defines a stable CI Success summary job', () => {
     const workflow = readWorkflow('.github/workflows/ci.yml');
     const jobs = workflow.jobs ?? {};
