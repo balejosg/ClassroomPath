@@ -586,10 +586,16 @@ if [ "$STAGING_RUN_RELEASE_GATE" = "1" ]; then
     log_success "Release gate passed"
 
     STAGING_VERIFIED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    log_info "Verifying Firefox release artifacts inside classroompath-api..."
+
+    "${SSH_CMD[@]}" \
+      "docker exec classroompath-api test -f /app/firefox-extension/build/firefox-release/metadata.json && docker exec classroompath-api test -f /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi"
+
+    STAGING_FIREFOX_RELEASE_ARTIFACTS="present"
     log_info "Persisting staging verification evidence..."
 
     "${SSH_CMD[@]}" \
-      "STATE_DIR='$STATE_DIR' APP_DIR='$APP_DIR' STAGING_VERIFIED_AT='$STAGING_VERIFIED_AT' STAGING_SMOKE_STATUS='$STAGING_VERIFICATION_STATUS' bash -s" <<'VERIFY_STATE'
+      "STATE_DIR='$STATE_DIR' APP_DIR='$APP_DIR' STAGING_VERIFIED_AT='$STAGING_VERIFIED_AT' STAGING_SMOKE_STATUS='$STAGING_VERIFICATION_STATUS' STAGING_FIREFOX_RELEASE_ARTIFACTS='$STAGING_FIREFOX_RELEASE_ARTIFACTS' bash -s" <<'VERIFY_STATE'
 set -euo pipefail
 
 mkdir -p "$STATE_DIR"
@@ -615,6 +621,7 @@ STAGING_VERIFIED_GATEWAY_IMAGE=${CLASSROOMPATH_GATEWAY_IMAGE:-}
 STAGING_VERIFIED_MIGRATIONS_IMAGE=${CLASSROOMPATH_MIGRATIONS_IMAGE:-}
 STAGING_VERIFIED_OPENPATH_API_IMAGE=${OPENPATH_API_IMAGE:-}
 STAGING_VERIFIED_SPA_IMAGE=${CLASSROOMPATH_SPA_IMAGE:-}
+STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present
 STAGING_SMOKE_RESULT=success
 STAGING_SMOKE_STATUS=$STAGING_SMOKE_STATUS
 STAGING_RELEASE_GATE_RESULT=success

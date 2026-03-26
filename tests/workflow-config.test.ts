@@ -275,6 +275,7 @@ describe('Workflow configuration hardening', () => {
   test('Release candidate workflow builds images for main before a production tag exists', () => {
     const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
     const jobs = workflow.jobs ?? {};
+    const workflowText = readText('.github/workflows/release-candidate-images.yml');
 
     assert.ok(
       workflow.on?.push?.branches?.includes('main'),
@@ -307,6 +308,10 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       jobs['build-migrations-release-candidate'],
       'release candidate workflow should build the migrations runner image in its own job'
+    );
+    assert.ok(
+      jobs['prepare-openpath-firefox-release-assets'],
+      'release candidate workflow should prepare signed Firefox release assets before the OpenPath API image builds'
     );
     assert.ok(
       jobs['build-verifier-release-candidate'],
@@ -361,6 +366,59 @@ describe('Workflow configuration hardening', () => {
       );
     }
 
+    const firefoxPrepNeeds = normalizeNeeds(jobs['prepare-openpath-firefox-release-assets']?.needs);
+    assert.deepEqual(
+      firefoxPrepNeeds.sort(),
+      ['derive-release-image-refs'].sort(),
+      'Firefox asset preparation should run after deriving shared image refs'
+    );
+    assert.equal(
+      jobs['prepare-openpath-firefox-release-assets']?.['runs-on'],
+      'ubuntu-latest',
+      'Firefox asset preparation should run once on ubuntu-latest before fan-out image builds'
+    );
+
+    const firefoxPrepRun =
+      jobs['prepare-openpath-firefox-release-assets']?.steps
+        ?.map((step) => step.run ?? '')
+        .join('\n') ?? '';
+    assert.ok(
+      (jobs['prepare-openpath-firefox-release-assets']?.steps ?? []).some(
+        (step) => step.uses === 'actions/setup-node@v6'
+      ),
+      'Firefox asset preparation should install Node before signing'
+    );
+    assert.ok(
+      firefoxPrepRun.includes('npm ci'),
+      'Firefox asset preparation should install upstream OpenPath dependencies before building the extension'
+    );
+    assert.ok(
+      firefoxPrepRun.includes('npm run build --workspace=@openpath/firefox-extension'),
+      'Firefox asset preparation should build the Firefox extension dist before signing'
+    );
+    assert.ok(
+      firefoxPrepRun.includes(
+        'npm run sign:firefox-release --workspace=@openpath/firefox-extension'
+      ),
+      'Firefox asset preparation should sign the Firefox release bundle in CI'
+    );
+    assert.ok(
+      workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'),
+      'Firefox asset preparation should source WEB_EXT_API_KEY from GitHub Actions secrets'
+    );
+    assert.ok(
+      workflowText.includes('WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}'),
+      'Firefox asset preparation should source WEB_EXT_API_SECRET from GitHub Actions secrets'
+    );
+    assert.ok(
+      workflowText.includes('actions/upload-artifact@v7'),
+      'release candidate workflow should upload the prepared Firefox artifacts for the OpenPath API image jobs'
+    );
+    assert.ok(
+      workflowText.includes('name: openpath-firefox-release-assets'),
+      'release candidate workflow should publish a named artifact for the signed Firefox release assets'
+    );
+
     assert.equal(
       jobs['build-openpath-api-release-candidate-arm64']?.['runs-on'],
       'ubuntu-24.04-arm',
@@ -379,6 +437,23 @@ describe('Workflow configuration hardening', () => {
       ].sort(),
       'OpenPath API manifest merge should wait for both per-architecture builds and the shared image refs'
     );
+
+    for (const jobName of [
+      'build-openpath-api-release-candidate-amd64',
+      'build-openpath-api-release-candidate-arm64',
+    ]) {
+      const jobNeeds = normalizeNeeds(jobs[jobName]?.needs);
+      assert.ok(
+        jobNeeds.includes('prepare-openpath-firefox-release-assets'),
+        `${jobName} should wait for the signed Firefox release assets before building the image`
+      );
+
+      const jobSteps = jobs[jobName]?.steps ?? [];
+      assert.ok(
+        jobSteps.some((step) => step.uses === 'actions/download-artifact@v5'),
+        `${jobName} should download the prepared Firefox release assets into the Docker build context`
+      );
+    }
 
     const openPathManifestRun =
       jobs['build-openpath-api-release-candidate']?.steps

@@ -126,10 +126,59 @@ jobs:
         run: |
           echo "migrations_image=${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ steps.build-migrations.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
+  prepare-openpath-firefox-release-assets:
+    name: Prepare OpenPath Firefox Release Assets
+    runs-on: ubuntu-latest
+    needs: derive-release-image-refs
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install OpenPath dependencies
+        working-directory: upstream/openpath
+        run: npm ci
+
+      - name: Build Firefox extension dist
+        working-directory: upstream/openpath
+        run: npm run build --workspace=@openpath/firefox-extension
+
+      - name: Sign Firefox release bundle
+        working-directory: upstream/openpath
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: npm run sign:firefox-release --workspace=@openpath/firefox-extension
+
+      - name: Verify Firefox release artifacts
+        working-directory: upstream/openpath
+        run: |
+          test -f firefox-extension/dist/background.js
+          test -f firefox-extension/build/firefox-release/metadata.json
+          test -f firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
+
+      - name: Upload Firefox release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: openpath-firefox-release-assets
+          path: |
+            upstream/openpath/firefox-extension/dist/**
+            upstream/openpath/firefox-extension/build/firefox-release/**
+          if-no-files-found: error
+
   build-openpath-api-release-candidate-amd64:
     name: Build OpenPath API Release Candidate (amd64)
     runs-on: ubuntu-latest
-    needs: derive-release-image-refs
+    needs:
+      - derive-release-image-refs
+      - prepare-openpath-firefox-release-assets
     outputs:
       image_digest: ${{ steps.build-openpath-api.outputs.digest }}
 
@@ -148,6 +197,18 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Firefox release assets
+        uses: actions/download-artifact@v5
+        with:
+          name: openpath-firefox-release-assets
+          path: ./upstream/openpath/firefox-extension
+
+      - name: Verify downloaded Firefox release assets
+        run: |
+          test -f ./upstream/openpath/firefox-extension/dist/background.js
+          test -f ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
+          test -f ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
 
       - name: Build and push OpenPath API image
         id: build-openpath-api
@@ -163,7 +224,9 @@ jobs:
   build-openpath-api-release-candidate-arm64:
     name: Build OpenPath API Release Candidate (arm64)
     runs-on: ubuntu-24.04-arm
-    needs: derive-release-image-refs
+    needs:
+      - derive-release-image-refs
+      - prepare-openpath-firefox-release-assets
     outputs:
       image_digest: ${{ steps.build-openpath-api.outputs.digest }}
 
@@ -182,6 +245,18 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Firefox release assets
+        uses: actions/download-artifact@v5
+        with:
+          name: openpath-firefox-release-assets
+          path: ./upstream/openpath/firefox-extension
+
+      - name: Verify downloaded Firefox release assets
+        run: |
+          test -f ./upstream/openpath/firefox-extension/dist/background.js
+          test -f ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
+          test -f ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
 
       - name: Build and push OpenPath API image
         id: build-openpath-api

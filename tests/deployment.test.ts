@@ -547,6 +547,22 @@ void describe('Migration Tooling', () => {
       content.includes('STAGING_VERIFIED_GATEWAY_IMAGE'),
       'staging verification evidence should record the deployed immutable image digests'
     );
+    assert.ok(
+      content.includes(
+        'classroompath-api test -f /app/firefox-extension/build/firefox-release/metadata.json'
+      ),
+      'staging deploy should verify the staged Firefox release metadata inside the API container before recording evidence'
+    );
+    assert.ok(
+      content.includes(
+        'classroompath-api test -f /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi'
+      ),
+      'staging deploy should verify the staged Firefox release XPI inside the API container before recording evidence'
+    );
+    assert.ok(
+      content.includes('STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present'),
+      'staging verification evidence should record Firefox release artifact presence explicitly'
+    );
   });
 
   void test('migration runner image packages the workspace migration entrypoint', () => {
