@@ -183,6 +183,7 @@ describe('Workflow configuration hardening', () => {
 
   test('Deploy workflow builds release images before deployment and defines rollback', () => {
     const workflow = readWorkflow('.github/workflows/deploy.yml');
+    const workflowText = readText('.github/workflows/deploy.yml');
     const jobs = workflow.jobs ?? {};
 
     assert.ok(
@@ -242,6 +243,10 @@ describe('Workflow configuration hardening', () => {
       'release-evidence should depend on verify-staging-release-state'
     );
     assert.ok(
+      evidenceNeeds.includes('windows-firefox-canary'),
+      'release-evidence should capture the advisory Windows/Firefox canary result'
+    );
+    assert.ok(
       !evidenceNeeds.includes('release-gate-staging'),
       'release-evidence should rely on staging verification evidence instead of a removed release-gate job'
     );
@@ -299,11 +304,20 @@ describe('Workflow configuration hardening', () => {
       'verify-staging-release-state should enforce Windows/Firefox staging evidence for high-risk promotions'
     );
     assert.ok(
+      stagingVerificationRun.includes('upstream/openpath/api/src/'),
+      'verify-staging-release-state should classify OpenPath API bootstrap source changes as high risk'
+    );
+    assert.ok(
       stagingVerificationRun.includes('STAGING_FIREFOX_EXTENSION_ID') &&
         stagingVerificationRun.includes('STAGING_FIREFOX_RELEASE_VERSION') &&
         stagingVerificationRun.includes('STAGING_FIREFOX_METADATA_SHA256') &&
         stagingVerificationRun.includes('STAGING_FIREFOX_XPI_SHA256'),
       'verify-staging-release-state should expose Firefox release identity and hashes to downstream jobs'
+    );
+    assert.ok(
+      workflowText.includes('STAGING_WINDOWS_FIREFOX_HIGH_RISK') &&
+        workflowText.includes('WINDOWS_FIREFOX_CANARY_RESULT'),
+      'release-evidence should expose the high-risk flag and advisory canary result'
     );
 
     const smokeSteps = jobs['smoke-test-production']?.steps ?? [];
@@ -331,8 +345,8 @@ describe('Workflow configuration hardening', () => {
 
     const productionDeployNeeds = normalizeNeeds(jobs['deploy-production']?.needs);
     assert.ok(
-      productionDeployNeeds.includes('windows-firefox-canary'),
-      'deploy-production should wait on the Windows/Firefox canary gate'
+      !productionDeployNeeds.includes('windows-firefox-canary'),
+      'deploy-production should not block on the advisory Windows/Firefox canary gate'
     );
   });
 

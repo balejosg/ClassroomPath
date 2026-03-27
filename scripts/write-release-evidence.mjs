@@ -9,6 +9,20 @@ function valueOrNull(value) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function isTrueFlag(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase() === 'true';
+}
+
+function deriveAdvisoryCanaryResult({ highRisk, canaryResult }) {
+  if (!highRisk) {
+    return 'not_applicable';
+  }
+
+  return valueOrNull(canaryResult) ?? 'not_run';
+}
+
 function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
   if (smokeResult === 'success') {
     return 'released';
@@ -28,6 +42,8 @@ function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
 
   return 'blocked_before_deploy';
 }
+
+const windowsFirefoxHighRisk = isTrueFlag(process.env.STAGING_WINDOWS_FIREFOX_HIGH_RISK);
 
 const evidence = {
   generatedAt: new Date().toISOString(),
@@ -74,6 +90,10 @@ const evidence = {
     verifyOpenPathUpstream: valueOrNull(process.env.VERIFY_OPENPATH_RESULT),
     resolveReleaseImages: valueOrNull(process.env.RESOLVE_IMAGES_RESULT),
     verifyStagingReleaseState: valueOrNull(process.env.VERIFY_STAGING_RESULT),
+    windowsFirefoxCanary: deriveAdvisoryCanaryResult({
+      highRisk: windowsFirefoxHighRisk,
+      canaryResult: process.env.WINDOWS_FIREFOX_CANARY_RESULT,
+    }),
     deployProduction: valueOrNull(process.env.DEPLOY_RESULT),
     smokeTestProduction: valueOrNull(process.env.PRODUCTION_SMOKE_RESULT),
     rollbackProduction: valueOrNull(process.env.ROLLBACK_RESULT),
@@ -82,6 +102,9 @@ const evidence = {
     smokeResult: valueOrNull(process.env.STAGING_SMOKE_RESULT),
     smokeStatus: valueOrNull(process.env.STAGING_SMOKE_STATUS),
     releaseGateResult: valueOrNull(process.env.STAGING_RELEASE_GATE_RESULT),
+    windowsFirefoxHighRisk: windowsFirefoxHighRisk ? 'true' : 'false',
+    windowsBootstrapResult: valueOrNull(process.env.STAGING_WINDOWS_BOOTSTRAP_RESULT),
+    firefoxPolicyResult: valueOrNull(process.env.STAGING_FIREFOX_POLICY_RESULT),
     verifiedAt: valueOrNull(process.env.STAGING_VERIFIED_AT),
   },
   immutableImages: {
@@ -119,6 +142,7 @@ const summaryLines = [
   `| Verify OpenPath upstream | ${evidence.jobs.verifyOpenPathUpstream ?? 'n/a'} |`,
   `| Resolve release images | ${evidence.jobs.resolveReleaseImages ?? 'n/a'} |`,
   `| Verify staging release state | ${evidence.jobs.verifyStagingReleaseState ?? 'n/a'} |`,
+  `| Windows/Firefox canary (advisory) | ${evidence.jobs.windowsFirefoxCanary ?? 'n/a'} |`,
   `| Deploy production | ${evidence.jobs.deployProduction ?? 'n/a'} |`,
   `| Production smoke | ${evidence.jobs.smokeTestProduction ?? 'n/a'} |`,
   `| Rollback | ${evidence.jobs.rollbackProduction ?? 'n/a'} |`,
@@ -128,6 +152,9 @@ const summaryLines = [
   `- Smoke result: \`${evidence.stagingVerification.smokeResult ?? 'n/a'}\``,
   `- Smoke status: \`${evidence.stagingVerification.smokeStatus ?? 'n/a'}\``,
   `- Release gate result: \`${evidence.stagingVerification.releaseGateResult ?? 'n/a'}\``,
+  `- Windows/Firefox high risk: \`${evidence.stagingVerification.windowsFirefoxHighRisk ?? 'n/a'}\``,
+  `- Windows bootstrap result: \`${evidence.stagingVerification.windowsBootstrapResult ?? 'n/a'}\``,
+  `- Firefox policy result: \`${evidence.stagingVerification.firefoxPolicyResult ?? 'n/a'}\``,
   `- Verified at: \`${evidence.stagingVerification.verifiedAt ?? 'n/a'}\``,
   '',
   '### Canonical Targets',
@@ -154,6 +181,7 @@ const summaryLines = [
   '',
   '- Local `verify:commit` remains the fast developer-side gate.',
   '- Staging records smoke + release-gate evidence for the exact promoted SHA and image digests.',
+  '- The Windows/Firefox canary is advisory evidence; it does not block production promotion.',
   '- GitHub Actions reuses that staging evidence instead of rerunning the same gate during production promotion.',
   '- Canonical public URLs come from `config/deploy-targets.json`.',
   '',

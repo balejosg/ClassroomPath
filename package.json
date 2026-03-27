@@ -41,7 +41,7 @@
     "test:e2e:mobile": "E2E_SKIP_DB_PUSH=1 npx playwright test --project=chromium --grep=\"@mobile|@responsive\"",
     "test:e2e:setup": "bash scripts/setup-test-db.sh",
     "test:e2e:ui": "npx playwright test --ui",
-    "test:ci-regression": "node --import tsx --test tests/agent-docs-consistency.test.ts tests/deployment.test.ts tests/openpath-required-checks.test.ts tests/release-gate-policy.test.ts tests/workflow-config.test.ts",
+    "test:ci-regression": "node --import tsx --test tests/agent-docs-consistency.test.ts tests/deployment.test.ts tests/openpath-required-checks.test.ts tests/release-evidence.test.ts tests/release-gate-policy.test.ts tests/workflow-config.test.ts",
     "test:deployment": "node --import tsx --test tests/deployment.test.ts",
     "test:release-gate": "node --import tsx --test tests/release-gate.test.ts",
     "test:release-gate:staging": "RELEASE_GATE_URL=$(node scripts/deploy-targets.mjs get staging publicUrl) RELEASE_GATE_ALLOW_MUTATIONS=1 npm run test:release-gate",
