@@ -560,8 +560,8 @@ describe('Workflow configuration hardening', () => {
     );
     assert.equal(
       migrationsBuildStep?.with?.platforms,
-      'linux/amd64',
-      'release candidate workflow should publish the migrations image for the x86_64 deployment target without an emulated arm64 build'
+      'linux/amd64,linux/arm64',
+      'release candidate workflow should publish the migrations runner image for both staging and the arm64 production deployment target'
     );
 
     assert.equal(
