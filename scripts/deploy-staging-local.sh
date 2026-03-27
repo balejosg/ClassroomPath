@@ -617,8 +617,8 @@ if [ "$STAGING_RUN_RELEASE_GATE" = "1" ]; then
 
     STAGING_FIREFOX_RELEASE_ARTIFACTS="present"
     STAGING_FIREFOX_METADATA_JSON=$("${SSH_CMD[@]}" "docker exec classroompath-api cat /app/firefox-extension/build/firefox-release/metadata.json")
-    STAGING_FIREFOX_EXTENSION_ID="$(printf '%s' "$STAGING_FIREFOX_METADATA_JSON" | node -e 'let data=\"\"; process.stdin.on(\"data\", (chunk) => data += chunk); process.stdin.on(\"end\", () => { const parsed = JSON.parse(data); if (!parsed.extensionId) process.exit(1); process.stdout.write(String(parsed.extensionId)); });')"
-    STAGING_FIREFOX_RELEASE_VERSION="$(printf '%s' "$STAGING_FIREFOX_METADATA_JSON" | node -e 'let data=\"\"; process.stdin.on(\"data\", (chunk) => data += chunk); process.stdin.on(\"end\", () => { const parsed = JSON.parse(data); if (!parsed.version) process.exit(1); process.stdout.write(String(parsed.version)); });')"
+    STAGING_FIREFOX_EXTENSION_ID="$(printf '%s' "$STAGING_FIREFOX_METADATA_JSON" | node -e 'let data=""; process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => { const parsed = JSON.parse(data); if (!parsed.extensionId) process.exit(1); process.stdout.write(String(parsed.extensionId)); });')"
+    STAGING_FIREFOX_RELEASE_VERSION="$(printf '%s' "$STAGING_FIREFOX_METADATA_JSON" | node -e 'let data=""; process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => { const parsed = JSON.parse(data); if (!parsed.version) process.exit(1); process.stdout.write(String(parsed.version)); });')"
     STAGING_FIREFOX_METADATA_SHA256=$("${SSH_CMD[@]}" "docker exec classroompath-api sha256sum /app/firefox-extension/build/firefox-release/metadata.json | awk '{print \$1}'")
     STAGING_FIREFOX_XPI_SHA256=$("${SSH_CMD[@]}" "docker exec classroompath-api sha256sum /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi | awk '{print \$1}'")
     STAGING_WINDOWS_BOOTSTRAP_RESULT="failed"

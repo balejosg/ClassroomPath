@@ -597,6 +597,10 @@ void describe('Migration Tooling', () => {
       'staging verification evidence should persist Firefox release identity and hashes'
     );
     assert.ok(
+      content.includes('node -e \'let data="";') && !content.includes('node -e \'let data=\\"\\";'),
+      'staging deploy should parse Firefox metadata with a valid node -e snippet instead of an over-escaped string'
+    );
+    assert.ok(
       content.includes(
         'Release-candidate staging deploys must prove the live Windows bootstrap contract'
       ),

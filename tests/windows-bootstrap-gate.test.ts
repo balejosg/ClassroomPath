@@ -8,9 +8,13 @@ type TrpcEnvelope<T> = {
   result?: {
     data?: {
       json?: T;
+    } & T;
+  };
+  error?: {
+    data?: {
+      retryAfterMs?: number;
     };
   };
-  error?: unknown;
 };
 
 type RegistrationPayload = {
@@ -37,6 +41,65 @@ type FirefoxReleaseMetadata = {
   extensionId?: string;
   version?: string;
 };
+
+function extractTrpcData<T>(envelope: TrpcEnvelope<T> | undefined): T | undefined {
+  const data = envelope?.result?.data;
+  if (!data) {
+    return undefined;
+  }
+
+  return (data.json ?? data) as T;
+}
+
+function extractRetryAfterMs(envelope: TrpcEnvelope<unknown> | undefined): number | null {
+  const retryAfterMs = envelope?.error?.data?.retryAfterMs;
+  return typeof retryAfterMs === 'number' && retryAfterMs > 0 ? retryAfterMs : null;
+}
+
+test('extractTrpcData supports direct result.data payloads', () => {
+  assert.deepEqual(
+    extractTrpcData<{ email: string }>({
+      result: {
+        data: {
+          email: 'teacher@example.com',
+        },
+      },
+    }),
+    {
+      email: 'teacher@example.com',
+    }
+  );
+});
+
+test('extractTrpcData preserves nested result.data.json payloads', () => {
+  assert.deepEqual(
+    extractTrpcData<{ email: string }>({
+      result: {
+        data: {
+          json: {
+            email: 'teacher@example.com',
+          },
+        },
+      },
+    }),
+    {
+      email: 'teacher@example.com',
+    }
+  );
+});
+
+test('extractRetryAfterMs reads tRPC retry delays from rate-limit errors', () => {
+  assert.equal(
+    extractRetryAfterMs({
+      error: {
+        data: {
+          retryAfterMs: 2500,
+        },
+      },
+    }),
+    2500
+  );
+});
 
 const WINDOWS_BOOTSTRAP_GATE_URL = process.env.WINDOWS_BOOTSTRAP_GATE_URL;
 const WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN =
@@ -141,19 +204,32 @@ async function postTrpc<T>(
     headers.Cookie = cookieHeader;
   }
 
-  const response = await fetchWithRetry(`${WINDOWS_BOOTSTRAP_GATE_URL}/cp/trpc/${procedure}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  });
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const response = await fetchWithRetry(`${WINDOWS_BOOTSTRAP_GATE_URL}/cp/trpc/${procedure}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
 
-  assert.strictEqual(response.status, 200, `${procedure} returned ${response.status}`);
-  const raw = (await response.json()) as TrpcEnvelope<T> | Array<TrpcEnvelope<T>>;
-  const envelope = Array.isArray(raw) ? raw[0] : raw;
-  assert.ok(!envelope?.error, `${procedure} returned tRPC error ${JSON.stringify(raw)}`);
-  const data = envelope?.result?.data?.json;
-  assert.ok(data, `${procedure} returned no JSON payload`);
-  return { data: data as T, response };
+    const raw = (await response.json()) as TrpcEnvelope<T> | Array<TrpcEnvelope<T>>;
+    const envelope = Array.isArray(raw) ? raw[0] : raw;
+
+    if (response.status === 429) {
+      const retryAfterMs = extractRetryAfterMs(envelope);
+      if (retryAfterMs && attempt < 3) {
+        await sleep(retryAfterMs + 250);
+        continue;
+      }
+    }
+
+    assert.strictEqual(response.status, 200, `${procedure} returned ${response.status}`);
+    assert.ok(!envelope?.error, `${procedure} returned tRPC error ${JSON.stringify(raw)}`);
+    const data = extractTrpcData(envelope);
+    assert.ok(data, `${procedure} returned no JSON payload`);
+    return { data: data as T, response };
+  }
+
+  throw new Error(`${procedure} exhausted retry attempts`);
 }
 
 describe(
@@ -183,8 +259,23 @@ describe(
       });
 
       const loginResult = await postTrpc('auth.login', { email, password });
-      const cookieHeader = extractCookies(loginResult.response);
-      assert.ok(cookieHeader.length > 0, 'auth.login should issue a session cookie');
+      const initialCookieHeader = extractCookies(loginResult.response);
+      assert.ok(initialCookieHeader.length > 0, 'auth.login should issue a session cookie');
+
+      await postTrpc(
+        'onboarding.createOrganization',
+        {
+          name: `Bootstrap Gate Org ${Date.now()}`,
+        },
+        initialCookieHeader
+      );
+
+      const refreshedLoginResult = await postTrpc('auth.login', { email, password });
+      const cookieHeader = extractCookies(refreshedLoginResult.response);
+      assert.ok(
+        cookieHeader.length > 0,
+        'auth.login should reissue a session cookie after organization onboarding'
+      );
 
       const { data: classroom } = await postTrpc<ClassroomPayload>(
         'classrooms.create',
