@@ -10,9 +10,11 @@ function valueOrNull(value) {
 }
 
 function isTrueFlag(value) {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase() === 'true';
+  return (
+    String(value ?? '')
+      .trim()
+      .toLowerCase() === 'true'
+  );
 }
 
 function deriveAdvisoryCanaryResult({ highRisk, canaryResult }) {
