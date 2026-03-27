@@ -597,8 +597,10 @@ void describe('Migration Tooling', () => {
       'staging verification evidence should persist Firefox release identity and hashes'
     );
     assert.ok(
-      content.includes('node -e \'let data="";') && !content.includes('node -e \'let data=\\"\\";'),
-      'staging deploy should parse Firefox metadata with a valid node -e snippet instead of an over-escaped string'
+      content.includes(
+        'node "$SCRIPT_DIR/read-firefox-release-metadata.mjs" --field extensionId'
+      ) && content.includes('node "$SCRIPT_DIR/read-firefox-release-metadata.mjs" --field version'),
+      'staging deploy should delegate Firefox metadata parsing to the dedicated helper script'
     );
     assert.ok(
       content.includes(

@@ -93,6 +93,72 @@ export function resolveWorkflowRunId(run) {
   return run?.id ?? run?.databaseId ?? null;
 }
 
+function resolveWorkflowRunUpdatedAt(run) {
+  return run?.updatedAt ?? run?.updated_at ?? run?.createdAt ?? run?.created_at ?? null;
+}
+
+function sortRunsNewestFirst(runs) {
+  return [...runs].sort((left, right) => {
+    const leftTime = Date.parse(resolveWorkflowRunUpdatedAt(left) ?? '');
+    const rightTime = Date.parse(resolveWorkflowRunUpdatedAt(right) ?? '');
+    return rightTime - leftTime;
+  });
+}
+
+function selectLatestWorkflowRun(payload) {
+  return (
+    sortRunsNewestFirst(payload).find((run) => {
+      return Boolean(run && resolveWorkflowRunId(run));
+    }) ?? null
+  );
+}
+
+export function formatWorkflowRunContext(run) {
+  if (!run) {
+    return 'none';
+  }
+
+  const details = [];
+  const runId = resolveWorkflowRunId(run);
+  const updatedAt = resolveWorkflowRunUpdatedAt(run);
+
+  if (runId) {
+    details.push(`run_id=${runId}`);
+  }
+
+  details.push(`status=${run?.status ?? 'unknown'}`);
+
+  if (run?.conclusion) {
+    details.push(`conclusion=${run.conclusion}`);
+  }
+
+  if (updatedAt) {
+    details.push(`updated_at=${updatedAt}`);
+  }
+
+  return `{${details.join(', ')}}`;
+}
+
+export function formatReleaseCandidateRunFailure({ targetSha, run }) {
+  return `Release candidate workflow run for SHA ${targetSha} failed (${formatWorkflowRunContext(run)})`;
+}
+
+export function formatFirefoxReleaseAssetsTimeoutError({
+  artifactName,
+  latestRun,
+  lastSuccessfulRunWithoutArtifact,
+}) {
+  const details = [`latest_run=${formatWorkflowRunContext(latestRun)}`];
+
+  if (lastSuccessfulRunWithoutArtifact) {
+    details.push(
+      `last_success_without_artifact=${formatWorkflowRunContext(lastSuccessfulRunWithoutArtifact)}`
+    );
+  }
+
+  return `Timed out waiting for Firefox release assets artifact ${artifactName} (workflow=firefox-release-assets.yml; ${details.join('; ')})`;
+}
+
 function listWorkflowRuns({ repo, workflow, sha }) {
   const args = [
     'run',
@@ -230,6 +296,7 @@ export function waitForReleaseCandidateManifest({
   const intervalMs = Math.max(1, Number(intervalSeconds) * 1000);
   const deadline = Date.now() + timeoutMs;
   let lastState = 'missing';
+  let latestRun = null;
 
   while (true) {
     const payload = listWorkflowRuns({
@@ -239,6 +306,7 @@ export function waitForReleaseCandidateManifest({
     });
     const { state, run } = resolveLatestReleaseCandidateState(payload, { sha: targetSha });
     lastState = state;
+    latestRun = run;
 
     if (state === 'success' && run) {
       const runId = resolveWorkflowRunId(run);
@@ -273,14 +341,12 @@ export function waitForReleaseCandidateManifest({
     }
 
     if (state === 'failed' && run) {
-      throw new Error(
-        `Release candidate workflow run ${run.id} for SHA ${targetSha} finished with conclusion=${run.conclusion ?? 'unknown'}`
-      );
+      throw new Error(formatReleaseCandidateRunFailure({ targetSha, run }));
     }
 
     if (Date.now() >= deadline) {
       throw new Error(
-        `Timed out waiting for a successful release candidate manifest for SHA ${targetSha} (last_state=${lastState})`
+        `Timed out waiting for a successful release candidate manifest for SHA ${targetSha} (last_state=${lastState}; latest_run=${formatWorkflowRunContext(latestRun)})`
       );
     }
 
@@ -308,6 +374,8 @@ export function waitForFirefoxReleaseAssets({
   const timeoutMs = Math.max(0, Number(timeoutSeconds) * 1000);
   const intervalMs = Math.max(1, Number(intervalSeconds) * 1000);
   const deadline = Date.now() + timeoutMs;
+  let latestRun = null;
+  let lastSuccessfulRunWithoutArtifact = null;
 
   while (true) {
     const payload = listWorkflowRuns({
@@ -315,7 +383,10 @@ export function waitForFirefoxReleaseAssets({
       workflow: 'firefox-release-assets.yml',
     });
 
-    for (const run of payload) {
+    latestRun = selectLatestWorkflowRun(payload);
+    lastSuccessfulRunWithoutArtifact = null;
+
+    for (const run of sortRunsNewestFirst(payload)) {
       if (run.status !== 'completed' || run.conclusion !== 'success') {
         continue;
       }
@@ -332,6 +403,9 @@ export function waitForFirefoxReleaseAssets({
       });
 
       if (!download.found || !download.artifactDir) {
+        if (!lastSuccessfulRunWithoutArtifact) {
+          lastSuccessfulRunWithoutArtifact = run;
+        }
         continue;
       }
 
@@ -358,7 +432,11 @@ export function waitForFirefoxReleaseAssets({
 
     if (Date.now() >= deadline) {
       throw new Error(
-        `Timed out waiting for Firefox release assets artifact ${artifactName} (workflow=firefox-release-assets.yml)`
+        formatFirefoxReleaseAssetsTimeoutError({
+          artifactName,
+          latestRun,
+          lastSuccessfulRunWithoutArtifact,
+        })
       );
     }
 
