@@ -16,6 +16,7 @@ type WorkflowJob = {
     id?: string;
     run?: string;
     uses?: string;
+    with?: Record<string, unknown>;
     'working-directory'?: string;
   }>;
 };
@@ -508,6 +509,11 @@ describe('Workflow configuration hardening', () => {
       ),
       'Firefox asset resolution should install Node before polling for artifacts'
     );
+    assert.match(
+      workflowText,
+      /name:\s+Resolve prebuilt Firefox release assets[\s\S]*?env:\s+GH_TOKEN:\s+\$\{\{\s*github\.token\s*\}\}/,
+      'Firefox asset resolution should export GH_TOKEN before invoking gh-backed polling helpers'
+    );
     assert.ok(
       firefoxPrepRun.includes('node scripts/wait-for-release-candidate.mjs resolve-firefox-assets'),
       'Firefox asset resolution should reuse the shared release-candidate helper'
@@ -537,6 +543,14 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('name: openpath-firefox-release-assets'),
       'release candidate workflow should publish a named artifact for the resolved Firefox release assets'
+    );
+    const migrationsBuildStep = (jobs['build-migrations-release-candidate']?.steps ?? []).find(
+      (step) => step.name === 'Build and push migrations image'
+    );
+    assert.equal(
+      migrationsBuildStep?.with?.platforms,
+      'linux/amd64',
+      'release candidate workflow should publish the migrations image for the x86_64 deployment target without an emulated arm64 build'
     );
 
     assert.equal(
