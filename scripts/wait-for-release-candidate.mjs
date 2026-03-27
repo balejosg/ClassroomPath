@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,9 @@ function printUsage() {
   console.error('Usage:');
   console.error(
     '  node scripts/wait-for-release-candidate.mjs resolve-manifest --sha <sha> [--repo <owner/repo>] [--timeout-seconds <seconds>] [--interval-seconds <seconds>] [--output-file <path>]'
+  );
+  console.error(
+    '  node scripts/wait-for-release-candidate.mjs resolve-firefox-assets --openpath-sha <sha> [--repo <owner/repo>] [--timeout-seconds <seconds>] [--interval-seconds <seconds>] [--output-dir <path>]'
   );
 }
 
@@ -58,6 +61,18 @@ function parseCliArgs(argv) {
       continue;
     }
 
+    if (token === '--openpath-sha') {
+      options.openpathSha = rest[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (token === '--output-dir') {
+      options.outputDir = rest[index + 1];
+      index += 1;
+      continue;
+    }
+
     throw new Error(`Unknown argument: ${token}`);
   }
 
@@ -74,28 +89,28 @@ function writeOutputs(outputMap) {
   }
 }
 
-function listWorkflowRuns({ repo, sha }) {
-  const output = execFileSync(
-    'gh',
-    [
-      'run',
-      'list',
-      '--repo',
-      repo,
-      '--workflow',
-      'release-candidate-images.yml',
-      '--commit',
-      sha,
-      '--limit',
-      '20',
-      '--json',
-      'databaseId,headSha,status,conclusion,event,createdAt,updatedAt',
-    ],
-    {
-      cwd: projectRoot,
-      encoding: 'utf8',
-    }
-  ).trim();
+function listWorkflowRuns({ repo, workflow, sha }) {
+  const args = [
+    'run',
+    'list',
+    '--repo',
+    repo,
+    '--workflow',
+    workflow,
+    '--limit',
+    '30',
+    '--json',
+    'databaseId,headSha,status,conclusion,event,createdAt,updatedAt',
+  ];
+
+  if (sha) {
+    args.splice(8, 0, '--commit', sha);
+  }
+
+  const output = execFileSync('gh', args, {
+    cwd: projectRoot,
+    encoding: 'utf8',
+  }).trim();
 
   return JSON.parse(output || '[]');
 }
@@ -154,6 +169,43 @@ function downloadManifest({ repo, runId, sha }) {
   };
 }
 
+function tryDownloadArtifact({ repo, runId, artifactName }) {
+  const artifactDir = mkdtempSync(resolve(tmpdir(), 'classroompath-artifact-'));
+
+  try {
+    execFileSync(
+      'gh',
+      [
+        'run',
+        'download',
+        String(runId),
+        '--repo',
+        repo,
+        '--name',
+        artifactName,
+        '--dir',
+        artifactDir,
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    );
+
+    return {
+      found: true,
+      artifactDir,
+    };
+  } catch {
+    rmSync(artifactDir, { recursive: true, force: true });
+    return {
+      found: false,
+      artifactDir: null,
+    };
+  }
+}
+
 export function waitForReleaseCandidateManifest({
   sha,
   repository,
@@ -176,7 +228,11 @@ export function waitForReleaseCandidateManifest({
   let lastState = 'missing';
 
   while (true) {
-    const payload = listWorkflowRuns({ repo, sha: targetSha });
+    const payload = listWorkflowRuns({
+      repo,
+      workflow: 'release-candidate-images.yml',
+      sha: targetSha,
+    });
     const { state, run } = resolveLatestReleaseCandidateState(payload, { sha: targetSha });
     lastState = state;
 
@@ -223,32 +279,124 @@ export function waitForReleaseCandidateManifest({
   }
 }
 
+export function waitForFirefoxReleaseAssets({
+  openpathSha,
+  repository,
+  timeoutSeconds = 900,
+  intervalSeconds = 10,
+  outputDir,
+} = {}) {
+  const targetOpenpathSha = String(openpathSha ?? '').trim();
+  if (!targetOpenpathSha) {
+    throw new Error('OpenPath SHA is required to resolve Firefox release assets');
+  }
+
+  const repo = detectRepositorySlug({
+    repository,
+    cwd: projectRoot,
+  });
+  const artifactName = `openpath-firefox-release-assets-${targetOpenpathSha}`;
+  const timeoutMs = Math.max(0, Number(timeoutSeconds) * 1000);
+  const intervalMs = Math.max(1, Number(intervalSeconds) * 1000);
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    const payload = listWorkflowRuns({
+      repo,
+      workflow: 'firefox-release-assets.yml',
+    });
+
+    for (const run of payload) {
+      if (run.status !== 'completed' || run.conclusion !== 'success') {
+        continue;
+      }
+
+      const download = tryDownloadArtifact({
+        repo,
+        runId: run.id,
+        artifactName,
+      });
+
+      if (!download.found || !download.artifactDir) {
+        continue;
+      }
+
+      try {
+        if (outputDir) {
+          mkdirSync(outputDir, { recursive: true });
+          for (const entry of readdirSync(download.artifactDir)) {
+            cpSync(resolve(download.artifactDir, entry), resolve(outputDir, entry), {
+              recursive: true,
+              force: true,
+            });
+          }
+        }
+
+        return {
+          repository: repo,
+          runId: run.id,
+          artifactName,
+        };
+      } finally {
+        rmSync(download.artifactDir, { recursive: true, force: true });
+      }
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Timed out waiting for Firefox release assets artifact ${artifactName} (workflow=firefox-release-assets.yml)`
+      );
+    }
+
+    sleep(intervalMs);
+  }
+}
+
 function main() {
   const { command, options } = parseCliArgs(process.argv.slice(2));
 
-  if (command !== 'resolve-manifest' || !options.sha) {
-    printUsage();
-    process.exit(1);
+  if (command === 'resolve-manifest' && options.sha) {
+    const result = waitForReleaseCandidateManifest({
+      sha: options.sha,
+      repository: options.repo ?? process.env.GITHUB_REPOSITORY,
+      timeoutSeconds: options.timeoutSeconds ?? 900,
+      intervalSeconds: options.intervalSeconds ?? 10,
+      outputFile: options.outputFile,
+    });
+
+    writeOutputs({
+      repository: result.repository,
+      run_id: result.runId,
+      app_sha: result.manifest.appSha,
+      gateway_image: result.manifest.gatewayImage,
+      migrations_image: result.manifest.migrationsImage,
+      openpath_api_image: result.manifest.openpathApiImage,
+      spa_image: result.manifest.spaImage,
+      verifier_image: result.manifest.verifierImage,
+    });
+    return;
   }
 
-  const result = waitForReleaseCandidateManifest({
-    sha: options.sha,
-    repository: options.repo ?? process.env.GITHUB_REPOSITORY,
-    timeoutSeconds: options.timeoutSeconds ?? 900,
-    intervalSeconds: options.intervalSeconds ?? 10,
-    outputFile: options.outputFile,
-  });
+  if (command === 'resolve-firefox-assets' && options.openpathSha) {
+    const result = waitForFirefoxReleaseAssets({
+      openpathSha: options.openpathSha,
+      repository: options.repo ?? process.env.GITHUB_REPOSITORY,
+      timeoutSeconds: options.timeoutSeconds ?? 900,
+      intervalSeconds: options.intervalSeconds ?? 10,
+      outputDir: options.outputDir,
+    });
 
-  writeOutputs({
-    repository: result.repository,
-    run_id: result.runId,
-    app_sha: result.manifest.appSha,
-    gateway_image: result.manifest.gatewayImage,
-    migrations_image: result.manifest.migrationsImage,
-    openpath_api_image: result.manifest.openpathApiImage,
-    spa_image: result.manifest.spaImage,
-    verifier_image: result.manifest.verifierImage,
-  });
+    writeOutputs({
+      repository: result.repository,
+      run_id: result.runId,
+      openpath_sha: options.openpathSha,
+      artifact_name: result.artifactName,
+    });
+    return;
+  }
+
+  printUsage();
+  process.exit(1);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === currentFilePath) {

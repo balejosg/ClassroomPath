@@ -82,12 +82,7 @@ jobs:
         run: npm run build
 
       - name: Run CI regression tests
-        run: |
-          node --import tsx --test \
-            tests/deployment.test.ts \
-            tests/openpath-required-checks.test.ts \
-            tests/release-gate-policy.test.ts \
-            tests/workflow-config.test.ts
+        run: npm run test:ci-regression
 
   ci-success:
     name: CI Success

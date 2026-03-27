@@ -1,0 +1,164 @@
+name: Windows Firefox Canary
+
+on:
+  workflow_call:
+    secrets:
+      STAGING_DEPLOY_HOST:
+        required: true
+      STAGING_DEPLOY_PORT:
+        required: false
+      STAGING_DEPLOY_USER:
+        required: true
+      STAGING_DEPLOY_SSH_KEY:
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-firefox-canary:
+    name: Windows Firefox Canary
+    runs-on: windows-latest
+
+    steps:
+      - name: Install staging SSH key
+        id: ssh
+        shell: bash
+        env:
+          STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$STAGING_DEPLOY_SSH_KEY" > ~/.ssh/classroompath-staging-canary
+          chmod 600 ~/.ssh/classroompath-staging-canary
+          echo "key_path=$HOME/.ssh/classroompath-staging-canary" >> "$GITHUB_OUTPUT"
+          echo "port=${STAGING_DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Download staging Firefox release evidence and assets
+        shell: bash
+        env:
+          STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          STAGING_DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+
+          SSH_OPTS=(
+            -o ConnectTimeout=10
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=accept-new
+            -i "${{ steps.ssh.outputs.key_path }}"
+            -p "${{ steps.ssh.outputs.port }}"
+          )
+
+          ssh "${SSH_OPTS[@]}" \
+            "${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_HOST}" \
+            "cat /opt/classroompath/release-state/staging-verification.env" > staging-verification.env
+
+          set -a
+          . ./staging-verification.env
+          set +a
+
+          test "${STAGING_WINDOWS_BOOTSTRAP_RESULT:-}" = "success"
+          test "${STAGING_FIREFOX_POLICY_RESULT:-}" = "success"
+
+          ssh "${SSH_OPTS[@]}" \
+            "${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_HOST}" \
+            "docker exec classroompath-api cat /app/firefox-extension/build/firefox-release/metadata.json" > metadata.json
+
+          ssh "${SSH_OPTS[@]}" \
+            "${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_HOST}" \
+            "docker exec classroompath-api base64 -w0 /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi" > openpath-firefox-extension.xpi.base64
+
+          base64 -d openpath-firefox-extension.xpi.base64 > openpath-firefox-extension.xpi
+
+      - name: Run Firefox policy canary
+        shell: pwsh
+        run: |
+          Get-Content staging-verification.env | ForEach-Object {
+            if ($_ -match '^([A-Z0-9_]+)=(.*)$') {
+              [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2])
+            }
+          }
+
+          $metadata = Get-Content metadata.json -Raw | ConvertFrom-Json
+          if (-not $metadata.extensionId -or -not $metadata.version) {
+            throw 'Firefox release metadata is incomplete'
+          }
+
+          if ($env:STAGING_FIREFOX_EXTENSION_ID -and $metadata.extensionId -ne $env:STAGING_FIREFOX_EXTENSION_ID) {
+            throw "Unexpected extension id: $($metadata.extensionId)"
+          }
+
+          if ($env:STAGING_FIREFOX_RELEASE_VERSION -and $metadata.version -ne $env:STAGING_FIREFOX_RELEASE_VERSION) {
+            throw "Unexpected extension version: $($metadata.version)"
+          }
+
+          $metadataHash = (Get-FileHash metadata.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($env:STAGING_FIREFOX_METADATA_SHA256 -and $metadataHash -ne $env:STAGING_FIREFOX_METADATA_SHA256.ToLowerInvariant()) {
+            throw "Metadata SHA256 mismatch: $metadataHash"
+          }
+
+          $xpiPath = (Resolve-Path openpath-firefox-extension.xpi).Path
+          $xpiHash = (Get-FileHash $xpiPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($env:STAGING_FIREFOX_XPI_SHA256 -and $xpiHash -ne $env:STAGING_FIREFOX_XPI_SHA256.ToLowerInvariant()) {
+            throw "XPI SHA256 mismatch: $xpiHash"
+          }
+
+          $firefoxCandidates = @(
+            (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\firefox.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\firefox.exe')
+          ) | Where-Object { $_ -and (Test-Path $_) }
+
+          if ($firefoxCandidates.Count -eq 0) {
+            throw 'Firefox Release is not available on the runner'
+          }
+
+          $firefoxPath = $firefoxCandidates[0]
+          $distributionDir = Join-Path (Split-Path $firefoxPath -Parent) 'distribution'
+          $profileDir = Join-Path $env:RUNNER_TEMP 'firefox-canary-profile'
+          $logPath = Join-Path $env:RUNNER_TEMP 'firefox-enterprise.log'
+
+          New-Item -ItemType Directory -Force -Path $distributionDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
+
+          $installUrl = 'file:///' + ($xpiPath -replace '\\', '/')
+          $policy = @{
+            policies = @{
+              ExtensionSettings = @{
+                ($metadata.extensionId) = @{
+                  installation_mode = 'force_installed'
+                  install_url = $installUrl
+                }
+              }
+            }
+          }
+
+          $policyPath = Join-Path $distributionDir 'policies.json'
+          $policy | ConvertTo-Json -Depth 10 | Set-Content -Path $policyPath -Encoding utf8NoBOM
+          $null = Get-Content $policyPath -Raw | ConvertFrom-Json
+
+          Remove-Item $logPath -ErrorAction SilentlyContinue
+          $env:MOZ_LOG = 'EnterprisePolicies:5'
+          $env:MOZ_LOG_FILE = $logPath
+
+          $process = Start-Process -FilePath $firefoxPath -ArgumentList '-headless', '-profile', $profileDir, 'about:blank' -PassThru
+          Start-Sleep -Seconds 15
+          if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+          }
+
+          if (-not (Test-Path $logPath)) {
+            throw 'Firefox canary did not emit an enterprise policies log'
+          }
+
+          $log = Get-Content $logPath -Raw
+          if ($log -match 'policies\.json.*(error|failed|invalid)' -or $log -match 'Enterprise Policies.*(error|failed|invalid)') {
+            throw 'Firefox reported a policies.json parse error'
+          }
+
+          if ($log -notmatch [regex]::Escape($metadata.extensionId)) {
+            throw "Firefox did not report the force-installed extension id $($metadata.extensionId)"
+          }

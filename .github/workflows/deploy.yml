@@ -126,12 +126,53 @@ jobs:
     needs: resolve-release-images
     if: needs.resolve-release-images.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     outputs:
+      staging_windows_firefox_high_risk: ${{ steps.risk.outputs.high_risk }}
       staging_smoke_result: ${{ steps.compare.outputs.staging_smoke_result }}
       staging_smoke_status: ${{ steps.compare.outputs.staging_smoke_status }}
       staging_release_gate_result: ${{ steps.compare.outputs.staging_release_gate_result }}
+      staging_windows_bootstrap_result: ${{ steps.compare.outputs.staging_windows_bootstrap_result }}
+      staging_firefox_policy_result: ${{ steps.compare.outputs.staging_firefox_policy_result }}
+      staging_firefox_extension_id: ${{ steps.compare.outputs.staging_firefox_extension_id }}
+      staging_firefox_release_version: ${{ steps.compare.outputs.staging_firefox_release_version }}
+      staging_firefox_metadata_sha256: ${{ steps.compare.outputs.staging_firefox_metadata_sha256 }}
+      staging_firefox_xpi_sha256: ${{ steps.compare.outputs.staging_firefox_xpi_sha256 }}
       staging_verified_at: ${{ steps.compare.outputs.staging_verified_at }}
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect promoted Windows/Firefox risk
+        id: risk
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force
+          PREVIOUS_TAG="$(git tag --sort=-creatordate | grep '^v' | grep -vx "${GITHUB_REF_NAME}" | head -n 1 || true)"
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            CHANGED_FILES="$(git diff --name-only "$PREVIOUS_TAG...$GITHUB_SHA")"
+          else
+            CHANGED_FILES="$(git show --pretty='' --name-only "$GITHUB_SHA")"
+          fi
+
+          echo "Changed files since last release:"
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "$CHANGED_FILES"
+          else
+            echo "(none)"
+          fi
+
+          HIGH_RISK=false
+          if echo "$CHANGED_FILES" | grep -Eq '^(upstream/openpath/windows/|upstream/openpath/firefox-extension/|upstream/openpath/api/tests/token-delivery\.test\.ts$|docker/Dockerfile\.api$)'; then
+            HIGH_RISK=true
+          fi
+
+          echo "high_risk=$HIGH_RISK" >> "$GITHUB_OUTPUT"
+
       - name: Resolve staging host
         id: resolve
         env:
@@ -203,6 +244,7 @@ jobs:
         id: compare
         shell: bash
         env:
+          HIGH_RISK: ${{ steps.risk.outputs.high_risk }}
           EXPECTED_APP_SHA: ${{ github.sha }}
           EXPECTED_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
           EXPECTED_MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
@@ -266,9 +308,48 @@ jobs:
           compare_image "Verified OpenPath API image" "$EXPECTED_OPENPATH_API_IMAGE" "${STAGING_VERIFIED_OPENPATH_API_IMAGE:-}"
           compare_image "Verified SPA image" "$EXPECTED_SPA_IMAGE" "${STAGING_VERIFIED_SPA_IMAGE:-}"
 
+          if [ "$HIGH_RISK" = "true" ]; then
+            if [ "${STAGING_SMOKE_STATUS:-}" = "PASS_WITH_FALLBACK" ]; then
+              echo "::error::PASS_WITH_FALLBACK is not sufficient production evidence for Windows/Firefox delivery changes"
+              exit 1
+            fi
+
+            if [ "${STAGING_WINDOWS_BOOTSTRAP_RESULT:-}" != "success" ]; then
+              echo "::error::Windows bootstrap evidence is missing or failed (STAGING_WINDOWS_BOOTSTRAP_RESULT=${STAGING_WINDOWS_BOOTSTRAP_RESULT:-unset})"
+              exit 1
+            fi
+
+            if [ "${STAGING_FIREFOX_POLICY_RESULT:-}" != "success" ]; then
+              echo "::error::Firefox policy evidence is missing or failed (STAGING_FIREFOX_POLICY_RESULT=${STAGING_FIREFOX_POLICY_RESULT:-unset})"
+              exit 1
+            fi
+
+            if [ "${STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS:-}" != "present" ]; then
+              echo "::error::Firefox release artifacts were not marked present in staging verification evidence"
+              exit 1
+            fi
+
+            for required_field in \
+              STAGING_FIREFOX_EXTENSION_ID \
+              STAGING_FIREFOX_RELEASE_VERSION \
+              STAGING_FIREFOX_METADATA_SHA256 \
+              STAGING_FIREFOX_XPI_SHA256; do
+              if [ -z "${!required_field:-}" ]; then
+                echo "::error::$required_field is missing from staging verification evidence"
+                exit 1
+              fi
+            done
+          fi
+
           echo "staging_smoke_result=${STAGING_SMOKE_RESULT:-unknown}" >> "$GITHUB_OUTPUT"
           echo "staging_smoke_status=${STAGING_SMOKE_STATUS:-unknown}" >> "$GITHUB_OUTPUT"
           echo "staging_release_gate_result=${STAGING_RELEASE_GATE_RESULT:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "staging_windows_bootstrap_result=${STAGING_WINDOWS_BOOTSTRAP_RESULT:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "staging_firefox_policy_result=${STAGING_FIREFOX_POLICY_RESULT:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "staging_firefox_extension_id=${STAGING_FIREFOX_EXTENSION_ID:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "staging_firefox_release_version=${STAGING_FIREFOX_RELEASE_VERSION:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "staging_firefox_metadata_sha256=${STAGING_FIREFOX_METADATA_SHA256:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "staging_firefox_xpi_sha256=${STAGING_FIREFOX_XPI_SHA256:-unknown}" >> "$GITHUB_OUTPUT"
           echo "staging_verified_at=${STAGING_VERIFIED_AT:-unknown}" >> "$GITHUB_OUTPUT"
 
       - name: Upload staging release state
@@ -281,11 +362,26 @@ jobs:
             staging-verification.env
           retention-days: 7
 
+  windows-firefox-canary:
+    name: Windows Firefox Canary
+    needs: verify-staging-release-state
+    if: needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk == 'true'
+    uses: ./.github/workflows/windows-firefox-canary.yml
+    secrets: inherit
+
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [resolve-release-images, verify-staging-release-state]
-    if: needs.resolve-release-images.result == 'success' && needs.verify-staging-release-state.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    needs: [resolve-release-images, verify-staging-release-state, windows-firefox-canary]
+    if: >-
+      always() &&
+      needs.resolve-release-images.result == 'success' &&
+      needs.verify-staging-release-state.result == 'success' &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      (
+        needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk != 'true' ||
+        needs.windows-firefox-canary.result == 'success'
+      )
     environment: production
     permissions:
       contents: read
@@ -564,6 +660,7 @@ jobs:
         verify-openpath-upstream,
         resolve-release-images,
         verify-staging-release-state,
+        windows-firefox-canary,
         deploy-production,
         smoke-test-production,
         rollback-production,
@@ -606,7 +703,14 @@ jobs:
           STAGING_SMOKE_RESULT: ${{ needs.verify-staging-release-state.outputs.staging_smoke_result }}
           STAGING_SMOKE_STATUS: ${{ needs.verify-staging-release-state.outputs.staging_smoke_status }}
           STAGING_RELEASE_GATE_RESULT: ${{ needs.verify-staging-release-state.outputs.staging_release_gate_result }}
+          STAGING_WINDOWS_BOOTSTRAP_RESULT: ${{ needs.verify-staging-release-state.outputs.staging_windows_bootstrap_result }}
+          STAGING_FIREFOX_POLICY_RESULT: ${{ needs.verify-staging-release-state.outputs.staging_firefox_policy_result }}
+          STAGING_FIREFOX_EXTENSION_ID: ${{ needs.verify-staging-release-state.outputs.staging_firefox_extension_id }}
+          STAGING_FIREFOX_RELEASE_VERSION: ${{ needs.verify-staging-release-state.outputs.staging_firefox_release_version }}
+          STAGING_FIREFOX_METADATA_SHA256: ${{ needs.verify-staging-release-state.outputs.staging_firefox_metadata_sha256 }}
+          STAGING_FIREFOX_XPI_SHA256: ${{ needs.verify-staging-release-state.outputs.staging_firefox_xpi_sha256 }}
           STAGING_VERIFIED_AT: ${{ needs.verify-staging-release-state.outputs.staging_verified_at }}
+          WINDOWS_FIREFOX_CANARY_RESULT: ${{ needs.windows-firefox-canary.result }}
           DEPLOY_RESULT: ${{ needs.deploy-production.result }}
           PRODUCTION_SMOKE_RESULT: ${{ needs.smoke-test-production.result }}
           ROLLBACK_RESULT: ${{ needs.rollback-production.result }}

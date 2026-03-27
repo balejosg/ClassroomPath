@@ -616,10 +616,48 @@ if [ "$STAGING_RUN_RELEASE_GATE" = "1" ]; then
       "docker exec classroompath-api test -f /app/firefox-extension/build/firefox-release/metadata.json && docker exec classroompath-api test -f /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi"
 
     STAGING_FIREFOX_RELEASE_ARTIFACTS="present"
+    STAGING_FIREFOX_METADATA_JSON=$("${SSH_CMD[@]}" "docker exec classroompath-api cat /app/firefox-extension/build/firefox-release/metadata.json")
+    STAGING_FIREFOX_EXTENSION_ID="$(printf '%s' "$STAGING_FIREFOX_METADATA_JSON" | node -e 'let data=\"\"; process.stdin.on(\"data\", (chunk) => data += chunk); process.stdin.on(\"end\", () => { const parsed = JSON.parse(data); if (!parsed.extensionId) process.exit(1); process.stdout.write(String(parsed.extensionId)); });')"
+    STAGING_FIREFOX_RELEASE_VERSION="$(printf '%s' "$STAGING_FIREFOX_METADATA_JSON" | node -e 'let data=\"\"; process.stdin.on(\"data\", (chunk) => data += chunk); process.stdin.on(\"end\", () => { const parsed = JSON.parse(data); if (!parsed.version) process.exit(1); process.stdout.write(String(parsed.version)); });')"
+    STAGING_FIREFOX_METADATA_SHA256=$("${SSH_CMD[@]}" "docker exec classroompath-api sha256sum /app/firefox-extension/build/firefox-release/metadata.json | awk '{print \$1}'")
+    STAGING_FIREFOX_XPI_SHA256=$("${SSH_CMD[@]}" "docker exec classroompath-api sha256sum /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi | awk '{print \$1}'")
+    STAGING_WINDOWS_BOOTSTRAP_RESULT="failed"
+    STAGING_FIREFOX_POLICY_RESULT="failed"
+
+    log_info "Running Windows bootstrap gate against staging..."
+
+    set +e
+    WINDOWS_BOOTSTRAP_GATE_URL="$RELEASE_GATE_TARGET_URL" \
+    WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN" \
+    WINDOWS_BOOTSTRAP_GATE_EXPECTED_EXTENSION_ID="$STAGING_FIREFOX_EXTENSION_ID" \
+    WINDOWS_BOOTSTRAP_GATE_EXPECTED_VERSION="$STAGING_FIREFOX_RELEASE_VERSION" \
+    WINDOWS_BOOTSTRAP_GATE_EXPECTED_METADATA_SHA256="$STAGING_FIREFOX_METADATA_SHA256" \
+    WINDOWS_BOOTSTRAP_GATE_EXPECTED_XPI_SHA256="$STAGING_FIREFOX_XPI_SHA256" \
+    WINDOWS_BOOTSTRAP_GATE_TIMEOUT="30000" \
+    npm run test:windows-bootstrap-gate 2>&1 | tee /tmp/windows-bootstrap-gate-results.txt
+
+    WINDOWS_BOOTSTRAP_EXIT_CODE=${PIPESTATUS[0]}
+    set -e
+
+    if [ $WINDOWS_BOOTSTRAP_EXIT_CODE -eq 0 ]; then
+        STAGING_WINDOWS_BOOTSTRAP_RESULT="success"
+        STAGING_FIREFOX_POLICY_RESULT="success"
+        log_success "Windows bootstrap gate passed"
+    else
+        log_error "Windows bootstrap gate FAILED (exit code: $WINDOWS_BOOTSTRAP_EXIT_CODE)"
+
+        if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ]; then
+            log_error "Release-candidate staging deploys must prove the live Windows bootstrap contract"
+            exit 1
+        fi
+
+        log_warn "Continuing because STAGING_USE_RELEASE_CANDIDATE=${STAGING_USE_RELEASE_CANDIDATE:-0}"
+    fi
+
     log_info "Persisting staging verification evidence..."
 
     "${SSH_CMD[@]}" \
-      "STATE_DIR='$STATE_DIR' APP_DIR='$APP_DIR' STAGING_VERIFIED_AT='$STAGING_VERIFIED_AT' STAGING_SMOKE_STATUS='$STAGING_VERIFICATION_STATUS' STAGING_FIREFOX_RELEASE_ARTIFACTS='$STAGING_FIREFOX_RELEASE_ARTIFACTS' bash -s" <<'VERIFY_STATE'
+      "STATE_DIR='$STATE_DIR' APP_DIR='$APP_DIR' STAGING_VERIFIED_AT='$STAGING_VERIFIED_AT' STAGING_SMOKE_STATUS='$STAGING_VERIFICATION_STATUS' STAGING_FIREFOX_RELEASE_ARTIFACTS='$STAGING_FIREFOX_RELEASE_ARTIFACTS' STAGING_WINDOWS_BOOTSTRAP_RESULT='$STAGING_WINDOWS_BOOTSTRAP_RESULT' STAGING_FIREFOX_POLICY_RESULT='$STAGING_FIREFOX_POLICY_RESULT' STAGING_FIREFOX_EXTENSION_ID='$STAGING_FIREFOX_EXTENSION_ID' STAGING_FIREFOX_RELEASE_VERSION='$STAGING_FIREFOX_RELEASE_VERSION' STAGING_FIREFOX_METADATA_SHA256='$STAGING_FIREFOX_METADATA_SHA256' STAGING_FIREFOX_XPI_SHA256='$STAGING_FIREFOX_XPI_SHA256' bash -s" <<'VERIFY_STATE'
 set -euo pipefail
 
 mkdir -p "$STATE_DIR"
@@ -649,6 +687,12 @@ STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present
 STAGING_SMOKE_RESULT=success
 STAGING_SMOKE_STATUS=$STAGING_SMOKE_STATUS
 STAGING_RELEASE_GATE_RESULT=success
+STAGING_WINDOWS_BOOTSTRAP_RESULT=$STAGING_WINDOWS_BOOTSTRAP_RESULT
+STAGING_FIREFOX_POLICY_RESULT=$STAGING_FIREFOX_POLICY_RESULT
+STAGING_FIREFOX_EXTENSION_ID=$STAGING_FIREFOX_EXTENSION_ID
+STAGING_FIREFOX_RELEASE_VERSION=$STAGING_FIREFOX_RELEASE_VERSION
+STAGING_FIREFOX_METADATA_SHA256=$STAGING_FIREFOX_METADATA_SHA256
+STAGING_FIREFOX_XPI_SHA256=$STAGING_FIREFOX_XPI_SHA256
 EOF
 VERIFY_STATE
 

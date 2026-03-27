@@ -4,6 +4,17 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'api/**'
+      - 'react-spa/**'
+      - 'docker/**'
+      - 'scripts/**'
+      - 'config/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'upstream/openpath'
+      - '.github/workflows/release-candidate-images.yml'
+      - '.github/workflows/firefox-release-assets.yml'
 
 permissions:
   contents: read
@@ -24,6 +35,7 @@ jobs:
       openpath_api_repo: ${{ steps.image-refs.outputs.openpath_api_repo }}
       spa_repo: ${{ steps.image-refs.outputs.spa_repo }}
       verifier_repo: ${{ steps.image-refs.outputs.verifier_repo }}
+      openpath_sha: ${{ steps.openpath.outputs.sha }}
       gateway_tag: ${{ steps.image-refs.outputs.gateway_tag }}
       migrations_tag: ${{ steps.image-refs.outputs.migrations_tag }}
       openpath_api_tag: ${{ steps.image-refs.outputs.openpath_api_tag }}
@@ -45,6 +57,11 @@ jobs:
           node scripts/release-images.mjs outputs \
             --sha "${{ github.sha }}" \
             --owner "${{ github.repository_owner }}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve OpenPath SHA
+        id: openpath
+        run: |
+          echo "sha=$(git -C upstream/openpath rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   build-gateway-release-candidate:
     name: Build Gateway Release Candidate
@@ -126,8 +143,8 @@ jobs:
         run: |
           echo "migrations_image=${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ steps.build-migrations.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
-  prepare-openpath-firefox-release-assets:
-    name: Prepare OpenPath Firefox Release Assets
+  resolve-openpath-firefox-release-assets:
+    name: Resolve OpenPath Firefox Release Assets
     runs-on: ubuntu-latest
     needs: derive-release-image-refs
 
@@ -142,46 +159,29 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install OpenPath dependencies
-        working-directory: upstream/openpath
-        run: npm ci
-
-      - name: Build Firefox extension dist
-        working-directory: upstream/openpath
-        run: npm run build --workspace=@openpath/firefox-extension
-
-      - name: Derive unique Firefox release version
-        working-directory: upstream/openpath
+      - name: Resolve prebuilt Firefox release assets
         run: |
-          base_version="$(node --input-type=module -e "import fs from 'node:fs'; const manifest = JSON.parse(fs.readFileSync('firefox-extension/manifest.json', 'utf8')); process.stdout.write(String(manifest.version ?? '').trim());")"
-          test -n "$base_version"
-          ci_build_segment="$(printf '%s%03d' "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT")"
-          echo "OPENPATH_FIREFOX_RELEASE_VERSION=${base_version}.${ci_build_segment}" >> "$GITHUB_ENV"
-          echo "Signing Firefox release as version ${base_version}.${ci_build_segment}"
+          mkdir -p firefox-release-assets
+          node scripts/wait-for-release-candidate.mjs resolve-firefox-assets \
+            --openpath-sha "${{ needs.derive-release-image-refs.outputs.openpath_sha }}" \
+            --repo "${{ github.repository }}" \
+            --timeout-seconds 180 \
+            --interval-seconds 10 \
+            --output-dir firefox-release-assets
 
-      - name: Sign Firefox release bundle
-        working-directory: upstream/openpath
-        env:
-          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
-          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+      - name: Verify resolved Firefox release assets
         run: |
-          npm run sign:firefox-release --workspace=@openpath/firefox-extension -- \
-            --version "$OPENPATH_FIREFOX_RELEASE_VERSION"
-
-      - name: Verify Firefox release artifacts
-        working-directory: upstream/openpath
-        run: |
-          test -f firefox-extension/dist/background.js
-          test -f firefox-extension/build/firefox-release/metadata.json
-          test -f firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
+          test -f firefox-release-assets/dist/background.js
+          test -f firefox-release-assets/build/firefox-release/metadata.json
+          test -f firefox-release-assets/build/firefox-release/openpath-firefox-extension.xpi
 
       - name: Upload Firefox release artifacts
         uses: actions/upload-artifact@v7
         with:
           name: openpath-firefox-release-assets
           path: |
-            upstream/openpath/firefox-extension/dist/**
-            upstream/openpath/firefox-extension/build/firefox-release/**
+            firefox-release-assets/dist/**
+            firefox-release-assets/build/firefox-release/**
           if-no-files-found: error
 
   build-openpath-api-release-candidate-amd64:
@@ -189,7 +189,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - derive-release-image-refs
-      - prepare-openpath-firefox-release-assets
+      - resolve-openpath-firefox-release-assets
     outputs:
       image_digest: ${{ steps.build-openpath-api.outputs.digest }}
 
@@ -237,7 +237,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     needs:
       - derive-release-image-refs
-      - prepare-openpath-firefox-release-assets
+      - resolve-openpath-firefox-release-assets
     outputs:
       image_digest: ${{ steps.build-openpath-api.outputs.digest }}
 

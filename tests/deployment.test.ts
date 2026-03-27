@@ -575,6 +575,33 @@ void describe('Migration Tooling', () => {
       content.includes('STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present'),
       'staging verification evidence should record Firefox release artifact presence explicitly'
     );
+    assert.ok(
+      content.includes('npm run test:windows-bootstrap-gate'),
+      'staging deploy should run the live Windows bootstrap gate before persisting release evidence'
+    );
+    assert.ok(
+      content.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT="success"') ||
+        content.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT=$STAGING_WINDOWS_BOOTSTRAP_RESULT'),
+      'staging verification evidence should record a successful Windows bootstrap result'
+    );
+    assert.ok(
+      content.includes('STAGING_FIREFOX_POLICY_RESULT="success"') ||
+        content.includes('STAGING_FIREFOX_POLICY_RESULT=$STAGING_FIREFOX_POLICY_RESULT'),
+      'staging verification evidence should record a successful Firefox policy input result'
+    );
+    assert.ok(
+      content.includes('STAGING_FIREFOX_EXTENSION_ID=') &&
+        content.includes('STAGING_FIREFOX_RELEASE_VERSION=') &&
+        content.includes('STAGING_FIREFOX_METADATA_SHA256=') &&
+        content.includes('STAGING_FIREFOX_XPI_SHA256='),
+      'staging verification evidence should persist Firefox release identity and hashes'
+    );
+    assert.ok(
+      content.includes(
+        'Release-candidate staging deploys must prove the live Windows bootstrap contract'
+      ),
+      'release-candidate staging deploys should fail when the live Windows bootstrap gate fails'
+    );
   });
 
   void test('migration runner image packages the workspace migration entrypoint', () => {
@@ -742,6 +769,15 @@ void describe('Migration Tooling', () => {
     assert.ok(
       content.includes('STAGING_RELEASE_GATE_RESULT'),
       'deploy workflow should require successful staging release-gate evidence instead of rerunning the same gate'
+    );
+    assert.ok(
+      content.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
+        content.includes('STAGING_FIREFOX_POLICY_RESULT'),
+      'deploy workflow should consume the Windows/Firefox staging evidence fields for promotion decisions'
+    );
+    assert.ok(
+      content.includes('PASS_WITH_FALLBACK'),
+      'deploy workflow should explicitly distinguish fallback smoke evidence from production-grade evidence'
     );
     assert.ok(
       !content.includes('name: Release Gate Staging'),

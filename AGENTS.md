@@ -30,12 +30,16 @@ git add .
 git commit -m "your commit message"
 git push origin main
 
-# 2. IMMEDIATELY run deploy + smoke tests
+# 2. IMMEDIATELY run local staging deploy + staging verification
 npm run deploy:staging
 
-# 3. Verify exit code
-#    Exit 0 = SUCCESS (deployment verified, smoke tests passed)
+# 3. Verify exit code and staging evidence
+#    Exit 0 = SUCCESS (deployment verified, smoke/release gates passed)
 #    Exit 1 = FAILURE (fix the issue before continuing)
+
+# 4. Only then promote to production
+git tag v1.2.3
+git push origin v1.2.3
 ```
 
 ### Why This Is Mandatory
@@ -55,7 +59,7 @@ npm run deploy:staging
 4. Runs database migrations
 5. Rebuilds and restarts Docker containers
 6. Runs health checks (gateway + API)
-7. **Runs full smoke test suite against staging URL**
+7. **Runs smoke + release-gate verification against staging and records reusable evidence**
 8. Returns exit code 0 (success) or 1 (failure)
 
 ### If Smoke Tests Fail
@@ -65,6 +69,7 @@ npm run deploy:staging
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-gateway --tail 50"
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-api --tail 50"
 curl -v https://classroompath-staging.duckdns.org/health
+ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "cat /opt/classroompath/release-state/staging-verification.env"
 ```
 
 ---
@@ -146,7 +151,7 @@ Canonical production deployment instructions live in `docs/runbooks/deploy-produ
 ### Production Policy
 
 - Production is tag-only. Do not use `workflow_dispatch` or ad-hoc SSH code deploys as the canonical path.
-- Required sequence: push `main` -> `npm run deploy:staging` -> tag `v*` -> GitHub Actions deploy.
+- Required sequence: push `main` -> `npm run deploy:staging` -> verify staging evidence -> tag `v*` -> monitor `Deploy`.
 - If server drift is discovered, backport the change into git and reconcile production with a new tag.
 
 **When debugging issues:**
@@ -171,7 +176,11 @@ git push origin main
 # Mandatory local staging verification
 npm run deploy:staging
 
-# Production deploy is triggered by tags v* and first runs the staging release gate
+# Verify reusable staging evidence before tagging
+ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 \
+  "cat /opt/classroompath/release-state/staging-verification.env"
+
+# Production deploy is triggered by tags v* and first consumes the staging release gate evidence
 # git tag v1.2.3 && git push origin v1.2.3
 ```
 
