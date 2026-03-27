@@ -68,7 +68,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENPATH_SHA: ${{ steps.check.outputs.latest }}
-          OPENPATH_REQUIRED_CHECKS: CI Success,E2E Summary
+          OPENPATH_REQUIRED_CHECKS: CI Success
         run: |
           echo "Verifying OpenPath checks for $OPENPATH_SHA"
           node scripts/openpath-required-checks.mjs

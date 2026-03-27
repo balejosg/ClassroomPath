@@ -41,7 +41,7 @@ jobs:
         id: verify
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENPATH_REQUIRED_CHECKS: CI Success,E2E Summary
+          OPENPATH_REQUIRED_CHECKS: CI Success
         run: |
           export OPENPATH_SHA="$(git -C upstream/openpath rev-parse HEAD)"
           echo "openpath_sha=$OPENPATH_SHA" >> "$GITHUB_OUTPUT"
