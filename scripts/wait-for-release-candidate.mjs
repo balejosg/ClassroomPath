@@ -89,6 +89,10 @@ function writeOutputs(outputMap) {
   }
 }
 
+export function resolveWorkflowRunId(run) {
+  return run?.id ?? run?.databaseId ?? null;
+}
+
 function listWorkflowRuns({ repo, workflow, sha }) {
   const args = [
     'run',
@@ -237,9 +241,14 @@ export function waitForReleaseCandidateManifest({
     lastState = state;
 
     if (state === 'success' && run) {
+      const runId = resolveWorkflowRunId(run);
+      if (!runId) {
+        throw new Error(`Release candidate workflow run for SHA ${targetSha} is missing an id`);
+      }
+
       const { artifactDir, manifestPath } = downloadManifest({
         repo,
-        runId: run.id,
+        runId,
         sha: targetSha,
       });
 
@@ -255,7 +264,7 @@ export function waitForReleaseCandidateManifest({
 
         return {
           repository: repo,
-          runId: run.id,
+          runId,
           manifest,
         };
       } finally {
@@ -311,9 +320,14 @@ export function waitForFirefoxReleaseAssets({
         continue;
       }
 
+      const runId = resolveWorkflowRunId(run);
+      if (!runId) {
+        continue;
+      }
+
       const download = tryDownloadArtifact({
         repo,
-        runId: run.id,
+        runId,
         artifactName,
       });
 
@@ -334,7 +348,7 @@ export function waitForFirefoxReleaseAssets({
 
         return {
           repository: repo,
-          runId: run.id,
+          runId,
           artifactName,
         };
       } finally {
