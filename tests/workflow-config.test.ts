@@ -406,6 +406,13 @@ describe('Workflow configuration hardening', () => {
       jobs['derive-release-image-refs'],
       'release candidate workflow should derive immutable image refs once before the parallel image builds'
     );
+    const deriveOpenPathShaRun =
+      jobs['derive-release-image-refs']?.steps?.find((step) => step.name === 'Resolve OpenPath SHA')
+        ?.run ?? '';
+    assert.ok(
+      deriveOpenPathShaRun.includes('git rev-parse HEAD:upstream/openpath'),
+      'release candidate workflow should derive the OpenPath SHA from the submodule gitlink even before submodules are checked out'
+    );
     assert.ok(
       jobs['build-gateway-release-candidate'],
       'release candidate workflow should build the gateway image in its own job'

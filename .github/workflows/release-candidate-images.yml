@@ -61,7 +61,7 @@ jobs:
       - name: Resolve OpenPath SHA
         id: openpath
         run: |
-          echo "sha=$(git -C upstream/openpath rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD:upstream/openpath)" >> "$GITHUB_OUTPUT"
 
   build-gateway-release-candidate:
     name: Build Gateway Release Candidate
