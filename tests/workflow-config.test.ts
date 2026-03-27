@@ -529,6 +529,10 @@ describe('Workflow configuration hardening', () => {
       'Firefox asset resolution should materialize the downloaded Firefox assets into a stable directory'
     );
     assert.ok(
+      firefoxPrepRun.includes('--timeout-seconds 900'),
+      'Firefox asset resolution should wait long enough for the signed Firefox asset producer workflow to finish'
+    );
+    assert.ok(
       !firefoxPrepRun.includes('sign:firefox-release'),
       'release candidate workflow should not sign Firefox assets inline once the dedicated producer workflow exists'
     );

@@ -167,7 +167,7 @@ jobs:
           node scripts/wait-for-release-candidate.mjs resolve-firefox-assets \
             --openpath-sha "${{ needs.derive-release-image-refs.outputs.openpath_sha }}" \
             --repo "${{ github.repository }}" \
-            --timeout-seconds 180 \
+            --timeout-seconds 900 \
             --interval-seconds 10 \
             --output-dir firefox-release-assets
 
