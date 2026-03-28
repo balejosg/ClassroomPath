@@ -595,7 +595,7 @@ describe('Workflow configuration hardening', () => {
 
       const jobSteps = jobs[jobName]?.steps ?? [];
       assert.ok(
-        jobSteps.some((step) => step.uses === 'actions/download-artifact@v5'),
+        jobSteps.some((step) => step.uses === 'actions/download-artifact@v6'),
         `${jobName} should download the prepared Firefox release assets into the Docker build context`
       );
     }
