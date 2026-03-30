@@ -1,0 +1,57 @@
+version: 2
+updates:
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'github-actions'
+
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'npm'
+      - 'root'
+    versioning-strategy: increase
+
+  - package-ecosystem: 'npm'
+    directory: '/api'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'npm'
+      - 'api'
+    versioning-strategy: increase
+
+  - package-ecosystem: 'npm'
+    directory: '/react-spa'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'npm'
+      - 'react-spa'
+    versioning-strategy: increase
+
+  - package-ecosystem: 'docker'
+    directory: '/docker'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'docker'
