@@ -313,6 +313,19 @@ void describe('Nginx Configuration', () => {
     );
   });
 
+  void test('nginx.conf reserves SEO public routes for gateway SSR before the SPA fallback', () => {
+    const content = readFileSync(nginxPath, 'utf-8');
+
+    assert.ok(
+      content.includes('location = / {') && content.includes('proxy_pass http://127.0.0.1:3000;'),
+      'Should proxy the landing page to the gateway for SSR'
+    );
+    assert.ok(
+      content.includes('location = /pricing {') && content.includes('location = /pricing/ {'),
+      'Should proxy pricing routes to the gateway for SSR'
+    );
+  });
+
   void test('nginx.conf has static asset caching', () => {
     const content = readFileSync(nginxPath, 'utf-8');
     assert.ok(

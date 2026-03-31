@@ -196,8 +196,11 @@ export function registerGatewaySpaRoutes(app: Express, options: GatewaySpaRoutes
     return;
   }
 
-  logger.info('Serving ClassroomPath React SPA', { path: options.reactSpaPath });
+  logger.info('Serving ClassroomPath public SSR routes from SPA build artifacts', {
+    path: options.reactSpaPath,
+  });
   const publicSpaRenderer = createPublicSpaRenderer(options.reactSpaPath);
+  const spaShellPath = path.join(options.reactSpaPath, 'index.html');
 
   app.get(['/', '/pricing', '/pricing/'], async (req, res) => {
     if (publicSpaRenderer.canRender) {
@@ -220,21 +223,6 @@ export function registerGatewaySpaRoutes(app: Express, options: GatewaySpaRoutes
       }
     }
 
-    res.sendFile(path.join(options.reactSpaPath, 'index.html'));
-  });
-
-  app.use(express.static(options.reactSpaPath, { index: false }));
-
-  app.get('/*', (req, res) => {
-    if (
-      !req.url.startsWith('/cp/') &&
-      !req.url.startsWith('/api') &&
-      !req.url.startsWith('/trpc')
-    ) {
-      res.sendFile(path.join(options.reactSpaPath, 'index.html'));
-      return;
-    }
-
-    res.status(404).json({ error: 'Not found' });
+    res.sendFile(spaShellPath);
   });
 }
