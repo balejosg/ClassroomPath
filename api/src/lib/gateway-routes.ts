@@ -225,4 +225,19 @@ export function registerGatewaySpaRoutes(app: Express, options: GatewaySpaRoutes
 
     res.sendFile(spaShellPath);
   });
+
+  app.use(express.static(options.reactSpaPath, { index: false }));
+
+  app.get('/*', (req, res) => {
+    if (
+      !req.url.startsWith('/cp/') &&
+      !req.url.startsWith('/api') &&
+      !req.url.startsWith('/trpc')
+    ) {
+      res.sendFile(spaShellPath);
+      return;
+    }
+
+    res.status(404).json({ error: 'Not found' });
+  });
 }

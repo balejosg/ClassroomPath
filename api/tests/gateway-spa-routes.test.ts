@@ -105,7 +105,7 @@ test('SSR renders landing and preserves client asset references', async () => {
   assert.match(html, /<script type="module" src="\/assets\/app.js"><\/script>/);
 });
 
-test('SSR renders pricing while non-SSR routes stay outside the gateway fallback', async () => {
+test('SSR renders pricing while other public routes fall back to the SPA shell', async () => {
   const reactSpaPath = await createReactSpaFixture();
   const baseUrl = await startApp(reactSpaPath);
 
@@ -116,14 +116,18 @@ test('SSR renders pricing while non-SSR routes stay outside the gateway fallback
   assert.match(pricingHtml, /<title>Pricing SSR<\/title>/);
 
   const loginResponse = await fetch(`${baseUrl}/login`);
-  assert.equal(loginResponse.status, 404);
+  const loginHtml = await loginResponse.text();
+  assert.equal(loginResponse.status, 200);
+  assert.doesNotMatch(loginHtml, /SSR \/login/);
+  assert.match(loginHtml, /<div id="root"><\/div>/);
 });
 
-test('static assets no longer come from the gateway SPA handler', async () => {
+test('static assets still come from the gateway SPA handler', async () => {
   const reactSpaPath = await createReactSpaFixture();
   const baseUrl = await startApp(reactSpaPath);
 
   const response = await fetch(`${baseUrl}/assets/app.js`);
 
-  assert.equal(response.status, 404);
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /hydrated/);
 });
