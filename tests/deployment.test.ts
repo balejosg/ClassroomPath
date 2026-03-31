@@ -361,7 +361,15 @@ void describe('Migration Tooling', () => {
   const spaDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.spa');
   const spaDockerignorePath = resolve(projectRoot, 'docker/Dockerfile.spa.dockerignore');
   const verifierDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.release-verifier');
+  const stagingHealthCheckScriptPath = resolve(projectRoot, 'scripts/check-staging-health.sh');
   const stagingDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
+  const stagingDeployRemoteScriptPath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
+  const stagingReleaseGateScriptPath = resolve(projectRoot, 'scripts/run-staging-release-gate.sh');
+  const stagingSmokeScriptPath = resolve(projectRoot, 'scripts/run-staging-smoke.sh');
+  const stagingVerifyStateScriptPath = resolve(
+    projectRoot,
+    'scripts/persist-staging-verification-remote.sh'
+  );
   const verifyFullScriptPath = resolve(projectRoot, 'scripts/verify-full.sh');
   const classroomPathPackagePath = resolve(projectRoot, 'package.json');
   const preCommitHookPath = resolve(projectRoot, '.husky/pre-commit');
@@ -407,18 +415,27 @@ void describe('Migration Tooling', () => {
   });
 
   void test('staging deploy validates the gateway runtime contract before migrations', () => {
-    const content = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
     const validateStep = 'bash scripts/validate-runtime-config-docker.sh';
     const pushStep =
       'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"';
 
     assert.ok(
-      content.includes(validateStep),
-      'deploy-staging-local.sh should validate runtime config before migrations'
+      existsSync(stagingDeployRemoteScriptPath),
+      'deploy-staging-remote.sh should exist as the versioned remote deploy payload'
     );
     assert.ok(
-      content.indexOf(validateStep) < content.indexOf(pushStep),
-      'runtime config validation should happen before migrations'
+      localContent.includes('STAGING_REMOTE_SCRIPT_PATH="$SCRIPT_DIR/deploy-staging-remote.sh"'),
+      'deploy-staging-local.sh should invoke the dedicated remote deploy script'
+    );
+    assert.ok(
+      remoteContent.includes(validateStep),
+      'deploy-staging-remote.sh should validate runtime config before migrations'
+    );
+    assert.ok(
+      remoteContent.indexOf(validateStep) < remoteContent.indexOf(pushStep),
+      'runtime config validation should happen before migrations inside the remote deploy script'
     );
   });
 
@@ -468,10 +485,17 @@ void describe('Migration Tooling', () => {
       verifyScript.includes('npx playwright test --grep="@commit-smoke"'),
       'commit verification mode should use the reduced Playwright smoke subset'
     );
+    assert.ok(
+      verifyScript.includes(
+        'Playwright browsers are not installed; skipping commit-smoke browser verification.'
+      ),
+      'verify-full.sh should let commit verification continue when Playwright browsers are unavailable'
+    );
   });
 
   void test('staging deploy waits for the successful release-candidate manifest before source-build fallback', () => {
-    const content = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
 
     assert.ok(existsSync(releaseImagesScriptPath), 'release-images.mjs should exist');
     assert.ok(
@@ -479,134 +503,237 @@ void describe('Migration Tooling', () => {
       'wait-for-release-candidate.mjs should exist'
     );
     assert.ok(
-      content.includes('node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest'),
+      localContent.includes('node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest'),
       'deploy-staging-local.sh should wait for a successful release-candidate manifest for origin/main'
     );
     assert.ok(
-      content.includes('deploy_with_release_candidates'),
-      'deploy-staging-local.sh should define a release-candidate deploy path'
+      remoteContent.includes('deploy_with_release_candidates'),
+      'deploy-staging-remote.sh should define a release-candidate deploy path'
     );
     assert.ok(
-      content.includes('docker compose pull gateway api spa'),
-      'staging deploy should try pulling prebuilt candidate images'
+      remoteContent.includes('docker compose pull gateway api spa'),
+      'staging remote deploy should try pulling prebuilt candidate images'
     );
     assert.ok(
-      content.includes('STAGING_MIGRATIONS_IMAGE'),
+      localContent.includes('STAGING_MIGRATIONS_IMAGE'),
       'staging deploy should resolve a prebuilt migrations image alongside the runtime images'
     );
     assert.ok(
-      content.includes('STAGING_RELEASE_WAIT_TIMEOUT_SECONDS'),
+      localContent.includes('STAGING_RELEASE_WAIT_TIMEOUT_SECONDS'),
       'staging deploy should expose a bounded wait timeout for release candidate availability'
     );
     assert.ok(
-      content.includes('CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"'),
-      'staging deploy should export the release-candidate migrations image into the remote deploy path'
+      remoteContent.includes('CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"'),
+      'staging remote deploy should export the release-candidate migrations image into the remote deploy path'
     );
     assert.ok(
-      content.indexOf('CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"') <
-        content.indexOf(
+      remoteContent.indexOf('CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"') <
+        remoteContent.indexOf(
           'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
         ),
-      'staging deploy should export the release-candidate migrations image before running migrations'
+      'staging remote deploy should export the release-candidate migrations image before running migrations'
     );
     assert.ok(
-      content.includes('if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then'),
-      'staging deploy should keep source-build as an explicit opt-in mode'
+      remoteContent.includes('if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then'),
+      'staging remote deploy should keep source-build as an explicit opt-in mode'
     );
     assert.ok(
-      !content.includes('node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA"'),
+      !localContent.includes('node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA"'),
       'staging deploy should consume the manifest digests instead of guessing image tags locally'
     );
     assert.ok(
-      !content.includes('Falling back to source build for staging'),
+      !localContent.includes('Falling back to source build for staging'),
       'staging deploy should not silently fall back from release candidates to source builds'
     );
   });
 
   void test('staging deploy records reusable verification evidence after smoke and release gate pass', () => {
-    const content = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const releaseGateHelperContent = readFileSync(stagingReleaseGateScriptPath, 'utf-8');
+    const helperContent = readFileSync(stagingVerifyStateScriptPath, 'utf-8');
 
     assert.ok(
-      content.includes('STAGING_RUN_RELEASE_GATE="${STAGING_RUN_RELEASE_GATE:-1}"'),
+      existsSync(stagingVerifyStateScriptPath),
+      'persist-staging-verification-remote.sh should exist as the versioned remote evidence writer'
+    );
+    assert.ok(
+      localContent.includes('STAGING_RUN_RELEASE_GATE="${STAGING_RUN_RELEASE_GATE:-1}"'),
       'deploy-staging-local.sh should default to running the staging release gate during promotion prep'
     );
     assert.ok(
-      content.includes('RELEASE_GATE_URL="$RELEASE_GATE_TARGET_URL"'),
+      existsSync(stagingReleaseGateScriptPath),
+      'run-staging-release-gate.sh should exist as the versioned staging release gate helper'
+    );
+    assert.ok(
+      releaseGateHelperContent.includes('RELEASE_GATE_URL="$RELEASE_GATE_TARGET_URL"'),
       'staging deploy should allow the release gate to target either the canonical staging URL or a direct-IP fallback'
     );
     assert.ok(
-      content.includes('RELEASE_GATE_EXPECTED_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN"'),
+      releaseGateHelperContent.includes(
+        'RELEASE_GATE_EXPECTED_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN"'
+      ),
       'staging deploy should pass the canonical public origin separately from the transport target'
     );
     assert.ok(
-      content.includes('Release gate host does not resolve locally'),
+      releaseGateHelperContent.includes('Release gate host does not resolve locally'),
       'staging deploy should detect when the canonical staging host is not resolvable locally'
     );
     assert.ok(
-      content.includes('Falling back release gate target to direct staging gateway'),
+      releaseGateHelperContent.includes(
+        'Falling back release gate target to direct staging gateway'
+      ),
       'staging deploy should fall back the release gate transport to the staging IP when local DNS is unavailable'
     );
     assert.ok(
-      content.includes('STAGING_RELEASE_GATE_RESULT=success') ||
-        content.includes('STAGING_GATE_RESULT="success"'),
+      helperContent.includes('STAGING_RELEASE_GATE_RESULT=success') ||
+        localContent.includes('STAGING_GATE_RESULT="success"'),
       'staging deploy should capture a successful release-gate result'
     );
     assert.ok(
-      content.includes('staging-verification.env'),
+      helperContent.includes('staging-verification.env'),
       'staging deploy should persist staging-verification.env on the staging host'
     );
     assert.ok(
-      content.includes('STAGING_VERIFIED_GATEWAY_IMAGE'),
+      helperContent.includes('STAGING_VERIFIED_GATEWAY_IMAGE'),
       'staging verification evidence should record the deployed immutable image digests'
     );
     assert.ok(
-      content.includes(
+      releaseGateHelperContent.includes(
         'classroompath-api test -f /app/firefox-extension/build/firefox-release/metadata.json'
       ),
       'staging deploy should verify the staged Firefox release metadata inside the API container before recording evidence'
     );
     assert.ok(
-      content.includes(
+      releaseGateHelperContent.includes(
         'classroompath-api test -f /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi'
       ),
       'staging deploy should verify the staged Firefox release XPI inside the API container before recording evidence'
     );
     assert.ok(
-      content.includes('STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present'),
+      helperContent.includes(
+        'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=$STAGING_FIREFOX_RELEASE_ARTIFACTS'
+      ),
       'staging verification evidence should record Firefox release artifact presence explicitly'
     );
     assert.ok(
-      content.includes('npm run test:windows-bootstrap-gate'),
+      releaseGateHelperContent.includes('npm run test:windows-bootstrap-gate'),
       'staging deploy should run the live Windows bootstrap gate before persisting release evidence'
     );
     assert.ok(
-      content.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT="success"') ||
-        content.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT=$STAGING_WINDOWS_BOOTSTRAP_RESULT'),
+      helperContent.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT=$STAGING_WINDOWS_BOOTSTRAP_RESULT'),
       'staging verification evidence should record a successful Windows bootstrap result'
     );
     assert.ok(
-      content.includes('STAGING_FIREFOX_POLICY_RESULT="success"') ||
-        content.includes('STAGING_FIREFOX_POLICY_RESULT=$STAGING_FIREFOX_POLICY_RESULT'),
+      helperContent.includes('STAGING_FIREFOX_POLICY_RESULT=$STAGING_FIREFOX_POLICY_RESULT'),
       'staging verification evidence should record a successful Firefox policy input result'
     );
     assert.ok(
-      content.includes('STAGING_FIREFOX_EXTENSION_ID=') &&
-        content.includes('STAGING_FIREFOX_RELEASE_VERSION=') &&
-        content.includes('STAGING_FIREFOX_METADATA_SHA256=') &&
-        content.includes('STAGING_FIREFOX_XPI_SHA256='),
+      helperContent.includes('STAGING_FIREFOX_EXTENSION_ID=') &&
+        helperContent.includes('STAGING_FIREFOX_RELEASE_VERSION=') &&
+        helperContent.includes('STAGING_FIREFOX_METADATA_SHA256=') &&
+        helperContent.includes('STAGING_FIREFOX_XPI_SHA256='),
       'staging verification evidence should persist Firefox release identity and hashes'
     );
     assert.ok(
-      content.includes(
+      releaseGateHelperContent.includes(
         'node "$SCRIPT_DIR/read-firefox-release-metadata.mjs" --field extensionId'
-      ) && content.includes('node "$SCRIPT_DIR/read-firefox-release-metadata.mjs" --field version'),
+      ) &&
+        releaseGateHelperContent.includes(
+          'node "$SCRIPT_DIR/read-firefox-release-metadata.mjs" --field version'
+        ),
       'staging deploy should delegate Firefox metadata parsing to the dedicated helper script'
     );
     assert.ok(
-      content.includes(
+      releaseGateHelperContent.includes(
         'Release-candidate staging deploys must prove the live Windows bootstrap contract'
       ),
       'release-candidate staging deploys should fail when the live Windows bootstrap gate fails'
+    );
+    assert.ok(
+      localContent.includes(
+        'STAGING_VERIFY_STATE_SCRIPT_PATH="$SCRIPT_DIR/persist-staging-verification-remote.sh"'
+      ),
+      'deploy-staging-local.sh should reference the dedicated remote evidence writer'
+    );
+    assert.ok(
+      localContent.includes(
+        'STAGING_RELEASE_GATE_SCRIPT_PATH="$SCRIPT_DIR/run-staging-release-gate.sh"'
+      ),
+      'deploy-staging-local.sh should reference the dedicated staging release gate helper'
+    );
+    assert.ok(
+      localContent.includes(
+        'bash "$STAGING_RELEASE_GATE_SCRIPT_PATH" "$RELEASE_GATE_STATE_FILE" "$STAGING_HOST" "$CANONICAL_STAGING_URL" "$STAGING_USE_RELEASE_CANDIDATE" "${SSH_CMD[@]}"'
+      ),
+      'deploy-staging-local.sh should delegate release gate and bootstrap verification to the helper script'
+    );
+    assert.ok(
+      localContent.includes(
+        '"${SSH_CMD[@]}" "${VERIFY_STATE_ENV_CMD}bash -s" < "$STAGING_VERIFY_STATE_SCRIPT_PATH"'
+      ),
+      'deploy-staging-local.sh should delegate evidence persistence to the remote helper script'
+    );
+  });
+
+  void test('staging deploy delegates remote health polling to a dedicated helper', () => {
+    const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const helperContent = readFileSync(stagingHealthCheckScriptPath, 'utf-8');
+
+    assert.ok(
+      existsSync(stagingHealthCheckScriptPath),
+      'check-staging-health.sh should exist as the versioned staging health helper'
+    );
+    assert.ok(
+      localContent.includes(
+        'STAGING_HEALTH_CHECK_SCRIPT_PATH="$SCRIPT_DIR/check-staging-health.sh"'
+      ),
+      'deploy-staging-local.sh should reference the dedicated staging health helper'
+    );
+    assert.ok(
+      localContent.includes(
+        'bash "$STAGING_HEALTH_CHECK_SCRIPT_PATH" "$STAGING_HOST" "${SSH_CMD[@]}"'
+      ),
+      'deploy-staging-local.sh should delegate the remote health polling to the helper script'
+    );
+    assert.ok(
+      helperContent.includes('curl -sf http://localhost:3000/cp/ready 2>/dev/null'),
+      'staging health helper should poll gateway readiness over SSH'
+    );
+    assert.ok(
+      helperContent.includes('curl -sf http://localhost:3000/health 2>/dev/null'),
+      'staging health helper should poll API health via the gateway over SSH'
+    );
+  });
+
+  void test('staging deploy delegates smoke execution and fallback resolution to a dedicated helper', () => {
+    const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const helperContent = readFileSync(stagingSmokeScriptPath, 'utf-8');
+
+    assert.ok(
+      existsSync(stagingSmokeScriptPath),
+      'run-staging-smoke.sh should exist as the versioned staging smoke helper'
+    );
+    assert.ok(
+      localContent.includes('STAGING_SMOKE_SCRIPT_PATH="$SCRIPT_DIR/run-staging-smoke.sh"'),
+      'deploy-staging-local.sh should reference the dedicated staging smoke helper'
+    );
+    assert.ok(
+      localContent.includes(
+        'bash "$STAGING_SMOKE_SCRIPT_PATH" "$SMOKE_STATE_FILE" "$STAGING_HOST" "$STAGING_SMOKE_URL" "${SSH_CMD[@]}"'
+      ),
+      'deploy-staging-local.sh should delegate staging smoke execution to the helper script'
+    );
+    assert.ok(
+      helperContent.includes('Smoke URL host does not resolve locally'),
+      'staging smoke helper should own fallback resolution when the canonical smoke host does not resolve locally'
+    );
+    assert.ok(
+      helperContent.includes('npm run test:smoke'),
+      'staging smoke helper should execute the shared smoke entrypoint'
+    );
+    assert.ok(
+      helperContent.includes('STAGING_VERIFICATION_STATUS=$STAGING_VERIFICATION_STATUS'),
+      'staging smoke helper should persist fallback verification state when it has to use the direct-IP target'
     );
   });
 
