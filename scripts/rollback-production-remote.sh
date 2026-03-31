@@ -41,10 +41,16 @@ docker compose up -d --force-recreate --no-build
 
 cp "$PREVIOUS_FILE" "$CURRENT_FILE"
 
-if ! curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-  echo "Rollback health check failed"
-  docker logs classroompath-gateway --tail 50
-  exit 1
-fi
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
+    echo "Rollback health check passed"
+    exit 0
+  fi
 
-echo "Rollback completed successfully"
+  echo "Rollback health check attempt $i failed, retrying..."
+  sleep 5
+done
+
+echo "Rollback health check failed"
+docker logs classroompath-gateway --tail 50
+exit 1

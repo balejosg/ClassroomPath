@@ -442,8 +442,8 @@ describe('Workflow configuration hardening', () => {
     const smokeSteps = jobs['smoke-test-production']?.steps ?? [];
     const smokeRun = smokeSteps.map((step) => step.run ?? '').join('\n');
     assert.ok(
-      !smokeSteps.some((step) => step.uses === 'actions/checkout@v6'),
-      'smoke-test-production should not checkout the repository when the verifier image already contains the tests'
+      smokeSteps.some((step) => step.uses === 'actions/checkout@v6'),
+      'smoke-test-production should checkout the repository so it can run the shared readiness and verifier helper scripts'
     );
     assert.ok(
       !smokeSteps.some((step) => step.uses === 'actions/setup-node@v6'),

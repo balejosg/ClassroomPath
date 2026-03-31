@@ -15,6 +15,9 @@ on:
       - 'upstream/openpath'
       - '.github/workflows/release-candidate-images.yml'
       - '.github/workflows/firefox-release-assets.yml'
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/reusable-smoke-test.yml'
+      - '.github/workflows/smoke-tests.yml'
 
 permissions:
   contents: read
