@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolveDatabaseUrl } from './api/src/lib/database-url.ts';
 
 /**
  * ClassroomPath Playwright E2E Configuration
@@ -27,16 +28,7 @@ const shouldUseWebServer =
 
 // Shared E2E database used by both OpenPath API and ClassroomPath gateway.
 // This is a local-only default; external BASE_URL runs do not start webServer.
-const testDatabaseUrl =
-  process.env.DATABASE_URL ??
-  (() => {
-    const user = process.env.DB_USER ?? 'openpath';
-    const password = process.env.DB_PASSWORD ?? 'openpath_dev';
-    const host = process.env.DB_HOST ?? 'localhost';
-    const port = process.env.DB_PORT ?? '5432';
-    const name = process.env.DB_NAME ?? 'classroompath_test';
-    return `postgresql://${user}:${password}@${host}:${port}/${name}`;
-  })();
+const testDatabaseUrl = resolveDatabaseUrl(process.env, { database: 'classroompath_test' });
 
 export default defineConfig({
   testDir: './tests/e2e',

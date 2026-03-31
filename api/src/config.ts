@@ -1,15 +1,4 @@
-// Build connection string from individual env vars if DATABASE_URL not set
-const buildDatabaseUrl = (env: RuntimeEnv = process.env) => {
-  if (env.DATABASE_URL) {
-    return env.DATABASE_URL;
-  }
-  const user = env.DB_USER || 'openpath';
-  const password = env.DB_PASSWORD || 'openpath_dev';
-  const host = env.DB_HOST || 'localhost';
-  const port = env.DB_PORT || '5432';
-  const name = env.DB_NAME || 'openpath';
-  return `postgres://${user}:${password}@${host}:${port}/${name}`;
-};
+import { resolveDatabaseUrl } from './lib/database-url.js';
 
 const parseBooleanEnv = (value: string | undefined, defaultValue: boolean) => {
   if (value === undefined) {
@@ -140,7 +129,7 @@ export function resolveRuntimeConfig(env: RuntimeEnv = process.env): RuntimeConf
   return {
     port: resolvePort(env),
     openpathUrl: resolveOpenPathUrl(env),
-    databaseUrl: buildDatabaseUrl(env),
+    databaseUrl: resolveDatabaseUrl(env),
     publicUrl: resolvePublicUrl(env),
     jwtSecret: requireJwtSecret(env),
     resendApiKey,
@@ -166,7 +155,7 @@ export const config = {
     return resolveOpenPathUrl(process.env);
   },
   get databaseUrl() {
-    return buildDatabaseUrl(process.env);
+    return resolveDatabaseUrl(process.env);
   },
   get publicUrl() {
     return resolvePublicUrl(process.env);

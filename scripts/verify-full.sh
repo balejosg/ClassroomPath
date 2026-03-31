@@ -233,11 +233,7 @@ if ! wait_for_test_postgres; then
 fi
 
 export DATABASE_URL="postgres://openpath:openpath_dev@localhost:${TEST_DB_PORT}/openpath"
-export DB_HOST="localhost"
-export DB_PORT="$TEST_DB_PORT"
-export DB_NAME="openpath"
-export DB_USER="openpath"
-export DB_PASSWORD="openpath_dev"
+eval "$(node "$ROOT_DIR/scripts/derive-openpath-db-env.mjs")"
 export JWT_SECRET="test-jwt-secret"
 export CI=true
 

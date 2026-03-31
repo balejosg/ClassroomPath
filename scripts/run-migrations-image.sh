@@ -14,7 +14,7 @@ Options:
 
 Notes:
   - If no schema flags are provided, both schema pushes are run.
-  - DATABASE_URL is converted into DB_* variables for the OpenPath drizzle config when needed.
+  - DATABASE_URL stays canonical; OpenPath DB_* compatibility env is derived from a shared helper when needed.
 EOF
 }
 
@@ -48,31 +48,8 @@ if [ "$RUN_CP" = "0" ] && [ "$RUN_OPENPATH" = "0" ]; then
   RUN_OPENPATH=1
 fi
 
-derive_openpath_db_env_from_url() {
-  if [ -n "${DB_HOST:-}" ] || [ -z "${DATABASE_URL:-}" ]; then
-    return 0
-  fi
-
-  eval "$(node --input-type=module <<'NODE'
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  process.exit(0);
-}
-
-const parsed = new URL(connectionString);
-const quote = (value = '') => JSON.stringify(String(value));
-
-console.log(`export DB_HOST=${quote(parsed.hostname)}`);
-console.log(`export DB_PORT=${quote(parsed.port || '5432')}`);
-console.log(`export DB_NAME=${quote(parsed.pathname.replace(/^\//, ''))}`);
-console.log(`export DB_USER=${quote(decodeURIComponent(parsed.username || ''))}`);
-console.log(`export DB_PASSWORD=${quote(decodeURIComponent(parsed.password || ''))}`);
-NODE
-)"
-}
-
 cd /app
-derive_openpath_db_env_from_url
+eval "$(node scripts/derive-openpath-db-env.mjs)"
 
 if [ "$RUN_CP" = "1" ]; then
   echo "[MIGRATIONS] - ClassroomPath API schema..."

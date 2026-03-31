@@ -353,6 +353,7 @@ void describe('Submodule Structure', () => {
 
 void describe('Migration Tooling', () => {
   const migrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations-docker.sh');
+  const openPathDbEnvHelperPath = resolve(projectRoot, 'scripts/derive-openpath-db-env.mjs');
   const hostMigrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations.sh');
   const migrationsImageScriptPath = resolve(projectRoot, 'scripts/run-migrations-image.sh');
   const migrationsDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.migrations');
@@ -740,6 +741,7 @@ void describe('Migration Tooling', () => {
   void test('migration runner image packages the workspace migration entrypoint', () => {
     assert.ok(existsSync(migrationsDockerfilePath), 'Dockerfile.migrations should exist');
     assert.ok(existsSync(migrationsImageScriptPath), 'run-migrations-image.sh should exist');
+    assert.ok(existsSync(openPathDbEnvHelperPath), 'derive-openpath-db-env.mjs should exist');
 
     const dockerfile = readFileSync(migrationsDockerfilePath, 'utf-8');
     const script = readFileSync(migrationsImageScriptPath, 'utf-8');
@@ -765,8 +767,8 @@ void describe('Migration Tooling', () => {
       'migration runner should push the OpenPath schema from the prebuilt image'
     );
     assert.ok(
-      script.includes('DATABASE_URL') && script.includes('DB_HOST'),
-      'migration runner should derive OpenPath DB_* env vars from DATABASE_URL when needed'
+      script.includes('node scripts/derive-openpath-db-env.mjs'),
+      'migration runner should derive OpenPath DB_* env vars from the shared helper when needed'
     );
   });
 
@@ -925,6 +927,30 @@ void describe('Migration Tooling', () => {
     assert.ok(
       content.includes('"$RUNNER_IMAGE"'),
       'run-migrations-docker.sh should execute the requested prebuilt runner image'
+    );
+    assert.ok(
+      content.includes('derive-openpath-db-env.mjs') &&
+        content.includes('node /derive-openpath-db-env.mjs'),
+      'run-migrations-docker.sh should derive OpenPath DB_* env vars from the shared helper before db:push'
+    );
+  });
+
+  void test('verify-full keeps DATABASE_URL canonical and derives OpenPath DB_* env through the shared helper', () => {
+    const verifyScript = readFileSync(verifyFullScriptPath, 'utf-8');
+
+    assert.ok(
+      verifyScript.includes('export DATABASE_URL=') &&
+        verifyScript.includes('${TEST_DB_PORT}') &&
+        verifyScript.includes('/openpath"'),
+      'verify-full should keep DATABASE_URL as the canonical test database contract'
+    );
+    assert.ok(
+      verifyScript.includes('node "$ROOT_DIR/scripts/derive-openpath-db-env.mjs"'),
+      'verify-full should derive OpenPath DB_* compatibility env through the shared helper'
+    );
+    assert.ok(
+      !verifyScript.includes('export DB_HOST="localhost"'),
+      'verify-full should not duplicate OpenPath DB_* derivation inline'
     );
   });
 

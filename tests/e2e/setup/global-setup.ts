@@ -14,6 +14,11 @@ import { join, dirname } from 'path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'url';
 
+import {
+  deriveDatabaseComponentEnv,
+  resolveDatabaseUrl,
+} from '../../../api/src/lib/database-url.js';
+
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -57,30 +62,8 @@ function isExternalBaseUrl(): boolean {
   return !baseUrl.includes('localhost') && !baseUrl.includes('127.0.0.1');
 }
 
-/**
- * Build test database URL from components to avoid secretlint false positive
- */
-function getTestDatabaseConfig(): {
-  user: string;
-  password: string;
-  host: string;
-  port: string;
-  database: string;
-} {
-  // Use the owner user for schema pushes (drizzle-kit requires table ownership).
-  // The test user can still be granted privileges separately if needed.
-  return {
-    user: process.env.DB_USER ?? 'openpath',
-    password: process.env.DB_PASSWORD ?? 'openpath_dev',
-    host: process.env.DB_HOST ?? 'localhost',
-    port: process.env.DB_PORT ?? '5432',
-    database: process.env.DB_NAME ?? 'classroompath_test',
-  };
-}
-
 function buildTestDatabaseUrl(): string {
-  const { user, password, host, port, database } = getTestDatabaseConfig();
-  return `postgresql://${user}:${password}@${host}:${port}/${database}`;
+  return resolveDatabaseUrl(process.env, { database: 'classroompath_test' });
 }
 
 /**
@@ -150,7 +133,11 @@ async function runClassroomPathDbPush(): Promise<void> {
 
 async function runOpenPathDbPush(): Promise<void> {
   const openPathApiDir = join(__dirname, '..', '..', '..', 'upstream', 'openpath', 'api');
-  const database = getTestDatabaseConfig();
+  const databaseUrl = process.env.DATABASE_URL ?? buildTestDatabaseUrl();
+  const database = deriveDatabaseComponentEnv(
+    { ...process.env, DATABASE_URL: databaseUrl },
+    { database: 'classroompath_test' }
+  );
 
   try {
     console.log('Running OpenPath drizzle-kit push --force for shared test DB...');
@@ -159,12 +146,8 @@ async function runOpenPathDbPush(): Promise<void> {
       stdio: 'inherit',
       env: {
         ...process.env,
-        DATABASE_URL: process.env.DATABASE_URL ?? buildTestDatabaseUrl(),
-        DB_HOST: database.host,
-        DB_PORT: database.port,
-        DB_NAME: database.database,
-        DB_USER: database.user,
-        DB_PASSWORD: database.password,
+        DATABASE_URL: databaseUrl,
+        ...database,
       },
     });
     console.log('OpenPath db:push completed successfully');

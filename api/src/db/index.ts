@@ -2,11 +2,9 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from './schema.js';
 import { logger } from '../lib/logger.js';
+import { resolveDatabaseUrl } from '../lib/database-url.js';
 
-// Build connection string from individual env vars if DATABASE_URL not set
-const connectionString =
-  process.env.DATABASE_URL ||
-  `postgres://${process.env.DB_USER || 'openpath'}:${process.env.DB_PASSWORD || 'openpath_dev'}@${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || '5432'}/${process.env.DB_NAME || 'openpath'}`;
+const connectionString = resolveDatabaseUrl(process.env);
 
 const pool = new pg.Pool({
   connectionString,

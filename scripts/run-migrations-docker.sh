@@ -11,6 +11,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR_DEFAULT="$(cd "$SCRIPT_DIR/.." && pwd)"
+OPENPATH_DB_ENV_HELPER_PATH="$SCRIPT_DIR/derive-openpath-db-env.mjs"
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
@@ -96,6 +97,10 @@ fi
 
 require_cmd docker
 
+if [ ! -f "$OPENPATH_DB_ENV_HELPER_PATH" ]; then
+  die "OpenPath DB env helper not found: $OPENPATH_DB_ENV_HELPER_PATH" 1
+fi
+
 if [ ! -d "$APP_DIR" ]; then
   die "App dir not found: $APP_DIR" 1
 fi
@@ -180,10 +185,11 @@ run_openpath_migrations() {
   if docker run --rm \
     -v "$APP_DIR/upstream/openpath:/app" \
     -v "$ENV_FILE:/app/.env:ro" \
+    -v "$OPENPATH_DB_ENV_HELPER_PATH:/derive-openpath-db-env.mjs:ro" \
     -w /app \
     --env-file "$ENV_FILE" \
     "$NODE_IMAGE" \
-    sh -c "npm ci --silent -w @openpath/shared -w @openpath/api && npm run db:push -w @openpath/api" \
+    sh -c "eval \"\$(node /derive-openpath-db-env.mjs)\" && npm ci --silent -w @openpath/shared -w @openpath/api && npm run db:push -w @openpath/api" \
     >"$log" 2>&1; then
     tail -5 "$log"
   else
