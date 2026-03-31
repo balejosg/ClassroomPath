@@ -439,6 +439,10 @@ jobs:
             echo 'build_required=false' >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Checkout
+        if: steps.mode.outputs.build_required == 'true'
+        uses: actions/checkout@v6
+
       - name: Setup Docker build
         if: steps.mode.outputs.build_required == 'true'
         uses: ./.github/actions/setup-docker-build
