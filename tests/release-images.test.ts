@@ -8,6 +8,7 @@ import {
   parseReleaseCandidateManifest,
   parseGitHubOwnerFromRemote,
   parseGitHubRepositoryFromRemote,
+  selectLatestSuccessfulWorkflowRun,
   selectLatestReleaseCandidateRun,
   selectSuccessfulReleaseCandidateRun,
 } from '../scripts/release-images.mjs';
@@ -167,6 +168,38 @@ describe('release image helpers', () => {
     );
 
     assert.equal(run.id, 202);
+  });
+
+  test('selects the latest successful push workflow run without pinning a SHA', () => {
+    const run = selectLatestSuccessfulWorkflowRun([
+      {
+        databaseId: 401,
+        headSha: 'older-sha',
+        event: 'push',
+        status: 'completed',
+        conclusion: 'success',
+        updatedAt: '2026-03-24T11:00:00Z',
+      },
+      {
+        databaseId: 402,
+        headSha: 'newer-sha',
+        event: 'push',
+        status: 'completed',
+        conclusion: 'success',
+        updatedAt: '2026-03-24T12:00:00Z',
+      },
+      {
+        databaseId: 403,
+        headSha: 'manual-sha',
+        event: 'workflow_dispatch',
+        status: 'completed',
+        conclusion: 'success',
+        updatedAt: '2026-03-24T13:00:00Z',
+      },
+    ]);
+
+    assert.equal(run.id, 402);
+    assert.equal(run.headSha, 'newer-sha');
   });
 
   test('parses and validates a release candidate manifest for the target SHA', () => {

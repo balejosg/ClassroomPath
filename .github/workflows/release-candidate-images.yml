@@ -47,9 +47,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
+        uses: ./.github/actions/setup-node
 
       - name: Derive release image refs
         id: image-refs
@@ -63,30 +61,104 @@ jobs:
         run: |
           echo "sha=$(git rev-parse HEAD:upstream/openpath)" >> "$GITHUB_OUTPUT"
 
+  resolve-previous-release-candidate-manifest:
+    name: Resolve Previous Release Candidate Manifest
+    runs-on: ubuntu-latest
+    needs: derive-release-image-refs
+    outputs:
+      available: ${{ steps.export.outputs.available }}
+      gateway_image: ${{ steps.export.outputs.gateway_image }}
+      migrations_image: ${{ steps.export.outputs.migrations_image }}
+      openpath_api_image: ${{ steps.export.outputs.openpath_api_image }}
+      spa_image: ${{ steps.export.outputs.spa_image }}
+      verifier_image: ${{ steps.export.outputs.verifier_image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+
+      - name: Resolve previous release candidate manifest
+        id: resolve
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/resolve-latest-verifier-image.mjs > previous-release-candidate-images.env
+
+      - name: Export previous release candidate manifest
+        id: export
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ steps.resolve.outcome }}" != 'success' ]; then
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo 'available=true' >> "$GITHUB_OUTPUT"
+          cat previous-release-candidate-images.env >> "$GITHUB_OUTPUT"
+
+  detect-release-candidate-components:
+    name: Detect Release Candidate Components
+    runs-on: ubuntu-latest
+    outputs:
+      gateway_changed: ${{ steps.detect.outputs.gateway_changed }}
+      migrations_changed: ${{ steps.detect.outputs.migrations_changed }}
+      openpath_api_changed: ${{ steps.detect.outputs.openpath_api_changed }}
+      spa_changed: ${{ steps.detect.outputs.spa_changed }}
+      verifier_changed: ${{ steps.detect.outputs.verifier_changed }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed release-candidate components
+        id: detect
+        shell: bash
+        run: bash scripts/detect-release-candidate-components.sh "${{ github.event.before }}" "${{ github.sha }}"
+
   build-gateway-release-candidate:
     name: Build Gateway Release Candidate
     runs-on: ubuntu-latest
-    needs: derive-release-image-refs
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
     outputs:
       gateway_image: ${{ steps.publish-manifest.outputs.gateway_image }}
 
     steps:
+      - name: Decide whether to build gateway image
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.gateway_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
         with:
-          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push gateway image
+        if: steps.mode.outputs.build_required == 'true'
         id: build-gateway
         uses: docker/build-push-action@v7
         with:
@@ -101,32 +173,48 @@ jobs:
       - name: Publish gateway manifest output
         id: publish-manifest
         run: |
-          echo "gateway_image=${{ needs.derive-release-image-refs.outputs.gateway_repo }}@${{ steps.build-gateway.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
+            echo "gateway_image=${{ needs.derive-release-image-refs.outputs.gateway_repo }}@${{ steps.build-gateway.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "gateway_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}" >> "$GITHUB_OUTPUT"
+          fi
 
   build-migrations-release-candidate:
     name: Build Migrations Release Candidate
     runs-on: ubuntu-latest
-    needs: derive-release-image-refs
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
     outputs:
       migrations_image: ${{ steps.publish-manifest.outputs.migrations_image }}
 
     steps:
+      - name: Decide whether to build migrations image
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.migrations_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
         with:
-          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push migrations image
+        if: steps.mode.outputs.build_required == 'true'
         id: build-migrations
         uses: docker/build-push-action@v7
         with:
@@ -141,25 +229,43 @@ jobs:
       - name: Publish migrations manifest output
         id: publish-manifest
         run: |
-          echo "migrations_image=${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ steps.build-migrations.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
+            echo "migrations_image=${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ steps.build-migrations.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "migrations_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}" >> "$GITHUB_OUTPUT"
+          fi
 
   resolve-openpath-firefox-release-assets:
     name: Resolve OpenPath Firefox Release Assets
     runs-on: ubuntu-latest
-    needs: derive-release-image-refs
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
 
     steps:
+      - name: Decide whether to refresh Firefox release assets
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.openpath_api_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-node
 
       - name: Resolve prebuilt Firefox release assets
+        if: steps.mode.outputs.build_required == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -172,12 +278,14 @@ jobs:
             --output-dir firefox-release-assets
 
       - name: Verify resolved Firefox release assets
+        if: steps.mode.outputs.build_required == 'true'
         run: |
           test -f firefox-release-assets/dist/background.js
           test -f firefox-release-assets/build/firefox-release/metadata.json
           test -f firefox-release-assets/build/firefox-release/openpath-firefox-extension.xpi
 
       - name: Upload Firefox release artifacts
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: openpath-firefox-release-assets
@@ -191,39 +299,52 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
       - resolve-openpath-firefox-release-assets
     outputs:
       image_digest: ${{ steps.build-openpath-api.outputs.digest }}
 
     steps:
+      - name: Decide whether to build the amd64 OpenPath API image
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.openpath_api_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
         with:
-          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Firefox release assets
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/download-artifact@v6
         with:
           name: openpath-firefox-release-assets
           path: ./upstream/openpath/firefox-extension
 
       - name: Verify downloaded Firefox release assets
+        if: steps.mode.outputs.build_required == 'true'
         run: |
           test -f ./upstream/openpath/firefox-extension/dist/background.js
           test -f ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
           test -f ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
 
       - name: Build and push OpenPath API image
+        if: steps.mode.outputs.build_required == 'true'
         id: build-openpath-api
         uses: docker/build-push-action@v7
         with:
@@ -239,39 +360,52 @@ jobs:
     runs-on: ubuntu-24.04-arm
     needs:
       - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
       - resolve-openpath-firefox-release-assets
     outputs:
       image_digest: ${{ steps.build-openpath-api.outputs.digest }}
 
     steps:
+      - name: Decide whether to build the arm64 OpenPath API image
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.openpath_api_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
         with:
-          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Firefox release assets
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/download-artifact@v6
         with:
           name: openpath-firefox-release-assets
           path: ./upstream/openpath/firefox-extension
 
       - name: Verify downloaded Firefox release assets
+        if: steps.mode.outputs.build_required == 'true'
         run: |
           test -f ./upstream/openpath/firefox-extension/dist/background.js
           test -f ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
           test -f ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
 
       - name: Build and push OpenPath API image
+        if: steps.mode.outputs.build_required == 'true'
         id: build-openpath-api
         uses: docker/build-push-action@v7
         with:
@@ -287,23 +421,33 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
       - build-openpath-api-release-candidate-amd64
       - build-openpath-api-release-candidate-arm64
     outputs:
       openpath_api_image: ${{ steps.publish-manifest.outputs.openpath_api_image }}
 
     steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      - name: Decide whether to build the OpenPath API manifest
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.openpath_api_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
         with:
-          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Merge OpenPath API per-architecture digests
+        if: steps.mode.outputs.build_required == 'true'
         run: |
           docker buildx imagetools create \
             --tag "${{ needs.derive-release-image-refs.outputs.openpath_api_tag }}" \
@@ -313,34 +457,50 @@ jobs:
       - name: Publish OpenPath API manifest output
         id: publish-manifest
         run: |
-          manifest_digest="$(docker buildx imagetools inspect "${{ needs.derive-release-image-refs.outputs.openpath_api_tag }}" | awk '/^Digest:/ {print $2; exit}')"
-          test -n "$manifest_digest"
-          echo "openpath_api_image=${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}@$manifest_digest" >> "$GITHUB_OUTPUT"
+          if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
+            manifest_digest="$(docker buildx imagetools inspect "${{ needs.derive-release-image-refs.outputs.openpath_api_tag }}" | awk '/^Digest:/ {print $2; exit}')"
+            test -n "$manifest_digest"
+            echo "openpath_api_image=${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}@$manifest_digest" >> "$GITHUB_OUTPUT"
+          else
+            echo "openpath_api_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}" >> "$GITHUB_OUTPUT"
+          fi
 
   build-spa-release-candidate:
     name: Build SPA Release Candidate
     runs-on: ubuntu-latest
-    needs: derive-release-image-refs
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
     outputs:
       spa_image: ${{ steps.publish-manifest.outputs.spa_image }}
 
     steps:
+      - name: Decide whether to build SPA image
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.spa_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
         with:
-          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push SPA image
+        if: steps.mode.outputs.build_required == 'true'
         id: build-spa
         uses: docker/build-push-action@v7
         with:
@@ -355,32 +515,48 @@ jobs:
       - name: Publish SPA manifest output
         id: publish-manifest
         run: |
-          echo "spa_image=${{ needs.derive-release-image-refs.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
+            echo "spa_image=${{ needs.derive-release-image-refs.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "spa_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}" >> "$GITHUB_OUTPUT"
+          fi
 
   build-verifier-release-candidate:
     name: Build Release Verifier Candidate
     runs-on: ubuntu-latest
-    needs: derive-release-image-refs
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
     outputs:
       verifier_image: ${{ steps.publish-manifest.outputs.verifier_image }}
 
     steps:
+      - name: Decide whether to build verifier image
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.verifier_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
         with:
-          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push verifier image
+        if: steps.mode.outputs.build_required == 'true'
         id: build-verifier
         uses: docker/build-push-action@v7
         with:
@@ -395,7 +571,11 @@ jobs:
       - name: Publish verifier manifest output
         id: publish-manifest
         run: |
-          echo "verifier_image=${{ needs.derive-release-image-refs.outputs.verifier_repo }}@${{ steps.build-verifier.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
+            echo "verifier_image=${{ needs.derive-release-image-refs.outputs.verifier_repo }}@${{ steps.build-verifier.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "verifier_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}" >> "$GITHUB_OUTPUT"
+          fi
 
   publish-release-candidate-manifest:
     name: Publish Release Candidate Manifest

@@ -67,9 +67,11 @@ jobs:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: ./.github/actions/setup-node
         with:
-          node-version: '20'
+          cache-dependency-path: |
+            package-lock.json
+            upstream/openpath/package-lock.json
 
       - name: Install ClassroomPath dependencies
         run: npm ci

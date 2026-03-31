@@ -30,9 +30,9 @@ jobs:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: ./.github/actions/setup-node
         with:
-          node-version: '20'
+          cache-dependency-path: upstream/openpath/package-lock.json
 
       - name: Install OpenPath dependencies
         working-directory: upstream/openpath

@@ -33,9 +33,7 @@ jobs:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
+        uses: ./.github/actions/setup-node
 
       - name: Verify required OpenPath checks for submodule SHA
         id: verify
@@ -77,9 +75,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
+        uses: ./.github/actions/setup-node
 
       - name: Resolve approved release candidate manifest
         id: release-images
@@ -147,66 +143,26 @@ jobs:
       - name: Detect promoted Windows/Firefox risk
         id: risk
         shell: bash
-        run: |
-          set -euo pipefail
-
-          git fetch --tags --force
-          PREVIOUS_TAG="$(git tag --sort=-creatordate | grep '^v' | grep -vx "${GITHUB_REF_NAME}" | head -n 1 || true)"
-
-          if [ -n "$PREVIOUS_TAG" ]; then
-            CHANGED_FILES="$(git diff --name-only "$PREVIOUS_TAG...$GITHUB_SHA")"
-          else
-            CHANGED_FILES="$(git show --pretty='' --name-only "$GITHUB_SHA")"
-          fi
-
-          echo "Changed files since last release:"
-          if [ -n "$CHANGED_FILES" ]; then
-            echo "$CHANGED_FILES"
-          else
-            echo "(none)"
-          fi
-
-          HIGH_RISK=false
-          if echo "$CHANGED_FILES" | grep -Eq '^(upstream/openpath/windows/|upstream/openpath/firefox-extension/|upstream/openpath/api/src/|upstream/openpath/api/package\.json$|upstream/openpath/api/tests/token-delivery\.test\.ts$|docker/Dockerfile\.api$)'; then
-            HIGH_RISK=true
-          fi
-
-          echo "high_risk=$HIGH_RISK" >> "$GITHUB_OUTPUT"
+        run: bash scripts/detect-windows-firefox-risk.sh
 
       - name: Resolve staging host
         id: resolve
+        shell: bash
         env:
           STAGING_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
           STAGING_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
           STAGING_USER: ${{ secrets.STAGING_DEPLOY_USER }}
           STAGING_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
         run: |
+          set -euo pipefail
+
           if [ -z "$STAGING_HOST" ] || [ -z "$STAGING_USER" ] || [ -z "$STAGING_SSH_KEY" ]; then
             echo "::error::STAGING_DEPLOY_HOST, STAGING_DEPLOY_USER, and STAGING_DEPLOY_SSH_KEY must be configured for production promotion"
             exit 1
           fi
 
-          PORT="${STAGING_PORT:-22}"
-
-          for i in 1 2 3; do
-            IP=$(getent hosts "$STAGING_HOST" 2>/dev/null | awk '{print $1}' | head -1)
-
-            if [ -z "$IP" ]; then
-              IP=$(dig +short "$STAGING_HOST" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-            fi
-
-            if [ -n "$IP" ]; then
-              echo "ip=$IP" >> "$GITHUB_OUTPUT"
-              echo "port=$PORT" >> "$GITHUB_OUTPUT"
-              echo "user=$STAGING_USER" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            sleep 5
-          done
-
-          echo "::error::Could not resolve staging deploy host $STAGING_HOST"
-          exit 1
+          bash scripts/resolve-ssh-host.sh "$STAGING_HOST" "${STAGING_PORT:-22}" >> "$GITHUB_OUTPUT"
+          echo "user=$STAGING_USER" >> "$GITHUB_OUTPUT"
 
       - name: Install staging SSH key
         env:
@@ -250,107 +206,7 @@ jobs:
           EXPECTED_MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
           EXPECTED_OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
           EXPECTED_SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
-        run: |
-          set -euo pipefail
-          set -a
-          . ./staging-release-state.env
-          . ./staging-verification.env
-          set +a
-
-          if [ "${IMAGE_SOURCE:-}" != "release-candidate" ]; then
-            echo "::error::Staging is not running release candidate images (IMAGE_SOURCE=${IMAGE_SOURCE:-unset})"
-            exit 1
-          fi
-
-          if [ "${APP_SHA:-}" != "$EXPECTED_APP_SHA" ]; then
-            echo "::error::Staging APP_SHA (${APP_SHA:-unset}) does not match tag SHA ($EXPECTED_APP_SHA)"
-            exit 1
-          fi
-
-          compare_image() {
-            local label="$1"
-            local expected="$2"
-            local actual="$3"
-
-            if [ "$expected" != "$actual" ]; then
-              echo "::error::$label mismatch. expected=$expected actual=$actual"
-              exit 1
-            fi
-          }
-
-          compare_image "Gateway image" "$EXPECTED_GATEWAY_IMAGE" "${CLASSROOMPATH_GATEWAY_IMAGE:-}"
-          compare_image "Migrations image" "$EXPECTED_MIGRATIONS_IMAGE" "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}"
-          compare_image "OpenPath API image" "$EXPECTED_OPENPATH_API_IMAGE" "${OPENPATH_API_IMAGE:-}"
-          compare_image "SPA image" "$EXPECTED_SPA_IMAGE" "${CLASSROOMPATH_SPA_IMAGE:-}"
-
-          if [ "${STAGING_SMOKE_RESULT:-}" != "success" ]; then
-            echo "::error::Staging smoke evidence is missing or failed (STAGING_SMOKE_RESULT=${STAGING_SMOKE_RESULT:-unset})"
-            exit 1
-          fi
-
-          if [ "${STAGING_RELEASE_GATE_RESULT:-}" != "success" ]; then
-            echo "::error::Staging release-gate evidence is missing or failed (STAGING_RELEASE_GATE_RESULT=${STAGING_RELEASE_GATE_RESULT:-unset})"
-            exit 1
-          fi
-
-          if [ "${STAGING_VERIFIED_IMAGE_SOURCE:-}" != "release-candidate" ]; then
-            echo "::error::Staging verification evidence does not point to release candidate images (STAGING_VERIFIED_IMAGE_SOURCE=${STAGING_VERIFIED_IMAGE_SOURCE:-unset})"
-            exit 1
-          fi
-
-          if [ "${STAGING_VERIFIED_APP_SHA:-}" != "$EXPECTED_APP_SHA" ]; then
-            echo "::error::Staging verification SHA (${STAGING_VERIFIED_APP_SHA:-unset}) does not match tag SHA ($EXPECTED_APP_SHA)"
-            exit 1
-          fi
-
-          compare_image "Verified gateway image" "$EXPECTED_GATEWAY_IMAGE" "${STAGING_VERIFIED_GATEWAY_IMAGE:-}"
-          compare_image "Verified migrations image" "$EXPECTED_MIGRATIONS_IMAGE" "${STAGING_VERIFIED_MIGRATIONS_IMAGE:-}"
-          compare_image "Verified OpenPath API image" "$EXPECTED_OPENPATH_API_IMAGE" "${STAGING_VERIFIED_OPENPATH_API_IMAGE:-}"
-          compare_image "Verified SPA image" "$EXPECTED_SPA_IMAGE" "${STAGING_VERIFIED_SPA_IMAGE:-}"
-
-          if [ "$HIGH_RISK" = "true" ]; then
-            if [ "${STAGING_SMOKE_STATUS:-}" = "PASS_WITH_FALLBACK" ]; then
-              echo "::error::PASS_WITH_FALLBACK is not sufficient production evidence for Windows/Firefox delivery changes"
-              exit 1
-            fi
-
-            if [ "${STAGING_WINDOWS_BOOTSTRAP_RESULT:-}" != "success" ]; then
-              echo "::error::Windows bootstrap evidence is missing or failed (STAGING_WINDOWS_BOOTSTRAP_RESULT=${STAGING_WINDOWS_BOOTSTRAP_RESULT:-unset})"
-              exit 1
-            fi
-
-            if [ "${STAGING_FIREFOX_POLICY_RESULT:-}" != "success" ]; then
-              echo "::error::Firefox policy evidence is missing or failed (STAGING_FIREFOX_POLICY_RESULT=${STAGING_FIREFOX_POLICY_RESULT:-unset})"
-              exit 1
-            fi
-
-            if [ "${STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS:-}" != "present" ]; then
-              echo "::error::Firefox release artifacts were not marked present in staging verification evidence"
-              exit 1
-            fi
-
-            for required_field in \
-              STAGING_FIREFOX_EXTENSION_ID \
-              STAGING_FIREFOX_RELEASE_VERSION \
-              STAGING_FIREFOX_METADATA_SHA256 \
-              STAGING_FIREFOX_XPI_SHA256; do
-              if [ -z "${!required_field:-}" ]; then
-                echo "::error::$required_field is missing from staging verification evidence"
-                exit 1
-              fi
-            done
-          fi
-
-          echo "staging_smoke_result=${STAGING_SMOKE_RESULT:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "staging_smoke_status=${STAGING_SMOKE_STATUS:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "staging_release_gate_result=${STAGING_RELEASE_GATE_RESULT:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "staging_windows_bootstrap_result=${STAGING_WINDOWS_BOOTSTRAP_RESULT:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "staging_firefox_policy_result=${STAGING_FIREFOX_POLICY_RESULT:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "staging_firefox_extension_id=${STAGING_FIREFOX_EXTENSION_ID:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "staging_firefox_release_version=${STAGING_FIREFOX_RELEASE_VERSION:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "staging_firefox_metadata_sha256=${STAGING_FIREFOX_METADATA_SHA256:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "staging_firefox_xpi_sha256=${STAGING_FIREFOX_XPI_SHA256:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "staging_verified_at=${STAGING_VERIFIED_AT:-unknown}" >> "$GITHUB_OUTPUT"
+        run: bash scripts/verify-staging-release-state.sh
 
       - name: Upload staging release state
         if: always()
@@ -380,45 +236,29 @@ jobs:
       packages: read
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Resolve deploy host
         id: resolve
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
-          HOST="${{ secrets.DEPLOY_HOST }}"
-          PORT="${{ secrets.DEPLOY_PORT }}"
-          PORT="${PORT:-22}"
+          set -euo pipefail
 
-          if [ -z "$HOST" ]; then
-            echo "DEPLOY_HOST not configured. Skipping deployment."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "::error::DEPLOY_HOST must be configured for production deployment"
+            exit 1
           fi
 
-          MAX_RETRIES=3
-          for i in $(seq 1 "$MAX_RETRIES"); do
-            echo "DNS resolution attempt $i of $MAX_RETRIES..."
-            IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1}' | head -1)
-
-            if [ -z "$IP" ]; then
-              IP=$(dig +short "$HOST" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-            fi
-
-            if [ -n "$IP" ]; then
-              echo "Resolved $HOST to $IP"
-              echo "ip=$IP" >> "$GITHUB_OUTPUT"
-              echo "port=$PORT" >> "$GITHUB_OUTPUT"
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            sleep 5
-          done
-
-          echo "Could not resolve $HOST"
-          echo "skip=true" >> "$GITHUB_OUTPUT"
+          bash scripts/resolve-ssh-host.sh "$DEPLOY_HOST" "${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy via SSH
-        if: steps.resolve.outputs.skip != 'true'
         env:
+          DEPLOY_REF: ${{ github.ref }}
+          DEPLOY_SHA: ${{ github.sha }}
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
@@ -433,135 +273,8 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 20m
-          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_GATEWAY_IMAGE,CLASSROOMPATH_MIGRATIONS_IMAGE,OPENPATH_API_IMAGE,CLASSROOMPATH_SPA_IMAGE
-          script: |
-            set -euo pipefail
-            echo "Starting ClassroomPath Docker deployment..."
-
-            DEPLOY_DIR="/opt/classroompath"
-            APP_DIR="$DEPLOY_DIR/app"
-            STATE_DIR="$DEPLOY_DIR/release-state"
-            mkdir -p "$STATE_DIR"
-
-            cd "$APP_DIR"
-
-            echo "Pulling latest changes..."
-            DEPLOY_REF="${{ github.ref }}"
-            DEPLOY_SHA="${{ github.sha }}"
-
-            git fetch origin --tags --prune
-            git fetch origin main --prune
-            git checkout -- . 2>/dev/null || true
-            git clean -fd 2>/dev/null || true
-
-            TARGET_SHA=""
-
-            if [[ "$DEPLOY_REF" == refs/tags/* ]]; then
-              TAG_NAME="${DEPLOY_REF#refs/tags/}"
-              TARGET_SHA=$(git rev-parse "${TAG_NAME}^{commit}" 2>/dev/null || true)
-              if [ -z "$TARGET_SHA" ]; then
-                git fetch origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}" || true
-                TARGET_SHA=$(git rev-parse "${TAG_NAME}^{commit}" 2>/dev/null || true)
-              fi
-            fi
-
-            if [ -z "$TARGET_SHA" ]; then
-              TARGET_SHA=$(git rev-parse "${DEPLOY_SHA}^{commit}" 2>/dev/null || true)
-            fi
-
-            if [ -z "$TARGET_SHA" ]; then
-              TARGET_SHA=$(git rev-parse origin/main)
-            fi
-
-            echo "Deploying ClassroomPath commit: $TARGET_SHA"
-
-            if [ -f "$STATE_DIR/current-images.env" ]; then
-              cp "$STATE_DIR/current-images.env" "$STATE_DIR/previous-images.env"
-            fi
-
-            git checkout --detach "$TARGET_SHA"
-            git reset --hard "$TARGET_SHA"
-            git submodule deinit -f --all || true
-            git submodule update --init --recursive --force
-
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
-
-            echo "Running database migrations from the release candidate runner..."
-            bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"
-
-            cd "$APP_DIR/docker"
-            export COMPOSE_PROJECT_NAME=classroompath-production
-
-            echo "Pulling immutable release images..."
-            docker compose pull gateway api spa
-
-            echo "Stopping existing containers..."
-            docker compose down --remove-orphans || true
-            docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
-            docker rm -f classroompath-production-api-1 classroompath-production-gateway-1 classroompath-production-spa-1 2>/dev/null || true
-
-            echo "Starting containers from immutable images..."
-            docker compose up -d --force-recreate --no-build
-
-            cat > "$STATE_DIR/current-images.env" <<EOF
-            APP_SHA=$TARGET_SHA
-            IMAGE_SOURCE=release-candidate
-            CLASSROOMPATH_GATEWAY_IMAGE=$CLASSROOMPATH_GATEWAY_IMAGE
-            CLASSROOMPATH_MIGRATIONS_IMAGE=$CLASSROOMPATH_MIGRATIONS_IMAGE
-            OPENPATH_API_IMAGE=$OPENPATH_API_IMAGE
-            CLASSROOMPATH_SPA_IMAGE=$CLASSROOMPATH_SPA_IMAGE
-            EOF
-
-            echo "Waiting for services to be healthy..."
-            timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done' || {
-              echo "⚠️ Warning: Timeout waiting for health checks"
-              docker compose ps
-            }
-
-            for i in 1 2 3 4 5; do
-              if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-                echo "✅ Gateway health check passed!"
-                break
-              fi
-              echo "Health check attempt $i failed, retrying..."
-              sleep 5
-            done
-
-            if ! curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-              echo "❌ Gateway deployment failed! Check logs:"
-              docker logs classroompath-gateway --tail 30
-              exit 1
-            fi
-
-            echo "Checking full application readiness..."
-            READY_CHECK=''
-            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-              READY_CHECK=$(curl -sf http://localhost:3001/cp/ready 2>/dev/null || echo '{"ready":false}')
-              if echo "$READY_CHECK" | grep -q '"ready":true'; then
-                echo "✅ Application readiness OK"
-                break
-              fi
-              if [ "$i" -lt 12 ]; then
-                echo "⏳ Application not ready (attempt $i/12), waiting 5s..."
-                sleep 5
-              else
-                echo "❌ APPLICATION READINESS FAILED after 12 attempts!"
-                echo "Readiness response: $READY_CHECK"
-                echo ""
-                echo "Debug: docker logs classroompath-gateway --tail 50"
-                echo "Debug: docker logs classroompath-api --tail 50"
-                exit 1
-              fi
-            done
-
-            echo "✅ Deployment successful!"
-            docker logs classroompath-gateway --tail 5
-
-      - name: Report skip
-        if: steps.resolve.outputs.skip == 'true'
-        run: |
-          echo "::warning::Deployment skipped - could not resolve or connect to deploy host"
+          envs: DEPLOY_REF,DEPLOY_SHA,GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_GATEWAY_IMAGE,CLASSROOMPATH_MIGRATIONS_IMAGE,OPENPATH_API_IMAGE,CLASSROOMPATH_SPA_IMAGE
+          script_path: scripts/deploy-production-remote.sh
 
   smoke-test-production:
     name: Smoke Test Production
@@ -584,24 +297,7 @@ jobs:
         shell: bash
         env:
           PRODUCTION_READY_URL: ${{ needs.resolve-release-images.outputs.production_ready_url }}
-        run: |
-          set -euo pipefail
-
-          last_response=''
-          for attempt in $(seq 1 30); do
-            last_response="$(curl -fsS "$PRODUCTION_READY_URL" 2>/dev/null || true)"
-            if printf '%s' "$last_response" | grep -q '"ready":true'; then
-              echo "✅ Production ready after attempt $attempt"
-              exit 0
-            fi
-
-            echo "⏳ Production not ready yet (attempt $attempt/30)"
-            sleep 2
-          done
-
-          echo "::error::Production readiness did not converge within 60 seconds"
-          printf '%s\n' "$last_response"
-          exit 1
+        run: bash scripts/wait-for-ready.sh "$PRODUCTION_READY_URL"
 
       - name: Run smoke tests against production
         id: smoke
@@ -610,15 +306,8 @@ jobs:
           SMOKE_TEST_TIMEOUT: '30000'
           CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
         run: |
-          echo "🔍 Running smoke tests against $SMOKE_TEST_URL via $CLASSROOMPATH_VERIFIER_IMAGE"
-          docker run --rm \
-            -e SMOKE_TEST_URL \
-            -e SMOKE_TEST_TIMEOUT \
-            "$CLASSROOMPATH_VERIFIER_IMAGE" \
-            npm run test:smoke 2>&1 | tee smoke-results.txt
-          exit_code=${PIPESTATUS[0]}
-          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
-          exit "$exit_code"
+          bash scripts/run-smoke-in-verifier.sh
+          echo "exit_code=0" >> "$GITHUB_OUTPUT"
 
       - name: Upload smoke test results
         if: always()
@@ -664,9 +353,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
+        uses: ./.github/actions/setup-node
 
       - name: Load staging deploy target
         id: staging-target
@@ -735,41 +422,26 @@ jobs:
       packages: read
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Resolve deploy host
         id: resolve
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
-          HOST="${{ secrets.DEPLOY_HOST }}"
-          PORT="${{ secrets.DEPLOY_PORT }}"
-          PORT="${PORT:-22}"
+          set -euo pipefail
 
-          if [ -z "$HOST" ]; then
-            echo "DEPLOY_HOST not configured. Cannot roll back."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "::error::DEPLOY_HOST must be configured for rollback"
+            exit 1
           fi
 
-          MAX_RETRIES=3
-          for i in $(seq 1 "$MAX_RETRIES"); do
-            IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1}' | head -1)
-
-            if [ -z "$IP" ]; then
-              IP=$(dig +short "$HOST" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-            fi
-
-            if [ -n "$IP" ]; then
-              echo "ip=$IP" >> "$GITHUB_OUTPUT"
-              echo "port=$PORT" >> "$GITHUB_OUTPUT"
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            sleep 5
-          done
-
-          echo "skip=true" >> "$GITHUB_OUTPUT"
+          bash scripts/resolve-ssh-host.sh "$DEPLOY_HOST" "${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
 
       - name: Roll back via SSH
-        if: steps.resolve.outputs.skip != 'true'
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -782,57 +454,4 @@ jobs:
           timeout: 60s
           command_timeout: 15m
           envs: GHCR_USERNAME,GHCR_TOKEN
-          script: |
-            set -euo pipefail
-
-            DEPLOY_DIR="/opt/classroompath"
-            APP_DIR="$DEPLOY_DIR/app"
-            STATE_DIR="$DEPLOY_DIR/release-state"
-            PREVIOUS_FILE="$STATE_DIR/previous-images.env"
-            CURRENT_FILE="$STATE_DIR/current-images.env"
-
-            if [ ! -f "$PREVIOUS_FILE" ]; then
-              echo "No previous release metadata available for rollback"
-              exit 1
-            fi
-
-            set -a
-            . "$PREVIOUS_FILE"
-            set +a
-
-            if [ -z "${APP_SHA:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
-              echo "Previous release metadata is incomplete"
-              exit 1
-            fi
-
-            cd "$APP_DIR"
-            git fetch origin --tags --prune
-            git fetch origin main --prune
-            git checkout --detach "$APP_SHA"
-            git reset --hard "$APP_SHA"
-            git submodule deinit -f --all || true
-            git submodule update --init --recursive --force
-
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
-
-            cd "$APP_DIR/docker"
-            export COMPOSE_PROJECT_NAME=classroompath-production
-
-            docker compose pull gateway api spa
-            docker compose up -d --force-recreate --no-build
-
-            cp "$PREVIOUS_FILE" "$CURRENT_FILE"
-
-            if ! curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-              echo "Rollback health check failed"
-              docker logs classroompath-gateway --tail 50
-              exit 1
-            fi
-
-            echo "Rollback completed successfully"
-
-      - name: Report rollback skip
-        if: steps.resolve.outputs.skip == 'true'
-        run: |
-          echo "::warning::Rollback skipped - deploy host could not be resolved."
+          script_path: scripts/rollback-production-remote.sh

@@ -302,7 +302,7 @@ PLAYWRIGHT_WORKERS=2 npm run verify:full
 | ---------- | ----------- | ------------------------ |
 | `DEPLOY_*` | Production  | SSH access to production |
 
-> **Note:** `STAGING_DEPLOY_*` secrets are no longer used. Staging deploys via local script.
+> **Note:** Staging deploys still run locally via `npm run deploy:staging`, but GitHub Actions uses `STAGING_DEPLOY_*` secrets for staging-state verification, the Windows/Firefox canary, and staging cleanup workflows.
 
 ## Production Runtime Notes
 

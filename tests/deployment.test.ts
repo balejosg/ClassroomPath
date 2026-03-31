@@ -727,10 +727,60 @@ void describe('Migration Tooling', () => {
       'release verifier image should install dependencies during the candidate build, not on the tag workflow'
     );
     assert.ok(
+      dockerfile.includes('--mount=type=cache,target=/root/.npm'),
+      'release verifier image should cache npm downloads across repeated candidate builds'
+    );
+    assert.ok(
       dockerfile.includes('tests/release-gate.test.ts') ||
         dockerfile.includes('tests/smoke.test.ts') ||
         dockerfile.includes('WORKDIR /app'),
       'release verifier image should target the repository test workspace'
+    );
+  });
+
+  void test('ClassroomPath release Dockerfiles use npm cache mounts where they install dependencies', () => {
+    const cases = [
+      'docker/Dockerfile.cp-api',
+      'docker/Dockerfile.spa',
+      'docker/Dockerfile.release-verifier',
+      'docker/Dockerfile.migrations',
+    ];
+
+    for (const relativePath of cases) {
+      const content = readFileSync(resolve(projectRoot, relativePath), 'utf-8');
+      assert.ok(
+        content.includes('--mount=type=cache,target=/root/.npm'),
+        `${relativePath} should cache npm downloads across repeated image builds`
+      );
+    }
+  });
+
+  void test('shared SSH host resolver script exists for deploy workflows', () => {
+    const resolverScriptPath = resolve(projectRoot, 'scripts/resolve-ssh-host.sh');
+    assert.ok(existsSync(resolverScriptPath), 'scripts/resolve-ssh-host.sh should exist');
+    const content = readFileSync(resolverScriptPath, 'utf-8');
+    assert.ok(content.includes('getent hosts'), 'resolver should try system DNS resolution first');
+    assert.ok(content.includes('dig +short'), 'resolver should fall back to dig when needed');
+  });
+
+  void test('shared readiness and smoke helpers exist for reusable deployment verification', () => {
+    const waitForReadyPath = resolve(projectRoot, 'scripts/wait-for-ready.sh');
+    const runSmokePath = resolve(projectRoot, 'scripts/run-smoke-in-verifier.sh');
+
+    assert.ok(existsSync(waitForReadyPath), 'scripts/wait-for-ready.sh should exist');
+    assert.ok(existsSync(runSmokePath), 'scripts/run-smoke-in-verifier.sh should exist');
+
+    const waitForReady = readFileSync(waitForReadyPath, 'utf-8');
+    const runSmoke = readFileSync(runSmokePath, 'utf-8');
+
+    assert.ok(waitForReady.includes('"ready":true'), 'readiness helper should poll for ready=true');
+    assert.ok(
+      runSmoke.includes('CLASSROOMPATH_VERIFIER_IMAGE'),
+      'smoke helper should require the prebuilt verifier image reference'
+    );
+    assert.ok(
+      runSmoke.includes('npm run test:smoke'),
+      'smoke helper should execute the shared smoke entrypoint'
     );
   });
 
@@ -753,6 +803,14 @@ void describe('Migration Tooling', () => {
 
   void test('production deploy uses release-candidate migrations and verifies staging state first', () => {
     const content = readFileSync(deployWorkflowPath, 'utf-8');
+    const stagingVerificationScript = readFileSync(
+      resolve(projectRoot, 'scripts/verify-staging-release-state.sh'),
+      'utf-8'
+    );
+    const deployRemoteScript = readFileSync(
+      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
+      'utf-8'
+    );
 
     assert.ok(
       content.includes('CLASSROOMPATH_MIGRATIONS_IMAGE'),
@@ -763,9 +821,10 @@ void describe('Migration Tooling', () => {
       'deploy workflow should verify staging release state before production rollout'
     );
     assert.ok(
-      content.includes(
-        'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
-      ),
+      content.includes('script_path: scripts/deploy-production-remote.sh') &&
+        deployRemoteScript.includes(
+          'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
+        ),
       'production deploy should run migrations from the prebuilt runner image instead of npm-installing on the host'
     );
     assert.ok(
@@ -773,16 +832,17 @@ void describe('Migration Tooling', () => {
       'deploy workflow should read the persisted staging verification evidence before production rollout'
     );
     assert.ok(
-      content.includes('STAGING_RELEASE_GATE_RESULT'),
+      content.includes('verify-staging-release-state.sh') &&
+        stagingVerificationScript.includes('STAGING_RELEASE_GATE_RESULT'),
       'deploy workflow should require successful staging release-gate evidence instead of rerunning the same gate'
     );
     assert.ok(
-      content.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
-        content.includes('STAGING_FIREFOX_POLICY_RESULT'),
+      stagingVerificationScript.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
+        stagingVerificationScript.includes('STAGING_FIREFOX_POLICY_RESULT'),
       'deploy workflow should consume the Windows/Firefox staging evidence fields for promotion decisions'
     );
     assert.ok(
-      content.includes('PASS_WITH_FALLBACK'),
+      stagingVerificationScript.includes('PASS_WITH_FALLBACK'),
       'deploy workflow should explicitly distinguish fallback smoke evidence from production-grade evidence'
     );
     assert.ok(

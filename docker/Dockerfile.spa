@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 ARG NODE_IMAGE=node@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
 ARG NGINX_IMAGE=nginx@sha256:1d13701a5f9f3fb01aaa88cef2344d65b6b5bf6b7d9fa4cf0dca557a8d7702ba
 
@@ -16,7 +17,7 @@ COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
 
 # Install dependencies.
 # Retry to tolerate transient multi-arch registry failures in CI.
-RUN set -eux; \
+RUN --mount=type=cache,target=/root/.npm set -eux; \
   for attempt in 1 2 3; do \
     npm ci --no-audit --no-fund && break; \
     if [ "$attempt" -eq 3 ]; then exit 1; fi; \

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # ClassroomPath release verifier image
 ARG NODE_IMAGE=node@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
 
@@ -12,7 +13,7 @@ COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
 COPY upstream/openpath/react-spa/package*.json ./upstream/openpath/react-spa/
 COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
 
-RUN set -eux; \
+RUN --mount=type=cache,target=/root/.npm set -eux; \
   for attempt in 1 2 3; do \
     npm ci --no-audit --no-fund && break; \
     if [ "$attempt" -eq 3 ]; then exit 1; fi; \

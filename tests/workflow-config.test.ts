@@ -71,13 +71,18 @@ describe('Workflow configuration hardening', () => {
     const cases = [
       {
         relativePath: '.github/workflows/ci.yml',
-        required: ['actions/checkout@v6', 'actions/setup-node@v6'],
+        required: ['actions/checkout@v6', './.github/actions/setup-node'],
         forbidden: ['actions/checkout@v4', 'actions/setup-node@v4'],
       },
       {
         relativePath: '.github/workflows/sync-openpath.yml',
-        required: ['actions/checkout@v6', 'actions/setup-node@v6'],
+        required: ['actions/checkout@v6', './.github/actions/setup-node'],
         forbidden: ['actions/checkout@v4', 'actions/setup-node@v4'],
+      },
+      {
+        relativePath: '.github/actions/setup-node/action.yml',
+        required: ['actions/setup-node@v6'],
+        forbidden: ['actions/setup-node@v4'],
       },
       {
         relativePath: '.github/workflows/verify-trailers.yml',
@@ -86,11 +91,7 @@ describe('Workflow configuration hardening', () => {
       },
       {
         relativePath: '.github/workflows/release-candidate-images.yml',
-        required: [
-          'docker/setup-buildx-action@v4',
-          'docker/login-action@v4',
-          'docker/build-push-action@v7',
-        ],
+        required: ['./.github/actions/setup-docker-build', 'docker/build-push-action@v7'],
         forbidden: [
           'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24',
           'docker/setup-buildx-action@v3',
@@ -99,8 +100,13 @@ describe('Workflow configuration hardening', () => {
         ],
       },
       {
+        relativePath: '.github/actions/setup-docker-build/action.yml',
+        required: ['docker/setup-buildx-action@v4', 'docker/login-action@v4'],
+        forbidden: ['docker/setup-buildx-action@v3', 'docker/login-action@v3'],
+      },
+      {
         relativePath: '.github/workflows/deploy.yml',
-        required: ['docker/login-action@v4'],
+        required: ['docker/login-action@v4', './.github/actions/setup-node'],
         forbidden: ['docker/login-action@v3'],
       },
     ];
@@ -143,6 +149,19 @@ describe('Workflow configuration hardening', () => {
     assert.equal(openPathInstall?.['working-directory'], 'upstream/openpath');
   });
 
+  test('CI workflow caches npm installs for ClassroomPath and OpenPath lockfiles', () => {
+    const workflow = readWorkflow('.github/workflows/ci.yml');
+    const buildJob = workflow.jobs?.['build-and-validate'];
+    const setupNodeStep = (buildJob?.steps ?? []).find((step) => step.name === 'Setup Node.js');
+
+    assert.equal(setupNodeStep?.uses, './.github/actions/setup-node');
+    assert.match(
+      String(setupNodeStep?.with?.['cache-dependency-path'] ?? ''),
+      /package-lock\.json[\s\S]*upstream\/openpath\/package-lock\.json/,
+      'CI should cache both ClassroomPath and OpenPath npm installs'
+    );
+  });
+
   test('CI regression command is routed through package.json and includes agent doc drift checks', () => {
     const packageJson = readPackageJson();
     const ciRegression = packageJson.scripts?.['test:ci-regression'] ?? '';
@@ -162,6 +181,102 @@ describe('Workflow configuration hardening', () => {
       ciRegressionStep?.run,
       'npm run test:ci-regression',
       'CI workflow should run the shared regression test script'
+    );
+  });
+
+  test('smoke-tests workflow reuses the release verifier image and polls readiness before testing', () => {
+    const workflowText = readText('.github/workflows/smoke-tests.yml');
+    const reusableWorkflowText = readText('.github/workflows/reusable-smoke-test.yml');
+
+    assert.ok(
+      workflowText.includes('./.github/workflows/reusable-smoke-test.yml'),
+      'smoke-tests should delegate the repeated environment logic to a reusable workflow'
+    );
+    assert.ok(
+      workflowText.includes('resolve-latest-verifier-image.mjs'),
+      'smoke-tests should resolve the latest verifier image once before fan-out'
+    );
+    assert.ok(
+      reusableWorkflowText.includes('run-smoke-in-verifier.sh'),
+      'reusable smoke workflow should run smoke through the shared verifier helper'
+    );
+    assert.ok(
+      reusableWorkflowText.includes('verifier_image:'),
+      'reusable smoke workflow should accept the pre-resolved verifier image as input'
+    );
+    assert.ok(
+      reusableWorkflowText.includes('wait-for-ready.sh'),
+      'reusable smoke workflow should poll readiness via the shared helper'
+    );
+    assert.ok(
+      !reusableWorkflowText.includes('npm ci'),
+      'smoke-tests should not reinstall dependencies when the verifier image is available'
+    );
+  });
+
+  test('security workflow pins Trivy and caches npm audit dependencies', () => {
+    const workflowText = readText('.github/workflows/security.yml');
+    const setupActionText = readText('.github/actions/setup-node/action.yml');
+
+    assert.ok(
+      workflowText.includes('aquasecurity/trivy-action@0.33.1'),
+      'security workflow should pin the Trivy action to a concrete version'
+    );
+    assert.ok(
+      !workflowText.includes('aquasecurity/trivy-action@master'),
+      'security workflow should not float on Trivy master'
+    );
+    assert.ok(
+      workflowText.includes('./.github/actions/setup-node'),
+      'security workflow should reuse the shared Node setup action'
+    );
+    assert.ok(
+      setupActionText.includes("cache: 'npm'") || setupActionText.includes('cache: npm'),
+      'shared setup-node action should cache npm installs'
+    );
+  });
+
+  test('Firefox release asset workflow caches OpenPath npm installs', () => {
+    const workflowText = readText('.github/workflows/firefox-release-assets.yml');
+
+    assert.ok(
+      workflowText.includes('./.github/actions/setup-node'),
+      'Firefox release asset workflow should reuse the shared Node setup action'
+    );
+    assert.ok(
+      workflowText.includes('cache-dependency-path: upstream/openpath/package-lock.json'),
+      'Firefox release asset workflow should cache OpenPath dependencies by lockfile'
+    );
+  });
+
+  test('deploy and maintenance workflows reuse the shared SSH host resolver', () => {
+    const deployWorkflow = readText('.github/workflows/deploy.yml');
+    const canaryWorkflow = readText('.github/workflows/windows-firefox-canary.yml');
+    const cleanupWorkflow = readText('.github/workflows/cleanup-staging.yml');
+
+    assert.ok(
+      deployWorkflow.includes('bash scripts/resolve-ssh-host.sh'),
+      'deploy workflow should reuse the shared SSH host resolver'
+    );
+    assert.ok(
+      canaryWorkflow.includes('bash scripts/resolve-ssh-host.sh'),
+      'windows-firefox-canary should reuse the shared SSH host resolver'
+    );
+    assert.ok(
+      cleanupWorkflow.includes('bash scripts/resolve-ssh-host.sh'),
+      'cleanup-staging should reuse the shared SSH host resolver'
+    );
+    assert.ok(
+      !deployWorkflow.includes('DEPLOY_HOST not configured. Skipping deployment.'),
+      'deploy workflow should fail loudly instead of silently skipping production deploys'
+    );
+    assert.ok(
+      deployWorkflow.includes('verify-staging-release-state.sh'),
+      'deploy workflow should delegate staging verification comparisons to a shared script'
+    );
+    assert.ok(
+      deployWorkflow.includes('detect-windows-firefox-risk.sh'),
+      'deploy workflow should delegate Windows/Firefox risk detection to a shared script'
     );
   });
 
@@ -283,36 +398,39 @@ describe('Workflow configuration hardening', () => {
     const stagingVerificationRun = stagingVerificationSteps
       .map((step) => step.run ?? '')
       .join('\n');
+    const stagingVerificationScript = readText('scripts/verify-staging-release-state.sh');
+    const riskDetectionScript = readText('scripts/detect-windows-firefox-risk.sh');
     assert.ok(
       stagingVerificationRun.includes('staging-verification.env'),
       'verify-staging-release-state should fetch the persisted staging verification evidence'
     );
     assert.ok(
-      stagingVerificationRun.includes('STAGING_RELEASE_GATE_RESULT'),
+      stagingVerificationRun.includes('verify-staging-release-state.sh') &&
+        stagingVerificationScript.includes('STAGING_RELEASE_GATE_RESULT'),
       'verify-staging-release-state should require successful staging release-gate evidence'
     );
     assert.ok(
-      stagingVerificationRun.includes('staging_smoke_result='),
+      stagingVerificationScript.includes('staging_smoke_result='),
       'verify-staging-release-state should expose staging smoke evidence to downstream jobs'
     );
     assert.ok(
-      stagingVerificationRun.includes('PASS_WITH_FALLBACK'),
+      stagingVerificationScript.includes('PASS_WITH_FALLBACK'),
       'verify-staging-release-state should distinguish fallback staging smoke evidence from promotion-grade evidence'
     );
     assert.ok(
-      stagingVerificationRun.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
-        stagingVerificationRun.includes('STAGING_FIREFOX_POLICY_RESULT'),
+      stagingVerificationScript.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
+        stagingVerificationScript.includes('STAGING_FIREFOX_POLICY_RESULT'),
       'verify-staging-release-state should enforce Windows/Firefox staging evidence for high-risk promotions'
     );
     assert.ok(
-      stagingVerificationRun.includes('upstream/openpath/api/src/'),
+      riskDetectionScript.includes('upstream/openpath/api/src/'),
       'verify-staging-release-state should classify OpenPath API bootstrap source changes as high risk'
     );
     assert.ok(
-      stagingVerificationRun.includes('STAGING_FIREFOX_EXTENSION_ID') &&
-        stagingVerificationRun.includes('STAGING_FIREFOX_RELEASE_VERSION') &&
-        stagingVerificationRun.includes('STAGING_FIREFOX_METADATA_SHA256') &&
-        stagingVerificationRun.includes('STAGING_FIREFOX_XPI_SHA256'),
+      stagingVerificationScript.includes('STAGING_FIREFOX_EXTENSION_ID') &&
+        stagingVerificationScript.includes('STAGING_FIREFOX_RELEASE_VERSION') &&
+        stagingVerificationScript.includes('STAGING_FIREFOX_METADATA_SHA256') &&
+        stagingVerificationScript.includes('STAGING_FIREFOX_XPI_SHA256'),
       'verify-staging-release-state should expose Firefox release identity and hashes to downstream jobs'
     );
     assert.ok(
@@ -332,16 +450,17 @@ describe('Workflow configuration hardening', () => {
       'smoke-test-production should not install Node when the verifier image already contains the runtime'
     );
     assert.ok(
-      smokeRun.includes('CLASSROOMPATH_VERIFIER_IMAGE'),
+      workflowText.includes('CLASSROOMPATH_VERIFIER_IMAGE') &&
+        readText('scripts/run-smoke-in-verifier.sh').includes('CLASSROOMPATH_VERIFIER_IMAGE'),
       'smoke-test-production should execute from the prebuilt verifier image'
     );
     assert.ok(
-      smokeRun.includes('for attempt in $(seq 1 30)'),
-      'smoke-test-production should poll readiness instead of sleeping for a fixed delay'
+      smokeRun.includes('run-smoke-in-verifier.sh'),
+      'smoke-test-production should reuse the shared verifier smoke helper'
     );
     assert.ok(
-      !smokeRun.includes('sleep 30'),
-      'smoke-test-production should not use a fixed 30 second stabilization sleep'
+      readText('scripts/wait-for-ready.sh').includes('Not ready yet (attempt'),
+      'smoke-test-production should poll readiness instead of sleeping for a fixed delay'
     );
 
     const productionDeployNeeds = normalizeNeeds(jobs['deploy-production']?.needs);
@@ -497,8 +616,12 @@ describe('Workflow configuration hardening', () => {
     const firefoxPrepNeeds = normalizeNeeds(jobs['resolve-openpath-firefox-release-assets']?.needs);
     assert.deepEqual(
       firefoxPrepNeeds.sort(),
-      ['derive-release-image-refs'].sort(),
-      'Firefox asset resolution should run after deriving shared image refs'
+      [
+        'derive-release-image-refs',
+        'detect-release-candidate-components',
+        'resolve-previous-release-candidate-manifest',
+      ].sort(),
+      'Firefox asset resolution should run after deriving refs and deciding whether a rebuild is necessary'
     );
     assert.equal(
       jobs['resolve-openpath-firefox-release-assets']?.['runs-on'],
@@ -512,7 +635,7 @@ describe('Workflow configuration hardening', () => {
         .join('\n') ?? '';
     assert.ok(
       (jobs['resolve-openpath-firefox-release-assets']?.steps ?? []).some(
-        (step) => step.uses === 'actions/setup-node@v6'
+        (step) => step.uses === './.github/actions/setup-node'
       ),
       'Firefox asset resolution should install Node before polling for artifacts'
     );
@@ -578,9 +701,11 @@ describe('Workflow configuration hardening', () => {
       [
         'build-openpath-api-release-candidate-amd64',
         'build-openpath-api-release-candidate-arm64',
+        'detect-release-candidate-components',
         'derive-release-image-refs',
+        'resolve-previous-release-candidate-manifest',
       ].sort(),
-      'OpenPath API manifest merge should wait for both per-architecture builds and the shared image refs'
+      'OpenPath API manifest merge should wait for both per-architecture builds plus the reuse/build decision inputs'
     );
 
     for (const jobName of [
@@ -620,6 +745,18 @@ describe('Workflow configuration hardening', () => {
       publishManifestRun.includes('CLASSROOMPATH_VERIFIER_IMAGE='),
       'release candidate manifest should publish the verifier image alongside the runtime images'
     );
+    assert.ok(
+      jobs['resolve-previous-release-candidate-manifest'],
+      'release candidate workflow should resolve the latest successful manifest so unchanged images can be reused'
+    );
+    assert.ok(
+      jobs['detect-release-candidate-components'],
+      'release candidate workflow should detect which image families actually changed before rebuilding'
+    );
+    assert.ok(
+      workflowText.includes('steps.mode.outputs.build_required'),
+      'release candidate workflow should gate expensive image builds behind per-component change detection'
+    );
   });
 
   test('Firefox release asset producer workflow signs and publishes versioned artifacts', () => {
@@ -653,7 +790,7 @@ describe('Workflow configuration hardening', () => {
 
     const assetJobRun = (assetJob?.steps ?? []).map((step) => step.run ?? '').join('\n');
     assert.ok(
-      (assetJob?.steps ?? []).some((step) => step.uses === 'actions/setup-node@v6'),
+      (assetJob?.steps ?? []).some((step) => step.uses === './.github/actions/setup-node'),
       'Firefox release asset workflow should install Node before building/signing'
     );
     assert.ok(

@@ -260,6 +260,40 @@ export function selectSuccessfulReleaseCandidateRun(payload, { sha } = {}) {
   return candidate;
 }
 
+export function selectLatestSuccessfulWorkflowRun(payload) {
+  const candidate = withNormalizedWorkflowRunId(
+    normalizeWorkflowRuns(payload)
+      .filter((rawRun) => {
+        if (!rawRun) {
+          return false;
+        }
+
+        return (
+          rawRun.event === 'push' &&
+          rawRun.conclusion === 'success' &&
+          normalizeWorkflowRunId(rawRun)
+        );
+      })
+      .sort((leftRaw, rightRaw) => {
+        const leftTime = Date.parse(normalizeWorkflowRunUpdatedAt(leftRaw));
+        const rightTime = Date.parse(normalizeWorkflowRunUpdatedAt(rightRaw));
+        return rightTime - leftTime;
+      })[0]
+  );
+
+  if (!candidate) {
+    throw new Error('No successful workflow run found');
+  }
+
+  if (candidate.status && candidate.status !== 'completed') {
+    throw new Error(
+      `Latest successful workflow run has not completed yet (status=${candidate.status ?? 'unknown'})`
+    );
+  }
+
+  return candidate;
+}
+
 export function parseReleaseCandidateManifest(content, { sha } = {}) {
   const targetSha = String(sha ?? '').trim();
   if (!targetSha) {
@@ -296,6 +330,9 @@ function printUsage() {
   console.error('  node scripts/release-images.mjs outputs --sha <sha> [--owner <owner>]');
   console.error(
     '  node scripts/release-images.mjs select-run-id --sha <sha> --runs-file <workflow-runs.json>'
+  );
+  console.error(
+    '  node scripts/release-images.mjs select-latest-successful-run --runs-file <workflow-runs.json>'
   );
   console.error(
     '  node scripts/release-images.mjs manifest-outputs --sha <sha> --file <release-candidate-images.env>'
@@ -348,12 +385,12 @@ function writeOutputs(outputMap) {
 function main() {
   const { command, options } = parseCliArgs(process.argv.slice(2));
 
-  if (!options.sha) {
-    printUsage();
-    process.exit(1);
-  }
-
   if (command === 'outputs') {
+    if (!options.sha) {
+      printUsage();
+      process.exit(1);
+    }
+
     const refs = deriveTaggedImageRefs({
       sha: options.sha,
       repositoryOwner: options.owner ?? process.env.GITHUB_REPOSITORY_OWNER,
@@ -377,13 +414,30 @@ function main() {
   }
 
   if (command === 'select-run-id' && options.runsFile) {
+    if (!options.sha) {
+      printUsage();
+      process.exit(1);
+    }
+
     const payload = JSON.parse(readFileSync(options.runsFile, 'utf8'));
     const run = selectSuccessfulReleaseCandidateRun(payload, { sha: options.sha });
     writeOutputs({ run_id: run.id });
     return;
   }
 
+  if (command === 'select-latest-successful-run' && options.runsFile) {
+    const payload = JSON.parse(readFileSync(options.runsFile, 'utf8'));
+    const run = selectLatestSuccessfulWorkflowRun(payload);
+    writeOutputs({ run_id: run.id, head_sha: normalizeWorkflowRunHeadSha(run) });
+    return;
+  }
+
   if (command === 'manifest-outputs' && options.file) {
+    if (!options.sha) {
+      printUsage();
+      process.exit(1);
+    }
+
     const manifest = parseReleaseCandidateManifest(readFileSync(options.file, 'utf8'), {
       sha: options.sha,
     });

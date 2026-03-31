@@ -11,31 +11,19 @@ jobs:
     steps:
       - name: Resolve staging host
         id: resolve
+        shell: bash
+        env:
+          STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
         run: |
-          HOST="${{ secrets.STAGING_DEPLOY_HOST }}"
-          PORT="${{ secrets.STAGING_DEPLOY_PORT }}"
-          PORT="${PORT:-22}"
+          set -euo pipefail
 
-          if [ -z "$HOST" ]; then
+          if [ -z "$STAGING_DEPLOY_HOST" ]; then
             echo "STAGING_DEPLOY_HOST not configured"
             exit 1
           fi
 
-          # Resolve hostname
-          IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1}' | head -1)
-
-          if [ -z "$IP" ]; then
-            IP=$(dig +short "$HOST" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-          fi
-
-          if [ -z "$IP" ]; then
-            echo "Could not resolve $HOST"
-            exit 1
-          fi
-
-          echo "Resolved $HOST to $IP"
-          echo "ip=$IP" >> $GITHUB_OUTPUT
-          echo "port=$PORT" >> $GITHUB_OUTPUT
+          bash scripts/resolve-ssh-host.sh "$STAGING_DEPLOY_HOST" "${STAGING_DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
 
       - name: Cleanup containers via SSH
         uses: appleboy/ssh-action@v1.2.4

@@ -22,11 +22,20 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - name: Resolve staging host
+        id: resolve
+        shell: bash
+        env:
+          STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          bash scripts/resolve-ssh-host.sh "$STAGING_DEPLOY_HOST" "${STAGING_DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
       - name: Install staging SSH key
         id: ssh
         shell: bash
         env:
-          STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
           STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
@@ -34,7 +43,6 @@ jobs:
           printf '%s\n' "$STAGING_DEPLOY_SSH_KEY" > ~/.ssh/classroompath-staging-canary
           chmod 600 ~/.ssh/classroompath-staging-canary
           echo "key_path=$HOME/.ssh/classroompath-staging-canary" >> "$GITHUB_OUTPUT"
-          echo "port=${STAGING_DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
 
       - name: Download staging Firefox release evidence and assets
         shell: bash
@@ -50,11 +58,11 @@ jobs:
             -o IdentitiesOnly=yes
             -o StrictHostKeyChecking=accept-new
             -i "${{ steps.ssh.outputs.key_path }}"
-            -p "${{ steps.ssh.outputs.port }}"
+            -p "${{ steps.resolve.outputs.port }}"
           )
 
           ssh "${SSH_OPTS[@]}" \
-            "${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_HOST}" \
+            "${STAGING_DEPLOY_USER}@${{ steps.resolve.outputs.ip }}" \
             "cat /opt/classroompath/release-state/staging-verification.env" > staging-verification.env
 
           set -a
@@ -65,11 +73,11 @@ jobs:
           test "${STAGING_FIREFOX_POLICY_RESULT:-}" = "success"
 
           ssh "${SSH_OPTS[@]}" \
-            "${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_HOST}" \
+            "${STAGING_DEPLOY_USER}@${{ steps.resolve.outputs.ip }}" \
             "docker exec classroompath-api cat /app/firefox-extension/build/firefox-release/metadata.json" > metadata.json
 
           ssh "${SSH_OPTS[@]}" \
-            "${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_HOST}" \
+            "${STAGING_DEPLOY_USER}@${{ steps.resolve.outputs.ip }}" \
             "docker exec classroompath-api base64 -w0 /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi" > openpath-firefox-extension.xpi.base64
 
           base64 -d openpath-firefox-extension.xpi.base64 > openpath-firefox-extension.xpi
