@@ -52,7 +52,7 @@ jobs:
         run: |
           base_version="$(node --input-type=module -e "import fs from 'node:fs'; const manifest = JSON.parse(fs.readFileSync('firefox-extension/manifest.json', 'utf8')); process.stdout.write(String(manifest.version ?? '').trim());")"
           test -n "$base_version"
-          run_id_suffix="${GITHUB_RUN_ID: -8}"
+          run_id_suffix="${GITHUB_RUN_ID: -7}"
           ci_build_segment="$(printf '%s%02d' "$run_id_suffix" "$GITHUB_RUN_ATTEMPT")"
           echo "OPENPATH_FIREFOX_RELEASE_VERSION=${base_version}.${ci_build_segment}" >> "$GITHUB_ENV"
           echo "Signing Firefox release as version ${base_version}.${ci_build_segment}"
