@@ -210,6 +210,7 @@ echo ""
 # Pre-check: Verify test files exist (fast, ~0.1s)
 echo "[0/5] Checking test file coverage..."
 bash scripts/check-test-files.sh
+npm run verify:migrations:metadata
 
 # Start PostgreSQL early (runs in background while we build)
 echo "Starting PostgreSQL (test)..."
