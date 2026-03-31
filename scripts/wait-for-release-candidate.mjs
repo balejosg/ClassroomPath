@@ -1,5 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import {
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -185,6 +193,67 @@ function listWorkflowRuns({ repo, workflow, sha }) {
   return JSON.parse(output || '[]');
 }
 
+function listArtifacts({ repo, artifactName }) {
+  const output = execFileSync(
+    'gh',
+    [
+      'api',
+      `repos/${repo}/actions/artifacts?per_page=100&name=${encodeURIComponent(artifactName)}`,
+    ],
+    {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }
+  ).trim();
+
+  return JSON.parse(output || '{"artifacts":[]}');
+}
+
+function normalizeArtifacts(payload) {
+  return Array.isArray(payload?.artifacts) ? payload.artifacts : [];
+}
+
+function resolveArtifactRunId(artifact) {
+  return artifact?.workflow_run?.id ?? artifact?.workflowRun?.id ?? null;
+}
+
+function resolveArtifactUpdatedAt(artifact) {
+  return (
+    artifact?.updated_at ??
+    artifact?.updatedAt ??
+    artifact?.created_at ??
+    artifact?.createdAt ??
+    null
+  );
+}
+
+export function selectLatestArtifact(payload, { artifactName } = {}) {
+  const targetArtifactName = String(artifactName ?? '').trim();
+  if (!targetArtifactName) {
+    throw new Error('Artifact name is required');
+  }
+
+  const selected = normalizeArtifacts(payload)
+    .filter((artifact) => {
+      if (!artifact || artifact.expired === true) {
+        return false;
+      }
+
+      return String(artifact.name ?? '').trim() === targetArtifactName;
+    })
+    .sort((left, right) => {
+      const leftTime = Date.parse(resolveArtifactUpdatedAt(left) ?? '');
+      const rightTime = Date.parse(resolveArtifactUpdatedAt(right) ?? '');
+      return rightTime - leftTime;
+    })[0];
+
+  if (!selected) {
+    throw new Error(`No artifact found with name ${targetArtifactName}`);
+  }
+
+  return selected;
+}
+
 function resolveLatestReleaseCandidateState(payload, { sha }) {
   try {
     const run = selectLatestReleaseCandidateRun(payload, { sha });
@@ -236,6 +305,59 @@ function downloadManifest({ repo, runId, sha }) {
   return {
     artifactDir,
     manifestPath: resolve(artifactDir, 'release-candidate-images.env'),
+  };
+}
+
+function downloadArtifactById({ repo, artifactId }) {
+  const artifactDir = mkdtempSync(resolve(tmpdir(), 'classroompath-release-candidate-'));
+  const artifactArchivePath = resolve(artifactDir, 'artifact.zip');
+
+  try {
+    const artifactZip = execFileSync(
+      'gh',
+      ['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`],
+      {
+        cwd: projectRoot,
+        encoding: null,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    );
+
+    writeFileSync(artifactArchivePath, artifactZip);
+    execFileSync('unzip', ['-oq', artifactArchivePath, '-d', artifactDir], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    return {
+      artifactDir,
+      manifestPath: resolve(artifactDir, 'release-candidate-images.env'),
+    };
+  } catch (error) {
+    rmSync(artifactDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function downloadReleaseCandidateArtifact({ repo, artifact, sha }) {
+  const runId = resolveArtifactRunId(artifact);
+  if (runId) {
+    return {
+      ...downloadManifest({ repo, runId, sha }),
+      runId,
+    };
+  }
+
+  if (!artifact?.id) {
+    throw new Error(
+      `Release candidate artifact for SHA ${sha} is missing both workflow_run.id and id`
+    );
+  }
+
+  return {
+    ...downloadArtifactById({ repo, artifactId: artifact.id }),
+    runId: null,
   };
 }
 
@@ -292,6 +414,7 @@ export function waitForReleaseCandidateManifest({
     repository,
     cwd: projectRoot,
   });
+  const artifactName = `release-candidate-images-${targetSha}`;
   const timeoutMs = Math.max(0, Number(timeoutSeconds) * 1000);
   const intervalMs = Math.max(1, Number(intervalSeconds) * 1000);
   const deadline = Date.now() + timeoutMs;
@@ -299,24 +422,13 @@ export function waitForReleaseCandidateManifest({
   let latestRun = null;
 
   while (true) {
-    const payload = listWorkflowRuns({
-      repo,
-      workflow: 'release-candidate-images.yml',
-      sha: targetSha,
-    });
-    const { state, run } = resolveLatestReleaseCandidateState(payload, { sha: targetSha });
-    lastState = state;
-    latestRun = run;
+    const artifactsPayload = listArtifacts({ repo, artifactName });
 
-    if (state === 'success' && run) {
-      const runId = resolveWorkflowRunId(run);
-      if (!runId) {
-        throw new Error(`Release candidate workflow run for SHA ${targetSha} is missing an id`);
-      }
-
-      const { artifactDir, manifestPath } = downloadManifest({
+    try {
+      const artifact = selectLatestArtifact(artifactsPayload, { artifactName });
+      const { artifactDir, manifestPath, runId } = downloadReleaseCandidateArtifact({
         repo,
-        runId,
+        artifact,
         sha: targetSha,
       });
 
@@ -338,7 +450,23 @@ export function waitForReleaseCandidateManifest({
       } finally {
         rmSync(artifactDir, { recursive: true, force: true });
       }
+    } catch (artifactError) {
+      if (
+        !(artifactError instanceof Error) ||
+        !artifactError.message.includes(`No artifact found with name ${artifactName}`)
+      ) {
+        throw artifactError;
+      }
     }
+
+    const payload = listWorkflowRuns({
+      repo,
+      workflow: 'release-candidate-images.yml',
+      sha: targetSha,
+    });
+    const { state, run } = resolveLatestReleaseCandidateState(payload, { sha: targetSha });
+    lastState = state;
+    latestRun = run;
 
     if (state === 'failed' && run) {
       throw new Error(formatReleaseCandidateRunFailure({ targetSha, run }));

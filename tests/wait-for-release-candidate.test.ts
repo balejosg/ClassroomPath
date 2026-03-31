@@ -5,6 +5,7 @@ import {
   formatFirefoxReleaseAssetsTimeoutError,
   formatReleaseCandidateRunFailure,
   resolveWorkflowRunId,
+  selectLatestArtifact,
 } from '../scripts/wait-for-release-candidate.mjs';
 
 describe('wait-for-release-candidate helpers', () => {
@@ -14,6 +15,47 @@ describe('wait-for-release-candidate helpers', () => {
 
   test('prefers explicit id when present', () => {
     assert.equal(resolveWorkflowRunId({ id: 456, databaseId: 123 }), 456);
+  });
+
+  test('selects the newest non-expired artifact with the requested name', () => {
+    const artifact = selectLatestArtifact(
+      {
+        artifacts: [
+          {
+            id: 1,
+            name: 'release-candidate-images-oldsha',
+            expired: false,
+            updated_at: '2026-03-27T10:00:00Z',
+          },
+          {
+            id: 2,
+            name: 'release-candidate-images-targetsha',
+            expired: true,
+            updated_at: '2026-03-27T12:00:00Z',
+          },
+          {
+            id: 3,
+            name: 'release-candidate-images-targetsha',
+            expired: false,
+            updated_at: '2026-03-27T11:00:00Z',
+          },
+        ],
+      },
+      { artifactName: 'release-candidate-images-targetsha' }
+    );
+
+    assert.equal(artifact.id, 3);
+  });
+
+  test('throws when no matching artifact exists', () => {
+    assert.throws(
+      () =>
+        selectLatestArtifact(
+          { artifacts: [] },
+          { artifactName: 'release-candidate-images-missing' }
+        ),
+      /No artifact found with name release-candidate-images-missing/
+    );
   });
 
   test('formats release candidate failures with normalized run ids and timestamps', () => {
