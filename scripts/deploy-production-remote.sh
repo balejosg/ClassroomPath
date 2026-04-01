@@ -17,22 +17,119 @@ if [ ! -f "$COMMON_SH_PATH" ]; then
   COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"
 fi
 
-resolve_node_bin() {
-  local candidate=""
+upsert_env_file_var() {
+  local path="$1"
+  local key="$2"
+  local value="$3"
+  local tmp_file=""
 
-  for candidate in \
-    "${NODE_BIN:-}" \
-    "$(command -v node 2>/dev/null || true)" \
-    /usr/bin/node \
-    /usr/local/bin/node; do
-    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
+  mkdir -p "$(dirname "$path")"
+  touch "$path"
+  tmp_file="$(mktemp)"
+
+  awk -v key="$key" -v value="$value" '
+    BEGIN { updated = 0 }
+    index($0, key "=") == 1 {
+      print key "=" value
+      updated = 1
+      next
+    }
+    { print }
+    END {
+      if (!updated) {
+        print key "=" value
+      }
+    }
+  ' "$path" > "$tmp_file"
+
+  mv "$tmp_file" "$path"
+}
+
+classify_sql_migration_file() {
+  local path="$1"
+
+  if grep -Eiq '\b(DELETE[[:space:]]+FROM|TRUNCATE|DROP[[:space:]]+(TABLE|INDEX|COLUMN|CONSTRAINT))\b' "$path"; then
+    printf '%s\n' "destructive"
+    return 0
+  fi
+
+  if grep -Eiq '\bALTER[[:space:]]+TABLE\b' "$path" \
+    && grep -Eiq '\b(DROP|ALTER[[:space:]]+COLUMN[[:space:][:alnum:]_"]*[[:space:]]+TYPE|SET[[:space:]]+DATA[[:space:]]+TYPE)\b' "$path"; then
+    printf '%s\n' "destructive"
+    return 0
+  fi
+
+  if grep -Eiq '\bUPDATE\b' "$path" && grep -Eiq '\bSET\b' "$path"; then
+    printf '%s\n' "destructive"
+    return 0
+  fi
+
+  if grep -Eiq '\b(CREATE[[:space:]]+TABLE|CREATE[[:space:]]+(UNIQUE[[:space:]]+)?INDEX)\b' "$path"; then
+    printf '%s\n' "expand-contract"
+    return 0
+  fi
+
+  if grep -Eiq '\bALTER[[:space:]]+TABLE\b' "$path" \
+    && grep -Eiq '\bADD[[:space:]]+(COLUMN|CONSTRAINT)\b' "$path"; then
+    printf '%s\n' "expand-contract"
+    return 0
+  fi
+
+  printf '%s\n' "safe"
+}
+
+classify_migration_risk() {
+  local repo_root="$1"
+  local from_ref="$2"
+  local to_ref="$3"
+  local -a changed_files=()
+  local -a destructive_files=()
+  local -a expand_files=()
+  local -a safe_files=()
+  local file=""
+  local risk="safe"
+
+  if [ -z "$from_ref" ] || [ -z "$to_ref" ] || [ "$from_ref" = "$to_ref" ]; then
+    MIGRATION_RISK_LEVEL="safe"
+    MIGRATION_CHANGED_FILES=""
+    MIGRATION_DESTRUCTIVE_FILES=""
+    return 0
+  fi
+
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    changed_files+=("$file")
+  done < <(
+    git -C "$repo_root" diff --name-only "${from_ref}..${to_ref}" -- \
+      'api/drizzle/*.sql' \
+      'upstream/openpath/api/drizzle/*.sql'
+  )
+
+  for file in "${changed_files[@]}"; do
+    risk="$(classify_sql_migration_file "$repo_root/$file")"
+    case "$risk" in
+      destructive)
+        destructive_files+=("$file")
+        ;;
+      expand-contract)
+        expand_files+=("$file")
+        ;;
+      *)
+        safe_files+=("$file")
+        ;;
+    esac
   done
 
-  printf '[ERROR] Missing required command: node\n' >&2
-  exit 1
+  if [ "${#destructive_files[@]}" -gt 0 ]; then
+    MIGRATION_RISK_LEVEL="destructive"
+  elif [ "${#expand_files[@]}" -gt 0 ]; then
+    MIGRATION_RISK_LEVEL="expand-contract"
+  else
+    MIGRATION_RISK_LEVEL="safe"
+  fi
+
+  MIGRATION_CHANGED_FILES="$(IFS=,; printf '%s' "${changed_files[*]}")"
+  MIGRATION_DESTRUCTIVE_FILES="$(IFS=,; printf '%s' "${destructive_files[*]}")"
 }
 
 reload_deployed_common_helpers() {
@@ -108,8 +205,7 @@ if [ -f "$STATE_DIR/current-images.env" ]; then
   PREVIOUS_APP_SHA="$(grep '^APP_SHA=' "$STATE_DIR/current-images.env" | cut -d= -f2- || true)"
 fi
 
-NODE_BIN="$(resolve_node_bin)"
-eval "$("$NODE_BIN" "$APP_DIR/scripts/classify-migration-risk.mjs" --repo-root "$APP_DIR" --from "$PREVIOUS_APP_SHA" --to "$TARGET_SHA")"
+classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
 
 if [ "$MIGRATION_RISK_LEVEL" = "destructive" ]; then
   log_warn "Destructive migration risk detected: ${MIGRATION_DESTRUCTIVE_FILES:-unknown files}"

@@ -1067,6 +1067,10 @@ void describe('Migration Tooling', () => {
       resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
       'utf-8'
     );
+    const rollbackRemoteScript = readFileSync(
+      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
+      'utf-8'
+    );
 
     assert.ok(
       content.includes('CLASSROOMPATH_MIGRATIONS_IMAGE'),
@@ -1132,20 +1136,34 @@ void describe('Migration Tooling', () => {
       'production deploy should fall back to the absolute common.sh path when the remote runner does not preserve the original script directory'
     );
     assert.ok(
-      deployRemoteScript.includes('resolve_node_bin() {'),
-      'production deploy should define a local node resolver before the remote checkout so it does not depend on helper functions from the currently deployed app revision'
+      deployRemoteScript.includes('classify_migration_risk() {'),
+      'production deploy should define a local migration risk classifier before the remote checkout so it does not depend on node on the target host'
     );
     assert.ok(
       deployRemoteScript.includes(
-        'eval "$("$NODE_BIN" "$APP_DIR/scripts/classify-migration-risk.mjs" --repo-root "$APP_DIR" --from "$PREVIOUS_APP_SHA" --to "$TARGET_SHA")"'
+        'classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"'
       ),
-      'production deploy should invoke classify-migration-risk.mjs through the resolved node binary and absolute script path'
+      'production deploy should evaluate migration risk through the local shell classifier instead of requiring node on the target host'
+    );
+    assert.ok(
+      deployRemoteScript.includes(
+        'git -C "$repo_root" diff --name-only "${from_ref}..${to_ref}" --'
+      ) && deployRemoteScript.includes("'upstream/openpath/api/drizzle/*.sql'"),
+      'production deploy should classify migration risk from git diff output covering both ClassroomPath and OpenPath SQL migrations'
+    );
+    assert.ok(
+      deployRemoteScript.includes('upsert_env_file_var() {'),
+      'production deploy should define a local env-file updater so production promotion does not depend on helper functions added after the currently deployed revision'
     );
     assert.ok(
       deployRemoteScript.includes(
         'git submodule update --init --recursive --force\nreload_deployed_common_helpers'
       ),
       'production deploy should reload helper functions from the freshly checked out app revision before using post-checkout helpers'
+    );
+    assert.ok(
+      rollbackRemoteScript.includes('upsert_env_file_var() {'),
+      'production rollback should define a local env-file updater so rollbacks to older revisions do not depend on helper functions missing from that target revision'
     );
   });
 

@@ -17,6 +17,34 @@ if [ ! -f "$COMMON_SH_PATH" ]; then
   COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"
 fi
 
+upsert_env_file_var() {
+  local path="$1"
+  local key="$2"
+  local value="$3"
+  local tmp_file=""
+
+  mkdir -p "$(dirname "$path")"
+  touch "$path"
+  tmp_file="$(mktemp)"
+
+  awk -v key="$key" -v value="$value" '
+    BEGIN { updated = 0 }
+    index($0, key "=") == 1 {
+      print key "=" value
+      updated = 1
+      next
+    }
+    { print }
+    END {
+      if (!updated) {
+        print key "=" value
+      }
+    }
+  ' "$path" > "$tmp_file"
+
+  mv "$tmp_file" "$path"
+}
+
 reload_deployed_common_helpers() {
   if [ -f "$COMMON_SH_DEPLOYED_PATH" ]; then
     # shellcheck disable=SC1090
