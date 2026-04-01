@@ -605,8 +605,16 @@ describe('Workflow configuration hardening', () => {
       'release candidate workflow should build the SPA image in its own job'
     );
     assert.ok(
+      jobs['build-migrations-release-candidate-amd64'],
+      'release candidate workflow should build the migrations runner image for amd64 in its own job'
+    );
+    assert.ok(
+      jobs['build-migrations-release-candidate-arm64'],
+      'release candidate workflow should build the migrations runner image for arm64 in its own job'
+    );
+    assert.ok(
       jobs['build-migrations-release-candidate'],
-      'release candidate workflow should build the migrations runner image in its own job'
+      'release candidate workflow should merge the migrations runner image into a release-candidate manifest'
     );
     assert.ok(
       jobs['resolve-openpath-firefox-release-assets'],
@@ -648,6 +656,8 @@ describe('Workflow configuration hardening', () => {
 
     for (const jobName of [
       'build-gateway-release-candidate',
+      'build-migrations-release-candidate-amd64',
+      'build-migrations-release-candidate-arm64',
       'build-migrations-release-candidate',
       'build-openpath-api-release-candidate-amd64',
       'build-openpath-api-release-candidate-arm64',
@@ -730,19 +740,31 @@ describe('Workflow configuration hardening', () => {
       workflowText.includes('name: openpath-firefox-release-assets'),
       'release candidate workflow should publish a named artifact for the resolved Firefox release assets'
     );
-    const migrationsBuildStep = (jobs['build-migrations-release-candidate']?.steps ?? []).find(
-      (step) => step.name === 'Build and push migrations image'
-    );
     assert.equal(
-      migrationsBuildStep?.with?.platforms,
-      'linux/amd64,linux/arm64',
-      'release candidate workflow should publish the migrations runner image for both staging and the arm64 production deployment target'
+      jobs['build-migrations-release-candidate-arm64']?.['runs-on'],
+      'ubuntu-24.04-arm',
+      'release candidate workflow should build the migrations runner arm64 image on a native arm64 runner'
     );
 
     assert.equal(
       jobs['build-openpath-api-release-candidate-arm64']?.['runs-on'],
       'ubuntu-24.04-arm',
       'release candidate workflow should build the OpenPath API arm64 image on a native arm64 runner'
+    );
+
+    const migrationsManifestNeeds = normalizeNeeds(
+      jobs['build-migrations-release-candidate']?.needs
+    );
+    assert.deepEqual(
+      migrationsManifestNeeds.sort(),
+      [
+        'build-migrations-release-candidate-amd64',
+        'build-migrations-release-candidate-arm64',
+        'detect-release-candidate-components',
+        'derive-release-image-refs',
+        'resolve-previous-release-candidate-manifest',
+      ].sort(),
+      'migrations manifest merge should wait for both per-architecture builds plus the reuse/build decision inputs'
     );
 
     const openPathManifestNeeds = normalizeNeeds(

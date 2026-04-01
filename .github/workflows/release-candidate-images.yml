@@ -168,18 +168,18 @@ jobs:
             echo "gateway_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}" >> "$GITHUB_OUTPUT"
           fi
 
-  build-migrations-release-candidate:
-    name: Build Migrations Release Candidate
+  build-migrations-release-candidate-amd64:
+    name: Build Migrations Release Candidate (amd64)
     runs-on: ubuntu-latest
     needs:
       - derive-release-image-refs
       - resolve-previous-release-candidate-manifest
       - detect-release-candidate-components
     outputs:
-      migrations_image: ${{ steps.publish-manifest.outputs.migrations_image }}
+      image_digest: ${{ steps.build-migrations.outputs.digest }}
 
     steps:
-      - name: Decide whether to build migrations image
+      - name: Decide whether to build the amd64 migrations image
         id: mode
         shell: bash
         run: |
@@ -209,17 +209,106 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile.migrations
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ needs.derive-release-image-refs.outputs.migrations_tag }}
-          cache-from: type=gha,scope=release-candidate-migrations
-          cache-to: type=gha,mode=max,scope=release-candidate-migrations
+          platforms: linux/amd64
+          outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.migrations_repo }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-candidate-migrations-amd64
+          cache-to: type=gha,mode=max,scope=release-candidate-migrations-amd64
+
+  build-migrations-release-candidate-arm64:
+    name: Build Migrations Release Candidate (arm64)
+    runs-on: ubuntu-24.04-arm
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
+    outputs:
+      image_digest: ${{ steps.build-migrations.outputs.digest }}
+
+    steps:
+      - name: Decide whether to build the arm64 migrations image
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.migrations_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push migrations image
+        if: steps.mode.outputs.build_required == 'true'
+        id: build-migrations
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.migrations
+          platforms: linux/arm64
+          outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.migrations_repo }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-candidate-migrations-arm64
+          cache-to: type=gha,mode=max,scope=release-candidate-migrations-arm64
+
+  build-migrations-release-candidate:
+    name: Publish Migrations Release Candidate Manifest
+    runs-on: ubuntu-latest
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
+      - build-migrations-release-candidate-amd64
+      - build-migrations-release-candidate-arm64
+    outputs:
+      migrations_image: ${{ steps.publish-manifest.outputs.migrations_image }}
+
+    steps:
+      - name: Decide whether to build the migrations manifest
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.migrations_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.mode.outputs.build_required == 'true'
+        uses: actions/checkout@v6
+
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge migrations per-architecture digests
+        if: steps.mode.outputs.build_required == 'true'
+        run: |
+          docker buildx imagetools create \
+            --tag "${{ needs.derive-release-image-refs.outputs.migrations_tag }}" \
+            "${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ needs.build-migrations-release-candidate-amd64.outputs.image_digest }}" \
+            "${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ needs.build-migrations-release-candidate-arm64.outputs.image_digest }}"
 
       - name: Publish migrations manifest output
         id: publish-manifest
         run: |
           if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
-            echo "migrations_image=${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ steps.build-migrations.outputs.digest }}" >> "$GITHUB_OUTPUT"
+            manifest_digest="$(docker buildx imagetools inspect "${{ needs.derive-release-image-refs.outputs.migrations_tag }}" | awk '/^Digest:/ {print $2; exit}')"
+            test -n "$manifest_digest"
+            echo "migrations_image=${{ needs.derive-release-image-refs.outputs.migrations_repo }}@$manifest_digest" >> "$GITHUB_OUTPUT"
           else
             echo "migrations_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}" >> "$GITHUB_OUTPUT"
           fi
