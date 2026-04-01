@@ -514,12 +514,8 @@ describe('Workflow configuration hardening', () => {
       'release candidate workflow should trigger on pushes to main'
     );
     assert.ok(
-      workflow.on?.push?.paths?.includes('upstream/openpath'),
-      'release candidate workflow should rerun when the OpenPath submodule pointer changes'
-    );
-    assert.ok(
-      workflow.on?.push?.paths?.includes('.github/workflows/firefox-release-assets.yml'),
-      'release candidate workflow should rerun when the Firefox asset producer workflow changes'
+      !workflow.on?.push?.paths,
+      'release candidate workflow should not restrict push triggers by paths because every main SHA must get a release-candidate manifest for later promotion'
     );
     assert.ok(
       jobs['derive-release-image-refs'],

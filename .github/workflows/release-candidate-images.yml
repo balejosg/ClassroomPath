@@ -4,20 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'api/**'
-      - 'react-spa/**'
-      - 'docker/**'
-      - 'scripts/**'
-      - 'config/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'upstream/openpath'
-      - '.github/workflows/release-candidate-images.yml'
-      - '.github/workflows/firefox-release-assets.yml'
-      - '.github/workflows/deploy.yml'
-      - '.github/workflows/reusable-smoke-test.yml'
-      - '.github/workflows/smoke-tests.yml'
 
 permissions:
   contents: read
