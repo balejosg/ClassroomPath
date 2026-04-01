@@ -453,6 +453,23 @@ void describe('Migration Tooling', () => {
     );
   });
 
+  void test('staging remote deploy can resolve its helper library even when executed via stdin', () => {
+    const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
+
+    assert.ok(
+      remoteContent.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"'),
+      'deploy-staging-remote.sh should guard against missing BASH_SOURCE when the payload is streamed over SSH'
+    );
+    assert.ok(
+      remoteContent.includes('APP_DIR="/opt/classroompath/app"'),
+      'deploy-staging-remote.sh should declare the canonical app directory explicitly'
+    );
+    assert.ok(
+      remoteContent.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
+      'deploy-staging-remote.sh should fall back to the deployed scripts directory when stdin execution has no script path'
+    );
+  });
+
   void test('verify-full skips coverage cleanup and gating when no API/SPA source coverage is needed', () => {
     const content = readFileSync(verifyFullScriptPath, 'utf-8');
 
