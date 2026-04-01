@@ -137,6 +137,15 @@ Gateway API runs on port 3001 with prefix `/cp/`:
 - Safer support workflows for recovery, revocation, and tenant-scoped user management.
 - A reproducible promotion path from local verification to staging and production.
 
+## Current Operational Guarantees
+
+- **Durable cross-system orchestration**: high-risk flows persist progress in `cp_mutation_operations` so retries and reconciliation do not depend on request-local state.
+- **Org-admin reconciliation surface**: admins can list failed mutation operations and retry supported ones through the gateway.
+- **Fail-closed runtime config**: production rejects missing or localhost-only browser origins.
+- **Tag-only production deploys**: production still deploys by `v*` tags only, but now classifies migration risk, records deploy context, and supports broader rollback triggers.
+- **Safer staging recovery**: staging deploys attempt to restore the previous application release when startup or readiness checks fail after migrations.
+- **Bounded OpenPath UI contract**: ClassroomPath consumes OpenPath React SPA through explicit public entrypoints instead of deep imports into private source paths.
+
 ## Quick Start (Development)
 
 ### 1. Clone with submodules
@@ -206,6 +215,7 @@ Canonical runbooks:
 
 Staging is deployed from a developer machine via `npm run deploy:staging` (SSH to the staging host). It always deploys `origin/main`.
 When release-candidate images for `origin/main` are already published, the script deploys those exact images by default and fails if they are missing or drifted. Use `STAGING_IMAGE_MODE=source-build` only as an explicit debug/recovery escape hatch.
+If migrations succeed but startup/readiness fails, the remote script now attempts to restore the previous application release state automatically and records the outcome in `staging-deploy-context.env`.
 
 ```bash
 git push origin main
@@ -226,6 +236,7 @@ npm run test:release-gate:staging
 Production deploys are triggered by git tags `v*` only. The workflow runs a staging release gate first and only then rolls out to `https://classroompath.eu`.
 Each successful or failed tagged release now publishes a `release-evidence-<tag>` artifact plus a job summary showing the exact SHA, OpenPath SHA, immutable images, and deploy/smoke results.
 Immutable release images are now built on every push to `main`; the production tag resolves and deploys those existing images instead of rebuilding on the tag.
+Destructive migration releases now require a recorded backup or snapshot reference before production migrations run.
 
 Required GitHub Secrets (production only):
 

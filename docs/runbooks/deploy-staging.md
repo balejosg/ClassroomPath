@@ -36,6 +36,7 @@ npm run deploy:staging
   - `https://classroompath-staging.duckdns.org/health`
 - Smoke tests pass (script prints the summary)
 - The staging host stores `/opt/classroompath/release-state/staging-verification.env` for the promoted SHA
+- If startup/readiness fails after migrations, the script attempts to restore the previous application release and records the result in `/opt/classroompath/release-state/staging-deploy-context.env`
 
 If the script reports `PASS_WITH_FALLBACK`, local smoke had to fall back to direct IP / relaxed CORS. Treat that as deploy evidence, but rerun a strict public-domain smoke pass before tagging production when possible.
 
@@ -60,4 +61,5 @@ The deploy script prints the exact SSH + docker commands it runs. If needed:
 ```bash
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-gateway --tail 50"
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-api --tail 50"
+ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "cat /opt/classroompath/release-state/staging-deploy-context.env"
 ```

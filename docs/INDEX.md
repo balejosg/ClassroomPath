@@ -14,6 +14,7 @@
 
 - Ports and routes: [`docs/contracts/routes-ports.md`](contracts/routes-ports.md)
 - Environment variables: [`docs/contracts/env.md`](contracts/env.md)
+- Cross-system mutation ordering: [`docs/contracts/cross-system-mutations.md`](contracts/cross-system-mutations.md)
 - Verification matrix: [`docs/verification-matrix.md`](verification-matrix.md)
 
 ## Operations
@@ -25,6 +26,10 @@
 - Docker + Nginx Proxy Manager: [`docs/DOCKER.md`](DOCKER.md)
 - Production secrets (GitHub Actions): [`docs/SECRETS.md`](SECRETS.md)
 - Session/security model: [`docs/SESSION_SECURITY_MODEL.md`](SESSION_SECURITY_MODEL.md)
+
+## Architecture Decisions
+
+- ADRs: `docs/adr/`
 
 ## Non-Authoritative / Context Only
 

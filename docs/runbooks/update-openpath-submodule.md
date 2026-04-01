@@ -32,3 +32,4 @@ npm run deploy:staging
 ## Notes
 
 - Do not edit files inside `upstream/openpath/` directly; changes will be lost on the next submodule update.
+- ClassroomPath should consume the OpenPath React SPA only through the public entrypoints exported by `@openpath/react-spa` (`public-ui`, `public-shell`, `public-auth`, `public-google`, `openpath.css`).
