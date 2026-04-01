@@ -2,7 +2,14 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="/opt/classroompath/app"
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+
+if [ -n "$SCRIPT_SOURCE" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+else
+  SCRIPT_DIR="$APP_DIR/scripts"
+fi
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
@@ -10,7 +17,6 @@ source "$SCRIPT_DIR/lib/common.sh"
 log_info "Starting ClassroomPath Docker deployment..."
 
 DEPLOY_DIR="/opt/classroompath"
-APP_DIR="$DEPLOY_DIR/app"
 STATE_DIR="$DEPLOY_DIR/release-state"
 DEPLOY_CONTEXT_FILE="$STATE_DIR/deploy-context.env"
 mkdir -p "$STATE_DIR"

@@ -470,6 +470,35 @@ void describe('Migration Tooling', () => {
     );
   });
 
+  void test('production remote scripts can resolve their helper library when ssh-action executes without BASH_SOURCE', () => {
+    const deployRemoteContent = readFileSync(
+      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
+      'utf-8'
+    );
+    const rollbackRemoteContent = readFileSync(
+      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
+      'utf-8'
+    );
+
+    for (const [scriptName, content] of [
+      ['deploy-production-remote.sh', deployRemoteContent],
+      ['rollback-production-remote.sh', rollbackRemoteContent],
+    ] as const) {
+      assert.ok(
+        content.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"'),
+        `${scriptName} should guard against missing BASH_SOURCE when appleboy/ssh-action streams the payload`
+      );
+      assert.ok(
+        content.includes('APP_DIR="/opt/classroompath/app"'),
+        `${scriptName} should declare the canonical app directory explicitly`
+      );
+      assert.ok(
+        content.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
+        `${scriptName} should fall back to the deployed scripts directory when stdin execution has no script path`
+      );
+    }
+  });
+
   void test('verify-full skips coverage cleanup and gating when no API/SPA source coverage is needed', () => {
     const content = readFileSync(verifyFullScriptPath, 'utf-8');
 
