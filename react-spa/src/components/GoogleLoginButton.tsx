@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import type { GoogleCredentialResponse } from '@openpath/src/types/google.d';
-import '@openpath/src/types/google.d';
+import type { GoogleCredentialResponse } from '@openpath/public-google';
+import '@openpath/public-google';
 
 import { reportError } from '../lib/reportError';
 

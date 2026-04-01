@@ -240,7 +240,7 @@ export function registerGatewaySpaRoutes(app: Express, options: GatewaySpaRoutes
 
   app.use(express.static(options.reactSpaPath, { index: false }));
 
-  app.get('/*', (req, res) => {
+  app.get(/.*/, (req, res) => {
     if (
       !req.url.startsWith('/cp/') &&
       !req.url.startsWith('/api') &&

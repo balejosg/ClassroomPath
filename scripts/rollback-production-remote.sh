@@ -2,14 +2,20 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+
 DEPLOY_DIR="/opt/classroompath"
 APP_DIR="$DEPLOY_DIR/app"
 STATE_DIR="$DEPLOY_DIR/release-state"
 PREVIOUS_FILE="$STATE_DIR/previous-images.env"
 CURRENT_FILE="$STATE_DIR/current-images.env"
+DEPLOY_CONTEXT_FILE="$STATE_DIR/deploy-context.env"
 
 if [ ! -f "$PREVIOUS_FILE" ]; then
-  echo "No previous release metadata available for rollback"
+  log_error "No previous release metadata available for rollback"
   exit 1
 fi
 
@@ -18,8 +24,15 @@ set -a
 set +a
 
 if [ -z "${APP_SHA:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
-  echo "Previous release metadata is incomplete"
+  log_error "Previous release metadata is incomplete"
   exit 1
+fi
+
+if [ -f "$DEPLOY_CONTEXT_FILE" ]; then
+  set -a
+  . "$DEPLOY_CONTEXT_FILE"
+  set +a
+  log_warn "Rollback context: migration risk=${MIGRATION_RISK_LEVEL:-unknown}, db_migrated=${DB_MIGRATED:-unknown}, backup=${PRODUCTION_BACKUP_REFERENCE:-none}"
 fi
 
 cd "$APP_DIR"
@@ -36,21 +49,23 @@ trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
 cd "$APP_DIR/docker"
 export COMPOSE_PROJECT_NAME=classroompath-production
 
+log_info "Pulling previous immutable images for rollback..."
 docker compose pull gateway api spa
+log_info "Recreating containers from previous release state..."
 docker compose up -d --force-recreate --no-build
 
 cp "$PREVIOUS_FILE" "$CURRENT_FILE"
 
 for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-    echo "Rollback health check passed"
+    log_success "Rollback health check passed"
     exit 0
   fi
 
-  echo "Rollback health check attempt $i failed, retrying..."
+  log_warn "Rollback health check attempt $i failed, retrying..."
   sleep 5
 done
 
-echo "Rollback health check failed"
+log_error "Rollback health check failed"
 docker logs classroompath-gateway --tail 50
 exit 1

@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Building2, Users } from 'lucide-react';
-import { Button } from '@openpath/src/components/ui/Button';
-import { Input } from '@openpath/src/components/ui/Input';
-import { Card } from '@openpath/src/components/ui/Card';
+import { Button, Card, Input } from '@openpath/public-ui';
 import {
   useCreateOrganization,
   useListOrganizations,

@@ -23,4 +23,6 @@ RUN --mount=type=cache,target=/root/.npm set -eux; \
   done
 
 COPY . .
+RUN chown -R node:node /app
+USER node
 ENTRYPOINT ["sh", "scripts/run-migrations-image.sh"]

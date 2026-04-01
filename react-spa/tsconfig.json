@@ -4,6 +4,11 @@
     "baseUrl": ".",
     "skipLibCheck": true,
     "paths": {
+      "@openpath/openpath.css": ["../upstream/openpath/react-spa/src/index.css"],
+      "@openpath/public-auth": ["../upstream/openpath/react-spa/src/public/auth.ts"],
+      "@openpath/public-google": ["../upstream/openpath/react-spa/src/public/google.ts"],
+      "@openpath/public-shell": ["../upstream/openpath/react-spa/src/public/shell.ts"],
+      "@openpath/public-ui": ["../upstream/openpath/react-spa/src/public/ui.ts"],
       "@openpath/*": ["../upstream/openpath/react-spa/*"],
       "@openpath/shared": ["../upstream/openpath/shared/src"]
     }

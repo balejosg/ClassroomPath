@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 
-import Sidebar from '@openpath/src/components/Sidebar';
-import Header from '@openpath/src/components/Header';
-import Dashboard from '@openpath/src/views/Dashboard';
-import TeacherDashboard from '@openpath/src/views/TeacherDashboard';
-import Classrooms from '@openpath/src/views/Classrooms';
-import Groups from '@openpath/src/views/Groups';
-import Settings from '@openpath/src/views/Settings';
-import DomainRequests from '@openpath/src/views/DomainRequests';
-import RulesManager from '@openpath/src/views/RulesManager';
-import { isAdmin } from '@openpath/src/lib/auth';
+import {
+  Classrooms,
+  Dashboard,
+  DomainRequests,
+  Groups,
+  Header,
+  RulesManager,
+  Settings,
+  Sidebar,
+  TeacherDashboard,
+} from '@openpath/public-shell';
+import { isAdmin } from '@openpath/public-auth';
 
 import { OrganizationUsers } from './views/OrganizationUsers';
 

@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 
 import { ClassroomPathApp } from './ClassroomPathApp';
-import '@openpath/src/index.css'; // Estilos de OpenPath
+import '@openpath/openpath.css';
 
 const rootElement = document.getElementById('root');
 

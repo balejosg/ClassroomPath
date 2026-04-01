@@ -3,8 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockIsAdmin = vi.fn();
 
-vi.mock('@openpath/src/components/Sidebar', () => ({
-  default: ({
+vi.mock('@openpath/public-shell', () => ({
+  Sidebar: ({
     setActiveTab,
   }: {
     activeTab: string;
@@ -20,19 +20,13 @@ vi.mock('@openpath/src/components/Sidebar', () => ({
       <button onClick={() => setActiveTab('unknown')}>Tab inválida</button>
     </nav>
   ),
-}));
-
-vi.mock('@openpath/src/components/Header', () => ({
-  default: ({ title, onMenuClick }: { title: string; onMenuClick: () => void }) => (
+  Header: ({ title, onMenuClick }: { title: string; onMenuClick: () => void }) => (
     <header>
       <button onClick={onMenuClick}>Abrir menú</button>
       <h1>{title}</h1>
     </header>
   ),
-}));
-
-vi.mock('@openpath/src/views/Dashboard', () => ({
-  default: ({
+  Dashboard: ({
     onNavigateToRules,
     onNavigateToClassroom,
   }: {
@@ -49,10 +43,7 @@ vi.mock('@openpath/src/views/Dashboard', () => ({
       </button>
     </div>
   ),
-}));
-
-vi.mock('@openpath/src/views/TeacherDashboard', () => ({
-  default: ({
+  TeacherDashboard: ({
     onNavigateToRules,
   }: {
     onNavigateToRules: (group: { id: string; name: string; readOnly?: boolean }) => void;
@@ -64,10 +55,7 @@ vi.mock('@openpath/src/views/TeacherDashboard', () => ({
       </button>
     </div>
   ),
-}));
-
-vi.mock('@openpath/src/views/Classrooms', () => ({
-  default: ({
+  Classrooms: ({
     initialSelectedClassroomId,
     onInitialSelectedClassroomIdConsumed,
   }: {
@@ -82,10 +70,7 @@ vi.mock('@openpath/src/views/Classrooms', () => ({
       </button>
     </div>
   ),
-}));
-
-vi.mock('@openpath/src/views/Groups', () => ({
-  default: ({
+  Groups: ({
     onNavigateToRules,
   }: {
     onNavigateToRules: (group: { id: string; name: string; readOnly?: boolean }) => void;
@@ -97,18 +82,9 @@ vi.mock('@openpath/src/views/Groups', () => ({
       </button>
     </div>
   ),
-}));
-
-vi.mock('@openpath/src/views/Settings', () => ({
-  default: () => <div>Settings View</div>,
-}));
-
-vi.mock('@openpath/src/views/DomainRequests', () => ({
-  default: () => <div>Domain Requests View</div>,
-}));
-
-vi.mock('@openpath/src/views/RulesManager', () => ({
-  default: ({
+  Settings: () => <div>Settings View</div>,
+  DomainRequests: () => <div>Domain Requests View</div>,
+  RulesManager: ({
     groupName,
     onBack,
   }: {
@@ -125,7 +101,7 @@ vi.mock('@openpath/src/views/RulesManager', () => ({
   ),
 }));
 
-vi.mock('@openpath/src/lib/auth', () => ({
+vi.mock('@openpath/public-auth', () => ({
   isAdmin: () => mockIsAdmin(),
 }));
 

@@ -30,6 +30,11 @@ COPY api/tsconfig.json ./api/tsconfig.json
 COPY api/src ./api/src
 COPY react-spa/tsconfig.json ./react-spa/tsconfig.json
 COPY react-spa/vite.config.ts ./react-spa/vite.config.ts
+COPY react-spa/openpath.css ./react-spa/openpath.css
+COPY react-spa/public-auth.ts ./react-spa/public-auth.ts
+COPY react-spa/public-google.ts ./react-spa/public-google.ts
+COPY react-spa/public-shell.ts ./react-spa/public-shell.ts
+COPY react-spa/public-ui.ts ./react-spa/public-ui.ts
 COPY react-spa/postcss.config.js ./react-spa/postcss.config.js
 COPY react-spa/index.html ./react-spa/index.html
 COPY react-spa/public ./react-spa/public
@@ -38,6 +43,11 @@ COPY upstream/openpath/shared/tsconfig.json ./upstream/openpath/shared/tsconfig.
 COPY upstream/openpath/shared/src ./upstream/openpath/shared/src
 COPY upstream/openpath/react-spa/tsconfig.json ./upstream/openpath/react-spa/tsconfig.json
 COPY upstream/openpath/react-spa/vite.config.ts ./upstream/openpath/react-spa/vite.config.ts
+COPY upstream/openpath/react-spa/openpath.css ./upstream/openpath/react-spa/openpath.css
+COPY upstream/openpath/react-spa/public-auth.ts ./upstream/openpath/react-spa/public-auth.ts
+COPY upstream/openpath/react-spa/public-google.ts ./upstream/openpath/react-spa/public-google.ts
+COPY upstream/openpath/react-spa/public-shell.ts ./upstream/openpath/react-spa/public-shell.ts
+COPY upstream/openpath/react-spa/public-ui.ts ./upstream/openpath/react-spa/public-ui.ts
 COPY upstream/openpath/react-spa/postcss.config.js ./upstream/openpath/react-spa/postcss.config.js
 COPY upstream/openpath/react-spa/index.html ./upstream/openpath/react-spa/index.html
 COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src
@@ -83,6 +93,9 @@ COPY --from=builder /app/upstream/openpath/shared/package.json ./node_modules/@o
 COPY api/drizzle.config.ts ./api/
 COPY api/src/db ./api/src/db
 
+RUN mkdir -p /app/data /app/react-spa/dist/downloads && chown -R node:node /app
+
 WORKDIR /app/api
+USER node
 EXPOSE 3001
 CMD ["node", "dist/server.js"]

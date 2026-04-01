@@ -757,6 +757,13 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       version: '1.0.0',
     });
 
+    await openpathDb.insert(openpathSchema.whitelistGroups).values({
+      id: 'exemptions-group',
+      name: 'exemptions-group',
+      displayName: 'Exemptions Group',
+      enabled: 1,
+    });
+
     const scheduleId = '00000000-0000-4000-8000-000000000001';
     await openpathDb.insert(openpathSchema.schedules).values({
       id: scheduleId,

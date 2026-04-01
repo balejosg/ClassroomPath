@@ -313,7 +313,14 @@ describe('tenant-access', () => {
         role: 'teacher',
         invitedBy: USER_ID,
       }),
-      /cp_memberships_user_id_key|duplicate/i
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        const causeMessage =
+          error instanceof Error && error.cause instanceof Error ? error.cause.message : '';
+
+        assert.match(`${message}\n${causeMessage}`, /cp_memberships_user_id_key|duplicate/i);
+        return true;
+      }
     );
 
     await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, USER_ID));

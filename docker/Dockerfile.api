@@ -68,6 +68,9 @@ COPY --from=builder /app/windows ./windows
 COPY --from=builder /app/firefox-extension ./firefox-extension
 COPY --from=builder /app/VERSION ./VERSION
 
+RUN mkdir -p /app/data && chown -R node:node /app
+
 EXPOSE 3000
 WORKDIR /app/api
+USER node
 CMD ["node", "dist/src/server.js"]

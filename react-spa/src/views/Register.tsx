@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import { Button } from '@openpath/src/components/ui/Button';
-import { Input } from '@openpath/src/components/ui/Input';
-import { Card } from '@openpath/src/components/ui/Card';
+import { Button, Card, Input } from '@openpath/public-ui';
 import { PasswordStrength } from '../components/PasswordStrength';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import { validateEmail, validatePassword, ERROR_MESSAGES_ES } from '../utils/validation';

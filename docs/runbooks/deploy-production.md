@@ -30,6 +30,23 @@ This is the canonical production promotion path for ClassroomPath. Future LLMs s
 - Do not use `workflow_dispatch` for production. Production is intentionally tag-only.
 - Do not leave code-only hotfixes on the server. If an emergency server change is made, backport it to the repo and redeploy by tag immediately.
 - Staging must be validated first from a developer machine with `npm run deploy:staging`.
+- Destructive migration releases require a recorded backup or snapshot reference before production migrations run.
+
+## Migration Risk Categories
+
+Production deploys classify changed migration SQL into one of these categories:
+
+- `safe`: no schema/data changes detected or index-only changes
+- `expand-contract`: additive schema changes such as `CREATE TABLE`, `ADD COLUMN`, `ADD CONSTRAINT`, `CREATE INDEX`
+- `destructive`: deletes, drops, type changes, or data rewrites
+
+Destructive releases have extra requirements:
+
+1. staging evidence must already exist for the exact promoted SHA
+2. a production backup/snapshot reference must be recorded
+3. rollback should be understood as code/image rollback only unless the backup is also restored manually
+
+The deploy script persists this classification in `/opt/classroompath/release-state/deploy-context.env`.
 
 ## Promotion Steps
 
@@ -60,6 +77,11 @@ gh run watch --workflow Deploy
 
 Inspect the workflow summary and `release-evidence-<tag>` artifact before calling the release complete.
 
+If the release includes destructive migrations, also ensure the workflow had either:
+
+- `PRODUCTION_DB_BACKUP_ID` set explicitly, or
+- `PRODUCTION_DB_BACKUP_COMMAND` configured so the remote deploy script could generate a backup reference
+
 5. Verify production after the workflow finishes.
 
 ```bash
@@ -81,13 +103,34 @@ The production workflow performs these steps automatically:
 
 1. Verify the staging release state and persisted staging verification evidence
 2. SSH into production using `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PORT`, `DEPLOY_SSH_KEY`
-3. Check out the exact tag commit in `/opt/classroompath/app`
-4. Update the OpenPath submodule recursively
-5. Run ClassroomPath DB migrations
-6. Run OpenPath DB migrations
-7. Rebuild and restart Docker Compose services
-8. Check `/cp/health` and `/cp/ready`
-9. Run smoke tests against `https://classroompath.eu`
+3. Classify changed migrations as `safe`, `expand-contract`, or `destructive`
+4. Require a backup/snapshot reference before any destructive production migration
+5. Check out the exact tag commit in `/opt/classroompath/app`
+6. Update the OpenPath submodule recursively
+7. Run ClassroomPath DB migrations
+8. Run OpenPath DB migrations
+9. Rebuild and restart Docker Compose services
+10. Check `/cp/health` and `/cp/ready`
+11. Run smoke tests against `https://classroompath.eu`
+
+## Rollback Semantics
+
+- The workflow can now trigger rollback when the production deploy job itself fails or when post-deploy smoke tests fail.
+- Rollback restores the previous code/image state recorded in `previous-images.env`.
+- Rollback does **not** restore the database automatically.
+- If `deploy-context.env` reports `DB_MIGRATED=1`, use the recorded backup reference for any data restoration plan.
+
+Useful server-side state files:
+
+- `/opt/classroompath/release-state/current-images.env`
+- `/opt/classroompath/release-state/previous-images.env`
+- `/opt/classroompath/release-state/deploy-context.env`
+
+## Staging Recovery Notes
+
+- `npm run deploy:staging` now attempts to restore the previous application revision automatically if post-migration startup or readiness checks fail.
+- This recovery is application-level only; the database may already be migrated.
+- The latest staging deploy status is written to `/opt/classroompath/release-state/staging-deploy-context.env`.
 
 ## Production Runtime Expectations
 

@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { RefreshCw, ArrowLeft } from 'lucide-react';
-import { Button } from '@openpath/src/components/ui/Button';
-import { Card } from '@openpath/src/components/ui/Card';
+import { Button, Card } from '@openpath/public-ui';
 import { useOnboardingStatus, useCancelWaiting } from '../lib/hooks';
 
 interface Props {
