@@ -673,6 +673,7 @@ jobs:
     name: Publish Release Candidate Manifest
     runs-on: ubuntu-latest
     needs:
+      - derive-release-image-refs
       - build-gateway-release-candidate
       - build-migrations-release-candidate
       - build-openpath-api-release-candidate

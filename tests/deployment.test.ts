@@ -506,6 +506,14 @@ void describe('Migration Tooling', () => {
         content.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
         `${scriptName} should fall back to the deployed scripts directory when stdin execution has no script path`
       );
+      assert.ok(
+        content.includes('COMMON_SH_DEPLOYED_PATH="$APP_DIR/scripts/lib/common.sh"'),
+        `${scriptName} should keep an absolute path to the deployed helper library after the remote checkout updates the app directory`
+      );
+      assert.ok(
+        content.includes('reload_deployed_common_helpers() {'),
+        `${scriptName} should be able to re-source helper functions from the freshly checked out app directory`
+      );
     }
   });
 
@@ -1124,14 +1132,20 @@ void describe('Migration Tooling', () => {
       'production deploy should fall back to the absolute common.sh path when the remote runner does not preserve the original script directory'
     );
     assert.ok(
-      deployRemoteScript.includes('NODE_BIN="$(resolve_node_bin)"'),
-      'production deploy should resolve a usable node binary explicitly on the remote host before classifying migration risk'
+      deployRemoteScript.includes('resolve_node_bin() {'),
+      'production deploy should define a local node resolver before the remote checkout so it does not depend on helper functions from the currently deployed app revision'
     );
     assert.ok(
       deployRemoteScript.includes(
         'eval "$("$NODE_BIN" "$APP_DIR/scripts/classify-migration-risk.mjs" --repo-root "$APP_DIR" --from "$PREVIOUS_APP_SHA" --to "$TARGET_SHA")"'
       ),
       'production deploy should invoke classify-migration-risk.mjs through the resolved node binary and absolute script path'
+    );
+    assert.ok(
+      deployRemoteScript.includes(
+        'git submodule update --init --recursive --force\nreload_deployed_common_helpers'
+      ),
+      'production deploy should reload helper functions from the freshly checked out app revision before using post-checkout helpers'
     );
   });
 

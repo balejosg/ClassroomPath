@@ -4,6 +4,7 @@ set -euo pipefail
 
 APP_DIR="/opt/classroompath/app"
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+COMMON_SH_DEPLOYED_PATH="$APP_DIR/scripts/lib/common.sh"
 
 if [ -n "$SCRIPT_SOURCE" ]; then
   SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
@@ -15,6 +16,13 @@ COMMON_SH_PATH="$SCRIPT_DIR/lib/common.sh"
 if [ ! -f "$COMMON_SH_PATH" ]; then
   COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"
 fi
+
+reload_deployed_common_helpers() {
+  if [ -f "$COMMON_SH_DEPLOYED_PATH" ]; then
+    # shellcheck disable=SC1090
+    source "$COMMON_SH_DEPLOYED_PATH"
+  fi
+}
 
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
@@ -53,6 +61,7 @@ git checkout --detach "$APP_SHA"
 git reset --hard "$APP_SHA"
 git submodule deinit -f --all || true
 git submodule update --init --recursive --force
+reload_deployed_common_helpers
 
 echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT

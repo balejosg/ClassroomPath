@@ -666,8 +666,9 @@ describe('Workflow configuration hardening', () => {
         'build-openpath-api-release-candidate',
         'build-spa-release-candidate',
         'build-verifier-release-candidate',
+        'derive-release-image-refs',
       ].sort(),
-      'manifest publication should wait for all parallel image builds'
+      'manifest publication should wait for all parallel image builds and the shared ref-derivation job that exports the Linux agent version pin'
     );
 
     for (const jobName of [
