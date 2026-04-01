@@ -11,8 +11,13 @@ else
   SCRIPT_DIR="$APP_DIR/scripts"
 fi
 
+COMMON_SH_PATH="$SCRIPT_DIR/lib/common.sh"
+if [ ! -f "$COMMON_SH_PATH" ]; then
+  COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"
+fi
+
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+source "$COMMON_SH_PATH"
 
 DEPLOY_DIR="/opt/classroompath"
 STATE_DIR="$DEPLOY_DIR/release-state"

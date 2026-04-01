@@ -1119,6 +1119,20 @@ void describe('Migration Tooling', () => {
       ),
       'production deploy should persist the pinned OpenPath Linux agent version into the runtime env file before compose up'
     );
+    assert.ok(
+      deployRemoteScript.includes('COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"'),
+      'production deploy should fall back to the absolute common.sh path when the remote runner does not preserve the original script directory'
+    );
+    assert.ok(
+      deployRemoteScript.includes('NODE_BIN="$(resolve_node_bin)"'),
+      'production deploy should resolve a usable node binary explicitly on the remote host before classifying migration risk'
+    );
+    assert.ok(
+      deployRemoteScript.includes(
+        'eval "$("$NODE_BIN" "$APP_DIR/scripts/classify-migration-risk.mjs" --repo-root "$APP_DIR" --from "$PREVIOUS_APP_SHA" --to "$TARGET_SHA")"'
+      ),
+      'production deploy should invoke classify-migration-risk.mjs through the resolved node binary and absolute script path'
+    );
   });
 
   void test('release candidate workflow publishes a verifier image in the manifest artifact', () => {

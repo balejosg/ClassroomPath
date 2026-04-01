@@ -11,8 +11,13 @@ else
   SCRIPT_DIR="$APP_DIR/scripts"
 fi
 
+COMMON_SH_PATH="$SCRIPT_DIR/lib/common.sh"
+if [ ! -f "$COMMON_SH_PATH" ]; then
+  COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"
+fi
+
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+source "$COMMON_SH_PATH"
 
 log_info "Starting ClassroomPath Docker deployment..."
 
@@ -77,7 +82,8 @@ if [ -f "$STATE_DIR/current-images.env" ]; then
   PREVIOUS_APP_SHA="$(grep '^APP_SHA=' "$STATE_DIR/current-images.env" | cut -d= -f2- || true)"
 fi
 
-eval "$(node scripts/classify-migration-risk.mjs --repo-root "$APP_DIR" --from "$PREVIOUS_APP_SHA" --to "$TARGET_SHA")"
+NODE_BIN="$(resolve_node_bin)"
+eval "$("$NODE_BIN" "$APP_DIR/scripts/classify-migration-risk.mjs" --repo-root "$APP_DIR" --from "$PREVIOUS_APP_SHA" --to "$TARGET_SHA")"
 
 if [ "$MIGRATION_RISK_LEVEL" = "destructive" ]; then
   log_warn "Destructive migration risk detected: ${MIGRATION_DESTRUCTIVE_FILES:-unknown files}"

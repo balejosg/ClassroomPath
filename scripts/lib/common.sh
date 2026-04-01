@@ -33,6 +33,23 @@ require_cmd() {
   fi
 }
 
+resolve_node_bin() {
+  local candidate=""
+
+  for candidate in \
+    "${NODE_BIN:-}" \
+    "$(command -v node 2>/dev/null || true)" \
+    /usr/bin/node \
+    /usr/local/bin/node; do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  die "Missing required command: node"
+}
+
 load_env_file() {
   local path="$1"
   if [ -f "$path" ]; then
