@@ -8,6 +8,10 @@ type ResolvedFetchOptions = {
   timeoutMs?: number;
 };
 
+function responseMustOmitBody(statusCode: number): boolean {
+  return statusCode === 204 || statusCode === 205 || statusCode === 304;
+}
+
 function getPort(url: URL): number {
   if (url.port) {
     return Number.parseInt(url.port, 10);
@@ -119,9 +123,12 @@ export async function resolvedFetch(
         });
 
         response.on('end', () => {
+          const statusCode = response.statusCode ?? 500;
+          const responseBody = responseMustOmitBody(statusCode) ? null : Buffer.concat(chunks);
+
           resolve(
-            new Response(Buffer.concat(chunks), {
-              status: response.statusCode ?? 500,
+            new Response(responseBody, {
+              status: statusCode,
               statusText: response.statusMessage ?? '',
               headers: toResponseHeaders(response.headers),
             })

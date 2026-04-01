@@ -63,3 +63,38 @@ test('resolvedFetch can connect via explicit IP while preserving the canonical h
   assert.equal(payload.origin, 'https://classroompath-staging.duckdns.org');
   assert.equal(payload.url, '/cp/health');
 });
+
+test('resolvedFetch preserves 204 responses without constructing an invalid body', async () => {
+  const server = createServer((request, response) => {
+    assert.equal(request.method, 'OPTIONS');
+    response.statusCode = 204;
+    response.end();
+  });
+  servers.add(server);
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  const address = server.address();
+  assert.ok(
+    address && typeof address === 'object',
+    'server should expose a concrete listen address'
+  );
+
+  const response = await resolvedFetch(
+    `http://classroompath-staging.duckdns.org:${address.port}/cp/trpc/example`,
+    {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://classroompath-staging.duckdns.org',
+      },
+    },
+    {
+      resolvedAddress: '127.0.0.1',
+      timeoutMs: 2_000,
+    }
+  );
+
+  assert.equal(response.status, 204);
+  assert.equal(await response.text(), '');
+});
