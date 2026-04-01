@@ -9,6 +9,7 @@ import {
 describe('test table inventory', () => {
   it('defines the canonical ClassroomPath reset tables', () => {
     assert.deepStrictEqual(CLASSROOMPATH_TEST_RESET_TABLES, [
+      'cp_mutation_operations',
       'cp_audit_events',
       'cp_organization_users',
       'cp_organization_groups',

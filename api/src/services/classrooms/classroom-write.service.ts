@@ -21,6 +21,12 @@ import {
   getOrgClassroomLinkOrThrow,
 } from '../../lib/tenant-access.js';
 import { throwConflictOnUniqueViolation } from '../../lib/pg-errors.js';
+import {
+  getMutationResult,
+  getOrCreateMutationOperation,
+  setMutationOperationProgress,
+  toMutationError,
+} from '../../lib/cross-system-mutations.js';
 
 export type ClassroomWriteContext = Parameters<typeof assertCanUseGroup>[0];
 
@@ -82,37 +88,110 @@ export async function createClassroomForTenant(params: {
 
   await assertUsableGroupIfProvided(params.ctx, params.input.defaultGroupId);
 
-  const classroomId = nanoid();
   const scopedName = scopedClassroomNameForOrg(params.ctx.organizationId!, publicName);
+  const operation = await getOrCreateMutationOperation({
+    operationType: 'classrooms.create_classroom',
+    idempotencyKey: `${params.ctx.organizationId}:${publicName}`,
+    organizationId: params.ctx.organizationId!,
+    userId: params.ctx.user.sub,
+    metadata: { defaultGroupId: params.input.defaultGroupId ?? null, displayName, publicName },
+  });
 
-  let classroom: typeof classrooms.$inferSelect | undefined;
-  try {
-    [classroom] = await openpathDb
-      .insert(classrooms)
-      .values({
-        id: classroomId,
-        name: scopedName,
-        displayName,
-        defaultGroupId: params.input.defaultGroupId,
-      })
-      .returning();
-  } catch (err: unknown) {
-    throwConflictOnUniqueViolation(
-      err,
-      'Classroom with this name already exists in your organization'
-    );
-    throw err;
+  const storedResult = getMutationResult<{ classroomId: string }>(operation);
+
+  if (operation.status === 'completed' && storedResult) {
+    throw new TRPCError({
+      code: 'CONFLICT',
+      message: 'Classroom with this name already exists in your organization',
+    });
+  }
+
+  let classroom = storedResult
+    ? (
+        await openpathDb
+          .select()
+          .from(classrooms)
+          .where(eq(classrooms.id, storedResult.classroomId))
+          .limit(1)
+      )[0]
+    : undefined;
+
+  if (!storedResult) {
+    const classroomId = nanoid();
+    try {
+      [classroom] = await openpathDb
+        .insert(classrooms)
+        .values({
+          id: classroomId,
+          name: scopedName,
+          displayName,
+          defaultGroupId: params.input.defaultGroupId,
+        })
+        .returning();
+
+      await setMutationOperationProgress(operation.id, {
+        step: 'upstream_created',
+        status: 'in_progress',
+        organizationId: params.ctx.organizationId!,
+        result: { classroomId },
+        lastError: null,
+      });
+    } catch (err: unknown) {
+      await setMutationOperationProgress(operation.id, {
+        step: 'failed',
+        status: 'failed',
+        lastError: toMutationError(err),
+      });
+      throwConflictOnUniqueViolation(
+        err,
+        'Classroom with this name already exists in your organization'
+      );
+      throw err;
+    }
   }
 
   if (!classroom) {
     throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create classroom' });
   }
 
-  await db.insert(schema.cpOrganizationClassrooms).values({
-    id: nanoid(),
-    organizationId: params.ctx.organizationId!,
-    classroomId: classroom.id,
-  });
+  try {
+    const existingLink = await db
+      .select({ id: schema.cpOrganizationClassrooms.id })
+      .from(schema.cpOrganizationClassrooms)
+      .where(
+        and(
+          eq(schema.cpOrganizationClassrooms.organizationId, params.ctx.organizationId!),
+          eq(schema.cpOrganizationClassrooms.classroomId, classroom.id)
+        )
+      )
+      .limit(1);
+
+    if (existingLink.length === 0) {
+      await db.insert(schema.cpOrganizationClassrooms).values({
+        id: nanoid(),
+        organizationId: params.ctx.organizationId!,
+        classroomId: classroom.id,
+      });
+    }
+
+    await setMutationOperationProgress(operation.id, {
+      step: 'completed',
+      status: 'completed',
+      organizationId: params.ctx.organizationId!,
+      result: { classroomId: classroom.id },
+      lastError: null,
+      completed: true,
+    });
+  } catch (err) {
+    await setMutationOperationProgress(operation.id, {
+      step: 'failed',
+      status: 'failed',
+      organizationId: params.ctx.organizationId!,
+      result: { classroomId: classroom.id },
+      lastError: toMutationError(err),
+    });
+    throw err;
+  }
 
   return presentTenantClassroom({ classroom });
 }
@@ -269,14 +348,50 @@ export async function deleteClassroomForTenant(params: {
   ctx: ClassroomWriteContext;
   classroomId: string;
 }): Promise<void> {
-  const orgClassroom = await getOrgClassroomLinkOrThrow(
-    params.ctx.organizationId!,
-    params.classroomId
-  );
+  const operation = await getOrCreateMutationOperation({
+    operationType: 'classrooms.delete_classroom',
+    idempotencyKey: `${params.ctx.organizationId}:${params.classroomId}`,
+    organizationId: params.ctx.organizationId!,
+    userId: params.ctx.user.sub,
+    metadata: { classroomId: params.classroomId },
+  });
 
-  await db
-    .delete(schema.cpOrganizationClassrooms)
-    .where(eq(schema.cpOrganizationClassrooms.id, orgClassroom.id));
+  if (operation.status !== 'completed') {
+    if (Object.keys(operation.result).length === 0) {
+      const orgClassroom = await getOrgClassroomLinkOrThrow(
+        params.ctx.organizationId!,
+        params.classroomId
+      );
 
-  await openpathDb.delete(classrooms).where(eq(classrooms.id, params.classroomId));
+      await db
+        .delete(schema.cpOrganizationClassrooms)
+        .where(eq(schema.cpOrganizationClassrooms.id, orgClassroom.id));
+
+      await setMutationOperationProgress(operation.id, {
+        step: 'local_committed',
+        status: 'in_progress',
+        result: { success: true, classroomId: params.classroomId },
+        lastError: null,
+      });
+    }
+
+    try {
+      await openpathDb.delete(classrooms).where(eq(classrooms.id, params.classroomId));
+      await setMutationOperationProgress(operation.id, {
+        step: 'completed',
+        status: 'completed',
+        result: { success: true, classroomId: params.classroomId },
+        lastError: null,
+        completed: true,
+      });
+    } catch (err) {
+      await setMutationOperationProgress(operation.id, {
+        step: 'failed',
+        status: 'failed',
+        result: { success: true, classroomId: params.classroomId },
+        lastError: toMutationError(err),
+      });
+      throw err;
+    }
+  }
 }

@@ -18,6 +18,12 @@ import {
   recordUserRoleRevokedAuditEvent,
 } from './audit.service.js';
 import {
+  getMutationResult,
+  getOrCreateMutationOperation,
+  setMutationOperationProgress,
+  toMutationError,
+} from '../lib/cross-system-mutations.js';
+import {
   assertOrganizationUserAccess,
   getOrganizationUserIds,
   getRolesByUserId,
@@ -221,47 +227,104 @@ export async function deleteOrganizationUser(params: {
     nextRole: null,
   });
 
-  const [membership] = await db
-    .select({ role: schema.cpMemberships.role })
-    .from(schema.cpMemberships)
-    .where(
-      and(
-        eq(schema.cpMemberships.organizationId, params.organizationId),
-        eq(schema.cpMemberships.userId, params.userId)
-      )
-    )
-    .limit(1);
-
-  await db
-    .delete(schema.cpOrganizationUsers)
-    .where(
-      and(
-        eq(schema.cpOrganizationUsers.organizationId, params.organizationId),
-        eq(schema.cpOrganizationUsers.openpathUserId, params.userId)
-      )
-    );
-
-  await db
-    .delete(schema.cpMemberships)
-    .where(
-      and(
-        eq(schema.cpMemberships.organizationId, params.organizationId),
-        eq(schema.cpMemberships.userId, params.userId)
-      )
-    );
-
-  await synchronizeOpenPathRole({
+  const operation = await getOrCreateMutationOperation({
+    operationType: 'users.delete_organization_user',
+    idempotencyKey: `${params.organizationId}:${params.userId}`,
+    organizationId: params.organizationId,
     userId: params.userId,
-    actedBy: params.actedBy,
+    metadata: { actedBy: params.actedBy },
   });
 
-  if (membership) {
-    await recordUserDeletedAuditEvent({
-      organizationId: params.organizationId,
-      actorUserId: params.actedBy,
-      userId: params.userId,
-      role: membership.role,
+  const storedResult = getMutationResult<{ success: true; role: string | null }>(operation);
+  let localResult = storedResult;
+
+  if (operation.status === 'completed' && localResult) {
+    return { success: true };
+  }
+
+  if (!localResult) {
+    const [membership] = await db
+      .select({ role: schema.cpMemberships.role })
+      .from(schema.cpMemberships)
+      .where(
+        and(
+          eq(schema.cpMemberships.organizationId, params.organizationId),
+          eq(schema.cpMemberships.userId, params.userId)
+        )
+      )
+      .limit(1);
+
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(schema.cpOrganizationUsers)
+        .where(
+          and(
+            eq(schema.cpOrganizationUsers.organizationId, params.organizationId),
+            eq(schema.cpOrganizationUsers.openpathUserId, params.userId)
+          )
+        );
+
+      await tx
+        .delete(schema.cpMemberships)
+        .where(
+          and(
+            eq(schema.cpMemberships.organizationId, params.organizationId),
+            eq(schema.cpMemberships.userId, params.userId)
+          )
+        );
+
+      await setMutationOperationProgress(
+        operation.id,
+        {
+          step: 'local_committed',
+          status: 'in_progress',
+          result: { success: true, role: membership?.role ?? null },
+          lastError: null,
+        },
+        tx
+      );
     });
+
+    localResult = { success: true, role: membership?.role ?? null };
+  }
+
+  try {
+    await synchronizeOpenPathRole({
+      userId: params.userId,
+      actedBy: params.actedBy,
+    });
+
+    await setMutationOperationProgress(operation.id, {
+      step: 'synced_upstream',
+      status: 'in_progress',
+      result: localResult,
+      lastError: null,
+    });
+
+    if (localResult.role) {
+      await recordUserDeletedAuditEvent({
+        organizationId: params.organizationId,
+        actorUserId: params.actedBy,
+        userId: params.userId,
+        role: localResult.role,
+      });
+    }
+
+    await setMutationOperationProgress(operation.id, {
+      step: 'completed',
+      status: 'completed',
+      result: localResult,
+      lastError: null,
+      completed: true,
+    });
+  } catch (error) {
+    await setMutationOperationProgress(operation.id, {
+      step: 'failed',
+      status: 'failed',
+      result: localResult,
+      lastError: toMutationError(error),
+    });
+    throw error;
   }
 
   return { success: true };
@@ -280,44 +343,113 @@ export async function assignOrganizationUserRole(params: {
     userId: params.userId,
     nextRole: params.role,
   });
-  await updateOrganizationMembershipRole({
+  const operation = await getOrCreateMutationOperation({
+    operationType: 'users.assign_role',
+    idempotencyKey: `${params.organizationId}:${params.userId}:${params.role}:${[...params.groupIds].sort().join(',')}`,
     organizationId: params.organizationId,
     userId: params.userId,
-    role: params.role,
+    metadata: { actedBy: params.actedBy, role: params.role, groupIds: [...params.groupIds] },
   });
 
-  const synchronizedRole = await synchronizeOpenPathRole({
-    userId: params.userId,
-    actedBy: params.actedBy,
-    groupIds: params.groupIds,
-  });
-
-  if (!synchronizedRole) {
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'Failed to synchronize upstream role state',
-    });
-  }
-
-  const persistedRole = await getPersistedUserRole(params.userId);
-
-  await recordUserRoleAssignedAuditEvent({
-    organizationId: params.organizationId,
-    actorUserId: params.actedBy,
-    userId: params.userId,
+  const storedResult = getMutationResult<{
+    role: 'admin' | 'teacher';
+    groupIds: string[];
+    createdBy: string;
+  }>(operation);
+  const localResult = storedResult ?? {
     role: params.role,
     groupIds: [...params.groupIds],
+    createdBy: params.actedBy,
+  };
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.cpMemberships)
+      .set({ role: params.role })
+      .where(
+        and(
+          eq(schema.cpMemberships.organizationId, params.organizationId),
+          eq(schema.cpMemberships.userId, params.userId)
+        )
+      );
+
+    await setMutationOperationProgress(
+      operation.id,
+      {
+        step: 'local_committed',
+        status: 'in_progress',
+        result: localResult,
+        lastError: null,
+      },
+      tx
+    );
   });
 
-  return presentUserRole({
-    role: persistedRole,
-    fallback: {
+  try {
+    const synchronizedRole = await synchronizeOpenPathRole({
       userId: params.userId,
-      role: synchronizedRole.role,
-      groupIds: synchronizedRole.groupIds,
-      createdBy: params.actedBy,
-    },
-  });
+      actedBy: params.actedBy,
+      groupIds: localResult.groupIds,
+    });
+
+    if (!synchronizedRole) {
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to synchronize upstream role state',
+      });
+    }
+
+    await setMutationOperationProgress(operation.id, {
+      step: 'synced_upstream',
+      status: 'in_progress',
+      result: {
+        role: synchronizedRole.role,
+        groupIds: synchronizedRole.groupIds,
+        createdBy: params.actedBy,
+      },
+      lastError: null,
+    });
+
+    const persistedRole = await getPersistedUserRole(params.userId);
+
+    await recordUserRoleAssignedAuditEvent({
+      organizationId: params.organizationId,
+      actorUserId: params.actedBy,
+      userId: params.userId,
+      role: params.role,
+      groupIds: [...localResult.groupIds],
+    });
+
+    await setMutationOperationProgress(operation.id, {
+      step: 'completed',
+      status: 'completed',
+      result: {
+        role: synchronizedRole.role,
+        groupIds: synchronizedRole.groupIds,
+        createdBy: params.actedBy,
+      },
+      lastError: null,
+      completed: true,
+    });
+
+    return presentUserRole({
+      role: persistedRole,
+      fallback: {
+        userId: params.userId,
+        role: synchronizedRole.role,
+        groupIds: synchronizedRole.groupIds,
+        createdBy: params.actedBy,
+      },
+    });
+  } catch (error) {
+    await setMutationOperationProgress(operation.id, {
+      step: 'failed',
+      status: 'failed',
+      result: localResult ?? undefined,
+      lastError: toMutationError(error),
+    });
+    throw error;
+  }
 }
 
 export async function revokeOrganizationUserRole(params: {
@@ -331,25 +463,72 @@ export async function revokeOrganizationUserRole(params: {
     userId: params.userId,
     nextRole: 'teacher',
   });
-  await updateOrganizationMembershipRole({
+  const operation = await getOrCreateMutationOperation({
+    operationType: 'users.revoke_role',
+    idempotencyKey: `${params.organizationId}:${params.userId}`,
     organizationId: params.organizationId,
     userId: params.userId,
-    role: 'teacher',
+    metadata: { actedBy: params.actedBy },
   });
 
-  await synchronizeOpenPathRole({
-    userId: params.userId,
-    actedBy: params.actedBy,
-    groupIds: [],
-  });
+  if (operation.status !== 'completed') {
+    if (Object.keys(operation.result).length === 0) {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(schema.cpMemberships)
+          .set({ role: 'teacher' })
+          .where(
+            and(
+              eq(schema.cpMemberships.organizationId, params.organizationId),
+              eq(schema.cpMemberships.userId, params.userId)
+            )
+          );
 
-  await recordUserRoleRevokedAuditEvent({
-    organizationId: params.organizationId,
-    actorUserId: params.actedBy,
-    userId: params.userId,
-    role: 'teacher',
-    groupIds: [],
-  });
+        await setMutationOperationProgress(
+          operation.id,
+          {
+            step: 'local_committed',
+            status: 'in_progress',
+            result: { success: true },
+            lastError: null,
+          },
+          tx
+        );
+      });
+    }
+
+    try {
+      await synchronizeOpenPathRole({
+        userId: params.userId,
+        actedBy: params.actedBy,
+        groupIds: [],
+      });
+
+      await recordUserRoleRevokedAuditEvent({
+        organizationId: params.organizationId,
+        actorUserId: params.actedBy,
+        userId: params.userId,
+        role: 'teacher',
+        groupIds: [],
+      });
+
+      await setMutationOperationProgress(operation.id, {
+        step: 'completed',
+        status: 'completed',
+        result: { success: true },
+        lastError: null,
+        completed: true,
+      });
+    } catch (error) {
+      await setMutationOperationProgress(operation.id, {
+        step: 'failed',
+        status: 'failed',
+        result: { success: true },
+        lastError: toMutationError(error),
+      });
+      throw error;
+    }
+  }
 
   return { success: true };
 }

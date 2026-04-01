@@ -12,6 +12,12 @@ import {
   recordPendingUserApprovedAuditEvent,
   recordPendingUserRejectedAuditEvent,
 } from './audit.service.js';
+import {
+  getMutationResult,
+  getOrCreateMutationOperation,
+  setMutationOperationProgress,
+  toMutationError,
+} from '../lib/cross-system-mutations.js';
 
 export interface PendingUser {
   userId: string;
@@ -77,70 +83,130 @@ export async function approveUser(
   role: 'admin' | 'teacher',
   approvedBy: string
 ): Promise<{ membershipId: string }> {
-  const membershipId = generateId('mem');
+  const operation = await getOrCreateMutationOperation({
+    operationType: 'pending_users.approve_user',
+    idempotencyKey: `${organizationId}:${userId}`,
+    organizationId,
+    userId,
+    metadata: { role, approvedBy },
+  });
 
-  try {
-    await db.transaction(async (tx) => {
-      // Verify user is actually waiting for this organization
-      const status = await tx
-        .select()
-        .from(schema.cpUserStatus)
-        .where(
-          and(
-            eq(schema.cpUserStatus.userId, userId),
-            eq(schema.cpUserStatus.status, 'waiting'),
-            eq(schema.cpUserStatus.targetOrganizationId, organizationId)
-          )
-        )
-        .limit(1);
+  const storedResult = getMutationResult<{ membershipId: string }>(operation);
+  let localResult = storedResult;
 
-      if (status.length === 0) {
-        throw new Error('User is not waiting for this organization');
-      }
-
-      const existingMemberships = await tx
-        .select({
-          organizationId: schema.cpMemberships.organizationId,
-        })
-        .from(schema.cpMemberships)
-        .where(eq(schema.cpMemberships.userId, userId))
-        .limit(2);
-
-      if (existingMemberships.length > 0) {
-        throwMembershipConflict(existingMemberships.length);
-      }
-
-      // Create membership
-      await tx.insert(schema.cpMemberships).values({
-        id: membershipId,
-        userId,
-        organizationId,
-        role,
-        invitedBy: approvedBy,
-      });
-
-      // Remove waiting status
-      await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
-    });
-  } catch (error) {
-    throwConflictOnUniqueViolation(error, SINGLE_ORG_MEMBERSHIP_MESSAGE);
+  if (operation.status === 'completed' && localResult) {
+    return localResult;
   }
 
-  await synchronizeOpenPathRole({
-    userId,
-    actedBy: approvedBy,
-    groupIds: [],
-  });
+  if (!localResult) {
+    const membershipId = generateId('mem');
 
-  await recordPendingUserApprovedAuditEvent({
-    organizationId,
-    actorUserId: approvedBy,
-    userId,
-    membershipId,
-    role,
-  });
+    try {
+      await db.transaction(async (tx) => {
+        const status = await tx
+          .select()
+          .from(schema.cpUserStatus)
+          .where(
+            and(
+              eq(schema.cpUserStatus.userId, userId),
+              eq(schema.cpUserStatus.status, 'waiting'),
+              eq(schema.cpUserStatus.targetOrganizationId, organizationId)
+            )
+          )
+          .limit(1);
 
-  return { membershipId };
+        if (status.length === 0) {
+          throw new Error('User is not waiting for this organization');
+        }
+
+        const existingMemberships = await tx
+          .select({
+            organizationId: schema.cpMemberships.organizationId,
+          })
+          .from(schema.cpMemberships)
+          .where(eq(schema.cpMemberships.userId, userId))
+          .limit(2);
+
+        if (existingMemberships.length > 0) {
+          throwMembershipConflict(existingMemberships.length);
+        }
+
+        await tx.insert(schema.cpMemberships).values({
+          id: membershipId,
+          userId,
+          organizationId,
+          role,
+          invitedBy: approvedBy,
+        });
+
+        await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
+
+        await setMutationOperationProgress(
+          operation.id,
+          {
+            step: 'local_committed',
+            status: 'in_progress',
+            result: { membershipId },
+            metadata: { ...operation.metadata, role, approvedBy },
+            lastError: null,
+          },
+          tx
+        );
+      });
+    } catch (error) {
+      await setMutationOperationProgress(operation.id, {
+        step: 'failed',
+        status: 'failed',
+        lastError: toMutationError(error),
+      });
+      throwConflictOnUniqueViolation(error, SINGLE_ORG_MEMBERSHIP_MESSAGE);
+    }
+
+    localResult = { membershipId };
+  }
+
+  try {
+    if (operation.currentStep !== 'synced_upstream' && operation.status !== 'completed') {
+      await synchronizeOpenPathRole({
+        userId,
+        actedBy: approvedBy,
+        groupIds: [],
+      });
+
+      await setMutationOperationProgress(operation.id, {
+        step: 'synced_upstream',
+        status: 'in_progress',
+        result: localResult,
+        lastError: null,
+      });
+    }
+
+    await recordPendingUserApprovedAuditEvent({
+      organizationId,
+      actorUserId: approvedBy,
+      userId,
+      membershipId: localResult.membershipId,
+      role,
+    });
+
+    await setMutationOperationProgress(operation.id, {
+      step: 'completed',
+      status: 'completed',
+      result: localResult,
+      lastError: null,
+      completed: true,
+    });
+  } catch (error) {
+    await setMutationOperationProgress(operation.id, {
+      step: 'failed',
+      status: 'failed',
+      result: localResult,
+      lastError: toMutationError(error),
+    });
+    throw error;
+  }
+
+  return localResult;
 }
 
 /**

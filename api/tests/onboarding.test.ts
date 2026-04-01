@@ -48,6 +48,9 @@ describe('Onboarding Service', () => {
     const userIds = [...trackedUserIds];
 
     if (userIds.length > 0) {
+      await db
+        .delete(schema.cpMutationOperations)
+        .where(inArray(schema.cpMutationOperations.userId, userIds));
       await db.delete(schema.cpMemberships).where(inArray(schema.cpMemberships.userId, userIds));
       await db.delete(schema.cpUserStatus).where(inArray(schema.cpUserStatus.userId, userIds));
       await openpathDb
@@ -99,6 +102,10 @@ describe('Onboarding Service', () => {
         .select()
         .from(openpathSchema.roles)
         .where(eq(openpathSchema.roles.userId, userId));
+      const operations = await db
+        .select()
+        .from(schema.cpMutationOperations)
+        .where(eq(schema.cpMutationOperations.userId, userId));
 
       assert.strictEqual(openpathRoles.length, 1, 'Should create admin role in OpenPath');
       assert.strictEqual(
@@ -106,6 +113,9 @@ describe('Onboarding Service', () => {
         'admin',
         'Should assign admin role (not openpath-admin) for auth compatibility'
       );
+      assert.strictEqual(operations.length, 1);
+      assert.strictEqual(operations[0]?.operationType, 'onboarding.create_organization');
+      assert.strictEqual(operations[0]?.status, 'completed');
     });
   });
 

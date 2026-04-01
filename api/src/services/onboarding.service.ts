@@ -6,6 +6,12 @@ import { generateId } from '../lib/id.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
 import { config } from '../config.js';
 import {
+  getMutationResult,
+  getOrCreateMutationOperation,
+  setMutationOperationProgress,
+  toMutationError,
+} from '../lib/cross-system-mutations.js';
+import {
   assertNoExistingMembershipOrThrow,
   getSingleMembershipOrThrow,
   SINGLE_ORG_MEMBERSHIP_MESSAGE,
@@ -100,43 +106,98 @@ export async function createOrganization(
   name: string,
   userId: string
 ): Promise<{ organizationId: string; membershipId: string }> {
-  await assertCanStartOnboarding(userId);
-
-  const orgId = generateId('org');
-  const membershipId = generateId('mem');
-
-  try {
-    await db.transaction(async (tx) => {
-      // Create organization
-      await tx.insert(schema.cpOrganizations).values({
-        id: orgId,
-        name,
-        createdBy: userId,
-      });
-
-      // Create admin membership for creator
-      await tx.insert(schema.cpMemberships).values({
-        id: membershipId,
-        userId,
-        organizationId: orgId,
-        role: 'admin',
-        invitedBy: null,
-      });
-
-      // Remove waiting status if exists
-      await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
-    });
-  } catch (error) {
-    throwConflictOnUniqueViolation(error, SINGLE_ORG_MEMBERSHIP_MESSAGE);
-  }
-
-  await synchronizeOpenPathRole({
+  const operation = await getOrCreateMutationOperation({
+    operationType: 'onboarding.create_organization',
+    idempotencyKey: userId,
     userId,
-    actedBy: userId,
-    groupIds: [],
+    metadata: { name },
   });
 
-  return { organizationId: orgId, membershipId };
+  const storedResult = getMutationResult<{ organizationId: string; membershipId: string }>(
+    operation
+  );
+  let localResult = storedResult;
+
+  if (operation.status === 'completed' && localResult) {
+    return localResult;
+  }
+
+  if (!localResult) {
+    await assertCanStartOnboarding(userId);
+
+    const orgId = generateId('org');
+    const membershipId = generateId('mem');
+
+    try {
+      await db.transaction(async (tx) => {
+        await tx.insert(schema.cpOrganizations).values({
+          id: orgId,
+          name,
+          createdBy: userId,
+        });
+
+        await tx.insert(schema.cpMemberships).values({
+          id: membershipId,
+          userId,
+          organizationId: orgId,
+          role: 'admin',
+          invitedBy: null,
+        });
+
+        await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
+
+        await setMutationOperationProgress(
+          operation.id,
+          {
+            step: 'local_committed',
+            status: 'in_progress',
+            organizationId: orgId,
+            result: { organizationId: orgId, membershipId },
+            metadata: { ...operation.metadata, name },
+            lastError: null,
+          },
+          tx
+        );
+      });
+    } catch (error) {
+      await setMutationOperationProgress(operation.id, {
+        step: 'failed',
+        status: 'failed',
+        lastError: toMutationError(error),
+      });
+      throwConflictOnUniqueViolation(error, SINGLE_ORG_MEMBERSHIP_MESSAGE);
+    }
+
+    localResult = { organizationId: orgId, membershipId };
+  }
+
+  try {
+    await synchronizeOpenPathRole({
+      userId,
+      actedBy: userId,
+      groupIds: [],
+    });
+
+    await setMutationOperationProgress(operation.id, {
+      step: 'completed',
+      status: 'completed',
+      organizationId: localResult.organizationId,
+      result: localResult,
+      lastError: null,
+      completed: true,
+    });
+  } catch (error) {
+    await setMutationOperationProgress(operation.id, {
+      step: 'failed',
+      status: 'failed',
+      organizationId: localResult.organizationId,
+      result: localResult,
+      lastError: toMutationError(error),
+    });
+    throw error;
+  }
+
+  return localResult;
 }
 
 export async function setWaitingStatus(userId: string): Promise<void> {

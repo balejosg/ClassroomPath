@@ -78,6 +78,44 @@ export async function resetDb(): Promise<void> {
       sql.raw(`
       DO $$
       BEGIN
+        CREATE TABLE "cp_mutation_operations" (
+          "id" varchar(50) PRIMARY KEY NOT NULL,
+          "operation_type" varchar(100) NOT NULL,
+          "idempotency_key" varchar(255) NOT NULL,
+          "status" varchar(20) NOT NULL,
+          "current_step" varchar(50) NOT NULL,
+          "organization_id" varchar(50),
+          "user_id" varchar(50),
+          "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
+          "result" jsonb NOT NULL DEFAULT '{}'::jsonb,
+          "last_error" jsonb,
+          "created_at" timestamp with time zone DEFAULT now(),
+          "updated_at" timestamp with time zone DEFAULT now(),
+          "completed_at" timestamp with time zone,
+          CONSTRAINT "cp_mutation_operations_type_key" UNIQUE("operation_type", "idempotency_key"),
+          CONSTRAINT "cp_mutation_operations_organization_id_cp_organizations_id_fk"
+            FOREIGN KEY ("organization_id") REFERENCES "public"."cp_organizations"("id")
+            ON DELETE cascade ON UPDATE no action
+        );
+      EXCEPTION
+        WHEN duplicate_table OR unique_violation THEN
+          NULL;
+      END
+      $$;
+    `)
+    );
+
+    await db.execute(
+      sql.raw(`
+      CREATE INDEX IF NOT EXISTS "cp_mutation_operations_status_idx"
+      ON "cp_mutation_operations" ("status", "updated_at");
+    `)
+    );
+
+    await db.execute(
+      sql.raw(`
+      DO $$
+      BEGIN
         CREATE TABLE "cp_audit_events" (
           "id" varchar(50) PRIMARY KEY NOT NULL,
           "organization_id" varchar(50) NOT NULL,

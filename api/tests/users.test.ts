@@ -73,12 +73,14 @@ describe('usersRouter', { concurrency: 1 }, () => {
 
     assert.strictEqual(typeof caller.list, 'function');
     assert.strictEqual(typeof caller.listInvitations, 'function');
+    assert.strictEqual(typeof caller.listMutationOperations, 'function');
     assert.strictEqual(typeof caller.getById, 'function');
     assert.strictEqual(typeof caller.getRole, 'function');
     assert.strictEqual(typeof caller.create, 'function');
     assert.strictEqual(typeof caller.update, 'function');
     assert.strictEqual(typeof caller.delete, 'function');
     assert.strictEqual(typeof caller.revokeInvitation, 'function');
+    assert.strictEqual(typeof caller.retryMutationOperation, 'function');
     assert.strictEqual(typeof caller.assignRole, 'function');
     assert.strictEqual(typeof caller.revokeRole, 'function');
   });

@@ -20,6 +20,12 @@ import {
   toOpenPathEnabledFlag,
 } from '../lib/tenant-access.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
+import {
+  getMutationResult,
+  getOrCreateMutationOperation,
+  setMutationOperationProgress,
+  toMutationError,
+} from '../lib/cross-system-mutations.js';
 import { normalizeGroupKey, scopedGroupNameForOrg } from './group-name.service.js';
 import { presentTenantGroupMutation } from './presenters.js';
 
@@ -108,93 +114,156 @@ export async function createOrganizationGroupFromRules(params: {
   }
 
   const name = scopedGroupNameForOrg(params.organizationId, publicName);
-  const groupId = nanoid();
   const enabled = toOpenPathEnabledFlag(params.enabled ?? 1);
   const visibility = params.visibility ?? 'private';
+  const operation = await getOrCreateMutationOperation({
+    operationType: 'groups.create_group',
+    idempotencyKey: `${params.organizationId}:${publicName}`,
+    organizationId: params.organizationId,
+    userId: params.actorUserId,
+    metadata: {
+      actorRole: params.actorRole ?? null,
+      displayName: params.displayName,
+      enabled,
+      publicName,
+      rules: params.rules,
+      visibility,
+    },
+  });
 
-  let group: typeof whitelistGroups.$inferSelect;
-  try {
-    group = await openpathDb.transaction(async (tx) => {
-      const [created] = await tx
-        .insert(whitelistGroups)
-        .values({
-          id: groupId,
-          name,
-          displayName: params.displayName,
-          enabled,
-        })
-        .returning();
+  const storedResult = getMutationResult<{
+    groupId: string;
+    publicName: string;
+    visibility: string;
+  }>(operation);
 
-      if (params.rules.length > 0) {
-        await tx.insert(whitelistRules).values(
-          params.rules.map((rule) => ({
-            id: nanoid(),
-            groupId: created.id,
-            type: rule.type,
-            value: rule.value,
-            comment: rule.comment,
-          }))
-        );
-      }
-
-      return created;
+  if (operation.status === 'completed' && storedResult) {
+    throw new TRPCError({
+      code: 'CONFLICT',
+      message: 'Ya existe un grupo con ese identificador (slug)',
     });
-  } catch (err) {
-    throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
-    throw err;
+  }
+
+  let group = storedResult
+    ? (
+        await openpathDb
+          .select()
+          .from(whitelistGroups)
+          .where(eq(whitelistGroups.id, storedResult.groupId))
+          .limit(1)
+      )[0]
+    : undefined;
+
+  if (!storedResult) {
+    const groupId = nanoid();
+    try {
+      group = await openpathDb.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(whitelistGroups)
+          .values({
+            id: groupId,
+            name,
+            displayName: params.displayName,
+            enabled,
+          })
+          .returning();
+
+        if (params.rules.length > 0) {
+          await tx.insert(whitelistRules).values(
+            params.rules.map((rule) => ({
+              id: nanoid(),
+              groupId: created.id,
+              type: rule.type,
+              value: rule.value,
+              comment: rule.comment,
+            }))
+          );
+        }
+
+        return created;
+      });
+
+      await setMutationOperationProgress(operation.id, {
+        step: 'upstream_created',
+        status: 'in_progress',
+        organizationId: params.organizationId,
+        result: { groupId: group.id, publicName, visibility },
+        lastError: null,
+      });
+    } catch (err) {
+      await setMutationOperationProgress(operation.id, {
+        step: 'failed',
+        status: 'failed',
+        lastError: toMutationError(err),
+      });
+      throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
+      throw err;
+    }
+  }
+
+  if (!group) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create group' });
   }
 
   try {
-    await db.insert(schema.cpOrganizationGroups).values({
-      id: nanoid(),
-      organizationId: params.organizationId,
-      groupId: group.id,
-      publicName,
-      visibility,
-    });
-  } catch (err) {
-    try {
-      await deleteOpenPathGroupCascade(group.id);
-    } catch {
-      // Best-effort rollback.
+    const existingLink = await db
+      .select({ id: schema.cpOrganizationGroups.id })
+      .from(schema.cpOrganizationGroups)
+      .where(
+        and(
+          eq(schema.cpOrganizationGroups.organizationId, params.organizationId),
+          eq(schema.cpOrganizationGroups.groupId, group.id)
+        )
+      )
+      .limit(1);
+
+    if (existingLink.length === 0) {
+      await db.insert(schema.cpOrganizationGroups).values({
+        id: nanoid(),
+        organizationId: params.organizationId,
+        groupId: group.id,
+        publicName,
+        visibility,
+      });
     }
 
-    throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
-    throw err;
-  }
+    await setMutationOperationProgress(operation.id, {
+      step: 'local_linked',
+      status: 'in_progress',
+      organizationId: params.organizationId,
+      result: { groupId: group.id, publicName, visibility },
+      lastError: null,
+    });
 
-  if (params.actorRole === 'teacher') {
-    try {
+    if (params.actorRole === 'teacher') {
       await addGroupToTeacherRole({
         userId: params.actorUserId,
         groupId: group.id,
         createdBy: params.actorUserId,
       });
-    } catch (err) {
-      try {
-        await db
-          .delete(schema.cpOrganizationGroups)
-          .where(
-            and(
-              eq(schema.cpOrganizationGroups.organizationId, params.organizationId),
-              eq(schema.cpOrganizationGroups.groupId, group.id)
-            )
-          );
-      } catch {
-        // Best-effort rollback.
-      }
-
-      try {
-        await deleteOpenPathGroupCascade(group.id);
-      } catch {
-        // Best-effort rollback.
-      }
-
-      throw err;
     }
-  }
 
-  await publishWhitelistGroupChanged(group.id);
+    await publishWhitelistGroupChanged(group.id);
+
+    await setMutationOperationProgress(operation.id, {
+      step: 'completed',
+      status: 'completed',
+      organizationId: params.organizationId,
+      result: { groupId: group.id, publicName, visibility },
+      lastError: null,
+      completed: true,
+    });
+  } catch (err) {
+    await setMutationOperationProgress(operation.id, {
+      step: 'failed',
+      status: 'failed',
+      organizationId: params.organizationId,
+      result: { groupId: group.id, publicName, visibility },
+      lastError: toMutationError(err),
+    });
+    throwConflictOnUniqueViolation(err, 'Ya existe un grupo con ese identificador (slug)');
+    throw err;
+  }
 
   return { group, publicName, visibility };
 }
@@ -306,32 +375,67 @@ export async function deleteOrganizationGroup(params: GroupActor & { groupId: st
     GROUP_PERMISSION_OPTS
   );
 
-  await db
-    .delete(schema.cpOrganizationGroups)
-    .where(
-      and(
-        eq(schema.cpOrganizationGroups.organizationId, params.organizationId),
-        eq(schema.cpOrganizationGroups.groupId, params.groupId)
-      )
-    );
+  const operation = await getOrCreateMutationOperation({
+    operationType: 'groups.delete_group',
+    idempotencyKey: `${params.organizationId}:${params.groupId}`,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    metadata: { groupId: params.groupId, userRole: params.userRole ?? null },
+  });
 
-  const stillReferenced = await db
-    .select({ id: schema.cpOrganizationGroups.id })
-    .from(schema.cpOrganizationGroups)
-    .where(eq(schema.cpOrganizationGroups.groupId, params.groupId))
-    .limit(1);
+  if (operation.status !== 'completed') {
+    if (Object.keys(operation.result).length === 0) {
+      await db
+        .delete(schema.cpOrganizationGroups)
+        .where(
+          and(
+            eq(schema.cpOrganizationGroups.organizationId, params.organizationId),
+            eq(schema.cpOrganizationGroups.groupId, params.groupId)
+          )
+        );
 
-  if (stillReferenced.length > 0) {
-    return { success: true };
+      await setMutationOperationProgress(operation.id, {
+        step: 'local_committed',
+        status: 'in_progress',
+        result: { success: true, groupId: params.groupId },
+        lastError: null,
+      });
+    }
+
+    try {
+      const stillReferenced = await db
+        .select({ id: schema.cpOrganizationGroups.id })
+        .from(schema.cpOrganizationGroups)
+        .where(eq(schema.cpOrganizationGroups.groupId, params.groupId))
+        .limit(1);
+
+      if (stillReferenced.length === 0) {
+        await deleteOpenPathGroupCascade(params.groupId);
+
+        if (params.userRole === 'teacher') {
+          await removeGroupFromTeacherRole({ userId: params.userId, groupId: params.groupId });
+        }
+
+        await notifyOpenPathGroupChanged(params.groupId);
+      }
+
+      await setMutationOperationProgress(operation.id, {
+        step: 'completed',
+        status: 'completed',
+        result: { success: true, groupId: params.groupId },
+        lastError: null,
+        completed: true,
+      });
+    } catch (err) {
+      await setMutationOperationProgress(operation.id, {
+        step: 'failed',
+        status: 'failed',
+        result: { success: true, groupId: params.groupId },
+        lastError: toMutationError(err),
+      });
+      throw err;
+    }
   }
-
-  await deleteOpenPathGroupCascade(params.groupId);
-
-  if (params.userRole === 'teacher') {
-    await removeGroupFromTeacherRole({ userId: params.userId, groupId: params.groupId });
-  }
-
-  await notifyOpenPathGroupChanged(params.groupId);
 
   return { success: true };
 }

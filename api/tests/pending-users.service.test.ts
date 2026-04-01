@@ -21,11 +21,20 @@ async function deleteWaitingStatus(userId: string): Promise<void> {
   await db.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
 }
 
+async function deleteMutationOperations(userId: string): Promise<void> {
+  await db
+    .delete(schema.cpMutationOperations)
+    .where(eq(schema.cpMutationOperations.userId, userId));
+}
+
 describe('pending-users.service', () => {
   before(async () => {
     await deleteWaitingStatus(WAITING_USER_ID);
     await deleteWaitingStatus(REJECTED_USER_ID);
     await deleteWaitingStatus(MISSING_PROFILE_USER_ID);
+    await deleteMutationOperations(WAITING_USER_ID);
+    await deleteMutationOperations(REJECTED_USER_ID);
+    await deleteMutationOperations(MISSING_PROFILE_USER_ID);
     await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, WAITING_USER_ID));
     await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, REJECTED_USER_ID));
     await db
@@ -87,6 +96,9 @@ describe('pending-users.service', () => {
     await deleteWaitingStatus(WAITING_USER_ID);
     await deleteWaitingStatus(REJECTED_USER_ID);
     await deleteWaitingStatus(MISSING_PROFILE_USER_ID);
+    await deleteMutationOperations(WAITING_USER_ID);
+    await deleteMutationOperations(REJECTED_USER_ID);
+    await deleteMutationOperations(MISSING_PROFILE_USER_ID);
     await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, WAITING_USER_ID));
     await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, REJECTED_USER_ID));
     await db
@@ -181,6 +193,7 @@ describe('pending-users.service', () => {
 
   test('approveUser upgrades an existing lower OpenPath role instead of creating a duplicate', async () => {
     await deleteWaitingStatus(WAITING_USER_ID);
+    await deleteMutationOperations(WAITING_USER_ID);
     await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, WAITING_USER_ID));
     await openpathDb
       .delete(openpathSchema.roles)
@@ -231,6 +244,7 @@ describe('pending-users.service', () => {
 
   test('approveUser demotes an existing higher OpenPath role when the tenant role is lower', async () => {
     await deleteWaitingStatus(WAITING_USER_ID);
+    await deleteMutationOperations(WAITING_USER_ID);
     await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, WAITING_USER_ID));
     await openpathDb
       .delete(openpathSchema.roles)
@@ -256,12 +270,20 @@ describe('pending-users.service', () => {
       .select()
       .from(openpathSchema.roles)
       .where(eq(openpathSchema.roles.userId, WAITING_USER_ID));
+    const operations = await db
+      .select()
+      .from(schema.cpMutationOperations)
+      .where(eq(schema.cpMutationOperations.userId, WAITING_USER_ID));
     assert.strictEqual(roles.length, 1);
     assert.strictEqual(String(roles[0]?.role), 'teacher');
+    assert.strictEqual(operations.length, 1);
+    assert.strictEqual(operations[0]?.operationType, 'pending_users.approve_user');
+    assert.strictEqual(operations[0]?.status, 'completed');
   });
 
   test('approveUser rejects users that are not waiting for the organization', async () => {
     await deleteWaitingStatus(WAITING_USER_ID);
+    await deleteMutationOperations(WAITING_USER_ID);
     await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, WAITING_USER_ID));
 
     await assert.rejects(

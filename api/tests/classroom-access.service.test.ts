@@ -18,6 +18,7 @@ const OTHER_CLASSROOM_ID = `classroom_access_other_${RUN_ID}`;
 const MACHINE_ID = `machine_access_${RUN_ID}`;
 const SCHEDULE_ID = '00000000-0000-0000-0000-00000000aa01';
 const TEACHER_ID = `teacher_access_${RUN_ID}`;
+const GROUP_ID = 'group-1';
 
 describe('classroom-access.service', () => {
   before(async () => {
@@ -39,6 +40,9 @@ describe('classroom-access.service', () => {
     await openpathDb
       .delete(openpathSchema.classrooms)
       .where(eq(openpathSchema.classrooms.id, OTHER_CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.whitelistGroups)
+      .where(eq(openpathSchema.whitelistGroups.id, GROUP_ID));
     await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, TEACHER_ID));
     await db
       .delete(schema.cpOrganizationClassrooms)
@@ -73,6 +77,13 @@ describe('classroom-access.service', () => {
       },
     ]);
 
+    await openpathDb.insert(openpathSchema.whitelistGroups).values({
+      id: GROUP_ID,
+      name: `group-access-${RUN_ID}`,
+      displayName: 'Access Group',
+      enabled: 1,
+    });
+
     await db.insert(schema.cpOrganizationClassrooms).values({
       id: `oc_main_${RUN_ID}`,
       organizationId: ORG_ID,
@@ -102,7 +113,7 @@ describe('classroom-access.service', () => {
         id: SCHEDULE_ID,
         classroomId: CLASSROOM_ID,
         teacherId: TEACHER_ID,
-        groupId: 'group-1',
+        groupId: GROUP_ID,
         startAt: new Date('2026-02-03T10:00:00.000Z'),
         endAt: new Date('2026-02-03T11:00:00.000Z'),
         recurrence: 'once',
@@ -111,7 +122,7 @@ describe('classroom-access.service', () => {
         id: '00000000-0000-0000-0000-00000000aa02',
         classroomId: CLASSROOM_ID,
         teacherId: TEACHER_ID,
-        groupId: 'group-1',
+        groupId: GROUP_ID,
         startAt: new Date('2020-02-03T10:00:00.000Z'),
         endAt: new Date('2020-02-03T11:00:00.000Z'),
         recurrence: 'once',
@@ -157,6 +168,9 @@ describe('classroom-access.service', () => {
     await openpathDb
       .delete(openpathSchema.classrooms)
       .where(eq(openpathSchema.classrooms.id, OTHER_CLASSROOM_ID));
+    await openpathDb
+      .delete(openpathSchema.whitelistGroups)
+      .where(eq(openpathSchema.whitelistGroups.id, GROUP_ID));
     await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, TEACHER_ID));
     await db
       .delete(schema.cpOrganizationClassrooms)

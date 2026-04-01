@@ -14,6 +14,10 @@ import {
   revokeOrganizationInvitation,
   updateOrganizationUser,
 } from '../../services/user.service.js';
+import {
+  listOrganizationMutationOperations,
+  retryOrganizationMutationOperation,
+} from '../../services/cross-system-reconciliation.service.js';
 
 const CreateUserSchema = z.object({
   email: z.string().trim().email(),
@@ -43,6 +47,18 @@ export const usersRouter = router({
     assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
     return listOrganizationInvitations(ctx.organizationId);
   }),
+
+  listMutationOperations: tenantProcedure
+    .input(
+      z.object({ status: z.enum(['in_progress', 'completed', 'failed']).optional() }).optional()
+    )
+    .query(async ({ ctx, input }) => {
+      assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
+      return listOrganizationMutationOperations({
+        organizationId: ctx.organizationId,
+        status: input?.status,
+      });
+    }),
 
   getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
@@ -91,6 +107,17 @@ export const usersRouter = router({
       return revokeOrganizationInvitation({
         organizationId: ctx.organizationId,
         invitationId: input.invitationId,
+        actedBy: ctx.user.sub,
+      });
+    }),
+
+  retryMutationOperation: tenantProcedure
+    .input(z.object({ operationId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
+      return retryOrganizationMutationOperation({
+        organizationId: ctx.organizationId,
+        operationId: input.operationId,
         actedBy: ctx.user.sub,
       });
     }),

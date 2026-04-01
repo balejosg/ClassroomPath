@@ -1,4 +1,4 @@
-import { jsonb, pgTable, text, timestamp, unique, varchar } from 'drizzle-orm/pg-core';
+import { index, jsonb, pgTable, text, timestamp, unique, varchar } from 'drizzle-orm/pg-core';
 
 // =============================================================================
 // Organizations Table
@@ -69,6 +69,34 @@ export const cpAuditEvents = pgTable('cp_audit_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
+export const cpMutationOperations = pgTable(
+  'cp_mutation_operations',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    operationType: varchar('operation_type', { length: 100 }).notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull(),
+    currentStep: varchar('current_step', { length: 50 }).notNull(),
+    organizationId: varchar('organization_id', { length: 50 }).references(
+      () => cpOrganizations.id,
+      {
+        onDelete: 'cascade',
+      }
+    ),
+    userId: varchar('user_id', { length: 50 }),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    result: jsonb('result').$type<Record<string, unknown>>().notNull().default({}),
+    lastError: jsonb('last_error').$type<Record<string, unknown> | null>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => [
+    unique('cp_mutation_operations_type_key').on(table.operationType, table.idempotencyKey),
+    index('cp_mutation_operations_status_idx').on(table.status, table.updatedAt),
+  ]
+);
+
 // =============================================================================
 // Type Inference
 // =============================================================================
@@ -87,6 +115,9 @@ export type NewTermsAcceptance = typeof cpTermsAcceptance.$inferInsert;
 
 export type AuditEvent = typeof cpAuditEvents.$inferSelect;
 export type NewAuditEvent = typeof cpAuditEvents.$inferInsert;
+
+export type MutationOperation = typeof cpMutationOperations.$inferSelect;
+export type NewMutationOperation = typeof cpMutationOperations.$inferInsert;
 
 // =============================================================================
 // Invitations Table
