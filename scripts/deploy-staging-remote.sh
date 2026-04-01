@@ -295,7 +295,10 @@ FAILURE_STAGE="readiness"
 write_deploy_context
 READY_CHECK=''
 for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-  READY_CHECK=$(curl -sf http://localhost:3001/cp/ready 2>/dev/null || echo '{"ready":false}')
+  READY_CHECK=$(curl -sS http://localhost:3001/cp/ready 2>/dev/null || true)
+  if [ -z "$READY_CHECK" ]; then
+    READY_CHECK='{"ready":false}'
+  fi
   if echo "$READY_CHECK" | grep -q '"ready":true'; then
     log_success "Application readiness OK"
     FAILURE_STAGE="completed"

@@ -41,6 +41,11 @@ else
       package.json|package-lock.json|scripts/*|.github/actions/setup-node/*|.github/actions/setup-docker-build/*|.github/workflows/release-candidate-images.yml)
         mark_all_changed
         ;;
+      api/drizzle/*|api/drizzle/**|api/drizzle.config.ts|api/src/db/*|api/src/db/**|api/scripts/*|api/package*.json)
+        gateway_changed=true
+        migrations_changed=true
+        verifier_changed=true
+        ;;
       api/*|docker/Dockerfile.cp-api|config/*)
         gateway_changed=true
         verifier_changed=true
