@@ -12,6 +12,7 @@ import { test, describe, before } from 'node:test';
 import assert from 'node:assert';
 
 import { CURRENT_TERMS_VERSION } from '../api/src/services/legal-consent.service.js';
+import { resolvedFetch } from './helpers/resolved-fetch.js';
 
 // Get the target URL from environment
 const SMOKE_TEST_URL = process.env.SMOKE_TEST_URL;
@@ -20,6 +21,7 @@ const SMOKE_SKIP_CORS = process.env.SMOKE_SKIP_CORS === '1';
 const SMOKE_ALLOW_MUTATIONS = process.env.SMOKE_ALLOW_MUTATIONS === '1';
 const SMOKE_TEST_RETRIES = parseInt(process.env.SMOKE_TEST_RETRIES || '2', 10);
 const SMOKE_TEST_RETRY_DELAY_MS = parseInt(process.env.SMOKE_TEST_RETRY_DELAY_MS || '1000', 10);
+const SMOKE_TEST_RESOLVED_ADDRESS = process.env.SMOKE_TEST_RESOLVED_ADDRESS;
 
 function isIpAddress(hostname: string): boolean {
   const normalized = hostname.replace(/^\[/, '').replace(/\]$/, '');
@@ -85,10 +87,17 @@ async function fetchWithTimeout(
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
+    const response = await resolvedFetch(
+      url,
+      {
+        ...options,
+        signal: controller.signal,
+      },
+      {
+        resolvedAddress: SMOKE_TEST_RESOLVED_ADDRESS,
+        timeoutMs: timeout,
+      }
+    );
     return response;
   } finally {
     clearTimeout(timeoutId);

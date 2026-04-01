@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { describe, test } from 'node:test';
 
 import { CURRENT_TERMS_VERSION } from '../api/src/services/legal-consent.service.js';
+import { resolvedFetch } from './helpers/resolved-fetch.js';
 
 type TrpcEnvelope<T> = {
   result?: {
@@ -113,6 +114,7 @@ const EXPECTED_EXTENSION_ID = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_EXTENS
 const EXPECTED_VERSION = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_VERSION ?? '';
 const EXPECTED_METADATA_SHA256 = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_METADATA_SHA256 ?? '';
 const EXPECTED_XPI_SHA256 = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_XPI_SHA256 ?? '';
+const WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS = process.env.WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS;
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`;
@@ -127,10 +129,17 @@ async function fetchWithTimeout(input: string, init: RequestInit = {}) {
   const timeout = setTimeout(() => controller.abort(), WINDOWS_BOOTSTRAP_GATE_TIMEOUT);
 
   try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
+    return await resolvedFetch(
+      input,
+      {
+        ...init,
+        signal: controller.signal,
+      },
+      {
+        resolvedAddress: WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS,
+        timeoutMs: WINDOWS_BOOTSTRAP_GATE_TIMEOUT,
+      }
+    );
   } finally {
     clearTimeout(timeout);
   }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { CURRENT_TERMS_VERSION } from '../api/src/services/legal-consent.service.js';
+import { resolvedFetch } from './helpers/resolved-fetch.js';
 import { assertVerificationDeliveryPolicy } from './release-gate-policy.js';
 
 type TrpcEnvelope<T> = {
@@ -29,6 +30,7 @@ const RELEASE_GATE_REQUEST_ORIGIN =
   process.env.RELEASE_GATE_REQUEST_ORIGIN ?? RELEASE_GATE_EXPECTED_ORIGIN;
 const RELEASE_GATE_TIMEOUT = Number.parseInt(process.env.RELEASE_GATE_TIMEOUT ?? '30000', 10);
 const RELEASE_GATE_ALLOW_MUTATIONS = process.env.RELEASE_GATE_ALLOW_MUTATIONS === '1';
+const RELEASE_GATE_RESOLVED_ADDRESS = process.env.RELEASE_GATE_RESOLVED_ADDRESS;
 
 function uniqueReleaseGateEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`;
@@ -47,10 +49,17 @@ async function fetchWithTimeout(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
+    return await resolvedFetch(
+      input,
+      {
+        ...init,
+        signal: controller.signal,
+      },
+      {
+        resolvedAddress: RELEASE_GATE_RESOLVED_ADDRESS,
+        timeoutMs,
+      }
+    );
   } finally {
     clearTimeout(timeout);
   }

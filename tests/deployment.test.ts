@@ -596,8 +596,8 @@ void describe('Migration Tooling', () => {
       'run-staging-release-gate.sh should exist as the versioned staging release gate helper'
     );
     assert.ok(
-      releaseGateHelperContent.includes('RELEASE_GATE_URL="$RELEASE_GATE_TARGET_URL"'),
-      'staging deploy should allow the release gate to target either the canonical staging URL or a direct-IP fallback'
+      releaseGateHelperContent.includes('RELEASE_GATE_URL="$CANONICAL_STAGING_URL"'),
+      'staging deploy should keep the release gate bound to the canonical staging URL'
     );
     assert.ok(
       releaseGateHelperContent.includes(
@@ -606,14 +606,14 @@ void describe('Migration Tooling', () => {
       'staging deploy should pass the canonical public origin separately from the transport target'
     );
     assert.ok(
-      releaseGateHelperContent.includes('Release gate host does not resolve locally'),
-      'staging deploy should detect when the canonical staging host is not resolvable locally'
+      releaseGateHelperContent.includes(
+        'bash "$RESOLVE_HOST_SCRIPT_PATH" "$RELEASE_GATE_TARGET_HOST"'
+      ),
+      'staging deploy should resolve the canonical release-gate host explicitly before invoking the local runner'
     );
     assert.ok(
-      releaseGateHelperContent.includes(
-        'Falling back release gate target to direct staging gateway'
-      ),
-      'staging deploy should fall back the release gate transport to the staging IP when local DNS is unavailable'
+      releaseGateHelperContent.includes('RELEASE_GATE_RESOLVED_ADDRESS='),
+      'staging deploy should provide the resolved release-gate address to the test runner instead of downgrading the URL'
     );
     assert.ok(
       helperContent.includes('STAGING_RELEASE_GATE_RESULT=success') ||
@@ -649,6 +649,10 @@ void describe('Migration Tooling', () => {
     assert.ok(
       releaseGateHelperContent.includes('npm run test:windows-bootstrap-gate'),
       'staging deploy should run the live Windows bootstrap gate before persisting release evidence'
+    );
+    assert.ok(
+      releaseGateHelperContent.includes('WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS='),
+      'staging deploy should provide the resolved canonical host address to the Windows bootstrap gate'
     );
     assert.ok(
       helperContent.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT=$STAGING_WINDOWS_BOOTSTRAP_RESULT'),
@@ -755,16 +759,16 @@ void describe('Migration Tooling', () => {
       'deploy-staging-local.sh should delegate staging smoke execution to the helper script'
     );
     assert.ok(
-      helperContent.includes('Smoke URL host does not resolve locally'),
-      'staging smoke helper should own fallback resolution when the canonical smoke host does not resolve locally'
+      helperContent.includes('bash "$RESOLVE_HOST_SCRIPT_PATH" "$SMOKE_TARGET_HOST"'),
+      'staging smoke helper should resolve the canonical smoke host explicitly before invoking the smoke runner'
     );
     assert.ok(
       helperContent.includes('npm run test:smoke'),
       'staging smoke helper should execute the shared smoke entrypoint'
     );
     assert.ok(
-      helperContent.includes('STAGING_VERIFICATION_STATUS=$STAGING_VERIFICATION_STATUS'),
-      'staging smoke helper should persist fallback verification state when it has to use the direct-IP target'
+      helperContent.includes('SMOKE_TEST_RESOLVED_ADDRESS='),
+      'staging smoke helper should pass the resolved canonical host address to the smoke runner'
     );
   });
 
@@ -920,6 +924,18 @@ void describe('Migration Tooling', () => {
     const content = readFileSync(resolverScriptPath, 'utf-8');
     assert.ok(content.includes('getent hosts'), 'resolver should try system DNS resolution first');
     assert.ok(content.includes('dig +short'), 'resolver should fall back to dig when needed');
+    assert.ok(
+      content.includes('getent ahostsv4'),
+      'resolver should try IPv4-specific resolution when getent hosts is empty'
+    );
+    assert.ok(
+      content.includes('nslookup "$HOST" 1.1.1.1'),
+      'resolver should query an explicit recursive resolver when local NSS resolution is flaky'
+    );
+    assert.ok(
+      content.includes('https://dns.google/resolve'),
+      'resolver should fall back to DNS-over-HTTPS before failing'
+    );
   });
 
   void test('shared readiness and smoke helpers exist for reusable deployment verification', () => {

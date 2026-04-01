@@ -17,35 +17,36 @@ SSH_CMD=("$@")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
+RESOLVE_HOST_SCRIPT_PATH="$PROJECT_ROOT/scripts/resolve-ssh-host.sh"
 
 RELEASE_GATE_TARGET_URL="$CANONICAL_STAGING_URL"
 RELEASE_GATE_EXPECTED_ORIGIN="$(node -e 'console.log(new URL(process.argv[1]).origin)' "$CANONICAL_STAGING_URL")"
 RELEASE_GATE_REQUEST_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN"
 RELEASE_GATE_TARGET_HOST=$(printf '%s\n' "$CANONICAL_STAGING_URL" | sed -E 's#^[A-Za-z]+://([^/:]+).*#\1#')
+RELEASE_GATE_RESOLVED_ADDRESS=""
 
-if [ -n "$RELEASE_GATE_TARGET_HOST" ] && ! getent hosts "$RELEASE_GATE_TARGET_HOST" >/dev/null 2>&1; then
-  echo "Release gate host does not resolve locally: $RELEASE_GATE_TARGET_HOST" >&2
-  REMOTE_GATE_DNS_STATUS="$("${SSH_CMD[@]}" "getent hosts '$RELEASE_GATE_TARGET_HOST' >/dev/null 2>&1 && echo ok || echo fail")"
+if [ -n "$RELEASE_GATE_TARGET_HOST" ]; then
+  RESOLVER_OUTPUT="$(bash "$RESOLVE_HOST_SCRIPT_PATH" "$RELEASE_GATE_TARGET_HOST" 443 1 2>/dev/null || true)"
+  RELEASE_GATE_RESOLVED_ADDRESS="$(printf '%s\n' "$RESOLVER_OUTPUT" | awk -F= '$1=="ip"{print $2}' | head -1)"
 
-  if [ "$REMOTE_GATE_DNS_STATUS" = "ok" ]; then
-    echo "Host resolves on staging host but not locally; using direct IP fallback for local release gate runner" >&2
-  else
-    echo "Host does not resolve on staging host either; likely DNS outage/missing record" >&2
+  if [ -n "$RELEASE_GATE_RESOLVED_ADDRESS" ]; then
+    echo "Release gate host resolved explicitly: $RELEASE_GATE_TARGET_HOST -> $RELEASE_GATE_RESOLVED_ADDRESS" >&2
+  elif ! getent hosts "$RELEASE_GATE_TARGET_HOST" >/dev/null 2>&1; then
+    echo "Release gate host does not resolve locally and explicit resolution failed: $RELEASE_GATE_TARGET_HOST" >&2
+    exit 1
   fi
-
-  RELEASE_GATE_TARGET_URL="http://$STAGING_HOST:3001"
-  echo "Falling back release gate target to direct staging gateway: $RELEASE_GATE_TARGET_URL" >&2
 fi
 
-echo "Release gate target URL: $RELEASE_GATE_TARGET_URL" >&2
+echo "Release gate target URL: $CANONICAL_STAGING_URL" >&2
 echo "Release gate expected origin: $RELEASE_GATE_EXPECTED_ORIGIN" >&2
 
 set +e
-RELEASE_GATE_URL="$RELEASE_GATE_TARGET_URL" \
+RELEASE_GATE_URL="$CANONICAL_STAGING_URL" \
 RELEASE_GATE_EXPECTED_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN" \
 RELEASE_GATE_REQUEST_ORIGIN="$RELEASE_GATE_REQUEST_ORIGIN" \
 RELEASE_GATE_TIMEOUT="30000" \
 RELEASE_GATE_ALLOW_MUTATIONS="1" \
+RELEASE_GATE_RESOLVED_ADDRESS="$RELEASE_GATE_RESOLVED_ADDRESS" \
 npm run test:release-gate 2>&1 | tee /tmp/release-gate-results.txt
 
 GATE_EXIT_CODE=${PIPESTATUS[0]}
@@ -78,13 +79,14 @@ STAGING_FIREFOX_POLICY_RESULT="failed"
 echo "Running Windows bootstrap gate against staging..." >&2
 
 set +e
-WINDOWS_BOOTSTRAP_GATE_URL="$RELEASE_GATE_TARGET_URL" \
+WINDOWS_BOOTSTRAP_GATE_URL="$CANONICAL_STAGING_URL" \
 WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN" \
 WINDOWS_BOOTSTRAP_GATE_EXPECTED_EXTENSION_ID="$STAGING_FIREFOX_EXTENSION_ID" \
 WINDOWS_BOOTSTRAP_GATE_EXPECTED_VERSION="$STAGING_FIREFOX_RELEASE_VERSION" \
 WINDOWS_BOOTSTRAP_GATE_EXPECTED_METADATA_SHA256="$STAGING_FIREFOX_METADATA_SHA256" \
 WINDOWS_BOOTSTRAP_GATE_EXPECTED_XPI_SHA256="$STAGING_FIREFOX_XPI_SHA256" \
 WINDOWS_BOOTSTRAP_GATE_TIMEOUT="30000" \
+WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS="$RELEASE_GATE_RESOLVED_ADDRESS" \
 npm run test:windows-bootstrap-gate 2>&1 | tee /tmp/windows-bootstrap-gate-results.txt
 
 WINDOWS_BOOTSTRAP_EXIT_CODE=${PIPESTATUS[0]}
