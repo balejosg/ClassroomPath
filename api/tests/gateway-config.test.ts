@@ -12,9 +12,12 @@ await describe('gateway config', async () => {
       authRateLimitWindowMs: 60_000,
       corsOrigins: ['http://localhost:5173'],
       enableRateLimit: false,
+      globalRateLimitMax: 120,
+      globalRateLimitWindowMs: 60_000,
       jsonBodyLimit: '64kb',
       onboardingRateLimitMax: 5,
       onboardingRateLimitWindowMs: 60_000,
+      publicOrigin: 'http://localhost:5173',
       serveSpa: true,
     });
   });
@@ -43,10 +46,39 @@ await describe('gateway config', async () => {
       authRateLimitWindowMs: 120_000,
       corsOrigins: ['https://a.example', 'https://b.example'],
       enableRateLimit: true,
+      globalRateLimitMax: 120,
+      globalRateLimitWindowMs: 60_000,
       jsonBodyLimit: '1kb',
       onboardingRateLimitMax: 9,
       onboardingRateLimitWindowMs: 90_000,
+      publicOrigin: 'http://localhost:5173',
       serveSpa: false,
     });
+  });
+
+  await test('rejects missing CORS_ORIGINS in production', () => {
+    assert.throws(
+      () =>
+        resolveGatewayConfig(
+          {},
+          { NODE_ENV: 'production', PUBLIC_URL: 'https://classroompath.test' }
+        ),
+      /CORS_ORIGINS/i
+    );
+  });
+
+  await test('rejects localhost CORS origins in production', () => {
+    assert.throws(
+      () =>
+        resolveGatewayConfig(
+          {},
+          {
+            NODE_ENV: 'production',
+            PUBLIC_URL: 'https://classroompath.test',
+            CORS_ORIGINS: 'http://localhost:5173',
+          }
+        ),
+      /non-localhost/i
+    );
   });
 });

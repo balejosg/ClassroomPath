@@ -66,6 +66,8 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
     serverModule = (await import('../src/server.js')) as typeof import('../src/server.js');
     app = serverModule.createGatewayApp({
       enableRateLimit: true,
+      globalRateLimitMax: 3,
+      globalRateLimitWindowMs: 60_000,
       jsonBodyLimit: '1kb',
       authRateLimitWindowMs: 60_000,
       authRateLimitMax: 5,
@@ -179,6 +181,31 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
     assert.ok(body.error?.data?.requestId);
   });
 
+  test('rate limits generic traffic with the global bucket', async () => {
+    const path = `${baseUrl}/cp/trpc/users.list`;
+    const headers = requestHeaders({
+      'X-Forwarded-For': '198.51.100.55',
+    });
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await fetch(path, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({}),
+      });
+
+      assert.notStrictEqual(response.status, 429);
+    }
+
+    const limitedResponse = await fetch(path, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+    });
+
+    assert.strictEqual(limitedResponse.status, 429);
+  });
+
   test('rate limits repeated auth attempts by caller IP', async () => {
     const path = `${baseUrl}/cp/trpc/auth.login`;
     const headers = requestHeaders({
@@ -230,6 +257,45 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
     delete process.env.JWT_SECRET;
 
     assert.throws(() => serverModule.createGatewayApp(), /JWT_SECRET/i);
+  });
+
+  test('createGatewayApp fails fast when CORS_ORIGINS is missing outside test mode', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.PUBLIC_URL = 'https://classroompath.test';
+    process.env.JWT_SECRET = TEST_JWT_SECRET;
+    delete process.env.CORS_ORIGINS;
+
+    assert.throws(() => serverModule.createGatewayApp(), /CORS_ORIGINS/i);
+  });
+
+  test('rejects cookie-authenticated mutation requests without a trusted origin', async () => {
+    const response = await fetch(`${baseUrl}/cp/trpc/auth.logout`, {
+      method: 'POST',
+      headers: {
+        Cookie: 'cp_access_token=fake-access; cp_refresh_token=fake-refresh',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+
+    assert.strictEqual(response.status, 403);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } };
+    assert.strictEqual(body.error?.code, 'FORBIDDEN');
+    assert.match(body.error?.message ?? '', /csrf origin/i);
+  });
+
+  test('allows trusted-origin cookie mutations to continue past CSRF checks', async () => {
+    const response = await fetch(`${baseUrl}/cp/trpc/auth.logout`, {
+      method: 'POST',
+      headers: {
+        Cookie: 'cp_access_token=fake-access; cp_refresh_token=fake-refresh',
+        Origin: 'http://localhost:5173',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+
+    assert.notStrictEqual(response.status, 403);
   });
 
   test('createGatewayApp can skip SPA mounting for API-focused test servers', async () => {

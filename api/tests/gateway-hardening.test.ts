@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 import {
   buildGatewayContentSecurityPolicy,
+  createGatewayCorsOriginResolver,
   createGatewayErrorBody,
   createGatewayRateLimitRules,
   isPayloadTooLargeError,
@@ -29,15 +30,21 @@ await describe('gateway hardening helpers', async () => {
     const rules = createGatewayRateLimitRules({
       authRateLimitMax: 5,
       authRateLimitWindowMs: 60_000,
+      globalRateLimitMax: 50,
+      globalRateLimitWindowMs: 60_000,
       onboardingRateLimitMax: 5,
       onboardingRateLimitWindowMs: 60_000,
     });
 
+    const globalRule = rules.find((rule) => rule.bucket === 'global');
     const authRule = rules.find((rule) => rule.bucket === 'auth');
     const onboardingRule = rules.find((rule) => rule.bucket === 'onboarding');
 
+    assert.ok(globalRule);
     assert.ok(authRule);
     assert.ok(onboardingRule);
+    assert.strictEqual(globalRule?.matches('/cp/trpc/users.list'), true);
+    assert.strictEqual(globalRule?.matches('/cp/health'), false);
     assert.strictEqual(authRule?.matches('/cp/trpc/auth.login'), true);
     assert.strictEqual(authRule?.matches('/cp/trpc/auth.googleSignup'), true);
     assert.strictEqual(authRule?.matches('/trpc/auth.resetPassword?batch=1'), true);
@@ -70,5 +77,34 @@ await describe('gateway hardening helpers', async () => {
     assert.strictEqual(isPayloadTooLargeError({ statusCode: 413 }), true);
     assert.strictEqual(isPayloadTooLargeError({ type: 'entity.too.large' }), true);
     assert.strictEqual(isPayloadTooLargeError({ status: 400 }), false);
+  });
+
+  await test('createGatewayCorsOriginResolver only allows configured origins', async () => {
+    const resolver = createGatewayCorsOriginResolver(['https://classroompath.test']);
+
+    const allowed = await new Promise<boolean>((resolve, reject) => {
+      resolver('https://classroompath.test', (error, value) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(value ?? false);
+      });
+    });
+
+    const rejected = await new Promise<boolean>((resolve, reject) => {
+      resolver('https://evil.test', (error, value) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(value ?? false);
+      });
+    });
+
+    assert.strictEqual(allowed, true);
+    assert.strictEqual(rejected, false);
   });
 });

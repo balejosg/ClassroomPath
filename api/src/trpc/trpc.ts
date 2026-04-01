@@ -1,8 +1,20 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import type { Context } from './context.js';
 import { getSingleMembershipOrThrow } from '../lib/tenant-memberships.js';
+import { getRequestId } from '../lib/request-id.js';
+import { logger } from '../lib/logger.js';
 
-const t = initTRPC.context<Context>().create();
+const t = initTRPC.context<Context>().create({
+  errorFormatter({ shape, ctx }) {
+    return {
+      ...shape,
+      data: {
+        ...shape.data,
+        requestId: ctx ? getRequestId(ctx.req) : undefined,
+      },
+    };
+  },
+});
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
@@ -47,3 +59,12 @@ export const tenantProcedure = protectedProcedure.use(async ({ ctx, next }) => {
     },
   });
 });
+
+export function logTrpcError(params: { path?: string; ctx?: Context; error: Error }): void {
+  const requestId = params.ctx ? getRequestId(params.ctx.req) : undefined;
+  logger.error('tRPC request failed', {
+    requestId,
+    path: params.path,
+    error: params.error.message,
+  });
+}

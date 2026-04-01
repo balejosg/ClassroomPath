@@ -17,6 +17,7 @@ import {
 import { logger } from './lib/logger.js';
 import { createContext } from './trpc/context.js';
 import { appRouter } from './trpc/router.js';
+import { logTrpcError } from './trpc/trpc.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,10 +34,14 @@ export function createGatewayApp(options: GatewayAppOptions = {}) {
   const trpcMiddleware = createExpressMiddleware({
     router: appRouter,
     createContext,
+    onError({ path, ctx, error }) {
+      logTrpcError({ path, ctx, error });
+    },
   });
 
   registerGatewayBaseMiddleware(app, {
     corsOrigins: gatewayConfig.corsOrigins,
+    publicOrigin: gatewayConfig.publicOrigin,
     rateLimitMiddleware,
   });
   registerGatewayProxyRoutes(app, {

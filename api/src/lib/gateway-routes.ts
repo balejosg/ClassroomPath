@@ -12,7 +12,10 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 
 import {
   applyGatewaySecurityHeaders,
+  createGatewayCorsOriginResolver,
+  createGatewayCsrfProtectionMiddleware,
   createGatewayErrorBody,
+  createGatewayErrorMiddleware,
   isPayloadTooLargeError,
 } from './gateway-hardening.js';
 import { getClientIp } from './http-request-meta.js';
@@ -31,6 +34,7 @@ type ProxyMiddlewareFactory = (options: unknown) => RequestHandler;
 
 export interface GatewayBaseMiddlewareOptions {
   corsOrigins: string[];
+  publicOrigin: string;
   rateLimitMiddleware?: RequestHandler | null;
 }
 
@@ -62,10 +66,16 @@ export function registerGatewayBaseMiddleware(
   app.use(logger.requestMiddleware);
   app.use(
     cors({
-      origin: options.corsOrigins,
+      origin: createGatewayCorsOriginResolver(options.corsOrigins),
       credentials: true,
       allowedHeaders: ['Authorization', 'Content-Type', REQUEST_ID_HEADER, 'trpc-batch-mode'],
       exposedHeaders: [REQUEST_ID_HEADER],
+    })
+  );
+  app.use(
+    createGatewayCsrfProtectionMiddleware({
+      allowedOrigins: options.corsOrigins,
+      publicOrigin: options.publicOrigin,
     })
   );
 
@@ -188,6 +198,8 @@ export function registerGatewayApplicationRoutes(
       })
     );
   });
+
+  app.use(createGatewayErrorMiddleware());
 }
 
 export function registerGatewaySpaRoutes(app: Express, options: GatewaySpaRoutesOptions): void {

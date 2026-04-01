@@ -1,18 +1,21 @@
-import type { NextFunction, Request, RequestHandler, Response } from 'express';
+import type { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response } from 'express';
 
 import { logger } from './logger.js';
 import { getRequestId } from './request-id.js';
 import { getClientIp } from './http-request-meta.js';
+import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, parseCookieValue } from './session-cookies.js';
 
 export interface GatewayRateLimitOptions {
   authRateLimitMax: number;
   authRateLimitWindowMs: number;
+  globalRateLimitMax: number;
+  globalRateLimitWindowMs: number;
   onboardingRateLimitMax: number;
   onboardingRateLimitWindowMs: number;
 }
 
 export interface GatewayRateLimitRule {
-  bucket: 'auth' | 'onboarding';
+  bucket: 'auth' | 'global' | 'onboarding';
   limit: number;
   windowMs: number;
   matches: (path: string) => boolean;
@@ -23,7 +26,12 @@ interface RateLimitEntry {
   resetAt: number;
 }
 
-type GatewayErrorCode = 'FORBIDDEN' | 'PAYLOAD_TOO_LARGE' | 'TOO_MANY_REQUESTS';
+type GatewayErrorCode =
+  | 'BAD_REQUEST'
+  | 'FORBIDDEN'
+  | 'INTERNAL_SERVER_ERROR'
+  | 'PAYLOAD_TOO_LARGE'
+  | 'TOO_MANY_REQUESTS';
 
 export function buildGatewayContentSecurityPolicy(nodeEnv = process.env.NODE_ENV): string {
   const connectSources = ["'self'", 'https://accounts.google.com'];
@@ -81,7 +89,144 @@ export function createGatewayRateLimitRules(
           path
         ),
     },
+    {
+      bucket: 'global',
+      limit: options.globalRateLimitMax,
+      windowMs: options.globalRateLimitWindowMs,
+      matches: (path: string) => !/^\/cp\/(?:health|ready)(?:\?|$)/.test(path),
+    },
   ];
+}
+
+function normalizeOrigin(candidate: string): string | null {
+  try {
+    const parsed = new URL(candidate);
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function getRequestOrigin(req: Request): string {
+  return `${req.protocol}://${req.get('host') ?? 'localhost'}`;
+}
+
+function getHeaderOrigin(req: Request): string | null {
+  const originHeader = req.get('origin');
+  if (originHeader) {
+    return normalizeOrigin(originHeader);
+  }
+
+  const refererHeader = req.get('referer');
+  if (refererHeader) {
+    return normalizeOrigin(refererHeader);
+  }
+
+  return null;
+}
+
+function isCookieAuthenticatedMutation(req: Request): boolean {
+  if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method.toUpperCase())) {
+    return false;
+  }
+
+  const authHeader = req.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    return false;
+  }
+
+  const cookieHeader = req.headers.cookie;
+  return Boolean(
+    parseCookieValue(cookieHeader, ACCESS_COOKIE_NAME) ||
+    parseCookieValue(cookieHeader, REFRESH_COOKIE_NAME)
+  );
+}
+
+export function createGatewayCorsOriginResolver(allowedOrigins: string[]) {
+  const allowed = new Set(allowedOrigins);
+
+  return (
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void
+  ): void => {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, allowed.has(origin));
+  };
+}
+
+export function createGatewayCsrfProtectionMiddleware(params: {
+  allowedOrigins: string[];
+  publicOrigin: string;
+}): RequestHandler {
+  const allowedOrigins = new Set([...params.allowedOrigins, params.publicOrigin]);
+
+  return (req, res, next) => {
+    if (!isCookieAuthenticatedMutation(req)) {
+      next();
+      return;
+    }
+
+    const requestId = getRequestId(req);
+    const candidateOrigin = getHeaderOrigin(req);
+    const requestOrigin = getRequestOrigin(req);
+
+    if (
+      candidateOrigin &&
+      (allowedOrigins.has(candidateOrigin) || candidateOrigin === requestOrigin)
+    ) {
+      next();
+      return;
+    }
+
+    logger
+      .request(requestId)
+      .warn('Rejected cookie-authenticated request with invalid CSRF origin', {
+        method: req.method,
+        path: req.originalUrl || req.url,
+        candidateOrigin,
+        requestOrigin,
+        ip: getClientIp(req),
+      });
+
+    res.status(403).json(
+      createGatewayErrorBody('FORBIDDEN', 'Invalid CSRF origin', {
+        requestId,
+      })
+    );
+  };
+}
+
+export function createGatewayErrorMiddleware(): ErrorRequestHandler {
+  return (error: unknown, req: Request, res: Response, next: NextFunction): void => {
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+
+    if (isPayloadTooLargeError(error)) {
+      next(error);
+      return;
+    }
+
+    const requestId = getRequestId(req);
+
+    logger.request(requestId).error('Unhandled gateway error', {
+      method: req.method,
+      path: req.originalUrl || req.url,
+      ip: getClientIp(req),
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    res.status(500).json(
+      createGatewayErrorBody('INTERNAL_SERVER_ERROR', 'Internal server error', {
+        requestId,
+      })
+    );
+  };
 }
 
 export function createGatewayErrorBody(
