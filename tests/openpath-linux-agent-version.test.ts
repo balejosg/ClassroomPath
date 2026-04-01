@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  buildFetchOpenPathTagsArgs,
   parsePublishedOpenPathLinuxVersions,
   resolveOpenPathLinuxAgentVersion,
   selectLatestReachableOpenPathReleaseTag,
@@ -29,6 +30,22 @@ Version: 4.1.4-1
 `);
 
     assert.deepEqual(versions, ['4.1.3', '4.1.4']);
+  });
+
+  test('deshallows OpenPath before fetching tags when the submodule checkout is shallow', () => {
+    assert.deepEqual(buildFetchOpenPathTagsArgs({ shallow: true }).slice(2), [
+      'fetch',
+      '--force',
+      '--tags',
+      '--unshallow',
+      'origin',
+    ]);
+    assert.deepEqual(buildFetchOpenPathTagsArgs({ shallow: false }).slice(2), [
+      'fetch',
+      '--force',
+      '--tags',
+      'origin',
+    ]);
   });
 
   test('detects Linux agent contract drift for runtime and enrollment paths', () => {

@@ -588,9 +588,17 @@ describe('Workflow configuration hardening', () => {
       jobs['derive-release-image-refs']?.steps?.find(
         (step) => step.name === 'Resolve OpenPath Linux agent version'
       )?.run ?? '';
+    const deriveCheckout = jobs['derive-release-image-refs']?.steps?.find(
+      (step) => step.name === 'Checkout'
+    );
     assert.ok(
       deriveLinuxAgentVersionRun.includes('node scripts/resolve-openpath-linux-agent-version.mjs'),
       'release candidate workflow should resolve the OpenPath Linux agent version from the submodule and published APT metadata'
+    );
+    assert.equal(
+      deriveCheckout?.with?.['fetch-depth'],
+      0,
+      'release candidate workflow should fetch full history so the OpenPath submodule exposes reachable stable release tags in CI'
     );
     assert.ok(
       jobs['build-gateway-release-candidate'],

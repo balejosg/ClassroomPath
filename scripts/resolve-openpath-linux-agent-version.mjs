@@ -195,8 +195,27 @@ function gitOutput(openpathDir, args) {
   }).trim();
 }
 
+function isShallowRepository(openpathDir) {
+  return gitOutput(openpathDir, ['rev-parse', '--is-shallow-repository']) === 'true';
+}
+
+export function buildFetchOpenPathTagsArgs({ shallow }) {
+  return shallow
+    ? ['-C', DEFAULT_OPENPATH_DIR, 'fetch', '--force', '--tags', '--unshallow', 'origin']
+    : ['-C', DEFAULT_OPENPATH_DIR, 'fetch', '--force', '--tags', 'origin'];
+}
+
 function fetchOpenPathTags(openpathDir) {
-  execFileSync('git', ['-C', openpathDir, 'fetch', '--tags', 'origin'], {
+  const shallow = isShallowRepository(openpathDir);
+  const args = buildFetchOpenPathTagsArgs({ shallow }).map((entry, index) => {
+    if (index === 1) {
+      return openpathDir;
+    }
+
+    return entry;
+  });
+
+  execFileSync('git', args, {
     cwd: projectRoot,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
