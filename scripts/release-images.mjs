@@ -306,11 +306,19 @@ export function parseReleaseCandidateManifest(content, { sha } = {}) {
     gatewayImage: assignments.CLASSROOMPATH_GATEWAY_IMAGE,
     migrationsImage: assignments.CLASSROOMPATH_MIGRATIONS_IMAGE,
     openpathApiImage: assignments.OPENPATH_API_IMAGE,
+    linuxAgentVersion: assignments.OPENPATH_LINUX_AGENT_VERSION ?? '',
     spaImage: assignments.CLASSROOMPATH_SPA_IMAGE,
     verifierImage: assignments.CLASSROOMPATH_VERIFIER_IMAGE,
   };
 
-  for (const [key, value] of Object.entries(manifest)) {
+  for (const [key, value] of Object.entries({
+    appSha: manifest.appSha,
+    gatewayImage: manifest.gatewayImage,
+    migrationsImage: manifest.migrationsImage,
+    openpathApiImage: manifest.openpathApiImage,
+    spaImage: manifest.spaImage,
+    verifierImage: manifest.verifierImage,
+  })) {
     if (!value) {
       throw new Error(`Release candidate manifest is missing required value: ${key}`);
     }
@@ -447,6 +455,7 @@ function main() {
       gateway_image: manifest.gatewayImage,
       migrations_image: manifest.migrationsImage,
       openpath_api_image: manifest.openpathApiImage,
+      linux_agent_version: manifest.linuxAgentVersion,
       spa_image: manifest.spaImage,
       verifier_image: manifest.verifierImage,
     });

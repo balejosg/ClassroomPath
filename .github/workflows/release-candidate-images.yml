@@ -25,6 +25,7 @@ jobs:
       spa_repo: ${{ steps.image-refs.outputs.spa_repo }}
       verifier_repo: ${{ steps.image-refs.outputs.verifier_repo }}
       openpath_sha: ${{ steps.openpath.outputs.sha }}
+      openpath_linux_agent_version: ${{ steps.linux-agent.outputs.version }}
       gateway_tag: ${{ steps.image-refs.outputs.gateway_tag }}
       migrations_tag: ${{ steps.image-refs.outputs.migrations_tag }}
       openpath_api_tag: ${{ steps.image-refs.outputs.openpath_api_tag }}
@@ -34,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
@@ -49,6 +52,12 @@ jobs:
         id: openpath
         run: |
           echo "sha=$(git rev-parse HEAD:upstream/openpath)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve OpenPath Linux agent version
+        id: linux-agent
+        run: |
+          node scripts/resolve-openpath-linux-agent-version.mjs \
+            --openpath-dir upstream/openpath >> "$GITHUB_OUTPUT"
 
   resolve-previous-release-candidate-manifest:
     name: Resolve Previous Release Candidate Manifest
@@ -677,6 +686,7 @@ jobs:
           CLASSROOMPATH_GATEWAY_IMAGE=${{ needs.build-gateway-release-candidate.outputs.gateway_image }}
           CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.build-migrations-release-candidate.outputs.migrations_image }}
           OPENPATH_API_IMAGE=${{ needs.build-openpath-api-release-candidate.outputs.openpath_api_image }}
+          OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version }}
           CLASSROOMPATH_SPA_IMAGE=${{ needs.build-spa-release-candidate.outputs.spa_image }}
           CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.build-verifier-release-candidate.outputs.verifier_image }}
           EOF

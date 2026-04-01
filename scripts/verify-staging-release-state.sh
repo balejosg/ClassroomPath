@@ -32,6 +32,7 @@ compare_image "Gateway image" "$EXPECTED_GATEWAY_IMAGE" "${CLASSROOMPATH_GATEWAY
 compare_image "Migrations image" "$EXPECTED_MIGRATIONS_IMAGE" "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}"
 compare_image "OpenPath API image" "$EXPECTED_OPENPATH_API_IMAGE" "${OPENPATH_API_IMAGE:-}"
 compare_image "SPA image" "$EXPECTED_SPA_IMAGE" "${CLASSROOMPATH_SPA_IMAGE:-}"
+compare_image "OpenPath Linux agent version" "$EXPECTED_OPENPATH_LINUX_AGENT_VERSION" "${OPENPATH_LINUX_AGENT_VERSION:-}"
 
 if [ "${STAGING_SMOKE_RESULT:-}" != "success" ]; then
   echo "::error::Staging smoke evidence is missing or failed (STAGING_SMOKE_RESULT=${STAGING_SMOKE_RESULT:-unset})"
@@ -57,6 +58,7 @@ compare_image "Verified gateway image" "$EXPECTED_GATEWAY_IMAGE" "${STAGING_VERI
 compare_image "Verified migrations image" "$EXPECTED_MIGRATIONS_IMAGE" "${STAGING_VERIFIED_MIGRATIONS_IMAGE:-}"
 compare_image "Verified OpenPath API image" "$EXPECTED_OPENPATH_API_IMAGE" "${STAGING_VERIFIED_OPENPATH_API_IMAGE:-}"
 compare_image "Verified SPA image" "$EXPECTED_SPA_IMAGE" "${STAGING_VERIFIED_SPA_IMAGE:-}"
+compare_image "Verified OpenPath Linux agent version" "$EXPECTED_OPENPATH_LINUX_AGENT_VERSION" "${STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION:-}"
 
 if [ "$HIGH_RISK" = "true" ]; then
   if [ "${STAGING_SMOKE_STATUS:-}" = "PASS_WITH_FALLBACK" ]; then

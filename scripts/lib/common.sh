@@ -46,6 +46,48 @@ load_env_file() {
   return 1
 }
 
+upsert_env_file_var() {
+  local path="$1"
+  local key="$2"
+  local value="$3"
+  local tmp_file=""
+
+  mkdir -p "$(dirname "$path")"
+  touch "$path"
+  tmp_file="$(mktemp)"
+
+  awk -v key="$key" -v value="$value" '
+    BEGIN { updated = 0 }
+    index($0, key "=") == 1 {
+      print key "=" value
+      updated = 1
+      next
+    }
+    { print }
+    END {
+      if (!updated) {
+        print key "=" value
+      }
+    }
+  ' "$path" > "$tmp_file"
+
+  mv "$tmp_file" "$path"
+}
+
+remove_env_file_var() {
+  local path="$1"
+  local key="$2"
+  local tmp_file=""
+
+  if [ ! -f "$path" ]; then
+    return 0
+  fi
+
+  tmp_file="$(mktemp)"
+  awk -v key="$key" 'index($0, key "=") != 1 { print }' "$path" > "$tmp_file"
+  mv "$tmp_file" "$path"
+}
+
 is_tty_stdin() {
   [ -t 0 ]
 }

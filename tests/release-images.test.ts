@@ -210,6 +210,7 @@ describe('release image helpers', () => {
           'CLASSROOMPATH_GATEWAY_IMAGE=ghcr.io/balejosg/classroompath-gateway@sha256:1',
           'CLASSROOMPATH_MIGRATIONS_IMAGE=ghcr.io/balejosg/classroompath-migrations@sha256:2',
           'OPENPATH_API_IMAGE=ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
+          'OPENPATH_LINUX_AGENT_VERSION=4.1.3',
           'CLASSROOMPATH_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa@sha256:4',
           'CLASSROOMPATH_VERIFIER_IMAGE=ghcr.io/balejosg/classroompath-release-verifier@sha256:5',
           '',
@@ -221,6 +222,7 @@ describe('release image helpers', () => {
         gatewayImage: 'ghcr.io/balejosg/classroompath-gateway@sha256:1',
         migrationsImage: 'ghcr.io/balejosg/classroompath-migrations@sha256:2',
         openpathApiImage: 'ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
+        linuxAgentVersion: '4.1.3',
         spaImage: 'ghcr.io/balejosg/classroompath-spa@sha256:4',
         verifierImage: 'ghcr.io/balejosg/classroompath-release-verifier@sha256:5',
       }

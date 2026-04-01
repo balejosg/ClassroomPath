@@ -591,6 +591,7 @@ function main() {
       gateway_image: result.manifest.gatewayImage,
       migrations_image: result.manifest.migrationsImage,
       openpath_api_image: result.manifest.openpathApiImage,
+      linux_agent_version: result.manifest.linuxAgentVersion,
       spa_image: result.manifest.spaImage,
       verifier_image: result.manifest.verifierImage,
     });

@@ -94,6 +94,7 @@ function main() {
       gateway_image: manifest.gatewayImage,
       migrations_image: manifest.migrationsImage,
       openpath_api_image: manifest.openpathApiImage,
+      linux_agent_version: manifest.linuxAgentVersion,
       spa_image: manifest.spaImage,
       verifier_image: manifest.verifierImage,
     });

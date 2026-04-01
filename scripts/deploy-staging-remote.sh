@@ -24,6 +24,7 @@ IMAGE_SOURCE="source-build"
 RESOLVED_GATEWAY_IMAGE="classroompath-gateway:local"
 RESOLVED_MIGRATIONS_IMAGE="classroompath-migrations:local"
 RESOLVED_OPENPATH_API_IMAGE="classroompath-api:local"
+RESOLVED_OPENPATH_LINUX_AGENT_VERSION=""
 RESOLVED_SPA_IMAGE="classroompath-spa:local"
 PREVIOUS_APP_SHA=""
 MIGRATION_RISK_LEVEL="safe"
@@ -49,6 +50,7 @@ IMAGE_SOURCE=$IMAGE_SOURCE
 CLASSROOMPATH_GATEWAY_IMAGE=$RESOLVED_GATEWAY_IMAGE
 CLASSROOMPATH_MIGRATIONS_IMAGE=$RESOLVED_MIGRATIONS_IMAGE
 OPENPATH_API_IMAGE=$RESOLVED_OPENPATH_API_IMAGE
+OPENPATH_LINUX_AGENT_VERSION=$RESOLVED_OPENPATH_LINUX_AGENT_VERSION
 CLASSROOMPATH_SPA_IMAGE=$RESOLVED_SPA_IMAGE
 EOF
 }
@@ -113,9 +115,11 @@ restore_previous_release_state() {
     export CLASSROOMPATH_MIGRATIONS_IMAGE
     export OPENPATH_API_IMAGE
     export CLASSROOMPATH_SPA_IMAGE
+    upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
     docker compose pull gateway api spa
     docker compose up -d --force-recreate --no-build
   else
+    remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION
     unset CLASSROOMPATH_GATEWAY_IMAGE OPENPATH_API_IMAGE CLASSROOMPATH_SPA_IMAGE
     docker compose build
     docker compose up -d --force-recreate
@@ -161,7 +165,9 @@ deploy_with_release_candidates() {
   export CLASSROOMPATH_GATEWAY_IMAGE="$STAGING_GATEWAY_IMAGE"
   export CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"
   export OPENPATH_API_IMAGE="$STAGING_OPENPATH_API_IMAGE"
+  export OPENPATH_LINUX_AGENT_VERSION="$STAGING_OPENPATH_LINUX_AGENT_VERSION"
   export CLASSROOMPATH_SPA_IMAGE="$STAGING_SPA_IMAGE"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$STAGING_OPENPATH_LINUX_AGENT_VERSION"
 
   log_info "Pulling release candidate migrations image for ${STAGING_RELEASE_SHA:-origin-main}..."
   docker pull "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
@@ -179,6 +185,7 @@ deploy_with_release_candidates() {
   RESOLVED_GATEWAY_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_GATEWAY_IMAGE")"
   RESOLVED_MIGRATIONS_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_MIGRATIONS_IMAGE")"
   RESOLVED_OPENPATH_API_IMAGE="$(resolve_pulled_digest "$OPENPATH_API_IMAGE")"
+  RESOLVED_OPENPATH_LINUX_AGENT_VERSION="$STAGING_OPENPATH_LINUX_AGENT_VERSION"
   RESOLVED_SPA_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_SPA_IMAGE")"
   write_release_state
   return 0
@@ -188,6 +195,8 @@ deploy_from_source() {
   log_info "Rebuilding containers from source..."
   export COMPOSE_PROJECT_NAME=classroompath-staging
   unset CLASSROOMPATH_GATEWAY_IMAGE OPENPATH_API_IMAGE CLASSROOMPATH_SPA_IMAGE
+  remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION
+  RESOLVED_OPENPATH_LINUX_AGENT_VERSION=""
 
   docker compose down --remove-orphans 2>/dev/null || true
   docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true

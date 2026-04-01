@@ -59,6 +59,7 @@ jobs:
       gateway_image: ${{ steps.release-images.outputs.gateway_image }}
       migrations_image: ${{ steps.release-images.outputs.migrations_image }}
       openpath_api_image: ${{ steps.release-images.outputs.openpath_api_image }}
+      openpath_linux_agent_version: ${{ steps.release-images.outputs.linux_agent_version }}
       spa_image: ${{ steps.release-images.outputs.spa_image }}
       verifier_image: ${{ steps.release-images.outputs.verifier_image }}
       staging_public_url: ${{ steps.deploy-targets.outputs.staging_public_url }}
@@ -205,6 +206,7 @@ jobs:
           EXPECTED_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
           EXPECTED_MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
           EXPECTED_OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
+          EXPECTED_OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
           EXPECTED_SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
         run: bash scripts/verify-staging-release-state.sh
 
@@ -264,6 +266,7 @@ jobs:
           CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
           CLASSROOMPATH_MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
           OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
+          OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
           CLASSROOMPATH_SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
           PRODUCTION_DB_BACKUP_COMMAND: ${{ secrets.PRODUCTION_DB_BACKUP_COMMAND }}
           PRODUCTION_DB_BACKUP_ID: ${{ secrets.PRODUCTION_DB_BACKUP_ID }}
@@ -275,7 +278,7 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 20m
-          envs: DEPLOY_REF,DEPLOY_SHA,GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_GATEWAY_IMAGE,CLASSROOMPATH_MIGRATIONS_IMAGE,OPENPATH_API_IMAGE,CLASSROOMPATH_SPA_IMAGE,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID
+          envs: DEPLOY_REF,DEPLOY_SHA,GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_GATEWAY_IMAGE,CLASSROOMPATH_MIGRATIONS_IMAGE,OPENPATH_API_IMAGE,OPENPATH_LINUX_AGENT_VERSION,CLASSROOMPATH_SPA_IMAGE,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID
           script_path: scripts/deploy-production-remote.sh
 
   smoke-test-production:

@@ -175,6 +175,7 @@ STAGING_RELEASE_RUN_ID=""
 STAGING_GATEWAY_IMAGE=""
 STAGING_MIGRATIONS_IMAGE=""
 STAGING_OPENPATH_API_IMAGE=""
+STAGING_OPENPATH_LINUX_AGENT_VERSION=""
 STAGING_SPA_IMAGE=""
 
 if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
@@ -197,6 +198,9 @@ if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknow
                 ;;
             openpath_api_image)
                 STAGING_OPENPATH_API_IMAGE="$value"
+                ;;
+            linux_agent_version)
+                STAGING_OPENPATH_LINUX_AGENT_VERSION="$value"
                 ;;
             spa_image)
                 STAGING_SPA_IMAGE="$value"
@@ -283,6 +287,7 @@ REMOTE_ENV_CMD="$(
     remote_assignment STAGING_GATEWAY_IMAGE "$STAGING_GATEWAY_IMAGE"
     remote_assignment STAGING_MIGRATIONS_IMAGE "$STAGING_MIGRATIONS_IMAGE"
     remote_assignment STAGING_OPENPATH_API_IMAGE "$STAGING_OPENPATH_API_IMAGE"
+    remote_assignment STAGING_OPENPATH_LINUX_AGENT_VERSION "$STAGING_OPENPATH_LINUX_AGENT_VERSION"
     remote_assignment STAGING_SPA_IMAGE "$STAGING_SPA_IMAGE"
     remote_assignment STAGING_GHCR_USERNAME "$STAGING_GHCR_USERNAME"
     remote_assignment STAGING_GHCR_TOKEN "$STAGING_GHCR_TOKEN"

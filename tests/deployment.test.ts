@@ -22,6 +22,7 @@ interface DockerComposeService {
   ports?: Array<string | number>;
   expose?: Array<string | number>;
   env_file?: string[];
+  environment?: Array<string | number>;
   extra_hosts?: string[];
   healthcheck?: {
     test: string[];
@@ -216,6 +217,15 @@ void describe('Environment Configuration', () => {
     for (const envVar of requiredVars) {
       assert.ok(content.includes(envVar), `Email delivery variable ${envVar} should be documented`);
     }
+  });
+
+  void test('.env.example documents the pinned Linux agent enrollment version', () => {
+    const content = readFileSync(envExamplePath, 'utf-8');
+
+    assert.ok(
+      content.includes('OPENPATH_LINUX_AGENT_VERSION'),
+      'Deploy config should document the Linux agent package version pin used by OpenPath enrollment'
+    );
   });
 
   void test('.env.example does not contain actual secrets', () => {
@@ -579,6 +589,10 @@ void describe('Migration Tooling', () => {
       'staging deploy should resolve a prebuilt migrations image alongside the runtime images'
     );
     assert.ok(
+      localContent.includes('STAGING_OPENPATH_LINUX_AGENT_VERSION'),
+      'staging deploy should resolve the pinned OpenPath Linux agent version from the release-candidate manifest'
+    );
+    assert.ok(
       localContent.includes('STAGING_RELEASE_WAIT_TIMEOUT_SECONDS'),
       'staging deploy should expose a bounded wait timeout for release candidate availability'
     );
@@ -592,6 +606,12 @@ void describe('Migration Tooling', () => {
           'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
         ),
       'staging remote deploy should export the release-candidate migrations image before running migrations'
+    );
+    assert.ok(
+      remoteContent.includes(
+        'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$STAGING_OPENPATH_LINUX_AGENT_VERSION"'
+      ),
+      'staging remote deploy should persist the pinned OpenPath Linux agent version into the runtime env file before compose up'
     );
     assert.ok(
       remoteContent.includes('if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then'),
@@ -1045,6 +1065,10 @@ void describe('Migration Tooling', () => {
       'deploy workflow should propagate the prebuilt migrations image into production deployment'
     );
     assert.ok(
+      content.includes('OPENPATH_LINUX_AGENT_VERSION'),
+      'deploy workflow should propagate the pinned OpenPath Linux agent version into production deployment'
+    );
+    assert.ok(
       content.includes('verify-staging-release-state'),
       'deploy workflow should verify staging release state before production rollout'
     );
@@ -1085,6 +1109,16 @@ void describe('Migration Tooling', () => {
       !content.includes('run: sleep 30'),
       'deploy workflow should replace the fixed smoke delay with readiness polling'
     );
+    assert.ok(
+      deployRemoteScript.includes('OPENPATH_LINUX_AGENT_VERSION=$OPENPATH_LINUX_AGENT_VERSION'),
+      'production deploy should persist the pinned OpenPath Linux agent version in release-state metadata'
+    );
+    assert.ok(
+      deployRemoteScript.includes(
+        'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"'
+      ),
+      'production deploy should persist the pinned OpenPath Linux agent version into the runtime env file before compose up'
+    );
   });
 
   void test('release candidate workflow publishes a verifier image in the manifest artifact', () => {
@@ -1101,6 +1135,14 @@ void describe('Migration Tooling', () => {
     assert.ok(
       content.includes('CLASSROOMPATH_VERIFIER_IMAGE='),
       'release candidate manifest artifact should include the verifier image reference'
+    );
+    assert.ok(
+      content.includes('OPENPATH_LINUX_AGENT_VERSION='),
+      'release candidate manifest artifact should include the pinned OpenPath Linux agent version'
+    );
+    assert.ok(
+      content.includes('resolve-openpath-linux-agent-version.mjs'),
+      'release candidate workflow should resolve the OpenPath Linux agent version automatically before publishing the manifest'
     );
   });
 

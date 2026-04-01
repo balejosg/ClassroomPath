@@ -584,6 +584,14 @@ describe('Workflow configuration hardening', () => {
       deriveOpenPathShaRun.includes('git rev-parse HEAD:upstream/openpath'),
       'release candidate workflow should derive the OpenPath SHA from the submodule gitlink even before submodules are checked out'
     );
+    const deriveLinuxAgentVersionRun =
+      jobs['derive-release-image-refs']?.steps?.find(
+        (step) => step.name === 'Resolve OpenPath Linux agent version'
+      )?.run ?? '';
+    assert.ok(
+      deriveLinuxAgentVersionRun.includes('node scripts/resolve-openpath-linux-agent-version.mjs'),
+      'release candidate workflow should resolve the OpenPath Linux agent version from the submodule and published APT metadata'
+    );
     assert.ok(
       jobs['build-gateway-release-candidate'],
       'release candidate workflow should build the gateway image in its own job'
@@ -818,6 +826,10 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       publishManifestRun.includes('CLASSROOMPATH_VERIFIER_IMAGE='),
       'release candidate manifest should publish the verifier image alongside the runtime images'
+    );
+    assert.ok(
+      publishManifestRun.includes('OPENPATH_LINUX_AGENT_VERSION='),
+      'release candidate manifest should publish the pinned OpenPath Linux agent version alongside the runtime images'
     );
     assert.ok(
       jobs['resolve-previous-release-candidate-manifest'],
