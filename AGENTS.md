@@ -3,6 +3,7 @@
 SaaS distribution wrapper for OpenPath. Provides Docker deployment, multi-environment support, and production infrastructure.
 
 Docs index: `docs/INDEX.md`
+Workspace routing manifest: `../agent-manifest.json`
 
 ## 🚨 MANDATORY: LLM Agent Deployment Protocol
 
@@ -93,6 +94,21 @@ ClassroomPath/
 
 ## Key Difference from OpenPath
 
+### Wrapper Boundary (Read Before SPA Changes)
+
+For ClassroomPath wrapper work, read these first:
+
+- `../agent-manifest.json`
+- `react-spa/vite.config.ts`
+- `react-spa/src/ClassroomPathApp.tsx`
+- `react-spa/src/ClassroomPathShell.tsx`
+- `../OpenPath/docs/adr/0010-public-spa-extension-surface.md`
+
+Default rule:
+
+- consume OpenPath SPA features through the public entrypoints only (`@openpath/public-ui`, `@openpath/public-shell`, `@openpath/public-auth`, `@openpath/public-google`, `@openpath/openpath.css`)
+- do not deep-import upstream OpenPath internals during ordinary ClassroomPath wrapper work
+
 ### ⛔ Architectural Constraint
 
 **OpenPath is agnostic of ClassroomPath.** The dependency is unidirectional:
@@ -127,6 +143,7 @@ ClassroomPath ──depends on──▶ OpenPath
 ## Deployment
 
 Canonical production deployment instructions live in `docs/runbooks/deploy-production.md`.
+Workspace-level routing and source-of-truth map live in `../agent-manifest.json`.
 
 ### Environments
 

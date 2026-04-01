@@ -9,6 +9,9 @@
 
 - Repo overview: [`README.md`](../README.md)
 - LLM agent workflow (commit/deploy rules): [`AGENTS.md`](../AGENTS.md)
+- Workspace routing map: [`agent-manifest.json`](../../agent-manifest.json)
+- OpenPath docs index: [`OpenPath/docs/INDEX.md`](../../OpenPath/docs/INDEX.md)
+- OpenPath SPA public surface ADR: [`OpenPath/docs/adr/0010-public-spa-extension-surface.md`](../../OpenPath/docs/adr/0010-public-spa-extension-surface.md)
 
 ## Canonical Contracts
 
@@ -30,6 +33,7 @@
 ## Architecture Decisions
 
 - ADRs: `docs/adr/`
+- OpenPath boundary contract: [`OpenPath/docs/adr/0010-public-spa-extension-surface.md`](../../OpenPath/docs/adr/0010-public-spa-extension-surface.md)
 
 ## Non-Authoritative / Context Only
 

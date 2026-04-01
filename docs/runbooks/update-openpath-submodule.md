@@ -7,6 +7,12 @@
 
 ClassroomPath consumes OpenPath as a git submodule at `upstream/openpath/`.
 
+Before changing the ClassroomPath wrapper around OpenPath, also review:
+
+- [`agent-manifest.json`](../../../agent-manifest.json)
+- [`OpenPath/docs/INDEX.md`](../../../OpenPath/docs/INDEX.md)
+- [`OpenPath/docs/adr/0010-public-spa-extension-surface.md`](../../../OpenPath/docs/adr/0010-public-spa-extension-surface.md)
+
 ## Steps
 
 1. Land and push the OpenPath change in the OpenPath repo.
@@ -33,3 +39,4 @@ npm run deploy:staging
 
 - Do not edit files inside `upstream/openpath/` directly; changes will be lost on the next submodule update.
 - ClassroomPath should consume the OpenPath React SPA only through the public entrypoints exported by `@openpath/react-spa` (`public-ui`, `public-shell`, `public-auth`, `public-google`, `openpath.css`).
+- Treat `upstream/openpath/` as a dependency surface, not the first place to search for ordinary ClassroomPath wrapper work.
