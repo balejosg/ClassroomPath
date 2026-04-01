@@ -60,7 +60,13 @@ else
       docker/Dockerfile.migrations)
         migrations_changed=true
         ;;
-      upstream/openpath/*|docker/Dockerfile.api|.github/workflows/firefox-release-assets.yml)
+      # Git diff reports submodule pointer updates as the gitlink path itself, not
+      # as nested files, so rebuild every release-candidate image family because we
+      # cannot infer which OpenPath workspace changed from the parent repo diff.
+      upstream/openpath|upstream/openpath/*)
+        mark_all_changed
+        ;;
+      docker/Dockerfile.api|.github/workflows/firefox-release-assets.yml)
         openpath_api_changed=true
         migrations_changed=true
         verifier_changed=true

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -130,6 +133,59 @@ describe('Workflow configuration hardening', () => {
 
     assert.ok(jobs['detect-relevant-changes'], 'CI workflow should detect relevant changes');
     assert.equal(jobs['ci-success']?.name, 'CI Success');
+  });
+
+  test('release candidate detector rebuilds dependent images when the OpenPath gitlink changes', () => {
+    const repoDir = mkdtempSync(resolve(tmpdir(), 'classroompath-rc-detect-'));
+    const outputPath = resolve(repoDir, 'github-output.txt');
+    const detectScriptPath = resolve(projectRoot, 'scripts/detect-release-candidate-components.sh');
+
+    try {
+      execFileSync('git', ['init'], { cwd: repoDir });
+      execFileSync('git', ['config', 'user.email', 'codex@example.com'], { cwd: repoDir });
+      execFileSync('git', ['config', 'user.name', 'Codex'], { cwd: repoDir });
+
+      mkdirSync(resolve(repoDir, 'upstream'), { recursive: true });
+      writeFileSync(resolve(repoDir, 'upstream/openpath'), 'old-sha\n');
+      execFileSync('git', ['add', 'upstream/openpath'], { cwd: repoDir });
+      execFileSync('git', ['commit', '-m', 'base'], { cwd: repoDir });
+
+      const baseSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repoDir,
+        encoding: 'utf8',
+      }).trim();
+
+      writeFileSync(resolve(repoDir, 'upstream/openpath'), 'new-sha\n');
+      execFileSync('git', ['commit', '-am', 'head'], { cwd: repoDir });
+
+      const headSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repoDir,
+        encoding: 'utf8',
+      }).trim();
+
+      execFileSync('bash', [detectScriptPath, baseSha, headSha], {
+        cwd: repoDir,
+        env: { ...process.env, GITHUB_OUTPUT: outputPath },
+      });
+
+      const outputs = readFileSync(outputPath, 'utf8');
+
+      for (const key of [
+        'gateway_changed',
+        'migrations_changed',
+        'openpath_api_changed',
+        'spa_changed',
+        'verifier_changed',
+      ]) {
+        assert.match(
+          outputs,
+          new RegExp(`^${key}=true$`, 'm'),
+          `OpenPath gitlink updates should set ${key}=true`
+        );
+      }
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
   });
 
   test('CI workflow installs OpenPath submodule dependencies before building', () => {
