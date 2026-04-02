@@ -275,7 +275,7 @@ describe('Workflow configuration hardening', () => {
     const setupActionText = readText('.github/actions/setup-node/action.yml');
 
     assert.ok(
-      workflowText.includes('aquasecurity/trivy-action@v0.33.1'),
+      workflowText.includes('aquasecurity/trivy-action@v0.35.0'),
       'security workflow should pin the Trivy action to a concrete version'
     );
     assert.ok(
