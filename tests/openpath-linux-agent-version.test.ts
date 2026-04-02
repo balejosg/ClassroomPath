@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  DEFAULT_PACKAGES_URL,
   buildFetchOpenPathTagsArgs,
   parsePublishedOpenPathLinuxVersions,
   resolveOpenPathLinuxAgentVersion,
@@ -10,6 +11,14 @@ import {
 } from '../scripts/resolve-openpath-linux-agent-version.mjs';
 
 describe('OpenPath Linux agent version resolution', () => {
+  test('uses the raw GitHub apt metadata source instead of legacy GitHub Pages', () => {
+    assert.equal(
+      DEFAULT_PACKAGES_URL,
+      'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/dists/stable/main/binary-amd64/Packages'
+    );
+    assert.equal(DEFAULT_PACKAGES_URL.includes('balejosg.github.io'), false);
+  });
+
   test('selects the latest reachable OpenPath release tag', () => {
     assert.equal(
       selectLatestReachableOpenPathReleaseTag(['v4.1.3', 'v4.1.10', 'scripts-v4.1.11-deadbeef']),

@@ -6,8 +6,8 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
 const projectRoot = resolve(scriptDir, '..');
 const DEFAULT_OPENPATH_DIR = resolve(projectRoot, 'upstream/openpath');
-const DEFAULT_PACKAGES_URL =
-  'https://balejosg.github.io/openpath/apt/dists/stable/main/binary-amd64/Packages';
+export const DEFAULT_PACKAGES_URL =
+  'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/dists/stable/main/binary-amd64/Packages';
 
 const LINUX_AGENT_CONTRACT_PATHS = [
   'linux/',
