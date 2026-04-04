@@ -139,6 +139,11 @@ ensure_node_image() {
   docker pull "$img" >/dev/null 2>&1
 }
 
+if [ -n "$RUNNER_IMAGE" ]; then
+  run_prebuilt_runner_image
+  exit 0
+fi
+
 if ! ensure_node_image "$NODE_IMAGE"; then
   log_warn "Unable to fetch node image: $NODE_IMAGE"
   log_warn "Falling back to: $MIGRATIONS_NODE_IMAGE_FALLBACK"
@@ -147,11 +152,6 @@ if ! ensure_node_image "$NODE_IMAGE"; then
     log_error "Unable to fetch node image: $NODE_IMAGE"
     exit 1
   }
-fi
-
-if [ -n "$RUNNER_IMAGE" ]; then
-  run_prebuilt_runner_image
-  exit 0
 fi
 
 run_cp_migrations() {

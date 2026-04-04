@@ -1036,6 +1036,11 @@ void describe('Migration Tooling', () => {
         content.includes('node /derive-openpath-db-env.mjs'),
       'run-migrations-docker.sh should derive OpenPath DB_* env vars from the shared helper before db:push'
     );
+    assert.ok(
+      content.indexOf('if [ -n "$RUNNER_IMAGE" ]; then') <
+        content.indexOf('if ! ensure_node_image "$NODE_IMAGE"; then'),
+      'run-migrations-docker.sh should skip generic node image pulls when a prebuilt runner image is provided'
+    );
   });
 
   void test('verify-full keeps DATABASE_URL canonical and derives OpenPath DB_* env through the shared helper', () => {
