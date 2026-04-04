@@ -233,7 +233,7 @@ classify_migration_risk
 write_deploy_context
 
 log_info "Validating runtime config..."
-bash scripts/validate-runtime-config-docker.sh
+CLASSROOMPATH_VERIFIER_IMAGE="${STAGING_VERIFIER_IMAGE:-}" bash scripts/validate-runtime-config-docker.sh
 
 log_info "Checking disk space..."
 DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')

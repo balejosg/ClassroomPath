@@ -1210,4 +1210,39 @@ void describe('Migration Tooling', () => {
       'validate-runtime-config-docker.sh should install the ClassroomPath API workspace before validating'
     );
   });
+
+  void test('staging deploy reuses the release verifier image for remote runtime validation', () => {
+    const localDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
+    const remoteDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
+    const validationScriptPath = resolve(projectRoot, 'scripts/validate-runtime-config-docker.sh');
+
+    const localDeploy = readFileSync(localDeployScriptPath, 'utf-8');
+    const remoteDeploy = readFileSync(remoteDeployScriptPath, 'utf-8');
+    const validationScript = readFileSync(validationScriptPath, 'utf-8');
+
+    assert.ok(
+      localDeploy.includes('STAGING_VERIFIER_IMAGE=""'),
+      'deploy-staging-local.sh should track the verifier image from the release candidate manifest'
+    );
+    assert.ok(
+      localDeploy.includes('verifier_image') &&
+        localDeploy.includes('STAGING_VERIFIER_IMAGE="$value"'),
+      'deploy-staging-local.sh should parse verifier_image from the release candidate manifest outputs'
+    );
+    assert.ok(
+      localDeploy.includes('remote_assignment STAGING_VERIFIER_IMAGE "$STAGING_VERIFIER_IMAGE"'),
+      'deploy-staging-local.sh should forward the verifier image to the remote staging deploy'
+    );
+    assert.ok(
+      remoteDeploy.includes('CLASSROOMPATH_VERIFIER_IMAGE="${STAGING_VERIFIER_IMAGE:-}"') &&
+        remoteDeploy.includes('bash scripts/validate-runtime-config-docker.sh'),
+      'deploy-staging-remote.sh should reuse the staged verifier image during runtime validation'
+    );
+    assert.ok(
+      validationScript.includes('CLASSROOMPATH_VERIFIER_IMAGE') &&
+        validationScript.indexOf('if [ -n "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then') <
+          validationScript.indexOf('if ! ensure_node_image "$NODE_IMAGE"; then'),
+      'validate-runtime-config-docker.sh should prefer the prebuilt verifier image before pulling a generic node runtime'
+    );
+  });
 });

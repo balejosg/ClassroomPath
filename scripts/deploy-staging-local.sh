@@ -177,6 +177,7 @@ STAGING_MIGRATIONS_IMAGE=""
 STAGING_OPENPATH_API_IMAGE=""
 STAGING_OPENPATH_LINUX_AGENT_VERSION=""
 STAGING_SPA_IMAGE=""
+STAGING_VERIFIER_IMAGE=""
 
 if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
     require_cmd gh
@@ -204,6 +205,9 @@ if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknow
                 ;;
             spa_image)
                 STAGING_SPA_IMAGE="$value"
+                ;;
+            verifier_image)
+                STAGING_VERIFIER_IMAGE="$value"
                 ;;
         esac
     done <<< "$RELEASE_IMAGE_OUTPUT"
@@ -289,6 +293,7 @@ REMOTE_ENV_CMD="$(
     remote_assignment STAGING_OPENPATH_API_IMAGE "$STAGING_OPENPATH_API_IMAGE"
     remote_assignment STAGING_OPENPATH_LINUX_AGENT_VERSION "$STAGING_OPENPATH_LINUX_AGENT_VERSION"
     remote_assignment STAGING_SPA_IMAGE "$STAGING_SPA_IMAGE"
+    remote_assignment STAGING_VERIFIER_IMAGE "$STAGING_VERIFIER_IMAGE"
     remote_assignment STAGING_GHCR_USERNAME "$STAGING_GHCR_USERNAME"
     remote_assignment STAGING_GHCR_TOKEN "$STAGING_GHCR_TOKEN"
 )"

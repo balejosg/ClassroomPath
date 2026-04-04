@@ -82,6 +82,22 @@ ensure_node_image() {
   docker pull "$img" >/dev/null 2>&1
 }
 
+if [ -n "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then
+  log_info "[VALIDATION] Using prebuilt verifier image: $CLASSROOMPATH_VERIFIER_IMAGE"
+
+  if docker image inspect "$CLASSROOMPATH_VERIFIER_IMAGE" >/dev/null 2>&1 ||
+    docker pull "$CLASSROOMPATH_VERIFIER_IMAGE" >/dev/null 2>&1; then
+    docker run --rm \
+      --env-file "$ENV_FILE" \
+      "$CLASSROOMPATH_VERIFIER_IMAGE" \
+      node --import tsx api/scripts/validate-runtime-config.ts
+    exit 0
+  fi
+
+  log_warn "Unable to fetch verifier image: $CLASSROOMPATH_VERIFIER_IMAGE"
+  log_warn "Falling back to generic node runtime validation image"
+fi
+
 if ! ensure_node_image "$NODE_IMAGE"; then
   log_warn "Unable to fetch node image: $NODE_IMAGE"
   log_warn "Falling back to: $VALIDATION_NODE_IMAGE_FALLBACK"
