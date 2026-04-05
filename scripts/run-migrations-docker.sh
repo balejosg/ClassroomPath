@@ -15,6 +15,8 @@ OPENPATH_DB_ENV_HELPER_PATH="$SCRIPT_DIR/derive-openpath-db-env.mjs"
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/deploy-images.sh
+source "$SCRIPT_DIR/lib/deploy-images.sh"
 
 # Pinned to the digest of node:20-alpine at time of writing.
 # Override if you need to roll forward/back quickly:
@@ -120,7 +122,7 @@ run_prebuilt_runner_image() {
     args+=("--openpath")
   fi
 
-  docker pull "$RUNNER_IMAGE" >/dev/null
+  docker_prepare_required_image "$RUNNER_IMAGE" "migration runner image" || return 1
 
   docker run --rm \
     --add-host host.docker.internal:host-gateway \
@@ -129,30 +131,16 @@ run_prebuilt_runner_image() {
     "${args[@]}"
 }
 
-ensure_node_image() {
-  local img="$1"
-
-  if docker image inspect "$img" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  docker pull "$img" >/dev/null 2>&1
-}
-
 if [ -n "$RUNNER_IMAGE" ]; then
   run_prebuilt_runner_image
   exit 0
 fi
 
-if ! ensure_node_image "$NODE_IMAGE"; then
-  log_warn "Unable to fetch node image: $NODE_IMAGE"
-  log_warn "Falling back to: $MIGRATIONS_NODE_IMAGE_FALLBACK"
-  NODE_IMAGE="$MIGRATIONS_NODE_IMAGE_FALLBACK"
-  ensure_node_image "$NODE_IMAGE" || {
-    log_error "Unable to fetch node image: $NODE_IMAGE"
-    exit 1
-  }
-fi
+docker_select_image_with_fallback \
+  NODE_IMAGE \
+  "$NODE_IMAGE" \
+  "$MIGRATIONS_NODE_IMAGE_FALLBACK" \
+  "node image" || exit 1
 
 run_cp_migrations() {
   log_info "[MIGRATIONS] - ClassroomPath API schema..."

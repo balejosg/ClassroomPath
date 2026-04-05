@@ -12,6 +12,8 @@ APP_DIR_DEFAULT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/deploy-images.sh
+source "$SCRIPT_DIR/lib/deploy-images.sh"
 
 VALIDATION_NODE_IMAGE_DEFAULT="node@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8"
 VALIDATION_NODE_IMAGE_FALLBACK="node:20-alpine"
@@ -72,21 +74,10 @@ if [ ! -f "$ENV_FILE" ]; then
   die "Env file not found: $ENV_FILE" 1
 fi
 
-ensure_node_image() {
-  local img="$1"
-
-  if docker image inspect "$img" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  docker pull "$img" >/dev/null 2>&1
-}
-
 if [ -n "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then
   log_info "[VALIDATION] Using prebuilt verifier image: $CLASSROOMPATH_VERIFIER_IMAGE"
 
-  if docker image inspect "$CLASSROOMPATH_VERIFIER_IMAGE" >/dev/null 2>&1 ||
-    docker pull "$CLASSROOMPATH_VERIFIER_IMAGE" >/dev/null 2>&1; then
+  if docker_prepare_required_image "$CLASSROOMPATH_VERIFIER_IMAGE" "verifier image"; then
     docker run --rm \
       --env-file "$ENV_FILE" \
       "$CLASSROOMPATH_VERIFIER_IMAGE" \
@@ -98,15 +89,11 @@ if [ -n "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then
   log_warn "Falling back to generic node runtime validation image"
 fi
 
-if ! ensure_node_image "$NODE_IMAGE"; then
-  log_warn "Unable to fetch node image: $NODE_IMAGE"
-  log_warn "Falling back to: $VALIDATION_NODE_IMAGE_FALLBACK"
-  NODE_IMAGE="$VALIDATION_NODE_IMAGE_FALLBACK"
-  ensure_node_image "$NODE_IMAGE" || {
-    log_error "Unable to fetch node image: $NODE_IMAGE"
-    exit 1
-  }
-fi
+docker_select_image_with_fallback \
+  NODE_IMAGE \
+  "$NODE_IMAGE" \
+  "$VALIDATION_NODE_IMAGE_FALLBACK" \
+  "node image" || exit 1
 
 log_info "[VALIDATION] - ClassroomPath runtime config..."
 

@@ -62,6 +62,7 @@ jobs:
       openpath_linux_agent_version: ${{ steps.release-images.outputs.linux_agent_version }}
       spa_image: ${{ steps.release-images.outputs.spa_image }}
       verifier_image: ${{ steps.release-images.outputs.verifier_image }}
+      manifest_base64: ${{ steps.release-images.outputs.manifest_base64 }}
       staging_public_url: ${{ steps.deploy-targets.outputs.staging_public_url }}
       staging_gateway_health_url: ${{ steps.deploy-targets.outputs.staging_gateway_health_url }}
       staging_ready_url: ${{ steps.deploy-targets.outputs.staging_ready_url }}
@@ -94,6 +95,7 @@ jobs:
             --interval-seconds 5 \
             --output-file release-images.env >> "$GITHUB_OUTPUT"
 
+          echo "manifest_base64=$(base64 < release-images.env | tr -d '\n')" >> "$GITHUB_OUTPUT"
           printf 'TAG_NAME=%s\n' '${{ github.ref_name }}' >> release-images.env
 
       - name: Resolve deploy targets
@@ -263,11 +265,7 @@ jobs:
           DEPLOY_SHA: ${{ github.sha }}
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
-          CLASSROOMPATH_MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
-          OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
-          OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
-          CLASSROOMPATH_SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
+          RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}
           PRODUCTION_DB_BACKUP_COMMAND: ${{ secrets.PRODUCTION_DB_BACKUP_COMMAND }}
           PRODUCTION_DB_BACKUP_ID: ${{ secrets.PRODUCTION_DB_BACKUP_ID }}
         uses: appleboy/ssh-action@v1.2.4
@@ -278,7 +276,7 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 20m
-          envs: DEPLOY_REF,DEPLOY_SHA,GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_GATEWAY_IMAGE,CLASSROOMPATH_MIGRATIONS_IMAGE,OPENPATH_API_IMAGE,OPENPATH_LINUX_AGENT_VERSION,CLASSROOMPATH_SPA_IMAGE,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID
+          envs: DEPLOY_REF,DEPLOY_SHA,GHCR_USERNAME,GHCR_TOKEN,RELEASE_MANIFEST_B64,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID
           script_path: scripts/deploy-production-remote.sh
 
   smoke-test-production:

@@ -593,31 +593,22 @@ void describe('Migration Tooling', () => {
       'staging remote deploy should try pulling prebuilt candidate images'
     );
     assert.ok(
-      localContent.includes('STAGING_MIGRATIONS_IMAGE'),
-      'staging deploy should resolve a prebuilt migrations image alongside the runtime images'
-    );
-    assert.ok(
-      localContent.includes('STAGING_OPENPATH_LINUX_AGENT_VERSION'),
-      'staging deploy should resolve the pinned OpenPath Linux agent version from the release-candidate manifest'
+      localContent.includes('STAGING_RELEASE_MANIFEST_FILE') &&
+        localContent.includes('STAGING_RELEASE_MANIFEST_B64'),
+      'staging deploy should resolve and forward a single release-manifest payload for the remote deploy'
     );
     assert.ok(
       localContent.includes('STAGING_RELEASE_WAIT_TIMEOUT_SECONDS'),
       'staging deploy should expose a bounded wait timeout for release candidate availability'
     );
     assert.ok(
-      remoteContent.includes('CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"'),
-      'staging remote deploy should export the release-candidate migrations image into the remote deploy path'
-    );
-    assert.ok(
-      remoteContent.indexOf('CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"') <
-        remoteContent.indexOf(
-          'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
-        ),
-      'staging remote deploy should export the release-candidate migrations image before running migrations'
+      remoteContent.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
+        remoteContent.includes('export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"'),
+      'staging remote deploy should derive the release-candidate image refs from the shared manifest payload'
     );
     assert.ok(
       remoteContent.includes(
-        'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$STAGING_OPENPATH_LINUX_AGENT_VERSION"'
+        'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"'
       ),
       'staging remote deploy should persist the pinned OpenPath Linux agent version into the runtime env file before compose up'
     );
@@ -1038,7 +1029,7 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       content.indexOf('if [ -n "$RUNNER_IMAGE" ]; then') <
-        content.indexOf('if ! ensure_node_image "$NODE_IMAGE"; then'),
+        content.indexOf('docker_select_image_with_fallback'),
       'run-migrations-docker.sh should skip generic node image pulls when a prebuilt runner image is provided'
     );
   });
@@ -1078,8 +1069,8 @@ void describe('Migration Tooling', () => {
     );
 
     assert.ok(
-      content.includes('CLASSROOMPATH_MIGRATIONS_IMAGE'),
-      'deploy workflow should propagate the prebuilt migrations image into production deployment'
+      content.includes('RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}'),
+      'deploy workflow should propagate the resolved release manifest into production deployment'
     );
     assert.ok(
       content.includes('OPENPATH_LINUX_AGENT_VERSION'),
@@ -1095,6 +1086,10 @@ void describe('Migration Tooling', () => {
           'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
         ),
       'production deploy should run migrations from the prebuilt runner image instead of npm-installing on the host'
+    );
+    assert.ok(
+      content.includes('RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}'),
+      'deploy workflow should pass the resolved release manifest as a single payload into the SSH deploy boundary'
     );
     assert.ok(
       content.includes('staging-verification.env'),
@@ -1135,6 +1130,11 @@ void describe('Migration Tooling', () => {
         'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"'
       ),
       'production deploy should persist the pinned OpenPath Linux agent version into the runtime env file before compose up'
+    );
+    assert.ok(
+      deployRemoteScript.includes('decode_release_manifest_base64 "$RELEASE_MANIFEST_B64"') &&
+        deployRemoteScript.includes('export_release_manifest_runtime_env "$RELEASE_MANIFEST_FILE"'),
+      'production deploy should load immutable image refs from the shared release manifest helper'
     );
     assert.ok(
       deployRemoteScript.includes('COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"'),
@@ -1221,28 +1221,121 @@ void describe('Migration Tooling', () => {
     const validationScript = readFileSync(validationScriptPath, 'utf-8');
 
     assert.ok(
-      localDeploy.includes('STAGING_VERIFIER_IMAGE=""'),
-      'deploy-staging-local.sh should track the verifier image from the release candidate manifest'
+      localDeploy.includes('remote_assignment STAGING_RELEASE_MANIFEST_B64 "$STAGING_RELEASE_MANIFEST_B64"'),
+      'deploy-staging-local.sh should forward the shared release manifest payload to the remote staging deploy'
     );
     assert.ok(
-      localDeploy.includes('verifier_image') &&
-        localDeploy.includes('STAGING_VERIFIER_IMAGE="$value"'),
-      'deploy-staging-local.sh should parse verifier_image from the release candidate manifest outputs'
-    );
-    assert.ok(
-      localDeploy.includes('remote_assignment STAGING_VERIFIER_IMAGE "$STAGING_VERIFIER_IMAGE"'),
-      'deploy-staging-local.sh should forward the verifier image to the remote staging deploy'
-    );
-    assert.ok(
-      remoteDeploy.includes('CLASSROOMPATH_VERIFIER_IMAGE="${STAGING_VERIFIER_IMAGE:-}"') &&
+      remoteDeploy.includes('CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}"') &&
         remoteDeploy.includes('bash scripts/validate-runtime-config-docker.sh'),
       'deploy-staging-remote.sh should reuse the staged verifier image during runtime validation'
     );
     assert.ok(
       validationScript.includes('CLASSROOMPATH_VERIFIER_IMAGE') &&
         validationScript.indexOf('if [ -n "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then') <
-          validationScript.indexOf('if ! ensure_node_image "$NODE_IMAGE"; then'),
+          validationScript.indexOf('docker_select_image_with_fallback'),
       'validate-runtime-config-docker.sh should prefer the prebuilt verifier image before pulling a generic node runtime'
+    );
+  });
+
+  void test('deploy shell helpers centralize tool-image resolution for migrations, validation, and smoke', () => {
+    const deployImagesHelperPath = resolve(projectRoot, 'scripts/lib/deploy-images.sh');
+    const helperContent = readFileSync(deployImagesHelperPath, 'utf-8');
+    const migrationsContent = readFileSync(migrationsScriptPath, 'utf-8');
+    const validationContent = readFileSync(
+      resolve(projectRoot, 'scripts/validate-runtime-config-docker.sh'),
+      'utf-8'
+    );
+    const smokeContent = readFileSync(resolve(projectRoot, 'scripts/run-smoke-in-verifier.sh'), 'utf-8');
+
+    assert.ok(existsSync(deployImagesHelperPath), 'scripts/lib/deploy-images.sh should exist');
+    assert.ok(
+      helperContent.includes('docker_require_image()') &&
+        helperContent.includes('docker_select_image_with_fallback()'),
+      'deploy image helper should centralize required-image and fallback-image logic'
+    );
+    assert.ok(
+      migrationsContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),
+      'run-migrations-docker.sh should source the shared deploy-images helper'
+    );
+    assert.ok(
+      validationContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),
+      'validate-runtime-config-docker.sh should source the shared deploy-images helper'
+    );
+    assert.ok(
+      smokeContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),
+      'run-smoke-in-verifier.sh should source the shared deploy-images helper'
+    );
+  });
+
+  void test('release manifest flows through staging and production as a single contract payload', () => {
+    const stagingLocal = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
+    const productionRemote = readFileSync(resolve(projectRoot, 'scripts/deploy-production-remote.sh'), 'utf-8');
+    const workflow = readFileSync(resolve(projectRoot, '.github/workflows/deploy.yml'), 'utf-8');
+    const manifestHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest.sh');
+    const manifestHelper = readFileSync(manifestHelperPath, 'utf-8');
+
+    assert.ok(existsSync(manifestHelperPath), 'scripts/lib/release-manifest.sh should exist');
+    assert.ok(
+      manifestHelper.includes('decode_release_manifest_base64()') &&
+        manifestHelper.includes('export_release_manifest_runtime_env()'),
+      'release-manifest helper should decode and export manifest fields from a single payload'
+    );
+    assert.ok(
+      stagingLocal.includes('STAGING_RELEASE_MANIFEST_FILE=') &&
+        stagingLocal.includes('--output-file "$STAGING_RELEASE_MANIFEST_FILE"'),
+      'deploy-staging-local.sh should materialize the resolved release manifest to a single file'
+    );
+    assert.ok(
+      stagingLocal.includes('STAGING_RELEASE_MANIFEST_B64=') &&
+        stagingLocal.includes('remote_assignment STAGING_RELEASE_MANIFEST_B64'),
+      'deploy-staging-local.sh should forward one manifest payload to the remote deploy'
+    );
+    assert.ok(
+      stagingRemote.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
+        stagingRemote.includes('export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"'),
+      'deploy-staging-remote.sh should decode and load the single release manifest payload'
+    );
+    assert.ok(
+      workflow.includes('manifest_base64: ${{ steps.release-images.outputs.manifest_base64 }}'),
+      'deploy workflow should expose the release manifest payload as a single output'
+    );
+    assert.ok(
+      workflow.includes('RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}') &&
+        workflow.includes('envs: DEPLOY_REF,DEPLOY_SHA,GHCR_USERNAME,GHCR_TOKEN,RELEASE_MANIFEST_B64'),
+      'production deploy workflow should pass one release-manifest payload to the SSH boundary'
+    );
+    assert.ok(
+      productionRemote.includes('decode_release_manifest_base64 "$RELEASE_MANIFEST_B64"') &&
+        productionRemote.includes('export_release_manifest_runtime_env "$RELEASE_MANIFEST_FILE"'),
+      'deploy-production-remote.sh should load release images from the shared manifest helper'
+    );
+  });
+
+  void test('staging remote deploy executes explicit deployment phases in order', () => {
+    const content = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
+
+    assert.ok(
+      content.includes('prepare_staging_checkout()') &&
+        content.includes('run_staging_runtime_validation()') &&
+        content.includes('cleanup_staging_disk_if_needed()') &&
+        content.includes('run_staging_database_migrations()') &&
+        content.includes('start_staging_runtime()') &&
+        content.includes('wait_for_staging_runtime_readiness()'),
+      'deploy-staging-remote.sh should define explicit phase functions for the remote deploy'
+    );
+    assert.ok(
+      content.indexOf('prepare_staging_checkout') <
+        content.indexOf('run_staging_runtime_validation') &&
+        content.indexOf('run_staging_runtime_validation') <
+          content.indexOf('cleanup_staging_disk_if_needed') &&
+        content.indexOf('cleanup_staging_disk_if_needed') <
+          content.indexOf('run_staging_database_migrations') &&
+        content.indexOf('run_staging_database_migrations') <
+          content.indexOf('start_staging_runtime') &&
+        content.indexOf('start_staging_runtime') <
+          content.indexOf('wait_for_staging_runtime_readiness'),
+      'deploy-staging-remote.sh should invoke the remote deploy phases in a stable order'
     );
   });
 });

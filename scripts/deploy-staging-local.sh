@@ -20,6 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/release-manifest.sh
+source "$SCRIPT_DIR/lib/release-manifest.sh"
 
 usage() {
     cat <<'EOF'
@@ -33,6 +35,10 @@ Options:
 Env:
   DEPLOY_ASSUME_YES=1  Same as --yes
 EOF
+}
+
+cleanup_staging_local_temp_files() {
+    rm -f "${STAGING_RELEASE_MANIFEST_FILE:-}" "${SMOKE_STATE_FILE:-}" "${RELEASE_GATE_STATE_FILE:-}"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -172,48 +178,26 @@ fi
 STAGING_USE_RELEASE_CANDIDATE=0
 STAGING_RELEASE_SHA=""
 STAGING_RELEASE_RUN_ID=""
-STAGING_GATEWAY_IMAGE=""
-STAGING_MIGRATIONS_IMAGE=""
-STAGING_OPENPATH_API_IMAGE=""
-STAGING_OPENPATH_LINUX_AGENT_VERSION=""
-STAGING_SPA_IMAGE=""
-STAGING_VERIFIER_IMAGE=""
+STAGING_RELEASE_MANIFEST_FILE=""
+STAGING_RELEASE_MANIFEST_B64=""
+SMOKE_STATE_FILE=""
+RELEASE_GATE_STATE_FILE=""
+trap cleanup_staging_local_temp_files EXIT
 
 if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
     require_cmd gh
-    RELEASE_IMAGE_OUTPUT="$(node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest \
+    STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
+    node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest \
         --sha "$REMOTE_SHA" \
         --timeout-seconds "$STAGING_RELEASE_WAIT_TIMEOUT_SECONDS" \
-        --interval-seconds "$STAGING_RELEASE_POLL_SECONDS")"
+        --interval-seconds "$STAGING_RELEASE_POLL_SECONDS" \
+        --output-file "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
 
-    while IFS='=' read -r key value; do
-        case "$key" in
-            run_id)
-                STAGING_RELEASE_RUN_ID="$value"
-                ;;
-            gateway_image)
-                STAGING_GATEWAY_IMAGE="$value"
-                ;;
-            migrations_image)
-                STAGING_MIGRATIONS_IMAGE="$value"
-                ;;
-            openpath_api_image)
-                STAGING_OPENPATH_API_IMAGE="$value"
-                ;;
-            linux_agent_version)
-                STAGING_OPENPATH_LINUX_AGENT_VERSION="$value"
-                ;;
-            spa_image)
-                STAGING_SPA_IMAGE="$value"
-                ;;
-            verifier_image)
-                STAGING_VERIFIER_IMAGE="$value"
-                ;;
-        esac
-    done <<< "$RELEASE_IMAGE_OUTPUT"
+    STAGING_RELEASE_RUN_ID="$(release_manifest_require_key "$STAGING_RELEASE_MANIFEST_FILE" run_id)"
+    STAGING_RELEASE_SHA="$(release_manifest_require_key "$STAGING_RELEASE_MANIFEST_FILE" app_sha)"
+    STAGING_RELEASE_MANIFEST_B64="$(encode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_FILE")"
 
     STAGING_USE_RELEASE_CANDIDATE=1
-    STAGING_RELEASE_SHA="$REMOTE_SHA"
     log_info "Staging will deploy release candidate images for $STAGING_RELEASE_SHA"
     if [ -n "$STAGING_RELEASE_RUN_ID" ]; then
         log_info "Release candidate workflow run: $STAGING_RELEASE_RUN_ID"
@@ -288,12 +272,7 @@ REMOTE_ENV_CMD="$(
     remote_assignment STAGING_IMAGE_MODE "$STAGING_IMAGE_MODE"
     remote_assignment STAGING_USE_RELEASE_CANDIDATE "$STAGING_USE_RELEASE_CANDIDATE"
     remote_assignment STAGING_RELEASE_SHA "$STAGING_RELEASE_SHA"
-    remote_assignment STAGING_GATEWAY_IMAGE "$STAGING_GATEWAY_IMAGE"
-    remote_assignment STAGING_MIGRATIONS_IMAGE "$STAGING_MIGRATIONS_IMAGE"
-    remote_assignment STAGING_OPENPATH_API_IMAGE "$STAGING_OPENPATH_API_IMAGE"
-    remote_assignment STAGING_OPENPATH_LINUX_AGENT_VERSION "$STAGING_OPENPATH_LINUX_AGENT_VERSION"
-    remote_assignment STAGING_SPA_IMAGE "$STAGING_SPA_IMAGE"
-    remote_assignment STAGING_VERIFIER_IMAGE "$STAGING_VERIFIER_IMAGE"
+    remote_assignment STAGING_RELEASE_MANIFEST_B64 "$STAGING_RELEASE_MANIFEST_B64"
     remote_assignment STAGING_GHCR_USERNAME "$STAGING_GHCR_USERNAME"
     remote_assignment STAGING_GHCR_TOKEN "$STAGING_GHCR_TOKEN"
 )"
@@ -329,7 +308,6 @@ log_info "Running smoke tests against staging..."
 
 SMOKE_STATE_FILE="$(mktemp)"
 RELEASE_GATE_STATE_FILE=""
-trap 'rm -f "${SMOKE_STATE_FILE:-}" "${RELEASE_GATE_STATE_FILE:-}"' EXIT
 
 if ! bash "$STAGING_SMOKE_SCRIPT_PATH" "$SMOKE_STATE_FILE" "$STAGING_HOST" "$STAGING_SMOKE_URL" "${SSH_CMD[@]}"; then
     exit 1

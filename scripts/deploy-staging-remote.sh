@@ -13,6 +13,8 @@ fi
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/release-manifest.sh
+source "$SCRIPT_DIR/lib/release-manifest.sh"
 
 STATE_DIR="/opt/classroompath/release-state"
 CURRENT_STATE_FILE="$STATE_DIR/current-images.env"
@@ -34,6 +36,13 @@ DB_MIGRATED=0
 FAILURE_STAGE="preflight"
 ROLLBACK_ATTEMPTED=0
 ROLLBACK_RESULT="not_attempted"
+STAGING_RELEASE_MANIFEST_FILE=""
+
+cleanup_staging_release_manifest() {
+  rm -f "${STAGING_RELEASE_MANIFEST_FILE:-}"
+}
+
+trap cleanup_staging_release_manifest EXIT
 
 copy_release_state() {
   if [ -f "$CURRENT_STATE_FILE" ]; then
@@ -147,8 +156,8 @@ deploy_with_release_candidates() {
     return 1
   fi
 
-  if [ -z "${STAGING_GATEWAY_IMAGE:-}" ] || [ -z "${STAGING_MIGRATIONS_IMAGE:-}" ] || [ -z "${STAGING_OPENPATH_API_IMAGE:-}" ] || [ -z "${STAGING_SPA_IMAGE:-}" ]; then
-    log_error "Release candidate image refs are incomplete"
+  if [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
+    log_error "Release candidate manifest is incomplete"
     return 1
   fi
 
@@ -162,12 +171,7 @@ deploy_with_release_candidates() {
   fi
 
   export COMPOSE_PROJECT_NAME=classroompath-staging
-  export CLASSROOMPATH_GATEWAY_IMAGE="$STAGING_GATEWAY_IMAGE"
-  export CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"
-  export OPENPATH_API_IMAGE="$STAGING_OPENPATH_API_IMAGE"
-  export OPENPATH_LINUX_AGENT_VERSION="$STAGING_OPENPATH_LINUX_AGENT_VERSION"
-  export CLASSROOMPATH_SPA_IMAGE="$STAGING_SPA_IMAGE"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$STAGING_OPENPATH_LINUX_AGENT_VERSION"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"
 
   log_info "Pulling release candidate migrations image for ${STAGING_RELEASE_SHA:-origin-main}..."
   docker pull "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
@@ -185,7 +189,7 @@ deploy_with_release_candidates() {
   RESOLVED_GATEWAY_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_GATEWAY_IMAGE")"
   RESOLVED_MIGRATIONS_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_MIGRATIONS_IMAGE")"
   RESOLVED_OPENPATH_API_IMAGE="$(resolve_pulled_digest "$OPENPATH_API_IMAGE")"
-  RESOLVED_OPENPATH_LINUX_AGENT_VERSION="$STAGING_OPENPATH_LINUX_AGENT_VERSION"
+  RESOLVED_OPENPATH_LINUX_AGENT_VERSION="$OPENPATH_LINUX_AGENT_VERSION"
   RESOLVED_SPA_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_SPA_IMAGE")"
   write_release_state
   return 0
@@ -217,111 +221,146 @@ deploy_from_source() {
   return 0
 }
 
-cd "$APP_DIR"
+load_staging_release_manifest() {
+  if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" != "1" ]; then
+    return 0
+  fi
 
-log_info "Fetching latest from origin..."
-git fetch origin main
+  STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
+  decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
+  export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"
 
-log_info "Resetting to origin/main..."
-git reset --hard origin/main
+  STAGING_RELEASE_SHA="$RELEASE_MANIFEST_APP_SHA"
+}
 
-log_info "Updating submodules..."
-git submodule sync --recursive
-git submodule update --init --recursive --force
+prepare_staging_checkout() {
+  cd "$APP_DIR"
 
-classify_migration_risk
-write_deploy_context
+  log_info "Fetching latest from origin..."
+  git fetch origin main
 
-log_info "Validating runtime config..."
-CLASSROOMPATH_VERIFIER_IMAGE="${STAGING_VERIFIER_IMAGE:-}" bash scripts/validate-runtime-config-docker.sh
+  log_info "Resetting to origin/main..."
+  git reset --hard origin/main
 
-log_info "Checking disk space..."
-DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
-log_info "Current disk usage: ${DISK_USAGE}%"
+  log_info "Updating submodules..."
+  git submodule sync --recursive
+  git submodule update --init --recursive --force
 
-if [ "$DISK_USAGE" -gt 80 ]; then
-  log_warn "Disk usage above 80%, running Docker cleanup..."
-  docker system prune -af --volumes 2>/dev/null || true
-  docker builder prune -af 2>/dev/null || true
-  NEW_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
-  log_info "Disk usage after cleanup: ${NEW_USAGE}%"
-fi
+  load_staging_release_manifest
+  classify_migration_risk
+  write_deploy_context
+}
 
-if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
+run_staging_runtime_validation() {
+  log_info "Validating runtime config..."
+  CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" bash scripts/validate-runtime-config-docker.sh
+}
+
+cleanup_staging_disk_if_needed() {
+  log_info "Checking disk space..."
+  DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+  log_info "Current disk usage: ${DISK_USAGE}%"
+
+  if [ "$DISK_USAGE" -gt 80 ]; then
+    log_warn "Disk usage above 80%, running Docker cleanup..."
+    docker system prune -af --volumes 2>/dev/null || true
+    docker builder prune -af 2>/dev/null || true
+    NEW_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+    log_info "Disk usage after cleanup: ${NEW_USAGE}%"
+  fi
+}
+
+run_staging_database_migrations() {
   FAILURE_STAGE="migrations"
   write_deploy_context
-  log_info "Running database migrations from workspace sources..."
-  bash scripts/run-migrations-docker.sh --cp --openpath || exit 1
+
+  if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
+    log_info "Running database migrations from workspace sources..."
+    bash scripts/run-migrations-docker.sh --cp --openpath || exit 1
+  else
+    if [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ]; then
+      die "Release candidate migrations image ref is missing" 1
+    fi
+
+    log_info "Running database migrations from release candidate image..."
+    bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || exit 1
+  fi
+
   DB_MIGRATED=1
   FAILURE_STAGE="startup"
   write_deploy_context
+}
+
+start_staging_runtime() {
   cd "$APP_DIR/docker"
-  if ! deploy_from_source; then
-    fail_after_migrations "Staging source deployment failed after migrations"
-  fi
-else
-  if [ -z "${STAGING_MIGRATIONS_IMAGE:-}" ]; then
-    die "Release candidate migrations image ref is missing" 1
+
+  if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
+    if ! deploy_from_source; then
+      fail_after_migrations "Staging source deployment failed after migrations"
+    fi
+    return 0
   fi
 
-  export CLASSROOMPATH_MIGRATIONS_IMAGE="$STAGING_MIGRATIONS_IMAGE"
-  FAILURE_STAGE="migrations"
-  write_deploy_context
-  log_info "Running database migrations from release candidate image..."
-  bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || exit 1
-  DB_MIGRATED=1
-  FAILURE_STAGE="startup"
-  write_deploy_context
-  cd "$APP_DIR/docker"
   if ! deploy_with_release_candidates; then
     fail_after_migrations "Staging release-candidate deploy failed after migrations"
   fi
-fi
+}
 
-log_info "Containers started from ${IMAGE_SOURCE}, waiting for health..."
+wait_for_staging_runtime_readiness() {
+  log_info "Containers started from ${IMAGE_SOURCE}, waiting for health..."
 
-if ! timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done'; then
-  docker compose ps
-  fail_after_migrations "Timeout waiting for staging health checks"
-fi
-
-for i in 1 2 3 4 5; do
-  if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-    log_success "Gateway health check passed"
-    break
+  if ! timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done'; then
+    docker compose ps
+    fail_after_migrations "Timeout waiting for staging health checks"
   fi
 
-  if [ "$i" -eq 5 ]; then
-    docker logs classroompath-gateway --tail 30
-    fail_after_migrations "Gateway health checks failed after deployment"
-  fi
+  for i in 1 2 3 4 5; do
+    if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
+      log_success "Gateway health check passed"
+      break
+    fi
 
-  log_warn "Health check attempt $i failed, retrying..."
-  sleep 5
-done
+    if [ "$i" -eq 5 ]; then
+      docker logs classroompath-gateway --tail 30
+      fail_after_migrations "Gateway health checks failed after deployment"
+    fi
 
-FAILURE_STAGE="readiness"
-write_deploy_context
-READY_CHECK=''
-for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-  READY_CHECK=$(curl -sS http://localhost:3001/cp/ready 2>/dev/null || true)
-  if [ -z "$READY_CHECK" ]; then
-    READY_CHECK='{"ready":false}'
-  fi
-  if echo "$READY_CHECK" | grep -q '"ready":true'; then
-    log_success "Application readiness OK"
-    FAILURE_STAGE="completed"
-    write_deploy_context
-    exit 0
-  fi
-
-  if [ "$i" -lt 12 ]; then
-    log_warn "Application not ready (attempt $i/12), waiting 5s..."
+    log_warn "Health check attempt $i failed, retrying..."
     sleep 5
-  else
-    log_error "Readiness response: $READY_CHECK"
-    docker logs classroompath-gateway --tail 50 || true
-    docker logs classroompath-api --tail 50 || true
-    fail_after_migrations "Application readiness failed after staging deployment"
-  fi
-done
+  done
+
+  FAILURE_STAGE="readiness"
+  write_deploy_context
+
+  local ready_check=""
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    ready_check=$(curl -sS http://localhost:3001/cp/ready 2>/dev/null || true)
+    if [ -z "$ready_check" ]; then
+      ready_check='{"ready":false}'
+    fi
+
+    if echo "$ready_check" | grep -q '"ready":true'; then
+      log_success "Application readiness OK"
+      FAILURE_STAGE="completed"
+      write_deploy_context
+      return 0
+    fi
+
+    if [ "$i" -lt 12 ]; then
+      log_warn "Application not ready (attempt $i/12), waiting 5s..."
+      sleep 5
+    else
+      log_error "Readiness response: $ready_check"
+      docker logs classroompath-gateway --tail 50 || true
+      docker logs classroompath-api --tail 50 || true
+      fail_after_migrations "Application readiness failed after staging deployment"
+    fi
+  done
+}
+
+prepare_staging_checkout
+run_staging_runtime_validation
+cleanup_staging_disk_if_needed
+run_staging_database_migrations
+start_staging_runtime
+wait_for_staging_runtime_readiness

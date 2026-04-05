@@ -16,6 +16,10 @@ COMMON_SH_PATH="$SCRIPT_DIR/lib/common.sh"
 if [ ! -f "$COMMON_SH_PATH" ]; then
   COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"
 fi
+RELEASE_MANIFEST_HELPER_PATH="$SCRIPT_DIR/lib/release-manifest.sh"
+if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
+  RELEASE_MANIFEST_HELPER_PATH="$APP_DIR/scripts/lib/release-manifest.sh"
+fi
 
 upsert_env_file_var() {
   local path="$1"
@@ -141,6 +145,8 @@ reload_deployed_common_helpers() {
 
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
+# shellcheck source=lib/release-manifest.sh
+source "$RELEASE_MANIFEST_HELPER_PATH"
 
 log_info "Starting ClassroomPath Docker deployment..."
 
@@ -169,6 +175,13 @@ MIGRATION_RISK_LEVEL="safe"
 MIGRATION_CHANGED_FILES=""
 MIGRATION_DESTRUCTIVE_FILES=""
 PRODUCTION_BACKUP_REFERENCE=""
+RELEASE_MANIFEST_FILE=""
+
+cleanup_release_manifest_file() {
+  rm -f "${RELEASE_MANIFEST_FILE:-}"
+}
+
+trap cleanup_release_manifest_file EXIT
 
 cd "$APP_DIR"
 
@@ -199,6 +212,10 @@ if [ -z "$TARGET_SHA" ]; then
 fi
 
 log_info "Deploying ClassroomPath commit: $TARGET_SHA"
+
+RELEASE_MANIFEST_FILE="$(mktemp)"
+decode_release_manifest_base64 "$RELEASE_MANIFEST_B64" "$RELEASE_MANIFEST_FILE" >/dev/null
+export_release_manifest_runtime_env "$RELEASE_MANIFEST_FILE"
 
 if [ -f "$STATE_DIR/current-images.env" ]; then
   cp "$STATE_DIR/current-images.env" "$STATE_DIR/previous-images.env"
