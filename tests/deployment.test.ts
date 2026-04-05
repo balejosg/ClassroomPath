@@ -1412,7 +1412,12 @@ void describe('Migration Tooling', () => {
       'deploy-production-remote.sh should reuse the shared release-state writer'
     );
     assert.ok(
-      persistVerification.includes('source "$SCRIPT_DIR/lib/release-state.sh"') &&
+      persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&
+        persistVerification.includes('SCRIPT_DIR="$APP_DIR/scripts"') &&
+        persistVerification.includes(
+          'RELEASE_STATE_HELPER_PATH="$SCRIPT_DIR/lib/release-state.sh"'
+        ) &&
+        persistVerification.includes('write_staging_verification_state() {') &&
         persistVerification.includes(
           'write_staging_verification_state "$STATE_DIR/staging-verification.env"'
         ),
