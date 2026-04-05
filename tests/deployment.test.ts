@@ -1167,9 +1167,8 @@ void describe('Migration Tooling', () => {
       'production deploy should define a local env-file updater so production promotion does not depend on helper functions added after the currently deployed revision'
     );
     assert.ok(
-      deployRemoteScript.includes(
-        'git submodule update --init --recursive --force\nreload_deployed_common_helpers'
-      ),
+      deployRemoteScript.includes('git submodule update --init --recursive --force') &&
+        deployRemoteScript.includes('reload_deployed_common_helpers'),
       'production deploy should reload helper functions from the freshly checked out app revision before using post-checkout helpers'
     );
     assert.ok(
@@ -1292,8 +1291,9 @@ void describe('Migration Tooling', () => {
     assert.ok(existsSync(manifestHelperPath), 'scripts/lib/release-manifest.sh should exist');
     assert.ok(
       manifestHelper.includes('decode_release_manifest_base64()') &&
-        manifestHelper.includes('export_release_manifest_runtime_env()'),
-      'release-manifest helper should decode and export manifest fields from a single payload'
+        manifestHelper.includes('export_release_manifest_runtime_env()') &&
+        manifestHelper.includes('release_manifest_validate_contract()'),
+      'release-manifest helper should decode, validate, and export manifest fields from a single payload'
     );
     assert.ok(
       stagingLocal.includes('STAGING_RELEASE_MANIFEST_FILE=') &&
@@ -1327,8 +1327,11 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       productionRemote.includes('decode_release_manifest_base64 "$RELEASE_MANIFEST_B64"') &&
-        productionRemote.includes('export_release_manifest_runtime_env "$RELEASE_MANIFEST_FILE"'),
-      'deploy-production-remote.sh should load release images from the shared manifest helper'
+        productionRemote.includes('export_release_manifest_runtime_env "$RELEASE_MANIFEST_FILE"') &&
+        productionRemote.includes(
+          'release_manifest_validate_contract "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
+        ),
+      'deploy-production-remote.sh should validate and load release images from the shared manifest helper'
     );
   });
 
@@ -1356,6 +1359,84 @@ void describe('Migration Tooling', () => {
         content.indexOf('start_staging_runtime') <
           content.indexOf('wait_for_staging_runtime_readiness'),
       'deploy-staging-remote.sh should invoke the remote deploy phases in a stable order'
+    );
+  });
+
+  void test('release-state helpers centralize current-image and staging-verification evidence writes', () => {
+    const releaseStateHelperPath = resolve(projectRoot, 'scripts/lib/release-state.sh');
+    const releaseStateHelper = readFileSync(releaseStateHelperPath, 'utf-8');
+    const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
+    const productionRemote = readFileSync(
+      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
+      'utf-8'
+    );
+    const persistVerification = readFileSync(
+      resolve(projectRoot, 'scripts/persist-staging-verification-remote.sh'),
+      'utf-8'
+    );
+    const verifyState = readFileSync(
+      resolve(projectRoot, 'scripts/verify-staging-release-state.sh'),
+      'utf-8'
+    );
+
+    assert.ok(existsSync(releaseStateHelperPath), 'scripts/lib/release-state.sh should exist');
+    assert.ok(
+      releaseStateHelper.includes('load_release_state_env()') &&
+        releaseStateHelper.includes('write_current_release_state()') &&
+        releaseStateHelper.includes('write_staging_verification_state()'),
+      'release-state helper should own reading and writing deployment evidence snapshots'
+    );
+    assert.ok(
+      stagingRemote.includes('source "$SCRIPT_DIR/lib/release-state.sh"') &&
+        stagingRemote.includes('write_current_release_state "$CURRENT_STATE_FILE"'),
+      'deploy-staging-remote.sh should reuse the shared release-state writer'
+    );
+    assert.ok(
+      productionRemote.includes('source "$RELEASE_STATE_HELPER_PATH"') &&
+        productionRemote.includes('write_current_release_state "$STATE_DIR/current-images.env"'),
+      'deploy-production-remote.sh should reuse the shared release-state writer'
+    );
+    assert.ok(
+      persistVerification.includes('source "$SCRIPT_DIR/lib/release-state.sh"') &&
+        persistVerification.includes(
+          'write_staging_verification_state "$STATE_DIR/staging-verification.env"'
+        ),
+      'persist-staging-verification-remote.sh should reuse the shared staging evidence writer'
+    );
+    assert.ok(
+      verifyState.includes('load_release_state_env ./staging-release-state.env') &&
+        verifyState.includes('load_release_state_env ./staging-verification.env'),
+      'verify-staging-release-state.sh should load evidence through the shared release-state helper'
+    );
+  });
+
+  void test('production remote deploy executes explicit deployment phases in order', () => {
+    const content = readFileSync(
+      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
+      'utf-8'
+    );
+
+    assert.ok(
+      content.includes('prepare_production_checkout()') &&
+        content.includes('load_production_release_manifest()') &&
+        content.includes('classify_production_migration_risk()') &&
+        content.includes('run_production_database_migrations()') &&
+        content.includes('start_production_runtime()') &&
+        content.includes('wait_for_production_runtime_readiness()'),
+      'deploy-production-remote.sh should define explicit phase functions for the remote production deploy'
+    );
+    assert.ok(
+      content.indexOf('prepare_production_checkout') <
+        content.indexOf('load_production_release_manifest') &&
+        content.indexOf('load_production_release_manifest') <
+          content.indexOf('classify_production_migration_risk') &&
+        content.indexOf('classify_production_migration_risk') <
+          content.indexOf('run_production_database_migrations') &&
+        content.indexOf('run_production_database_migrations') <
+          content.indexOf('start_production_runtime') &&
+        content.indexOf('start_production_runtime') <
+          content.indexOf('wait_for_production_runtime_readiness'),
+      'deploy-production-remote.sh should invoke the remote production phases in a stable order'
     );
   });
 });

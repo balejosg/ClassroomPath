@@ -15,6 +15,8 @@ fi
 source "$SCRIPT_DIR/lib/common.sh"
 # shellcheck source=lib/release-manifest.sh
 source "$SCRIPT_DIR/lib/release-manifest.sh"
+# shellcheck source=lib/release-state.sh
+source "$SCRIPT_DIR/lib/release-state.sh"
 
 STATE_DIR="/opt/classroompath/release-state"
 CURRENT_STATE_FILE="$STATE_DIR/current-images.env"
@@ -53,15 +55,14 @@ copy_release_state() {
 
 write_release_state() {
   copy_release_state
-  cat > "$CURRENT_STATE_FILE" <<EOF
-APP_SHA=${STAGING_RELEASE_SHA:-origin-main}
-IMAGE_SOURCE=$IMAGE_SOURCE
-CLASSROOMPATH_GATEWAY_IMAGE=$RESOLVED_GATEWAY_IMAGE
-CLASSROOMPATH_MIGRATIONS_IMAGE=$RESOLVED_MIGRATIONS_IMAGE
-OPENPATH_API_IMAGE=$RESOLVED_OPENPATH_API_IMAGE
-OPENPATH_LINUX_AGENT_VERSION=$RESOLVED_OPENPATH_LINUX_AGENT_VERSION
-CLASSROOMPATH_SPA_IMAGE=$RESOLVED_SPA_IMAGE
-EOF
+  APP_SHA="${STAGING_RELEASE_SHA:-origin-main}" \
+  IMAGE_SOURCE="$IMAGE_SOURCE" \
+  CLASSROOMPATH_GATEWAY_IMAGE="$RESOLVED_GATEWAY_IMAGE" \
+  CLASSROOMPATH_MIGRATIONS_IMAGE="$RESOLVED_MIGRATIONS_IMAGE" \
+  OPENPATH_API_IMAGE="$RESOLVED_OPENPATH_API_IMAGE" \
+  OPENPATH_LINUX_AGENT_VERSION="$RESOLVED_OPENPATH_LINUX_AGENT_VERSION" \
+  CLASSROOMPATH_SPA_IMAGE="$RESOLVED_SPA_IMAGE" \
+    write_current_release_state "$CURRENT_STATE_FILE"
 }
 
 write_deploy_context() {
@@ -228,6 +229,7 @@ load_staging_release_manifest() {
 
   STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
   decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
+  release_manifest_validate_contract "$STAGING_RELEASE_MANIFEST_FILE"
   export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"
 
   STAGING_RELEASE_SHA="$RELEASE_MANIFEST_APP_SHA"

@@ -33,6 +33,55 @@ release_manifest_require_key() {
   printf '%s\n' "$value"
 }
 
+release_manifest_validate_contract() {
+  local manifest_path="$1"
+  local expected_sha="${2:-}"
+  local repository=""
+  local run_id=""
+  local app_sha=""
+  local linux_agent_version=""
+  local image_key=""
+  local image_ref=""
+
+  repository="$(release_manifest_require_key "$manifest_path" repository)" || return 1
+  run_id="$(release_manifest_require_key "$manifest_path" run_id)" || return 1
+  app_sha="$(release_manifest_require_key "$manifest_path" app_sha)" || return 1
+  linux_agent_version="$(release_manifest_require_key "$manifest_path" linux_agent_version)" || return 1
+
+  if [[ ! "$repository" =~ ^[^/]+/[^/]+$ ]]; then
+    log_error "Release manifest repository is invalid: $repository"
+    return 1
+  fi
+
+  if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
+    log_error "Release manifest run_id is invalid: $run_id"
+    return 1
+  fi
+
+  if [[ ! "$app_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    log_error "Release manifest app_sha is invalid: $app_sha"
+    return 1
+  fi
+
+  if [ -n "$expected_sha" ] && [ "$app_sha" != "$expected_sha" ]; then
+    log_error "Release manifest app_sha does not match expected SHA: expected=$expected_sha actual=$app_sha"
+    return 1
+  fi
+
+  if [[ ! "$linux_agent_version" =~ ^[0-9]+(\.[0-9]+)*(-[0-9A-Za-z._-]+)?$ ]]; then
+    log_error "Release manifest linux_agent_version is invalid: $linux_agent_version"
+    return 1
+  fi
+
+  for image_key in gateway_image migrations_image openpath_api_image spa_image verifier_image; do
+    image_ref="$(release_manifest_require_key "$manifest_path" "$image_key")" || return 1
+    if [[ ! "$image_ref" =~ @sha256:[0-9a-f]{64}$ ]]; then
+      log_error "Release manifest image ref is not pinned by digest: $image_key=$image_ref"
+      return 1
+    fi
+  done
+}
+
 encode_release_manifest_base64() {
   local manifest_path="$1"
 

@@ -2,10 +2,15 @@
 
 set -euo pipefail
 
-set -a
-. ./staging-release-state.env
-. ./staging-verification.env
-set +a
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/release-state.sh
+source "$SCRIPT_DIR/lib/release-state.sh"
+
+load_release_state_env ./staging-release-state.env
+load_release_state_env ./staging-verification.env
 
 if [ "${IMAGE_SOURCE:-}" != "release-candidate" ]; then
   echo "::error::Staging is not running release candidate images (IMAGE_SOURCE=${IMAGE_SOURCE:-unset})"
