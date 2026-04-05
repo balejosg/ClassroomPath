@@ -603,7 +603,9 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       remoteContent.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
-        remoteContent.includes('export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"'),
+        remoteContent.includes(
+          'export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"'
+        ),
       'staging remote deploy should derive the release-candidate image refs from the shared manifest payload'
     );
     assert.ok(
@@ -1069,7 +1071,9 @@ void describe('Migration Tooling', () => {
     );
 
     assert.ok(
-      content.includes('RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}'),
+      content.includes(
+        'RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}'
+      ),
       'deploy workflow should propagate the resolved release manifest into production deployment'
     );
     assert.ok(
@@ -1088,7 +1092,9 @@ void describe('Migration Tooling', () => {
       'production deploy should run migrations from the prebuilt runner image instead of npm-installing on the host'
     );
     assert.ok(
-      content.includes('RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}'),
+      content.includes(
+        'RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}'
+      ),
       'deploy workflow should pass the resolved release manifest as a single payload into the SSH deploy boundary'
     );
     assert.ok(
@@ -1221,7 +1227,9 @@ void describe('Migration Tooling', () => {
     const validationScript = readFileSync(validationScriptPath, 'utf-8');
 
     assert.ok(
-      localDeploy.includes('remote_assignment STAGING_RELEASE_MANIFEST_B64 "$STAGING_RELEASE_MANIFEST_B64"'),
+      localDeploy.includes(
+        'remote_assignment STAGING_RELEASE_MANIFEST_B64 "$STAGING_RELEASE_MANIFEST_B64"'
+      ),
       'deploy-staging-local.sh should forward the shared release manifest payload to the remote staging deploy'
     );
     assert.ok(
@@ -1245,7 +1253,10 @@ void describe('Migration Tooling', () => {
       resolve(projectRoot, 'scripts/validate-runtime-config-docker.sh'),
       'utf-8'
     );
-    const smokeContent = readFileSync(resolve(projectRoot, 'scripts/run-smoke-in-verifier.sh'), 'utf-8');
+    const smokeContent = readFileSync(
+      resolve(projectRoot, 'scripts/run-smoke-in-verifier.sh'),
+      'utf-8'
+    );
 
     assert.ok(existsSync(deployImagesHelperPath), 'scripts/lib/deploy-images.sh should exist');
     assert.ok(
@@ -1270,7 +1281,10 @@ void describe('Migration Tooling', () => {
   void test('release manifest flows through staging and production as a single contract payload', () => {
     const stagingLocal = readFileSync(stagingDeployScriptPath, 'utf-8');
     const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
-    const productionRemote = readFileSync(resolve(projectRoot, 'scripts/deploy-production-remote.sh'), 'utf-8');
+    const productionRemote = readFileSync(
+      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
+      'utf-8'
+    );
     const workflow = readFileSync(resolve(projectRoot, '.github/workflows/deploy.yml'), 'utf-8');
     const manifestHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest.sh');
     const manifestHelper = readFileSync(manifestHelperPath, 'utf-8');
@@ -1293,7 +1307,9 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       stagingRemote.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
-        stagingRemote.includes('export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"'),
+        stagingRemote.includes(
+          'export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"'
+        ),
       'deploy-staging-remote.sh should decode and load the single release manifest payload'
     );
     assert.ok(
@@ -1301,8 +1317,12 @@ void describe('Migration Tooling', () => {
       'deploy workflow should expose the release manifest payload as a single output'
     );
     assert.ok(
-      workflow.includes('RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}') &&
-        workflow.includes('envs: DEPLOY_REF,DEPLOY_SHA,GHCR_USERNAME,GHCR_TOKEN,RELEASE_MANIFEST_B64'),
+      workflow.includes(
+        'RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}'
+      ) &&
+        workflow.includes(
+          'envs: DEPLOY_REF,DEPLOY_SHA,GHCR_USERNAME,GHCR_TOKEN,RELEASE_MANIFEST_B64'
+        ),
       'production deploy workflow should pass one release-manifest payload to the SSH boundary'
     );
     assert.ok(
