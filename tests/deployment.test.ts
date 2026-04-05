@@ -478,6 +478,12 @@ void describe('Migration Tooling', () => {
       remoteContent.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
       'deploy-staging-remote.sh should fall back to the deployed scripts directory when stdin execution has no script path'
     );
+    assert.ok(
+      remoteContent.includes('if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then') &&
+        remoteContent.includes('decode_release_manifest_base64() {') &&
+        remoteContent.includes('release_manifest_validate_contract() {'),
+      'deploy-staging-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them'
+    );
   });
 
   void test('production remote scripts can resolve their helper library when ssh-action executes without BASH_SOURCE', () => {
@@ -515,6 +521,13 @@ void describe('Migration Tooling', () => {
         `${scriptName} should be able to re-source helper functions from the freshly checked out app directory`
       );
     }
+
+    assert.ok(
+      deployRemoteContent.includes('if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then') &&
+        deployRemoteContent.includes('decode_release_manifest_base64() {') &&
+        deployRemoteContent.includes('release_manifest_validate_contract() {'),
+      'deploy-production-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them'
+    );
   });
 
   void test('verify-full skips coverage cleanup and gating when no API/SPA source coverage is needed', () => {
@@ -1387,12 +1400,14 @@ void describe('Migration Tooling', () => {
       'release-state helper should own reading and writing deployment evidence snapshots'
     );
     assert.ok(
-      stagingRemote.includes('source "$SCRIPT_DIR/lib/release-state.sh"') &&
+      stagingRemote.includes('RELEASE_STATE_HELPER_PATH="$SCRIPT_DIR/lib/release-state.sh"') &&
+        stagingRemote.includes('write_current_release_state() {') &&
         stagingRemote.includes('write_current_release_state "$CURRENT_STATE_FILE"'),
       'deploy-staging-remote.sh should reuse the shared release-state writer'
     );
     assert.ok(
-      productionRemote.includes('source "$RELEASE_STATE_HELPER_PATH"') &&
+      productionRemote.includes('RELEASE_STATE_HELPER_PATH="$SCRIPT_DIR/lib/release-state.sh"') &&
+        productionRemote.includes('write_current_release_state() {') &&
         productionRemote.includes('write_current_release_state "$STATE_DIR/current-images.env"'),
       'deploy-production-remote.sh should reuse the shared release-state writer'
     );
