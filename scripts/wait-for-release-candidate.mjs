@@ -97,6 +97,26 @@ function writeOutputs(outputMap) {
   }
 }
 
+function serializeOutputs(outputMap) {
+  return Object.entries(outputMap)
+    .map(([key, value]) => `${key}=${value}`)
+    .join('\n');
+}
+
+export function buildReleaseCandidateManifestOutputs({ repository, runId, manifest }) {
+  return {
+    repository,
+    run_id: runId,
+    app_sha: manifest.appSha,
+    gateway_image: manifest.gatewayImage,
+    migrations_image: manifest.migrationsImage,
+    openpath_api_image: manifest.openpathApiImage,
+    linux_agent_version: manifest.linuxAgentVersion,
+    spa_image: manifest.spaImage,
+    verifier_image: manifest.verifierImage,
+  };
+}
+
 export function resolveWorkflowRunId(run) {
   return run?.id ?? run?.databaseId ?? null;
 }
@@ -439,7 +459,17 @@ export function waitForReleaseCandidateManifest({
         );
 
         if (outputFile) {
-          copyFileSync(manifestPath, outputFile);
+          writeFileSync(
+            outputFile,
+            `${serializeOutputs(
+              buildReleaseCandidateManifestOutputs({
+                repository: repo,
+                runId,
+                manifest,
+              })
+            )}\n`,
+            'utf8'
+          );
         }
 
         return {
@@ -584,17 +614,13 @@ function main() {
       outputFile: options.outputFile,
     });
 
-    writeOutputs({
-      repository: result.repository,
-      run_id: result.runId,
-      app_sha: result.manifest.appSha,
-      gateway_image: result.manifest.gatewayImage,
-      migrations_image: result.manifest.migrationsImage,
-      openpath_api_image: result.manifest.openpathApiImage,
-      linux_agent_version: result.manifest.linuxAgentVersion,
-      spa_image: result.manifest.spaImage,
-      verifier_image: result.manifest.verifierImage,
-    });
+    writeOutputs(
+      buildReleaseCandidateManifestOutputs({
+        repository: result.repository,
+        runId: result.runId,
+        manifest: result.manifest,
+      })
+    );
     return;
   }
 
