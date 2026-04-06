@@ -1,14 +1,10 @@
 import { expect, type BrowserContext, type Page } from '@playwright/test';
 
 import type { TestUser } from './accounts';
-import {
-  getAdminAccountForWorker,
-  getOnboardingAccountForWorker,
-  getPendingAccountForWorker,
-  getTeacherAccountForWorker,
-} from './accounts';
+import { createSessionActorCatalog, type SessionActor } from './actors';
 import { parseTrpcResult, waitForAnyVisible, waitForVisibleResult, withRetry } from './retry';
-import { waitForPostAuthScreen } from './waiters';
+
+const sessionActors = createSessionActorCatalog();
 
 export async function openRegisterForm(page: Page): Promise<void> {
   await page.goto('/register');
@@ -175,24 +171,24 @@ export async function loginUser(page: Page, email: string, password: string): Pr
   );
 }
 
+export async function loginAsActor(page: Page, actor: SessionActor): Promise<void> {
+  await loginUser(page, actor.email, actor.password);
+}
+
 export async function loginAsAdmin(page: Page): Promise<void> {
-  const admin = getAdminAccountForWorker();
-  await loginUser(page, admin.email, admin.password);
+  await loginAsActor(page, sessionActors.admin());
 }
 
 export async function loginAsTeacher(page: Page): Promise<void> {
-  const teacher = getTeacherAccountForWorker();
-  await loginUser(page, teacher.email, teacher.password);
+  await loginAsActor(page, sessionActors.teacher());
 }
 
 export async function loginAsOnboardingUser(page: Page, variantOffset = 0): Promise<void> {
-  const onboarding = getOnboardingAccountForWorker(variantOffset);
-  await loginUser(page, onboarding.email, onboarding.password);
+  await loginAsActor(page, sessionActors.onboarding(variantOffset));
 }
 
 export async function loginAsPendingUser(page: Page, variantOffset = 0): Promise<void> {
-  const pending = getPendingAccountForWorker(variantOffset);
-  await loginUser(page, pending.email, pending.password);
+  await loginAsActor(page, sessionActors.pending(variantOffset));
 }
 
 export async function clearAuth(target: BrowserContext | Page): Promise<void> {

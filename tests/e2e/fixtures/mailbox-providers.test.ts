@@ -126,4 +126,97 @@ describe('mailbox providers', () => {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  test('local sink provider picks up a matching email that arrives after polling starts', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'cp-local-mailbox-'));
+    const sinkFile = join(tempDir, 'emails.jsonl');
+    const originalSinkFile = process.env.CP_TEST_EMAIL_SINK_FILE;
+
+    process.env.CP_TEST_EMAIL_SINK_FILE = sinkFile;
+
+    try {
+      const provider = createLocalSinkMailboxProvider();
+      const fixture = await provider.createFixture();
+
+      const waitForLinkPromise = fixture.mailbox.waitForLink({
+        subjectIncludes: 'Verifica tu correo de ClassroomPath',
+        timeoutMs: 2_000,
+        pollMs: 50,
+        urlIncludes: '/login?',
+      });
+
+      setTimeout(() => {
+        void appendTestEmailSinkEntry({
+          to: fixture.mailbox.address,
+          subject: 'Verifica tu correo de ClassroomPath',
+          html: '<p><a href="http://localhost:5173/login?email=test%40classroompath.test&token=late123">Verificar</a></p>',
+          text: 'Verifica tu correo aqui: http://localhost:5173/login?email=test%40classroompath.test&token=late123',
+          createdAt: new Date().toISOString(),
+        });
+      }, 100);
+
+      const link = await waitForLinkPromise;
+
+      assert.equal(
+        link,
+        'http://localhost:5173/login?email=test%40classroompath.test&token=late123'
+      );
+
+      await clearTestEmailSink();
+      await fixture.cleanup();
+    } finally {
+      if (originalSinkFile === undefined) {
+        delete process.env.CP_TEST_EMAIL_SINK_FILE;
+      } else {
+        process.env.CP_TEST_EMAIL_SINK_FILE = originalSinkFile;
+      }
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('local sink provider accepts display-name recipient formatting in sink entries', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'cp-local-mailbox-'));
+    const sinkFile = join(tempDir, 'emails.jsonl');
+    const originalSinkFile = process.env.CP_TEST_EMAIL_SINK_FILE;
+
+    process.env.CP_TEST_EMAIL_SINK_FILE = sinkFile;
+
+    try {
+      const provider = createLocalSinkMailboxProvider();
+      const fixture = await provider.createFixture();
+
+      await appendTestEmailSinkEntry({
+        to: `Mailbox User <${fixture.mailbox.address}>`,
+        subject: 'Verifica tu correo de ClassroomPath',
+        html: '<p><a href="http://localhost:5173/login?email=test%40classroompath.test&token=formatted123">Verificar</a></p>',
+        text: 'Verifica tu correo aqui: http://localhost:5173/login?email=test%40classroompath.test&token=formatted123',
+        createdAt: new Date().toISOString(),
+      });
+
+      const link = await fixture.mailbox.waitForLink({
+        subjectIncludes: 'Verifica tu correo de ClassroomPath',
+        timeoutMs: 1_000,
+        urlIncludes: '/login?',
+      });
+
+      assert.equal(
+        link,
+        'http://localhost:5173/login?email=test%40classroompath.test&token=formatted123'
+      );
+
+      const messages = await fixture.mailbox.listMessages();
+      assert.equal(messages.length, 1);
+      assert.equal(messages[0]?.to[0]?.address, `Mailbox User <${fixture.mailbox.address}>`);
+
+      await clearTestEmailSink();
+      await fixture.cleanup();
+    } finally {
+      if (originalSinkFile === undefined) {
+        delete process.env.CP_TEST_EMAIL_SINK_FILE;
+      } else {
+        process.env.CP_TEST_EMAIL_SINK_FILE = originalSinkFile;
+      }
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });

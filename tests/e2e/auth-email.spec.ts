@@ -1,5 +1,7 @@
+import { readFile } from 'node:fs/promises';
 import type { BrowserContext, Page } from '@playwright/test';
 
+import { resolveTestEmailSinkFile } from '../../api/src/lib/test-email-sink.js';
 import { test, expect } from './fixtures/base-test';
 import {
   completeOrgOnboarding,
@@ -11,6 +13,11 @@ import {
   waitForPostAuthScreen,
 } from './fixtures/test-utils';
 import { createMailboxFixture } from './fixtures/mailbox-provider';
+import type { WaitForLinkOptions } from './fixtures/mailbox-provider';
+import {
+  extractLinksFromMessage,
+  matchesLink,
+} from './fixtures/mailboxes/mailbox-message-utils.js';
 import { AcceptInvitationPage, OrganizationPage, ResetPasswordPage } from './fixtures/page-objects';
 
 type VerificationResponse = {
@@ -24,8 +31,9 @@ const VERIFICATION_SUBJECT = 'Verifica tu correo de ClassroomPath';
 const RESET_SUBJECT = 'Restablece tu acceso a ClassroomPath';
 const BASE_URL = new URL(process.env.BASE_URL ?? 'http://localhost:5173');
 const EXPECT_MANUAL_VERIFICATION_LINK = ['localhost', '127.0.0.1'].includes(BASE_URL.hostname);
+const USE_LOCAL_SINK_LINK_READER = process.env.E2E_REAL_EMAIL !== '1';
 
-test.describe('Auth email delivery UAT', () => {
+test.describe.serial('Auth email delivery UAT', () => {
   test.afterEach(async () => {
     if (process.env.E2E_REAL_EMAIL === '1') {
       await sleep(30000);
@@ -118,7 +126,7 @@ test.describe('Auth email delivery UAT', () => {
       onboardingOrgName?: string;
     } = {}
   ): Promise<string> {
-    const deliveredLink = await mailbox.waitForLink({
+    const deliveredLink = await waitForDeliveryLink(mailbox, {
       subjectIncludes: VERIFICATION_SUBJECT,
       timeoutMs: 60000,
       urlIncludes: '/login?',
@@ -250,7 +258,7 @@ test.describe('Auth email delivery UAT', () => {
     });
 
     const registerPayload = await registerUserAwaitingEmail(page, user);
-    const deliveredLink = await mailbox.waitForLink({
+    const deliveredLink = await waitForDeliveryLink(mailbox, {
       subjectIncludes: VERIFICATION_SUBJECT,
       timeoutMs: 60000,
       urlIncludes: '/login?',
@@ -286,7 +294,7 @@ test.describe('Auth email delivery UAT', () => {
 
     await registerUserAwaitingEmail(page, user);
 
-    const initialLink = await mailbox.waitForLink({
+    const initialLink = await waitForDeliveryLink(mailbox, {
       subjectIncludes: VERIFICATION_SUBJECT,
       timeoutMs: 60000,
       urlIncludes: '/login?',
@@ -311,7 +319,7 @@ test.describe('Auth email delivery UAT', () => {
       await expect(page.getByText('Enlace manual de verificacion')).toHaveCount(0);
     }
 
-    const resentLink = await mailbox.waitForLink({
+    const resentLink = await waitForDeliveryLink(mailbox, {
       subjectIncludes: VERIFICATION_SUBJECT,
       timeoutMs: 60000,
       urlIncludes: '/login?',
@@ -427,7 +435,7 @@ test.describe('Auth email delivery UAT', () => {
       ).toBeVisible({ timeout: 10000 });
       await expect(page.locator('a[href*="reset-password?email="]')).toHaveCount(0);
 
-      const recoveryLink = await inviteeFixture.mailbox.waitForLink({
+      const recoveryLink = await waitForDeliveryLink(inviteeFixture.mailbox, {
         subjectIncludes: RESET_SUBJECT,
         timeoutMs: 60000,
         urlIncludes: '/reset-password?email=',
@@ -457,6 +465,128 @@ test.describe('Auth email delivery UAT', () => {
     }
   });
 });
+
+async function waitForDeliveryLink(
+  mailbox: MailboxFixture,
+  options: WaitForLinkOptions
+): Promise<string> {
+  if (!USE_LOCAL_SINK_LINK_READER) {
+    return mailbox.waitForLink(options);
+  }
+
+  const {
+    after,
+    pollMs = 250,
+    subjectIncludes,
+    timeoutMs = 45000,
+    urlIncludes,
+    urlPattern,
+  } = options;
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    const link = await findLocalSinkLink(mailbox.address, {
+      after,
+      subjectIncludes,
+      urlIncludes,
+      urlPattern,
+    });
+    if (link) {
+      return link;
+    }
+
+    await sleep(pollMs);
+  }
+
+  const fallbackLink = await findLocalSinkLink(mailbox.address, {
+    after,
+    subjectIncludes,
+    urlIncludes,
+    urlPattern,
+  });
+  if (fallbackLink) {
+    return fallbackLink;
+  }
+
+  throw new Error('Timeout esperando email en el sink local');
+}
+
+async function findLocalSinkLink(
+  address: string,
+  options: Pick<WaitForLinkOptions, 'after' | 'subjectIncludes' | 'urlIncludes' | 'urlPattern'>
+): Promise<string | null> {
+  const normalizedAddress = address.trim().toLowerCase();
+  const lines = await readLocalSinkLines();
+
+  for (const line of lines.reverse()) {
+    const entry = JSON.parse(line) as {
+      createdAt: string;
+      html?: string;
+      subject: string;
+      text?: string;
+      to: string;
+    };
+
+    if (entry.to.trim().toLowerCase() !== normalizedAddress) {
+      continue;
+    }
+    if (options.after && new Date(entry.createdAt).getTime() < options.after.getTime()) {
+      continue;
+    }
+    if (options.subjectIncludes && !entry.subject.includes(options.subjectIncludes)) {
+      continue;
+    }
+
+    const links = extractLinksFromMessage({
+      id: entry.createdAt,
+      accountId: 'local',
+      msgid: entry.createdAt,
+      from: {
+        name: 'ClassroomPath',
+        address: 'no-reply@classroompath.test',
+      },
+      to: [
+        {
+          name: entry.to,
+          address: entry.to,
+        },
+      ],
+      subject: entry.subject,
+      seen: false,
+      isDeleted: false,
+      hasAttachments: false,
+      size: 0,
+      createdAt: entry.createdAt,
+      updatedAt: entry.createdAt,
+      text: entry.text,
+      html: entry.html ? [entry.html] : [],
+    });
+    const link = links.find((candidate) =>
+      matchesLink(candidate, options.urlIncludes, options.urlPattern)
+    );
+
+    if (link) {
+      return link;
+    }
+  }
+
+  return null;
+}
+
+async function readLocalSinkLines(): Promise<string[]> {
+  try {
+    const body = await readFile(resolveTestEmailSinkFile(), 'utf8');
+    return body
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+}
 
 function isTooManyRequestsError(error: unknown): boolean {
   return error instanceof Error && /too many requests/i.test(error.message);

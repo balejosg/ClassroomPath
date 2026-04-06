@@ -33,6 +33,7 @@ const testDatabaseUrl = resolveDatabaseUrl(process.env, { database: 'classroompa
 
 export default defineConfig({
   testDir: './tests/e2e',
+  testMatch: '**/*.spec.ts',
 
   /* Global setup - seeds test accounts before running tests */
   globalSetup: './tests/e2e/setup/global-setup.ts',

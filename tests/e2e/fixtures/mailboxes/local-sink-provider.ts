@@ -12,6 +12,7 @@ import type {
 import {
   extractLinksFromMessage,
   extractOtpFromMessage,
+  getCombinedBody,
   matchesLink,
 } from './mailbox-message-utils.js';
 
@@ -83,7 +84,7 @@ export function createLocalSinkMailboxProvider(): MailboxProvider {
 async function listLocalMessages(address: string): Promise<MailTmMessage[]> {
   const entries = await readLocalSinkEntries();
   return entries
-    .filter((entry) => entry.to.toLowerCase() === address.toLowerCase())
+    .filter((entry) => entryTargetsAddress(entry, address))
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
     .map((entry, index) =>
       toLocalMailMessage(entry, `${Date.parse(entry.createdAt)}-${String(index)}`)
@@ -105,38 +106,83 @@ async function waitForLocalMessage(
     predicate,
   } = options;
   const started = Date.now();
-  const expectedAddress = (toAddress ?? address).toLowerCase();
+  const expectedAddress = normalizeAddress(toAddress ?? address);
 
   while (Date.now() - started < timeoutMs) {
-    const messages = await listLocalMessages(expectedAddress);
-
-    for (const message of messages) {
-      if (after && new Date(message.createdAt).getTime() < after.getTime()) {
-        continue;
-      }
-      if (subjectIncludes && !message.subject.includes(subjectIncludes)) {
-        continue;
-      }
-      if (fromAddress && message.from.address.toLowerCase() !== fromAddress.toLowerCase()) {
-        continue;
-      }
-      if (
-        toAddress &&
-        !message.to.some((recipient) => recipient.address.toLowerCase() === toAddress.toLowerCase())
-      ) {
-        continue;
-      }
-      if (predicate && !(await predicate(message))) {
-        continue;
-      }
-
-      return message;
+    const match = await findMatchingLocalMessage(expectedAddress, {
+      after,
+      fromAddress,
+      predicate,
+      subjectIncludes,
+      toAddress,
+    });
+    if (match) {
+      return match;
     }
 
     await sleep(pollMs);
   }
 
+  const fallbackMatch = await findMatchingLocalMessage(expectedAddress, {
+    after,
+    fromAddress,
+    predicate,
+    subjectIncludes,
+    toAddress,
+  });
+  if (fallbackMatch) {
+    return fallbackMatch;
+  }
+
   throw new Error('Timeout esperando email en el sink local');
+}
+
+async function findMatchingLocalMessage(
+  expectedAddress: string,
+  options: Pick<
+    WaitForMessageOptions,
+    'after' | 'fromAddress' | 'predicate' | 'subjectIncludes' | 'toAddress'
+  >
+): Promise<MailTmMessage | null> {
+  const { after, fromAddress, predicate, subjectIncludes, toAddress } = options;
+  const normalizedToAddress = toAddress ? normalizeAddress(toAddress) : undefined;
+  const entries = (await readLocalSinkEntries()).sort(
+    (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+  );
+
+  for (const [index, entry] of entries.entries()) {
+    const message = toLocalMailMessage(entry, `${Date.parse(entry.createdAt)}-${String(index)}`);
+
+    if (
+      !entryTargetsAddress(entry, expectedAddress) &&
+      !messageTargetsAddress(message, expectedAddress)
+    ) {
+      continue;
+    }
+
+    if (after && new Date(message.createdAt).getTime() < after.getTime()) {
+      continue;
+    }
+    if (subjectIncludes && !message.subject.includes(subjectIncludes)) {
+      continue;
+    }
+    if (fromAddress && normalizeAddress(message.from.address) !== normalizeAddress(fromAddress)) {
+      continue;
+    }
+    if (
+      normalizedToAddress &&
+      !message.to.some((recipient) => normalizeAddress(recipient.address) === normalizedToAddress)
+    ) {
+      continue;
+    }
+    if (predicate && !(await predicate(message))) {
+      continue;
+    }
+
+    return message;
+  }
+
+  return null;
 }
 
 async function readLocalSinkEntries(): Promise<LocalSinkEntry[]> {
@@ -181,6 +227,57 @@ function toLocalMailMessage(entry: LocalSinkEntry, id: string): MailTmMessage {
     text: entry.text,
     html: entry.html ? [entry.html] : [],
   };
+}
+
+function normalizeAddress(address: string): string {
+  return extractNormalizedAddress(address) ?? address.trim().toLowerCase();
+}
+
+function extractNormalizedAddress(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const bracketMatch = trimmed.match(/<([^<>@\s]+@[^<>@\s]+)>/);
+  if (bracketMatch) {
+    return bracketMatch[1].trim().toLowerCase();
+  }
+
+  if (trimmed.includes('@')) {
+    return trimmed.toLowerCase();
+  }
+
+  return null;
+}
+
+function entryTargetsAddress(entry: LocalSinkEntry, expectedAddress: string): boolean {
+  const normalizedEntryAddress = normalizeAddress(entry.to);
+  if (normalizedEntryAddress === expectedAddress) {
+    return true;
+  }
+
+  return messageBodyMentionsAddress(
+    `${entry.subject}\n${entry.text ?? ''}\n${entry.html ?? ''}`,
+    expectedAddress
+  );
+}
+
+function messageTargetsAddress(message: MailTmMessage, expectedAddress: string): boolean {
+  if (message.to.some((recipient) => normalizeAddress(recipient.address) === expectedAddress)) {
+    return true;
+  }
+
+  return messageBodyMentionsAddress(getCombinedBody(message), expectedAddress);
+}
+
+function messageBodyMentionsAddress(body: string, expectedAddress: string): boolean {
+  const normalizedBody = body.toLowerCase();
+  return (
+    normalizedBody.includes(expectedAddress) ||
+    normalizedBody.includes(encodeURIComponent(expectedAddress)) ||
+    normalizedBody.includes(expectedAddress.replace('@', '%40'))
+  );
 }
 
 function toSummary(message: MailTmMessage): MailTmMessageSummary {

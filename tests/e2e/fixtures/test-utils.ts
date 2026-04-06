@@ -5,10 +5,13 @@
  */
 
 export * from './accounts';
+export * from './actors';
 export * from './assertions';
 export * from './auth';
 export * from './mailtm';
 export * from './navigation';
 export * from './onboarding';
+export * from './performance-budgets';
 export * from './retry';
+export * from './scenario-builder';
 export * from './waiters';

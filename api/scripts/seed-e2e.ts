@@ -14,98 +14,11 @@ import {
 } from '../src/db/test-table-inventory.js';
 import { db, schema } from '../src/db/index.js';
 import { openpathDb, openpathSchema } from '../src/db/openpath.js';
+import { listSeededE2EUsers, SEEDED_E2E_ORGANIZATION } from '../../tests/helpers/test-actors.js';
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL is required for seed-e2e');
 }
-
-const ADMIN = {
-  id: 'usr_admin_e2e',
-  email: 'admin@classroompath.test',
-  name: 'E2E Admin',
-  password: 'AdminPassword123!',
-};
-
-const TEACHER = {
-  id: 'usr_teacher_e2e',
-  email: 'teacher@classroompath.test',
-  name: 'E2E Teacher',
-  password: 'TeacherPassword123!',
-};
-
-const PENDING = {
-  id: 'usr_pending_e2e',
-  email: 'pending@classroompath.test',
-  name: 'E2E User',
-  password: 'PendingPassword123!',
-};
-
-const ONBOARDING = {
-  id: 'usr_onboarding_e2e',
-  email: 'onboarding@classroompath.test',
-  name: 'E2E User',
-  password: 'OnboardingPassword123!',
-};
-
-const WORKER_ACCOUNT_COUNT = Math.max(
-  1,
-  Number.parseInt(process.env.E2E_WORKER_ACCOUNT_COUNT ?? '8', 10) || 8
-);
-
-const WORKER_STATE_VARIANTS = Math.max(
-  1,
-  Number.parseInt(process.env.E2E_WORKER_STATE_VARIANTS ?? '16', 10) || 16
-);
-
-type WorkerSeedUser = {
-  id: string;
-  email: string;
-  name: string;
-  password: string;
-  role: 'admin' | 'teacher' | null;
-  status?: 'waiting';
-};
-
-function buildWorkerRoleUsers(role: 'admin' | 'teacher'): WorkerSeedUser[] {
-  const password = role === 'admin' ? ADMIN.password : TEACHER.password;
-  const roleTitle = role === 'admin' ? 'Admin' : 'Teacher';
-
-  return Array.from({ length: WORKER_ACCOUNT_COUNT }, (_, index) => {
-    const worker = index + 1;
-    return {
-      id: `usr_${role}_e2e_w${worker}`,
-      email: `${role}+w${worker}@classroompath.test`,
-      name: `E2E ${roleTitle} Worker ${worker}`,
-      password,
-      role,
-    };
-  });
-}
-
-function buildWorkerStateUsers(kind: 'onboarding' | 'pending'): WorkerSeedUser[] {
-  const users: WorkerSeedUser[] = [];
-
-  for (let worker = 1; worker <= WORKER_ACCOUNT_COUNT; worker++) {
-    for (let variant = 1; variant <= WORKER_STATE_VARIANTS; variant++) {
-      const isPending = kind === 'pending';
-      users.push({
-        id: `usr_${kind}_e2e_w${worker}_v${variant}`,
-        email: `${kind}+w${worker}-v${variant}@classroompath.test`,
-        name: `E2E User`,
-        password: isPending ? PENDING.password : ONBOARDING.password,
-        role: null,
-        status: isPending ? 'waiting' : undefined,
-      });
-    }
-  }
-
-  return users;
-}
-
-const ORG = {
-  id: 'org_e2e',
-  name: 'Test Organization',
-};
 
 async function truncateAll(): Promise<void> {
   for (const table of CLASSROOMPATH_TEST_RESET_TABLES) {
@@ -142,46 +55,7 @@ async function seed(): Promise<void> {
     return;
   }
 
-  const workerAdmins = buildWorkerRoleUsers('admin');
-  const workerTeachers = buildWorkerRoleUsers('teacher');
-  const workerOnboardingUsers = buildWorkerStateUsers('onboarding');
-  const workerPendingUsers = buildWorkerStateUsers('pending');
-
-  const usersToSeed = [
-    {
-      id: ADMIN.id,
-      email: ADMIN.email,
-      name: ADMIN.name,
-      password: ADMIN.password,
-      role: 'admin' as const,
-    },
-    {
-      id: TEACHER.id,
-      email: TEACHER.email,
-      name: TEACHER.name,
-      password: TEACHER.password,
-      role: 'teacher' as const,
-    },
-    {
-      id: PENDING.id,
-      email: PENDING.email,
-      name: PENDING.name,
-      password: PENDING.password,
-      role: null,
-      status: 'waiting' as const,
-    },
-    {
-      id: ONBOARDING.id,
-      email: ONBOARDING.email,
-      name: ONBOARDING.name,
-      password: ONBOARDING.password,
-      role: null,
-    },
-    ...workerAdmins,
-    ...workerTeachers,
-    ...workerOnboardingUsers,
-    ...workerPendingUsers,
-  ];
+  const usersToSeed = listSeededE2EUsers();
 
   const hashByUserId = new Map<string, string>();
   await Promise.all(
@@ -212,23 +86,23 @@ async function seed(): Promise<void> {
       userId: user.id,
       role: user.role,
       groupIds: [] as any,
-      createdBy: ADMIN.id,
+      createdBy: getSeededAdminId(),
     }))
   );
 
   await db.insert(schema.cpOrganizations).values({
-    id: ORG.id,
-    name: ORG.name,
-    createdBy: ADMIN.id,
+    id: SEEDED_E2E_ORGANIZATION.id,
+    name: SEEDED_E2E_ORGANIZATION.name,
+    createdBy: getSeededAdminId(),
   });
 
   await db.insert(schema.cpMemberships).values(
     roleUsers.map((user) => ({
       id: `mem_${user.id}`,
       userId: user.id,
-      organizationId: ORG.id,
+      organizationId: SEEDED_E2E_ORGANIZATION.id,
       role: user.role,
-      invitedBy: user.role === 'admin' ? (null as any) : ADMIN.id,
+      invitedBy: user.role === 'admin' ? (null as any) : getSeededAdminId(),
     })) as any
   );
 
@@ -236,7 +110,7 @@ async function seed(): Promise<void> {
   await db.insert(schema.cpOrganizationUsers).values(
     roleUsers.map((user) => ({
       id: `orguser_${user.id}`,
-      organizationId: ORG.id,
+      organizationId: SEEDED_E2E_ORGANIZATION.id,
       openpathUserId: user.id,
     }))
   );
@@ -248,14 +122,30 @@ async function seed(): Promise<void> {
         userId: user.id,
         status: 'waiting',
         // Keep seeded pending accounts reviewable by the seeded tenant admins.
-        targetOrganizationId: ORG.id,
+        targetOrganizationId: SEEDED_E2E_ORGANIZATION.id,
       }))
     );
   }
 
+  const workerAdmins = usersToSeed.filter((user) => user.kind === 'admin' && user.workerSlot);
+  const workerTeachers = usersToSeed.filter((user) => user.kind === 'teacher' && user.workerSlot);
+  const workerOnboardingUsers = usersToSeed.filter(
+    (user) => user.kind === 'onboarding' && user.workerSlot
+  );
+  const workerPendingUsers = usersToSeed.filter(
+    (user) => user.kind === 'pending' && user.workerSlot
+  );
+
   console.log(
-    `Seeded worker-scoped accounts: ${WORKER_ACCOUNT_COUNT} admins, ${WORKER_ACCOUNT_COUNT} teachers, ` +
+    `Seeded worker-scoped accounts: ${workerAdmins.length} admins, ${workerTeachers.length} teachers, ` +
       `${workerOnboardingUsers.length} onboarding users, ${workerPendingUsers.length} waiting users`
+  );
+}
+
+function getSeededAdminId(): string {
+  return (
+    listSeededE2EUsers().find((user) => user.kind === 'admin' && !user.workerSlot)?.id ??
+    'usr_admin_e2e'
   );
 }
 

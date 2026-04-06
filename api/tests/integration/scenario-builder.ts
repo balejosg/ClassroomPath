@@ -10,6 +10,11 @@ import {
   signToken,
   type TestUser,
 } from './harness.js';
+import {
+  getDefaultTenantActorName,
+  getDefaultTenantEmailPrefix,
+  type TenantActorRole,
+} from '../../../tests/helpers/test-actors.js';
 
 export interface TestActor extends TestUser {
   token: string;
@@ -32,7 +37,7 @@ export interface TestClassroom {
   displayName: string;
 }
 
-type TestRole = 'admin' | 'teacher' | 'student';
+type TestRole = TenantActorRole;
 
 async function throwUnexpectedTrpcStatus(
   action: string,
@@ -133,8 +138,8 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
     }): Promise<{ actor: TestActor; organization: TestOrganization }> {
       const actor = await createActor({
         userId: config.userId,
-        name: config.name ?? 'Admin User',
-        emailPrefix: config.emailPrefix ?? 'admin',
+        name: config.name ?? getDefaultTenantActorName('admin'),
+        emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix('admin'),
         roles: [{ role: 'admin' }],
       });
 
@@ -161,8 +166,8 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
     }): Promise<{ actor: TestActor; organization: TestOrganization }> {
       const actor = await createActor({
         userId: config.userId,
-        name: config.name ?? 'Admin User',
-        emailPrefix: config.emailPrefix ?? 'admin',
+        name: config.name ?? getDefaultTenantActorName('admin'),
+        emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix('admin'),
         roles: [{ role: 'admin', groupIds: [] }],
       });
       const organizationId = `org-${actor.userId}`;
@@ -205,14 +210,8 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
     }): Promise<TestActor> {
       const actor = await createActor({
         userId: config.userId,
-        name:
-          config.name ??
-          (config.role === 'teacher'
-            ? 'Teacher User'
-            : config.role === 'student'
-              ? 'Student User'
-              : 'Admin User'),
-        emailPrefix: config.emailPrefix ?? config.role,
+        name: config.name ?? getDefaultTenantActorName(config.role),
+        emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix(config.role),
         roles: [
           {
             role: config.role,
@@ -248,8 +247,8 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
     }): Promise<TestActor> {
       const actor = await createActor({
         userId: config.userId,
-        name: config.name ?? 'Teacher User',
-        emailPrefix: config.emailPrefix ?? 'teacher',
+        name: config.name ?? getDefaultTenantActorName('teacher'),
+        emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix('teacher'),
         roles: [{ role: 'teacher', groupIds: config.groupIds ?? [] }],
       });
 
@@ -274,8 +273,8 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
     }): Promise<TestActor> {
       const actor = await createActor({
         userId: config.userId,
-        name: config.name ?? 'Student User',
-        emailPrefix: config.emailPrefix ?? 'student',
+        name: config.name ?? getDefaultTenantActorName('student'),
+        emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix('student'),
         roles: [{ role: 'student' }],
       });
 
