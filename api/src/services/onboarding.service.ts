@@ -17,6 +17,7 @@ import {
   SINGLE_ORG_MEMBERSHIP_MESSAGE,
 } from '../lib/tenant-memberships.js';
 import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
+import { createOnboardingPolicy, type OnboardingPolicy } from '../contracts/onboarding-policy.js';
 
 export interface OnboardingStatus {
   hasMembership: boolean;
@@ -29,16 +30,11 @@ export interface OnboardingStatus {
   policy: OnboardingPolicy;
 }
 
-export interface OnboardingPolicy {
-  allowSelfServiceOrgs: boolean;
-  allowOrgDirectory: boolean;
-}
-
 export function getOnboardingPolicy(): OnboardingPolicy {
-  return {
+  return createOnboardingPolicy({
     allowSelfServiceOrgs: config.allowSelfServiceOrgs,
     allowOrgDirectory: config.allowOrgDirectory,
-  };
+  });
 }
 
 export async function getOnboardingStatus(userId: string): Promise<OnboardingStatus> {

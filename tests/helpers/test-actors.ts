@@ -1,3 +1,5 @@
+import { createE2EWorkerRuntime, prefixWorkerScopedLabel } from './e2e-runtime.js';
+
 export type TenantActorRole = 'admin' | 'teacher' | 'student';
 export type SeededE2EActorKind = 'admin' | 'teacher' | 'pending' | 'onboarding';
 
@@ -95,10 +97,11 @@ export function getDefaultTenantEmailPrefix(role: TenantActorRole): string {
 export function createTestUser(overrides: Partial<TestUser> = {}): TestUser {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 8);
+  const runtime = createE2EWorkerRuntime();
   return {
-    email: `test-${timestamp}-${random}@e2e-classroompath.local`,
+    email: `test-${runtime.scopeToken}-${timestamp}-${random}@e2e-classroompath.local`,
     password: 'SecurePassword123!',
-    name: `E2E User ${timestamp}`,
+    name: `${prefixWorkerScopedLabel('E2E User', runtime)} ${timestamp}`,
     ...overrides,
   };
 }
@@ -107,8 +110,9 @@ export function createTestOrganization(
   overrides: Partial<TestOrganization> = {}
 ): TestOrganization {
   const timestamp = Date.now();
+  const runtime = createE2EWorkerRuntime();
   return {
-    name: `E2E Organization ${timestamp}`,
+    name: `${prefixWorkerScopedLabel('E2E Organization', runtime)} ${timestamp}`,
     ...overrides,
   };
 }

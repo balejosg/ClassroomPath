@@ -6,6 +6,11 @@
 
 import { test, expect } from './fixtures/base-test';
 import {
+  mockOnboardingPolicy,
+  mockTrpcProcedures,
+  mockWaitingOnboardingFlow,
+} from './fixtures/onboarding-policy';
+import {
   loginAsAdmin,
   createTestUser,
   registerUser,
@@ -13,186 +18,66 @@ import {
   openRegisterForm,
   waitForNetworkIdle,
 } from './fixtures/test-utils';
-import type { Page } from '@playwright/test';
-
-type TrpcPatchMap = Record<string, unknown>;
-
-async function mockTrpcProcedures(page: Page, patches: TrpcPatchMap): Promise<void> {
-  await page.route('**/trpc/**', async (route) => {
-    const url = new URL(route.request().url());
-    const marker = '/trpc/';
-    const markerIndex = url.pathname.indexOf(marker);
-    if (markerIndex < 0) {
-      await route.continue();
-      return;
-    }
-
-    const proceduresPart = url.pathname.slice(markerIndex + marker.length);
-    const procedures = proceduresPart.split(',').filter(Boolean);
-
-    const response = await route.fetch();
-    const contentType = response.headers()['content-type'] || '';
-    if (!contentType.includes('application/json')) {
-      await route.fulfill({ response });
-      return;
-    }
-
-    const originalBody: unknown = await response.json();
-
-    const setResultData = (entry: unknown, value: unknown): unknown => {
-      if (!entry || typeof entry !== 'object') return entry;
-      const e = entry as { result?: { data?: unknown } };
-      if (!e.result || typeof e.result !== 'object') return entry;
-
-      const data = (e.result as { data?: unknown }).data;
-      if (data && typeof data === 'object' && 'json' in data) {
-        (e.result as any).data.json = value;
-      } else {
-        (e.result as any).data = value;
-      }
-
-      return entry;
-    };
-
-    const patchOne = (entry: unknown, procedure: string): unknown => {
-      if (!(procedure in patches)) return entry;
-      return setResultData(entry, patches[procedure]);
-    };
-
-    const patchedBody = Array.isArray(originalBody)
-      ? originalBody.map((entry, index) => patchOne(entry, procedures[index] ?? proceduresPart))
-      : patchOne(originalBody, proceduresPart);
-
-    await route.fulfill({ response, json: patchedBody });
-  });
-}
-
 async function mockDashboardMobileEmptyState(page: Page): Promise<void> {
-  await mockTrpcProcedures(page, {
-    'groups.stats': { groupCount: 0, whitelistCount: 0, blockedCount: 0 },
-    'requests.stats': { total: 0, pending: 0, approved: 0, rejected: 0 },
-    'groups.systemStatus': {
-      enabled: false,
-      totalGroups: 0,
-      activeGroups: 0,
-      pausedGroups: 0,
-      enabledGroups: 0,
-      disabledGroups: 0,
+  await mockTrpcProcedures(
+    page,
+    {
+      'groups.stats': { groupCount: 0, whitelistCount: 0, blockedCount: 0 },
+      'requests.stats': { total: 0, pending: 0, approved: 0, rejected: 0 },
+      'groups.systemStatus': {
+        enabled: false,
+        totalGroups: 0,
+        activeGroups: 0,
+        pausedGroups: 0,
+        enabledGroups: 0,
+        disabledGroups: 0,
+      },
+      'groups.list': [],
+      'classrooms.list': [],
+      // Keep visuals stable: waiting-room tests may create pending users in parallel.
+      'pendingUsers.list': [],
     },
-    'groups.list': [],
-    'classrooms.list': [],
-    // Keep visuals stable: waiting-room tests may create pending users in parallel.
-    'pendingUsers.list': [],
-  });
+    { routeGlob: '**/trpc/**', routeMarker: '/trpc/' }
+  );
 }
 
 async function mockStableHiddenDirectoryOnboarding(page: Page): Promise<void> {
   // Visual snapshots should follow the launch policy: org directory hidden by default.
   // Keep the onboarding policy stable so parallel specs cannot change the rendered card copy.
-  await mockTrpcProcedures(page, {
-    'onboarding.status': {
-      hasMembership: false,
-      isWaiting: false,
-      organization: null,
+  await mockOnboardingPolicy(
+    page,
+    {
       policy: {
         allowSelfServiceOrgs: true,
         allowOrgDirectory: false,
       },
+      organizations: [],
     },
-    'onboarding.listOrganizations': [],
-  });
+    { routeGlob: '**/trpc/**', routeMarker: '/trpc/' }
+  );
 }
 
-async function expectHiddenOrganizationDirectory(page: Page): Promise<void> {
+async function expectHiddenOrganizationDirectory(
+  page: import('@playwright/test').Page
+): Promise<void> {
   await expect(page.getByTestId('onboarding-access-policy')).toBeVisible({ timeout: 10000 });
   await expect(page.getByTestId('onboarding-target-org')).toHaveCount(0);
 }
 
-async function mockStableHiddenDirectoryWaitingFlow(page: Page): Promise<void> {
-  let isWaiting = false;
-
-  await page.route('**/trpc/**', async (route) => {
-    const url = new URL(route.request().url());
-    const marker = '/trpc/';
-    const markerIndex = url.pathname.indexOf(marker);
-    if (markerIndex < 0) {
-      await route.continue();
-      return;
-    }
-
-    const proceduresPart = url.pathname.slice(markerIndex + marker.length);
-    const procedures = proceduresPart.split(',').filter(Boolean);
-
-    if (
-      procedures.length === 1 &&
-      (procedures[0] === 'onboarding.waitForInvitation' ||
-        proceduresPart === 'onboarding.waitForInvitation')
-    ) {
-      isWaiting = true;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            result: {
-              data: {
-                success: true,
-              },
-            },
-          },
-        ]),
-      });
-      return;
-    }
-
-    const response = await route.fetch();
-    const contentType = response.headers()['content-type'] || '';
-    if (!contentType.includes('application/json')) {
-      await route.fulfill({ response });
-      return;
-    }
-
-    const originalBody: unknown = await response.json();
-    const patches: Record<string, unknown> = {
-      'onboarding.status': {
-        hasMembership: false,
-        isWaiting,
-        organization: null,
-        policy: {
-          allowSelfServiceOrgs: true,
-          allowOrgDirectory: false,
-        },
+async function mockStableHiddenDirectoryWaitingFlow(
+  page: import('@playwright/test').Page
+): Promise<void> {
+  await mockWaitingOnboardingFlow(
+    page,
+    {
+      policy: {
+        allowSelfServiceOrgs: true,
+        allowOrgDirectory: false,
       },
-      'onboarding.listOrganizations': [],
-      'onboarding.waitForInvitation': { success: true },
-    };
-
-    const setResultData = (entry: unknown, value: unknown): unknown => {
-      if (!entry || typeof entry !== 'object') return entry;
-      const e = entry as { result?: { data?: unknown } };
-      if (!e.result || typeof e.result !== 'object') return entry;
-
-      const data = (e.result as { data?: unknown }).data;
-      if (data && typeof data === 'object' && 'json' in data) {
-        (e.result as any).data.json = value;
-      } else {
-        (e.result as any).data = value;
-      }
-
-      return entry;
-    };
-
-    const patchOne = (entry: unknown, procedure: string): unknown => {
-      if (!(procedure in patches)) return entry;
-      return setResultData(entry, patches[procedure]);
-    };
-
-    const patchedBody = Array.isArray(originalBody)
-      ? originalBody.map((entry, index) => patchOne(entry, procedures[index] ?? proceduresPart))
-      : patchOne(originalBody, proceduresPart);
-
-    await route.fulfill({ response, json: patchedBody });
-  });
+      organizations: [],
+    },
+    { routeGlob: '**/trpc/**', routeMarker: '/trpc/' }
+  );
 }
 
 async function maskLastVerification(page: Page): Promise<void> {
@@ -419,9 +304,23 @@ test.describe('Visual Regression - Error States', () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await loginAsAdmin(page);
 
-    // Intercept and fail API calls
-    await page.route('**/api/**', (route) => route.abort('failed'));
-    await page.route('**/trpc/**', (route) => route.abort('failed'));
+    // Force the access gate into an explicit query-error state instead of a loading timeout.
+    await page.route('**/cp/trpc/onboarding.status**', async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: {
+            message: 'upstream down',
+            code: 'INTERNAL_SERVER_ERROR',
+            data: {
+              code: 'INTERNAL_SERVER_ERROR',
+              httpStatus: 500,
+            },
+          },
+        }),
+      });
+    });
 
     // Force a fresh access-check fetch under failure conditions.
     await page.reload();

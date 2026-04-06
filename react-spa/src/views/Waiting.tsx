@@ -1,6 +1,10 @@
 import React, { useEffect } from 'react';
 import { RefreshCw, ArrowLeft } from 'lucide-react';
 import { Button, Card } from '@openpath/public-ui';
+import {
+  createOnboardingPolicy,
+  shouldShowOnboardingAccessPolicyNotice,
+} from '../../../api/src/contracts/onboarding-policy';
 import { useOnboardingStatus, useCancelWaiting } from '../lib/hooks';
 
 interface Props {
@@ -15,6 +19,7 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
   });
 
   const { data, refetch, isFetching } = query;
+  const onboardingPolicy = createOnboardingPolicy(data?.policy ?? {});
 
   useEffect(() => {
     if (data?.hasMembership) {
@@ -48,7 +53,7 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
             Tu solicitud sigue un flujo institucional trazable sobre una base open source con
             alojamiento en servidores de la UE.
           </p>
-          {data?.policy?.allowOrgDirectory === false ? (
+          {shouldShowOnboardingAccessPolicyNotice(onboardingPolicy) ? (
             <p className="mt-3 text-sm text-slate-500">
               Por privacidad, este portal no mostrará el directorio de organizaciones mientras tu
               solicitud siga pendiente.

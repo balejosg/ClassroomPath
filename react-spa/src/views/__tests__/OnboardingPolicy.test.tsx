@@ -91,4 +91,25 @@ describe('Onboarding policy UI', () => {
     expect(screen.getByTestId('onboarding-target-org')).toBeInTheDocument();
     expect(screen.getByText('Org 1')).toBeInTheDocument();
   });
+
+  it('auto-selects the only organization when directory access is enabled', () => {
+    mockWaitForInvitation.mockImplementation((_input, options) => {
+      options?.onSuccess?.();
+    });
+    organizations = [{ id: 'org_1', name: 'Org 1' }];
+    mockPolicy = {
+      allowSelfServiceOrgs: false,
+      allowOrgDirectory: true,
+    };
+
+    render(<Onboarding onOrgCreated={onOrgCreated} onWaitClick={onWaitClick} />);
+
+    expect(screen.getByTestId('onboarding-target-org')).toHaveValue('org_1');
+    fireEvent.click(screen.getByTestId('onboarding-wait-invite'));
+
+    expect(mockWaitForInvitation).toHaveBeenCalledWith(
+      { targetOrganizationId: 'org_1' },
+      expect.anything()
+    );
+  });
 });

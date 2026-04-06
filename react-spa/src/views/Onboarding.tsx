@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Building2, Users } from 'lucide-react';
 import { Button, Card, Input } from '@openpath/public-ui';
 import {
+  createOnboardingPolicy,
+  getOnboardingAccessMode,
+  resolveAutoSelectedOrganizationId,
+  shouldShowOnboardingAccessPolicyNotice,
+} from '../../../api/src/contracts/onboarding-policy';
+import {
   useCreateOrganization,
   useListOrganizations,
   useOnboardingStatus,
@@ -30,21 +36,24 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
 
   const statusQuery = useOnboardingStatus();
   const createOrgMutation = useCreateOrganization();
-  const allowSelfServiceOrgs = statusQuery.data?.policy?.allowSelfServiceOrgs ?? false;
-  const allowOrgDirectory = statusQuery.data?.policy?.allowOrgDirectory ?? false;
+  const onboardingPolicy = createOnboardingPolicy(statusQuery.data?.policy ?? {});
+  const allowSelfServiceOrgs = onboardingPolicy.allowSelfServiceOrgs;
+  const allowOrgDirectory = getOnboardingAccessMode(onboardingPolicy) === 'directory';
   const orgsQuery = useListOrganizations({
     enabled: allowOrgDirectory,
   });
   const waitMutation = useWaitForInvitation();
 
   useEffect(() => {
-    if (!allowOrgDirectory) return;
-    if (targetOrgId) return;
-    const orgs = orgsQuery.data ?? [];
-    if (orgs.length === 1) {
-      setTargetOrgId(orgs[0].id);
+    const nextTargetOrgId = resolveAutoSelectedOrganizationId(
+      onboardingPolicy,
+      orgsQuery.data ?? [],
+      targetOrgId
+    );
+    if (nextTargetOrgId && nextTargetOrgId !== targetOrgId) {
+      setTargetOrgId(nextTargetOrgId);
     }
-  }, [allowOrgDirectory, orgsQuery.data, targetOrgId]);
+  }, [onboardingPolicy, orgsQuery.data, targetOrgId]);
 
   const handleCreateOrg = (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,7 +180,7 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
               administrador te agregue. Tu solicitud seguira un flujo institucional trazable.
             </p>
             <div className="mt-auto">
-              {allowOrgDirectory ? (
+              {!shouldShowOnboardingAccessPolicyNotice(onboardingPolicy) ? (
                 <div className="mb-4">
                   <label className="block text-sm font-semibold mb-2 text-gray-700">
                     Organización

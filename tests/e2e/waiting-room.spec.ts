@@ -5,6 +5,7 @@
  */
 
 import { test, expect, type Page } from './fixtures/base-test';
+import { mockWaitingOnboardingFlow } from './fixtures/onboarding-policy';
 import { OrganizationPage, WaitingPage } from './fixtures/page-objects';
 import {
   createTestUser,
@@ -27,93 +28,6 @@ function escapeRegExp(value: string): string {
 
 function pendingUserRow(page: Page, email: string) {
   return page.getByRole('row', { name: new RegExp(escapeRegExp(email), 'i') });
-}
-
-async function mockHiddenDirectoryWaitingFlow(page: Page): Promise<void> {
-  let isWaiting = false;
-
-  await page.route('**/cp/trpc/**', async (route) => {
-    const url = new URL(route.request().url());
-    const marker = '/cp/trpc/';
-    const markerIndex = url.pathname.indexOf(marker);
-    if (markerIndex < 0) {
-      await route.continue();
-      return;
-    }
-
-    const proceduresPart = url.pathname.slice(markerIndex + marker.length);
-    const procedures = proceduresPart.split(',').filter(Boolean);
-
-    if (
-      procedures.length === 1 &&
-      (procedures[0] === 'onboarding.waitForInvitation' ||
-        proceduresPart === 'onboarding.waitForInvitation')
-    ) {
-      isWaiting = true;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            result: {
-              data: {
-                success: true,
-              },
-            },
-          },
-        ]),
-      });
-      return;
-    }
-
-    const response = await route.fetch();
-    const contentType = response.headers()['content-type'] || '';
-    if (!contentType.includes('application/json')) {
-      await route.fulfill({ response });
-      return;
-    }
-
-    const originalBody: unknown = await response.json();
-    const patches: Record<string, unknown> = {
-      'onboarding.status': {
-        hasMembership: false,
-        isWaiting,
-        organization: null,
-        policy: {
-          allowSelfServiceOrgs: false,
-          allowOrgDirectory: false,
-        },
-      },
-      'onboarding.listOrganizations': [],
-      'onboarding.waitForInvitation': { success: true },
-    };
-
-    const setResultData = (entry: unknown, value: unknown): unknown => {
-      if (!entry || typeof entry !== 'object') return entry;
-      const e = entry as { result?: { data?: unknown } };
-      if (!e.result || typeof e.result !== 'object') return entry;
-
-      const data = (e.result as { data?: unknown }).data;
-      if (data && typeof data === 'object' && 'json' in data) {
-        (e.result as { data?: { json?: unknown } }).data!.json = value;
-      } else {
-        (e.result as { data?: unknown }).data = value;
-      }
-
-      return entry;
-    };
-
-    const patchOne = (entry: unknown, procedure: string): unknown => {
-      if (!(procedure in patches)) return entry;
-      return setResultData(entry, patches[procedure]);
-    };
-
-    const patchedBody = Array.isArray(originalBody)
-      ? originalBody.map((entry, index) => patchOne(entry, procedures[index] ?? proceduresPart))
-      : patchOne(originalBody, proceduresPart);
-
-    await route.fulfill({ response, json: patchedBody });
-  });
 }
 
 test.describe('Waiting Room Flow', () => {
@@ -191,7 +105,13 @@ test.describe('Waiting Room Flow', () => {
     page,
   }) => {
     const testUser = createTestUser();
-    await mockHiddenDirectoryWaitingFlow(page);
+    await mockWaitingOnboardingFlow(page, {
+      policy: {
+        allowSelfServiceOrgs: false,
+        allowOrgDirectory: false,
+      },
+      organizations: [],
+    });
 
     await registerUser(page, testUser);
     await expect(page.getByTestId('onboarding-access-policy')).toBeVisible({ timeout: 10000 });

@@ -10,6 +10,10 @@ import type {
   WaitForMessageOptions,
 } from '../mailbox-provider.js';
 import {
+  createE2EWorkerRuntime,
+  prefixWorkerScopedLocalPart,
+} from '../../../helpers/e2e-runtime.js';
+import {
   extractLinksFromMessage,
   extractOtpFromMessage,
   getCombinedBody,
@@ -27,7 +31,8 @@ type LocalSinkEntry = {
 export function createLocalSinkMailboxProvider(): MailboxProvider {
   return {
     async createFixture(): Promise<MailboxFixtureResult> {
-      const address = `e2e-local-${Date.now()}-${crypto.randomUUID().slice(0, 8)}@classroompath.test`;
+      const runtime = createE2EWorkerRuntime();
+      const address = `${prefixWorkerScopedLocalPart('e2e-local', runtime)}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}@classroompath.test`;
       const password = crypto.randomUUID();
       const startedAt = new Date();
 

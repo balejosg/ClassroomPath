@@ -1,8 +1,7 @@
-import assert from 'node:assert';
 import { db } from '../../src/db/index.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import * as cpSchema from '../../src/db/schema.js';
-import { assertStatus, bearerAuth, parseTRPC, trpcMutate, uniqueEmail } from '../test-utils.js';
+import { assertStatus, bearerAuth, trpcMutate, uniqueEmail } from '../test-utils.js';
 import {
   approveOrganizationMember,
   bootstrapOrg,
@@ -15,6 +14,7 @@ import {
   getDefaultTenantEmailPrefix,
   type TenantActorRole,
 } from '../../../tests/helpers/test-actors.js';
+import { createTenantApiHarness } from '../../../tests/helpers/tenant-api-harness.js';
 
 export interface TestActor extends TestUser {
   token: string;
@@ -38,20 +38,6 @@ export interface TestClassroom {
 }
 
 type TestRole = TenantActorRole;
-
-async function throwUnexpectedTrpcStatus(
-  action: string,
-  response: Response,
-  expectedStatus: number
-): Promise<never> {
-  const body = await response
-    .clone()
-    .text()
-    .catch(() => '<failed to read response body>');
-  throw new Error(
-    `${action} expected status ${String(expectedStatus)}, got ${String(response.status)}. Body: ${body.slice(0, 800)}`
-  );
-}
 
 function requireJwtSecret(jwtSecret: string | undefined): string {
   if (!jwtSecret) {
@@ -294,24 +280,10 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
       name: string;
       displayName?: string;
     }): Promise<TestGroup> {
-      const displayName = config.displayName ?? config.name;
-      const response = await trpcMutate(
-        params.baseUrl,
-        'groups.create',
-        { name: config.name, displayName },
-        bearerAuth(config.token)
-      );
-      if (response.status !== 200) {
-        await throwUnexpectedTrpcStatus('groups.create', response, 200);
-      }
-      const { data } = (await parseTRPC(response)) as { data: { id?: unknown; name?: unknown } };
-      assert.ok(data?.id, 'groups.create should return id');
-
-      return {
-        id: String(data.id),
-        name: String(data.name ?? config.name),
-        displayName,
-      };
+      return createTenantApiHarness({
+        baseUrl: params.baseUrl,
+        token: config.token,
+      }).createGroup(config);
     },
 
     async updateGroup(config: {
@@ -341,27 +313,15 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
       displayName?: string;
       defaultGroupId?: string;
     }): Promise<TestClassroom> {
-      const displayName = config.displayName ?? config.name;
-      const response = await trpcMutate(
-        params.baseUrl,
-        'classrooms.create',
-        {
-          name: config.name,
-          displayName,
-          defaultGroupId: config.defaultGroupId,
-        },
-        bearerAuth(config.token)
-      );
-      if (response.status !== 200) {
-        await throwUnexpectedTrpcStatus('classrooms.create', response, 200);
-      }
-      const { data } = (await parseTRPC(response)) as { data: { id?: unknown; name?: unknown } };
-      assert.ok(data?.id, 'classrooms.create should return id');
+      const classroom = await createTenantApiHarness({
+        baseUrl: params.baseUrl,
+        token: config.token,
+      }).createClassroom(config);
 
       return {
-        id: String(data.id),
-        name: String(data.name ?? config.name),
-        displayName,
+        id: classroom.id,
+        name: classroom.name,
+        displayName: classroom.displayName,
       };
     },
 
