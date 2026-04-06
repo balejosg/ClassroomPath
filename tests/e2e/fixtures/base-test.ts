@@ -1,6 +1,6 @@
 import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
 
-import { createMailboxFixture, type MailboxFixture } from './mailtm';
+import { createMailboxFixture, type MailboxFixture } from './mailbox-provider';
 import { NavigationDebugger } from './navigation-debug';
 
 type Fixtures = {

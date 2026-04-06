@@ -10,7 +10,7 @@ import {
   type MailboxFixture,
   waitForPostAuthScreen,
 } from './fixtures/test-utils';
-import { createMailboxFixture } from './fixtures/mailtm';
+import { createMailboxFixture } from './fixtures/mailbox-provider';
 import { AcceptInvitationPage, OrganizationPage, ResetPasswordPage } from './fixtures/page-objects';
 
 type VerificationResponse = {

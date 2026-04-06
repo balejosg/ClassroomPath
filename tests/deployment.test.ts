@@ -15,6 +15,7 @@ import { parse as parseYaml } from 'yaml';
 const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
+const verifyFullOrchestratorPath = resolve(projectRoot, 'scripts/verify-full.ts');
 
 interface DockerComposeService {
   build?: { context: string; dockerfile: string };
@@ -572,19 +573,19 @@ void describe('Migration Tooling', () => {
   });
 
   void test('verify-full skips coverage cleanup and gating when no API/SPA source coverage is needed', () => {
-    const content = readFileSync(verifyFullScriptPath, 'utf-8');
+    const content = readFileSync(verifyFullOrchestratorPath, 'utf-8');
 
     assert.ok(
-      content.includes('NEEDS_COVERAGE_GATE=0'),
-      'verify-full.sh should track whether the changed-file coverage gate is actually needed'
+      content.includes('needsCoverageGate: needsApiCoverage || needsSpaCoverage'),
+      'verify-full.ts should track whether the changed-file coverage gate is actually needed'
     );
     assert.ok(
-      content.includes('if [ "$NEEDS_COVERAGE_GATE" = "1" ]; then'),
-      'verify-full.sh should guard coverage cleanup and gating behind NEEDS_COVERAGE_GATE'
+      content.includes('if (plan.needsCoverageGate) {'),
+      'verify-full.ts should guard coverage cleanup and gating behind needsCoverageGate'
     );
     assert.ok(
       content.includes('Skipping coverage gate (no changed API/SPA source files).'),
-      'verify-full.sh should report when it skips the changed-file coverage gate'
+      'verify-full.ts should report when it skips the changed-file coverage gate'
     );
   });
 
@@ -593,7 +594,7 @@ void describe('Migration Tooling', () => {
       scripts?: Record<string, string>;
     };
     const hook = readFileSync(preCommitHookPath, 'utf-8');
-    const verifyScript = readFileSync(verifyFullScriptPath, 'utf-8');
+    const verifyScript = readFileSync(verifyFullOrchestratorPath, 'utf-8');
 
     assert.equal(
       packageJson.scripts?.['verify:commit'],
@@ -621,29 +622,53 @@ void describe('Migration Tooling', () => {
       verifyScript.includes(
         'Playwright browsers are required for local verification and are not installed.'
       ),
-      'verify-full.sh should fail when Playwright browsers are unavailable'
+      'verify-full.ts should fail when Playwright browsers are unavailable'
     );
     assert.ok(
       verifyScript.includes('Running full E2E Playwright suite...') &&
-        verifyScript.includes('run_playwright_verification'),
-      'verify-full.sh should always run the full Playwright suite'
+        verifyScript.includes('runPlaywrightVerification'),
+      'verify-full.ts should always run the full Playwright suite'
     );
     assert.ok(
       !verifyScript.includes('--grep="@commit-smoke"') &&
         !verifyScript.includes('--grep-invert="@slow-network|@repro"') &&
         !verifyScript.includes('skipping commit-smoke browser verification'),
-      'verify-full.sh should not include reduced or skippable Playwright lanes'
+      'verify-full.ts should not include reduced or skippable Playwright lanes'
     );
     assert.ok(
-      verifyScript.includes('Playwright verification cannot skip tests; skipped: ${skipped}') &&
-        verifyScript.includes('PLAYWRIGHT_JSON_OUTPUT_FILE="$report_file"'),
-      'verify-full.sh should fail when Playwright reports skipped tests'
+      verifyScript.includes(
+        'Playwright verification cannot skip tests; skipped: ${String(skipped)}'
+      ) && verifyScript.includes('PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath'),
+      'verify-full.ts should fail when Playwright reports skipped tests'
     );
     assert.ok(
       readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf-8').includes(
         'PLAYWRIGHT_JSON_OUTPUT_FILE'
       ),
       'playwright.config.ts should support an auxiliary JSON reporter for verification gates'
+    );
+  });
+
+  void test('verify-full shell entrypoint delegates policy to a typed Node orchestrator', () => {
+    const verifyScript = readFileSync(verifyFullScriptPath, 'utf-8');
+
+    assert.ok(existsSync(verifyFullOrchestratorPath), 'scripts/verify-full.ts should exist');
+    assert.ok(
+      verifyScript.includes('exec node --import tsx "$ROOT_DIR/scripts/verify-full.ts" "$@"'),
+      'verify-full.sh should be a thin wrapper over the typed Node orchestrator'
+    );
+
+    const orchestrator = readFileSync(verifyFullOrchestratorPath, 'utf-8');
+
+    assert.ok(
+      orchestrator.includes('type VerifyMode =') &&
+        orchestrator.includes('function buildVerifyPlan('),
+      'verify-full.ts should model verification policy through typed planning helpers'
+    );
+    assert.ok(
+      orchestrator.includes('function validatePlaywrightReport(') &&
+        orchestrator.includes('Playwright verification cannot skip tests; skipped:'),
+      'verify-full.ts should own the Playwright skipped-test gate'
     );
   });
 
@@ -1119,20 +1144,24 @@ void describe('Migration Tooling', () => {
   });
 
   void test('verify-full keeps DATABASE_URL canonical and derives OpenPath DB_* env through the shared helper', () => {
-    const verifyScript = readFileSync(verifyFullScriptPath, 'utf-8');
+    const verifyScript = readFileSync(verifyFullOrchestratorPath, 'utf-8');
 
     assert.ok(
-      verifyScript.includes('export DATABASE_URL=') &&
-        verifyScript.includes('${TEST_DB_PORT}') &&
-        verifyScript.includes('/openpath"'),
+      verifyScript.includes('function buildTestDatabaseUrl(testDbPort: number): string') &&
+        verifyScript.includes('DATABASE_URL: buildTestDatabaseUrl(plan.testDbPort)'),
       'verify-full should keep DATABASE_URL as the canonical test database contract'
     );
     assert.ok(
-      verifyScript.includes('node "$ROOT_DIR/scripts/derive-openpath-db-env.mjs"'),
+      verifyScript.includes(
+        "capture('node', [join(ROOT_DIR, 'scripts/derive-openpath-db-env.mjs')]"
+      ),
       'verify-full should derive OpenPath DB_* compatibility env through the shared helper'
     );
     assert.ok(
-      !verifyScript.includes('export DB_HOST="localhost"'),
+      !verifyScript.includes("DB_HOST: 'localhost'") &&
+        !verifyScript.includes("DB_PORT: '5432'") &&
+        !verifyScript.includes('verifyEnv.DB_HOST') &&
+        !verifyScript.includes('verifyEnv.DB_PORT'),
       'verify-full should not duplicate OpenPath DB_* derivation inline'
     );
   });
