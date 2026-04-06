@@ -59,6 +59,7 @@ fi
 SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
 COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
 RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
+DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-payload.sh")"
 RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
 RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"
 if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
@@ -197,21 +198,104 @@ else
   source "$RELEASE_MANIFEST_HELPER_PATH"
 fi
 
+if [ ! -f "$DEPLOY_PAYLOAD_HELPER_PATH" ]; then
+  decode_deploy_payload_base64() {
+    local payload_b64="$1"
+    local target_path="${2:-$(mktemp)}"
+
+    if [ -z "$payload_b64" ]; then
+      log_error "Deploy payload is empty"
+      return 1
+    fi
+
+    printf '%s' "$payload_b64" | base64 --decode > "$target_path"
+    printf '%s\n' "$target_path"
+  }
+
+  deploy_payload_get() {
+    local payload_path="$1"
+    local key="$2"
+
+    awk -v key="$key" '
+      index($0, key "=") == 1 {
+        print substr($0, length(key) + 2)
+        found = 1
+        exit
+      }
+      END {
+        if (!found) {
+          exit 1
+        }
+      }
+    ' "$payload_path"
+  }
+else
+  # shellcheck source=lib/deploy-payload.sh
+  source "$DEPLOY_PAYLOAD_HELPER_PATH"
+fi
+
 if [ ! -f "$RELEASE_STATE_HELPER_PATH" ]; then
-  write_current_release_state() {
-    local state_path="$1"
+  write_release_state_snapshot() {
+    local snapshot_type="$1"
+    local state_path="$2"
+    local field=""
+    local value=""
 
     mkdir -p "$(dirname "$state_path")"
+    : > "$state_path"
 
-    cat > "$state_path" <<EOF
-APP_SHA=${APP_SHA:-}
-IMAGE_SOURCE=${IMAGE_SOURCE:-}
-CLASSROOMPATH_GATEWAY_IMAGE=${CLASSROOMPATH_GATEWAY_IMAGE:-}
-CLASSROOMPATH_MIGRATIONS_IMAGE=${CLASSROOMPATH_MIGRATIONS_IMAGE:-}
-OPENPATH_API_IMAGE=${OPENPATH_API_IMAGE:-}
-OPENPATH_LINUX_AGENT_VERSION=${OPENPATH_LINUX_AGENT_VERSION:-}
-CLASSROOMPATH_SPA_IMAGE=${CLASSROOMPATH_SPA_IMAGE:-}
+    case "$snapshot_type" in
+      current-runtime)
+        while IFS= read -r field; do
+          [ -z "$field" ] && continue
+          value="${!field:-}"
+          printf '%s=%q\n' "$field" "$value" >> "$state_path"
+        done <<'EOF'
+APP_SHA
+IMAGE_SOURCE
+CLASSROOMPATH_GATEWAY_IMAGE
+CLASSROOMPATH_MIGRATIONS_IMAGE
+OPENPATH_API_IMAGE
+OPENPATH_LINUX_AGENT_VERSION
+CLASSROOMPATH_SPA_IMAGE
 EOF
+        ;;
+      deploy-context)
+        while IFS= read -r field; do
+          [ -z "$field" ] && continue
+          value="${!field:-}"
+          printf '%s=%q\n' "$field" "$value" >> "$state_path"
+        done <<'EOF'
+TARGET_SHA
+APP_SHA
+PREVIOUS_APP_SHA
+IMAGE_SOURCE
+MIGRATION_RISK_LEVEL
+MIGRATION_CHANGED_FILES
+MIGRATION_DESTRUCTIVE_FILES
+PRODUCTION_BACKUP_REFERENCE
+DB_MIGRATED
+FAILURE_STAGE
+DEPLOY_FAILURE_STAGE
+ROLLBACK_ATTEMPTED
+ROLLBACK_RESULT
+EOF
+        ;;
+      *)
+        log_error "Unsupported snapshot fallback: $snapshot_type"
+        return 1
+        ;;
+    esac
+  }
+
+  write_current_release_state() {
+    local state_path="$1"
+    write_release_state_snapshot "current-runtime" "$state_path"
+  }
+
+  write_deploy_context_state() {
+    local state_path="$1"
+    write_release_state_snapshot "deploy-context" "$state_path"
   }
 else
   # shellcheck source=lib/release-state.sh
@@ -271,10 +355,11 @@ DB_MIGRATED=0
 FAILURE_STAGE="preflight"
 ROLLBACK_ATTEMPTED=0
 ROLLBACK_RESULT="not_attempted"
+STAGING_DEPLOY_PAYLOAD_FILE=""
 STAGING_RELEASE_MANIFEST_FILE=""
 
 cleanup_staging_release_manifest() {
-  rm -f "${STAGING_RELEASE_MANIFEST_FILE:-}"
+  rm -f "${STAGING_RELEASE_MANIFEST_FILE:-}" "${STAGING_DEPLOY_PAYLOAD_FILE:-}"
 }
 
 trap cleanup_staging_release_manifest EXIT
@@ -300,18 +385,17 @@ write_release_state() {
 }
 
 write_deploy_context() {
-  cat > "$DEPLOY_CONTEXT_FILE" <<EOF
-APP_SHA=${STAGING_RELEASE_SHA:-origin-main}
-PREVIOUS_APP_SHA=${PREVIOUS_APP_SHA:-}
-IMAGE_SOURCE=$IMAGE_SOURCE
-MIGRATION_RISK_LEVEL=${MIGRATION_RISK_LEVEL:-safe}
-MIGRATION_CHANGED_FILES=${MIGRATION_CHANGED_FILES:-}
-MIGRATION_DESTRUCTIVE_FILES=${MIGRATION_DESTRUCTIVE_FILES:-}
-DB_MIGRATED=${DB_MIGRATED}
-FAILURE_STAGE=${FAILURE_STAGE}
-ROLLBACK_ATTEMPTED=${ROLLBACK_ATTEMPTED}
-ROLLBACK_RESULT=${ROLLBACK_RESULT}
-EOF
+  APP_SHA="${STAGING_RELEASE_SHA:-origin-main}" \
+  IMAGE_SOURCE="$IMAGE_SOURCE" \
+  PREVIOUS_APP_SHA="${PREVIOUS_APP_SHA:-}" \
+  MIGRATION_RISK_LEVEL="${MIGRATION_RISK_LEVEL:-safe}" \
+  MIGRATION_CHANGED_FILES="${MIGRATION_CHANGED_FILES:-}" \
+  MIGRATION_DESTRUCTIVE_FILES="${MIGRATION_DESTRUCTIVE_FILES:-}" \
+  DB_MIGRATED="${DB_MIGRATED}" \
+  FAILURE_STAGE="${FAILURE_STAGE}" \
+  ROLLBACK_ATTEMPTED="${ROLLBACK_ATTEMPTED}" \
+  ROLLBACK_RESULT="${ROLLBACK_RESULT}" \
+    write_deploy_context_state "$DEPLOY_CONTEXT_FILE"
 }
 
 resolve_pulled_digest() {
@@ -457,12 +541,23 @@ deploy_from_source() {
 }
 
 load_staging_release_manifest() {
+  local release_manifest_b64=""
+
   if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" != "1" ]; then
     return 0
   fi
 
+  if [ -n "${STAGING_DEPLOY_PAYLOAD_B64:-}" ]; then
+    STAGING_DEPLOY_PAYLOAD_FILE="$(mktemp)"
+    decode_deploy_payload_base64 "$STAGING_DEPLOY_PAYLOAD_B64" "$STAGING_DEPLOY_PAYLOAD_FILE" >/dev/null
+    release_manifest_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" manifest_base64)"
+  else
+    release_manifest_b64="$STAGING_RELEASE_MANIFEST_B64"
+  fi
+
   STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
-  decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
+  decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null || true
+  decode_release_manifest_base64 "$release_manifest_b64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
   load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"
 
   STAGING_RELEASE_SHA="$RELEASE_MANIFEST_APP_SHA"

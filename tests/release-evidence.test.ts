@@ -10,6 +10,7 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
 const scriptPath = resolve(projectRoot, 'scripts/write-release-evidence.mjs');
+const evidenceHelperPath = resolve(projectRoot, 'scripts/lib/release-evidence.mjs');
 
 type ReleaseEvidence = {
   release: {
@@ -67,6 +68,15 @@ function generateEvidence(envOverrides: Record<string, string | undefined>) {
 }
 
 describe('release evidence rendering', () => {
+  test('release evidence rendering is delegated to the typed helper module', () => {
+    const wrapper = readFileSync(scriptPath, 'utf8');
+    const helper = readFileSync(evidenceHelperPath, 'utf8');
+
+    assert.match(wrapper, /from '\.\/lib\/release-evidence\.mjs'/);
+    assert.match(helper, /export function buildReleaseEvidence/);
+    assert.match(helper, /export function renderReleaseEvidenceMarkdown/);
+  });
+
   test('renders advisory canary success for high-risk promotions', () => {
     const { json, markdown } = generateEvidence({
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',

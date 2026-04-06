@@ -38,7 +38,7 @@ EOF
 }
 
 cleanup_staging_local_temp_files() {
-    rm -f "${STAGING_RELEASE_MANIFEST_FILE:-}" "${SMOKE_STATE_FILE:-}" "${RELEASE_GATE_STATE_FILE:-}"
+    rm -f "${STAGING_RELEASE_MANIFEST_FILE:-}" "${STAGING_RELEASE_PLAN_ENV_FILE:-}" "${STAGING_DEPLOY_PAYLOAD_ENV_FILE:-}" "${VERIFICATION_STATE_FILE:-}"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -83,8 +83,7 @@ STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-}"
 STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-}"
 STAGING_HEALTH_CHECK_SCRIPT_PATH="$SCRIPT_DIR/check-staging-health.sh"
 STAGING_REMOTE_SCRIPT_PATH="$SCRIPT_DIR/deploy-staging-remote.sh"
-STAGING_RELEASE_GATE_SCRIPT_PATH="$SCRIPT_DIR/run-staging-release-gate.sh"
-STAGING_SMOKE_SCRIPT_PATH="$SCRIPT_DIR/run-staging-smoke.sh"
+STAGING_VERIFICATION_RUNNER_PATH="$SCRIPT_DIR/run-staging-verification.sh"
 STAGING_VERIFY_STATE_SCRIPT_PATH="$SCRIPT_DIR/persist-staging-verification-remote.sh"
 APP_DIR="/opt/classroompath/app"
 STATE_DIR="/opt/classroompath/release-state"
@@ -175,13 +174,17 @@ if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
     log_info "Remote: $REMOTE_SHA"
 fi
 
+STAGING_IMAGE_SOURCE="$STAGING_IMAGE_MODE"
 STAGING_USE_RELEASE_CANDIDATE=0
 STAGING_RELEASE_SHA=""
 STAGING_RELEASE_RUN_ID=""
 STAGING_RELEASE_MANIFEST_FILE=""
 STAGING_RELEASE_MANIFEST_B64=""
-SMOKE_STATE_FILE=""
-RELEASE_GATE_STATE_FILE=""
+STAGING_RELEASE_PLAN_ENV_FILE=""
+STAGING_DEPLOY_PAYLOAD_ENV_FILE=""
+STAGING_DEPLOY_PAYLOAD_B64=""
+STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE="0"
+VERIFICATION_STATE_FILE=""
 trap cleanup_staging_local_temp_files EXIT
 
 if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
@@ -193,20 +196,45 @@ if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknow
         --interval-seconds "$STAGING_RELEASE_POLL_SECONDS" \
         --output-file "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
 
-    STAGING_RELEASE_RUN_ID="$(release_manifest_require_key "$STAGING_RELEASE_MANIFEST_FILE" run_id)"
-    STAGING_RELEASE_SHA="$(release_manifest_require_key "$STAGING_RELEASE_MANIFEST_FILE" app_sha)"
-    STAGING_RELEASE_MANIFEST_B64="$(encode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_FILE")"
-
-    STAGING_USE_RELEASE_CANDIDATE=1
-    log_info "Staging will deploy release candidate images for $STAGING_RELEASE_SHA"
-    if [ -n "$STAGING_RELEASE_RUN_ID" ]; then
-        log_info "Release candidate workflow run: $STAGING_RELEASE_RUN_ID"
-    fi
 elif [ "$STAGING_IMAGE_MODE" = "release-candidate" ]; then
     log_error "STAGING_IMAGE_MODE=release-candidate requires origin/main to be reachable"
     exit 1
 else
     log_warn "STAGING_IMAGE_MODE=source-build skips release candidates and is intended only for debug or recovery"
+fi
+
+STAGING_RELEASE_PLAN_ENV_FILE="$(mktemp)"
+PLAN_ARGS=(
+    --image-mode "$STAGING_IMAGE_MODE"
+    --remote-sha "$REMOTE_SHA"
+)
+
+if [ -n "$STAGING_RELEASE_MANIFEST_FILE" ]; then
+    PLAN_ARGS+=(--manifest-file "$STAGING_RELEASE_MANIFEST_FILE")
+fi
+
+node "$SCRIPT_DIR/lib/release-plan.mjs" render-staging-env "${PLAN_ARGS[@]}" > "$STAGING_RELEASE_PLAN_ENV_FILE"
+
+set -a
+. "$STAGING_RELEASE_PLAN_ENV_FILE"
+set +a
+
+STAGING_DEPLOY_PAYLOAD_ENV_FILE="$(mktemp)"
+node "$SCRIPT_DIR/lib/deploy-payload.mjs" render-env \
+    --target-environment staging \
+    --deploy-ref "refs/heads/main" \
+    --deploy-sha "$REMOTE_SHA" \
+    --manifest-base64 "$STAGING_RELEASE_MANIFEST_B64" > "$STAGING_DEPLOY_PAYLOAD_ENV_FILE"
+
+set -a
+. "$STAGING_DEPLOY_PAYLOAD_ENV_FILE"
+set +a
+
+if [ "$STAGING_USE_RELEASE_CANDIDATE" = "1" ]; then
+    log_info "Staging will deploy release candidate images for $STAGING_RELEASE_SHA"
+    if [ -n "$STAGING_RELEASE_RUN_ID" ]; then
+        log_info "Release candidate workflow run: $STAGING_RELEASE_RUN_ID"
+    fi
 fi
 
 log_success "Git state checked"
@@ -252,13 +280,8 @@ if [ ! -f "$STAGING_VERIFY_STATE_SCRIPT_PATH" ]; then
     exit 1
 fi
 
-if [ ! -f "$STAGING_SMOKE_SCRIPT_PATH" ]; then
-    log_error "Staging smoke helper script not found: $STAGING_SMOKE_SCRIPT_PATH"
-    exit 1
-fi
-
-if [ ! -f "$STAGING_RELEASE_GATE_SCRIPT_PATH" ]; then
-    log_error "Staging release gate helper script not found: $STAGING_RELEASE_GATE_SCRIPT_PATH"
+if [ ! -f "$STAGING_VERIFICATION_RUNNER_PATH" ]; then
+    log_error "Staging verification runner script not found: $STAGING_VERIFICATION_RUNNER_PATH"
     exit 1
 fi
 
@@ -273,6 +296,7 @@ REMOTE_ENV_CMD="$(
     remote_assignment STAGING_USE_RELEASE_CANDIDATE "$STAGING_USE_RELEASE_CANDIDATE"
     remote_assignment STAGING_RELEASE_SHA "$STAGING_RELEASE_SHA"
     remote_assignment STAGING_RELEASE_MANIFEST_B64 "$STAGING_RELEASE_MANIFEST_B64"
+    remote_assignment STAGING_DEPLOY_PAYLOAD_B64 "$STAGING_DEPLOY_PAYLOAD_B64"
     remote_assignment STAGING_GHCR_USERNAME "$STAGING_GHCR_USERNAME"
     remote_assignment STAGING_GHCR_TOKEN "$STAGING_GHCR_TOKEN"
 )"
@@ -304,18 +328,9 @@ fi
 # =============================================================================
 # Step 4: Run smoke tests against staging
 # =============================================================================
-log_info "Running smoke tests against staging..."
+log_info "Running staging verification against staging..."
 
-SMOKE_STATE_FILE="$(mktemp)"
-RELEASE_GATE_STATE_FILE=""
-
-if ! bash "$STAGING_SMOKE_SCRIPT_PATH" "$SMOKE_STATE_FILE" "$STAGING_HOST" "$STAGING_SMOKE_URL" "${SSH_CMD[@]}"; then
-    exit 1
-fi
-
-set -a
-. "$SMOKE_STATE_FILE"
-set +a
+VERIFICATION_STATE_FILE="$(mktemp)"
 
 # =============================================================================
 # Step 5: Run release gate and persist staging verification evidence
@@ -323,17 +338,14 @@ set +a
 STAGING_GATE_RESULT="skipped"
 
 if [ "$STAGING_RUN_RELEASE_GATE" = "1" ]; then
-    log_info "Running release gate against staging..."
-
-    RELEASE_GATE_STATE_FILE="$(mktemp)"
-
-    if ! bash "$STAGING_RELEASE_GATE_SCRIPT_PATH" "$RELEASE_GATE_STATE_FILE" "$STAGING_HOST" "$CANONICAL_STAGING_URL" "$STAGING_USE_RELEASE_CANDIDATE" "${SSH_CMD[@]}"; then
+    if ! bash "$STAGING_VERIFICATION_RUNNER_PATH" collect "$VERIFICATION_STATE_FILE" "$STAGING_HOST" "$STAGING_SMOKE_URL" "$CANONICAL_STAGING_URL" "$STAGING_USE_RELEASE_CANDIDATE" "${SSH_CMD[@]}"; then
         exit 1
     fi
 
     set -a
-    . "$RELEASE_GATE_STATE_FILE"
+    . "$VERIFICATION_STATE_FILE"
     set +a
+    STAGING_GATE_RESULT="success"
 
     log_info "Persisting staging verification evidence..."
 
@@ -341,7 +353,7 @@ if [ "$STAGING_RUN_RELEASE_GATE" = "1" ]; then
         remote_assignment STATE_DIR "$STATE_DIR"
         remote_assignment APP_DIR "$APP_DIR"
         remote_assignment STAGING_VERIFIED_AT "$STAGING_VERIFIED_AT"
-        remote_assignment STAGING_SMOKE_STATUS "$STAGING_VERIFICATION_STATUS"
+        remote_assignment STAGING_SMOKE_STATUS "$STAGING_SMOKE_STATUS"
         remote_assignment STAGING_FIREFOX_RELEASE_ARTIFACTS "$STAGING_FIREFOX_RELEASE_ARTIFACTS"
         remote_assignment STAGING_WINDOWS_BOOTSTRAP_RESULT "$STAGING_WINDOWS_BOOTSTRAP_RESULT"
         remote_assignment STAGING_FIREFOX_POLICY_RESULT "$STAGING_FIREFOX_POLICY_RESULT"
@@ -357,6 +369,14 @@ if [ "$STAGING_RUN_RELEASE_GATE" = "1" ]; then
 else
     log_warn "Skipping staging release gate because STAGING_RUN_RELEASE_GATE=$STAGING_RUN_RELEASE_GATE"
     log_warn "Production tag workflow will fail until staging verification evidence is refreshed"
+
+    if ! bash "$STAGING_VERIFICATION_RUNNER_PATH" smoke "$VERIFICATION_STATE_FILE" "$STAGING_HOST" "$STAGING_SMOKE_URL" "${SSH_CMD[@]}"; then
+        exit 1
+    fi
+
+    set -a
+    . "$VERIFICATION_STATE_FILE"
+    set +a
 fi
 
 # =============================================================================
@@ -372,14 +392,14 @@ echo "========================================"
 echo ""
 echo "  Duration: ${DURATION}s"
 echo "  URL: $SMOKE_TARGET_URL"
-echo "  Verification Status: $STAGING_VERIFICATION_STATUS"
+echo "  Verification Status: $STAGING_SMOKE_STATUS"
 echo "  Release Gate: $STAGING_GATE_RESULT"
 if [ -n "${STAGING_DEPLOY_IMAGE_SOURCE:-}" ]; then
     echo "  Image Source: $STAGING_DEPLOY_IMAGE_SOURCE"
 fi
 echo "  Gateway: http://$STAGING_HOST:3001/cp/health"
 echo "  API: http://$STAGING_HOST:3000/health"
-if [ "$STAGING_VERIFICATION_STATUS" = "PASS_WITH_FALLBACK" ]; then
+if [ "$STAGING_SMOKE_STATUS" = "PASS_WITH_FALLBACK" ]; then
     echo "  Note: public-domain smoke required direct-IP fallback; rerun strict smoke before production promotion."
 fi
 echo ""

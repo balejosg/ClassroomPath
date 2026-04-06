@@ -63,6 +63,7 @@ jobs:
       spa_image: ${{ steps.release-images.outputs.spa_image }}
       verifier_image: ${{ steps.release-images.outputs.verifier_image }}
       manifest_base64: ${{ steps.release-images.outputs.manifest_base64 }}
+      payload_base64: ${{ steps.deploy-payload.outputs.payload_base64 }}
       staging_public_url: ${{ steps.deploy-targets.outputs.staging_public_url }}
       staging_gateway_health_url: ${{ steps.deploy-targets.outputs.staging_gateway_health_url }}
       staging_ready_url: ${{ steps.deploy-targets.outputs.staging_ready_url }}
@@ -111,6 +112,21 @@ jobs:
           while IFS='=' read -r key value; do
             echo "production_${key}=$value" >> "$GITHUB_OUTPUT"
           done < <(node scripts/deploy-targets.mjs outputs production)
+
+      - name: Build deploy payload
+        id: deploy-payload
+        shell: bash
+        env:
+          DEPLOY_REF: ${{ github.ref }}
+          DEPLOY_SHA: ${{ github.sha }}
+          RELEASE_MANIFEST_B64: ${{ steps.release-images.outputs.manifest_base64 }}
+        run: |
+          set -euo pipefail
+          node scripts/lib/deploy-payload.mjs render-github-output \
+            --target-environment production \
+            --deploy-ref "$DEPLOY_REF" \
+            --deploy-sha "$DEPLOY_SHA" \
+            --manifest-base64 "$RELEASE_MANIFEST_B64" >> "$GITHUB_OUTPUT"
 
       - name: Upload release image manifest
         uses: actions/upload-artifact@v7
@@ -266,6 +282,7 @@ jobs:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}
+          DEPLOY_PAYLOAD_B64: ${{ needs.resolve-release-images.outputs.payload_base64 }}
           PRODUCTION_DB_BACKUP_COMMAND: ${{ secrets.PRODUCTION_DB_BACKUP_COMMAND }}
           PRODUCTION_DB_BACKUP_ID: ${{ secrets.PRODUCTION_DB_BACKUP_ID }}
         uses: appleboy/ssh-action@v1.2.4
@@ -276,7 +293,7 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 20m
-          envs: DEPLOY_REF,DEPLOY_SHA,GHCR_USERNAME,GHCR_TOKEN,RELEASE_MANIFEST_B64,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID
+          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID
           script_path: scripts/deploy-production-remote.sh
 
   smoke-test-production:

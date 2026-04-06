@@ -363,6 +363,10 @@ describe('Workflow configuration hardening', () => {
       'Deploy workflow should resolve immutable release images'
     );
     assert.ok(
+      (jobs['resolve-release-images']?.outputs ?? {})['payload_base64'],
+      'resolve-release-images should expose the versioned deploy payload'
+    );
+    assert.ok(
       jobs['verify-staging-release-state'],
       'Deploy workflow should verify staging is already running the exact release candidate images'
     );
@@ -448,6 +452,10 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       !resolveRun.includes('docker buildx imagetools inspect'),
       'resolve-release-images should not re-resolve image digests from tags during tag promotion'
+    );
+    assert.ok(
+      resolveRun.includes('node scripts/lib/deploy-payload.mjs render-github-output'),
+      'resolve-release-images should build the shared deploy payload for downstream workflow jobs'
     );
 
     const stagingVerificationSteps = jobs['verify-staging-release-state']?.steps ?? [];

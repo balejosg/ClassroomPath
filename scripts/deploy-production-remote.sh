@@ -59,7 +59,9 @@ fi
 SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
 COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
 RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
+DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-payload.sh")"
 RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
+DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
 RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"
 if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
   RELEASE_RUNTIME_HELPER_PATH="$APP_DIR/scripts/lib/release-runtime.sh"
@@ -194,25 +196,128 @@ else
   source "$RELEASE_MANIFEST_HELPER_PATH"
 fi
 
+if [ ! -f "$DEPLOY_PAYLOAD_HELPER_PATH" ]; then
+  decode_deploy_payload_base64() {
+    local payload_b64="$1"
+    local target_path="${2:-$(mktemp)}"
+
+    if [ -z "$payload_b64" ]; then
+      log_error "Deploy payload is empty"
+      return 1
+    fi
+
+    printf '%s' "$payload_b64" | base64 --decode > "$target_path"
+    printf '%s\n' "$target_path"
+  }
+
+  deploy_payload_get() {
+    local payload_path="$1"
+    local key="$2"
+
+    awk -v key="$key" '
+      index($0, key "=") == 1 {
+        print substr($0, length(key) + 2)
+        found = 1
+        exit
+      }
+      END {
+        if (!found) {
+          exit 1
+        }
+      }
+    ' "$payload_path"
+  }
+else
+  # shellcheck source=lib/deploy-payload.sh
+  source "$DEPLOY_PAYLOAD_HELPER_PATH"
+fi
+
 if [ ! -f "$RELEASE_STATE_HELPER_PATH" ]; then
-  write_current_release_state() {
-    local state_path="$1"
+  write_release_state_snapshot() {
+    local snapshot_type="$1"
+    local state_path="$2"
+    local field=""
+    local value=""
 
     mkdir -p "$(dirname "$state_path")"
+    : > "$state_path"
 
-    cat > "$state_path" <<EOF
-APP_SHA=${APP_SHA:-}
-IMAGE_SOURCE=${IMAGE_SOURCE:-}
-CLASSROOMPATH_GATEWAY_IMAGE=${CLASSROOMPATH_GATEWAY_IMAGE:-}
-CLASSROOMPATH_MIGRATIONS_IMAGE=${CLASSROOMPATH_MIGRATIONS_IMAGE:-}
-OPENPATH_API_IMAGE=${OPENPATH_API_IMAGE:-}
-OPENPATH_LINUX_AGENT_VERSION=${OPENPATH_LINUX_AGENT_VERSION:-}
-CLASSROOMPATH_SPA_IMAGE=${CLASSROOMPATH_SPA_IMAGE:-}
+    case "$snapshot_type" in
+      current-runtime)
+        while IFS= read -r field; do
+          [ -z "$field" ] && continue
+          value="${!field:-}"
+          printf '%s=%q\n' "$field" "$value" >> "$state_path"
+        done <<'EOF'
+APP_SHA
+IMAGE_SOURCE
+CLASSROOMPATH_GATEWAY_IMAGE
+CLASSROOMPATH_MIGRATIONS_IMAGE
+OPENPATH_API_IMAGE
+OPENPATH_LINUX_AGENT_VERSION
+CLASSROOMPATH_SPA_IMAGE
 EOF
+        ;;
+      deploy-context)
+        while IFS= read -r field; do
+          [ -z "$field" ] && continue
+          value="${!field:-}"
+          printf '%s=%q\n' "$field" "$value" >> "$state_path"
+        done <<'EOF'
+TARGET_SHA
+APP_SHA
+PREVIOUS_APP_SHA
+IMAGE_SOURCE
+MIGRATION_RISK_LEVEL
+MIGRATION_CHANGED_FILES
+MIGRATION_DESTRUCTIVE_FILES
+PRODUCTION_BACKUP_REFERENCE
+DB_MIGRATED
+FAILURE_STAGE
+DEPLOY_FAILURE_STAGE
+ROLLBACK_ATTEMPTED
+ROLLBACK_RESULT
+EOF
+        ;;
+      *)
+        log_error "Unsupported snapshot fallback: $snapshot_type"
+        return 1
+        ;;
+    esac
+  }
+
+  write_current_release_state() {
+    local state_path="$1"
+    write_release_state_snapshot "current-runtime" "$state_path"
+  }
+
+  write_deploy_context_state() {
+    local state_path="$1"
+    write_release_state_snapshot "deploy-context" "$state_path"
   }
 else
   # shellcheck source=lib/release-state.sh
   source "$RELEASE_STATE_HELPER_PATH"
+fi
+
+if [ -f "$DEPLOYMENT_STATE_HELPER_PATH" ]; then
+  # shellcheck source=lib/deployment-state.sh
+  source "$DEPLOYMENT_STATE_HELPER_PATH"
+else
+  deployment_state_init_paths() {
+    local state_dir="$1"
+    DEPLOYMENT_STATE_DIR="$state_dir"
+    DEPLOYMENT_STATE_CURRENT_FILE="$state_dir/current-images.env"
+    DEPLOYMENT_STATE_PREVIOUS_FILE="$state_dir/previous-images.env"
+    DEPLOYMENT_STATE_CONTEXT_FILE="$state_dir/deploy-context.env"
+  }
+
+  deployment_state_capture_previous_release() {
+    if [ -f "$DEPLOYMENT_STATE_CURRENT_FILE" ]; then
+      cp "$DEPLOYMENT_STATE_CURRENT_FILE" "$DEPLOYMENT_STATE_PREVIOUS_FILE"
+      PREVIOUS_APP_SHA="$(awk -F= '/^APP_SHA=/{print $2}' "$DEPLOYMENT_STATE_CURRENT_FILE" | head -1)"
+    fi
+  }
 fi
 
 if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
@@ -380,6 +485,7 @@ DEPLOY_DIR="/opt/classroompath"
 STATE_DIR="$DEPLOY_DIR/release-state"
 DEPLOY_CONTEXT_FILE="$STATE_DIR/deploy-context.env"
 mkdir -p "$STATE_DIR"
+deployment_state_init_paths "$STATE_DIR"
 
 DB_MIGRATED=0
 DEPLOY_FAILURE_STAGE="preflight"
@@ -389,11 +495,13 @@ MIGRATION_CHANGED_FILES=""
 MIGRATION_DESTRUCTIVE_FILES=""
 PRODUCTION_BACKUP_REFERENCE=""
 RELEASE_MANIFEST_FILE=""
+DEPLOY_PAYLOAD_FILE=""
+RELEASE_MANIFEST_B64_FROM_PAYLOAD=""
 TARGET_SHA=""
 PRODUCTION_REGISTRY_LOGGED_IN=0
 
 cleanup_production_deploy_artifacts() {
-  rm -f "${RELEASE_MANIFEST_FILE:-}"
+  rm -f "${RELEASE_MANIFEST_FILE:-}" "${DEPLOY_PAYLOAD_FILE:-}"
   if [ "${PRODUCTION_REGISTRY_LOGGED_IN:-0}" = "1" ]; then
     docker logout ghcr.io >/dev/null 2>&1 || true
   fi
@@ -402,16 +510,15 @@ cleanup_production_deploy_artifacts() {
 trap cleanup_production_deploy_artifacts EXIT
 
 write_deploy_context() {
-  cat > "$DEPLOY_CONTEXT_FILE" <<EOF
-TARGET_SHA=$TARGET_SHA
-PREVIOUS_APP_SHA=${PREVIOUS_APP_SHA:-}
-MIGRATION_RISK_LEVEL=${MIGRATION_RISK_LEVEL:-safe}
-MIGRATION_CHANGED_FILES=${MIGRATION_CHANGED_FILES:-}
-MIGRATION_DESTRUCTIVE_FILES=${MIGRATION_DESTRUCTIVE_FILES:-}
-PRODUCTION_BACKUP_REFERENCE=${PRODUCTION_BACKUP_REFERENCE:-}
-DB_MIGRATED=${DB_MIGRATED:-0}
-DEPLOY_FAILURE_STAGE=${DEPLOY_FAILURE_STAGE:-preflight}
-EOF
+  TARGET_SHA="$TARGET_SHA" \
+  PREVIOUS_APP_SHA="${PREVIOUS_APP_SHA:-}" \
+  MIGRATION_RISK_LEVEL="${MIGRATION_RISK_LEVEL:-safe}" \
+  MIGRATION_CHANGED_FILES="${MIGRATION_CHANGED_FILES:-}" \
+  MIGRATION_DESTRUCTIVE_FILES="${MIGRATION_DESTRUCTIVE_FILES:-}" \
+  PRODUCTION_BACKUP_REFERENCE="${PRODUCTION_BACKUP_REFERENCE:-}" \
+  DB_MIGRATED="${DB_MIGRATED:-0}" \
+  DEPLOY_FAILURE_STAGE="${DEPLOY_FAILURE_STAGE:-preflight}" \
+    write_deploy_context_state "$DEPLOY_CONTEXT_FILE"
 }
 
 login_production_registry() {
@@ -421,6 +528,21 @@ login_production_registry() {
 
   echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
   PRODUCTION_REGISTRY_LOGGED_IN=1
+}
+
+load_production_deploy_payload() {
+  local release_manifest_b64=""
+
+  if [ -n "${DEPLOY_PAYLOAD_B64:-}" ]; then
+    DEPLOY_PAYLOAD_FILE="$(mktemp)"
+    decode_deploy_payload_base64 "$DEPLOY_PAYLOAD_B64" "$DEPLOY_PAYLOAD_FILE" >/dev/null
+    TARGET_SHA="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" deploy_sha)"
+    release_manifest_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" manifest_base64)"
+    RELEASE_MANIFEST_B64_FROM_PAYLOAD="$release_manifest_b64"
+  else
+    TARGET_SHA="${DEPLOY_SHA:-}"
+    RELEASE_MANIFEST_B64_FROM_PAYLOAD="${RELEASE_MANIFEST_B64:-}"
+  fi
 }
 
 prepare_production_checkout() {
@@ -441,7 +563,7 @@ prepare_production_checkout() {
     fi
   fi
 
-  if [ -z "$TARGET_SHA" ]; then
+  if [ -z "$TARGET_SHA" ] && [ -n "${DEPLOY_SHA:-}" ]; then
     TARGET_SHA=$(git rev-parse "${DEPLOY_SHA}^{commit}" 2>/dev/null || true)
   fi
 
@@ -460,15 +582,13 @@ prepare_production_checkout() {
 
 load_production_release_manifest() {
   RELEASE_MANIFEST_FILE="$(mktemp)"
-  decode_release_manifest_base64 "$RELEASE_MANIFEST_B64" "$RELEASE_MANIFEST_FILE" >/dev/null
+  decode_release_manifest_base64 "$RELEASE_MANIFEST_B64" "$RELEASE_MANIFEST_FILE" >/dev/null || true
+  decode_release_manifest_base64 "$RELEASE_MANIFEST_B64_FROM_PAYLOAD" "$RELEASE_MANIFEST_FILE" >/dev/null
   load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"
 }
 
 classify_production_migration_risk() {
-  if [ -f "$STATE_DIR/current-images.env" ]; then
-    cp "$STATE_DIR/current-images.env" "$STATE_DIR/previous-images.env"
-    PREVIOUS_APP_SHA="$(grep '^APP_SHA=' "$STATE_DIR/current-images.env" | cut -d= -f2- || true)"
-  fi
+  deployment_state_capture_previous_release
 
   classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
 
@@ -602,6 +722,7 @@ wait_for_production_runtime_readiness() {
   done
 }
 
+load_production_deploy_payload
 prepare_production_checkout
 load_production_release_manifest
 classify_production_migration_risk

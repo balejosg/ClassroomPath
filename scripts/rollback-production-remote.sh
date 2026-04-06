@@ -58,6 +58,8 @@ fi
 
 SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
 COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
+RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
+DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
 
 upsert_env_file_var() {
   local path="$1"
@@ -90,30 +92,61 @@ upsert_env_file_var() {
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
-DEPLOY_DIR="/opt/classroompath"
-STATE_DIR="$DEPLOY_DIR/release-state"
-PREVIOUS_FILE="$STATE_DIR/previous-images.env"
-CURRENT_FILE="$STATE_DIR/current-images.env"
-DEPLOY_CONTEXT_FILE="$STATE_DIR/deploy-context.env"
-
-if [ ! -f "$PREVIOUS_FILE" ]; then
-  log_error "No previous release metadata available for rollback"
-  exit 1
+if [ -f "$RELEASE_STATE_HELPER_PATH" ]; then
+  # shellcheck source=lib/release-state.sh
+  source "$RELEASE_STATE_HELPER_PATH"
 fi
 
-set -a
-. "$PREVIOUS_FILE"
-set +a
+if [ -f "$DEPLOYMENT_STATE_HELPER_PATH" ]; then
+  # shellcheck source=lib/deployment-state.sh
+  source "$DEPLOYMENT_STATE_HELPER_PATH"
+else
+  deployment_state_init_paths() {
+    local state_dir="$1"
+    DEPLOYMENT_STATE_DIR="$state_dir"
+    DEPLOYMENT_STATE_CURRENT_FILE="$state_dir/current-images.env"
+    DEPLOYMENT_STATE_PREVIOUS_FILE="$state_dir/previous-images.env"
+    DEPLOYMENT_STATE_CONTEXT_FILE="$state_dir/deploy-context.env"
+  }
+
+  deployment_state_load_previous_release() {
+    if [ ! -f "$DEPLOYMENT_STATE_PREVIOUS_FILE" ]; then
+      log_error "No previous release metadata available: $DEPLOYMENT_STATE_PREVIOUS_FILE"
+      return 1
+    fi
+
+    set -a
+    # shellcheck disable=SC1090
+    . "$DEPLOYMENT_STATE_PREVIOUS_FILE"
+    set +a
+  }
+
+  deployment_state_load_context() {
+    if [ -f "$DEPLOYMENT_STATE_CONTEXT_FILE" ]; then
+      set -a
+      # shellcheck disable=SC1090
+      . "$DEPLOYMENT_STATE_CONTEXT_FILE"
+      set +a
+    fi
+  }
+
+  deployment_state_activate_previous_release() {
+    cp "$DEPLOYMENT_STATE_PREVIOUS_FILE" "$DEPLOYMENT_STATE_CURRENT_FILE"
+  }
+fi
+
+DEPLOY_DIR="/opt/classroompath"
+STATE_DIR="$DEPLOY_DIR/release-state"
+deployment_state_init_paths "$STATE_DIR"
+deployment_state_load_previous_release
 
 if [ -z "${APP_SHA:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
   log_error "Previous release metadata is incomplete"
   exit 1
 fi
 
-if [ -f "$DEPLOY_CONTEXT_FILE" ]; then
-  set -a
-  . "$DEPLOY_CONTEXT_FILE"
-  set +a
+deployment_state_load_context
+if [ -n "${MIGRATION_RISK_LEVEL:-}" ] || [ -n "${DB_MIGRATED:-}" ] || [ -n "${PRODUCTION_BACKUP_REFERENCE:-}" ]; then
   log_warn "Rollback context: migration risk=${MIGRATION_RISK_LEVEL:-unknown}, db_migrated=${DB_MIGRATED:-unknown}, backup=${PRODUCTION_BACKUP_REFERENCE:-none}"
 fi
 
@@ -138,7 +171,7 @@ docker compose pull gateway api spa
 log_info "Recreating containers from previous release state..."
 docker compose up -d --force-recreate --no-build
 
-cp "$PREVIOUS_FILE" "$CURRENT_FILE"
+deployment_state_activate_previous_release
 
 for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
