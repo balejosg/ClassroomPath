@@ -12,17 +12,57 @@ else
   SCRIPT_DIR="$APP_DIR/scripts"
 fi
 
-COMMON_SH_PATH="$SCRIPT_DIR/lib/common.sh"
-if [ ! -f "$COMMON_SH_PATH" ]; then
-  COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"
+REMOTE_BOOTSTRAP_HELPER_PATH="$SCRIPT_DIR/lib/remote-bootstrap.sh"
+if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  REMOTE_BOOTSTRAP_HELPER_PATH="$APP_DIR/scripts/lib/remote-bootstrap.sh"
 fi
-RELEASE_MANIFEST_HELPER_PATH="$SCRIPT_DIR/lib/release-manifest.sh"
-if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
-  RELEASE_MANIFEST_HELPER_PATH="$APP_DIR/scripts/lib/release-manifest.sh"
+
+if [ -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  # shellcheck source=lib/remote-bootstrap.sh
+  source "$REMOTE_BOOTSTRAP_HELPER_PATH"
+else
+  resolve_remote_script_dir() {
+    local app_dir="$1"
+    local script_source="${2:-}"
+
+    if [ -n "$script_source" ]; then
+      cd "$(dirname "$script_source")" && pwd
+      return 0
+    fi
+
+    printf '%s/scripts\n' "$app_dir"
+  }
+
+  resolve_remote_helper_path() {
+    local script_dir="$1"
+    local app_dir="$2"
+    local relative_path="$3"
+    local resolved_path="$script_dir/$relative_path"
+
+    if [ ! -f "$resolved_path" ]; then
+      resolved_path="$app_dir/scripts/$relative_path"
+    fi
+
+    printf '%s\n' "$resolved_path"
+  }
+
+  reload_deployed_common_helpers() {
+    local common_sh_deployed_path="${1:-}"
+
+    if [ -f "$common_sh_deployed_path" ]; then
+      # shellcheck disable=SC1090
+      source "$common_sh_deployed_path"
+    fi
+  }
 fi
-RELEASE_STATE_HELPER_PATH="$SCRIPT_DIR/lib/release-state.sh"
-if [ ! -f "$RELEASE_STATE_HELPER_PATH" ]; then
-  RELEASE_STATE_HELPER_PATH="$APP_DIR/scripts/lib/release-state.sh"
+
+SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
+COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
+RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
+RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
+RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"
+if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
+  RELEASE_RUNTIME_HELPER_PATH="$APP_DIR/scripts/lib/release-runtime.sh"
 fi
 
 if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
@@ -175,6 +215,39 @@ else
   source "$RELEASE_STATE_HELPER_PATH"
 fi
 
+if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
+  load_release_manifest_runtime() {
+    local manifest_path="$1"
+    local expected_sha="${2:-}"
+
+    release_manifest_validate_contract "$manifest_path" "$expected_sha"
+    export_release_manifest_runtime_env "$manifest_path"
+  }
+
+  write_release_runtime_state() {
+    local state_path="$1"
+    local app_sha="$2"
+    local image_source="$3"
+    local gateway_image="$4"
+    local migrations_image="$5"
+    local openpath_api_image="$6"
+    local openpath_linux_agent_version="$7"
+    local spa_image="$8"
+
+    APP_SHA="$app_sha" \
+    IMAGE_SOURCE="$image_source" \
+    CLASSROOMPATH_GATEWAY_IMAGE="$gateway_image" \
+    CLASSROOMPATH_MIGRATIONS_IMAGE="$migrations_image" \
+    OPENPATH_API_IMAGE="$openpath_api_image" \
+    OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
+    CLASSROOMPATH_SPA_IMAGE="$spa_image" \
+      write_current_release_state "$state_path"
+  }
+else
+  # shellcheck source=lib/release-runtime.sh
+  source "$RELEASE_RUNTIME_HELPER_PATH"
+fi
+
 upsert_env_file_var() {
   local path="$1"
   local key="$2"
@@ -290,13 +363,6 @@ classify_migration_risk() {
   MIGRATION_DESTRUCTIVE_FILES="$(IFS=,; printf '%s' "${destructive_files[*]}")"
 }
 
-reload_deployed_common_helpers() {
-  if [ -f "$COMMON_SH_DEPLOYED_PATH" ]; then
-    # shellcheck disable=SC1090
-    source "$COMMON_SH_DEPLOYED_PATH"
-  fi
-}
-
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 if [ -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
@@ -389,14 +455,13 @@ prepare_production_checkout() {
   git reset --hard "$TARGET_SHA"
   git submodule deinit -f --all || true
   git submodule update --init --recursive --force
-  reload_deployed_common_helpers
+  reload_deployed_common_helpers "$COMMON_SH_DEPLOYED_PATH"
 }
 
 load_production_release_manifest() {
   RELEASE_MANIFEST_FILE="$(mktemp)"
   decode_release_manifest_base64 "$RELEASE_MANIFEST_B64" "$RELEASE_MANIFEST_FILE" >/dev/null
-  release_manifest_validate_contract "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"
-  export_release_manifest_runtime_env "$RELEASE_MANIFEST_FILE"
+  load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"
 }
 
 classify_production_migration_risk() {
@@ -444,6 +509,15 @@ run_production_database_migrations() {
 }
 
 start_production_runtime() {
+  plan_production_runtime_deploy
+  apply_production_runtime_deploy
+}
+
+plan_production_runtime_deploy() {
+  PRODUCTION_DEPLOY_PLAN="release-candidate"
+}
+
+apply_production_runtime_deploy() {
   cd "$APP_DIR/docker"
   export COMPOSE_PROJECT_NAME=classroompath-production
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"
@@ -461,14 +535,19 @@ start_production_runtime() {
   log_info "Starting containers from immutable images..."
   docker compose up -d --force-recreate --no-build
 
-  APP_SHA="$TARGET_SHA" \
-  IMAGE_SOURCE="release-candidate" \
-  CLASSROOMPATH_GATEWAY_IMAGE="$CLASSROOMPATH_GATEWAY_IMAGE" \
-  CLASSROOMPATH_MIGRATIONS_IMAGE="$CLASSROOMPATH_MIGRATIONS_IMAGE" \
-  OPENPATH_API_IMAGE="$OPENPATH_API_IMAGE" \
-  OPENPATH_LINUX_AGENT_VERSION=$OPENPATH_LINUX_AGENT_VERSION \
-  CLASSROOMPATH_SPA_IMAGE="$CLASSROOMPATH_SPA_IMAGE" \
-    write_current_release_state "$STATE_DIR/current-images.env"
+  if [ "${PRODUCTION_DEPLOY_PLAN:-}" != "release-candidate" ]; then
+    die "Unknown production deploy plan: ${PRODUCTION_DEPLOY_PLAN:-unset}" 1
+  fi
+
+  write_release_runtime_state \
+    "$STATE_DIR/current-images.env" \
+    "$TARGET_SHA" \
+    "release-candidate" \
+    "$CLASSROOMPATH_GATEWAY_IMAGE" \
+    "$CLASSROOMPATH_MIGRATIONS_IMAGE" \
+    "$OPENPATH_API_IMAGE" \
+    "$OPENPATH_LINUX_AGENT_VERSION" \
+    "$CLASSROOMPATH_SPA_IMAGE"
 }
 
 wait_for_production_runtime_readiness() {

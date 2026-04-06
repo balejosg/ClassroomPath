@@ -530,6 +530,46 @@ void describe('Migration Tooling', () => {
     );
   });
 
+  void test('remote bootstrap helper centralizes streamed ssh script context and helper resolution', () => {
+    const remoteBootstrapPath = resolve(projectRoot, 'scripts/lib/remote-bootstrap.sh');
+    const remoteBootstrap = readFileSync(remoteBootstrapPath, 'utf-8');
+    const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
+    const productionRemote = readFileSync(
+      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
+      'utf-8'
+    );
+    const rollbackRemote = readFileSync(
+      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
+      'utf-8'
+    );
+    const persistVerification = readFileSync(
+      resolve(projectRoot, 'scripts/persist-staging-verification-remote.sh'),
+      'utf-8'
+    );
+
+    assert.ok(existsSync(remoteBootstrapPath), 'scripts/lib/remote-bootstrap.sh should exist');
+    assert.ok(
+      remoteBootstrap.includes('resolve_remote_script_dir()') &&
+        remoteBootstrap.includes('resolve_remote_helper_path()') &&
+        remoteBootstrap.includes('reload_deployed_common_helpers()'),
+      'remote-bootstrap helper should own streamed-script path resolution and deployed helper reloads'
+    );
+
+    for (const [scriptName, content] of [
+      ['deploy-staging-remote.sh', stagingRemote],
+      ['deploy-production-remote.sh', productionRemote],
+      ['rollback-production-remote.sh', rollbackRemote],
+      ['persist-staging-verification-remote.sh', persistVerification],
+    ] as const) {
+      assert.ok(
+        content.includes('REMOTE_BOOTSTRAP_HELPER_PATH=') &&
+          content.includes('resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE"') &&
+          content.includes('resolve_remote_helper_path'),
+        `${scriptName} should reuse the shared remote bootstrap helper when available`
+      );
+    }
+  });
+
   void test('verify-full skips coverage cleanup and gating when no API/SPA source coverage is needed', () => {
     const content = readFileSync(verifyFullScriptPath, 'utf-8');
 
@@ -616,9 +656,7 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       remoteContent.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
-        remoteContent.includes(
-          'export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"'
-        ),
+        remoteContent.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"'),
       'staging remote deploy should derive the release-candidate image refs from the shared manifest payload'
     );
     assert.ok(
@@ -1141,7 +1179,8 @@ void describe('Migration Tooling', () => {
       'deploy workflow should replace the fixed smoke delay with readiness polling'
     );
     assert.ok(
-      deployRemoteScript.includes('OPENPATH_LINUX_AGENT_VERSION=$OPENPATH_LINUX_AGENT_VERSION'),
+      deployRemoteScript.includes('write_release_runtime_state') &&
+        deployRemoteScript.includes('"$OPENPATH_LINUX_AGENT_VERSION"'),
       'production deploy should persist the pinned OpenPath Linux agent version in release-state metadata'
     );
     assert.ok(
@@ -1152,12 +1191,16 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       deployRemoteScript.includes('decode_release_manifest_base64 "$RELEASE_MANIFEST_B64"') &&
-        deployRemoteScript.includes('export_release_manifest_runtime_env "$RELEASE_MANIFEST_FILE"'),
+        deployRemoteScript.includes(
+          'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
+        ),
       'production deploy should load immutable image refs from the shared release manifest helper'
     );
     assert.ok(
-      deployRemoteScript.includes('COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"'),
-      'production deploy should fall back to the absolute common.sh path when the remote runner does not preserve the original script directory'
+      deployRemoteScript.includes(
+        'COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"'
+      ),
+      'production deploy should resolve common.sh through the shared remote bootstrap helper when the runner does not preserve the original script directory'
     );
     assert.ok(
       deployRemoteScript.includes('classify_migration_risk() {'),
@@ -1320,9 +1363,7 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       stagingRemote.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
-        stagingRemote.includes(
-          'export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"'
-        ),
+        stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"'),
       'deploy-staging-remote.sh should decode and load the single release manifest payload'
     );
     assert.ok(
@@ -1340,11 +1381,45 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       productionRemote.includes('decode_release_manifest_base64 "$RELEASE_MANIFEST_B64"') &&
-        productionRemote.includes('export_release_manifest_runtime_env "$RELEASE_MANIFEST_FILE"') &&
         productionRemote.includes(
-          'release_manifest_validate_contract "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
+          'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
         ),
       'deploy-production-remote.sh should validate and load release images from the shared manifest helper'
+    );
+  });
+
+  void test('release runtime helper centralizes manifest loading and runtime state writes', () => {
+    const releaseRuntimeHelperPath = resolve(projectRoot, 'scripts/lib/release-runtime.sh');
+    const releaseRuntimeHelper = readFileSync(releaseRuntimeHelperPath, 'utf-8');
+    const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
+    const productionRemote = readFileSync(
+      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
+      'utf-8'
+    );
+
+    assert.ok(existsSync(releaseRuntimeHelperPath), 'scripts/lib/release-runtime.sh should exist');
+    assert.ok(
+      releaseRuntimeHelper.includes('load_release_manifest_runtime()') &&
+        releaseRuntimeHelper.includes('write_release_runtime_state()'),
+      'release-runtime helper should own manifest-to-env loading and current runtime state persistence'
+    );
+    assert.ok(
+      stagingRemote.includes('RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"') &&
+        stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"') &&
+        stagingRemote.includes('write_release_runtime_state') &&
+        stagingRemote.includes('"$CURRENT_STATE_FILE"'),
+      'deploy-staging-remote.sh should reuse the shared release-runtime helper'
+    );
+    assert.ok(
+      productionRemote.includes(
+        'RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"'
+      ) &&
+        productionRemote.includes(
+          'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
+        ) &&
+        productionRemote.includes('write_release_runtime_state') &&
+        productionRemote.includes('"$STATE_DIR/current-images.env"'),
+      'deploy-production-remote.sh should reuse the shared release-runtime helper'
     );
   });
 
@@ -1373,6 +1448,13 @@ void describe('Migration Tooling', () => {
           content.indexOf('wait_for_staging_runtime_readiness'),
       'deploy-staging-remote.sh should invoke the remote deploy phases in a stable order'
     );
+    assert.ok(
+      content.includes('plan_staging_runtime_deploy()') &&
+        content.includes('apply_staging_runtime_deploy()') &&
+        content.indexOf('plan_staging_runtime_deploy') <
+          content.indexOf('apply_staging_runtime_deploy'),
+      'deploy-staging-remote.sh should separate deployment planning from remote side effects'
+    );
   });
 
   void test('release-state helpers centralize current-image and staging-verification evidence writes', () => {
@@ -1400,23 +1482,21 @@ void describe('Migration Tooling', () => {
       'release-state helper should own reading and writing deployment evidence snapshots'
     );
     assert.ok(
-      stagingRemote.includes('RELEASE_STATE_HELPER_PATH="$SCRIPT_DIR/lib/release-state.sh"') &&
+      stagingRemote.includes('RELEASE_STATE_HELPER_PATH') &&
         stagingRemote.includes('write_current_release_state() {') &&
-        stagingRemote.includes('write_current_release_state "$CURRENT_STATE_FILE"'),
+        stagingRemote.includes('write_release_runtime_state'),
       'deploy-staging-remote.sh should reuse the shared release-state writer'
     );
     assert.ok(
-      productionRemote.includes('RELEASE_STATE_HELPER_PATH="$SCRIPT_DIR/lib/release-state.sh"') &&
+      productionRemote.includes('RELEASE_STATE_HELPER_PATH') &&
         productionRemote.includes('write_current_release_state() {') &&
-        productionRemote.includes('write_current_release_state "$STATE_DIR/current-images.env"'),
+        productionRemote.includes('write_release_runtime_state'),
       'deploy-production-remote.sh should reuse the shared release-state writer'
     );
     assert.ok(
       persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&
         persistVerification.includes('SCRIPT_DIR="$APP_DIR/scripts"') &&
-        persistVerification.includes(
-          'RELEASE_STATE_HELPER_PATH="$SCRIPT_DIR/lib/release-state.sh"'
-        ) &&
+        persistVerification.includes('RELEASE_STATE_HELPER_PATH') &&
         persistVerification.includes('write_staging_verification_state() {') &&
         persistVerification.includes(
           'write_staging_verification_state "$STATE_DIR/staging-verification.env"'
@@ -1457,6 +1537,13 @@ void describe('Migration Tooling', () => {
         content.indexOf('start_production_runtime') <
           content.indexOf('wait_for_production_runtime_readiness'),
       'deploy-production-remote.sh should invoke the remote production phases in a stable order'
+    );
+    assert.ok(
+      content.includes('plan_production_runtime_deploy()') &&
+        content.includes('apply_production_runtime_deploy()') &&
+        content.indexOf('plan_production_runtime_deploy') <
+          content.indexOf('apply_production_runtime_deploy'),
+      'deploy-production-remote.sh should separate deployment planning from remote side effects'
     );
   });
 });

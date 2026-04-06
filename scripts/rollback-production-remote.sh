@@ -12,10 +12,52 @@ else
   SCRIPT_DIR="$APP_DIR/scripts"
 fi
 
-COMMON_SH_PATH="$SCRIPT_DIR/lib/common.sh"
-if [ ! -f "$COMMON_SH_PATH" ]; then
-  COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"
+REMOTE_BOOTSTRAP_HELPER_PATH="$SCRIPT_DIR/lib/remote-bootstrap.sh"
+if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  REMOTE_BOOTSTRAP_HELPER_PATH="$APP_DIR/scripts/lib/remote-bootstrap.sh"
 fi
+
+if [ -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  # shellcheck source=lib/remote-bootstrap.sh
+  source "$REMOTE_BOOTSTRAP_HELPER_PATH"
+else
+  resolve_remote_script_dir() {
+    local app_dir="$1"
+    local script_source="${2:-}"
+
+    if [ -n "$script_source" ]; then
+      cd "$(dirname "$script_source")" && pwd
+      return 0
+    fi
+
+    printf '%s/scripts\n' "$app_dir"
+  }
+
+  resolve_remote_helper_path() {
+    local script_dir="$1"
+    local app_dir="$2"
+    local relative_path="$3"
+    local resolved_path="$script_dir/$relative_path"
+
+    if [ ! -f "$resolved_path" ]; then
+      resolved_path="$app_dir/scripts/$relative_path"
+    fi
+
+    printf '%s\n' "$resolved_path"
+  }
+
+  reload_deployed_common_helpers() {
+    local common_sh_deployed_path="${1:-}"
+
+    if [ -f "$common_sh_deployed_path" ]; then
+      # shellcheck disable=SC1090
+      source "$common_sh_deployed_path"
+    fi
+  }
+fi
+
+SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
+COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
 
 upsert_env_file_var() {
   local path="$1"
@@ -43,13 +85,6 @@ upsert_env_file_var() {
   ' "$path" > "$tmp_file"
 
   mv "$tmp_file" "$path"
-}
-
-reload_deployed_common_helpers() {
-  if [ -f "$COMMON_SH_DEPLOYED_PATH" ]; then
-    # shellcheck disable=SC1090
-    source "$COMMON_SH_DEPLOYED_PATH"
-  fi
 }
 
 # shellcheck source=lib/common.sh
@@ -89,7 +124,7 @@ git checkout --detach "$APP_SHA"
 git reset --hard "$APP_SHA"
 git submodule deinit -f --all || true
 git submodule update --init --recursive --force
-reload_deployed_common_helpers
+reload_deployed_common_helpers "$COMMON_SH_DEPLOYED_PATH"
 
 echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT

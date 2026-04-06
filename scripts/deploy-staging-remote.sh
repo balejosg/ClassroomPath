@@ -12,16 +12,61 @@ else
   SCRIPT_DIR="$APP_DIR/scripts"
 fi
 
+REMOTE_BOOTSTRAP_HELPER_PATH="$SCRIPT_DIR/lib/remote-bootstrap.sh"
+if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  REMOTE_BOOTSTRAP_HELPER_PATH="$APP_DIR/scripts/lib/remote-bootstrap.sh"
+fi
+
+if [ -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  # shellcheck source=lib/remote-bootstrap.sh
+  source "$REMOTE_BOOTSTRAP_HELPER_PATH"
+else
+  resolve_remote_script_dir() {
+    local app_dir="$1"
+    local script_source="${2:-}"
+
+    if [ -n "$script_source" ]; then
+      cd "$(dirname "$script_source")" && pwd
+      return 0
+    fi
+
+    printf '%s/scripts\n' "$app_dir"
+  }
+
+  resolve_remote_helper_path() {
+    local script_dir="$1"
+    local app_dir="$2"
+    local relative_path="$3"
+    local resolved_path="$script_dir/$relative_path"
+
+    if [ ! -f "$resolved_path" ]; then
+      resolved_path="$app_dir/scripts/$relative_path"
+    fi
+
+    printf '%s\n' "$resolved_path"
+  }
+
+  reload_deployed_common_helpers() {
+    local common_sh_deployed_path="${1:-}"
+
+    if [ -f "$common_sh_deployed_path" ]; then
+      # shellcheck disable=SC1090
+      source "$common_sh_deployed_path"
+    fi
+  }
+fi
+
+SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
+COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
+RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
+RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
+RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"
+if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
+  RELEASE_RUNTIME_HELPER_PATH="$APP_DIR/scripts/lib/release-runtime.sh"
+fi
+
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
-RELEASE_MANIFEST_HELPER_PATH="$SCRIPT_DIR/lib/release-manifest.sh"
-if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
-  RELEASE_MANIFEST_HELPER_PATH="$APP_DIR/scripts/lib/release-manifest.sh"
-fi
-RELEASE_STATE_HELPER_PATH="$SCRIPT_DIR/lib/release-state.sh"
-if [ ! -f "$RELEASE_STATE_HELPER_PATH" ]; then
-  RELEASE_STATE_HELPER_PATH="$APP_DIR/scripts/lib/release-state.sh"
-fi
+source "$COMMON_SH_PATH"
 
 if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
   release_manifest_get() {
@@ -173,6 +218,39 @@ else
   source "$RELEASE_STATE_HELPER_PATH"
 fi
 
+if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
+  load_release_manifest_runtime() {
+    local manifest_path="$1"
+    local expected_sha="${2:-}"
+
+    release_manifest_validate_contract "$manifest_path" "$expected_sha"
+    export_release_manifest_runtime_env "$manifest_path"
+  }
+
+  write_release_runtime_state() {
+    local state_path="$1"
+    local app_sha="$2"
+    local image_source="$3"
+    local gateway_image="$4"
+    local migrations_image="$5"
+    local openpath_api_image="$6"
+    local openpath_linux_agent_version="$7"
+    local spa_image="$8"
+
+    APP_SHA="$app_sha" \
+    IMAGE_SOURCE="$image_source" \
+    CLASSROOMPATH_GATEWAY_IMAGE="$gateway_image" \
+    CLASSROOMPATH_MIGRATIONS_IMAGE="$migrations_image" \
+    OPENPATH_API_IMAGE="$openpath_api_image" \
+    OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
+    CLASSROOMPATH_SPA_IMAGE="$spa_image" \
+      write_current_release_state "$state_path"
+  }
+else
+  # shellcheck source=lib/release-runtime.sh
+  source "$RELEASE_RUNTIME_HELPER_PATH"
+fi
+
 STATE_DIR="/opt/classroompath/release-state"
 CURRENT_STATE_FILE="$STATE_DIR/current-images.env"
 PREVIOUS_STATE_FILE="$STATE_DIR/previous-images.env"
@@ -210,14 +288,15 @@ copy_release_state() {
 
 write_release_state() {
   copy_release_state
-  APP_SHA="${STAGING_RELEASE_SHA:-origin-main}" \
-  IMAGE_SOURCE="$IMAGE_SOURCE" \
-  CLASSROOMPATH_GATEWAY_IMAGE="$RESOLVED_GATEWAY_IMAGE" \
-  CLASSROOMPATH_MIGRATIONS_IMAGE="$RESOLVED_MIGRATIONS_IMAGE" \
-  OPENPATH_API_IMAGE="$RESOLVED_OPENPATH_API_IMAGE" \
-  OPENPATH_LINUX_AGENT_VERSION="$RESOLVED_OPENPATH_LINUX_AGENT_VERSION" \
-  CLASSROOMPATH_SPA_IMAGE="$RESOLVED_SPA_IMAGE" \
-    write_current_release_state "$CURRENT_STATE_FILE"
+  write_release_runtime_state \
+    "$CURRENT_STATE_FILE" \
+    "${STAGING_RELEASE_SHA:-origin-main}" \
+    "$IMAGE_SOURCE" \
+    "$RESOLVED_GATEWAY_IMAGE" \
+    "$RESOLVED_MIGRATIONS_IMAGE" \
+    "$RESOLVED_OPENPATH_API_IMAGE" \
+    "$RESOLVED_OPENPATH_LINUX_AGENT_VERSION" \
+    "$RESOLVED_SPA_IMAGE"
 }
 
 write_deploy_context() {
@@ -384,8 +463,7 @@ load_staging_release_manifest() {
 
   STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
   decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
-  release_manifest_validate_contract "$STAGING_RELEASE_MANIFEST_FILE"
-  export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"
+  load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"
 
   STAGING_RELEASE_SHA="$RELEASE_MANIFEST_APP_SHA"
 }
@@ -451,16 +529,36 @@ run_staging_database_migrations() {
 start_staging_runtime() {
   cd "$APP_DIR/docker"
 
+  plan_staging_runtime_deploy
+
+  if ! apply_staging_runtime_deploy; then
+    fail_after_migrations "$STAGING_DEPLOY_FAILURE_MESSAGE"
+  fi
+}
+
+plan_staging_runtime_deploy() {
   if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
-    if ! deploy_from_source; then
-      fail_after_migrations "Staging source deployment failed after migrations"
-    fi
+    STAGING_DEPLOY_PLAN="source-build"
+    STAGING_DEPLOY_FAILURE_MESSAGE="Staging source deployment failed after migrations"
     return 0
   fi
 
-  if ! deploy_with_release_candidates; then
-    fail_after_migrations "Staging release-candidate deploy failed after migrations"
-  fi
+  STAGING_DEPLOY_PLAN="release-candidate"
+  STAGING_DEPLOY_FAILURE_MESSAGE="Staging release-candidate deploy failed after migrations"
+}
+
+apply_staging_runtime_deploy() {
+  case "${STAGING_DEPLOY_PLAN:-}" in
+    source-build)
+      deploy_from_source
+      ;;
+    release-candidate)
+      deploy_with_release_candidates
+      ;;
+    *)
+      die "Unknown staging deploy plan: ${STAGING_DEPLOY_PLAN:-unset}" 1
+      ;;
+  esac
 }
 
 wait_for_staging_runtime_readiness() {

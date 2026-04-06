@@ -11,12 +11,47 @@ else
   SCRIPT_DIR="$APP_DIR/scripts"
 fi
 
-# shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
-RELEASE_STATE_HELPER_PATH="$SCRIPT_DIR/lib/release-state.sh"
-if [ ! -f "$RELEASE_STATE_HELPER_PATH" ]; then
-  RELEASE_STATE_HELPER_PATH="$APP_DIR/scripts/lib/release-state.sh"
+REMOTE_BOOTSTRAP_HELPER_PATH="$SCRIPT_DIR/lib/remote-bootstrap.sh"
+if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  REMOTE_BOOTSTRAP_HELPER_PATH="$APP_DIR/scripts/lib/remote-bootstrap.sh"
 fi
+
+if [ -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  # shellcheck source=lib/remote-bootstrap.sh
+  source "$REMOTE_BOOTSTRAP_HELPER_PATH"
+else
+  resolve_remote_script_dir() {
+    local app_dir="$1"
+    local script_source="${2:-}"
+
+    if [ -n "$script_source" ]; then
+      cd "$(dirname "$script_source")" && pwd
+      return 0
+    fi
+
+    printf '%s/scripts\n' "$app_dir"
+  }
+
+  resolve_remote_helper_path() {
+    local script_dir="$1"
+    local app_dir="$2"
+    local relative_path="$3"
+    local resolved_path="$script_dir/$relative_path"
+
+    if [ ! -f "$resolved_path" ]; then
+      resolved_path="$app_dir/scripts/$relative_path"
+    fi
+
+    printf '%s\n' "$resolved_path"
+  }
+fi
+
+SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
+COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
+RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
+
+# shellcheck source=lib/common.sh
+source "$COMMON_SH_PATH"
 
 if [ ! -f "$RELEASE_STATE_HELPER_PATH" ]; then
   load_release_state_env() {
