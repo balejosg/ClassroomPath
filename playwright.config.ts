@@ -22,6 +22,7 @@ const cpGatewayPort = Number(process.env.CP_GATEWAY_PORT ?? '3001');
 const workersFromEnv = Number(process.env.PLAYWRIGHT_WORKERS ?? '');
 const configuredWorkers =
   Number.isFinite(workersFromEnv) && workersFromEnv > 0 ? Math.floor(workersFromEnv) : isCI ? 2 : 5;
+const jsonOutputFile = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE;
 
 const shouldUseWebServer =
   !process.env.BASE_URL || baseURL.includes('localhost') || baseURL.includes('127.0.0.1');
@@ -49,9 +50,11 @@ export default defineConfig({
   workers: configuredWorkers,
 
   /* Reporter configuration */
-  reporter: isCI
-    ? [['html'], ['junit', { outputFile: 'tests/e2e/test-results/results.xml' }]]
-    : 'list',
+  reporter: jsonOutputFile
+    ? [['list'], ['json', { outputFile: jsonOutputFile }]]
+    : isCI
+      ? [['html'], ['junit', { outputFile: 'tests/e2e/test-results/results.xml' }]]
+      : 'list',
 
   /* Shared settings */
   use: {

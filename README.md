@@ -179,13 +179,10 @@ docker compose up -d --build
 ## Verification
 
 ```bash
-# Default verification lane (faster): excludes @slow-network and @repro E2E suites
+# Canonical local verification lane: requires and runs the full Playwright suite
 npm run verify:full
 
-# Full stress lane: includes all E2E suites
-VERIFY_ALL=1 npm run verify:full
-
-# Playwright-only fast lane (without full pipeline)
+# Playwright-only alias retained for compatibility; it also runs the full suite
 npm run test:e2e:verify-fast
 
 # Mobile/responsive tagged lane
@@ -198,6 +195,7 @@ PLAYWRIGHT_WORKERS=2 npm run verify:full
 ## Release-Ready Definition
 
 - Local `verify:full` is green before push.
+- Playwright browsers are installed locally; missing browsers are a hard failure, not a skipped lane.
 - `npm run deploy:staging` exits `0` and reports `PASS` or `PASS_WITH_FALLBACK`.
 - `npm run test:release-gate:staging` is green before tagging.
 - The production tag workflow finishes green and publishes `release-evidence-<tag>`.

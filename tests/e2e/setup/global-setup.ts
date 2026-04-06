@@ -18,6 +18,7 @@ import {
   deriveDatabaseComponentEnv,
   resolveDatabaseUrl,
 } from '../../../api/src/lib/database-url.js';
+import { clearTestEmailSink } from '../../../api/src/lib/test-email-sink.js';
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -190,6 +191,8 @@ async function globalSetup(_config: FullConfig): Promise<void> {
   if (!apiReady) {
     throw new Error(`E2E global setup failed: OpenPath API not ready at ${API_URL}/health`);
   }
+
+  await clearTestEmailSink();
 
   // Ensure tables are empty so seeding is deterministic and db:push never prompts.
   await runTruncateOnly();

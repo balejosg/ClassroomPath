@@ -20,15 +20,15 @@ This matrix is optimized for a solo-dev workflow: trust comes from clear evidenc
 
 ## Risk To Proof Mapping
 
-| Risk                                      | Primary proof                                     | Where it runs                     | Notes                                                                                |
-| ----------------------------------------- | ------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
-| Broken build or type/lint regression      | `verify:commit`                                   | Developer machine                 | Fast local gate; intentionally not duplicated in GitHub Actions                      |
-| Regressed browser/UI flow                 | Commit smoke Playwright in `verify:commit`        | Developer machine                 | Broad release lane stays available explicitly via `verify:release`                   |
-| Broken staging deployment                 | `npm run deploy:staging`                          | Developer machine + staging host  | Deploys `origin/main`, runs live smoke, and records staging evidence                 |
-| Public auth payload unsafe                | `tests/release-gate.test.ts` via `deploy:staging` | Staging                           | Confirms launch-safe verification URLs and fresh resend tokens once per promoted SHA |
-| Production image mismatch                 | Immutable digest refs in deploy workflow          | GitHub Actions                    | Digests are saved in `release-image-metadata-<tag>`                                  |
-| Production deploy drift                   | Tag-only deploy workflow                          | GitHub Actions                    | Production reconciles to the tagged commit only                                      |
-| Production stack unavailable after deploy | `tests/smoke.test.ts`                             | GitHub Actions against production | Rollback remains available if smoke fails                                            |
+| Risk                                      | Primary proof                                     | Where it runs                     | Notes                                                                                       |
+| ----------------------------------------- | ------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------- |
+| Broken build or type/lint regression      | `verify:commit`                                   | Developer machine                 | Fast local gate; intentionally not duplicated in GitHub Actions                             |
+| Regressed browser/UI flow                 | Full Playwright suite in `verify:commit`          | Developer machine                 | Local verification now fails if Playwright browsers are unavailable or any suite is omitted |
+| Broken staging deployment                 | `npm run deploy:staging`                          | Developer machine + staging host  | Deploys `origin/main`, runs live smoke, and records staging evidence                        |
+| Public auth payload unsafe                | `tests/release-gate.test.ts` via `deploy:staging` | Staging                           | Confirms launch-safe verification URLs and fresh resend tokens once per promoted SHA        |
+| Production image mismatch                 | Immutable digest refs in deploy workflow          | GitHub Actions                    | Digests are saved in `release-image-metadata-<tag>`                                         |
+| Production deploy drift                   | Tag-only deploy workflow                          | GitHub Actions                    | Production reconciles to the tagged commit only                                             |
+| Production stack unavailable after deploy | `tests/smoke.test.ts`                             | GitHub Actions against production | Rollback remains available if smoke fails                                                   |
 
 ## Reading Results
 

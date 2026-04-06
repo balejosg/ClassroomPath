@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 
 import globalSetup, { commandRunner } from './global-setup.js';
@@ -67,5 +70,29 @@ describe('playwright global setup', () => {
 
     assert.strictEqual(fetchMock.mock.calls.length, 0);
     assert.strictEqual(execSyncMock.mock.calls.length, 0);
+  });
+
+  test('clears the local email sink before running local setup', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'cp-global-setup-'));
+    const sinkFile = join(tempDir, 'emails.jsonl');
+    process.env.CP_TEST_EMAIL_SINK_FILE = sinkFile;
+    await writeFile(sinkFile, '{"stale":true}\n', 'utf8');
+
+    try {
+      global.fetch = mock.fn(async () => ({ ok: true }) as Response) as typeof fetch;
+      const execSyncMock = mock.method(commandRunner, 'execSync', () => Buffer.from(''));
+
+      await globalSetup({} as never);
+
+      await assert.rejects(
+        () => import('node:fs/promises').then(({ readFile }) => readFile(sinkFile, 'utf8')),
+        {
+          code: 'ENOENT',
+        }
+      );
+      assert.ok(execSyncMock.mock.calls.length > 0);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

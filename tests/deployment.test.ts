@@ -588,7 +588,7 @@ void describe('Migration Tooling', () => {
     );
   });
 
-  void test('pre-commit uses verify:commit and the release lane remains available explicitly', () => {
+  void test('pre-commit and release verification both require the full Playwright suite', () => {
     const packageJson = JSON.parse(readFileSync(classroomPathPackagePath, 'utf-8')) as {
       scripts?: Record<string, string>;
     };
@@ -610,18 +610,40 @@ void describe('Migration Tooling', () => {
       'pre-commit should execute verify:commit instead of the release lane'
     );
     assert.ok(
-      verifyScript.includes('if [ "$VERIFY_MODE" = "commit" ]; then'),
-      'verify-full.sh should support a dedicated commit verification mode'
+      packageJson.scripts?.['test:e2e:verify-fast'] === 'npm run test:e2e:full',
+      'the legacy fast E2E alias should resolve to the full Playwright suite'
     );
     assert.ok(
-      verifyScript.includes('npx playwright test --grep="@commit-smoke"'),
-      'commit verification mode should use the reduced Playwright smoke subset'
+      packageJson.scripts?.['test:e2e:commit-smoke'] === 'npm run test:e2e:full',
+      'the legacy commit-smoke alias should resolve to the full Playwright suite'
     );
     assert.ok(
       verifyScript.includes(
-        'Playwright browsers are not installed; skipping commit-smoke browser verification.'
+        'Playwright browsers are required for local verification and are not installed.'
       ),
-      'verify-full.sh should let commit verification continue when Playwright browsers are unavailable'
+      'verify-full.sh should fail when Playwright browsers are unavailable'
+    );
+    assert.ok(
+      verifyScript.includes('Running full E2E Playwright suite...') &&
+        verifyScript.includes('run_playwright_verification'),
+      'verify-full.sh should always run the full Playwright suite'
+    );
+    assert.ok(
+      !verifyScript.includes('--grep="@commit-smoke"') &&
+        !verifyScript.includes('--grep-invert="@slow-network|@repro"') &&
+        !verifyScript.includes('skipping commit-smoke browser verification'),
+      'verify-full.sh should not include reduced or skippable Playwright lanes'
+    );
+    assert.ok(
+      verifyScript.includes('Playwright verification cannot skip tests; skipped: ${skipped}') &&
+        verifyScript.includes('PLAYWRIGHT_JSON_OUTPUT_FILE="$report_file"'),
+      'verify-full.sh should fail when Playwright reports skipped tests'
+    );
+    assert.ok(
+      readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf-8').includes(
+        'PLAYWRIGHT_JSON_OUTPUT_FILE'
+      ),
+      'playwright.config.ts should support an auxiliary JSON reporter for verification gates'
     );
   });
 

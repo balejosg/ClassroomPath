@@ -109,11 +109,28 @@ const ORG = {
 
 async function truncateAll(): Promise<void> {
   for (const table of CLASSROOMPATH_TEST_RESET_TABLES) {
-    await db.execute(sql.raw(`TRUNCATE TABLE "${table}" CASCADE`));
+    await truncateTable(db, table);
   }
 
   for (const table of OPENPATH_TEST_RESET_TABLES) {
-    await openpathDb.execute(sql.raw(`TRUNCATE TABLE "${table}" CASCADE`));
+    await truncateTable(openpathDb, table);
+  }
+}
+
+async function truncateTable(executor: Pick<typeof db, 'execute'>, table: string): Promise<void> {
+  try {
+    await executor.execute(sql.raw(`TRUNCATE TABLE "${table}" CASCADE`));
+  } catch (error) {
+    const code =
+      error instanceof Error && 'cause' in error && error.cause && typeof error.cause === 'object'
+        ? String((error.cause as { code?: unknown }).code ?? '')
+        : '';
+
+    if (code === '42P01') {
+      return;
+    }
+
+    throw error;
   }
 }
 

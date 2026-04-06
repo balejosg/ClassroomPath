@@ -3,7 +3,6 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { test, expect } from './fixtures/base-test';
 import {
   completeOrgOnboarding,
-  createMailTmMailboxFixture,
   createTestOrganization,
   createTestUser,
   openRegisterForm,
@@ -11,6 +10,7 @@ import {
   type MailboxFixture,
   waitForPostAuthScreen,
 } from './fixtures/test-utils';
+import { createMailboxFixture } from './fixtures/mailtm';
 import { AcceptInvitationPage, OrganizationPage, ResetPasswordPage } from './fixtures/page-objects';
 
 type VerificationResponse = {
@@ -22,15 +22,14 @@ type VerificationResponse = {
 
 const VERIFICATION_SUBJECT = 'Verifica tu correo de ClassroomPath';
 const RESET_SUBJECT = 'Restablece tu acceso a ClassroomPath';
+const BASE_URL = new URL(process.env.BASE_URL ?? 'http://localhost:5173');
+const EXPECT_MANUAL_VERIFICATION_LINK = ['localhost', '127.0.0.1'].includes(BASE_URL.hostname);
 
 test.describe('Auth email delivery UAT', () => {
-  test.skip(
-    process.env.E2E_REAL_EMAIL !== '1',
-    'Set E2E_REAL_EMAIL=1 to run the live mailbox-backed auth UAT flow.'
-  );
-
   test.afterEach(async () => {
-    await sleep(30000);
+    if (process.env.E2E_REAL_EMAIL === '1') {
+      await sleep(30000);
+    }
   });
 
   async function registerUserAwaitingEmail(
@@ -66,7 +65,13 @@ test.describe('Auth email delivery UAT', () => {
         expect(payload.emailSent).toBe(true);
 
         await expect(page.getByText('Revisa tu correo')).toBeVisible({ timeout: 10000 });
-        await expect(page.getByTestId('register-manual-verification-link')).toHaveCount(0);
+        if (EXPECT_MANUAL_VERIFICATION_LINK) {
+          await expect(page.getByTestId('register-manual-verification-link')).toBeVisible({
+            timeout: 10000,
+          });
+        } else {
+          await expect(page.getByTestId('register-manual-verification-link')).toHaveCount(0);
+        }
 
         return payload;
       } catch (error) {
@@ -177,9 +182,9 @@ test.describe('Auth email delivery UAT', () => {
       onboardingOrgName: org.name,
     });
 
-    expect(registerPayload.verificationUrl).toContain('/login?');
-    expect(registerPayload.verificationUrl).not.toContain('localhost');
-    expect(deliveredLink).toContain('/login?');
+    expect(String(registerPayload.verificationUrl)).toContain('/login?');
+    expect(new URL(String(registerPayload.verificationUrl)).origin).toBe(BASE_URL.origin);
+    expect(new URL(deliveredLink).origin).toBe(BASE_URL.origin);
 
     return {
       adminUser,
@@ -188,7 +193,7 @@ test.describe('Auth email delivery UAT', () => {
   }
 
   async function createSecondaryMailbox() {
-    return createMailTmMailboxFixture();
+    return createMailboxFixture();
   }
 
   async function inviteMemberAndWaitForEmail(
@@ -252,8 +257,8 @@ test.describe('Auth email delivery UAT', () => {
     });
 
     expect(registerPayload.verificationUrl).toContain('/login?');
-    expect(registerPayload.verificationUrl).not.toContain('localhost');
-    expect(deliveredLink).toContain('/login?');
+    expect(new URL(String(registerPayload.verificationUrl)).origin).toBe(BASE_URL.origin);
+    expect(new URL(deliveredLink).origin).toBe(BASE_URL.origin);
 
     await submitLogin(page, user.email, user.password);
     await expect(page.getByText(/Debes verificar tu correo antes de iniciar sesion/i)).toBeVisible({
@@ -298,7 +303,13 @@ test.describe('Auth email delivery UAT', () => {
     await expect(page.getByText(/Te enviamos un nuevo enlace de verificacion/i)).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByText('Enlace manual de verificacion')).toHaveCount(0);
+    if (EXPECT_MANUAL_VERIFICATION_LINK) {
+      await expect(page.getByText('Enlace manual de verificacion')).toBeVisible({
+        timeout: 10000,
+      });
+    } else {
+      await expect(page.getByText('Enlace manual de verificacion')).toHaveCount(0);
+    }
 
     const resentLink = await mailbox.waitForLink({
       subjectIncludes: VERIFICATION_SUBJECT,

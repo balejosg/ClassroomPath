@@ -297,19 +297,16 @@ Deployment tests verify Docker, nginx, and env configurations only. They do NOT 
 
 ### E2E Verify Modes
 
-`npm run verify:full` runs Playwright in the default fast lane: excludes `@slow-network` and `@repro`.
+`npm run verify:full` requires Playwright browsers locally and runs the full Playwright suite.
 
 ```bash
-# Full stress lane (includes slow-network and repro suites)
-VERIFY_ALL=1 npm run verify:full
-
-# Explicit fast lane (Playwright only, skips full verify pipeline)
+# Playwright-only alias retained for compatibility; it also runs the full suite
 npm run test:e2e:verify-fast
 
 # Mobile/responsive tagged lane
 npm run test:e2e:mobile
 
-# Optional override for low-resource machines
+# Optional worker override for constrained machines
 PLAYWRIGHT_WORKERS=2 npm run verify:full
 ```
 

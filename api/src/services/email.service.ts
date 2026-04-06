@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { appendTestEmailSinkEntry } from '../lib/test-email-sink.js';
 import { logger } from '../lib/logger.js';
 
 export interface SendEmailParams {
@@ -16,6 +17,13 @@ export interface SendEmailResult {
 
 export async function sendTransactionalEmail(params: SendEmailParams): Promise<SendEmailResult> {
   if (config.emailDeliveryMode === 'mock') {
+    await appendTestEmailSinkEntry({
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      text: params.text,
+      createdAt: new Date().toISOString(),
+    });
     logger.info('Email delivery mocked for test environment', {
       to: params.to,
       subject: params.subject,

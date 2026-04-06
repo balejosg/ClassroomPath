@@ -1,6 +1,6 @@
 import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
 
-import { createMailTmMailboxFixture, type MailboxFixture } from './mailtm';
+import { createMailboxFixture, type MailboxFixture } from './mailtm';
 import { NavigationDebugger } from './navigation-debug';
 
 type Fixtures = {
@@ -16,7 +16,7 @@ export const test = base.extend<Fixtures>({
     await use(dbg);
   },
   mailbox: async ({}, use) => {
-    const fixture = await createMailTmMailboxFixture();
+    const fixture = await createMailboxFixture();
     try {
       await use(fixture.mailbox);
     } finally {

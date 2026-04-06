@@ -184,7 +184,7 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     '',
     '### Trust Model',
     '',
-    '- Local `verify:commit` remains the fast developer-side gate.',
+    '- Local `verify:commit` is the mandatory developer-side gate and now includes the full Playwright suite.',
     '- Staging records smoke + release-gate evidence for the exact promoted SHA and image digests.',
     '- The Windows/Firefox canary is advisory evidence; it does not block production promotion.',
     '- GitHub Actions reuses that staging evidence instead of rerunning the same gate during production promotion.',

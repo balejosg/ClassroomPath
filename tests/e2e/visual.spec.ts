@@ -435,10 +435,7 @@ test.describe('Visual Regression - Error States', () => {
     });
   });
 
-  // FIXME: "Sin aulas" is rendered in DOM but computed as hidden at 1280×720
-  // viewport due to CSS overflow/layout — pre-existing issue, not related to
-  // Landing/Pricing refactor. Tracked separately.
-  test.fixme('empty state @visual', async ({ page }) => {
+  test('empty state @visual', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await mockTrpcProcedures(page, { 'pendingUsers.list': [], 'classrooms.list': [] });
     await loginAsAdmin(page);
@@ -446,10 +443,12 @@ test.describe('Visual Regression - Error States', () => {
     // OpenPath is state-driven - navigate via sidebar
     await page.getByRole('button', { name: 'Aulas Seguras' }).click();
     await waitForNetworkIdle(page);
-    await expect(page.getByText(/Sin aulas/i)).toBeVisible({ timeout: 10000 });
+    const emptyState = page.getByTestId('classrooms-empty-state');
+    await emptyState.scrollIntoViewIfNeeded();
+    await expect(emptyState).toBeVisible({ timeout: 10000 });
     await waitForVisualStability(page);
 
-    await expect(page).toHaveScreenshot('empty-groups.png', {
+    await expect(emptyState).toHaveScreenshot('empty-groups.png', {
       maxDiffPixelRatio: 0.02,
       animations: 'disabled',
     });

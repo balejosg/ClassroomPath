@@ -21,6 +21,18 @@ type ApiProbeResult = {
   durationMs: number;
 };
 
+function resolveGatewayBaseUrl(): string {
+  const configuredBaseUrl = process.env.BASE_URL ?? 'http://localhost:5173';
+  const parsed = new URL(configuredBaseUrl);
+
+  if (!['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+    return parsed.origin;
+  }
+
+  const cpGatewayPort = Number(process.env.CP_GATEWAY_PORT ?? '3001');
+  return `http://127.0.0.1:${String(cpGatewayPort)}`;
+}
+
 async function probeGet(
   page: import('@playwright/test').Page,
   endpoint: string
@@ -362,7 +374,7 @@ test.describe('Real User Metrics Simulation', () => {
     });
 
     const start = Date.now();
-    await page.goto('/', { timeout: 90000 });
+    await page.goto(resolveGatewayBaseUrl(), { timeout: 90000 });
     await page.waitForLoadState('domcontentloaded');
     const dcl = Date.now() - start;
 

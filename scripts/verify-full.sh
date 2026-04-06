@@ -350,22 +350,9 @@ fi
 echo ""
 echo "[5/5] E2E Playwright tests..."
 
-VERIFY_MODE="${VERIFY_MODE:-release}"
-
 if [ "$PLAYWRIGHT_BROWSERS_AVAILABLE" != "1" ]; then
-  if [ "$VERIFY_MODE" = "commit" ]; then
-    echo "Playwright browsers are not installed; skipping commit-smoke browser verification." >&2
-    echo "Run: npx playwright install --with-deps chromium" >&2
-    echo ""
-    echo "=========================================="
-    echo "  All Checks Passed!"
-    echo "=========================================="
-    echo ""
-    exit 0
-  fi
-
-  echo "Playwright browsers are not installed." >&2
-  echo "Run: npx playwright install --with-deps chromium" >&2
+  echo "Playwright browsers are required for local verification and are not installed." >&2
+  echo "Run: npx playwright install chromium" >&2
   exit 1
 fi
 
@@ -381,11 +368,8 @@ for port in 3001 3010 5173; do
   fi
 done
 
-# Playwright global-setup handles seeding, no need to seed here
+# Playwright global-setup handles seeding, no need to seed here.
 # db:push already ran in [4/5], so skip duplicate push in global-setup.
-# Exclude long-running opt-in suites by default:
-# - @slow-network (network throttling)
-# - @repro (debug/soak repro harnesses)
 # Auto-tune worker count for local verify runs to reduce wall time.
 # Override with PLAYWRIGHT_WORKERS=<n> when needed.
 detect_playwright_workers() {
@@ -406,29 +390,41 @@ detect_playwright_workers() {
   fi
 }
 
+run_playwright_verification() {
+  local report_file
+  report_file=$(mktemp "${TMPDIR:-/tmp}/classroompath-playwright-report.XXXXXX.json")
+
+  PLAYWRIGHT_JSON_OUTPUT_FILE="$report_file" \
+    E2E_SKIP_DB_PUSH=1 \
+    PLAYWRIGHT_WORKERS="$PW_WORKERS" \
+    npx playwright test
+
+  node - "$report_file" <<'EOF'
+const fs = require('node:fs');
+
+const reportPath = process.argv[2];
+const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+const skipped = Number(report?.stats?.skipped ?? 0);
+
+if (!Number.isFinite(skipped)) {
+  console.error('Playwright JSON report did not contain a numeric skipped count.');
+  process.exit(1);
+}
+
+if (skipped > 0) {
+  console.error(`Playwright verification cannot skip tests; skipped: ${skipped}`);
+  process.exit(1);
+}
+EOF
+
+  rm -f "$report_file"
+}
+
 PW_WORKERS=$(detect_playwright_workers)
 echo "Using Playwright workers: $PW_WORKERS"
 
-# Commit mode keeps a short cross-stack smoke in the hook and leaves the
-# broad Playwright lane for explicit release verification.
-if [ "$VERIFY_MODE" = "commit" ]; then
-  echo "Running commit-smoke E2E tests..."
-  E2E_SKIP_DB_PUSH=1 PLAYWRIGHT_WORKERS="$PW_WORKERS" npx playwright test --grep="@commit-smoke"
-# Run with VERIFY_ALL=1 to include all tests
-elif [ "${VERIFY_ALL:-}" = "1" ]; then
-  echo "Running ALL E2E tests (including @slow-network and @repro)..."
-  E2E_SKIP_DB_PUSH=1 PLAYWRIGHT_WORKERS="$PW_WORKERS" npx playwright test
-else
-  echo "Running E2E tests (excluding @slow-network and @repro)..."
-  E2E_SKIP_DB_PUSH=1 PLAYWRIGHT_WORKERS="$PW_WORKERS" npx playwright test --grep-invert="@slow-network|@repro"
-
-  echo "Running mandatory navigation repro smoke..."
-  E2E_SKIP_DB_PUSH=1 \
-    PLAYWRIGHT_WORKERS=1 \
-    NAV_REPRO_ROUNDS="${NAV_REPRO_ROUNDS:-3}" \
-    NAV_REPRO_TIMEOUT_MS="${NAV_REPRO_TIMEOUT_MS:-120000}" \
-    npx playwright test tests/e2e/navigation-noop-repro.spec.ts --project=chromium
-fi
+echo "Running full E2E Playwright suite..."
+run_playwright_verification
 
 echo ""
 echo "=========================================="
