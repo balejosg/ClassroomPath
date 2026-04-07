@@ -981,6 +981,10 @@ describe('Workflow configuration hardening', () => {
       'Firefox release asset workflow should derive a unique signed Firefox version'
     );
     assert.ok(
+      assetJobRun.includes('run_id_component="$((10#$run_id_suffix))"'),
+      'Firefox release asset workflow should normalize the run-id suffix before using it as a Firefox version segment'
+    );
+    assert.ok(
       assetJobRun.includes('npm run sign:firefox-release --workspace=@openpath/firefox-extension'),
       'Firefox release asset workflow should sign the Firefox release bundle'
     );
