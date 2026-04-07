@@ -1688,6 +1688,15 @@ void describe('Migration Tooling', () => {
       'persist-staging-verification-remote.sh should delegate persistence to the shared staging verification runner'
     );
     assert.ok(
+      readFileSync(resolve(projectRoot, 'scripts/deploy-staging-local.sh'), 'utf-8').includes(
+        'remote_assignment STAGING_SMOKE_RESULT "$STAGING_SMOKE_RESULT"'
+      ) &&
+        readFileSync(resolve(projectRoot, 'scripts/deploy-staging-local.sh'), 'utf-8').includes(
+          'remote_assignment STAGING_RELEASE_GATE_RESULT "$STAGING_RELEASE_GATE_RESULT"'
+        ),
+      'deploy-staging-local.sh should forward smoke and release-gate evidence to the remote persistence writer'
+    );
+    assert.ok(
       rollbackRemote.includes('DEPLOYMENT_STATE_HELPER_PATH') &&
         rollbackRemote.includes('deployment_state_activate_previous_release') &&
         rollbackRemote.includes('deployment_state_load_context'),
