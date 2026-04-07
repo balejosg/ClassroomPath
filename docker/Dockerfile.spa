@@ -8,6 +8,8 @@ WORKDIR /app
 
 # Copy manifests
 COPY package*.json ./
+COPY contracts/package*.json ./contracts/
+COPY presenters/package*.json ./presenters/
 COPY react-spa/package*.json ./react-spa/
 COPY api/package*.json ./api/
 COPY upstream/openpath/tsconfig.base.json ./upstream/openpath/tsconfig.base.json
@@ -28,6 +30,8 @@ RUN --mount=type=cache,target=/root/.npm set -eux; \
 
 # Copy only the SPA build inputs so unrelated workspace changes do not
 # invalidate the release-candidate cache.
+COPY contracts/tsconfig.json ./contracts/tsconfig.json
+COPY contracts/src ./contracts/src
 COPY react-spa/tsconfig.json ./react-spa/tsconfig.json
 COPY react-spa/vite.config.ts ./react-spa/vite.config.ts
 COPY react-spa/postcss.config.js ./react-spa/postcss.config.js
@@ -48,6 +52,7 @@ COPY upstream/openpath/react-spa/index.html ./upstream/openpath/react-spa/index.
 COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src
 
 # Build SPA
+RUN npm run build --workspace=@classroompath/contracts
 RUN npm run build --workspace=@classroompath/react-spa
 
 FROM ${NGINX_IMAGE}

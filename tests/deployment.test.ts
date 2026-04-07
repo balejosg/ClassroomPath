@@ -1026,6 +1026,34 @@ void describe('Migration Tooling', () => {
       'gateway release image should copy the upstream OpenPath SPA sources it imports'
     );
     assert.ok(
+      dockerfile.includes('COPY contracts/package*.json ./contracts/'),
+      'gateway release image should copy the contracts workspace manifest required by the ClassroomPath SPA and API builds'
+    );
+    assert.ok(
+      dockerfile.includes('COPY presenters/package*.json ./presenters/'),
+      'gateway release image should copy the presenters workspace manifest required by the ClassroomPath API build'
+    );
+    assert.ok(
+      dockerfile.includes('COPY contracts/src ./contracts/src'),
+      'gateway release image should copy the contracts workspace sources required by the ClassroomPath SPA and API builds'
+    );
+    assert.ok(
+      dockerfile.includes('COPY presenters/src ./presenters/src'),
+      'gateway release image should copy the presenters workspace sources required by the ClassroomPath API build'
+    );
+    assert.ok(
+      dockerfile.includes(
+        'COPY --from=builder /app/contracts/dist ./node_modules/@classroompath/contracts/dist'
+      ),
+      'gateway runtime image should restore the built contracts workspace for Node resolution'
+    );
+    assert.ok(
+      dockerfile.includes(
+        'COPY --from=builder /app/presenters/dist ./node_modules/@classroompath/presenters/dist'
+      ),
+      'gateway runtime image should restore the built presenters workspace for Node resolution'
+    );
+    assert.ok(
       dockerignore.includes('tests/**'),
       'gateway release image should ignore repo-level tests from its Docker context'
     );
@@ -1057,6 +1085,14 @@ void describe('Migration Tooling', () => {
     assert.ok(
       dockerfile.includes('COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src'),
       'spa release image should copy the upstream OpenPath SPA sources it imports'
+    );
+    assert.ok(
+      dockerfile.includes('COPY contracts/package*.json ./contracts/'),
+      'spa release image should copy the contracts workspace manifest required by the ClassroomPath SPA build'
+    );
+    assert.ok(
+      dockerfile.includes('COPY contracts/src ./contracts/src'),
+      'spa release image should copy the contracts workspace sources required by the ClassroomPath SPA build'
     );
     assert.ok(
       dockerignore.includes('tests/**'),

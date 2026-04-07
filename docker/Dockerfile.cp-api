@@ -5,6 +5,8 @@ ARG NODE_IMAGE=node@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec
 FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 COPY package*.json ./
+COPY contracts/package*.json ./contracts/
+COPY presenters/package*.json ./presenters/
 COPY upstream/openpath/tsconfig.base.json ./upstream/openpath/tsconfig.base.json
 COPY api/package*.json ./api/
 COPY react-spa/package*.json ./react-spa/
@@ -26,6 +28,10 @@ RUN --mount=type=cache,target=/root/.npm set -eux; \
 
 # Copy only the build inputs for the gateway so workflow/test changes do not
 # invalidate the slow multi-arch image cache.
+COPY contracts/tsconfig.json ./contracts/tsconfig.json
+COPY contracts/src ./contracts/src
+COPY presenters/tsconfig.json ./presenters/tsconfig.json
+COPY presenters/src ./presenters/src
 COPY api/tsconfig.json ./api/tsconfig.json
 COPY api/src ./api/src
 COPY react-spa/tsconfig.json ./react-spa/tsconfig.json
@@ -49,6 +55,8 @@ COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src
 
 # Build everything
 RUN npm run build --workspace=@openpath/shared
+RUN npm run build --workspace=@classroompath/contracts
+RUN npm run build --workspace=@classroompath/presenters
 RUN npm run build --workspace=@classroompath/react-spa
 RUN npm run build --workspace=@classroompath/api
 
@@ -56,6 +64,8 @@ FROM ${NODE_IMAGE}
 RUN apk add --no-cache curl
 WORKDIR /app
 COPY package*.json ./
+COPY contracts/package*.json ./contracts/
+COPY presenters/package*.json ./presenters/
 COPY api/package*.json ./api/
 COPY react-spa/package*.json ./react-spa/
 COPY upstream/openpath/shared/package*.json ./upstream/openpath/shared/
@@ -83,6 +93,13 @@ COPY --from=builder /app/react-spa/dist-ssr /app/react-spa/dist-ssr
 RUN mkdir -p node_modules/@openpath/shared
 COPY --from=builder /app/upstream/openpath/shared/dist ./node_modules/@openpath/shared/dist
 COPY --from=builder /app/upstream/openpath/shared/package.json ./node_modules/@openpath/shared/package.json
+
+# Internal ClassroomPath workspaces are imported by the gateway and SSR runtime.
+RUN mkdir -p node_modules/@classroompath/contracts node_modules/@classroompath/presenters
+COPY --from=builder /app/contracts/dist ./node_modules/@classroompath/contracts/dist
+COPY --from=builder /app/contracts/package.json ./node_modules/@classroompath/contracts/package.json
+COPY --from=builder /app/presenters/dist ./node_modules/@classroompath/presenters/dist
+COPY --from=builder /app/presenters/package.json ./node_modules/@classroompath/presenters/package.json
 
 # Copy database tools
 COPY api/drizzle.config.ts ./api/
