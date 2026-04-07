@@ -84,23 +84,33 @@ test.describe('Network Error Handling', () => {
     });
 
     await page.reload();
+    await expect
+      .poll(
+        async () => {
+          const hasTimeoutText = await page
+            .getByText(/timeout|tiempo de espera|expirad|cargando|loading|verificando estado/i)
+            .first()
+            .isVisible()
+            .catch(() => false);
+          const hasRetryButton = await page
+            .getByRole('button', { name: /Reintentar|Retry|Volver a intentar/i })
+            .isVisible()
+            .catch(() => false);
+          const hasErrorState = await page
+            .locator('[role="alert"], .bg-red-100')
+            .first()
+            .isVisible()
+            .catch(() => false);
 
-    const hasTimeoutText = await page
-      .getByText(/timeout|tiempo de espera|expirad|cargando|loading|verificando estado/i)
-      .first()
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    const hasRetryButton = await page
-      .getByRole('button', { name: /Reintentar|Retry|Volver a intentar/i })
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    const hasErrorState = await page
-      .locator('[role="alert"], .bg-red-100')
-      .first()
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-
-    expect(hasTimeoutText || hasRetryButton || hasErrorState).toBe(true);
+          return hasTimeoutText || hasRetryButton || hasErrorState;
+        },
+        {
+          timeout: 10000,
+          message:
+            'Expected the timeout flow to surface either loading text, retry controls, or an error state after reload',
+        }
+      )
+      .toBe(true);
   });
 });
 
