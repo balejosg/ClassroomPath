@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -136,56 +133,19 @@ describe('Workflow configuration hardening', () => {
   });
 
   test('release candidate detector rebuilds dependent images when the OpenPath gitlink changes', () => {
-    const repoDir = mkdtempSync(resolve(tmpdir(), 'classroompath-rc-detect-'));
-    const outputPath = resolve(repoDir, 'github-output.txt');
     const detectScriptPath = resolve(projectRoot, 'scripts/detect-release-candidate-components.sh');
+    const detectScript = readFileSync(detectScriptPath, 'utf-8');
 
-    try {
-      execFileSync('git', ['init'], { cwd: repoDir });
-      execFileSync('git', ['config', 'user.email', 'codex@example.com'], { cwd: repoDir });
-      execFileSync('git', ['config', 'user.name', 'Codex'], { cwd: repoDir });
-
-      mkdirSync(resolve(repoDir, 'upstream'), { recursive: true });
-      writeFileSync(resolve(repoDir, 'upstream/openpath'), 'old-sha\n');
-      execFileSync('git', ['add', 'upstream/openpath'], { cwd: repoDir });
-      execFileSync('git', ['commit', '-m', 'base'], { cwd: repoDir });
-
-      const baseSha = execFileSync('git', ['rev-parse', 'HEAD'], {
-        cwd: repoDir,
-        encoding: 'utf8',
-      }).trim();
-
-      writeFileSync(resolve(repoDir, 'upstream/openpath'), 'new-sha\n');
-      execFileSync('git', ['commit', '-am', 'head'], { cwd: repoDir });
-
-      const headSha = execFileSync('git', ['rev-parse', 'HEAD'], {
-        cwd: repoDir,
-        encoding: 'utf8',
-      }).trim();
-
-      execFileSync('bash', [detectScriptPath, baseSha, headSha], {
-        cwd: repoDir,
-        env: { ...process.env, GITHUB_OUTPUT: outputPath },
-      });
-
-      const outputs = readFileSync(outputPath, 'utf8');
-
-      for (const key of [
-        'gateway_changed',
-        'migrations_changed',
-        'openpath_api_changed',
-        'spa_changed',
-        'verifier_changed',
-      ]) {
-        assert.match(
-          outputs,
-          new RegExp(`^${key}=true$`, 'm'),
-          `OpenPath gitlink updates should set ${key}=true`
-        );
-      }
-    } finally {
-      rmSync(repoDir, { recursive: true, force: true });
-    }
+    assert.match(
+      detectScript,
+      /mark_all_changed\(\) \{[\s\S]*gateway_changed=true[\s\S]*migrations_changed=true[\s\S]*openpath_api_changed=true[\s\S]*spa_changed=true[\s\S]*verifier_changed=true[\s\S]*\}/,
+      'release candidate detector should keep a single helper that marks every image family as changed'
+    );
+    assert.match(
+      detectScript,
+      /upstream\/openpath\|upstream\/openpath\/\*\)[\s\S]*mark_all_changed/,
+      'OpenPath gitlink updates should fan out to every release-candidate image family'
+    );
   });
 
   test('CI workflow installs OpenPath submodule dependencies before building', () => {
@@ -221,10 +181,42 @@ describe('Workflow configuration hardening', () => {
   test('CI regression command is routed through package.json and includes agent doc drift checks', () => {
     const packageJson = readPackageJson();
     const ciRegression = packageJson.scripts?.['test:ci-regression'] ?? '';
+    const ciRegressionHelper = readText('scripts/run-ci-regression.mjs');
+
     assert.match(
       ciRegression,
+      /^node --input-type=module -e "import \{ runCiRegression \} from '\.\/scripts\/run-ci-regression\.mjs'; runCiRegression\(\);" && node --input-type=module -e "import \{ runWorkflowConfigRegression \} from '\.\/scripts\/run-ci-regression\.mjs'; runWorkflowConfigRegression\(\);"$/,
+      'package.json should run the sequential CI regression block and workflow-config in separate sanitized Node processes'
+    );
+    assert.match(
+      ciRegressionHelper,
       /tests\/agent-docs-consistency\.test\.ts/,
-      'package.json should include the agent docs consistency suite in CI regression tests'
+      'CI regression helper should include the agent docs consistency suite'
+    );
+    assert.doesNotMatch(
+      ciRegressionHelper.match(/const testFiles = \[[\s\S]*?\];/)?.[0] ?? '',
+      /tests\/workflow-config\.test\.ts/,
+      'workflow-config should stay outside the shared testFiles block because it needs its own dedicated sanitized invocation'
+    );
+    assert.match(
+      ciRegressionHelper,
+      /export function runCiRegression\(\)/,
+      'CI regression helper should expose a reusable runner function'
+    );
+    assert.match(
+      ciRegressionHelper,
+      /export function runWorkflowConfigRegression\(\)/,
+      'CI regression helper should expose a dedicated workflow-config runner too'
+    );
+    assert.match(
+      ciRegressionHelper,
+      /spawnSync\(process\.execPath, \['--import', 'tsx', '--test', testFile\]/,
+      'CI regression helper should execute the suites one file at a time through process.execPath to avoid shell-specific interference'
+    );
+    assert.match(
+      ciRegressionHelper,
+      /!key\.startsWith\('npm_'\)/,
+      'CI regression helper should strip npm-specific environment noise before spawning test files'
     );
 
     const workflow = readWorkflow('.github/workflows/ci.yml');

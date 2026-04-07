@@ -711,6 +711,59 @@ void describe('Migration Tooling', () => {
     );
   });
 
+  void test('ClassroomPath packages declare the OpenPath shared workspace when they import it', () => {
+    const apiPackage = JSON.parse(
+      readFileSync(resolve(projectRoot, 'api/package.json'), 'utf-8')
+    ) as {
+      dependencies?: Record<string, string>;
+    };
+    const spaPackage = JSON.parse(
+      readFileSync(resolve(projectRoot, 'react-spa/package.json'), 'utf-8')
+    ) as {
+      dependencies?: Record<string, string>;
+    };
+
+    assert.equal(
+      apiPackage.dependencies?.['@openpath/shared'],
+      '1.0.0',
+      '@classroompath/api should declare @openpath/shared so clean workspace builds pull it into the turbo graph'
+    );
+    assert.equal(
+      spaPackage.dependencies?.['@openpath/shared'],
+      '1.0.0',
+      '@classroompath/react-spa should declare @openpath/shared so workspace installs match its source imports'
+    );
+    assert.equal(
+      spaPackage.dependencies?.['@openpath/api'],
+      '1.0.0',
+      '@classroompath/react-spa should declare @openpath/api so clean typecheck runs pull the OpenPath API workspace into the graph'
+    );
+  });
+
+  void test('ClassroomPath react-spa preserves the upstream OpenPath tsconfig path aliases it relies on', () => {
+    const spaTsconfig = JSON.parse(
+      readFileSync(resolve(projectRoot, 'react-spa/tsconfig.json'), 'utf-8')
+    ) as {
+      compilerOptions?: { paths?: Record<string, string[]> };
+    };
+
+    assert.deepEqual(
+      spaTsconfig.compilerOptions?.paths?.['@openpath/shared'],
+      ['../upstream/openpath/shared/src'],
+      '@classroompath/react-spa should keep the direct @openpath/shared source alias'
+    );
+    assert.deepEqual(
+      spaTsconfig.compilerOptions?.paths?.['@openpath/shared/*'],
+      ['../upstream/openpath/shared/src/*'],
+      '@classroompath/react-spa should keep the subpath @openpath/shared/* alias'
+    );
+    assert.deepEqual(
+      spaTsconfig.compilerOptions?.paths?.['@openpath/api'],
+      ['../upstream/openpath/api/src/index.ts'],
+      '@classroompath/react-spa should keep the @openpath/api alias for upstream shell typecheck'
+    );
+  });
+
   void test('staging deploy waits for the successful release-candidate manifest before source-build fallback', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
     const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');

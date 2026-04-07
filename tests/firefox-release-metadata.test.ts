@@ -1,17 +1,11 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { describe, test } from 'node:test';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
   getFirefoxReleaseMetadataField,
+  getFirefoxReleaseMetadataFieldFromCliArgs,
   parseFirefoxReleaseMetadata,
 } from '../scripts/read-firefox-release-metadata.mjs';
-
-const currentFilePath = fileURLToPath(import.meta.url);
-const testDir = dirname(currentFilePath);
-const metadataScriptPath = resolve(testDir, '../scripts/read-firefox-release-metadata.mjs');
 
 describe('Firefox release metadata helper', () => {
   test('parses extension id and version from release metadata', () => {
@@ -55,15 +49,22 @@ describe('Firefox release metadata helper', () => {
     );
   });
 
-  test('cli prints a requested field from stdin', () => {
-    const output = execFileSync('node', [metadataScriptPath, '--field', 'extensionId'], {
-      encoding: 'utf8',
-      input: JSON.stringify({
+  test('cli helper resolves a requested field from argv plus stdin content', () => {
+    const output = getFirefoxReleaseMetadataFieldFromCliArgs(
+      ['--field', 'extensionId'],
+      JSON.stringify({
         extensionId: 'monitor-bloqueos@openpath',
         version: '2.0.0.3001',
-      }),
-    }).trim();
+      })
+    );
 
     assert.equal(output, 'monitor-bloqueos@openpath');
+  });
+
+  test('cli helper rejects missing field arguments with usage text', () => {
+    assert.throws(
+      () => getFirefoxReleaseMetadataFieldFromCliArgs([], '{}'),
+      /Usage:\n  node scripts\/read-firefox-release-metadata\.mjs --field <extensionId\|version> < metadata\.json/
+    );
   });
 });

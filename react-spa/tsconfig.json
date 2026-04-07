@@ -9,8 +9,10 @@
       "@openpath/public-google": ["../upstream/openpath/react-spa/src/public/google.ts"],
       "@openpath/public-shell": ["../upstream/openpath/react-spa/src/public/shell.ts"],
       "@openpath/public-ui": ["../upstream/openpath/react-spa/src/public/ui.ts"],
+      "@openpath/api": ["../upstream/openpath/api/src/index.ts"],
       "@openpath/*": ["../upstream/openpath/react-spa/*"],
-      "@openpath/shared": ["../upstream/openpath/shared/src"]
+      "@openpath/shared": ["../upstream/openpath/shared/src"],
+      "@openpath/shared/*": ["../upstream/openpath/shared/src/*"]
     }
   },
   "include": ["src/**/*"],

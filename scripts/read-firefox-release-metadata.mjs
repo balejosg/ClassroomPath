@@ -35,6 +35,21 @@ export function getFirefoxReleaseMetadataField(content, field) {
   return value;
 }
 
+export function getFirefoxReleaseMetadataFieldFromCliArgs(argv, content) {
+  if (argv[0] !== '--field' || !argv[1]) {
+    throw new Error(
+      'Usage:\n  node scripts/read-firefox-release-metadata.mjs --field <extensionId|version> < metadata.json'
+    );
+  }
+
+  const field = argv[1];
+  if (field !== 'extensionId' && field !== 'version') {
+    throw new Error(`Unsupported Firefox release metadata field: ${field}`);
+  }
+
+  return getFirefoxReleaseMetadataField(content, field);
+}
+
 async function readStdin() {
   const chunks = [];
 
@@ -53,18 +68,8 @@ function printUsage() {
 }
 
 async function main() {
-  if (process.argv[2] !== '--field' || !process.argv[3]) {
-    printUsage();
-    process.exit(1);
-  }
-
-  const field = process.argv[3];
-  if (field !== 'extensionId' && field !== 'version') {
-    throw new Error(`Unsupported Firefox release metadata field: ${field}`);
-  }
-
   const content = await readStdin();
-  process.stdout.write(getFirefoxReleaseMetadataField(content, field));
+  process.stdout.write(getFirefoxReleaseMetadataFieldFromCliArgs(process.argv.slice(2), content));
 }
 
 try {
