@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { connect, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -34,6 +34,41 @@ const SCRIPT_DIR = dirname(__filename);
 const ROOT_DIR = resolve(SCRIPT_DIR, '..');
 const COMPOSE_FILE = join(ROOT_DIR, 'docker/docker-compose.test.yml');
 const DEFAULT_COMPOSE_PROJECT_NAME = 'classroompath_test';
+const OPENPATH_ROOT_DIR = resolve(ROOT_DIR, 'upstream/openpath');
+const OPENPATH_INSTALL_MARKER = join(OPENPATH_ROOT_DIR, 'node_modules/.package-lock.json');
+
+function needsOpenPathWorkspaceInstall(openPathRootDir: string): boolean {
+  const installMarkerPath =
+    openPathRootDir === OPENPATH_ROOT_DIR
+      ? OPENPATH_INSTALL_MARKER
+      : join(openPathRootDir, 'node_modules/.package-lock.json');
+  const lockfilePath = join(openPathRootDir, 'package-lock.json');
+
+  if (!existsSync(lockfilePath)) {
+    throw new Error(`OpenPath package-lock.json not found at ${lockfilePath}`);
+  }
+
+  if (!existsSync(installMarkerPath)) {
+    return true;
+  }
+
+  return statSync(installMarkerPath).mtimeMs < statSync(lockfilePath).mtimeMs;
+}
+
+async function ensureOpenPathWorkspaceInstall(
+  rootDir: string,
+  env: NodeJS.ProcessEnv
+): Promise<void> {
+  const openPathRootDir =
+    rootDir === ROOT_DIR ? OPENPATH_ROOT_DIR : resolve(rootDir, 'upstream/openpath');
+
+  if (!needsOpenPathWorkspaceInstall(openPathRootDir)) {
+    return;
+  }
+
+  console.log('Bootstrapping OpenPath workspace dependencies...');
+  await run('npm', ['ci'], { cwd: OPENPATH_ROOT_DIR, env });
+}
 
 function resolveVerifyMode(env: NodeJS.ProcessEnv): VerifyMode {
   return env.VERIFY_MODE === 'release' ? 'release' : 'commit';
@@ -383,6 +418,7 @@ async function main(): Promise<void> {
 
     console.log('');
     console.log('[1/5] Building all packages...');
+    await ensureOpenPathWorkspaceInstall(plan.rootDir, verifyEnv);
     await run('npm', ['run', 'build'], { cwd: plan.rootDir, env: verifyEnv });
 
     console.log('Waiting for PostgreSQL...');

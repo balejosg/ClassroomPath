@@ -711,6 +711,38 @@ void describe('Migration Tooling', () => {
     );
   });
 
+  void test('verify-full bootstraps OpenPath workspace installs before OpenPath static verification', () => {
+    const verifyOrchestrator = readFileSync(verifyFullOrchestratorPath, 'utf-8');
+    const bootstrapCall = 'await ensureOpenPathWorkspaceInstall(plan.rootDir, verifyEnv);';
+    const openPathStaticCall = "await runShell('cd upstream/openpath && npm run verify:static'";
+
+    assert.ok(
+      verifyOrchestrator.includes("join(OPENPATH_ROOT_DIR, 'node_modules/.package-lock.json')"),
+      'verify-full.ts should treat the OpenPath npm install marker as the bootstrap contract for submodule verification'
+    );
+    assert.ok(
+      verifyOrchestrator.includes("await run('npm', ['ci'], { cwd: OPENPATH_ROOT_DIR, env });"),
+      'verify-full.ts should repair missing OpenPath workspace installs with npm ci before static verification'
+    );
+    assert.ok(
+      verifyOrchestrator.includes(bootstrapCall) &&
+        verifyOrchestrator.indexOf(bootstrapCall) < verifyOrchestrator.indexOf(openPathStaticCall),
+      'verify-full.ts should bootstrap the OpenPath workspace before running OpenPath static verification'
+    );
+  });
+
+  void test('verify-full bootstraps OpenPath workspace installs before ClassroomPath build orchestration', () => {
+    const verifyOrchestrator = readFileSync(verifyFullOrchestratorPath, 'utf-8');
+    const bootstrapCall = 'await ensureOpenPathWorkspaceInstall(plan.rootDir, verifyEnv);';
+    const buildCall = "await run('npm', ['run', 'build']";
+
+    assert.ok(
+      verifyOrchestrator.includes(bootstrapCall) &&
+        verifyOrchestrator.indexOf(bootstrapCall) < verifyOrchestrator.indexOf(buildCall),
+      'verify-full.ts should bootstrap the OpenPath workspace before the ClassroomPath build step that depends on turbo'
+    );
+  });
+
   void test('ClassroomPath packages declare the OpenPath shared workspace when they import it', () => {
     const apiPackage = JSON.parse(
       readFileSync(resolve(projectRoot, 'api/package.json'), 'utf-8')
@@ -722,21 +754,31 @@ void describe('Migration Tooling', () => {
     ) as {
       dependencies?: Record<string, string>;
     };
+    const upstreamSharedPackage = JSON.parse(
+      readFileSync(resolve(projectRoot, 'upstream/openpath/shared/package.json'), 'utf-8')
+    ) as {
+      version?: string;
+    };
+    const upstreamApiPackage = JSON.parse(
+      readFileSync(resolve(projectRoot, 'upstream/openpath/api/package.json'), 'utf-8')
+    ) as {
+      version?: string;
+    };
 
     assert.equal(
       apiPackage.dependencies?.['@openpath/shared'],
-      '1.0.0',
-      '@classroompath/api should declare @openpath/shared so clean workspace builds pull it into the turbo graph'
+      upstreamSharedPackage.version,
+      '@classroompath/api should declare @openpath/shared with the exact upstream workspace version so clean installs do not fall back to the public registry'
     );
     assert.equal(
       spaPackage.dependencies?.['@openpath/shared'],
-      '1.0.0',
-      '@classroompath/react-spa should declare @openpath/shared so workspace installs match its source imports'
+      upstreamSharedPackage.version,
+      '@classroompath/react-spa should declare @openpath/shared with the exact upstream workspace version so workspace installs match its source imports'
     );
     assert.equal(
       spaPackage.dependencies?.['@openpath/api'],
-      '1.0.0',
-      '@classroompath/react-spa should declare @openpath/api so clean typecheck runs pull the OpenPath API workspace into the graph'
+      upstreamApiPackage.version,
+      '@classroompath/react-spa should declare @openpath/api with the exact upstream workspace version so clean installs pull the submodule workspace instead of the public registry'
     );
   });
 
