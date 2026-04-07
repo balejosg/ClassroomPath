@@ -1662,19 +1662,22 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       stagingRemote.includes('RELEASE_STATE_HELPER_PATH') &&
+        stagingRemote.includes("grep -q 'write_deploy_context_state()'") &&
         stagingRemote.includes('write_current_release_state() {') &&
         stagingRemote.includes('write_deploy_context_state() {') &&
         stagingRemote.includes('write_release_runtime_state'),
-      'deploy-staging-remote.sh should reuse the shared release-state writers'
+      'deploy-staging-remote.sh should reuse the shared release-state writers and fall back when the remote helper is outdated'
     );
     assert.ok(
       productionRemote.includes('RELEASE_STATE_HELPER_PATH') &&
+        productionRemote.includes("grep -q 'write_deploy_context_state()'") &&
         productionRemote.includes('write_current_release_state() {') &&
         productionRemote.includes('write_deploy_context_state() {') &&
         productionRemote.includes('DEPLOYMENT_STATE_HELPER_PATH') &&
+        productionRemote.includes("grep -q 'deployment_state_capture_previous_release()'") &&
         productionRemote.includes('deployment_state_capture_previous_release') &&
         productionRemote.includes('write_release_runtime_state'),
-      'deploy-production-remote.sh should reuse the shared release-state and deployment-state writers'
+      'deploy-production-remote.sh should reuse the shared release-state/deployment-state writers and fall back when the remote helpers are outdated'
     );
     assert.ok(
       persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&

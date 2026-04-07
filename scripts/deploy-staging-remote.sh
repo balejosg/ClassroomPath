@@ -234,7 +234,7 @@ else
   source "$DEPLOY_PAYLOAD_HELPER_PATH"
 fi
 
-if [ ! -f "$RELEASE_STATE_HELPER_PATH" ]; then
+if [ ! -f "$RELEASE_STATE_HELPER_PATH" ] || ! grep -q 'write_deploy_context_state()' "$RELEASE_STATE_HELPER_PATH"; then
   write_release_state_snapshot() {
     local snapshot_type="$1"
     local state_path="$2"
