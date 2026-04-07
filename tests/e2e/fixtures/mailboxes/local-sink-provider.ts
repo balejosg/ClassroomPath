@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-import { resolveTestEmailSinkFile } from '../../../../api/src/lib/test-email-sink.js';
+import { resolveTestEmailSinkFile } from '@classroompath/testkit/test-email-sink';
 import type {
   MailTmMessage,
   MailTmMessageSummary,
@@ -12,7 +12,7 @@ import type {
 import {
   createE2EWorkerRuntime,
   prefixWorkerScopedLocalPart,
-} from '../../../helpers/e2e-runtime.js';
+} from '@classroompath/testkit/e2e-runtime';
 import {
   extractLinksFromMessage,
   extractOtpFromMessage,

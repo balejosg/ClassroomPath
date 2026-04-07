@@ -17,6 +17,8 @@
   },
   "packageManager": "npm@10.9.3",
   "workspaces": [
+    "contracts",
+    "testkit",
     "api",
     "react-spa",
     "upstream/openpath/shared",

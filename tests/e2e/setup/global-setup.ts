@@ -1,5 +1,5 @@
 import { FullConfig } from '@playwright/test';
-import { clearTestEmailSink } from '../../../api/src/lib/test-email-sink.js';
+import { clearTestEmailSink } from '@classroompath/testkit/test-email-sink';
 import { defaultCommandRunner, prepareTestEnvironment } from './test-environment.js';
 
 export const commandRunner = defaultCommandRunner;

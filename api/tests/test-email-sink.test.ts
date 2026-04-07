@@ -9,7 +9,7 @@ import {
   clearTestEmailSink,
   DEFAULT_TEST_EMAIL_SINK_FILE,
   resolveTestEmailSinkFile,
-} from '../src/lib/test-email-sink.js';
+} from '../src/lib/test-email-sink';
 
 const originalSinkFile = process.env.CP_TEST_EMAIL_SINK_FILE;
 

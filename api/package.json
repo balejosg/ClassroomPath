@@ -16,6 +16,8 @@
     "test:integration": "node scripts/run-integration-tests.mjs"
   },
   "dependencies": {
+    "@classroompath/contracts": "1.0.0",
+    "@classroompath/testkit": "1.0.0",
     "@trpc/server": "^11.8.1",
     "@types/bcrypt": "^6.0.0",
     "bcrypt": "^6.0.0",

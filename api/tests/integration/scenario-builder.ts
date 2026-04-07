@@ -13,8 +13,8 @@ import {
   getDefaultTenantActorName,
   getDefaultTenantEmailPrefix,
   type TenantActorRole,
-} from '../../../tests/helpers/test-actors.js';
-import { createTenantApiHarness } from '../../../tests/helpers/tenant-api-harness.js';
+} from '@classroompath/testkit/test-actors';
+import { createTenantApiHarness } from '@classroompath/testkit/tenant-api-harness';
 
 export interface TestActor extends TestUser {
   token: string;

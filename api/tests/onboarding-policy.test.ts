@@ -6,7 +6,7 @@ import {
   getOnboardingAccessMode,
   resolveAutoSelectedOrganizationId,
   shouldShowOnboardingAccessPolicyNotice,
-} from '../src/contracts/onboarding-policy.js';
+} from '../src/contracts/onboarding-policy';
 
 describe('onboarding policy contract', () => {
   test('derives access mode from the policy flags', () => {

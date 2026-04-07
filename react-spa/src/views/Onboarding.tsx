@@ -6,7 +6,7 @@ import {
   getOnboardingAccessMode,
   resolveAutoSelectedOrganizationId,
   shouldShowOnboardingAccessPolicyNotice,
-} from '../../../api/src/contracts/onboarding-policy';
+} from '@classroompath/contracts/onboarding-policy';
 import {
   useCreateOrganization,
   useListOrganizations,

@@ -4,7 +4,7 @@ import {
   createOnboardingPolicy,
   type OnboardingOrganizationOption,
   type OnboardingPolicy,
-} from '../../../api/src/contracts/onboarding-policy.js';
+} from '@classroompath/contracts/onboarding-policy';
 
 type TrpcPatchMap = Record<string, unknown>;
 

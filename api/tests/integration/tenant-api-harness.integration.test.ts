@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 import { useIntegrationServer } from './harness.js';
 import { createTenantScenario } from './scenario-builder.js';
-import { createTenantApiHarness } from '../../../tests/helpers/tenant-api-harness.js';
+import { createTenantApiHarness } from '@classroompath/testkit/tenant-api-harness';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
 

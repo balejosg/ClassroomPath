@@ -4,7 +4,7 @@ import { Button, Card } from '@openpath/public-ui';
 import {
   createOnboardingPolicy,
   shouldShowOnboardingAccessPolicyNotice,
-} from '../../../api/src/contracts/onboarding-policy';
+} from '@classroompath/contracts/onboarding-policy';
 import { useOnboardingStatus, useCancelWaiting } from '../lib/hooks';
 
 interface Props {

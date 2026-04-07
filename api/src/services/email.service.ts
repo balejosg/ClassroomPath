@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { appendTestEmailSinkEntry } from '../lib/test-email-sink.js';
+import { appendTestEmailSinkEntry } from '@classroompath/testkit/test-email-sink';
 import { logger } from '../lib/logger.js';
 
 export interface SendEmailParams {

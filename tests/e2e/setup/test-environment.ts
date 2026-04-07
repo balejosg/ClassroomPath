@@ -7,7 +7,7 @@ import {
   deriveDatabaseComponentEnv,
   resolveDatabaseUrl,
 } from '../../../api/src/lib/database-url.js';
-import { clearTestEmailSink } from '../../../api/src/lib/test-email-sink.js';
+import { clearTestEmailSink } from '@classroompath/testkit/test-email-sink';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

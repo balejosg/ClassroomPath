@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import type { BrowserContext, Page } from '@playwright/test';
 
-import { resolveTestEmailSinkFile } from '../../api/src/lib/test-email-sink.js';
+import { resolveTestEmailSinkFile } from '@classroompath/testkit/test-email-sink';
 import { test, expect } from './fixtures/base-test';
 import {
   completeOrgOnboarding,

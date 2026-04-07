@@ -17,7 +17,10 @@ import {
   SINGLE_ORG_MEMBERSHIP_MESSAGE,
 } from '../lib/tenant-memberships.js';
 import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
-import { createOnboardingPolicy, type OnboardingPolicy } from '../contracts/onboarding-policy.js';
+import {
+  createOnboardingPolicy,
+  type OnboardingPolicy,
+} from '@classroompath/contracts/onboarding-policy';
 
 export interface OnboardingStatus {
   hasMembership: boolean;

@@ -14,7 +14,7 @@ import {
 } from '../src/db/test-table-inventory.js';
 import { db, schema } from '../src/db/index.js';
 import { openpathDb, openpathSchema } from '../src/db/openpath.js';
-import { listSeededE2EUsers, SEEDED_E2E_ORGANIZATION } from '../../tests/helpers/test-actors.js';
+import { listSeededE2EUsers, SEEDED_E2E_ORGANIZATION } from '@classroompath/testkit/test-actors';
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL is required for seed-e2e');

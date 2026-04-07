@@ -7,7 +7,7 @@ import { describe, test } from 'node:test';
 import {
   appendTestEmailSinkEntry,
   clearTestEmailSink,
-} from '../../../api/src/lib/test-email-sink.js';
+} from '@classroompath/testkit/test-email-sink';
 import { createMailboxProviderSelector, type MailboxProvider } from './mailbox-provider.js';
 import { createLocalSinkMailboxProvider } from './mailboxes/local-sink-provider.js';
 
