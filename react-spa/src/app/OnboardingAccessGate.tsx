@@ -1,15 +1,14 @@
 import React from 'react';
+import type {
+  CreateOrganizationSuccessDto,
+  OnboardingStatusDto,
+} from '@classroompath/presenters/onboarding';
 
 import { Onboarding } from '../views/Onboarding';
 import { Waiting } from '../views/Waiting';
 
-type OnboardingStatusLike = {
-  hasMembership?: boolean;
-  isWaiting?: boolean;
-};
-
 type OnboardingAccessGateProps = {
-  status?: OnboardingStatusLike;
+  status?: OnboardingStatusDto;
   isLoading: boolean;
   loadingTimedOut: boolean;
   isError: boolean;
@@ -17,7 +16,7 @@ type OnboardingAccessGateProps = {
   onLogoutToLogin: () => void;
   onStatusChange: () => void;
   onCancelWaitingSuccess: () => void;
-  onOrgCreated: (result: { user: unknown }) => void;
+  onOrgCreated: (result: CreateOrganizationSuccessDto) => void;
   authenticatedContent: React.ReactNode;
 };
 

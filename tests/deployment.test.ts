@@ -16,6 +16,8 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
 const verifyFullOrchestratorPath = resolve(projectRoot, 'scripts/verify-full.ts');
+const turboConfigPath = resolve(projectRoot, 'turbo.json');
+const turboRunnerScriptPath = resolve(projectRoot, 'scripts/run-turbo.sh');
 
 interface DockerComposeService {
   build?: { context: string; dockerfile: string };
@@ -669,6 +671,43 @@ void describe('Migration Tooling', () => {
       orchestrator.includes('function validatePlaywrightReport(') &&
         orchestrator.includes('Playwright verification cannot skip tests; skipped:'),
       'verify-full.ts should own the Playwright skipped-test gate'
+    );
+  });
+
+  void test('build and static verification route through the ClassroomPath turbo pipeline', () => {
+    const rootPackage = JSON.parse(readFileSync(resolve(projectRoot, 'package.json'), 'utf-8')) as {
+      scripts?: Record<string, string>;
+      workspaces?: string[];
+    };
+    const buildScript = readFileSync(
+      resolve(projectRoot, 'scripts/build-classroompath.sh'),
+      'utf-8'
+    );
+    const verifyOrchestrator = readFileSync(verifyFullOrchestratorPath, 'utf-8');
+    const turboConfig = readFileSync(turboConfigPath, 'utf-8');
+
+    assert.ok(existsSync(turboConfigPath), 'turbo.json should exist at the ClassroomPath root');
+    assert.ok(
+      existsSync(turboRunnerScriptPath),
+      'scripts/run-turbo.sh should exist as the shared turbo entrypoint'
+    );
+    assert.ok(
+      rootPackage.scripts?.['verify:static']?.includes('scripts/run-turbo.sh verify:static'),
+      'package.json should expose a root verify:static script through the shared turbo runner'
+    );
+    assert.ok(
+      buildScript.includes('scripts/run-turbo.sh build'),
+      'build-classroompath.sh should delegate package builds to the shared turbo runner'
+    );
+    assert.ok(
+      verifyOrchestrator.includes("await run('bash', ['scripts/run-turbo.sh', 'verify:static']"),
+      'verify-full.ts should route static verification through the root turbo pipeline'
+    );
+    assert.ok(
+      turboConfig.includes('"build"') &&
+        turboConfig.includes('"typecheck"') &&
+        turboConfig.includes('"lint"'),
+      'turbo.json should define build, typecheck, and lint tasks for the workspace graph'
     );
   });
 

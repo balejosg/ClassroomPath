@@ -7,6 +7,7 @@ import {
   resolveAutoSelectedOrganizationId,
   shouldShowOnboardingAccessPolicyNotice,
 } from '@classroompath/contracts/onboarding-policy';
+import type { CreateOrganizationSuccessDto } from '@classroompath/presenters/onboarding';
 import {
   useCreateOrganization,
   useListOrganizations,
@@ -15,16 +16,7 @@ import {
 } from '../lib/hooks';
 
 interface Props {
-  onOrgCreated: (result: {
-    success: boolean;
-    organizationId: string;
-    user?: {
-      id: string;
-      email: string;
-      name: string;
-      roles: Array<{ role: string; groupIds: string[] }>;
-    };
-  }) => void;
+  onOrgCreated: (result: CreateOrganizationSuccessDto) => void;
   onWaitClick: () => void;
   onLogout?: () => void;
 }

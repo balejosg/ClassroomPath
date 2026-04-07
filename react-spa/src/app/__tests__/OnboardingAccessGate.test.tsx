@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import type { OnboardingStatusDto } from '@classroompath/presenters/onboarding';
 
 import { OnboardingAccessGate } from '../OnboardingAccessGate';
 
@@ -42,9 +43,22 @@ vi.mock('../../views/Onboarding', () => ({
   ),
 }));
 
+function createStatus(overrides: Partial<OnboardingStatusDto> = {}): OnboardingStatusDto {
+  return {
+    hasMembership: true,
+    isWaiting: false,
+    organization: null,
+    policy: {
+      allowOrgDirectory: false,
+      allowSelfServiceOrgs: false,
+    },
+    ...overrides,
+  };
+}
+
 function renderGate(overrides?: Partial<React.ComponentProps<typeof OnboardingAccessGate>>) {
   const props: React.ComponentProps<typeof OnboardingAccessGate> = {
-    status: { hasMembership: true, isWaiting: false },
+    status: createStatus(),
     isLoading: false,
     loadingTimedOut: false,
     isError: false,
@@ -70,7 +84,7 @@ describe('OnboardingAccessGate', () => {
 
     rerender(
       <OnboardingAccessGate
-        status={{ hasMembership: true }}
+        status={createStatus({ hasMembership: true })}
         isLoading
         loadingTimedOut
         isError={false}
@@ -88,7 +102,7 @@ describe('OnboardingAccessGate', () => {
 
     rerender(
       <OnboardingAccessGate
-        status={{ hasMembership: true }}
+        status={createStatus({ hasMembership: true })}
         isLoading={false}
         loadingTimedOut={false}
         isError
@@ -113,7 +127,7 @@ describe('OnboardingAccessGate', () => {
     const onOrgCreated = vi.fn();
 
     const { rerender } = renderGate({
-      status: { hasMembership: false, isWaiting: true },
+      status: createStatus({ hasMembership: false, isWaiting: true }),
       onStatusChange,
       onCancelWaitingSuccess,
       onLogoutToLogin,
@@ -127,7 +141,7 @@ describe('OnboardingAccessGate', () => {
 
     rerender(
       <OnboardingAccessGate
-        status={{ hasMembership: false, isWaiting: false }}
+        status={createStatus({ hasMembership: false, isWaiting: false })}
         isLoading={false}
         loadingTimedOut={false}
         isError={false}

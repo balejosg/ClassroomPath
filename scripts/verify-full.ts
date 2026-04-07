@@ -403,18 +403,17 @@ async function main(): Promise<void> {
 
     console.log('');
     console.log('[2/5] Static analysis (parallel: typecheck, lint, format)...');
-    if (plan.skipOpenPathStatic) {
-      await runParallel([
-        'npm run format:check',
-        'npm run lint --workspace=@classroompath/react-spa',
-      ]);
-    } else {
-      await runParallel([
-        'cd upstream/openpath && npm run verify:static',
-        'npm run format:check',
-        'npm run lint --workspace=@classroompath/react-spa',
-      ]);
+    await run('bash', ['scripts/run-turbo.sh', 'verify:static'], {
+      cwd: plan.rootDir,
+      env: verifyEnv,
+    });
+    if (!plan.skipOpenPathStatic) {
+      await runShell('cd upstream/openpath && npm run verify:static', {
+        cwd: plan.rootDir,
+        env: verifyEnv,
+      });
     }
+    await run('npm', ['run', 'format:check'], { cwd: plan.rootDir, env: verifyEnv });
 
     console.log('');
     console.log('[3/5] Security and size checks (parallel)...');

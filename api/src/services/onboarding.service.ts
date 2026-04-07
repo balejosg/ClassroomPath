@@ -21,17 +21,9 @@ import {
   createOnboardingPolicy,
   type OnboardingPolicy,
 } from '@classroompath/contracts/onboarding-policy';
+import type { OnboardingStatusDto } from '@classroompath/presenters/onboarding';
 
-export interface OnboardingStatus {
-  hasMembership: boolean;
-  isWaiting: boolean;
-  organization: {
-    id: string;
-    name: string;
-    role: string;
-  } | null;
-  policy: OnboardingPolicy;
-}
+export type OnboardingStatus = OnboardingStatusDto;
 
 export function getOnboardingPolicy(): OnboardingPolicy {
   return createOnboardingPolicy({
@@ -40,7 +32,7 @@ export function getOnboardingPolicy(): OnboardingPolicy {
   });
 }
 
-export async function getOnboardingStatus(userId: string): Promise<OnboardingStatus> {
+export async function getOnboardingStatus(userId: string): Promise<OnboardingStatusDto> {
   const policy = getOnboardingPolicy();
   const membership = await getSingleMembershipOrThrow(userId);
   if (membership) {

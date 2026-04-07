@@ -1,0 +1,29 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "globalDependencies": [
+    "package.json",
+    "package-lock.json",
+    "api/tsconfig.json",
+    "react-spa/tsconfig.json",
+    "contracts/tsconfig.json",
+    "presenters/tsconfig.json",
+    "testkit/tsconfig.json"
+  ],
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "build/**", "dist-ssr/**"],
+      "inputs": ["src/**", "package.json", "tsconfig.json", "vite.config.ts", "postcss.config.js"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "inputs": ["src/**/*.ts", "src/**/*.tsx", "package.json", "tsconfig.json"]
+    },
+    "lint": {
+      "outputs": [],
+      "inputs": ["src/**", "package.json", ".eslintrc*", "eslint.config.*"]
+    }
+  }
+}

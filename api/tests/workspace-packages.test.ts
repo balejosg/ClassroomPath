@@ -13,12 +13,16 @@ function readProjectFile(relativePath: string): string {
 }
 
 void describe('internal workspace package boundaries', () => {
-  void test('root workspaces declare internal contracts and testkit packages', () => {
+  void test('root workspaces declare internal contracts, presenters, and testkit packages', () => {
     const rootPackage = JSON.parse(readProjectFile('package.json')) as { workspaces?: string[] };
 
     assert.ok(
       rootPackage.workspaces?.includes('contracts'),
       'Root package.json should declare the contracts workspace'
+    );
+    assert.ok(
+      rootPackage.workspaces?.includes('presenters'),
+      'Root package.json should declare the presenters workspace'
     );
     assert.ok(
       rootPackage.workspaces?.includes('testkit'),
@@ -100,5 +104,60 @@ void describe('internal workspace package boundaries', () => {
         `${label} should not reach into api/src/lib/test-email-sink directly`
       );
     }
+  });
+
+  void test('shared tenant presenters and onboarding dto contracts are consumed through @classroompath/presenters', () => {
+    const rootPackage = JSON.parse(readProjectFile('package.json')) as { workspaces?: string[] };
+    const presentersPackage = JSON.parse(readProjectFile('presenters/package.json')) as {
+      name?: string;
+      exports?: Record<string, unknown>;
+    };
+    const tenantPresenters = readProjectFile('api/src/services/presenters.ts');
+    const onboardingService = readProjectFile('api/src/services/onboarding.service.ts');
+    const onboardingView = readProjectFile('react-spa/src/views/Onboarding.tsx');
+    const onboardingGate = readProjectFile('react-spa/src/app/OnboardingAccessGate.tsx');
+
+    assert.ok(
+      rootPackage.workspaces?.includes('presenters'),
+      'Root package.json should declare the presenters workspace'
+    );
+    assert.equal(
+      presentersPackage.name,
+      '@classroompath/presenters',
+      'presenters/package.json should publish @classroompath/presenters'
+    );
+    assert.ok(
+      presentersPackage.exports?.['./tenant-presenters'],
+      'The presenters workspace should expose tenant-presenters'
+    );
+    assert.ok(
+      presentersPackage.exports?.['./onboarding'],
+      'The presenters workspace should expose onboarding DTOs'
+    );
+    assert.match(
+      tenantPresenters,
+      /@classroompath\/presenters\/tenant-presenters/,
+      'api/src/services/presenters.ts should re-export or consume tenant presenters via the presenters workspace'
+    );
+    assert.match(
+      onboardingService,
+      /@classroompath\/presenters\/onboarding/,
+      'onboarding.service.ts should type its shared onboarding status through @classroompath/presenters'
+    );
+    assert.match(
+      onboardingView,
+      /@classroompath\/presenters\/onboarding/,
+      'Onboarding.tsx should consume shared onboarding DTO types from @classroompath/presenters'
+    );
+    assert.match(
+      onboardingGate,
+      /@classroompath\/presenters\/onboarding/,
+      'OnboardingAccessGate.tsx should consume shared onboarding DTO types from @classroompath/presenters'
+    );
+    assert.doesNotMatch(
+      onboardingGate,
+      /type OnboardingStatusLike =/,
+      'OnboardingAccessGate.tsx should not maintain a local onboarding DTO shadow type'
+    );
   });
 });

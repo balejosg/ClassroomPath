@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { GroupLibrary } from '../GroupLibrary';
+import type { RulesPage } from '../group-library/group-library-helpers';
 
 const mockInvalidate = vi.fn(async () => undefined);
 const mockCloneMutate = vi.fn();
@@ -19,8 +20,14 @@ let publishMutationOptions: { onSuccess?: () => Promise<void> | void } | undefin
 let libraryGroups: Array<Record<string, unknown>> = [];
 let orgGroups: Array<Record<string, unknown>> = [];
 let templates: Array<Record<string, unknown>> = [];
-let groupRules = { data: undefined, isLoading: false };
-let templateRules = { data: undefined, isLoading: false };
+let groupRules: { data: RulesPage | undefined; isLoading: boolean } = {
+  data: undefined,
+  isLoading: false,
+};
+let templateRules: { data: RulesPage | undefined; isLoading: boolean } = {
+  data: undefined,
+  isLoading: false,
+};
 
 vi.mock('../../lib/dual-trpc-provider', () => ({
   cpTrpcReact: {

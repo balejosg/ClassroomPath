@@ -1,0 +1,31 @@
+{
+  "name": "@classroompath/presenters",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./onboarding": {
+      "types": "./dist/onboarding.d.ts",
+      "import": "./dist/onboarding.js"
+    },
+    "./tenant-presenters": {
+      "types": "./dist/tenant-presenters.d.ts",
+      "import": "./dist/tenant-presenters.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean:all": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@classroompath/contracts": "1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.0"
+  }
+}

@@ -334,9 +334,9 @@ describe('OrganizationUsers', () => {
   });
 
   it('closes the invite modal immediately after a successful invite even if the refetch is still pending', async () => {
-    let releaseUsersRefetch: (() => void) | null = null;
+    let releaseUsersRefetch: () => void = () => {};
     const usersRefetchPromise = new Promise<void>((resolve) => {
-      releaseUsersRefetch = resolve;
+      releaseUsersRefetch = () => resolve();
     });
 
     mockCreateInvitationMutateAsync.mockResolvedValue({
@@ -364,7 +364,7 @@ describe('OrganizationUsers', () => {
     expect(await screen.findByText('Invitación enviada')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Invitar usuario' })).not.toBeInTheDocument();
 
-    releaseUsersRefetch?.();
+    releaseUsersRefetch();
   });
 
   it('shows invite errors and lets the admin close the modal afterward', async () => {

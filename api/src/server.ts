@@ -6,14 +6,8 @@ import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { assertRuntimeSecretsConfigured, config } from './config.js';
 import { createGatewayRateLimitRules, createRateLimitMiddleware } from './lib/gateway-hardening.js';
 import { type GatewayAppOptions, resolveGatewayConfig } from './lib/gateway-config.js';
+import { composeGatewayApp } from './lib/gateway/compose-gateway.js';
 import { getGatewayReadiness } from './lib/gateway-readiness.js';
-import {
-  registerGatewayApplicationRoutes,
-  registerGatewayBaseMiddleware,
-  registerGatewayHealthRoutes,
-  registerGatewayProxyRoutes,
-  registerGatewaySpaRoutes,
-} from './lib/gateway-routes.js';
 import { logger } from './lib/logger.js';
 import { createContext } from './trpc/context.js';
 import { appRouter } from './trpc/router.js';
@@ -39,26 +33,18 @@ export function createGatewayApp(options: GatewayAppOptions = {}) {
     },
   });
 
-  registerGatewayBaseMiddleware(app, {
+  composeGatewayApp({
+    app,
     corsOrigins: gatewayConfig.corsOrigins,
     publicOrigin: gatewayConfig.publicOrigin,
     rateLimitMiddleware,
-  });
-  registerGatewayProxyRoutes(app, {
     openPathApiTarget: config.openpathUrl,
-  });
-  registerGatewayHealthRoutes(app, {
     getGatewayReadiness,
-  });
-  registerGatewayApplicationRoutes(app, {
     jsonBodyLimit: gatewayConfig.jsonBodyLimit,
     trpcMiddleware,
+    serveSpa: gatewayConfig.serveSpa,
+    reactSpaPath,
   });
-  if (gatewayConfig.serveSpa) {
-    registerGatewaySpaRoutes(app, {
-      reactSpaPath,
-    });
-  }
 
   return app;
 }
