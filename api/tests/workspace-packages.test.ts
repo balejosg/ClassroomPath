@@ -68,6 +68,7 @@ void describe('internal workspace package boundaries', () => {
       'api/tests/integration/tenant-api-harness.integration.test.ts'
     );
     const emailService = readProjectFile('api/src/services/email.service.ts');
+    const apiEmailSink = readProjectFile('api/src/lib/test-email-sink.ts');
     const globalSetup = readProjectFile('tests/e2e/setup/global-setup.ts');
     const testEnvironment = readProjectFile('tests/e2e/setup/test-environment.ts');
     const authEmailSpec = readProjectFile('tests/e2e/auth-email.spec.ts');
@@ -86,8 +87,23 @@ void describe('internal workspace package boundaries', () => {
       'Tenant harness integration test should import the tenant harness via @classroompath/testkit'
     );
 
+    assert.match(
+      emailService,
+      /\.\.\/lib\/test-email-sink/,
+      'email.service.ts should consume the local runtime email sink implementation'
+    );
+    assert.doesNotMatch(
+      emailService,
+      /@classroompath\/testkit\/test-email-sink/,
+      'email.service.ts should not depend on @classroompath/testkit at runtime'
+    );
+    assert.doesNotMatch(
+      apiEmailSink,
+      /@classroompath\/testkit\/test-email-sink/,
+      'api/src/lib/test-email-sink.ts should not re-export from @classroompath/testkit'
+    );
+
     for (const [label, content] of [
-      ['email.service.ts', emailService],
       ['global-setup.ts', globalSetup],
       ['test-environment.ts', testEnvironment],
       ['auth-email.spec.ts', authEmailSpec],
