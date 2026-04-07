@@ -898,9 +898,8 @@ describe('Workflow configuration hardening', () => {
     );
 
     const verifierManifestRun =
-      jobs['build-verifier-release-candidate']?.steps
-        ?.map((step) => step.run ?? '')
-        .join('\n') ?? '';
+      jobs['build-verifier-release-candidate']?.steps?.map((step) => step.run ?? '').join('\n') ??
+      '';
     assert.ok(
       verifierManifestRun.includes('docker buildx imagetools create'),
       'verifier manifest merge should assemble the final multi-architecture tag from per-architecture digests'

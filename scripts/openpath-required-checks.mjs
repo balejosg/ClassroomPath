@@ -4,6 +4,12 @@ import { execFileSync } from 'node:child_process';
 
 const DEFAULT_REQUIRED_CHECKS = ['CI Success'];
 const GITHUB_API_VERSION = '2022-11-28';
+const OPENPATH_CI_JOB_NAMES = [
+  'Detect Relevant Changes',
+  'Linux Agent Tests (BATS)',
+  'Windows Agent Tests (Pester)',
+  'Delivery Contracts (Node)',
+];
 
 function usage() {
   console.log(`Usage: node scripts/openpath-required-checks.mjs
@@ -57,12 +63,88 @@ export function selectLatestCheckRuns(checkRuns) {
   return latestByName;
 }
 
-export function evaluateRequiredChecks({ checkRuns, requiredChecks }) {
+function parseRunIdFromUrl(value) {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/\/actions\/runs\/(\d+)(?:\/|$)/);
+  return match ? match[1] : null;
+}
+
+function selectLatestWorkflowJobsByName(workflowJobs) {
+  const latestByName = new Map();
+
+  for (const workflowJob of workflowJobs) {
+    const previous = latestByName.get(workflowJob.name);
+
+    if (!previous) {
+      latestByName.set(workflowJob.name, workflowJob);
+      continue;
+    }
+
+    const previousTime = parseTimestamp(previous.completed_at ?? previous.started_at);
+    const nextTime = parseTimestamp(workflowJob.completed_at ?? workflowJob.started_at);
+
+    if (nextTime >= previousTime) {
+      latestByName.set(workflowJob.name, workflowJob);
+    }
+  }
+
+  return latestByName;
+}
+
+export function workflowJobSucceeded(workflowJob) {
+  if (!workflowJob) {
+    return false;
+  }
+
+  if (workflowJob.status === 'completed') {
+    return workflowJob.conclusion === 'success' || workflowJob.conclusion === 'skipped';
+  }
+
+  if (workflowJob.status !== 'in_progress' || workflowJob.conclusion) {
+    return false;
+  }
+
+  const steps = workflowJob.steps ?? [];
+  if (steps.length === 0) {
+    return false;
+  }
+
+  const completeJobStep = steps.find((step) => step.name === 'Complete job');
+  if (
+    !completeJobStep ||
+    completeJobStep.status !== 'completed' ||
+    completeJobStep.conclusion !== 'success'
+  ) {
+    return false;
+  }
+
+  return steps.every((step) => step.status === 'completed' && step.conclusion === 'success');
+}
+
+export function ciWorkflowSatisfiedByJobs(workflowJobs) {
+  const latestByName = selectLatestWorkflowJobsByName(workflowJobs);
+
+  return OPENPATH_CI_JOB_NAMES.every((jobName) => workflowJobSucceeded(latestByName.get(jobName)));
+}
+
+export function evaluateRequiredChecks({ checkRuns, requiredChecks, workflowJobs = [] }) {
   const latestByName = selectLatestCheckRuns(checkRuns);
   const missing = [];
   const failing = [];
+  const recoveredChecks = new Set();
+
+  if (requiredChecks.includes('CI Success') && ciWorkflowSatisfiedByJobs(workflowJobs)) {
+    recoveredChecks.add('CI Success');
+  }
 
   for (const checkName of requiredChecks) {
+    if (recoveredChecks.has(checkName)) {
+      continue;
+    }
+
     const checkRun = latestByName.get(checkName);
 
     if (!checkRun) {
@@ -115,6 +197,49 @@ async function fetchCheckRuns({ repo, sha, token }) {
   return payload.check_runs ?? [];
 }
 
+function selectLatestOpenPathCiRunId(checkRuns) {
+  let latestRunId = null;
+  let latestTime = 0;
+
+  for (const checkRun of checkRuns) {
+    if (!OPENPATH_CI_JOB_NAMES.includes(checkRun.name)) {
+      continue;
+    }
+
+    const runId = parseRunIdFromUrl(checkRun.details_url ?? checkRun.html_url ?? '');
+    if (!runId) {
+      continue;
+    }
+
+    const timestamp = parseTimestamp(checkRun.completed_at ?? checkRun.started_at);
+    if (timestamp >= latestTime) {
+      latestTime = timestamp;
+      latestRunId = runId;
+    }
+  }
+
+  return latestRunId;
+}
+
+async function fetchWorkflowRunJobs({ repo, runId, token }) {
+  const response = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+      'User-Agent': 'classroompath-openpath-required-checks',
+      'X-GitHub-Api-Version': GITHUB_API_VERSION,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`GitHub Actions jobs API returned ${response.status}: ${body}`);
+  }
+
+  const payload = await response.json();
+  return payload.jobs ?? [];
+}
+
 function printFailureSummary({ repo, sha, result }) {
   console.error(`OpenPath required checks failed for ${repo}@${sha}`);
 
@@ -147,7 +272,17 @@ async function main() {
   }
 
   const checkRuns = await fetchCheckRuns({ repo, sha, token });
-  const result = evaluateRequiredChecks({ checkRuns, requiredChecks });
+  let workflowJobs = [];
+  const requiresCiSuccess = requiredChecks.includes('CI Success');
+
+  if (requiresCiSuccess) {
+    const runId = selectLatestOpenPathCiRunId(checkRuns);
+    if (runId) {
+      workflowJobs = await fetchWorkflowRunJobs({ repo, runId, token });
+    }
+  }
+
+  const result = evaluateRequiredChecks({ checkRuns, requiredChecks, workflowJobs });
 
   if (!result.ok) {
     printFailureSummary({ repo, sha, result });

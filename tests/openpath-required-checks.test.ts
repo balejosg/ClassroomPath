@@ -3,6 +3,35 @@ import { describe, it } from 'node:test';
 
 import { evaluateRequiredChecks } from '../scripts/openpath-required-checks.mjs';
 
+const OPENPATH_CI_JOB_NAMES = [
+  'Detect Relevant Changes',
+  'Linux Agent Tests (BATS)',
+  'Windows Agent Tests (Pester)',
+  'Delivery Contracts (Node)',
+];
+
+function buildCompletedWorkflowJob(name: string, overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    name,
+    status: 'completed',
+    conclusion: 'success',
+    completed_at: '2026-03-13T10:00:00Z',
+    steps: [
+      {
+        name: 'Set up job',
+        status: 'completed',
+        conclusion: 'success',
+      },
+      {
+        name: 'Complete job',
+        status: 'completed',
+        conclusion: 'success',
+      },
+    ],
+    ...overrides,
+  };
+}
+
 describe('evaluateRequiredChecks', () => {
   it('accepts the latest success for every required check', () => {
     const result = evaluateRequiredChecks({
@@ -103,6 +132,114 @@ describe('evaluateRequiredChecks', () => {
 
     assert.equal(result.ok, true);
     assert.deepEqual(result.missing, []);
+    assert.deepEqual(result.failing, []);
+  });
+
+  it('recovers CI Success from workflow jobs when the summary check is missing', () => {
+    const result = evaluateRequiredChecks({
+      checkRuns: [],
+      requiredChecks: ['CI Success'],
+      workflowJobs: OPENPATH_CI_JOB_NAMES.map((jobName) => buildCompletedWorkflowJob(jobName)),
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.missing, []);
+    assert.deepEqual(result.failing, []);
+  });
+
+  it('recovers CI Success when the windows job is stuck in progress after all steps succeed', () => {
+    const result = evaluateRequiredChecks({
+      checkRuns: [],
+      requiredChecks: ['CI Success'],
+      workflowJobs: [
+        buildCompletedWorkflowJob('Detect Relevant Changes'),
+        buildCompletedWorkflowJob('Linux Agent Tests (BATS)'),
+        buildCompletedWorkflowJob('Delivery Contracts (Node)'),
+        buildCompletedWorkflowJob('Windows Agent Tests (Pester)', {
+          status: 'in_progress',
+          conclusion: null,
+          completed_at: null,
+          steps: [
+            {
+              name: 'Set up job',
+              status: 'completed',
+              conclusion: 'success',
+            },
+            {
+              name: 'Run Windows Unit Tests',
+              status: 'completed',
+              conclusion: 'success',
+            },
+            {
+              name: 'Upload test results',
+              status: 'completed',
+              conclusion: 'success',
+            },
+            {
+              name: 'Complete job',
+              status: 'completed',
+              conclusion: 'success',
+            },
+          ],
+        }),
+      ],
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.missing, []);
+    assert.deepEqual(result.failing, []);
+  });
+
+  it('does not recover CI Success when a required workflow job actually fails', () => {
+    const result = evaluateRequiredChecks({
+      checkRuns: [],
+      requiredChecks: ['CI Success'],
+      workflowJobs: [
+        buildCompletedWorkflowJob('Detect Relevant Changes'),
+        buildCompletedWorkflowJob('Linux Agent Tests (BATS)'),
+        buildCompletedWorkflowJob('Delivery Contracts (Node)'),
+        buildCompletedWorkflowJob('Windows Agent Tests (Pester)', {
+          status: 'completed',
+          conclusion: 'failure',
+        }),
+      ],
+    });
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.missing, ['CI Success']);
+    assert.deepEqual(result.failing, []);
+  });
+
+  it('does not recover CI Success when a workflow job is still genuinely running', () => {
+    const result = evaluateRequiredChecks({
+      checkRuns: [],
+      requiredChecks: ['CI Success'],
+      workflowJobs: [
+        buildCompletedWorkflowJob('Detect Relevant Changes'),
+        buildCompletedWorkflowJob('Linux Agent Tests (BATS)'),
+        buildCompletedWorkflowJob('Delivery Contracts (Node)'),
+        buildCompletedWorkflowJob('Windows Agent Tests (Pester)', {
+          status: 'in_progress',
+          conclusion: null,
+          completed_at: null,
+          steps: [
+            {
+              name: 'Set up job',
+              status: 'completed',
+              conclusion: 'success',
+            },
+            {
+              name: 'Run Windows Unit Tests',
+              status: 'in_progress',
+              conclusion: null,
+            },
+          ],
+        }),
+      ],
+    });
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.missing, ['CI Success']);
     assert.deepEqual(result.failing, []);
   });
 });
