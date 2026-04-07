@@ -617,8 +617,16 @@ describe('Workflow configuration hardening', () => {
       'release candidate workflow should merge the OpenPath API per-architecture images into a release-candidate manifest'
     );
     assert.ok(
+      jobs['build-spa-release-candidate-amd64'],
+      'release candidate workflow should build the SPA amd64 image in its own job'
+    );
+    assert.ok(
+      jobs['build-spa-release-candidate-arm64'],
+      'release candidate workflow should build the SPA arm64 image in its own job'
+    );
+    assert.ok(
       jobs['build-spa-release-candidate'],
-      'release candidate workflow should build the SPA image in its own job'
+      'release candidate workflow should merge the SPA per-architecture images into a release-candidate manifest'
     );
     assert.ok(
       jobs['build-migrations-release-candidate-amd64'],
@@ -637,8 +645,16 @@ describe('Workflow configuration hardening', () => {
       'release candidate workflow should resolve prebuilt Firefox release assets before the OpenPath API image builds'
     );
     assert.ok(
+      jobs['build-verifier-release-candidate-amd64'],
+      'release candidate workflow should build the verifier amd64 image in its own job'
+    );
+    assert.ok(
+      jobs['build-verifier-release-candidate-arm64'],
+      'release candidate workflow should build the verifier arm64 image in its own job'
+    );
+    assert.ok(
       jobs['build-verifier-release-candidate'],
-      'release candidate workflow should build the verifier image in its own job'
+      'release candidate workflow should merge the verifier per-architecture images into a release-candidate manifest'
     );
     assert.ok(
       jobs['publish-release-candidate-manifest'],
@@ -678,7 +694,11 @@ describe('Workflow configuration hardening', () => {
       'build-migrations-release-candidate',
       'build-openpath-api-release-candidate-amd64',
       'build-openpath-api-release-candidate-arm64',
+      'build-spa-release-candidate-amd64',
+      'build-spa-release-candidate-arm64',
       'build-spa-release-candidate',
+      'build-verifier-release-candidate-amd64',
+      'build-verifier-release-candidate-arm64',
       'build-verifier-release-candidate',
     ]) {
       const jobNeeds = normalizeNeeds(jobs[jobName]?.needs);
@@ -811,10 +831,47 @@ describe('Workflow configuration hardening', () => {
 
       const jobSteps = jobs[jobName]?.steps ?? [];
       assert.ok(
-        jobSteps.some((step) => step.uses === 'actions/download-artifact@v6'),
+        jobSteps.some((step) => step.uses === 'actions/download-artifact@v7'),
         `${jobName} should download the prepared Firefox release assets into the Docker build context`
       );
     }
+
+    assert.equal(
+      jobs['build-spa-release-candidate-arm64']?.['runs-on'],
+      'ubuntu-24.04-arm',
+      'release candidate workflow should build the SPA arm64 image on a native arm64 runner'
+    );
+    assert.equal(
+      jobs['build-verifier-release-candidate-arm64']?.['runs-on'],
+      'ubuntu-24.04-arm',
+      'release candidate workflow should build the verifier arm64 image on a native arm64 runner'
+    );
+
+    const spaManifestNeeds = normalizeNeeds(jobs['build-spa-release-candidate']?.needs);
+    assert.deepEqual(
+      spaManifestNeeds.sort(),
+      [
+        'build-spa-release-candidate-amd64',
+        'build-spa-release-candidate-arm64',
+        'detect-release-candidate-components',
+        'derive-release-image-refs',
+        'resolve-previous-release-candidate-manifest',
+      ].sort(),
+      'SPA manifest merge should wait for both per-architecture builds plus the reuse/build decision inputs'
+    );
+
+    const verifierManifestNeeds = normalizeNeeds(jobs['build-verifier-release-candidate']?.needs);
+    assert.deepEqual(
+      verifierManifestNeeds.sort(),
+      [
+        'build-verifier-release-candidate-amd64',
+        'build-verifier-release-candidate-arm64',
+        'detect-release-candidate-components',
+        'derive-release-image-refs',
+        'resolve-previous-release-candidate-manifest',
+      ].sort(),
+      'verifier manifest merge should wait for both per-architecture builds plus the reuse/build decision inputs'
+    );
 
     const openPathManifestRun =
       jobs['build-openpath-api-release-candidate']?.steps
@@ -827,6 +884,30 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       openPathManifestRun.includes('docker buildx imagetools inspect'),
       'OpenPath API manifest merge should resolve the final immutable digest after merging the per-architecture images'
+    );
+
+    const spaManifestRun =
+      jobs['build-spa-release-candidate']?.steps?.map((step) => step.run ?? '').join('\n') ?? '';
+    assert.ok(
+      spaManifestRun.includes('docker buildx imagetools create'),
+      'SPA manifest merge should assemble the final multi-architecture tag from per-architecture digests'
+    );
+    assert.ok(
+      spaManifestRun.includes('docker buildx imagetools inspect'),
+      'SPA manifest merge should resolve the final immutable digest after merging the per-architecture images'
+    );
+
+    const verifierManifestRun =
+      jobs['build-verifier-release-candidate']?.steps
+        ?.map((step) => step.run ?? '')
+        .join('\n') ?? '';
+    assert.ok(
+      verifierManifestRun.includes('docker buildx imagetools create'),
+      'verifier manifest merge should assemble the final multi-architecture tag from per-architecture digests'
+    );
+    assert.ok(
+      verifierManifestRun.includes('docker buildx imagetools inspect'),
+      'verifier manifest merge should resolve the final immutable digest after merging the per-architecture images'
     );
 
     const publishManifestRun =

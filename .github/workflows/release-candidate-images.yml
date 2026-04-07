@@ -419,7 +419,7 @@ jobs:
 
       - name: Download Firefox release assets
         if: steps.mode.outputs.build_required == 'true'
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: openpath-firefox-release-assets
           path: ./upstream/openpath/firefox-extension
@@ -480,7 +480,7 @@ jobs:
 
       - name: Download Firefox release assets
         if: steps.mode.outputs.build_required == 'true'
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: openpath-firefox-release-assets
           path: ./upstream/openpath/firefox-extension
@@ -557,15 +557,15 @@ jobs:
             echo "openpath_api_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}" >> "$GITHUB_OUTPUT"
           fi
 
-  build-spa-release-candidate:
-    name: Build SPA Release Candidate
+  build-spa-release-candidate-amd64:
+    name: Build SPA Release Candidate (amd64)
     runs-on: ubuntu-latest
     needs:
       - derive-release-image-refs
       - resolve-previous-release-candidate-manifest
       - detect-release-candidate-components
     outputs:
-      spa_image: ${{ steps.publish-manifest.outputs.spa_image }}
+      image_digest: ${{ steps.build-spa.outputs.digest }}
 
     steps:
       - name: Decide whether to build SPA image
@@ -598,30 +598,119 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile.spa
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ needs.derive-release-image-refs.outputs.spa_tag }}
-          cache-from: type=gha,scope=release-candidate-spa
-          cache-to: type=gha,mode=max,scope=release-candidate-spa
+          platforms: linux/amd64
+          outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.spa_repo }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-candidate-spa-amd64
+          cache-to: type=gha,mode=max,scope=release-candidate-spa-amd64
+
+  build-spa-release-candidate-arm64:
+    name: Build SPA Release Candidate (arm64)
+    runs-on: ubuntu-24.04-arm
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
+    outputs:
+      image_digest: ${{ steps.build-spa.outputs.digest }}
+
+    steps:
+      - name: Decide whether to build SPA image
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.spa_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push SPA image
+        if: steps.mode.outputs.build_required == 'true'
+        id: build-spa
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.spa
+          platforms: linux/arm64
+          outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.spa_repo }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-candidate-spa-arm64
+          cache-to: type=gha,mode=max,scope=release-candidate-spa-arm64
+
+  build-spa-release-candidate:
+    name: Publish SPA Release Candidate Manifest
+    runs-on: ubuntu-latest
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
+      - build-spa-release-candidate-amd64
+      - build-spa-release-candidate-arm64
+    outputs:
+      spa_image: ${{ steps.publish-manifest.outputs.spa_image }}
+
+    steps:
+      - name: Decide whether to build SPA manifest
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.spa_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.mode.outputs.build_required == 'true'
+        uses: actions/checkout@v6
+
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge SPA per-architecture digests
+        if: steps.mode.outputs.build_required == 'true'
+        run: |
+          docker buildx imagetools create \
+            --tag "${{ needs.derive-release-image-refs.outputs.spa_tag }}" \
+            "${{ needs.derive-release-image-refs.outputs.spa_repo }}@${{ needs.build-spa-release-candidate-amd64.outputs.image_digest }}" \
+            "${{ needs.derive-release-image-refs.outputs.spa_repo }}@${{ needs.build-spa-release-candidate-arm64.outputs.image_digest }}"
 
       - name: Publish SPA manifest output
         id: publish-manifest
         run: |
           if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
-            echo "spa_image=${{ needs.derive-release-image-refs.outputs.spa_repo }}@${{ steps.build-spa.outputs.digest }}" >> "$GITHUB_OUTPUT"
+            manifest_digest="$(docker buildx imagetools inspect "${{ needs.derive-release-image-refs.outputs.spa_tag }}" | awk '/^Digest:/ {print $2; exit}')"
+            test -n "$manifest_digest"
+            echo "spa_image=${{ needs.derive-release-image-refs.outputs.spa_repo }}@$manifest_digest" >> "$GITHUB_OUTPUT"
           else
             echo "spa_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}" >> "$GITHUB_OUTPUT"
           fi
 
-  build-verifier-release-candidate:
-    name: Build Release Verifier Candidate
+  build-verifier-release-candidate-amd64:
+    name: Build Release Verifier Candidate (amd64)
     runs-on: ubuntu-latest
     needs:
       - derive-release-image-refs
       - resolve-previous-release-candidate-manifest
       - detect-release-candidate-components
     outputs:
-      verifier_image: ${{ steps.publish-manifest.outputs.verifier_image }}
+      image_digest: ${{ steps.build-verifier.outputs.digest }}
 
     steps:
       - name: Decide whether to build verifier image
@@ -654,17 +743,106 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile.release-verifier
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ needs.derive-release-image-refs.outputs.verifier_tag }}
-          cache-from: type=gha,scope=release-candidate-verifier
-          cache-to: type=gha,mode=max,scope=release-candidate-verifier
+          platforms: linux/amd64
+          outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.verifier_repo }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-candidate-verifier-amd64
+          cache-to: type=gha,mode=max,scope=release-candidate-verifier-amd64
+
+  build-verifier-release-candidate-arm64:
+    name: Build Release Verifier Candidate (arm64)
+    runs-on: ubuntu-24.04-arm
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
+    outputs:
+      image_digest: ${{ steps.build-verifier.outputs.digest }}
+
+    steps:
+      - name: Decide whether to build verifier image
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.verifier_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push verifier image
+        if: steps.mode.outputs.build_required == 'true'
+        id: build-verifier
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.release-verifier
+          platforms: linux/arm64
+          outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.verifier_repo }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-candidate-verifier-arm64
+          cache-to: type=gha,mode=max,scope=release-candidate-verifier-arm64
+
+  build-verifier-release-candidate:
+    name: Publish Release Verifier Candidate Manifest
+    runs-on: ubuntu-latest
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
+      - build-verifier-release-candidate-amd64
+      - build-verifier-release-candidate-arm64
+    outputs:
+      verifier_image: ${{ steps.publish-manifest.outputs.verifier_image }}
+
+    steps:
+      - name: Decide whether to build verifier manifest
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ needs.detect-release-candidate-components.outputs.verifier_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
+            echo 'build_required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build_required=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.mode.outputs.build_required == 'true'
+        uses: actions/checkout@v6
+
+      - name: Setup Docker build
+        if: steps.mode.outputs.build_required == 'true'
+        uses: ./.github/actions/setup-docker-build
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge verifier per-architecture digests
+        if: steps.mode.outputs.build_required == 'true'
+        run: |
+          docker buildx imagetools create \
+            --tag "${{ needs.derive-release-image-refs.outputs.verifier_tag }}" \
+            "${{ needs.derive-release-image-refs.outputs.verifier_repo }}@${{ needs.build-verifier-release-candidate-amd64.outputs.image_digest }}" \
+            "${{ needs.derive-release-image-refs.outputs.verifier_repo }}@${{ needs.build-verifier-release-candidate-arm64.outputs.image_digest }}"
 
       - name: Publish verifier manifest output
         id: publish-manifest
         run: |
           if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
-            echo "verifier_image=${{ needs.derive-release-image-refs.outputs.verifier_repo }}@${{ steps.build-verifier.outputs.digest }}" >> "$GITHUB_OUTPUT"
+            manifest_digest="$(docker buildx imagetools inspect "${{ needs.derive-release-image-refs.outputs.verifier_tag }}" | awk '/^Digest:/ {print $2; exit}')"
+            test -n "$manifest_digest"
+            echo "verifier_image=${{ needs.derive-release-image-refs.outputs.verifier_repo }}@$manifest_digest" >> "$GITHUB_OUTPUT"
           else
             echo "verifier_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}" >> "$GITHUB_OUTPUT"
           fi
