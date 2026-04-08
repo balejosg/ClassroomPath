@@ -433,6 +433,23 @@ login_production_registry() {
   PRODUCTION_REGISTRY_LOGGED_IN=1
 }
 
+cleanup_production_disk_if_needed() {
+  local disk_usage=""
+  local new_usage=""
+
+  log_info "Checking disk space..."
+  disk_usage="$(df / | tail -1 | awk '{print $5}' | tr -d '%')"
+  log_info "Current disk usage: ${disk_usage}%"
+
+  if [ "$disk_usage" -gt 80 ]; then
+    log_warn "Disk usage above 80%, running Docker cleanup..."
+    docker system prune -af --volumes 2>/dev/null || true
+    docker builder prune -af 2>/dev/null || true
+    new_usage="$(df / | tail -1 | awk '{print $5}' | tr -d '%')"
+    log_info "Disk usage after cleanup: ${new_usage}%"
+  fi
+}
+
 load_production_deploy_payload() {
   local release_manifest_b64=""
 
@@ -508,6 +525,7 @@ run_production_database_migrations() {
   DEPLOY_FAILURE_STAGE="migrations"
   write_deploy_context
 
+  cleanup_production_disk_if_needed
   login_production_registry
 
   log_info "Running database migrations from the release candidate runner..."
@@ -540,6 +558,7 @@ load_production_deploy_payload
 prepare_production_checkout
 load_production_release_manifest
 classify_production_migration_risk
+cleanup_production_disk_if_needed
 run_production_database_migrations
 start_production_runtime
 wait_for_production_runtime_readiness

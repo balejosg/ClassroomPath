@@ -145,7 +145,12 @@ if [ -z "${APP_SHA:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "$
   exit 1
 fi
 
+ROLLBACK_RELEASE_APP_SHA="$APP_SHA"
+ROLLBACK_RELEASE_IMAGE_SOURCE="${IMAGE_SOURCE:-}"
 deployment_state_load_context
+APP_SHA="$ROLLBACK_RELEASE_APP_SHA"
+IMAGE_SOURCE="$ROLLBACK_RELEASE_IMAGE_SOURCE"
+
 if [ -n "${MIGRATION_RISK_LEVEL:-}" ] || [ -n "${DB_MIGRATED:-}" ] || [ -n "${PRODUCTION_BACKUP_REFERENCE:-}" ]; then
   log_warn "Rollback context: migration risk=${MIGRATION_RISK_LEVEL:-unknown}, db_migrated=${DB_MIGRATED:-unknown}, backup=${PRODUCTION_BACKUP_REFERENCE:-none}"
 fi

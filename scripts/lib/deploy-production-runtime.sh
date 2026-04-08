@@ -10,6 +10,10 @@ apply_production_runtime_deploy_impl() {
   export COMPOSE_PROJECT_NAME=classroompath-production
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"
 
+  if declare -f cleanup_production_disk_if_needed >/dev/null 2>&1; then
+    cleanup_production_disk_if_needed
+  fi
+
   login_production_registry
 
   log_info "Pulling immutable release images..."

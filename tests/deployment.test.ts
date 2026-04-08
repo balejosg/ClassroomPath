@@ -1690,8 +1690,9 @@ void describe('Migration Tooling', () => {
     assert.ok(existsSync(deployImagesHelperPath), 'scripts/lib/deploy-images.sh should exist');
     assert.ok(
       helperContent.includes('docker_require_image()') &&
-        helperContent.includes('docker_select_image_with_fallback()'),
-      'deploy image helper should centralize required-image and fallback-image logic'
+        helperContent.includes('docker_select_image_with_fallback()') &&
+        helperContent.includes('no space left on device'),
+      'deploy image helper should centralize required-image logic, fallback selection, and actionable disk-space diagnostics'
     );
     assert.ok(
       migrationsContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),
@@ -1940,8 +1941,10 @@ void describe('Migration Tooling', () => {
     assert.ok(
       rollbackRemote.includes('DEPLOYMENT_STATE_HELPER_PATH') &&
         rollbackRemote.includes('deployment_state_activate_previous_release') &&
-        rollbackRemote.includes('deployment_state_load_context'),
-      'rollback-production-remote.sh should consume rollback metadata through the shared deployment-state helper'
+        rollbackRemote.includes('deployment_state_load_context') &&
+        rollbackRemote.includes('ROLLBACK_RELEASE_APP_SHA="$APP_SHA"') &&
+        rollbackRemote.includes('APP_SHA="$ROLLBACK_RELEASE_APP_SHA"'),
+      'rollback-production-remote.sh should consume shared rollback metadata without letting deploy-context values override the previous release SHA'
     );
     assert.ok(
       verifyState.includes('load_release_state_env ./staging-release-state.env') &&
@@ -1957,6 +1960,17 @@ void describe('Migration Tooling', () => {
     );
     const contextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
     const runtimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
+    const productionPhaseSequence = [
+      'prepare_production_checkout',
+      'load_production_release_manifest',
+      'classify_production_migration_risk',
+      'cleanup_production_disk_if_needed',
+      'run_production_database_migrations',
+      'start_production_runtime',
+      'wait_for_production_runtime_readiness',
+    ]
+      .map((phase) => `${phase}\n`)
+      .join('');
 
     assert.ok(
       content.includes('DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH') &&
@@ -1977,30 +1991,23 @@ void describe('Migration Tooling', () => {
       content.includes('prepare_production_checkout()') &&
         content.includes('load_production_release_manifest()') &&
         content.includes('classify_production_migration_risk()') &&
+        content.includes('cleanup_production_disk_if_needed()') &&
         content.includes('run_production_database_migrations()') &&
         content.includes('start_production_runtime()') &&
         content.includes('wait_for_production_runtime_readiness()'),
       'deploy-production-remote.sh should define explicit phase functions for the remote production deploy'
     );
     assert.ok(
-      content.indexOf('prepare_production_checkout') <
-        content.indexOf('load_production_release_manifest') &&
-        content.indexOf('load_production_release_manifest') <
-          content.indexOf('classify_production_migration_risk') &&
-        content.indexOf('classify_production_migration_risk') <
-          content.indexOf('run_production_database_migrations') &&
-        content.indexOf('run_production_database_migrations') <
-          content.indexOf('start_production_runtime') &&
-        content.indexOf('start_production_runtime') <
-          content.indexOf('wait_for_production_runtime_readiness'),
+      content.includes(productionPhaseSequence),
       'deploy-production-remote.sh should invoke the remote production phases in a stable order'
     );
     assert.ok(
       content.includes('plan_production_runtime_deploy()') &&
         content.includes('apply_production_runtime_deploy()') &&
         content.indexOf('plan_production_runtime_deploy') <
-          content.indexOf('apply_production_runtime_deploy'),
-      'deploy-production-remote.sh should separate deployment planning from remote side effects'
+          content.indexOf('apply_production_runtime_deploy') &&
+        runtimeHelper.includes('cleanup_production_disk_if_needed'),
+      'deploy-production-remote.sh should separate deployment planning from remote side effects and re-check disk pressure before pulling immutable runtime images'
     );
   });
 });
