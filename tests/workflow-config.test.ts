@@ -9,6 +9,7 @@ import { parse as parseYaml } from 'yaml';
 type WorkflowJob = {
   name?: string;
   needs?: string | string[];
+  outputs?: Record<string, string>;
   'runs-on'?: string | string[];
   uses?: string;
   steps?: Array<{
@@ -130,6 +131,11 @@ describe('Workflow configuration hardening', () => {
 
     assert.ok(jobs['detect-relevant-changes'], 'CI workflow should detect relevant changes');
     assert.equal(jobs['ci-success']?.name, 'CI Success');
+    assert.equal(
+      jobs['detect-relevant-changes']?.outputs?.['domain_owners'],
+      '${{ steps.filter.outputs.domain_owners }}',
+      'CI workflow should expose verification domain owners from the shared change detector'
+    );
   });
 
   test('release candidate detector rebuilds dependent images when the OpenPath gitlink changes', () => {
@@ -172,6 +178,7 @@ describe('Workflow configuration hardening', () => {
     const regressionStep = steps.find((step) => step.name === 'Run CI regression tests');
     const summaryStep = steps.find((step) => step.name === 'Summarize verification report');
     const summaryScript = readText('scripts/print-verify-report-summary.mjs');
+    const detectorScript = readText('scripts/detect-ci-relevant-changes.mjs');
 
     assert.match(
       String(regressionStep?.run ?? ''),
@@ -186,6 +193,11 @@ describe('Workflow configuration hardening', () => {
       summaryScript,
       /readAndFormatVerificationReportSummary/,
       'the verification summary CLI should delegate formatting to the shared report-consumer library'
+    );
+    assert.match(
+      detectorScript,
+      /summarizeVerificationDomains/,
+      'CI change detection should delegate relevance and approval ownership to the shared verification catalog'
     );
   });
 
@@ -208,6 +220,7 @@ describe('Workflow configuration hardening', () => {
     const releaseAutomationRegression = packageJson.scripts?.['test:release-automation'] ?? '';
     const ciRegressionHelper = readText('scripts/run-ci-regression.mjs');
     const regressionPlan = readText('scripts/lib/regression-plan.mjs');
+    const verificationCatalog = readText('scripts/lib/verification-catalog.mjs');
 
     assert.match(
       ciRegression,
@@ -215,9 +228,14 @@ describe('Workflow configuration hardening', () => {
       'package.json should run the sequential CI regression block and workflow-config in separate sanitized Node processes'
     );
     assert.match(
-      regressionPlan,
+      verificationCatalog,
       /tests\/agent-docs-consistency\.test\.ts/,
       'regression plan should include the agent docs consistency suite'
+    );
+    assert.match(
+      regressionPlan,
+      /verification-catalog\.mjs/,
+      'regression-plan should delegate to the shared verification catalog'
     );
     assert.match(
       ciRegressionHelper,
@@ -255,19 +273,29 @@ describe('Workflow configuration hardening', () => {
       'release-automation regression should resolve from the shared declarative plan'
     );
     assert.match(
-      regressionPlan,
+      verificationCatalog,
       /tests\/release-images\.test\.ts/,
       'regression plan should include the release image helper contract suite'
     );
     assert.match(
-      regressionPlan,
+      verificationCatalog,
+      /tests\/release-cli\.test\.ts/,
+      'regression plan should include the shared release CLI contract suite'
+    );
+    assert.match(
+      verificationCatalog,
       /tests\/verify-plan\.test\.ts/,
       'release-automation regression should validate the verify scope contract'
     );
     assert.match(
-      regressionPlan,
+      verificationCatalog,
       /tests\/verify-report\.test\.ts/,
       'release-automation regression should validate the machine-readable verify report contract'
+    );
+    assert.match(
+      verificationCatalog,
+      /tests\/verify-runtime\.test\.ts/,
+      'release-automation regression should validate the stage cache/runtime contract'
     );
     assert.match(
       ciRegressionHelper,
@@ -290,6 +318,21 @@ describe('Workflow configuration hardening', () => {
       String(ciRegressionStep?.run ?? '').includes('npm run test:ci-regression'),
       true,
       'CI workflow should run the shared regression test script even when it exports the verification report path first'
+    );
+  });
+
+  test('CI change detection uses the shared verification catalog instead of inline grep policy', () => {
+    const workflow = readWorkflow('.github/workflows/ci.yml');
+    const detectJob = workflow.jobs?.['detect-relevant-changes'];
+    const detectStep = (detectJob?.steps ?? []).find((step) => step.id === 'filter');
+
+    assert.ok(
+      String(detectStep?.run ?? '').includes('scripts/detect-ci-relevant-changes.mjs'),
+      'CI change detection should call the shared detector script'
+    );
+    assert.ok(
+      !String(detectStep?.run ?? '').includes("grep -Eq '^(api/|react-spa/|docker/|scripts/"),
+      'CI change detection should no longer duplicate path policy inline'
     );
   });
 

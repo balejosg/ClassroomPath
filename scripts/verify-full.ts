@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 import { createVerifyPlan, resolveVerifyMode } from './lib/verify-plan.ts';
@@ -93,6 +94,25 @@ function getStagedFiles(diffFilter?: string): string[] {
   return output ? output.split('\n').filter(Boolean) : [];
 }
 
+function buildWorkspaceFingerprint(stagedFiles: string[]): string {
+  const head = capture('git', ['rev-parse', 'HEAD']);
+  const statusOutput = capture('git', ['status', '--short']);
+  const submoduleStatus = capture('git', ['submodule', 'status', '--cached', 'upstream/openpath']);
+
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        head,
+        node: process.version,
+        platform: process.platform,
+        stagedFiles,
+        statusOutput,
+        submoduleStatus,
+      })
+    )
+    .digest('hex');
+}
+
 export async function buildVerifyPlan(env: NodeJS.ProcessEnv = process.env) {
   const testDbPort = env.TEST_DB_PORT
     ? Number.parseInt(env.TEST_DB_PORT, 10)
@@ -111,6 +131,7 @@ export async function buildVerifyPlan(env: NodeJS.ProcessEnv = process.env) {
     rootDir: ROOT_DIR,
     stagedFiles,
     testDbPort,
+    workspaceFingerprint: buildWorkspaceFingerprint(stagedFiles),
   });
 }
 
@@ -152,6 +173,14 @@ async function main(): Promise<void> {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('');
     reporter.addNote('No ClassroomPath API/SPA source changes detected; skipping coverage gate.');
+  }
+
+  if (plan.domainSummary.owners.length > 0) {
+    reporter.addNote(`Owners: ${plan.domainSummary.owners.join(', ')}`);
+  }
+
+  if (plan.domainSummary.requiredApprovals.length > 0) {
+    reporter.addNote(`Required approvals: ${plan.domainSummary.requiredApprovals.join(', ')}`);
   }
 
   try {

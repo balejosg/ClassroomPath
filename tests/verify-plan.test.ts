@@ -9,6 +9,7 @@ import {
   createVerifyPlan,
   detectVerificationScope,
   RELEASE_AUTOMATION_FILE_PATTERNS,
+  summarizeVerifyDomains,
   resolveVerifyDomains,
   VERIFY_FILE_DOMAINS,
 } from '../scripts/lib/verify-plan.ts';
@@ -48,10 +49,12 @@ describe('verify plan', () => {
       rootDir: '/tmp/classroompath',
       stagedFiles: ['scripts/firefox-release-version.mjs', 'tests/firefox-release-version.test.ts'],
       testDbPort: 54321,
+      workspaceFingerprint: 'fixture-fingerprint',
     });
 
     assert.equal(plan.verificationScope, 'release-automation');
     assert.equal(plan.needsCoverageGate, false);
+    assert.deepEqual(plan.domainSummary.owners, ['release-engineering']);
     assert.deepEqual(
       RELEASE_AUTOMATION_FILE_PATTERNS.some((pattern) => pattern.test('scripts/verify-full.ts')),
       true
@@ -83,6 +86,21 @@ describe('verify plan', () => {
     assert.deepEqual(
       domains.map((domain) => domain.name),
       ['release-library']
+    );
+  });
+
+  test('summarizes owners and approvals from the matched domains', () => {
+    assert.deepEqual(
+      summarizeVerifyDomains([
+        'scripts/release-images.mjs',
+        '.github/workflows/ci.yml',
+        'react-spa/src/App.tsx',
+      ]),
+      {
+        matchedDomains: ['release-cli', 'workflow-definition', 'spa-source'],
+        owners: ['release-engineering', 'application'],
+        requiredApprovals: ['release-engineering', 'application'],
+      }
     );
   });
 });

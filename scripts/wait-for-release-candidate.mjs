@@ -2,6 +2,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isDirectExecution, normalizeWorkflowRunId, writeOutputs } from './lib/github-actions.mjs';
+import { parseCommandLine, requireCliOption, runCli } from './lib/release-cli.mjs';
 import {
   buildReleaseCandidateManifestOutputs,
   waitForFirefoxReleaseAssets,
@@ -23,62 +24,39 @@ function printUsage() {
 }
 
 function parseCliArgs(argv) {
-  const [command, ...rest] = argv;
-  const options = {};
+  const parsed = parseCommandLine(argv, {
+    valueFlags: [
+      '--interval-seconds',
+      '--openpath-sha',
+      '--output-dir',
+      '--output-file',
+      '--repo',
+      '--sha',
+      '--timeout-seconds',
+    ],
+  });
 
-  for (let index = 0; index < rest.length; index += 1) {
-    const token = rest[index];
-
-    if (token === '--sha') {
-      options.sha = rest[index + 1];
-      index += 1;
-      continue;
-    }
-
-    if (token === '--repo') {
-      options.repo = rest[index + 1];
-      index += 1;
-      continue;
-    }
-
-    if (token === '--timeout-seconds') {
-      options.timeoutSeconds = Number(rest[index + 1]);
-      index += 1;
-      continue;
-    }
-
-    if (token === '--interval-seconds') {
-      options.intervalSeconds = Number(rest[index + 1]);
-      index += 1;
-      continue;
-    }
-
-    if (token === '--output-file') {
-      options.outputFile = rest[index + 1];
-      index += 1;
-      continue;
-    }
-
-    if (token === '--openpath-sha') {
-      options.openpathSha = rest[index + 1];
-      index += 1;
-      continue;
-    }
-
-    if (token === '--output-dir') {
-      options.outputDir = rest[index + 1];
-      index += 1;
-      continue;
-    }
-
-    throw new Error(`Unknown argument: ${token}`);
-  }
-
-  return { command, options };
+  return {
+    command: parsed.command,
+    options: {
+      ...parsed.options,
+      intervalSeconds: parsed.options['interval-seconds']
+        ? Number(parsed.options['interval-seconds'])
+        : undefined,
+      openpathSha: parsed.options['openpath-sha'],
+      outputDir: parsed.options['output-dir'],
+      outputFile: parsed.options['output-file'],
+      repo: parsed.options.repo,
+      sha: parsed.options.sha,
+      timeoutSeconds: parsed.options['timeout-seconds']
+        ? Number(parsed.options['timeout-seconds'])
+        : undefined,
+    },
+  };
 }
 
-function main() {
-  const { command, options } = parseCliArgs(process.argv.slice(2));
+export function runReleaseCandidateCli(argv = process.argv.slice(2)) {
+  const { command, options } = parseCliArgs(argv);
 
   if (command === 'resolve-manifest' && options.sha) {
     const result = waitForReleaseCandidateManifest({
@@ -100,9 +78,14 @@ function main() {
     return;
   }
 
-  if (command === 'resolve-firefox-assets' && options.openpathSha) {
+  if (command === 'resolve-firefox-assets') {
+    const openpathSha = requireCliOption(
+      options,
+      'openpathSha',
+      'Usage error: --openpath-sha is required for resolve-firefox-assets'
+    );
     const result = waitForFirefoxReleaseAssets({
-      openpathSha: options.openpathSha,
+      openpathSha,
       repository: options.repo ?? process.env.GITHUB_REPOSITORY,
       timeoutSeconds: options.timeoutSeconds ?? 900,
       intervalSeconds: options.intervalSeconds ?? 10,
@@ -113,24 +96,19 @@ function main() {
     writeOutputs({
       repository: result.repository,
       run_id: result.runId,
-      openpath_sha: options.openpathSha,
+      openpath_sha: openpathSha,
       artifact_name: result.artifactName,
     });
     return;
   }
 
   printUsage();
-  process.exit(1);
+  return 1;
 }
 
 export * from './lib/release-candidate.mjs';
 export { normalizeWorkflowRunId as resolveWorkflowRunId } from './lib/github-actions.mjs';
 
 if (isDirectExecution(import.meta.url, process.argv[1])) {
-  try {
-    main();
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-  }
+  runCli(runReleaseCandidateCli);
 }

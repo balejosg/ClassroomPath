@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -11,8 +11,10 @@ import {
 } from './verify-docker.ts';
 import type { VerifyPlan } from './verify-plan.ts';
 import type { VerifyReporter } from './verify-report.ts';
+import { createVerifyCache } from './verify-cache.ts';
 import { hasPlaywrightBrowsers, runPlaywrightVerification } from './verify-playwright.ts';
 import { runReportedStage, type VerifyRuntime } from './verify-runtime.ts';
+import { getVerificationStageDefinition } from './verification-catalog.mjs';
 import { ensureOpenPathWorkspaceInstall } from './verify-test-runners.ts';
 
 export type { RunOptions, VerifyRuntime } from './verify-runtime.ts';
@@ -24,6 +26,27 @@ export {
   pickTestDbPort,
 } from './verify-docker.ts';
 export { hasPlaywrightBrowsers } from './verify-playwright.ts';
+
+function createStageCache(
+  plan: VerifyPlan,
+  stageId: string,
+  value: unknown,
+  validate?: () => boolean
+) {
+  const definition = getVerificationStageDefinition(plan.verificationScope, stageId);
+  if (!definition || definition.cache !== 'diff-safe') {
+    return undefined;
+  }
+
+  const cache = createVerifyCache(plan);
+  return {
+    clearStage: cache.clearStage,
+    key: cache.buildStageCacheKey(stageId, value),
+    rememberPassedStage: cache.rememberPassedStage,
+    shouldReuse: cache.shouldReuse,
+    validate,
+  };
+}
 
 export async function runReleaseAutomationVerification(
   plan: VerifyPlan,
@@ -45,6 +68,9 @@ export async function runReleaseAutomationVerification(
     {
       id: 'format-and-secrets',
       label: 'Format and secret checks',
+      cache: createStageCache(plan, 'format-and-secrets', {
+        commands: ['npm run format:check', 'npm run security:secrets'],
+      }),
       details: { commands: ['npm run format:check', 'npm run security:secrets'] },
     },
     async () => {
@@ -62,6 +88,9 @@ export async function runReleaseAutomationVerification(
     {
       id: 'release-automation-regression',
       label: 'Release automation regression',
+      cache: createStageCache(plan, 'release-automation-regression', {
+        command: 'npm run test:release-automation',
+      }),
       details: { command: 'npm run test:release-automation' },
     },
     async () => {
@@ -88,6 +117,9 @@ export async function runFullVerification(
     {
       id: 'test-file-coverage',
       label: 'Test file coverage inventory',
+      cache: createStageCache(plan, 'test-file-coverage', {
+        command: 'bash scripts/check-test-files.sh && npm run verify:migrations:metadata',
+      }),
       details: { command: 'bash scripts/check-test-files.sh' },
     },
     async () => {
@@ -110,6 +142,15 @@ export async function runFullVerification(
     {
       id: 'build',
       label: 'Build all packages',
+      cache: createStageCache(
+        plan,
+        'build',
+        { command: 'npm run build' },
+        () =>
+          existsSync(join(plan.rootDir, 'api/dist')) &&
+          existsSync(join(plan.rootDir, 'react-spa/dist')) &&
+          existsSync(join(plan.rootDir, 'upstream/openpath/api/dist'))
+      ),
       details: { command: 'npm run build' },
     },
     async () => {
@@ -145,6 +186,10 @@ export async function runFullVerification(
     {
       id: 'static-analysis',
       label: 'Static analysis',
+      cache: createStageCache(plan, 'static-analysis', {
+        command: 'bash scripts/run-turbo.sh verify:static && npm run format:check',
+        skipOpenPathStatic: plan.skipOpenPathStatic,
+      }),
       details: {
         command: 'bash scripts/run-turbo.sh verify:static && npm run format:check',
         skipOpenPathStatic: plan.skipOpenPathStatic,
@@ -172,6 +217,9 @@ export async function runFullVerification(
     {
       id: 'security-and-size',
       label: 'Security and size checks',
+      cache: createStageCache(plan, 'security-and-size', {
+        skipOpenPathStatic: plan.skipOpenPathStatic,
+      }),
       details: { skipOpenPathStatic: plan.skipOpenPathStatic },
     },
     async () => {
@@ -264,6 +312,9 @@ export async function runFullVerification(
       {
         id: 'coverage-gate',
         label: 'Changed-file coverage gate',
+        cache: createStageCache(plan, 'coverage-gate', {
+          command: 'node scripts/check-new-file-coverage.js',
+        }),
         details: { command: 'node scripts/check-new-file-coverage.js' },
       },
       async () => {

@@ -2,11 +2,17 @@ import { flattenVerifyDomainPolicies, type VerifyFileDomain } from './verify-dom
 
 export type VerifyMode = 'commit' | 'release';
 export type VerifyScope = 'full' | 'release-automation';
+export type VerifyDomainSummary = {
+  matchedDomains: string[];
+  owners: string[];
+  requiredApprovals: string[];
+};
 
 export type VerifyPlan = {
   browsersAvailable: boolean;
   composeFile: string;
   composeProjectName: string;
+  domainSummary: VerifyDomainSummary;
   mode: VerifyMode;
   needsApiCoverage: boolean;
   needsCoverageGate: boolean;
@@ -19,6 +25,7 @@ export type VerifyPlan = {
   submoduleOnly: boolean;
   testDbPort: number;
   verificationScope: VerifyScope;
+  workspaceFingerprint: string;
 };
 
 export type { VerifyFileDomain } from './verify-domain-policy.ts';
@@ -35,6 +42,17 @@ export function resolveVerifyMode(env: NodeJS.ProcessEnv): VerifyMode {
 
 export function resolveVerifyDomains(filePath: string): VerifyFileDomain[] {
   return VERIFY_FILE_DOMAINS.filter((domain) => domain.pattern.test(filePath));
+}
+
+export function summarizeVerifyDomains(stagedFiles: string[]): VerifyDomainSummary {
+  const matchedDomains = stagedFiles.flatMap((entry) => resolveVerifyDomains(entry));
+  return {
+    matchedDomains: [...new Set(matchedDomains.map((domain) => domain.name))],
+    owners: [...new Set(matchedDomains.map((domain) => domain.owner))],
+    requiredApprovals: [
+      ...new Set(matchedDomains.flatMap((domain) => domain.requiredApprovals ?? [])),
+    ],
+  };
 }
 
 export function detectSubmoduleOnly(stagedFiles: string[]): {
@@ -105,6 +123,7 @@ export function createVerifyPlan({
   rootDir,
   stagedFiles,
   testDbPort,
+  workspaceFingerprint,
 }: {
   browsersAvailable: boolean;
   composeFile: string;
@@ -115,6 +134,7 @@ export function createVerifyPlan({
   rootDir: string;
   stagedFiles: string[];
   testDbPort: number;
+  workspaceFingerprint: string;
 }): VerifyPlan {
   const { submoduleOnly, skipOpenPathStatic } = detectSubmoduleOnly(stagedFiles);
   const { needsApiCoverage, needsCoverageGate, needsSpaCoverage } =
@@ -124,6 +144,7 @@ export function createVerifyPlan({
     browsersAvailable,
     composeFile,
     composeProjectName,
+    domainSummary: summarizeVerifyDomains(stagedFiles),
     mode,
     needsApiCoverage,
     needsCoverageGate,
@@ -136,5 +157,6 @@ export function createVerifyPlan({
     submoduleOnly,
     testDbPort,
     verificationScope: detectVerificationScope(stagedFiles, mode),
+    workspaceFingerprint,
   };
 }

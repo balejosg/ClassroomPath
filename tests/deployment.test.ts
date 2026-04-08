@@ -19,12 +19,20 @@ const verifyFullOrchestratorPath = resolve(projectRoot, 'scripts/verify-full.ts'
 const verifyPlanPath = resolve(projectRoot, 'scripts/lib/verify-plan.ts');
 const verifyReportPath = resolve(projectRoot, 'scripts/lib/verify-report.ts');
 const verifyReportConsumerPath = resolve(projectRoot, 'scripts/lib/verify-report-consumer.mjs');
+const verifyReportContractPath = resolve(
+  projectRoot,
+  'scripts/lib/verification-report-contract.mjs'
+);
+const verificationCatalogPath = resolve(projectRoot, 'scripts/lib/verification-catalog.mjs');
+const verifyCachePath = resolve(projectRoot, 'scripts/lib/verify-cache.ts');
 const verifyDomainPolicyPath = resolve(projectRoot, 'scripts/lib/verify-domain-policy.ts');
 const verifyDockerPath = resolve(projectRoot, 'scripts/lib/verify-docker.ts');
 const verifyPlaywrightPath = resolve(projectRoot, 'scripts/lib/verify-playwright.ts');
 const verifyTestRunnersPath = resolve(projectRoot, 'scripts/lib/verify-test-runners.ts');
 const verifyStagesPath = resolve(projectRoot, 'scripts/lib/verify-stages.ts');
 const verifySummaryCliPath = resolve(projectRoot, 'scripts/print-verify-report-summary.mjs');
+const detectCiRelevantChangesPath = resolve(projectRoot, 'scripts/detect-ci-relevant-changes.mjs');
+const releaseCliPath = resolve(projectRoot, 'scripts/lib/release-cli.mjs');
 const resolveLatestVerifierImageLibPath = resolve(
   projectRoot,
   'scripts/lib/resolve-latest-verifier-image.mjs'
@@ -673,11 +681,19 @@ void describe('Migration Tooling', () => {
       'verify-full should persist a machine-readable verification report through scripts/lib/verify-report.ts'
     );
     assert.ok(
-      verifyReport.includes('version: 1') &&
+      verifyReport.includes('workspaceFingerprint') &&
+        verifyReport.includes('domains: plan.domainSummary') &&
         readFileSync(verifyReportConsumerPath, 'utf-8').includes(
           'export function summarizeVerificationReport('
         ),
       'verification report creation should be paired with a reusable machine-readable consumer'
+    );
+    assert.ok(
+      readFileSync(verifyReportConsumerPath, 'utf-8').includes('validateVerificationReport') &&
+        readFileSync(verifyReportContractPath, 'utf-8').includes(
+          'export const VERIFICATION_REPORT_VERSION = 2'
+        ),
+      'verification report consumers should validate a shared formal report contract'
     );
     assert.ok(
       readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf-8').includes(
@@ -698,6 +714,15 @@ void describe('Migration Tooling', () => {
       'scripts/lib/verify-report-consumer.mjs should exist'
     );
     assert.ok(
+      existsSync(verifyReportContractPath),
+      'scripts/lib/verification-report-contract.mjs should exist'
+    );
+    assert.ok(
+      existsSync(verificationCatalogPath),
+      'scripts/lib/verification-catalog.mjs should exist'
+    );
+    assert.ok(existsSync(verifyCachePath), 'scripts/lib/verify-cache.ts should exist');
+    assert.ok(
       existsSync(verifyDomainPolicyPath),
       'scripts/lib/verify-domain-policy.ts should exist'
     );
@@ -709,6 +734,11 @@ void describe('Migration Tooling', () => {
       existsSync(verifySummaryCliPath),
       'scripts/print-verify-report-summary.mjs should exist'
     );
+    assert.ok(
+      existsSync(detectCiRelevantChangesPath),
+      'scripts/detect-ci-relevant-changes.mjs should exist'
+    );
+    assert.ok(existsSync(releaseCliPath), 'scripts/lib/release-cli.mjs should exist');
     assert.ok(
       existsSync(resolveLatestVerifierImageLibPath),
       'scripts/lib/resolve-latest-verifier-image.mjs should exist'
@@ -732,8 +762,10 @@ void describe('Migration Tooling', () => {
     assert.ok(
       verifyStages.includes("from './verify-playwright.ts'") &&
         verifyStages.includes("from './verify-test-runners.ts'") &&
-        verifyStages.includes("from './verify-docker.ts'"),
-      'verify-stages.ts should aggregate dedicated docker, test-runner, and Playwright helper modules'
+        verifyStages.includes("from './verify-docker.ts'") &&
+        verifyStages.includes("from './verification-catalog.mjs'") &&
+        verifyStages.includes("from './verify-cache.ts'"),
+      'verify-stages.ts should aggregate dedicated docker, test-runner, Playwright, cache, and stage-catalog helper modules'
     );
   });
 

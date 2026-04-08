@@ -8,6 +8,7 @@ import {
   loadVerificationReport,
   summarizeVerificationReport,
 } from '../scripts/lib/verify-report-consumer.mjs';
+import { VERIFICATION_REPORT_VERSION } from '../scripts/lib/verification-report-contract.mjs';
 import { createVerifyReporter } from '../scripts/lib/verify-report.ts';
 
 describe('verify report', () => {
@@ -21,6 +22,11 @@ describe('verify report', () => {
           browsersAvailable: true,
           composeFile: 'docker/docker-compose.test.yml',
           composeProjectName: 'classroompath_test_fixture',
+          domainSummary: {
+            matchedDomains: ['release-cli'],
+            owners: ['release-engineering'],
+            requiredApprovals: ['release-engineering'],
+          },
           mode: 'commit',
           needsApiCoverage: false,
           needsCoverageGate: false,
@@ -33,6 +39,7 @@ describe('verify report', () => {
           submoduleOnly: false,
           testDbPort: 54321,
           verificationScope: 'release-automation',
+          workspaceFingerprint: 'fixture-fingerprint',
         },
         {
           now: (() => {
@@ -57,21 +64,34 @@ describe('verify report', () => {
       reporter.finalize(true);
 
       const report = JSON.parse(readFileSync(reportFile, 'utf8')) as {
+        domains: { owners: string[]; requiredApprovals: string[] };
         ok: boolean;
         scope: string;
+        summary: { owners: string[]; requiredApprovals: string[]; totalStages: number };
         notes: string[];
         stages: Array<{ id: string; status: string }>;
+        version: number;
+        workspaceFingerprint: string;
       };
       const loadedReport = loadVerificationReport(reportFile);
       const summary = summarizeVerificationReport(loadedReport);
 
+      assert.equal(report.version, VERIFICATION_REPORT_VERSION);
       assert.equal(report.ok, true);
       assert.equal(report.scope, 'release-automation');
+      assert.equal(report.workspaceFingerprint, 'fixture-fingerprint');
       assert.deepEqual(report.notes, ['release automation lane']);
+      assert.deepEqual(report.domains.owners, ['release-engineering']);
+      assert.deepEqual(report.domains.requiredApprovals, ['release-engineering']);
+      assert.deepEqual(report.summary.owners, ['release-engineering']);
+      assert.deepEqual(report.summary.requiredApprovals, ['release-engineering']);
+      assert.equal(report.summary.totalStages, 1);
       assert.equal(loadedReport.reportFile, reportFile);
       assert.equal(summary.ok, true);
       assert.equal(summary.scope, 'release-automation');
       assert.equal(summary.failedStages, 0);
+      assert.deepEqual(summary.owners, ['release-engineering']);
+      assert.deepEqual(summary.requiredApprovals, ['release-engineering']);
       assert.equal(summary.passedStages, 1);
       assert.equal(summary.totalStages, 1);
       assert.deepEqual(

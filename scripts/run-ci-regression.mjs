@@ -4,6 +4,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { resolveRegressionPlan } from './lib/regression-plan.mjs';
+import {
+  buildVerificationReportSummary,
+  VERIFICATION_REPORT_VERSION,
+} from './lib/verification-report-contract.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
@@ -32,12 +36,29 @@ function createRegressionReporter(planName, testFiles) {
       needsCoverageGate: false,
       needsSpaCoverage: false,
     },
+    domains: {
+      matchedDomains: [`regression-plan:${planName}`],
+      owners: ['release-engineering'],
+      requiredApprovals: ['release-engineering'],
+    },
     mode: 'commit',
     notes: [`regression-plan=${planName}`],
     ok: null,
     reportFile: normalizedReportFile,
     rootDir: projectRoot,
     scope: planName,
+    summary: {
+      failedStages: 0,
+      ok: false,
+      owners: ['release-engineering'],
+      passedStages: 0,
+      pendingStages: testFiles.length,
+      requiredApprovals: ['release-engineering'],
+      runningStages: 0,
+      scope: planName,
+      skippedStages: 0,
+      totalStages: testFiles.length,
+    },
     stages: testFiles.map((testFile) => ({
       id: testFile,
       label: testFile,
@@ -45,10 +66,12 @@ function createRegressionReporter(planName, testFiles) {
     })),
     startedAt: new Date().toISOString(),
     testDbPort: 0,
-    version: 1,
+    version: VERIFICATION_REPORT_VERSION,
+    workspaceFingerprint: '',
   };
 
   function flush() {
+    state.summary = buildVerificationReportSummary(state);
     mkdirSync(dirname(normalizedReportFile), { recursive: true });
     writeFileSync(normalizedReportFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
   }

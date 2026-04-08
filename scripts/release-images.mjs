@@ -8,6 +8,7 @@ import {
   readJsonFile,
   writeOutputs,
 } from './lib/github-actions.mjs';
+import { parseCommandLine, requireCliOption, runCli } from './lib/release-cli.mjs';
 import {
   buildReleaseImageOutputs,
   buildReleaseManifestOutputs,
@@ -36,53 +37,18 @@ function printUsage() {
 }
 
 function parseCliArgs(argv) {
-  const [command, ...rest] = argv;
-  const options = {};
-
-  for (let index = 0; index < rest.length; index += 1) {
-    const token = rest[index];
-
-    if (token === '--sha') {
-      options.sha = rest[index + 1];
-      index += 1;
-      continue;
-    }
-
-    if (token === '--owner') {
-      options.owner = rest[index + 1];
-      index += 1;
-      continue;
-    }
-
-    if (token === '--file') {
-      options.file = rest[index + 1];
-      index += 1;
-      continue;
-    }
-
-    if (token === '--runs-file') {
-      options.runsFile = rest[index + 1];
-      index += 1;
-      continue;
-    }
-
-    throw new Error(`Unknown argument: ${token}`);
-  }
-
-  return { command, options };
+  return parseCommandLine(argv, {
+    valueFlags: ['--file', '--owner', '--runs-file', '--sha'],
+  });
 }
 
-function main() {
-  const { command, options } = parseCliArgs(process.argv.slice(2));
+export function runReleaseImagesCli(argv = process.argv.slice(2)) {
+  const { command, options } = parseCliArgs(argv);
 
   if (command === 'outputs') {
-    if (!options.sha) {
-      printUsage();
-      process.exit(1);
-    }
-
+    const sha = requireCliOption(options, 'sha', 'Usage error: --sha is required for outputs');
     const refs = deriveTaggedImageRefs({
-      sha: options.sha,
+      sha,
       repositoryOwner: options.owner ?? process.env.GITHUB_REPOSITORY_OWNER,
       repository: process.env.GITHUB_REPOSITORY,
       cwd: projectRoot,
@@ -93,13 +59,13 @@ function main() {
   }
 
   if (command === 'select-run-id' && options.runsFile) {
-    if (!options.sha) {
-      printUsage();
-      process.exit(1);
-    }
-
+    const sha = requireCliOption(
+      options,
+      'sha',
+      'Usage error: --sha is required for select-run-id'
+    );
     const payload = readJsonFile(options.runsFile);
-    const run = selectSuccessfulReleaseCandidateRun(payload, { sha: options.sha });
+    const run = selectSuccessfulReleaseCandidateRun(payload, { sha });
     writeOutputs({ run_id: run.id });
     return;
   }
@@ -112,13 +78,13 @@ function main() {
   }
 
   if (command === 'manifest-outputs' && options.file) {
-    if (!options.sha) {
-      printUsage();
-      process.exit(1);
-    }
-
+    const sha = requireCliOption(
+      options,
+      'sha',
+      'Usage error: --sha is required for manifest-outputs'
+    );
     const parsedManifest = parseReleaseCandidateManifest(readFileSync(options.file, 'utf8'), {
-      sha: options.sha,
+      sha,
     });
 
     writeOutputs(buildReleaseManifestOutputs(parsedManifest));
@@ -126,16 +92,11 @@ function main() {
   }
 
   printUsage();
-  process.exit(1);
+  return 1;
 }
 
 export * from './lib/release-images.mjs';
 
 if (isDirectExecution(import.meta.url, process.argv[1])) {
-  try {
-    main();
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-  }
+  runCli(runReleaseImagesCli);
 }

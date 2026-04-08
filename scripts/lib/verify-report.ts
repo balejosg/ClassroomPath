@@ -2,6 +2,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
+import {
+  buildVerificationReportSummary,
+  VERIFICATION_REPORT_VERSION,
+} from './verification-report-contract.mjs';
 import type { VerifyPlan } from './verify-plan.ts';
 
 export type VerifyStageStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped';
@@ -23,6 +27,7 @@ export type VerificationReport = {
     needsCoverageGate: boolean;
     needsSpaCoverage: boolean;
   };
+  domains: VerifyPlan['domainSummary'];
   finishedAt?: string;
   mode: VerifyPlan['mode'];
   notes: string[];
@@ -30,10 +35,12 @@ export type VerificationReport = {
   reportFile: string;
   rootDir: string;
   scope: VerifyPlan['verificationScope'];
+  summary: ReturnType<typeof buildVerificationReportSummary>;
   stages: VerifyReportStage[];
   startedAt: string;
   testDbPort: number;
-  version: 1;
+  version: typeof VERIFICATION_REPORT_VERSION;
+  workspaceFingerprint: string;
 };
 
 export type VerifyReporter = ReturnType<typeof createVerifyReporter>;
@@ -61,19 +68,34 @@ export function createVerifyReporter(
       needsCoverageGate: plan.needsCoverageGate,
       needsSpaCoverage: plan.needsSpaCoverage,
     },
+    domains: plan.domainSummary,
     mode: plan.mode,
     notes: [],
     ok: null,
     reportFile: normalizedReportFile,
     rootDir: plan.rootDir,
     scope: plan.verificationScope,
+    summary: {
+      failedStages: 0,
+      ok: false,
+      owners: [...plan.domainSummary.owners],
+      passedStages: 0,
+      pendingStages: 0,
+      requiredApprovals: [...plan.domainSummary.requiredApprovals],
+      runningStages: 0,
+      scope: plan.verificationScope,
+      skippedStages: 0,
+      totalStages: 0,
+    },
     stages: [],
     startedAt: now(),
     testDbPort: plan.testDbPort,
-    version: 1,
+    version: VERIFICATION_REPORT_VERSION,
+    workspaceFingerprint: plan.workspaceFingerprint,
   };
 
   function flush() {
+    state.summary = buildVerificationReportSummary(state);
     mkdirSync(dirname(normalizedReportFile), { recursive: true });
     writeFileSync(normalizedReportFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
   }
