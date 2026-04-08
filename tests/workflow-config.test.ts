@@ -165,6 +165,30 @@ describe('Workflow configuration hardening', () => {
     assert.equal(openPathInstall?.['working-directory'], 'upstream/openpath');
   });
 
+  test('CI workflow summarizes the machine-readable verification report after regression runs', () => {
+    const workflow = readWorkflow('.github/workflows/ci.yml');
+    const buildJob = workflow.jobs?.['build-and-validate'];
+    const steps = buildJob?.steps ?? [];
+    const regressionStep = steps.find((step) => step.name === 'Run CI regression tests');
+    const summaryStep = steps.find((step) => step.name === 'Summarize verification report');
+    const summaryScript = readText('scripts/print-verify-report-summary.mjs');
+
+    assert.match(
+      String(regressionStep?.run ?? ''),
+      /VERIFY_REPORT_FILE=/,
+      'CI regression should emit a machine-readable verification report'
+    );
+    assert.ok(
+      String(summaryStep?.run ?? '').includes('scripts/print-verify-report-summary.mjs'),
+      'CI workflow should summarize the verification report through the shared CLI wrapper'
+    );
+    assert.match(
+      summaryScript,
+      /readAndFormatVerificationReportSummary/,
+      'the verification summary CLI should delegate formatting to the shared report-consumer library'
+    );
+  });
+
   test('CI workflow caches npm installs for ClassroomPath and OpenPath lockfiles', () => {
     const workflow = readWorkflow('.github/workflows/ci.yml');
     const buildJob = workflow.jobs?.['build-and-validate'];
@@ -263,9 +287,9 @@ describe('Workflow configuration hardening', () => {
     );
 
     assert.equal(
-      ciRegressionStep?.run,
-      'npm run test:ci-regression',
-      'CI workflow should run the shared regression test script'
+      String(ciRegressionStep?.run ?? '').includes('npm run test:ci-regression'),
+      true,
+      'CI workflow should run the shared regression test script even when it exports the verification report path first'
     );
   });
 

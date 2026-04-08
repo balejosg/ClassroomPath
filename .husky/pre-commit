@@ -5,10 +5,18 @@ bash scripts/require-main-branch.sh pre-commit ClassroomPath
 echo "🔍 Running pre-commit verification..."
 echo ""
 
+VERIFY_REPORT_FILE="$(mktemp "${TMPDIR:-/tmp}/classroompath-verify-report.XXXXXX.json")"
+trap 'rm -f "$VERIFY_REPORT_FILE"' EXIT
+export VERIFY_REPORT_FILE
+
 if npm run verify:commit; then
+  node scripts/print-verify-report-summary.mjs "$VERIFY_REPORT_FILE"
   echo ""
   echo "✅ Pre-commit verification passed!"
 else
+  if [ -f "$VERIFY_REPORT_FILE" ]; then
+    node scripts/print-verify-report-summary.mjs "$VERIFY_REPORT_FILE" || true
+  fi
   echo ""
   echo "❌ Pre-commit verification FAILED!"
   echo ""

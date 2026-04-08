@@ -1,3 +1,5 @@
+import { flattenVerifyDomainPolicies, type VerifyFileDomain } from './verify-domain-policy.ts';
+
 export type VerifyMode = 'commit' | 'release';
 export type VerifyScope = 'full' | 'release-automation';
 
@@ -19,70 +21,9 @@ export type VerifyPlan = {
   verificationScope: VerifyScope;
 };
 
-type VerifyFileDomain = {
-  capabilities: {
-    needsCoverage?: 'api' | 'spa';
-    releaseAutomationSafe?: boolean;
-  };
-  name: string;
-  pattern: RegExp;
-};
+export type { VerifyFileDomain } from './verify-domain-policy.ts';
 
-export const VERIFY_FILE_DOMAINS: VerifyFileDomain[] = [
-  {
-    name: 'workflow-definition',
-    pattern: /^\.github\/workflows\/.+\.ya?ml$/,
-    capabilities: { releaseAutomationSafe: true },
-  },
-  {
-    name: 'root-package-contract',
-    pattern: /^package(?:-lock)?\.json$/,
-    capabilities: { releaseAutomationSafe: true },
-  },
-  {
-    name: 'release-cli',
-    pattern:
-      /^scripts\/(?:firefox-release-version|openpath-required-checks|release-images|resolve-latest-verifier-image|run-ci-regression|verify-full|wait-for-release-candidate)\.(?:mjs|ts)$/,
-    capabilities: { releaseAutomationSafe: true },
-  },
-  {
-    name: 'release-library',
-    pattern:
-      /^scripts\/lib\/(?:firefox-release-version|github-actions|openpath-ci-checks|regression-plan|release-candidate|release-images)\.mjs$/,
-    capabilities: { releaseAutomationSafe: true },
-  },
-  {
-    name: 'verify-library',
-    pattern: /^scripts\/lib\/verify-.+\.ts$/,
-    capabilities: { releaseAutomationSafe: true },
-  },
-  {
-    name: 'release-contract-test',
-    pattern:
-      /^tests\/(?:deployment|firefox-release-version|openpath-required-checks|release-images|verify-plan|verify-report|wait-for-release-candidate|workflow-config)\.test\.ts$/,
-    capabilities: { releaseAutomationSafe: true },
-  },
-  {
-    name: 'release-test-helper',
-    pattern: /^tests\/helpers\/release-fixtures\.ts$/,
-    capabilities: { releaseAutomationSafe: true },
-  },
-  {
-    name: 'release-fixture',
-    pattern: /^tests\/fixtures\/release\/.+$/,
-    capabilities: { releaseAutomationSafe: true },
-  },
-  {
-    name: 'api-source',
-    pattern: /^api\/src\/.*\.(ts|tsx)$/,
-    capabilities: { needsCoverage: 'api' },
-  },
-  {
-    name: 'spa-source',
-    pattern: /^react-spa\/src\/.*\.(ts|tsx)$/,
-    capabilities: { needsCoverage: 'spa' },
-  },
-];
+export const VERIFY_FILE_DOMAINS: VerifyFileDomain[] = flattenVerifyDomainPolicies();
 
 export const RELEASE_AUTOMATION_FILE_PATTERNS = VERIFY_FILE_DOMAINS.filter(
   (domain) => domain.capabilities.releaseAutomationSafe

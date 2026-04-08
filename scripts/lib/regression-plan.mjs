@@ -8,6 +8,7 @@ export const REGRESSION_PLAN_DEFINITIONS = {
       'tests/openpath-required-checks.test.ts',
       'tests/release-evidence.test.ts',
       'tests/release-images.test.ts',
+      'tests/resolve-latest-verifier-image.test.ts',
       'tests/release-gate-policy.test.ts',
       'tests/wait-for-release-candidate.test.ts',
     ],

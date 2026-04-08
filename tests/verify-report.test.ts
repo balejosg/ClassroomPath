@@ -4,6 +4,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, test } from 'node:test';
 
+import {
+  loadVerificationReport,
+  summarizeVerificationReport,
+} from '../scripts/lib/verify-report-consumer.mjs';
 import { createVerifyReporter } from '../scripts/lib/verify-report.ts';
 
 describe('verify report', () => {
@@ -58,10 +62,18 @@ describe('verify report', () => {
         notes: string[];
         stages: Array<{ id: string; status: string }>;
       };
+      const loadedReport = loadVerificationReport(reportFile);
+      const summary = summarizeVerificationReport(loadedReport);
 
       assert.equal(report.ok, true);
       assert.equal(report.scope, 'release-automation');
       assert.deepEqual(report.notes, ['release automation lane']);
+      assert.equal(loadedReport.reportFile, reportFile);
+      assert.equal(summary.ok, true);
+      assert.equal(summary.scope, 'release-automation');
+      assert.equal(summary.failedStages, 0);
+      assert.equal(summary.passedStages, 1);
+      assert.equal(summary.totalStages, 1);
       assert.deepEqual(
         report.stages.map((stage) => ({ id: stage.id, status: stage.status })),
         [

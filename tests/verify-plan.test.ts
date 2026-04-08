@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  VERIFY_DOMAIN_POLICIES,
+  flattenVerifyDomainPolicies,
+} from '../scripts/lib/verify-domain-policy.ts';
+import {
   createVerifyPlan,
   detectVerificationScope,
   RELEASE_AUTOMATION_FILE_PATTERNS,
@@ -56,10 +60,25 @@ describe('verify plan', () => {
 
   test('models release automation as a domain policy instead of a flat allowlist', () => {
     const domains = resolveVerifyDomains('scripts/lib/release-candidate.mjs');
+    const flattenedPolicies = flattenVerifyDomainPolicies();
 
     assert.ok(
-      VERIFY_FILE_DOMAINS.some((domain) => domain.name === 'release-library'),
-      'verify plan should describe release-safe files through explicit domain metadata'
+      VERIFY_DOMAIN_POLICIES.some(
+        (domain) => domain.owner === 'release-engineering' && domain.name === 'release-library'
+      ),
+      'verify-domain-policy.ts should declare release-safe ownership in dedicated metadata'
+    );
+    assert.ok(
+      flattenedPolicies.some(
+        (domain) => domain.owner === 'release-engineering' && domain.name === 'release-library'
+      ),
+      'verify-domain-policy.ts should flatten domain metadata into file matchers'
+    );
+    assert.ok(
+      VERIFY_FILE_DOMAINS.some(
+        (domain) => 'owner' in domain && domain.owner === 'release-engineering'
+      ),
+      'verify-plan.ts should consume ownership-aware domain metadata instead of raw regex constants'
     );
     assert.deepEqual(
       domains.map((domain) => domain.name),

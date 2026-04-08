@@ -84,7 +84,19 @@ jobs:
         run: npm run build
 
       - name: Run CI regression tests
-        run: npm run test:ci-regression
+        run: |
+          export VERIFY_REPORT_FILE="$RUNNER_TEMP/classroompath-ci-regression-report.json"
+          npm run test:ci-regression
+
+      - name: Summarize verification report
+        if: always()
+        run: |
+          export VERIFY_REPORT_FILE="$RUNNER_TEMP/classroompath-ci-regression-report.json"
+          if [ -f "$VERIFY_REPORT_FILE" ]; then
+            node scripts/print-verify-report-summary.mjs "$VERIFY_REPORT_FILE"
+          else
+            echo "No verification report found at $VERIFY_REPORT_FILE"
+          fi
 
   ci-success:
     name: CI Success

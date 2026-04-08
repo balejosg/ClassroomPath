@@ -18,7 +18,17 @@ const projectRoot = resolve(testDir, '..');
 const verifyFullOrchestratorPath = resolve(projectRoot, 'scripts/verify-full.ts');
 const verifyPlanPath = resolve(projectRoot, 'scripts/lib/verify-plan.ts');
 const verifyReportPath = resolve(projectRoot, 'scripts/lib/verify-report.ts');
+const verifyReportConsumerPath = resolve(projectRoot, 'scripts/lib/verify-report-consumer.mjs');
+const verifyDomainPolicyPath = resolve(projectRoot, 'scripts/lib/verify-domain-policy.ts');
+const verifyDockerPath = resolve(projectRoot, 'scripts/lib/verify-docker.ts');
+const verifyPlaywrightPath = resolve(projectRoot, 'scripts/lib/verify-playwright.ts');
+const verifyTestRunnersPath = resolve(projectRoot, 'scripts/lib/verify-test-runners.ts');
 const verifyStagesPath = resolve(projectRoot, 'scripts/lib/verify-stages.ts');
+const verifySummaryCliPath = resolve(projectRoot, 'scripts/print-verify-report-summary.mjs');
+const resolveLatestVerifierImageLibPath = resolve(
+  projectRoot,
+  'scripts/lib/resolve-latest-verifier-image.mjs'
+);
 const regressionPlanPath = resolve(projectRoot, 'scripts/lib/regression-plan.mjs');
 const turboConfigPath = resolve(projectRoot, 'turbo.json');
 const turboRunnerScriptPath = resolve(projectRoot, 'scripts/run-turbo.sh');
@@ -604,6 +614,7 @@ void describe('Migration Tooling', () => {
     const verifyScript = readFileSync(verifyFullOrchestratorPath, 'utf-8');
     const verifyPlan = readFileSync(verifyPlanPath, 'utf-8');
     const verifyReport = readFileSync(verifyReportPath, 'utf-8');
+    const verifyPlaywright = readFileSync(verifyPlaywrightPath, 'utf-8');
     const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
 
     assert.equal(
@@ -617,8 +628,9 @@ void describe('Migration Tooling', () => {
       'package.json should expose a dedicated release verify lane'
     );
     assert.ok(
-      hook.includes('npm run verify:commit'),
-      'pre-commit should execute verify:commit instead of the release lane'
+      hook.includes('VERIFY_REPORT_FILE=') &&
+        hook.includes('scripts/print-verify-report-summary.mjs'),
+      'pre-commit should emit and summarize the machine-readable verification report around verify:commit'
     );
     assert.equal(
       packageJson.scripts?.['test:release-automation'],
@@ -650,15 +662,22 @@ void describe('Migration Tooling', () => {
       'verify-stages.ts should keep the release/full verification lane on the full Playwright suite'
     );
     assert.ok(
-      verifyStages.includes(
+      verifyPlaywright.includes(
         'Playwright verification cannot skip tests; skipped: ${String(skipped)}'
-      ) && verifyStages.includes('PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath'),
-      'verify-stages.ts should fail when Playwright reports skipped tests'
+      ) && verifyPlaywright.includes('PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath'),
+      'verify-playwright.ts should fail when Playwright reports skipped tests'
     );
     assert.ok(
       verifyScript.includes('createVerifyReporter(plan)') &&
         verifyReport.includes('export function createVerifyReporter('),
       'verify-full should persist a machine-readable verification report through scripts/lib/verify-report.ts'
+    );
+    assert.ok(
+      verifyReport.includes('version: 1') &&
+        readFileSync(verifyReportConsumerPath, 'utf-8').includes(
+          'export function summarizeVerificationReport('
+        ),
+      'verification report creation should be paired with a reusable machine-readable consumer'
     );
     assert.ok(
       readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf-8').includes(
@@ -674,7 +693,26 @@ void describe('Migration Tooling', () => {
     assert.ok(existsSync(verifyFullOrchestratorPath), 'scripts/verify-full.ts should exist');
     assert.ok(existsSync(verifyPlanPath), 'scripts/lib/verify-plan.ts should exist');
     assert.ok(existsSync(verifyReportPath), 'scripts/lib/verify-report.ts should exist');
+    assert.ok(
+      existsSync(verifyReportConsumerPath),
+      'scripts/lib/verify-report-consumer.mjs should exist'
+    );
+    assert.ok(
+      existsSync(verifyDomainPolicyPath),
+      'scripts/lib/verify-domain-policy.ts should exist'
+    );
+    assert.ok(existsSync(verifyDockerPath), 'scripts/lib/verify-docker.ts should exist');
+    assert.ok(existsSync(verifyPlaywrightPath), 'scripts/lib/verify-playwright.ts should exist');
+    assert.ok(existsSync(verifyTestRunnersPath), 'scripts/lib/verify-test-runners.ts should exist');
     assert.ok(existsSync(verifyStagesPath), 'scripts/lib/verify-stages.ts should exist');
+    assert.ok(
+      existsSync(verifySummaryCliPath),
+      'scripts/print-verify-report-summary.mjs should exist'
+    );
+    assert.ok(
+      existsSync(resolveLatestVerifierImageLibPath),
+      'scripts/lib/resolve-latest-verifier-image.mjs should exist'
+    );
     assert.ok(existsSync(regressionPlanPath), 'scripts/lib/regression-plan.mjs should exist');
     assert.ok(
       verifyScript.includes('exec node --import tsx "$ROOT_DIR/scripts/verify-full.ts" "$@"'),
@@ -692,20 +730,22 @@ void describe('Migration Tooling', () => {
       'verify-full should model verification policy through typed planning helpers in scripts/lib/verify-plan.ts'
     );
     assert.ok(
-      verifyStages.includes('function validatePlaywrightReport(') &&
-        verifyStages.includes('Playwright verification cannot skip tests; skipped:'),
-      'verify-stages.ts should own the Playwright skipped-test gate'
+      verifyStages.includes("from './verify-playwright.ts'") &&
+        verifyStages.includes("from './verify-test-runners.ts'") &&
+        verifyStages.includes("from './verify-docker.ts'"),
+      'verify-stages.ts should aggregate dedicated docker, test-runner, and Playwright helper modules'
     );
   });
 
   void test('verify-full cleans up stale compose projects so repeated local runs do not exhaust Docker subnets', () => {
     const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const verifyDocker = readFileSync(verifyDockerPath, 'utf-8');
 
     assert.ok(
-      verifyStages.includes('export function discoverStaleVerifyComposeProjects(') &&
-        verifyStages.includes("['ps', '-a']") &&
-        verifyStages.includes("['network', 'ls']"),
-      'verify-stages.ts should discover stale verification projects from Docker containers and networks'
+      verifyDocker.includes('export function discoverStaleVerifyComposeProjects(') &&
+        verifyDocker.includes("['ps', '-a']") &&
+        verifyDocker.includes("['network', 'ls']"),
+      'verify-docker.ts should discover stale verification projects from Docker containers and networks'
     );
     assert.ok(
       verifyStages.includes('await cleanupStaleVerificationProjects(plan, runtime);') &&
@@ -713,8 +753,8 @@ void describe('Migration Tooling', () => {
       'verify-full should clear stale verification compose state before starting PostgreSQL'
     );
     assert.ok(
-      verifyStages.includes("['down', '--volumes', '--remove-orphans']"),
-      'verify-stages.ts should tear verification projects down fully instead of leaving orphaned networks behind'
+      verifyDocker.includes("['down', '--volumes', '--remove-orphans']"),
+      'verify-docker.ts should tear verification projects down fully instead of leaving orphaned networks behind'
     );
   });
 
@@ -757,17 +797,20 @@ void describe('Migration Tooling', () => {
 
   void test('verify-full bootstraps OpenPath workspace installs before OpenPath static verification', () => {
     const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const verifyTestRunners = readFileSync(verifyTestRunnersPath, 'utf-8');
     const bootstrapCall = 'await ensureOpenPathWorkspaceInstall(plan.rootDir, env, runtime);';
     const openPathStaticCall =
       "await runtime.runShell('cd upstream/openpath && npm run verify:static'";
 
     assert.ok(
-      verifyStages.includes("join(openPathRootDir, 'node_modules/.package-lock.json')"),
-      'verify-stages.ts should treat the OpenPath npm install marker as the bootstrap contract for submodule verification'
+      verifyTestRunners.includes("join(openPathRootDir, 'node_modules/.package-lock.json')"),
+      'verify-test-runners.ts should treat the OpenPath npm install marker as the bootstrap contract for submodule verification'
     );
     assert.ok(
-      verifyStages.includes("await runtime.run('npm', ['ci'], { cwd: openPathRootDir, env });"),
-      'verify-stages.ts should repair missing OpenPath workspace installs with npm ci before static verification'
+      verifyTestRunners.includes(
+        "await runtime.run('npm', ['ci'], { cwd: openPathRootDir, env });"
+      ),
+      'verify-test-runners.ts should repair missing OpenPath workspace installs with npm ci before static verification'
     );
     assert.ok(
       verifyStages.includes(bootstrapCall) &&
@@ -1359,25 +1402,26 @@ void describe('Migration Tooling', () => {
   });
 
   void test('verify-full keeps DATABASE_URL canonical and derives OpenPath DB_* env through the shared helper', () => {
-    const verifyFull = readFileSync(verifyStagesPath, 'utf-8');
+    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const verifyDocker = readFileSync(verifyDockerPath, 'utf-8');
 
     assert.ok(
-      verifyFull.includes('function buildTestDatabaseUrl(testDbPort: number): string') &&
-        verifyFull.includes('DATABASE_URL: buildTestDatabaseUrl(plan.testDbPort)'),
-      'verify-stages should keep DATABASE_URL as the canonical test database contract'
+      verifyDocker.includes('function buildTestDatabaseUrl(testDbPort: number): string') &&
+        verifyDocker.includes('DATABASE_URL: buildTestDatabaseUrl(plan.testDbPort)'),
+      'verify-docker.ts should keep DATABASE_URL as the canonical test database contract'
     );
     assert.ok(
-      verifyFull.includes('derive-openpath-db-env.mjs') &&
-        verifyFull.includes(
+      verifyStages.includes('derive-openpath-db-env.mjs') &&
+        verifyStages.includes(
           ".capture('node', [join(plan.rootDir, 'scripts/derive-openpath-db-env.mjs')]"
         ),
       'verify-stages should derive OpenPath DB_* compatibility env through the shared helper'
     );
     assert.ok(
-      !verifyFull.includes("DB_HOST: 'localhost'") &&
-        !verifyFull.includes("DB_PORT: '5432'") &&
-        !verifyFull.includes('env.DB_HOST') &&
-        !verifyFull.includes('env.DB_PORT'),
+      !verifyStages.includes("DB_HOST: 'localhost'") &&
+        !verifyStages.includes("DB_PORT: '5432'") &&
+        !verifyStages.includes('env.DB_HOST') &&
+        !verifyStages.includes('env.DB_PORT'),
       'verify-stages should not duplicate OpenPath DB_* derivation inline'
     );
   });
