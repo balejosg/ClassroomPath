@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveRegressionPlan } from './lib/regression-plan.mjs';
 import {
   buildVerificationReportSummary,
+  VERIFICATION_REPORT_ARTIFACT_NAME,
   VERIFICATION_REPORT_VERSION,
 } from './lib/verification-report-contract.mjs';
 
@@ -30,6 +31,10 @@ function createRegressionReporter(planName, testFiles) {
 
   const normalizedReportFile = resolve(reportFile);
   const state = {
+    artifact: {
+      name: VERIFICATION_REPORT_ARTIFACT_NAME,
+      path: normalizedReportFile,
+    },
     composeProjectName: 'ci-regression',
     coverage: {
       needsApiCoverage: false,
@@ -39,7 +44,9 @@ function createRegressionReporter(planName, testFiles) {
     domains: {
       matchedDomains: [`regression-plan:${planName}`],
       owners: ['release-engineering'],
+      releaseGates: ['staging-release-gate', 'production-release-gate'],
       requiredApprovals: ['release-engineering'],
+      reviewers: ['release-engineering'],
     },
     mode: 'commit',
     notes: [`regression-plan=${planName}`],
@@ -51,9 +58,11 @@ function createRegressionReporter(planName, testFiles) {
       failedStages: 0,
       ok: false,
       owners: ['release-engineering'],
+      releaseGates: ['staging-release-gate', 'production-release-gate'],
       passedStages: 0,
       pendingStages: testFiles.length,
       requiredApprovals: ['release-engineering'],
+      reviewers: ['release-engineering'],
       runningStages: 0,
       scope: planName,
       skippedStages: 0,

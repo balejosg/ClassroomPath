@@ -1,11 +1,13 @@
 import { flattenVerifyDomainPolicies, type VerifyFileDomain } from './verify-domain-policy.ts';
 
 export type VerifyMode = 'commit' | 'release';
-export type VerifyScope = 'full' | 'release-automation';
+export type VerifyScope = 'full' | 'ops-regression' | 'release-automation';
 export type VerifyDomainSummary = {
   matchedDomains: string[];
   owners: string[];
+  releaseGates: string[];
   requiredApprovals: string[];
+  reviewers: string[];
 };
 
 export type VerifyPlan = {
@@ -49,9 +51,11 @@ export function summarizeVerifyDomains(stagedFiles: string[]): VerifyDomainSumma
   return {
     matchedDomains: [...new Set(matchedDomains.map((domain) => domain.name))],
     owners: [...new Set(matchedDomains.map((domain) => domain.owner))],
+    releaseGates: [...new Set(matchedDomains.flatMap((domain) => domain.releaseGates ?? []))],
     requiredApprovals: [
       ...new Set(matchedDomains.flatMap((domain) => domain.requiredApprovals ?? [])),
     ],
+    reviewers: [...new Set(matchedDomains.flatMap((domain) => domain.reviewers ?? []))],
   };
 }
 
@@ -103,14 +107,27 @@ export function detectVerificationScope(stagedFiles: string[], mode: VerifyMode)
     return 'full';
   }
 
-  return stagedFiles.every((entry) => {
-    const domains = resolveVerifyDomains(entry);
-    return (
-      domains.length > 0 && domains.every((domain) => domain.capabilities.releaseAutomationSafe)
-    );
-  })
-    ? 'release-automation'
-    : 'full';
+  const matchedDomains = stagedFiles.flatMap((entry) => resolveVerifyDomains(entry));
+  if (
+    matchedDomains.length === 0 ||
+    matchedDomains.some((domain) => !domain.capabilities.verificationScope)
+  ) {
+    return 'full';
+  }
+
+  const scopes = new Set(
+    matchedDomains.map((domain) => domain.capabilities.verificationScope).filter(Boolean)
+  );
+
+  if (scopes.size === 1 && scopes.has('release-automation')) {
+    return 'release-automation';
+  }
+
+  if ([...scopes].every((scope) => scope === 'release-automation' || scope === 'ops-regression')) {
+    return scopes.has('ops-regression') ? 'ops-regression' : 'release-automation';
+  }
+
+  return 'full';
 }
 
 export function createVerifyPlan({

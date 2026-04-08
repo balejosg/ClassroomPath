@@ -31,6 +31,16 @@ describe('verify plan', () => {
     assert.equal(detectVerificationScope(['react-spa/src/App.tsx'], 'commit'), 'full');
   });
 
+  test('detects the ops-regression scope for deploy/runtime automation diffs', () => {
+    assert.equal(
+      detectVerificationScope(
+        ['scripts/deploy-production-remote.sh', 'docker/docker-compose.yml'],
+        'commit'
+      ),
+      'ops-regression'
+    );
+  });
+
   test('forces full verification for release mode even on workflow-only changes', () => {
     assert.equal(
       detectVerificationScope(['.github/workflows/firefox-release-assets.yml'], 'release'),
@@ -99,7 +109,9 @@ describe('verify plan', () => {
       {
         matchedDomains: ['release-cli', 'workflow-definition', 'spa-source'],
         owners: ['release-engineering', 'application'],
+        releaseGates: ['staging-release-gate', 'production-release-gate'],
         requiredApprovals: ['release-engineering', 'application'],
+        reviewers: ['release-engineering', 'application'],
       }
     );
   });

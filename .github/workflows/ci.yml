@@ -16,7 +16,9 @@ jobs:
     outputs:
       ci_relevant: ${{ steps.filter.outputs.ci_relevant }}
       domain_owners: ${{ steps.filter.outputs.domain_owners }}
+      release_gates: ${{ steps.filter.outputs.release_gates }}
       required_approvals: ${{ steps.filter.outputs.required_approvals }}
+      reviewers: ${{ steps.filter.outputs.reviewers }}
 
     steps:
       - name: Checkout with submodules
@@ -96,11 +98,21 @@ jobs:
             echo "No verification report found at $VERIFY_REPORT_FILE"
           fi
 
+      - name: Upload verification report artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: classroompath-ci-verification-report
+          path: ${{ runner.temp }}/classroompath-ci-regression-report.json
+          if-no-files-found: warn
+
       - name: Show verification owners
         if: always()
         run: |
           echo "Domain owners: ${{ needs.detect-relevant-changes.outputs.domain_owners || 'none' }}"
+          echo "Reviewers: ${{ needs.detect-relevant-changes.outputs.reviewers || 'none' }}"
           echo "Required approvals: ${{ needs.detect-relevant-changes.outputs.required_approvals || 'none' }}"
+          echo "Release gates: ${{ needs.detect-relevant-changes.outputs.release_gates || 'none' }}"
 
   ci-success:
     name: CI Success

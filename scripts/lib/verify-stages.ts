@@ -11,7 +11,7 @@ import {
 } from './verify-docker.ts';
 import type { VerifyPlan } from './verify-plan.ts';
 import type { VerifyReporter } from './verify-report.ts';
-import { createVerifyCache } from './verify-cache.ts';
+import { createVerifyCache, type VerifyStageArtifact } from './verify-cache.ts';
 import { hasPlaywrightBrowsers, runPlaywrightVerification } from './verify-playwright.ts';
 import { runReportedStage, type VerifyRuntime } from './verify-runtime.ts';
 import { getVerificationStageDefinition } from './verification-catalog.mjs';
@@ -31,7 +31,8 @@ function createStageCache(
   plan: VerifyPlan,
   stageId: string,
   value: unknown,
-  validate?: () => boolean
+  validate?: () => boolean,
+  artifacts?: VerifyStageArtifact[]
 ) {
   const definition = getVerificationStageDefinition(plan.verificationScope, stageId);
   if (!definition || definition.cache !== 'diff-safe') {
@@ -41,6 +42,7 @@ function createStageCache(
   const cache = createVerifyCache(plan);
   return {
     clearStage: cache.clearStage,
+    artifacts,
     key: cache.buildStageCacheKey(stageId, value),
     rememberPassedStage: cache.rememberPassedStage,
     shouldReuse: cache.shouldReuse,
@@ -102,6 +104,58 @@ export async function runReleaseAutomationVerification(
   );
 }
 
+export async function runOpsRegressionVerification(
+  plan: VerifyPlan,
+  env: NodeJS.ProcessEnv,
+  runtime: VerifyRuntime,
+  reporter: VerifyReporter
+): Promise<void> {
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('  ⚡ OPTIMIZATION: Operational automation-only diff detected');
+  console.log('  → Running deployment/workflow regression instead of full product verification');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('');
+
+  console.log('[1/2] Format and secret checks...');
+  await runReportedStage(
+    reporter,
+    {
+      id: 'format-and-secrets',
+      label: 'Format and secret checks',
+      cache: createStageCache(plan, 'format-and-secrets', {
+        commands: ['npm run format:check', 'npm run security:secrets'],
+      }),
+      details: { commands: ['npm run format:check', 'npm run security:secrets'] },
+    },
+    async () => {
+      await runtime.runParallel(['npm run format:check', 'npm run security:secrets'], {
+        cwd: plan.rootDir,
+        env,
+      });
+    }
+  );
+
+  console.log('');
+  console.log('[2/2] Operational regression...');
+  await runReportedStage(
+    reporter,
+    {
+      id: 'ops-regression',
+      label: 'Operational regression',
+      cache: createStageCache(plan, 'ops-regression', {
+        command: 'npm run test:ci-regression',
+      }),
+      details: { command: 'npm run test:ci-regression' },
+    },
+    async () => {
+      await runtime.run('npm', ['run', 'test:ci-regression'], {
+        cwd: plan.rootDir,
+        env,
+      });
+    }
+  );
+}
+
 export async function runFullVerification(
   plan: VerifyPlan,
   env: NodeJS.ProcessEnv,
@@ -149,7 +203,12 @@ export async function runFullVerification(
         () =>
           existsSync(join(plan.rootDir, 'api/dist')) &&
           existsSync(join(plan.rootDir, 'react-spa/dist')) &&
-          existsSync(join(plan.rootDir, 'upstream/openpath/api/dist'))
+          existsSync(join(plan.rootDir, 'upstream/openpath/api/dist')),
+        [
+          { kind: 'build-output', path: join(plan.rootDir, 'api/dist') },
+          { kind: 'build-output', path: join(plan.rootDir, 'react-spa/dist') },
+          { kind: 'build-output', path: join(plan.rootDir, 'upstream/openpath/api/dist') },
+        ]
       ),
       details: { command: 'npm run build' },
     },

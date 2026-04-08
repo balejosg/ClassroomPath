@@ -7,6 +7,7 @@ export type VerifyDomainCapabilities = {
   ciRelevant?: boolean;
   needsCoverage?: 'api' | 'spa';
   releaseAutomationSafe?: boolean;
+  verificationScope?: 'ops-regression' | 'release-automation';
 };
 
 export type VerifyDomainPolicy = {
@@ -14,7 +15,9 @@ export type VerifyDomainPolicy = {
   name: string;
   owner: 'application' | 'release-engineering';
   patterns: readonly RegExp[];
+  releaseGates: string[];
   requiredApprovals: string[];
+  reviewers: string[];
 };
 
 export type VerifyFileDomain = {
@@ -22,7 +25,9 @@ export type VerifyFileDomain = {
   name: string;
   owner: VerifyDomainPolicy['owner'];
   pattern: RegExp;
+  releaseGates: string[];
   requiredApprovals: string[];
+  reviewers: string[];
 };
 
 export const VERIFY_DOMAIN_POLICIES: VerifyDomainPolicy[] = VERIFY_DOMAIN_POLICY_DEFINITIONS.map(
@@ -31,7 +36,9 @@ export const VERIFY_DOMAIN_POLICIES: VerifyDomainPolicy[] = VERIFY_DOMAIN_POLICY
     name: definition.name,
     owner: definition.owner as VerifyDomainPolicy['owner'],
     patterns: definition.patterns.map((pattern) => new RegExp(pattern)),
+    releaseGates: [...(definition.releaseGates ?? [])],
     requiredApprovals: [...(definition.requiredApprovals ?? [])],
+    reviewers: [...(definition.reviewers ?? [])],
   })
 );
 
@@ -48,7 +55,9 @@ export function flattenVerifyDomainPolicies(
       name: policy.name,
       owner: policy.owner,
       pattern,
+      releaseGates: policy.releaseGates,
       requiredApprovals: policy.requiredApprovals,
+      reviewers: policy.reviewers,
     }))
   );
 }

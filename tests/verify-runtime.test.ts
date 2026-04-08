@@ -17,6 +17,7 @@ describe('verify runtime', () => {
       } as never,
       {
         cache: {
+          artifacts: [{ kind: 'build-output', path: '/tmp/build-output' }],
           clearStage: () => events.push({ type: 'clear' }),
           key: 'stage-cache-key',
           rememberPassedStage: () => events.push({ type: 'remember' }),
@@ -36,5 +37,7 @@ describe('verify runtime', () => {
       events.map((event) => event.type),
       ['skip']
     );
+    const skippedPayload = events[0]?.payload as unknown[] | undefined;
+    assert.deepEqual(skippedPayload?.[3], [{ kind: 'build-output', path: '/tmp/build-output' }]);
   });
 });

@@ -4,13 +4,16 @@ import { tmpdir } from 'node:os';
 
 import {
   buildVerificationReportSummary,
+  VERIFICATION_REPORT_ARTIFACT_NAME,
   VERIFICATION_REPORT_VERSION,
 } from './verification-report-contract.mjs';
 import type { VerifyPlan } from './verify-plan.ts';
+import type { VerifyStageArtifact } from './verify-cache.ts';
 
 export type VerifyStageStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped';
 
 export type VerifyReportStage = {
+  artifacts?: VerifyStageArtifact[];
   details?: Record<string, unknown>;
   error?: string;
   finishedAt?: string;
@@ -21,6 +24,10 @@ export type VerifyReportStage = {
 };
 
 export type VerificationReport = {
+  artifact: {
+    name: string;
+    path: string;
+  };
   composeProjectName: string;
   coverage: {
     needsApiCoverage: boolean;
@@ -53,15 +60,21 @@ export function createVerifyReporter(
   plan: VerifyPlan,
   {
     now = () => new Date().toISOString(),
+    artifactName = process.env.VERIFY_REPORT_ARTIFACT_NAME || VERIFICATION_REPORT_ARTIFACT_NAME,
     reportFile = process.env.VERIFY_REPORT_FILE ||
       resolve(tmpdir(), `classroompath-verify-report-${process.pid}.json`),
   }: {
+    artifactName?: string;
     now?: () => string;
     reportFile?: string;
   } = {}
 ) {
   const normalizedReportFile = resolve(reportFile);
   const state: VerificationReport = {
+    artifact: {
+      name: artifactName,
+      path: normalizedReportFile,
+    },
     composeProjectName: plan.composeProjectName,
     coverage: {
       needsApiCoverage: plan.needsApiCoverage,
@@ -79,9 +92,11 @@ export function createVerifyReporter(
       failedStages: 0,
       ok: false,
       owners: [...plan.domainSummary.owners],
+      releaseGates: [...plan.domainSummary.releaseGates],
       passedStages: 0,
       pendingStages: 0,
       requiredApprovals: [...plan.domainSummary.requiredApprovals],
+      reviewers: [...plan.domainSummary.reviewers],
       runningStages: 0,
       scope: plan.verificationScope,
       skippedStages: 0,
@@ -119,7 +134,12 @@ export function createVerifyReporter(
       state.notes.push(note);
       flush();
     },
-    completeStage(id: string, label: string, details?: Record<string, unknown>) {
+    completeStage(
+      id: string,
+      label: string,
+      details?: Record<string, unknown>,
+      artifacts?: VerifyStageArtifact[]
+    ) {
       const stage = getOrCreateStage(id, label);
       stage.status = 'passed';
       stage.finishedAt = now();
@@ -128,6 +148,9 @@ export function createVerifyReporter(
       }
       if (details) {
         stage.details = details;
+      }
+      if (artifacts) {
+        stage.artifacts = artifacts;
       }
       delete stage.error;
       flush();
@@ -153,7 +176,12 @@ export function createVerifyReporter(
     getReportFile() {
       return normalizedReportFile;
     },
-    skipStage(id: string, label: string, details?: Record<string, unknown>) {
+    skipStage(
+      id: string,
+      label: string,
+      details?: Record<string, unknown>,
+      artifacts?: VerifyStageArtifact[]
+    ) {
       const stage = getOrCreateStage(id, label);
       stage.status = 'skipped';
       stage.finishedAt = now();
@@ -162,6 +190,9 @@ export function createVerifyReporter(
       }
       if (details) {
         stage.details = details;
+      }
+      if (artifacts) {
+        stage.artifacts = artifacts;
       }
       delete stage.error;
       flush();

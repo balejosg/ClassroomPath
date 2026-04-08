@@ -1,5 +1,5 @@
 import type { VerifyReporter } from './verify-report.ts';
-import type { VerifyStageCacheOptions } from './verify-cache.ts';
+import type { VerifyStageArtifact, VerifyStageCacheOptions } from './verify-cache.ts';
 
 export type RunOptions = {
   cwd?: string;
@@ -24,8 +24,13 @@ export async function runReportedStage(
   }: {
     cache?: {
       key: string;
+      artifacts?: VerifyStageArtifact[];
       validate?: VerifyStageCacheOptions['validate'];
-      rememberPassedStage: (id: string, cacheKey: string) => void;
+      rememberPassedStage: (
+        id: string,
+        cacheKey: string,
+        artifacts?: VerifyStageArtifact[]
+      ) => void;
       shouldReuse: (id: string, options?: VerifyStageCacheOptions) => Promise<boolean>;
       clearStage: (id: string) => void;
     };
@@ -35,8 +40,15 @@ export async function runReportedStage(
   },
   action: () => Promise<void>
 ): Promise<void> {
-  if (cache && (await cache.shouldReuse(id, { key: cache.key, validate: cache.validate }))) {
-    reporter.skipStage(id, label, { ...details, cached: true });
+  if (
+    cache &&
+    (await cache.shouldReuse(id, {
+      artifacts: cache.artifacts,
+      key: cache.key,
+      validate: cache.validate,
+    }))
+  ) {
+    reporter.skipStage(id, label, { ...details, cached: true }, cache.artifacts);
     return;
   }
 
@@ -44,9 +56,9 @@ export async function runReportedStage(
 
   try {
     await action();
-    reporter.completeStage(id, label, details);
+    reporter.completeStage(id, label, details, cache?.artifacts);
     if (cache?.key) {
-      cache.rememberPassedStage(id, cache.key);
+      cache.rememberPassedStage(id, cache.key, cache.artifacts);
     }
   } catch (error) {
     reporter.failStage(id, label, error);

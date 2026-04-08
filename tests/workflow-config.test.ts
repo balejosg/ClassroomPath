@@ -136,6 +136,16 @@ describe('Workflow configuration hardening', () => {
       '${{ steps.filter.outputs.domain_owners }}',
       'CI workflow should expose verification domain owners from the shared change detector'
     );
+    assert.equal(
+      jobs['detect-relevant-changes']?.outputs?.['reviewers'],
+      '${{ steps.filter.outputs.reviewers }}',
+      'CI workflow should expose reviewer groups from the shared change detector'
+    );
+    assert.equal(
+      jobs['detect-relevant-changes']?.outputs?.['release_gates'],
+      '${{ steps.filter.outputs.release_gates }}',
+      'CI workflow should expose release-gate impact from the shared change detector'
+    );
   });
 
   test('release candidate detector rebuilds dependent images when the OpenPath gitlink changes', () => {
@@ -177,8 +187,10 @@ describe('Workflow configuration hardening', () => {
     const steps = buildJob?.steps ?? [];
     const regressionStep = steps.find((step) => step.name === 'Run CI regression tests');
     const summaryStep = steps.find((step) => step.name === 'Summarize verification report');
+    const uploadStep = steps.find((step) => step.name === 'Upload verification report artifact');
     const summaryScript = readText('scripts/print-verify-report-summary.mjs');
     const detectorScript = readText('scripts/detect-ci-relevant-changes.mjs');
+    const reportContract = readText('scripts/lib/verification-report-contract.mjs');
 
     assert.match(
       String(regressionStep?.run ?? ''),
@@ -198,6 +210,31 @@ describe('Workflow configuration hardening', () => {
       detectorScript,
       /summarizeVerificationDomains/,
       'CI change detection should delegate relevance and approval ownership to the shared verification catalog'
+    );
+    assert.equal(
+      uploadStep?.uses,
+      'actions/upload-artifact@v7',
+      'CI workflow should publish the verification report as a canonical artifact'
+    );
+    assert.equal(
+      String(uploadStep?.with?.name ?? ''),
+      'classroompath-ci-verification-report',
+      'CI workflow should use a stable artifact name for verification consumers'
+    );
+    assert.match(
+      reportContract,
+      /VERIFICATION_REPORT_ARTIFACT_NAME = 'classroompath-ci-verification-report'/,
+      'the verification report contract should define the canonical artifact name'
+    );
+    assert.match(
+      detectorScript,
+      /reviewers: summary\.reviewers\.join\(','\)/,
+      'CI change detection should emit reviewer groups from the shared verification catalog'
+    );
+    assert.match(
+      detectorScript,
+      /release_gates: summary\.releaseGates\.join\(','\)/,
+      'CI change detection should emit release-gate impact from the shared verification catalog'
     );
   });
 
@@ -281,6 +318,11 @@ describe('Workflow configuration hardening', () => {
       verificationCatalog,
       /tests\/release-cli\.test\.ts/,
       'regression plan should include the shared release CLI contract suite'
+    );
+    assert.match(
+      verificationCatalog,
+      /tests\/verify-cache\.test\.ts/,
+      'release-automation regression should validate the artifact-aware verify cache contract'
     );
     assert.match(
       verificationCatalog,

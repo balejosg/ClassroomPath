@@ -24,7 +24,9 @@ function main(argv = process.argv.slice(2)) {
   writeOutputs({
     ci_relevant: summary.ciRelevant ? 'true' : 'false',
     domain_owners: summary.owners.join(','),
+    release_gates: summary.releaseGates.join(','),
     required_approvals: summary.requiredApprovals.join(','),
+    reviewers: summary.reviewers.join(','),
   });
 }
 

@@ -4,7 +4,14 @@ import { dirname, join, resolve } from 'node:path';
 
 import type { VerifyPlan } from './verify-plan.ts';
 
+export type VerifyStageArtifact = {
+  kind: string;
+  path: string;
+  required?: boolean;
+};
+
 type VerifyCacheEntry = {
+  artifacts: VerifyStageArtifact[];
   cacheKey: string;
   id: string;
   passedAt: string;
@@ -16,6 +23,7 @@ type VerifyCacheState = {
 };
 
 export type VerifyStageCacheOptions = {
+  artifacts?: VerifyStageArtifact[];
   key: string;
   validate?: () => boolean | Promise<boolean>;
 };
@@ -35,7 +43,20 @@ function loadCacheState(cacheFile: string): VerifyCacheState {
       return { entries: {}, version: 1 };
     }
 
-    return parsed;
+    return {
+      entries: Object.fromEntries(
+        Object.entries(parsed.entries).map(([id, entry]) => [
+          id,
+          {
+            artifacts: Array.isArray(entry?.artifacts) ? entry.artifacts : [],
+            cacheKey: String(entry?.cacheKey ?? ''),
+            id: String(entry?.id ?? id),
+            passedAt: String(entry?.passedAt ?? ''),
+          },
+        ])
+      ),
+      version: 1,
+    };
   } catch {
     return { entries: {}, version: 1 };
   }
@@ -79,14 +100,33 @@ export function createVerifyCache(
     }
 
     if (!options.validate) {
-      return true;
+      return entry.artifacts.every(
+        (artifact) => artifact.required === false || existsSync(resolve(artifact.path))
+      );
+    }
+
+    if (
+      !entry.artifacts.every(
+        (artifact) => artifact.required === false || existsSync(resolve(artifact.path))
+      )
+    ) {
+      return false;
     }
 
     return await options.validate();
   }
 
-  function rememberPassedStage(id: string, cacheKey: string) {
+  function rememberPassedStage(
+    id: string,
+    cacheKey: string,
+    artifacts: VerifyStageArtifact[] = []
+  ) {
     state.entries[id] = {
+      artifacts: artifacts.map((artifact) => ({
+        kind: artifact.kind,
+        path: resolve(artifact.path),
+        required: artifact.required,
+      })),
       cacheKey,
       id,
       passedAt: now(),

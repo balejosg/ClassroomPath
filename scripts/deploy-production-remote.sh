@@ -63,6 +63,8 @@ DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR
 RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
 DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
 RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"
+DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-context.sh")"
+DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-runtime.sh")"
 if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
   RELEASE_RUNTIME_HELPER_PATH="$APP_DIR/scripts/lib/release-runtime.sh"
 fi
@@ -381,93 +383,6 @@ upsert_env_file_var() {
   mv "$tmp_file" "$path"
 }
 
-classify_sql_migration_file() {
-  local path="$1"
-
-  if grep -Eiq '\b(DELETE[[:space:]]+FROM|TRUNCATE|DROP[[:space:]]+(TABLE|INDEX|COLUMN|CONSTRAINT))\b' "$path"; then
-    printf '%s\n' "destructive"
-    return 0
-  fi
-
-  if grep -Eiq '\bALTER[[:space:]]+TABLE\b' "$path" \
-    && grep -Eiq '\b(DROP|ALTER[[:space:]]+COLUMN[[:space:][:alnum:]_"]*[[:space:]]+TYPE|SET[[:space:]]+DATA[[:space:]]+TYPE)\b' "$path"; then
-    printf '%s\n' "destructive"
-    return 0
-  fi
-
-  if grep -Eiq '\bUPDATE\b' "$path" && grep -Eiq '\bSET\b' "$path"; then
-    printf '%s\n' "destructive"
-    return 0
-  fi
-
-  if grep -Eiq '\b(CREATE[[:space:]]+TABLE|CREATE[[:space:]]+(UNIQUE[[:space:]]+)?INDEX)\b' "$path"; then
-    printf '%s\n' "expand-contract"
-    return 0
-  fi
-
-  if grep -Eiq '\bALTER[[:space:]]+TABLE\b' "$path" \
-    && grep -Eiq '\bADD[[:space:]]+(COLUMN|CONSTRAINT)\b' "$path"; then
-    printf '%s\n' "expand-contract"
-    return 0
-  fi
-
-  printf '%s\n' "safe"
-}
-
-classify_migration_risk() {
-  local repo_root="$1"
-  local from_ref="$2"
-  local to_ref="$3"
-  local -a changed_files=()
-  local -a destructive_files=()
-  local -a expand_files=()
-  local -a safe_files=()
-  local file=""
-  local risk="safe"
-
-  if [ -z "$from_ref" ] || [ -z "$to_ref" ] || [ "$from_ref" = "$to_ref" ]; then
-    MIGRATION_RISK_LEVEL="safe"
-    MIGRATION_CHANGED_FILES=""
-    MIGRATION_DESTRUCTIVE_FILES=""
-    return 0
-  fi
-
-  while IFS= read -r file; do
-    [ -n "$file" ] || continue
-    changed_files+=("$file")
-  done < <(
-    git -C "$repo_root" diff --name-only "${from_ref}..${to_ref}" -- \
-      'api/drizzle/*.sql' \
-      'upstream/openpath/api/drizzle/*.sql'
-  )
-
-  for file in "${changed_files[@]}"; do
-    risk="$(classify_sql_migration_file "$repo_root/$file")"
-    case "$risk" in
-      destructive)
-        destructive_files+=("$file")
-        ;;
-      expand-contract)
-        expand_files+=("$file")
-        ;;
-      *)
-        safe_files+=("$file")
-        ;;
-    esac
-  done
-
-  if [ "${#destructive_files[@]}" -gt 0 ]; then
-    MIGRATION_RISK_LEVEL="destructive"
-  elif [ "${#expand_files[@]}" -gt 0 ]; then
-    MIGRATION_RISK_LEVEL="expand-contract"
-  else
-    MIGRATION_RISK_LEVEL="safe"
-  fi
-
-  MIGRATION_CHANGED_FILES="$(IFS=,; printf '%s' "${changed_files[*]}")"
-  MIGRATION_DESTRUCTIVE_FILES="$(IFS=,; printf '%s' "${destructive_files[*]}")"
-}
-
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 if [ -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
@@ -508,18 +423,6 @@ cleanup_production_deploy_artifacts() {
 }
 
 trap cleanup_production_deploy_artifacts EXIT
-
-write_deploy_context() {
-  TARGET_SHA="$TARGET_SHA" \
-  PREVIOUS_APP_SHA="${PREVIOUS_APP_SHA:-}" \
-  MIGRATION_RISK_LEVEL="${MIGRATION_RISK_LEVEL:-safe}" \
-  MIGRATION_CHANGED_FILES="${MIGRATION_CHANGED_FILES:-}" \
-  MIGRATION_DESTRUCTIVE_FILES="${MIGRATION_DESTRUCTIVE_FILES:-}" \
-  PRODUCTION_BACKUP_REFERENCE="${PRODUCTION_BACKUP_REFERENCE:-}" \
-  DB_MIGRATED="${DB_MIGRATED:-0}" \
-  DEPLOY_FAILURE_STAGE="${DEPLOY_FAILURE_STAGE:-preflight}" \
-    write_deploy_context_state "$DEPLOY_CONTEXT_FILE"
-}
 
 login_production_registry() {
   if [ "${PRODUCTION_REGISTRY_LOGGED_IN:-0}" = "1" ]; then
@@ -578,40 +481,27 @@ prepare_production_checkout() {
   git submodule deinit -f --all || true
   git submodule update --init --recursive --force
   reload_deployed_common_helpers "$COMMON_SH_DEPLOYED_PATH"
+
+  DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-context.sh")"
+  DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-runtime.sh")"
+
+  if [ ! -f "$DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH" ] || [ ! -f "$DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH" ]; then
+    die "Missing production deploy helpers after checkout" 1
+  fi
+
+  # shellcheck source=lib/deploy-production-context.sh
+  source "$DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH"
+  # shellcheck source=lib/deploy-production-runtime.sh
+  source "$DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH"
 }
 
 load_production_release_manifest() {
-  RELEASE_MANIFEST_FILE="$(mktemp)"
-  decode_release_manifest_base64 "$RELEASE_MANIFEST_B64" "$RELEASE_MANIFEST_FILE" >/dev/null || true
-  decode_release_manifest_base64 "$RELEASE_MANIFEST_B64_FROM_PAYLOAD" "$RELEASE_MANIFEST_FILE" >/dev/null
-  load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"
+  # Helper contract: load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"
+  load_production_release_manifest_impl "$@"
 }
 
 classify_production_migration_risk() {
-  deployment_state_capture_previous_release
-
-  classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
-
-  if [ "$MIGRATION_RISK_LEVEL" = "destructive" ]; then
-    log_warn "Destructive migration risk detected: ${MIGRATION_DESTRUCTIVE_FILES:-unknown files}"
-
-    if [ -n "${PRODUCTION_DB_BACKUP_COMMAND:-}" ]; then
-      log_info "Creating production backup using PRODUCTION_DB_BACKUP_COMMAND..."
-      PRODUCTION_BACKUP_REFERENCE="$(sh -lc "$PRODUCTION_DB_BACKUP_COMMAND")"
-    elif [ -n "${PRODUCTION_DB_BACKUP_ID:-}" ]; then
-      PRODUCTION_BACKUP_REFERENCE="$PRODUCTION_DB_BACKUP_ID"
-    else
-      die "Destructive migrations require PRODUCTION_DB_BACKUP_ID or PRODUCTION_DB_BACKUP_COMMAND" 1
-    fi
-
-    if [ -z "$PRODUCTION_BACKUP_REFERENCE" ]; then
-      die "Backup command did not return a backup identifier" 1
-    fi
-
-    log_info "Recorded production backup reference: $PRODUCTION_BACKUP_REFERENCE"
-  fi
-
-  write_deploy_context
+  classify_production_migration_risk_impl "$@"
 }
 
 run_production_database_migrations() {
@@ -628,99 +518,23 @@ run_production_database_migrations() {
   write_deploy_context
 }
 
-start_production_runtime() {
-  plan_production_runtime_deploy
-  apply_production_runtime_deploy
-}
-
 plan_production_runtime_deploy() {
-  PRODUCTION_DEPLOY_PLAN="release-candidate"
+  plan_production_runtime_deploy_impl "$@"
 }
 
 apply_production_runtime_deploy() {
-  cd "$APP_DIR/docker"
-  export COMPOSE_PROJECT_NAME=classroompath-production
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"
+  # Helper contract: write_release_runtime_state "$STATE_DIR/current-images.env"
+  apply_production_runtime_deploy_impl "$@"
+}
 
-  login_production_registry
-
-  log_info "Pulling immutable release images..."
-  docker compose pull gateway api spa
-
-  log_info "Stopping existing containers..."
-  docker compose down --remove-orphans || true
-  docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
-  docker rm -f classroompath-production-api-1 classroompath-production-gateway-1 classroompath-production-spa-1 2>/dev/null || true
-
-  log_info "Starting containers from immutable images..."
-  docker compose up -d --force-recreate --no-build
-
-  if [ "${PRODUCTION_DEPLOY_PLAN:-}" != "release-candidate" ]; then
-    die "Unknown production deploy plan: ${PRODUCTION_DEPLOY_PLAN:-unset}" 1
-  fi
-
-  write_release_runtime_state \
-    "$STATE_DIR/current-images.env" \
-    "$TARGET_SHA" \
-    "release-candidate" \
-    "$CLASSROOMPATH_GATEWAY_IMAGE" \
-    "$CLASSROOMPATH_MIGRATIONS_IMAGE" \
-    "$OPENPATH_API_IMAGE" \
-    "$OPENPATH_LINUX_AGENT_VERSION" \
-    "$CLASSROOMPATH_SPA_IMAGE"
+start_production_runtime() {
+  start_production_runtime_impl "$@"
 }
 
 wait_for_production_runtime_readiness() {
-  log_info "Waiting for services to be healthy..."
-  timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done' || {
-    log_warn "Timeout waiting for container health checks"
-    docker compose ps
-  }
-
-  for i in 1 2 3 4 5; do
-    if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-      log_success "Gateway health check passed"
-      break
-    fi
-    log_warn "Health check attempt $i failed, retrying..."
-    sleep 5
-  done
-
-  if ! curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-    log_error "Gateway deployment failed. Check logs:"
-    docker logs classroompath-gateway --tail 30
-    exit 1
-  fi
-
-  DEPLOY_FAILURE_STAGE="readiness"
-  write_deploy_context
-  log_info "Checking full application readiness..."
-
-  local ready_check=""
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-    ready_check=$(curl -sf http://localhost:3001/cp/ready 2>/dev/null || echo '{"ready":false}')
-    if echo "$ready_check" | grep -q '"ready":true'; then
-      log_success "Application readiness OK"
-      DEPLOY_FAILURE_STAGE="completed"
-      write_deploy_context
-      log_success "Deployment successful"
-      docker logs classroompath-gateway --tail 5
-      return 0
-    fi
-
-    if [ "$i" -lt 12 ]; then
-      log_warn "Application not ready (attempt $i/12), waiting 5s..."
-      sleep 5
-    else
-      log_error "APPLICATION READINESS FAILED after 12 attempts"
-      log_error "Readiness response: $ready_check"
-      log_error "Code rollback can be attempted automatically; DB migrated=$DB_MIGRATED backup=${PRODUCTION_BACKUP_REFERENCE:-none}"
-      log_error "Debug: docker logs classroompath-gateway --tail 50"
-      log_error "Debug: docker logs classroompath-api --tail 50"
-      exit 1
-    fi
-  done
+  wait_for_production_runtime_readiness_impl "$@"
 }
+
 
 load_production_deploy_payload
 prepare_production_checkout

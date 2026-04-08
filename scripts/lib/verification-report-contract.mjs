@@ -1,4 +1,5 @@
-export const VERIFICATION_REPORT_VERSION = 2;
+export const VERIFICATION_REPORT_VERSION = 3;
+export const VERIFICATION_REPORT_ARTIFACT_NAME = 'classroompath-ci-verification-report';
 
 function normalizeStageStatus(status) {
   return ['pending', 'running', 'passed', 'failed', 'skipped'].includes(String(status))
@@ -34,11 +35,14 @@ export function buildVerificationReportSummary(report) {
   const stageSummary = summarizeVerificationStages(report?.stages);
   return {
     ...stageSummary,
+    artifactName: String(report?.artifact?.name ?? VERIFICATION_REPORT_ARTIFACT_NAME),
     ok: report?.ok === true,
     owners: Array.isArray(report?.domains?.owners) ? report.domains.owners : [],
+    releaseGates: Array.isArray(report?.domains?.releaseGates) ? report.domains.releaseGates : [],
     requiredApprovals: Array.isArray(report?.domains?.requiredApprovals)
       ? report.domains.requiredApprovals
       : [],
+    reviewers: Array.isArray(report?.domains?.reviewers) ? report.domains.reviewers : [],
     scope: String(report?.scope ?? 'unknown'),
   };
 }
@@ -60,6 +64,10 @@ export function validateVerificationReport(report) {
 
   if (!report.reportFile || !report.rootDir || !report.startedAt) {
     throw new Error('Verification report is missing required top-level metadata');
+  }
+
+  if (!report.artifact || !report.artifact.name || !report.artifact.path) {
+    throw new Error('Verification report is missing canonical artifact metadata');
   }
 
   return {

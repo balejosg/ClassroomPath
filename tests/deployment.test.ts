@@ -33,6 +33,14 @@ const verifyStagesPath = resolve(projectRoot, 'scripts/lib/verify-stages.ts');
 const verifySummaryCliPath = resolve(projectRoot, 'scripts/print-verify-report-summary.mjs');
 const detectCiRelevantChangesPath = resolve(projectRoot, 'scripts/detect-ci-relevant-changes.mjs');
 const releaseCliPath = resolve(projectRoot, 'scripts/lib/release-cli.mjs');
+const deployProductionContextHelperPath = resolve(
+  projectRoot,
+  'scripts/lib/deploy-production-context.sh'
+);
+const deployProductionRuntimeHelperPath = resolve(
+  projectRoot,
+  'scripts/lib/deploy-production-runtime.sh'
+);
 const resolveLatestVerifierImageLibPath = resolve(
   projectRoot,
   'scripts/lib/resolve-latest-verifier-image.mjs'
@@ -660,10 +668,14 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       verifyScript.includes("if (plan.verificationScope === 'release-automation')") &&
+        verifyScript.includes("else if (plan.verificationScope === 'ops-regression')") &&
         verifyStages.includes(
           'Running targeted workflow/release regression instead of full product verification'
+        ) &&
+        verifyStages.includes(
+          'Running deployment/workflow regression instead of full product verification'
         ),
-      'verify-full.ts should route safe workflow-only diffs through the release-automation scope'
+      'verify-full.ts should route safe workflow-only diffs through release-specific scopes before falling back to full verification'
     );
     assert.ok(
       verifyStages.includes('Running full E2E Playwright suite...'),
@@ -691,7 +703,7 @@ void describe('Migration Tooling', () => {
     assert.ok(
       readFileSync(verifyReportConsumerPath, 'utf-8').includes('validateVerificationReport') &&
         readFileSync(verifyReportContractPath, 'utf-8').includes(
-          'export const VERIFICATION_REPORT_VERSION = 2'
+          'export const VERIFICATION_REPORT_VERSION = 3'
         ),
       'verification report consumers should validate a shared formal report contract'
     );
@@ -739,6 +751,14 @@ void describe('Migration Tooling', () => {
       'scripts/detect-ci-relevant-changes.mjs should exist'
     );
     assert.ok(existsSync(releaseCliPath), 'scripts/lib/release-cli.mjs should exist');
+    assert.ok(
+      existsSync(deployProductionContextHelperPath),
+      'scripts/lib/deploy-production-context.sh should exist'
+    );
+    assert.ok(
+      existsSync(deployProductionRuntimeHelperPath),
+      'scripts/lib/deploy-production-runtime.sh should exist'
+    );
     assert.ok(
       existsSync(resolveLatestVerifierImageLibPath),
       'scripts/lib/resolve-latest-verifier-image.mjs should exist'
@@ -1468,6 +1488,8 @@ void describe('Migration Tooling', () => {
       resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
       'utf-8'
     );
+    const deployContextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
+    const deployRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
     const rollbackRemoteScript = readFileSync(
       resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
       'utf-8'
@@ -1531,19 +1553,19 @@ void describe('Migration Tooling', () => {
       'deploy workflow should replace the fixed smoke delay with readiness polling'
     );
     assert.ok(
-      deployRemoteScript.includes('write_release_runtime_state') &&
-        deployRemoteScript.includes('"$OPENPATH_LINUX_AGENT_VERSION"'),
+      deployRuntimeHelper.includes('write_release_runtime_state') &&
+        deployRuntimeHelper.includes('"$OPENPATH_LINUX_AGENT_VERSION"'),
       'production deploy should persist the pinned OpenPath Linux agent version in release-state metadata'
     );
     assert.ok(
-      deployRemoteScript.includes(
+      deployRuntimeHelper.includes(
         'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"'
       ),
       'production deploy should persist the pinned OpenPath Linux agent version into the runtime env file before compose up'
     );
     assert.ok(
-      deployRemoteScript.includes('decode_release_manifest_base64 "$RELEASE_MANIFEST_B64"') &&
-        deployRemoteScript.includes(
+      deployContextHelper.includes('decode_release_manifest_base64 "$RELEASE_MANIFEST_B64"') &&
+        deployContextHelper.includes(
           'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
         ),
       'production deploy should load immutable image refs from the shared release manifest helper'
@@ -1555,19 +1577,19 @@ void describe('Migration Tooling', () => {
       'production deploy should resolve common.sh through the shared remote bootstrap helper when the runner does not preserve the original script directory'
     );
     assert.ok(
-      deployRemoteScript.includes('classify_migration_risk() {'),
-      'production deploy should define a local migration risk classifier before the remote checkout so it does not depend on node on the target host'
+      deployContextHelper.includes('classify_migration_risk() {'),
+      'production deploy should keep a local migration risk classifier in shell so it does not depend on node on the target host'
     );
     assert.ok(
-      deployRemoteScript.includes(
+      deployContextHelper.includes(
         'classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"'
       ),
       'production deploy should evaluate migration risk through the local shell classifier instead of requiring node on the target host'
     );
     assert.ok(
-      deployRemoteScript.includes(
+      deployContextHelper.includes(
         'git -C "$repo_root" diff --name-only "${from_ref}..${to_ref}" --'
-      ) && deployRemoteScript.includes("'upstream/openpath/api/drizzle/*.sql'"),
+      ) && deployContextHelper.includes("'upstream/openpath/api/drizzle/*.sql'"),
       'production deploy should classify migration risk from git diff output covering both ClassroomPath and OpenPath SQL migrations'
     );
     assert.ok(
@@ -1745,7 +1767,7 @@ void describe('Migration Tooling', () => {
         productionRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" manifest_base64)"'
         ) &&
-        productionRemote.includes(
+        readFileSync(deployProductionContextHelperPath, 'utf-8').includes(
           'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
         ),
       'deploy-production-remote.sh should validate and load release images from the shared deploy payload contract'
@@ -1763,6 +1785,8 @@ void describe('Migration Tooling', () => {
       resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
       'utf-8'
     );
+    const deployContextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
+    const deployRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
 
     assert.ok(existsSync(releaseRuntimeHelperPath), 'scripts/lib/release-runtime.sh should exist');
     assert.ok(existsSync(releasePlanHelperPath), 'scripts/lib/release-plan.mjs should exist');
@@ -1792,11 +1816,11 @@ void describe('Migration Tooling', () => {
       productionRemote.includes(
         'RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"'
       ) &&
-        productionRemote.includes(
+        deployContextHelper.includes(
           'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
         ) &&
-        productionRemote.includes('write_release_runtime_state') &&
-        productionRemote.includes('"$STATE_DIR/current-images.env"'),
+        deployRuntimeHelper.includes('write_release_runtime_state') &&
+        deployRuntimeHelper.includes('"$STATE_DIR/current-images.env"'),
       'deploy-production-remote.sh should reuse the shared release-runtime helper'
     );
   });
@@ -1930,6 +1954,23 @@ void describe('Migration Tooling', () => {
     const content = readFileSync(
       resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
       'utf-8'
+    );
+    const contextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
+    const runtimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
+
+    assert.ok(
+      content.includes('DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH') &&
+        content.includes('DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH') &&
+        content.includes('source "$DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH"') &&
+        content.includes('source "$DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH"'),
+      'deploy-production-remote.sh should source dedicated production deploy helper modules'
+    );
+    assert.ok(
+      contextHelper.includes('classify_production_migration_risk_impl()') &&
+        contextHelper.includes('load_production_release_manifest_impl()') &&
+        runtimeHelper.includes('plan_production_runtime_deploy_impl()') &&
+        runtimeHelper.includes('wait_for_production_runtime_readiness_impl()'),
+      'production deploy helpers should own the extracted context/runtime phases'
     );
 
     assert.ok(

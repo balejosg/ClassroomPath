@@ -11,6 +11,7 @@ import {
   hasPlaywrightBrowsers,
   pickTestDbPort,
   runFullVerification,
+  runOpsRegressionVerification,
   runReleaseAutomationVerification,
   type RunOptions,
   type VerifyRuntime,
@@ -183,9 +184,19 @@ async function main(): Promise<void> {
     reporter.addNote(`Required approvals: ${plan.domainSummary.requiredApprovals.join(', ')}`);
   }
 
+  if (plan.domainSummary.reviewers.length > 0) {
+    reporter.addNote(`Reviewers: ${plan.domainSummary.reviewers.join(', ')}`);
+  }
+
+  if (plan.domainSummary.releaseGates.length > 0) {
+    reporter.addNote(`Release gates: ${plan.domainSummary.releaseGates.join(', ')}`);
+  }
+
   try {
     if (plan.verificationScope === 'release-automation') {
       await runReleaseAutomationVerification(plan, verifyEnv, runtime, reporter);
+    } else if (plan.verificationScope === 'ops-regression') {
+      await runOpsRegressionVerification(plan, verifyEnv, runtime, reporter);
     } else {
       if (!status('docker', ['info'])) {
         throw new Error('Docker is not running (docker info failed). Start Docker and retry.');

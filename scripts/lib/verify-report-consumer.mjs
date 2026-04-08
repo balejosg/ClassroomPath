@@ -19,7 +19,11 @@ export function summarizeVerificationReport(report) {
   return {
     ...summary,
     notes: Array.isArray(validated?.notes) ? validated.notes : [],
+    releaseGates: Array.isArray(validated?.domains?.releaseGates)
+      ? validated.domains.releaseGates
+      : [],
     reportFile: String(validated?.reportFile ?? ''),
+    reviewers: Array.isArray(validated?.domains?.reviewers) ? validated.domains.reviewers : [],
   };
 }
 
@@ -27,6 +31,7 @@ export function formatVerificationReportSummary(report) {
   const summary = summarizeVerificationReport(report);
   const lines = [
     `Verification report: ${summary.reportFile || '(unknown file)'}`,
+    `Artifact: ${summary.artifactName}`,
     `Status: ${isVerificationReportPassing(report) ? 'PASS' : 'FAIL'}`,
     `Scope: ${summary.scope}`,
     `Stages: total=${String(summary.totalStages)} passed=${String(summary.passedStages)} failed=${String(summary.failedStages)} skipped=${String(summary.skippedStages)} running=${String(summary.runningStages)} pending=${String(summary.pendingStages)}`,
@@ -38,6 +43,14 @@ export function formatVerificationReportSummary(report) {
 
   if (summary.requiredApprovals.length > 0) {
     lines.push(`Required approvals: ${summary.requiredApprovals.join(', ')}`);
+  }
+
+  if (summary.reviewers.length > 0) {
+    lines.push(`Reviewers: ${summary.reviewers.join(', ')}`);
+  }
+
+  if (summary.releaseGates.length > 0) {
+    lines.push(`Release gates: ${summary.releaseGates.join(', ')}`);
   }
 
   if (summary.notes.length > 0) {
