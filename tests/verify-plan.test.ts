@@ -5,6 +5,8 @@ import {
   createVerifyPlan,
   detectVerificationScope,
   RELEASE_AUTOMATION_FILE_PATTERNS,
+  resolveVerifyDomains,
+  VERIFY_FILE_DOMAINS,
 } from '../scripts/lib/verify-plan.ts';
 
 describe('verify plan', () => {
@@ -49,6 +51,19 @@ describe('verify plan', () => {
     assert.deepEqual(
       RELEASE_AUTOMATION_FILE_PATTERNS.some((pattern) => pattern.test('scripts/verify-full.ts')),
       true
+    );
+  });
+
+  test('models release automation as a domain policy instead of a flat allowlist', () => {
+    const domains = resolveVerifyDomains('scripts/lib/release-candidate.mjs');
+
+    assert.ok(
+      VERIFY_FILE_DOMAINS.some((domain) => domain.name === 'release-library'),
+      'verify plan should describe release-safe files through explicit domain metadata'
+    );
+    assert.deepEqual(
+      domains.map((domain) => domain.name),
+      ['release-library']
     );
   });
 });

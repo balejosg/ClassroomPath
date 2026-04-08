@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import {
   parseReleaseCandidateManifest,
   selectLatestSuccessfulWorkflowRun,
-} from './release-images.mjs';
+} from './lib/release-images.mjs';
 
 function listReleaseCandidateRuns(repo) {
   const output = execFileSync(

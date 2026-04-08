@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { readReleaseFixture, readReleaseJsonFixture } from './helpers/release-fixtures.ts';
+import {
+  buildReleaseFixtureScenario,
+  buildReleaseManifestScenario,
+} from './helpers/release-fixtures.ts';
 import {
   detectRepositorySlug,
   deriveImageRepos,
@@ -121,10 +124,9 @@ describe('release image helpers', () => {
   });
 
   test('selects the latest matching release-candidate run even before it succeeds', () => {
-    const run = selectLatestReleaseCandidateRun(
-      readReleaseJsonFixture('workflow-runs.release-candidate.json'),
-      { sha: 'target-sha' }
-    );
+    const run = selectLatestReleaseCandidateRun(buildReleaseFixtureScenario('release-candidate'), {
+      sha: 'target-sha',
+    });
 
     assert.equal(run.id, 302);
     assert.equal(run.status, 'in_progress');
@@ -155,9 +157,7 @@ describe('release image helpers', () => {
   });
 
   test('selects the latest successful push workflow run without pinning a SHA', () => {
-    const run = selectLatestSuccessfulWorkflowRun(
-      readReleaseJsonFixture('workflow-runs.latest-success.json')
-    );
+    const run = selectLatestSuccessfulWorkflowRun(buildReleaseFixtureScenario('latest-success'));
 
     assert.equal(run.id, 402);
     assert.equal(run.headSha, 'newer-sha');
@@ -165,7 +165,7 @@ describe('release image helpers', () => {
 
   test('parses and validates a release candidate manifest for the target SHA', () => {
     assert.deepEqual(
-      parseReleaseCandidateManifest(readReleaseFixture('manifest.release-candidate.env'), {
+      parseReleaseCandidateManifest(buildReleaseManifestScenario(), {
         sha: 'target-sha',
       }),
       {

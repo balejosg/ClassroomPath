@@ -17,7 +17,9 @@ const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
 const verifyFullOrchestratorPath = resolve(projectRoot, 'scripts/verify-full.ts');
 const verifyPlanPath = resolve(projectRoot, 'scripts/lib/verify-plan.ts');
+const verifyReportPath = resolve(projectRoot, 'scripts/lib/verify-report.ts');
 const verifyStagesPath = resolve(projectRoot, 'scripts/lib/verify-stages.ts');
+const regressionPlanPath = resolve(projectRoot, 'scripts/lib/regression-plan.mjs');
 const turboConfigPath = resolve(projectRoot, 'turbo.json');
 const turboRunnerScriptPath = resolve(projectRoot, 'scripts/run-turbo.sh');
 
@@ -601,6 +603,7 @@ void describe('Migration Tooling', () => {
     const hook = readFileSync(preCommitHookPath, 'utf-8');
     const verifyScript = readFileSync(verifyFullOrchestratorPath, 'utf-8');
     const verifyPlan = readFileSync(verifyPlanPath, 'utf-8');
+    const verifyReport = readFileSync(verifyReportPath, 'utf-8');
     const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
 
     assert.equal(
@@ -632,8 +635,8 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       verifyPlan.includes('verificationScope: detectVerificationScope(stagedFiles, mode)') &&
-        verifyPlan.includes("? 'release-automation'"),
-      'verify-plan.ts should classify a safe release automation diff separately from full verification'
+        verifyPlan.includes('releaseAutomationSafe'),
+      'verify-plan.ts should classify a safe release automation diff through explicit domain capabilities'
     );
     assert.ok(
       verifyScript.includes("if (plan.verificationScope === 'release-automation')") &&
@@ -653,6 +656,11 @@ void describe('Migration Tooling', () => {
       'verify-stages.ts should fail when Playwright reports skipped tests'
     );
     assert.ok(
+      verifyScript.includes('createVerifyReporter(plan)') &&
+        verifyReport.includes('export function createVerifyReporter('),
+      'verify-full should persist a machine-readable verification report through scripts/lib/verify-report.ts'
+    );
+    assert.ok(
       readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf-8').includes(
         'PLAYWRIGHT_JSON_OUTPUT_FILE'
       ),
@@ -665,7 +673,9 @@ void describe('Migration Tooling', () => {
 
     assert.ok(existsSync(verifyFullOrchestratorPath), 'scripts/verify-full.ts should exist');
     assert.ok(existsSync(verifyPlanPath), 'scripts/lib/verify-plan.ts should exist');
+    assert.ok(existsSync(verifyReportPath), 'scripts/lib/verify-report.ts should exist');
     assert.ok(existsSync(verifyStagesPath), 'scripts/lib/verify-stages.ts should exist');
+    assert.ok(existsSync(regressionPlanPath), 'scripts/lib/regression-plan.mjs should exist');
     assert.ok(
       verifyScript.includes('exec node --import tsx "$ROOT_DIR/scripts/verify-full.ts" "$@"'),
       'verify-full.sh should be a thin wrapper over the typed Node orchestrator'
@@ -685,6 +695,26 @@ void describe('Migration Tooling', () => {
       verifyStages.includes('function validatePlaywrightReport(') &&
         verifyStages.includes('Playwright verification cannot skip tests; skipped:'),
       'verify-stages.ts should own the Playwright skipped-test gate'
+    );
+  });
+
+  void test('verify-full cleans up stale compose projects so repeated local runs do not exhaust Docker subnets', () => {
+    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+
+    assert.ok(
+      verifyStages.includes('export function discoverStaleVerifyComposeProjects(') &&
+        verifyStages.includes("['ps', '-a']") &&
+        verifyStages.includes("['network', 'ls']"),
+      'verify-stages.ts should discover stale verification projects from Docker containers and networks'
+    );
+    assert.ok(
+      verifyStages.includes('await cleanupStaleVerificationProjects(plan, runtime);') &&
+        verifyStages.includes('await cleanupVerification(plan, runtime);'),
+      'verify-full should clear stale verification compose state before starting PostgreSQL'
+    );
+    assert.ok(
+      verifyStages.includes("['down', '--volumes', '--remove-orphans']"),
+      'verify-stages.ts should tear verification projects down fully instead of leaving orphaned networks behind'
     );
   });
 

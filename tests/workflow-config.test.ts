@@ -183,6 +183,7 @@ describe('Workflow configuration hardening', () => {
     const ciRegression = packageJson.scripts?.['test:ci-regression'] ?? '';
     const releaseAutomationRegression = packageJson.scripts?.['test:release-automation'] ?? '';
     const ciRegressionHelper = readText('scripts/run-ci-regression.mjs');
+    const regressionPlan = readText('scripts/lib/regression-plan.mjs');
 
     assert.match(
       ciRegression,
@@ -190,14 +191,19 @@ describe('Workflow configuration hardening', () => {
       'package.json should run the sequential CI regression block and workflow-config in separate sanitized Node processes'
     );
     assert.match(
-      ciRegressionHelper,
+      regressionPlan,
       /tests\/agent-docs-consistency\.test\.ts/,
-      'CI regression helper should include the agent docs consistency suite'
+      'regression plan should include the agent docs consistency suite'
     );
-    assert.doesNotMatch(
-      ciRegressionHelper.match(/const ciRegressionTestFiles = \[[\s\S]*?\];/)?.[0] ?? '',
-      /tests\/workflow-config\.test\.ts/,
-      'workflow-config should stay outside the shared ciRegressionTestFiles block because it needs its own dedicated sanitized invocation'
+    assert.match(
+      ciRegressionHelper,
+      /resolveRegressionPlan\('ci'\)/,
+      'CI regression helper should resolve the shared CI plan from the declarative regression plan module'
+    );
+    assert.match(
+      ciRegressionHelper,
+      /resolveRegressionPlan\('workflow-config'\)/,
+      'workflow-config should stay a distinct declarative regression plan'
     );
     assert.match(
       ciRegressionHelper,
@@ -221,13 +227,23 @@ describe('Workflow configuration hardening', () => {
     );
     assert.match(
       ciRegressionHelper,
-      /tests\/release-images\.test\.ts/,
-      'CI regression helper should include the release image helper contract suite'
+      /resolveRegressionPlan\('release-automation'\)/,
+      'release-automation regression should resolve from the shared declarative plan'
     );
     assert.match(
-      ciRegressionHelper,
+      regressionPlan,
+      /tests\/release-images\.test\.ts/,
+      'regression plan should include the release image helper contract suite'
+    );
+    assert.match(
+      regressionPlan,
       /tests\/verify-plan\.test\.ts/,
       'release-automation regression should validate the verify scope contract'
+    );
+    assert.match(
+      regressionPlan,
+      /tests\/verify-report\.test\.ts/,
+      'release-automation regression should validate the machine-readable verify report contract'
     );
     assert.match(
       ciRegressionHelper,

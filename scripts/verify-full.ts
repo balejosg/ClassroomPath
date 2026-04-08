@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
 import { createVerifyPlan, resolveVerifyMode } from './lib/verify-plan.ts';
+import { createVerifyReporter } from './lib/verify-report.ts';
 import {
   buildComposeProjectName,
   cleanupVerification,
@@ -116,6 +117,7 @@ export async function buildVerifyPlan(env: NodeJS.ProcessEnv = process.env) {
 async function main(): Promise<void> {
   const plan = await buildVerifyPlan();
   const verifyEnv = getVerifyEnv(plan);
+  const reporter = createVerifyReporter(plan);
   const runtime: VerifyRuntime = {
     capture,
     run,
@@ -129,6 +131,7 @@ async function main(): Promise<void> {
   console.log('  ClassroomPath Verification Starting');
   console.log(`  Mode: ${plan.mode}`);
   console.log(`  Scope: ${plan.verificationScope}`);
+  console.log(`  Report: ${reporter.getReportFile()}`);
   console.log('==========================================');
   console.log('');
 
@@ -138,6 +141,7 @@ async function main(): Promise<void> {
     console.log('  → Skipping OpenPath static checks (already verified in OpenPath repo)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('');
+    reporter.addNote('Submodule-only update detected; skipping OpenPath static verification.');
   }
 
   if (!plan.needsCoverageGate) {
@@ -147,24 +151,29 @@ async function main(): Promise<void> {
     console.log('  → Coverage gate will be skipped');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('');
+    reporter.addNote('No ClassroomPath API/SPA source changes detected; skipping coverage gate.');
   }
 
   try {
     if (plan.verificationScope === 'release-automation') {
-      await runReleaseAutomationVerification(plan, verifyEnv, runtime);
+      await runReleaseAutomationVerification(plan, verifyEnv, runtime, reporter);
     } else {
       if (!status('docker', ['info'])) {
         throw new Error('Docker is not running (docker info failed). Start Docker and retry.');
       }
 
-      await runFullVerification(plan, verifyEnv, runtime);
+      await runFullVerification(plan, verifyEnv, runtime, reporter);
     }
 
+    reporter.finalize(true);
     console.log('');
     console.log('==========================================');
     console.log('  All Checks Passed!');
     console.log('==========================================');
     console.log('');
+  } catch (error) {
+    reporter.finalize(false);
+    throw error;
   } finally {
     if (plan.verificationScope === 'full') {
       await cleanupVerification(plan, runtime);

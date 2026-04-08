@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { readReleaseJsonFixture } from './helpers/release-fixtures.ts';
+import { buildOpenPathCiRecoveryScenario } from './helpers/release-fixtures.ts';
 import {
   evaluateRequiredChecks,
   OPENPATH_CI_JOB_NAMES,
@@ -188,10 +188,7 @@ describe('evaluateRequiredChecks', () => {
   });
 
   it('recovers CI Success when the windows job is marked failed after all steps succeed', () => {
-    const fixture = readReleaseJsonFixture<{
-      checkRuns: Array<Record<string, unknown>>;
-      workflowJobs: Array<Record<string, unknown>>;
-    }>('openpath-ci-recovery.json');
+    const fixture = buildOpenPathCiRecoveryScenario();
     const result = evaluateRequiredChecks({
       checkRuns: fixture.checkRuns,
       requiredChecks: ['CI Success'],

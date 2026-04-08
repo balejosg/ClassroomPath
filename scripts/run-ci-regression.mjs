@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveRegressionPlan } from './lib/regression-plan.mjs';
+
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
 const projectRoot = dirname(scriptDir);
@@ -15,34 +17,16 @@ const cleanEnv = Object.fromEntries(
   )
 );
 
-const ciRegressionTestFiles = [
-  'tests/agent-docs-consistency.test.ts',
-  'tests/deployment.test.ts',
-  'tests/firefox-release-version.test.ts',
-  'tests/firefox-release-metadata.test.ts',
-  'tests/openpath-required-checks.test.ts',
-  'tests/release-evidence.test.ts',
-  'tests/release-images.test.ts',
-  'tests/release-gate-policy.test.ts',
-  'tests/wait-for-release-candidate.test.ts',
-];
-
-const releaseAutomationRegressionTestFiles = [
-  ...ciRegressionTestFiles,
-  'tests/verify-plan.test.ts',
-  'tests/workflow-config.test.ts',
-];
-
 export function runCiRegression() {
-  runStandaloneRegressionTests(ciRegressionTestFiles);
+  runStandaloneRegressionTests(resolveRegressionPlan('ci'));
 }
 
 export function runWorkflowConfigRegression() {
-  runStandaloneRegressionTest('tests/workflow-config.test.ts');
+  runStandaloneRegressionTests(resolveRegressionPlan('workflow-config'));
 }
 
 export function runReleaseAutomationRegression() {
-  runStandaloneRegressionTests(releaseAutomationRegressionTestFiles);
+  runStandaloneRegressionTests(resolveRegressionPlan('release-automation'));
 }
 
 function runStandaloneRegressionTests(testFiles) {
