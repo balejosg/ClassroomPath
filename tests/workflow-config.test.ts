@@ -981,8 +981,42 @@ describe('Workflow configuration hardening', () => {
       'Firefox release asset workflow should derive a unique signed Firefox version'
     );
     assert.ok(
-      assetJobRun.includes('run_id_component="$((10#$run_id_suffix))"'),
-      'Firefox release asset workflow should normalize the run-id suffix before using it as a Firefox version segment'
+      assetJobRun.includes('node scripts/firefox-release-version.mjs'),
+      'Firefox release asset workflow should derive the signed Firefox version through the dedicated helper script'
+    );
+    assert.ok(
+      assetJobRun.includes('--manifest upstream/openpath/firefox-extension/manifest.json'),
+      'Firefox release asset workflow should derive the release version from the tracked Firefox manifest'
+    );
+    assert.ok(
+      assetJobRun.includes('--run-id "$GITHUB_RUN_ID"'),
+      'Firefox release asset workflow should pass the workflow run id into the Firefox release version helper'
+    );
+    assert.ok(
+      assetJobRun.includes('--run-attempt "$GITHUB_RUN_ATTEMPT"'),
+      'Firefox release asset workflow should pass the workflow run attempt into the Firefox release version helper'
+    );
+    assert.ok(
+      !assetJobRun.includes('run_id_component="$((10#$run_id_suffix))"'),
+      'Firefox release asset workflow should not re-encode AMO version semantics inline in shell'
+    );
+    assert.ok(
+      workflowText.includes('scripts/firefox-release-version.mjs'),
+      'Firefox release asset workflow should depend on the tracked Firefox release version helper'
+    );
+    assert.ok(
+      existsSync(resolve(projectRoot, 'scripts/firefox-release-version.mjs')),
+      'Firefox release version helper should exist in scripts/'
+    );
+    assert.ok(
+      existsSync(resolve(projectRoot, 'scripts/lib/openpath-ci-checks.mjs')),
+      'OpenPath CI gate helpers should exist as a shared script library'
+    );
+    assert.ok(
+      readText('scripts/openpath-required-checks.mjs').includes(
+        "from './lib/openpath-ci-checks.mjs'"
+      ),
+      'openpath-required-checks should consume the shared OpenPath CI gate helper module'
     );
     assert.ok(
       assetJobRun.includes('npm run sign:firefox-release --workspace=@openpath/firefox-extension'),

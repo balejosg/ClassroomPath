@@ -1,14 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { evaluateRequiredChecks } from '../scripts/openpath-required-checks.mjs';
-
-const OPENPATH_CI_JOB_NAMES = [
-  'Detect Relevant Changes',
-  'Linux Agent Tests (BATS)',
-  'Windows Agent Tests (Pester)',
-  'Delivery Contracts (Node)',
-];
+import {
+  evaluateRequiredChecks,
+  OPENPATH_CI_JOB_NAMES,
+} from '../scripts/lib/openpath-ci-checks.mjs';
 
 function buildCompletedWorkflowJob(name: string, overrides: Partial<Record<string, unknown>> = {}) {
   return {

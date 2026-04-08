@@ -18,6 +18,7 @@ const cleanEnv = Object.fromEntries(
 const testFiles = [
   'tests/agent-docs-consistency.test.ts',
   'tests/deployment.test.ts',
+  'tests/firefox-release-version.test.ts',
   'tests/firefox-release-metadata.test.ts',
   'tests/openpath-required-checks.test.ts',
   'tests/release-evidence.test.ts',
