@@ -1,13 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import {
-  copyFileSync,
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +9,16 @@ import {
   parseReleaseCandidateManifest,
   selectLatestReleaseCandidateRun,
 } from './release-images.mjs';
+import {
+  isDirectExecution,
+  normalizeWorkflowRunId as resolveWorkflowRunId,
+  normalizeWorkflowRunUpdatedAt,
+  resolveArtifactRunId,
+  serializeOutputs,
+  sortArtifactsNewestFirst,
+  sortWorkflowRunsNewestFirst,
+  writeOutputs,
+} from './lib/github-actions.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
@@ -91,18 +93,6 @@ function sleep(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function writeOutputs(outputMap) {
-  for (const [key, value] of Object.entries(outputMap)) {
-    process.stdout.write(`${key}=${value}\n`);
-  }
-}
-
-function serializeOutputs(outputMap) {
-  return Object.entries(outputMap)
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
-}
-
 export function buildReleaseCandidateManifestOutputs({ repository, runId, manifest }) {
   return {
     repository,
@@ -117,20 +107,12 @@ export function buildReleaseCandidateManifestOutputs({ repository, runId, manife
   };
 }
 
-export function resolveWorkflowRunId(run) {
-  return run?.id ?? run?.databaseId ?? null;
-}
-
 function resolveWorkflowRunUpdatedAt(run) {
-  return run?.updatedAt ?? run?.updated_at ?? run?.createdAt ?? run?.created_at ?? null;
+  return normalizeWorkflowRunUpdatedAt(run);
 }
 
 function sortRunsNewestFirst(runs) {
-  return [...runs].sort((left, right) => {
-    const leftTime = Date.parse(resolveWorkflowRunUpdatedAt(left) ?? '');
-    const rightTime = Date.parse(resolveWorkflowRunUpdatedAt(right) ?? '');
-    return rightTime - leftTime;
-  });
+  return sortWorkflowRunsNewestFirst(runs);
 }
 
 function selectLatestWorkflowRun(payload) {
@@ -233,39 +215,19 @@ function normalizeArtifacts(payload) {
   return Array.isArray(payload?.artifacts) ? payload.artifacts : [];
 }
 
-function resolveArtifactRunId(artifact) {
-  return artifact?.workflow_run?.id ?? artifact?.workflowRun?.id ?? null;
-}
-
-function resolveArtifactUpdatedAt(artifact) {
-  return (
-    artifact?.updated_at ??
-    artifact?.updatedAt ??
-    artifact?.created_at ??
-    artifact?.createdAt ??
-    null
-  );
-}
-
 export function selectLatestArtifact(payload, { artifactName } = {}) {
   const targetArtifactName = String(artifactName ?? '').trim();
   if (!targetArtifactName) {
     throw new Error('Artifact name is required');
   }
 
-  const selected = normalizeArtifacts(payload)
-    .filter((artifact) => {
-      if (!artifact || artifact.expired === true) {
-        return false;
-      }
+  const selected = sortArtifactsNewestFirst(payload).filter((artifact) => {
+    if (!artifact || artifact.expired === true) {
+      return false;
+    }
 
-      return String(artifact.name ?? '').trim() === targetArtifactName;
-    })
-    .sort((left, right) => {
-      const leftTime = Date.parse(resolveArtifactUpdatedAt(left) ?? '');
-      const rightTime = Date.parse(resolveArtifactUpdatedAt(right) ?? '');
-      return rightTime - leftTime;
-    })[0];
+    return String(artifact.name ?? '').trim() === targetArtifactName;
+  })[0];
 
   if (!selected) {
     throw new Error(`No artifact found with name ${targetArtifactName}`);
@@ -646,7 +608,9 @@ function main() {
   process.exit(1);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === currentFilePath) {
+export { resolveWorkflowRunId };
+
+if (isDirectExecution(import.meta.url, process.argv[1])) {
   try {
     main();
   } catch (error) {

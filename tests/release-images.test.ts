@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import { readReleaseFixture, readReleaseJsonFixture } from './helpers/release-fixtures.ts';
 import {
   detectRepositorySlug,
   deriveImageRepos,
@@ -121,24 +122,7 @@ describe('release image helpers', () => {
 
   test('selects the latest matching release-candidate run even before it succeeds', () => {
     const run = selectLatestReleaseCandidateRun(
-      [
-        {
-          databaseId: 301,
-          headSha: 'target-sha',
-          event: 'push',
-          status: 'completed',
-          conclusion: 'failure',
-          updatedAt: '2026-03-24T11:00:00Z',
-        },
-        {
-          databaseId: 302,
-          headSha: 'target-sha',
-          event: 'push',
-          status: 'in_progress',
-          conclusion: '',
-          updatedAt: '2026-03-24T12:00:00Z',
-        },
-      ],
+      readReleaseJsonFixture('workflow-runs.release-candidate.json'),
       { sha: 'target-sha' }
     );
 
@@ -171,32 +155,9 @@ describe('release image helpers', () => {
   });
 
   test('selects the latest successful push workflow run without pinning a SHA', () => {
-    const run = selectLatestSuccessfulWorkflowRun([
-      {
-        databaseId: 401,
-        headSha: 'older-sha',
-        event: 'push',
-        status: 'completed',
-        conclusion: 'success',
-        updatedAt: '2026-03-24T11:00:00Z',
-      },
-      {
-        databaseId: 402,
-        headSha: 'newer-sha',
-        event: 'push',
-        status: 'completed',
-        conclusion: 'success',
-        updatedAt: '2026-03-24T12:00:00Z',
-      },
-      {
-        databaseId: 403,
-        headSha: 'manual-sha',
-        event: 'workflow_dispatch',
-        status: 'completed',
-        conclusion: 'success',
-        updatedAt: '2026-03-24T13:00:00Z',
-      },
-    ]);
+    const run = selectLatestSuccessfulWorkflowRun(
+      readReleaseJsonFixture('workflow-runs.latest-success.json')
+    );
 
     assert.equal(run.id, 402);
     assert.equal(run.headSha, 'newer-sha');
@@ -204,19 +165,9 @@ describe('release image helpers', () => {
 
   test('parses and validates a release candidate manifest for the target SHA', () => {
     assert.deepEqual(
-      parseReleaseCandidateManifest(
-        [
-          'APP_SHA=target-sha',
-          'CLASSROOMPATH_GATEWAY_IMAGE=ghcr.io/balejosg/classroompath-gateway@sha256:1',
-          'CLASSROOMPATH_MIGRATIONS_IMAGE=ghcr.io/balejosg/classroompath-migrations@sha256:2',
-          'OPENPATH_API_IMAGE=ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
-          'OPENPATH_LINUX_AGENT_VERSION=4.1.3',
-          'CLASSROOMPATH_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa@sha256:4',
-          'CLASSROOMPATH_VERIFIER_IMAGE=ghcr.io/balejosg/classroompath-release-verifier@sha256:5',
-          '',
-        ].join('\n'),
-        { sha: 'target-sha' }
-      ),
+      parseReleaseCandidateManifest(readReleaseFixture('manifest.release-candidate.env'), {
+        sha: 'target-sha',
+      }),
       {
         appSha: 'target-sha',
         gatewayImage: 'ghcr.io/balejosg/classroompath-gateway@sha256:1',

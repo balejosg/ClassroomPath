@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import { readReleaseJsonFixture } from './helpers/release-fixtures.ts';
 import {
   buildReleaseCandidateManifestOutputs,
   formatFirefoxReleaseAssetsTimeoutError,
@@ -20,28 +21,7 @@ describe('wait-for-release-candidate helpers', () => {
 
   test('selects the newest non-expired artifact with the requested name', () => {
     const artifact = selectLatestArtifact(
-      {
-        artifacts: [
-          {
-            id: 1,
-            name: 'release-candidate-images-oldsha',
-            expired: false,
-            updated_at: '2026-03-27T10:00:00Z',
-          },
-          {
-            id: 2,
-            name: 'release-candidate-images-targetsha',
-            expired: true,
-            updated_at: '2026-03-27T12:00:00Z',
-          },
-          {
-            id: 3,
-            name: 'release-candidate-images-targetsha',
-            expired: false,
-            updated_at: '2026-03-27T11:00:00Z',
-          },
-        ],
-      },
+      readReleaseJsonFixture('artifacts.release-candidate.json'),
       { artifactName: 'release-candidate-images-targetsha' }
     );
 

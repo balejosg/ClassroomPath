@@ -1,0 +1,56 @@
+{
+  "checkRuns": [
+    {
+      "name": "CI Success",
+      "conclusion": "failure",
+      "status": "completed",
+      "completed_at": "2026-04-08T00:49:38Z"
+    }
+  ],
+  "workflowJobs": [
+    {
+      "name": "Detect Relevant Changes",
+      "status": "completed",
+      "conclusion": "success",
+      "completed_at": "2026-03-13T10:00:00Z",
+      "steps": [
+        { "name": "Set up job", "status": "completed", "conclusion": "success" },
+        { "name": "Complete job", "status": "completed", "conclusion": "success" }
+      ]
+    },
+    {
+      "name": "Linux Agent Tests (BATS)",
+      "status": "completed",
+      "conclusion": "success",
+      "completed_at": "2026-03-13T10:00:00Z",
+      "steps": [
+        { "name": "Set up job", "status": "completed", "conclusion": "success" },
+        { "name": "Complete job", "status": "completed", "conclusion": "success" }
+      ]
+    },
+    {
+      "name": "Delivery Contracts (Node)",
+      "status": "completed",
+      "conclusion": "success",
+      "completed_at": "2026-03-13T10:00:00Z",
+      "steps": [
+        { "name": "Set up job", "status": "completed", "conclusion": "success" },
+        { "name": "Complete job", "status": "completed", "conclusion": "success" }
+      ]
+    },
+    {
+      "name": "Windows Agent Tests (Pester)",
+      "status": "completed",
+      "conclusion": "failure",
+      "completed_at": "2026-03-13T10:00:00Z",
+      "steps": [
+        { "name": "Set up job", "status": "completed", "conclusion": "success" },
+        { "name": "Checkout code", "status": "completed", "conclusion": "success" },
+        { "name": "Install Pester", "status": "completed", "conclusion": "success" },
+        { "name": "Run Windows Unit Tests", "status": "completed", "conclusion": "success" },
+        { "name": "Post Checkout code", "status": "completed", "conclusion": "success" },
+        { "name": "Complete job", "status": "completed", "conclusion": "success" }
+      ]
+    }
+  ]
+}

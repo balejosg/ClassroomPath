@@ -9,7 +9,7 @@ import {
   deriveFirefoxReleaseVersionFromManifest,
   normalizeRunIdSuffix,
   validateFirefoxReleaseVersion,
-} from '../scripts/firefox-release-version.mjs';
+} from '../scripts/lib/firefox-release-version.mjs';
 
 describe('firefox release version helper', () => {
   it('normalizes the trailing run-id suffix through decimal parsing', () => {

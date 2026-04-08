@@ -1,0 +1,18 @@
+[
+  {
+    "databaseId": 301,
+    "headSha": "target-sha",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "failure",
+    "updatedAt": "2026-03-24T11:00:00Z"
+  },
+  {
+    "databaseId": 302,
+    "headSha": "target-sha",
+    "event": "push",
+    "status": "in_progress",
+    "conclusion": "",
+    "updatedAt": "2026-03-24T12:00:00Z"
+  }
+]

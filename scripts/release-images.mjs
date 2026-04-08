@@ -1,7 +1,15 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import {
+  isDirectExecution,
+  normalizeWorkflowRunHeadSha,
+  sortWorkflowRunsNewestFirst,
+  withNormalizedWorkflowRunId,
+  writeOutputs,
+  readJsonFile,
+} from './lib/github-actions.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
@@ -152,65 +160,23 @@ function parseManifestAssignments(content) {
   return assignments;
 }
 
-function normalizeWorkflowRuns(payload) {
-  return Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.workflow_runs)
-      ? payload.workflow_runs
-      : [];
-}
-
-function normalizeWorkflowRunId(run) {
-  return run.id ?? run.databaseId;
-}
-
-function normalizeWorkflowRunHeadSha(run) {
-  return run.head_sha ?? run.headSha;
-}
-
-function normalizeWorkflowRunUpdatedAt(run) {
-  return run.updated_at ?? run.updatedAt ?? run.created_at ?? run.createdAt ?? 0;
-}
-
-function withNormalizedWorkflowRunId(run) {
-  const runId = normalizeWorkflowRunId(run);
-  if (!runId) {
-    return run;
-  }
-
-  if (run.id) {
-    return run;
-  }
-
-  return {
-    ...run,
-    id: runId,
-  };
-}
-
 export function selectLatestReleaseCandidateRun(payload, { sha } = {}) {
   const targetSha = String(sha ?? '').trim();
   if (!targetSha) {
     throw new Error('Target SHA is required to select a release candidate workflow run');
   }
 
-  const selected = normalizeWorkflowRuns(payload)
-    .filter((rawRun) => {
-      if (!rawRun) {
-        return false;
-      }
+  const selected = sortWorkflowRunsNewestFirst(payload).filter((rawRun) => {
+    if (!rawRun) {
+      return false;
+    }
 
-      return (
-        normalizeWorkflowRunHeadSha(rawRun) === targetSha &&
-        rawRun.event === 'push' &&
-        normalizeWorkflowRunId(rawRun)
-      );
-    })
-    .sort((leftRaw, rightRaw) => {
-      const leftTime = Date.parse(normalizeWorkflowRunUpdatedAt(leftRaw));
-      const rightTime = Date.parse(normalizeWorkflowRunUpdatedAt(rightRaw));
-      return rightTime - leftTime;
-    })[0];
+    return (
+      normalizeWorkflowRunHeadSha(rawRun) === targetSha &&
+      rawRun.event === 'push' &&
+      withNormalizedWorkflowRunId(rawRun)?.id
+    );
+  })[0];
 
   if (!selected) {
     throw new Error(`No release candidate workflow run found for SHA ${targetSha}`);
@@ -221,24 +187,18 @@ export function selectLatestReleaseCandidateRun(payload, { sha } = {}) {
 
 export function selectSuccessfulReleaseCandidateRun(payload, { sha } = {}) {
   const candidate = withNormalizedWorkflowRunId(
-    normalizeWorkflowRuns(payload)
-      .filter((rawRun) => {
-        if (!rawRun) {
-          return false;
-        }
+    sortWorkflowRunsNewestFirst(payload).filter((rawRun) => {
+      if (!rawRun) {
+        return false;
+      }
 
-        return (
-          normalizeWorkflowRunHeadSha(rawRun) === String(sha ?? '').trim() &&
-          rawRun.event === 'push' &&
-          rawRun.conclusion === 'success' &&
-          normalizeWorkflowRunId(rawRun)
-        );
-      })
-      .sort((leftRaw, rightRaw) => {
-        const leftTime = Date.parse(normalizeWorkflowRunUpdatedAt(leftRaw));
-        const rightTime = Date.parse(normalizeWorkflowRunUpdatedAt(rightRaw));
-        return rightTime - leftTime;
-      })[0]
+      return (
+        normalizeWorkflowRunHeadSha(rawRun) === String(sha ?? '').trim() &&
+        rawRun.event === 'push' &&
+        rawRun.conclusion === 'success' &&
+        withNormalizedWorkflowRunId(rawRun)?.id
+      );
+    })[0]
   );
 
   if (!candidate) {
@@ -262,23 +222,17 @@ export function selectSuccessfulReleaseCandidateRun(payload, { sha } = {}) {
 
 export function selectLatestSuccessfulWorkflowRun(payload) {
   const candidate = withNormalizedWorkflowRunId(
-    normalizeWorkflowRuns(payload)
-      .filter((rawRun) => {
-        if (!rawRun) {
-          return false;
-        }
+    sortWorkflowRunsNewestFirst(payload).filter((rawRun) => {
+      if (!rawRun) {
+        return false;
+      }
 
-        return (
-          rawRun.event === 'push' &&
-          rawRun.conclusion === 'success' &&
-          normalizeWorkflowRunId(rawRun)
-        );
-      })
-      .sort((leftRaw, rightRaw) => {
-        const leftTime = Date.parse(normalizeWorkflowRunUpdatedAt(leftRaw));
-        const rightTime = Date.parse(normalizeWorkflowRunUpdatedAt(rightRaw));
-        return rightTime - leftTime;
-      })[0]
+      return (
+        rawRun.event === 'push' &&
+        rawRun.conclusion === 'success' &&
+        withNormalizedWorkflowRunId(rawRun)?.id
+      );
+    })[0]
   );
 
   if (!candidate) {
@@ -384,12 +338,6 @@ function parseCliArgs(argv) {
   return { command, options };
 }
 
-function writeOutputs(outputMap) {
-  for (const [key, value] of Object.entries(outputMap)) {
-    process.stdout.write(`${key}=${value}\n`);
-  }
-}
-
 function main() {
   const { command, options } = parseCliArgs(process.argv.slice(2));
 
@@ -427,14 +375,14 @@ function main() {
       process.exit(1);
     }
 
-    const payload = JSON.parse(readFileSync(options.runsFile, 'utf8'));
+    const payload = readJsonFile(options.runsFile);
     const run = selectSuccessfulReleaseCandidateRun(payload, { sha: options.sha });
     writeOutputs({ run_id: run.id });
     return;
   }
 
   if (command === 'select-latest-successful-run' && options.runsFile) {
-    const payload = JSON.parse(readFileSync(options.runsFile, 'utf8'));
+    const payload = readJsonFile(options.runsFile);
     const run = selectLatestSuccessfulWorkflowRun(payload);
     writeOutputs({ run_id: run.id, head_sha: normalizeWorkflowRunHeadSha(run) });
     return;
@@ -446,18 +394,18 @@ function main() {
       process.exit(1);
     }
 
-    const manifest = parseReleaseCandidateManifest(readFileSync(options.file, 'utf8'), {
+    const parsedManifest = parseReleaseCandidateManifest(readFileSync(options.file, 'utf8'), {
       sha: options.sha,
     });
 
     writeOutputs({
-      app_sha: manifest.appSha,
-      gateway_image: manifest.gatewayImage,
-      migrations_image: manifest.migrationsImage,
-      openpath_api_image: manifest.openpathApiImage,
-      linux_agent_version: manifest.linuxAgentVersion,
-      spa_image: manifest.spaImage,
-      verifier_image: manifest.verifierImage,
+      app_sha: parsedManifest.appSha,
+      gateway_image: parsedManifest.gatewayImage,
+      migrations_image: parsedManifest.migrationsImage,
+      openpath_api_image: parsedManifest.openpathApiImage,
+      linux_agent_version: parsedManifest.linuxAgentVersion,
+      spa_image: parsedManifest.spaImage,
+      verifier_image: parsedManifest.verifierImage,
     });
     return;
   }
@@ -466,7 +414,7 @@ function main() {
   process.exit(1);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === currentFilePath) {
+if (isDirectExecution(import.meta.url, process.argv[1])) {
   try {
     main();
   } catch (error) {

@@ -16,6 +16,8 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
 const verifyFullOrchestratorPath = resolve(projectRoot, 'scripts/verify-full.ts');
+const verifyPlanPath = resolve(projectRoot, 'scripts/lib/verify-plan.ts');
+const verifyStagesPath = resolve(projectRoot, 'scripts/lib/verify-stages.ts');
 const turboConfigPath = resolve(projectRoot, 'turbo.json');
 const turboRunnerScriptPath = resolve(projectRoot, 'scripts/run-turbo.sh');
 
@@ -575,28 +577,31 @@ void describe('Migration Tooling', () => {
   });
 
   void test('verify-full skips coverage cleanup and gating when no API/SPA source coverage is needed', () => {
-    const content = readFileSync(verifyFullOrchestratorPath, 'utf-8');
+    const verifyPlan = readFileSync(verifyPlanPath, 'utf-8');
+    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
 
     assert.ok(
-      content.includes('needsCoverageGate: needsApiCoverage || needsSpaCoverage'),
-      'verify-full.ts should track whether the changed-file coverage gate is actually needed'
+      verifyPlan.includes('needsCoverageGate: needsApiCoverage || needsSpaCoverage'),
+      'verify-plan.ts should track whether the changed-file coverage gate is actually needed'
     );
     assert.ok(
-      content.includes('if (plan.needsCoverageGate) {'),
-      'verify-full.ts should guard coverage cleanup and gating behind needsCoverageGate'
+      verifyStages.includes('if (plan.needsCoverageGate) {'),
+      'verify-stages.ts should guard coverage cleanup and gating behind needsCoverageGate'
     );
     assert.ok(
-      content.includes('Skipping coverage gate (no changed API/SPA source files).'),
-      'verify-full.ts should report when it skips the changed-file coverage gate'
+      verifyStages.includes('Skipping coverage gate (no changed API/SPA source files).'),
+      'verify-stages.ts should report when it skips the changed-file coverage gate'
     );
   });
 
-  void test('pre-commit and release verification both require the full Playwright suite', () => {
+  void test('verify-full keeps the release lane on full Playwright while allowing a safe release-automation commit scope', () => {
     const packageJson = JSON.parse(readFileSync(classroomPathPackagePath, 'utf-8')) as {
       scripts?: Record<string, string>;
     };
     const hook = readFileSync(preCommitHookPath, 'utf-8');
     const verifyScript = readFileSync(verifyFullOrchestratorPath, 'utf-8');
+    const verifyPlan = readFileSync(verifyPlanPath, 'utf-8');
+    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
 
     assert.equal(
       packageJson.scripts?.['verify:commit'],
@@ -612,6 +617,11 @@ void describe('Migration Tooling', () => {
       hook.includes('npm run verify:commit'),
       'pre-commit should execute verify:commit instead of the release lane'
     );
+    assert.equal(
+      packageJson.scripts?.['test:release-automation'],
+      `node --input-type=module -e "import { runReleaseAutomationRegression } from './scripts/run-ci-regression.mjs'; runReleaseAutomationRegression();"`,
+      'package.json should expose a dedicated release-automation regression runner'
+    );
     assert.ok(
       packageJson.scripts?.['test:e2e:verify-fast'] === 'npm run test:e2e:full',
       'the legacy fast E2E alias should resolve to the full Playwright suite'
@@ -621,27 +631,26 @@ void describe('Migration Tooling', () => {
       'the legacy commit-smoke alias should resolve to the full Playwright suite'
     );
     assert.ok(
-      verifyScript.includes(
-        'Playwright browsers are required for local verification and are not installed.'
-      ),
-      'verify-full.ts should fail when Playwright browsers are unavailable'
+      verifyPlan.includes('verificationScope: detectVerificationScope(stagedFiles, mode)') &&
+        verifyPlan.includes("? 'release-automation'"),
+      'verify-plan.ts should classify a safe release automation diff separately from full verification'
     );
     assert.ok(
-      verifyScript.includes('Running full E2E Playwright suite...') &&
-        verifyScript.includes('runPlaywrightVerification'),
-      'verify-full.ts should always run the full Playwright suite'
+      verifyScript.includes("if (plan.verificationScope === 'release-automation')") &&
+        verifyStages.includes(
+          'Running targeted workflow/release regression instead of full product verification'
+        ),
+      'verify-full.ts should route safe workflow-only diffs through the release-automation scope'
     );
     assert.ok(
-      !verifyScript.includes('--grep="@commit-smoke"') &&
-        !verifyScript.includes('--grep-invert="@slow-network|@repro"') &&
-        !verifyScript.includes('skipping commit-smoke browser verification'),
-      'verify-full.ts should not include reduced or skippable Playwright lanes'
+      verifyStages.includes('Running full E2E Playwright suite...'),
+      'verify-stages.ts should keep the release/full verification lane on the full Playwright suite'
     );
     assert.ok(
-      verifyScript.includes(
+      verifyStages.includes(
         'Playwright verification cannot skip tests; skipped: ${String(skipped)}'
-      ) && verifyScript.includes('PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath'),
-      'verify-full.ts should fail when Playwright reports skipped tests'
+      ) && verifyStages.includes('PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath'),
+      'verify-stages.ts should fail when Playwright reports skipped tests'
     );
     assert.ok(
       readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf-8').includes(
@@ -655,22 +664,27 @@ void describe('Migration Tooling', () => {
     const verifyScript = readFileSync(verifyFullScriptPath, 'utf-8');
 
     assert.ok(existsSync(verifyFullOrchestratorPath), 'scripts/verify-full.ts should exist');
+    assert.ok(existsSync(verifyPlanPath), 'scripts/lib/verify-plan.ts should exist');
+    assert.ok(existsSync(verifyStagesPath), 'scripts/lib/verify-stages.ts should exist');
     assert.ok(
       verifyScript.includes('exec node --import tsx "$ROOT_DIR/scripts/verify-full.ts" "$@"'),
       'verify-full.sh should be a thin wrapper over the typed Node orchestrator'
     );
 
     const orchestrator = readFileSync(verifyFullOrchestratorPath, 'utf-8');
+    const verifyPlan = readFileSync(verifyPlanPath, 'utf-8');
+    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
 
     assert.ok(
-      orchestrator.includes('type VerifyMode =') &&
-        orchestrator.includes('function buildVerifyPlan('),
-      'verify-full.ts should model verification policy through typed planning helpers'
+      orchestrator.includes('createVerifyPlan') &&
+        verifyPlan.includes('export type VerifyPlan =') &&
+        verifyPlan.includes('export function createVerifyPlan('),
+      'verify-full should model verification policy through typed planning helpers in scripts/lib/verify-plan.ts'
     );
     assert.ok(
-      orchestrator.includes('function validatePlaywrightReport(') &&
-        orchestrator.includes('Playwright verification cannot skip tests; skipped:'),
-      'verify-full.ts should own the Playwright skipped-test gate'
+      verifyStages.includes('function validatePlaywrightReport(') &&
+        verifyStages.includes('Playwright verification cannot skip tests; skipped:'),
+      'verify-stages.ts should own the Playwright skipped-test gate'
     );
   });
 
@@ -683,7 +697,7 @@ void describe('Migration Tooling', () => {
       resolve(projectRoot, 'scripts/build-classroompath.sh'),
       'utf-8'
     );
-    const verifyOrchestrator = readFileSync(verifyFullOrchestratorPath, 'utf-8');
+    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
     const turboConfig = readFileSync(turboConfigPath, 'utf-8');
 
     assert.ok(existsSync(turboConfigPath), 'turbo.json should exist at the ClassroomPath root');
@@ -700,8 +714,8 @@ void describe('Migration Tooling', () => {
       'build-classroompath.sh should delegate package builds to the shared turbo runner'
     );
     assert.ok(
-      verifyOrchestrator.includes("await run('bash', ['scripts/run-turbo.sh', 'verify:static']"),
-      'verify-full.ts should route static verification through the root turbo pipeline'
+      verifyStages.includes("await runtime.run('bash', ['scripts/run-turbo.sh', 'verify:static']"),
+      'verify-stages.ts should route static verification through the root turbo pipeline'
     );
     assert.ok(
       turboConfig.includes('"build"') &&
@@ -712,34 +726,35 @@ void describe('Migration Tooling', () => {
   });
 
   void test('verify-full bootstraps OpenPath workspace installs before OpenPath static verification', () => {
-    const verifyOrchestrator = readFileSync(verifyFullOrchestratorPath, 'utf-8');
-    const bootstrapCall = 'await ensureOpenPathWorkspaceInstall(plan.rootDir, verifyEnv);';
-    const openPathStaticCall = "await runShell('cd upstream/openpath && npm run verify:static'";
+    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const bootstrapCall = 'await ensureOpenPathWorkspaceInstall(plan.rootDir, env, runtime);';
+    const openPathStaticCall =
+      "await runtime.runShell('cd upstream/openpath && npm run verify:static'";
 
     assert.ok(
-      verifyOrchestrator.includes("join(OPENPATH_ROOT_DIR, 'node_modules/.package-lock.json')"),
-      'verify-full.ts should treat the OpenPath npm install marker as the bootstrap contract for submodule verification'
+      verifyStages.includes("join(openPathRootDir, 'node_modules/.package-lock.json')"),
+      'verify-stages.ts should treat the OpenPath npm install marker as the bootstrap contract for submodule verification'
     );
     assert.ok(
-      verifyOrchestrator.includes("await run('npm', ['ci'], { cwd: OPENPATH_ROOT_DIR, env });"),
-      'verify-full.ts should repair missing OpenPath workspace installs with npm ci before static verification'
+      verifyStages.includes("await runtime.run('npm', ['ci'], { cwd: openPathRootDir, env });"),
+      'verify-stages.ts should repair missing OpenPath workspace installs with npm ci before static verification'
     );
     assert.ok(
-      verifyOrchestrator.includes(bootstrapCall) &&
-        verifyOrchestrator.indexOf(bootstrapCall) < verifyOrchestrator.indexOf(openPathStaticCall),
-      'verify-full.ts should bootstrap the OpenPath workspace before running OpenPath static verification'
+      verifyStages.includes(bootstrapCall) &&
+        verifyStages.indexOf(bootstrapCall) < verifyStages.indexOf(openPathStaticCall),
+      'verify-stages.ts should bootstrap the OpenPath workspace before running OpenPath static verification'
     );
   });
 
   void test('verify-full bootstraps OpenPath workspace installs before ClassroomPath build orchestration', () => {
-    const verifyOrchestrator = readFileSync(verifyFullOrchestratorPath, 'utf-8');
-    const bootstrapCall = 'await ensureOpenPathWorkspaceInstall(plan.rootDir, verifyEnv);';
-    const buildCall = "await run('npm', ['run', 'build']";
+    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const bootstrapCall = 'await ensureOpenPathWorkspaceInstall(plan.rootDir, env, runtime);';
+    const buildCall = "await runtime.run('npm', ['run', 'build']";
 
     assert.ok(
-      verifyOrchestrator.includes(bootstrapCall) &&
-        verifyOrchestrator.indexOf(bootstrapCall) < verifyOrchestrator.indexOf(buildCall),
-      'verify-full.ts should bootstrap the OpenPath workspace before the ClassroomPath build step that depends on turbo'
+      verifyStages.includes(bootstrapCall) &&
+        verifyStages.indexOf(bootstrapCall) < verifyStages.indexOf(buildCall),
+      'verify-stages.ts should bootstrap the OpenPath workspace before the ClassroomPath build step that depends on turbo'
     );
   });
 
@@ -1314,25 +1329,26 @@ void describe('Migration Tooling', () => {
   });
 
   void test('verify-full keeps DATABASE_URL canonical and derives OpenPath DB_* env through the shared helper', () => {
-    const verifyScript = readFileSync(verifyFullOrchestratorPath, 'utf-8');
+    const verifyFull = readFileSync(verifyStagesPath, 'utf-8');
 
     assert.ok(
-      verifyScript.includes('function buildTestDatabaseUrl(testDbPort: number): string') &&
-        verifyScript.includes('DATABASE_URL: buildTestDatabaseUrl(plan.testDbPort)'),
-      'verify-full should keep DATABASE_URL as the canonical test database contract'
+      verifyFull.includes('function buildTestDatabaseUrl(testDbPort: number): string') &&
+        verifyFull.includes('DATABASE_URL: buildTestDatabaseUrl(plan.testDbPort)'),
+      'verify-stages should keep DATABASE_URL as the canonical test database contract'
     );
     assert.ok(
-      verifyScript.includes(
-        "capture('node', [join(ROOT_DIR, 'scripts/derive-openpath-db-env.mjs')]"
-      ),
-      'verify-full should derive OpenPath DB_* compatibility env through the shared helper'
+      verifyFull.includes('derive-openpath-db-env.mjs') &&
+        verifyFull.includes(
+          ".capture('node', [join(plan.rootDir, 'scripts/derive-openpath-db-env.mjs')]"
+        ),
+      'verify-stages should derive OpenPath DB_* compatibility env through the shared helper'
     );
     assert.ok(
-      !verifyScript.includes("DB_HOST: 'localhost'") &&
-        !verifyScript.includes("DB_PORT: '5432'") &&
-        !verifyScript.includes('verifyEnv.DB_HOST') &&
-        !verifyScript.includes('verifyEnv.DB_PORT'),
-      'verify-full should not duplicate OpenPath DB_* derivation inline'
+      !verifyFull.includes("DB_HOST: 'localhost'") &&
+        !verifyFull.includes("DB_PORT: '5432'") &&
+        !verifyFull.includes('env.DB_HOST') &&
+        !verifyFull.includes('env.DB_PORT'),
+      'verify-stages should not duplicate OpenPath DB_* derivation inline'
     );
   });
 

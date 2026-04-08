@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  deriveFirefoxReleaseVersionFromManifest,
+  normalizeRunIdSuffix,
+  validateFirefoxReleaseVersion,
+  deriveFirefoxReleaseVersion,
+} from './lib/firefox-release-version.mjs';
+import { isDirectExecution } from './lib/github-actions.mjs';
 
 function usage() {
   console.log(`Usage: node scripts/firefox-release-version.mjs --manifest <path> --run-id <id> --run-attempt <attempt>
@@ -48,60 +53,12 @@ function parseArgs(argv) {
   return args;
 }
 
-export function normalizeRunIdSuffix(runId, suffixLength = 7) {
-  const normalizedRunId = String(runId ?? '').trim();
-  if (!/^\d+$/.test(normalizedRunId)) {
-    throw new Error(`run-id must be numeric, got ${JSON.stringify(runId)}`);
-  }
-
-  const suffix = normalizedRunId.slice(-suffixLength);
-  return String(Number.parseInt(suffix, 10));
-}
-
-export function validateFirefoxReleaseVersion(version) {
-  const normalizedVersion = String(version ?? '').trim();
-  if (!normalizedVersion) {
-    throw new Error('Firefox release version must not be empty');
-  }
-
-  const segments = normalizedVersion.split('.');
-  if (segments.some((segment) => segment.length === 0)) {
-    throw new Error(`Firefox release version ${normalizedVersion} contains an empty segment`);
-  }
-
-  for (const segment of segments) {
-    if (/^\d+$/.test(segment) && segment.length > 1 && segment.startsWith('0')) {
-      throw new Error(
-        `Firefox release version ${normalizedVersion} contains a numeric segment with a leading zero (${segment})`
-      );
-    }
-  }
-
-  return normalizedVersion;
-}
-
-export function deriveFirefoxReleaseVersion({ baseVersion, runId, runAttempt }) {
-  const normalizedBaseVersion = validateFirefoxReleaseVersion(baseVersion);
-  const normalizedAttempt = String(runAttempt ?? '').trim();
-
-  if (!/^\d+$/.test(normalizedAttempt)) {
-    throw new Error(`run-attempt must be numeric, got ${JSON.stringify(runAttempt)}`);
-  }
-
-  const runIdComponent = normalizeRunIdSuffix(runId);
-  const ciBuildSegment = `${runIdComponent}${normalizedAttempt.padStart(2, '0')}`;
-
-  return validateFirefoxReleaseVersion(`${normalizedBaseVersion}.${ciBuildSegment}`);
-}
-
-export function deriveFirefoxReleaseVersionFromManifest({ manifestPath, runId, runAttempt }) {
-  const manifest = JSON.parse(readFileSync(resolve(manifestPath), 'utf8'));
-  return deriveFirefoxReleaseVersion({
-    baseVersion: String(manifest.version ?? '').trim(),
-    runId,
-    runAttempt,
-  });
-}
+export {
+  deriveFirefoxReleaseVersion,
+  deriveFirefoxReleaseVersionFromManifest,
+  normalizeRunIdSuffix,
+  validateFirefoxReleaseVersion,
+} from './lib/firefox-release-version.mjs';
 
 function main() {
   const args = parseArgs(process.argv);
@@ -118,10 +75,7 @@ function main() {
   process.stdout.write(version);
 }
 
-const isDirectExecution =
-  process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
-
-if (isDirectExecution) {
+if (isDirectExecution(import.meta.url, process.argv[1])) {
   try {
     main();
   } catch (error) {

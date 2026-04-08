@@ -181,6 +181,7 @@ describe('Workflow configuration hardening', () => {
   test('CI regression command is routed through package.json and includes agent doc drift checks', () => {
     const packageJson = readPackageJson();
     const ciRegression = packageJson.scripts?.['test:ci-regression'] ?? '';
+    const releaseAutomationRegression = packageJson.scripts?.['test:release-automation'] ?? '';
     const ciRegressionHelper = readText('scripts/run-ci-regression.mjs');
 
     assert.match(
@@ -194,9 +195,9 @@ describe('Workflow configuration hardening', () => {
       'CI regression helper should include the agent docs consistency suite'
     );
     assert.doesNotMatch(
-      ciRegressionHelper.match(/const testFiles = \[[\s\S]*?\];/)?.[0] ?? '',
+      ciRegressionHelper.match(/const ciRegressionTestFiles = \[[\s\S]*?\];/)?.[0] ?? '',
       /tests\/workflow-config\.test\.ts/,
-      'workflow-config should stay outside the shared testFiles block because it needs its own dedicated sanitized invocation'
+      'workflow-config should stay outside the shared ciRegressionTestFiles block because it needs its own dedicated sanitized invocation'
     );
     assert.match(
       ciRegressionHelper,
@@ -207,6 +208,26 @@ describe('Workflow configuration hardening', () => {
       ciRegressionHelper,
       /export function runWorkflowConfigRegression\(\)/,
       'CI regression helper should expose a dedicated workflow-config runner too'
+    );
+    assert.match(
+      releaseAutomationRegression,
+      /^node --input-type=module -e "import \{ runReleaseAutomationRegression \} from '\.\/scripts\/run-ci-regression\.mjs'; runReleaseAutomationRegression\(\);"$/,
+      'package.json should expose a dedicated release-automation regression script'
+    );
+    assert.match(
+      ciRegressionHelper,
+      /export function runReleaseAutomationRegression\(\)/,
+      'CI regression helper should expose a release-automation runner'
+    );
+    assert.match(
+      ciRegressionHelper,
+      /tests\/release-images\.test\.ts/,
+      'CI regression helper should include the release image helper contract suite'
+    );
+    assert.match(
+      ciRegressionHelper,
+      /tests\/verify-plan\.test\.ts/,
+      'release-automation regression should validate the verify scope contract'
     );
     assert.match(
       ciRegressionHelper,
@@ -286,6 +307,9 @@ describe('Workflow configuration hardening', () => {
 
   test('Firefox release asset workflow caches OpenPath npm installs', () => {
     const workflowText = readText('.github/workflows/firefox-release-assets.yml');
+    const firefoxVersionCli = readText('scripts/firefox-release-version.mjs');
+    const firefoxVersionLib = readText('scripts/lib/firefox-release-version.mjs');
+    const githubActionsLib = readText('scripts/lib/github-actions.mjs');
 
     assert.ok(
       workflowText.includes('./.github/actions/setup-node'),
@@ -294,6 +318,15 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('cache-dependency-path: upstream/openpath/package-lock.json'),
       'Firefox release asset workflow should cache OpenPath dependencies by lockfile'
+    );
+    assert.ok(
+      firefoxVersionCli.includes("from './lib/firefox-release-version.mjs'") &&
+        firefoxVersionLib.includes('export function deriveFirefoxReleaseVersionFromManifest'),
+      'Firefox release versioning should keep the CLI wrapper thin over a reusable library helper'
+    );
+    assert.ok(
+      githubActionsLib.includes('export function writeOutputs('),
+      'release/workflow scripts should share GitHub Actions output helpers from a single library'
     );
   });
 

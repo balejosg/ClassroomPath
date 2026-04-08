@@ -6,9 +6,9 @@ import {
   evaluateRequiredChecks,
   parseRunIdFromUrl,
 } from './lib/openpath-ci-checks.mjs';
+import { buildGitHubApiHeaders, isDirectExecution } from './lib/github-actions.mjs';
 
 const DEFAULT_REQUIRED_CHECKS = ['CI Success'];
-const GITHUB_API_VERSION = '2022-11-28';
 
 function usage() {
   console.log(`Usage: node scripts/openpath-required-checks.mjs
@@ -45,12 +45,10 @@ function resolveOpenPathSha() {
 
 async function fetchCheckRuns({ repo, sha, token }) {
   const response = await fetch(`https://api.github.com/repos/${repo}/commits/${sha}/check-runs`, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'User-Agent': 'classroompath-openpath-required-checks',
-      'X-GitHub-Api-Version': GITHUB_API_VERSION,
-    },
+    headers: buildGitHubApiHeaders({
+      token,
+      userAgent: 'classroompath-openpath-required-checks',
+    }),
   });
 
   if (!response.ok) {
@@ -88,12 +86,10 @@ function selectLatestOpenPathCiRunId(checkRuns) {
 
 async function fetchWorkflowRunJobs({ repo, runId, token }) {
   const response = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs`, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'User-Agent': 'classroompath-openpath-required-checks',
-      'X-GitHub-Api-Version': GITHUB_API_VERSION,
-    },
+    headers: buildGitHubApiHeaders({
+      token,
+      userAgent: 'classroompath-openpath-required-checks',
+    }),
   });
 
   if (!response.ok) {
@@ -158,9 +154,6 @@ async function main() {
   console.log(`OpenPath required checks passed for ${repo}@${sha}: ${requiredChecks.join(', ')}`);
 }
 
-const isDirectExecution =
-  process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
-
-if (isDirectExecution) {
+if (isDirectExecution(import.meta.url, process.argv[1])) {
   await main();
 }

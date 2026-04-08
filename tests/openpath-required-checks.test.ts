@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { readReleaseJsonFixture } from './helpers/release-fixtures.ts';
 import {
   evaluateRequiredChecks,
   OPENPATH_CI_JOB_NAMES,
@@ -187,57 +188,14 @@ describe('evaluateRequiredChecks', () => {
   });
 
   it('recovers CI Success when the windows job is marked failed after all steps succeed', () => {
+    const fixture = readReleaseJsonFixture<{
+      checkRuns: Array<Record<string, unknown>>;
+      workflowJobs: Array<Record<string, unknown>>;
+    }>('openpath-ci-recovery.json');
     const result = evaluateRequiredChecks({
-      checkRuns: [
-        {
-          name: 'CI Success',
-          conclusion: 'failure',
-          status: 'completed',
-          completed_at: '2026-04-08T00:49:38Z',
-        },
-      ],
+      checkRuns: fixture.checkRuns,
       requiredChecks: ['CI Success'],
-      workflowJobs: [
-        buildCompletedWorkflowJob('Detect Relevant Changes'),
-        buildCompletedWorkflowJob('Linux Agent Tests (BATS)'),
-        buildCompletedWorkflowJob('Delivery Contracts (Node)'),
-        buildCompletedWorkflowJob('Windows Agent Tests (Pester)', {
-          status: 'completed',
-          conclusion: 'failure',
-          steps: [
-            {
-              name: 'Set up job',
-              status: 'completed',
-              conclusion: 'success',
-            },
-            {
-              name: 'Checkout code',
-              status: 'completed',
-              conclusion: 'success',
-            },
-            {
-              name: 'Install Pester',
-              status: 'completed',
-              conclusion: 'success',
-            },
-            {
-              name: 'Run Windows Unit Tests',
-              status: 'completed',
-              conclusion: 'success',
-            },
-            {
-              name: 'Post Checkout code',
-              status: 'completed',
-              conclusion: 'success',
-            },
-            {
-              name: 'Complete job',
-              status: 'completed',
-              conclusion: 'success',
-            },
-          ],
-        }),
-      ],
+      workflowJobs: fixture.workflowJobs,
     });
 
     assert.equal(result.ok, true);
