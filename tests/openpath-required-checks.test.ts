@@ -190,6 +190,65 @@ describe('evaluateRequiredChecks', () => {
     assert.deepEqual(result.failing, []);
   });
 
+  it('recovers CI Success when the windows job is marked failed after all steps succeed', () => {
+    const result = evaluateRequiredChecks({
+      checkRuns: [
+        {
+          name: 'CI Success',
+          conclusion: 'failure',
+          status: 'completed',
+          completed_at: '2026-04-08T00:49:38Z',
+        },
+      ],
+      requiredChecks: ['CI Success'],
+      workflowJobs: [
+        buildCompletedWorkflowJob('Detect Relevant Changes'),
+        buildCompletedWorkflowJob('Linux Agent Tests (BATS)'),
+        buildCompletedWorkflowJob('Delivery Contracts (Node)'),
+        buildCompletedWorkflowJob('Windows Agent Tests (Pester)', {
+          status: 'completed',
+          conclusion: 'failure',
+          steps: [
+            {
+              name: 'Set up job',
+              status: 'completed',
+              conclusion: 'success',
+            },
+            {
+              name: 'Checkout code',
+              status: 'completed',
+              conclusion: 'success',
+            },
+            {
+              name: 'Install Pester',
+              status: 'completed',
+              conclusion: 'success',
+            },
+            {
+              name: 'Run Windows Unit Tests',
+              status: 'completed',
+              conclusion: 'success',
+            },
+            {
+              name: 'Post Checkout code',
+              status: 'completed',
+              conclusion: 'success',
+            },
+            {
+              name: 'Complete job',
+              status: 'completed',
+              conclusion: 'success',
+            },
+          ],
+        }),
+      ],
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.missing, []);
+    assert.deepEqual(result.failing, []);
+  });
+
   it('does not recover CI Success when a required workflow job actually fails', () => {
     const result = evaluateRequiredChecks({
       checkRuns: [],
@@ -201,6 +260,23 @@ describe('evaluateRequiredChecks', () => {
         buildCompletedWorkflowJob('Windows Agent Tests (Pester)', {
           status: 'completed',
           conclusion: 'failure',
+          steps: [
+            {
+              name: 'Set up job',
+              status: 'completed',
+              conclusion: 'success',
+            },
+            {
+              name: 'Run Windows Unit Tests',
+              status: 'completed',
+              conclusion: 'failure',
+            },
+            {
+              name: 'Complete job',
+              status: 'completed',
+              conclusion: 'success',
+            },
+          ],
         }),
       ],
     });

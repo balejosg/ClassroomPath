@@ -99,6 +99,19 @@ export function workflowJobSucceeded(workflowJob) {
     return false;
   }
 
+  const steps = workflowJob.steps ?? [];
+  const completeJobStep = steps.find((step) => step.name === 'Complete job');
+  const allStepsSucceeded =
+    steps.length > 0 &&
+    completeJobStep &&
+    completeJobStep.status === 'completed' &&
+    completeJobStep.conclusion === 'success' &&
+    steps.every((step) => step.status === 'completed' && step.conclusion === 'success');
+
+  if (allStepsSucceeded) {
+    return true;
+  }
+
   if (workflowJob.status === 'completed') {
     return workflowJob.conclusion === 'success' || workflowJob.conclusion === 'skipped';
   }
@@ -107,21 +120,7 @@ export function workflowJobSucceeded(workflowJob) {
     return false;
   }
 
-  const steps = workflowJob.steps ?? [];
-  if (steps.length === 0) {
-    return false;
-  }
-
-  const completeJobStep = steps.find((step) => step.name === 'Complete job');
-  if (
-    !completeJobStep ||
-    completeJobStep.status !== 'completed' ||
-    completeJobStep.conclusion !== 'success'
-  ) {
-    return false;
-  }
-
-  return steps.every((step) => step.status === 'completed' && step.conclusion === 'success');
+  return false;
 }
 
 export function ciWorkflowSatisfiedByJobs(workflowJobs) {
