@@ -728,6 +728,10 @@ describe('Workflow configuration hardening', () => {
       workflowText.includes('openpath-firefox-extension.xpi'),
       'windows-firefox-canary should validate the staged signed Firefox XPI'
     );
+    assert.ok(
+      workflowText.includes('$firefoxCandidates = @(('),
+      'windows-firefox-canary should coerce Firefox candidate paths into an array before indexing'
+    );
   });
 
   test('Release candidate workflow builds images for main before a production tag exists', () => {

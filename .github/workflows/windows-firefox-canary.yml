@@ -118,10 +118,10 @@ jobs:
             throw "XPI SHA256 mismatch: $xpiHash"
           }
 
-          $firefoxCandidates = @(
+          $firefoxCandidates = @((
             (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\firefox.exe'),
             (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\firefox.exe')
-          ) | Where-Object { $_ -and (Test-Path $_) }
+          ) | Where-Object { $_ -and (Test-Path $_) })
 
           if ($firefoxCandidates.Count -eq 0) {
             throw 'Firefox Release is not available on the runner'
