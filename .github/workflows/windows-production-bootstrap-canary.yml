@@ -104,6 +104,11 @@ jobs:
             throw 'Firefox Release could not be installed on the runner'
           }
 
+          $whitelistEtagPath = Join-Path $openPathRoot 'data\whitelist.etag'
+          if (Test-Path $whitelistEtagPath) {
+            Remove-Item $whitelistEtagPath -Force
+          }
+
           $updateLogPath = Join-Path $env:RUNNER_TEMP 'Update-OpenPath.log'
           Remove-Item $updateLogPath -ErrorAction SilentlyContinue
 
