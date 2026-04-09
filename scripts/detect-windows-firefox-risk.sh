@@ -19,7 +19,7 @@ else
 fi
 
 HIGH_RISK=false
-if echo "$CHANGED_FILES" | grep -Eq '^(upstream/openpath/windows/|upstream/openpath/firefox-extension/|upstream/openpath/api/src/|upstream/openpath/api/package\.json$|upstream/openpath/api/tests/token-delivery\.test\.ts$|docker/Dockerfile\.api$)'; then
+if echo "$CHANGED_FILES" | grep -Eq '^(upstream/openpath$|upstream/openpath/windows/|upstream/openpath/firefox-extension/|upstream/openpath/api/src/|upstream/openpath/api/package\.json$|upstream/openpath/api/tests/token-delivery\.test\.ts$|docker/Dockerfile\.api$)'; then
   HIGH_RISK=true
 fi
 

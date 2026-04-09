@@ -646,6 +646,10 @@ describe('Workflow configuration hardening', () => {
       'verify-staging-release-state should classify OpenPath API bootstrap source changes as high risk'
     );
     assert.ok(
+      riskDetectionScript.includes('upstream/openpath$'),
+      'verify-staging-release-state should classify OpenPath submodule gitlink promotions as high risk'
+    );
+    assert.ok(
       stagingVerificationScript.includes('STAGING_FIREFOX_EXTENSION_ID') &&
         stagingVerificationScript.includes('STAGING_FIREFOX_RELEASE_VERSION') &&
         stagingVerificationScript.includes('STAGING_FIREFOX_METADATA_SHA256') &&
