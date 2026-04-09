@@ -81,6 +81,29 @@ jobs:
             throw 'browser-policy-spec.json is incomplete after enrollment'
           }
 
+          $firefoxCandidates = @((
+            (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\firefox.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\firefox.exe')
+          ) | Where-Object { $_ -and (Test-Path $_) })
+
+          if ($firefoxCandidates.Count -eq 0) {
+            Write-Host 'Firefox Release is not preinstalled on the runner; installing via winget'
+            & winget install --exact --id Mozilla.Firefox --accept-package-agreements --accept-source-agreements --silent
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "winget failed to install Firefox Release with exit code $LASTEXITCODE"
+            }
+
+            $firefoxCandidates = @((
+              (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\firefox.exe'),
+              (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\firefox.exe')
+            ) | Where-Object { $_ -and (Test-Path $_) })
+          }
+
+          if ($firefoxCandidates.Count -eq 0) {
+            throw 'Firefox Release could not be installed on the runner'
+          }
+
           $updateLogPath = Join-Path $env:RUNNER_TEMP 'Update-OpenPath.log'
           Remove-Item $updateLogPath -ErrorAction SilentlyContinue
 
@@ -119,15 +142,6 @@ jobs:
 
           if ($env:EXPECTED_PUBLIC_XPI_URL -and $policyEntry.install_url -ne $env:EXPECTED_PUBLIC_XPI_URL) {
             throw "Unexpected install_url in policies.json: $($policyEntry.install_url)"
-          }
-
-          $firefoxCandidates = @((
-            (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\firefox.exe'),
-            (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\firefox.exe')
-          ) | Where-Object { $_ -and (Test-Path $_) })
-
-          if ($firefoxCandidates.Count -eq 0) {
-            throw 'Firefox Release is not available on the runner'
           }
 
           $profileDir = Join-Path $env:RUNNER_TEMP 'windows-production-bootstrap-firefox-profile'
