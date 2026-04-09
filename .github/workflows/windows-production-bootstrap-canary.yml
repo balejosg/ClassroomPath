@@ -204,6 +204,7 @@ jobs:
 
       - name: Upload production bootstrap canary artifacts
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: windows-production-bootstrap-canary

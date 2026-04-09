@@ -15,9 +15,11 @@ type WorkflowJob = {
   steps?: Array<{
     name?: string;
     id?: string;
+    if?: string;
     run?: string;
     uses?: string;
     with?: Record<string, unknown>;
+    'continue-on-error'?: boolean;
     'working-directory'?: string;
   }>;
 };
@@ -802,6 +804,22 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('classroompath.eu'),
       'windows-production-bootstrap-canary should target the live production hostname'
+    );
+    const artifactUploadStep = canarySteps.find(
+      (step) =>
+        typeof step === 'object' &&
+        step !== null &&
+        step.name === 'Upload production bootstrap canary artifacts'
+    );
+    assert.equal(
+      artifactUploadStep?.if,
+      'always()',
+      'windows-production-bootstrap-canary should always attempt to publish diagnostics'
+    );
+    assert.equal(
+      artifactUploadStep?.['continue-on-error'],
+      true,
+      'windows-production-bootstrap-canary should not fail the functional canary when GitHub artifact upload flakes'
     );
   });
 
