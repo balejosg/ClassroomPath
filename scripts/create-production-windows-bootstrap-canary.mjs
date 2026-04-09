@@ -185,16 +185,47 @@ async function main() {
   const cookieHeader = extractCookies(refreshedLoginResult.response);
   assert.ok(cookieHeader, 'auth.login should reissue a session cookie after organization setup');
 
+  const canaryGroupName = uniqueValue('windows-production-bootstrap-canary-group');
+  const { data: group } = await postTrpc(
+    'groups.create',
+    {
+      name: canaryGroupName,
+      displayName: 'Windows Production Bootstrap Canary Group',
+    },
+    cookieHeader
+  );
+
+  assert.ok(group.id, 'groups.create should return a group id');
+
+  const { data: canaryRule } = await postTrpc(
+    'groups.createRule',
+    {
+      groupId: group.id,
+      type: 'whitelist',
+      value: 'example.com',
+      comment: 'Production Windows bootstrap canary seed rule',
+    },
+    cookieHeader
+  );
+
+  assert.ok(canaryRule.id, 'groups.createRule should return a rule id');
+
   const { data: classroom } = await postTrpc(
     'classrooms.create',
     {
       name: uniqueValue('windows-production-bootstrap-canary'),
       displayName: 'Windows Production Bootstrap Canary',
+      defaultGroupId: group.id,
     },
     cookieHeader
   );
 
   assert.ok(classroom.id, 'classrooms.create should return a classroom id');
+  assert.equal(
+    classroom.defaultGroupId,
+    group.id,
+    'classrooms.create should bind the seeded group as defaultGroupId'
+  );
 
   const ticketResponse = await fetchWithRetry(`${apiUrl}/api/enroll/${classroom.id}/ticket`, {
     method: 'POST',
@@ -270,6 +301,7 @@ async function main() {
     apiUrl,
     requestOrigin,
     email,
+    groupId: group.id,
     classroomId: classroom.id,
     enrollmentToken: ticketPayload.enrollmentToken,
     windowsScriptUrl: `${apiUrl}/api/enroll/${classroom.id}/windows.ps1`,
@@ -290,6 +322,7 @@ async function main() {
     request_origin: summary.requestOrigin,
     email: summary.email,
     classroom_id: summary.classroomId,
+    group_id: summary.groupId,
     enrollment_token: summary.enrollmentToken,
     windows_script_url: summary.windowsScriptUrl,
     public_firefox_xpi_url: summary.publicFirefoxXpiUrl,
