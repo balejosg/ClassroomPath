@@ -25,6 +25,7 @@ jobs:
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
         with:
+          enable-cache: false
           cache-dependency-path: package-lock.json
 
       - name: Provision production enrollment canary
@@ -123,6 +124,12 @@ jobs:
           if ($updateLog -match 'Browser policy spec not found') {
             throw 'Browser policy spec not found'
           }
+
+          if ($updateLog -match 'disabled=True' -or $updateLog -match 'DEACTIVATION FLAG detected') {
+            throw 'Update-OpenPath.ps1 resolved a disabled whitelist and entered fail-open mode'
+          }
+
+          Write-Host 'Resolved whitelist state: active policy payload applied'
 
           $policiesCandidates = @((
             (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\distribution\policies.json'),

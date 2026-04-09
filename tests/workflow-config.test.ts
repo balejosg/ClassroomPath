@@ -773,6 +773,14 @@ describe('Workflow configuration hardening', () => {
       ),
       'windows-production-bootstrap-canary should install the repo Node toolchain before provisioning a tenant'
     );
+    const setupNodeStep = canarySteps.find(
+      (step) => typeof step === 'object' && step !== null && step.name === 'Setup Node.js'
+    );
+    assert.equal(
+      String(setupNodeStep?.with?.['enable-cache'] ?? ''),
+      'false',
+      'windows-production-bootstrap-canary should disable npm cache uploads to avoid Azure blob flake noise on short-lived GitHub-hosted runners'
+    );
     assert.ok(
       workflowText.includes('create-production-windows-bootstrap-canary.mjs'),
       'windows-production-bootstrap-canary should provision a fresh production enrollment ticket through the shared helper script'
@@ -792,6 +800,10 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('Browser policy spec not found'),
       'windows-production-bootstrap-canary should fail if the original browser policy spec error reappears in logs'
+    );
+    assert.ok(
+      workflowText.includes('disabled=True') && workflowText.includes('DEACTIVATION FLAG detected'),
+      'windows-production-bootstrap-canary should fail fast when the enrolled classroom resolves to a disabled whitelist fail-open state'
     );
     assert.ok(
       workflowText.includes('policies.json') && workflowText.includes('force_installed'),

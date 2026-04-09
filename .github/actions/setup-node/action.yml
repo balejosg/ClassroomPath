@@ -6,13 +6,23 @@ inputs:
     description: 'Lockfiles used for npm cache keys'
     required: false
     default: 'package-lock.json'
+  enable-cache:
+    description: 'Whether to enable npm cache restore/save'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
   steps:
     - name: Setup Node.js
+      if: ${{ inputs.enable-cache == 'true' }}
       uses: actions/setup-node@v6
       with:
         node-version: '20'
         cache: 'npm'
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
+    - name: Setup Node.js
+      if: ${{ inputs.enable-cache != 'true' }}
+      uses: actions/setup-node@v6
+      with:
+        node-version: '20'
