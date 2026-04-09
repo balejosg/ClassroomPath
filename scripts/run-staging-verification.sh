@@ -176,6 +176,10 @@ run_release_gate_checks() {
   "${ssh_cmd[@]}" \
     "docker exec classroompath-api test -f /app/firefox-extension/build/firefox-release/metadata.json && docker exec classroompath-api test -f /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi"
 
+  echo "Verifying shared browser policy spec inside classroompath-api..." >&2
+  "${ssh_cmd[@]}" \
+    "docker exec classroompath-api test -f /app/runtime/browser-policy-spec.json"
+
   STAGING_FIREFOX_RELEASE_ARTIFACTS="present"
   staging_firefox_metadata_json="$("${ssh_cmd[@]}" "docker exec classroompath-api cat /app/firefox-extension/build/firefox-release/metadata.json")"
   STAGING_FIREFOX_EXTENSION_ID="$(printf '%s' "$staging_firefox_metadata_json" | node "$SCRIPT_DIR/read-firefox-release-metadata.mjs" --field extensionId)"

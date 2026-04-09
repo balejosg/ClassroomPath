@@ -340,6 +340,9 @@ describe(
       const manifest = (await manifestResponse.json()) as BootstrapManifest;
       assert.equal(manifest.success, true);
 
+      const runtimeSpecEntry = manifest.files.find(
+        (file) => file.path === 'runtime/browser-policy-spec.json'
+      );
       const metadataEntry = manifest.files.find(
         (file) => file.path === 'browser-extension/firefox-release/metadata.json'
       );
@@ -347,9 +350,39 @@ describe(
         (file) => file.path === 'browser-extension/firefox-release/openpath-firefox-extension.xpi'
       );
 
+      assert.ok(
+        runtimeSpecEntry,
+        'bootstrap manifest should include the shared browser policy spec'
+      );
       assert.ok(metadataEntry, 'bootstrap manifest should include Firefox release metadata');
       assert.ok(xpiEntry, 'bootstrap manifest should include the signed Firefox XPI');
       assert.ok((xpiEntry?.size ?? 0) > 0, 'signed Firefox XPI should be non-empty');
+
+      const runtimeSpecResponse = await fetchWithRetry(
+        `${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('runtime/browser-policy-spec.json')}`,
+        {
+          headers: authHeaders,
+        }
+      );
+      assert.strictEqual(runtimeSpecResponse.status, 200);
+      const runtimeSpecText = await runtimeSpecResponse.text();
+      const runtimeSpec = JSON.parse(runtimeSpecText) as {
+        firefox?: { googleSearchBlocks?: string[] };
+        chromium?: { googleSearchBlock?: string };
+      };
+
+      assert.ok(runtimeSpec.firefox, 'browser policy spec should include firefox settings');
+      assert.ok(runtimeSpec.chromium, 'browser policy spec should include chromium settings');
+      assert.ok(
+        Array.isArray(runtimeSpec.firefox?.googleSearchBlocks) &&
+          runtimeSpec.firefox.googleSearchBlocks.length > 0,
+        'browser policy spec should include Firefox search block patterns'
+      );
+      assert.equal(
+        typeof runtimeSpec.chromium?.googleSearchBlock,
+        'string',
+        'browser policy spec should include the Chromium search block pattern'
+      );
 
       const metadataResponse = await fetchWithRetry(
         `${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('browser-extension/firefox-release/metadata.json')}`,

@@ -192,6 +192,10 @@ void describe('Docker Compose Configuration', () => {
       'Builder image should copy Windows agent sources into the build context'
     );
     assert.ok(
+      content.includes('COPY runtime/ ./runtime/') || content.includes('COPY runtime ./runtime'),
+      'Builder image should copy shared runtime assets into the build context'
+    );
+    assert.ok(
       content.includes('COPY firefox-extension/ ./firefox-extension/'),
       'Builder image should copy Firefox/Chromium browser extension assets into the build context'
     );
@@ -202,6 +206,10 @@ void describe('Docker Compose Configuration', () => {
     assert.ok(
       content.includes('COPY --from=builder /app/windows ./windows'),
       'Runtime image should include the Windows bootstrap scripts'
+    );
+    assert.ok(
+      content.includes('COPY --from=builder /app/runtime ./runtime'),
+      'Runtime image should include shared runtime assets for Windows bootstrap'
     );
     assert.ok(
       content.includes('COPY --from=builder /app/firefox-extension ./firefox-extension'),
@@ -1069,6 +1077,10 @@ void describe('Migration Tooling', () => {
         'classroompath-api test -f /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi'
       ),
       'staging verification runner should verify the staged Firefox release XPI inside the API container before recording evidence'
+    );
+    assert.ok(
+      runnerContent.includes('classroompath-api test -f /app/runtime/browser-policy-spec.json'),
+      'staging verification runner should verify the shared browser policy spec inside the API container before recording evidence'
     );
     assert.ok(
       helperContent.includes(
