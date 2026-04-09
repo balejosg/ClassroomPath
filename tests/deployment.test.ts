@@ -1413,6 +1413,12 @@ void describe('Migration Tooling', () => {
       content.includes('Resolve-DnsName') || content.includes('[System.Net.Dns]'),
       'resolver should include a Windows-compatible DNS fallback for windows-latest runners'
     );
+    assert.ok(
+      content.includes('command -v getent') &&
+        content.includes('command -v dig') &&
+        content.includes('command -v nslookup'),
+      'resolver should guard optional Linux DNS helpers so missing commands do not abort Windows runners'
+    );
   });
 
   void test('shared readiness and smoke helpers exist for reusable deployment verification', () => {

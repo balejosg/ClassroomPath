@@ -12,18 +12,30 @@ if [ -z "$HOST" ]; then
 fi
 
 for attempt in $(seq 1 "$MAX_RETRIES"); do
-  IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1}' | head -1)
+  IP=""
 
   if [ -z "$IP" ]; then
-    IP=$(getent ahostsv4 "$HOST" 2>/dev/null | awk '{print $1}' | head -1)
+    if command -v getent >/dev/null 2>&1; then
+      IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1}' | head -1 || true)
+    fi
   fi
 
   if [ -z "$IP" ]; then
-    IP=$(dig +short "$HOST" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+    if command -v getent >/dev/null 2>&1; then
+      IP=$(getent ahostsv4 "$HOST" 2>/dev/null | awk '{print $1}' | head -1 || true)
+    fi
   fi
 
   if [ -z "$IP" ]; then
-    IP=$(nslookup "$HOST" 1.1.1.1 2>/dev/null | awk '/^Address: / {print $2}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | tail -1)
+    if command -v dig >/dev/null 2>&1; then
+      IP=$(dig +short "$HOST" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+    fi
+  fi
+
+  if [ -z "$IP" ]; then
+    if command -v nslookup >/dev/null 2>&1; then
+      IP=$(nslookup "$HOST" 1.1.1.1 2>/dev/null | awk '/^Address: / {print $2}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | tail -1 || true)
+    fi
   fi
 
   if [ -z "$IP" ]; then
@@ -35,7 +47,9 @@ for attempt in $(seq 1 "$MAX_RETRIES"); do
   fi
 
   if [ -z "$IP" ]; then
-    IP=$(curl -fsSL "https://dns.google/resolve?name=${HOST}&type=A" 2>/dev/null | python3 -c 'import json,sys; data=json.load(sys.stdin); answers=data.get("Answer") or []; ips=[item.get("data","") for item in answers if item.get("type")==1]; print(ips[0] if ips else "")' 2>/dev/null || true)
+    if command -v curl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+      IP=$(curl -fsSL "https://dns.google/resolve?name=${HOST}&type=A" 2>/dev/null | python3 -c 'import json,sys; data=json.load(sys.stdin); answers=data.get("Answer") or []; ips=[item.get("data","") for item in answers if item.get("type")==1]; print(ips[0] if ips else "")' 2>/dev/null || true)
+    fi
   fi
 
   if [ -n "$IP" ]; then
