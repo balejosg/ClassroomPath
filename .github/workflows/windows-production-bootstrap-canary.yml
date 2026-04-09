@@ -1,0 +1,194 @@
+name: Windows Production Bootstrap Canary
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-production-bootstrap-canary
+  cancel-in-progress: false
+
+jobs:
+  windows-production-bootstrap-canary:
+    name: Windows Production Bootstrap Canary
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PRODUCTION_BASE_URL: https://classroompath.eu
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+        with:
+          cache-dependency-path: package-lock.json
+
+      - name: Provision production enrollment canary
+        id: provision
+        shell: bash
+        env:
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
+        run: node scripts/create-production-windows-bootstrap-canary.mjs
+
+      - name: Download and run live windows.ps1 enrollment script
+        shell: pwsh
+        env:
+          CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
+          ENROLLMENT_TOKEN: ${{ steps.provision.outputs.enrollment_token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'GitHub Actions runner is not elevated enough to execute windows.ps1'
+          }
+
+          $workspace = Join-Path $env:RUNNER_TEMP 'windows-production-bootstrap-canary'
+          New-Item -ItemType Directory -Force -Path $workspace | Out-Null
+
+          $headers = @{ Authorization = "Bearer $env:ENROLLMENT_TOKEN" }
+          $windowsScriptUrl = "$env:PRODUCTION_BASE_URL/api/enroll/$env:CLASSROOM_ID/windows.ps1"
+          $windowsScriptPath = Join-Path $workspace 'windows.ps1'
+
+          Invoke-WebRequest -Uri $windowsScriptUrl -Headers $headers -OutFile $windowsScriptPath
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $windowsScriptPath
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "windows.ps1 exited with code $LASTEXITCODE"
+          }
+
+      - name: Re-run Update-OpenPath.ps1 and validate Firefox managed install
+        shell: pwsh
+        env:
+          EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
+          EXPECTED_EXTENSION_VERSION: ${{ steps.provision.outputs.extension_version }}
+          EXPECTED_PUBLIC_XPI_URL: ${{ steps.provision.outputs.public_firefox_xpi_url }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $openPathRoot = 'C:\OpenPath'
+          $browserPolicySpecPath = Join-Path $openPathRoot 'lib\browser-policy-spec.json'
+          if (-not (Test-Path $browserPolicySpecPath)) {
+            throw 'browser-policy-spec.json was not installed to C:\OpenPath\lib'
+          }
+
+          $browserPolicySpec = Get-Content $browserPolicySpecPath -Raw | ConvertFrom-Json
+          if (-not $browserPolicySpec.firefox -or -not $browserPolicySpec.chromium) {
+            throw 'browser-policy-spec.json is incomplete after enrollment'
+          }
+
+          $updateLogPath = Join-Path $env:RUNNER_TEMP 'Update-OpenPath.log'
+          Remove-Item $updateLogPath -ErrorAction SilentlyContinue
+
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $openPathRoot 'scripts\Update-OpenPath.ps1') *>&1 |
+            Tee-Object -FilePath $updateLogPath
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Update-OpenPath.ps1 exited with code $LASTEXITCODE"
+          }
+
+          $updateLog = Get-Content $updateLogPath -Raw
+          if ($updateLog -match 'Browser policy spec not found') {
+            throw 'Browser policy spec not found'
+          }
+
+          $policiesCandidates = @((
+            (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\distribution\policies.json'),
+            (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\distribution\policies.json')
+          ) | Where-Object { $_ -and (Test-Path $_) })
+
+          if ($policiesCandidates.Count -eq 0) {
+            throw 'Firefox policies.json was not created by the installed client'
+          }
+
+          $policiesPath = $policiesCandidates[0]
+          $policies = Get-Content $policiesPath -Raw | ConvertFrom-Json
+          $policyEntry = $policies.policies.ExtensionSettings.$env:EXPECTED_EXTENSION_ID
+
+          if (-not $policyEntry) {
+            throw "policies.json does not contain the expected extension id $env:EXPECTED_EXTENSION_ID"
+          }
+
+          if ($policyEntry.installation_mode -ne 'force_installed') {
+            throw 'policies.json did not request force_installed'
+          }
+
+          if ($env:EXPECTED_PUBLIC_XPI_URL -and $policyEntry.install_url -ne $env:EXPECTED_PUBLIC_XPI_URL) {
+            throw "Unexpected install_url in policies.json: $($policyEntry.install_url)"
+          }
+
+          $firefoxCandidates = @((
+            (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\firefox.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\firefox.exe')
+          ) | Where-Object { $_ -and (Test-Path $_) })
+
+          if ($firefoxCandidates.Count -eq 0) {
+            throw 'Firefox Release is not available on the runner'
+          }
+
+          $profileDir = Join-Path $env:RUNNER_TEMP 'windows-production-bootstrap-firefox-profile'
+          $profileExtensionsDir = Join-Path $profileDir 'extensions'
+          $extensionsRegistryPath = Join-Path $profileDir 'extensions.json'
+          $firefoxLogPath = Join-Path $env:RUNNER_TEMP 'windows-production-bootstrap-firefox.log'
+
+          New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
+          Remove-Item $firefoxLogPath -ErrorAction SilentlyContinue
+
+          $env:MOZ_LOG = 'EnterprisePolicies:5'
+          $env:MOZ_LOG_FILE = $firefoxLogPath
+
+          $process = Start-Process -FilePath $firefoxCandidates[0] -ArgumentList '-headless', '-profile', $profileDir, 'about:blank' -PassThru
+          Start-Sleep -Seconds 20
+          if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+          }
+
+          $profileExtensionPath = Join-Path $profileExtensionsDir "$($env:EXPECTED_EXTENSION_ID).xpi"
+          $registryAddon = $null
+
+          if (Test-Path $extensionsRegistryPath) {
+            $registry = Get-Content $extensionsRegistryPath -Raw | ConvertFrom-Json
+            $registryAddon = @($registry.addons) | Where-Object { $_.id -eq $env:EXPECTED_EXTENSION_ID } | Select-Object -First 1
+          }
+
+          $extensionInstalled = $null -ne $registryAddon -or (Test-Path $profileExtensionPath)
+          $firefoxLog = if (Test-Path $firefoxLogPath) { Get-Content $firefoxLogPath -Raw } else { '' }
+
+          if (-not $extensionInstalled -and -not $firefoxLog) {
+            throw 'Firefox neither registered the force-installed extension nor emitted enterprise policy logs'
+          }
+
+          if ($firefoxLog -match 'policies\.json.*(error|failed|invalid)' -or $firefoxLog -match 'Enterprise Policies.*(error|failed|invalid)') {
+            throw 'Firefox reported a policies.json parse error'
+          }
+
+          if (-not $extensionInstalled -and $firefoxLog -notmatch [regex]::Escape($env:EXPECTED_EXTENSION_ID)) {
+            throw "Firefox did not register or report the extension id $env:EXPECTED_EXTENSION_ID"
+          }
+
+          if ($registryAddon -and $registryAddon.active -eq $false) {
+            throw "Firefox registered $env:EXPECTED_EXTENSION_ID but did not activate it"
+          }
+
+          if (
+            $registryAddon -and
+            $env:EXPECTED_EXTENSION_VERSION -and
+            $registryAddon.version -and
+            $registryAddon.version -ne $env:EXPECTED_EXTENSION_VERSION
+          ) {
+            throw "Firefox installed version $($registryAddon.version) instead of $env:EXPECTED_EXTENSION_VERSION"
+          }
+
+      - name: Upload production bootstrap canary artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-production-bootstrap-canary
+          path: |
+            production-windows-bootstrap-canary.json
+            ${{ runner.temp }}/Update-OpenPath.log
+            ${{ runner.temp }}/windows-production-bootstrap-firefox.log

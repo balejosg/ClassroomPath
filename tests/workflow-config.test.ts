@@ -742,6 +742,69 @@ describe('Workflow configuration hardening', () => {
     );
   });
 
+  test('Windows production bootstrap canary workflow exists and exercises the live enrollment installer path', () => {
+    const workflowPath = '.github/workflows/windows-production-bootstrap-canary.yml';
+    const workflowText = readText(workflowPath);
+    const workflow = readWorkflow(workflowPath);
+    const jobs = workflow.jobs ?? {};
+    const canaryJob = jobs['windows-production-bootstrap-canary'];
+    const canarySteps = Array.isArray(canaryJob?.steps) ? canaryJob.steps : [];
+
+    assert.ok(
+      existsSync(resolve(projectRoot, 'scripts/create-production-windows-bootstrap-canary.mjs')),
+      'production bootstrap canary should ship a helper that provisions a temporary production enrollment ticket'
+    );
+    assert.ok(
+      workflow.on?.workflow_dispatch,
+      'windows-production-bootstrap-canary should be manually dispatchable'
+    );
+    assert.ok(canaryJob, 'windows-production-bootstrap-canary workflow should define a canary job');
+    assert.equal(
+      canaryJob?.['runs-on'],
+      'windows-latest',
+      'windows-production-bootstrap-canary should run on a Windows runner'
+    );
+    assert.ok(
+      canarySteps.some(
+        (step) =>
+          typeof step === 'object' && step !== null && step.uses === './.github/actions/setup-node'
+      ),
+      'windows-production-bootstrap-canary should install the repo Node toolchain before provisioning a tenant'
+    );
+    assert.ok(
+      workflowText.includes('create-production-windows-bootstrap-canary.mjs'),
+      'windows-production-bootstrap-canary should provision a fresh production enrollment ticket through the shared helper script'
+    );
+    assert.ok(
+      workflowText.includes('/api/enroll/') && workflowText.includes('windows.ps1'),
+      'windows-production-bootstrap-canary should download the live production windows.ps1 enrollment script'
+    );
+    assert.ok(
+      workflowText.includes('browser-policy-spec.json'),
+      'windows-production-bootstrap-canary should assert that the installed browser policy spec exists after enrollment'
+    );
+    assert.ok(
+      workflowText.includes('Update-OpenPath.ps1'),
+      'windows-production-bootstrap-canary should re-run Update-OpenPath.ps1 to cover the original failure path'
+    );
+    assert.ok(
+      workflowText.includes('Browser policy spec not found'),
+      'windows-production-bootstrap-canary should fail if the original browser policy spec error reappears in logs'
+    );
+    assert.ok(
+      workflowText.includes('policies.json') && workflowText.includes('force_installed'),
+      'windows-production-bootstrap-canary should validate the Firefox enterprise policy emitted by the installed client'
+    );
+    assert.ok(
+      workflowText.includes('extensions.json'),
+      'windows-production-bootstrap-canary should inspect the Firefox profile extension registry after launching Firefox'
+    );
+    assert.ok(
+      workflowText.includes('classroompath.eu'),
+      'windows-production-bootstrap-canary should target the live production hostname'
+    );
+  });
+
   test('Release candidate workflow builds images for main before a production tag exists', () => {
     const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
     const jobs = workflow.jobs ?? {};
