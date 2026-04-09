@@ -1,32 +1,21 @@
 import React from 'react';
-import {
-  ArrowRight,
-  Calculator,
-  ShieldCheck,
-  Code2,
-  Unlock,
-  School,
-  Building2,
-} from 'lucide-react';
+import { ArrowRight, Building2, Calculator, School, ShieldCheck } from 'lucide-react';
 
-import { SharedFooter } from '../components/SharedFooter';
-import { FaqAccordion } from '../components/FaqAccordion';
 import { ContactForm } from '../components/ContactForm';
+import { FaqAccordion } from '../components/FaqAccordion';
 import { RevealSection } from '../components/RevealSection';
+import { SharedFooter } from '../components/SharedFooter';
 import { PRICING_FAQS } from '../data/faqs';
 import {
-  PILOT,
-  PUBLIC_CAMPAIGN,
-  PRICING_TIERS,
-  ONBOARDING_TIERS,
   INCLUDED_PER_CLASSROOM,
   NOT_INCLUDED_BASE_PLAN,
-  VALUE_BULLETS,
+  ONBOARDING_TIERS,
   PER_CLASSROOM_POINTS,
-  COMPETITIVE_CLAIMS,
-  MARKET_BENCHMARKS,
+  PILOT,
+  PRICING_TIERS,
+  PUBLIC_CAMPAIGN,
+  VALUE_BULLETS,
   formatCurrency,
-  formatPricePerDevice,
   getPricingQuote,
 } from '../data/pricing-data';
 
@@ -45,26 +34,34 @@ function parsePositiveInteger(value: string) {
 const nextStepCards = [
   {
     icon: <Calculator size={18} className="text-sky-600" />,
-    title: 'Calcular',
-    text: 'Si necesitas presupuesto, calcula el tramo por aulas y obtén una estimación del primer año.',
+    title: 'Calcular presupuesto',
+    text: 'Si necesitas una cifra rápida para presupuesto, usa la calculadora y obtén una estimación del primer año.',
     href: '#calculator',
     cta: 'Ir a calculadora',
   },
   {
     icon: <School size={18} className="text-sky-600" />,
-    title: 'Piloto',
-    text: 'Si necesitas evidencias internas, empieza por 5 aulas durante 90 días antes de escalar.',
+    title: 'Empezar con un piloto',
+    text: 'Si necesitas evidencias internas antes de contratar, valida el modelo en 5 aulas durante 90 días.',
     href: '#pilot',
     cta: 'Ver piloto',
   },
   {
     icon: <Building2 size={18} className="text-sky-600" />,
-    title: 'Demo',
-    text: 'Si ya estás comparando opciones, agenda una demo para revisar política, alcance y despliegue.',
-    href: '#demo',
+    title: 'Solicitar demo',
+    text: 'Si ya estás comparando opciones, revisamos política, alcance y despliegue contigo.',
+    href: '#solicitud',
     cta: 'Solicitar demo',
   },
 ];
+
+const onboardingItems = [
+  'Sesión de arranque y definición de criterio',
+  'Configuración inicial y primer despliegue guiado',
+  'Revisión del arranque y siguientes pasos',
+];
+
+const exampleQuote = getPricingQuote(12);
 
 export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPricingPageProps) {
   const [classroomsInput, setClassroomsInput] = React.useState('12');
@@ -77,28 +74,25 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
     <div className="min-h-screen scroll-smooth bg-slate-50 text-slate-900">
       <header className="sticky top-0 z-30 border-b border-white/10 bg-slate-900">
         <div className="mx-auto max-w-7xl px-6 py-5 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <a href="/" className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-600 shadow-lg shadow-sky-900/50">
-                  <ShieldCheck size={22} className="text-white" />
+          <div className="flex items-center justify-between gap-4">
+            <a href="/" className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-600 shadow-lg shadow-sky-900/50">
+                <ShieldCheck size={22} className="text-white" />
+              </div>
+              <div>
+                <div className="text-base font-semibold tracking-tight text-white">
+                  ClassroomPath
                 </div>
-                <div>
-                  <div className="text-base font-semibold tracking-tight text-white">
-                    ClassroomPath
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    Filtrado web escolar · Código abierto
-                  </div>
-                </div>
-              </a>
-            </div>
-            <div className="flex items-center gap-5">
+                <div className="text-xs text-slate-400">Filtrado web escolar por aula</div>
+              </div>
+            </a>
+
+            <div className="flex items-center gap-3 sm:gap-5">
               <a
                 href="/"
-                className="text-sm font-medium text-slate-300 transition hover:text-white"
+                className="hidden text-sm font-medium text-slate-300 transition hover:text-white sm:inline"
               >
-                ← Inicio
+                Inicio
               </a>
               <a
                 href="/login"
@@ -106,15 +100,21 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   event.preventDefault();
                   onNavigateToLogin();
                 }}
-                className="hidden text-sm text-slate-400 transition hover:text-white sm:inline"
+                className="hidden text-sm font-medium text-slate-400 transition hover:text-white sm:inline"
               >
                 Acceder
               </a>
               <a
-                href="#demo"
+                href="#calculator"
                 className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-900/50 transition hover:bg-sky-500"
               >
-                Solicitar demo
+                Calcular precio
+              </a>
+              <a
+                href="#pilot"
+                className="hidden rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 md:inline-flex"
+              >
+                Empezar piloto
               </a>
             </div>
           </div>
@@ -141,41 +141,40 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
           <div className="relative mx-auto grid max-w-7xl gap-12 px-6 pb-20 pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-28 lg:pt-16">
             <div className="max-w-3xl">
               <div className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-sky-300">
-                Precios por aula · Sin sorpresas
+                Precios públicos por aula · sin sorpresas
               </div>
               <h1 className="mt-6 text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
-                Calcula el coste por aula y elige el siguiente paso.
+                Calcula el primer año en segundos y decide el siguiente paso.
               </h1>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
-                Un precio por aula al año, fácil de explicar en un presupuesto. El onboarding va
-                aparte para que el coste anual sea siempre el mismo.
+                Primer año = cuota anual por aula + onboarding único. Desde el segundo año, solo
+                mantienes la cuota anual por aula. Si necesitas reducir riesgo interno, empieza con
+                un piloto antes de escalar.
               </p>
-              <p className="mt-4 max-w-2xl text-base leading-8 text-slate-300">
-                Si necesitas una cifra rápida, usa la calculadora. Si necesitas reducir riesgo
-                interno, empieza por un piloto. Si ya estás evaluando despliegue, pide una demo.
-              </p>
-              <div className="mt-8 flex flex-wrap gap-3 text-sm text-slate-200">
-                {VALUE_BULLETS.map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2"
-                  >
-                    {item}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-10 flex flex-wrap gap-4">
+              <div className="mt-8 flex flex-wrap gap-4">
                 <a
                   href="#calculator"
                   className="rounded-lg bg-sky-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-900/50 transition hover:bg-sky-500"
                 >
-                  Calcular mi precio
+                  Calcular precio
                 </a>
                 <a
-                  href="#demo"
+                  href="#pilot"
                   className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
-                  Solicitar una demo
+                  Empezar piloto
+                </a>
+              </div>
+              <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-slate-300">
+                <span>
+                  Hasta 30 dispositivos por aula · piloto de 90 días · servicio gestionado sobre
+                  OpenPath
+                </span>
+                <a
+                  href="#solicitud"
+                  className="font-semibold text-sky-300 transition hover:text-sky-200"
+                >
+                  Solicitar demo
                 </a>
               </div>
             </div>
@@ -183,56 +182,32 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
             <div className="grid gap-5 self-start">
               <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-950/40 backdrop-blur">
                 <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-300">
-                  Tramo de referencia
+                  Tramo más habitual
                 </div>
-                <div className="mt-3 text-3xl font-semibold text-white">{recommendedTier.name}</div>
-                <p className="mt-2 text-sm leading-7 text-slate-300">{recommendedTier.tagline}</p>
+                <div className="mt-3 text-sm font-medium text-slate-300">Centro mediano</div>
+                <div className="mt-2 text-4xl font-semibold text-white">
+                  {formatCurrency(recommendedTier.pricePerClassroomPerYear)}
+                </div>
+                <div className="mt-1 text-sm text-slate-400">por aula / año</div>
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
-                    <div className="text-sm text-slate-300">Precio</div>
-                    <div className="mt-2 text-3xl font-semibold text-white">
-                      {formatCurrency(recommendedTier.pricePerClassroomPerYear)}
-                    </div>
-                    <div className="mt-1 text-sm text-slate-400">por aula / año</div>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
                     <div className="text-sm text-slate-300">Piloto</div>
-                    <div className="mt-2 text-3xl font-semibold text-white">
+                    <div className="mt-2 text-2xl font-semibold text-white">
                       {formatCurrency(PILOT.totalPrice)}
                     </div>
                     <div className="mt-1 text-sm text-slate-400">
                       {PILOT.classrooms} aulas durante {PILOT.durationDays} días
                     </div>
                   </div>
-                </div>
-                <div className="mt-6 rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
-                  <div className="text-sm font-medium text-sky-300">
-                    Precio orientativo para decidir rápido; validación comercial si el alcance es
-                    especial o multi-sede.
+                  <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
+                    <div className="text-sm text-slate-300">Onboarding</div>
+                    <div className="mt-2 text-2xl font-semibold text-white">
+                      Separado · desde 490 €
+                    </div>
+                    <div className="mt-1 text-sm text-slate-400">
+                      Lo esencial para controlar el acceso por aula, sin módulos que no vas a usar.
+                    </div>
                   </div>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-700 bg-slate-800/80 p-5">
-                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-400">
-                    Onboarding
-                  </div>
-                  <div className="mt-3 text-2xl font-semibold text-white">Separado</div>
-                  <p className="mt-2 text-sm leading-7 text-slate-400">
-                    Desde {formatCurrency(ONBOARDING_TIERS[0].oneTimeFee ?? 0)} para mantener el
-                    recurrente por aula lo más limpio posible.
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-700 bg-slate-800/80 p-5">
-                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-400">
-                    Enfoque
-                  </div>
-                  <div className="mt-3 text-2xl font-semibold text-white">Esencial</div>
-                  <p className="mt-2 text-sm leading-7 text-slate-400">
-                    Lo que necesitas para controlar el acceso por aula. Sin módulos que no vas a
-                    usar.
-                  </p>
                 </div>
               </div>
             </div>
@@ -242,10 +217,7 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
         <RevealSection id="next-step" className="border-b border-slate-200 bg-white">
           <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
             <div className="max-w-3xl">
-              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Decisión rápida
-              </div>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+              <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
                 Qué paso te conviene ahora
               </h2>
               <p className="mt-5 text-base leading-8 text-slate-600">
@@ -291,7 +263,7 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 {INCLUDED_PER_CLASSROOM.map((item) => (
                   <div
                     key={item}
-                    className="rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm font-medium leading-7 text-slate-700 transition duration-300 hover:-translate-y-0.5 hover:shadow-md"
+                    className="rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm font-medium leading-7 text-slate-700"
                   >
                     {item}
                   </div>
@@ -304,13 +276,13 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 href="/#centros-publicos"
                 className="group block rounded-2xl border-2 border-emerald-300 bg-emerald-50 px-6 py-5 shadow-sm transition hover:shadow-md"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
                       Campaña activa
                     </div>
                     <h3 className="mt-3 text-lg font-semibold text-slate-900">
-                      Acceso gratuito para centros públicos
+                      Acceso inicial para centros públicos
                     </h3>
                     <p className="mt-1 text-sm text-slate-600">
                       Hasta {PUBLIC_CAMPAIGN.classrooms} aulas sin coste. Plazas limitadas.
@@ -328,18 +300,14 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 className="rounded-2xl border border-sky-200 bg-sky-50 px-6 py-7 shadow-sm"
               >
                 <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  {PILOT.name}
+                  Piloto
                 </div>
                 <h3 className="mt-3 text-2xl font-semibold text-slate-900">
-                  {PILOT.classrooms} aulas durante {PILOT.durationDays} días por{' '}
-                  {formatCurrency(PILOT.totalPrice)}
+                  5 aulas durante 90 días por 290 €
                 </h3>
-                <p className="mt-3 text-sm leading-7 text-slate-700">
-                  {PILOT.tagline} Es la opción más útil cuando necesitas validar uso real antes de
-                  pasar a contratación anual.
-                </p>
+                <p className="mt-3 text-sm leading-7 text-slate-700">{PILOT.tagline}</p>
                 <a
-                  href="#demo"
+                  href="#solicitud"
                   className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
                 >
                   Solicitar piloto <ArrowRight size={16} />
@@ -369,7 +337,7 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
               {PRICING_TIERS.map((tier) => (
                 <div
                   key={tier.name}
-                  className={`rounded-[2rem] border p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg ${
+                  className={`rounded-[2rem] border p-6 shadow-sm ${
                     tier.recommended
                       ? 'border-sky-300 bg-white ring-1 ring-inset ring-sky-200'
                       : 'border-slate-200 bg-white'
@@ -391,66 +359,70 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   </div>
                   <div className="mt-1 text-sm text-slate-500">por aula / año</div>
                   <p className="mt-4 text-sm leading-7 text-slate-600">{tier.tagline}</p>
-                  <div className="mt-5 rounded-xl bg-slate-50 px-4 py-4">
-                    <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Aproximado por dispositivo
-                    </div>
-                    <div className="mt-2 text-base font-semibold text-slate-900">
-                      {formatPricePerDevice(tier.approxPricePerDevicePerYear)} / año
-                    </div>
-                  </div>
                   <p className="mt-4 text-sm leading-7 text-slate-500">{tier.bestFor}</p>
                 </div>
               ))}
             </div>
 
             <p className="mt-5 text-sm text-slate-500">
-              Todos los tramos requieren un{' '}
-              <a href="#onboarding" className="underline hover:text-slate-700">
-                onboarding inicial
-              </a>{' '}
-              (coste único, ver más abajo). IVA no incluido.{' '}
-              <a href="#calculator" className="font-medium text-sky-700 hover:text-sky-600">
-                Ir a calculadora →
-              </a>
+              Todos los tramos requieren onboarding inicial. IVA no incluido.
             </p>
+          </div>
+        </RevealSection>
 
-            <div id="onboarding" className="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="rounded-[2rem] border border-slate-200 bg-white px-6 py-7 shadow-sm">
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-600">
-                  Onboarding (pago único)
+        <RevealSection id="onboarding" className="border-y border-slate-200 bg-white">
+          <div className="mx-auto grid max-w-7xl gap-8 px-6 py-20 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
+            <div className="rounded-[2rem] border border-slate-200 bg-slate-50 px-6 py-7 shadow-sm">
+              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
+                Onboarding
+              </div>
+              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+                Onboarding separado para que la renovación sea clara
+              </h2>
+              <p className="mt-5 text-base leading-8 text-slate-600">
+                Separamos el arranque del recurrente para que el centro compare mejor el coste anual
+                por aula y vea el esfuerzo inicial por separado.
+              </p>
+              <div className="mt-8">
+                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Qué cubre el onboarding
                 </div>
-                <p className="mt-2 text-sm text-slate-500">
-                  Se separa del recurrente para que el centro compare el coste anual por aula de
-                  forma más limpia y entienda el esfuerzo inicial por separado.
-                </p>
-                <div className="mt-5 grid gap-4 md:grid-cols-3">
-                  {ONBOARDING_TIERS.map((tier) => (
-                    <div key={tier.rangeLabel} className="rounded-xl bg-slate-50 px-4 py-4">
-                      <div className="text-sm font-semibold text-slate-900">{tier.rangeLabel}</div>
-                      <div className="mt-3 text-2xl font-semibold text-slate-950">
-                        {tier.oneTimeFee === null ? tier.label : formatCurrency(tier.oneTimeFee)}
-                      </div>
-                      <div className="mt-1 text-sm text-slate-500">pago único</div>
+                <div className="mt-4 grid gap-3">
+                  {onboardingItems.map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm leading-7 text-slate-700"
+                    >
+                      {item}
                     </div>
                   ))}
                 </div>
               </div>
+              <div className="mt-8 grid gap-4 md:grid-cols-3">
+                {ONBOARDING_TIERS.map((tier) => (
+                  <div key={tier.rangeLabel} className="rounded-xl bg-white px-4 py-4 shadow-sm">
+                    <div className="text-sm font-semibold text-slate-900">{tier.rangeLabel}</div>
+                    <div className="mt-3 text-2xl font-semibold text-slate-950">
+                      {tier.oneTimeFee === null ? tier.label : formatCurrency(tier.oneTimeFee)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-              <div className="rounded-[2rem] border border-slate-900 bg-slate-900 px-6 py-7 text-white shadow-lg">
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-300">
-                  Por qué ClassroomPath
-                </div>
-                <div className="mt-4 space-y-3">
-                  {COMPETITIVE_CLAIMS.map((item) => (
-                    <p
-                      key={item}
-                      className="rounded-xl border border-white/10 bg-white/5 px-4 py-4 text-sm leading-7 text-slate-200"
-                    >
-                      {item}
-                    </p>
-                  ))}
-                </div>
+            <div className="rounded-[2rem] border border-slate-200 bg-white px-6 py-7 shadow-sm">
+              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Por qué este modelo se entiende más rápido
+              </div>
+              <div className="mt-6 space-y-4">
+                {VALUE_BULLETS.map((item) => (
+                  <div
+                    key={item}
+                    className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-7 text-slate-700"
+                  >
+                    {item}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -461,14 +433,14 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
             <div className="max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-300">
                 <Calculator size={16} />
-                Calculadora por aulas
+                Calculadora
               </div>
               <h2 className="mt-5 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
                 Estima el coste del primer año en 10 segundos
               </h2>
               <p className="mt-5 text-base leading-8 text-slate-300">
-                Aplica el tramo que corresponde al número de aulas, añade el onboarding y obtén una
-                referencia clara del primer año antes de pedir una propuesta detallada.
+                Introduce el número de aulas y verás: tramo aplicado, cuota anual, onboarding y
+                total del primer año antes de pedir una propuesta detallada.
               </p>
 
               <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-6">
@@ -488,7 +460,7 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   className="mt-4 w-full rounded-xl border border-white/10 bg-slate-800 px-5 py-4 text-3xl font-semibold text-white outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/30"
                 />
                 <p className="mt-3 text-sm leading-7 text-slate-400">
-                  Aula controlada: hasta 30 dispositivos bajo una política de acceso definida.
+                  Aula controlada = hasta 30 dispositivos bajo una política de acceso definida.
                 </p>
               </div>
             </div>
@@ -510,9 +482,9 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 </div>
               </div>
 
-              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              <div className="mt-8 grid gap-4 sm:grid-cols-3">
                 <div className="rounded-xl border border-white/10 bg-slate-800/70 p-5">
-                  <div className="text-sm text-slate-400">Precio anual</div>
+                  <div className="text-sm text-slate-400">Cuota anual</div>
                   <div className="mt-2 text-3xl font-semibold text-white">
                     {formatCurrency(quote.annualTotal)}
                   </div>
@@ -533,12 +505,13 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                       : formatCurrency(quote.totalFirstYear)}
                   </div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-slate-800/70 p-5">
-                  <div className="text-sm text-slate-400">Precio aproximado por dispositivo</div>
-                  <div className="mt-2 text-3xl font-semibold text-white">
-                    {formatPricePerDevice(quote.approxPricePerDevicePerYear)}
-                  </div>
-                </div>
+              </div>
+
+              <div className="mt-6 rounded-xl border border-white/10 bg-white/5 px-5 py-4 text-sm leading-7 text-slate-300">
+                Ejemplo: 12 aulas x {formatCurrency(exampleQuote.tier.pricePerClassroomPerYear)} ={' '}
+                {formatCurrency(exampleQuote.annualTotal)} / año · Onboarding:{' '}
+                {formatCurrency(exampleQuote.onboardingFee ?? 0)} · Total primer año:{' '}
+                {formatCurrency(exampleQuote.totalFirstYear ?? 0)}
               </div>
 
               <div className="mt-6 rounded-xl border border-white/10 bg-white/5 px-5 py-4 text-sm leading-7 text-slate-300">
@@ -551,10 +524,10 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
         </section>
 
         <RevealSection className="bg-white">
-          <div className="mx-auto grid max-w-7xl gap-8 px-6 py-20 lg:grid-cols-[1.05fr_0.95fr] lg:px-8">
+          <div className="mx-auto grid max-w-7xl gap-8 px-6 py-20 lg:grid-cols-2 lg:px-8">
             <div className="rounded-[2rem] border border-slate-200 bg-slate-50 px-6 py-7 shadow-sm">
               <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Por qué cobramos por aula y no por dispositivo
+                Por qué cobramos por aula
               </div>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
                 Un precio más cercano a la realidad operativa del centro
@@ -573,31 +546,21 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
 
             <div className="rounded-[2rem] border border-slate-200 bg-white px-6 py-7 shadow-sm">
               <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Referencias públicas (precios convertidos a € aprox.)
+                Modelo comercial
               </div>
               <h3 className="mt-4 text-2xl font-semibold text-slate-900">
-                Frente a suites con más módulos, ClassroomPath ofrece lo esencial a un precio más
-                bajo
+                Por qué este modelo se entiende más rápido
               </h3>
               <div className="mt-6 space-y-4">
-                {MARKET_BENCHMARKS.map((item) => (
-                  <div key={item.vendor} className="rounded-xl bg-slate-50 px-5 py-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-900">{item.vendor}</div>
-                        <div className="text-sm text-slate-500">{item.reference}</div>
-                      </div>
-                      <div className="text-sm font-medium text-slate-700">
-                        {item.visiblePublicRange}
-                      </div>
-                    </div>
+                {VALUE_BULLETS.map((item) => (
+                  <div
+                    key={item}
+                    className="rounded-xl bg-slate-50 px-5 py-4 text-sm text-slate-700"
+                  >
+                    {item}
                   </div>
                 ))}
               </div>
-              <p className="mt-6 text-sm leading-7 text-slate-500">
-                Comparativa orientativa basada en referencias públicas visibles y conversiones
-                aproximadas a €. Puede variar por país, canal, volumen y condiciones contractuales.
-              </p>
             </div>
           </div>
         </RevealSection>
@@ -626,15 +589,6 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 </div>
               ))}
             </div>
-            <p className="mt-6 text-sm text-slate-500">
-              Si necesitas alguna de estas funcionalidades, consúltanos.{' '}
-              <a
-                href="mailto:hola@classroompath.com"
-                className="font-medium text-sky-700 hover:text-sky-600"
-              >
-                hola@classroompath.com
-              </a>
-            </p>
           </div>
         </RevealSection>
 
@@ -644,7 +598,7 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
           sectionTitle="Respuestas directas para evaluación institucional"
         />
 
-        <section id="demo" className="bg-slate-50 py-20">
+        <section id="solicitud" className="bg-slate-50 py-20">
           <div className="mx-auto max-w-5xl px-6 lg:px-8">
             <div className="rounded-[2.25rem] border border-sky-100 bg-white px-8 py-14 shadow-lg shadow-sky-100/60">
               <div className="text-center">
@@ -652,14 +606,14 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   <ShieldCheck size={32} className="text-sky-600" />
                 </div>
                 <div className="mt-6 text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  Solicitar demo
+                  Solicitar presupuesto, piloto o demo
                 </div>
                 <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                  Solicita una demo o empieza con un piloto de 5 aulas
+                  Pide presupuesto, piloto o revisión de despliegue
                 </h2>
                 <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600">
                   Revisamos el número de aulas, la política de acceso prevista y el siguiente paso
-                  para tu centro o red de centros.
+                  recomendado para tu centro o red de centros. Respondemos en 48 h.
                 </p>
               </div>
               <div className="mx-auto mt-10 max-w-2xl">
@@ -677,10 +631,6 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 >
                   Acceder al panel
                 </a>
-                {' · '}
-                Precios orientativos para contratación anual. IVA no incluido. La comparación con
-                otras soluciones se basa en referencias públicas visibles y puede variar según país,
-                volumen, canal y condiciones contractuales.
               </p>
             </div>
           </div>

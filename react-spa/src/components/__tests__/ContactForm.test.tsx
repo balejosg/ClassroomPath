@@ -28,7 +28,8 @@ describe('ContactForm', () => {
   it('renders the submit button', () => {
     render(<ContactForm />);
 
-    expect(screen.getByRole('button', { name: /Solicitar demo/i })).toBeInTheDocument();
+    expect(screen.getByLabelText('Qué necesitas')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Enviar solicitud/i })).toBeInTheDocument();
   });
 
   it('updates field values when the user types', () => {
@@ -52,7 +53,11 @@ describe('ContactForm', () => {
       target: { value: 'ana@ies.es' },
     });
 
-    const form = screen.getByRole('button', { name: /Solicitar demo/i }).closest('form');
+    fireEvent.change(screen.getByLabelText('Qué necesitas'), {
+      target: { value: 'Piloto' },
+    });
+
+    const form = screen.getByRole('button', { name: /Enviar solicitud/i }).closest('form');
     fireEvent.submit(form!);
 
     // While the 400ms timeout is pending, button should be disabled
@@ -65,7 +70,7 @@ describe('ContactForm', () => {
 
     // After the timeout, window.open should have been called with a mailto URL
     expect(openSpy).toHaveBeenCalledWith(
-      expect.stringContaining('mailto:hola@classroompath.com'),
+      expect.stringContaining('subject=Solicitud%20ClassroomPath'),
       '_self'
     );
 
@@ -82,7 +87,7 @@ describe('ContactForm', () => {
       target: { value: 'ana@ies.es' },
     });
 
-    const form = screen.getByRole('button', { name: /Solicitar demo/i }).closest('form');
+    const form = screen.getByRole('button', { name: /Enviar solicitud/i }).closest('form');
     fireEvent.submit(form!);
 
     await act(async () => {
@@ -94,6 +99,6 @@ describe('ContactForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enviar otra solicitud' }));
 
     // Should go back to the idle form
-    expect(screen.getByRole('button', { name: /Solicitar demo/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Enviar solicitud/i })).toBeInTheDocument();
   });
 });

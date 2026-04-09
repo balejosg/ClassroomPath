@@ -23,12 +23,14 @@ export const PILOT = {
   classrooms: 5,
   durationDays: 90,
   totalPrice: 290,
-  tagline: 'Valida el modelo en pocas aulas antes de escalar.',
+  tagline:
+    'Valida el modelo en pocas aulas antes de escalar. Es la opción más útil cuando necesitas comprobar encaje operativo y evidencia interna con poco riesgo.',
 } as const;
 
 export const PUBLIC_CAMPAIGN = {
   classrooms: 5,
-  tagline: 'Acceso gratuito para centros de titularidad pública mientras dure la campaña.',
+  tagline:
+    'Acceso sin coste para hasta 5 aulas mientras haya disponibilidad y se verifique titularidad pública.',
 } as const;
 
 export const PRICING_TIERS: PricingTier[] = [
@@ -39,7 +41,7 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: 10,
     pricePerClassroomPerYear: 55,
     approxPricePerDevicePerYear: 1.83,
-    tagline: 'Para centros que empiezan con un aula o unas pocas.',
+    tagline: 'Para primeros despliegues o un único espacio docente con dispositivos del centro.',
     bestFor: 'Primer despliegue o un único espacio docente con dispositivos del centro.',
   },
   {
@@ -50,7 +52,7 @@ export const PRICING_TIERS: PricingTier[] = [
     pricePerClassroomPerYear: 45,
     approxPricePerDevicePerYear: 1.5,
     tagline: 'El tramo más habitual para centros que ya quieren una política estable por aula.',
-    bestFor: 'Centros completos o etapas con varias aulas y necesidad de criterio homogéneo.',
+    bestFor: 'El tramo más habitual para centros que ya quieren una política estable por aula.',
     recommended: true,
   },
   {
@@ -60,7 +62,7 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: 50,
     pricePerClassroomPerYear: 37,
     approxPricePerDevicePerYear: 1.23,
-    tagline: 'Mejor precio por aula para centros con laboratorios, FP o varias líneas.',
+    tagline: 'Pensado para centros con varias líneas, laboratorios o crecimiento por etapas.',
     bestFor: 'Centros con varias líneas, laboratorios o crecimiento por etapas.',
   },
   {
@@ -70,8 +72,8 @@ export const PRICING_TIERS: PricingTier[] = [
     maxClassrooms: 100,
     pricePerClassroomPerYear: 32,
     approxPricePerDevicePerYear: 1.07,
-    tagline: 'Pensado para organizaciones educativas que necesitan coordinación central.',
-    bestFor: 'Titularidades con varias sedes o estructuras con coordinación TIC central.',
+    tagline: 'Para estructuras con coordinación TIC central y varias sedes o etapas.',
+    bestFor: 'Para estructuras con coordinación TIC central y varias sedes o etapas.',
   },
   {
     name: 'Red de centros',
@@ -81,7 +83,7 @@ export const PRICING_TIERS: PricingTier[] = [
     pricePerClassroomPerYear: 27,
     approxPricePerDevicePerYear: 0.9,
     tagline: 'Precio optimizado para redes de centros y despliegues multi-sede.',
-    bestFor: 'Implantaciones grandes con alcance por sedes, etapas o ritmo progresivo.',
+    bestFor: 'Precio optimizado para despliegues multi-sede y redes educativas.',
   },
 ];
 
@@ -114,7 +116,7 @@ export const INCLUDED_PER_CLASSROOM = [
   'Panel de administración',
   'Hosting y operación incluidos',
   'Actualizaciones incluidas',
-  'Soporte por email · respuesta en 2 días hábiles',
+  'Soporte estándar por email',
   'Servicio gestionado sobre OpenPath',
 ];
 
@@ -128,47 +130,19 @@ export const NOT_INCLUDED_BASE_PLAN = [
 ];
 
 export const VALUE_BULLETS = [
-  'Hasta 30 dispositivos por aula controlada',
-  'Onboarding guiado desde la primera semana',
-  'Piloto de 90 días para validar el modelo',
-  'Código abierto y sin ataduras',
-  'Servicio gestionado para no cargar más al equipo TIC',
+  'Precio público desde el primer clic',
+  'Unidad de compra clara: el aula',
+  'Piloto para validar antes de escalar',
+  'Servicio gestionado sobre software abierto',
+  'Sin dependencia obligatoria de proveedor',
 ];
 
 export const PER_CLASSROOM_POINTS = [
   'El centro organiza su operación por espacios y grupos docentes, no por una suma abstracta de licencias.',
-  'El modelo por aula es más fácil de explicar, presupuestar y escalar.',
-  'Permite alinear mejor el precio con la realidad operativa del centro.',
-];
-
-export const COMPETITIVE_CLAIMS = [
-  'Precio por aula más bajo que las principales suites del mercado. Solo pagas lo que tu centro realmente necesita.',
-  'Una de las formas más asequibles de implantar acceso a Internet intencional en el centro.',
-  'Servicio gestionado con un coste por aula especialmente competitivo.',
-];
-
-// Precios convertidos a € (aprox.) para consistencia
-export const MARKET_BENCHMARKS = [
-  {
-    vendor: 'Lightspeed',
-    reference: 'Filter + Classroom',
-    visiblePublicRange: '~5-6 € / dispositivo / año',
-  },
-  {
-    vendor: 'Securly',
-    reference: 'Filter',
-    visiblePublicRange: '~5,50 € / dispositivo / año',
-  },
-  {
-    vendor: 'GoGuardian',
-    reference: 'Admin + Teacher Bundle',
-    visiblePublicRange: '~9 € / dispositivo / año',
-  },
-  {
-    vendor: 'Linewize',
-    reference: 'Filter + Classwize',
-    visiblePublicRange: '~6,50 € / dispositivo / año',
-  },
+  'Más fácil de explicar en presupuesto',
+  'Más fácil de escalar por espacios reales',
+  'Más claro al separar arranque y renovación',
+  'Más coherente con un servicio gestionado',
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────────

@@ -22,7 +22,7 @@ export function renderPublicPage(pathname: string): PublicPageMetadata | null {
       appHtml: renderToString(<ClassroomPathLandingPage onNavigateToLogin={NOOP} />),
       canonicalPath: '/',
       description:
-        'Filtrado web escolar con control de acceso por aula para dispositivos institucionales, onboarding guiado y operacion gestionada.',
+        'Controla qué se abre y qué se bloquea en cada aula. Servicio gestionado sobre OpenPath, precio por aula, piloto y sin dependencia de proveedor.',
       title: 'Filtrado web escolar por aula | ClassroomPath',
     };
   }
@@ -32,8 +32,8 @@ export function renderPublicPage(pathname: string): PublicPageMetadata | null {
       appHtml: renderToString(<ClassroomPathPricingPage onNavigateToLogin={NOOP} />),
       canonicalPath: '/pricing',
       description:
-        'Consulta precios por aula, onboarding y piloto de ClassroomPath para desplegar control de acceso escolar con criterio.',
-      title: 'Precios por aula y piloto | ClassroomPath',
+        'Calcula el coste de ClassroomPath por número de aulas. Precio público, onboarding separado, piloto de 90 días y servicio gestionado sobre OpenPath.',
+      title: 'Precios de filtrado web escolar por aula | ClassroomPath',
     };
   }
 

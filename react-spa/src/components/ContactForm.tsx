@@ -2,6 +2,7 @@ import React from 'react';
 import { Send, CheckCircle } from 'lucide-react';
 
 type FormState = 'idle' | 'sending' | 'sent' | 'error';
+type ContactIntent = 'Presupuesto' | 'Piloto' | 'Demo';
 
 export function ContactForm() {
   const [state, setState] = React.useState<FormState>('idle');
@@ -9,15 +10,16 @@ export function ContactForm() {
   const [center, setCenter] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [classrooms, setClassrooms] = React.useState('');
+  const [intent, setIntent] = React.useState<ContactIntent>('Presupuesto');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setState('sending');
 
     // Build mailto as fallback (in production this should hit an API endpoint)
-    const subject = encodeURIComponent('Solicitar demo ClassroomPath');
+    const subject = encodeURIComponent('Solicitud ClassroomPath');
     const body = encodeURIComponent(
-      `Nombre: ${name}\nCentro: ${center}\nEmail: ${email}\nNº de aulas (aprox.): ${classrooms || 'No indicado'}`
+      `Qué necesitas: ${intent}\nNombre: ${name}\nCentro: ${center}\nEmail: ${email}\nNº de aulas (aprox.): ${classrooms || 'No indicado'}`
     );
     const mailtoUrl = `mailto:hola@classroompath.com?subject=${subject}&body=${body}`;
 
@@ -33,9 +35,7 @@ export function ContactForm() {
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-8 py-12 text-center">
         <CheckCircle size={48} className="mx-auto text-emerald-600" />
         <h3 className="mt-4 text-xl font-semibold text-slate-900">¡Solicitud enviada!</h3>
-        <p className="mt-2 text-sm text-slate-600">
-          Te responderemos en un plazo máximo de 48 horas hábiles.
-        </p>
+        <p className="mt-2 text-sm text-slate-600">Te responderemos en 48 h.</p>
         <button
           type="button"
           onClick={() => setState('idle')}
@@ -109,6 +109,21 @@ export function ContactForm() {
           />
         </div>
       </div>
+      <div>
+        <label htmlFor="contact-intent" className="block text-sm font-medium text-slate-700">
+          Qué necesitas
+        </label>
+        <select
+          id="contact-intent"
+          value={intent}
+          onChange={(e) => setIntent(e.target.value as ContactIntent)}
+          className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+        >
+          <option value="Presupuesto">Presupuesto</option>
+          <option value="Piloto">Piloto</option>
+          <option value="Demo">Demo</option>
+        </select>
+      </div>
       <button
         type="submit"
         disabled={state === 'sending'}
@@ -122,7 +137,7 @@ export function ContactForm() {
         ) : (
           <>
             <Send size={16} />
-            Solicitar demo
+            Enviar solicitud
           </>
         )}
       </button>

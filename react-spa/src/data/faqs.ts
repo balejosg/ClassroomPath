@@ -11,19 +11,19 @@ export const LANDING_FAQS: FaqItem[] = [
   },
   {
     q: '¿Es un filtro escolar más?',
-    a: 'No es solo filtrar. ClassroomPath añade gestión: quién decide qué se abre, por qué, y una operación que no depende de intervención manual constante.',
+    a: 'No es solo filtrar. ClassroomPath añade gestión: quién decide qué se abre, por qué y con qué operación se sostiene.',
   },
   {
     q: '¿Es software libre o propietario?',
-    a: 'OpenPath (el motor) y ClassroomPath (el servicio) son código abierto. Cualquiera puede auditar cómo funcionan. Y si el centro quiere operar por su cuenta, puede migrar a OpenPath sin depender de nosotros.',
+    a: 'OpenPath es el motor abierto y ClassroomPath es el servicio gestionado sobre esa base. El centro puede auditar y, si lo necesita, migrar.',
   },
   {
     q: '¿Para qué centros encaja mejor?',
-    a: 'Especialmente para centros con dispositivos del centro, aulas de informática, FP, laboratorios o entornos donde se necesita control claro sobre el acceso a Internet.',
+    a: 'Especialmente para centros con dispositivos del centro, aulas de informática, FP, laboratorios o espacios compartidos donde hace falta control claro del acceso.',
   },
   {
-    q: '¿Cuánto tiempo lleva implantar ClassroomPath?',
-    a: 'La sesión de arranque guiada cubre el primer despliegue. A partir de ahí, la infraestructura opera de forma autónoma. Los centros suelen estar operativos en la primera semana.',
+    q: '¿Cuánto tiempo lleva implantarlo?',
+    a: 'El arranque guiado cubre el primer despliegue y los centros suelen estar operativos en la primera semana.',
   },
 ];
 
@@ -35,11 +35,11 @@ export const PRICING_FAQS: FaqItem[] = [
   },
   {
     q: '¿Puedo empezar con un piloto?',
-    a: 'Sí, hay un piloto de 5 aulas durante 90 días.',
+    a: 'Sí. Hay un piloto de 5 aulas durante 90 días.',
   },
   {
-    q: '¿El onboarding está incluido?',
-    a: 'No. Se cobra aparte para mantener el recurrente por aula lo más bajo posible.',
+    q: '¿El onboarding está incluido en el recurrente?',
+    a: 'No. Se cobra aparte para mantener el coste anual por aula limpio y comparable.',
   },
   {
     q: '¿Por qué cobráis por aula y no por dispositivo?',
@@ -47,18 +47,18 @@ export const PRICING_FAQS: FaqItem[] = [
   },
   {
     q: '¿Qué pasa si un aula tiene más de 30 dispositivos?',
-    a: 'Se recomienda contarla como 2 aulas o pasar a un tramo personalizado.',
+    a: 'Se recomienda contarla como dos aulas o pasar a un tramo personalizado.',
   },
   {
     q: '¿Incluye soporte?',
     a: 'Sí, soporte estándar por email. SLA premium aparte.',
   },
   {
-    q: '¿Hay una opción para centros públicos?',
-    a: 'Sí. Hay una campaña activa de acceso gratuito para centros de titularidad pública: hasta 5 aulas sin coste mientras dure la campaña, incluyendo una sesión de arranque (videollamada + guía) y soporte estándar por email. Plazas sujetas a disponibilidad.',
+    q: '¿Hay opción para centros públicos?',
+    a: 'Sí. Hay acceso sin coste para hasta 5 aulas mientras haya disponibilidad y se verifique titularidad pública.',
   },
   {
     q: '¿Qué diferencia a ClassroomPath de un proxy o un filtro DNS estándar?',
-    a: 'ClassroomPath añade gestión: políticas alineadas con el proyecto pedagógico, cola de solicitudes de desbloqueo para el profesorado y una capa de operación gestionada sobre OpenPath. No es solo filtrado, es gestión de acceso con criterio.',
+    a: 'ClassroomPath añade gestión: política alineada con el proyecto pedagógico, cola de solicitudes de desbloqueo y una capa de operación gestionada sobre OpenPath.',
   },
 ];

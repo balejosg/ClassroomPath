@@ -8,9 +8,11 @@ describe('renderPublicPage', () => {
 
     expect(rendered).not.toBeNull();
     expect(rendered?.canonicalPath).toBe('/');
-    expect(rendered?.title).toContain('Filtrado web escolar');
-    expect(rendered?.description).toContain('control de acceso por aula');
-    expect(rendered?.appHtml).toContain('Controla el acceso a Internet por aula');
+    expect(rendered?.title).toBe('Filtrado web escolar por aula | ClassroomPath');
+    expect(rendered?.description).toBe(
+      'Controla qué se abre y qué se bloquea en cada aula. Servicio gestionado sobre OpenPath, precio por aula, piloto y sin dependencia de proveedor.'
+    );
+    expect(rendered?.appHtml).toContain('Decide qué Internet entra en cada aula');
   });
 
   it('renders metadata and HTML for pricing', () => {
@@ -18,9 +20,11 @@ describe('renderPublicPage', () => {
 
     expect(rendered).not.toBeNull();
     expect(rendered?.canonicalPath).toBe('/pricing');
-    expect(rendered?.title).toContain('Precios por aula');
-    expect(rendered?.description).toContain('piloto');
-    expect(rendered?.appHtml).toContain('Calcula el coste por aula');
+    expect(rendered?.title).toBe('Precios de filtrado web escolar por aula | ClassroomPath');
+    expect(rendered?.description).toBe(
+      'Calcula el coste de ClassroomPath por número de aulas. Precio público, onboarding separado, piloto de 90 días y servicio gestionado sobre OpenPath.'
+    );
+    expect(rendered?.appHtml).toContain('Calcula el primer año en segundos');
   });
 
   it('returns null for non-public SSR routes', () => {
