@@ -270,6 +270,11 @@ describe('Workflow configuration hardening', () => {
       'regression plan should include the agent docs consistency suite'
     );
     assert.match(
+      verificationCatalog,
+      /api\/tests\/openpath-proxy-policy\.test\.ts/,
+      'regression plan should include the gateway passthrough contract suites'
+    );
+    assert.match(
       regressionPlan,
       /verification-catalog\.mjs/,
       'regression-plan should delegate to the shared verification catalog'

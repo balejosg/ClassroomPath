@@ -182,6 +182,7 @@ export const REGRESSION_PLAN_DEFINITIONS = {
       'tests/deployment.test.ts',
       'tests/firefox-release-version.test.ts',
       'tests/firefox-release-metadata.test.ts',
+      'api/tests/openpath-proxy-policy.test.ts',
       'tests/openpath-required-checks.test.ts',
       'tests/release-cli.test.ts',
       'tests/release-evidence.test.ts',

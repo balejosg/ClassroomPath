@@ -23,6 +23,10 @@ export const OPENPATH_PROXY_MANIFEST = {
       path: '/api/config',
     },
     {
+      method: 'get',
+      path: '/api/extensions/firefox/openpath.xpi',
+    },
+    {
       method: 'use',
       path: '/api/extensions/chromium',
     },

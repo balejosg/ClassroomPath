@@ -115,6 +115,9 @@ const EXPECTED_VERSION = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_VERSION ?? 
 const EXPECTED_METADATA_SHA256 = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_METADATA_SHA256 ?? '';
 const EXPECTED_XPI_SHA256 = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_XPI_SHA256 ?? '';
 const WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS = process.env.WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS;
+const WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH =
+  process.env.WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH ??
+  '/api/extensions/firefox/openpath.xpi';
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`;
@@ -402,6 +405,26 @@ describe(
           sha256Hex(xpiBuffer),
           EXPECTED_XPI_SHA256,
           'XPI hash should match staging evidence'
+        );
+      }
+
+      const publicXpiResponse = await fetchWithRetry(
+        `${WINDOWS_BOOTSTRAP_GATE_URL}${WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH}`
+      );
+      assert.strictEqual(publicXpiResponse.status, 200);
+      assert.match(
+        publicXpiResponse.headers.get('content-type') ?? '',
+        /application\/x-xpinstall|application\/x-xpinstall;|application\/octet-stream/
+      );
+
+      const publicXpiBuffer = new Uint8Array(await publicXpiResponse.arrayBuffer());
+      assert.ok(publicXpiBuffer.byteLength > 0, 'public Firefox XPI should not be empty');
+
+      if (EXPECTED_XPI_SHA256) {
+        assert.equal(
+          sha256Hex(publicXpiBuffer),
+          EXPECTED_XPI_SHA256,
+          'public Firefox XPI hash should match staging evidence'
         );
       }
     });

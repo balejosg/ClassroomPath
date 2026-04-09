@@ -5,7 +5,6 @@ import type { Server } from 'node:http';
 import { after, before, describe, test } from 'node:test';
 
 import { registerGatewayProxyRoutes } from '../src/lib/gateway/proxy-routes.ts';
-import { getAvailablePort } from './test-utils.js';
 
 let server: Server | undefined;
 let baseUrl = '';
@@ -14,8 +13,6 @@ const proxyOptions: unknown[] = [];
 await describe('proxy-routes', { concurrency: false }, async () => {
   before(async () => {
     const app = express();
-    const port = await getAvailablePort();
-    baseUrl = `http://127.0.0.1:${String(port)}`;
 
     registerGatewayProxyRoutes(app, {
       openPathApiTarget: 'http://openpath.test',
@@ -41,8 +38,11 @@ await describe('proxy-routes', { concurrency: false }, async () => {
       }) as never,
     });
 
-    server = app.listen(port);
+    server = app.listen(0);
     await new Promise<void>((resolve) => server?.once('listening', () => resolve()));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object', 'server should expose a bound address');
+    baseUrl = `http://127.0.0.1:${String(address.port)}`;
   });
 
   after(async () => {
@@ -87,6 +87,13 @@ await describe('proxy-routes', { concurrency: false }, async () => {
     assert.deepEqual(await enrollResponse.json(), {
       proxied: true,
       path: '/api/enroll/cls_123',
+    });
+
+    const firefoxResponse = await fetch(`${baseUrl}/api/extensions/firefox/openpath.xpi`);
+    assert.equal(firefoxResponse.status, 418);
+    assert.deepEqual(await firefoxResponse.json(), {
+      proxied: true,
+      path: '/api/extensions/firefox/openpath.xpi',
     });
 
     const whitelistResponse = await fetch(`${baseUrl}/w/token-123/whitelist.txt`);

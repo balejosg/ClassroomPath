@@ -1093,6 +1093,12 @@ void describe('Migration Tooling', () => {
       'staging verification evidence should record a successful Firefox policy input result'
     );
     assert.ok(
+      runnerContent.includes(
+        '`${WINDOWS_BOOTSTRAP_GATE_URL}/api/extensions/firefox/openpath.xpi`'
+      ) || runnerContent.includes('/api/extensions/firefox/openpath.xpi'),
+      'staging verification runner should require the public Firefox XPI route used by Linux enrollments'
+    );
+    assert.ok(
       helperContent.includes('STAGING_FIREFOX_EXTENSION_ID=') &&
         helperContent.includes('STAGING_FIREFOX_RELEASE_VERSION=') &&
         helperContent.includes('STAGING_FIREFOX_METADATA_SHA256=') &&

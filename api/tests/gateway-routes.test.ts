@@ -4,7 +4,7 @@ import express from 'express';
 import type { Server } from 'node:http';
 import { after, before, describe, test } from 'node:test';
 
-import { getAvailablePort, waitForHealth } from './test-utils.js';
+import { waitForHealth } from './test-utils.js';
 import {
   registerGatewayHealthRoutes,
   registerGatewayProxyRoutes,
@@ -17,8 +17,6 @@ const proxyOptions: unknown[] = [];
 await describe('gateway route registrars', { concurrency: false }, async () => {
   before(async () => {
     const app = express();
-    const port = await getAvailablePort();
-    baseUrl = `http://127.0.0.1:${String(port)}`;
 
     registerGatewayHealthRoutes(app, {
       getGatewayReadiness: async () => ({
@@ -51,7 +49,11 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
       }) as never,
     });
 
-    server = app.listen(port);
+    server = app.listen(0);
+    await new Promise<void>((resolve) => server?.once('listening', () => resolve()));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object', 'server should expose a bound address');
+    baseUrl = `http://127.0.0.1:${String(address.port)}`;
     await waitForHealth(baseUrl);
   });
 
@@ -186,6 +188,13 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
     assert.deepStrictEqual(await bootstrapResponse.json(), {
       proxied: true,
       path: '/api/agent/windows/bootstrap/latest.json',
+    });
+
+    const firefoxResponse = await fetch(`${baseUrl}/api/extensions/firefox/openpath.xpi`);
+    assert.strictEqual(firefoxResponse.status, 418);
+    assert.deepStrictEqual(await firefoxResponse.json(), {
+      proxied: true,
+      path: '/api/extensions/firefox/openpath.xpi',
     });
 
     const chromiumResponse = await fetch(`${baseUrl}/api/extensions/chromium/updates.xml`);
