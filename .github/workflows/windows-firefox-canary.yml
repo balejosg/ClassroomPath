@@ -161,15 +161,30 @@ jobs:
             Stop-Process -Id $process.Id -Force
           }
 
-          if (-not (Test-Path $logPath)) {
-            throw 'Firefox canary did not emit an enterprise policies log'
+          $extensionsRegistryPath = Join-Path $profileDir 'extensions.json'
+          $profileExtensionsDir = Join-Path $profileDir 'extensions'
+          $profileExtensionPath = Join-Path $profileExtensionsDir "$($metadata.extensionId).xpi"
+          $registryAddon = $null
+
+          if (Test-Path $extensionsRegistryPath) {
+            $registry = Get-Content $extensionsRegistryPath -Raw | ConvertFrom-Json
+            $registryAddon = @($registry.addons) | Where-Object { $_.id -eq $metadata.extensionId } | Select-Object -First 1
           }
 
-          $log = Get-Content $logPath -Raw
+          $extensionInstalled = $null -ne $registryAddon -or (Test-Path $profileExtensionPath)
+          if (-not $extensionInstalled -and -not (Test-Path $logPath)) {
+            throw 'Firefox canary neither registered the extension in the profile nor emitted an enterprise policies log'
+          }
+
+          $log = if (Test-Path $logPath) { Get-Content $logPath -Raw } else { '' }
           if ($log -match 'policies\.json.*(error|failed|invalid)' -or $log -match 'Enterprise Policies.*(error|failed|invalid)') {
             throw 'Firefox reported a policies.json parse error'
           }
 
-          if ($log -notmatch [regex]::Escape($metadata.extensionId)) {
-            throw "Firefox did not report the force-installed extension id $($metadata.extensionId)"
+          if (-not $extensionInstalled -and $log -notmatch [regex]::Escape($metadata.extensionId)) {
+            throw "Firefox did not register or report the force-installed extension id $($metadata.extensionId)"
+          }
+
+          if ($registryAddon -and $registryAddon.active -eq $false) {
+            throw "Firefox registered the extension id $($metadata.extensionId) but did not activate it"
           }

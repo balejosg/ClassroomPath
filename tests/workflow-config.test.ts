@@ -732,6 +732,10 @@ describe('Workflow configuration hardening', () => {
       workflowText.includes('$firefoxCandidates = @(('),
       'windows-firefox-canary should coerce Firefox candidate paths into an array before indexing'
     );
+    assert.ok(
+      workflowText.includes('extensions.json'),
+      'windows-firefox-canary should inspect the Firefox profile extension registry instead of relying only on debug logs'
+    );
   });
 
   test('Release candidate workflow builds images for main before a production tag exists', () => {
