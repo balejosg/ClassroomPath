@@ -1409,6 +1409,10 @@ void describe('Migration Tooling', () => {
       content.includes('https://dns.google/resolve'),
       'resolver should fall back to DNS-over-HTTPS before failing'
     );
+    assert.ok(
+      content.includes('Resolve-DnsName') || content.includes('[System.Net.Dns]'),
+      'resolver should include a Windows-compatible DNS fallback for windows-latest runners'
+    );
   });
 
   void test('shared readiness and smoke helpers exist for reusable deployment verification', () => {

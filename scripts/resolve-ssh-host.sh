@@ -27,6 +27,14 @@ for attempt in $(seq 1 "$MAX_RETRIES"); do
   fi
 
   if [ -z "$IP" ]; then
+    if command -v powershell.exe >/dev/null 2>&1; then
+      IP=$(powershell.exe -NoProfile -Command "[System.Net.Dns]::GetHostAddresses('$HOST') | Where-Object { \$_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } | Select-Object -First 1 -ExpandProperty IPAddressToString" 2>/dev/null | tr -d '\r' | head -1)
+    elif command -v pwsh >/dev/null 2>&1; then
+      IP=$(pwsh -NoProfile -Command "[System.Net.Dns]::GetHostAddresses('$HOST') | Where-Object { \$_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } | Select-Object -First 1 -ExpandProperty IPAddressToString" 2>/dev/null | tr -d '\r' | head -1)
+    fi
+  fi
+
+  if [ -z "$IP" ]; then
     IP=$(curl -fsSL "https://dns.google/resolve?name=${HOST}&type=A" 2>/dev/null | python3 -c 'import json,sys; data=json.load(sys.stdin); answers=data.get("Answer") or []; ips=[item.get("data","") for item in answers if item.get("type")==1]; print(ips[0] if ips else "")' 2>/dev/null || true)
   fi
 
