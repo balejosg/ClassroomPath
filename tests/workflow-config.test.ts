@@ -694,6 +694,7 @@ describe('Workflow configuration hardening', () => {
     const workflow = readWorkflow('.github/workflows/windows-firefox-canary.yml');
     const jobs = workflow.jobs ?? {};
     const canaryJob = jobs['windows-firefox-canary'];
+    const canarySteps = Array.isArray(canaryJob?.steps) ? canaryJob.steps : [];
 
     assert.ok(canaryJob, 'windows-firefox-canary workflow should define a canary job');
     assert.equal(
@@ -708,6 +709,12 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('staging-verification.env'),
       'windows-firefox-canary should consume staging verification evidence'
+    );
+    assert.ok(
+      canarySteps.some(
+        (step) => typeof step === 'object' && step !== null && step.uses === 'actions/checkout@v6'
+      ),
+      'windows-firefox-canary should checkout the repository before invoking repo scripts'
     );
     assert.ok(
       workflowText.includes('policies.json'),

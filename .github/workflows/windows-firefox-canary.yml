@@ -22,6 +22,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Resolve staging host
         id: resolve
         shell: bash
