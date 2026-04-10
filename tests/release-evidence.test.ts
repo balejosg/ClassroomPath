@@ -18,6 +18,7 @@ type ReleaseEvidence = {
   };
   jobs: {
     windowsFirefoxCanary: string;
+    productionClientUpdateCanary: string;
   };
   stagingVerification: {
     windowsFirefoxHighRisk: string;
@@ -83,13 +84,16 @@ describe('release evidence rendering', () => {
       STAGING_WINDOWS_BOOTSTRAP_RESULT: 'success',
       STAGING_FIREFOX_POLICY_RESULT: 'success',
       WINDOWS_FIREFOX_CANARY_RESULT: 'success',
+      PRODUCTION_CLIENT_UPDATE_CANARY_RESULT: 'success',
     });
 
     assert.equal(json.jobs.windowsFirefoxCanary, 'success');
+    assert.equal(json.jobs.productionClientUpdateCanary, 'success');
     assert.equal(json.stagingVerification.windowsFirefoxHighRisk, 'true');
     assert.equal(json.stagingVerification.windowsBootstrapResult, 'success');
     assert.equal(json.stagingVerification.firefoxPolicyResult, 'success');
     assert.match(markdown, /\| Windows\/Firefox canary \(advisory\) \| success \|/);
+    assert.match(markdown, /\| Production client update canary \| success \|/);
     assert.match(markdown, /Windows\/Firefox high risk: `true`/);
   });
 
@@ -106,13 +110,28 @@ describe('release evidence rendering', () => {
     assert.match(markdown, /\| Windows\/Firefox canary \(advisory\) \| failure \|/);
   });
 
+  test('marks releases rolled back when the production client update canary fails', () => {
+    const { json, markdown } = generateEvidence({
+      STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
+      PRODUCTION_CLIENT_UPDATE_CANARY_RESULT: 'failure',
+      ROLLBACK_RESULT: 'success',
+    });
+
+    assert.equal(json.release.outcome, 'rolled_back_after_failed_client_update_canary');
+    assert.equal(json.jobs.productionClientUpdateCanary, 'failure');
+    assert.match(markdown, /Outcome: `rolled_back_after_failed_client_update_canary`/);
+    assert.match(markdown, /\| Production client update canary \| failure \|/);
+  });
+
   test('marks the advisory canary as not applicable for low-risk promotions', () => {
     const { json, markdown } = generateEvidence({
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'false',
     });
 
     assert.equal(json.jobs.windowsFirefoxCanary, 'not_applicable');
+    assert.equal(json.jobs.productionClientUpdateCanary, 'not_applicable');
     assert.equal(json.stagingVerification.windowsFirefoxHighRisk, 'false');
     assert.match(markdown, /\| Windows\/Firefox canary \(advisory\) \| not_applicable \|/);
+    assert.match(markdown, /\| Production client update canary \| not_applicable \|/);
   });
 });

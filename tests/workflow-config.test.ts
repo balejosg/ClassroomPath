@@ -560,10 +560,19 @@ describe('Workflow configuration hardening', () => {
       jobs['windows-firefox-canary'],
       'Deploy workflow should define a conditional Windows/Firefox canary gate'
     );
+    assert.ok(
+      jobs['production-client-update-canary'],
+      'Deploy workflow should define a production client update canary gate'
+    );
     assert.equal(
       jobs['windows-firefox-canary']?.uses,
       './.github/workflows/windows-firefox-canary.yml',
       'Deploy workflow should delegate the canary to the dedicated reusable workflow'
+    );
+    assert.equal(
+      jobs['production-client-update-canary']?.uses,
+      './.github/workflows/production-client-update-canary.yml',
+      'Deploy workflow should delegate installed client update checks to the dedicated reusable workflow'
     );
 
     const evidenceNeeds = normalizeNeeds(jobs['release-evidence']?.needs);
@@ -582,6 +591,10 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       evidenceNeeds.includes('windows-firefox-canary'),
       'release-evidence should capture the advisory Windows/Firefox canary result'
+    );
+    assert.ok(
+      evidenceNeeds.includes('production-client-update-canary'),
+      'release-evidence should capture the production installed client update canary result'
     );
     assert.ok(
       !evidenceNeeds.includes('release-gate-staging'),
@@ -652,6 +665,10 @@ describe('Workflow configuration hardening', () => {
       'verify-staging-release-state should classify OpenPath API bootstrap source changes as high risk'
     );
     assert.ok(
+      riskDetectionScript.includes('upstream/openpath/linux/'),
+      'verify-staging-release-state should classify OpenPath Linux client changes as high risk'
+    );
+    assert.ok(
       riskDetectionScript.includes('upstream/openpath$'),
       'verify-staging-release-state should classify OpenPath submodule gitlink promotions as high risk'
     );
@@ -664,8 +681,9 @@ describe('Workflow configuration hardening', () => {
     );
     assert.ok(
       workflowText.includes('STAGING_WINDOWS_FIREFOX_HIGH_RISK') &&
-        workflowText.includes('WINDOWS_FIREFOX_CANARY_RESULT'),
-      'release-evidence should expose the high-risk flag and advisory canary result'
+        workflowText.includes('WINDOWS_FIREFOX_CANARY_RESULT') &&
+        workflowText.includes('PRODUCTION_CLIENT_UPDATE_CANARY_RESULT'),
+      'release-evidence should expose the high-risk flag and client canary results'
     );
 
     const smokeSteps = jobs['smoke-test-production']?.steps ?? [];
@@ -696,6 +714,36 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       !productionDeployNeeds.includes('windows-firefox-canary'),
       'deploy-production should not block on the advisory Windows/Firefox canary gate'
+    );
+    assert.ok(
+      !productionDeployNeeds.includes('production-client-update-canary'),
+      'deploy-production should not wait for the post-deploy production client update canary'
+    );
+
+    const productionClientUpdateCanaryNeeds = normalizeNeeds(
+      jobs['production-client-update-canary']?.needs
+    );
+    assert.ok(
+      productionClientUpdateCanaryNeeds.includes('smoke-test-production'),
+      'production client update canary should run only after production smoke passes'
+    );
+    assert.ok(
+      String(jobs['production-client-update-canary']?.if ?? '').includes(
+        "staging_windows_firefox_high_risk == 'true'"
+      ),
+      'production client update canary should run for high-risk client/extension promotions'
+    );
+
+    const rollbackNeeds = normalizeNeeds(jobs['rollback-production']?.needs);
+    assert.ok(
+      rollbackNeeds.includes('production-client-update-canary'),
+      'rollback should observe production client update canary failures'
+    );
+    assert.ok(
+      String(jobs['rollback-production']?.if ?? '').includes(
+        "needs.production-client-update-canary.result == 'failure'"
+      ),
+      'rollback should trigger when the production client update canary fails'
     );
   });
 
@@ -836,6 +884,59 @@ describe('Workflow configuration hardening', () => {
       artifactUploadStep?.['continue-on-error'],
       true,
       'windows-production-bootstrap-canary should not fail the functional canary when GitHub artifact upload flakes'
+    );
+  });
+
+  test('Production client update canary exercises installed Windows and Linux self-update on GitHub runners', () => {
+    const workflowPath = '.github/workflows/production-client-update-canary.yml';
+    const workflowText = readText(workflowPath);
+    const workflow = readWorkflow(workflowPath);
+    const jobs = workflow.jobs ?? {};
+    const windowsJob = jobs['windows-client-self-update-canary'];
+    const linuxJob = jobs['linux-client-self-update-canary'];
+
+    assert.ok(
+      workflowText.includes('workflow_call:'),
+      'production client update canary should be reusable from deploy.yml'
+    );
+    assert.ok(
+      workflowText.includes('workflow_dispatch:'),
+      'production client update canary should be manually dispatchable'
+    );
+    assert.equal(
+      windowsJob?.['runs-on'],
+      'windows-latest',
+      'Windows client update canary should run on a Windows GitHub runner'
+    );
+    assert.equal(
+      linuxJob?.['runs-on'],
+      'ubuntu-latest',
+      'Linux client update canary should run on a Linux GitHub runner'
+    );
+    assert.ok(
+      workflowText.includes('create-production-windows-bootstrap-canary.mjs'),
+      'both client update canaries should provision live production enrollment through the shared helper'
+    );
+    assert.ok(
+      workflowText.includes('OpenPath.ps1') && workflowText.includes('self-update --silent'),
+      'Windows canary should force the installed client self-update path'
+    );
+    assert.ok(
+      workflowText.includes('config.json') && workflowText.includes('lastAgentUpdateAt'),
+      'Windows canary should validate the installed config version and update timestamp'
+    );
+    assert.ok(
+      workflowText.includes('/api/enroll/$CLASSROOM_ID') &&
+        workflowText.includes('sudo bash "$enroll_script"'),
+      'Linux canary should install via the live production enrollment script'
+    );
+    assert.ok(
+      workflowText.includes('/usr/local/bin/openpath-agent-update.sh --force'),
+      'Linux canary should exercise the installed unattended update wrapper'
+    );
+    assert.ok(
+      workflowText.includes('openpath-agent-update.timer'),
+      'Linux canary should verify the unattended update timer is installed'
     );
   });
 

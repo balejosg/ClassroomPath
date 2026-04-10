@@ -1,0 +1,232 @@
+name: Production Client Update Canary
+
+on:
+  workflow_call:
+    inputs:
+      production_base_url:
+        description: Production public base URL to exercise.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      production_base_url:
+        description: Production public base URL to exercise.
+        default: https://classroompath.eu
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-client-update-canary-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  windows-client-self-update-canary:
+    name: Windows Client Self-Update Canary
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      PRODUCTION_BASE_URL: ${{ inputs.production_base_url || 'https://classroompath.eu' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+        with:
+          enable-cache: false
+          cache-dependency-path: package-lock.json
+
+      - name: Provision production enrollment canary
+        id: provision
+        shell: bash
+        env:
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
+        run: node scripts/create-production-windows-bootstrap-canary.mjs
+
+      - name: Download and run live Windows enrollment script
+        shell: pwsh
+        env:
+          CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
+          ENROLLMENT_TOKEN: ${{ steps.provision.outputs.enrollment_token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'GitHub Actions runner is not elevated enough to execute windows.ps1'
+          }
+
+          $workspace = Join-Path $env:RUNNER_TEMP 'windows-client-self-update-canary'
+          New-Item -ItemType Directory -Force -Path $workspace | Out-Null
+
+          $headers = @{ Authorization = "Bearer $env:ENROLLMENT_TOKEN" }
+          $windowsScriptUrl = "$env:PRODUCTION_BASE_URL/api/enroll/$env:CLASSROOM_ID/windows.ps1"
+          $windowsScriptPath = Join-Path $workspace 'windows.ps1'
+
+          Invoke-WebRequest -Uri $windowsScriptUrl -Headers $headers -OutFile $windowsScriptPath
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $windowsScriptPath
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "windows.ps1 exited with code $LASTEXITCODE"
+          }
+
+      - name: Force installed Windows client self-update
+        shell: pwsh
+        env:
+          EXPECTED_AGENT_VERSION: ${{ steps.provision.outputs.bootstrap_manifest_version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if (-not $env:EXPECTED_AGENT_VERSION) {
+            throw 'Provisioning helper did not expose bootstrap_manifest_version'
+          }
+
+          $openPathRoot = 'C:\OpenPath'
+          $configPath = Join-Path $openPathRoot 'data\config.json'
+          if (-not (Test-Path $configPath)) {
+            throw 'Installed Windows client config.json was not found'
+          }
+
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
+          $installedVersion = [string]$config.version
+          if (-not $installedVersion) {
+            throw 'Installed Windows client config did not include a version'
+          }
+
+          $config.version = '0.0.0'
+          if ($config.PSObject.Properties['lastAgentUpdateAt']) {
+            $config.lastAgentUpdateAt = ''
+          }
+          $config | ConvertTo-Json -Depth 10 | Set-Content -Path $configPath -Encoding UTF8
+
+          $updateLogPath = Join-Path $env:RUNNER_TEMP 'windows-client-self-update.log'
+          Remove-Item $updateLogPath -ErrorAction SilentlyContinue
+
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $openPathRoot 'OpenPath.ps1') self-update --silent *>&1 |
+            Tee-Object -FilePath $updateLogPath
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "OpenPath.ps1 self-update --silent exited with code $LASTEXITCODE"
+          }
+
+          $updatedConfig = Get-Content $configPath -Raw | ConvertFrom-Json
+          if ([string]$updatedConfig.version -ne $env:EXPECTED_AGENT_VERSION) {
+            throw "Windows self-update left version $($updatedConfig.version), expected $env:EXPECTED_AGENT_VERSION"
+          }
+
+          if (-not $updatedConfig.PSObject.Properties['lastAgentUpdateAt'] -or -not $updatedConfig.lastAgentUpdateAt) {
+            throw 'Windows self-update did not record lastAgentUpdateAt'
+          }
+
+          $agentUpdateTask = Get-ScheduledTask -TaskName 'OpenPath-AgentUpdate' -ErrorAction SilentlyContinue
+          if (-not $agentUpdateTask) {
+            throw 'OpenPath-AgentUpdate scheduled task was not installed'
+          }
+
+          Write-Host "Windows client self-update restored $installedVersion via manifest version $env:EXPECTED_AGENT_VERSION"
+
+      - name: Upload Windows self-update artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-windows-client-self-update-canary
+          path: |
+            production-windows-bootstrap-canary.json
+            ${{ runner.temp }}/windows-client-self-update.log
+
+  linux-client-self-update-canary:
+    name: Linux Client Self-Update Canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PRODUCTION_BASE_URL: ${{ inputs.production_base_url || 'https://classroompath.eu' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+        with:
+          enable-cache: false
+          cache-dependency-path: package-lock.json
+
+      - name: Provision production enrollment canary
+        id: provision
+        env:
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
+        run: node scripts/create-production-windows-bootstrap-canary.mjs
+
+      - name: Download and run live Linux enrollment script
+        env:
+          CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
+          ENROLLMENT_TOKEN: ${{ steps.provision.outputs.enrollment_token }}
+        run: |
+          set -euo pipefail
+
+          workspace="$RUNNER_TEMP/linux-client-self-update-canary"
+          mkdir -p "$workspace"
+          enroll_script="$workspace/enroll.sh"
+
+          curl -fsSL \
+            -H "Authorization: Bearer $ENROLLMENT_TOKEN" \
+            "$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID" \
+            -o "$enroll_script"
+
+          sudo bash "$enroll_script"
+
+      - name: Force installed Linux client self-update
+        run: |
+          set -euo pipefail
+
+          if [ ! -x /usr/local/bin/openpath-agent-update.sh ]; then
+            echo "::error::Installed Linux client update wrapper is missing"
+            exit 1
+          fi
+
+          if [ ! -r /usr/local/lib/openpath/VERSION ]; then
+            echo "::error::Installed Linux client VERSION file is missing"
+            exit 1
+          fi
+
+          expected_version="$(tr -d '\r\n' < /usr/local/lib/openpath/VERSION)"
+          if [ -z "$expected_version" ]; then
+            echo "::error::Installed Linux client VERSION is empty"
+            exit 1
+          fi
+
+          update_log="$RUNNER_TEMP/linux-client-self-update.log"
+          sudo /usr/local/bin/openpath-agent-update.sh --force | tee "$update_log"
+
+          actual_version="$(tr -d '\r\n' < /usr/local/lib/openpath/VERSION)"
+          if [ "$actual_version" != "$expected_version" ]; then
+            echo "::error::Linux self-update left version $actual_version, expected $expected_version"
+            exit 1
+          fi
+
+          if ! systemctl list-timers --all openpath-agent-update.timer >/dev/null 2>&1; then
+            echo "::error::openpath-agent-update.timer was not installed"
+            exit 1
+          fi
+
+          if [ ! -s /var/lib/openpath/agent-update-state.json ]; then
+            echo "::error::Linux self-update did not write agent-update-state.json"
+            exit 1
+          fi
+
+          echo "Linux client self-update force-verified version $actual_version"
+
+      - name: Upload Linux self-update artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-linux-client-self-update-canary
+          path: |
+            production-windows-bootstrap-canary.json
+            ${{ runner.temp }}/linux-client-self-update.log
