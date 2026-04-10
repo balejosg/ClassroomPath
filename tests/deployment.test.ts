@@ -1421,30 +1421,39 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       stagingRemote.includes('RELEASE_STATE_HELPER_PATH') &&
+        stagingRemote.includes('release_state_helper_supports_runtime_contract()') &&
+        stagingRemote.includes('refresh_deployed_release_helpers') &&
         stagingRemote.includes("grep -q 'write_deploy_context_state()'") &&
+        stagingRemote.includes("grep -q 'OPENPATH_LINUX_AGENT_VERSION'") &&
         stagingRemote.includes('write_current_release_state() {') &&
         stagingRemote.includes('write_deploy_context_state() {') &&
         stagingRemote.includes('write_release_runtime_state'),
-      'deploy-staging-remote.sh should reuse the shared release-state writers and fall back when the remote helper is outdated'
+      'deploy-staging-remote.sh should reuse the shared release-state writers, reject stale contracts, and reload refreshed helpers after checkout'
     );
     assert.ok(
       productionRemote.includes('RELEASE_STATE_HELPER_PATH') &&
+        productionRemote.includes('release_state_helper_supports_runtime_contract()') &&
+        productionRemote.includes('refresh_deployed_release_helpers') &&
         productionRemote.includes("grep -q 'write_deploy_context_state()'") &&
+        productionRemote.includes("grep -q 'OPENPATH_LINUX_AGENT_VERSION'") &&
         productionRemote.includes('write_current_release_state() {') &&
         productionRemote.includes('write_deploy_context_state() {') &&
         productionRemote.includes('DEPLOYMENT_STATE_HELPER_PATH') &&
+        productionRemote.includes('deployment_state_helper_supports_contract()') &&
         productionRemote.includes("grep -q 'deployment_state_capture_previous_release()'") &&
         productionRemote.includes('deployment_state_capture_previous_release') &&
         productionRemote.includes('write_release_runtime_state'),
-      'deploy-production-remote.sh should reuse the shared release-state/deployment-state writers and fall back when the remote helpers are outdated'
+      'deploy-production-remote.sh should reuse the shared release-state/deployment-state writers, reject stale contracts, and reload refreshed helpers after checkout'
     );
     assert.ok(
       persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&
         persistVerification.includes('SCRIPT_DIR="$APP_DIR/scripts"') &&
         persistVerification.includes('RELEASE_STATE_HELPER_PATH') &&
+        persistVerification.includes('release_state_helper_supports_staging_verification_contract()') &&
+        persistVerification.includes("grep -q 'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION'") &&
         persistVerification.includes('STAGING_VERIFICATION_RUNNER_PATH') &&
         persistVerification.includes('persist-evidence'),
-      'persist-staging-verification-remote.sh should delegate persistence to the shared staging verification runner'
+      'persist-staging-verification-remote.sh should reject stale release-state helpers before delegating persistence to the shared staging verification runner'
     );
     assert.ok(
       readFileSync(resolve(projectRoot, 'scripts/deploy-staging-local.sh'), 'utf-8').includes(

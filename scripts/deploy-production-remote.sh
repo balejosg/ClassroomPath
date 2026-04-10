@@ -76,7 +76,66 @@ RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DI
 DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-context.sh")"
 DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-runtime.sh")"
 
-if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
+release_manifest_helper_supports_contract() {
+  local helper_path="${1:-}"
+
+  [ -f "$helper_path" ] || return 1
+  grep -q 'release_manifest_validate_contract()' "$helper_path" &&
+    grep -q 'linux_agent_version' "$helper_path"
+}
+
+release_state_helper_supports_runtime_contract() {
+  local helper_path="${1:-}"
+
+  [ -f "$helper_path" ] || return 1
+  grep -q 'write_deploy_context_state()' "$helper_path" &&
+    grep -q 'OPENPATH_LINUX_AGENT_VERSION' "$helper_path"
+}
+
+deployment_state_helper_supports_contract() {
+  local helper_path="${1:-}"
+
+  [ -f "$helper_path" ] || return 1
+  grep -q 'deployment_state_capture_previous_release()' "$helper_path" &&
+    grep -q 'deployment_state_activate_previous_release()' "$helper_path"
+}
+
+release_runtime_helper_supports_runtime_contract() {
+  local helper_path="${1:-}"
+
+  [ -f "$helper_path" ] || return 1
+  grep -q 'write_release_runtime_state()' "$helper_path" &&
+    grep -q 'OPENPATH_LINUX_AGENT_VERSION' "$helper_path"
+}
+
+refresh_deployed_release_helpers() {
+  RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
+  RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
+  DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
+  RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
+
+  if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
+    # shellcheck source=lib/release-manifest.sh
+    source "$RELEASE_MANIFEST_HELPER_PATH"
+  fi
+
+  if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
+    # shellcheck source=lib/release-state.sh
+    source "$RELEASE_STATE_HELPER_PATH"
+  fi
+
+  if deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"; then
+    # shellcheck source=lib/deployment-state.sh
+    source "$DEPLOYMENT_STATE_HELPER_PATH"
+  fi
+
+  if release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
+    # shellcheck source=lib/release-runtime.sh
+    source "$RELEASE_RUNTIME_HELPER_PATH"
+  fi
+}
+
+if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
   release_manifest_get() {
     local manifest_path="$1"
     local key="$2"
@@ -251,7 +310,7 @@ else
   source "$DEPLOY_PAYLOAD_HELPER_PATH"
 fi
 
-if [ ! -f "$RELEASE_STATE_HELPER_PATH" ] || ! grep -q 'write_deploy_context_state()' "$RELEASE_STATE_HELPER_PATH"; then
+if ! release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
   write_release_state_snapshot() {
     local snapshot_type="$1"
     local state_path="$2"
@@ -320,7 +379,7 @@ else
   source "$RELEASE_STATE_HELPER_PATH"
 fi
 
-if [ -f "$DEPLOYMENT_STATE_HELPER_PATH" ] && grep -q 'deployment_state_capture_previous_release()' "$DEPLOYMENT_STATE_HELPER_PATH"; then
+if deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"; then
   # shellcheck source=lib/deployment-state.sh
   source "$DEPLOYMENT_STATE_HELPER_PATH"
 else
@@ -340,7 +399,7 @@ else
   }
 fi
 
-if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
+if ! release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
   load_release_manifest_runtime() {
     local manifest_path="$1"
     local expected_sha="${2:-}"
@@ -518,6 +577,8 @@ prepare_production_checkout() {
   git submodule deinit -f --all || true
   git submodule update --init --recursive --force
   reload_deployed_common_helpers "$COMMON_SH_DEPLOYED_PATH"
+  refresh_deployed_release_helpers
+  log_info "Production checkout is now at $(git rev-parse HEAD)"
 
   DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-context.sh")"
   DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-runtime.sh")"

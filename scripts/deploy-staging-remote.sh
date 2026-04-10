@@ -73,10 +73,55 @@ DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR
 RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
 RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
 
+release_manifest_helper_supports_contract() {
+  local helper_path="${1:-}"
+
+  [ -f "$helper_path" ] || return 1
+  grep -q 'release_manifest_validate_contract()' "$helper_path" &&
+    grep -q 'linux_agent_version' "$helper_path"
+}
+
+release_state_helper_supports_runtime_contract() {
+  local helper_path="${1:-}"
+
+  [ -f "$helper_path" ] || return 1
+  grep -q 'write_deploy_context_state()' "$helper_path" &&
+    grep -q 'OPENPATH_LINUX_AGENT_VERSION' "$helper_path"
+}
+
+release_runtime_helper_supports_runtime_contract() {
+  local helper_path="${1:-}"
+
+  [ -f "$helper_path" ] || return 1
+  grep -q 'write_release_runtime_state()' "$helper_path" &&
+    grep -q 'OPENPATH_LINUX_AGENT_VERSION' "$helper_path"
+}
+
+refresh_deployed_release_helpers() {
+  RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
+  RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
+  RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
+
+  if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
+    # shellcheck source=lib/release-manifest.sh
+    source "$RELEASE_MANIFEST_HELPER_PATH"
+  fi
+
+  if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
+    # shellcheck source=lib/release-state.sh
+    source "$RELEASE_STATE_HELPER_PATH"
+  fi
+
+  if release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
+    # shellcheck source=lib/release-runtime.sh
+    source "$RELEASE_RUNTIME_HELPER_PATH"
+  fi
+}
+
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
-if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
+if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
   release_manifest_get() {
     local manifest_path="$1"
     local key="$2"
@@ -251,7 +296,7 @@ else
   source "$DEPLOY_PAYLOAD_HELPER_PATH"
 fi
 
-if [ ! -f "$RELEASE_STATE_HELPER_PATH" ] || ! grep -q 'write_deploy_context_state()' "$RELEASE_STATE_HELPER_PATH"; then
+if ! release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
   write_release_state_snapshot() {
     local snapshot_type="$1"
     local state_path="$2"
@@ -320,7 +365,7 @@ else
   source "$RELEASE_STATE_HELPER_PATH"
 fi
 
-if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
+if ! release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
   load_release_manifest_runtime() {
     local manifest_path="$1"
     local expected_sha="${2:-}"
@@ -625,6 +670,9 @@ prepare_staging_checkout() {
   log_info "Updating submodules..."
   git submodule sync --recursive
   git submodule update --init --recursive --force
+  reload_deployed_common_helpers "$APP_DIR/scripts/lib/common.sh"
+  refresh_deployed_release_helpers
+  log_info "Staging checkout is now at $(git rev-parse HEAD)"
 
   load_staging_release_manifest
   classify_migration_risk

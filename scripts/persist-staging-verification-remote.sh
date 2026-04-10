@@ -51,10 +51,18 @@ COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/commo
 RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
 STAGING_VERIFICATION_RUNNER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "run-staging-verification.sh")"
 
+release_state_helper_supports_staging_verification_contract() {
+  local helper_path="${1:-}"
+
+  [ -f "$helper_path" ] || return 1
+  grep -q 'write_staging_verification_state()' "$helper_path" &&
+    grep -q 'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION' "$helper_path"
+}
+
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
-if [ ! -f "$RELEASE_STATE_HELPER_PATH" ]; then
+if ! release_state_helper_supports_staging_verification_contract "$RELEASE_STATE_HELPER_PATH"; then
   load_release_state_env() {
     local state_path="$1"
 

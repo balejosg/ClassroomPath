@@ -139,10 +139,12 @@ void describe('Remote Deploy Bootstrap', () => {
       'deploy-staging-remote.sh should fall back to the deployed scripts directory when stdin execution has no script path'
     );
     assert.ok(
-      remoteContent.includes('if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then') &&
+      remoteContent.includes('release_manifest_helper_supports_contract()') &&
+        remoteContent.includes('refresh_deployed_release_helpers()') &&
+        remoteContent.includes('if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then') &&
         remoteContent.includes('decode_release_manifest_base64() {') &&
         remoteContent.includes('release_manifest_validate_contract() {'),
-      'deploy-staging-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them'
+      'deploy-staging-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them and reload the refreshed helper contract after checkout'
     );
   });
 
@@ -177,10 +179,12 @@ void describe('Remote Deploy Bootstrap', () => {
     }
 
     assert.ok(
-      deployRemoteContent.includes('if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then') &&
+      deployRemoteContent.includes('release_manifest_helper_supports_contract()') &&
+        deployRemoteContent.includes('refresh_deployed_release_helpers()') &&
+        deployRemoteContent.includes('if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then') &&
         deployRemoteContent.includes('decode_release_manifest_base64() {') &&
         deployRemoteContent.includes('release_manifest_validate_contract() {'),
-      'deploy-production-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them'
+      'deploy-production-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them and reload the refreshed helper contract after checkout'
     );
   });
 
