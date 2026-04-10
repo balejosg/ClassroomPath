@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
  *   gateway_image: string;
  *   migrations_image: string;
  *   openpath_api_image: string;
+ *   openpath_version: string;
  *   linux_agent_version: string;
  *   spa_image: string;
  *   verifier_image: string;
@@ -34,6 +35,7 @@ import { readFileSync } from 'node:fs';
  *   gatewayImage: string;
  *   migrationsImage: string;
  *   openpathApiImage: string;
+ *   openpathVersion: string;
  *   linuxAgentVersion: string;
  *   spaImage: string;
  *   verifierImage: string;
@@ -57,6 +59,7 @@ const RELEASE_CANDIDATE_REQUIRED_KEYS = /** @type {const} */ ([
   'gateway_image',
   'migrations_image',
   'openpath_api_image',
+  'openpath_version',
   'linux_agent_version',
   'spa_image',
   'verifier_image',
@@ -124,6 +127,7 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
         gatewayImage: manifest.gateway_image,
         migrationsImage: manifest.migrations_image,
         openpathApiImage: manifest.openpath_api_image,
+        openpathVersion: manifest.openpath_version,
         linuxAgentVersion: manifest.linux_agent_version,
         spaImage: manifest.spa_image,
         verifierImage: manifest.verifier_image,

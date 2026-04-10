@@ -79,7 +79,11 @@ describe('Workflow configuration hardening', () => {
       },
       {
         relativePath: '.github/workflows/sync-openpath.yml',
-        required: ['actions/checkout@v6', './.github/actions/setup-node'],
+        required: [
+          'actions/checkout@v6',
+          './.github/actions/setup-node',
+          'persist-credentials: false',
+        ],
         forbidden: ['actions/checkout@v4', 'actions/setup-node@v4'],
       },
       {

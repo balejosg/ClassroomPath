@@ -79,6 +79,7 @@ export function buildLatestVerifierImageOutputs({ manifest, headSha, runId }) {
   return {
     gateway_image: manifest.gatewayImage,
     head_sha: headSha,
+    openpath_version: manifest.openpathVersion,
     linux_agent_version: manifest.linuxAgentVersion,
     migrations_image: manifest.migrationsImage,
     openpath_api_image: manifest.openpathApiImage,

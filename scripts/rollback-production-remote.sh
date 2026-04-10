@@ -169,6 +169,7 @@ trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
 
 cd "$APP_DIR/docker"
 export COMPOSE_PROJECT_NAME=classroompath-production
+upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
 upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
 
 log_info "Pulling previous immutable images for rollback..."

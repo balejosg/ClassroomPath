@@ -25,6 +25,7 @@ export function buildReleaseCandidateManifestOutputs({ repository, runId, manife
     gateway_image: manifest.gatewayImage,
     migrations_image: manifest.migrationsImage,
     openpath_api_image: manifest.openpathApiImage,
+    openpath_version: manifest.openpathVersion,
     linux_agent_version: manifest.linuxAgentVersion,
     spa_image: manifest.spaImage,
     verifier_image: manifest.verifierImage,

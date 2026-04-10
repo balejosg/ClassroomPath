@@ -59,8 +59,12 @@ Version: 4.1.4-1
 
   test('detects Linux agent contract drift for runtime and enrollment paths', () => {
     assert.equal(touchesLinuxAgentContract(['linux/scripts/runtime/openpath-cmd.sh']), true);
+    assert.equal(touchesLinuxAgentContract(['windows/scripts/Update-OpenPath.ps1']), true);
+    assert.equal(touchesLinuxAgentContract(['firefox-extension/src/background.ts']), true);
+    assert.equal(touchesLinuxAgentContract(['runtime/browser-policy-spec.json']), true);
     assert.equal(touchesLinuxAgentContract(['api/src/routes/enrollment.ts']), true);
     assert.equal(touchesLinuxAgentContract(['api/src/lib/server-assets.ts']), true);
+    assert.equal(touchesLinuxAgentContract(['api/src/routes/machines.ts']), true);
     assert.equal(touchesLinuxAgentContract(['api/src/routes/auth.ts']), false);
   });
 

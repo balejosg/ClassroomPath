@@ -39,6 +39,7 @@ release_manifest_validate_contract() {
   local repository=""
   local run_id=""
   local app_sha=""
+  local openpath_version=""
   local linux_agent_version=""
   local image_key=""
   local image_ref=""
@@ -46,6 +47,7 @@ release_manifest_validate_contract() {
   repository="$(release_manifest_require_key "$manifest_path" repository)" || return 1
   run_id="$(release_manifest_require_key "$manifest_path" run_id)" || return 1
   app_sha="$(release_manifest_require_key "$manifest_path" app_sha)" || return 1
+  openpath_version="$(release_manifest_require_key "$manifest_path" openpath_version)" || return 1
   linux_agent_version="$(release_manifest_require_key "$manifest_path" linux_agent_version)" || return 1
 
   if [[ ! "$repository" =~ ^[^/]+/[^/]+$ ]]; then
@@ -65,6 +67,11 @@ release_manifest_validate_contract() {
 
   if [ -n "$expected_sha" ] && [ "$app_sha" != "$expected_sha" ]; then
     log_error "Release manifest app_sha does not match expected SHA: expected=$expected_sha actual=$app_sha"
+    return 1
+  fi
+
+  if [[ ! "$openpath_version" =~ ^[0-9]+(\.[0-9]+)*(-[0-9A-Za-z._-]+)?$ ]]; then
+    log_error "Release manifest openpath_version is invalid: $openpath_version"
     return 1
   fi
 
@@ -121,6 +128,9 @@ export_release_manifest_runtime_env() {
 
   export OPENPATH_API_IMAGE
   OPENPATH_API_IMAGE="$(release_manifest_require_key "$manifest_path" openpath_api_image)"
+
+  export OPENPATH_VERSION
+  OPENPATH_VERSION="$(release_manifest_require_key "$manifest_path" openpath_version)"
 
   export OPENPATH_LINUX_AGENT_VERSION
   OPENPATH_LINUX_AGENT_VERSION="$(release_manifest_require_key "$manifest_path" linux_agent_version)"

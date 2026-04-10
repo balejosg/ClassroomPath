@@ -93,6 +93,7 @@ describe('wait-for-release-candidate helpers', () => {
           'ghcr.io/balejosg/classroompath-migrations@sha256:00623f3c35ff98e33a2efed0a0f51077ee313341add4f74c59999162c1b60f2f',
         openpathApiImage:
           'ghcr.io/balejosg/classroompath-openpath-api@sha256:f5a5f80a2737b42c1a159b9270d45b0c034f2a7040ce0557b7ca06a8ace7ca83',
+        openpathVersion: '4.1.11',
         linuxAgentVersion: '4.1.11',
         spaImage:
           'ghcr.io/balejosg/classroompath-spa@sha256:4605cd785107285424fedad1421513b6d009763453b04116103bdc5b64df05a6',
@@ -111,6 +112,7 @@ describe('wait-for-release-candidate helpers', () => {
         'ghcr.io/balejosg/classroompath-migrations@sha256:00623f3c35ff98e33a2efed0a0f51077ee313341add4f74c59999162c1b60f2f',
       openpath_api_image:
         'ghcr.io/balejosg/classroompath-openpath-api@sha256:f5a5f80a2737b42c1a159b9270d45b0c034f2a7040ce0557b7ca06a8ace7ca83',
+      openpath_version: '4.1.11',
       linux_agent_version: '4.1.11',
       spa_image:
         'ghcr.io/balejosg/classroompath-spa@sha256:4605cd785107285424fedad1421513b6d009763453b04116103bdc5b64df05a6',

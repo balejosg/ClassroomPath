@@ -59,6 +59,7 @@ jobs:
       gateway_image: ${{ steps.release-images.outputs.gateway_image }}
       migrations_image: ${{ steps.release-images.outputs.migrations_image }}
       openpath_api_image: ${{ steps.release-images.outputs.openpath_api_image }}
+      openpath_version: ${{ steps.release-images.outputs.openpath_version }}
       openpath_linux_agent_version: ${{ steps.release-images.outputs.linux_agent_version }}
       spa_image: ${{ steps.release-images.outputs.spa_image }}
       verifier_image: ${{ steps.release-images.outputs.verifier_image }}
@@ -224,6 +225,7 @@ jobs:
           EXPECTED_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
           EXPECTED_MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
           EXPECTED_OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
+          EXPECTED_OPENPATH_VERSION: ${{ needs.resolve-release-images.outputs.openpath_version }}
           EXPECTED_OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
           EXPECTED_SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
         run: bash scripts/verify-staging-release-state.sh

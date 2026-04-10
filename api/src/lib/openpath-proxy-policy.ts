@@ -36,7 +36,11 @@ export const OPENPATH_PROXY_MANIFEST = {
     },
     {
       method: 'use',
-      path: '/api/agent/windows/bootstrap',
+      path: '/api/agent/windows',
+    },
+    {
+      method: 'use',
+      path: '/api/agent/linux',
     },
     {
       method: 'use',

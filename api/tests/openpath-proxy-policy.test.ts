@@ -16,7 +16,8 @@ void describe('openpath-proxy-policy', () => {
         '/api/extensions/firefox/openpath.xpi',
         '/api/extensions/chromium',
         '/api/enroll',
-        '/api/agent/windows/bootstrap',
+        '/api/agent/windows',
+        '/api/agent/linux',
         '/api/machines/events',
         '/api/machines',
         '/w',
@@ -53,6 +54,10 @@ void describe('openpath-proxy-policy', () => {
       findBlockedOpenPathPassthroughPath('/api/agent/windows/bootstrap/latest.json'),
       null
     );
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/agent/windows/latest.json'), null);
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/agent/windows/file'), null);
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/agent/linux/latest.json'), null);
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/agent/linux/package'), null);
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/machines/register'), null);
     assert.strictEqual(
       findBlockedOpenPathPassthroughPath('/api/machines/pc-01/rotate-download-token'),

@@ -17,14 +17,16 @@ write_release_runtime_state() {
   local gateway_image="$4"
   local migrations_image="$5"
   local openpath_api_image="$6"
-  local openpath_linux_agent_version="$7"
-  local spa_image="$8"
+  local openpath_version="$7"
+  local openpath_linux_agent_version="$8"
+  local spa_image="$9"
 
   APP_SHA="$app_sha" \
   IMAGE_SOURCE="$image_source" \
   CLASSROOMPATH_GATEWAY_IMAGE="$gateway_image" \
   CLASSROOMPATH_MIGRATIONS_IMAGE="$migrations_image" \
   OPENPATH_API_IMAGE="$openpath_api_image" \
+  OPENPATH_VERSION="$openpath_version" \
   OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
   CLASSROOMPATH_SPA_IMAGE="$spa_image" \
     write_current_release_state "$state_path"

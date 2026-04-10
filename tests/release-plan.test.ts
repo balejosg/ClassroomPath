@@ -15,6 +15,7 @@ app_sha=0123456789abcdef0123456789abcdef01234567
 gateway_image=ghcr.io/balejosg/classroompath-gateway@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 migrations_image=ghcr.io/balejosg/classroompath-migrations@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 openpath_api_image=ghcr.io/balejosg/openpath-api@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+openpath_version=4.1.11
 linux_agent_version=4.1.11-1
 spa_image=ghcr.io/balejosg/classroompath-spa@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
@@ -32,6 +33,7 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     assert.equal(plan.useReleaseCandidate, true);
     assert.equal(plan.targetSha, '0123456789abcdef0123456789abcdef01234567');
     assert.equal(plan.releaseCandidate?.runId, '24006418074');
+    assert.equal(plan.releaseCandidate?.openpathVersion, '4.1.11');
     assert.equal(plan.releaseCandidate?.linuxAgentVersion, '4.1.11-1');
     assert.equal(plan.verification.runSmoke, true);
     assert.equal(plan.verification.runReleaseGate, true);

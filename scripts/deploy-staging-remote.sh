@@ -127,6 +127,7 @@ if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
     local repository=""
     local run_id=""
     local app_sha=""
+    local openpath_version=""
     local linux_agent_version=""
     local image_key=""
     local image_ref=""
@@ -134,6 +135,7 @@ if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
     repository="$(release_manifest_require_key "$manifest_path" repository)" || return 1
     run_id="$(release_manifest_require_key "$manifest_path" run_id)" || return 1
     app_sha="$(release_manifest_require_key "$manifest_path" app_sha)" || return 1
+    openpath_version="$(release_manifest_require_key "$manifest_path" openpath_version)" || return 1
     linux_agent_version="$(release_manifest_require_key "$manifest_path" linux_agent_version)" || return 1
 
     if [[ ! "$repository" =~ ^[^/]+/[^/]+$ ]]; then
@@ -153,6 +155,11 @@ if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
 
     if [ -n "$expected_sha" ] && [ "$app_sha" != "$expected_sha" ]; then
       log_error "Release manifest app_sha does not match expected SHA: expected=$expected_sha actual=$app_sha"
+      return 1
+    fi
+
+    if [[ ! "$openpath_version" =~ ^[0-9]+(\.[0-9]+)*(-[0-9A-Za-z._-]+)?$ ]]; then
+      log_error "Release manifest openpath_version is invalid: $openpath_version"
       return 1
     fi
 
@@ -190,6 +197,9 @@ if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then
 
     export OPENPATH_API_IMAGE
     OPENPATH_API_IMAGE="$(release_manifest_require_key "$manifest_path" openpath_api_image)"
+
+    export OPENPATH_VERSION
+    OPENPATH_VERSION="$(release_manifest_require_key "$manifest_path" openpath_version)"
 
     export OPENPATH_LINUX_AGENT_VERSION
     OPENPATH_LINUX_AGENT_VERSION="$(release_manifest_require_key "$manifest_path" linux_agent_version)"
@@ -263,6 +273,7 @@ IMAGE_SOURCE
 CLASSROOMPATH_GATEWAY_IMAGE
 CLASSROOMPATH_MIGRATIONS_IMAGE
 OPENPATH_API_IMAGE
+OPENPATH_VERSION
 OPENPATH_LINUX_AGENT_VERSION
 CLASSROOMPATH_SPA_IMAGE
 EOF
@@ -325,14 +336,16 @@ if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
     local gateway_image="$4"
     local migrations_image="$5"
     local openpath_api_image="$6"
-    local openpath_linux_agent_version="$7"
-    local spa_image="$8"
+    local openpath_version="$7"
+    local openpath_linux_agent_version="$8"
+    local spa_image="$9"
 
     APP_SHA="$app_sha" \
     IMAGE_SOURCE="$image_source" \
     CLASSROOMPATH_GATEWAY_IMAGE="$gateway_image" \
     CLASSROOMPATH_MIGRATIONS_IMAGE="$migrations_image" \
     OPENPATH_API_IMAGE="$openpath_api_image" \
+    OPENPATH_VERSION="$openpath_version" \
     OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
     CLASSROOMPATH_SPA_IMAGE="$spa_image" \
       write_current_release_state "$state_path"
@@ -352,6 +365,7 @@ IMAGE_SOURCE="source-build"
 RESOLVED_GATEWAY_IMAGE="classroompath-gateway:local"
 RESOLVED_MIGRATIONS_IMAGE="classroompath-migrations:local"
 RESOLVED_OPENPATH_API_IMAGE="classroompath-api:local"
+RESOLVED_OPENPATH_VERSION=""
 RESOLVED_OPENPATH_LINUX_AGENT_VERSION=""
 RESOLVED_SPA_IMAGE="classroompath-spa:local"
 PREVIOUS_APP_SHA=""
@@ -387,6 +401,7 @@ write_release_state() {
     "$RESOLVED_GATEWAY_IMAGE" \
     "$RESOLVED_MIGRATIONS_IMAGE" \
     "$RESOLVED_OPENPATH_API_IMAGE" \
+    "$RESOLVED_OPENPATH_VERSION" \
     "$RESOLVED_OPENPATH_LINUX_AGENT_VERSION" \
     "$RESOLVED_SPA_IMAGE"
 }
@@ -450,10 +465,12 @@ restore_previous_release_state() {
     export CLASSROOMPATH_MIGRATIONS_IMAGE
     export OPENPATH_API_IMAGE
     export CLASSROOMPATH_SPA_IMAGE
+    upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
     upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
     docker compose pull gateway api spa
     docker compose up -d --force-recreate --no-build
   else
+    remove_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION
     remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION
     unset CLASSROOMPATH_GATEWAY_IMAGE OPENPATH_API_IMAGE CLASSROOMPATH_SPA_IMAGE
     docker compose build
@@ -497,6 +514,7 @@ deploy_with_release_candidates() {
   fi
 
   export COMPOSE_PROJECT_NAME=classroompath-staging
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "$OPENPATH_VERSION"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"
 
   log_info "Pulling release candidate migrations image for ${STAGING_RELEASE_SHA:-origin-main}..."
@@ -515,6 +533,7 @@ deploy_with_release_candidates() {
   RESOLVED_GATEWAY_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_GATEWAY_IMAGE")"
   RESOLVED_MIGRATIONS_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_MIGRATIONS_IMAGE")"
   RESOLVED_OPENPATH_API_IMAGE="$(resolve_pulled_digest "$OPENPATH_API_IMAGE")"
+  RESOLVED_OPENPATH_VERSION="$OPENPATH_VERSION"
   RESOLVED_OPENPATH_LINUX_AGENT_VERSION="$OPENPATH_LINUX_AGENT_VERSION"
   RESOLVED_SPA_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_SPA_IMAGE")"
   write_release_state
@@ -525,7 +544,9 @@ deploy_from_source() {
   log_info "Rebuilding containers from source..."
   export COMPOSE_PROJECT_NAME=classroompath-staging
   unset CLASSROOMPATH_GATEWAY_IMAGE OPENPATH_API_IMAGE CLASSROOMPATH_SPA_IMAGE
+  remove_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION
   remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION
+  RESOLVED_OPENPATH_VERSION=""
   RESOLVED_OPENPATH_LINUX_AGENT_VERSION=""
 
   docker compose down --remove-orphans 2>/dev/null || true

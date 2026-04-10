@@ -10,8 +10,12 @@ export const DEFAULT_PACKAGES_URL =
   'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/dists/stable/main/binary-amd64/Packages';
 
 const LINUX_AGENT_CONTRACT_PATHS = [
+  'firefox-extension/',
   'linux/',
+  'windows/',
+  'runtime/browser-policy-spec.json',
   'api/src/routes/enrollment.ts',
+  'api/src/routes/machines.ts',
   'api/src/lib/server-assets.ts',
 ];
 
@@ -232,8 +236,12 @@ function listChangedFilesSinceTag(openpathDir, tag) {
       '--name-only',
       `${tag}..HEAD`,
       '--',
+      'firefox-extension',
       'linux',
+      'windows',
+      'runtime/browser-policy-spec.json',
       'api/src/routes/enrollment.ts',
+      'api/src/routes/machines.ts',
       'api/src/lib/server-assets.ts',
     ])
   );

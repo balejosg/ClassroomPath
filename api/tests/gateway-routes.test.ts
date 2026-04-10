@@ -190,6 +190,20 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
       path: '/api/agent/windows/bootstrap/latest.json',
     });
 
+    const windowsAgentManifestResponse = await fetch(`${baseUrl}/api/agent/windows/latest.json`);
+    assert.strictEqual(windowsAgentManifestResponse.status, 418);
+    assert.deepStrictEqual(await windowsAgentManifestResponse.json(), {
+      proxied: true,
+      path: '/api/agent/windows/latest.json',
+    });
+
+    const linuxAgentManifestResponse = await fetch(`${baseUrl}/api/agent/linux/latest.json`);
+    assert.strictEqual(linuxAgentManifestResponse.status, 418);
+    assert.deepStrictEqual(await linuxAgentManifestResponse.json(), {
+      proxied: true,
+      path: '/api/agent/linux/latest.json',
+    });
+
     const firefoxResponse = await fetch(`${baseUrl}/api/extensions/firefox/openpath.xpi`);
     assert.strictEqual(firefoxResponse.status, 418);
     assert.deepStrictEqual(await firefoxResponse.json(), {

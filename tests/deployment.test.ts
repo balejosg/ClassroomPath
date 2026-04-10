@@ -1188,6 +1188,10 @@ void describe('Migration Tooling', () => {
       'release candidate manifest artifact should include the pinned OpenPath Linux agent version'
     );
     assert.ok(
+      content.includes('OPENPATH_VERSION='),
+      'release candidate manifest artifact should include the pinned installed-client OpenPath version'
+    );
+    assert.ok(
       content.includes('resolve-openpath-linux-agent-version.mjs'),
       'release candidate workflow should resolve the OpenPath Linux agent version automatically before publishing the manifest'
     );
