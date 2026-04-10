@@ -524,7 +524,7 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       remoteContent.includes(
-        'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"'
+        'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"'
       ),
       'staging remote deploy should persist the pinned OpenPath Linux agent version into the runtime env file before compose up'
     );
@@ -1231,6 +1231,7 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       stagingLocal.includes('STAGING_DEPLOY_PAYLOAD_B64=') &&
+        stagingLocal.includes('STAGING_DEPLOY_PAYLOAD_B64="${DEPLOY_PAYLOAD_B64:-}"') &&
         stagingLocal.includes('remote_assignment STAGING_DEPLOY_PAYLOAD_B64'),
       'deploy-staging-local.sh should forward one versioned deploy payload to the remote deploy'
     );
@@ -1239,7 +1240,11 @@ void describe('Migration Tooling', () => {
         stagingRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" manifest_base64)"'
         ) &&
-        stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"'),
+        stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"') &&
+        stagingRemote.includes('ensure_staging_release_candidate_runtime_env || return 1') &&
+        stagingRemote.includes(
+          'log_error "Release candidate manifest did not export OpenPath runtime versions"'
+        ),
       'deploy-staging-remote.sh should decode the versioned deploy payload and then load the shared release manifest contract'
     );
     assert.ok(

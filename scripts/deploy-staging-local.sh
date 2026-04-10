@@ -229,6 +229,7 @@ node "$SCRIPT_DIR/lib/deploy-payload.mjs" render-env \
 set -a
 . "$STAGING_DEPLOY_PAYLOAD_ENV_FILE"
 set +a
+STAGING_DEPLOY_PAYLOAD_B64="${DEPLOY_PAYLOAD_B64:-}"
 
 if [ "$STAGING_USE_RELEASE_CANDIDATE" = "1" ]; then
     log_info "Staging will deploy release candidate images for $STAGING_RELEASE_SHA"
