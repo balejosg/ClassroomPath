@@ -13,17 +13,24 @@ ensure_production_release_candidate_runtime_env() {
   fi
 
   if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ]; then
-    if [ ! -f "${RELEASE_MANIFEST_FILE:-}" ]; then
-      release_manifest_b64="${RELEASE_MANIFEST_B64_FROM_PAYLOAD:-${RELEASE_MANIFEST_B64:-}}"
-      if [ -n "$release_manifest_b64" ]; then
-        RELEASE_MANIFEST_FILE="$(mktemp)"
-        decode_release_manifest_base64 "$release_manifest_b64" "$RELEASE_MANIFEST_FILE" >/dev/null
-      fi
+    release_manifest_b64="${RELEASE_MANIFEST_B64_FROM_PAYLOAD:-${RELEASE_MANIFEST_B64:-}}"
+    if [ -n "$release_manifest_b64" ]; then
+      RELEASE_MANIFEST_FILE="$(mktemp)"
+      decode_release_manifest_base64 "$release_manifest_b64" "$RELEASE_MANIFEST_FILE" >/dev/null
     fi
 
     if [ -n "${RELEASE_MANIFEST_FILE:-}" ] && [ -f "$RELEASE_MANIFEST_FILE" ]; then
       load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "${TARGET_SHA:-}"
       TARGET_SHA="${RELEASE_MANIFEST_APP_SHA:-${TARGET_SHA:-}}"
+    fi
+  fi
+
+  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ]; then
+    if [ -n "${RELEASE_MANIFEST_FILE:-}" ] && [ -f "$RELEASE_MANIFEST_FILE" ]; then
+      export OPENPATH_VERSION
+      OPENPATH_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" openpath_version)"
+      export OPENPATH_LINUX_AGENT_VERSION
+      OPENPATH_LINUX_AGENT_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" linux_agent_version)"
     fi
   fi
 
