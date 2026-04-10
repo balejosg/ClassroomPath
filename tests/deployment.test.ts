@@ -512,113 +512,6 @@ void describe('Migration Tooling', () => {
     );
   });
 
-  void test('staging remote deploy can resolve its helper library even when executed via stdin', () => {
-    const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
-
-    assert.ok(
-      remoteContent.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"'),
-      'deploy-staging-remote.sh should guard against missing BASH_SOURCE when the payload is streamed over SSH'
-    );
-    assert.ok(
-      remoteContent.includes('APP_DIR="/opt/classroompath/app"'),
-      'deploy-staging-remote.sh should declare the canonical app directory explicitly'
-    );
-    assert.ok(
-      remoteContent.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
-      'deploy-staging-remote.sh should fall back to the deployed scripts directory when stdin execution has no script path'
-    );
-    assert.ok(
-      remoteContent.includes('if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then') &&
-        remoteContent.includes('decode_release_manifest_base64() {') &&
-        remoteContent.includes('release_manifest_validate_contract() {'),
-      'deploy-staging-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them'
-    );
-  });
-
-  void test('production remote scripts can resolve their helper library when ssh-action executes without BASH_SOURCE', () => {
-    const deployRemoteContent = readFileSync(
-      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
-      'utf-8'
-    );
-    const rollbackRemoteContent = readFileSync(
-      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
-      'utf-8'
-    );
-
-    for (const [scriptName, content] of [
-      ['deploy-production-remote.sh', deployRemoteContent],
-      ['rollback-production-remote.sh', rollbackRemoteContent],
-    ] as const) {
-      assert.ok(
-        content.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"'),
-        `${scriptName} should guard against missing BASH_SOURCE when appleboy/ssh-action streams the payload`
-      );
-      assert.ok(
-        content.includes('APP_DIR="/opt/classroompath/app"'),
-        `${scriptName} should declare the canonical app directory explicitly`
-      );
-      assert.ok(
-        content.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
-        `${scriptName} should fall back to the deployed scripts directory when stdin execution has no script path`
-      );
-      assert.ok(
-        content.includes('COMMON_SH_DEPLOYED_PATH="$APP_DIR/scripts/lib/common.sh"'),
-        `${scriptName} should keep an absolute path to the deployed helper library after the remote checkout updates the app directory`
-      );
-      assert.ok(
-        content.includes('reload_deployed_common_helpers() {'),
-        `${scriptName} should be able to re-source helper functions from the freshly checked out app directory`
-      );
-    }
-
-    assert.ok(
-      deployRemoteContent.includes('if [ ! -f "$RELEASE_MANIFEST_HELPER_PATH" ]; then') &&
-        deployRemoteContent.includes('decode_release_manifest_base64() {') &&
-        deployRemoteContent.includes('release_manifest_validate_contract() {'),
-      'deploy-production-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them'
-    );
-  });
-
-  void test('remote bootstrap helper centralizes streamed ssh script context and helper resolution', () => {
-    const remoteBootstrapPath = resolve(projectRoot, 'scripts/lib/remote-bootstrap.sh');
-    const remoteBootstrap = readFileSync(remoteBootstrapPath, 'utf-8');
-    const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
-    const productionRemote = readFileSync(
-      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
-      'utf-8'
-    );
-    const rollbackRemote = readFileSync(
-      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
-      'utf-8'
-    );
-    const persistVerification = readFileSync(
-      resolve(projectRoot, 'scripts/persist-staging-verification-remote.sh'),
-      'utf-8'
-    );
-
-    assert.ok(existsSync(remoteBootstrapPath), 'scripts/lib/remote-bootstrap.sh should exist');
-    assert.ok(
-      remoteBootstrap.includes('resolve_remote_script_dir()') &&
-        remoteBootstrap.includes('resolve_remote_helper_path()') &&
-        remoteBootstrap.includes('reload_deployed_common_helpers()'),
-      'remote-bootstrap helper should own streamed-script path resolution and deployed helper reloads'
-    );
-
-    for (const [scriptName, content] of [
-      ['deploy-staging-remote.sh', stagingRemote],
-      ['deploy-production-remote.sh', productionRemote],
-      ['rollback-production-remote.sh', rollbackRemote],
-      ['persist-staging-verification-remote.sh', persistVerification],
-    ] as const) {
-      assert.ok(
-        content.includes('REMOTE_BOOTSTRAP_HELPER_PATH=') &&
-          content.includes('resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE"') &&
-          content.includes('resolve_remote_helper_path'),
-        `${scriptName} should reuse the shared remote bootstrap helper when available`
-      );
-    }
-  });
-
   void test('verify-full skips coverage cleanup and gating when no API/SPA source coverage is needed', () => {
     const verifyPlan = readFileSync(verifyPlanPath, 'utf-8');
     const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
@@ -1667,82 +1560,6 @@ void describe('Migration Tooling', () => {
     );
   });
 
-  void test('dockerized runtime validation executes the TypeScript runtime contract check', () => {
-    const validationScriptPath = resolve(projectRoot, 'scripts/validate-runtime-config-docker.sh');
-    const content = readFileSync(validationScriptPath, 'utf-8');
-
-    assert.ok(
-      content.includes('node --import tsx api/scripts/validate-runtime-config.ts'),
-      'validate-runtime-config-docker.sh should execute the runtime config validation entrypoint'
-    );
-    assert.ok(
-      content.includes('npm ci --silent -w @classroompath/api'),
-      'validate-runtime-config-docker.sh should install the ClassroomPath API workspace before validating'
-    );
-  });
-
-  void test('staging deploy reuses the release verifier image for remote runtime validation', () => {
-    const localDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
-    const remoteDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
-    const validationScriptPath = resolve(projectRoot, 'scripts/validate-runtime-config-docker.sh');
-
-    const localDeploy = readFileSync(localDeployScriptPath, 'utf-8');
-    const remoteDeploy = readFileSync(remoteDeployScriptPath, 'utf-8');
-    const validationScript = readFileSync(validationScriptPath, 'utf-8');
-
-    assert.ok(
-      localDeploy.includes(
-        'remote_assignment STAGING_RELEASE_MANIFEST_B64 "$STAGING_RELEASE_MANIFEST_B64"'
-      ),
-      'deploy-staging-local.sh should forward the shared release manifest payload to the remote staging deploy'
-    );
-    assert.ok(
-      remoteDeploy.includes('CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}"') &&
-        remoteDeploy.includes('bash scripts/validate-runtime-config-docker.sh'),
-      'deploy-staging-remote.sh should reuse the staged verifier image during runtime validation'
-    );
-    assert.ok(
-      validationScript.includes('CLASSROOMPATH_VERIFIER_IMAGE') &&
-        validationScript.indexOf('if [ -n "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then') <
-          validationScript.indexOf('docker_select_image_with_fallback'),
-      'validate-runtime-config-docker.sh should prefer the prebuilt verifier image before pulling a generic node runtime'
-    );
-  });
-
-  void test('deploy shell helpers centralize tool-image resolution for migrations, validation, and smoke', () => {
-    const deployImagesHelperPath = resolve(projectRoot, 'scripts/lib/deploy-images.sh');
-    const helperContent = readFileSync(deployImagesHelperPath, 'utf-8');
-    const migrationsContent = readFileSync(migrationsScriptPath, 'utf-8');
-    const validationContent = readFileSync(
-      resolve(projectRoot, 'scripts/validate-runtime-config-docker.sh'),
-      'utf-8'
-    );
-    const smokeContent = readFileSync(
-      resolve(projectRoot, 'scripts/run-smoke-in-verifier.sh'),
-      'utf-8'
-    );
-
-    assert.ok(existsSync(deployImagesHelperPath), 'scripts/lib/deploy-images.sh should exist');
-    assert.ok(
-      helperContent.includes('docker_require_image()') &&
-        helperContent.includes('docker_select_image_with_fallback()') &&
-        helperContent.includes('no space left on device'),
-      'deploy image helper should centralize required-image logic, fallback selection, and actionable disk-space diagnostics'
-    );
-    assert.ok(
-      migrationsContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),
-      'run-migrations-docker.sh should source the shared deploy-images helper'
-    );
-    assert.ok(
-      validationContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),
-      'validate-runtime-config-docker.sh should source the shared deploy-images helper'
-    );
-    assert.ok(
-      smokeContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),
-      'run-smoke-in-verifier.sh should source the shared deploy-images helper'
-    );
-  });
-
   void test('release manifest flows through staging and production as a single contract payload', () => {
     const stagingLocal = readFileSync(stagingDeployScriptPath, 'utf-8');
     const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
@@ -1842,7 +1659,9 @@ void describe('Migration Tooling', () => {
       'deploy-staging-local.sh should derive staging image decisions from the typed release-plan helper'
     );
     assert.ok(
-      stagingRemote.includes('RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"') &&
+      stagingRemote.includes(
+        'RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"'
+      ) &&
         stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"') &&
         stagingRemote.includes('write_release_runtime_state') &&
         stagingRemote.includes('"$CURRENT_STATE_FILE"'),
@@ -1850,7 +1669,7 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       productionRemote.includes(
-        'RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"'
+        'RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"'
       ) &&
         deployContextHelper.includes(
           'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'

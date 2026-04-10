@@ -1,0 +1,111 @@
+/**
+ * Deployment Docker Tool Tests
+ *
+ * Contracts for deploy-time helper containers used by staging and production.
+ */
+
+import { test, describe } from 'node:test';
+import assert from 'node:assert';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const currentFilePath = fileURLToPath(import.meta.url);
+const testDir = dirname(currentFilePath);
+const projectRoot = resolve(testDir, '..');
+
+void describe('Deploy Docker Tool Helpers', () => {
+  const deployImagesHelperPath = resolve(projectRoot, 'scripts/lib/deploy-images.sh');
+  const migrationsScriptPath = resolve(projectRoot, 'scripts/run-migrations-docker.sh');
+  const validationScriptPath = resolve(projectRoot, 'scripts/validate-runtime-config-docker.sh');
+  const emailCheckScriptPath = resolve(projectRoot, 'scripts/check-email-delivery-docker.sh');
+  const smokeScriptPath = resolve(projectRoot, 'scripts/run-smoke-in-verifier.sh');
+  const deploymentTestPath = resolve(projectRoot, 'tests/deployment.test.ts');
+
+  void test('dockerized runtime validation executes the TypeScript runtime contract check', () => {
+    const content = readFileSync(validationScriptPath, 'utf-8');
+    const helperContent = readFileSync(deployImagesHelperPath, 'utf-8');
+
+    assert.ok(
+      content.includes('docker_run_node_tool_with_verifier_fallback') &&
+        content.includes('"api/scripts/validate-runtime-config.ts"'),
+      'validate-runtime-config-docker.sh should execute the runtime config validation entrypoint through the shared helper'
+    );
+    assert.ok(
+      helperContent.includes('npm ci --silent -w @classroompath/api'),
+      'shared Docker tool helper should install the ClassroomPath API workspace before validating'
+    );
+  });
+
+  void test('staging deploy reuses the release verifier image for remote runtime validation', () => {
+    const localDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
+    const remoteDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
+
+    const localDeploy = readFileSync(localDeployScriptPath, 'utf-8');
+    const remoteDeploy = readFileSync(remoteDeployScriptPath, 'utf-8');
+    const validationScript = readFileSync(validationScriptPath, 'utf-8');
+
+    assert.ok(
+      localDeploy.includes(
+        'remote_assignment STAGING_RELEASE_MANIFEST_B64 "$STAGING_RELEASE_MANIFEST_B64"'
+      ),
+      'deploy-staging-local.sh should forward the shared release manifest payload to the remote staging deploy'
+    );
+    assert.ok(
+      remoteDeploy.includes('CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}"') &&
+        remoteDeploy.includes('bash scripts/validate-runtime-config-docker.sh'),
+      'deploy-staging-remote.sh should reuse the staged verifier image during runtime validation'
+    );
+    assert.ok(
+      validationScript.includes('docker_run_node_tool_with_verifier_fallback') &&
+        !validationScript.includes('if [ -n "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then'),
+      'validate-runtime-config-docker.sh should delegate verifier image fallback to the shared helper'
+    );
+  });
+
+  void test('deploy shell helpers centralize tool-image resolution for migrations, validation, email, and smoke', () => {
+    const helperContent = readFileSync(deployImagesHelperPath, 'utf-8');
+    const migrationsContent = readFileSync(migrationsScriptPath, 'utf-8');
+    const validationContent = readFileSync(validationScriptPath, 'utf-8');
+    const emailContent = readFileSync(emailCheckScriptPath, 'utf-8');
+    const smokeContent = readFileSync(smokeScriptPath, 'utf-8');
+
+    assert.ok(existsSync(deployImagesHelperPath), 'scripts/lib/deploy-images.sh should exist');
+    assert.ok(
+      helperContent.includes('docker_require_image()') &&
+        helperContent.includes('docker_select_image_with_fallback()') &&
+        helperContent.includes('docker_run_node_tool_with_verifier_fallback()') &&
+        helperContent.includes('no space left on device'),
+      'deploy image helper should centralize required-image logic, fallback selection, verifier execution, and actionable disk-space diagnostics'
+    );
+    assert.ok(
+      migrationsContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),
+      'run-migrations-docker.sh should source the shared deploy-images helper'
+    );
+    assert.ok(
+      validationContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"') &&
+        validationContent.includes('docker_run_node_tool_with_verifier_fallback'),
+      'validate-runtime-config-docker.sh should source and use the shared deploy-images helper'
+    );
+    assert.ok(
+      emailContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"') &&
+        emailContent.includes('docker_run_node_tool_with_verifier_fallback'),
+      'check-email-delivery-docker.sh should source and use the shared deploy-images helper'
+    );
+    assert.ok(
+      smokeContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),
+      'run-smoke-in-verifier.sh should source the shared deploy-images helper'
+    );
+  });
+
+  void test('deployment.test.ts does not own Docker tool helper contracts', () => {
+    const content = readFileSync(deploymentTestPath, 'utf-8');
+
+    assert.ok(
+      !content.includes(
+        'dockerized runtime validation executes the TypeScript runtime contract check'
+      ) && !content.includes('deploy shell helpers centralize tool-image resolution'),
+      'Docker tool helper contracts should live in deployment-docker-tools.test.ts'
+    );
+  });
+});

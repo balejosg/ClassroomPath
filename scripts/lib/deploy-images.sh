@@ -59,3 +59,45 @@ docker_select_image_with_fallback() {
 
   printf -v "$__resultvar" '%s' "$selected_image"
 }
+
+docker_run_node_tool_with_verifier_fallback() {
+  local log_prefix="$1"
+  local app_dir="$2"
+  local env_file="$3"
+  local preferred_node_image="$4"
+  local fallback_node_image="$5"
+  local tool_entrypoint="$6"
+  local tool_description="$7"
+  local install_command="${8:-npm ci --silent -w @classroompath/api}"
+  local selected_node_image="$preferred_node_image"
+
+  if [ -n "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then
+    log_info "[$log_prefix] Using prebuilt verifier image: $CLASSROOMPATH_VERIFIER_IMAGE"
+
+    if docker_prepare_required_image "$CLASSROOMPATH_VERIFIER_IMAGE" "verifier image"; then
+      docker run --rm \
+        --env-file "$env_file" \
+        "$CLASSROOMPATH_VERIFIER_IMAGE" \
+        node --import tsx "$tool_entrypoint"
+      return 0
+    fi
+
+    log_warn "Unable to fetch verifier image: $CLASSROOMPATH_VERIFIER_IMAGE"
+    log_warn "Falling back to generic node $tool_description image"
+  fi
+
+  docker_select_image_with_fallback \
+    selected_node_image \
+    "$selected_node_image" \
+    "$fallback_node_image" \
+    "node image" || return 1
+
+  log_info "[$log_prefix] - ClassroomPath $tool_description..."
+
+  docker run --rm \
+    -v "$app_dir:/app" \
+    -w /app \
+    --env-file "$env_file" \
+    "$selected_node_image" \
+    sh -c "$install_command && node --import tsx \"\$1\"" sh "$tool_entrypoint"
+}

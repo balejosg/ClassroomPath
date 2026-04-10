@@ -61,10 +61,7 @@ COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/commo
 RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
 DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-payload.sh")"
 RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
-RELEASE_RUNTIME_HELPER_PATH="$SCRIPT_DIR/lib/release-runtime.sh"
-if [ ! -f "$RELEASE_RUNTIME_HELPER_PATH" ]; then
-  RELEASE_RUNTIME_HELPER_PATH="$APP_DIR/scripts/lib/release-runtime.sh"
-fi
+RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
 
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"

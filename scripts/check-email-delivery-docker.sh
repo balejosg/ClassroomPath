@@ -70,32 +70,11 @@ if [ ! -f "$ENV_FILE" ]; then
   die "Env file not found: $ENV_FILE" 1
 fi
 
-if [ -n "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then
-  log_info "[EMAIL] Using prebuilt verifier image: $CLASSROOMPATH_VERIFIER_IMAGE"
-
-  if docker_prepare_required_image "$CLASSROOMPATH_VERIFIER_IMAGE" "verifier image"; then
-    docker run --rm \
-      --env-file "$ENV_FILE" \
-      "$CLASSROOMPATH_VERIFIER_IMAGE" \
-      node --import tsx api/scripts/check-email-delivery.ts
-    exit 0
-  fi
-
-  log_warn "Unable to fetch verifier image: $CLASSROOMPATH_VERIFIER_IMAGE"
-  log_warn "Falling back to generic node email delivery check image"
-fi
-
-docker_select_image_with_fallback \
-  NODE_IMAGE \
+docker_run_node_tool_with_verifier_fallback \
+  "EMAIL" \
+  "$APP_DIR" \
+  "$ENV_FILE" \
   "$NODE_IMAGE" \
   "$EMAIL_CHECK_NODE_IMAGE_FALLBACK" \
-  "node image" || exit 1
-
-log_info "[EMAIL] - ClassroomPath transactional email delivery..."
-
-docker run --rm \
-  -v "$APP_DIR:/app" \
-  -w /app \
-  --env-file "$ENV_FILE" \
-  "$NODE_IMAGE" \
-  sh -c "npm ci --silent -w @classroompath/api && node --import tsx api/scripts/check-email-delivery.ts"
+  "api/scripts/check-email-delivery.ts" \
+  "email delivery check"
