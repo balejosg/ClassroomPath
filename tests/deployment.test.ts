@@ -1115,12 +1115,12 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       deployRuntimeHelper.includes('write_release_runtime_state') &&
-        deployRuntimeHelper.includes('"$OPENPATH_LINUX_AGENT_VERSION"'),
+        deployRuntimeHelper.includes('"${OPENPATH_LINUX_AGENT_VERSION:-}"'),
       'production deploy should persist the pinned OpenPath Linux agent version in release-state metadata'
     );
     assert.ok(
       deployRuntimeHelper.includes(
-        'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"'
+        'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"'
       ),
       'production deploy should persist the pinned OpenPath Linux agent version into the runtime env file before compose up'
     );
@@ -1264,6 +1264,12 @@ void describe('Migration Tooling', () => {
         ) &&
         readFileSync(deployProductionContextHelperPath, 'utf-8').includes(
           'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
+        ) &&
+        readFileSync(deployProductionRuntimeHelperPath, 'utf-8').includes(
+          'ensure_production_release_candidate_runtime_env || return 1'
+        ) &&
+        readFileSync(deployProductionRuntimeHelperPath, 'utf-8').includes(
+          'log_error "Release candidate manifest did not export OpenPath runtime versions"'
         ),
       'deploy-production-remote.sh should validate and load release images from the shared deploy payload contract'
     );

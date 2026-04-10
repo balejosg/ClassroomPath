@@ -5,11 +5,32 @@ plan_production_runtime_deploy_impl() {
   PRODUCTION_DEPLOY_PLAN="release-candidate"
 }
 
+ensure_production_release_candidate_runtime_env() {
+  if [ "${PRODUCTION_DEPLOY_PLAN:-}" != "release-candidate" ]; then
+    return 0
+  fi
+
+  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ]; then
+    if [ -n "${RELEASE_MANIFEST_FILE:-}" ] && [ -f "$RELEASE_MANIFEST_FILE" ]; then
+      load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "${TARGET_SHA:-}"
+      TARGET_SHA="${RELEASE_MANIFEST_APP_SHA:-${TARGET_SHA:-}}"
+    fi
+  fi
+
+  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ]; then
+    log_error "Release candidate manifest did not export OpenPath runtime versions"
+    return 1
+  fi
+
+  return 0
+}
+
 apply_production_runtime_deploy_impl() {
   cd "$APP_DIR/docker"
   export COMPOSE_PROJECT_NAME=classroompath-production
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "$OPENPATH_VERSION"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "$OPENPATH_LINUX_AGENT_VERSION"
+  ensure_production_release_candidate_runtime_env || return 1
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
 
   if declare -f cleanup_production_disk_if_needed >/dev/null 2>&1; then
     cleanup_production_disk_if_needed
@@ -39,8 +60,8 @@ apply_production_runtime_deploy_impl() {
     "$CLASSROOMPATH_GATEWAY_IMAGE" \
     "$CLASSROOMPATH_MIGRATIONS_IMAGE" \
     "$OPENPATH_API_IMAGE" \
-    "$OPENPATH_VERSION" \
-    "$OPENPATH_LINUX_AGENT_VERSION" \
+    "${OPENPATH_VERSION:-}" \
+    "${OPENPATH_LINUX_AGENT_VERSION:-}" \
     "$CLASSROOMPATH_SPA_IMAGE"
 }
 
