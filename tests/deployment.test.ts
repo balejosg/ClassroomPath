@@ -1269,6 +1269,12 @@ void describe('Migration Tooling', () => {
           'ensure_production_release_candidate_runtime_env || return 1'
         ) &&
         readFileSync(deployProductionRuntimeHelperPath, 'utf-8').includes(
+          'RELEASE_MANIFEST_B64_FROM_PAYLOAD'
+        ) &&
+        readFileSync(deployProductionRuntimeHelperPath, 'utf-8').includes(
+          'decode_release_manifest_base64 "$release_manifest_b64" "$RELEASE_MANIFEST_FILE"'
+        ) &&
+        readFileSync(deployProductionRuntimeHelperPath, 'utf-8').includes(
           'log_error "Release candidate manifest did not export OpenPath runtime versions"'
         ),
       'deploy-production-remote.sh should validate and load release images from the shared deploy payload contract'
