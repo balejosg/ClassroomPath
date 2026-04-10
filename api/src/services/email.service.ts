@@ -15,6 +15,18 @@ export interface SendEmailResult {
   id?: string;
 }
 
+export class EmailDeliveryProviderError extends Error {
+  readonly body: string;
+  readonly status: number;
+
+  constructor(message: string, options: { body: string; status: number }) {
+    super(message);
+    this.name = 'EmailDeliveryProviderError';
+    this.body = options.body;
+    this.status = options.status;
+  }
+}
+
 export async function sendTransactionalEmail(params: SendEmailParams): Promise<SendEmailResult> {
   if (config.emailDeliveryMode === 'mock') {
     await appendTestEmailSinkEntry({
@@ -62,7 +74,10 @@ export async function sendTransactionalEmail(params: SendEmailParams): Promise<S
       status: response.status,
       body: body.slice(0, 500),
     });
-    throw new Error('Email delivery failed');
+    throw new EmailDeliveryProviderError('Email delivery failed', {
+      status: response.status,
+      body: body.slice(0, 500),
+    });
   }
 
   const payload = (await response.json().catch(() => ({}))) as { id?: unknown };

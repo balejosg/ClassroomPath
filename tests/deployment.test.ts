@@ -484,6 +484,7 @@ void describe('Migration Tooling', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
     const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
     const validateStep = 'bash scripts/validate-runtime-config-docker.sh';
+    const emailPreflightStep = 'bash scripts/check-email-delivery-docker.sh';
     const pushStep =
       'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"';
 
@@ -502,6 +503,12 @@ void describe('Migration Tooling', () => {
     assert.ok(
       remoteContent.indexOf(validateStep) < remoteContent.indexOf(pushStep),
       'runtime config validation should happen before migrations inside the remote deploy script'
+    );
+    assert.ok(
+      remoteContent.includes(emailPreflightStep) &&
+        remoteContent.indexOf(validateStep) < remoteContent.indexOf(emailPreflightStep) &&
+        remoteContent.indexOf(emailPreflightStep) < remoteContent.indexOf(pushStep),
+      'transactional email preflight should happen after runtime validation and before migrations'
     );
   });
 
@@ -1860,6 +1867,7 @@ void describe('Migration Tooling', () => {
     assert.ok(
       content.includes('prepare_staging_checkout()') &&
         content.includes('run_staging_runtime_validation()') &&
+        content.includes('run_staging_email_delivery_preflight()') &&
         content.includes('cleanup_staging_disk_if_needed()') &&
         content.includes('run_staging_database_migrations()') &&
         content.includes('start_staging_runtime()') &&
@@ -1870,6 +1878,8 @@ void describe('Migration Tooling', () => {
       content.indexOf('prepare_staging_checkout') <
         content.indexOf('run_staging_runtime_validation') &&
         content.indexOf('run_staging_runtime_validation') <
+          content.indexOf('run_staging_email_delivery_preflight') &&
+        content.indexOf('run_staging_email_delivery_preflight') <
           content.indexOf('cleanup_staging_disk_if_needed') &&
         content.indexOf('cleanup_staging_disk_if_needed') <
           content.indexOf('run_staging_database_migrations') &&
@@ -2028,6 +2038,14 @@ void describe('Migration Tooling', () => {
     assert.ok(
       content.includes(productionPhaseSequence),
       'deploy-production-remote.sh should invoke the remote production phases in a stable order'
+    );
+    assert.ok(
+      content.includes('bash scripts/check-email-delivery-docker.sh') &&
+        content.indexOf('bash scripts/check-email-delivery-docker.sh') <
+          content.indexOf(
+            'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
+          ),
+      'production deploy should run transactional email preflight before migrations'
     );
     assert.ok(
       content.includes('plan_production_runtime_deploy()') &&

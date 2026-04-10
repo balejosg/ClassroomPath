@@ -586,6 +586,11 @@ run_staging_runtime_validation() {
   CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" bash scripts/validate-runtime-config-docker.sh
 }
 
+run_staging_email_delivery_preflight() {
+  log_info "Checking transactional email delivery..."
+  CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" bash scripts/check-email-delivery-docker.sh
+}
+
 cleanup_staging_disk_if_needed() {
   log_info "Checking disk space..."
   DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
@@ -710,6 +715,7 @@ wait_for_staging_runtime_readiness() {
 
 prepare_staging_checkout
 run_staging_runtime_validation
+run_staging_email_delivery_preflight
 cleanup_staging_disk_if_needed
 run_staging_database_migrations
 start_staging_runtime
