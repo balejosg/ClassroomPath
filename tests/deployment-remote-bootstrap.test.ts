@@ -15,8 +15,22 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
 
+const extractShellFunction = (content: string, functionName: string): string => {
+  const pattern = new RegExp(
+    `(?:^|\\n)([ \\t]*)${functionName}\\(\\) \\{[\\s\\S]*?(?=\\n\\1[a-zA-Z0-9_]+\\(\\) \\{|\\nelse\\n|\\nfi\\n|$)`
+  );
+  const match = content.match(pattern);
+
+  assert.ok(match, `Expected to find ${functionName}()`);
+
+  const commonIndent = match[1] ?? '';
+  return match[0].replace(new RegExp(`\\n${commonIndent}`, 'g'), '\n').trim();
+};
+
 void describe('Remote Deploy Bootstrap', () => {
   const remoteBootstrapHelperPath = resolve(projectRoot, 'scripts/lib/remote-bootstrap.sh');
+  const releaseManifestHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest.sh');
+  const deployPayloadHelperPath = resolve(projectRoot, 'scripts/lib/deploy-payload.sh');
   const stagingRemotePath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
   const productionRemotePath = resolve(projectRoot, 'scripts/deploy-production-remote.sh');
   const rollbackRemotePath = resolve(projectRoot, 'scripts/rollback-production-remote.sh');
@@ -35,9 +49,40 @@ void describe('Remote Deploy Bootstrap', () => {
     assert.ok(
       content.includes('resolve_remote_script_dir()') &&
         content.includes('resolve_remote_helper_path()') &&
-        content.includes('reload_deployed_common_helpers()'),
+        content.includes('reload_deployed_common_helpers()') &&
+        content.includes('run_remote_deploy_phases()'),
       'remote-bootstrap.sh should own shared remote helper resolution functions'
     );
+  });
+
+  void test('inline manifest and payload fallbacks stay byte-for-byte aligned with source helpers', () => {
+    const releaseManifestHelper = readFileSync(releaseManifestHelperPath, 'utf-8');
+    const deployPayloadHelper = readFileSync(deployPayloadHelperPath, 'utf-8');
+
+    const mirroredFunctions = [
+      ['release_manifest_get', releaseManifestHelper],
+      ['release_manifest_require_key', releaseManifestHelper],
+      ['decode_release_manifest_base64', releaseManifestHelper],
+      ['release_manifest_validate_contract', releaseManifestHelper],
+      ['export_release_manifest_runtime_env', releaseManifestHelper],
+      ['decode_deploy_payload_base64', deployPayloadHelper],
+      ['deploy_payload_get', deployPayloadHelper],
+    ] as const;
+
+    for (const relativePath of [
+      'scripts/deploy-staging-remote.sh',
+      'scripts/deploy-production-remote.sh',
+    ]) {
+      const content = readFileSync(resolve(projectRoot, relativePath), 'utf-8');
+
+      for (const [functionName, helperContent] of mirroredFunctions) {
+        assert.strictEqual(
+          extractShellFunction(content, functionName),
+          extractShellFunction(helperContent, functionName),
+          `${relativePath} inline ${functionName}() fallback should match the source helper`
+        );
+      }
+    }
   });
 
   void test('staging and production resolve release-runtime through the shared bootstrap helper', () => {
@@ -154,6 +199,53 @@ void describe('Remote Deploy Bootstrap', () => {
           content.includes('resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE"') &&
           content.includes('resolve_remote_helper_path'),
         `${scriptName} should reuse the shared remote bootstrap helper when available`
+      );
+    }
+  });
+
+  void test('staging and production execute runtime phases through the shared phase runner', () => {
+    const remoteBootstrap = readFileSync(remoteBootstrapHelperPath, 'utf-8');
+
+    assert.ok(
+      remoteBootstrap.includes('run_remote_deploy_phases()'),
+      'remote-bootstrap.sh should own ordered phase execution'
+    );
+
+    for (const [scriptName, content, phases] of [
+      [
+        'deploy-staging-remote.sh',
+        readFileSync(stagingRemotePath, 'utf-8'),
+        [
+          'prepare_staging_checkout',
+          'run_staging_runtime_validation',
+          'run_staging_email_delivery_preflight',
+          'cleanup_staging_disk_if_needed',
+          'run_staging_database_migrations',
+          'start_staging_runtime',
+          'wait_for_staging_runtime_readiness',
+        ],
+      ],
+      [
+        'deploy-production-remote.sh',
+        readFileSync(productionRemotePath, 'utf-8'),
+        [
+          'load_production_deploy_payload',
+          'prepare_production_checkout',
+          'load_production_release_manifest',
+          'classify_production_migration_risk',
+          'cleanup_production_disk_if_needed',
+          'run_production_database_migrations',
+          'start_production_runtime',
+          'wait_for_production_runtime_readiness',
+        ],
+      ],
+    ] as const) {
+      assert.ok(
+        content.includes('run_remote_deploy_phases \\') &&
+          phases.every(
+            (phase) => content.includes(`  ${phase} \\`) || content.includes(`  ${phase}`)
+          ),
+        `${scriptName} should pass its ordered runtime phases to run_remote_deploy_phases`
       );
     }
   });

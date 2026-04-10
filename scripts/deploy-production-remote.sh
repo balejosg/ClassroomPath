@@ -56,6 +56,16 @@ else
   }
 fi
 
+if ! declare -F run_remote_deploy_phases >/dev/null; then
+  run_remote_deploy_phases() {
+    local phase_name=""
+
+    for phase_name in "$@"; do
+      "$phase_name"
+    done
+  }
+fi
+
 SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
 COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
 RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
@@ -554,11 +564,12 @@ wait_for_production_runtime_readiness() {
 }
 
 
-load_production_deploy_payload
-prepare_production_checkout
-load_production_release_manifest
-classify_production_migration_risk
-cleanup_production_disk_if_needed
-run_production_database_migrations
-start_production_runtime
-wait_for_production_runtime_readiness
+run_remote_deploy_phases \
+  load_production_deploy_payload \
+  prepare_production_checkout \
+  load_production_release_manifest \
+  classify_production_migration_risk \
+  cleanup_production_disk_if_needed \
+  run_production_database_migrations \
+  start_production_runtime \
+  wait_for_production_runtime_readiness

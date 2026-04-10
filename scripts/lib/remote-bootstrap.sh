@@ -35,3 +35,11 @@ reload_deployed_common_helpers() {
     source "$common_sh_deployed_path"
   fi
 }
+
+run_remote_deploy_phases() {
+  local phase_name=""
+
+  for phase_name in "$@"; do
+    "$phase_name"
+  done
+}
