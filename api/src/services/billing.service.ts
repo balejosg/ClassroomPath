@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
 import { config } from '../config.js';
@@ -11,14 +11,69 @@ import type { OrganizationEntitlement } from '../db/schema.js';
 
 type CheckoutKind = 'annual' | 'pilot';
 type ManualRequestKind = 'public_campaign' | 'custom_quote';
+type BillingEntitlementStatus = 'active' | 'grace_period' | 'canceled' | 'expired';
+type BillingActorType = 'stripe' | 'platform_admin' | 'system' | 'user';
+
+type StripeRecord = Record<string, unknown>;
+
+const BILLING_GRACE_PERIOD_DAYS = 7;
+const PILOT_DURATION_DAYS = 90;
+const BILLING_AUDIT_TARGET_ENTITLEMENT = 'organization_entitlement';
+const BILLING_AUDIT_TARGET_REQUEST = 'billing_manual_request';
+const BILLING_AUDIT_TARGET_CHECKOUT = 'billing_checkout_intent';
 
 export interface BillingStatusDto {
   hasActiveEntitlement: boolean;
   source: string | null;
-  status: string | null;
+  status: BillingEntitlementStatus | null;
   productKind: string | null;
   classroomLimit: number | null;
+  currentPeriodEnd: string | null;
+  graceEndsAt: string | null;
+  cancelAtPeriodEnd: boolean;
   expiresAt: string | null;
+}
+
+export interface ManualBillingRequestDto {
+  id: string;
+  userId: string;
+  organizationId: string | null;
+  organizationName: string;
+  kind: string;
+  classrooms: number;
+  status: string;
+  note: string | null;
+  resolutionNote: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface BillingEntitlementSummaryDto {
+  organizationId: string;
+  organizationName: string;
+  source: string;
+  status: BillingEntitlementStatus;
+  productKind: string;
+  classroomLimit: number;
+  currentPeriodEnd: string | null;
+  graceEndsAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  expiresAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface BillingAuditTrailEntryDto {
+  id: string;
+  organizationId: string | null;
+  actorType: string;
+  actorId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string;
+  metadata: Record<string, unknown>;
+  createdAt: string | null;
 }
 
 interface CheckoutRequest {
@@ -37,18 +92,28 @@ interface ManualRequest {
   note?: string;
 }
 
-interface StripeSessionObject {
-  id?: string;
-  customer?: string;
-  subscription?: string;
-  payment_intent?: string;
-  payment_status?: string;
-}
-
 interface StripeWebhookEvent {
   id: string;
   type: string;
-  data?: { object?: StripeSessionObject };
+  data?: { object?: StripeRecord };
+}
+
+interface EntitlementWriteParams {
+  organizationId: string;
+  source: 'stripe_subscription' | 'stripe_payment' | 'manual';
+  status: BillingEntitlementStatus;
+  productKind: string;
+  classrooms: number;
+  stripeCheckoutSessionId?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  currentPeriodEnd?: Date | null;
+  graceEndsAt?: Date | null;
+  cancelAtPeriodEnd?: boolean;
+  expiresAt?: Date | null;
+  grantedBy?: string | null;
+  lastStripeEventType?: string | null;
+  lastStripeEventId?: string | null;
 }
 
 function assertClassroomCount(classrooms: number): void {
@@ -98,6 +163,86 @@ function requireStripeSecret(): string {
   }
 
   return secret;
+}
+
+function asStripeRecord(value: unknown): StripeRecord {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as StripeRecord) : {};
+}
+
+function getString(record: StripeRecord, key: string): string | null {
+  const value = record[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function getBoolean(record: StripeRecord, key: string): boolean | null {
+  const value = record[key];
+  return typeof value === 'boolean' ? value : null;
+}
+
+function getNumber(record: StripeRecord, key: string): number | null {
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function getUnixDate(record: StripeRecord, key: string): Date | null {
+  const value = getNumber(record, key);
+  return value ? new Date(value * 1000) : null;
+}
+
+function addDays(days: number): Date {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+}
+
+function readInvoiceCurrentPeriodEnd(invoice: StripeRecord): Date | null {
+  const directPeriodEnd = getUnixDate(invoice, 'period_end');
+  if (directPeriodEnd) return directPeriodEnd;
+
+  const lines = invoice.lines;
+  if (!lines || typeof lines !== 'object') return null;
+  const linesRecord = asStripeRecord(lines);
+  const data = linesRecord.data;
+  if (!Array.isArray(data) || data.length === 0) return null;
+  const firstLine = asStripeRecord(data[0]);
+  const period = asStripeRecord(firstLine.period);
+  return getUnixDate(period, 'end');
+}
+
+function effectiveEntitlementStatus(
+  entitlement: OrganizationEntitlement | null
+): BillingEntitlementStatus | null {
+  if (!entitlement) return null;
+
+  const now = Date.now();
+  if (entitlement.status === 'expired' || entitlement.status === 'canceled') {
+    return entitlement.status;
+  }
+
+  if (entitlement.cancelAtPeriodEnd && entitlement.currentPeriodEnd) {
+    if (entitlement.currentPeriodEnd.getTime() <= now) {
+      return 'canceled';
+    }
+  }
+
+  if (entitlement.status === 'grace_period' && entitlement.graceEndsAt) {
+    if (entitlement.graceEndsAt.getTime() <= now) {
+      return 'expired';
+    }
+  }
+
+  if (entitlement.expiresAt && entitlement.expiresAt.getTime() <= now) {
+    return 'expired';
+  }
+
+  return entitlement.status as BillingEntitlementStatus;
+}
+
+function isActiveEntitlement(entitlement: OrganizationEntitlement | null): boolean {
+  const status = effectiveEntitlementStatus(entitlement);
+  return status === 'active' || status === 'grace_period';
+}
+
+function toIso(value: Date | null | undefined): string | null {
+  return value ? value.toISOString() : null;
 }
 
 function getLineItems(input: { kind: CheckoutKind; classrooms: number }): Array<{
@@ -196,6 +341,238 @@ async function createStripeCheckoutSession(body: URLSearchParams): Promise<{
   return { id: payload.id, url: payload.url };
 }
 
+async function recordBillingAuditEvent(params: {
+  organizationId?: string | null;
+  actorType: BillingActorType;
+  actorId?: string | null;
+  action: string;
+  targetType: string;
+  targetId: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  await db.insert(schema.cpBillingAuditEvents).values({
+    id: generateId('bill_audit'),
+    organizationId: params.organizationId ?? null,
+    actorType: params.actorType,
+    actorId: params.actorId ?? null,
+    action: params.action,
+    targetType: params.targetType,
+    targetId: params.targetId,
+    metadata: params.metadata ?? {},
+  });
+}
+
+async function getExistingBillingOrganization(
+  userId: string
+): Promise<{ id: string; name: string } | null> {
+  const membership = await getSingleMembershipOrThrow(userId);
+  if (!membership) return null;
+
+  const [organization] = await db
+    .select({
+      id: schema.cpOrganizations.id,
+      name: schema.cpOrganizations.name,
+    })
+    .from(schema.cpOrganizations)
+    .where(eq(schema.cpOrganizations.id, membership.organizationId))
+    .limit(1);
+
+  return {
+    id: membership.organizationId,
+    name: organization?.name ?? membership.organizationId,
+  };
+}
+
+async function upsertOrganizationEntitlement(params: EntitlementWriteParams): Promise<void> {
+  await db
+    .insert(schema.cpOrganizationEntitlements)
+    .values({
+      organizationId: params.organizationId,
+      source: params.source,
+      status: params.status,
+      productKind: params.productKind,
+      classroomLimit: params.classrooms,
+      stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
+      stripeCustomerId: params.stripeCustomerId ?? null,
+      stripeSubscriptionId: params.stripeSubscriptionId ?? null,
+      currentPeriodEnd: params.currentPeriodEnd ?? null,
+      graceEndsAt: params.graceEndsAt ?? null,
+      cancelAtPeriodEnd: params.cancelAtPeriodEnd ?? false,
+      lastStripeEventType: params.lastStripeEventType ?? null,
+      lastStripeEventId: params.lastStripeEventId ?? null,
+      expiresAt: params.expiresAt ?? null,
+      grantedBy: params.grantedBy ?? null,
+    })
+    .onConflictDoUpdate({
+      target: schema.cpOrganizationEntitlements.organizationId,
+      set: {
+        source: params.source,
+        status: params.status,
+        productKind: params.productKind,
+        classroomLimit: params.classrooms,
+        stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
+        stripeCustomerId: params.stripeCustomerId ?? null,
+        stripeSubscriptionId: params.stripeSubscriptionId ?? null,
+        currentPeriodEnd: params.currentPeriodEnd ?? null,
+        graceEndsAt: params.graceEndsAt ?? null,
+        cancelAtPeriodEnd: params.cancelAtPeriodEnd ?? false,
+        lastStripeEventType: params.lastStripeEventType ?? null,
+        lastStripeEventId: params.lastStripeEventId ?? null,
+        expiresAt: params.expiresAt ?? null,
+        grantedBy: params.grantedBy ?? null,
+        updatedAt: new Date(),
+      },
+    });
+}
+
+async function activateExistingOrganizationEntitlement(params: {
+  userId: string;
+  organizationId: string;
+  source: 'stripe_subscription' | 'stripe_payment' | 'manual';
+  productKind: string;
+  classrooms: number;
+  stripeCheckoutSessionId?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  currentPeriodEnd?: Date | null;
+  graceEndsAt?: Date | null;
+  cancelAtPeriodEnd?: boolean;
+  expiresAt?: Date | null;
+  grantedBy?: string | null;
+  lastStripeEventType?: string | null;
+  lastStripeEventId?: string | null;
+}): Promise<{ organizationId: string }> {
+  await upsertOrganizationEntitlement({
+    organizationId: params.organizationId,
+    source: params.source,
+    status: 'active',
+    productKind: params.productKind,
+    classrooms: params.classrooms,
+    stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
+    stripeCustomerId: params.stripeCustomerId ?? null,
+    stripeSubscriptionId: params.stripeSubscriptionId ?? null,
+    currentPeriodEnd: params.currentPeriodEnd ?? null,
+    graceEndsAt: params.graceEndsAt ?? null,
+    cancelAtPeriodEnd: params.cancelAtPeriodEnd ?? false,
+    expiresAt: params.expiresAt ?? null,
+    grantedBy: params.grantedBy ?? null,
+    lastStripeEventType: params.lastStripeEventType ?? null,
+    lastStripeEventId: params.lastStripeEventId ?? null,
+  });
+
+  await synchronizeOpenPathRole({
+    userId: params.userId,
+    actedBy: params.grantedBy ?? params.userId,
+  });
+
+  return { organizationId: params.organizationId };
+}
+
+async function createOrganizationWithEntitlement(params: {
+  userId: string;
+  organizationName: string;
+  source: 'stripe_subscription' | 'stripe_payment' | 'manual';
+  productKind: string;
+  classrooms: number;
+  stripeCheckoutSessionId?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  grantedBy?: string | null;
+  currentPeriodEnd?: Date | null;
+  graceEndsAt?: Date | null;
+  cancelAtPeriodEnd?: boolean;
+  expiresAt?: Date | null;
+  lastStripeEventType?: string | null;
+  lastStripeEventId?: string | null;
+}): Promise<{ organizationId: string; membershipId: string }> {
+  const orgId = generateId('org');
+  const membershipId = generateId('mem');
+
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.cpOrganizations).values({
+      id: orgId,
+      name: params.organizationName,
+      createdBy: params.userId,
+    });
+
+    await tx.insert(schema.cpMemberships).values({
+      id: membershipId,
+      userId: params.userId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: null,
+    });
+
+    await tx.insert(schema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: params.source,
+      status: 'active',
+      productKind: params.productKind,
+      classroomLimit: params.classrooms,
+      stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
+      stripeCustomerId: params.stripeCustomerId ?? null,
+      stripeSubscriptionId: params.stripeSubscriptionId ?? null,
+      currentPeriodEnd: params.currentPeriodEnd ?? null,
+      graceEndsAt: params.graceEndsAt ?? null,
+      cancelAtPeriodEnd: params.cancelAtPeriodEnd ?? false,
+      lastStripeEventType: params.lastStripeEventType ?? null,
+      lastStripeEventId: params.lastStripeEventId ?? null,
+      expiresAt: params.expiresAt ?? null,
+      grantedBy: params.grantedBy ?? null,
+    });
+  });
+
+  await synchronizeOpenPathRole({
+    userId: params.userId,
+    actedBy: params.grantedBy ?? params.userId,
+  });
+
+  return { organizationId: orgId, membershipId };
+}
+
+export function isPlatformAdminEmail(email: string): boolean {
+  return config.platformAdminEmails.includes(email.trim().toLowerCase());
+}
+
+export function assertPlatformAdmin(user: { email: string }): void {
+  if (!isPlatformAdminEmail(user.email)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Platform admin access required' });
+  }
+}
+
+export function toBillingStatusDto(entitlement: OrganizationEntitlement | null): BillingStatusDto {
+  return {
+    hasActiveEntitlement: isActiveEntitlement(entitlement),
+    source: entitlement?.source ?? null,
+    status: effectiveEntitlementStatus(entitlement),
+    productKind: entitlement?.productKind ?? null,
+    classroomLimit: entitlement?.classroomLimit ?? null,
+    currentPeriodEnd: toIso(entitlement?.currentPeriodEnd),
+    graceEndsAt: toIso(entitlement?.graceEndsAt),
+    cancelAtPeriodEnd: entitlement?.cancelAtPeriodEnd ?? false,
+    expiresAt: toIso(entitlement?.expiresAt),
+  };
+}
+
+export async function getOrganizationBillingStatus(
+  organizationId: string
+): Promise<BillingStatusDto> {
+  const [entitlement] = await db
+    .select()
+    .from(schema.cpOrganizationEntitlements)
+    .where(eq(schema.cpOrganizationEntitlements.organizationId, organizationId))
+    .limit(1);
+
+  return toBillingStatusDto(entitlement ?? null);
+}
+
+export async function assertOrganizationEntitled(organizationId: string): Promise<void> {
+  const status = await getOrganizationBillingStatus(organizationId);
+  if (!status.hasActiveEntitlement) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Active billing required' });
+  }
+}
+
 export async function createBillingCheckout(input: CheckoutRequest): Promise<{
   checkoutSessionId: string;
   checkoutUrl: string;
@@ -235,180 +612,24 @@ export async function createBillingCheckout(input: CheckoutRequest): Promise<{
     stripeCheckoutSessionId: session.id,
   });
 
+  await recordBillingAuditEvent({
+    organizationId: existingOrganization?.id ?? null,
+    actorType: 'user',
+    actorId: input.userId,
+    action: 'checkout.created',
+    targetType: BILLING_AUDIT_TARGET_CHECKOUT,
+    targetId: intentId,
+    metadata: {
+      kind: input.kind,
+      classrooms: input.classrooms,
+      stripeCheckoutSessionId: session.id,
+    },
+  });
+
   return {
     checkoutSessionId: session.id,
     checkoutUrl: session.url,
   };
-}
-
-export function isPlatformAdminEmail(email: string): boolean {
-  return config.platformAdminEmails.includes(email.trim().toLowerCase());
-}
-
-export function assertPlatformAdmin(user: { email: string }): void {
-  if (!isPlatformAdminEmail(user.email)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Platform admin access required' });
-  }
-}
-
-function isActiveEntitlement(entitlement: OrganizationEntitlement | null): boolean {
-  if (!entitlement || entitlement.status !== 'active') return false;
-  if (entitlement.expiresAt && entitlement.expiresAt.getTime() <= Date.now()) return false;
-  return true;
-}
-
-export function toBillingStatusDto(entitlement: OrganizationEntitlement | null): BillingStatusDto {
-  return {
-    hasActiveEntitlement: isActiveEntitlement(entitlement),
-    source: entitlement?.source ?? null,
-    status: entitlement?.status ?? null,
-    productKind: entitlement?.productKind ?? null,
-    classroomLimit: entitlement?.classroomLimit ?? null,
-    expiresAt: entitlement?.expiresAt?.toISOString() ?? null,
-  };
-}
-
-export async function getOrganizationBillingStatus(
-  organizationId: string
-): Promise<BillingStatusDto> {
-  const [entitlement] = await db
-    .select()
-    .from(schema.cpOrganizationEntitlements)
-    .where(eq(schema.cpOrganizationEntitlements.organizationId, organizationId))
-    .limit(1);
-
-  return toBillingStatusDto(entitlement ?? null);
-}
-
-export async function assertOrganizationEntitled(organizationId: string): Promise<void> {
-  const status = await getOrganizationBillingStatus(organizationId);
-  if (!status.hasActiveEntitlement) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Active billing required' });
-  }
-}
-
-async function getExistingBillingOrganization(
-  userId: string
-): Promise<{ id: string; name: string } | null> {
-  const membership = await getSingleMembershipOrThrow(userId);
-  if (!membership) return null;
-
-  const [organization] = await db
-    .select({
-      id: schema.cpOrganizations.id,
-      name: schema.cpOrganizations.name,
-    })
-    .from(schema.cpOrganizations)
-    .where(eq(schema.cpOrganizations.id, membership.organizationId))
-    .limit(1);
-
-  return {
-    id: membership.organizationId,
-    name: organization?.name ?? membership.organizationId,
-  };
-}
-
-async function activateExistingOrganizationEntitlement(params: {
-  userId: string;
-  organizationId: string;
-  classrooms: number;
-  source: 'stripe_subscription' | 'stripe_payment' | 'manual';
-  productKind: string;
-  stripeCheckoutSessionId?: string | null;
-  stripeCustomerId?: string | null;
-  stripeSubscriptionId?: string | null;
-  grantedBy?: string | null;
-  expiresAt?: Date | null;
-}): Promise<{ organizationId: string }> {
-  await db
-    .insert(schema.cpOrganizationEntitlements)
-    .values({
-      organizationId: params.organizationId,
-      source: params.source,
-      status: 'active',
-      productKind: params.productKind,
-      classroomLimit: params.classrooms,
-      stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
-      stripeCustomerId: params.stripeCustomerId ?? null,
-      stripeSubscriptionId: params.stripeSubscriptionId ?? null,
-      expiresAt: params.expiresAt ?? null,
-      grantedBy: params.grantedBy ?? null,
-    })
-    .onConflictDoUpdate({
-      target: schema.cpOrganizationEntitlements.organizationId,
-      set: {
-        source: params.source,
-        status: 'active',
-        productKind: params.productKind,
-        classroomLimit: params.classrooms,
-        stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
-        stripeCustomerId: params.stripeCustomerId ?? null,
-        stripeSubscriptionId: params.stripeSubscriptionId ?? null,
-        expiresAt: params.expiresAt ?? null,
-        grantedBy: params.grantedBy ?? null,
-        updatedAt: new Date(),
-      },
-    });
-
-  await synchronizeOpenPathRole({
-    userId: params.userId,
-    actedBy: params.grantedBy ?? params.userId,
-  });
-
-  return { organizationId: params.organizationId };
-}
-
-async function createOrganizationWithEntitlement(params: {
-  userId: string;
-  organizationName: string;
-  classrooms: number;
-  source: 'stripe_subscription' | 'stripe_payment' | 'manual';
-  productKind: string;
-  stripeCheckoutSessionId?: string | null;
-  stripeCustomerId?: string | null;
-  stripeSubscriptionId?: string | null;
-  stripePaymentIntentId?: string | null;
-  grantedBy?: string | null;
-  expiresAt?: Date | null;
-}): Promise<{ organizationId: string; membershipId: string }> {
-  const orgId = generateId('org');
-  const membershipId = generateId('mem');
-
-  await db.transaction(async (tx) => {
-    await tx.insert(schema.cpOrganizations).values({
-      id: orgId,
-      name: params.organizationName,
-      createdBy: params.userId,
-    });
-
-    await tx.insert(schema.cpMemberships).values({
-      id: membershipId,
-      userId: params.userId,
-      organizationId: orgId,
-      role: 'admin',
-      invitedBy: null,
-    });
-
-    await tx.insert(schema.cpOrganizationEntitlements).values({
-      organizationId: orgId,
-      source: params.source,
-      status: 'active',
-      productKind: params.productKind,
-      classroomLimit: params.classrooms,
-      stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
-      stripeCustomerId: params.stripeCustomerId ?? null,
-      stripeSubscriptionId: params.stripeSubscriptionId ?? null,
-      expiresAt: params.expiresAt ?? null,
-      grantedBy: params.grantedBy ?? null,
-    });
-  });
-
-  await synchronizeOpenPathRole({
-    userId: params.userId,
-    actedBy: params.grantedBy ?? params.userId,
-  });
-
-  return { organizationId: orgId, membershipId };
 }
 
 export async function createManualBillingRequest(input: ManualRequest): Promise<{
@@ -429,18 +650,56 @@ export async function createManualBillingRequest(input: ManualRequest): Promise<
     note: input.note ?? null,
   });
 
+  await recordBillingAuditEvent({
+    organizationId: existingOrganization?.id ?? null,
+    actorType: 'user',
+    actorId: input.userId,
+    action: 'manual-request.created',
+    targetType: BILLING_AUDIT_TARGET_REQUEST,
+    targetId: requestId,
+    metadata: {
+      kind: input.kind,
+      classrooms: input.classrooms,
+      note: input.note ?? null,
+    },
+  });
+
   return { requestId };
 }
 
-export async function listManualBillingRequests(): Promise<
-  Array<typeof schema.cpBillingManualRequests.$inferSelect>
-> {
-  return db.select().from(schema.cpBillingManualRequests);
+function toManualBillingRequestDto(
+  request: typeof schema.cpBillingManualRequests.$inferSelect
+): ManualBillingRequestDto {
+  return {
+    id: request.id,
+    userId: request.userId,
+    organizationId: request.organizationId ?? null,
+    organizationName: request.organizationName,
+    kind: request.kind,
+    classrooms: request.classrooms,
+    status: request.status,
+    note: request.note ?? null,
+    resolutionNote: request.resolutionNote ?? null,
+    reviewedBy: request.reviewedBy ?? null,
+    reviewedAt: toIso(request.reviewedAt),
+    createdAt: toIso(request.createdAt),
+    updatedAt: toIso(request.updatedAt),
+  };
+}
+
+export async function listManualBillingRequests(): Promise<ManualBillingRequestDto[]> {
+  const rows = await db
+    .select()
+    .from(schema.cpBillingManualRequests)
+    .orderBy(desc(schema.cpBillingManualRequests.createdAt));
+
+  return rows.map(toManualBillingRequestDto);
 }
 
 export async function approveManualBillingRequest(params: {
   requestId: string;
   reviewedBy: string;
+  resolutionNote: string;
 }): Promise<{ organizationId: string }> {
   const [request] = await db
     .select()
@@ -455,6 +714,10 @@ export async function approveManualBillingRequest(params: {
 
   if (!request) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Manual billing request not found' });
+  }
+
+  if (!params.resolutionNote.trim()) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Resolution note is required' });
   }
 
   const result = request.organizationId
@@ -480,13 +743,226 @@ export async function approveManualBillingRequest(params: {
     .set({
       status: 'approved',
       organizationId: result.organizationId,
+      resolutionNote: params.resolutionNote.trim(),
       reviewedBy: params.reviewedBy,
       reviewedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(schema.cpBillingManualRequests.id, request.id));
 
+  await recordBillingAuditEvent({
+    organizationId: result.organizationId,
+    actorType: 'platform_admin',
+    actorId: params.reviewedBy,
+    action: 'manual-request.approved',
+    targetType: BILLING_AUDIT_TARGET_REQUEST,
+    targetId: request.id,
+    metadata: {
+      resolutionNote: params.resolutionNote.trim(),
+      classrooms: request.classrooms,
+      kind: request.kind,
+    },
+  });
+
+  await recordBillingAuditEvent({
+    organizationId: result.organizationId,
+    actorType: 'platform_admin',
+    actorId: params.reviewedBy,
+    action: 'entitlement.activated',
+    targetType: BILLING_AUDIT_TARGET_ENTITLEMENT,
+    targetId: result.organizationId,
+    metadata: {
+      source: 'manual',
+      productKind: request.kind,
+      classrooms: request.classrooms,
+      resolutionNote: params.resolutionNote.trim(),
+    },
+  });
+
   return { organizationId: result.organizationId };
+}
+
+export async function rejectManualBillingRequest(params: {
+  requestId: string;
+  reviewedBy: string;
+  resolutionNote: string;
+}): Promise<{ requestId: string }> {
+  const [request] = await db
+    .select()
+    .from(schema.cpBillingManualRequests)
+    .where(
+      and(
+        eq(schema.cpBillingManualRequests.id, params.requestId),
+        eq(schema.cpBillingManualRequests.status, 'pending')
+      )
+    )
+    .limit(1);
+
+  if (!request) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Manual billing request not found' });
+  }
+
+  if (!params.resolutionNote.trim()) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Resolution note is required' });
+  }
+
+  await db
+    .update(schema.cpBillingManualRequests)
+    .set({
+      status: 'rejected',
+      resolutionNote: params.resolutionNote.trim(),
+      reviewedBy: params.reviewedBy,
+      reviewedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.cpBillingManualRequests.id, request.id));
+
+  await recordBillingAuditEvent({
+    organizationId: request.organizationId ?? null,
+    actorType: 'platform_admin',
+    actorId: params.reviewedBy,
+    action: 'manual-request.rejected',
+    targetType: BILLING_AUDIT_TARGET_REQUEST,
+    targetId: request.id,
+    metadata: {
+      resolutionNote: params.resolutionNote.trim(),
+      classrooms: request.classrooms,
+      kind: request.kind,
+    },
+  });
+
+  return { requestId: request.id };
+}
+
+function toEntitlementSummaryDto(row: {
+  organizationId: string;
+  organizationName: string;
+  source: string;
+  status: string;
+  productKind: string;
+  classroomLimit: number;
+  currentPeriodEnd: Date | null;
+  graceEndsAt: Date | null;
+  cancelAtPeriodEnd: boolean;
+  expiresAt: Date | null;
+  updatedAt: Date | null;
+}): BillingEntitlementSummaryDto {
+  const effectiveStatus =
+    effectiveEntitlementStatus({
+      organizationId: row.organizationId,
+      source: row.source,
+      status: row.status,
+      productKind: row.productKind,
+      classroomLimit: row.classroomLimit,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      stripeCheckoutSessionId: null,
+      currentPeriodEnd: row.currentPeriodEnd,
+      graceEndsAt: row.graceEndsAt,
+      cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+      lastStripeEventType: null,
+      lastStripeEventId: null,
+      expiresAt: row.expiresAt,
+      grantedBy: null,
+      createdAt: row.updatedAt ?? new Date(),
+      updatedAt: row.updatedAt ?? new Date(),
+    }) ?? 'expired';
+
+  return {
+    organizationId: row.organizationId,
+    organizationName: row.organizationName,
+    source: row.source,
+    status: effectiveStatus,
+    productKind: row.productKind,
+    classroomLimit: row.classroomLimit,
+    currentPeriodEnd: toIso(row.currentPeriodEnd),
+    graceEndsAt: toIso(row.graceEndsAt),
+    cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+    expiresAt: toIso(row.expiresAt),
+    updatedAt: toIso(row.updatedAt),
+  };
+}
+
+export async function listOrganizationEntitlements(): Promise<BillingEntitlementSummaryDto[]> {
+  const rows = await db
+    .select({
+      organizationId: schema.cpOrganizationEntitlements.organizationId,
+      organizationName: schema.cpOrganizations.name,
+      source: schema.cpOrganizationEntitlements.source,
+      status: schema.cpOrganizationEntitlements.status,
+      productKind: schema.cpOrganizationEntitlements.productKind,
+      classroomLimit: schema.cpOrganizationEntitlements.classroomLimit,
+      currentPeriodEnd: schema.cpOrganizationEntitlements.currentPeriodEnd,
+      graceEndsAt: schema.cpOrganizationEntitlements.graceEndsAt,
+      cancelAtPeriodEnd: schema.cpOrganizationEntitlements.cancelAtPeriodEnd,
+      expiresAt: schema.cpOrganizationEntitlements.expiresAt,
+      updatedAt: schema.cpOrganizationEntitlements.updatedAt,
+    })
+    .from(schema.cpOrganizationEntitlements)
+    .innerJoin(
+      schema.cpOrganizations,
+      eq(schema.cpOrganizationEntitlements.organizationId, schema.cpOrganizations.id)
+    )
+    .orderBy(desc(schema.cpOrganizationEntitlements.updatedAt));
+
+  return rows.map(toEntitlementSummaryDto);
+}
+
+export async function getBillingAuditTrail(
+  filters: {
+    organizationId?: string;
+    requestId?: string;
+  } = {}
+): Promise<BillingAuditTrailEntryDto[]> {
+  let rows: Array<typeof schema.cpBillingAuditEvents.$inferSelect>;
+
+  if (filters.organizationId && filters.requestId) {
+    rows = await db
+      .select()
+      .from(schema.cpBillingAuditEvents)
+      .where(
+        and(
+          eq(schema.cpBillingAuditEvents.organizationId, filters.organizationId),
+          eq(schema.cpBillingAuditEvents.targetType, BILLING_AUDIT_TARGET_REQUEST),
+          eq(schema.cpBillingAuditEvents.targetId, filters.requestId)
+        )
+      )
+      .orderBy(desc(schema.cpBillingAuditEvents.createdAt));
+  } else if (filters.organizationId) {
+    rows = await db
+      .select()
+      .from(schema.cpBillingAuditEvents)
+      .where(eq(schema.cpBillingAuditEvents.organizationId, filters.organizationId))
+      .orderBy(desc(schema.cpBillingAuditEvents.createdAt));
+  } else if (filters.requestId) {
+    rows = await db
+      .select()
+      .from(schema.cpBillingAuditEvents)
+      .where(
+        and(
+          eq(schema.cpBillingAuditEvents.targetType, BILLING_AUDIT_TARGET_REQUEST),
+          eq(schema.cpBillingAuditEvents.targetId, filters.requestId)
+        )
+      )
+      .orderBy(desc(schema.cpBillingAuditEvents.createdAt));
+  } else {
+    rows = await db
+      .select()
+      .from(schema.cpBillingAuditEvents)
+      .orderBy(desc(schema.cpBillingAuditEvents.createdAt));
+  }
+
+  return rows.slice(0, 100).map((row) => ({
+    id: row.id,
+    organizationId: row.organizationId ?? null,
+    actorType: row.actorType,
+    actorId: row.actorId ?? null,
+    action: row.action,
+    targetType: row.targetType,
+    targetId: row.targetId,
+    metadata: row.metadata,
+    createdAt: toIso(row.createdAt),
+  }));
 }
 
 function verifyStripeSignature(payload: string, signatureHeader: string, secret: string): void {
@@ -514,6 +990,186 @@ function verifyStripeSignature(payload: string, signatureHeader: string, secret:
   }
 }
 
+async function findEntitlementByStripeReference(params: {
+  subscriptionId?: string | null;
+  customerId?: string | null;
+}): Promise<OrganizationEntitlement | null> {
+  if (params.subscriptionId) {
+    const [entitlement] = await db
+      .select()
+      .from(schema.cpOrganizationEntitlements)
+      .where(eq(schema.cpOrganizationEntitlements.stripeSubscriptionId, params.subscriptionId))
+      .limit(1);
+    if (entitlement) return entitlement;
+  }
+
+  if (params.customerId) {
+    const [entitlement] = await db
+      .select()
+      .from(schema.cpOrganizationEntitlements)
+      .where(eq(schema.cpOrganizationEntitlements.stripeCustomerId, params.customerId))
+      .limit(1);
+    if (entitlement) return entitlement;
+  }
+
+  return null;
+}
+
+async function updateEntitlementLifecycleFromStripe(params: {
+  eventId: string;
+  eventType: string;
+  nextStatus: BillingEntitlementStatus;
+  subscriptionId?: string | null;
+  customerId?: string | null;
+  currentPeriodEnd?: Date | null;
+  graceEndsAt?: Date | null;
+  cancelAtPeriodEnd?: boolean | null;
+}): Promise<void> {
+  const entitlement = await findEntitlementByStripeReference({
+    subscriptionId: params.subscriptionId ?? null,
+    customerId: params.customerId ?? null,
+  });
+
+  if (!entitlement) {
+    throw new Error(`Billing entitlement not found for Stripe event ${params.eventId}`);
+  }
+
+  const previousStatus = effectiveEntitlementStatus(entitlement);
+  const nextGraceEndsAt =
+    params.nextStatus === 'grace_period'
+      ? (params.graceEndsAt ?? addDays(BILLING_GRACE_PERIOD_DAYS))
+      : null;
+  const nextCancelAtPeriodEnd =
+    params.nextStatus === 'canceled'
+      ? false
+      : (params.cancelAtPeriodEnd ?? entitlement.cancelAtPeriodEnd);
+
+  await db
+    .update(schema.cpOrganizationEntitlements)
+    .set({
+      status: params.nextStatus,
+      currentPeriodEnd: params.currentPeriodEnd ?? entitlement.currentPeriodEnd ?? null,
+      graceEndsAt: nextGraceEndsAt,
+      cancelAtPeriodEnd: nextCancelAtPeriodEnd,
+      lastStripeEventType: params.eventType,
+      lastStripeEventId: params.eventId,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.cpOrganizationEntitlements.organizationId, entitlement.organizationId));
+
+  await recordBillingAuditEvent({
+    organizationId: entitlement.organizationId,
+    actorType: 'stripe',
+    actorId: params.customerId ?? params.subscriptionId ?? null,
+    action: 'entitlement.status-updated',
+    targetType: BILLING_AUDIT_TARGET_ENTITLEMENT,
+    targetId: entitlement.organizationId,
+    metadata: {
+      previousStatus,
+      nextStatus: params.nextStatus,
+      currentPeriodEnd: toIso(params.currentPeriodEnd ?? entitlement.currentPeriodEnd ?? null),
+      graceEndsAt: toIso(nextGraceEndsAt),
+      cancelAtPeriodEnd: nextCancelAtPeriodEnd,
+      stripeEventId: params.eventId,
+      stripeEventType: params.eventType,
+    },
+  });
+}
+
+async function handleInvoiceWebhook(event: StripeWebhookEvent): Promise<void> {
+  const invoice = asStripeRecord(event.data?.object);
+  const subscriptionId = getString(invoice, 'subscription');
+  const customerId = getString(invoice, 'customer');
+  const currentPeriodEnd = readInvoiceCurrentPeriodEnd(invoice);
+
+  if (event.type === 'invoice.paid') {
+    await updateEntitlementLifecycleFromStripe({
+      eventId: event.id,
+      eventType: event.type,
+      nextStatus: 'active',
+      subscriptionId,
+      customerId,
+      currentPeriodEnd,
+    });
+    return;
+  }
+
+  if (event.type === 'invoice.payment_failed') {
+    await updateEntitlementLifecycleFromStripe({
+      eventId: event.id,
+      eventType: event.type,
+      nextStatus: 'grace_period',
+      subscriptionId,
+      customerId,
+      currentPeriodEnd,
+      graceEndsAt: addDays(BILLING_GRACE_PERIOD_DAYS),
+    });
+  }
+}
+
+async function handleSubscriptionWebhook(event: StripeWebhookEvent): Promise<void> {
+  const subscription = asStripeRecord(event.data?.object);
+  const subscriptionId = getString(subscription, 'id');
+  const customerId = getString(subscription, 'customer');
+  const subscriptionStatus = getString(subscription, 'status');
+  const currentPeriodEnd = getUnixDate(subscription, 'current_period_end');
+  const cancelAtPeriodEnd = getBoolean(subscription, 'cancel_at_period_end');
+
+  if (event.type === 'customer.subscription.deleted') {
+    await updateEntitlementLifecycleFromStripe({
+      eventId: event.id,
+      eventType: event.type,
+      nextStatus: 'canceled',
+      subscriptionId,
+      customerId,
+      currentPeriodEnd,
+      cancelAtPeriodEnd: false,
+    });
+    return;
+  }
+
+  if (subscriptionStatus === 'past_due' || subscriptionStatus === 'unpaid') {
+    await updateEntitlementLifecycleFromStripe({
+      eventId: event.id,
+      eventType: event.type,
+      nextStatus: 'grace_period',
+      subscriptionId,
+      customerId,
+      currentPeriodEnd,
+      cancelAtPeriodEnd,
+      graceEndsAt: addDays(BILLING_GRACE_PERIOD_DAYS),
+    });
+    return;
+  }
+
+  if (
+    subscriptionStatus === 'canceled' ||
+    subscriptionStatus === 'incomplete' ||
+    subscriptionStatus === 'incomplete_expired'
+  ) {
+    await updateEntitlementLifecycleFromStripe({
+      eventId: event.id,
+      eventType: event.type,
+      nextStatus: 'canceled',
+      subscriptionId,
+      customerId,
+      currentPeriodEnd,
+      cancelAtPeriodEnd: false,
+    });
+    return;
+  }
+
+  await updateEntitlementLifecycleFromStripe({
+    eventId: event.id,
+    eventType: event.type,
+    nextStatus: 'active',
+    subscriptionId,
+    customerId,
+    currentPeriodEnd,
+    cancelAtPeriodEnd,
+  });
+}
+
 export async function processStripeWebhook(params: {
   rawBody: Buffer;
   signature: string | undefined;
@@ -539,7 +1195,14 @@ export async function processStripeWebhook(params: {
   if (existing) return;
 
   if (event.type === 'checkout.session.completed') {
-    await completeCheckoutSession(event.data?.object ?? {});
+    await completeCheckoutSession(event);
+  } else if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
+    await handleInvoiceWebhook(event);
+  } else if (
+    event.type === 'customer.subscription.updated' ||
+    event.type === 'customer.subscription.deleted'
+  ) {
+    await handleSubscriptionWebhook(event);
   }
 
   await db.insert(schema.cpStripeWebhookEvents).values({
@@ -549,22 +1212,29 @@ export async function processStripeWebhook(params: {
   });
 }
 
-async function completeCheckoutSession(session: StripeSessionObject): Promise<void> {
-  if (!session.id) {
+async function completeCheckoutSession(event: StripeWebhookEvent): Promise<void> {
+  const session = asStripeRecord(event.data?.object);
+  const sessionId = getString(session, 'id');
+  if (!sessionId) {
     throw new Error('Stripe checkout session missing id');
   }
 
   const [intent] = await db
     .select()
     .from(schema.cpBillingCheckoutIntents)
-    .where(eq(schema.cpBillingCheckoutIntents.stripeCheckoutSessionId, session.id))
+    .where(eq(schema.cpBillingCheckoutIntents.stripeCheckoutSessionId, sessionId))
     .limit(1);
 
   if (!intent) {
-    throw new Error(`Billing checkout intent not found for session ${session.id}`);
+    throw new Error(`Billing checkout intent not found for session ${sessionId}`);
   }
 
   if (intent.status === 'completed' && intent.organizationId) return;
+
+  const stripeCustomerId = getString(session, 'customer');
+  const stripeSubscriptionId = getString(session, 'subscription');
+  const stripePaymentIntentId = getString(session, 'payment_intent');
+  const expiresAt = intent.kind === 'pilot' ? addDays(PILOT_DURATION_DAYS) : null;
 
   const result = intent.organizationId
     ? await activateExistingOrganizationEntitlement({
@@ -573,10 +1243,12 @@ async function completeCheckoutSession(session: StripeSessionObject): Promise<vo
         classrooms: intent.classrooms,
         source: intent.kind === 'annual' ? 'stripe_subscription' : 'stripe_payment',
         productKind: intent.kind,
-        stripeCheckoutSessionId: session.id,
-        stripeCustomerId: session.customer ?? null,
-        stripeSubscriptionId: session.subscription ?? null,
-        expiresAt: intent.kind === 'pilot' ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) : null,
+        stripeCheckoutSessionId: sessionId,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        expiresAt,
+        lastStripeEventType: event.type,
+        lastStripeEventId: event.id,
       })
     : await createOrganizationWithEntitlement({
         userId: intent.userId,
@@ -584,11 +1256,12 @@ async function completeCheckoutSession(session: StripeSessionObject): Promise<vo
         classrooms: intent.classrooms,
         source: intent.kind === 'annual' ? 'stripe_subscription' : 'stripe_payment',
         productKind: intent.kind,
-        stripeCheckoutSessionId: session.id,
-        stripeCustomerId: session.customer ?? null,
-        stripeSubscriptionId: session.subscription ?? null,
-        stripePaymentIntentId: session.payment_intent ?? null,
-        expiresAt: intent.kind === 'pilot' ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) : null,
+        stripeCheckoutSessionId: sessionId,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        expiresAt,
+        lastStripeEventType: event.type,
+        lastStripeEventId: event.id,
       });
 
   await db
@@ -596,10 +1269,45 @@ async function completeCheckoutSession(session: StripeSessionObject): Promise<vo
     .set({
       status: 'completed',
       organizationId: result.organizationId,
-      stripeCustomerId: session.customer ?? null,
-      stripeSubscriptionId: session.subscription ?? null,
-      stripePaymentIntentId: session.payment_intent ?? null,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      stripePaymentIntentId,
       updatedAt: new Date(),
     })
     .where(eq(schema.cpBillingCheckoutIntents.id, intent.id));
+
+  await recordBillingAuditEvent({
+    organizationId: result.organizationId,
+    actorType: 'stripe',
+    actorId: stripeCustomerId ?? null,
+    action: 'checkout.completed',
+    targetType: BILLING_AUDIT_TARGET_CHECKOUT,
+    targetId: intent.id,
+    metadata: {
+      stripeCheckoutSessionId: sessionId,
+      stripeSubscriptionId,
+      stripePaymentIntentId,
+      stripeEventId: event.id,
+      stripeEventType: event.type,
+    },
+  });
+
+  await recordBillingAuditEvent({
+    organizationId: result.organizationId,
+    actorType: 'stripe',
+    actorId: stripeCustomerId ?? null,
+    action: 'entitlement.activated',
+    targetType: BILLING_AUDIT_TARGET_ENTITLEMENT,
+    targetId: result.organizationId,
+    metadata: {
+      source: intent.kind === 'annual' ? 'stripe_subscription' : 'stripe_payment',
+      productKind: intent.kind,
+      classrooms: intent.classrooms,
+      expiresAt: toIso(expiresAt),
+      stripeCheckoutSessionId: sessionId,
+      stripeSubscriptionId,
+      stripeEventId: event.id,
+      stripeEventType: event.type,
+    },
+  });
 }

@@ -34,6 +34,14 @@ export function isAuthPath(pathname: string): boolean {
   );
 }
 
+export function isBillingSuccessPath(pathname: string): boolean {
+  return normalizePathname(pathname).startsWith('/billing/success');
+}
+
+export function isBillingCancelPath(pathname: string): boolean {
+  return normalizePathname(pathname).startsWith('/billing/cancel');
+}
+
 export function getPathForAuthView(view: AuthView): string {
   switch (view) {
     case 'register':

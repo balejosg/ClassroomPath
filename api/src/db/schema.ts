@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -305,6 +306,10 @@ export const cpOrganizationEntitlements = pgTable('cp_organization_entitlements'
   stripeSubscriptionId: varchar('stripe_subscription_id', { length: 255 }),
   stripeCheckoutSessionId: varchar('stripe_checkout_session_id', { length: 255 }),
   currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+  graceEndsAt: timestamp('grace_ends_at', { withTimezone: true }),
+  cancelAtPeriodEnd: boolean('cancel_at_period_end').default(false).notNull(),
+  lastStripeEventType: varchar('last_stripe_event_type', { length: 100 }),
+  lastStripeEventId: varchar('last_stripe_event_id', { length: 255 }),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   grantedBy: varchar('granted_by', { length: 50 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -322,6 +327,7 @@ export const cpBillingManualRequests = pgTable('cp_billing_manual_requests', {
   classrooms: integer('classrooms').notNull(),
   status: varchar('status', { length: 30 }).notNull(),
   note: text('note'),
+  resolutionNote: text('resolution_note'),
   reviewedBy: varchar('reviewed_by', { length: 50 }),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -334,9 +340,35 @@ export const cpStripeWebhookEvents = pgTable('cp_stripe_webhook_events', {
   processedAt: timestamp('processed_at', { withTimezone: true }).notNull(),
 });
 
+export const cpBillingAuditEvents = pgTable(
+  'cp_billing_audit_events',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    organizationId: varchar('organization_id', { length: 50 }).references(
+      () => cpOrganizations.id,
+      {
+        onDelete: 'set null',
+      }
+    ),
+    actorType: varchar('actor_type', { length: 30 }).notNull(),
+    actorId: varchar('actor_id', { length: 50 }),
+    action: varchar('action', { length: 100 }).notNull(),
+    targetType: varchar('target_type', { length: 50 }).notNull(),
+    targetId: varchar('target_id', { length: 50 }).notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index('cp_billing_audit_org_idx').on(table.organizationId, table.createdAt),
+    index('cp_billing_audit_target_idx').on(table.targetType, table.targetId, table.createdAt),
+  ]
+);
+
 export type BillingCheckoutIntent = typeof cpBillingCheckoutIntents.$inferSelect;
 export type NewBillingCheckoutIntent = typeof cpBillingCheckoutIntents.$inferInsert;
 export type OrganizationEntitlement = typeof cpOrganizationEntitlements.$inferSelect;
 export type NewOrganizationEntitlement = typeof cpOrganizationEntitlements.$inferInsert;
 export type BillingManualRequest = typeof cpBillingManualRequests.$inferSelect;
 export type NewBillingManualRequest = typeof cpBillingManualRequests.$inferInsert;
+export type BillingAuditEvent = typeof cpBillingAuditEvents.$inferSelect;
+export type NewBillingAuditEvent = typeof cpBillingAuditEvents.$inferInsert;

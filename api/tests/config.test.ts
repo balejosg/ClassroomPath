@@ -6,6 +6,7 @@ const ORIGINAL_ENV = {
   CP_ALLOW_SELF_SERVICE_ORGS: process.env.CP_ALLOW_SELF_SERVICE_ORGS,
   CP_PLATFORM_ADMIN_EMAILS: process.env.CP_PLATFORM_ADMIN_EMAILS,
   CP_FAKE_EMAIL_DELIVERY: process.env.CP_FAKE_EMAIL_DELIVERY,
+  CORS_ORIGINS: process.env.CORS_ORIGINS,
   JWT_SECRET: process.env.JWT_SECRET,
   NODE_ENV: process.env.NODE_ENV,
   PUBLIC_URL: process.env.PUBLIC_URL,
@@ -27,6 +28,7 @@ function restoreEnv(): void {
   setEnv('CP_ALLOW_SELF_SERVICE_ORGS', ORIGINAL_ENV.CP_ALLOW_SELF_SERVICE_ORGS);
   setEnv('CP_PLATFORM_ADMIN_EMAILS', ORIGINAL_ENV.CP_PLATFORM_ADMIN_EMAILS);
   setEnv('CP_FAKE_EMAIL_DELIVERY', ORIGINAL_ENV.CP_FAKE_EMAIL_DELIVERY);
+  setEnv('CORS_ORIGINS', ORIGINAL_ENV.CORS_ORIGINS);
   setEnv('JWT_SECRET', ORIGINAL_ENV.JWT_SECRET);
   setEnv('NODE_ENV', ORIGINAL_ENV.NODE_ENV);
   setEnv('PUBLIC_URL', ORIGINAL_ENV.PUBLIC_URL);
@@ -139,6 +141,31 @@ describe('runtime config contract', () => {
       'admin@classroompath.eu',
       'billing@example.com',
     ]);
+  });
+
+  it('requires the public origin to be present in CORS_ORIGINS', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = 'production-secret-value';
+    process.env.PUBLIC_URL = 'https://classroompath.eu';
+    process.env.CORS_ORIGINS = 'https://staging.classroompath.eu';
+    process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.eu';
+    process.env.STRIPE_SECRET_KEY = 'sk_test_classroompath';
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_classroompath';
+    process.env.STRIPE_ANNUAL_PRICE_1_10 = 'price_annual_1_10';
+    process.env.STRIPE_ANNUAL_PRICE_11_25 = 'price_annual_11_25';
+    process.env.STRIPE_ANNUAL_PRICE_26_50 = 'price_annual_26_50';
+    process.env.STRIPE_ANNUAL_PRICE_51_100 = 'price_annual_51_100';
+    process.env.STRIPE_ONBOARDING_PRICE_1_25 = 'price_onboarding_1_25';
+    process.env.STRIPE_ONBOARDING_PRICE_26_100 = 'price_onboarding_26_100';
+    process.env.STRIPE_PILOT_PRICE = 'price_pilot';
+
+    const tag = `runtime-config-cors-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const configModule = await import(`../src/config.ts?${tag}`);
+
+    assert.throws(
+      () => configModule.assertRuntimeSecretsConfigured(),
+      /CORS_ORIGINS must include the PUBLIC_URL origin/
+    );
   });
 
   it('derives the email delivery mode from the runtime env contract', async () => {

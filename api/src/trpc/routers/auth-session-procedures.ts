@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 
 import { protectedProcedure, publicProcedure } from '../trpc.js';
 import {
@@ -7,6 +8,7 @@ import {
   logoutOpenPathSession,
 } from '../../lib/openpath-auth-client.js';
 import { normalizeEmailAddress } from './auth-payloads.js';
+import { parseCookieValue, REFRESH_COOKIE_NAME } from '../../lib/session-cookies.js';
 
 export const authSessionProcedures = {
   login: publicProcedure
@@ -30,6 +32,32 @@ export const authSessionProcedures = {
         unavailableMessage: 'Authentication service unavailable',
       })
     ),
+
+  refresh: publicProcedure
+    .input(z.object({ refreshToken: z.string().min(1).optional() }).optional())
+    .mutation(async ({ input, ctx }) => {
+      const refreshToken =
+        input?.refreshToken ??
+        parseCookieValue(
+          typeof ctx.req.headers.cookie === 'string' ? ctx.req.headers.cookie : undefined,
+          REFRESH_COOKIE_NAME
+        ) ??
+        undefined;
+
+      if (!refreshToken) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Refresh token required' });
+      }
+
+      return forwardOpenPathSessionMutation({
+        procedure: 'auth.refresh',
+        req: ctx.req,
+        res: ctx.res,
+        input: { refreshToken },
+        defaultErrorCode: 'UNAUTHORIZED',
+        upstreamFailureMessage: 'Session refresh failed',
+        unavailableMessage: 'Authentication service unavailable',
+      });
+    }),
 
   googleLogin: publicProcedure
     .input(

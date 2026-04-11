@@ -138,6 +138,22 @@ export default defineConfig({
             OPENPATH_API_URL: `http://localhost:${String(openPathApiPort)}`,
             DATABASE_URL: testDatabaseUrl,
             CP_FAKE_EMAIL_DELIVERY: process.env.CP_FAKE_EMAIL_DELIVERY ?? '1',
+            CP_PLATFORM_ADMIN_EMAILS:
+              process.env.CP_PLATFORM_ADMIN_EMAILS ?? 'ops@classroompath.test',
+            STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY ?? 'sk_test_classroompath',
+            STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET ?? 'whsec_classroompath',
+            STRIPE_ANNUAL_PRICE_1_10: process.env.STRIPE_ANNUAL_PRICE_1_10 ?? 'price_annual_1_10',
+            STRIPE_ANNUAL_PRICE_11_25:
+              process.env.STRIPE_ANNUAL_PRICE_11_25 ?? 'price_annual_11_25',
+            STRIPE_ANNUAL_PRICE_26_50:
+              process.env.STRIPE_ANNUAL_PRICE_26_50 ?? 'price_annual_26_50',
+            STRIPE_ANNUAL_PRICE_51_100:
+              process.env.STRIPE_ANNUAL_PRICE_51_100 ?? 'price_annual_51_100',
+            STRIPE_ONBOARDING_PRICE_1_25:
+              process.env.STRIPE_ONBOARDING_PRICE_1_25 ?? 'price_onboarding_1_25',
+            STRIPE_ONBOARDING_PRICE_26_100:
+              process.env.STRIPE_ONBOARDING_PRICE_26_100 ?? 'price_onboarding_26_100',
+            STRIPE_PILOT_PRICE: process.env.STRIPE_PILOT_PRICE ?? 'price_pilot',
             // Must match OpenPath's JWT_SECRET for token verification
             JWT_SECRET: process.env.JWT_SECRET ?? 'dev-secret-key-change-me-in-production',
           },

@@ -160,6 +160,18 @@ describe('Workflow configuration hardening', () => {
     }
   });
 
+  test('production deploy workflow forwards billing runtime secrets to the SSH deploy step', () => {
+    const workflow = readWorkflow('.github/workflows/deploy.yml');
+    const deployStep = workflow.jobs?.['deploy-production']?.steps?.find(
+      (step) => step.name === 'Deploy via SSH'
+    );
+
+    assert.match(String(deployStep?.with?.['envs'] ?? ''), /CP_PLATFORM_ADMIN_EMAILS/);
+    assert.match(String(deployStep?.with?.['envs'] ?? ''), /STRIPE_SECRET_KEY/);
+    assert.match(String(deployStep?.with?.['envs'] ?? ''), /STRIPE_WEBHOOK_SECRET/);
+    assert.match(String(deployStep?.with?.['envs'] ?? ''), /STRIPE_PILOT_PRICE/);
+  });
+
   test('CI workflow exists and defines a stable CI Success summary job', () => {
     const workflow = readWorkflow('.github/workflows/ci.yml');
     const jobs = workflow.jobs ?? {};

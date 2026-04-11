@@ -80,6 +80,10 @@ export async function resetDb(): Promise<void> {
           "stripe_subscription_id" varchar(255),
           "stripe_checkout_session_id" varchar(255),
           "current_period_end" timestamp with time zone,
+          "grace_ends_at" timestamp with time zone,
+          "cancel_at_period_end" boolean DEFAULT false NOT NULL,
+          "last_stripe_event_type" varchar(100),
+          "last_stripe_event_id" varchar(255),
           "expires_at" timestamp with time zone,
           "granted_by" varchar(50),
           "created_at" timestamp with time zone DEFAULT now(),
@@ -109,6 +113,7 @@ export async function resetDb(): Promise<void> {
           "classrooms" integer NOT NULL,
           "status" varchar(30) NOT NULL,
           "note" text,
+          "resolution_note" text,
           "reviewed_by" varchar(50),
           "reviewed_at" timestamp with time zone,
           "created_at" timestamp with time zone DEFAULT now(),
@@ -129,6 +134,46 @@ export async function resetDb(): Promise<void> {
       sql.raw(`
       DO $$
       BEGIN
+        CREATE TABLE "cp_billing_audit_events" (
+          "id" varchar(50) PRIMARY KEY NOT NULL,
+          "organization_id" varchar(50),
+          "actor_type" varchar(30) NOT NULL,
+          "actor_id" varchar(50),
+          "action" varchar(100) NOT NULL,
+          "target_type" varchar(50) NOT NULL,
+          "target_id" varchar(50) NOT NULL,
+          "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
+          "created_at" timestamp with time zone DEFAULT now(),
+          CONSTRAINT "cp_billing_audit_events_organization_id_cp_organizations_id_fk"
+            FOREIGN KEY ("organization_id") REFERENCES "public"."cp_organizations"("id")
+            ON DELETE set null ON UPDATE no action
+        );
+      EXCEPTION
+        WHEN duplicate_table OR unique_violation THEN
+          NULL;
+      END
+      $$;
+    `)
+    );
+
+    await db.execute(
+      sql.raw(`
+      CREATE INDEX IF NOT EXISTS "cp_billing_audit_org_idx"
+      ON "cp_billing_audit_events" ("organization_id", "created_at");
+    `)
+    );
+
+    await db.execute(
+      sql.raw(`
+      CREATE INDEX IF NOT EXISTS "cp_billing_audit_target_idx"
+      ON "cp_billing_audit_events" ("target_type", "target_id", "created_at");
+    `)
+    );
+
+    await db.execute(
+      sql.raw(`
+      DO $$
+      BEGIN
         CREATE TABLE "cp_stripe_webhook_events" (
           "id" varchar(255) PRIMARY KEY NOT NULL,
           "type" varchar(100) NOT NULL,
@@ -139,6 +184,23 @@ export async function resetDb(): Promise<void> {
           NULL;
       END
       $$;
+    `)
+    );
+
+    await db.execute(
+      sql.raw(`
+      ALTER TABLE "cp_organization_entitlements"
+        ADD COLUMN IF NOT EXISTS "grace_ends_at" timestamp with time zone,
+        ADD COLUMN IF NOT EXISTS "cancel_at_period_end" boolean DEFAULT false NOT NULL,
+        ADD COLUMN IF NOT EXISTS "last_stripe_event_type" varchar(100),
+        ADD COLUMN IF NOT EXISTS "last_stripe_event_id" varchar(255);
+    `)
+    );
+
+    await db.execute(
+      sql.raw(`
+      ALTER TABLE "cp_billing_manual_requests"
+        ADD COLUMN IF NOT EXISTS "resolution_note" text;
     `)
     );
 

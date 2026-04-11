@@ -8,11 +8,29 @@ const REQUEST_ID = 'req-hardening-test-123';
 const LARGE_TARGET_ORG_ID = 'x'.repeat(70_000);
 const TEST_NODE_ENV = 'test';
 const TEST_JWT_SECRET = 'test-jwt-secret';
+const TEST_PLATFORM_ADMIN_EMAIL = 'platform-admin@classroompath.test';
+const TEST_STRIPE_SECRET_KEY = 'sk_test_server_hardening';
+const TEST_STRIPE_WEBHOOK_SECRET = 'whsec_server_hardening';
+const TEST_STRIPE_PRICE_ID = 'price_server_hardening';
+const TEST_PUBLIC_URL = 'http://localhost:5173';
 
 let server: Server | undefined;
 let baseUrl = '';
 let app: (typeof import('../src/server.js'))['app'];
 let serverModule: typeof import('../src/server.js');
+
+function applyBillingRuntimeEnv(): void {
+  process.env.CP_PLATFORM_ADMIN_EMAILS = TEST_PLATFORM_ADMIN_EMAIL;
+  process.env.STRIPE_SECRET_KEY = TEST_STRIPE_SECRET_KEY;
+  process.env.STRIPE_WEBHOOK_SECRET = TEST_STRIPE_WEBHOOK_SECRET;
+  process.env.STRIPE_ANNUAL_PRICE_1_10 = TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_ANNUAL_PRICE_11_25 = TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_ANNUAL_PRICE_26_50 = TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_ANNUAL_PRICE_51_100 = TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_ONBOARDING_PRICE_1_25 = TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_ONBOARDING_PRICE_26_100 = TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_PILOT_PRICE = TEST_STRIPE_PRICE_ID;
+}
 
 function requestHeaders(extra: Record<string, string> = {}): HeadersInit {
   return {
@@ -54,12 +72,18 @@ function captureStdout<T>(run: () => Promise<T>): Promise<{ result: T; output: s
 afterEach(() => {
   process.env.JWT_SECRET = TEST_JWT_SECRET;
   process.env.NODE_ENV = TEST_NODE_ENV;
+  process.env.PUBLIC_URL = TEST_PUBLIC_URL;
+  process.env.CORS_ORIGINS = TEST_PUBLIC_URL;
+  applyBillingRuntimeEnv();
 });
 
 await describe('gateway server hardening', { concurrency: false }, async () => {
   before(async () => {
     process.env.JWT_SECRET = TEST_JWT_SECRET;
     process.env.NODE_ENV = TEST_NODE_ENV;
+    process.env.PUBLIC_URL = TEST_PUBLIC_URL;
+    process.env.CORS_ORIGINS = TEST_PUBLIC_URL;
+    applyBillingRuntimeEnv();
 
     const port = await getAvailablePort();
     baseUrl = `http://127.0.0.1:${String(port)}`;
@@ -254,6 +278,8 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
   test('createGatewayApp fails fast when JWT_SECRET is missing outside test mode', async () => {
     process.env.NODE_ENV = 'production';
     process.env.PUBLIC_URL = 'https://classroompath.test';
+    process.env.CORS_ORIGINS = 'https://classroompath.test';
+    applyBillingRuntimeEnv();
     delete process.env.JWT_SECRET;
 
     assert.throws(() => serverModule.createGatewayApp(), /JWT_SECRET/i);
@@ -263,6 +289,7 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
     process.env.NODE_ENV = 'production';
     process.env.PUBLIC_URL = 'https://classroompath.test';
     process.env.JWT_SECRET = TEST_JWT_SECRET;
+    applyBillingRuntimeEnv();
     delete process.env.CORS_ORIGINS;
 
     assert.throws(() => serverModule.createGatewayApp(), /CORS_ORIGINS/i);

@@ -20,6 +20,10 @@ export function useCancelWaiting() {
   return cpTrpcReact.onboarding.cancelWaiting.useMutation();
 }
 
+export function useRefreshSession() {
+  return cpTrpcReact.auth.refresh.useMutation();
+}
+
 export function useCreateBillingCheckout() {
   return cpTrpcReact.billing.createCheckout.useMutation();
 }
@@ -34,6 +38,21 @@ export function usePlatformManualBillingRequests(options = {}) {
 
 export function useApproveManualBillingRequest() {
   return cpTrpcReact.billing.approveManualRequest.useMutation();
+}
+
+export function useRejectManualBillingRequest() {
+  return cpTrpcReact.billing.rejectManualRequest.useMutation();
+}
+
+export function usePlatformEntitlements(options = {}) {
+  return cpTrpcReact.billing.listEntitlements.useQuery(undefined, options);
+}
+
+export function useBillingAuditTrail(
+  input?: { organizationId?: string; requestId?: string },
+  options = {}
+) {
+  return cpTrpcReact.billing.getAuditTrail.useQuery(input, options);
 }
 
 // Pending users hooks (admin only)

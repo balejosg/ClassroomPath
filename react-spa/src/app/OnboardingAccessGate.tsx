@@ -7,6 +7,7 @@ import type {
 import { Onboarding } from '../views/Onboarding';
 import { Waiting } from '../views/Waiting';
 import { PlatformAdminPanel } from '../components/PlatformAdminPanel';
+import { BillingStatusBanner } from '../components/BillingStatusBanner';
 
 type OnboardingAccessGateProps = {
   status?: OnboardingStatusDto;
@@ -130,5 +131,10 @@ export function OnboardingAccessGate(props: OnboardingAccessGateProps) {
     );
   }
 
-  return <>{props.authenticatedContent}</>;
+  return (
+    <>
+      <BillingStatusBanner billing={props.status.billing} />
+      {props.authenticatedContent}
+    </>
+  );
 }

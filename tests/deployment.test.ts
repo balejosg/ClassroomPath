@@ -40,6 +40,7 @@ const deployProductionRuntimeHelperPath = resolve(
   projectRoot,
   'scripts/lib/deploy-production-runtime.sh'
 );
+const syncBillingEnvScriptPath = resolve(projectRoot, 'scripts/sync-billing-env.sh');
 const resolveLatestVerifierImageLibPath = resolve(
   projectRoot,
   'scripts/lib/resolve-latest-verifier-image.mjs'
@@ -142,6 +143,20 @@ void describe('Migration Tooling', () => {
         remoteContent.indexOf(validateStep) < remoteContent.indexOf(emailPreflightStep) &&
         remoteContent.indexOf(emailPreflightStep) < remoteContent.indexOf(pushStep),
       'transactional email preflight should happen after runtime validation and before migrations'
+    );
+  });
+
+  void test('production runtime syncs the billing env block before validating runtime config', () => {
+    const helper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
+
+    assert.ok(existsSync(syncBillingEnvScriptPath), 'scripts/sync-billing-env.sh should exist');
+    assert.ok(
+      helper.includes('bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"'),
+      'deploy-production-runtime.sh should sync billing env before restarting runtime'
+    );
+    assert.ok(
+      helper.indexOf('sync-billing-env.sh') < helper.indexOf('validate-runtime-config-docker.sh'),
+      'billing env sync should happen before runtime validation'
     );
   });
 

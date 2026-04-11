@@ -6,7 +6,10 @@ import {
   assertPlatformAdmin,
   createBillingCheckout,
   createManualBillingRequest,
+  getBillingAuditTrail,
   listManualBillingRequests,
+  listOrganizationEntitlements,
+  rejectManualBillingRequest,
 } from '../../services/billing.service.js';
 
 const CheckoutSchema = z.object({
@@ -20,6 +23,11 @@ const ManualRequestSchema = z.object({
   organizationName: z.string().trim().min(2).max(255),
   classrooms: z.number().int().min(1),
   note: z.string().trim().max(2000).optional(),
+});
+
+const ManualResolutionSchema = z.object({
+  requestId: z.string().min(1),
+  resolutionNote: z.string().trim().min(1).max(2000),
 });
 
 export const billingRouter = router({
@@ -51,12 +59,46 @@ export const billingRouter = router({
   }),
 
   approveManualRequest: protectedProcedure
-    .input(z.object({ requestId: z.string().min(1) }))
+    .input(ManualResolutionSchema)
     .mutation(async ({ ctx, input }) => {
       assertPlatformAdmin(ctx.user);
       return approveManualBillingRequest({
         requestId: input.requestId,
         reviewedBy: ctx.user.sub,
+        resolutionNote: input.resolutionNote,
+      });
+    }),
+
+  rejectManualRequest: protectedProcedure
+    .input(ManualResolutionSchema)
+    .mutation(async ({ ctx, input }) => {
+      assertPlatformAdmin(ctx.user);
+      return rejectManualBillingRequest({
+        requestId: input.requestId,
+        reviewedBy: ctx.user.sub,
+        resolutionNote: input.resolutionNote,
+      });
+    }),
+
+  listEntitlements: protectedProcedure.query(async ({ ctx }) => {
+    assertPlatformAdmin(ctx.user);
+    return listOrganizationEntitlements();
+  }),
+
+  getAuditTrail: protectedProcedure
+    .input(
+      z
+        .object({
+          organizationId: z.string().min(1).optional(),
+          requestId: z.string().min(1).optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      assertPlatformAdmin(ctx.user);
+      return getBillingAuditTrail({
+        organizationId: input?.organizationId,
+        requestId: input?.requestId,
       });
     }),
 });

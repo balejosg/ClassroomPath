@@ -11,7 +11,10 @@ describe('billing router', () => {
       'approveManualRequest',
       'createCheckout',
       'createManualRequest',
+      'getAuditTrail',
+      'listEntitlements',
       'listManualRequests',
+      'rejectManualRequest',
     ]);
   });
 });

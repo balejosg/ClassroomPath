@@ -1,4 +1,5 @@
 import { resolveDatabaseUrl } from './lib/database-url.js';
+import { resolveGatewayConfig } from './lib/gateway-config.js';
 
 const parseBooleanEnv = (value: string | undefined, defaultValue: boolean) => {
   if (value === undefined) {
@@ -169,6 +170,40 @@ function resolveStripeConfig(env: RuntimeEnv = process.env): StripeRuntimeConfig
   };
 }
 
+function assertBillingRuntimeConfigured(runtimeConfig: RuntimeConfig): void {
+  if (runtimeConfig.allowSelfServiceOrgs) {
+    return;
+  }
+
+  if (runtimeConfig.platformAdminEmails.length === 0) {
+    throw new Error(
+      'CP_PLATFORM_ADMIN_EMAILS must be set when billing-gated onboarding is enabled'
+    );
+  }
+
+  if (!runtimeConfig.stripe.secretKey) {
+    throw new Error('STRIPE_SECRET_KEY must be set when billing-gated onboarding is enabled');
+  }
+
+  if (!runtimeConfig.stripe.webhookSecret) {
+    throw new Error('STRIPE_WEBHOOK_SECRET must be set when billing-gated onboarding is enabled');
+  }
+
+  const requiredPrices = [
+    runtimeConfig.stripe.priceIds.annual['1_10'],
+    runtimeConfig.stripe.priceIds.annual['11_25'],
+    runtimeConfig.stripe.priceIds.annual['26_50'],
+    runtimeConfig.stripe.priceIds.annual['51_100'],
+    runtimeConfig.stripe.priceIds.onboarding['1_25'],
+    runtimeConfig.stripe.priceIds.onboarding['26_100'],
+    runtimeConfig.stripe.priceIds.pilot,
+  ];
+
+  if (requiredPrices.some((priceId) => !priceId)) {
+    throw new Error('All STRIPE_* price ids must be set when billing-gated onboarding is enabled');
+  }
+}
+
 export function resolveRuntimeConfig(env: RuntimeEnv = process.env): RuntimeConfig {
   const resendApiKey = trimToNull(env.RESEND_API_KEY);
   const resendFromEmail = trimToNull(env.RESEND_FROM_EMAIL);
@@ -192,8 +227,16 @@ export function resolveRuntimeConfig(env: RuntimeEnv = process.env): RuntimeConf
 
 export function assertRuntimeSecretsConfigured(env: RuntimeEnv = process.env): void {
   const runtimeConfig = resolveRuntimeConfig(env);
+  const gatewayConfig = resolveGatewayConfig(undefined, env);
   void runtimeConfig.jwtSecret;
   void runtimeConfig.publicUrl;
+  void gatewayConfig.corsOrigins;
+
+  assertBillingRuntimeConfigured(runtimeConfig);
+
+  if (!gatewayConfig.corsOrigins.includes(gatewayConfig.publicOrigin)) {
+    throw new Error('CORS_ORIGINS must include the PUBLIC_URL origin');
+  }
 }
 
 export const config = {

@@ -39,6 +39,7 @@ Notes:
 
 - Do not commit `config/.env`.
 - Both the gateway and the upstream OpenPath API read from the same env file in Docker.
+- If `CP_ALLOW_SELF_SERVICE_ORGS=false`, runtime validation requires `CP_PLATFORM_ADMIN_EMAILS`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, every `STRIPE_*_PRICE_*`, and a `CORS_ORIGINS` list that includes the `PUBLIC_URL` origin.
 
 ## Local Staging Deploy (`.env.local`)
 

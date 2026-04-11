@@ -54,6 +54,11 @@ const originalFetch = globalThis.fetch.bind(globalThis);
 const mockEmailDeliveries: MockEmailDelivery[] = [];
 let mockEmailDeliveryCounter = 0;
 const INTEGRATION_SUITE_LOCK_PATH = join(tmpdir(), 'classroompath-api-integration.lock');
+const TEST_PUBLIC_URL = 'http://localhost:5173';
+const TEST_PLATFORM_ADMIN_EMAIL = 'platform-admin@classroompath.test';
+const TEST_STRIPE_SECRET_KEY = 'sk_test_integration_harness';
+const TEST_STRIPE_WEBHOOK_SECRET = 'whsec_integration_harness';
+const TEST_STRIPE_PRICE_ID = 'price_integration_harness';
 
 function installMockResendDelivery(): void {
   const patchedFetch = globalThis.fetch as typeof globalThis.fetch & {
@@ -105,6 +110,21 @@ function installMockResendDelivery(): void {
 }
 
 installMockResendDelivery();
+
+function applyBillingRuntimeEnv(): void {
+  process.env.PUBLIC_URL ??= TEST_PUBLIC_URL;
+  process.env.CORS_ORIGINS ??= process.env.PUBLIC_URL ?? TEST_PUBLIC_URL;
+  process.env.CP_PLATFORM_ADMIN_EMAILS ??= TEST_PLATFORM_ADMIN_EMAIL;
+  process.env.STRIPE_SECRET_KEY ??= TEST_STRIPE_SECRET_KEY;
+  process.env.STRIPE_WEBHOOK_SECRET ??= TEST_STRIPE_WEBHOOK_SECRET;
+  process.env.STRIPE_ANNUAL_PRICE_1_10 ??= TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_ANNUAL_PRICE_11_25 ??= TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_ANNUAL_PRICE_26_50 ??= TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_ANNUAL_PRICE_51_100 ??= TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_ONBOARDING_PRICE_1_25 ??= TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_ONBOARDING_PRICE_26_100 ??= TEST_STRIPE_PRICE_ID;
+  process.env.STRIPE_PILOT_PRICE ??= TEST_STRIPE_PRICE_ID;
+}
 
 async function acquireIntegrationSuiteLock() {
   for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -1007,6 +1027,7 @@ export async function startIntegrationServer(): Promise<IntegrationServerHandle>
   const baseUrl = `http://localhost:${String(port)}`;
   process.env.CP_PORT = String(port);
   process.env.OPENPATH_API_URL = upstreamBaseUrl;
+  applyBillingRuntimeEnv();
   process.env.RESEND_API_KEY ??= 're_test_123';
   process.env.RESEND_FROM_EMAIL ??= 'noreply@classroompath.test';
 

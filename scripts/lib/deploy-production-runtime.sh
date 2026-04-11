@@ -48,6 +48,8 @@ apply_production_runtime_deploy_impl() {
   ensure_production_release_candidate_runtime_env || return 1
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
+  bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"
+  bash "$APP_DIR/scripts/validate-runtime-config-docker.sh" --app-dir "$APP_DIR" --env-file "$APP_DIR/config/.env"
 
   if declare -f cleanup_production_disk_if_needed >/dev/null 2>&1; then
     cleanup_production_disk_if_needed

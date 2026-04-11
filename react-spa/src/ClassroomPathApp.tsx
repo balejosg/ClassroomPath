@@ -20,7 +20,12 @@ import {
   getAuthViewFromPathname,
   getPathForAuthView,
   isAuthPath,
+  isBillingCancelPath,
+  isBillingSuccessPath,
+  normalizePathname,
 } from './app/classroom-path-auth-routing';
+import { BillingCancel } from './views/BillingCancel';
+import { BillingSuccess } from './views/BillingSuccess';
 import './index.css';
 
 const ClassroomPathShell = React.lazy(() => import('./ClassroomPathShell'));
@@ -45,6 +50,7 @@ function AppContent() {
   const [authView, setAuthView] = useState<AuthView>(() =>
     getAuthViewFromPathname(initialPathname)
   );
+  const [pathname, setPathname] = useState(() => normalizePathname(initialPathname));
   const [openPathReady, setOpenPathReady] = useState(false);
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const hasSyncedProfileRef = useRef(false);
@@ -62,6 +68,7 @@ function AppContent() {
     } finally {
       clearSession();
       setAuthView('login');
+      setPathname('/login');
       setIsAuth(false);
     }
   };
@@ -98,12 +105,12 @@ function AppContent() {
     if (typeof window === 'undefined') return;
 
     const handlePopState = () => {
+      const nextPath = normalizePathname(window.location.pathname);
+      setPathname(nextPath);
       if (isAuthRef.current) return;
-      setAuthView(getAuthViewFromPathname(window.location.pathname));
+      setAuthView(getAuthViewFromPathname(nextPath));
     };
 
-    // Detect if we are in a Playwright test by checking for the ?test=true query param
-    // (Used by tests/e2e/fixtures/auth.ts or common setup)
     if (window.location.search.includes('test=true') || window.name === 'playwright-test') {
       (window as any).isPlaywrightTest = true;
     }
@@ -120,6 +127,7 @@ function AppContent() {
       if (window.location.pathname !== nextPath) {
         window.history.pushState(null, '', nextPath);
       }
+      setPathname(normalizePathname(nextPath));
     }
   }, [authView, isAuth]);
 
@@ -180,6 +188,7 @@ function AppContent() {
     if (isUnauthorized) {
       clearSession();
       setAuthView('login');
+      setPathname('/login');
       setIsAuth(false);
     }
   }, [isAuth, isError, error]);
@@ -194,9 +203,36 @@ function AppContent() {
         authView={authView}
         onAuthenticated={() => {
           setAuthView('login');
+          setPathname('/');
           setIsAuth(true);
         }}
         onSetAuthView={setAuthView}
+      />
+    );
+  }
+
+  if (isBillingSuccessPath(pathname)) {
+    return (
+      <BillingSuccess
+        onComplete={() => {
+          window.history.replaceState(null, '', '/');
+          setPathname('/');
+          refetch();
+        }}
+        onLogout={clearSessionAndShowLogin}
+      />
+    );
+  }
+
+  if (isBillingCancelPath(pathname)) {
+    return (
+      <BillingCancel
+        onBack={() => {
+          window.history.replaceState(null, '', '/');
+          setPathname('/');
+          refetch();
+        }}
+        onLogout={clearSessionAndShowLogin}
       />
     );
   }
@@ -214,6 +250,7 @@ function AppContent() {
       onLogoutToLogin={() => {
         clearSession();
         setAuthView('login');
+        setPathname('/login');
         setIsAuth(false);
       }}
       onStatusChange={() => refetch()}

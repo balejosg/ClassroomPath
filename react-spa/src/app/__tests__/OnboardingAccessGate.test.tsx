@@ -47,20 +47,30 @@ vi.mock('../../components/PlatformAdminPanel', () => ({
   PlatformAdminPanel: () => <div>Platform Admin Panel</div>,
 }));
 
+function activeBilling(
+  overrides: Partial<NonNullable<OnboardingStatusDto['billing']>> = {}
+): NonNullable<OnboardingStatusDto['billing']> {
+  return {
+    hasActiveEntitlement: true,
+    source: 'stripe_subscription',
+    status: 'active',
+    productKind: 'annual',
+    classroomLimit: 12,
+    currentPeriodEnd: null,
+    graceEndsAt: null,
+    cancelAtPeriodEnd: false,
+    expiresAt: null,
+    ...overrides,
+  };
+}
+
 function createStatus(overrides: Partial<OnboardingStatusDto> = {}): OnboardingStatusDto {
   return {
     hasMembership: true,
     isWaiting: false,
     organization: null,
     platformAdmin: false,
-    billing: {
-      hasActiveEntitlement: true,
-      source: 'stripe_subscription',
-      status: 'active',
-      productKind: 'annual',
-      classroomLimit: 12,
-      expiresAt: null,
-    },
+    billing: activeBilling(),
     policy: {
       allowOrgDirectory: false,
       allowSelfServiceOrgs: false,
@@ -200,14 +210,13 @@ describe('OnboardingAccessGate', () => {
     const { rerender } = renderGate({
       status: createStatus({
         hasMembership: true,
-        billing: {
+        billing: activeBilling({
           hasActiveEntitlement: false,
           source: null,
           status: null,
           productKind: null,
           classroomLimit: null,
-          expiresAt: null,
-        },
+        }),
       }),
       authenticatedContent: <div>Authenticated Shell</div>,
     });
@@ -219,14 +228,7 @@ describe('OnboardingAccessGate', () => {
       <OnboardingAccessGate
         status={createStatus({
           hasMembership: true,
-          billing: {
-            hasActiveEntitlement: true,
-            source: 'stripe_subscription',
-            status: 'active',
-            productKind: 'annual',
-            classroomLimit: 12,
-            expiresAt: null,
-          },
+          billing: activeBilling(),
         })}
         isLoading={false}
         loadingTimedOut={false}

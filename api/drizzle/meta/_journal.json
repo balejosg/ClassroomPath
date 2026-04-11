@@ -57,6 +57,13 @@
       "when": 1775833642000,
       "tag": "0008_billing_entitlements",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775900000000,
+      "tag": "0009_billing_lifecycle",
+      "breakpoints": true
     }
   ]
 }

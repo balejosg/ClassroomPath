@@ -23,6 +23,7 @@ This is the canonical production promotion path for ClassroomPath. Future LLMs s
   - compose dir: `/opt/classroompath/app/docker`
   - runtime env: `/opt/classroompath/app/config/.env`
 - Production access path: GitHub Actions SSH using `DEPLOY_*` secrets
+- Billing runtime source of truth: GitHub Environment secrets for production
 
 ## Rules
 
@@ -109,9 +110,11 @@ The production workflow performs these steps automatically:
 6. Update the OpenPath submodule recursively
 7. Run ClassroomPath DB migrations
 8. Run OpenPath DB migrations
-9. Rebuild and restart Docker Compose services
-10. Check `/cp/health` and `/cp/ready`
-11. Run smoke tests against `https://classroompath.eu`
+9. Sync the billing runtime block into `/opt/classroompath/app/config/.env`
+10. Validate runtime config against Docker with the production env file
+11. Rebuild and restart Docker Compose services
+12. Check `/cp/health` and `/cp/ready`
+13. Run smoke tests against `https://classroompath.eu`
 
 ## Rollback Semantics
 
@@ -145,11 +148,24 @@ These stay outside git and must remain present on the host:
 
 - `DATABASE_URL`
 - `PUBLIC_URL=https://classroompath.eu`
-- `CORS_ORIGINS=https://classroompath.eu`
+- `CORS_ORIGINS=https://classroompath.eu,https://www.classroompath.eu`
 - `JWT_SECRET`
 - `GOOGLE_CLIENT_ID`
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
+
+The deploy workflow also syncs this billing block from the production GitHub Environment before restart:
+
+- `CP_PLATFORM_ADMIN_EMAILS`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_ANNUAL_PRICE_1_10`
+- `STRIPE_ANNUAL_PRICE_11_25`
+- `STRIPE_ANNUAL_PRICE_26_50`
+- `STRIPE_ANNUAL_PRICE_51_100`
+- `STRIPE_ONBOARDING_PRICE_1_25`
+- `STRIPE_ONBOARDING_PRICE_26_100`
+- `STRIPE_PILOT_PRICE`
 
 ## Google Login Notes
 

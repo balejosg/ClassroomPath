@@ -29,9 +29,12 @@ export interface OnboardingStatusDto {
   billing: {
     hasActiveEntitlement: boolean;
     source: string | null;
-    status: string | null;
+    status: 'active' | 'grace_period' | 'canceled' | 'expired' | null;
     productKind: string | null;
     classroomLimit: number | null;
+    currentPeriodEnd: string | null;
+    graceEndsAt: string | null;
+    cancelAtPeriodEnd: boolean;
     expiresAt: string | null;
   } | null;
   policy: OnboardingPolicy;
