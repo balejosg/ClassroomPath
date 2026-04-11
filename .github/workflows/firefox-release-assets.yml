@@ -1,6 +1,17 @@
 name: Firefox Release Assets
 
 on:
+  workflow_call:
+    inputs:
+      build_required:
+        description: Whether the caller needs fresh Firefox release assets.
+        required: false
+        type: boolean
+        default: true
+      artifact_name:
+        description: Optional artifact name override for downstream consumers.
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -10,12 +21,22 @@ on:
       - '.github/workflows/firefox-release-assets.yml'
       - '.github/workflows/release-candidate-images.yml'
   workflow_dispatch:
+    inputs:
+      build_required:
+        description: Whether to prepare fresh Firefox release assets.
+        required: false
+        default: true
+        type: boolean
+      artifact_name:
+        description: Optional artifact name override.
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: firefox-release-assets-main
+  group: firefox-release-assets-${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -24,30 +45,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Decide whether to prepare Firefox release assets
+        id: mode
+        shell: bash
+        env:
+          CALL_BUILD_REQUIRED: ${{ inputs.build_required }}
+          DISPATCH_BUILD_REQUIRED: ${{ github.event.inputs.build_required }}
+        run: |
+          set -euo pipefail
+
+          build_required="${CALL_BUILD_REQUIRED:-}"
+          if [ -z "$build_required" ]; then
+            build_required="${DISPATCH_BUILD_REQUIRED:-}"
+          fi
+          if [ -z "$build_required" ]; then
+            build_required='true'
+          fi
+
+          echo "build_required=$build_required" >> "$GITHUB_OUTPUT"
+
       - name: Checkout with submodules
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Setup Node.js
+        if: steps.mode.outputs.build_required == 'true'
         uses: ./.github/actions/setup-node
         with:
           cache-dependency-path: upstream/openpath/package-lock.json
 
       - name: Install OpenPath dependencies
+        if: steps.mode.outputs.build_required == 'true'
         working-directory: upstream/openpath
         run: npm ci
 
       - name: Resolve OpenPath SHA
+        if: steps.mode.outputs.build_required == 'true'
         id: openpath
         run: |
           echo "sha=$(git -C upstream/openpath rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Build Firefox extension dist
+        if: steps.mode.outputs.build_required == 'true'
         working-directory: upstream/openpath
         run: npm run build --workspace=@openpath/firefox-extension
 
       - name: Derive unique Firefox release version
+        if: steps.mode.outputs.build_required == 'true'
         run: |
           version="$(node scripts/firefox-release-version.mjs \
             --manifest upstream/openpath/firefox-extension/manifest.json \
@@ -57,6 +103,7 @@ jobs:
           echo "Signing Firefox release as version $version"
 
       - name: Sign Firefox release bundle
+        if: steps.mode.outputs.build_required == 'true'
         working-directory: upstream/openpath
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
@@ -66,16 +113,39 @@ jobs:
             --version "$OPENPATH_FIREFOX_RELEASE_VERSION"
 
       - name: Verify Firefox release artifacts
+        if: steps.mode.outputs.build_required == 'true'
         working-directory: upstream/openpath
         run: |
           test -f firefox-extension/dist/background.js
           test -f firefox-extension/build/firefox-release/metadata.json
           test -f firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
 
+      - name: Resolve artifact name
+        if: steps.mode.outputs.build_required == 'true'
+        id: artifact
+        shell: bash
+        env:
+          CALL_ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          DISPATCH_ARTIFACT_NAME: ${{ github.event.inputs.artifact_name }}
+          OPENPATH_SHA: ${{ steps.openpath.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          artifact_name="${CALL_ARTIFACT_NAME:-}"
+          if [ -z "$artifact_name" ]; then
+            artifact_name="${DISPATCH_ARTIFACT_NAME:-}"
+          fi
+          if [ -z "$artifact_name" ]; then
+            artifact_name="openpath-firefox-release-assets-${OPENPATH_SHA}"
+          fi
+
+          echo "name=$artifact_name" >> "$GITHUB_OUTPUT"
+
       - name: Upload Firefox release assets
+        if: steps.mode.outputs.build_required == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: openpath-firefox-release-assets-${{ steps.openpath.outputs.sha }}
+          name: ${{ steps.artifact.outputs.name }}
           path: |
             upstream/openpath/firefox-extension/dist/**
             upstream/openpath/firefox-extension/build/firefox-release/**

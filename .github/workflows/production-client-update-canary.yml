@@ -1,12 +1,11 @@
 name: Production Client Update Canary
 
 on:
-  workflow_call:
-    inputs:
-      production_base_url:
-        description: Production public base URL to exercise.
-        required: true
-        type: string
+  workflow_run:
+    workflows:
+      - Deploy
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       production_base_url:
@@ -25,14 +24,17 @@ concurrency:
 jobs:
   windows-client-self-update-canary:
     name: Windows Client Self-Update Canary
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: windows-latest
     timeout-minutes: 35
     env:
-      PRODUCTION_BASE_URL: ${{ inputs.production_base_url || 'https://classroompath.eu' }}
+      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || 'https://classroompath.eu' }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
@@ -141,14 +143,17 @@ jobs:
 
   linux-client-self-update-canary:
     name: Linux Client Self-Update Canary
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      PRODUCTION_BASE_URL: ${{ inputs.production_base_url || 'https://classroompath.eu' }}
+      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || 'https://classroompath.eu' }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node

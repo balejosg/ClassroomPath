@@ -25,20 +25,19 @@ function deriveAdvisoryCanaryResult({ highRisk, canaryResult }) {
   return valueOrNull(canaryResult) ?? 'not_run';
 }
 
+function derivePostReleaseCanaryResult({ highRisk, canaryResult }) {
+  if (!highRisk) {
+    return 'not_applicable';
+  }
+
+  return valueOrNull(canaryResult) ?? 'deferred';
+}
+
 function deriveReleaseOutcome({
   deployResult,
   smokeResult,
-  clientUpdateCanaryResult,
   rollbackResult,
 }) {
-  if (clientUpdateCanaryResult === 'failure' && rollbackResult === 'success') {
-    return 'rolled_back_after_failed_client_update_canary';
-  }
-
-  if (clientUpdateCanaryResult === 'failure') {
-    return 'client_update_canary_failed';
-  }
-
   if (smokeResult === 'success') {
     return 'released';
   }
@@ -78,10 +77,6 @@ export function buildReleaseEvidence(env = process.env) {
       outcome: deriveReleaseOutcome({
         deployResult: valueOrNull(env.DEPLOY_RESULT),
         smokeResult: valueOrNull(env.PRODUCTION_SMOKE_RESULT),
-        clientUpdateCanaryResult: deriveAdvisoryCanaryResult({
-          highRisk: windowsFirefoxHighRisk,
-          canaryResult: env.PRODUCTION_CLIENT_UPDATE_CANARY_RESULT,
-        }),
         rollbackResult: valueOrNull(env.ROLLBACK_RESULT),
       }),
     },
@@ -114,7 +109,7 @@ export function buildReleaseEvidence(env = process.env) {
         highRisk: windowsFirefoxHighRisk,
         canaryResult: env.WINDOWS_FIREFOX_CANARY_RESULT,
       }),
-      productionClientUpdateCanary: deriveAdvisoryCanaryResult({
+      productionClientUpdateCanary: derivePostReleaseCanaryResult({
         highRisk: windowsFirefoxHighRisk,
         canaryResult: env.PRODUCTION_CLIENT_UPDATE_CANARY_RESULT,
       }),
@@ -169,7 +164,7 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     `| Resolve release images | ${evidence.jobs.resolveReleaseImages ?? 'n/a'} |`,
     `| Verify staging release state | ${evidence.jobs.verifyStagingReleaseState ?? 'n/a'} |`,
     `| Windows/Firefox canary (advisory) | ${evidence.jobs.windowsFirefoxCanary ?? 'n/a'} |`,
-    `| Production client update canary | ${evidence.jobs.productionClientUpdateCanary ?? 'n/a'} |`,
+    `| Production client update canary (post-release) | ${evidence.jobs.productionClientUpdateCanary ?? 'n/a'} |`,
     `| Deploy production | ${evidence.jobs.deployProduction ?? 'n/a'} |`,
     `| Production smoke | ${evidence.jobs.smokeTestProduction ?? 'n/a'} |`,
     `| Rollback | ${evidence.jobs.rollbackProduction ?? 'n/a'} |`,
@@ -208,7 +203,7 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     '',
     '- Local `verify:commit` is the mandatory developer-side gate and now includes the full Playwright suite.',
     '- Staging records smoke + release-gate evidence for the exact promoted SHA and image digests.',
-    '- The Windows/Firefox canary is advisory evidence before deployment; the production client update canary validates installed client self-update on GitHub-hosted Windows and Linux runners after deployment.',
+    '- The Windows/Firefox canary is advisory evidence before deployment; the production client update canary is deferred post-release validation on GitHub-hosted Windows and Linux runners.',
     '- GitHub Actions reuses that staging evidence instead of rerunning the same gate during production promotion.',
     '- Canonical public URLs come from `config/deploy-targets.json`.',
     '',

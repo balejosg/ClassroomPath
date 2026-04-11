@@ -8,10 +8,12 @@ import { parse as parseYaml } from 'yaml';
 
 type WorkflowJob = {
   name?: string;
+  if?: string;
   needs?: string | string[];
   outputs?: Record<string, string>;
   'runs-on'?: string | string[];
   uses?: string;
+  with?: Record<string, unknown>;
   steps?: Array<{
     name?: string;
     id?: string;
@@ -32,6 +34,11 @@ type WorkflowDefinition = {
       tags?: string[];
       paths?: string[];
     };
+    workflow_run?: {
+      workflows?: string[];
+      types?: string[];
+    };
+    workflow_call?: Record<string, unknown>;
     workflow_dispatch?: Record<string, never>;
   };
   jobs?: Record<string, WorkflowJob>;
@@ -99,8 +106,8 @@ describe('Workflow configuration hardening', () => {
       {
         relativePath: '.github/workflows/release-candidate-images.yml',
         required: [
-          './.github/actions/build-release-candidate-image',
-          './.github/actions/publish-release-candidate-manifest',
+          './.github/workflows/reusable-release-candidate-image-family.yml',
+          './.github/workflows/firefox-release-assets.yml',
         ],
         forbidden: [
           'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24',
@@ -123,6 +130,14 @@ describe('Workflow configuration hardening', () => {
         relativePath: '.github/actions/publish-release-candidate-manifest/action.yml',
         required: ['./.github/actions/setup-docker-build'],
         forbidden: ['docker/login-action@v3'],
+      },
+      {
+        relativePath: '.github/workflows/reusable-release-candidate-image-family.yml',
+        required: [
+          './.github/actions/build-release-candidate-image',
+          './.github/actions/publish-release-candidate-manifest',
+        ],
+        forbidden: ['docker/build-push-action@v6', 'actions/download-artifact@v4'],
       },
       {
         relativePath: '.github/workflows/deploy.yml',
@@ -574,18 +589,13 @@ describe('Workflow configuration hardening', () => {
       'Deploy workflow should define a conditional Windows/Firefox canary gate'
     );
     assert.ok(
-      jobs['production-client-update-canary'],
-      'Deploy workflow should define a production client update canary gate'
-    );
-    assert.equal(
       jobs['windows-firefox-canary']?.uses,
       './.github/workflows/windows-firefox-canary.yml',
       'Deploy workflow should delegate the canary to the dedicated reusable workflow'
     );
-    assert.equal(
-      jobs['production-client-update-canary']?.uses,
-      './.github/workflows/production-client-update-canary.yml',
-      'Deploy workflow should delegate installed client update checks to the dedicated reusable workflow'
+    assert.ok(
+      !jobs['production-client-update-canary'],
+      'Deploy workflow should not block completion on post-release client update canaries'
     );
 
     const evidenceNeeds = normalizeNeeds(jobs['release-evidence']?.needs);
@@ -604,10 +614,6 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       evidenceNeeds.includes('windows-firefox-canary'),
       'release-evidence should capture the advisory Windows/Firefox canary result'
-    );
-    assert.ok(
-      evidenceNeeds.includes('production-client-update-canary'),
-      'release-evidence should capture the production installed client update canary result'
     );
     assert.ok(
       !evidenceNeeds.includes('release-gate-staging'),
@@ -716,9 +722,16 @@ describe('Workflow configuration hardening', () => {
       workflowText.includes('STAGING_WINDOWS_FIREFOX_HIGH_RISK') &&
         workflowText.includes('STAGING_WINDOWS_FIREFOX_RISK_BASE_REF') &&
         workflowText.includes('STAGING_WINDOWS_FIREFOX_RISK_BASE_SOURCE') &&
-        workflowText.includes('WINDOWS_FIREFOX_CANARY_RESULT') &&
-        workflowText.includes('PRODUCTION_CLIENT_UPDATE_CANARY_RESULT'),
-      'release-evidence should expose the high-risk flag, its production-state basis, and client canary results'
+        workflowText.includes('WINDOWS_FIREFOX_CANARY_RESULT'),
+      'release-evidence should expose the high-risk flag, its production-state basis, and the pre-deploy advisory canary result'
+    );
+    assert.ok(
+      workflowText.includes("cat > release-evidence-input.json <<'EOF'"),
+      'release-evidence should serialize a single JSON input artifact before rendering markdown and JSON outputs'
+    );
+    assert.ok(
+      workflowText.includes('RELEASE_EVIDENCE_INPUT_PATH=release-evidence-input.json node scripts/write-release-evidence.mjs'),
+      'release-evidence should pass the serialized JSON artifact into the renderer through a single input path'
     );
 
     const smokeSteps = jobs['smoke-test-production']?.steps ?? [];
@@ -755,30 +768,10 @@ describe('Workflow configuration hardening', () => {
       'deploy-production should not wait for the post-deploy production client update canary'
     );
 
-    const productionClientUpdateCanaryNeeds = normalizeNeeds(
-      jobs['production-client-update-canary']?.needs
-    );
-    assert.ok(
-      productionClientUpdateCanaryNeeds.includes('smoke-test-production'),
-      'production client update canary should run only after production smoke passes'
-    );
-    assert.ok(
-      String(jobs['production-client-update-canary']?.if ?? '').includes(
-        "staging_windows_firefox_high_risk == 'true'"
-      ),
-      'production client update canary should run for high-risk client/extension promotions'
-    );
-
     const rollbackNeeds = normalizeNeeds(jobs['rollback-production']?.needs);
     assert.ok(
-      rollbackNeeds.includes('production-client-update-canary'),
-      'rollback should observe production client update canary failures'
-    );
-    assert.ok(
-      String(jobs['rollback-production']?.if ?? '').includes(
-        "needs.production-client-update-canary.result == 'failure'"
-      ),
-      'rollback should trigger when the production client update canary fails'
+      !rollbackNeeds.includes('production-client-update-canary'),
+      'rollback should not depend on advisory post-release client update canaries'
     );
   });
 
@@ -931,12 +924,20 @@ describe('Workflow configuration hardening', () => {
     const linuxJob = jobs['linux-client-self-update-canary'];
 
     assert.ok(
-      workflowText.includes('workflow_call:'),
-      'production client update canary should be reusable from deploy.yml'
+      workflow.on?.workflow_run?.workflows?.includes('Deploy'),
+      'production client update canary should trigger after the Deploy workflow completes'
+    );
+    assert.ok(
+      workflow.on?.workflow_run?.types?.includes('completed'),
+      'production client update canary should listen for completed Deploy workflow runs'
     );
     assert.ok(
       workflowText.includes('workflow_dispatch:'),
       'production client update canary should be manually dispatchable'
+    );
+    assert.ok(
+      !workflowText.includes('workflow_call:'),
+      'production client update canary should no longer be invoked inline from deploy.yml'
     );
     assert.equal(
       windowsJob?.['runs-on'],
@@ -972,6 +973,14 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('openpath-agent-update.timer'),
       'Linux canary should verify the unattended update timer is installed'
+    );
+    assert.ok(
+      String(windowsJob?.if ?? '').includes("github.event.workflow_run.conclusion == 'success'"),
+      'post-release Windows canary should only run after a successful Deploy workflow run'
+    );
+    assert.ok(
+      String(linuxJob?.if ?? '').includes("github.event.workflow_run.conclusion == 'success'"),
+      'post-release Linux canary should only run after a successful Deploy workflow run'
     );
   });
 
@@ -1020,65 +1029,35 @@ describe('Workflow configuration hardening', () => {
       'release candidate workflow should build the gateway image in its own job'
     );
     assert.ok(
-      jobs['build-openpath-api-release-candidate-amd64'],
-      'release candidate workflow should build the OpenPath API amd64 image in its own job'
-    );
-    assert.ok(
-      jobs['build-openpath-api-release-candidate-arm64'],
-      'release candidate workflow should build the OpenPath API arm64 image in its own job'
-    );
-    assert.ok(
       jobs['build-openpath-api-release-candidate'],
-      'release candidate workflow should merge the OpenPath API per-architecture images into a release-candidate manifest'
-    );
-    assert.ok(
-      jobs['build-spa-release-candidate-amd64'],
-      'release candidate workflow should build the SPA amd64 image in its own job'
-    );
-    assert.ok(
-      jobs['build-spa-release-candidate-arm64'],
-      'release candidate workflow should build the SPA arm64 image in its own job'
+      'release candidate workflow should delegate the OpenPath API image family to a reusable workflow'
     );
     assert.ok(
       jobs['build-spa-release-candidate'],
-      'release candidate workflow should merge the SPA per-architecture images into a release-candidate manifest'
-    );
-    assert.ok(
-      jobs['build-migrations-release-candidate-amd64'],
-      'release candidate workflow should build the migrations runner image for amd64 in its own job'
-    );
-    assert.ok(
-      jobs['build-migrations-release-candidate-arm64'],
-      'release candidate workflow should build the migrations runner image for arm64 in its own job'
+      'release candidate workflow should delegate the SPA image family to a reusable workflow'
     );
     assert.ok(
       jobs['build-migrations-release-candidate'],
-      'release candidate workflow should merge the migrations runner image into a release-candidate manifest'
+      'release candidate workflow should delegate the migrations image family to a reusable workflow'
+    );
+    assert.ok(
+      jobs['build-verifier-release-candidate'],
+      'release candidate workflow should delegate the verifier image family to a reusable workflow'
     );
     assert.ok(
       jobs['resolve-openpath-firefox-release-assets'],
       'release candidate workflow should resolve prebuilt Firefox release assets before the OpenPath API image builds'
     );
     assert.ok(
-      jobs['build-verifier-release-candidate-amd64'],
-      'release candidate workflow should build the verifier amd64 image in its own job'
-    );
-    assert.ok(
-      jobs['build-verifier-release-candidate-arm64'],
-      'release candidate workflow should build the verifier arm64 image in its own job'
-    );
-    assert.ok(
-      jobs['build-verifier-release-candidate'],
-      'release candidate workflow should merge the verifier per-architecture images into a release-candidate manifest'
-    );
-    assert.ok(
       jobs['publish-release-candidate-manifest'],
       'release candidate workflow should publish a manifest after all parallel builds finish'
     );
     assert.ok(
-      workflowText.includes('./.github/actions/build-release-candidate-image') &&
-        workflowText.includes('./.github/actions/publish-release-candidate-manifest'),
-      'release candidate workflow should reuse local composite actions for repeated image build and manifest publish steps'
+      workflowText.includes('./.github/workflows/reusable-release-candidate-image-family.yml') &&
+        readText('.github/workflows/reusable-release-candidate-image-family.yml').includes(
+          './.github/actions/publish-release-candidate-manifest'
+        ),
+      'release candidate workflow should reuse a shared workflow for repeated multi-arch families, with manifest publication owned inside that reusable workflow'
     );
 
     const concurrency = workflow.concurrency;
@@ -1109,16 +1088,9 @@ describe('Workflow configuration hardening', () => {
 
     for (const jobName of [
       'build-gateway-release-candidate',
-      'build-migrations-release-candidate-amd64',
-      'build-migrations-release-candidate-arm64',
       'build-migrations-release-candidate',
-      'build-openpath-api-release-candidate-amd64',
-      'build-openpath-api-release-candidate-arm64',
-      'build-spa-release-candidate-amd64',
-      'build-spa-release-candidate-arm64',
+      'build-openpath-api-release-candidate',
       'build-spa-release-candidate',
-      'build-verifier-release-candidate-amd64',
-      'build-verifier-release-candidate-arm64',
       'build-verifier-release-candidate',
     ]) {
       const jobNeeds = normalizeNeeds(jobs[jobName]?.needs);
@@ -1127,8 +1099,8 @@ describe('Workflow configuration hardening', () => {
         `${jobName} should depend on the shared image-ref derivation job`
       );
       assert.ok(
-        !(jobs[jobName]?.steps ?? []).some((step) => step.uses === 'actions/setup-node@v6'),
-        `${jobName} should not install Node once image refs are derived centrally`
+        !String(jobs[jobName]?.uses ?? '').includes('actions/setup-node@v6'),
+        `${jobName} should not inline Node setup once image refs are derived centrally`
       );
     }
 
@@ -1143,80 +1115,35 @@ describe('Workflow configuration hardening', () => {
       'Firefox asset resolution should run after deriving refs and deciding whether a rebuild is necessary'
     );
     assert.equal(
-      jobs['resolve-openpath-firefox-release-assets']?.['runs-on'],
-      'ubuntu-latest',
-      'Firefox asset resolution should run once on ubuntu-latest before fan-out image builds'
+      jobs['resolve-openpath-firefox-release-assets']?.uses,
+      './.github/workflows/firefox-release-assets.yml',
+      'Firefox asset resolution should delegate artifact preparation to the dedicated reusable workflow'
     );
-
-    const firefoxPrepRun =
-      jobs['resolve-openpath-firefox-release-assets']?.steps
-        ?.map((step) => step.run ?? '')
-        .join('\n') ?? '';
     assert.ok(
-      (jobs['resolve-openpath-firefox-release-assets']?.steps ?? []).some(
-        (step) => step.uses === './.github/actions/setup-node'
+      String(jobs['resolve-openpath-firefox-release-assets']?.with?.['build_required'] ?? '').includes(
+        'openpath_api_changed'
       ),
-      'Firefox asset resolution should install Node before polling for artifacts'
+      'Firefox asset resolution should pass the build-required decision into the reusable asset workflow'
     );
-    assert.match(
-      workflowText,
-      /name:\s+Resolve prebuilt Firefox release assets[\s\S]*?env:\s+GH_TOKEN:\s+\$\{\{\s*github\.token\s*\}\}/,
-      'Firefox asset resolution should export GH_TOKEN before invoking gh-backed polling helpers'
-    );
-    assert.ok(
-      firefoxPrepRun.includes('node scripts/wait-for-release-candidate.mjs resolve-firefox-assets'),
-      'Firefox asset resolution should reuse the shared release-candidate helper'
+    assert.equal(
+      jobs['resolve-openpath-firefox-release-assets']?.with?.['artifact_name'],
+      'openpath-firefox-release-assets',
+      'Firefox asset resolution should request the stable artifact name consumed by OpenPath API builds'
     );
     assert.ok(
-      firefoxPrepRun.includes(
-        '--openpath-sha "${{ needs.derive-release-image-refs.outputs.openpath_sha }}"'
-      ),
-      'Firefox asset resolution should target the exact OpenPath submodule SHA'
-    );
-    assert.ok(
-      firefoxPrepRun.includes('--output-dir firefox-release-assets'),
-      'Firefox asset resolution should materialize the downloaded Firefox assets into a stable directory'
-    );
-    assert.ok(
-      firefoxPrepRun.includes('--timeout-seconds 900'),
-      'Firefox asset resolution should wait long enough for the signed Firefox asset producer workflow to finish'
-    );
-    assert.ok(
-      !firefoxPrepRun.includes('sign:firefox-release'),
-      'release candidate workflow should not sign Firefox assets inline once the dedicated producer workflow exists'
+      !workflowText.includes('wait-for-release-candidate.mjs resolve-firefox-assets'),
+      'release candidate workflow should not poll a separate workflow for Firefox assets anymore'
     );
     assert.ok(
       !workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'),
       'release candidate workflow should not require AMO signing secrets directly'
     );
-    assert.ok(
-      workflowText.includes('actions/upload-artifact@v7'),
-      'release candidate workflow should upload the resolved Firefox artifacts for the OpenPath API image jobs'
-    );
-    assert.ok(
-      workflowText.includes('name: openpath-firefox-release-assets'),
-      'release candidate workflow should publish a named artifact for the resolved Firefox release assets'
-    );
-    assert.equal(
-      jobs['build-migrations-release-candidate-arm64']?.['runs-on'],
-      'ubuntu-24.04-arm',
-      'release candidate workflow should build the migrations runner arm64 image on a native arm64 runner'
-    );
-
-    assert.equal(
-      jobs['build-openpath-api-release-candidate-arm64']?.['runs-on'],
-      'ubuntu-24.04-arm',
-      'release candidate workflow should build the OpenPath API arm64 image on a native arm64 runner'
-    );
-
     const migrationsManifestNeeds = normalizeNeeds(
       jobs['build-migrations-release-candidate']?.needs
     );
     assert.deepEqual(
       migrationsManifestNeeds.sort(),
       [
-        'build-migrations-release-candidate-amd64',
-        'build-migrations-release-candidate-arm64',
         'detect-release-candidate-components',
         'derive-release-image-refs',
         'resolve-previous-release-candidate-manifest',
@@ -1230,134 +1157,71 @@ describe('Workflow configuration hardening', () => {
     assert.deepEqual(
       openPathManifestNeeds.sort(),
       [
-        'build-openpath-api-release-candidate-amd64',
-        'build-openpath-api-release-candidate-arm64',
+        'resolve-openpath-firefox-release-assets',
         'detect-release-candidate-components',
         'derive-release-image-refs',
         'resolve-previous-release-candidate-manifest',
       ].sort(),
-      'OpenPath API manifest merge should wait for both per-architecture builds plus the reuse/build decision inputs'
+      'OpenPath API reusable family should wait for the reuse/build decision inputs'
     );
 
-    for (const jobName of [
-      'build-openpath-api-release-candidate-amd64',
-      'build-openpath-api-release-candidate-arm64',
-    ]) {
-      const jobNeeds = normalizeNeeds(jobs[jobName]?.needs);
-      assert.ok(
-        jobNeeds.includes('resolve-openpath-firefox-release-assets'),
-        `${jobName} should wait for the resolved Firefox release assets before building the image`
-      );
-
-      const jobSteps = jobs[jobName]?.steps ?? [];
-      assert.ok(
-        jobSteps.some((step) => step.uses === './.github/actions/build-release-candidate-image'),
-        `${jobName} should delegate OpenPath API image builds to the shared build action`
-      );
-      assert.equal(
-        String(jobSteps.find((step) => step.uses === './.github/actions/build-release-candidate-image')?.with?.['artifact-name'] ?? ''),
-        'openpath-firefox-release-assets',
-        `${jobName} should pass the prepared Firefox release assets into the shared build action`
-      );
-    }
-
-    assert.equal(
-      jobs['build-spa-release-candidate-arm64']?.['runs-on'],
-      'ubuntu-24.04-arm',
-      'release candidate workflow should build the SPA arm64 image on a native arm64 runner'
+    assert.ok(
+      normalizeNeeds(jobs['build-openpath-api-release-candidate']?.needs).includes(
+        'resolve-openpath-firefox-release-assets'
+      ),
+      'OpenPath API reusable family should wait for the resolved Firefox release assets before building the image'
     );
     assert.equal(
-      jobs['build-verifier-release-candidate-arm64']?.['runs-on'],
-      'ubuntu-24.04-arm',
-      'release candidate workflow should build the verifier arm64 image on a native arm64 runner'
+      jobs['build-openpath-api-release-candidate']?.uses,
+      './.github/workflows/reusable-release-candidate-image-family.yml',
+      'OpenPath API image family should be implemented via the reusable workflow'
+    );
+    assert.equal(
+      jobs['build-openpath-api-release-candidate']?.with?.['artifact_name'],
+      'openpath-firefox-release-assets',
+      'OpenPath API reusable family should consume the prepared Firefox release assets'
     );
 
     const spaManifestNeeds = normalizeNeeds(jobs['build-spa-release-candidate']?.needs);
     assert.deepEqual(
       spaManifestNeeds.sort(),
       [
-        'build-spa-release-candidate-amd64',
-        'build-spa-release-candidate-arm64',
         'detect-release-candidate-components',
         'derive-release-image-refs',
         'resolve-previous-release-candidate-manifest',
       ].sort(),
-      'SPA manifest merge should wait for both per-architecture builds plus the reuse/build decision inputs'
+      'SPA reusable family should wait for the reuse/build decision inputs'
     );
 
     const verifierManifestNeeds = normalizeNeeds(jobs['build-verifier-release-candidate']?.needs);
     assert.deepEqual(
       verifierManifestNeeds.sort(),
       [
-        'build-verifier-release-candidate-amd64',
-        'build-verifier-release-candidate-arm64',
         'detect-release-candidate-components',
         'derive-release-image-refs',
         'resolve-previous-release-candidate-manifest',
       ].sort(),
-      'verifier manifest merge should wait for both per-architecture builds plus the reuse/build decision inputs'
-    );
-
-    assert.equal(
-      jobs['build-migrations-release-candidate']?.outputs?.migrations_image,
-      '${{ steps.publish-manifest.outputs.image }}',
-      'migrations manifest job should forward the shared manifest action image output'
-    );
-    assert.equal(
-      jobs['build-openpath-api-release-candidate']?.outputs?.openpath_api_image,
-      '${{ steps.publish-manifest.outputs.image }}',
-      'OpenPath API manifest job should forward the shared manifest action image output'
-    );
-    assert.equal(
-      jobs['build-spa-release-candidate']?.outputs?.spa_image,
-      '${{ steps.publish-manifest.outputs.image }}',
-      'SPA manifest job should forward the shared manifest action image output'
-    );
-    assert.equal(
-      jobs['build-verifier-release-candidate']?.outputs?.verifier_image,
-      '${{ steps.publish-manifest.outputs.image }}',
-      'verifier manifest job should forward the shared manifest action image output'
+      'verifier reusable family should wait for the reuse/build decision inputs'
     );
 
     const buildImageActionText = readText('.github/actions/build-release-candidate-image/action.yml');
     const publishManifestActionText = readText(
       '.github/actions/publish-release-candidate-manifest/action.yml'
     );
-    assert.ok(
-      (jobs['build-openpath-api-release-candidate']?.steps ?? []).some(
-        (step) => step.uses === './.github/actions/publish-release-candidate-manifest'
-      ),
-      'OpenPath API manifest merge should reuse the shared manifest publisher action'
+    assert.equal(
+      jobs['build-openpath-api-release-candidate']?.uses,
+      './.github/workflows/reusable-release-candidate-image-family.yml',
+      'OpenPath API image family should reuse the shared workflow'
     );
-    assert.ok(
-      (jobs['build-openpath-api-release-candidate-amd64']?.steps ?? []).some(
-        (step) => step.uses === './.github/actions/build-release-candidate-image'
-      ),
-      'OpenPath API image builds should reuse the shared build action'
+    assert.equal(
+      jobs['build-spa-release-candidate']?.uses,
+      './.github/workflows/reusable-release-candidate-image-family.yml',
+      'SPA image family should reuse the shared workflow'
     );
-    assert.ok(
-      (jobs['build-spa-release-candidate']?.steps ?? []).some(
-        (step) => step.uses === './.github/actions/publish-release-candidate-manifest'
-      ),
-      'SPA manifest merge should reuse the shared manifest publisher action'
-    );
-    assert.ok(
-      (jobs['build-spa-release-candidate-amd64']?.steps ?? []).some(
-        (step) => step.uses === './.github/actions/build-release-candidate-image'
-      ),
-      'SPA image builds should reuse the shared build action'
-    );
-    assert.ok(
-      (jobs['build-verifier-release-candidate']?.steps ?? []).some(
-        (step) => step.uses === './.github/actions/publish-release-candidate-manifest'
-      ),
-      'verifier manifest merge should reuse the shared manifest publisher action'
-    );
-    assert.ok(
-      (jobs['build-verifier-release-candidate-amd64']?.steps ?? []).some(
-        (step) => step.uses === './.github/actions/build-release-candidate-image'
-      ),
-      'verifier image builds should reuse the shared build action'
+    assert.equal(
+      jobs['build-verifier-release-candidate']?.uses,
+      './.github/workflows/reusable-release-candidate-image-family.yml',
+      'verifier image family should reuse the shared workflow'
     );
     assert.ok(
       buildImageActionText.includes('actions/download-artifact@v7') &&
@@ -1373,6 +1237,13 @@ describe('Workflow configuration hardening', () => {
     const publishManifestRun =
       jobs['publish-release-candidate-manifest']?.steps?.map((step) => step.run ?? '').join('\n') ??
       '';
+    assert.ok(
+      publishManifestRun.includes('CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.build-migrations-release-candidate.outputs.image }}') &&
+        publishManifestRun.includes('OPENPATH_API_IMAGE=${{ needs.build-openpath-api-release-candidate.outputs.image }}') &&
+        publishManifestRun.includes('CLASSROOMPATH_SPA_IMAGE=${{ needs.build-spa-release-candidate.outputs.image }}') &&
+        publishManifestRun.includes('CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.build-verifier-release-candidate.outputs.image }}'),
+      'release candidate manifest should consume the shared image output exposed by each reusable image-family workflow'
+    );
     assert.ok(
       publishManifestRun.includes('CLASSROOMPATH_VERIFIER_IMAGE='),
       'release candidate manifest should publish the verifier image alongside the runtime images'
@@ -1392,6 +1263,12 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('steps.mode.outputs.build_required'),
       'release candidate workflow should gate expensive image builds behind per-component change detection'
+    );
+    assert.ok(
+      readText('.github/workflows/reusable-release-candidate-image-family.yml').includes('build-amd64') &&
+        readText('.github/workflows/reusable-release-candidate-image-family.yml').includes('build-arm64') &&
+        readText('.github/workflows/reusable-release-candidate-image-family.yml').includes('./.github/actions/publish-release-candidate-manifest'),
+      'the reusable image family workflow should own the per-architecture builds and shared manifest publication'
     );
   });
 
@@ -1416,6 +1293,10 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('workflow_dispatch:'),
       'Firefox release asset workflow should support manual rebuilds'
+    );
+    assert.ok(
+      workflow.on?.workflow_call,
+      'Firefox release asset workflow should be reusable from release-candidate-images.yml'
     );
     assert.ok(assetJob, 'Firefox release asset workflow should define a producer job');
     assert.equal(
@@ -1492,10 +1373,8 @@ describe('Workflow configuration hardening', () => {
       'Firefox release asset workflow should source WEB_EXT_API_SECRET from GitHub Actions secrets'
     );
     assert.ok(
-      workflowText.includes(
-        'name: openpath-firefox-release-assets-${{ steps.openpath.outputs.sha }}'
-      ),
-      'Firefox release asset workflow should publish OpenPath-SHA-specific artifacts'
+      workflowText.includes('artifact_name="openpath-firefox-release-assets-${OPENPATH_SHA}"'),
+      'Firefox release asset workflow should default to OpenPath-SHA-specific artifacts when no reusable override is provided'
     );
   });
 });
