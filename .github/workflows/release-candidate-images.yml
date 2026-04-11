@@ -263,7 +263,7 @@ jobs:
       - build-migrations-release-candidate-amd64
       - build-migrations-release-candidate-arm64
     outputs:
-      migrations_image: ${{ steps.publish-manifest.outputs.migrations_image }}
+      migrations_image: ${{ steps.publish-manifest.outputs.image }}
 
     steps:
       - name: Decide whether to build the migrations manifest
@@ -456,7 +456,7 @@ jobs:
       - build-openpath-api-release-candidate-amd64
       - build-openpath-api-release-candidate-arm64
     outputs:
-      openpath_api_image: ${{ steps.publish-manifest.outputs.openpath_api_image }}
+      openpath_api_image: ${{ steps.publish-manifest.outputs.image }}
 
     steps:
       - name: Decide whether to build the OpenPath API manifest
@@ -576,7 +576,7 @@ jobs:
       - build-spa-release-candidate-amd64
       - build-spa-release-candidate-arm64
     outputs:
-      spa_image: ${{ steps.publish-manifest.outputs.spa_image }}
+      spa_image: ${{ steps.publish-manifest.outputs.image }}
 
     steps:
       - name: Decide whether to build SPA manifest
@@ -696,7 +696,7 @@ jobs:
       - build-verifier-release-candidate-amd64
       - build-verifier-release-candidate-arm64
     outputs:
-      verifier_image: ${{ steps.publish-manifest.outputs.verifier_image }}
+      verifier_image: ${{ steps.publish-manifest.outputs.image }}
 
     steps:
       - name: Decide whether to build verifier manifest

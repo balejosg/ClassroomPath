@@ -1298,6 +1298,27 @@ describe('Workflow configuration hardening', () => {
       'verifier manifest merge should wait for both per-architecture builds plus the reuse/build decision inputs'
     );
 
+    assert.equal(
+      jobs['build-migrations-release-candidate']?.outputs?.migrations_image,
+      '${{ steps.publish-manifest.outputs.image }}',
+      'migrations manifest job should forward the shared manifest action image output'
+    );
+    assert.equal(
+      jobs['build-openpath-api-release-candidate']?.outputs?.openpath_api_image,
+      '${{ steps.publish-manifest.outputs.image }}',
+      'OpenPath API manifest job should forward the shared manifest action image output'
+    );
+    assert.equal(
+      jobs['build-spa-release-candidate']?.outputs?.spa_image,
+      '${{ steps.publish-manifest.outputs.image }}',
+      'SPA manifest job should forward the shared manifest action image output'
+    );
+    assert.equal(
+      jobs['build-verifier-release-candidate']?.outputs?.verifier_image,
+      '${{ steps.publish-manifest.outputs.image }}',
+      'verifier manifest job should forward the shared manifest action image output'
+    );
+
     const buildImageActionText = readText('.github/actions/build-release-candidate-image/action.yml');
     const publishManifestActionText = readText(
       '.github/actions/publish-release-candidate-manifest/action.yml'
