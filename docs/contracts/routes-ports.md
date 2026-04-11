@@ -33,6 +33,15 @@ NPM forwards the base domain to the SPA by default, and then uses advanced rules
 - `/w/*` -> gateway (proxies tokenized whitelist downloads)
 - `/health` -> upstream health (via gateway/proxy)
 
+Public upstream passthroughs intentionally include:
+
+- `/api/enroll/*`
+- `/api/requests/auto`
+- `/api/requests/submit`
+- `/api/agent/windows/*`
+- `/api/agent/linux/*`
+- `/api/machines/*`
+
 ## Health Endpoints
 
 - Gateway: `GET /cp/health`

@@ -16,6 +16,8 @@ void describe('openpath-proxy-policy', () => {
         '/api/extensions/firefox/openpath.xpi',
         '/api/extensions/chromium',
         '/api/enroll',
+        '/api/requests/auto',
+        '/api/requests/submit',
         '/api/agent/windows',
         '/api/agent/linux',
         '/api/machines/events',
@@ -50,6 +52,8 @@ void describe('openpath-proxy-policy', () => {
       null
     );
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/enroll/cls_123/ticket'), null);
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/requests/auto'), null);
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/requests/submit'), null);
     assert.strictEqual(
       findBlockedOpenPathPassthroughPath('/api/agent/windows/bootstrap/latest.json'),
       null

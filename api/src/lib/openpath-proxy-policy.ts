@@ -36,6 +36,14 @@ export const OPENPATH_PROXY_MANIFEST = {
     },
     {
       method: 'use',
+      path: '/api/requests/auto',
+    },
+    {
+      method: 'use',
+      path: '/api/requests/submit',
+    },
+    {
+      method: 'use',
       path: '/api/agent/windows',
     },
     {
