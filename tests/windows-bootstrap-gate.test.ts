@@ -334,13 +334,16 @@ describe(
       );
       assert.strictEqual(webhookResponse.status, 200, `webhook returned ${webhookResponse.status}`);
 
+      const reloginResult = await postTrpc('auth.login', { email, password });
+      const refreshedCookieHeader = extractCookies(reloginResult.response) || cookieHeader;
+
       const { data: classroom } = await postTrpc<ClassroomPayload>(
         'classrooms.create',
         {
           name: `bootstrap-gate-${Date.now()}`,
           displayName: 'Bootstrap Gate Classroom',
         },
-        cookieHeader
+        refreshedCookieHeader
       );
 
       assert.ok(classroom.id, 'classrooms.create should return a classroom id');
@@ -350,7 +353,7 @@ describe(
         {
           method: 'POST',
           headers: {
-            Cookie: cookieHeader,
+            Cookie: refreshedCookieHeader,
             ...(WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN
               ? { Origin: WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN }
               : {}),
