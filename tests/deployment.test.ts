@@ -1396,6 +1396,14 @@ void describe('Migration Tooling', () => {
           content.indexOf('apply_staging_runtime_deploy'),
       'deploy-staging-remote.sh should separate deployment planning from remote side effects'
     );
+    assert.ok(
+      content.includes('compose_up_force_recreate_no_build()') &&
+        content.includes(
+          'docker compose reported a stale container reference; retrying once after cleanup...'
+        ) &&
+        content.includes('compose_up_force_recreate_no_build || return 1'),
+      'deploy-staging-remote.sh should retry release-candidate compose startup once after cleaning stale container references'
+    );
   });
 
   void test('release-state helpers centralize current-image and staging-verification evidence writes', () => {

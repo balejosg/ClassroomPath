@@ -526,7 +526,7 @@ restore_previous_release_state() {
     upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
     upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
     docker compose pull gateway api spa
-    docker compose up -d --force-recreate --no-build
+    compose_up_force_recreate_no_build
   else
     remove_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION
     remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION
@@ -550,6 +550,34 @@ fail_after_migrations() {
     log_error "Failed to restore previous staging release"
   fi
   exit 1
+}
+
+compose_up_force_recreate_no_build() {
+  local compose_output=""
+  local compose_exit_code=0
+
+  set +e
+  compose_output="$(docker compose up -d --force-recreate --no-build 2>&1)"
+  compose_exit_code=$?
+  set -e
+
+  if [ "$compose_exit_code" -eq 0 ]; then
+    printf '%s\n' "$compose_output"
+    return 0
+  fi
+
+  printf '%s\n' "$compose_output" >&2
+
+  if printf '%s\n' "$compose_output" | grep -q "No such container"; then
+    log_warn "docker compose reported a stale container reference; retrying once after cleanup..."
+    docker compose down --remove-orphans 2>/dev/null || true
+    docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
+    docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
+    docker compose up -d --force-recreate --no-build
+    return $?
+  fi
+
+  return $compose_exit_code
 }
 
 deploy_with_release_candidates() {
@@ -587,7 +615,7 @@ deploy_with_release_candidates() {
   docker compose down --remove-orphans 2>/dev/null || true
   docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
   docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
-  docker compose up -d --force-recreate --no-build || return 1
+  compose_up_force_recreate_no_build || return 1
 
   IMAGE_SOURCE="release-candidate"
   RESOLVED_GATEWAY_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_GATEWAY_IMAGE")"
