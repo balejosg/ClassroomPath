@@ -125,6 +125,7 @@ run_release_gate_checks() {
   local release_gate_request_origin=""
   local release_gate_exit_code=0
   local windows_bootstrap_exit_code=0
+  local windows_bootstrap_webhook_secret=""
   local staging_firefox_metadata_json=""
 
   RELEASE_GATE_TARGET_URL="$CANONICAL_STAGING_URL"
@@ -186,6 +187,12 @@ run_release_gate_checks() {
   STAGING_FIREFOX_RELEASE_VERSION="$(printf '%s' "$staging_firefox_metadata_json" | node "$SCRIPT_DIR/read-firefox-release-metadata.mjs" --field version)"
   STAGING_FIREFOX_METADATA_SHA256="$("${ssh_cmd[@]}" "docker exec classroompath-api sha256sum /app/firefox-extension/build/firefox-release/metadata.json | awk '{print \$1}'")"
   STAGING_FIREFOX_XPI_SHA256="$("${ssh_cmd[@]}" "docker exec classroompath-api sha256sum /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi | awk '{print \$1}'")"
+  windows_bootstrap_webhook_secret="$("${ssh_cmd[@]}" "docker exec classroompath-api printenv STRIPE_WEBHOOK_SECRET" | tr -d '\r\n')"
+
+  if [ -z "$windows_bootstrap_webhook_secret" ]; then
+    echo "Windows bootstrap gate requires STRIPE_WEBHOOK_SECRET in classroompath-api" >&2
+    return 1
+  fi
 
   echo "Running Windows bootstrap gate against staging..." >&2
 
@@ -200,6 +207,7 @@ run_release_gate_checks() {
     WINDOWS_BOOTSTRAP_GATE_EXPECTED_VERSION="$STAGING_FIREFOX_RELEASE_VERSION" \
     WINDOWS_BOOTSTRAP_GATE_EXPECTED_METADATA_SHA256="$STAGING_FIREFOX_METADATA_SHA256" \
     WINDOWS_BOOTSTRAP_GATE_EXPECTED_XPI_SHA256="$STAGING_FIREFOX_XPI_SHA256" \
+    WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET="$windows_bootstrap_webhook_secret" \
     WINDOWS_BOOTSTRAP_GATE_TIMEOUT="30000" \
     WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS="$release_gate_resolved_address" \
       npm run test:windows-bootstrap-gate 2>&1 | tee /tmp/windows-bootstrap-gate-results.txt

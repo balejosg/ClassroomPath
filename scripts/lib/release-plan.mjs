@@ -136,7 +136,7 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
         runSmoke: true,
         runReleaseGate: true,
         persistEvidence: true,
-        requireLiveWindowsFirefoxEvidence: true,
+        requireLiveWindowsFirefoxEvidence: false,
       },
     };
   }

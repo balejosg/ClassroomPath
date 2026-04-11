@@ -630,6 +630,11 @@ void describe('Migration Tooling', () => {
       'staging verification runner should provide the resolved canonical host address to the Windows bootstrap gate'
     );
     assert.ok(
+      runnerContent.includes('docker exec classroompath-api printenv STRIPE_WEBHOOK_SECRET') &&
+        runnerContent.includes('WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET='),
+      'staging verification runner should source the Stripe webhook signing secret from the staging API container before invoking the Windows bootstrap gate'
+    );
+    assert.ok(
       helperContent.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT=$STAGING_WINDOWS_BOOTSTRAP_RESULT'),
       'staging verification evidence should record a successful Windows bootstrap result'
     );
@@ -665,6 +670,13 @@ void describe('Migration Tooling', () => {
           'Release-candidate staging deploys must prove the live Windows bootstrap contract'
         ),
       'shared staging verification runner should only fail staging evidence for Windows/Firefox delivery changes when the release plan explicitly requires that gate'
+    );
+    assert.ok(
+      runnerContent.includes('docker exec classroompath-api printenv STRIPE_WEBHOOK_SECRET') &&
+        runnerContent.includes(
+          'WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET="$windows_bootstrap_webhook_secret"'
+        ),
+      'shared staging verification runner should source the live Stripe webhook secret from staging and pass it to the Windows bootstrap gate'
     );
     assert.ok(
       localContent.includes(
