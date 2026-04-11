@@ -65,7 +65,16 @@ runs:
         set -euo pipefail
 
         if [ "${{ inputs.build-required }}" = 'true' ]; then
-          manifest_digest="$(docker buildx imagetools inspect "${{ inputs.tag }}" | awk '/^Digest:/ {print $2; exit}')"
+          manifest_digest=''
+          for attempt in $(seq 1 12); do
+            if manifest_digest="$(docker buildx imagetools inspect "${{ inputs.tag }}" 2>/dev/null | awk '/^Digest:/ {print $2; exit}')" && [ -n "$manifest_digest" ]; then
+              break
+            fi
+
+            manifest_digest=''
+            sleep 5
+          done
+
           test -n "$manifest_digest"
           image="${{ inputs.image-repo }}@$manifest_digest"
         else
