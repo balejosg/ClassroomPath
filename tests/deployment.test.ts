@@ -1089,16 +1089,24 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       content.includes('verify-staging-release-state.sh') &&
-        stagingVerificationScript.includes('STAGING_RELEASE_GATE_RESULT'),
+        readFileSync(resolve(projectRoot, 'scripts/lib/release-state.sh'), 'utf-8').includes(
+          'STAGING_RELEASE_GATE_RESULT'
+        ),
       'deploy workflow should require successful staging release-gate evidence instead of rerunning the same gate'
     );
     assert.ok(
-      stagingVerificationScript.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
-        stagingVerificationScript.includes('STAGING_FIREFOX_POLICY_RESULT'),
+      readFileSync(resolve(projectRoot, 'scripts/lib/release-state.sh'), 'utf-8').includes(
+        'STAGING_WINDOWS_BOOTSTRAP_RESULT'
+      ) &&
+        readFileSync(resolve(projectRoot, 'scripts/lib/release-state.sh'), 'utf-8').includes(
+          'STAGING_FIREFOX_POLICY_RESULT'
+        ),
       'deploy workflow should consume the Windows/Firefox staging evidence fields for promotion decisions'
     );
     assert.ok(
-      stagingVerificationScript.includes('PASS_WITH_FALLBACK'),
+      readFileSync(resolve(projectRoot, 'scripts/lib/release-state.sh'), 'utf-8').includes(
+        'PASS_WITH_FALLBACK'
+      ),
       'deploy workflow should explicitly distinguish fallback smoke evidence from production-grade evidence'
     );
     assert.ok(
@@ -1379,8 +1387,10 @@ void describe('Migration Tooling', () => {
 
   void test('release-state helpers centralize current-image and staging-verification evidence writes', () => {
     const releaseStateHelperPath = resolve(projectRoot, 'scripts/lib/release-state.sh');
+    const remoteHelperContractsPath = resolve(projectRoot, 'scripts/lib/remote-helper-contracts.sh');
     const deploymentStateHelperPath = resolve(projectRoot, 'scripts/lib/deployment-state.sh');
     const releaseStateHelper = readFileSync(releaseStateHelperPath, 'utf-8');
+    const remoteHelperContracts = readFileSync(remoteHelperContractsPath, 'utf-8');
     const deploymentStateHelper = readFileSync(deploymentStateHelperPath, 'utf-8');
     const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
     const productionRemote = readFileSync(
@@ -1406,12 +1416,24 @@ void describe('Migration Tooling', () => {
       'scripts/lib/deployment-state.sh should exist'
     );
     assert.ok(
+      existsSync(remoteHelperContractsPath),
+      'scripts/lib/remote-helper-contracts.sh should exist'
+    );
+    assert.ok(
       releaseStateHelper.includes('load_release_state_env()') &&
         releaseStateHelper.includes('write_release_state_snapshot()') &&
         releaseStateHelper.includes('write_current_release_state()') &&
         releaseStateHelper.includes('write_deploy_context_state()') &&
-        releaseStateHelper.includes('write_staging_verification_state()'),
-      'release-state helper should own schema-based reading and writing deployment evidence snapshots'
+        releaseStateHelper.includes('write_staging_verification_state()') &&
+        releaseStateHelper.includes('verify_current_release_state_matches_expected()') &&
+        releaseStateHelper.includes('emit_staging_release_evidence_outputs()'),
+      'release-state helper should own schema-based reading, verification, and output emission for deployment evidence snapshots'
+    );
+    assert.ok(
+      remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
+        remoteHelperContracts.includes('release_state_helper_supports_staging_verification_contract()') &&
+        remoteHelperContracts.includes('refresh_deployed_release_helpers()'),
+      'remote-helper-contracts should centralize post-checkout helper compatibility checks for streamed remote deploys'
     );
     assert.ok(
       deploymentStateHelper.includes('deployment_state_init_paths()') &&
@@ -1421,10 +1443,11 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       stagingRemote.includes('RELEASE_STATE_HELPER_PATH') &&
+        stagingRemote.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
         stagingRemote.includes('release_state_helper_supports_runtime_contract()') &&
         stagingRemote.includes('refresh_deployed_release_helpers') &&
-        stagingRemote.includes("grep -q 'write_deploy_context_state()'") &&
-        stagingRemote.includes("grep -q 'OPENPATH_LINUX_AGENT_VERSION'") &&
+        remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
+        remoteHelperContracts.includes('release_state_helper_supports_runtime_contract()') &&
         stagingRemote.includes('write_current_release_state() {') &&
         stagingRemote.includes('write_deploy_context_state() {') &&
         stagingRemote.includes('write_release_runtime_state'),
@@ -1432,25 +1455,27 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       productionRemote.includes('RELEASE_STATE_HELPER_PATH') &&
+        productionRemote.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
         productionRemote.includes('release_state_helper_supports_runtime_contract()') &&
         productionRemote.includes('refresh_deployed_release_helpers') &&
-        productionRemote.includes("grep -q 'write_deploy_context_state()'") &&
-        productionRemote.includes("grep -q 'OPENPATH_LINUX_AGENT_VERSION'") &&
+        remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
+        remoteHelperContracts.includes('release_state_helper_supports_runtime_contract()') &&
         productionRemote.includes('write_current_release_state() {') &&
         productionRemote.includes('write_deploy_context_state() {') &&
         productionRemote.includes('DEPLOYMENT_STATE_HELPER_PATH') &&
         productionRemote.includes('deployment_state_helper_supports_contract()') &&
-        productionRemote.includes("grep -q 'deployment_state_capture_previous_release()'") &&
+        remoteHelperContracts.includes('deployment_state_helper_supports_contract()') &&
         productionRemote.includes('deployment_state_capture_previous_release') &&
         productionRemote.includes('write_release_runtime_state'),
       'deploy-production-remote.sh should reuse the shared release-state/deployment-state writers, reject stale contracts, and reload refreshed helpers after checkout'
     );
     assert.ok(
-      persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&
+        persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&
         persistVerification.includes('SCRIPT_DIR="$APP_DIR/scripts"') &&
         persistVerification.includes('RELEASE_STATE_HELPER_PATH') &&
+        persistVerification.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
         persistVerification.includes('release_state_helper_supports_staging_verification_contract()') &&
-        persistVerification.includes("grep -q 'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION'") &&
+        remoteHelperContracts.includes('release_state_helper_supports_staging_verification_contract()') &&
         persistVerification.includes('STAGING_VERIFICATION_RUNNER_PATH') &&
         persistVerification.includes('persist-evidence'),
       'persist-staging-verification-remote.sh should reject stale release-state helpers before delegating persistence to the shared staging verification runner'
@@ -1474,8 +1499,11 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       verifyState.includes('load_release_state_env ./staging-release-state.env') &&
-        verifyState.includes('load_release_state_env ./staging-verification.env'),
-      'verify-staging-release-state.sh should load evidence through the shared release-state helper'
+        verifyState.includes('load_release_state_env ./staging-verification.env') &&
+        verifyState.includes('verify_current_release_state_matches_expected') &&
+        verifyState.includes('verify_staging_release_evidence_matches_expected') &&
+        verifyState.includes('emit_staging_release_evidence_outputs'),
+      'verify-staging-release-state.sh should load, validate, and emit evidence through the shared release-state helper'
     );
   });
 

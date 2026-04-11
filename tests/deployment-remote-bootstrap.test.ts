@@ -29,6 +29,7 @@ const extractShellFunction = (content: string, functionName: string): string => 
 
 void describe('Remote Deploy Bootstrap', () => {
   const remoteBootstrapHelperPath = resolve(projectRoot, 'scripts/lib/remote-bootstrap.sh');
+  const remoteHelperContractsPath = resolve(projectRoot, 'scripts/lib/remote-helper-contracts.sh');
   const releaseManifestHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest.sh');
   const deployPayloadHelperPath = resolve(projectRoot, 'scripts/lib/deploy-payload.sh');
   const stagingRemotePath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
@@ -41,10 +42,15 @@ void describe('Remote Deploy Bootstrap', () => {
 
   void test('remote bootstrap helper owns script-dir and helper-path resolution', () => {
     const content = readFileSync(remoteBootstrapHelperPath, 'utf-8');
+    const helperContractsContent = readFileSync(remoteHelperContractsPath, 'utf-8');
 
     assert.ok(
       existsSync(remoteBootstrapHelperPath),
       'scripts/lib/remote-bootstrap.sh should exist'
+    );
+    assert.ok(
+      existsSync(remoteHelperContractsPath),
+      'scripts/lib/remote-helper-contracts.sh should exist'
     );
     assert.ok(
       content.includes('resolve_remote_script_dir()') &&
@@ -52,6 +58,12 @@ void describe('Remote Deploy Bootstrap', () => {
         content.includes('reload_deployed_common_helpers()') &&
         content.includes('run_remote_deploy_phases()'),
       'remote-bootstrap.sh should own shared remote helper resolution functions'
+    );
+    assert.ok(
+      helperContractsContent.includes('remote_helper_path_supports_all()') &&
+        helperContractsContent.includes('refresh_deployed_release_helpers()') &&
+        helperContractsContent.includes('release_state_helper_supports_staging_verification_contract()'),
+      'remote-helper-contracts.sh should own shared streamed-helper contract guards and post-checkout refresh logic'
     );
   });
 
@@ -139,7 +151,9 @@ void describe('Remote Deploy Bootstrap', () => {
       'deploy-staging-remote.sh should fall back to the deployed scripts directory when stdin execution has no script path'
     );
     assert.ok(
-      remoteContent.includes('release_manifest_helper_supports_contract()') &&
+      remoteContent.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
+        remoteContent.includes('source "$REMOTE_HELPER_CONTRACTS_PATH"') &&
+        remoteContent.includes('release_manifest_helper_supports_contract()') &&
         remoteContent.includes('refresh_deployed_release_helpers()') &&
         remoteContent.includes('if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then') &&
         remoteContent.includes('decode_release_manifest_base64() {') &&
@@ -179,7 +193,9 @@ void describe('Remote Deploy Bootstrap', () => {
     }
 
     assert.ok(
-      deployRemoteContent.includes('release_manifest_helper_supports_contract()') &&
+      deployRemoteContent.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
+        deployRemoteContent.includes('source "$REMOTE_HELPER_CONTRACTS_PATH"') &&
+        deployRemoteContent.includes('release_manifest_helper_supports_contract()') &&
         deployRemoteContent.includes('refresh_deployed_release_helpers()') &&
         deployRemoteContent.includes('if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then') &&
         deployRemoteContent.includes('decode_release_manifest_base64() {') &&
@@ -201,7 +217,8 @@ void describe('Remote Deploy Bootstrap', () => {
       assert.ok(
         content.includes('REMOTE_BOOTSTRAP_HELPER_PATH=') &&
           content.includes('resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE"') &&
-          content.includes('resolve_remote_helper_path'),
+          content.includes('resolve_remote_helper_path') &&
+          (scriptName === 'rollback-production-remote.sh' || content.includes('REMOTE_HELPER_CONTRACTS_PATH')),
         `${scriptName} should reuse the shared remote bootstrap helper when available`
       );
     }

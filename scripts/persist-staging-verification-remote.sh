@@ -50,14 +50,35 @@ SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
 COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
 RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
 STAGING_VERIFICATION_RUNNER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "run-staging-verification.sh")"
+REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")"
 
-release_state_helper_supports_staging_verification_contract() {
-  local helper_path="${1:-}"
+if [ -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
+  REMOTE_RELEASE_STATE_CONTRACT_MODE="staging-verification"
+  export REMOTE_RELEASE_STATE_CONTRACT_MODE
+  # shellcheck source=lib/remote-helper-contracts.sh
+  source "$REMOTE_HELPER_CONTRACTS_PATH"
+else
+  remote_helper_path_supports_all() {
+    local helper_path="${1:-}"
+    shift || true
+    local required_snippet=""
 
-  [ -f "$helper_path" ] || return 1
-  grep -q 'write_staging_verification_state()' "$helper_path" &&
-    grep -q 'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION' "$helper_path"
-}
+    [ -f "$helper_path" ] || return 1
+
+    for required_snippet in "$@"; do
+      if ! grep -q "$required_snippet" "$helper_path"; then
+        return 1
+      fi
+    done
+
+    return 0
+  }
+
+  release_state_helper_supports_staging_verification_contract() {
+    local helper_path="${1:-}"
+    remote_helper_path_supports_all "$helper_path" 'write_staging_verification_state()' 'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION'
+  }
+fi
 
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"

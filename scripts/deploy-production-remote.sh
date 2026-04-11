@@ -75,65 +75,75 @@ DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_D
 RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
 DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-context.sh")"
 DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-runtime.sh")"
+REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")"
 
-release_manifest_helper_supports_contract() {
-  local helper_path="${1:-}"
+if [ -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
+  # shellcheck source=lib/remote-helper-contracts.sh
+  source "$REMOTE_HELPER_CONTRACTS_PATH"
+else
+  remote_helper_path_supports_all() {
+    local helper_path="${1:-}"
+    shift || true
+    local required_snippet=""
 
-  [ -f "$helper_path" ] || return 1
-  grep -q 'release_manifest_validate_contract()' "$helper_path" &&
-    grep -q 'linux_agent_version' "$helper_path"
-}
+    [ -f "$helper_path" ] || return 1
 
-release_state_helper_supports_runtime_contract() {
-  local helper_path="${1:-}"
+    for required_snippet in "$@"; do
+      if ! grep -q "$required_snippet" "$helper_path"; then
+        return 1
+      fi
+    done
 
-  [ -f "$helper_path" ] || return 1
-  grep -q 'write_deploy_context_state()' "$helper_path" &&
-    grep -q 'OPENPATH_LINUX_AGENT_VERSION' "$helper_path"
-}
+    return 0
+  }
 
-deployment_state_helper_supports_contract() {
-  local helper_path="${1:-}"
+  release_manifest_helper_supports_contract() {
+    local helper_path="${1:-}"
+    remote_helper_path_supports_all "$helper_path" 'release_manifest_validate_contract()' 'linux_agent_version'
+  }
 
-  [ -f "$helper_path" ] || return 1
-  grep -q 'deployment_state_capture_previous_release()' "$helper_path" &&
-    grep -q 'deployment_state_activate_previous_release()' "$helper_path"
-}
+  release_state_helper_supports_runtime_contract() {
+    local helper_path="${1:-}"
+    remote_helper_path_supports_all "$helper_path" 'write_deploy_context_state()' 'OPENPATH_LINUX_AGENT_VERSION'
+  }
 
-release_runtime_helper_supports_runtime_contract() {
-  local helper_path="${1:-}"
+  deployment_state_helper_supports_contract() {
+    local helper_path="${1:-}"
+    remote_helper_path_supports_all "$helper_path" 'deployment_state_capture_previous_release()' 'deployment_state_activate_previous_release()'
+  }
 
-  [ -f "$helper_path" ] || return 1
-  grep -q 'write_release_runtime_state()' "$helper_path" &&
-    grep -q 'OPENPATH_LINUX_AGENT_VERSION' "$helper_path"
-}
+  release_runtime_helper_supports_runtime_contract() {
+    local helper_path="${1:-}"
+    remote_helper_path_supports_all "$helper_path" 'write_release_runtime_state()' 'OPENPATH_LINUX_AGENT_VERSION'
+  }
 
-refresh_deployed_release_helpers() {
-  RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
-  RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
-  DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
-  RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
+  refresh_deployed_release_helpers() {
+    RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
+    RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
+    DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
+    RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
 
-  if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
-    # shellcheck source=lib/release-manifest.sh
-    source "$RELEASE_MANIFEST_HELPER_PATH"
-  fi
+    if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
+      # shellcheck disable=SC1090
+      source "$RELEASE_MANIFEST_HELPER_PATH"
+    fi
 
-  if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
-    # shellcheck source=lib/release-state.sh
-    source "$RELEASE_STATE_HELPER_PATH"
-  fi
+    if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
+      # shellcheck disable=SC1090
+      source "$RELEASE_STATE_HELPER_PATH"
+    fi
 
-  if deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"; then
-    # shellcheck source=lib/deployment-state.sh
-    source "$DEPLOYMENT_STATE_HELPER_PATH"
-  fi
+    if deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"; then
+      # shellcheck disable=SC1090
+      source "$DEPLOYMENT_STATE_HELPER_PATH"
+    fi
 
-  if release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
-    # shellcheck source=lib/release-runtime.sh
-    source "$RELEASE_RUNTIME_HELPER_PATH"
-  fi
-}
+    if release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
+      # shellcheck disable=SC1090
+      source "$RELEASE_RUNTIME_HELPER_PATH"
+    fi
+  }
+fi
 
 if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
   release_manifest_get() {

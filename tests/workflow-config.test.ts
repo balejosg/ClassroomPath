@@ -637,53 +637,69 @@ describe('Workflow configuration hardening', () => {
       .map((step) => step.run ?? '')
       .join('\n');
     const stagingVerificationScript = readText('scripts/verify-staging-release-state.sh');
+    const releaseStateHelper = readText('scripts/lib/release-state.sh');
+    const releaseRiskHelper = readText('scripts/lib/release-risk.sh');
     const riskDetectionScript = readText('scripts/detect-windows-firefox-risk.sh');
     assert.ok(
       stagingVerificationRun.includes('staging-verification.env'),
       'verify-staging-release-state should fetch the persisted staging verification evidence'
     );
     assert.ok(
+      stagingVerificationRun.includes('production-release-state.env') &&
+        stagingVerificationRun.includes('cat /opt/classroompath/release-state/current-images.env'),
+      'verify-staging-release-state should read the currently deployed production release state before classifying promotion risk'
+    );
+    assert.ok(
       stagingVerificationRun.includes('verify-staging-release-state.sh') &&
-        stagingVerificationScript.includes('STAGING_RELEASE_GATE_RESULT'),
+        releaseStateHelper.includes('STAGING_RELEASE_GATE_RESULT'),
       'verify-staging-release-state should require successful staging release-gate evidence'
     );
     assert.ok(
-      stagingVerificationScript.includes('staging_smoke_result='),
+      releaseStateHelper.includes('staging_smoke_result='),
       'verify-staging-release-state should expose staging smoke evidence to downstream jobs'
     );
     assert.ok(
-      stagingVerificationScript.includes('PASS_WITH_FALLBACK'),
+      releaseStateHelper.includes('PASS_WITH_FALLBACK'),
       'verify-staging-release-state should distinguish fallback staging smoke evidence from promotion-grade evidence'
     );
     assert.ok(
-      stagingVerificationScript.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
-        stagingVerificationScript.includes('STAGING_FIREFOX_POLICY_RESULT'),
+      releaseStateHelper.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
+        releaseStateHelper.includes('STAGING_FIREFOX_POLICY_RESULT'),
       'verify-staging-release-state should enforce Windows/Firefox staging evidence for high-risk promotions'
     );
     assert.ok(
-      riskDetectionScript.includes('upstream/openpath/api/src/'),
+      releaseRiskHelper.includes('PRODUCTION_RELEASE_STATE_PATH') &&
+        riskDetectionScript.includes('resolve_release_risk_base_ref') &&
+        riskDetectionScript.includes('emit_release_risk_outputs'),
+      'verify-staging-release-state should classify risk against the real deployed production release state and expose that basis'
+    );
+    assert.ok(
+      releaseRiskHelper.includes('upstream/openpath/api/src/'),
       'verify-staging-release-state should classify OpenPath API bootstrap source changes as high risk'
     );
     assert.ok(
-      riskDetectionScript.includes('upstream/openpath/linux/'),
+      releaseRiskHelper.includes('upstream/openpath/linux/'),
       'verify-staging-release-state should classify OpenPath Linux client changes as high risk'
     );
     assert.ok(
-      riskDetectionScript.includes('upstream/openpath$'),
+      releaseRiskHelper.includes('upstream/openpath$'),
       'verify-staging-release-state should classify OpenPath submodule gitlink promotions as high risk'
     );
     assert.ok(
-      stagingVerificationScript.includes('STAGING_FIREFOX_EXTENSION_ID') &&
-        stagingVerificationScript.includes('STAGING_FIREFOX_RELEASE_VERSION') &&
-        stagingVerificationScript.includes('STAGING_FIREFOX_METADATA_SHA256') &&
-        stagingVerificationScript.includes('STAGING_FIREFOX_XPI_SHA256'),
-      'verify-staging-release-state should expose Firefox release identity and hashes to downstream jobs'
+      releaseStateHelper.includes('STAGING_FIREFOX_EXTENSION_ID') &&
+        releaseStateHelper.includes('STAGING_FIREFOX_RELEASE_VERSION') &&
+        releaseStateHelper.includes('STAGING_FIREFOX_METADATA_SHA256') &&
+        releaseStateHelper.includes('STAGING_FIREFOX_XPI_SHA256') &&
+        stagingVerificationScript.includes('emit_staging_release_evidence_outputs'),
+      'verify-staging-release-state should expose Firefox release identity and hashes through the shared release-state helper'
     );
     assert.ok(
       workflowText.includes('STAGING_WINDOWS_FIREFOX_HIGH_RISK') &&
+        workflowText.includes('STAGING_WINDOWS_FIREFOX_RISK_BASE_REF') &&
+        workflowText.includes('STAGING_WINDOWS_FIREFOX_RISK_BASE_SOURCE') &&
         workflowText.includes('WINDOWS_FIREFOX_CANARY_RESULT') &&
         workflowText.includes('PRODUCTION_CLIENT_UPDATE_CANARY_RESULT'),
-      'release-evidence should expose the high-risk flag and client canary results'
+      'release-evidence should expose the high-risk flag, its production-state basis, and client canary results'
     );
 
     const smokeSteps = jobs['smoke-test-production']?.steps ?? [];
