@@ -859,6 +859,7 @@ describe('Workflow configuration hardening', () => {
     const jobs = workflow.jobs ?? {};
     const canaryJob = jobs['windows-production-bootstrap-canary'];
     const canarySteps = Array.isArray(canaryJob?.steps) ? canaryJob.steps : [];
+    const canaryScriptText = readText('scripts/create-production-windows-bootstrap-canary.mjs');
 
     assert.ok(
       existsSync(resolve(projectRoot, 'scripts/create-production-windows-bootstrap-canary.mjs')),
@@ -892,6 +893,21 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('create-production-windows-bootstrap-canary.mjs'),
       'windows-production-bootstrap-canary should provision a fresh production enrollment ticket through the shared helper script'
+    );
+    assert.ok(
+      canaryScriptText.includes("'billing.createCheckout'") &&
+        canaryScriptText.includes('/cp/stripe/webhook'),
+      'production bootstrap canary helper should provision entitlement through the live billing checkout flow before enrollment'
+    );
+    assert.ok(
+      !canaryScriptText.includes("'onboarding.createOrganization'"),
+      'production bootstrap canary helper should not rely on the deprecated self-service organization creation path'
+    );
+    assert.ok(
+      workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET') &&
+        workflowText.includes('DEPLOY_HOST') &&
+        workflowText.includes('classroompath-production-release'),
+      'windows-production-bootstrap-canary should retrieve the production Stripe webhook secret over the deploy SSH boundary before provisioning'
     );
     assert.ok(
       workflowText.includes('/api/enroll/') && workflowText.includes('windows.ps1'),
@@ -980,6 +996,12 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('create-production-windows-bootstrap-canary.mjs'),
       'both client update canaries should provision live production enrollment through the shared helper'
+    );
+    assert.ok(
+      workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET') &&
+        workflowText.includes('DEPLOY_HOST') &&
+        workflowText.includes('classroompath-production-release'),
+      'production client update canaries should retrieve the production Stripe webhook secret over the deploy SSH boundary before provisioning'
     );
     assert.ok(
       workflowText.includes('OpenPath.ps1') && workflowText.includes('self-update --silent'),

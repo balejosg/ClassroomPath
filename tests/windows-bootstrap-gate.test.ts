@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { describe, test } from 'node:test';
 
 import { CURRENT_TERMS_VERSION } from '../api/src/services/legal-consent.service.js';
@@ -21,6 +21,11 @@ type TrpcEnvelope<T> = {
 type RegistrationPayload = {
   email?: string;
   verificationUrl?: string;
+};
+
+type CheckoutPayload = {
+  checkoutSessionId?: string;
+  checkoutUrl?: string;
 };
 
 type ClassroomPayload = {
@@ -114,6 +119,8 @@ const EXPECTED_EXTENSION_ID = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_EXTENS
 const EXPECTED_VERSION = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_VERSION ?? '';
 const EXPECTED_METADATA_SHA256 = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_METADATA_SHA256 ?? '';
 const EXPECTED_XPI_SHA256 = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_XPI_SHA256 ?? '';
+const WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET =
+  process.env.WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET ?? '';
 const WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS = process.env.WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS;
 const WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH =
   process.env.WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH ??
@@ -179,6 +186,20 @@ function extractTokenFromVerificationUrl(verificationUrl: string): string {
 
 function sha256Hex(input: Uint8Array | string): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+function stripeSignature(payload: string): string {
+  assert.ok(
+    WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET,
+    'WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET must be set'
+  );
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = createHmac('sha256', WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET)
+    .update(`${timestamp}.${payload}`)
+    .digest('hex');
+
+  return `t=${timestamp},v1=${signature}`;
 }
 
 function extractCookies(response: Response): string {
@@ -271,23 +292,47 @@ describe(
       });
 
       const loginResult = await postTrpc('auth.login', { email, password });
-      const initialCookieHeader = extractCookies(loginResult.response);
-      assert.ok(initialCookieHeader.length > 0, 'auth.login should issue a session cookie');
+      const cookieHeader = extractCookies(loginResult.response);
+      assert.ok(cookieHeader.length > 0, 'auth.login should issue a session cookie');
 
-      await postTrpc(
-        'onboarding.createOrganization',
+      const { data: checkout } = await postTrpc<CheckoutPayload>(
+        'billing.createCheckout',
         {
-          name: `Bootstrap Gate Org ${Date.now()}`,
+          kind: 'annual',
+          organizationName: `Bootstrap Gate Org ${Date.now()}`,
+          classrooms: 12,
         },
-        initialCookieHeader
+        cookieHeader
       );
 
-      const refreshedLoginResult = await postTrpc('auth.login', { email, password });
-      const cookieHeader = extractCookies(refreshedLoginResult.response);
-      assert.ok(
-        cookieHeader.length > 0,
-        'auth.login should reissue a session cookie after organization onboarding'
+      assert.equal(typeof checkout.checkoutSessionId, 'string');
+      assert.equal(typeof checkout.checkoutUrl, 'string');
+
+      const webhookPayload = JSON.stringify({
+        id: `evt_${Date.now()}`,
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: checkout.checkoutSessionId,
+            customer: `cus_${Date.now()}`,
+            subscription: `sub_${Date.now()}`,
+            payment_status: 'paid',
+          },
+        },
+      });
+
+      const webhookResponse = await fetchWithRetry(
+        `${WINDOWS_BOOTSTRAP_GATE_URL}/cp/stripe/webhook`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Stripe-Signature': stripeSignature(webhookPayload),
+          },
+          body: webhookPayload,
+        }
       );
+      assert.strictEqual(webhookResponse.status, 200, `webhook returned ${webhookResponse.status}`);
 
       const { data: classroom } = await postTrpc<ClassroomPayload>(
         'classrooms.create',

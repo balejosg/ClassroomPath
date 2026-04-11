@@ -28,6 +28,50 @@ jobs:
           enable-cache: false
           cache-dependency-path: package-lock.json
 
+      - name: Resolve production host
+        id: resolve-production
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "::error::DEPLOY_HOST, DEPLOY_USER, and DEPLOY_SSH_KEY must be configured for production canaries"
+            exit 1
+          fi
+
+          bash scripts/resolve-ssh-host.sh "$DEPLOY_HOST" "${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+          echo "user=$DEPLOY_USER" >> "$GITHUB_OUTPUT"
+
+      - name: Install production SSH key
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/classroompath-production-release
+          chmod 600 ~/.ssh/classroompath-production-release
+
+      - name: Read production Stripe webhook secret
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          stripe_webhook_secret="$(ssh             -o ConnectTimeout=10             -o BatchMode=yes             -o IdentitiesOnly=yes             -o StrictHostKeyChecking=accept-new             -i ~/.ssh/classroompath-production-release             -p "${{ steps.resolve-production.outputs.port }}"             "${{ steps.resolve-production.outputs.user }}@${{ steps.resolve-production.outputs.ip }}"             "grep '^STRIPE_WEBHOOK_SECRET=' /opt/classroompath/app/config/.env | sed 's/^STRIPE_WEBHOOK_SECRET=//' | head -n1")"
+
+          if [ -z "$stripe_webhook_secret" ]; then
+            echo "::error::STRIPE_WEBHOOK_SECRET is missing on production"
+            exit 1
+          fi
+
+          echo "::add-mask::$stripe_webhook_secret"
+          echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET=$stripe_webhook_secret" >> "$GITHUB_ENV"
+
       - name: Provision production enrollment canary
         id: provision
         shell: bash

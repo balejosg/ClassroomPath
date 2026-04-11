@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
@@ -16,6 +17,8 @@ const timeoutMs = Number.parseInt(
   process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_TIMEOUT ?? '30000',
   10
 );
+const stripeWebhookSecret =
+  process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET ?? '';
 
 function readCurrentTermsVersion() {
   const sourcePath = resolve('api/src/services/legal-consent.service.ts');
@@ -65,6 +68,20 @@ function extractTokenFromVerificationUrl(verificationUrl) {
 
 function sleep(ms) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+function stripeSignature(payload) {
+  assert.ok(
+    stripeWebhookSecret,
+    'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET must be set'
+  );
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = createHmac('sha256', stripeWebhookSecret)
+    .update(`${timestamp}.${payload}`)
+    .digest('hex');
+
+  return `t=${timestamp},v1=${signature}`;
 }
 
 async function fetchWithTimeout(input, init = {}) {
@@ -173,17 +190,55 @@ async function main() {
   const initialCookieHeader = extractCookies(loginResult.response);
   assert.ok(initialCookieHeader, 'auth.login should issue a session cookie');
 
-  await postTrpc(
-    'onboarding.createOrganization',
+  const organizationName = `Windows Production Bootstrap Canary Org ${Date.now()}`;
+  const { data: checkout } = await postTrpc(
+    'billing.createCheckout',
     {
-      name: `Windows Production Bootstrap Canary Org ${Date.now()}`,
+      kind: 'annual',
+      organizationName,
+      classrooms: 12,
     },
     initialCookieHeader
   );
 
+  assert.equal(
+    typeof checkout.checkoutSessionId,
+    'string',
+    'billing.createCheckout should return a checkout session id'
+  );
+  assert.equal(
+    typeof checkout.checkoutUrl,
+    'string',
+    'billing.createCheckout should return a checkout URL'
+  );
+
+  const webhookPayload = JSON.stringify({
+    id: `evt_${Date.now()}`,
+    type: 'checkout.session.completed',
+    data: {
+      object: {
+        id: checkout.checkoutSessionId,
+        customer: `cus_${Date.now()}`,
+        subscription: `sub_${Date.now()}`,
+        payment_status: 'paid',
+      },
+    },
+  });
+
+  const webhookResponse = await fetchWithRetry(`${apiUrl}/cp/stripe/webhook`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Stripe-Signature': stripeSignature(webhookPayload),
+    },
+    body: webhookPayload,
+  });
+
+  assert.equal(webhookResponse.status, 200, 'stripe webhook should activate the checkout');
+
   const refreshedLoginResult = await postTrpc('auth.login', { email, password });
   const cookieHeader = extractCookies(refreshedLoginResult.response);
-  assert.ok(cookieHeader, 'auth.login should reissue a session cookie after organization setup');
+  assert.ok(cookieHeader, 'auth.login should reissue a session cookie after billing activation');
 
   const canaryGroupName = uniqueValue('windows-production-bootstrap-canary-group');
   const { data: group } = await postTrpc(
