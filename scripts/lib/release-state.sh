@@ -122,11 +122,28 @@ write_release_state_snapshot() {
   local state_path="$2"
   local field=""
   local value=""
+  local -a cli_cmd=()
 
   if release_state_cli_available; then
-    node "$(release_state_cli_path)" write-snapshot \
-      --snapshot-type "$snapshot_type" \
-      --output "$state_path"
+    cli_cmd=(env)
+
+    while IFS= read -r field; do
+      [ -z "$field" ] && continue
+      value="${!field:-}"
+      cli_cmd+=("$field=$value")
+    done < <(release_state_fields "$snapshot_type")
+
+    cli_cmd+=(
+      node
+      "$(release_state_cli_path)"
+      write-snapshot
+      --snapshot-type
+      "$snapshot_type"
+      --output
+      "$state_path"
+    )
+
+    "${cli_cmd[@]}"
     return 0
   fi
 

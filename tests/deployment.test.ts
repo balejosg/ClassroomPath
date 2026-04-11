@@ -1432,8 +1432,10 @@ void describe('Migration Tooling', () => {
         releaseStateHelper.includes('write_deploy_context_state()') &&
         releaseStateHelper.includes('write_staging_verification_state()') &&
         releaseStateHelper.includes('release_state_cli_available()') &&
-        releaseStateHelper.includes('node "$(release_state_cli_path)" write-snapshot'),
-      'release-state helper should keep shell compatibility while delegating snapshot writes to the typed release-state CLI when node is available'
+        releaseStateHelper.includes('cli_cmd=(env)') &&
+        releaseStateHelper.includes('cli_cmd+=("$field=$value")') &&
+        releaseStateHelper.includes('"$(release_state_cli_path)"'),
+      'release-state helper should keep shell compatibility while delegating snapshot writes to the typed release-state CLI with the active shell snapshot values'
     );
     assert.ok(
       releaseStateContract.includes('RELEASE_STATE_SNAPSHOT_DEFINITIONS') &&

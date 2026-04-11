@@ -127,3 +127,39 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
   assert.equal(outputs.staging_firefox_release_version, '4.1.19');
   assert.equal(outputs.staging_verified_at, '2026-04-11T06:00:00Z');
 });
+
+test('bash release-state helpers preserve shell-only staging verification values when delegating to the typed CLI', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-shell-helper-'));
+  const snapshotPath = join(tempDir, 'staging-verification-run.env');
+
+  execFileSync(
+    'bash',
+    [
+      '-lc',
+      [
+        'source scripts/lib/common.sh',
+        'source scripts/lib/release-state.sh',
+        'STAGING_SMOKE_RESULT=success',
+        'STAGING_SMOKE_STATUS=PASS',
+        'STAGING_RELEASE_GATE_RESULT=success',
+        'STAGING_VERIFIED_AT=2026-04-11T10:00:00Z',
+        'STAGING_FIREFOX_RELEASE_ARTIFACTS=present',
+        'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
+        'STAGING_FIREFOX_POLICY_RESULT=success',
+        'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
+        'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
+        'STAGING_FIREFOX_METADATA_SHA256=meta123',
+        'STAGING_FIREFOX_XPI_SHA256=xpi123',
+        `write_staging_verification_run_state ${snapshotPath}`,
+      ].join('; '),
+    ],
+    { cwd: projectRoot, env: { ...process.env } }
+  );
+
+  const snapshot = readReleaseStateSnapshot(snapshotPath);
+  assert.equal(snapshot.STAGING_SMOKE_RESULT, 'success');
+  assert.equal(snapshot.STAGING_RELEASE_GATE_RESULT, 'success');
+  assert.equal(snapshot.STAGING_VERIFIED_AT, '2026-04-11T10:00:00Z');
+  assert.equal(snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT, 'success');
+  assert.equal(snapshot.STAGING_FIREFOX_EXTENSION_ID, 'openpath@example');
+});
