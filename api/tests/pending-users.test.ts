@@ -45,6 +45,15 @@ async function seedMembership(params: {
     role: params.role,
     invitedBy: params.userId,
   });
+
+  await db.insert(schema.cpOrganizationEntitlements).values({
+    organizationId: params.organizationId,
+    source: 'manual_admin',
+    status: 'active',
+    productKind: 'annual',
+    classroomLimit: 25,
+    grantedBy: params.userId,
+  });
 }
 
 async function expectTrpcError(

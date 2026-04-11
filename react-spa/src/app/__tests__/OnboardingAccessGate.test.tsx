@@ -43,11 +43,24 @@ vi.mock('../../views/Onboarding', () => ({
   ),
 }));
 
+vi.mock('../../components/PlatformAdminPanel', () => ({
+  PlatformAdminPanel: () => <div>Platform Admin Panel</div>,
+}));
+
 function createStatus(overrides: Partial<OnboardingStatusDto> = {}): OnboardingStatusDto {
   return {
     hasMembership: true,
     isWaiting: false,
     organization: null,
+    platformAdmin: false,
+    billing: {
+      hasActiveEntitlement: true,
+      source: 'stripe_subscription',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 12,
+      expiresAt: null,
+    },
     policy: {
       allowOrgDirectory: false,
       allowSelfServiceOrgs: false,
@@ -167,6 +180,65 @@ describe('OnboardingAccessGate', () => {
 
   it('renders the authenticated shell when membership exists', () => {
     renderGate({ authenticatedContent: <div>Authenticated Shell</div> });
+
+    expect(screen.getByText('Authenticated Shell')).toBeInTheDocument();
+  });
+
+  it('renders the platform admin panel for allowlisted users without tenant membership', () => {
+    renderGate({
+      status: createStatus({
+        hasMembership: false,
+        isWaiting: false,
+        platformAdmin: true,
+      }),
+    });
+
+    expect(screen.getByText('Platform Admin Panel')).toBeInTheDocument();
+  });
+
+  it('routes paid members to the shell only when billing entitlement is active', () => {
+    const { rerender } = renderGate({
+      status: createStatus({
+        hasMembership: true,
+        billing: {
+          hasActiveEntitlement: false,
+          source: null,
+          status: null,
+          productKind: null,
+          classroomLimit: null,
+          expiresAt: null,
+        },
+      }),
+      authenticatedContent: <div>Authenticated Shell</div>,
+    });
+
+    expect(screen.getByText('Onboarding View')).toBeInTheDocument();
+    expect(screen.queryByText('Authenticated Shell')).not.toBeInTheDocument();
+
+    rerender(
+      <OnboardingAccessGate
+        status={createStatus({
+          hasMembership: true,
+          billing: {
+            hasActiveEntitlement: true,
+            source: 'stripe_subscription',
+            status: 'active',
+            productKind: 'annual',
+            classroomLimit: 12,
+            expiresAt: null,
+          },
+        })}
+        isLoading={false}
+        loadingTimedOut={false}
+        isError={false}
+        onRetry={() => undefined}
+        onLogoutToLogin={() => undefined}
+        onStatusChange={() => undefined}
+        onCancelWaitingSuccess={() => undefined}
+        onOrgCreated={() => undefined}
+        authenticatedContent={<div>Authenticated Shell</div>}
+      />
+    );
 
     expect(screen.getByText('Authenticated Shell')).toBeInTheDocument();
   });

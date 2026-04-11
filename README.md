@@ -208,6 +208,7 @@ Canonical runbooks:
 
 - Staging: `docs/runbooks/deploy-staging.md`
 - Production: `docs/runbooks/deploy-production.md`
+- Stripe billing catalog: `docs/runbooks/configure-stripe-billing.md`
 
 ### Staging (Local SSH)
 

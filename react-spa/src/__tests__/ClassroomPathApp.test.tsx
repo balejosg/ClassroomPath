@@ -218,7 +218,7 @@ describe('ClassroomPathApp', () => {
 
     mockUseOnboardingStatus.mockReturnValue(
       makeOnboardingQuery({
-        data: { hasMembership: false, isWaiting: false },
+        data: { hasMembership: false, isWaiting: false, platformAdmin: false, billing: null },
       })
     );
 
@@ -275,7 +275,7 @@ describe('ClassroomPathApp', () => {
     mockHasSessionMarker.mockReturnValue(true);
     const refetch = vi.fn();
     let currentQuery = makeOnboardingQuery({
-      data: { hasMembership: false, isWaiting: false },
+      data: { hasMembership: false, isWaiting: false, platformAdmin: false, billing: null },
       refetch,
     });
     mockUseOnboardingStatus.mockImplementation(() => currentQuery);
@@ -291,7 +291,20 @@ describe('ClassroomPathApp', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
 
     currentQuery = makeOnboardingQuery({
-      data: { hasMembership: true, isWaiting: false, organization: { role: 'admin' } },
+      data: {
+        hasMembership: true,
+        isWaiting: false,
+        organization: { role: 'admin' },
+        platformAdmin: false,
+        billing: {
+          hasActiveEntitlement: true,
+          source: 'stripe',
+          status: 'active',
+          productKind: 'annual',
+          classroomLimit: 12,
+          expiresAt: null,
+        },
+      },
       refetch,
     });
     rerender(<ClassroomPathApp />);

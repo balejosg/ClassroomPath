@@ -4,23 +4,43 @@ import { afterEach, describe, it } from 'node:test';
 const ORIGINAL_ENV = {
   CP_ALLOW_ORG_DIRECTORY: process.env.CP_ALLOW_ORG_DIRECTORY,
   CP_ALLOW_SELF_SERVICE_ORGS: process.env.CP_ALLOW_SELF_SERVICE_ORGS,
+  CP_PLATFORM_ADMIN_EMAILS: process.env.CP_PLATFORM_ADMIN_EMAILS,
   CP_FAKE_EMAIL_DELIVERY: process.env.CP_FAKE_EMAIL_DELIVERY,
   JWT_SECRET: process.env.JWT_SECRET,
   NODE_ENV: process.env.NODE_ENV,
   PUBLIC_URL: process.env.PUBLIC_URL,
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
+  STRIPE_ANNUAL_PRICE_1_10: process.env.STRIPE_ANNUAL_PRICE_1_10,
+  STRIPE_ANNUAL_PRICE_11_25: process.env.STRIPE_ANNUAL_PRICE_11_25,
+  STRIPE_ANNUAL_PRICE_26_50: process.env.STRIPE_ANNUAL_PRICE_26_50,
+  STRIPE_ANNUAL_PRICE_51_100: process.env.STRIPE_ANNUAL_PRICE_51_100,
+  STRIPE_ONBOARDING_PRICE_1_25: process.env.STRIPE_ONBOARDING_PRICE_1_25,
+  STRIPE_ONBOARDING_PRICE_26_100: process.env.STRIPE_ONBOARDING_PRICE_26_100,
+  STRIPE_PILOT_PRICE: process.env.STRIPE_PILOT_PRICE,
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
 };
 
 function restoreEnv(): void {
   setEnv('CP_ALLOW_ORG_DIRECTORY', ORIGINAL_ENV.CP_ALLOW_ORG_DIRECTORY);
   setEnv('CP_ALLOW_SELF_SERVICE_ORGS', ORIGINAL_ENV.CP_ALLOW_SELF_SERVICE_ORGS);
+  setEnv('CP_PLATFORM_ADMIN_EMAILS', ORIGINAL_ENV.CP_PLATFORM_ADMIN_EMAILS);
   setEnv('CP_FAKE_EMAIL_DELIVERY', ORIGINAL_ENV.CP_FAKE_EMAIL_DELIVERY);
   setEnv('JWT_SECRET', ORIGINAL_ENV.JWT_SECRET);
   setEnv('NODE_ENV', ORIGINAL_ENV.NODE_ENV);
   setEnv('PUBLIC_URL', ORIGINAL_ENV.PUBLIC_URL);
   setEnv('RESEND_API_KEY', ORIGINAL_ENV.RESEND_API_KEY);
   setEnv('RESEND_FROM_EMAIL', ORIGINAL_ENV.RESEND_FROM_EMAIL);
+  setEnv('STRIPE_ANNUAL_PRICE_1_10', ORIGINAL_ENV.STRIPE_ANNUAL_PRICE_1_10);
+  setEnv('STRIPE_ANNUAL_PRICE_11_25', ORIGINAL_ENV.STRIPE_ANNUAL_PRICE_11_25);
+  setEnv('STRIPE_ANNUAL_PRICE_26_50', ORIGINAL_ENV.STRIPE_ANNUAL_PRICE_26_50);
+  setEnv('STRIPE_ANNUAL_PRICE_51_100', ORIGINAL_ENV.STRIPE_ANNUAL_PRICE_51_100);
+  setEnv('STRIPE_ONBOARDING_PRICE_1_25', ORIGINAL_ENV.STRIPE_ONBOARDING_PRICE_1_25);
+  setEnv('STRIPE_ONBOARDING_PRICE_26_100', ORIGINAL_ENV.STRIPE_ONBOARDING_PRICE_26_100);
+  setEnv('STRIPE_PILOT_PRICE', ORIGINAL_ENV.STRIPE_PILOT_PRICE);
+  setEnv('STRIPE_SECRET_KEY', ORIGINAL_ENV.STRIPE_SECRET_KEY);
+  setEnv('STRIPE_WEBHOOK_SECRET', ORIGINAL_ENV.STRIPE_WEBHOOK_SECRET);
 }
 
 function setEnv(name: string, value: string | undefined): void {
@@ -74,7 +94,7 @@ describe('runtime config contract', () => {
     assert.throws(() => configModule.resolveRuntimeConfig(), /PUBLIC_URL/i);
   });
 
-  it('enables self-service organization creation by default in production while keeping the directory hidden', async () => {
+  it('disables self-service organization creation by default in production while keeping the directory hidden', async () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_SECRET = 'production-secret-value';
     process.env.PUBLIC_URL = 'https://classroompath.eu';
@@ -87,8 +107,38 @@ describe('runtime config contract', () => {
     const configModule = await import(`../src/config.ts?${tag}`);
     const runtimeConfig = configModule.resolveRuntimeConfig();
 
-    assert.equal(runtimeConfig.allowSelfServiceOrgs, true);
+    assert.equal(runtimeConfig.allowSelfServiceOrgs, false);
     assert.equal(runtimeConfig.allowOrgDirectory, false);
+  });
+
+  it('resolves the Stripe checkout and platform admin runtime contract', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = 'production-secret-value';
+    process.env.PUBLIC_URL = 'https://classroompath.eu';
+    process.env.CP_PLATFORM_ADMIN_EMAILS = ' Admin@ClassroomPath.eu, billing@example.com ';
+    process.env.STRIPE_SECRET_KEY = 'sk_test_classroompath';
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_classroompath';
+    process.env.STRIPE_ANNUAL_PRICE_1_10 = 'price_annual_1_10';
+    process.env.STRIPE_ANNUAL_PRICE_11_25 = 'price_annual_11_25';
+    process.env.STRIPE_ANNUAL_PRICE_26_50 = 'price_annual_26_50';
+    process.env.STRIPE_ANNUAL_PRICE_51_100 = 'price_annual_51_100';
+    process.env.STRIPE_ONBOARDING_PRICE_1_25 = 'price_onboarding_1_25';
+    process.env.STRIPE_ONBOARDING_PRICE_26_100 = 'price_onboarding_26_100';
+    process.env.STRIPE_PILOT_PRICE = 'price_pilot';
+
+    const tag = `runtime-config-stripe-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const configModule = await import(`../src/config.ts?${tag}`);
+    const runtimeConfig = configModule.resolveRuntimeConfig();
+
+    assert.equal(runtimeConfig.stripe.secretKey, 'sk_test_classroompath');
+    assert.equal(runtimeConfig.stripe.webhookSecret, 'whsec_classroompath');
+    assert.equal(runtimeConfig.stripe.priceIds.annual['11_25'], 'price_annual_11_25');
+    assert.equal(runtimeConfig.stripe.priceIds.onboarding['26_100'], 'price_onboarding_26_100');
+    assert.equal(runtimeConfig.stripe.priceIds.pilot, 'price_pilot');
+    assert.deepEqual(runtimeConfig.platformAdminEmails, [
+      'admin@classroompath.eu',
+      'billing@example.com',
+    ]);
   });
 
   it('derives the email delivery mode from the runtime env contract', async () => {

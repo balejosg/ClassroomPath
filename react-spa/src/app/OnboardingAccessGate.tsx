@@ -6,6 +6,7 @@ import type {
 
 import { Onboarding } from '../views/Onboarding';
 import { Waiting } from '../views/Waiting';
+import { PlatformAdminPanel } from '../components/PlatformAdminPanel';
 
 type OnboardingAccessGateProps = {
   status?: OnboardingStatusDto;
@@ -99,6 +100,21 @@ export function OnboardingAccessGate(props: OnboardingAccessGateProps) {
       <Waiting
         onStatusChange={props.onStatusChange}
         onCancelSuccess={props.onCancelWaitingSuccess}
+        onLogout={props.onLogoutToLogin}
+      />
+    );
+  }
+
+  if (props.status?.platformAdmin && !props.status.hasMembership) {
+    return <PlatformAdminPanel />;
+  }
+
+  if (props.status?.hasMembership && props.status.billing?.hasActiveEntitlement === false) {
+    return (
+      <Onboarding
+        initialOrgName={props.status.organization?.name}
+        onOrgCreated={props.onOrgCreated}
+        onWaitClick={props.onStatusChange}
         onLogout={props.onLogoutToLogin}
       />
     );

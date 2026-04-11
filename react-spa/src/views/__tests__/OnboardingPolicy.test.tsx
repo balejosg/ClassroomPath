@@ -3,7 +3,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 import { Onboarding } from '../Onboarding';
 
-const mockCreateOrg = vi.fn();
+const mockCreateCheckout = vi.fn();
+const mockCreateManualRequest = vi.fn();
 const mockWaitForInvitation = vi.fn();
 
 let organizations: Array<{ id: string; name: string }> = [];
@@ -18,8 +19,13 @@ vi.mock('../../lib/hooks', () => ({
       policy: mockPolicy,
     },
   }),
-  useCreateOrganization: () => ({
-    mutate: mockCreateOrg,
+  useCreateBillingCheckout: () => ({
+    mutate: mockCreateCheckout,
+    isPending: false,
+    error: null,
+  }),
+  useCreateManualBillingRequest: () => ({
+    mutate: mockCreateManualRequest,
     isPending: false,
     error: null,
   }),
@@ -58,7 +64,8 @@ describe('Onboarding policy UI', () => {
 
     render(<Onboarding onOrgCreated={onOrgCreated} onWaitClick={onWaitClick} />);
 
-    expect(screen.queryByTestId('onboarding-create-org')).not.toBeInTheDocument();
+    expect(screen.getByText('Contratar cuota anual')).toBeInTheDocument();
+    expect(screen.getByText('Solicitar excepción')).toBeInTheDocument();
     expect(screen.queryByTestId('onboarding-target-org')).not.toBeInTheDocument();
     expect(screen.getByTestId('onboarding-access-policy')).toBeInTheDocument();
     expect(screen.getByTestId('onboarding-wait-invite')).toBeInTheDocument();
@@ -87,7 +94,8 @@ describe('Onboarding policy UI', () => {
   it('keeps both onboarding paths visible when the server policy enables them', () => {
     render(<Onboarding onOrgCreated={onOrgCreated} onWaitClick={onWaitClick} />);
 
-    expect(screen.getByText('Crear mi organización')).toBeInTheDocument();
+    expect(screen.getByText('Contratar cuota anual')).toBeInTheDocument();
+    expect(screen.getByText('Empezar piloto')).toBeInTheDocument();
     expect(screen.getByTestId('onboarding-target-org')).toBeInTheDocument();
     expect(screen.getByText('Org 1')).toBeInTheDocument();
   });

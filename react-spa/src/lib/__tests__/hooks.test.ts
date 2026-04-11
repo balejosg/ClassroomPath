@@ -5,6 +5,10 @@ const useListOrganizationsQuery = vi.fn();
 const useCreateOrganizationMutation = vi.fn();
 const useWaitForInvitationMutation = vi.fn();
 const useCancelWaitingMutation = vi.fn();
+const useCreateBillingCheckoutMutation = vi.fn();
+const useCreateManualBillingRequestMutation = vi.fn();
+const usePlatformManualBillingRequestsQuery = vi.fn();
+const useApproveManualBillingRequestMutation = vi.fn();
 const usePendingUsersQuery = vi.fn();
 const useApproveUserMutation = vi.fn();
 const useRejectUserMutation = vi.fn();
@@ -17,6 +21,12 @@ vi.mock('../dual-trpc-provider', () => ({
       createOrganization: { useMutation: useCreateOrganizationMutation },
       waitForInvitation: { useMutation: useWaitForInvitationMutation },
       cancelWaiting: { useMutation: useCancelWaitingMutation },
+    },
+    billing: {
+      createCheckout: { useMutation: useCreateBillingCheckoutMutation },
+      createManualRequest: { useMutation: useCreateManualBillingRequestMutation },
+      listManualRequests: { useQuery: usePlatformManualBillingRequestsQuery },
+      approveManualRequest: { useMutation: useApproveManualBillingRequestMutation },
     },
     pendingUsers: {
       list: { useQuery: usePendingUsersQuery },
@@ -47,6 +57,24 @@ describe('hook wrappers', () => {
     expect(useCreateOrganizationMutation).toHaveBeenCalledTimes(1);
     expect(useWaitForInvitationMutation).toHaveBeenCalledTimes(1);
     expect(useCancelWaitingMutation).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards billing hooks to the tRPC client', async () => {
+    const hooks = await import('../hooks');
+    const manualRequestOptions = { enabled: true, staleTime: 30_000 };
+
+    hooks.useCreateBillingCheckout();
+    hooks.useCreateManualBillingRequest();
+    hooks.usePlatformManualBillingRequests(manualRequestOptions);
+    hooks.useApproveManualBillingRequest();
+
+    expect(useCreateBillingCheckoutMutation).toHaveBeenCalledTimes(1);
+    expect(useCreateManualBillingRequestMutation).toHaveBeenCalledTimes(1);
+    expect(usePlatformManualBillingRequestsQuery).toHaveBeenCalledWith(
+      undefined,
+      manualRequestOptions
+    );
+    expect(useApproveManualBillingRequestMutation).toHaveBeenCalledTimes(1);
   });
 
   it('forwards pending user hooks to the tRPC client', async () => {

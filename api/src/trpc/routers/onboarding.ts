@@ -49,7 +49,7 @@ export const onboardingRouter = router({
       if (!config.allowSelfServiceOrgs) {
         throw new TRPCError({
           code: 'FORBIDDEN',
-          message: 'La creación de organizaciones está deshabilitada',
+          message: 'Billing checkout required before creating an organization',
         });
       }
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, Users } from 'lucide-react';
+import { CreditCard, Users } from 'lucide-react';
 import { Button, Card, Input } from '@openpath/public-ui';
 import {
   createOnboardingPolicy,
@@ -9,7 +9,8 @@ import {
 } from '@classroompath/contracts/onboarding-policy';
 import type { CreateOrganizationSuccessDto } from '@classroompath/presenters/onboarding';
 import {
-  useCreateOrganization,
+  useCreateBillingCheckout,
+  useCreateManualBillingRequest,
   useListOrganizations,
   useOnboardingStatus,
   useWaitForInvitation,
@@ -19,17 +20,20 @@ interface Props {
   onOrgCreated: (result: CreateOrganizationSuccessDto) => void;
   onWaitClick: () => void;
   onLogout?: () => void;
+  initialOrgName?: string;
 }
 
-export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
-  const [orgName, setOrgName] = useState('');
+export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
+  const [orgName, setOrgName] = useState(initialOrgName ?? '');
+  const [classrooms, setClassrooms] = useState('12');
   const [targetOrgId, setTargetOrgId] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const statusQuery = useOnboardingStatus();
-  const createOrgMutation = useCreateOrganization();
+  const checkoutMutation = useCreateBillingCheckout();
+  const manualRequestMutation = useCreateManualBillingRequest();
   const onboardingPolicy = createOnboardingPolicy(statusQuery.data?.policy ?? {});
-  const allowSelfServiceOrgs = onboardingPolicy.allowSelfServiceOrgs;
   const allowOrgDirectory = getOnboardingAccessMode(onboardingPolicy) === 'directory';
   const orgsQuery = useListOrganizations({
     enabled: allowOrgDirectory,
@@ -47,23 +51,60 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
     }
   }, [onboardingPolicy, orgsQuery.data, targetOrgId]);
 
-  const handleCreateOrg = (e: React.FormEvent) => {
-    e.preventDefault();
+  const getBillingInput = () => {
     setError('');
+    setNotice('');
 
     if (!orgName.trim()) {
       setError('Debes ingresar un nombre para la organización');
-      return;
+      return null;
     }
 
-    createOrgMutation.mutate(
-      { name: orgName },
+    const parsedClassrooms = Number.parseInt(classrooms, 10);
+    if (!Number.isInteger(parsedClassrooms) || parsedClassrooms < 1) {
+      setError('Debes indicar al menos un aula');
+      return null;
+    }
+
+    return {
+      organizationName: orgName.trim(),
+      classrooms: parsedClassrooms,
+    };
+  };
+
+  const handleCheckout = (kind: 'annual' | 'pilot') => {
+    const input = getBillingInput();
+    if (!input) return;
+
+    checkoutMutation.mutate(
+      { ...input, kind },
       {
         onSuccess: (data) => {
-          onOrgCreated(data);
+          window.location.href = data.checkoutUrl;
         },
         onError: (err) => {
-          setError(err.message || 'Error al crear organización');
+          setError(err.message || 'No se pudo iniciar el checkout');
+        },
+      }
+    );
+  };
+
+  const handleManualRequest = () => {
+    const input = getBillingInput();
+    if (!input) return;
+
+    manualRequestMutation.mutate(
+      {
+        ...input,
+        kind: 'public_campaign',
+        note: 'Solicitud de excepcion desde onboarding',
+      },
+      {
+        onSuccess: () => {
+          setNotice('Solicitud enviada. Revisaremos la excepción antes de activar el centro.');
+        },
+        onError: (err) => {
+          setError(err.message || 'No se pudo enviar la solicitud');
         },
       }
     );
@@ -118,46 +159,87 @@ export function Onboarding({ onOrgCreated, onWaitClick, onLogout }: Props) {
           </div>
         )}
 
-        <div className={`grid gap-8 ${allowSelfServiceOrgs ? 'md:grid-cols-2' : ''}`}>
-          {allowSelfServiceOrgs && (
-            <Card className="p-8 flex flex-col shadow-md border-t-4 border-t-blue-600">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="p-3 bg-blue-100 rounded-lg text-blue-600">
-                  <Building2 size={32} />
-                </div>
-                <h2 className="text-xl font-bold text-gray-800">Crear mi organización</h2>
+        {notice && (
+          <div className="mb-8 p-4 bg-green-100 text-green-700 rounded-lg text-sm border border-green-200">
+            {notice}
+          </div>
+        )}
+
+        <div className="grid gap-8 md:grid-cols-2">
+          <Card className="p-8 flex flex-col shadow-md border-t-4 border-t-blue-600">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-3 bg-blue-100 rounded-lg text-blue-600">
+                <CreditCard size={32} />
               </div>
-              <p className="text-gray-600 mb-8 leading-relaxed">
-                Crea una nueva organización para tu institución y comienza a configurar tus grupos y
-                politicas de filtrado con un flujo institucional claro y trazable.
-              </p>
-              <form onSubmit={handleCreateOrg} className="space-y-4 mt-auto" noValidate>
-                <div>
-                  <label className="block text-sm font-semibold mb-2 text-gray-700">
-                    Nombre de la organización
-                  </label>
-                  <Input
-                    type="text"
-                    name="orgName"
-                    data-testid="onboarding-org-name"
-                    value={orgName}
-                    onChange={(e) => setOrgName(e.target.value)}
-                    placeholder="Ej: Colegio San José"
-                    maxLength={100}
-                    required
-                  />
-                </div>
+              <h2 className="text-xl font-bold text-gray-800">Contratar centro</h2>
+            </div>
+            <p className="text-gray-600 mb-8 leading-relaxed">
+              Activa el centro con checkout seguro antes de crear la organización. La cuota anual
+              incluye Stripe Tax y el onboarding queda separado en la primera factura.
+            </p>
+            <div className="space-y-4 mt-auto">
+              <div>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">
+                  Nombre de la organización
+                </label>
+                <Input
+                  type="text"
+                  name="orgName"
+                  data-testid="onboarding-org-name"
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                  placeholder="Ej: Colegio San José"
+                  maxLength={100}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">
+                  Número de aulas
+                </label>
+                <Input
+                  type="number"
+                  name="classrooms"
+                  data-testid="onboarding-classrooms"
+                  value={classrooms}
+                  onChange={(e) => setClassrooms(e.target.value)}
+                  min="1"
+                  required
+                />
+              </div>
+              <div className="grid gap-3">
                 <Button
-                  type="submit"
-                  data-testid="onboarding-create-org"
+                  type="button"
+                  onClick={() => handleCheckout('annual')}
+                  data-testid="onboarding-start-annual"
                   className="w-full cursor-pointer py-6"
-                  disabled={createOrgMutation.isPending}
+                  disabled={checkoutMutation.isPending}
                 >
-                  {createOrgMutation.isPending ? 'Creando...' : 'Crear Organización'}
+                  {checkoutMutation.isPending ? 'Preparando...' : 'Contratar cuota anual'}
                 </Button>
-              </form>
-            </Card>
-          )}
+                <Button
+                  type="button"
+                  onClick={() => handleCheckout('pilot')}
+                  data-testid="onboarding-start-pilot"
+                  variant="outline"
+                  className="w-full cursor-pointer py-6 border-2"
+                  disabled={checkoutMutation.isPending}
+                >
+                  Empezar piloto
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleManualRequest}
+                  data-testid="onboarding-request-exception"
+                  variant="ghost"
+                  className="w-full cursor-pointer py-6"
+                  disabled={manualRequestMutation.isPending}
+                >
+                  Solicitar excepción
+                </Button>
+              </div>
+            </div>
+          </Card>
 
           {/* Opción 2: Esperar Invitación */}
           <Card className="p-8 flex flex-col shadow-md border-t-4 border-t-green-600">

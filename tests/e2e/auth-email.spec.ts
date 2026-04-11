@@ -2,11 +2,13 @@ import { readFile } from 'node:fs/promises';
 import type { BrowserContext, Page } from '@playwright/test';
 
 import { resolveTestEmailSinkFile } from '@classroompath/testkit/test-email-sink';
+import { SEEDED_E2E_ORGANIZATION } from '@classroompath/testkit/test-actors';
 import { test, expect } from './fixtures/base-test';
 import {
-  completeOrgOnboarding,
-  createTestOrganization,
+  clearAuth,
   createTestUser,
+  getAdminAccountForWorker,
+  loginAsAdmin,
   openRegisterForm,
   parseTrpcResult,
   type MailboxFixture,
@@ -181,22 +183,21 @@ test.describe.serial('Auth email delivery UAT', () => {
       password: 'UatPassword123!',
       name: 'UAT Admin Mailbox User',
     });
-    const org = createTestOrganization({
-      name: `UAT Mail Org ${Date.now()}`,
-    });
 
     const registerPayload = await registerUserAwaitingEmail(page, adminUser);
-    const deliveredLink = await verifyInboxLinkAndLogin(page, mailbox, adminUser, {
-      onboardingOrgName: org.name,
-    });
+    const deliveredLink = await verifyInboxLinkAndLogin(page, mailbox, adminUser);
 
     expect(String(registerPayload.verificationUrl)).toContain('/login?');
     expect(new URL(String(registerPayload.verificationUrl)).origin).toBe(BASE_URL.origin);
     expect(new URL(deliveredLink).origin).toBe(BASE_URL.origin);
 
+    await clearAuth(page);
+    await loginAsAdmin(page);
+
     return {
-      adminUser,
-      orgName: org.name,
+      verifiedUser: adminUser,
+      tenantAdminEmail: getAdminAccountForWorker().email,
+      orgName: SEEDED_E2E_ORGANIZATION.name,
     };
   }
 
@@ -350,7 +351,10 @@ test.describe.serial('Auth email delivery UAT', () => {
     const inviteeContext = await browser.newContext();
 
     try {
-      const { adminUser, orgName } = await createVerifiedAdminWithOrganization(page, mailbox);
+      const { tenantAdminEmail, orgName } = await createVerifiedAdminWithOrganization(
+        page,
+        mailbox
+      );
       const organizationPage = new OrganizationPage(page);
 
       const inviteLink = await inviteMemberAndWaitForEmail(
@@ -376,7 +380,7 @@ test.describe.serial('Auth email delivery UAT', () => {
 
       await organizationPage.goto();
       await organizationPage.waitForUsersLoaded();
-      await expect(organizationPage.rowForEmail(adminUser.email)).toBeVisible({ timeout: 15000 });
+      await expect(organizationPage.rowForEmail(tenantAdminEmail)).toBeVisible({ timeout: 15000 });
       await expect(organizationPage.rowForEmail(inviteeUser.email)).toBeVisible({ timeout: 15000 });
       await expect(inviteeOrganizationPage.rowForEmail(inviteeUser.email)).toBeVisible({
         timeout: 15000,

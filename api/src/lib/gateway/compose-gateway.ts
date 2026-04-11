@@ -23,6 +23,7 @@ export interface ComposeGatewayAppOptions {
   getGatewayReadiness: GatewayHealthRoutesOptions['getGatewayReadiness'];
   jsonBodyLimit: GatewayApplicationRoutesOptions['jsonBodyLimit'];
   trpcMiddleware: GatewayApplicationRoutesOptions['trpcMiddleware'];
+  stripeWebhookHandler: GatewayApplicationRoutesOptions['stripeWebhookHandler'];
   serveSpa: boolean;
   reactSpaPath: GatewaySpaRoutesOptions['reactSpaPath'];
 }
@@ -42,6 +43,7 @@ export function composeGatewayApp(options: ComposeGatewayAppOptions): Express {
   registerGatewayApplicationRoutes(options.app, {
     jsonBodyLimit: options.jsonBodyLimit,
     trpcMiddleware: options.trpcMiddleware,
+    stripeWebhookHandler: options.stripeWebhookHandler,
   });
 
   if (options.serveSpa) {

@@ -281,7 +281,10 @@ test.describe('Visual Regression - Organization', () => {
 
   test('organization page desktop @visual', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await mockTrpcProcedures(page, { 'pendingUsers.list': [] });
+    await mockTrpcProcedures(page, {
+      'pendingUsers.list': [],
+      'users.listInvitations': [],
+    });
     await loginAsAdmin(page);
     // OpenPath is state-driven, not URL-routed. Navigate via sidebar.
     await waitForNetworkIdle(page);

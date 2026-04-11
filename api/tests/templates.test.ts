@@ -42,6 +42,9 @@ describe('Templates Router', { concurrency: false }, () => {
   before(async () => {
     await cleanupTemplates();
     await db
+      .delete(schema.cpOrganizationEntitlements)
+      .where(eq(schema.cpOrganizationEntitlements.organizationId, ORG_ID));
+    await db
       .delete(schema.cpMemberships)
       .where(inArray(schema.cpMemberships.userId, [ADMIN_ID, TEACHER_ID]));
     await db.delete(schema.cpOrganizations).where(eq(schema.cpOrganizations.id, ORG_ID));
@@ -68,6 +71,15 @@ describe('Templates Router', { concurrency: false }, () => {
         invitedBy: ADMIN_ID,
       },
     ]);
+
+    await db.insert(schema.cpOrganizationEntitlements).values({
+      organizationId: ORG_ID,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 25,
+      grantedBy: ADMIN_ID,
+    });
   });
 
   beforeEach(async () => {
@@ -76,6 +88,9 @@ describe('Templates Router', { concurrency: false }, () => {
 
   after(async () => {
     await cleanupTemplates();
+    await db
+      .delete(schema.cpOrganizationEntitlements)
+      .where(eq(schema.cpOrganizationEntitlements.organizationId, ORG_ID));
     await db
       .delete(schema.cpMemberships)
       .where(inArray(schema.cpMemberships.userId, [ADMIN_ID, TEACHER_ID]));

@@ -62,6 +62,7 @@
     "security:audit": "npm audit --audit-level=high",
     "size:check": "test -d upstream/openpath/react-spa/dist && npm run size --workspace=@openpath/react-spa || echo 'SKIP: upstream/openpath/react-spa/dist not built, skipping size check'",
     "verify:migrations:metadata": "npm --workspace=@classroompath/api run verify:migrations",
+    "stripe:setup": "node --import tsx scripts/setup-stripe-billing.ts",
     "verify:commit": "VERIFY_MODE=commit bash scripts/verify-full.sh",
     "verify:release": "VERIFY_MODE=release bash scripts/verify-full.sh",
     "verify:full": "npm run verify:release",

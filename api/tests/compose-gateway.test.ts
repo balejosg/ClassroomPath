@@ -18,6 +18,9 @@ await describe('compose-gateway', { concurrency: false }, async () => {
     const trpcMiddleware: RequestHandler = (_req, res) => {
       res.json({ ok: true });
     };
+    const stripeWebhookHandler: RequestHandler = (_req, res) => {
+      res.json({ received: true });
+    };
 
     const composed = composeGatewayApp({
       app,
@@ -34,6 +37,7 @@ await describe('compose-gateway', { concurrency: false }, async () => {
       }),
       jsonBodyLimit: '1kb',
       trpcMiddleware,
+      stripeWebhookHandler,
       serveSpa: false,
       reactSpaPath: '/tmp/classroompath-missing-spa',
     });

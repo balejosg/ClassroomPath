@@ -19,45 +19,52 @@ test.afterEach(async ({ page }) => {
 });
 
 test.describe('Organization Creation', () => {
-  test('should create new organization during onboarding @org @onboarding', async ({ page }) => {
+  test('should start paid onboarding checkout during organization setup @org @onboarding', async ({
+    page,
+  }) => {
     const testOrg = createTestOrganization();
+
+    await page.route('**/cp/trpc/billing.createCheckout**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            result: {
+              data: {
+                checkoutSessionId: 'cs_org_checkout',
+                checkoutUrl: '/billing/mock-checkout',
+              },
+            },
+          },
+        ]),
+      });
+    });
+    await page.route('**/billing/mock-checkout', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html; charset=utf-8',
+        body: '<html><body><h1>Mock Stripe Checkout</h1></body></html>',
+      });
+    });
 
     await loginAsOnboardingUser(page, 10);
 
-    // Should be on onboarding page
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
-
-    // Create organization
     await page.getByPlaceholder(/Ej: Colegio|organization/i).fill(testOrg.name);
-    await page.getByRole('button', { name: /Crear Organización|Create/i }).click();
+    await page.getByTestId('onboarding-classrooms').fill('12');
+    await page.getByRole('button', { name: /Contratar cuota anual/i }).click();
 
-    // Should redirect into OpenPath UI after org creation.
-    // UX varies by role (e.g. teacher: "Mi Panel", admin: "Vista General").
-    const dashboardMarker = page.getByRole('heading', { name: /Mi Panel|Vista General/i });
-    await expect(dashboardMarker).toBeVisible({ timeout: 15000 });
-
-    const hasTeacherDashboard = await page
-      .getByRole('heading', { name: /Hola, Profesor/i })
-      .isVisible()
-      .catch(() => false);
-    const hasSystemStatus = await page
-      .getByTestId('dashboard-system-status')
-      .isVisible()
-      .catch(() => false);
-
-    expect(hasTeacherDashboard || hasSystemStatus).toBe(true);
+    await expect(page).toHaveURL(/\/billing\/mock-checkout$/);
+    await expect(page.getByText('Mock Stripe Checkout')).toBeVisible({ timeout: 10000 });
   });
 
   test('should validate organization name is required @org @validation', async ({ page }) => {
     await loginAsOnboardingUser(page, 1);
 
-    // Wait for onboarding
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: /Contratar cuota anual/i }).click();
 
-    // Try to create without name
-    await page.getByRole('button', { name: /Crear Organización|Create/i }).click();
-
-    // Should show validation error (Spanish message: "Debes ingresar un nombre...")
     await expect(
       page.getByText(/requerido|required|obligatorio|Debes ingresar|nombre para la organización/i)
     ).toBeVisible();

@@ -170,6 +170,14 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
         role: 'admin',
         invitedBy: actor.userId,
       });
+      await db.insert(cpSchema.cpOrganizationEntitlements).values({
+        organizationId,
+        source: 'manual_admin',
+        status: 'active',
+        productKind: 'annual',
+        classroomLimit: 100,
+        grantedBy: actor.userId,
+      });
       await seedOpenPathRole({
         userId: actor.userId,
         role: 'admin',

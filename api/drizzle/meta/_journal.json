@@ -50,6 +50,13 @@
       "when": 1774990100778,
       "tag": "0007_mutation_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775833642000,
+      "tag": "0008_billing_entitlements",
+      "breakpoints": true
     }
   ]
 }

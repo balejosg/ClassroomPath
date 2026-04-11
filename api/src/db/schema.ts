@@ -1,4 +1,13 @@
-import { index, jsonb, pgTable, text, timestamp, unique, varchar } from 'drizzle-orm/pg-core';
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 // =============================================================================
 // Organizations Table
@@ -254,3 +263,80 @@ export type NewGroupTemplate = typeof cpGroupTemplates.$inferInsert;
 
 export type GroupTemplateRule = typeof cpGroupTemplateRules.$inferSelect;
 export type NewGroupTemplateRule = typeof cpGroupTemplateRules.$inferInsert;
+
+export const cpBillingCheckoutIntents = pgTable(
+  'cp_billing_checkout_intents',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    userId: varchar('user_id', { length: 50 }).notNull(),
+    organizationId: varchar('organization_id', { length: 50 }).references(
+      () => cpOrganizations.id,
+      {
+        onDelete: 'set null',
+      }
+    ),
+    organizationName: varchar('organization_name', { length: 255 }).notNull(),
+    kind: varchar('kind', { length: 30 }).notNull(),
+    status: varchar('status', { length: 30 }).notNull(),
+    classrooms: integer('classrooms').notNull(),
+    stripeCheckoutSessionId: varchar('stripe_checkout_session_id', { length: 255 }),
+    stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
+    stripeSubscriptionId: varchar('stripe_subscription_id', { length: 255 }),
+    stripePaymentIntentId: varchar('stripe_payment_intent_id', { length: 255 }),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    unique('cp_billing_checkout_session_key').on(table.stripeCheckoutSessionId),
+    index('cp_billing_checkout_user_idx').on(table.userId, table.createdAt),
+  ]
+);
+
+export const cpOrganizationEntitlements = pgTable('cp_organization_entitlements', {
+  organizationId: varchar('organization_id', { length: 50 })
+    .primaryKey()
+    .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
+  source: varchar('source', { length: 50 }).notNull(),
+  status: varchar('status', { length: 30 }).notNull(),
+  productKind: varchar('product_kind', { length: 50 }).notNull(),
+  classroomLimit: integer('classroom_limit').notNull(),
+  stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
+  stripeSubscriptionId: varchar('stripe_subscription_id', { length: 255 }),
+  stripeCheckoutSessionId: varchar('stripe_checkout_session_id', { length: 255 }),
+  currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  grantedBy: varchar('granted_by', { length: 50 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export const cpBillingManualRequests = pgTable('cp_billing_manual_requests', {
+  id: varchar('id', { length: 50 }).primaryKey(),
+  userId: varchar('user_id', { length: 50 }).notNull(),
+  organizationId: varchar('organization_id', { length: 50 }).references(() => cpOrganizations.id, {
+    onDelete: 'set null',
+  }),
+  organizationName: varchar('organization_name', { length: 255 }).notNull(),
+  kind: varchar('kind', { length: 50 }).notNull(),
+  classrooms: integer('classrooms').notNull(),
+  status: varchar('status', { length: 30 }).notNull(),
+  note: text('note'),
+  reviewedBy: varchar('reviewed_by', { length: 50 }),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export const cpStripeWebhookEvents = pgTable('cp_stripe_webhook_events', {
+  id: varchar('id', { length: 255 }).primaryKey(),
+  type: varchar('type', { length: 100 }).notNull(),
+  processedAt: timestamp('processed_at', { withTimezone: true }).notNull(),
+});
+
+export type BillingCheckoutIntent = typeof cpBillingCheckoutIntents.$inferSelect;
+export type NewBillingCheckoutIntent = typeof cpBillingCheckoutIntents.$inferInsert;
+export type OrganizationEntitlement = typeof cpOrganizationEntitlements.$inferSelect;
+export type NewOrganizationEntitlement = typeof cpOrganizationEntitlements.$inferInsert;
+export type BillingManualRequest = typeof cpBillingManualRequests.$inferSelect;
+export type NewBillingManualRequest = typeof cpBillingManualRequests.$inferInsert;

@@ -96,6 +96,15 @@ async function seed(): Promise<void> {
     createdBy: getSeededAdminId(),
   });
 
+  await db.insert(schema.cpOrganizationEntitlements).values({
+    organizationId: SEEDED_E2E_ORGANIZATION.id,
+    source: 'manual_admin',
+    status: 'active',
+    productKind: 'annual',
+    classroomLimit: 100,
+    grantedBy: getSeededAdminId(),
+  });
+
   await db.insert(schema.cpMemberships).values(
     roleUsers.map((user) => ({
       id: `mem_${user.id}`,

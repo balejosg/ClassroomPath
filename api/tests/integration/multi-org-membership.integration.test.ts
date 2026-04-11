@@ -61,8 +61,22 @@ async function restoreSingleOrgConstraint(): Promise<void> {
   );
 }
 
+async function grantActiveEntitlement(params: {
+  organizationId: string;
+  grantedBy: string;
+}): Promise<void> {
+  await db.insert(cpSchema.cpOrganizationEntitlements).values({
+    organizationId: params.organizationId,
+    source: 'manual_admin',
+    status: 'active',
+    productKind: 'annual',
+    classroomLimit: 100,
+    grantedBy: params.grantedBy,
+  });
+}
+
 describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, async () => {
-  test('onboarding.createOrganization rejects users who already belong to another organization', async () => {
+  test('onboarding.createOrganization fails closed behind billing even for users who already belong to another organization', async () => {
     await resetDb();
 
     const userId = `multi-org-create-${Date.now()}`;
@@ -91,6 +105,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
       role: 'admin',
       invitedBy: userId,
     });
+    await grantActiveEntitlement({ organizationId: existingOrgId, grantedBy: userId });
 
     const token = signToken({
       jwtSecret: JWT_SECRET,
@@ -106,7 +121,10 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
       { name: 'Second Org' },
       bearerAuth(token)
     );
-    await assertConflictResponse(response);
+    const parsed = await parseTRPC(response);
+    assert.ok(parsed.error, 'Expected error payload');
+    assert.strictEqual(parsed.code, 'FORBIDDEN');
+    assert.match(parsed.error ?? '', /billing checkout required/i);
   });
 
   test('pendingUsers.approve rejects users who already belong to a different organization', async () => {
@@ -175,6 +193,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
         invitedBy: inviteeUserId,
       },
     ]);
+    await grantActiveEntitlement({ organizationId: currentOrgId, grantedBy: adminUserId });
 
     await db.insert(cpSchema.cpUserStatus).values({
       userId: inviteeUserId,

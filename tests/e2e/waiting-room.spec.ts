@@ -95,8 +95,7 @@ test.describe('Waiting Room Flow', () => {
     await waitingPage.expectLoaded();
     await waitingPage.cancelButton.click();
 
-    // Should go back to onboarding or show confirmation
-    await expect(page.getByText(/Bienvenido|seguro|confirm/i)).toBeVisible({
+    await expect(page.getByRole('heading', { name: /¡Bienvenido|Welcome/i })).toBeVisible({
       timeout: 5000,
     });
   });

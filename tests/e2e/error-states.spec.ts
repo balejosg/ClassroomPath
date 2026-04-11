@@ -7,7 +7,6 @@
 import { test, expect } from './fixtures/base-test';
 import {
   loginAsAdmin,
-  loginAsOnboardingUser,
   waitForNetworkIdle,
   clearAuth,
   expectDashboard,
@@ -311,14 +310,9 @@ test.describe('Form Validation Errors', () => {
 
 test.describe('Empty States', () => {
   test('should show empty state when no classrooms @errors @empty', async ({ page }) => {
-    await loginAsOnboardingUser(page, 11);
-
-    // After registration, user goes to onboarding - create org
-    await page.getByTestId('onboarding-org-name').fill('Empty State Org');
-    await page.getByTestId('onboarding-create-org').click();
+    await loginAsAdmin(page);
     await waitForNetworkIdle(page);
 
-    // Org creator becomes org admin; should land on the admin dashboard.
     await expect(page.getByRole('button', { name: 'Panel de Control' })).toBeVisible({
       timeout: 10000,
     });
@@ -326,14 +320,9 @@ test.describe('Empty States', () => {
   });
 
   test('should show empty state when no pending requests @errors @empty', async ({ page }) => {
-    await loginAsOnboardingUser(page, 12);
-
-    // After registration, user goes to onboarding - create org
-    await page.getByTestId('onboarding-org-name').fill('Empty Pending Org');
-    await page.getByTestId('onboarding-create-org').click();
+    await loginAsAdmin(page);
     await waitForNetworkIdle(page);
 
-    // Admin dashboard should show an actionable empty state for pending requests.
     await expect(page.getByRole('button', { name: 'Panel de Control' })).toBeVisible({
       timeout: 10000,
     });
@@ -344,14 +333,9 @@ test.describe('Empty States', () => {
 
 test.describe('Loading States', () => {
   test('should show loading indicator during data fetch @errors @loading', async ({ page }) => {
-    await loginAsOnboardingUser(page, 13);
-
-    // After registration, complete onboarding
-    await page.getByTestId('onboarding-org-name').fill('Loading Test Org');
-    await page.getByTestId('onboarding-create-org').click();
+    await loginAsAdmin(page);
     await waitForNetworkIdle(page);
 
-    // Add artificial delay to API
     await page.route('**/cp/trpc**', async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       route.continue();
@@ -359,7 +343,6 @@ test.describe('Loading States', () => {
 
     await page.reload();
 
-    // Should show loading state
     await expect(
       loadingSpinnerLocator(page)
         .or(page.getByText(/Cargando|Loading/i))
@@ -368,14 +351,9 @@ test.describe('Loading States', () => {
   });
 
   test('should show skeleton loaders for content @errors @loading', async ({ page }) => {
-    await loginAsOnboardingUser(page, 14);
-
-    // After registration, complete onboarding
-    await page.getByTestId('onboarding-org-name').fill('Skeleton Test Org');
-    await page.getByTestId('onboarding-create-org').click();
+    await loginAsAdmin(page);
     await waitForNetworkIdle(page);
 
-    // Add delay to simulate slow loading
     await page.route('**/cp/trpc**', async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       route.continue();
@@ -383,7 +361,6 @@ test.describe('Loading States', () => {
 
     await page.reload();
 
-    // Should show skeleton or loading indicator
     const hasSkeletons = await page.locator('[data-testid="skeleton"]').count();
     const hasSpinner = await loadingSpinnerLocator(page).isVisible();
     const hasLoading = await page.getByText(/Cargando|Loading/i).isVisible();

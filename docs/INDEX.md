@@ -24,6 +24,7 @@
 
 - Deploy production (tag-only): [`docs/runbooks/deploy-production.md`](runbooks/deploy-production.md)
 - Deploy staging (mandatory after push): [`docs/runbooks/deploy-staging.md`](runbooks/deploy-staging.md)
+- Configure Stripe billing: [`docs/runbooks/configure-stripe-billing.md`](runbooks/configure-stripe-billing.md)
 - Canonical deploy targets: [`config/deploy-targets.json`](../config/deploy-targets.json)
 - Update OpenPath submodule: [`docs/runbooks/update-openpath-submodule.md`](runbooks/update-openpath-submodule.md)
 - Docker + Nginx Proxy Manager: [`docs/DOCKER.md`](DOCKER.md)

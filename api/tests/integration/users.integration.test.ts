@@ -142,6 +142,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       invitedBy: adminUserId,
     });
 
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,
       userId: adminUserId,
@@ -262,6 +271,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       invitedBy: adminUserId,
     });
 
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,
       userId: adminUserId,
@@ -347,6 +365,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       invitedBy: adminUserId,
     });
 
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,
       userId: adminUserId,
@@ -429,6 +456,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       invitedBy: adminUserId,
     });
 
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     await db.insert(cpSchema.cpOrganizationUsers).values({
       id: `org-user-${linkedOnlyUserId}`,
       organizationId: orgId,
@@ -484,6 +520,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       organizationId: orgId,
       role: 'teacher',
       invitedBy: userId,
+    });
+
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: userId,
     });
 
     const token = signToken({
@@ -566,6 +611,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
         invitedBy: adminUserId,
       },
     ]);
+
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
 
     await db.insert(cpSchema.cpOrganizationUsers).values({
       id: `org-user-${targetUserId}`,
@@ -686,6 +740,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       invitedBy: adminUserId,
     });
 
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     await db.insert(cpSchema.cpOrganizationUsers).values({
       id: `org-user-${adminUserId}`,
       organizationId: orgId,
@@ -782,6 +845,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       },
     ]);
 
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,
       userId: adminUserId,
@@ -871,6 +943,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
         invitedBy: adminUserId,
       },
     ]);
+
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
 
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,
@@ -1041,6 +1122,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       invitedBy: adminUserId,
     });
 
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     await db.insert(cpSchema.cpUserStatus).values([
       {
         userId: approvedUserId,
@@ -1136,6 +1226,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       invitedBy: adminUserId,
     });
 
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,
       userId: adminUserId,
@@ -1223,6 +1322,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       invitedBy: adminUserId,
     });
 
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,
       userId: adminUserId,
@@ -1299,6 +1407,15 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       organizationId: orgId,
       role: 'admin',
       invitedBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
     });
 
     const adminToken = signToken({

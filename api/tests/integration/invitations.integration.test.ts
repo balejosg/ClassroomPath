@@ -120,6 +120,15 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
       invitedBy: adminUserId,
     });
 
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     const invitedEmail = uniqueEmail('invitee-accept');
     const token = `invite-${Date.now().toString(36)}`;
 
@@ -267,6 +276,15 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
         invitedBy: adminUserId,
       },
     ]);
+
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
 
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,

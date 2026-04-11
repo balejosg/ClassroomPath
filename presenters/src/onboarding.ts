@@ -25,6 +25,15 @@ export interface OnboardingStatusDto {
   hasMembership: boolean;
   isWaiting: boolean;
   organization: OnboardingOrganizationDto | null;
+  platformAdmin: boolean;
+  billing: {
+    hasActiveEntitlement: boolean;
+    source: string | null;
+    status: string | null;
+    productKind: string | null;
+    classroomLimit: number | null;
+    expiresAt: string | null;
+  } | null;
   policy: OnboardingPolicy;
 }
 

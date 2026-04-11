@@ -21,10 +21,14 @@ await describe('application-routes', { concurrency: false }, async () => {
         method: req.method,
       });
     };
+    const stripeWebhookHandler: RequestHandler = (_req, res) => {
+      res.json({ received: true });
+    };
 
     registerGatewayApplicationRoutes(app, {
       jsonBodyLimit: '1kb',
       trpcMiddleware,
+      stripeWebhookHandler,
     });
 
     server = app.listen(port);

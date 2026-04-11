@@ -56,7 +56,9 @@ export class OnboardingPage {
   readonly page: Page;
   readonly welcomeMessage: Locator;
   readonly orgNameInput: Locator;
-  readonly createOrgButton: Locator;
+  readonly classroomsInput: Locator;
+  readonly annualCheckoutButton: Locator;
+  readonly pilotCheckoutButton: Locator;
   readonly targetOrgSelect: Locator;
   readonly waitForInviteButton: Locator;
   readonly errorMessage: Locator;
@@ -65,9 +67,9 @@ export class OnboardingPage {
     this.page = page;
     this.welcomeMessage = page.getByText(/¡Bienvenido|Welcome/i);
     this.orgNameInput = page.getByPlaceholder(/Ej: Colegio|organization name/i);
-    this.createOrgButton = page.getByRole('button', {
-      name: /Crear Organización|Create Organization/i,
-    });
+    this.classroomsInput = page.getByTestId('onboarding-classrooms');
+    this.annualCheckoutButton = page.getByTestId('onboarding-start-annual');
+    this.pilotCheckoutButton = page.getByTestId('onboarding-start-pilot');
     this.targetOrgSelect = page.getByTestId('onboarding-target-org');
     this.waitForInviteButton = page.getByRole('button', {
       name: /Solicitar Acceso|Request Access/i,
@@ -81,7 +83,8 @@ export class OnboardingPage {
 
   async createOrganization(name: string) {
     await this.orgNameInput.fill(name);
-    await this.createOrgButton.click();
+    await this.classroomsInput.fill('12');
+    await this.annualCheckoutButton.click();
   }
 
   async requestAccess() {

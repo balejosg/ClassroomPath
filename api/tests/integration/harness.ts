@@ -8,7 +8,7 @@ import bcrypt from 'bcrypt';
 import express from 'express';
 import { eq } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
-import { closeConnection } from '../../src/db/index.js';
+import { closeConnection, db, schema } from '../../src/db/index.js';
 import { closeOpenPathConnection, openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import {
   assertStatus,
@@ -924,22 +924,37 @@ export async function bootstrapOrg(params: {
   token: string;
   name: string;
 }): Promise<{ organizationId: string }> {
-  const createResp = await trpcMutate(
-    params.baseUrl,
-    'onboarding.createOrganization',
-    { name: params.name },
-    bearerAuth(params.token)
-  );
-  assertStatus(createResp, 200);
-  const { data } = (await parseTRPC(createResp)) as { data: unknown };
-  const organizationId =
-    typeof data === 'object' && data !== null && 'organizationId' in data
-      ? String((data as { organizationId: unknown }).organizationId)
-      : '';
+  const decoded = jwt.decode(params.token) as jwt.JwtPayload | null;
+  const userId = typeof decoded?.sub === 'string' ? decoded.sub : null;
 
-  if (!organizationId) {
-    throw new Error('createOrganization should return organizationId');
+  if (!userId) {
+    throw new Error('bootstrapOrg requires a token with subject');
   }
+
+  const organizationId = `org-${Math.random().toString(36).slice(2, 10)}`;
+
+  await db.insert(schema.cpOrganizations).values({
+    id: organizationId,
+    name: params.name,
+    createdBy: userId,
+  });
+
+  await db.insert(schema.cpMemberships).values({
+    id: `mem-${Math.random().toString(36).slice(2, 10)}`,
+    userId,
+    organizationId,
+    role: 'admin',
+    invitedBy: null,
+  });
+
+  await db.insert(schema.cpOrganizationEntitlements).values({
+    organizationId,
+    source: 'manual_admin',
+    status: 'active',
+    productKind: 'annual',
+    classroomLimit: 100,
+    grantedBy: userId,
+  });
 
   return { organizationId };
 }

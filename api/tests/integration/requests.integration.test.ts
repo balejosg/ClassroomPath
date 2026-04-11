@@ -45,6 +45,15 @@ async function seedTenant(params: {
     role: params.userRole,
     invitedBy: params.userId,
   });
+
+  await db.insert(cpSchema.cpOrganizationEntitlements).values({
+    organizationId: params.orgId,
+    source: 'manual_admin',
+    status: 'active',
+    productKind: 'annual',
+    classroomLimit: 100,
+    grantedBy: params.userId,
+  });
 }
 
 async function seedOpenPathUser(params: { userId: string; email: string; name: string }) {

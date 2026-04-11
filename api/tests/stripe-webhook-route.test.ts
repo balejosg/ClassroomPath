@@ -1,0 +1,51 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { stripeWebhookHandler } from '../src/lib/stripe-webhook-route.js';
+
+const currentFilePath = fileURLToPath(import.meta.url);
+const apiDir = dirname(dirname(currentFilePath));
+
+describe('stripe webhook route contract', () => {
+  it('reads the Stripe signature header and delegates to billing webhook processing', () => {
+    const source = readFileSync(resolve(apiDir, 'src/lib/stripe-webhook-route.ts'), 'utf8');
+
+    assert.match(source, /processStripeWebhook/);
+    assert.match(source, /stripe-signature/);
+    assert.match(source, /Invalid Stripe webhook/);
+    assert.match(source, /Buffer\.isBuffer\(req\.body\)/);
+  });
+
+  it('returns a 400 payload when webhook processing rejects the request', async () => {
+    let statusCode = 200;
+    let payload: unknown;
+
+    const req = {
+      body: '{}',
+      headers: {},
+      requestId: 'stripe-webhook-test',
+      get(name: string) {
+        return name.toLowerCase() === 'stripe-signature' ? undefined : undefined;
+      },
+    };
+    const res = {
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      json(body: unknown) {
+        payload = body;
+        return this;
+      },
+    };
+
+    stripeWebhookHandler(req as never, res as never, (() => undefined) as never);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
+
+    assert.equal(statusCode, 400);
+    assert.deepEqual(payload, { error: 'Invalid Stripe webhook' });
+  });
+});

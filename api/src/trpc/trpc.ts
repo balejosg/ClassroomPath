@@ -3,6 +3,7 @@ import type { Context } from './context.js';
 import { getSingleMembershipOrThrow } from '../lib/tenant-memberships.js';
 import { getRequestId } from '../lib/request-id.js';
 import { logger } from '../lib/logger.js';
+import { assertOrganizationEntitled } from '../services/billing.service.js';
 
 const t = initTRPC.context<Context>().create({
   errorFormatter({ shape, ctx }) {
@@ -50,6 +51,8 @@ export const tenantProcedure = protectedProcedure.use(async ({ ctx, next }) => {
       message: 'No organization membership found',
     });
   }
+
+  await assertOrganizationEntitled(membership.organizationId);
 
   return next({
     ctx: {

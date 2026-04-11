@@ -22,6 +22,7 @@ import {
   type OnboardingPolicy,
 } from '@classroompath/contracts/onboarding-policy';
 import type { OnboardingStatusDto } from '@classroompath/presenters/onboarding';
+import { getOrganizationBillingStatus, isPlatformAdminEmail } from './billing.service.js';
 
 export type OnboardingStatus = OnboardingStatusDto;
 
@@ -45,6 +46,8 @@ export async function getOnboardingStatus(userId: string): Promise<OnboardingSta
       .where(eq(schema.cpOrganizations.id, membership.organizationId))
       .limit(1);
 
+    const billing = await getOrganizationBillingStatus(membership.organizationId);
+
     return {
       hasMembership: true,
       isWaiting: false,
@@ -53,9 +56,17 @@ export async function getOnboardingStatus(userId: string): Promise<OnboardingSta
         name: organization?.name ?? membership.organizationId,
         role: membership.role,
       },
+      platformAdmin: false,
+      billing,
       policy,
     };
   }
+
+  const [user] = await openpathDb
+    .select({ email: openpathSchema.users.email })
+    .from(openpathSchema.users)
+    .where(eq(openpathSchema.users.id, userId))
+    .limit(1);
 
   // Check if user is waiting
   const status = await db
@@ -68,6 +79,8 @@ export async function getOnboardingStatus(userId: string): Promise<OnboardingSta
     hasMembership: false,
     isWaiting: status.length > 0 && status[0].status === 'waiting',
     organization: null,
+    platformAdmin: user ? isPlatformAdminEmail(user.email) : false,
+    billing: null,
     policy,
   };
 }

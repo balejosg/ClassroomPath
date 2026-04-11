@@ -65,7 +65,7 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
     restorePolicyEnv();
   });
 
-  test('keeps self-service organization creation enabled by default in production while hiding the directory', async () => {
+  test('blocks self-service organization creation by default in production while hiding the directory', async () => {
     process.env.NODE_ENV = 'production';
     delete process.env.CP_ALLOW_SELF_SERVICE_ORGS;
     delete process.env.CP_ALLOW_ORG_DIRECTORY;
@@ -79,7 +79,7 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
       bearerAuth(token)
     );
 
-    assert.strictEqual(response.status, 200);
+    assert.strictEqual(response.status, 403);
 
     const statusResponse = await trpcQuery(
       integration.baseUrl,
@@ -93,7 +93,7 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
         policy?: { allowSelfServiceOrgs?: boolean; allowOrgDirectory?: boolean };
       };
     };
-    assert.strictEqual(statusParsed.data?.policy?.allowSelfServiceOrgs, true);
+    assert.strictEqual(statusParsed.data?.policy?.allowSelfServiceOrgs, false);
     assert.strictEqual(statusParsed.data?.policy?.allowOrgDirectory, false);
 
     const listResponse = await trpcQuery(

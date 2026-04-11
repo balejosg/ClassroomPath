@@ -37,6 +37,26 @@ export interface RuntimeConfig {
   publicUrl: string;
   resendApiKey: string | null;
   resendFromEmail: string | null;
+  platformAdminEmails: string[];
+  stripe: StripeRuntimeConfig;
+}
+
+export interface StripeRuntimeConfig {
+  secretKey: string | null;
+  webhookSecret: string | null;
+  priceIds: {
+    annual: {
+      '1_10': string | null;
+      '11_25': string | null;
+      '26_50': string | null;
+      '51_100': string | null;
+    };
+    onboarding: {
+      '1_25': string | null;
+      '26_100': string | null;
+    };
+    pilot: string | null;
+  };
 }
 
 function isProduction(env: RuntimeEnv = process.env): boolean {
@@ -122,6 +142,33 @@ function resolveEmailDeliveryMode(env: RuntimeEnv = process.env): EmailDeliveryM
     : 'disabled';
 }
 
+function resolvePlatformAdminEmails(env: RuntimeEnv = process.env): string[] {
+  return (env.CP_PLATFORM_ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter((email) => email.length > 0);
+}
+
+function resolveStripeConfig(env: RuntimeEnv = process.env): StripeRuntimeConfig {
+  return {
+    secretKey: trimToNull(env.STRIPE_SECRET_KEY),
+    webhookSecret: trimToNull(env.STRIPE_WEBHOOK_SECRET),
+    priceIds: {
+      annual: {
+        '1_10': trimToNull(env.STRIPE_ANNUAL_PRICE_1_10),
+        '11_25': trimToNull(env.STRIPE_ANNUAL_PRICE_11_25),
+        '26_50': trimToNull(env.STRIPE_ANNUAL_PRICE_26_50),
+        '51_100': trimToNull(env.STRIPE_ANNUAL_PRICE_51_100),
+      },
+      onboarding: {
+        '1_25': trimToNull(env.STRIPE_ONBOARDING_PRICE_1_25),
+        '26_100': trimToNull(env.STRIPE_ONBOARDING_PRICE_26_100),
+      },
+      pilot: trimToNull(env.STRIPE_PILOT_PRICE),
+    },
+  };
+}
+
 export function resolveRuntimeConfig(env: RuntimeEnv = process.env): RuntimeConfig {
   const resendApiKey = trimToNull(env.RESEND_API_KEY);
   const resendFromEmail = trimToNull(env.RESEND_FROM_EMAIL);
@@ -136,8 +183,10 @@ export function resolveRuntimeConfig(env: RuntimeEnv = process.env): RuntimeConf
     resendFromEmail,
     mockEmailDelivery: resolveMockEmailDelivery(env),
     emailDeliveryMode: resolveEmailDeliveryMode(env),
-    allowSelfServiceOrgs: parseBooleanEnv(env.CP_ALLOW_SELF_SERVICE_ORGS, true),
+    allowSelfServiceOrgs: parseBooleanEnv(env.CP_ALLOW_SELF_SERVICE_ORGS, false),
     allowOrgDirectory: parseBooleanEnv(env.CP_ALLOW_ORG_DIRECTORY, false),
+    platformAdminEmails: resolvePlatformAdminEmails(env),
+    stripe: resolveStripeConfig(env),
   };
 }
 
@@ -176,9 +225,15 @@ export const config = {
     return resolveEmailDeliveryMode(process.env);
   },
   get allowSelfServiceOrgs() {
-    return parseBooleanEnv(process.env.CP_ALLOW_SELF_SERVICE_ORGS, true);
+    return parseBooleanEnv(process.env.CP_ALLOW_SELF_SERVICE_ORGS, false);
   },
   get allowOrgDirectory() {
     return parseBooleanEnv(process.env.CP_ALLOW_ORG_DIRECTORY, false);
+  },
+  get platformAdminEmails() {
+    return resolvePlatformAdminEmails(process.env);
+  },
+  get stripe() {
+    return resolveStripeConfig(process.env);
   },
 };

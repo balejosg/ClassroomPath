@@ -18,12 +18,18 @@ import { getRequestId } from '../request-id.js';
 export interface GatewayApplicationRoutesOptions {
   jsonBodyLimit: string;
   trpcMiddleware: RequestHandler;
+  stripeWebhookHandler: RequestHandler;
 }
 
 export function registerGatewayApplicationRoutes(
   app: Express,
   options: GatewayApplicationRoutesOptions
 ): void {
+  app.post(
+    '/cp/stripe/webhook',
+    express.raw({ type: 'application/json' }),
+    options.stripeWebhookHandler
+  );
   app.use(express.json({ limit: options.jsonBodyLimit }));
   app.use('/cp/trpc', options.trpcMiddleware);
 

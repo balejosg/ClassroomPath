@@ -9,6 +9,7 @@ process.env.NODE_ENV = 'test';
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { eq } from 'drizzle-orm';
+import jwt from 'jsonwebtoken';
 import { OAuth2Client, type LoginTicket } from 'google-auth-library';
 import {
   trpcQuery,
@@ -34,6 +35,42 @@ import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../src/lib/session-cookies.js';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
+
+async function seedTenantOrganization(params: { token: string; name: string }): Promise<string> {
+  const decoded = jwt.decode(params.token) as jwt.JwtPayload | null;
+  const userId = typeof decoded?.sub === 'string' ? decoded.sub : null;
+
+  if (!userId) {
+    throw new Error('seedTenantOrganization requires a token with subject');
+  }
+
+  const organizationId = `org-${Math.random().toString(36).slice(2, 10)}`;
+
+  await cpDb.insert(cpSchema.cpOrganizations).values({
+    id: organizationId,
+    name: params.name,
+    createdBy: userId,
+  });
+
+  await cpDb.insert(cpSchema.cpMemberships).values({
+    id: `mem-${Math.random().toString(36).slice(2, 10)}`,
+    userId,
+    organizationId,
+    role: 'admin',
+    invitedBy: null,
+  });
+
+  await cpDb.insert(cpSchema.cpOrganizationEntitlements).values({
+    organizationId,
+    source: 'manual_admin',
+    status: 'active',
+    productKind: 'annual',
+    classroomLimit: 100,
+    grantedBy: userId,
+  });
+
+  return organizationId;
+}
 
 function getSetCookieHeaders(response: Response): string[] {
   const headers = response.headers as Headers & { getSetCookie?: () => string[] };
@@ -640,6 +677,15 @@ describe('ClassroomPath Gateway Integration', async () => {
       },
     ]);
 
+    await cpDb.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,
       userId: adminUserId,
@@ -734,6 +780,15 @@ describe('ClassroomPath Gateway Integration', async () => {
         },
       ]);
 
+      await cpDb.insert(cpSchema.cpOrganizationEntitlements).values({
+        organizationId: orgId,
+        source: 'manual_admin',
+        status: 'active',
+        productKind: 'annual',
+        classroomLimit: 100,
+        grantedBy: adminUserId,
+      });
+
       const adminToken = signToken({
         jwtSecret: JWT_SECRET,
         userId: adminUserId,
@@ -822,19 +877,8 @@ describe('ClassroomPath Gateway Integration', async () => {
     const { data: status } = (await parseTRPC(statusResp)) as { data: any };
     assert.strictEqual(status.hasMembership, false);
 
-    // 2. Create organization
-    const createResp = await trpcMutate(
-      integration.baseUrl,
-      'onboarding.createOrganization',
-      {
-        name: 'Test Organization',
-      },
-      bearerAuth(token)
-    );
-    assertStatus(createResp, 200);
-    const createBody = (await parseTRPC(createResp)) as { data?: Record<string, unknown> };
-    assert.strictEqual('accessToken' in (createBody.data ?? {}), false);
-    assert.strictEqual('refreshToken' in (createBody.data ?? {}), false);
+    // 2. Complete tenant setup through the test seed helper
+    await seedTenantOrganization({ token, name: 'Test Organization' });
 
     // 3. Verify status now shows membership
     const newStatusResp = await trpcQuery(
@@ -1022,15 +1066,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    // Create organization first
-    await trpcMutate(
-      integration.baseUrl,
-      'onboarding.createOrganization',
-      {
-        name: 'ListGroups Test Org',
-      },
-      bearerAuth(token)
-    );
+    await seedTenantOrganization({ token, name: 'ListGroups Test Org' });
 
     // Now call listGroups - should return empty array (no groups assigned yet)
     const resp = await trpcQuery(
@@ -1073,13 +1109,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    // Create organization to establish tenant context
-    await trpcMutate(
-      integration.baseUrl,
-      'onboarding.createOrganization',
-      { name: 'Auth Me Test Org' },
-      bearerAuth(token)
-    );
+    await seedTenantOrganization({ token, name: 'Auth Me Test Org' });
 
     const resp = await trpcQuery(integration.baseUrl, 'auth.me', undefined, bearerAuth(token));
     assertStatus(resp, 200);
@@ -1121,13 +1151,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    // Create organization
-    await trpcMutate(
-      integration.baseUrl,
-      'onboarding.createOrganization',
-      { name: 'Healthcheck Test Org' },
-      bearerAuth(token)
-    );
+    await seedTenantOrganization({ token, name: 'Healthcheck Test Org' });
 
     setMockOpenPathSystemInfoMode('unavailable');
     try {
@@ -1179,13 +1203,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    // Create organization
-    await trpcMutate(
-      integration.baseUrl,
-      'onboarding.createOrganization',
-      { name: 'API Tokens Test Org' },
-      bearerAuth(token)
-    );
+    await seedTenantOrganization({ token, name: 'API Tokens Test Org' });
 
     setMockOpenPathApiTokensListMode('unavailable');
     try {
@@ -1228,13 +1246,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    // Create organization
-    await trpcMutate(
-      integration.baseUrl,
-      'onboarding.createOrganization',
-      { name: 'API Tokens Create Test Org' },
-      bearerAuth(token)
-    );
+    await seedTenantOrganization({ token, name: 'API Tokens Create Test Org' });
 
     const createResp = await trpcMutate(
       integration.baseUrl,
@@ -1279,13 +1291,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    // Create organization
-    await trpcMutate(
-      integration.baseUrl,
-      'onboarding.createOrganization',
-      { name: 'Groups Counts Test Org' },
-      bearerAuth(token)
-    );
+    await seedTenantOrganization({ token, name: 'Groups Counts Test Org' });
 
     // Create a group
     const createResp = await trpcMutate(
@@ -1363,13 +1369,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    // Create organization
-    await trpcMutate(
-      integration.baseUrl,
-      'onboarding.createOrganization',
-      { name: 'System Status Test Org' },
-      bearerAuth(token)
-    );
+    await seedTenantOrganization({ token, name: 'System Status Test Org' });
 
     // Call groups.systemStatus
     const resp = await trpcQuery(

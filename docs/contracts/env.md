@@ -22,6 +22,19 @@ Gateway:
 - `OPENPATH_API_URL` (default `http://api:3000`)
 - `OPENPATH_ACCESS_TOKEN_COOKIE_NAME` (optional)
 
+Billing:
+
+- `CP_PLATFORM_ADMIN_EMAILS` (comma-separated platform admin allowlist)
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_ANNUAL_PRICE_1_10`
+- `STRIPE_ANNUAL_PRICE_11_25`
+- `STRIPE_ANNUAL_PRICE_26_50`
+- `STRIPE_ANNUAL_PRICE_51_100`
+- `STRIPE_ONBOARDING_PRICE_1_25`
+- `STRIPE_ONBOARDING_PRICE_26_100`
+- `STRIPE_PILOT_PRICE`
+
 Notes:
 
 - Do not commit `config/.env`.
