@@ -150,25 +150,19 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push gateway image
         if: steps.mode.outputs.build_required == 'true'
         id: build-gateway
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-release-candidate-image
         with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
           context: .
           file: docker/Dockerfile.cp-api
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: 'true'
           tags: ${{ needs.derive-release-image-refs.outputs.gateway_tag }}
-          cache-from: type=gha,scope=release-candidate-gateway
-          cache-to: type=gha,mode=max,scope=release-candidate-gateway
+          cache-scope: release-candidate-gateway
 
       - name: Publish gateway manifest output
         id: publish-manifest
@@ -206,24 +200,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push migrations image
         if: steps.mode.outputs.build_required == 'true'
         id: build-migrations
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-release-candidate-image
         with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
           context: .
           file: docker/Dockerfile.migrations
           platforms: linux/amd64
           outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.migrations_repo }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=release-candidate-migrations-amd64
-          cache-to: type=gha,mode=max,scope=release-candidate-migrations-amd64
+          cache-scope: release-candidate-migrations-amd64
 
   build-migrations-release-candidate-arm64:
     name: Build Migrations Release Candidate (arm64)
@@ -252,24 +240,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push migrations image
         if: steps.mode.outputs.build_required == 'true'
         id: build-migrations
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-release-candidate-image
         with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
           context: .
           file: docker/Dockerfile.migrations
           platforms: linux/arm64
           outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.migrations_repo }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=release-candidate-migrations-arm64
-          cache-to: type=gha,mode=max,scope=release-candidate-migrations-arm64
+          cache-scope: release-candidate-migrations-arm64
 
   build-migrations-release-candidate:
     name: Publish Migrations Release Candidate Manifest
@@ -295,34 +277,21 @@ jobs:
           fi
 
       - name: Checkout
-        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
-
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Merge migrations per-architecture digests
-        if: steps.mode.outputs.build_required == 'true'
-        run: |
-          docker buildx imagetools create \
-            --tag "${{ needs.derive-release-image-refs.outputs.migrations_tag }}" \
-            "${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ needs.build-migrations-release-candidate-amd64.outputs.image_digest }}" \
-            "${{ needs.derive-release-image-refs.outputs.migrations_repo }}@${{ needs.build-migrations-release-candidate-arm64.outputs.image_digest }}"
 
       - name: Publish migrations manifest output
         id: publish-manifest
-        run: |
-          if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
-            manifest_digest="$(docker buildx imagetools inspect "${{ needs.derive-release-image-refs.outputs.migrations_tag }}" | awk '/^Digest:/ {print $2; exit}')"
-            test -n "$manifest_digest"
-            echo "migrations_image=${{ needs.derive-release-image-refs.outputs.migrations_repo }}@$manifest_digest" >> "$GITHUB_OUTPUT"
-          else
-            echo "migrations_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}" >> "$GITHUB_OUTPUT"
-          fi
+        uses: ./.github/actions/publish-release-candidate-manifest
+        with:
+          build-required: ${{ steps.mode.outputs.build_required }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ needs.derive-release-image-refs.outputs.migrations_tag }}
+          image-repo: ${{ needs.derive-release-image-refs.outputs.migrations_repo }}
+          amd64-digest: ${{ needs.build-migrations-release-candidate-amd64.outputs.image_digest }}
+          arm64-digest: ${{ needs.build-migrations-release-candidate-arm64.outputs.image_digest }}
+          previous-image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}
+          output-name: migrations_image
 
   resolve-openpath-firefox-release-assets:
     name: Resolve OpenPath Firefox Release Assets
@@ -411,38 +380,24 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download Firefox release assets
-        if: steps.mode.outputs.build_required == 'true'
-        uses: actions/download-artifact@v7
-        with:
-          name: openpath-firefox-release-assets
-          path: ./upstream/openpath/firefox-extension
-
-      - name: Verify downloaded Firefox release assets
-        if: steps.mode.outputs.build_required == 'true'
-        run: |
-          test -f ./upstream/openpath/firefox-extension/dist/background.js
-          test -f ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
-          test -f ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
-
       - name: Build and push OpenPath API image
         if: steps.mode.outputs.build_required == 'true'
         id: build-openpath-api
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-release-candidate-image
         with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
           context: ./upstream/openpath
           file: ./docker/Dockerfile.api
           platforms: linux/amd64
           outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.openpath_api_repo }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=release-candidate-openpath-api-amd64
-          cache-to: type=gha,mode=max,scope=release-candidate-openpath-api-amd64
+          cache-scope: release-candidate-openpath-api-amd64
+          artifact-name: openpath-firefox-release-assets
+          artifact-path: ./upstream/openpath/firefox-extension
+          verify-paths: |
+            ./upstream/openpath/firefox-extension/dist/background.js
+            ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
+            ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
 
   build-openpath-api-release-candidate-arm64:
     name: Build OpenPath API Release Candidate (arm64)
@@ -472,38 +427,24 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download Firefox release assets
-        if: steps.mode.outputs.build_required == 'true'
-        uses: actions/download-artifact@v7
-        with:
-          name: openpath-firefox-release-assets
-          path: ./upstream/openpath/firefox-extension
-
-      - name: Verify downloaded Firefox release assets
-        if: steps.mode.outputs.build_required == 'true'
-        run: |
-          test -f ./upstream/openpath/firefox-extension/dist/background.js
-          test -f ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
-          test -f ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
-
       - name: Build and push OpenPath API image
         if: steps.mode.outputs.build_required == 'true'
         id: build-openpath-api
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-release-candidate-image
         with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
           context: ./upstream/openpath
           file: ./docker/Dockerfile.api
           platforms: linux/arm64
           outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.openpath_api_repo }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=release-candidate-openpath-api-arm64
-          cache-to: type=gha,mode=max,scope=release-candidate-openpath-api-arm64
+          cache-scope: release-candidate-openpath-api-arm64
+          artifact-name: openpath-firefox-release-assets
+          artifact-path: ./upstream/openpath/firefox-extension
+          verify-paths: |
+            ./upstream/openpath/firefox-extension/dist/background.js
+            ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
+            ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
 
   build-openpath-api-release-candidate:
     name: Publish OpenPath API Release Candidate Manifest
@@ -529,34 +470,21 @@ jobs:
           fi
 
       - name: Checkout
-        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
-
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Merge OpenPath API per-architecture digests
-        if: steps.mode.outputs.build_required == 'true'
-        run: |
-          docker buildx imagetools create \
-            --tag "${{ needs.derive-release-image-refs.outputs.openpath_api_tag }}" \
-            "${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}@${{ needs.build-openpath-api-release-candidate-amd64.outputs.image_digest }}" \
-            "${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}@${{ needs.build-openpath-api-release-candidate-arm64.outputs.image_digest }}"
 
       - name: Publish OpenPath API manifest output
         id: publish-manifest
-        run: |
-          if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
-            manifest_digest="$(docker buildx imagetools inspect "${{ needs.derive-release-image-refs.outputs.openpath_api_tag }}" | awk '/^Digest:/ {print $2; exit}')"
-            test -n "$manifest_digest"
-            echo "openpath_api_image=${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}@$manifest_digest" >> "$GITHUB_OUTPUT"
-          else
-            echo "openpath_api_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}" >> "$GITHUB_OUTPUT"
-          fi
+        uses: ./.github/actions/publish-release-candidate-manifest
+        with:
+          build-required: ${{ steps.mode.outputs.build_required }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ needs.derive-release-image-refs.outputs.openpath_api_tag }}
+          image-repo: ${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}
+          amd64-digest: ${{ needs.build-openpath-api-release-candidate-amd64.outputs.image_digest }}
+          arm64-digest: ${{ needs.build-openpath-api-release-candidate-arm64.outputs.image_digest }}
+          previous-image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}
+          output-name: openpath_api_image
 
   build-spa-release-candidate-amd64:
     name: Build SPA Release Candidate (amd64)
@@ -585,24 +513,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push SPA image
         if: steps.mode.outputs.build_required == 'true'
         id: build-spa
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-release-candidate-image
         with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
           context: .
           file: docker/Dockerfile.spa
           platforms: linux/amd64
           outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.spa_repo }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=release-candidate-spa-amd64
-          cache-to: type=gha,mode=max,scope=release-candidate-spa-amd64
+          cache-scope: release-candidate-spa-amd64
 
   build-spa-release-candidate-arm64:
     name: Build SPA Release Candidate (arm64)
@@ -631,24 +553,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push SPA image
         if: steps.mode.outputs.build_required == 'true'
         id: build-spa
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-release-candidate-image
         with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
           context: .
           file: docker/Dockerfile.spa
           platforms: linux/arm64
           outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.spa_repo }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=release-candidate-spa-arm64
-          cache-to: type=gha,mode=max,scope=release-candidate-spa-arm64
+          cache-scope: release-candidate-spa-arm64
 
   build-spa-release-candidate:
     name: Publish SPA Release Candidate Manifest
@@ -674,34 +590,21 @@ jobs:
           fi
 
       - name: Checkout
-        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
-
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Merge SPA per-architecture digests
-        if: steps.mode.outputs.build_required == 'true'
-        run: |
-          docker buildx imagetools create \
-            --tag "${{ needs.derive-release-image-refs.outputs.spa_tag }}" \
-            "${{ needs.derive-release-image-refs.outputs.spa_repo }}@${{ needs.build-spa-release-candidate-amd64.outputs.image_digest }}" \
-            "${{ needs.derive-release-image-refs.outputs.spa_repo }}@${{ needs.build-spa-release-candidate-arm64.outputs.image_digest }}"
 
       - name: Publish SPA manifest output
         id: publish-manifest
-        run: |
-          if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
-            manifest_digest="$(docker buildx imagetools inspect "${{ needs.derive-release-image-refs.outputs.spa_tag }}" | awk '/^Digest:/ {print $2; exit}')"
-            test -n "$manifest_digest"
-            echo "spa_image=${{ needs.derive-release-image-refs.outputs.spa_repo }}@$manifest_digest" >> "$GITHUB_OUTPUT"
-          else
-            echo "spa_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}" >> "$GITHUB_OUTPUT"
-          fi
+        uses: ./.github/actions/publish-release-candidate-manifest
+        with:
+          build-required: ${{ steps.mode.outputs.build_required }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ needs.derive-release-image-refs.outputs.spa_tag }}
+          image-repo: ${{ needs.derive-release-image-refs.outputs.spa_repo }}
+          amd64-digest: ${{ needs.build-spa-release-candidate-amd64.outputs.image_digest }}
+          arm64-digest: ${{ needs.build-spa-release-candidate-arm64.outputs.image_digest }}
+          previous-image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}
+          output-name: spa_image
 
   build-verifier-release-candidate-amd64:
     name: Build Release Verifier Candidate (amd64)
@@ -730,24 +633,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push verifier image
         if: steps.mode.outputs.build_required == 'true'
         id: build-verifier
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-release-candidate-image
         with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
           context: .
           file: docker/Dockerfile.release-verifier
           platforms: linux/amd64
           outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.verifier_repo }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=release-candidate-verifier-amd64
-          cache-to: type=gha,mode=max,scope=release-candidate-verifier-amd64
+          cache-scope: release-candidate-verifier-amd64
 
   build-verifier-release-candidate-arm64:
     name: Build Release Verifier Candidate (arm64)
@@ -776,24 +673,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push verifier image
         if: steps.mode.outputs.build_required == 'true'
         id: build-verifier
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-release-candidate-image
         with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
           context: .
           file: docker/Dockerfile.release-verifier
           platforms: linux/arm64
           outputs: type=image,name=${{ needs.derive-release-image-refs.outputs.verifier_repo }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=release-candidate-verifier-arm64
-          cache-to: type=gha,mode=max,scope=release-candidate-verifier-arm64
+          cache-scope: release-candidate-verifier-arm64
 
   build-verifier-release-candidate:
     name: Publish Release Verifier Candidate Manifest
@@ -819,34 +710,21 @@ jobs:
           fi
 
       - name: Checkout
-        if: steps.mode.outputs.build_required == 'true'
         uses: actions/checkout@v6
-
-      - name: Setup Docker build
-        if: steps.mode.outputs.build_required == 'true'
-        uses: ./.github/actions/setup-docker-build
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Merge verifier per-architecture digests
-        if: steps.mode.outputs.build_required == 'true'
-        run: |
-          docker buildx imagetools create \
-            --tag "${{ needs.derive-release-image-refs.outputs.verifier_tag }}" \
-            "${{ needs.derive-release-image-refs.outputs.verifier_repo }}@${{ needs.build-verifier-release-candidate-amd64.outputs.image_digest }}" \
-            "${{ needs.derive-release-image-refs.outputs.verifier_repo }}@${{ needs.build-verifier-release-candidate-arm64.outputs.image_digest }}"
 
       - name: Publish verifier manifest output
         id: publish-manifest
-        run: |
-          if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
-            manifest_digest="$(docker buildx imagetools inspect "${{ needs.derive-release-image-refs.outputs.verifier_tag }}" | awk '/^Digest:/ {print $2; exit}')"
-            test -n "$manifest_digest"
-            echo "verifier_image=${{ needs.derive-release-image-refs.outputs.verifier_repo }}@$manifest_digest" >> "$GITHUB_OUTPUT"
-          else
-            echo "verifier_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}" >> "$GITHUB_OUTPUT"
-          fi
+        uses: ./.github/actions/publish-release-candidate-manifest
+        with:
+          build-required: ${{ steps.mode.outputs.build_required }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ needs.derive-release-image-refs.outputs.verifier_tag }}
+          image-repo: ${{ needs.derive-release-image-refs.outputs.verifier_repo }}
+          amd64-digest: ${{ needs.build-verifier-release-candidate-amd64.outputs.image_digest }}
+          arm64-digest: ${{ needs.build-verifier-release-candidate-arm64.outputs.image_digest }}
+          previous-image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}
+          output-name: verifier_image
 
   publish-release-candidate-manifest:
     name: Publish Release Candidate Manifest

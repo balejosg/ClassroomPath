@@ -1,0 +1,76 @@
+name: 'Publish Release Candidate Manifest'
+description: 'Merge multi-architecture release-candidate digests and emit the canonical image ref'
+
+inputs:
+  build-required:
+    description: 'Whether the manifest must be rebuilt from per-architecture digests'
+    required: true
+  username:
+    description: 'Registry username'
+    required: true
+  password:
+    description: 'Registry password or token'
+    required: true
+  tag:
+    description: 'Manifest tag to publish'
+    required: true
+  image-repo:
+    description: 'Image repository used for digest addressing'
+    required: true
+  amd64-digest:
+    description: 'amd64 image digest'
+    required: false
+    default: ''
+  arm64-digest:
+    description: 'arm64 image digest'
+    required: false
+    default: ''
+  previous-image:
+    description: 'Previously published image ref to reuse when no rebuild is needed'
+    required: true
+  output-name:
+    description: 'Output variable name for the published image ref'
+    required: true
+
+outputs:
+  image:
+    description: 'Canonical image ref for downstream jobs'
+    value: ${{ steps.publish.outputs.image }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Docker build
+      if: ${{ inputs.build-required == 'true' }}
+      uses: ./.github/actions/setup-docker-build
+      with:
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+
+    - name: Merge per-architecture digests
+      if: ${{ inputs.build-required == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        docker buildx imagetools create \
+          --tag "${{ inputs.tag }}" \
+          "${{ inputs.image-repo }}@${{ inputs.amd64-digest }}" \
+          "${{ inputs.image-repo }}@${{ inputs.arm64-digest }}"
+
+    - name: Publish manifest output
+      id: publish
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [ "${{ inputs.build-required }}" = 'true' ]; then
+          manifest_digest="$(docker buildx imagetools inspect "${{ inputs.tag }}" | awk '/^Digest:/ {print $2; exit}')"
+          test -n "$manifest_digest"
+          image="${{ inputs.image-repo }}@$manifest_digest"
+        else
+          image="${{ inputs.previous-image }}"
+        fi
+
+        echo "${{ inputs.output-name }}=$image" >> "$GITHUB_OUTPUT"
+        echo "image=$image" >> "$GITHUB_OUTPUT"

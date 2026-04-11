@@ -1387,9 +1387,11 @@ void describe('Migration Tooling', () => {
 
   void test('release-state helpers centralize current-image and staging-verification evidence writes', () => {
     const releaseStateHelperPath = resolve(projectRoot, 'scripts/lib/release-state.sh');
+    const releaseStateContractPath = resolve(projectRoot, 'scripts/lib/release-state-contract.mjs');
     const remoteHelperContractsPath = resolve(projectRoot, 'scripts/lib/remote-helper-contracts.sh');
     const deploymentStateHelperPath = resolve(projectRoot, 'scripts/lib/deployment-state.sh');
     const releaseStateHelper = readFileSync(releaseStateHelperPath, 'utf-8');
+    const releaseStateContract = readFileSync(releaseStateContractPath, 'utf-8');
     const remoteHelperContracts = readFileSync(remoteHelperContractsPath, 'utf-8');
     const deploymentStateHelper = readFileSync(deploymentStateHelperPath, 'utf-8');
     const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
@@ -1412,6 +1414,10 @@ void describe('Migration Tooling', () => {
 
     assert.ok(existsSync(releaseStateHelperPath), 'scripts/lib/release-state.sh should exist');
     assert.ok(
+      existsSync(releaseStateContractPath),
+      'scripts/lib/release-state-contract.mjs should exist'
+    );
+    assert.ok(
       existsSync(deploymentStateHelperPath),
       'scripts/lib/deployment-state.sh should exist'
     );
@@ -1425,9 +1431,16 @@ void describe('Migration Tooling', () => {
         releaseStateHelper.includes('write_current_release_state()') &&
         releaseStateHelper.includes('write_deploy_context_state()') &&
         releaseStateHelper.includes('write_staging_verification_state()') &&
-        releaseStateHelper.includes('verify_current_release_state_matches_expected()') &&
-        releaseStateHelper.includes('emit_staging_release_evidence_outputs()'),
-      'release-state helper should own schema-based reading, verification, and output emission for deployment evidence snapshots'
+        releaseStateHelper.includes('release_state_cli_available()') &&
+        releaseStateHelper.includes('node "$(release_state_cli_path)" write-snapshot'),
+      'release-state helper should keep shell compatibility while delegating snapshot writes to the typed release-state CLI when node is available'
+    );
+    assert.ok(
+      releaseStateContract.includes('RELEASE_STATE_SNAPSHOT_DEFINITIONS') &&
+        releaseStateContract.includes('validateCurrentReleaseState(') &&
+        releaseStateContract.includes('validateStagingVerification(') &&
+        releaseStateContract.includes('buildStagingReleaseEvidenceOutputs('),
+      'release-state contract should own typed snapshot schemas, validation, and workflow output rendering'
     );
     assert.ok(
       remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
@@ -1498,12 +1511,11 @@ void describe('Migration Tooling', () => {
       'rollback-production-remote.sh should consume shared rollback metadata without letting deploy-context values override the previous release SHA'
     );
     assert.ok(
-      verifyState.includes('load_release_state_env ./staging-release-state.env') &&
-        verifyState.includes('load_release_state_env ./staging-verification.env') &&
-        verifyState.includes('verify_current_release_state_matches_expected') &&
-        verifyState.includes('verify_staging_release_evidence_matches_expected') &&
-        verifyState.includes('emit_staging_release_evidence_outputs'),
-      'verify-staging-release-state.sh should load, validate, and emit evidence through the shared release-state helper'
+      verifyState.includes('release-state-cli.mjs') &&
+        verifyState.includes('--current ./staging-release-state.env') &&
+        verifyState.includes('--verification ./staging-verification.env') &&
+        verifyState.includes('--high-risk "${HIGH_RISK:-false}"'),
+      'verify-staging-release-state.sh should delegate staging release-state validation to the typed Node CLI'
     );
   });
 

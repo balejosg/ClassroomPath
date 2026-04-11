@@ -2,6 +2,23 @@
 # release-state.sh - Helpers for deployment release-state/evidence snapshots
 # shellcheck shell=bash
 
+release_state_cli_path() {
+  local script_source="${BASH_SOURCE[0]:-}"
+  local lib_dir=""
+
+  if [ -n "$script_source" ]; then
+    lib_dir="$(cd "$(dirname "$script_source")" && pwd)"
+  else
+    lib_dir="$(pwd)/scripts/lib"
+  fi
+
+  printf '%s\n' "$(cd "$lib_dir/.." && pwd)/release-state-cli.mjs"
+}
+
+release_state_cli_available() {
+  command -v node >/dev/null 2>&1 && [ -f "$(release_state_cli_path)" ]
+}
+
 load_release_state_env() {
   local state_path="$1"
 
@@ -105,6 +122,13 @@ write_release_state_snapshot() {
   local state_path="$2"
   local field=""
   local value=""
+
+  if release_state_cli_available; then
+    node "$(release_state_cli_path)" write-snapshot \
+      --snapshot-type "$snapshot_type" \
+      --output "$state_path"
+    return 0
+  fi
 
   mkdir -p "$(dirname "$state_path")"
   : > "$state_path"

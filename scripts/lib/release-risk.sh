@@ -2,6 +2,19 @@
 # release-risk.sh - Shared release promotion risk helpers
 # shellcheck shell=bash
 
+release_risk_cli_path() {
+  local script_source="${BASH_SOURCE[0]:-}"
+  local lib_dir=""
+
+  if [ -n "$script_source" ]; then
+    lib_dir="$(cd "$(dirname "$script_source")" && pwd)"
+  else
+    lib_dir="$(pwd)/scripts/lib"
+  fi
+
+  printf '%s\n' "$(cd "$lib_dir/.." && pwd)/release-risk-cli.mjs"
+}
+
 release_risk_target_sha() {
   if [ -n "${TARGET_SHA:-}" ]; then
     printf '%s\n' "$TARGET_SHA"
@@ -61,8 +74,9 @@ list_release_risk_changed_files() {
 release_risk_is_high() {
   local changed_files="${1:-}"
 
-  if printf '%s\n' "$changed_files" | grep -Eq '^(upstream/openpath$|upstream/openpath/windows/|upstream/openpath/linux/|upstream/openpath/firefox-extension/|upstream/openpath/api/src/|upstream/openpath/api/package\.json$|upstream/openpath/api/tests/token-delivery\.test\.ts$|docker/Dockerfile\.api$)'; then
-    return 0
+  if command -v node >/dev/null 2>&1 && [ -f "$(release_risk_cli_path)" ]; then
+    printf '%s\n' "$changed_files" | node "$(release_risk_cli_path)" classify-stdin
+    return $?
   fi
 
   return 1

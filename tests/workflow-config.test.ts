@@ -98,7 +98,10 @@ describe('Workflow configuration hardening', () => {
       },
       {
         relativePath: '.github/workflows/release-candidate-images.yml',
-        required: ['./.github/actions/setup-docker-build', 'docker/build-push-action@v7'],
+        required: [
+          './.github/actions/build-release-candidate-image',
+          './.github/actions/publish-release-candidate-manifest',
+        ],
         forbidden: [
           'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24',
           'docker/setup-buildx-action@v3',
@@ -110,6 +113,16 @@ describe('Workflow configuration hardening', () => {
         relativePath: '.github/actions/setup-docker-build/action.yml',
         required: ['docker/setup-buildx-action@v4', 'docker/login-action@v4'],
         forbidden: ['docker/setup-buildx-action@v3', 'docker/login-action@v3'],
+      },
+      {
+        relativePath: '.github/actions/build-release-candidate-image/action.yml',
+        required: ['docker/build-push-action@v7', 'actions/download-artifact@v7'],
+        forbidden: ['docker/build-push-action@v6', 'actions/download-artifact@v4'],
+      },
+      {
+        relativePath: '.github/actions/publish-release-candidate-manifest/action.yml',
+        required: ['./.github/actions/setup-docker-build'],
+        forbidden: ['docker/login-action@v3'],
       },
       {
         relativePath: '.github/workflows/deploy.yml',
@@ -637,7 +650,9 @@ describe('Workflow configuration hardening', () => {
       .map((step) => step.run ?? '')
       .join('\n');
     const stagingVerificationScript = readText('scripts/verify-staging-release-state.sh');
-    const releaseStateHelper = readText('scripts/lib/release-state.sh');
+    const releaseStateContract = readText('scripts/lib/release-state-contract.mjs');
+    const releaseRiskPolicy = readText('scripts/lib/release-risk-policy.mjs');
+    const releaseRiskCli = readText('scripts/release-risk-cli.mjs');
     const releaseRiskHelper = readText('scripts/lib/release-risk.sh');
     const riskDetectionScript = readText('scripts/detect-windows-firefox-risk.sh');
     assert.ok(
@@ -651,46 +666,50 @@ describe('Workflow configuration hardening', () => {
     );
     assert.ok(
       stagingVerificationRun.includes('verify-staging-release-state.sh') &&
-        releaseStateHelper.includes('STAGING_RELEASE_GATE_RESULT'),
+        releaseStateContract.includes('STAGING_RELEASE_GATE_RESULT'),
       'verify-staging-release-state should require successful staging release-gate evidence'
     );
     assert.ok(
-      releaseStateHelper.includes('staging_smoke_result='),
-      'verify-staging-release-state should expose staging smoke evidence to downstream jobs'
+      stagingVerificationScript.includes('release-state-cli.mjs') &&
+        releaseStateContract.includes('buildStagingReleaseEvidenceOutputs('),
+      'verify-staging-release-state should delegate evidence output rendering to the typed release-state contract'
     );
     assert.ok(
-      releaseStateHelper.includes('PASS_WITH_FALLBACK'),
+      releaseStateContract.includes('PASS_WITH_FALLBACK'),
       'verify-staging-release-state should distinguish fallback staging smoke evidence from promotion-grade evidence'
     );
     assert.ok(
-      releaseStateHelper.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
-        releaseStateHelper.includes('STAGING_FIREFOX_POLICY_RESULT'),
+      releaseStateContract.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
+        releaseStateContract.includes('STAGING_FIREFOX_POLICY_RESULT'),
       'verify-staging-release-state should enforce Windows/Firefox staging evidence for high-risk promotions'
     );
     assert.ok(
       releaseRiskHelper.includes('PRODUCTION_RELEASE_STATE_PATH') &&
-        riskDetectionScript.includes('resolve_release_risk_base_ref') &&
-        riskDetectionScript.includes('emit_release_risk_outputs'),
-      'verify-staging-release-state should classify risk against the real deployed production release state and expose that basis'
+        riskDetectionScript.includes('release-risk-cli.mjs') &&
+        releaseRiskCli.includes('detect-github-output'),
+      'verify-staging-release-state should classify risk against the real deployed production release state through the typed risk CLI'
     );
     assert.ok(
-      releaseRiskHelper.includes('upstream/openpath/api/src/'),
+      releaseRiskPolicy.includes('openpath-api-bootstrap') &&
+        releaseRiskPolicy.includes('upstream/openpath/api/src/'),
       'verify-staging-release-state should classify OpenPath API bootstrap source changes as high risk'
     );
     assert.ok(
-      releaseRiskHelper.includes('upstream/openpath/linux/'),
+      releaseRiskPolicy.includes('openpath-linux-runtime') &&
+        releaseRiskPolicy.includes('upstream/openpath/linux/'),
       'verify-staging-release-state should classify OpenPath Linux client changes as high risk'
     );
     assert.ok(
-      releaseRiskHelper.includes('upstream/openpath$'),
+      releaseRiskPolicy.includes('openpath-gitlink') &&
+        releaseRiskPolicy.includes('upstream/openpath$'),
       'verify-staging-release-state should classify OpenPath submodule gitlink promotions as high risk'
     );
     assert.ok(
-      releaseStateHelper.includes('STAGING_FIREFOX_EXTENSION_ID') &&
-        releaseStateHelper.includes('STAGING_FIREFOX_RELEASE_VERSION') &&
-        releaseStateHelper.includes('STAGING_FIREFOX_METADATA_SHA256') &&
-        releaseStateHelper.includes('STAGING_FIREFOX_XPI_SHA256') &&
-        stagingVerificationScript.includes('emit_staging_release_evidence_outputs'),
+      releaseStateContract.includes('STAGING_FIREFOX_EXTENSION_ID') &&
+        releaseStateContract.includes('STAGING_FIREFOX_RELEASE_VERSION') &&
+        releaseStateContract.includes('STAGING_FIREFOX_METADATA_SHA256') &&
+        releaseStateContract.includes('STAGING_FIREFOX_XPI_SHA256') &&
+        stagingVerificationScript.includes('release-state-cli.mjs'),
       'verify-staging-release-state should expose Firefox release identity and hashes through the shared release-state helper'
     );
     assert.ok(
@@ -1056,6 +1075,11 @@ describe('Workflow configuration hardening', () => {
       jobs['publish-release-candidate-manifest'],
       'release candidate workflow should publish a manifest after all parallel builds finish'
     );
+    assert.ok(
+      workflowText.includes('./.github/actions/build-release-candidate-image') &&
+        workflowText.includes('./.github/actions/publish-release-candidate-manifest'),
+      'release candidate workflow should reuse local composite actions for repeated image build and manifest publish steps'
+    );
 
     const concurrency = workflow.concurrency;
     assert.equal(
@@ -1227,8 +1251,13 @@ describe('Workflow configuration hardening', () => {
 
       const jobSteps = jobs[jobName]?.steps ?? [];
       assert.ok(
-        jobSteps.some((step) => step.uses === 'actions/download-artifact@v7'),
-        `${jobName} should download the prepared Firefox release assets into the Docker build context`
+        jobSteps.some((step) => step.uses === './.github/actions/build-release-candidate-image'),
+        `${jobName} should delegate OpenPath API image builds to the shared build action`
+      );
+      assert.equal(
+        String(jobSteps.find((step) => step.uses === './.github/actions/build-release-candidate-image')?.with?.['artifact-name'] ?? ''),
+        'openpath-firefox-release-assets',
+        `${jobName} should pass the prepared Firefox release assets into the shared build action`
       );
     }
 
@@ -1269,40 +1298,55 @@ describe('Workflow configuration hardening', () => {
       'verifier manifest merge should wait for both per-architecture builds plus the reuse/build decision inputs'
     );
 
-    const openPathManifestRun =
-      jobs['build-openpath-api-release-candidate']?.steps
-        ?.map((step) => step.run ?? '')
-        .join('\n') ?? '';
-    assert.ok(
-      openPathManifestRun.includes('docker buildx imagetools create'),
-      'OpenPath API manifest merge should assemble the final multi-architecture tag from per-architecture digests'
+    const buildImageActionText = readText('.github/actions/build-release-candidate-image/action.yml');
+    const publishManifestActionText = readText(
+      '.github/actions/publish-release-candidate-manifest/action.yml'
     );
     assert.ok(
-      openPathManifestRun.includes('docker buildx imagetools inspect'),
-      'OpenPath API manifest merge should resolve the final immutable digest after merging the per-architecture images'
-    );
-
-    const spaManifestRun =
-      jobs['build-spa-release-candidate']?.steps?.map((step) => step.run ?? '').join('\n') ?? '';
-    assert.ok(
-      spaManifestRun.includes('docker buildx imagetools create'),
-      'SPA manifest merge should assemble the final multi-architecture tag from per-architecture digests'
+      (jobs['build-openpath-api-release-candidate']?.steps ?? []).some(
+        (step) => step.uses === './.github/actions/publish-release-candidate-manifest'
+      ),
+      'OpenPath API manifest merge should reuse the shared manifest publisher action'
     );
     assert.ok(
-      spaManifestRun.includes('docker buildx imagetools inspect'),
-      'SPA manifest merge should resolve the final immutable digest after merging the per-architecture images'
-    );
-
-    const verifierManifestRun =
-      jobs['build-verifier-release-candidate']?.steps?.map((step) => step.run ?? '').join('\n') ??
-      '';
-    assert.ok(
-      verifierManifestRun.includes('docker buildx imagetools create'),
-      'verifier manifest merge should assemble the final multi-architecture tag from per-architecture digests'
+      (jobs['build-openpath-api-release-candidate-amd64']?.steps ?? []).some(
+        (step) => step.uses === './.github/actions/build-release-candidate-image'
+      ),
+      'OpenPath API image builds should reuse the shared build action'
     );
     assert.ok(
-      verifierManifestRun.includes('docker buildx imagetools inspect'),
-      'verifier manifest merge should resolve the final immutable digest after merging the per-architecture images'
+      (jobs['build-spa-release-candidate']?.steps ?? []).some(
+        (step) => step.uses === './.github/actions/publish-release-candidate-manifest'
+      ),
+      'SPA manifest merge should reuse the shared manifest publisher action'
+    );
+    assert.ok(
+      (jobs['build-spa-release-candidate-amd64']?.steps ?? []).some(
+        (step) => step.uses === './.github/actions/build-release-candidate-image'
+      ),
+      'SPA image builds should reuse the shared build action'
+    );
+    assert.ok(
+      (jobs['build-verifier-release-candidate']?.steps ?? []).some(
+        (step) => step.uses === './.github/actions/publish-release-candidate-manifest'
+      ),
+      'verifier manifest merge should reuse the shared manifest publisher action'
+    );
+    assert.ok(
+      (jobs['build-verifier-release-candidate-amd64']?.steps ?? []).some(
+        (step) => step.uses === './.github/actions/build-release-candidate-image'
+      ),
+      'verifier image builds should reuse the shared build action'
+    );
+    assert.ok(
+      buildImageActionText.includes('actions/download-artifact@v7') &&
+        buildImageActionText.includes('docker/build-push-action@v7'),
+      'the shared build action should own optional artifact download and docker build/push execution'
+    );
+    assert.ok(
+      publishManifestActionText.includes('docker buildx imagetools create') &&
+        publishManifestActionText.includes('docker buildx imagetools inspect'),
+      'the shared manifest publisher action should own digest merge and immutable manifest resolution'
     );
 
     const publishManifestRun =

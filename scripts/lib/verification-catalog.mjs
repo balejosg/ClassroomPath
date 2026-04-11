@@ -26,7 +26,7 @@ function applicationPolicy(overrides = {}) {
 export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'workflow-definition',
-    patterns: ['^\\.github/workflows/.+\\.ya?ml$'],
+    patterns: ['^\\.github/workflows/.+\\.ya?ml$', '^\\.github/actions/.+/action\\.ya?ml$'],
     capabilities: {
       ciRelevant: true,
       releaseAutomationSafe: true,
@@ -53,8 +53,8 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'deploy-shell',
     patterns: [
-      '^scripts/(?:deploy-.+|rollback-.+|persist-.+|run-staging-release-gate|verify-staging-release-state)\\.sh$',
-      '^scripts/lib/(?:deployment-state|release-runtime|release-state|remote-bootstrap|deploy-production-context|deploy-production-runtime)\\.sh$',
+      '^scripts/(?:deploy-.+|detect-windows-firefox-risk|rollback-.+|persist-.+|run-staging-release-gate|verify-staging-release-state)\\.sh$',
+      '^scripts/lib/(?:deployment-state|release-risk|release-runtime|release-state|remote-bootstrap|deploy-production-context|deploy-production-runtime)\\.sh$',
     ],
     capabilities: { ciRelevant: true, verificationScope: 'ops-regression' },
     ...releasePolicy(),
@@ -62,7 +62,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-cli',
     patterns: [
-      '^scripts/(?:detect-ci-relevant-changes|firefox-release-version|openpath-required-checks|print-verify-report-summary|release-images|resolve-latest-verifier-image|run-ci-regression|verify-full|wait-for-release-candidate)\\.(?:mjs|ts)$',
+      '^scripts/(?:detect-ci-relevant-changes|firefox-release-version|openpath-required-checks|print-verify-report-summary|release-images|release-risk-cli|release-state-cli|resolve-latest-verifier-image|run-ci-regression|verify-full|wait-for-release-candidate)\\.(?:mjs|ts)$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -74,7 +74,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-library',
     patterns: [
-      '^scripts/lib/(?:firefox-release-version|github-actions|openpath-ci-checks|regression-plan|release-candidate|release-cli|release-images|resolve-latest-verifier-image|verification-catalog|verification-report-contract|verify-report-consumer)\\.mjs$',
+      '^scripts/lib/(?:firefox-release-version|github-actions|openpath-ci-checks|regression-plan|release-candidate|release-cli|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|verification-catalog|verification-report-contract|verify-report-consumer)\\.mjs$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -96,7 +96,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-contract-test',
     patterns: [
-      '^tests/(?:deployment|firefox-release-version|openpath-required-checks|release-cli|release-images|resolve-latest-verifier-image|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow-config)\\.test\\.ts$',
+      '^tests/(?:deployment|firefox-release-version|openpath-required-checks|release-cli|release-images|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow-config)\\.test\\.ts$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -187,6 +187,9 @@ export const REGRESSION_PLAN_DEFINITIONS = {
       'tests/release-cli.test.ts',
       'tests/release-evidence.test.ts',
       'tests/release-images.test.ts',
+      'tests/release-risk.test.ts',
+      'tests/release-risk-policy.test.ts',
+      'tests/release-state-cli.test.ts',
       'tests/resolve-latest-verifier-image.test.ts',
       'tests/release-gate-policy.test.ts',
       'tests/wait-for-release-candidate.test.ts',

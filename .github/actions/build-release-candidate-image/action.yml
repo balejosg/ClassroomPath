@@ -1,0 +1,106 @@
+name: 'Build Release Candidate Image'
+description: 'Build and push a release-candidate image with optional release-artifact download'
+
+inputs:
+  username:
+    description: 'Registry username'
+    required: true
+  password:
+    description: 'Registry password or token'
+    required: true
+  context:
+    description: 'Docker build context'
+    required: false
+    default: '.'
+  file:
+    description: 'Dockerfile path'
+    required: true
+  platforms:
+    description: 'Docker platforms to build'
+    required: true
+  cache-scope:
+    description: 'Cache scope used for buildx gha cache'
+    required: true
+  tags:
+    description: 'Docker tags for regular push mode'
+    required: false
+    default: ''
+  outputs:
+    description: 'Docker build outputs for push-by-digest mode'
+    required: false
+    default: ''
+  push:
+    description: 'Whether docker/build-push-action should push directly in tag mode'
+    required: false
+    default: 'false'
+  artifact-name:
+    description: 'Artifact name to download before the build'
+    required: false
+    default: ''
+  artifact-path:
+    description: 'Destination path for the downloaded artifact'
+    required: false
+    default: ''
+  verify-paths:
+    description: 'Newline-delimited file paths that must exist before building'
+    required: false
+    default: ''
+
+outputs:
+  digest:
+    description: 'Published image digest'
+    value: ${{ steps.build-by-output.outputs.digest || steps.build-by-tag.outputs.digest }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Docker build
+      uses: ./.github/actions/setup-docker-build
+      with:
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+
+    - name: Download release artifact
+      if: ${{ inputs.artifact-name != '' && inputs.artifact-path != '' }}
+      uses: actions/download-artifact@v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.artifact-path }}
+
+    - name: Verify downloaded release artifacts
+      if: ${{ inputs.verify-paths != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        while IFS= read -r path; do
+          [ -z "$path" ] && continue
+          test -f "$path"
+        done <<'EOF'
+        ${{ inputs.verify-paths }}
+        EOF
+
+    - name: Build and push image by digest
+      if: ${{ inputs.outputs != '' }}
+      id: build-by-output
+      uses: docker/build-push-action@v7
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.file }}
+        platforms: ${{ inputs.platforms }}
+        outputs: ${{ inputs.outputs }}
+        cache-from: type=gha,scope=${{ inputs.cache-scope }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope }}
+
+    - name: Build and push tagged image
+      if: ${{ inputs.outputs == '' }}
+      id: build-by-tag
+      uses: docker/build-push-action@v7
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.file }}
+        platforms: ${{ inputs.platforms }}
+        push: ${{ inputs.push }}
+        tags: ${{ inputs.tags }}
+        cache-from: type=gha,scope=${{ inputs.cache-scope }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope }}
