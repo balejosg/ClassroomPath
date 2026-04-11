@@ -13,6 +13,7 @@ type WorkflowJob = {
   outputs?: Record<string, string>;
   'runs-on'?: string | string[];
   uses?: string;
+  secrets?: string | Record<string, string>;
   with?: Record<string, unknown>;
   steps?: Array<{
     name?: string;
@@ -195,6 +196,22 @@ describe('Workflow configuration hardening', () => {
       detectScript,
       /upstream\/openpath\|upstream\/openpath\/\*\)[\s\S]*mark_all_changed/,
       'OpenPath gitlink updates should fan out to every release-candidate image family'
+    );
+  });
+
+  test('release candidate workflow inherits Firefox signing secrets into the reusable asset job', () => {
+    const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
+    const firefoxAssetsJob = workflow.jobs?.['resolve-openpath-firefox-release-assets'];
+
+    assert.equal(
+      firefoxAssetsJob?.uses,
+      './.github/workflows/firefox-release-assets.yml',
+      'release candidate workflow should resolve Firefox assets through the reusable workflow'
+    );
+    assert.equal(
+      firefoxAssetsJob?.secrets,
+      'inherit',
+      'release candidate workflow should inherit Firefox signing secrets into the reusable asset workflow'
     );
   });
 

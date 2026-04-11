@@ -204,6 +204,7 @@ jobs:
     with:
       build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_api_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
       artifact_name: openpath-firefox-release-assets
+    secrets: inherit
 
   build-openpath-api-release-candidate:
     name: Build OpenPath API Release Candidate
