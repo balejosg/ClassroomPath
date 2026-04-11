@@ -33,11 +33,7 @@ function derivePostReleaseCanaryResult({ highRisk, canaryResult }) {
   return valueOrNull(canaryResult) ?? 'deferred';
 }
 
-function deriveReleaseOutcome({
-  deployResult,
-  smokeResult,
-  rollbackResult,
-}) {
+function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
   if (smokeResult === 'success') {
     return 'released';
   }

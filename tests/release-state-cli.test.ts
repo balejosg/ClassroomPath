@@ -19,26 +19,33 @@ test('release-state CLI writes shell-compatible snapshots through the typed cont
   const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-write-'));
   const snapshotPath = join(tempDir, 'current-images.env');
 
-  execFileSync('node', [cliPath, 'write-snapshot', '--snapshot-type', 'current-runtime', '--output', snapshotPath], {
-    cwd: projectRoot,
-    env: {
-      ...process.env,
-      APP_SHA: 'abc123',
-      IMAGE_SOURCE: 'release-candidate',
-      CLASSROOMPATH_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
-      CLASSROOMPATH_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
-      OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
-      OPENPATH_VERSION: '4.1.19',
-      OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
-      CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
-    },
-  });
+  execFileSync(
+    'node',
+    [cliPath, 'write-snapshot', '--snapshot-type', 'current-runtime', '--output', snapshotPath],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        APP_SHA: 'abc123',
+        IMAGE_SOURCE: 'release-candidate',
+        CLASSROOMPATH_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+        CLASSROOMPATH_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+        OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+        OPENPATH_VERSION: '4.1.19',
+        OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+        CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
+      },
+    }
+  );
 
   const writtenText = readFileSync(snapshotPath, 'utf-8');
   const snapshot = parseReleaseStateText(writtenText);
 
   assert.match(writtenText, /APP_SHA=abc123/);
-  assert.equal(snapshot.CLASSROOMPATH_GATEWAY_IMAGE, 'ghcr.io/balejosg/classroompath-gateway:abc123');
+  assert.equal(
+    snapshot.CLASSROOMPATH_GATEWAY_IMAGE,
+    'ghcr.io/balejosg/classroompath-gateway:abc123'
+  );
   assert.equal(snapshot.OPENPATH_LINUX_AGENT_VERSION, '4.1.19');
 });
 

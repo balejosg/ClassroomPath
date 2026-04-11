@@ -63,7 +63,11 @@ void describe('Release Risk Detection', () => {
       writeFile(repoDir, 'README.md', 'baseline\n');
       const productionSha = commitAll(repoDir, 'baseline');
 
-      writeFile(repoDir, 'upstream/openpath/linux/scripts/runtime/openpath-self-update.sh', '#!/usr/bin/env bash\n');
+      writeFile(
+        repoDir,
+        'upstream/openpath/linux/scripts/runtime/openpath-self-update.sh',
+        '#!/usr/bin/env bash\n'
+      );
       const previousTagSha = commitAll(repoDir, 'risky linux change');
       run(repoDir, 'git', 'tag', 'v1.2.97', previousTagSha);
 
@@ -101,7 +105,11 @@ void describe('Release Risk Detection', () => {
       writeFile(repoDir, 'README.md', 'baseline\n');
       commitAll(repoDir, 'baseline');
 
-      writeFile(repoDir, 'upstream/openpath/linux/scripts/runtime/openpath-self-update.sh', '#!/usr/bin/env bash\n');
+      writeFile(
+        repoDir,
+        'upstream/openpath/linux/scripts/runtime/openpath-self-update.sh',
+        '#!/usr/bin/env bash\n'
+      );
       const previousTagSha = commitAll(repoDir, 'risky linux change');
       run(repoDir, 'git', 'tag', 'v1.2.97', previousTagSha);
 

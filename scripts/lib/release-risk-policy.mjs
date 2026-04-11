@@ -1,25 +1,29 @@
 export const RELEASE_RISK_POLICY_DEFINITIONS = [
   {
     id: 'openpath-gitlink',
-    description: 'OpenPath submodule promotions can change client and extension delivery contracts.',
+    description:
+      'OpenPath submodule promotions can change client and extension delivery contracts.',
     patterns: ['^upstream/openpath$'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
   },
   {
     id: 'openpath-windows-runtime',
-    description: 'Windows client runtime changes must exercise bootstrap and installed-client update paths.',
+    description:
+      'Windows client runtime changes must exercise bootstrap and installed-client update paths.',
     patterns: ['^upstream/openpath/windows/'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
   },
   {
     id: 'openpath-linux-runtime',
-    description: 'Linux client runtime changes must exercise the installed-client self-update path.',
+    description:
+      'Linux client runtime changes must exercise the installed-client self-update path.',
     patterns: ['^upstream/openpath/linux/'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
   },
   {
     id: 'openpath-firefox-extension',
-    description: 'Firefox extension delivery changes must keep Windows policy/bootstrap evidence and prod canaries.',
+    description:
+      'Firefox extension delivery changes must keep Windows policy/bootstrap evidence and prod canaries.',
     patterns: ['^upstream/openpath/firefox-extension/'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
   },
@@ -35,7 +39,8 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
   },
   {
     id: 'classroompath-api-image',
-    description: 'ClassroomPath API image changes can alter the OpenPath API runtime shipped to clients.',
+    description:
+      'ClassroomPath API image changes can alter the OpenPath API runtime shipped to clients.',
     patterns: ['^docker/Dockerfile\\.api$'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
   },
@@ -55,7 +60,10 @@ export function matchReleaseRiskRules(changedFile, definitions = RELEASE_RISK_PO
   );
 }
 
-export function evaluateReleaseRiskPaths(changedFiles, definitions = RELEASE_RISK_POLICY_DEFINITIONS) {
+export function evaluateReleaseRiskPaths(
+  changedFiles,
+  definitions = RELEASE_RISK_POLICY_DEFINITIONS
+) {
   const matchedRules = new Map();
 
   for (const changedFile of changedFiles) {

@@ -62,7 +62,9 @@ void describe('Remote Deploy Bootstrap', () => {
     assert.ok(
       helperContractsContent.includes('remote_helper_path_supports_all()') &&
         helperContractsContent.includes('refresh_deployed_release_helpers()') &&
-        helperContractsContent.includes('release_state_helper_supports_staging_verification_contract()'),
+        helperContractsContent.includes(
+          'release_state_helper_supports_staging_verification_contract()'
+        ),
       'remote-helper-contracts.sh should own shared streamed-helper contract guards and post-checkout refresh logic'
     );
   });
@@ -155,7 +157,9 @@ void describe('Remote Deploy Bootstrap', () => {
         remoteContent.includes('source "$REMOTE_HELPER_CONTRACTS_PATH"') &&
         remoteContent.includes('release_manifest_helper_supports_contract()') &&
         remoteContent.includes('refresh_deployed_release_helpers()') &&
-        remoteContent.includes('if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then') &&
+        remoteContent.includes(
+          'if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then'
+        ) &&
         remoteContent.includes('decode_release_manifest_base64() {') &&
         remoteContent.includes('release_manifest_validate_contract() {'),
       'deploy-staging-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them and reload the refreshed helper contract after checkout'
@@ -197,7 +201,9 @@ void describe('Remote Deploy Bootstrap', () => {
         deployRemoteContent.includes('source "$REMOTE_HELPER_CONTRACTS_PATH"') &&
         deployRemoteContent.includes('release_manifest_helper_supports_contract()') &&
         deployRemoteContent.includes('refresh_deployed_release_helpers()') &&
-        deployRemoteContent.includes('if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then') &&
+        deployRemoteContent.includes(
+          'if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then'
+        ) &&
         deployRemoteContent.includes('decode_release_manifest_base64() {') &&
         deployRemoteContent.includes('release_manifest_validate_contract() {'),
       'deploy-production-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them and reload the refreshed helper contract after checkout'
@@ -218,7 +224,8 @@ void describe('Remote Deploy Bootstrap', () => {
         content.includes('REMOTE_BOOTSTRAP_HELPER_PATH=') &&
           content.includes('resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE"') &&
           content.includes('resolve_remote_helper_path') &&
-          (scriptName === 'rollback-production-remote.sh' || content.includes('REMOTE_HELPER_CONTRACTS_PATH')),
+          (scriptName === 'rollback-production-remote.sh' ||
+            content.includes('REMOTE_HELPER_CONTRACTS_PATH')),
         `${scriptName} should reuse the shared remote bootstrap helper when available`
       );
     }

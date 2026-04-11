@@ -11,6 +11,7 @@
 ### Task 1: Add typed release-state contract and CLI
 
 **Files:**
+
 - Create: `scripts/lib/release-state-contract.mjs`
 - Create: `scripts/release-state-cli.mjs`
 - Modify: `scripts/lib/release-state.sh`
@@ -18,6 +19,7 @@
 - Test: `tests/release-state-cli.test.ts`
 
 **Steps:**
+
 1. Define snapshot schemas and env parsing/serialization helpers in `scripts/lib/release-state-contract.mjs`.
 2. Add `scripts/release-state-cli.mjs` with `write-snapshot` and `verify-staging` commands.
 3. Keep `scripts/lib/release-state.sh` as compatibility layer, but let write paths delegate to the CLI when available.
@@ -27,6 +29,7 @@
 ### Task 2: Make release-risk policy declarative
 
 **Files:**
+
 - Create: `scripts/lib/release-risk-policy.mjs`
 - Create: `scripts/lib/release-risk.mjs`
 - Create: `scripts/detect-windows-firefox-risk.mjs`
@@ -36,6 +39,7 @@
 - Test: `tests/release-risk-policy.test.ts`
 
 **Steps:**
+
 1. Move high-risk path policy into a single exported catalog with rule ids and canary metadata.
 2. Add typed risk helpers for target/base resolution and changed-file evaluation.
 3. Convert `detect-windows-firefox-risk.sh` into a thin wrapper around the Node CLI.
@@ -45,12 +49,14 @@
 ### Task 3: Extract repeated release-candidate workflow steps
 
 **Files:**
+
 - Create: `.github/actions/build-release-candidate-image/action.yml`
 - Create: `.github/actions/publish-release-candidate-manifest/action.yml`
 - Modify: `.github/workflows/release-candidate-images.yml`
 - Modify: `tests/workflow-config.test.ts`
 
 **Steps:**
+
 1. Extract repeated Docker setup, optional artifact download, and image build/push logic into `build-release-candidate-image`.
 2. Extract repeated manifest merge/output logic into `publish-release-candidate-manifest`.
 3. Rewire `release-candidate-images.yml` to use those actions while preserving job names, outputs, and dependencies.
@@ -59,11 +65,13 @@
 ### Task 4: Keep release automation coverage aligned
 
 **Files:**
+
 - Modify: `scripts/lib/verification-catalog.mjs`
 - Modify: `tests/deployment.test.ts`
 - Modify: `tests/workflow-config.test.ts`
 
 **Steps:**
+
 1. Register the new CLI/library/action paths in the verification catalog.
 2. Update existing deployment/workflow assertions so they validate delegation to typed contracts and composite actions instead of old inline logic.
 3. Include the new tests in the release automation regression plan.
@@ -71,9 +79,11 @@
 ### Task 5: Verify and land
 
 **Files:**
+
 - Modify: git metadata only
 
 **Steps:**
+
 1. Run `bash -n` on touched shell scripts.
 2. Run focused `tsx` tests for deployment/workflow/release-state/risk changes.
 3. Run `node scripts/check-new-file-coverage.js`.

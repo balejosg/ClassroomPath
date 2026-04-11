@@ -1388,7 +1388,10 @@ void describe('Migration Tooling', () => {
   void test('release-state helpers centralize current-image and staging-verification evidence writes', () => {
     const releaseStateHelperPath = resolve(projectRoot, 'scripts/lib/release-state.sh');
     const releaseStateContractPath = resolve(projectRoot, 'scripts/lib/release-state-contract.mjs');
-    const remoteHelperContractsPath = resolve(projectRoot, 'scripts/lib/remote-helper-contracts.sh');
+    const remoteHelperContractsPath = resolve(
+      projectRoot,
+      'scripts/lib/remote-helper-contracts.sh'
+    );
     const deploymentStateHelperPath = resolve(projectRoot, 'scripts/lib/deployment-state.sh');
     const releaseStateHelper = readFileSync(releaseStateHelperPath, 'utf-8');
     const releaseStateContract = readFileSync(releaseStateContractPath, 'utf-8');
@@ -1446,7 +1449,9 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
-        remoteHelperContracts.includes('release_state_helper_supports_staging_verification_contract()') &&
+        remoteHelperContracts.includes(
+          'release_state_helper_supports_staging_verification_contract()'
+        ) &&
         remoteHelperContracts.includes('refresh_deployed_release_helpers()'),
       'remote-helper-contracts should centralize post-checkout helper compatibility checks for streamed remote deploys'
     );
@@ -1485,12 +1490,16 @@ void describe('Migration Tooling', () => {
       'deploy-production-remote.sh should reuse the shared release-state/deployment-state writers, reject stale contracts, and reload refreshed helpers after checkout'
     );
     assert.ok(
-        persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&
+      persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&
         persistVerification.includes('SCRIPT_DIR="$APP_DIR/scripts"') &&
         persistVerification.includes('RELEASE_STATE_HELPER_PATH') &&
         persistVerification.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
-        persistVerification.includes('release_state_helper_supports_staging_verification_contract()') &&
-        remoteHelperContracts.includes('release_state_helper_supports_staging_verification_contract()') &&
+        persistVerification.includes(
+          'release_state_helper_supports_staging_verification_contract()'
+        ) &&
+        remoteHelperContracts.includes(
+          'release_state_helper_supports_staging_verification_contract()'
+        ) &&
         persistVerification.includes('STAGING_VERIFICATION_RUNNER_PATH') &&
         persistVerification.includes('persist-evidence'),
       'persist-staging-verification-remote.sh should reject stale release-state helpers before delegating persistence to the shared staging verification runner'

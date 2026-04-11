@@ -747,7 +747,9 @@ describe('Workflow configuration hardening', () => {
       'release-evidence should serialize a single JSON input artifact before rendering markdown and JSON outputs'
     );
     assert.ok(
-      workflowText.includes('RELEASE_EVIDENCE_INPUT_PATH=release-evidence-input.json node scripts/write-release-evidence.mjs'),
+      workflowText.includes(
+        'RELEASE_EVIDENCE_INPUT_PATH=release-evidence-input.json node scripts/write-release-evidence.mjs'
+      ),
       'release-evidence should pass the serialized JSON artifact into the renderer through a single input path'
     );
 
@@ -830,6 +832,15 @@ describe('Workflow configuration hardening', () => {
     assert.ok(
       workflowText.includes('openpath-firefox-extension.xpi'),
       'windows-firefox-canary should validate the staged signed Firefox XPI'
+    );
+    assert.ok(
+      workflowText.includes('deploy-targets.mjs get staging publicUrl') &&
+        workflowText.includes('/api/extensions/firefox/openpath.xpi'),
+      'windows-firefox-canary should force-install the extension from the canonical public staging XPI URL'
+    );
+    assert.ok(
+      !workflowText.includes('file:///'),
+      'windows-firefox-canary should not rely on a runner-local file:// install_url that Firefox may ignore'
     );
     assert.ok(
       workflowText.includes('$firefoxCandidates = @(('),
@@ -1137,9 +1148,9 @@ describe('Workflow configuration hardening', () => {
       'Firefox asset resolution should delegate artifact preparation to the dedicated reusable workflow'
     );
     assert.ok(
-      String(jobs['resolve-openpath-firefox-release-assets']?.with?.['build_required'] ?? '').includes(
-        'openpath_api_changed'
-      ),
+      String(
+        jobs['resolve-openpath-firefox-release-assets']?.with?.['build_required'] ?? ''
+      ).includes('openpath_api_changed'),
       'Firefox asset resolution should pass the build-required decision into the reusable asset workflow'
     );
     assert.equal(
@@ -1221,7 +1232,9 @@ describe('Workflow configuration hardening', () => {
       'verifier reusable family should wait for the reuse/build decision inputs'
     );
 
-    const buildImageActionText = readText('.github/actions/build-release-candidate-image/action.yml');
+    const buildImageActionText = readText(
+      '.github/actions/build-release-candidate-image/action.yml'
+    );
     const publishManifestActionText = readText(
       '.github/actions/publish-release-candidate-manifest/action.yml'
     );
@@ -1255,10 +1268,18 @@ describe('Workflow configuration hardening', () => {
       jobs['publish-release-candidate-manifest']?.steps?.map((step) => step.run ?? '').join('\n') ??
       '';
     assert.ok(
-      publishManifestRun.includes('CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.build-migrations-release-candidate.outputs.image }}') &&
-        publishManifestRun.includes('OPENPATH_API_IMAGE=${{ needs.build-openpath-api-release-candidate.outputs.image }}') &&
-        publishManifestRun.includes('CLASSROOMPATH_SPA_IMAGE=${{ needs.build-spa-release-candidate.outputs.image }}') &&
-        publishManifestRun.includes('CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.build-verifier-release-candidate.outputs.image }}'),
+      publishManifestRun.includes(
+        'CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.build-migrations-release-candidate.outputs.image }}'
+      ) &&
+        publishManifestRun.includes(
+          'OPENPATH_API_IMAGE=${{ needs.build-openpath-api-release-candidate.outputs.image }}'
+        ) &&
+        publishManifestRun.includes(
+          'CLASSROOMPATH_SPA_IMAGE=${{ needs.build-spa-release-candidate.outputs.image }}'
+        ) &&
+        publishManifestRun.includes(
+          'CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.build-verifier-release-candidate.outputs.image }}'
+        ),
       'release candidate manifest should consume the shared image output exposed by each reusable image-family workflow'
     );
     assert.ok(
@@ -1282,9 +1303,15 @@ describe('Workflow configuration hardening', () => {
       'release candidate workflow should gate expensive image builds behind per-component change detection'
     );
     assert.ok(
-      readText('.github/workflows/reusable-release-candidate-image-family.yml').includes('build-amd64') &&
-        readText('.github/workflows/reusable-release-candidate-image-family.yml').includes('build-arm64') &&
-        readText('.github/workflows/reusable-release-candidate-image-family.yml').includes('./.github/actions/publish-release-candidate-manifest'),
+      readText('.github/workflows/reusable-release-candidate-image-family.yml').includes(
+        'build-amd64'
+      ) &&
+        readText('.github/workflows/reusable-release-candidate-image-family.yml').includes(
+          'build-arm64'
+        ) &&
+        readText('.github/workflows/reusable-release-candidate-image-family.yml').includes(
+          './.github/actions/publish-release-candidate-manifest'
+        ),
       'the reusable image family workflow should own the per-architecture builds and shared manifest publication'
     );
   });

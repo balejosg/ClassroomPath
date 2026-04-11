@@ -185,7 +185,10 @@ describe('release evidence rendering', () => {
     assert.equal(json.jobs.productionClientUpdateCanary, 'not_applicable');
     assert.equal(json.stagingVerification.windowsFirefoxHighRisk, 'false');
     assert.match(markdown, /\| Windows\/Firefox canary \(advisory\) \| not_applicable \|/);
-    assert.match(markdown, /\| Production client update canary \(post-release\) \| not_applicable \|/);
+    assert.match(
+      markdown,
+      /\| Production client update canary \(post-release\) \| not_applicable \|/
+    );
   });
 
   test('keeps a failed post-release client update canary visible without changing the release outcome', () => {
