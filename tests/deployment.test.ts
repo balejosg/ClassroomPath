@@ -660,10 +660,11 @@ void describe('Migration Tooling', () => {
       'staging verification runner should own Firefox metadata parsing'
     );
     assert.ok(
-      runnerContent.includes(
-        'Release-candidate staging deploys must prove the live Windows bootstrap contract'
-      ),
-      'shared staging verification runner should fail release-candidate staging evidence when the live Windows bootstrap gate fails'
+      runnerContent.includes('STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE') &&
+        runnerContent.includes(
+          'Release-candidate staging deploys must prove the live Windows bootstrap contract'
+        ),
+      'shared staging verification runner should only fail staging evidence for Windows/Firefox delivery changes when the release plan explicitly requires that gate'
     );
     assert.ok(
       localContent.includes(

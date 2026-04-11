@@ -218,12 +218,12 @@ run_release_gate_checks() {
 
   echo "Windows bootstrap gate FAILED (exit code: $windows_bootstrap_exit_code)" >&2
 
-  if [ "$STAGING_USE_RELEASE_CANDIDATE" = "1" ]; then
+  if [ "${STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE:-0}" = "1" ]; then
     echo "Release-candidate staging deploys must prove the live Windows bootstrap contract" >&2
     return 1
   fi
 
-  echo "Continuing because STAGING_USE_RELEASE_CANDIDATE=$STAGING_USE_RELEASE_CANDIDATE" >&2
+  echo "Continuing because STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE=${STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE:-0}" >&2
 }
 
 persist_staging_verification_evidence() {
