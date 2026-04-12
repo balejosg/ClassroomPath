@@ -250,6 +250,128 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.ok(ticket.enrollmentToken);
   });
 
+  test('teacher cannot obtain an enrollment ticket for a tenant classroom with an inaccessible group', async () => {
+    await resetDb();
+
+    const scenario = buildScenario();
+    const { actor: admin, organization } = await scenario.createOrgAdmin({
+      userId: 'classrooms-group-scoped-admin',
+      organizationName: 'Grouped Enrollment Org',
+    });
+
+    const group = await scenario.createGroup({
+      token: admin.token,
+      name: 'grouped-enrollment-group',
+      displayName: 'Grouped Enrollment Group',
+    });
+
+    const classroom = await scenario.createClassroom({
+      token: admin.token,
+      name: 'classroom-grouped',
+      displayName: 'Aula Con Grupo',
+      defaultGroupId: group.id,
+    });
+
+    const teacher = await scenario.addTeacher({
+      adminToken: admin.token,
+      organizationId: organization.organizationId,
+      userId: 'classrooms-group-scoped-teacher',
+      name: 'Teacher Group Scoped',
+      groupIds: [],
+    });
+
+    const ticketResponse = await fetch(
+      `${integration.baseUrl}/api/enroll/${encodeURIComponent(classroom.id)}/ticket`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${teacher.token}`,
+        },
+      }
+    );
+
+    assertStatus(ticketResponse, 403);
+    const payload = (await ticketResponse.json()) as {
+      success: boolean;
+      error?: string;
+    };
+    assert.strictEqual(payload.success, false);
+    assert.match(payload.error ?? '', /access/i);
+  });
+
+  test('teacher can obtain an enrollment ticket when classroom access resolves through the current schedule', async () => {
+    await resetDb();
+
+    const scenario = buildScenario();
+    const { actor: admin, organization } = await scenario.createOrgAdmin({
+      userId: 'classrooms-scheduled-enrollment-admin',
+      organizationName: 'Scheduled Enrollment Org',
+    });
+
+    const defaultGroup = await scenario.createGroup({
+      token: admin.token,
+      name: 'scheduled-enrollment-default-group',
+      displayName: 'Scheduled Enrollment Default Group',
+    });
+    const scheduledGroup = await scenario.createGroup({
+      token: admin.token,
+      name: 'scheduled-enrollment-current-group',
+      displayName: 'Scheduled Enrollment Current Group',
+    });
+
+    const classroom = await scenario.createClassroom({
+      token: admin.token,
+      name: 'classroom-scheduled-enrollment',
+      displayName: 'Aula Con Horario Activo',
+      defaultGroupId: defaultGroup.id,
+    });
+
+    const teacher = await scenario.addTeacher({
+      adminToken: admin.token,
+      organizationId: organization.organizationId,
+      userId: 'classrooms-scheduled-enrollment-teacher',
+      name: 'Teacher Scheduled Enrollment',
+      groupIds: [scheduledGroup.id],
+    });
+
+    const inSlot = new Date(2026, 1, 3, 10, 30, 0, 0);
+    await withFrozenDate(inSlot, async () => {
+      const createSchedule = await trpcMutate(
+        integration.baseUrl,
+        'schedules.create',
+        {
+          classroomId: classroom.id,
+          groupId: scheduledGroup.id,
+          dayOfWeek: 2,
+          startTime: '10:00',
+          endTime: '11:00',
+        },
+        bearerAuth(admin.token)
+      );
+      assertStatus(createSchedule, 200);
+
+      const ticketResponse = await fetch(
+        `${integration.baseUrl}/api/enroll/${encodeURIComponent(classroom.id)}/ticket`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${teacher.token}`,
+          },
+        }
+      );
+
+      assertStatus(ticketResponse, 200);
+      const ticket = (await ticketResponse.json()) as {
+        success: boolean;
+        enrollmentToken?: string;
+        classroomId?: string;
+      };
+      assert.strictEqual(ticket.success, true);
+      assert.strictEqual(ticket.classroomId, classroom.id);
+      assert.ok(ticket.enrollmentToken);
+    });
+  });
+
   test('allows same classroom name in different organizations but blocks duplicates in same org', async () => {
     await resetDb();
 

@@ -6,10 +6,11 @@ import { tmpdir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import bcrypt from 'bcrypt';
 import express from 'express';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 import { closeConnection, db, schema } from '../../src/db/index.js';
 import { closeOpenPathConnection, openpathDb, openpathSchema } from '../../src/db/openpath.js';
+import { resolveCurrentGroup } from '@openpath/shared';
 import {
   assertStatus,
   bearerAuth,
@@ -59,6 +60,13 @@ const TEST_PLATFORM_ADMIN_EMAIL = 'platform-admin@classroompath.test';
 const TEST_STRIPE_SECRET_KEY = 'sk_test_integration_harness';
 const TEST_STRIPE_WEBHOOK_SECRET = 'whsec_integration_harness';
 const TEST_STRIPE_PRICE_ID = 'price_integration_harness';
+
+interface MockOpenPathRoleInfo {
+  role: string;
+  groupIds: string[];
+}
+
+type MockCurrentGroupSource = ReturnType<typeof resolveCurrentGroup>['source'];
 
 function installMockResendDelivery(): void {
   const patchedFetch = globalThis.fetch as typeof globalThis.fetch & {
@@ -232,6 +240,164 @@ async function buildMockAuthMeResponse(token: string): Promise<{
   };
 }
 
+function getBearerTokenFromRequest(req: express.Request): string | null {
+  const authHeader = req.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return null;
+  }
+
+  return authHeader.slice(7);
+}
+
+function decodeMockOpenPathRoles(token: string): MockOpenPathRoleInfo[] {
+  const decoded = jwt.decode(token) as
+    | (jwt.JwtPayload & {
+        roles?: Array<{ role?: string; groupIds?: string[] }>;
+      })
+    | null;
+
+  if (!Array.isArray(decoded?.roles)) {
+    return [];
+  }
+
+  return decoded.roles
+    .filter(
+      (role): role is { role: string; groupIds?: string[] } =>
+        role !== null && typeof role === 'object' && typeof role.role === 'string'
+    )
+    .map((role) => ({
+      role: role.role,
+      groupIds: Array.isArray(role.groupIds)
+        ? role.groupIds.filter((groupId): groupId is string => typeof groupId === 'string')
+        : [],
+    }));
+}
+
+async function findMockOpenPathClassroomForEnroll(classroomId: string): Promise<{
+  id: string;
+  name: string;
+  defaultGroupId: string | null;
+  activeGroupId: string | null;
+  currentGroupId: string | null;
+  currentGroupSource: MockCurrentGroupSource;
+} | null> {
+  const [classroom] = await openpathDb
+    .select({
+      id: openpathSchema.classrooms.id,
+      name: openpathSchema.classrooms.name,
+      defaultGroupId: openpathSchema.classrooms.defaultGroupId,
+      activeGroupId: openpathSchema.classrooms.activeGroupId,
+    })
+    .from(openpathSchema.classrooms)
+    .where(eq(openpathSchema.classrooms.id, classroomId))
+    .limit(1);
+
+  if (!classroom) {
+    return null;
+  }
+
+  const currentScheduleGroupId = await findMockCurrentScheduleGroupId(classroomId);
+  const currentGroup = resolveCurrentGroup({
+    activeGroupId: classroom.activeGroupId,
+    scheduleGroupId: currentScheduleGroupId,
+    defaultGroupId: classroom.defaultGroupId,
+  });
+
+  return {
+    ...classroom,
+    currentGroupId: currentGroup.id,
+    currentGroupSource: currentGroup.source,
+  };
+}
+
+function weeklyRecurrenceWhereClause() {
+  return or(
+    eq(openpathSchema.schedules.recurrence, 'weekly'),
+    isNull(openpathSchema.schedules.recurrence)
+  );
+}
+
+async function findMockCurrentScheduleGroupId(classroomId: string, now: Date = new Date()) {
+  const [oneOff] = await openpathDb
+    .select({
+      groupId: openpathSchema.schedules.groupId,
+    })
+    .from(openpathSchema.schedules)
+    .where(
+      and(
+        eq(openpathSchema.schedules.classroomId, classroomId),
+        eq(openpathSchema.schedules.recurrence, 'one_off'),
+        sql`${openpathSchema.schedules.startAt} <= ${now} AND ${openpathSchema.schedules.endAt} > ${now}`
+      )
+    )
+    .orderBy(openpathSchema.schedules.startAt)
+    .limit(1);
+
+  if (oneOff?.groupId) {
+    return oneOff.groupId;
+  }
+
+  const dayOfWeek = now.getDay();
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return null;
+  }
+
+  const currentTime = now.toTimeString().slice(0, 5);
+  const [weekly] = await openpathDb
+    .select({
+      groupId: openpathSchema.schedules.groupId,
+    })
+    .from(openpathSchema.schedules)
+    .where(
+      and(
+        eq(openpathSchema.schedules.classroomId, classroomId),
+        weeklyRecurrenceWhereClause(),
+        eq(openpathSchema.schedules.dayOfWeek, dayOfWeek),
+        sql`${openpathSchema.schedules.startTime} <= ${currentTime}::time`,
+        sql`${openpathSchema.schedules.endTime} > ${currentTime}::time`
+      )
+    )
+    .orderBy(openpathSchema.schedules.startTime)
+    .limit(1);
+
+  return weekly?.groupId ?? null;
+}
+
+function canMockRoleEnrollClassroom(
+  roles: MockOpenPathRoleInfo[],
+  classroom: {
+    defaultGroupId: string | null;
+    activeGroupId: string | null;
+    currentGroupId: string | null;
+    currentGroupSource: MockCurrentGroupSource;
+  }
+): boolean {
+  if (roles.some((role) => role.role === 'admin')) {
+    return true;
+  }
+
+  const teacherRoles = roles.filter((role) => role.role === 'teacher');
+  if (teacherRoles.length === 0) {
+    return false;
+  }
+
+  if (classroom.currentGroupSource === 'none') {
+    return true;
+  }
+
+  const candidateGroupIds = [
+    classroom.activeGroupId,
+    classroom.currentGroupId,
+    classroom.defaultGroupId,
+  ].filter(
+    (groupId): groupId is string => typeof groupId === 'string' && groupId.length > 0
+  );
+
+  return teacherRoles.some((role) =>
+    candidateGroupIds.some((groupId) => role.groupIds.includes(groupId))
+  );
+}
+
 async function ensureMockOpenPathServer(): Promise<string> {
   if (mockOpenPathServer && mockOpenPathBaseUrl) {
     return mockOpenPathBaseUrl;
@@ -249,25 +415,14 @@ async function ensureMockOpenPathServer(): Promise<string> {
 
   app.post('/api/enroll/:classroomId/ticket', (req, res) => {
     void (async () => {
-      const authHeader = req.get('authorization');
-      if (!authHeader?.startsWith('Bearer ')) {
+      const token = getBearerTokenFromRequest(req);
+      if (!token) {
         res.status(401).json({ success: false, error: 'Authorization required' });
         return;
       }
 
-      const token = authHeader.slice(7);
-      const decoded = jwt.decode(token) as
-        | (jwt.JwtPayload & {
-            roles?: Array<{ role?: string }>;
-          })
-        | null;
-      const roles = Array.isArray(decoded?.roles)
-        ? decoded.roles
-            .map((role) => (typeof role?.role === 'string' ? role.role : null))
-            .filter((role): role is string => role !== null)
-        : [];
-
-      if (!roles.includes('admin') && !roles.includes('teacher')) {
+      const roles = decodeMockOpenPathRoles(token);
+      if (!roles.some((role) => role.role === 'admin' || role.role === 'teacher')) {
         res.status(403).json({ success: false, error: 'Teacher access required' });
         return;
       }
@@ -279,17 +434,18 @@ async function ensureMockOpenPathServer(): Promise<string> {
         return;
       }
 
-      const [classroom] = await openpathDb
-        .select({
-          id: openpathSchema.classrooms.id,
-          name: openpathSchema.classrooms.name,
-        })
-        .from(openpathSchema.classrooms)
-        .where(eq(openpathSchema.classrooms.id, classroomId))
-        .limit(1);
+      const classroom = await findMockOpenPathClassroomForEnroll(classroomId);
 
       if (!classroom) {
         res.status(404).json({ success: false, error: 'Classroom not found' });
+        return;
+      }
+
+      if (!canMockRoleEnrollClassroom(roles, classroom)) {
+        res.status(403).json({
+          success: false,
+          error: 'You do not have access to this classroom',
+        });
         return;
       }
 
