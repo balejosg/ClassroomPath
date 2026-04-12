@@ -27,11 +27,16 @@ const verifyCachePath = resolve(projectRoot, 'scripts/lib/verify-cache.ts');
 const verifyDomainPolicyPath = resolve(projectRoot, 'scripts/lib/verify-domain-policy.ts');
 const verifyDockerPath = resolve(projectRoot, 'scripts/lib/verify-docker.ts');
 const verifyPlaywrightPath = resolve(projectRoot, 'scripts/lib/verify-playwright.ts');
+const verificationStageRunnersPath = resolve(
+  projectRoot,
+  'scripts/lib/verification-stage-runners.ts'
+);
 const verifyTestRunnersPath = resolve(projectRoot, 'scripts/lib/verify-test-runners.ts');
 const verifyStagesPath = resolve(projectRoot, 'scripts/lib/verify-stages.ts');
 const verifySummaryCliPath = resolve(projectRoot, 'scripts/print-verify-report-summary.mjs');
 const detectCiRelevantChangesPath = resolve(projectRoot, 'scripts/detect-ci-relevant-changes.mjs');
 const releaseCliPath = resolve(projectRoot, 'scripts/lib/release-cli.mjs');
+const githubActionsArtifactsPath = resolve(projectRoot, 'scripts/lib/github-actions-artifacts.mjs');
 const deployProductionContextHelperPath = resolve(
   projectRoot,
   'scripts/lib/deploy-production-context.sh'
@@ -47,7 +52,9 @@ const resolveLatestVerifierImageLibPath = resolve(
   projectRoot,
   'scripts/lib/resolve-latest-verifier-image.mjs'
 );
+const releaseCandidateLibPath = resolve(projectRoot, 'scripts/lib/release-candidate.mjs');
 const regressionPlanPath = resolve(projectRoot, 'scripts/lib/regression-plan.mjs');
+const stagingGatesHelperPath = resolve(projectRoot, 'scripts/lib/staging-gates.sh');
 const turboConfigPath = resolve(projectRoot, 'turbo.json');
 const turboRunnerScriptPath = resolve(projectRoot, 'scripts/run-turbo.sh');
 
@@ -193,19 +200,19 @@ void describe('Migration Tooling', () => {
 
   void test('verify-full skips coverage cleanup and gating when no API/SPA source coverage is needed', () => {
     const verifyPlan = readFileSync(verifyPlanPath, 'utf-8');
-    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const stageRunners = readFileSync(verificationStageRunnersPath, 'utf-8');
 
     assert.ok(
       verifyPlan.includes('needsCoverageGate: needsApiCoverage || needsSpaCoverage'),
       'verify-plan.ts should track whether the changed-file coverage gate is actually needed'
     );
     assert.ok(
-      verifyStages.includes('if (plan.needsCoverageGate) {'),
-      'verify-stages.ts should guard coverage cleanup and gating behind needsCoverageGate'
+      stageRunners.includes('if (plan.needsCoverageGate) {'),
+      'verification-stage-runners.ts should guard coverage cleanup and gating behind needsCoverageGate'
     );
     assert.ok(
-      verifyStages.includes('Skipping coverage gate (no changed API/SPA source files).'),
-      'verify-stages.ts should report when it skips the changed-file coverage gate'
+      stageRunners.includes('Skipping coverage gate (no changed API/SPA source files).'),
+      'verification-stage-runners.ts should report when it skips the changed-file coverage gate'
     );
   });
 
@@ -218,7 +225,8 @@ void describe('Migration Tooling', () => {
     const verifyPlan = readFileSync(verifyPlanPath, 'utf-8');
     const verifyReport = readFileSync(verifyReportPath, 'utf-8');
     const verifyPlaywright = readFileSync(verifyPlaywrightPath, 'utf-8');
-    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const stageRunners = readFileSync(verificationStageRunnersPath, 'utf-8');
+    const verificationCatalog = readFileSync(verificationCatalogPath, 'utf-8');
 
     assert.equal(
       packageJson.scripts?.['verify:commit'],
@@ -256,17 +264,17 @@ void describe('Migration Tooling', () => {
     assert.ok(
       verifyScript.includes("if (plan.verificationScope === 'release-automation')") &&
         verifyScript.includes("else if (plan.verificationScope === 'ops-regression')") &&
-        verifyStages.includes(
+        verificationCatalog.includes(
           'Running targeted workflow/release regression instead of full product verification'
         ) &&
-        verifyStages.includes(
+        verificationCatalog.includes(
           'Running deployment/workflow regression instead of full product verification'
         ),
       'verify-full.ts should route safe workflow-only diffs through release-specific scopes before falling back to full verification'
     );
     assert.ok(
-      verifyStages.includes('Running full E2E Playwright suite...'),
-      'verify-stages.ts should keep the release/full verification lane on the full Playwright suite'
+      stageRunners.includes('Running full E2E Playwright suite...'),
+      'verification-stage-runners.ts should keep the release/full verification lane on the full Playwright suite'
     );
     assert.ok(
       verifyPlaywright.includes(
@@ -299,6 +307,29 @@ void describe('Migration Tooling', () => {
         'PLAYWRIGHT_JSON_OUTPUT_FILE'
       ),
       'playwright.config.ts should support an auxiliary JSON reporter for verification gates'
+    );
+  });
+
+  void test('latest verifier image resolution delegates release-candidate manifest lookup to the shared helper', () => {
+    const verifierHelper = readFileSync(resolveLatestVerifierImageLibPath, 'utf-8');
+    const releaseCandidateHelper = readFileSync(releaseCandidateLibPath, 'utf-8');
+
+    assert.ok(
+      releaseCandidateHelper.includes(
+        'export function readLatestSuccessfulReleaseCandidateManifest'
+      ),
+      'release-candidate.mjs should expose the canonical latest-success manifest resolver'
+    );
+    assert.ok(
+      verifierHelper.includes("from './release-candidate.mjs'") &&
+        verifierHelper.includes('readLatestSuccessfulReleaseCandidateManifest'),
+      'resolve-latest-verifier-image.mjs should import the shared release-candidate manifest resolver'
+    );
+    assert.ok(
+      !verifierHelper.includes("execFileSync('gh'") &&
+        !verifierHelper.includes("['run', 'download'") &&
+        !verifierHelper.includes("['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`]"),
+      'resolve-latest-verifier-image.mjs should no longer own direct gh transport for release-candidate manifests'
     );
   });
 
@@ -359,6 +390,7 @@ void describe('Migration Tooling', () => {
     const orchestrator = readFileSync(verifyFullOrchestratorPath, 'utf-8');
     const verifyPlan = readFileSync(verifyPlanPath, 'utf-8');
     const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const stageRunners = readFileSync(verificationStageRunnersPath, 'utf-8');
 
     assert.ok(
       orchestrator.includes('createVerifyPlan') &&
@@ -367,17 +399,18 @@ void describe('Migration Tooling', () => {
       'verify-full should model verification policy through typed planning helpers in scripts/lib/verify-plan.ts'
     );
     assert.ok(
-      verifyStages.includes("from './verify-playwright.ts'") &&
-        verifyStages.includes("from './verify-test-runners.ts'") &&
-        verifyStages.includes("from './verify-docker.ts'") &&
-        verifyStages.includes("from './verification-catalog.mjs'") &&
-        verifyStages.includes("from './verify-cache.ts'"),
-      'verify-stages.ts should aggregate dedicated docker, test-runner, Playwright, cache, and stage-catalog helper modules'
+      verifyStages.includes("from './verification-stage-runners.ts'") &&
+        stageRunners.includes("from './verify-playwright.ts'") &&
+        stageRunners.includes("from './verify-test-runners.ts'") &&
+        stageRunners.includes("from './verify-docker.ts'") &&
+        stageRunners.includes("from './verification-catalog.mjs'") &&
+        stageRunners.includes("from './verify-cache.ts'"),
+      'verify-full should delegate orchestration to a thin verify-stages.ts wrapper over the shared stage-runner module'
     );
   });
 
   void test('verify-full cleans up stale compose projects so repeated local runs do not exhaust Docker subnets', () => {
-    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const stageRunners = readFileSync(verificationStageRunnersPath, 'utf-8');
     const verifyDocker = readFileSync(verifyDockerPath, 'utf-8');
 
     assert.ok(
@@ -387,9 +420,9 @@ void describe('Migration Tooling', () => {
       'verify-docker.ts should discover stale verification projects from Docker containers and networks'
     );
     assert.ok(
-      verifyStages.includes('await cleanupStaleVerificationProjects(plan, runtime);') &&
-        verifyStages.includes('await cleanupVerification(plan, runtime);'),
-      'verify-full should clear stale verification compose state before starting PostgreSQL'
+      stageRunners.includes("case 'cleanup-stale-verification-projects':") &&
+        stageRunners.includes("case 'cleanup-verification':"),
+      'verification-stage-runners.ts should clear stale verification compose state before starting PostgreSQL'
     );
     assert.ok(
       verifyDocker.includes("['down', '--volumes', '--remove-orphans']"),
@@ -406,7 +439,7 @@ void describe('Migration Tooling', () => {
       resolve(projectRoot, 'scripts/build-classroompath.sh'),
       'utf-8'
     );
-    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const stageRunners = readFileSync(verificationStageRunnersPath, 'utf-8');
     const turboConfig = readFileSync(turboConfigPath, 'utf-8');
 
     assert.ok(existsSync(turboConfigPath), 'turbo.json should exist at the ClassroomPath root');
@@ -423,8 +456,8 @@ void describe('Migration Tooling', () => {
       'build-classroompath.sh should delegate package builds to the shared turbo runner'
     );
     assert.ok(
-      verifyStages.includes("await runtime.run('bash', ['scripts/run-turbo.sh', 'verify:static']"),
-      'verify-stages.ts should route static verification through the root turbo pipeline'
+      stageRunners.includes("await runtime.run('bash', ['scripts/run-turbo.sh', 'verify:static']"),
+      'verification-stage-runners.ts should route static verification through the root turbo pipeline'
     );
     assert.ok(
       turboConfig.includes('"build"') &&
@@ -435,7 +468,7 @@ void describe('Migration Tooling', () => {
   });
 
   void test('verify-full bootstraps OpenPath workspace installs before OpenPath static verification', () => {
-    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const stageRunners = readFileSync(verificationStageRunnersPath, 'utf-8');
     const verifyTestRunners = readFileSync(verifyTestRunnersPath, 'utf-8');
     const bootstrapCall = 'await ensureOpenPathWorkspaceInstall(plan.rootDir, env, runtime);';
     const openPathStaticCall =
@@ -452,21 +485,21 @@ void describe('Migration Tooling', () => {
       'verify-test-runners.ts should repair missing OpenPath workspace installs with npm ci before static verification'
     );
     assert.ok(
-      verifyStages.includes(bootstrapCall) &&
-        verifyStages.indexOf(bootstrapCall) < verifyStages.indexOf(openPathStaticCall),
-      'verify-stages.ts should bootstrap the OpenPath workspace before running OpenPath static verification'
+      stageRunners.includes(bootstrapCall) &&
+        stageRunners.indexOf(bootstrapCall) < stageRunners.indexOf(openPathStaticCall),
+      'verification-stage-runners.ts should bootstrap the OpenPath workspace before running OpenPath static verification'
     );
   });
 
   void test('verify-full bootstraps OpenPath workspace installs before ClassroomPath build orchestration', () => {
-    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const stageRunners = readFileSync(verificationStageRunnersPath, 'utf-8');
     const bootstrapCall = 'await ensureOpenPathWorkspaceInstall(plan.rootDir, env, runtime);';
     const buildCall = "await runtime.run('npm', ['run', 'build']";
 
     assert.ok(
-      verifyStages.includes(bootstrapCall) &&
-        verifyStages.indexOf(bootstrapCall) < verifyStages.indexOf(buildCall),
-      'verify-stages.ts should bootstrap the OpenPath workspace before the ClassroomPath build step that depends on turbo'
+      stageRunners.includes(bootstrapCall) &&
+        stageRunners.indexOf(bootstrapCall) < stageRunners.indexOf(buildCall),
+      'verification-stage-runners.ts should bootstrap the OpenPath workspace before the ClassroomPath build step that depends on turbo'
     );
   });
 
@@ -603,6 +636,7 @@ void describe('Migration Tooling', () => {
     const releaseGateHelperContent = readFileSync(stagingReleaseGateScriptPath, 'utf-8');
     const helperContent = readFileSync(stagingVerifyStateScriptPath, 'utf-8');
     const runnerContent = readFileSync(stagingVerificationRunnerPath, 'utf-8');
+    const stagingGatesHelper = readFileSync(stagingGatesHelperPath, 'utf-8');
 
     assert.ok(
       existsSync(stagingVerifyStateScriptPath),
@@ -632,31 +666,31 @@ void describe('Migration Tooling', () => {
       'run-staging-release-gate.sh should delegate to the shared staging verification runner'
     );
     assert.ok(
-      runnerContent.includes('RELEASE_GATE_URL="$CANONICAL_STAGING_URL"') ||
-        runnerContent.includes('"RELEASE_GATE_URL=$CANONICAL_STAGING_URL"'),
-      'staging verification runner should keep the release gate bound to the canonical staging URL'
+      stagingGatesHelper.includes('RELEASE_GATE_URL=$canonical_staging_url'),
+      'staging gate helper should keep the release gate bound to the canonical staging URL'
     );
     assert.ok(
-      runnerContent.includes('RELEASE_GATE_EXPECTED_ORIGIN=$RELEASE_GATE_EXPECTED_ORIGIN'),
-      'staging verification runner should pass the canonical public origin separately from the transport target'
+      stagingGatesHelper.includes('RELEASE_GATE_EXPECTED_ORIGIN=$RELEASE_GATE_EXPECTED_ORIGIN'),
+      'staging gate helper should pass the canonical public origin separately from the transport target'
     );
     assert.ok(
-      runnerContent.includes('bash "$RESOLVE_HOST_SCRIPT_PATH" "$target_host"'),
-      'staging verification runner should resolve canonical hosts explicitly before invoking the local runner'
+      stagingGatesHelper.includes('bash "$STAGING_GATES_RESOLVE_HOST_SCRIPT_PATH" "$target_host"'),
+      'staging gate helper should resolve canonical hosts explicitly before invoking the local runner'
     );
     assert.ok(
-      runnerContent.includes('run_gate_command()'),
-      'staging verification runner should define a shared gate runner instead of duplicating npm invocation boilerplate'
+      runnerContent.includes('source "$SCRIPT_DIR/lib/staging-gates.sh"') &&
+        stagingGatesHelper.includes('run_gate_command()'),
+      'staging verification should source a shared gate runner instead of duplicating npm invocation boilerplate'
     );
     assert.ok(
-      runnerContent.includes('run_gate_command "smoke"') &&
-        runnerContent.includes('run_gate_command "release-gate"') &&
-        runnerContent.includes('run_gate_command "windows-bootstrap-gate"'),
-      'staging verification runner should route smoke, release-gate, and windows-bootstrap-gate through the shared gate runner'
+      stagingGatesHelper.includes('run_gate_command smoke') &&
+        stagingGatesHelper.includes('run_gate_command release-gate') &&
+        stagingGatesHelper.includes('run_gate_command windows-bootstrap-gate'),
+      'staging gate helper should route smoke, release-gate, and windows-bootstrap-gate through the shared gate runner'
     );
     assert.ok(
-      runnerContent.includes('RELEASE_GATE_RESOLVED_ADDRESS='),
-      'staging verification runner should provide the resolved release-gate address to the test runner instead of downgrading the URL'
+      stagingGatesHelper.includes('RELEASE_GATE_RESOLVED_ADDRESS='),
+      'staging gate helper should provide the resolved release-gate address to the test runner instead of downgrading the URL'
     );
     assert.ok(
       helperContent.includes('STAGING_RELEASE_GATE_RESULT=success') ||
@@ -672,20 +706,22 @@ void describe('Migration Tooling', () => {
       'staging verification evidence should record the deployed immutable image digests'
     );
     assert.ok(
-      runnerContent.includes(
+      stagingGatesHelper.includes(
         'classroompath-api test -f /app/firefox-extension/build/firefox-release/metadata.json'
       ),
-      'staging verification runner should verify the staged Firefox release metadata inside the API container before recording evidence'
+      'staging gate helper should verify the staged Firefox release metadata inside the API container before recording evidence'
     );
     assert.ok(
-      runnerContent.includes(
+      stagingGatesHelper.includes(
         'classroompath-api test -f /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi'
       ),
-      'staging verification runner should verify the staged Firefox release XPI inside the API container before recording evidence'
+      'staging gate helper should verify the staged Firefox release XPI inside the API container before recording evidence'
     );
     assert.ok(
-      runnerContent.includes('classroompath-api test -f /app/runtime/browser-policy-spec.json'),
-      'staging verification runner should verify the shared browser policy spec inside the API container before recording evidence'
+      stagingGatesHelper.includes(
+        'classroompath-api test -f /app/runtime/browser-policy-spec.json'
+      ),
+      'staging gate helper should verify the shared browser policy spec inside the API container before recording evidence'
     );
     assert.ok(
       helperContent.includes(
@@ -694,20 +730,17 @@ void describe('Migration Tooling', () => {
       'staging verification evidence should record Firefox release artifact presence explicitly'
     );
     assert.ok(
-      runnerContent.includes('npm run test:windows-bootstrap-gate') ||
-        runnerContent.includes(
-          'run_gate_command "windows-bootstrap-gate" "test:windows-bootstrap-gate"'
-        ),
-      'staging verification runner should run the live Windows bootstrap gate before persisting release evidence'
+      stagingGatesHelper.includes('run_gate_command windows-bootstrap-gate'),
+      'staging gate helper should run the live Windows bootstrap gate before persisting release evidence'
     );
     assert.ok(
-      runnerContent.includes('WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS='),
-      'staging verification runner should provide the resolved canonical host address to the Windows bootstrap gate'
+      stagingGatesHelper.includes('WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS='),
+      'staging gate helper should provide the resolved canonical host address to the Windows bootstrap gate'
     );
     assert.ok(
-      runnerContent.includes('docker exec classroompath-api printenv STRIPE_WEBHOOK_SECRET') &&
-        runnerContent.includes('WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET='),
-      'staging verification runner should source the Stripe webhook signing secret from the staging API container before invoking the Windows bootstrap gate'
+      stagingGatesHelper.includes('docker exec classroompath-api printenv STRIPE_WEBHOOK_SECRET') &&
+        stagingGatesHelper.includes('WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET='),
+      'staging gate helper should source the Stripe webhook signing secret from the staging API container before invoking the Windows bootstrap gate'
     );
     assert.ok(
       helperContent.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT=$STAGING_WINDOWS_BOOTSTRAP_RESULT'),
@@ -718,10 +751,10 @@ void describe('Migration Tooling', () => {
       'staging verification evidence should record a successful Firefox policy input result'
     );
     assert.ok(
-      runnerContent.includes(
+      stagingGatesHelper.includes(
         '`${WINDOWS_BOOTSTRAP_GATE_URL}/api/extensions/firefox/openpath.xpi`'
-      ) || runnerContent.includes('/api/extensions/firefox/openpath.xpi'),
-      'staging verification runner should require the public Firefox XPI route used by Linux enrollments'
+      ) || stagingGatesHelper.includes('/api/extensions/firefox/openpath.xpi'),
+      'staging gate helper should require the public Firefox XPI route used by Linux enrollments'
     );
     assert.ok(
       helperContent.includes('STAGING_FIREFOX_EXTENSION_ID=') &&
@@ -731,30 +764,30 @@ void describe('Migration Tooling', () => {
       'staging verification evidence should persist Firefox release identity and hashes'
     );
     assert.ok(
-      runnerContent.includes(
-        'node "$SCRIPT_DIR/read-firefox-release-metadata.mjs" --field extensionId'
+      stagingGatesHelper.includes(
+        'node "$STAGING_GATES_SCRIPT_DIR/read-firefox-release-metadata.mjs" --field extensionId'
       ) &&
-        runnerContent.includes(
-          'node "$SCRIPT_DIR/read-firefox-release-metadata.mjs" --field version'
+        stagingGatesHelper.includes(
+          'node "$STAGING_GATES_SCRIPT_DIR/read-firefox-release-metadata.mjs" --field version'
         ),
-      'staging verification runner should own Firefox metadata parsing'
+      'staging gate helper should own Firefox metadata parsing'
     );
     assert.ok(
-      runnerContent.includes('STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE') &&
-        runnerContent.includes(
+      stagingGatesHelper.includes('STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE') &&
+        stagingGatesHelper.includes(
           'Release-candidate staging deploys must prove the live Windows bootstrap contract'
         ),
-      'shared staging verification runner should only fail staging evidence for Windows/Firefox delivery changes when the release plan explicitly requires that gate'
+      'shared staging gate helper should only fail staging evidence for Windows/Firefox delivery changes when the release plan explicitly requires that gate'
     );
     assert.ok(
-      runnerContent.includes('docker exec classroompath-api printenv STRIPE_WEBHOOK_SECRET') &&
-        (runnerContent.includes(
+      stagingGatesHelper.includes('docker exec classroompath-api printenv STRIPE_WEBHOOK_SECRET') &&
+        (stagingGatesHelper.includes(
           'WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET="$windows_bootstrap_webhook_secret"'
         ) ||
-          runnerContent.includes(
+          stagingGatesHelper.includes(
             '"WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET=$windows_bootstrap_webhook_secret"'
           )),
-      'shared staging verification runner should source the live Stripe webhook secret from staging and pass it to the Windows bootstrap gate'
+      'shared staging gate helper should source the live Stripe webhook secret from staging and pass it to the Windows bootstrap gate'
     );
     assert.ok(
       localContent.includes(
@@ -816,6 +849,7 @@ void describe('Migration Tooling', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
     const helperContent = readFileSync(stagingSmokeScriptPath, 'utf-8');
     const runnerContent = readFileSync(stagingVerificationRunnerPath, 'utf-8');
+    const stagingGatesHelper = readFileSync(stagingGatesHelperPath, 'utf-8');
 
     assert.ok(
       existsSync(stagingSmokeScriptPath),
@@ -832,17 +866,16 @@ void describe('Migration Tooling', () => {
       'deploy-staging-local.sh should reference the shared staging verification runner for smoke checks'
     );
     assert.ok(
-      runnerContent.includes('bash "$RESOLVE_HOST_SCRIPT_PATH" "$target_host"'),
-      'staging verification runner should resolve canonical smoke and release-gate hosts explicitly before invoking the test runners'
+      stagingGatesHelper.includes('bash "$STAGING_GATES_RESOLVE_HOST_SCRIPT_PATH" "$target_host"'),
+      'staging gate helper should resolve canonical smoke and release-gate hosts explicitly before invoking the test runners'
     );
     assert.ok(
-      runnerContent.includes('npm run test:smoke') ||
-        runnerContent.includes('run_gate_command "smoke" "test:smoke"'),
-      'staging verification runner should execute the shared smoke entrypoint'
+      stagingGatesHelper.includes('run_gate_command smoke'),
+      'staging gate helper should execute the shared smoke entrypoint'
     );
     assert.ok(
-      runnerContent.includes('SMOKE_TEST_RESOLVED_ADDRESS='),
-      'staging verification runner should pass the resolved canonical host address to the smoke runner'
+      stagingGatesHelper.includes('SMOKE_TEST_RESOLVED_ADDRESS='),
+      'staging gate helper should pass the resolved canonical host address to the smoke runner'
     );
   });
 
@@ -1111,7 +1144,7 @@ void describe('Migration Tooling', () => {
   });
 
   void test('verify-full keeps DATABASE_URL canonical and derives OpenPath DB_* env through the shared helper', () => {
-    const verifyStages = readFileSync(verifyStagesPath, 'utf-8');
+    const stageRunners = readFileSync(verificationStageRunnersPath, 'utf-8');
     const verifyDocker = readFileSync(verifyDockerPath, 'utf-8');
 
     assert.ok(
@@ -1120,18 +1153,18 @@ void describe('Migration Tooling', () => {
       'verify-docker.ts should keep DATABASE_URL as the canonical test database contract'
     );
     assert.ok(
-      verifyStages.includes('derive-openpath-db-env.mjs') &&
-        verifyStages.includes(
+      stageRunners.includes('derive-openpath-db-env.mjs') &&
+        stageRunners.includes(
           ".capture('node', [join(plan.rootDir, 'scripts/derive-openpath-db-env.mjs')]"
         ),
-      'verify-stages should derive OpenPath DB_* compatibility env through the shared helper'
+      'verification-stage-runners.ts should derive OpenPath DB_* compatibility env through the shared helper'
     );
     assert.ok(
-      !verifyStages.includes("DB_HOST: 'localhost'") &&
-        !verifyStages.includes("DB_PORT: '5432'") &&
-        !verifyStages.includes('env.DB_HOST') &&
-        !verifyStages.includes('env.DB_PORT'),
-      'verify-stages should not duplicate OpenPath DB_* derivation inline'
+      !stageRunners.includes("DB_HOST: 'localhost'") &&
+        !stageRunners.includes("DB_PORT: '5432'") &&
+        !stageRunners.includes('env.DB_HOST') &&
+        !stageRunners.includes('env.DB_PORT'),
+      'verification-stage-runners.ts should not duplicate OpenPath DB_* derivation inline'
     );
   });
 

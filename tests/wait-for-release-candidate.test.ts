@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { buildReleaseArtifactScenario } from './helpers/release-fixtures.ts';
+import {
+  buildReleaseArtifactScenario,
+  buildReleaseFixtureScenario,
+  buildReleaseManifestScenario,
+} from './helpers/release-fixtures.ts';
 import {
   buildReleaseCandidateManifestOutputs,
   formatFirefoxReleaseAssetsTimeoutError,
   formatReleaseCandidateRunFailure,
+  resolveLatestSuccessfulReleaseCandidateManifest,
   resolveWorkflowRunId,
   selectLatestArtifact,
 } from '../scripts/wait-for-release-candidate.mjs';
@@ -118,6 +123,30 @@ describe('wait-for-release-candidate helpers', () => {
         'ghcr.io/balejosg/classroompath-spa@sha256:4605cd785107285424fedad1421513b6d009763453b04116103bdc5b64df05a6',
       verifier_image:
         'ghcr.io/balejosg/classroompath-release-verifier@sha256:2e685d6907fd5285bd2a9243c95be56769484b77d81d6788aa07673f2cab53db',
+    });
+  });
+
+  test('resolves the latest successful release-candidate manifest into the canonical shape', () => {
+    const resolved = resolveLatestSuccessfulReleaseCandidateManifest({
+      repository: 'balejosg/ClassroomPath',
+      manifestContent: buildReleaseManifestScenario().replaceAll('target-sha', 'newer-sha'),
+      runs: buildReleaseFixtureScenario('latest-success'),
+    });
+
+    assert.deepEqual(resolved, {
+      repository: 'balejosg/ClassroomPath',
+      headSha: 'newer-sha',
+      runId: '402',
+      manifest: {
+        appSha: 'newer-sha',
+        gatewayImage: 'ghcr.io/balejosg/classroompath-gateway@sha256:1',
+        migrationsImage: 'ghcr.io/balejosg/classroompath-migrations@sha256:2',
+        openpathApiImage: 'ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
+        openpathVersion: '4.1.3',
+        linuxAgentVersion: '4.1.3',
+        spaImage: 'ghcr.io/balejosg/classroompath-spa@sha256:4',
+        verifierImage: 'ghcr.io/balejosg/classroompath-release-verifier@sha256:5',
+      },
     });
   });
 });

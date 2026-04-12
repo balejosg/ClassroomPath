@@ -12,13 +12,8 @@ function main() {
   }
 
   const runs = listReleaseCandidateRuns(repo);
-  const { manifestContent } = readLatestReleaseCandidateManifest({ repo, runs });
-  const outputs = buildLatestVerifierImageOutputs(
-    resolveLatestVerifierImageData({
-      manifestContent,
-      runs,
-    })
-  );
+  const releaseCandidate = readLatestReleaseCandidateManifest({ repo, runs });
+  const outputs = buildLatestVerifierImageOutputs(resolveLatestVerifierImageData(releaseCandidate));
 
   for (const [key, value] of Object.entries(outputs)) {
     process.stdout.write(`${key}=${value}\n`);

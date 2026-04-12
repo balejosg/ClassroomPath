@@ -5,17 +5,20 @@ import {
   buildReleaseManifestScenario,
   buildReleaseFixtureScenario,
 } from './helpers/release-fixtures.ts';
+import { resolveLatestSuccessfulReleaseCandidateManifest } from '../scripts/wait-for-release-candidate.mjs';
 import {
   buildLatestVerifierImageOutputs,
   resolveLatestVerifierImageData,
 } from '../scripts/lib/resolve-latest-verifier-image.mjs';
 
 describe('resolve latest verifier image', () => {
-  test('resolves the latest verifier image outputs from workflow runs and manifest content', () => {
-    const resolved = resolveLatestVerifierImageData({
+  test('resolves the latest verifier image outputs from the canonical release-candidate manifest shape', () => {
+    const releaseCandidate = resolveLatestSuccessfulReleaseCandidateManifest({
+      repository: 'balejosg/ClassroomPath',
       manifestContent: buildReleaseManifestScenario().replaceAll('target-sha', 'newer-sha'),
       runs: buildReleaseFixtureScenario('latest-success'),
     });
+    const resolved = resolveLatestVerifierImageData(releaseCandidate);
 
     assert.deepEqual(buildLatestVerifierImageOutputs(resolved), {
       run_id: '402',

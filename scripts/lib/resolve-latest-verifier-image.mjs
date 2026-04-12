@@ -1,77 +1,33 @@
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { listGitHubWorkflowRuns } from './github-actions-artifacts.mjs';
+import { readLatestSuccessfulReleaseCandidateManifest } from './release-candidate.mjs';
 
-import {
-  parseReleaseCandidateManifest,
-  selectLatestSuccessfulWorkflowRun,
-} from './release-images.mjs';
-
-export function listReleaseCandidateRuns(repo) {
-  const output = execFileSync(
-    'gh',
-    [
-      'run',
-      'list',
-      '--repo',
-      repo,
-      '--workflow',
-      'release-candidate-images.yml',
-      '--branch',
-      'main',
-      '--limit',
-      '30',
-      '--json',
-      'databaseId,headSha,status,conclusion,event,createdAt,updatedAt',
-    ],
-    { encoding: 'utf8' }
-  ).trim();
-
-  return JSON.parse(output || '[]');
+export function listReleaseCandidateRuns(repo, { cwd } = {}) {
+  return listGitHubWorkflowRuns({
+    repo,
+    workflow: 'release-candidate-images.yml',
+    cwd,
+  });
 }
 
-export function downloadReleaseCandidateManifest({ repo, runId, sha }) {
-  const artifactDir = mkdtempSync(resolve(tmpdir(), 'classroompath-release-candidate-'));
-
-  try {
-    execFileSync(
-      'gh',
-      [
-        'run',
-        'download',
-        String(runId),
-        '--repo',
-        repo,
-        '--name',
-        `release-candidate-images-${sha}`,
-        '--dir',
-        artifactDir,
-      ],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
-    );
-
-    return {
-      artifactDir,
-      manifestPath: resolve(artifactDir, 'release-candidate-images.env'),
-    };
-  } catch (error) {
-    rmSync(artifactDir, { recursive: true, force: true });
-    throw error;
-  }
-}
-
-export function resolveLatestVerifierImageData({ manifestContent, runs }) {
-  const run = selectLatestSuccessfulWorkflowRun(runs);
-  const headSha = String(run.headSha ?? run.head_sha ?? '').trim();
+export function resolveLatestVerifierImageData(releaseCandidate) {
+  const headSha = String(releaseCandidate?.headSha ?? '').trim();
   if (!headSha) {
     throw new Error('Latest successful release candidate run is missing headSha');
   }
 
+  const runId = String(releaseCandidate?.runId ?? '').trim();
+  if (!runId) {
+    throw new Error('Latest successful release candidate run is missing runId');
+  }
+
+  if (!releaseCandidate?.manifest) {
+    throw new Error('Latest successful release candidate manifest is missing manifest data');
+  }
+
   return {
-    manifest: parseReleaseCandidateManifest(manifestContent, { sha: headSha }),
+    manifest: releaseCandidate.manifest,
     headSha,
-    runId: String(run.id),
+    runId,
   };
 }
 
@@ -89,35 +45,10 @@ export function buildLatestVerifierImageOutputs({ manifest, headSha, runId }) {
   };
 }
 
-export function resolveLatestSuccessfulRun(runs) {
-  const run = selectLatestSuccessfulWorkflowRun(runs);
-  const headSha = String(run.headSha ?? run.head_sha ?? '').trim();
-  if (!headSha) {
-    throw new Error('Latest successful release candidate run is missing headSha');
-  }
-
-  return {
-    headSha,
-    runId: Number(run.id),
-  };
-}
-
-export function readLatestReleaseCandidateManifest({ repo, runs }) {
-  const { headSha, runId } = resolveLatestSuccessfulRun(runs);
-
-  const { artifactDir, manifestPath } = downloadReleaseCandidateManifest({
-    repo,
-    runId,
-    sha: headSha,
+export function readLatestReleaseCandidateManifest({ repo, runs, cwd } = {}) {
+  return readLatestSuccessfulReleaseCandidateManifest({
+    repository: repo,
+    runs,
+    cwd,
   });
-
-  try {
-    return {
-      headSha,
-      manifestContent: readFileSync(manifestPath, 'utf8'),
-      runId: String(runId),
-    };
-  } finally {
-    rmSync(artifactDir, { recursive: true, force: true });
-  }
 }

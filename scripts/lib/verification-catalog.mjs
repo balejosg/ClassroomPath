@@ -54,7 +54,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
     name: 'deploy-shell',
     patterns: [
       '^scripts/(?:deploy-.+|detect-windows-firefox-risk|rollback-.+|persist-.+|run-staging-release-gate|verify-staging-release-state)\\.sh$',
-      '^scripts/lib/(?:deployment-state|release-risk|release-runtime|release-state|remote-bootstrap|deploy-production-context|deploy-production-runtime)\\.sh$',
+      '^scripts/lib/(?:deployment-state|release-risk|release-runtime|release-state|remote-bootstrap|deploy-production-context|deploy-production-runtime|staging-gates)\\.sh$',
     ],
     capabilities: { ciRelevant: true, verificationScope: 'ops-regression' },
     ...releasePolicy(),
@@ -74,7 +74,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-library',
     patterns: [
-      '^scripts/lib/(?:firefox-release-version|github-actions|openpath-ci-checks|regression-plan|release-candidate|release-cli|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|verification-catalog|verification-report-contract|verify-report-consumer)\\.mjs$',
+      '^scripts/lib/(?:firefox-release-version|github-actions|github-actions-artifacts|openpath-ci-checks|regression-plan|release-candidate|release-cli|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|verification-catalog|verification-report-contract|verify-report-consumer)\\.mjs$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -85,7 +85,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   },
   {
     name: 'verify-library',
-    patterns: ['^scripts/lib/(?:verify-.+|verify-domain-policy)\\.ts$'],
+    patterns: ['^scripts/lib/(?:verify-.+|verification-stage-runners|verify-domain-policy)\\.ts$'],
     capabilities: {
       ciRelevant: true,
       releaseAutomationSafe: true,
@@ -96,7 +96,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-contract-test',
     patterns: [
-      '^tests/(?:deployment|firefox-release-version|openpath-required-checks|release-cli|release-images|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow-config)\\.test\\.ts$',
+      '^tests/(?:deployment|firefox-release-version|github-actions-artifacts|openpath-required-checks|release-cli|release-images|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow-config)\\.test\\.ts$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -151,29 +151,131 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   },
 ];
 
-export const VERIFICATION_STAGE_DEFINITIONS = {
-  full: [
-    { id: 'test-file-coverage', label: 'Test file coverage inventory', cache: 'diff-safe' },
-    { id: 'build', label: 'Build all packages', cache: 'diff-safe' },
-    { id: 'static-analysis', label: 'Static analysis', cache: 'diff-safe' },
-    { id: 'security-and-size', label: 'Security and size checks', cache: 'diff-safe' },
-    { id: 'tests', label: 'Unit and integration tests', cache: 'never' },
-    { id: 'coverage-gate', label: 'Changed-file coverage gate', cache: 'diff-safe' },
-    { id: 'playwright-e2e', label: 'Playwright E2E', cache: 'never' },
-  ],
-  'ops-regression': [
-    { id: 'format-and-secrets', label: 'Format and secret checks', cache: 'diff-safe' },
-    { id: 'ops-regression', label: 'Operational regression', cache: 'diff-safe' },
-  ],
-  'release-automation': [
-    { id: 'format-and-secrets', label: 'Format and secret checks', cache: 'diff-safe' },
-    {
-      id: 'release-automation-regression',
-      label: 'Release automation regression',
-      cache: 'diff-safe',
+export const VERIFICATION_PIPELINE_DEFINITIONS = {
+  full: {
+    beforeAll: ['cleanup-stale-verification-projects', 'cleanup-verification'],
+    stages: [
+      {
+        id: 'test-file-coverage',
+        label: 'Test file coverage inventory',
+        cache: 'diff-safe',
+        runner: 'test-file-coverage',
+        progressLabel: '0/5',
+        heading: 'Checking test file coverage...',
+      },
+      {
+        id: 'build',
+        label: 'Build all packages',
+        cache: 'diff-safe',
+        runner: 'build',
+        progressLabel: '1/5',
+        heading: 'Building all packages...',
+        before: ['start-test-postgres'],
+        after: ['wait-for-postgres-and-derive-db-env'],
+      },
+      {
+        id: 'static-analysis',
+        label: 'Static analysis',
+        cache: 'diff-safe',
+        runner: 'static-analysis',
+        progressLabel: '2/5',
+        heading: 'Static analysis (parallel: typecheck, lint, format)...',
+      },
+      {
+        id: 'security-and-size',
+        label: 'Security and size checks',
+        cache: 'diff-safe',
+        runner: 'security-and-size',
+        progressLabel: '3/5',
+        heading: 'Security and size checks (parallel)...',
+      },
+      {
+        id: 'tests',
+        label: 'Unit and integration tests',
+        cache: 'never',
+        runner: 'tests',
+        progressLabel: '4/5',
+        heading: 'Running tests...',
+      },
+      {
+        id: 'coverage-gate',
+        label: 'Changed-file coverage gate',
+        cache: 'diff-safe',
+        runner: 'coverage-gate',
+        progressLabel: '4/5',
+        heading: 'Checking coverage on changed files (if any)...',
+      },
+      {
+        id: 'playwright-e2e',
+        label: 'Playwright E2E',
+        cache: 'never',
+        runner: 'playwright-e2e',
+        progressLabel: '5/5',
+        heading: 'E2E Playwright tests...',
+        before: ['stop-openpath-api', 'kill-orphaned-dev-ports'],
+      },
+    ],
+  },
+  'ops-regression': {
+    banner: {
+      lines: [
+        '⚡ OPTIMIZATION: Operational automation-only diff detected',
+        '→ Running deployment/workflow regression instead of full product verification',
+      ],
     },
-  ],
+    stages: [
+      {
+        id: 'format-and-secrets',
+        label: 'Format and secret checks',
+        cache: 'diff-safe',
+        runner: 'format-and-secrets',
+        progressLabel: '1/2',
+        heading: 'Format and secret checks...',
+      },
+      {
+        id: 'ops-regression',
+        label: 'Operational regression',
+        cache: 'diff-safe',
+        runner: 'ops-regression',
+        progressLabel: '2/2',
+        heading: 'Operational regression...',
+      },
+    ],
+  },
+  'release-automation': {
+    banner: {
+      lines: [
+        '⚡ OPTIMIZATION: Release automation-only diff detected',
+        '→ Running targeted workflow/release regression instead of full product verification',
+      ],
+    },
+    stages: [
+      {
+        id: 'format-and-secrets',
+        label: 'Format and secret checks',
+        cache: 'diff-safe',
+        runner: 'format-and-secrets',
+        progressLabel: '1/2',
+        heading: 'Format and secret checks...',
+      },
+      {
+        id: 'release-automation-regression',
+        label: 'Release automation regression',
+        cache: 'diff-safe',
+        runner: 'release-automation-regression',
+        progressLabel: '2/2',
+        heading: 'Release automation regression...',
+      },
+    ],
+  },
 };
+
+export const VERIFICATION_STAGE_DEFINITIONS = Object.fromEntries(
+  Object.entries(VERIFICATION_PIPELINE_DEFINITIONS).map(([scope, pipeline]) => [
+    scope,
+    pipeline.stages.map(({ after, before, heading, progressLabel, runner, ...stage }) => stage),
+  ])
+);
 
 export const REGRESSION_PLAN_DEFINITIONS = {
   ci: {
@@ -182,6 +284,7 @@ export const REGRESSION_PLAN_DEFINITIONS = {
       'tests/deployment.test.ts',
       'tests/firefox-release-version.test.ts',
       'tests/firefox-release-metadata.test.ts',
+      'tests/staging-gates.test.ts',
       'api/tests/openpath-proxy-policy.test.ts',
       'tests/openpath-required-checks.test.ts',
       'tests/release-cli.test.ts',
@@ -201,6 +304,8 @@ export const REGRESSION_PLAN_DEFINITIONS = {
   'release-automation': {
     include: ['ci', 'workflow-config'],
     files: [
+      'tests/github-actions-artifacts.test.ts',
+      'tests/verification-pipeline.test.ts',
       'tests/verify-cache.test.ts',
       'tests/verify-plan.test.ts',
       'tests/verify-report.test.ts',
@@ -258,8 +363,14 @@ export function summarizeVerificationDomains(
 
 export function getVerificationStageDefinition(scope, stageId) {
   return (
-    (VERIFICATION_STAGE_DEFINITIONS[scope] ?? []).find((stage) => stage.id === stageId) ?? null
+    (VERIFICATION_PIPELINE_DEFINITIONS[scope]?.stages ?? []).find(
+      (stage) => stage.id === stageId
+    ) ?? null
   );
+}
+
+export function getVerificationPipelineDefinition(scope) {
+  return VERIFICATION_PIPELINE_DEFINITIONS[scope] ?? null;
 }
 
 export function resolveRegressionPlan(name, seen = new Set()) {
