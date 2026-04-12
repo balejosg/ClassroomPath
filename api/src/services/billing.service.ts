@@ -153,6 +153,21 @@ function requireStripePrice(price: string | null, label: string): string {
   return price;
 }
 
+function isStripeBillingEnabled(): boolean {
+  return config.billingMode === 'stripe';
+}
+
+function assertStripeBillingEnabled(): void {
+  if (isStripeBillingEnabled()) {
+    return;
+  }
+
+  throw new TRPCError({
+    code: 'PRECONDITION_FAILED',
+    message: 'Online checkout is not available in this environment yet.',
+  });
+}
+
 function requireStripeSecret(): string {
   const secret = config.stripe.secretKey;
   if (!secret) {
@@ -577,6 +592,7 @@ export async function createBillingCheckout(input: CheckoutRequest): Promise<{
   checkoutSessionId: string;
   checkoutUrl: string;
 }> {
+  assertStripeBillingEnabled();
   assertClassroomCount(input.classrooms);
 
   const existingOrganization = await getExistingBillingOrganization(input.userId);
@@ -1174,6 +1190,10 @@ export async function processStripeWebhook(params: {
   rawBody: Buffer;
   signature: string | undefined;
 }): Promise<void> {
+  if (!isStripeBillingEnabled()) {
+    return;
+  }
+
   const secret = config.stripe.webhookSecret;
   if (!secret) {
     throw new Error('Stripe webhook secret is not configured');

@@ -74,6 +74,7 @@ function createStatus(overrides: Partial<OnboardingStatusDto> = {}): OnboardingS
     policy: {
       allowOrgDirectory: false,
       allowSelfServiceOrgs: false,
+      billingMode: 'stripe',
     },
     ...overrides,
   };

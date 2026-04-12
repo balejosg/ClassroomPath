@@ -156,16 +156,19 @@ These stay outside git and must remain present on the host:
 
 The deploy workflow also syncs this billing block from the production GitHub Environment before restart:
 
+- `CP_BILLING_MODE`
 - `CP_PLATFORM_ADMIN_EMAILS`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_ANNUAL_PRICE_1_10`
-- `STRIPE_ANNUAL_PRICE_11_25`
-- `STRIPE_ANNUAL_PRICE_26_50`
-- `STRIPE_ANNUAL_PRICE_51_100`
-- `STRIPE_ONBOARDING_PRICE_1_25`
-- `STRIPE_ONBOARDING_PRICE_26_100`
-- `STRIPE_PILOT_PRICE`
+- `STRIPE_SECRET_KEY` (`stripe` mode only)
+- `STRIPE_WEBHOOK_SECRET` (`stripe` mode only)
+- `STRIPE_ANNUAL_PRICE_1_10` (`stripe` mode only)
+- `STRIPE_ANNUAL_PRICE_11_25` (`stripe` mode only)
+- `STRIPE_ANNUAL_PRICE_26_50` (`stripe` mode only)
+- `STRIPE_ANNUAL_PRICE_51_100` (`stripe` mode only)
+- `STRIPE_ONBOARDING_PRICE_1_25` (`stripe` mode only)
+- `STRIPE_ONBOARDING_PRICE_26_100` (`stripe` mode only)
+- `STRIPE_PILOT_PRICE` (`stripe` mode only)
+
+Use `CP_BILLING_MODE=manual_only` in production until live Stripe checkout is ready. In that mode the deploy sync prunes stale `STRIPE_*` entries from `/opt/classroompath/app/config/.env` before runtime validation.
 
 ## Google Login Notes
 

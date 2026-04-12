@@ -4,6 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 const ORIGINAL_ENV = {
   CP_ALLOW_ORG_DIRECTORY: process.env.CP_ALLOW_ORG_DIRECTORY,
   CP_ALLOW_SELF_SERVICE_ORGS: process.env.CP_ALLOW_SELF_SERVICE_ORGS,
+  CP_BILLING_MODE: process.env.CP_BILLING_MODE,
   CP_PLATFORM_ADMIN_EMAILS: process.env.CP_PLATFORM_ADMIN_EMAILS,
   CP_FAKE_EMAIL_DELIVERY: process.env.CP_FAKE_EMAIL_DELIVERY,
   CORS_ORIGINS: process.env.CORS_ORIGINS,
@@ -26,6 +27,7 @@ const ORIGINAL_ENV = {
 function restoreEnv(): void {
   setEnv('CP_ALLOW_ORG_DIRECTORY', ORIGINAL_ENV.CP_ALLOW_ORG_DIRECTORY);
   setEnv('CP_ALLOW_SELF_SERVICE_ORGS', ORIGINAL_ENV.CP_ALLOW_SELF_SERVICE_ORGS);
+  setEnv('CP_BILLING_MODE', ORIGINAL_ENV.CP_BILLING_MODE);
   setEnv('CP_PLATFORM_ADMIN_EMAILS', ORIGINAL_ENV.CP_PLATFORM_ADMIN_EMAILS);
   setEnv('CP_FAKE_EMAIL_DELIVERY', ORIGINAL_ENV.CP_FAKE_EMAIL_DELIVERY);
   setEnv('CORS_ORIGINS', ORIGINAL_ENV.CORS_ORIGINS);
@@ -113,10 +115,37 @@ describe('runtime config contract', () => {
     assert.equal(runtimeConfig.allowOrgDirectory, false);
   });
 
+  it('allows manual-only billing mode without Stripe secrets', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = 'production-secret-value';
+    process.env.PUBLIC_URL = 'https://classroompath.eu';
+    process.env.CORS_ORIGINS = 'https://classroompath.eu';
+    process.env.CP_BILLING_MODE = 'manual_only';
+    process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.eu';
+    delete process.env.STRIPE_SECRET_KEY;
+    delete process.env.STRIPE_WEBHOOK_SECRET;
+    delete process.env.STRIPE_ANNUAL_PRICE_1_10;
+    delete process.env.STRIPE_ANNUAL_PRICE_11_25;
+    delete process.env.STRIPE_ANNUAL_PRICE_26_50;
+    delete process.env.STRIPE_ANNUAL_PRICE_51_100;
+    delete process.env.STRIPE_ONBOARDING_PRICE_1_25;
+    delete process.env.STRIPE_ONBOARDING_PRICE_26_100;
+    delete process.env.STRIPE_PILOT_PRICE;
+
+    const tag = `runtime-config-manual-only-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const configModule = await import(`../src/config.ts?${tag}`);
+    const runtimeConfig = configModule.resolveRuntimeConfig();
+
+    assert.equal(runtimeConfig.billingMode, 'manual_only');
+    assert.equal(runtimeConfig.stripe.secretKey, null);
+    assert.doesNotThrow(() => configModule.assertRuntimeSecretsConfigured());
+  });
+
   it('resolves the Stripe checkout and platform admin runtime contract', async () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_SECRET = 'production-secret-value';
     process.env.PUBLIC_URL = 'https://classroompath.eu';
+    process.env.CP_BILLING_MODE = 'stripe';
     process.env.CP_PLATFORM_ADMIN_EMAILS = ' Admin@ClassroomPath.eu, billing@example.com ';
     process.env.STRIPE_SECRET_KEY = 'sk_test_classroompath';
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_classroompath';
@@ -147,6 +176,7 @@ describe('runtime config contract', () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_SECRET = 'production-secret-value';
     process.env.PUBLIC_URL = 'https://classroompath.eu';
+    process.env.CP_BILLING_MODE = 'stripe';
     process.env.CORS_ORIGINS = 'https://staging.classroompath.eu';
     process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.eu';
     process.env.STRIPE_SECRET_KEY = 'sk_test_classroompath';

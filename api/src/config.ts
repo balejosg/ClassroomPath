@@ -25,10 +25,12 @@ const trimToNull = (value: string | undefined): string | null => {
 type RuntimeEnv = Record<string, string | undefined>;
 
 export type EmailDeliveryMode = 'mock' | 'resend' | 'disabled';
+export type BillingMode = 'stripe' | 'manual_only';
 
 export interface RuntimeConfig {
   allowOrgDirectory: boolean;
   allowSelfServiceOrgs: boolean;
+  billingMode: BillingMode;
   databaseUrl: string;
   emailDeliveryMode: EmailDeliveryMode;
   jwtSecret: string;
@@ -150,6 +152,19 @@ function resolvePlatformAdminEmails(env: RuntimeEnv = process.env): string[] {
     .filter((email) => email.length > 0);
 }
 
+function resolveBillingMode(env: RuntimeEnv = process.env): BillingMode {
+  const mode = trimToNull(env.CP_BILLING_MODE);
+  if (!mode) {
+    return 'manual_only';
+  }
+
+  if (mode === 'stripe' || mode === 'manual_only') {
+    return mode;
+  }
+
+  throw new Error('CP_BILLING_MODE must be one of: stripe, manual_only');
+}
+
 function resolveStripeConfig(env: RuntimeEnv = process.env): StripeRuntimeConfig {
   return {
     secretKey: trimToNull(env.STRIPE_SECRET_KEY),
@@ -179,6 +194,10 @@ function assertBillingRuntimeConfigured(runtimeConfig: RuntimeConfig): void {
     throw new Error(
       'CP_PLATFORM_ADMIN_EMAILS must be set when billing-gated onboarding is enabled'
     );
+  }
+
+  if (runtimeConfig.billingMode === 'manual_only') {
+    return;
   }
 
   if (!runtimeConfig.stripe.secretKey) {
@@ -220,6 +239,7 @@ export function resolveRuntimeConfig(env: RuntimeEnv = process.env): RuntimeConf
     emailDeliveryMode: resolveEmailDeliveryMode(env),
     allowSelfServiceOrgs: parseBooleanEnv(env.CP_ALLOW_SELF_SERVICE_ORGS, false),
     allowOrgDirectory: parseBooleanEnv(env.CP_ALLOW_ORG_DIRECTORY, false),
+    billingMode: resolveBillingMode(env),
     platformAdminEmails: resolvePlatformAdminEmails(env),
     stripe: resolveStripeConfig(env),
   };
@@ -272,6 +292,9 @@ export const config = {
   },
   get allowOrgDirectory() {
     return parseBooleanEnv(process.env.CP_ALLOW_ORG_DIRECTORY, false);
+  },
+  get billingMode(): BillingMode {
+    return resolveBillingMode(process.env);
   },
   get platformAdminEmails() {
     return resolvePlatformAdminEmails(process.env);

@@ -1,6 +1,9 @@
+export type BillingMode = 'stripe' | 'manual_only';
+
 export interface OnboardingPolicy {
   allowOrgDirectory: boolean;
   allowSelfServiceOrgs: boolean;
+  billingMode: BillingMode;
 }
 
 export interface OnboardingOrganizationOption {
@@ -16,7 +19,12 @@ export function createOnboardingPolicy(
   return {
     allowSelfServiceOrgs: overrides.allowSelfServiceOrgs ?? false,
     allowOrgDirectory: overrides.allowOrgDirectory ?? false,
+    billingMode: overrides.billingMode ?? 'manual_only',
   };
+}
+
+export function supportsOnlineCheckout(policy: OnboardingPolicy): boolean {
+  return policy.billingMode === 'stripe';
 }
 
 export function getOnboardingAccessMode(policy: OnboardingPolicy): OnboardingAccessMode {

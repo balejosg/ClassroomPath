@@ -11,6 +11,7 @@ let organizations: Array<{ id: string; name: string }> = [];
 let mockPolicy = {
   allowSelfServiceOrgs: true,
   allowOrgDirectory: true,
+  billingMode: 'stripe',
 };
 
 vi.mock('../../lib/hooks', () => ({
@@ -52,6 +53,7 @@ describe('Onboarding policy UI', () => {
     mockPolicy = {
       allowSelfServiceOrgs: true,
       allowOrgDirectory: true,
+      billingMode: 'stripe',
     };
   });
 
@@ -60,12 +62,13 @@ describe('Onboarding policy UI', () => {
     mockPolicy = {
       allowSelfServiceOrgs: false,
       allowOrgDirectory: false,
+      billingMode: 'manual_only',
     };
 
     render(<Onboarding onOrgCreated={onOrgCreated} onWaitClick={onWaitClick} />);
 
-    expect(screen.getByText('Contratar cuota anual')).toBeInTheDocument();
-    expect(screen.getByText('Solicitar excepción')).toBeInTheDocument();
+    expect(screen.queryByText('Contratar cuota anual')).not.toBeInTheDocument();
+    expect(screen.getByText('Soy un centro público')).toBeInTheDocument();
     expect(screen.queryByTestId('onboarding-target-org')).not.toBeInTheDocument();
     expect(screen.getByTestId('onboarding-access-policy')).toBeInTheDocument();
     expect(screen.getByTestId('onboarding-wait-invite')).toBeInTheDocument();
@@ -79,6 +82,7 @@ describe('Onboarding policy UI', () => {
     mockPolicy = {
       allowSelfServiceOrgs: false,
       allowOrgDirectory: false,
+      billingMode: 'manual_only',
     };
 
     render(<Onboarding onOrgCreated={onOrgCreated} onWaitClick={onWaitClick} />);
@@ -108,6 +112,7 @@ describe('Onboarding policy UI', () => {
     mockPolicy = {
       allowSelfServiceOrgs: false,
       allowOrgDirectory: true,
+      billingMode: 'stripe',
     };
 
     render(<Onboarding onOrgCreated={onOrgCreated} onWaitClick={onWaitClick} />);

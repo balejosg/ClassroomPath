@@ -30,6 +30,7 @@ export function getOnboardingPolicy(): OnboardingPolicy {
   return createOnboardingPolicy({
     allowSelfServiceOrgs: config.allowSelfServiceOrgs,
     allowOrgDirectory: config.allowOrgDirectory,
+    billingMode: config.billingMode,
   });
 }
 

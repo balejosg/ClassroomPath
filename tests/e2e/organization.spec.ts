@@ -53,7 +53,7 @@ test.describe('Organization Creation', () => {
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
     await page.getByPlaceholder(/Ej: Colegio|organization/i).fill(testOrg.name);
     await page.getByTestId('onboarding-classrooms').fill('12');
-    await page.getByRole('button', { name: /Contratar cuota anual/i }).click();
+    await page.getByTestId('onboarding-start-annual').click();
 
     await expect(page).toHaveURL(/\/billing\/mock-checkout$/);
     await expect(page.getByText('Mock Stripe Checkout')).toBeVisible({ timeout: 10000 });
@@ -63,7 +63,7 @@ test.describe('Organization Creation', () => {
     await loginAsOnboardingUser(page, 1);
 
     await expect(page.getByText(/¡Bienvenido|Welcome/i)).toBeVisible({ timeout: 10000 });
-    await page.getByRole('button', { name: /Contratar cuota anual/i }).click();
+    await page.getByTestId('onboarding-start-annual').click();
 
     await expect(
       page.getByText(/requerido|required|obligatorio|Debes ingresar|nombre para la organización/i)

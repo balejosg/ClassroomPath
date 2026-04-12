@@ -138,6 +138,7 @@ export default defineConfig({
             OPENPATH_API_URL: `http://localhost:${String(openPathApiPort)}`,
             DATABASE_URL: testDatabaseUrl,
             CP_FAKE_EMAIL_DELIVERY: process.env.CP_FAKE_EMAIL_DELIVERY ?? '1',
+            CP_BILLING_MODE: process.env.CP_BILLING_MODE ?? 'stripe',
             CP_PLATFORM_ADMIN_EMAILS:
               process.env.CP_PLATFORM_ADMIN_EMAILS ?? 'ops@classroompath.test',
             STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY ?? 'sk_test_classroompath',

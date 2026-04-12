@@ -1,10 +1,16 @@
 import type { RequestHandler } from 'express';
 
+import { config } from '../config.js';
 import { processStripeWebhook } from '../services/billing.service.js';
 import { logger } from './logger.js';
 import { getRequestId } from './request-id.js';
 
 export const stripeWebhookHandler: RequestHandler = (req, res) => {
+  if (config.billingMode !== 'stripe') {
+    res.status(202).json({ received: false, disabled: true });
+    return;
+  }
+
   void (async () => {
     try {
       await processStripeWebhook({

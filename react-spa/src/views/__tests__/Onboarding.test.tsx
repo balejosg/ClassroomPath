@@ -8,7 +8,11 @@ const mockCreateManualRequest = vi.fn();
 const mockWaitForInv = vi.fn();
 const mockLogout = vi.fn();
 
-let mockPolicy = { allowSelfServiceOrgs: true, allowOrgDirectory: true };
+let mockPolicy = {
+  allowSelfServiceOrgs: true,
+  allowOrgDirectory: true,
+  billingMode: 'stripe',
+};
 let mockOrganizations = [{ id: 'org_1', name: 'Org 1' }];
 let mockOrganizationsPending = false;
 let mockOrganizationsError = false;
@@ -56,7 +60,11 @@ describe('Onboarding View', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPolicy = { allowSelfServiceOrgs: true, allowOrgDirectory: true };
+    mockPolicy = {
+      allowSelfServiceOrgs: true,
+      allowOrgDirectory: true,
+      billingMode: 'stripe',
+    };
     mockOrganizations = [{ id: 'org_1', name: 'Org 1' }];
     mockOrganizationsPending = false;
     mockOrganizationsError = false;
@@ -71,7 +79,7 @@ describe('Onboarding View', () => {
     expect(screen.getByText(/¡Bienvenido a ClassroomPath!/i)).toBeInTheDocument();
     expect(screen.getByText('Contratar cuota anual')).toBeInTheDocument();
     expect(screen.getByText('Empezar piloto')).toBeInTheDocument();
-    expect(screen.getByText('Solicitar excepción')).toBeInTheDocument();
+    expect(screen.getByText('Soy un centro público')).toBeInTheDocument();
     expect(screen.getByText('Esperar invitación')).toBeInTheDocument();
   });
 
@@ -154,7 +162,7 @@ describe('Onboarding View', () => {
     fireEvent.change(screen.getByPlaceholderText('Ej: Colegio San José'), {
       target: { value: 'Public School' },
     });
-    fireEvent.click(screen.getByText('Solicitar excepción'));
+    fireEvent.click(screen.getByText('Soy un centro público'));
 
     expect(mockCreateManualRequest).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -176,11 +184,11 @@ describe('Onboarding View', () => {
     fireEvent.change(screen.getByPlaceholderText('Ej: Colegio San José'), {
       target: { value: 'Centro publico' },
     });
-    fireEvent.click(screen.getByText('Solicitar excepción'));
+    fireEvent.click(screen.getByText('Soy un centro público'));
 
     expect(
       await screen.findByText(
-        'Solicitud enviada. Revisaremos la excepción antes de activar el centro.'
+        'Solicitud enviada. Revisaremos la activación antes de habilitar el centro.'
       )
     ).toBeInTheDocument();
   });
@@ -260,27 +268,40 @@ describe('Onboarding policy UI', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPolicy = { allowSelfServiceOrgs: true, allowOrgDirectory: true };
+    mockPolicy = {
+      allowSelfServiceOrgs: true,
+      allowOrgDirectory: true,
+      billingMode: 'stripe',
+    };
     mockOrganizations = [{ id: 'org_1', name: 'Org 1' }];
     mockOrganizationsPending = false;
     mockOrganizationsError = false;
   });
 
   it('hides self-service organization creation when policy disables it', () => {
-    mockPolicy = { allowSelfServiceOrgs: false, allowOrgDirectory: false };
+    mockPolicy = {
+      allowSelfServiceOrgs: false,
+      allowOrgDirectory: false,
+      billingMode: 'manual_only',
+    };
     mockOrganizations = [];
 
     render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
 
     expect(screen.queryByText('Crear mi organización')).not.toBeInTheDocument();
-    expect(screen.getByText('Contratar cuota anual')).toBeInTheDocument();
+    expect(screen.queryByText('Contratar cuota anual')).not.toBeInTheDocument();
+    expect(screen.getByText('Soy un centro público')).toBeInTheDocument();
     expect(screen.queryByTestId('onboarding-target-org')).not.toBeInTheDocument();
     expect(screen.getByTestId('onboarding-access-policy')).toBeInTheDocument();
     expect(screen.getByTestId('onboarding-wait-invite')).toBeInTheDocument();
   });
 
   it('does not enumerate organizations when directory discovery is disabled', () => {
-    mockPolicy = { allowSelfServiceOrgs: false, allowOrgDirectory: false };
+    mockPolicy = {
+      allowSelfServiceOrgs: false,
+      allowOrgDirectory: false,
+      billingMode: 'manual_only',
+    };
     mockOrganizations = [];
     vi.mocked(mockWaitForInv).mockImplementation((_input, options) => {
       options?.onSuccess?.();

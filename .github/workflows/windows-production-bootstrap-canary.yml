@@ -57,12 +57,50 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/classroompath-production-release
           chmod 600 ~/.ssh/classroompath-production-release
 
-      - name: Read production Stripe webhook secret
+      - name: Read production billing mode
+        id: read-billing-mode
         shell: bash
         run: |
           set -euo pipefail
 
-          stripe_webhook_secret="$(ssh             -o ConnectTimeout=10             -o BatchMode=yes             -o IdentitiesOnly=yes             -o StrictHostKeyChecking=accept-new             -i ~/.ssh/classroompath-production-release             -p "${{ steps.resolve-production.outputs.port }}"             "${{ steps.resolve-production.outputs.user }}@${{ steps.resolve-production.outputs.ip }}"             "grep '^STRIPE_WEBHOOK_SECRET=' /opt/classroompath/app/config/.env | sed 's/^STRIPE_WEBHOOK_SECRET=//' | head -n1")"
+          billing_mode="$(ssh \
+            -o ConnectTimeout=10 \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -i ~/.ssh/classroompath-production-release \
+            -p "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}@${{ steps.resolve-production.outputs.ip }}" \
+            "grep '^CP_BILLING_MODE=' /opt/classroompath/app/config/.env | sed 's/^CP_BILLING_MODE=//' | head -n1")"
+
+          if [ -z "$billing_mode" ]; then
+            billing_mode="manual_only"
+          fi
+
+          echo "billing_mode=$billing_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Skip bootstrap canary when production is manual-only
+        if: steps.read-billing-mode.outputs.billing_mode != 'stripe'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Production billing mode is ${{ steps.read-billing-mode.outputs.billing_mode }}; skipping bootstrap canary."
+
+      - name: Read production Stripe webhook secret
+        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          stripe_webhook_secret="$(ssh \
+            -o ConnectTimeout=10 \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -i ~/.ssh/classroompath-production-release \
+            -p "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}@${{ steps.resolve-production.outputs.ip }}" \
+            "grep '^STRIPE_WEBHOOK_SECRET=' /opt/classroompath/app/config/.env | sed 's/^STRIPE_WEBHOOK_SECRET=//' | head -n1")"
 
           if [ -z "$stripe_webhook_secret" ]; then
             echo "::error::STRIPE_WEBHOOK_SECRET is missing on production"
@@ -73,6 +111,7 @@ jobs:
           echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET=$stripe_webhook_secret" >> "$GITHUB_ENV"
 
       - name: Provision production enrollment canary
+        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         id: provision
         shell: bash
         env:
@@ -80,6 +119,7 @@ jobs:
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
       - name: Download and run live windows.ps1 enrollment script
+        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         shell: pwsh
         env:
           CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
@@ -107,6 +147,7 @@ jobs:
           }
 
       - name: Re-run Update-OpenPath.ps1 and validate Firefox managed install
+        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         shell: pwsh
         env:
           EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}

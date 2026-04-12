@@ -160,12 +160,13 @@ describe('Workflow configuration hardening', () => {
     }
   });
 
-  test('production deploy workflow forwards billing runtime secrets to the SSH deploy step', () => {
+  test('production deploy workflow forwards billing runtime env to the SSH deploy step', () => {
     const workflow = readWorkflow('.github/workflows/deploy.yml');
     const deployStep = workflow.jobs?.['deploy-production']?.steps?.find(
       (step) => step.name === 'Deploy via SSH'
     );
 
+    assert.match(String(deployStep?.with?.['envs'] ?? ''), /CP_BILLING_MODE/);
     assert.match(String(deployStep?.with?.['envs'] ?? ''), /CP_PLATFORM_ADMIN_EMAILS/);
     assert.match(String(deployStep?.with?.['envs'] ?? ''), /STRIPE_SECRET_KEY/);
     assert.match(String(deployStep?.with?.['envs'] ?? ''), /STRIPE_WEBHOOK_SECRET/);
@@ -916,10 +917,11 @@ describe('Workflow configuration hardening', () => {
       'production bootstrap canary helper should not rely on the deprecated self-service organization creation path'
     );
     assert.ok(
-      workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET') &&
-        workflowText.includes('DEPLOY_HOST') &&
+      workflowText.includes("grep '^CP_BILLING_MODE='") &&
+        workflowText.includes('Skip bootstrap canary when production is manual-only') &&
+        workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET') &&
         workflowText.includes('classroompath-production-release'),
-      'windows-production-bootstrap-canary should retrieve the production Stripe webhook secret over the deploy SSH boundary before provisioning'
+      'windows-production-bootstrap-canary should detect production billing mode first and only retrieve the Stripe webhook secret when checkout canaries apply'
     );
     assert.ok(
       workflowText.includes('/api/enroll/') && workflowText.includes('windows.ps1'),
@@ -1010,10 +1012,11 @@ describe('Workflow configuration hardening', () => {
       'both client update canaries should provision live production enrollment through the shared helper'
     );
     assert.ok(
-      workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET') &&
-        workflowText.includes('DEPLOY_HOST') &&
+      workflowText.includes("grep '^CP_BILLING_MODE='") &&
+        workflowText.includes('Skip production client update canary when billing is manual-only') &&
+        workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET') &&
         workflowText.includes('classroompath-production-release'),
-      'production client update canaries should retrieve the production Stripe webhook secret over the deploy SSH boundary before provisioning'
+      'production client update canaries should detect production billing mode first and only retrieve the Stripe webhook secret when checkout provisioning applies'
     );
     assert.ok(
       workflowText.includes('OpenPath.ps1') && workflowText.includes('self-update --silent'),

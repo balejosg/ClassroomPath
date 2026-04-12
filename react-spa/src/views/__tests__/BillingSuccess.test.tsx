@@ -93,6 +93,32 @@ describe('BillingSuccess', () => {
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
   }, 10000);
 
+  it('shows manual review state when checkout is not available in this environment', async () => {
+    const onComplete = vi.fn();
+    mockRefetch.mockResolvedValue({
+      data: {
+        hasMembership: false,
+        billing: { hasActiveEntitlement: false },
+        policy: {
+          billingMode: 'manual_only',
+          allowSelfServiceOrgs: false,
+          allowOrgDirectory: false,
+        },
+      },
+    });
+
+    render(<BillingSuccess onComplete={onComplete} onLogout={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('La activación del centro está en revisión manual.')
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Volver al onboarding' }));
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
   it('shows the refresh error and lets the user log out', async () => {
     const onLogout = vi.fn();
     mockMutateAsync.mockRejectedValue(new Error('Refresh rejected'));

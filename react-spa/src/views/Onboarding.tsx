@@ -5,6 +5,7 @@ import {
   createOnboardingPolicy,
   getOnboardingAccessMode,
   resolveAutoSelectedOrganizationId,
+  supportsOnlineCheckout,
   shouldShowOnboardingAccessPolicyNotice,
 } from '@classroompath/contracts/onboarding-policy';
 import type { CreateOrganizationSuccessDto } from '@classroompath/presenters/onboarding';
@@ -34,6 +35,7 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
   const checkoutMutation = useCreateBillingCheckout();
   const manualRequestMutation = useCreateManualBillingRequest();
   const onboardingPolicy = createOnboardingPolicy(statusQuery.data?.policy ?? {});
+  const allowsOnlineCheckout = supportsOnlineCheckout(onboardingPolicy);
   const allowOrgDirectory = getOnboardingAccessMode(onboardingPolicy) === 'directory';
   const orgsQuery = useListOrganizations({
     enabled: allowOrgDirectory,
@@ -97,11 +99,11 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
       {
         ...input,
         kind: 'public_campaign',
-        note: 'Solicitud de excepcion desde onboarding',
+        note: 'Solicitud de centro publico desde onboarding',
       },
       {
         onSuccess: () => {
-          setNotice('Solicitud enviada. Revisaremos la excepción antes de activar el centro.');
+          setNotice('Solicitud enviada. Revisaremos la activación antes de habilitar el centro.');
         },
         onError: (err) => {
           setError(err.message || 'No se pudo enviar la solicitud');
@@ -171,11 +173,14 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
               <div className="p-3 bg-blue-100 rounded-lg text-blue-600">
                 <CreditCard size={32} />
               </div>
-              <h2 className="text-xl font-bold text-gray-800">Contratar centro</h2>
+              <h2 className="text-xl font-bold text-gray-800">
+                {allowsOnlineCheckout ? 'Contratar centro' : 'Activar centro'}
+              </h2>
             </div>
             <p className="text-gray-600 mb-8 leading-relaxed">
-              Activa el centro con checkout seguro antes de crear la organización. La cuota anual
-              incluye Stripe Tax y el onboarding queda separado en la primera factura.
+              {allowsOnlineCheckout
+                ? 'Activa el centro con checkout seguro antes de crear la organización. La cuota anual incluye Stripe Tax y el onboarding queda separado en la primera factura.'
+                : 'Los centros públicos pueden solicitar activación sin pago online. Revisaremos la solicitud antes de habilitar la organización.'}
             </p>
             <div className="space-y-4 mt-auto">
               <div>
@@ -208,34 +213,38 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
                 />
               </div>
               <div className="grid gap-3">
-                <Button
-                  type="button"
-                  onClick={() => handleCheckout('annual')}
-                  data-testid="onboarding-start-annual"
-                  className="w-full cursor-pointer py-6"
-                  disabled={checkoutMutation.isPending}
-                >
-                  {checkoutMutation.isPending ? 'Preparando...' : 'Contratar cuota anual'}
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => handleCheckout('pilot')}
-                  data-testid="onboarding-start-pilot"
-                  variant="outline"
-                  className="w-full cursor-pointer py-6 border-2"
-                  disabled={checkoutMutation.isPending}
-                >
-                  Empezar piloto
-                </Button>
+                {allowsOnlineCheckout ? (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={() => handleCheckout('annual')}
+                      data-testid="onboarding-start-annual"
+                      className="w-full cursor-pointer py-6"
+                      disabled={checkoutMutation.isPending}
+                    >
+                      {checkoutMutation.isPending ? 'Preparando...' : 'Contratar cuota anual'}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => handleCheckout('pilot')}
+                      data-testid="onboarding-start-pilot"
+                      variant="outline"
+                      className="w-full cursor-pointer py-6 border-2"
+                      disabled={checkoutMutation.isPending}
+                    >
+                      Empezar piloto
+                    </Button>
+                  </>
+                ) : null}
                 <Button
                   type="button"
                   onClick={handleManualRequest}
-                  data-testid="onboarding-request-exception"
-                  variant="ghost"
+                  data-testid="onboarding-request-public-center"
+                  variant={allowsOnlineCheckout ? 'ghost' : 'primary'}
                   className="w-full cursor-pointer py-6"
                   disabled={manualRequestMutation.isPending}
                 >
-                  Solicitar excepción
+                  Soy un centro público
                 </Button>
               </div>
             </div>

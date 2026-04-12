@@ -6,6 +6,7 @@ import {
   getOnboardingAccessMode,
   resolveAutoSelectedOrganizationId,
   shouldShowOnboardingAccessPolicyNotice,
+  supportsOnlineCheckout,
 } from '../src/contracts/onboarding-policy';
 
 describe('onboarding policy contract', () => {
@@ -15,6 +16,7 @@ describe('onboarding policy contract', () => {
         createOnboardingPolicy({
           allowSelfServiceOrgs: true,
           allowOrgDirectory: true,
+          billingMode: 'stripe',
         })
       ),
       'directory'
@@ -25,6 +27,7 @@ describe('onboarding policy contract', () => {
         createOnboardingPolicy({
           allowSelfServiceOrgs: false,
           allowOrgDirectory: false,
+          billingMode: 'manual_only',
         })
       ),
       'invite_only'
@@ -35,6 +38,7 @@ describe('onboarding policy contract', () => {
     const policy = createOnboardingPolicy({
       allowSelfServiceOrgs: false,
       allowOrgDirectory: true,
+      billingMode: 'stripe',
     });
 
     assert.equal(
@@ -47,9 +51,12 @@ describe('onboarding policy contract', () => {
         createOnboardingPolicy({
           allowSelfServiceOrgs: false,
           allowOrgDirectory: false,
+          billingMode: 'manual_only',
         })
       ),
       true
     );
+    assert.equal(supportsOnlineCheckout(policy), true);
+    assert.equal(supportsOnlineCheckout(createOnboardingPolicy()), false);
   });
 });

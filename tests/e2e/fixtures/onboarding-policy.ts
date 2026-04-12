@@ -78,7 +78,10 @@ export async function mockOnboardingPolicy(
   patch: OnboardingPolicyPatch,
   options: TrpcMockOptions = {}
 ): Promise<void> {
-  const policy = createOnboardingPolicy(patch.policy);
+  const policy = createOnboardingPolicy({
+    billingMode: 'stripe',
+    ...patch.policy,
+  });
 
   await mockTrpcProcedures(
     page,
@@ -105,7 +108,10 @@ export async function mockWaitingOnboardingFlow(
 ): Promise<void> {
   const routeGlob = options.routeGlob ?? '**/cp/trpc/**';
   const routeMarker = options.routeMarker ?? '/cp/trpc/';
-  const policy = createOnboardingPolicy(patch.policy);
+  const policy = createOnboardingPolicy({
+    billingMode: 'stripe',
+    ...patch.policy,
+  });
   let isWaiting = false;
 
   await page.route(routeGlob, async (route) => {

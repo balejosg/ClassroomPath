@@ -2,6 +2,7 @@ const JWT_SECRET = 'test-jwt-secret';
 process.env.JWT_SECRET = JWT_SECRET;
 process.env.NODE_ENV = 'test';
 process.env.CP_ALLOW_SELF_SERVICE_ORGS = 'false';
+process.env.CP_BILLING_MODE = 'stripe';
 process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.test';
 process.env.STRIPE_SECRET_KEY = 'sk_test_classroompath';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_classroompath';
@@ -66,6 +67,7 @@ async function issueToken(params: {
 
 describe('ClassroomPath billing integration', { concurrency: 1 }, () => {
   beforeEach(async () => {
+    process.env.CP_BILLING_MODE = 'stripe';
     await resetDb();
   });
 
@@ -89,6 +91,26 @@ describe('ClassroomPath billing integration', { concurrency: 1 }, () => {
     assert.equal(response.status, 403);
     const parsed = await parseTRPC(response);
     assert.equal(parsed.error, 'Billing checkout required before creating an organization');
+  });
+
+  test('blocks checkout creation when billing mode is manual-only', async () => {
+    process.env.CP_BILLING_MODE = 'manual_only';
+    const token = await issueToken({
+      userId: 'billing-manual-only',
+      email: uniqueEmail('billing-manual-only'),
+    });
+
+    const response = await trpcMutate(
+      integration.baseUrl,
+      'billing.createCheckout',
+      { kind: 'annual', organizationName: 'Manual Only Org', classrooms: 12 },
+      bearerAuth(token)
+    );
+
+    assert.equal(response.status, 412);
+    const parsed = await parseTRPC(response);
+    assert.equal(parsed.error, 'Online checkout is not available in this environment yet.');
+    process.env.CP_BILLING_MODE = 'stripe';
   });
 
   test('creates an annual checkout session with recurring and onboarding price IDs', async () => {

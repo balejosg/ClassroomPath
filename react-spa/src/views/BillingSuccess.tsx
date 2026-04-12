@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@openpath/public-ui';
+import { supportsOnlineCheckout } from '@classroompath/contracts/onboarding-policy';
 import { cpTrpc } from '../lib/cp-trpc';
 import { persistSession } from '../lib/auth-storage';
 import { useOnboardingStatus, useRefreshSession } from '../lib/hooks';
@@ -18,6 +19,7 @@ export function BillingSuccess({ onComplete, onLogout }: BillingSuccessProps) {
   const statusQuery = useOnboardingStatus({ enabled: false, retry: 0 });
   const [error, setError] = useState('');
   const [message, setMessage] = useState('Confirmando el alta del centro...');
+  const [isManualReview, setIsManualReview] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,6 +34,12 @@ export function BillingSuccess({ onComplete, onLogout }: BillingSuccessProps) {
           const status = result.data;
 
           if (cancelled) return;
+
+          if (status?.policy && !supportsOnlineCheckout(status.policy)) {
+            setIsManualReview(true);
+            setMessage('La activación del centro está en revisión manual.');
+            return;
+          }
 
           if (status?.hasMembership && status.billing?.hasActiveEntitlement) {
             const me = await cpTrpc.auth.me.query();
@@ -70,6 +78,10 @@ export function BillingSuccess({ onComplete, onLogout }: BillingSuccessProps) {
           {error ? (
             <Button type="button" onClick={() => window.location.reload()}>
               Reintentar
+            </Button>
+          ) : isManualReview ? (
+            <Button type="button" onClick={onComplete}>
+              Volver al onboarding
             </Button>
           ) : (
             <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-600" />
