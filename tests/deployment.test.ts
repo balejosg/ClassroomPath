@@ -40,6 +40,8 @@ const deployProductionRuntimeHelperPath = resolve(
   projectRoot,
   'scripts/lib/deploy-production-runtime.sh'
 );
+const dockerComposePath = resolve(projectRoot, 'docker/docker-compose.yml');
+const deployProductionRunbookPath = resolve(projectRoot, 'docs/runbooks/deploy-production.md');
 const syncBillingEnvScriptPath = resolve(projectRoot, 'scripts/sync-billing-env.sh');
 const resolveLatestVerifierImageLibPath = resolve(
   projectRoot,
@@ -157,6 +159,21 @@ void describe('Migration Tooling', () => {
     assert.ok(
       helper.indexOf('sync-billing-env.sh') < helper.indexOf('validate-runtime-config-docker.sh'),
       'billing env sync should happen before runtime validation'
+    );
+  });
+
+  void test('production compose defaults and runbook commands pin the canonical compose project name', () => {
+    const compose = readFileSync(dockerComposePath, 'utf-8');
+    const runbook = readFileSync(deployProductionRunbookPath, 'utf-8');
+
+    assert.ok(
+      compose.includes('name: ${COMPOSE_PROJECT_NAME:-classroompath-production}'),
+      'docker/docker-compose.yml should default to the canonical production compose project name'
+    );
+    assert.ok(
+      runbook.includes('export COMPOSE_PROJECT_NAME=classroompath-production') &&
+        runbook.includes('create a second network namespace'),
+      'deploy-production.md should require the canonical compose project name before manual docker compose commands'
     );
   });
 

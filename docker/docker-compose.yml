@@ -1,6 +1,8 @@
 # ClassroomPath Docker Compose
 # Gateway API + OpenPath API + SPA
 
+name: ${COMPOSE_PROJECT_NAME:-classroompath-production}
+
 networks:
   openpath_default:
     driver: bridge

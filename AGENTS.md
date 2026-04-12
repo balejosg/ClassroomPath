@@ -268,8 +268,8 @@ curl -sf http://192.168.1.114:3000/health
 | `api`     | `classroompath-api`     | (internal only) | Upstream OpenPath API (reachable by gateway) |
 | `spa`     | `classroompath-spa`     | `8081`          | Static SPA serving                           |
 
-Build: `cd docker && docker compose build --no-cache`
-Run: `cd docker && docker compose up -d`
+Build: `cd docker && COMPOSE_PROJECT_NAME=classroompath-local docker compose build --no-cache`
+Run: `cd docker && COMPOSE_PROJECT_NAME=classroompath-local docker compose up -d`
 
 ## Configuration
 

@@ -193,10 +193,14 @@ git rev-parse --short HEAD
 git status --short --branch
 
 cd /opt/classroompath/app/docker
+export COMPOSE_PROJECT_NAME=classroompath-production
 docker compose ps
 docker logs classroompath-gateway --tail 50
 docker logs classroompath-api --tail 50
 ```
+
+Always export `COMPOSE_PROJECT_NAME=classroompath-production` before any manual `docker compose` command on the production host.
+Without it, Docker Compose can derive the project name from the directory (`docker`), create a second network namespace, and strand `gateway` away from `api`.
 
 Healthy production should look like:
 
