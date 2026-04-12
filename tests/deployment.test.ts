@@ -1519,6 +1519,11 @@ void describe('Migration Tooling', () => {
   });
 
   void test('release-state helpers centralize current-image and staging-verification evidence writes', () => {
+    const releaseManifestHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest.sh');
+    const releaseManifestCompatHelperPath = resolve(
+      projectRoot,
+      'scripts/lib/release-manifest-compat.sh'
+    );
     const releaseStateHelperPath = resolve(projectRoot, 'scripts/lib/release-state.sh');
     const releaseStateCompatHelperPath = resolve(
       projectRoot,
@@ -1534,12 +1539,16 @@ void describe('Migration Tooling', () => {
       'scripts/lib/remote-helper-contracts.sh'
     );
     const deploymentStateHelperPath = resolve(projectRoot, 'scripts/lib/deployment-state.sh');
+    const releaseRuntimeHelperPath = resolve(projectRoot, 'scripts/lib/release-runtime.sh');
+    const releaseManifestHelper = readFileSync(releaseManifestHelperPath, 'utf-8');
+    const releaseManifestCompatHelper = readFileSync(releaseManifestCompatHelperPath, 'utf-8');
     const releaseStateHelper = readFileSync(releaseStateHelperPath, 'utf-8');
     const releaseStateCompatHelper = readFileSync(releaseStateCompatHelperPath, 'utf-8');
     const releaseStateContract = readFileSync(releaseStateContractPath, 'utf-8');
     const remoteDeployScaffoldHelper = readFileSync(remoteDeployScaffoldHelperPath, 'utf-8');
     const remoteHelperContracts = readFileSync(remoteHelperContractsPath, 'utf-8');
     const deploymentStateHelper = readFileSync(deploymentStateHelperPath, 'utf-8');
+    const releaseRuntimeHelper = readFileSync(releaseRuntimeHelperPath, 'utf-8');
     const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
     const productionRemote = readFileSync(
       resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
@@ -1558,6 +1567,14 @@ void describe('Migration Tooling', () => {
       'utf-8'
     );
 
+    assert.ok(
+      existsSync(releaseManifestHelperPath),
+      'scripts/lib/release-manifest.sh should exist'
+    );
+    assert.ok(
+      existsSync(releaseManifestCompatHelperPath),
+      'scripts/lib/release-manifest-compat.sh should exist'
+    );
     assert.ok(existsSync(releaseStateHelperPath), 'scripts/lib/release-state.sh should exist');
     assert.ok(
       existsSync(releaseStateCompatHelperPath),
@@ -1575,6 +1592,7 @@ void describe('Migration Tooling', () => {
       existsSync(deploymentStateHelperPath),
       'scripts/lib/deployment-state.sh should exist'
     );
+    assert.ok(existsSync(releaseRuntimeHelperPath), 'scripts/lib/release-runtime.sh should exist');
     assert.ok(
       existsSync(remoteHelperContractsPath),
       'scripts/lib/remote-helper-contracts.sh should exist'
@@ -1615,18 +1633,36 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
+        remoteHelperContracts.includes('remote_helper_contract_version()') &&
+        remoteHelperContracts.includes('remote_helper_contract_version_at_least()') &&
+        remoteHelperContracts.includes('RELEASE_MANIFEST_HELPER_MIN_CONTRACT_VERSION=') &&
+        remoteHelperContracts.includes('RELEASE_STATE_RUNTIME_MIN_CONTRACT_VERSION=') &&
+        remoteHelperContracts.includes(
+          'RELEASE_STATE_STAGING_VERIFICATION_MIN_CONTRACT_VERSION='
+        ) &&
+        remoteHelperContracts.includes('DEPLOYMENT_STATE_HELPER_MIN_CONTRACT_VERSION=') &&
+        remoteHelperContracts.includes('RELEASE_RUNTIME_HELPER_MIN_CONTRACT_VERSION=') &&
         remoteHelperContracts.includes('release_manifest_compat_helper_supports_contract()') &&
         remoteHelperContracts.includes(
           'release_state_helper_supports_staging_verification_contract()'
         ) &&
         remoteHelperContracts.includes('refresh_deployed_release_helpers()'),
-      'remote-helper-contracts should centralize post-checkout helper compatibility checks for streamed remote deploys'
+      'remote-helper-contracts should centralize version-first post-checkout helper compatibility checks for streamed remote deploys'
     );
     assert.ok(
       deploymentStateHelper.includes('deployment_state_init_paths()') &&
+        deploymentStateHelper.includes('DEPLOYMENT_STATE_HELPER_CONTRACT_VERSION=') &&
         deploymentStateHelper.includes('deployment_state_capture_previous_release()') &&
         deploymentStateHelper.includes('deployment_state_activate_previous_release()'),
       'deployment-state helper should own current/previous/context rollback state transitions'
+    );
+    assert.ok(
+      releaseManifestHelper.includes('RELEASE_MANIFEST_HELPER_CONTRACT_VERSION=') &&
+        releaseManifestCompatHelper.includes('RELEASE_MANIFEST_COMPAT_HELPER_CONTRACT_VERSION=') &&
+        releaseStateHelper.includes('RELEASE_STATE_HELPER_CONTRACT_VERSION=') &&
+        releaseStateCompatHelper.includes('RELEASE_STATE_COMPAT_HELPER_CONTRACT_VERSION=') &&
+        releaseRuntimeHelper.includes('RELEASE_RUNTIME_HELPER_CONTRACT_VERSION='),
+      'remote deploy helpers should publish explicit numeric contract versions for version-first compatibility checks'
     );
     assert.ok(
       stagingRemote.includes('RELEASE_STATE_HELPER_PATH') &&

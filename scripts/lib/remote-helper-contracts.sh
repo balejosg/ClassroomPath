@@ -2,6 +2,14 @@
 # remote-helper-contracts.sh - Compatibility guards for streamed remote deploy helpers
 # shellcheck shell=bash
 
+RELEASE_MANIFEST_HELPER_MIN_CONTRACT_VERSION=1
+RELEASE_MANIFEST_COMPAT_HELPER_MIN_CONTRACT_VERSION=1
+RELEASE_STATE_RUNTIME_MIN_CONTRACT_VERSION=1
+RELEASE_STATE_STAGING_VERIFICATION_MIN_CONTRACT_VERSION=1
+RELEASE_STATE_COMPAT_HELPER_MIN_CONTRACT_VERSION=1
+DEPLOYMENT_STATE_HELPER_MIN_CONTRACT_VERSION=1
+RELEASE_RUNTIME_HELPER_MIN_CONTRACT_VERSION=1
+
 remote_helper_path_supports_all() {
   local helper_path="${1:-}"
   shift || true
@@ -18,17 +26,99 @@ remote_helper_path_supports_all() {
   return 0
 }
 
+remote_helper_contract_version() {
+  local helper_path="${1:-}"
+  local variable_name="${2:-}"
+  local version=""
+
+  [ -f "$helper_path" ] || return 1
+
+  version="$(
+    awk -F= -v variable_name="$variable_name" '
+      $1 == variable_name {
+        value = $2
+        sub(/[[:space:]]+#.*$/, "", value)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+        print value
+        found = 1
+        exit
+      }
+      END {
+        if (!found) {
+          exit 1
+        }
+      }
+    ' "$helper_path"
+  )" || return 1
+
+  [[ "$version" =~ ^[0-9]+$ ]] || return 2
+  printf '%s\n' "$version"
+}
+
+remote_helper_contract_version_at_least() {
+  local helper_path="${1:-}"
+  local variable_name="${2:-}"
+  local minimum_version="${3:-}"
+  local version=""
+  local status=0
+
+  version="$(remote_helper_contract_version "$helper_path" "$variable_name")"
+  status=$?
+
+  case "$status" in
+    0)
+      [ "$version" -ge "$minimum_version" ]
+      return $?
+      ;;
+    1)
+      return 2
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 release_manifest_helper_supports_contract() {
   local helper_path="${1:-}"
+  local status=0
 
-  remote_helper_path_supports_all \
+  remote_helper_contract_version_at_least \
     "$helper_path" \
-    'release_manifest_validate_contract()' \
-    'linux_agent_version'
+    RELEASE_MANIFEST_HELPER_CONTRACT_VERSION \
+    "$RELEASE_MANIFEST_HELPER_MIN_CONTRACT_VERSION"
+  status=$?
+
+  case "$status" in
+    0)
+      return 0
+      ;;
+    1)
+      return 1
+      ;;
+  esac
+
+  remote_helper_path_supports_all "$helper_path" 'release_manifest_validate_contract()' 'linux_agent_version'
 }
 
 release_manifest_compat_helper_supports_contract() {
   local helper_path="${1:-}"
+  local status=0
+
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    RELEASE_MANIFEST_COMPAT_HELPER_CONTRACT_VERSION \
+    "$RELEASE_MANIFEST_COMPAT_HELPER_MIN_CONTRACT_VERSION"
+  status=$?
+
+  case "$status" in
+    0)
+      return 0
+      ;;
+    1)
+      return 1
+      ;;
+  esac
 
   remote_helper_path_supports_all \
     "$helper_path" \
@@ -38,15 +128,44 @@ release_manifest_compat_helper_supports_contract() {
 
 release_state_helper_supports_runtime_contract() {
   local helper_path="${1:-}"
+  local status=0
 
-  remote_helper_path_supports_all \
+  remote_helper_contract_version_at_least \
     "$helper_path" \
-    'write_deploy_context_state()' \
-    'OPENPATH_LINUX_AGENT_VERSION'
+    RELEASE_STATE_HELPER_CONTRACT_VERSION \
+    "$RELEASE_STATE_RUNTIME_MIN_CONTRACT_VERSION"
+  status=$?
+
+  case "$status" in
+    0)
+      return 0
+      ;;
+    1)
+      return 1
+      ;;
+  esac
+
+  remote_helper_path_supports_all "$helper_path" 'write_deploy_context_state()' 'OPENPATH_LINUX_AGENT_VERSION'
 }
 
 release_state_helper_supports_staging_verification_contract() {
   local helper_path="${1:-}"
+  local status=0
+
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    RELEASE_STATE_HELPER_CONTRACT_VERSION \
+    "$RELEASE_STATE_STAGING_VERIFICATION_MIN_CONTRACT_VERSION"
+  status=$?
+
+  case "$status" in
+    0)
+      return 0
+      ;;
+    1)
+      return 1
+      ;;
+  esac
 
   remote_helper_path_supports_all \
     "$helper_path" \
@@ -56,15 +175,44 @@ release_state_helper_supports_staging_verification_contract() {
 
 release_state_compat_helper_supports_contract() {
   local helper_path="${1:-}"
+  local status=0
 
-  remote_helper_path_supports_all \
+  remote_helper_contract_version_at_least \
     "$helper_path" \
-    'write_release_state_snapshot_compat()' \
-    'release_state_list_fields_compat()'
+    RELEASE_STATE_COMPAT_HELPER_CONTRACT_VERSION \
+    "$RELEASE_STATE_COMPAT_HELPER_MIN_CONTRACT_VERSION"
+  status=$?
+
+  case "$status" in
+    0)
+      return 0
+      ;;
+    1)
+      return 1
+      ;;
+  esac
+
+  remote_helper_path_supports_all "$helper_path" 'write_release_state_snapshot_compat()' 'release_state_list_fields_compat()'
 }
 
 deployment_state_helper_supports_contract() {
   local helper_path="${1:-}"
+  local status=0
+
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    DEPLOYMENT_STATE_HELPER_CONTRACT_VERSION \
+    "$DEPLOYMENT_STATE_HELPER_MIN_CONTRACT_VERSION"
+  status=$?
+
+  case "$status" in
+    0)
+      return 0
+      ;;
+    1)
+      return 1
+      ;;
+  esac
 
   remote_helper_path_supports_all \
     "$helper_path" \
@@ -74,11 +222,24 @@ deployment_state_helper_supports_contract() {
 
 release_runtime_helper_supports_runtime_contract() {
   local helper_path="${1:-}"
+  local status=0
 
-  remote_helper_path_supports_all \
+  remote_helper_contract_version_at_least \
     "$helper_path" \
-    'write_release_runtime_state()' \
-    'OPENPATH_LINUX_AGENT_VERSION'
+    RELEASE_RUNTIME_HELPER_CONTRACT_VERSION \
+    "$RELEASE_RUNTIME_HELPER_MIN_CONTRACT_VERSION"
+  status=$?
+
+  case "$status" in
+    0)
+      return 0
+      ;;
+    1)
+      return 1
+      ;;
+  esac
+
+  remote_helper_path_supports_all "$helper_path" 'write_release_runtime_state()' 'OPENPATH_LINUX_AGENT_VERSION'
 }
 
 refresh_deployed_release_helpers() {

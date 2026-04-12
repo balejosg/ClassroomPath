@@ -2,6 +2,8 @@
 # release-state.sh - Helpers for deployment release-state/evidence snapshots
 # shellcheck shell=bash
 
+RELEASE_STATE_HELPER_CONTRACT_VERSION=1
+
 release_state_cli_path() {
   local script_source="${BASH_SOURCE[0]:-}"
   local lib_dir=""

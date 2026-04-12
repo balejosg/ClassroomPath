@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
+DEPLOYMENT_STATE_HELPER_CONTRACT_VERSION=1
+
 deployment_state_init_paths() {
   local state_dir="$1"
 

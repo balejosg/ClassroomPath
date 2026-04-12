@@ -2,6 +2,8 @@
 # release-runtime.sh - Shared release manifest/state contract helpers
 # shellcheck shell=bash
 
+RELEASE_RUNTIME_HELPER_CONTRACT_VERSION=1
+
 load_release_manifest_runtime() {
   local manifest_path="$1"
   local expected_sha="${2:-}"

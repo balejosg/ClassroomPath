@@ -2,6 +2,8 @@
 # release-manifest-compat.sh - Shared remote fallback for release manifest helpers
 # shellcheck shell=bash
 
+RELEASE_MANIFEST_COMPAT_HELPER_CONTRACT_VERSION=1
+
 release_manifest_get() {
   local manifest_path="$1"
   local key="$2"

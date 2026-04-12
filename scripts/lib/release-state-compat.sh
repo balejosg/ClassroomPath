@@ -2,6 +2,8 @@
 # release-state-compat.sh - Shared shell fallback for release-state snapshot serialization
 # shellcheck shell=bash
 
+RELEASE_STATE_COMPAT_HELPER_CONTRACT_VERSION=1
+
 if ! declare -F release_state_cli_path >/dev/null; then
   release_state_cli_path() {
     local script_source="${BASH_SOURCE[0]:-}"

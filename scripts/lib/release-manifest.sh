@@ -2,6 +2,8 @@
 # release-manifest.sh - Helpers for release image manifest payloads
 # shellcheck shell=bash
 
+RELEASE_MANIFEST_HELPER_CONTRACT_VERSION=1
+
 release_manifest_get() {
   local manifest_path="$1"
   local key="$2"

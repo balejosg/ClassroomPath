@@ -74,12 +74,32 @@ void describe('Remote Deploy Bootstrap', () => {
     );
     assert.ok(
       helperContractsContent.includes('remote_helper_path_supports_all()') &&
+        helperContractsContent.includes('remote_helper_contract_version()') &&
+        helperContractsContent.includes('remote_helper_contract_version_at_least()') &&
         helperContractsContent.includes('refresh_deployed_release_helpers()') &&
         helperContractsContent.includes(
           'release_state_helper_supports_staging_verification_contract()'
         ),
-      'remote-helper-contracts.sh should own shared streamed-helper contract guards and post-checkout refresh logic'
+      'remote-helper-contracts.sh should own version-first streamed-helper contract guards and post-checkout refresh logic'
     );
+  });
+
+  void test('remote helper libraries publish explicit contract versions', () => {
+    for (const helperPath of [
+      releaseManifestHelperPath,
+      releaseManifestCompatHelperPath,
+      releaseStateCompatHelperPath,
+      resolve(projectRoot, 'scripts/lib/release-state.sh'),
+      resolve(projectRoot, 'scripts/lib/deployment-state.sh'),
+      resolve(projectRoot, 'scripts/lib/release-runtime.sh'),
+    ]) {
+      const content = readFileSync(helperPath, 'utf-8');
+      assert.match(
+        content,
+        /HELPER_CONTRACT_VERSION=[0-9]+/,
+        `${helperPath} should publish a numeric helper contract version`
+      );
+    }
   });
 
   void test('inline deploy payload fallbacks stay byte-for-byte aligned with source helpers', () => {
