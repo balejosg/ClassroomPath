@@ -247,6 +247,61 @@ async function ensureMockOpenPathServer(): Promise<string> {
     res.json({ status: 'ok', service: 'mock-openpath-api' });
   });
 
+  app.post('/api/enroll/:classroomId/ticket', (req, res) => {
+    void (async () => {
+      const authHeader = req.get('authorization');
+      if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ success: false, error: 'Authorization required' });
+        return;
+      }
+
+      const token = authHeader.slice(7);
+      const decoded = jwt.decode(token) as
+        | (jwt.JwtPayload & {
+            roles?: Array<{ role?: string }>;
+          })
+        | null;
+      const roles = Array.isArray(decoded?.roles)
+        ? decoded.roles
+            .map((role) => (typeof role?.role === 'string' ? role.role : null))
+            .filter((role): role is string => role !== null)
+        : [];
+
+      if (!roles.includes('admin') && !roles.includes('teacher')) {
+        res.status(403).json({ success: false, error: 'Teacher access required' });
+        return;
+      }
+
+      const classroomId =
+        typeof req.params.classroomId === 'string' ? req.params.classroomId.trim() : '';
+      if (!classroomId) {
+        res.status(400).json({ success: false, error: 'classroomId parameter required' });
+        return;
+      }
+
+      const [classroom] = await openpathDb
+        .select({
+          id: openpathSchema.classrooms.id,
+          name: openpathSchema.classrooms.name,
+        })
+        .from(openpathSchema.classrooms)
+        .where(eq(openpathSchema.classrooms.id, classroomId))
+        .limit(1);
+
+      if (!classroom) {
+        res.status(404).json({ success: false, error: 'Classroom not found' });
+        return;
+      }
+
+      res.json({
+        success: true,
+        enrollmentToken: `mock-enrollment-token-${classroom.id}`,
+        classroomId: classroom.id,
+        classroomName: classroom.name,
+      });
+    })();
+  });
+
   app.post('/trpc/auth.login', (req, res) => {
     const body = req.body as { email?: unknown } | undefined;
     const email =

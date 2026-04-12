@@ -206,6 +206,50 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.strictEqual(got.currentGroupDisplayName, 'Plan Admin Visible');
   });
 
+  test('teacher can obtain an enrollment ticket for a tenant classroom without a default group', async () => {
+    await resetDb();
+
+    const scenario = buildScenario();
+    const { actor: admin, organization } = await scenario.createOrgAdmin({
+      userId: 'classrooms-groupless-admin',
+      organizationName: 'Groupless Enrollment Org',
+    });
+
+    const classroom = await scenario.createClassroom({
+      token: admin.token,
+      name: 'classroom-groupless',
+      displayName: 'Aula Sin Grupo',
+    });
+
+    const teacher = await scenario.addTeacher({
+      adminToken: admin.token,
+      organizationId: organization.organizationId,
+      userId: 'classrooms-groupless-teacher',
+      name: 'Teacher Groupless',
+      groupIds: [],
+    });
+
+    const ticketResponse = await fetch(
+      `${integration.baseUrl}/api/enroll/${encodeURIComponent(classroom.id)}/ticket`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${teacher.token}`,
+        },
+      }
+    );
+
+    assertStatus(ticketResponse, 200);
+    const ticket = (await ticketResponse.json()) as {
+      success: boolean;
+      enrollmentToken?: string;
+      classroomId?: string;
+    };
+    assert.strictEqual(ticket.success, true);
+    assert.strictEqual(ticket.classroomId, classroom.id);
+    assert.ok(ticket.enrollmentToken);
+  });
+
   test('allows same classroom name in different organizations but blocks duplicates in same org', async () => {
     await resetDb();
 
