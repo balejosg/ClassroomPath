@@ -389,9 +389,7 @@ function canMockRoleEnrollClassroom(
     classroom.activeGroupId,
     classroom.currentGroupId,
     classroom.defaultGroupId,
-  ].filter(
-    (groupId): groupId is string => typeof groupId === 'string' && groupId.length > 0
-  );
+  ].filter((groupId): groupId is string => typeof groupId === 'string' && groupId.length > 0);
 
   return teacherRoles.some((role) =>
     candidateGroupIds.some((groupId) => role.groupIds.includes(groupId))
