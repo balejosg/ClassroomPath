@@ -1230,10 +1230,11 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       deployContextHelper.includes('decode_release_manifest_base64 "$RELEASE_MANIFEST_B64"') &&
+        deployContextHelper.includes('release_manifest_is_canonical_contract "$RELEASE_MANIFEST_FILE"') &&
         deployContextHelper.includes(
           'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
         ),
-      'production deploy should load immutable image refs from the shared release manifest helper'
+      'production deploy should load immutable image refs from the shared release manifest helper without requiring node for canonical payloads'
     );
     assert.ok(
       deployRemoteScript.includes(
@@ -1319,8 +1320,9 @@ void describe('Migration Tooling', () => {
     assert.ok(
       manifestHelper.includes('decode_release_manifest_base64()') &&
         manifestHelper.includes('export_release_manifest_runtime_env()') &&
-        manifestHelper.includes('release_manifest_validate_contract()'),
-      'release-manifest helper should decode, validate, and export manifest fields from a single payload'
+        manifestHelper.includes('release_manifest_validate_contract()') &&
+        manifestHelper.includes('release_manifest_is_canonical_contract()'),
+      'release-manifest helper should decode, validate, detect canonical payloads, and export manifest fields from a single payload'
     );
     assert.ok(
       deployPayloadHelper.includes('export function buildDeployPayload') &&

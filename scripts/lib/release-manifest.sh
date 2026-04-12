@@ -33,6 +33,29 @@ release_manifest_require_key() {
   printf '%s\n' "$value"
 }
 
+release_manifest_is_canonical_contract() {
+  local manifest_path="$1"
+  local key=""
+
+  for key in \
+    repository \
+    run_id \
+    app_sha \
+    gateway_image \
+    migrations_image \
+    openpath_api_image \
+    openpath_version \
+    linux_agent_version \
+    spa_image \
+    verifier_image; do
+    if ! release_manifest_get "$manifest_path" "$key" >/dev/null 2>&1; then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
 release_manifest_validate_contract() {
   local manifest_path="$1"
   local expected_sha="${2:-}"
