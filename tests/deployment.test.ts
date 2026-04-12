@@ -1147,6 +1147,10 @@ void describe('Migration Tooling', () => {
     );
     const deployContextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
     const deployRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
+    const remoteDeployScaffoldHelper = readFileSync(
+      resolve(projectRoot, 'scripts/lib/remote-deploy-scaffold.sh'),
+      'utf-8'
+    );
     const rollbackRemoteScript = readFileSync(
       resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
       'utf-8'
@@ -1237,10 +1241,14 @@ void describe('Migration Tooling', () => {
       'production deploy should load immutable image refs from the shared release manifest helper without requiring node for canonical payloads'
     );
     assert.ok(
-      deployRemoteScript.includes(
-        'COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"'
-      ),
-      'production deploy should resolve common.sh through the shared remote bootstrap helper when the runner does not preserve the original script directory'
+      deployRemoteScript.includes('REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH') &&
+        deployRemoteScript.includes(
+          'remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"'
+        ) &&
+        remoteDeployScaffoldHelper.includes(
+          'COMMON_SH_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/common.sh")"'
+        ),
+      'production deploy should resolve common.sh through the shared remote bootstrap/scaffold helpers when the runner does not preserve the original script directory'
     );
     assert.ok(
       deployContextHelper.includes('classify_migration_risk() {'),
@@ -1494,6 +1502,10 @@ void describe('Migration Tooling', () => {
   void test('release-state helpers centralize current-image and staging-verification evidence writes', () => {
     const releaseStateHelperPath = resolve(projectRoot, 'scripts/lib/release-state.sh');
     const releaseStateContractPath = resolve(projectRoot, 'scripts/lib/release-state-contract.mjs');
+    const remoteDeployScaffoldHelperPath = resolve(
+      projectRoot,
+      'scripts/lib/remote-deploy-scaffold.sh'
+    );
     const remoteHelperContractsPath = resolve(
       projectRoot,
       'scripts/lib/remote-helper-contracts.sh'
@@ -1501,6 +1513,7 @@ void describe('Migration Tooling', () => {
     const deploymentStateHelperPath = resolve(projectRoot, 'scripts/lib/deployment-state.sh');
     const releaseStateHelper = readFileSync(releaseStateHelperPath, 'utf-8');
     const releaseStateContract = readFileSync(releaseStateContractPath, 'utf-8');
+    const remoteDeployScaffoldHelper = readFileSync(remoteDeployScaffoldHelperPath, 'utf-8');
     const remoteHelperContracts = readFileSync(remoteHelperContractsPath, 'utf-8');
     const deploymentStateHelper = readFileSync(deploymentStateHelperPath, 'utf-8');
     const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
@@ -1525,6 +1538,10 @@ void describe('Migration Tooling', () => {
     assert.ok(
       existsSync(releaseStateContractPath),
       'scripts/lib/release-state-contract.mjs should exist'
+    );
+    assert.ok(
+      existsSync(remoteDeployScaffoldHelperPath),
+      'scripts/lib/remote-deploy-scaffold.sh should exist'
     );
     assert.ok(
       existsSync(deploymentStateHelperPath),
@@ -1554,6 +1571,12 @@ void describe('Migration Tooling', () => {
       'release-state contract should own typed snapshot schemas, validation, and workflow output rendering'
     );
     assert.ok(
+      remoteDeployScaffoldHelper.includes('remote_deploy_init_base_helper_paths()') &&
+        remoteDeployScaffoldHelper.includes('remote_deploy_init_production_helper_paths()') &&
+        remoteDeployScaffoldHelper.includes('remote_deploy_reload_checked_out_helpers()'),
+      'remote deploy scaffold helper should centralize helper-path initialization and post-checkout helper reloads for streamed remote deploys'
+    );
+    assert.ok(
       remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
         remoteHelperContracts.includes(
           'release_state_helper_supports_staging_verification_contract()'
@@ -1570,6 +1593,11 @@ void describe('Migration Tooling', () => {
     assert.ok(
       stagingRemote.includes('RELEASE_STATE_HELPER_PATH') &&
         stagingRemote.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
+        stagingRemote.includes('REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH') &&
+        stagingRemote.includes('remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"') &&
+        stagingRemote.includes(
+          'remote_deploy_reload_checked_out_helpers "$APP_DIR/scripts/lib/common.sh"'
+        ) &&
         stagingRemote.includes('release_state_helper_supports_runtime_contract()') &&
         stagingRemote.includes('refresh_deployed_release_helpers') &&
         remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
@@ -1577,11 +1605,21 @@ void describe('Migration Tooling', () => {
         stagingRemote.includes('write_current_release_state() {') &&
         stagingRemote.includes('write_deploy_context_state() {') &&
         stagingRemote.includes('write_release_runtime_state'),
-      'deploy-staging-remote.sh should reuse the shared release-state writers, reject stale contracts, and reload refreshed helpers after checkout'
+      'deploy-staging-remote.sh should use the shared remote deploy scaffold, reuse the shared release-state writers, reject stale contracts, and reload refreshed helpers after checkout'
     );
     assert.ok(
       productionRemote.includes('RELEASE_STATE_HELPER_PATH') &&
         productionRemote.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
+        productionRemote.includes('REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH') &&
+        productionRemote.includes(
+          'remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"'
+        ) &&
+        productionRemote.includes(
+          'remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"'
+        ) &&
+        productionRemote.includes(
+          'remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"'
+        ) &&
         productionRemote.includes('release_state_helper_supports_runtime_contract()') &&
         productionRemote.includes('refresh_deployed_release_helpers') &&
         remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
@@ -1593,7 +1631,7 @@ void describe('Migration Tooling', () => {
         remoteHelperContracts.includes('deployment_state_helper_supports_contract()') &&
         productionRemote.includes('deployment_state_capture_previous_release') &&
         productionRemote.includes('write_release_runtime_state'),
-      'deploy-production-remote.sh should reuse the shared release-state/deployment-state writers, reject stale contracts, and reload refreshed helpers after checkout'
+      'deploy-production-remote.sh should use the shared remote deploy scaffold, reuse the shared release-state/deployment-state writers, reject stale contracts, and reload refreshed helpers after checkout'
     );
     assert.ok(
       persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&

@@ -67,12 +67,33 @@ if ! declare -F run_remote_deploy_phases >/dev/null; then
 fi
 
 SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
-COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
-RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
-DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-payload.sh")"
-RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
-RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
-REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")"
+REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-deploy-scaffold.sh")"
+
+if [ -f "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH" ]; then
+  # shellcheck source=lib/remote-deploy-scaffold.sh
+  source "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH"
+else
+  remote_deploy_init_base_helper_paths() {
+    local script_dir="$1"
+    local app_dir="$2"
+
+    COMMON_SH_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/common.sh")"
+    RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-manifest.sh")"
+    DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deploy-payload.sh")"
+    RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-state.sh")"
+    RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-runtime.sh")"
+    REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/remote-helper-contracts.sh")"
+  }
+
+  remote_deploy_reload_checked_out_helpers() {
+    local common_sh_deployed_path="${1:-}"
+
+    reload_deployed_common_helpers "$common_sh_deployed_path"
+    refresh_deployed_release_helpers
+  }
+fi
+
+remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 
 if [ -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
   # shellcheck source=lib/remote-helper-contracts.sh
@@ -720,8 +741,7 @@ prepare_staging_checkout() {
   log_info "Updating submodules..."
   git submodule sync --recursive
   git submodule update --init --recursive --force
-  reload_deployed_common_helpers "$APP_DIR/scripts/lib/common.sh"
-  refresh_deployed_release_helpers
+  remote_deploy_reload_checked_out_helpers "$APP_DIR/scripts/lib/common.sh"
   log_info "Staging checkout is now at $(git rev-parse HEAD)"
 
   load_staging_release_manifest
