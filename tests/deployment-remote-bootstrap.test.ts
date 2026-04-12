@@ -32,6 +32,7 @@ void describe('Remote Deploy Bootstrap', () => {
   const remoteHelperContractsPath = resolve(projectRoot, 'scripts/lib/remote-helper-contracts.sh');
   const releaseManifestHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest.sh');
   const deployPayloadHelperPath = resolve(projectRoot, 'scripts/lib/deploy-payload.sh');
+  const releaseStateCompatHelperPath = resolve(projectRoot, 'scripts/lib/release-state-compat.sh');
   const stagingRemotePath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
   const productionRemotePath = resolve(projectRoot, 'scripts/deploy-production-remote.sh');
   const rollbackRemotePath = resolve(projectRoot, 'scripts/rollback-production-remote.sh');
@@ -51,6 +52,10 @@ void describe('Remote Deploy Bootstrap', () => {
     assert.ok(
       existsSync(remoteHelperContractsPath),
       'scripts/lib/remote-helper-contracts.sh should exist'
+    );
+    assert.ok(
+      existsSync(releaseStateCompatHelperPath),
+      'scripts/lib/release-state-compat.sh should exist'
     );
     assert.ok(
       content.includes('resolve_remote_script_dir()') &&
@@ -227,6 +232,23 @@ void describe('Remote Deploy Bootstrap', () => {
           (scriptName === 'rollback-production-remote.sh' ||
             content.includes('REMOTE_HELPER_CONTRACTS_PATH')),
         `${scriptName} should reuse the shared remote bootstrap helper when available`
+      );
+    }
+  });
+
+  void test('remote deploy scripts resolve the shared release-state compatibility helper', () => {
+    for (const [scriptName, content] of [
+      ['deploy-staging-remote.sh', readFileSync(stagingRemotePath, 'utf-8')],
+      ['deploy-production-remote.sh', readFileSync(productionRemotePath, 'utf-8')],
+      [
+        'persist-staging-verification-remote.sh',
+        readFileSync(persistVerificationRemotePath, 'utf-8'),
+      ],
+    ] as const) {
+      assert.ok(
+        content.includes('RELEASE_STATE_COMPAT_HELPER_PATH') &&
+          content.includes('lib/release-state-compat.sh'),
+        `${scriptName} should resolve the shared release-state compatibility helper`
       );
     }
   });

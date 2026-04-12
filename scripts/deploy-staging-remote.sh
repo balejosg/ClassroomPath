@@ -81,6 +81,7 @@ else
     RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-manifest.sh")"
     DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deploy-payload.sh")"
     RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-state.sh")"
+    RELEASE_STATE_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-state-compat.sh")"
     RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-runtime.sh")"
     REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/remote-helper-contracts.sh")"
   }
@@ -89,6 +90,13 @@ else
     local common_sh_deployed_path="${1:-}"
 
     reload_deployed_common_helpers "$common_sh_deployed_path"
+
+    REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")"
+    if [ -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
+      # shellcheck disable=SC1090
+      source "$REMOTE_HELPER_CONTRACTS_PATH"
+    fi
+
     refresh_deployed_release_helpers
   }
 fi
@@ -125,6 +133,11 @@ else
     remote_helper_path_supports_all "$helper_path" 'write_deploy_context_state()' 'OPENPATH_LINUX_AGENT_VERSION'
   }
 
+  release_state_compat_helper_supports_contract() {
+    local helper_path="${1:-}"
+    remote_helper_path_supports_all "$helper_path" 'write_release_state_snapshot_compat()' 'release_state_list_fields_compat()'
+  }
+
   release_runtime_helper_supports_runtime_contract() {
     local helper_path="${1:-}"
     remote_helper_path_supports_all "$helper_path" 'write_release_runtime_state()' 'OPENPATH_LINUX_AGENT_VERSION'
@@ -133,6 +146,7 @@ else
   refresh_deployed_release_helpers() {
     RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
     RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
+    RELEASE_STATE_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state-compat.sh")"
     RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
 
     if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
@@ -143,6 +157,9 @@ else
     if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
       # shellcheck disable=SC1090
       source "$RELEASE_STATE_HELPER_PATH"
+    elif release_state_compat_helper_supports_contract "$RELEASE_STATE_COMPAT_HELPER_PATH"; then
+      # shellcheck disable=SC1090
+      source "$RELEASE_STATE_COMPAT_HELPER_PATH"
     fi
 
     if release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
@@ -331,22 +348,26 @@ else
 fi
 
 if ! release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
-  write_release_state_snapshot() {
-    local snapshot_type="$1"
-    local state_path="$2"
-    local field=""
-    local value=""
+  if [ -f "$RELEASE_STATE_COMPAT_HELPER_PATH" ]; then
+    # shellcheck source=lib/release-state-compat.sh
+    source "$RELEASE_STATE_COMPAT_HELPER_PATH"
+  else
+    write_release_state_snapshot_compat() {
+      local snapshot_type="$1"
+      local state_path="$2"
+      local field=""
+      local value=""
 
-    mkdir -p "$(dirname "$state_path")"
-    : > "$state_path"
+      mkdir -p "$(dirname "$state_path")"
+      : > "$state_path"
 
-    case "$snapshot_type" in
-      current-runtime)
-        while IFS= read -r field; do
-          [ -z "$field" ] && continue
-          value="${!field:-}"
-          printf '%s=%q\n' "$field" "$value" >> "$state_path"
-        done <<'EOF'
+      case "$snapshot_type" in
+        current-runtime)
+          while IFS= read -r field; do
+            [ -z "$field" ] && continue
+            value="${!field:-}"
+            printf '%s=%q\n' "$field" "$value" >> "$state_path"
+          done <<'EOF'
 APP_SHA
 IMAGE_SOURCE
 CLASSROOMPATH_GATEWAY_IMAGE
@@ -356,13 +377,13 @@ OPENPATH_VERSION
 OPENPATH_LINUX_AGENT_VERSION
 CLASSROOMPATH_SPA_IMAGE
 EOF
-        ;;
-      deploy-context)
-        while IFS= read -r field; do
-          [ -z "$field" ] && continue
-          value="${!field:-}"
-          printf '%s=%q\n' "$field" "$value" >> "$state_path"
-        done <<'EOF'
+          ;;
+        deploy-context)
+          while IFS= read -r field; do
+            [ -z "$field" ] && continue
+            value="${!field:-}"
+            printf '%s=%q\n' "$field" "$value" >> "$state_path"
+          done <<'EOF'
 TARGET_SHA
 APP_SHA
 PREVIOUS_APP_SHA
@@ -377,23 +398,14 @@ DEPLOY_FAILURE_STAGE
 ROLLBACK_ATTEMPTED
 ROLLBACK_RESULT
 EOF
-        ;;
-      *)
-        log_error "Unsupported snapshot fallback: $snapshot_type"
-        return 1
-        ;;
-    esac
-  }
-
-  write_current_release_state() {
-    local state_path="$1"
-    write_release_state_snapshot "current-runtime" "$state_path"
-  }
-
-  write_deploy_context_state() {
-    local state_path="$1"
-    write_release_state_snapshot "deploy-context" "$state_path"
-  }
+          ;;
+        *)
+          log_error "Unsupported snapshot fallback: $snapshot_type"
+          return 1
+          ;;
+      esac
+    }
+  fi
 else
   # shellcheck source=lib/release-state.sh
   source "$RELEASE_STATE_HELPER_PATH"
@@ -419,15 +431,27 @@ if ! release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_P
     local openpath_linux_agent_version="$8"
     local spa_image="$9"
 
-    APP_SHA="$app_sha" \
-    IMAGE_SOURCE="$image_source" \
-    CLASSROOMPATH_GATEWAY_IMAGE="$gateway_image" \
-    CLASSROOMPATH_MIGRATIONS_IMAGE="$migrations_image" \
-    OPENPATH_API_IMAGE="$openpath_api_image" \
-    OPENPATH_VERSION="$openpath_version" \
-    OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
-    CLASSROOMPATH_SPA_IMAGE="$spa_image" \
-      write_current_release_state "$state_path"
+    if declare -F write_release_state_snapshot_compat >/dev/null; then
+      APP_SHA="$app_sha" \
+      IMAGE_SOURCE="$image_source" \
+      CLASSROOMPATH_GATEWAY_IMAGE="$gateway_image" \
+      CLASSROOMPATH_MIGRATIONS_IMAGE="$migrations_image" \
+      OPENPATH_API_IMAGE="$openpath_api_image" \
+      OPENPATH_VERSION="$openpath_version" \
+      OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
+      CLASSROOMPATH_SPA_IMAGE="$spa_image" \
+        write_release_state_snapshot_compat "current-runtime" "$state_path"
+    else
+      APP_SHA="$app_sha" \
+      IMAGE_SOURCE="$image_source" \
+      CLASSROOMPATH_GATEWAY_IMAGE="$gateway_image" \
+      CLASSROOMPATH_MIGRATIONS_IMAGE="$migrations_image" \
+      OPENPATH_API_IMAGE="$openpath_api_image" \
+      OPENPATH_VERSION="$openpath_version" \
+      OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
+      CLASSROOMPATH_SPA_IMAGE="$spa_image" \
+        write_current_release_state "$state_path"
+    fi
   }
 else
   # shellcheck source=lib/release-runtime.sh

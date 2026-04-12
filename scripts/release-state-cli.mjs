@@ -5,6 +5,7 @@ import process from 'node:process';
 
 import {
   buildStagingReleaseEvidenceOutputs,
+  getReleaseStateSnapshotFields,
   readReleaseStateSnapshot,
   validateCurrentReleaseState,
   validateHighRiskStagingVerification,
@@ -83,6 +84,11 @@ async function main() {
       const snapshotType = requireOption(options, 'snapshot-type');
       const outputPath = requireOption(options, 'output');
       writeReleaseStateSnapshot(snapshotType, outputPath, process.env);
+      return;
+    }
+    case 'list-fields': {
+      const snapshotType = requireOption(options, 'snapshot-type');
+      process.stdout.write(`${getReleaseStateSnapshotFields(snapshotType).join('\n')}\n`);
       return;
     }
     case 'verify-staging': {

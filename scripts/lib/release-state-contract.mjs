@@ -79,6 +79,10 @@ function assertSnapshotType(snapshotType) {
   return RELEASE_STATE_SNAPSHOT_DEFINITIONS[snapshotType];
 }
 
+export function getReleaseStateSnapshotFields(snapshotType) {
+  return [...assertSnapshotType(snapshotType)];
+}
+
 function decodeAnsiCString(text) {
   let output = '';
 
@@ -285,7 +289,7 @@ export function readReleaseStateSnapshot(snapshotPath) {
 }
 
 export function collectReleaseStateSnapshot(snapshotType, source = process.env) {
-  const fields = assertSnapshotType(snapshotType);
+  const fields = getReleaseStateSnapshotFields(snapshotType);
   return Object.fromEntries(fields.map((field) => [field, String(source[field] ?? '')]));
 }
 

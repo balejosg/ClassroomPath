@@ -1501,6 +1501,10 @@ void describe('Migration Tooling', () => {
 
   void test('release-state helpers centralize current-image and staging-verification evidence writes', () => {
     const releaseStateHelperPath = resolve(projectRoot, 'scripts/lib/release-state.sh');
+    const releaseStateCompatHelperPath = resolve(
+      projectRoot,
+      'scripts/lib/release-state-compat.sh'
+    );
     const releaseStateContractPath = resolve(projectRoot, 'scripts/lib/release-state-contract.mjs');
     const remoteDeployScaffoldHelperPath = resolve(
       projectRoot,
@@ -1512,6 +1516,7 @@ void describe('Migration Tooling', () => {
     );
     const deploymentStateHelperPath = resolve(projectRoot, 'scripts/lib/deployment-state.sh');
     const releaseStateHelper = readFileSync(releaseStateHelperPath, 'utf-8');
+    const releaseStateCompatHelper = readFileSync(releaseStateCompatHelperPath, 'utf-8');
     const releaseStateContract = readFileSync(releaseStateContractPath, 'utf-8');
     const remoteDeployScaffoldHelper = readFileSync(remoteDeployScaffoldHelperPath, 'utf-8');
     const remoteHelperContracts = readFileSync(remoteHelperContractsPath, 'utf-8');
@@ -1536,6 +1541,10 @@ void describe('Migration Tooling', () => {
 
     assert.ok(existsSync(releaseStateHelperPath), 'scripts/lib/release-state.sh should exist');
     assert.ok(
+      existsSync(releaseStateCompatHelperPath),
+      'scripts/lib/release-state-compat.sh should exist'
+    );
+    assert.ok(
       existsSync(releaseStateContractPath),
       'scripts/lib/release-state-contract.mjs should exist'
     );
@@ -1557,11 +1566,18 @@ void describe('Migration Tooling', () => {
         releaseStateHelper.includes('write_current_release_state()') &&
         releaseStateHelper.includes('write_deploy_context_state()') &&
         releaseStateHelper.includes('write_staging_verification_state()') &&
+        !releaseStateHelper.includes('release_state_fields()') &&
         releaseStateHelper.includes('release_state_cli_available()') &&
         releaseStateHelper.includes('cli_cmd=(env)') &&
-        releaseStateHelper.includes('cli_cmd+=("$field=$value")') &&
+        releaseStateHelper.includes('list-fields') &&
         releaseStateHelper.includes('"$(release_state_cli_path)"'),
-      'release-state helper should keep shell compatibility while delegating snapshot writes to the typed release-state CLI with the active shell snapshot values'
+      'release-state helper should resolve snapshot fields from the typed release-state CLI and delegate snapshot writes without keeping local field lists'
+    );
+    assert.ok(
+      releaseStateCompatHelper.includes('write_release_state_snapshot_compat()') &&
+        releaseStateCompatHelper.includes('list-fields') &&
+        releaseStateCompatHelper.includes('"$(release_state_cli_path)"'),
+      'release-state-compat.sh should be the shared shell fallback for snapshot serialization when the typed helper contract is unavailable'
     );
     assert.ok(
       releaseStateContract.includes('RELEASE_STATE_SNAPSHOT_DEFINITIONS') &&
@@ -1573,8 +1589,9 @@ void describe('Migration Tooling', () => {
     assert.ok(
       remoteDeployScaffoldHelper.includes('remote_deploy_init_base_helper_paths()') &&
         remoteDeployScaffoldHelper.includes('remote_deploy_init_production_helper_paths()') &&
-        remoteDeployScaffoldHelper.includes('remote_deploy_reload_checked_out_helpers()'),
-      'remote deploy scaffold helper should centralize helper-path initialization and post-checkout helper reloads for streamed remote deploys'
+        remoteDeployScaffoldHelper.includes('remote_deploy_reload_checked_out_helpers()') &&
+        remoteDeployScaffoldHelper.includes('RELEASE_STATE_COMPAT_HELPER_PATH'),
+      'remote deploy scaffold helper should centralize helper-path initialization and post-checkout helper reloads for streamed remote deploys, including release-state compatibility fallbacks'
     );
     assert.ok(
       remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
@@ -1600,12 +1617,14 @@ void describe('Migration Tooling', () => {
         ) &&
         stagingRemote.includes('release_state_helper_supports_runtime_contract()') &&
         stagingRemote.includes('refresh_deployed_release_helpers') &&
+        stagingRemote.includes('RELEASE_STATE_COMPAT_HELPER_PATH') &&
         remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
         remoteHelperContracts.includes('release_state_helper_supports_runtime_contract()') &&
-        stagingRemote.includes('write_current_release_state() {') &&
-        stagingRemote.includes('write_deploy_context_state() {') &&
+        !stagingRemote.includes('write_current_release_state() {') &&
+        !stagingRemote.includes('write_deploy_context_state() {') &&
+        stagingRemote.includes('write_release_state_snapshot_compat') &&
         stagingRemote.includes('write_release_runtime_state'),
-      'deploy-staging-remote.sh should use the shared remote deploy scaffold, reuse the shared release-state writers, reject stale contracts, and reload refreshed helpers after checkout'
+      'deploy-staging-remote.sh should use the shared remote deploy scaffold, reuse the shared release-state compatibility helper when needed, reject stale contracts, and reload refreshed helpers after checkout'
     );
     assert.ok(
       productionRemote.includes('RELEASE_STATE_HELPER_PATH') &&
@@ -1622,10 +1641,12 @@ void describe('Migration Tooling', () => {
         ) &&
         productionRemote.includes('release_state_helper_supports_runtime_contract()') &&
         productionRemote.includes('refresh_deployed_release_helpers') &&
+        productionRemote.includes('RELEASE_STATE_COMPAT_HELPER_PATH') &&
         remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
         remoteHelperContracts.includes('release_state_helper_supports_runtime_contract()') &&
-        productionRemote.includes('write_current_release_state() {') &&
-        productionRemote.includes('write_deploy_context_state() {') &&
+        !productionRemote.includes('write_current_release_state() {') &&
+        !productionRemote.includes('write_deploy_context_state() {') &&
+        productionRemote.includes('write_release_state_snapshot_compat') &&
         productionRemote.includes('DEPLOYMENT_STATE_HELPER_PATH') &&
         productionRemote.includes('deployment_state_helper_supports_contract()') &&
         remoteHelperContracts.includes('deployment_state_helper_supports_contract()') &&
@@ -1637,6 +1658,7 @@ void describe('Migration Tooling', () => {
       persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&
         persistVerification.includes('SCRIPT_DIR="$APP_DIR/scripts"') &&
         persistVerification.includes('RELEASE_STATE_HELPER_PATH') &&
+        persistVerification.includes('RELEASE_STATE_COMPAT_HELPER_PATH') &&
         persistVerification.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
         persistVerification.includes(
           'release_state_helper_supports_staging_verification_contract()'
@@ -1644,9 +1666,10 @@ void describe('Migration Tooling', () => {
         remoteHelperContracts.includes(
           'release_state_helper_supports_staging_verification_contract()'
         ) &&
+        persistVerification.includes('write_release_state_snapshot_compat') &&
         persistVerification.includes('STAGING_VERIFICATION_RUNNER_PATH') &&
         persistVerification.includes('persist-evidence'),
-      'persist-staging-verification-remote.sh should reject stale release-state helpers before delegating persistence to the shared staging verification runner'
+      'persist-staging-verification-remote.sh should reject stale release-state helpers, fall back through the shared release-state compatibility helper, and then delegate persistence to the shared staging verification runner'
     );
     assert.ok(
       readFileSync(resolve(projectRoot, 'scripts/deploy-staging-local.sh'), 'utf-8').includes(

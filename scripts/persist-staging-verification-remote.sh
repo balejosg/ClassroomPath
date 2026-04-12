@@ -49,6 +49,7 @@ fi
 SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
 COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
 RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
+RELEASE_STATE_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state-compat.sh")"
 STAGING_VERIFICATION_RUNNER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "run-staging-verification.sh")"
 REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")"
 
@@ -84,36 +85,40 @@ fi
 source "$COMMON_SH_PATH"
 
 if ! release_state_helper_supports_staging_verification_contract "$RELEASE_STATE_HELPER_PATH"; then
-  load_release_state_env() {
-    local state_path="$1"
+  if [ -f "$RELEASE_STATE_COMPAT_HELPER_PATH" ]; then
+    # shellcheck source=lib/release-state-compat.sh
+    source "$RELEASE_STATE_COMPAT_HELPER_PATH"
+  else
+    load_release_state_env() {
+      local state_path="$1"
 
-    if [ ! -f "$state_path" ]; then
-      log_error "Release state file not found: $state_path"
-      return 1
-    fi
+      if [ ! -f "$state_path" ]; then
+        log_error "Release state file not found: $state_path"
+        return 1
+      fi
 
-    set -a
-    # shellcheck disable=SC1090
-    . "$state_path"
-    set +a
-  }
+      set -a
+      # shellcheck disable=SC1090
+      . "$state_path"
+      set +a
+    }
 
-  write_release_state_snapshot() {
-    local snapshot_type="$1"
-    local state_path="$2"
-    local field=""
-    local value=""
+    write_release_state_snapshot_compat() {
+      local snapshot_type="$1"
+      local state_path="$2"
+      local field=""
+      local value=""
 
-    mkdir -p "$(dirname "$state_path")"
-    : > "$state_path"
+      mkdir -p "$(dirname "$state_path")"
+      : > "$state_path"
 
-    case "$snapshot_type" in
-      staging-verification)
-        while IFS= read -r field; do
-          [ -z "$field" ] && continue
-          value="${!field:-}"
-          printf '%s=%q\n' "$field" "$value" >> "$state_path"
-        done <<'EOF'
+      case "$snapshot_type" in
+        staging-verification)
+          while IFS= read -r field; do
+            [ -z "$field" ] && continue
+            value="${!field:-}"
+            printf '%s=%q\n' "$field" "$value" >> "$state_path"
+          done <<'EOF'
 STAGING_VERIFIED_AT
 STAGING_VERIFIED_BY
 STAGING_VERIFIED_APP_SHA
@@ -136,18 +141,19 @@ STAGING_FIREFOX_RELEASE_VERSION
 STAGING_FIREFOX_METADATA_SHA256
 STAGING_FIREFOX_XPI_SHA256
 EOF
-        ;;
-      *)
-        log_error "Unsupported snapshot fallback: $snapshot_type"
-        return 1
-        ;;
-    esac
-  }
+          ;;
+        *)
+          log_error "Unsupported snapshot fallback: $snapshot_type"
+          return 1
+          ;;
+      esac
+    }
 
-  write_staging_verification_state() {
-    local state_path="$1"
-    write_release_state_snapshot "staging-verification" "$state_path"
-  }
+    write_staging_verification_state() {
+      local state_path="$1"
+      write_release_state_snapshot_compat "staging-verification" "$state_path"
+    }
+  fi
 else
   # shellcheck source=lib/release-state.sh
   source "$RELEASE_STATE_HELPER_PATH"

@@ -19,6 +19,32 @@ release_state_cli_available() {
   command -v node >/dev/null 2>&1 && [ -f "$(release_state_cli_path)" ]
 }
 
+release_state_compat_helper_path() {
+  local script_source="${BASH_SOURCE[0]:-}"
+  local lib_dir=""
+
+  if [ -n "$script_source" ]; then
+    lib_dir="$(cd "$(dirname "$script_source")" && pwd)"
+  else
+    lib_dir="$(pwd)/scripts/lib"
+  fi
+
+  printf '%s\n' "$lib_dir/release-state-compat.sh"
+}
+
+release_state_source_compat_helper() {
+  local compat_helper_path=""
+
+  compat_helper_path="$(release_state_compat_helper_path)"
+  if [ ! -f "$compat_helper_path" ]; then
+    log_error "Release state compatibility helper not found: $compat_helper_path"
+    return 1
+  fi
+
+  # shellcheck disable=SC1090
+  source "$compat_helper_path"
+}
+
 load_release_state_env() {
   local state_path="$1"
 
@@ -33,88 +59,16 @@ load_release_state_env() {
   set +a
 }
 
-release_state_fields() {
+release_state_list_fields() {
   local snapshot_type="$1"
 
-  case "$snapshot_type" in
-    current-runtime)
-      cat <<'EOF'
-APP_SHA
-IMAGE_SOURCE
-CLASSROOMPATH_GATEWAY_IMAGE
-CLASSROOMPATH_MIGRATIONS_IMAGE
-OPENPATH_API_IMAGE
-OPENPATH_VERSION
-OPENPATH_LINUX_AGENT_VERSION
-CLASSROOMPATH_SPA_IMAGE
-EOF
-      ;;
-    deploy-context)
-      cat <<'EOF'
-TARGET_SHA
-APP_SHA
-PREVIOUS_APP_SHA
-IMAGE_SOURCE
-MIGRATION_RISK_LEVEL
-MIGRATION_CHANGED_FILES
-MIGRATION_DESTRUCTIVE_FILES
-PRODUCTION_BACKUP_REFERENCE
-DB_MIGRATED
-FAILURE_STAGE
-DEPLOY_FAILURE_STAGE
-ROLLBACK_ATTEMPTED
-ROLLBACK_RESULT
-EOF
-      ;;
-    staging-verification)
-      cat <<'EOF'
-STAGING_VERIFIED_AT
-STAGING_VERIFIED_BY
-STAGING_VERIFIED_APP_SHA
-STAGING_VERIFIED_OPENPATH_SHA
-STAGING_VERIFIED_IMAGE_SOURCE
-STAGING_VERIFIED_GATEWAY_IMAGE
-STAGING_VERIFIED_MIGRATIONS_IMAGE
-STAGING_VERIFIED_OPENPATH_API_IMAGE
-STAGING_VERIFIED_OPENPATH_VERSION
-STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION
-STAGING_VERIFIED_SPA_IMAGE
-STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS
-STAGING_SMOKE_RESULT
-STAGING_SMOKE_STATUS
-STAGING_RELEASE_GATE_RESULT
-STAGING_WINDOWS_BOOTSTRAP_RESULT
-STAGING_FIREFOX_POLICY_RESULT
-STAGING_FIREFOX_EXTENSION_ID
-STAGING_FIREFOX_RELEASE_VERSION
-STAGING_FIREFOX_METADATA_SHA256
-STAGING_FIREFOX_XPI_SHA256
-EOF
-      ;;
-    staging-verification-run)
-      cat <<'EOF'
-SMOKE_TARGET_URL
-SMOKE_SKIP_CORS
-STAGING_SMOKE_RESULT
-STAGING_SMOKE_STATUS
-RELEASE_GATE_TARGET_URL
-RELEASE_GATE_EXPECTED_ORIGIN
-STAGING_RELEASE_GATE_RESULT
-STAGING_VERIFIED_AT
-STAGING_FIREFOX_RELEASE_ARTIFACTS
-STAGING_WINDOWS_BOOTSTRAP_RESULT
-STAGING_FIREFOX_POLICY_RESULT
-STAGING_FIREFOX_EXTENSION_ID
-STAGING_FIREFOX_RELEASE_VERSION
-STAGING_FIREFOX_METADATA_SHA256
-STAGING_FIREFOX_XPI_SHA256
-EOF
-      ;;
-    *)
-      log_error "Unknown release state snapshot type: $snapshot_type"
-      return 1
-      ;;
-  esac
+  if release_state_cli_available; then
+    node "$(release_state_cli_path)" list-fields --snapshot-type "$snapshot_type"
+    return 0
+  fi
+
+  release_state_source_compat_helper || return 1
+  release_state_list_fields_compat "$snapshot_type"
 }
 
 write_release_state_snapshot() {
@@ -124,37 +78,31 @@ write_release_state_snapshot() {
   local value=""
   local -a cli_cmd=()
 
-  if release_state_cli_available; then
-    cli_cmd=(env)
-
-    while IFS= read -r field; do
-      [ -z "$field" ] && continue
-      value="${!field:-}"
-      cli_cmd+=("$field=$value")
-    done < <(release_state_fields "$snapshot_type")
-
-    cli_cmd+=(
-      node
-      "$(release_state_cli_path)"
-      write-snapshot
-      --snapshot-type
-      "$snapshot_type"
-      --output
-      "$state_path"
-    )
-
-    "${cli_cmd[@]}"
+  if ! release_state_cli_available; then
+    release_state_source_compat_helper || return 1
+    write_release_state_snapshot_compat "$snapshot_type" "$state_path"
     return 0
   fi
 
-  mkdir -p "$(dirname "$state_path")"
-  : > "$state_path"
+  cli_cmd=(env)
 
   while IFS= read -r field; do
     [ -z "$field" ] && continue
     value="${!field:-}"
-    printf '%s=%q\n' "$field" "$value" >> "$state_path"
-  done < <(release_state_fields "$snapshot_type")
+    cli_cmd+=("$field=$value")
+  done < <(release_state_list_fields "$snapshot_type")
+
+  cli_cmd+=(
+    node
+    "$(release_state_cli_path)"
+    write-snapshot
+    --snapshot-type
+    "$snapshot_type"
+    --output
+    "$state_path"
+  )
+
+  "${cli_cmd[@]}"
 }
 
 write_current_release_state() {
