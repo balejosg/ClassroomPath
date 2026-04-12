@@ -31,6 +31,10 @@ void describe('Remote Deploy Bootstrap', () => {
   const remoteBootstrapHelperPath = resolve(projectRoot, 'scripts/lib/remote-bootstrap.sh');
   const remoteHelperContractsPath = resolve(projectRoot, 'scripts/lib/remote-helper-contracts.sh');
   const releaseManifestHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest.sh');
+  const releaseManifestCompatHelperPath = resolve(
+    projectRoot,
+    'scripts/lib/release-manifest-compat.sh'
+  );
   const deployPayloadHelperPath = resolve(projectRoot, 'scripts/lib/deploy-payload.sh');
   const releaseStateCompatHelperPath = resolve(projectRoot, 'scripts/lib/release-state-compat.sh');
   const stagingRemotePath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
@@ -54,6 +58,10 @@ void describe('Remote Deploy Bootstrap', () => {
       'scripts/lib/remote-helper-contracts.sh should exist'
     );
     assert.ok(
+      existsSync(releaseManifestCompatHelperPath),
+      'scripts/lib/release-manifest-compat.sh should exist'
+    );
+    assert.ok(
       existsSync(releaseStateCompatHelperPath),
       'scripts/lib/release-state-compat.sh should exist'
     );
@@ -74,16 +82,10 @@ void describe('Remote Deploy Bootstrap', () => {
     );
   });
 
-  void test('inline manifest and payload fallbacks stay byte-for-byte aligned with source helpers', () => {
-    const releaseManifestHelper = readFileSync(releaseManifestHelperPath, 'utf-8');
+  void test('inline deploy payload fallbacks stay byte-for-byte aligned with source helpers', () => {
     const deployPayloadHelper = readFileSync(deployPayloadHelperPath, 'utf-8');
 
     const mirroredFunctions = [
-      ['release_manifest_get', releaseManifestHelper],
-      ['release_manifest_require_key', releaseManifestHelper],
-      ['decode_release_manifest_base64', releaseManifestHelper],
-      ['release_manifest_validate_contract', releaseManifestHelper],
-      ['export_release_manifest_runtime_env', releaseManifestHelper],
       ['decode_deploy_payload_base64', deployPayloadHelper],
       ['deploy_payload_get', deployPayloadHelper],
     ] as const;
@@ -101,6 +103,25 @@ void describe('Remote Deploy Bootstrap', () => {
           `${relativePath} inline ${functionName}() fallback should match the source helper`
         );
       }
+    }
+  });
+
+  void test('shared remote manifest compatibility helper owns the fallback manifest contract', () => {
+    const releaseManifestHelper = readFileSync(releaseManifestHelperPath, 'utf-8');
+    const releaseManifestCompatHelper = readFileSync(releaseManifestCompatHelperPath, 'utf-8');
+
+    for (const functionName of [
+      'release_manifest_get',
+      'release_manifest_require_key',
+      'decode_release_manifest_base64',
+      'release_manifest_validate_contract',
+      'export_release_manifest_runtime_env',
+    ] as const) {
+      assert.strictEqual(
+        extractShellFunction(releaseManifestCompatHelper, functionName),
+        extractShellFunction(releaseManifestHelper, functionName),
+        `release-manifest-compat.sh fallback ${functionName}() should match the primary release-manifest helper`
+      );
     }
   });
 
@@ -162,12 +183,14 @@ void describe('Remote Deploy Bootstrap', () => {
         remoteContent.includes('source "$REMOTE_HELPER_CONTRACTS_PATH"') &&
         remoteContent.includes('release_manifest_helper_supports_contract()') &&
         remoteContent.includes('refresh_deployed_release_helpers()') &&
+        remoteContent.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
         remoteContent.includes(
           'if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then'
         ) &&
-        remoteContent.includes('decode_release_manifest_base64() {') &&
-        remoteContent.includes('release_manifest_validate_contract() {'),
-      'deploy-staging-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them and reload the refreshed helper contract after checkout'
+        remoteContent.includes('source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"') &&
+        !remoteContent.includes('decode_release_manifest_base64() {') &&
+        !remoteContent.includes('release_manifest_validate_contract() {'),
+      'deploy-staging-remote.sh should source the shared release-manifest compatibility helper when the deployed checkout is too old to provide the primary helper and reload the refreshed helper contract after checkout'
     );
   });
 
@@ -206,12 +229,14 @@ void describe('Remote Deploy Bootstrap', () => {
         deployRemoteContent.includes('source "$REMOTE_HELPER_CONTRACTS_PATH"') &&
         deployRemoteContent.includes('release_manifest_helper_supports_contract()') &&
         deployRemoteContent.includes('refresh_deployed_release_helpers()') &&
+        deployRemoteContent.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
         deployRemoteContent.includes(
           'if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then'
         ) &&
-        deployRemoteContent.includes('decode_release_manifest_base64() {') &&
-        deployRemoteContent.includes('release_manifest_validate_contract() {'),
-      'deploy-production-remote.sh should inline release-manifest helpers when the deployed checkout is too old to provide them and reload the refreshed helper contract after checkout'
+        deployRemoteContent.includes('source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"') &&
+        !deployRemoteContent.includes('decode_release_manifest_base64() {') &&
+        !deployRemoteContent.includes('release_manifest_validate_contract() {'),
+      'deploy-production-remote.sh should source the shared release-manifest compatibility helper when the deployed checkout is too old to provide the primary helper and reload the refreshed helper contract after checkout'
     );
   });
 

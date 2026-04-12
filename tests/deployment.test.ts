@@ -1234,7 +1234,9 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       deployContextHelper.includes('decode_release_manifest_base64 "$RELEASE_MANIFEST_B64"') &&
-        deployContextHelper.includes('release_manifest_is_canonical_contract "$RELEASE_MANIFEST_FILE"') &&
+        deployContextHelper.includes(
+          'release_manifest_is_canonical_contract "$RELEASE_MANIFEST_FILE"'
+        ) &&
         deployContextHelper.includes(
           'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
         ),
@@ -1319,11 +1321,17 @@ void describe('Migration Tooling', () => {
     );
     const workflow = readFileSync(resolve(projectRoot, '.github/workflows/deploy.yml'), 'utf-8');
     const manifestHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest.sh');
+    const manifestCompatHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest-compat.sh');
     const deployPayloadHelperPath = resolve(projectRoot, 'scripts/lib/deploy-payload.mjs');
     const manifestHelper = readFileSync(manifestHelperPath, 'utf-8');
+    const manifestCompatHelper = readFileSync(manifestCompatHelperPath, 'utf-8');
     const deployPayloadHelper = readFileSync(deployPayloadHelperPath, 'utf-8');
 
     assert.ok(existsSync(manifestHelperPath), 'scripts/lib/release-manifest.sh should exist');
+    assert.ok(
+      existsSync(manifestCompatHelperPath),
+      'scripts/lib/release-manifest-compat.sh should exist'
+    );
     assert.ok(existsSync(deployPayloadHelperPath), 'scripts/lib/deploy-payload.mjs should exist');
     assert.ok(
       manifestHelper.includes('decode_release_manifest_base64()') &&
@@ -1331,6 +1339,13 @@ void describe('Migration Tooling', () => {
         manifestHelper.includes('release_manifest_validate_contract()') &&
         manifestHelper.includes('release_manifest_is_canonical_contract()'),
       'release-manifest helper should decode, validate, detect canonical payloads, and export manifest fields from a single payload'
+    );
+    assert.ok(
+      manifestCompatHelper.includes('release_manifest_get()') &&
+        manifestCompatHelper.includes('decode_release_manifest_base64()') &&
+        manifestCompatHelper.includes('release_manifest_validate_contract()') &&
+        manifestCompatHelper.includes('export_release_manifest_runtime_env()'),
+      'release-manifest-compat.sh should own the shared remote fallback for manifest decoding, validation, and runtime exports'
     );
     assert.ok(
       deployPayloadHelper.includes('export function buildDeployPayload') &&
@@ -1351,15 +1366,17 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       stagingRemote.includes('decode_deploy_payload_base64 "$STAGING_DEPLOY_PAYLOAD_B64"') &&
+        stagingRemote.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
         stagingRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" manifest_base64)"'
         ) &&
+        stagingRemote.includes('source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"') &&
         stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"') &&
         stagingRemote.includes('ensure_staging_release_candidate_runtime_env || return 1') &&
         stagingRemote.includes(
           'log_error "Release candidate manifest did not export OpenPath runtime versions"'
         ),
-      'deploy-staging-remote.sh should decode the versioned deploy payload and then load the shared release manifest contract'
+      'deploy-staging-remote.sh should decode the versioned deploy payload, fall back through the shared manifest compat helper when needed, and then load the shared release manifest contract'
     );
     assert.ok(
       workflow.includes('payload_base64: ${{ steps.deploy-payload.outputs.payload_base64 }}'),
@@ -1373,9 +1390,11 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       productionRemote.includes('decode_deploy_payload_base64 "$DEPLOY_PAYLOAD_B64"') &&
+        productionRemote.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
         productionRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" manifest_base64)"'
         ) &&
+        productionRemote.includes('source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"') &&
         readFileSync(deployProductionContextHelperPath, 'utf-8').includes(
           'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
         ) &&
@@ -1397,7 +1416,7 @@ void describe('Migration Tooling', () => {
         readFileSync(deployProductionRuntimeHelperPath, 'utf-8').includes(
           'log_error "Release candidate manifest did not export OpenPath runtime versions"'
         ),
-      'deploy-production-remote.sh should validate and load release images from the shared deploy payload contract'
+      'deploy-production-remote.sh should validate and load release images from the shared deploy payload contract while reusing the shared manifest compat helper at the SSH boundary'
     );
   });
 
@@ -1590,11 +1609,13 @@ void describe('Migration Tooling', () => {
       remoteDeployScaffoldHelper.includes('remote_deploy_init_base_helper_paths()') &&
         remoteDeployScaffoldHelper.includes('remote_deploy_init_production_helper_paths()') &&
         remoteDeployScaffoldHelper.includes('remote_deploy_reload_checked_out_helpers()') &&
+        remoteDeployScaffoldHelper.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
         remoteDeployScaffoldHelper.includes('RELEASE_STATE_COMPAT_HELPER_PATH'),
-      'remote deploy scaffold helper should centralize helper-path initialization and post-checkout helper reloads for streamed remote deploys, including release-state compatibility fallbacks'
+      'remote deploy scaffold helper should centralize helper-path initialization and post-checkout helper reloads for streamed remote deploys, including release-manifest and release-state compatibility fallbacks'
     );
     assert.ok(
       remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
+        remoteHelperContracts.includes('release_manifest_compat_helper_supports_contract()') &&
         remoteHelperContracts.includes(
           'release_state_helper_supports_staging_verification_contract()'
         ) &&
@@ -1615,16 +1636,22 @@ void describe('Migration Tooling', () => {
         stagingRemote.includes(
           'remote_deploy_reload_checked_out_helpers "$APP_DIR/scripts/lib/common.sh"'
         ) &&
+        stagingRemote.includes('release_manifest_helper_supports_contract()') &&
         stagingRemote.includes('release_state_helper_supports_runtime_contract()') &&
         stagingRemote.includes('refresh_deployed_release_helpers') &&
+        stagingRemote.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
         stagingRemote.includes('RELEASE_STATE_COMPAT_HELPER_PATH') &&
         remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
+        remoteHelperContracts.includes('release_manifest_compat_helper_supports_contract()') &&
         remoteHelperContracts.includes('release_state_helper_supports_runtime_contract()') &&
+        !stagingRemote.includes('release_manifest_get() {') &&
+        !stagingRemote.includes('release_manifest_validate_contract() {') &&
+        stagingRemote.includes('source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"') &&
         !stagingRemote.includes('write_current_release_state() {') &&
         !stagingRemote.includes('write_deploy_context_state() {') &&
         stagingRemote.includes('write_release_state_snapshot_compat') &&
         stagingRemote.includes('write_release_runtime_state'),
-      'deploy-staging-remote.sh should use the shared remote deploy scaffold, reuse the shared release-state compatibility helper when needed, reject stale contracts, and reload refreshed helpers after checkout'
+      'deploy-staging-remote.sh should use the shared remote deploy scaffold, reuse the shared manifest and release-state compatibility helpers when needed, reject stale contracts, and reload refreshed helpers after checkout'
     );
     assert.ok(
       productionRemote.includes('RELEASE_STATE_HELPER_PATH') &&
@@ -1639,11 +1666,17 @@ void describe('Migration Tooling', () => {
         productionRemote.includes(
           'remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"'
         ) &&
+        productionRemote.includes('release_manifest_helper_supports_contract()') &&
         productionRemote.includes('release_state_helper_supports_runtime_contract()') &&
         productionRemote.includes('refresh_deployed_release_helpers') &&
+        productionRemote.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
         productionRemote.includes('RELEASE_STATE_COMPAT_HELPER_PATH') &&
         remoteHelperContracts.includes('remote_helper_path_supports_all()') &&
+        remoteHelperContracts.includes('release_manifest_compat_helper_supports_contract()') &&
         remoteHelperContracts.includes('release_state_helper_supports_runtime_contract()') &&
+        !productionRemote.includes('release_manifest_get() {') &&
+        !productionRemote.includes('release_manifest_validate_contract() {') &&
+        productionRemote.includes('source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"') &&
         !productionRemote.includes('write_current_release_state() {') &&
         !productionRemote.includes('write_deploy_context_state() {') &&
         productionRemote.includes('write_release_state_snapshot_compat') &&
@@ -1652,7 +1685,7 @@ void describe('Migration Tooling', () => {
         remoteHelperContracts.includes('deployment_state_helper_supports_contract()') &&
         productionRemote.includes('deployment_state_capture_previous_release') &&
         productionRemote.includes('write_release_runtime_state'),
-      'deploy-production-remote.sh should use the shared remote deploy scaffold, reuse the shared release-state/deployment-state writers, reject stale contracts, and reload refreshed helpers after checkout'
+      'deploy-production-remote.sh should use the shared remote deploy scaffold, reuse the shared manifest/release-state/deployment-state helpers, reject stale contracts, and reload refreshed helpers after checkout'
     );
     assert.ok(
       persistVerification.includes('SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"') &&

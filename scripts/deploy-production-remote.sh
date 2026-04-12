@@ -79,6 +79,7 @@ else
 
     COMMON_SH_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/common.sh")"
     RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-manifest.sh")"
+    RELEASE_MANIFEST_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-manifest-compat.sh")"
     DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deploy-payload.sh")"
     RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-state.sh")"
     RELEASE_STATE_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-state-compat.sh")"
@@ -138,6 +139,11 @@ else
     remote_helper_path_supports_all "$helper_path" 'release_manifest_validate_contract()' 'linux_agent_version'
   }
 
+  release_manifest_compat_helper_supports_contract() {
+    local helper_path="${1:-}"
+    remote_helper_path_supports_all "$helper_path" 'release_manifest_validate_contract()' 'export_release_manifest_runtime_env()'
+  }
+
   release_state_helper_supports_runtime_contract() {
     local helper_path="${1:-}"
     remote_helper_path_supports_all "$helper_path" 'write_deploy_context_state()' 'OPENPATH_LINUX_AGENT_VERSION'
@@ -160,6 +166,7 @@ else
 
   refresh_deployed_release_helpers() {
     RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
+    RELEASE_MANIFEST_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest-compat.sh")"
     RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
     RELEASE_STATE_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state-compat.sh")"
     DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
@@ -168,6 +175,9 @@ else
     if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
       # shellcheck disable=SC1090
       source "$RELEASE_MANIFEST_HELPER_PATH"
+    elif release_manifest_compat_helper_supports_contract "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"; then
+      # shellcheck disable=SC1090
+      source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"
     fi
 
     if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
@@ -191,139 +201,10 @@ else
 fi
 
 if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
-  release_manifest_get() {
-    local manifest_path="$1"
-    local key="$2"
-
-    awk -v key="$key" '
-      index($0, key "=") == 1 {
-        print substr($0, length(key) + 2)
-        found = 1
-        exit
-      }
-      END {
-        if (!found) {
-          exit 1
-        }
-      }
-    ' "$manifest_path"
-  }
-
-  release_manifest_require_key() {
-    local manifest_path="$1"
-    local key="$2"
-    local value=""
-
-    value="$(release_manifest_get "$manifest_path" "$key")" || {
-      log_error "Release manifest missing key: $key"
-      return 1
-    }
-
-    printf '%s\n' "$value"
-  }
-
-  decode_release_manifest_base64() {
-    local manifest_b64="$1"
-    local target_path="${2:-$(mktemp)}"
-
-    if [ -z "$manifest_b64" ]; then
-      log_error "Release manifest payload is empty"
-      return 1
-    fi
-
-    printf '%s' "$manifest_b64" | base64 --decode > "$target_path"
-    printf '%s\n' "$target_path"
-  }
-
-  release_manifest_validate_contract() {
-    local manifest_path="$1"
-    local expected_sha="${2:-}"
-    local repository=""
-    local run_id=""
-    local app_sha=""
-    local openpath_version=""
-    local linux_agent_version=""
-    local image_key=""
-    local image_ref=""
-
-    repository="$(release_manifest_require_key "$manifest_path" repository)" || return 1
-    run_id="$(release_manifest_require_key "$manifest_path" run_id)" || return 1
-    app_sha="$(release_manifest_require_key "$manifest_path" app_sha)" || return 1
-    openpath_version="$(release_manifest_require_key "$manifest_path" openpath_version)" || return 1
-    linux_agent_version="$(release_manifest_require_key "$manifest_path" linux_agent_version)" || return 1
-
-    if [[ ! "$repository" =~ ^[^/]+/[^/]+$ ]]; then
-      log_error "Release manifest repository is invalid: $repository"
-      return 1
-    fi
-
-    if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
-      log_error "Release manifest run_id is invalid: $run_id"
-      return 1
-    fi
-
-    if [[ ! "$app_sha" =~ ^[0-9a-f]{40}$ ]]; then
-      log_error "Release manifest app_sha is invalid: $app_sha"
-      return 1
-    fi
-
-    if [ -n "$expected_sha" ] && [ "$app_sha" != "$expected_sha" ]; then
-      log_error "Release manifest app_sha does not match expected SHA: expected=$expected_sha actual=$app_sha"
-      return 1
-    fi
-
-    if [[ ! "$openpath_version" =~ ^[0-9]+(\.[0-9]+)*(-[0-9A-Za-z._-]+)?$ ]]; then
-      log_error "Release manifest openpath_version is invalid: $openpath_version"
-      return 1
-    fi
-
-    if [[ ! "$linux_agent_version" =~ ^[0-9]+(\.[0-9]+)*(-[0-9A-Za-z._-]+)?$ ]]; then
-      log_error "Release manifest linux_agent_version is invalid: $linux_agent_version"
-      return 1
-    fi
-
-    for image_key in gateway_image migrations_image openpath_api_image spa_image verifier_image; do
-      image_ref="$(release_manifest_require_key "$manifest_path" "$image_key")" || return 1
-      if [[ ! "$image_ref" =~ @sha256:[0-9a-f]{64}$ ]]; then
-        log_error "Release manifest image ref is not pinned by digest: $image_key=$image_ref"
-        return 1
-      fi
-    done
-  }
-
-  export_release_manifest_runtime_env() {
-    local manifest_path="$1"
-
-    export RELEASE_MANIFEST_REPOSITORY
-    RELEASE_MANIFEST_REPOSITORY="$(release_manifest_require_key "$manifest_path" repository)"
-
-    export RELEASE_MANIFEST_RUN_ID
-    RELEASE_MANIFEST_RUN_ID="$(release_manifest_require_key "$manifest_path" run_id)"
-
-    export RELEASE_MANIFEST_APP_SHA
-    RELEASE_MANIFEST_APP_SHA="$(release_manifest_require_key "$manifest_path" app_sha)"
-
-    export CLASSROOMPATH_GATEWAY_IMAGE
-    CLASSROOMPATH_GATEWAY_IMAGE="$(release_manifest_require_key "$manifest_path" gateway_image)"
-
-    export CLASSROOMPATH_MIGRATIONS_IMAGE
-    CLASSROOMPATH_MIGRATIONS_IMAGE="$(release_manifest_require_key "$manifest_path" migrations_image)"
-
-    export OPENPATH_API_IMAGE
-    OPENPATH_API_IMAGE="$(release_manifest_require_key "$manifest_path" openpath_api_image)"
-
-    export OPENPATH_VERSION
-    OPENPATH_VERSION="$(release_manifest_require_key "$manifest_path" openpath_version)"
-
-    export OPENPATH_LINUX_AGENT_VERSION
-    OPENPATH_LINUX_AGENT_VERSION="$(release_manifest_require_key "$manifest_path" linux_agent_version)"
-
-    export CLASSROOMPATH_SPA_IMAGE
-    CLASSROOMPATH_SPA_IMAGE="$(release_manifest_require_key "$manifest_path" spa_image)"
-
-    export CLASSROOMPATH_VERIFIER_IMAGE
-    CLASSROOMPATH_VERIFIER_IMAGE="$(release_manifest_require_key "$manifest_path" verifier_image)"
-  }
+  if [ -f "$RELEASE_MANIFEST_COMPAT_HELPER_PATH" ]; then
+    # shellcheck source=lib/release-manifest-compat.sh
+    source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"
+  fi
 else
   # shellcheck source=lib/release-manifest.sh
   source "$RELEASE_MANIFEST_HELPER_PATH"

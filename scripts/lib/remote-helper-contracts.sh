@@ -27,6 +27,15 @@ release_manifest_helper_supports_contract() {
     'linux_agent_version'
 }
 
+release_manifest_compat_helper_supports_contract() {
+  local helper_path="${1:-}"
+
+  remote_helper_path_supports_all \
+    "$helper_path" \
+    'release_manifest_validate_contract()' \
+    'export_release_manifest_runtime_env()'
+}
+
 release_state_helper_supports_runtime_contract() {
   local helper_path="${1:-}"
 
@@ -74,6 +83,7 @@ release_runtime_helper_supports_runtime_contract() {
 
 refresh_deployed_release_helpers() {
   RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
+  RELEASE_MANIFEST_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest-compat.sh")"
   RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
   RELEASE_STATE_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state-compat.sh")"
   RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
@@ -85,6 +95,9 @@ refresh_deployed_release_helpers() {
   if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
     # shellcheck disable=SC1090
     source "$RELEASE_MANIFEST_HELPER_PATH"
+  elif release_manifest_compat_helper_supports_contract "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"; then
+    # shellcheck disable=SC1090
+    source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"
   fi
 
   if [ "${REMOTE_RELEASE_STATE_CONTRACT_MODE:-runtime}" = "staging-verification" ]; then
