@@ -1053,6 +1053,10 @@ void describe('Migration Tooling', () => {
       'run-migrations-docker.sh should derive OpenPath DB_* env vars from the shared helper before db:push'
     );
     assert.ok(
+      content.includes('npm ci --silent && npm run db:push -w @openpath/api'),
+      'run-migrations-docker.sh should install the full OpenPath monorepo before fallback db:push so root workspace dependencies like drizzle-orm are present'
+    );
+    assert.ok(
       content.indexOf('if [ -n "$RUNNER_IMAGE" ]; then') <
         content.indexOf('docker_select_image_with_fallback'),
       'run-migrations-docker.sh should skip generic node image pulls when a prebuilt runner image is provided'

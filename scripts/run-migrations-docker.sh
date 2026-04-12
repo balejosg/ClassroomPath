@@ -177,7 +177,7 @@ run_openpath_migrations() {
     -w /app \
     --env-file "$ENV_FILE" \
     "$NODE_IMAGE" \
-    sh -c "eval \"\$(node /derive-openpath-db-env.mjs)\" && npm ci --silent -w @openpath/shared -w @openpath/api && npm run db:push -w @openpath/api" \
+    sh -c "eval \"\$(node /derive-openpath-db-env.mjs)\" && npm ci --silent && npm run db:push -w @openpath/api" \
     >"$log" 2>&1; then
     tail -5 "$log"
   else
