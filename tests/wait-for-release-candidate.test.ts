@@ -104,7 +104,7 @@ describe('wait-for-release-candidate helpers', () => {
 
     assert.deepEqual(outputs, {
       repository: 'balejosg/ClassroomPath',
-      run_id: 24005043099,
+      run_id: '24005043099',
       app_sha: '18de339cafab1d1b16e5298eef5567fac710fe02',
       gateway_image:
         'ghcr.io/balejosg/classroompath-gateway@sha256:4ae4b1dcd58006f3e557be098034c303e7871330af8f8ee9e23ff2a863f6abae',

@@ -16,20 +16,10 @@ import {
   parseReleaseCandidateManifest,
   selectLatestReleaseCandidateRun,
 } from './release-images.mjs';
+import { buildCanonicalReleaseManifest, serializeReleaseManifest } from './release-manifest.mjs';
 
 export function buildReleaseCandidateManifestOutputs({ repository, runId, manifest }) {
-  return {
-    repository,
-    run_id: runId,
-    app_sha: manifest.appSha,
-    gateway_image: manifest.gatewayImage,
-    migrations_image: manifest.migrationsImage,
-    openpath_api_image: manifest.openpathApiImage,
-    openpath_version: manifest.openpathVersion,
-    linux_agent_version: manifest.linuxAgentVersion,
-    spa_image: manifest.spaImage,
-    verifier_image: manifest.verifierImage,
-  };
+  return buildCanonicalReleaseManifest({ repository, runId: String(runId), manifest });
 }
 
 export function formatWorkflowRunContext(run) {
@@ -339,13 +329,13 @@ export function waitForReleaseCandidateManifest({
         if (outputFile) {
           writeFileSync(
             outputFile,
-            `${serializeOutputs(
+            serializeReleaseManifest(
               buildReleaseCandidateManifestOutputs({
                 repository: repo,
                 runId,
                 manifest,
               })
-            )}\n`,
+            ),
             'utf8'
           );
         }

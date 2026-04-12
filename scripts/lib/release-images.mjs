@@ -5,6 +5,7 @@ import {
   sortWorkflowRunsNewestFirst,
   withNormalizedWorkflowRunId,
 } from './github-actions.mjs';
+import { parseArtifactReleaseManifestText } from './release-manifest.mjs';
 
 function normalizeOwner(owner) {
   const normalized = String(owner ?? '')
@@ -124,66 +125,8 @@ export function deriveTaggedImageRefs({ sha, repositoryOwner, repository, remote
   };
 }
 
-function parseManifestAssignments(content) {
-  const assignments = {};
-
-  for (const rawLine of String(content ?? '').split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) {
-      continue;
-    }
-
-    const separatorIndex = line.indexOf('=');
-    if (separatorIndex === -1) {
-      continue;
-    }
-
-    const key = line.slice(0, separatorIndex).trim();
-    const value = line.slice(separatorIndex + 1).trim();
-    assignments[key] = value;
-  }
-
-  return assignments;
-}
-
 export function parseReleaseCandidateManifest(content, { sha } = {}) {
-  const targetSha = String(sha ?? '').trim();
-  if (!targetSha) {
-    throw new Error('Target SHA is required to validate a release candidate manifest');
-  }
-
-  const assignments = parseManifestAssignments(content);
-  const manifest = {
-    appSha: assignments.APP_SHA,
-    gatewayImage: assignments.CLASSROOMPATH_GATEWAY_IMAGE,
-    migrationsImage: assignments.CLASSROOMPATH_MIGRATIONS_IMAGE,
-    openpathApiImage: assignments.OPENPATH_API_IMAGE,
-    openpathVersion: assignments.OPENPATH_VERSION ?? assignments.OPENPATH_LINUX_AGENT_VERSION ?? '',
-    linuxAgentVersion: assignments.OPENPATH_LINUX_AGENT_VERSION ?? '',
-    spaImage: assignments.CLASSROOMPATH_SPA_IMAGE,
-    verifierImage: assignments.CLASSROOMPATH_VERIFIER_IMAGE,
-  };
-
-  for (const [key, value] of Object.entries({
-    appSha: manifest.appSha,
-    gatewayImage: manifest.gatewayImage,
-    migrationsImage: manifest.migrationsImage,
-    openpathApiImage: manifest.openpathApiImage,
-    spaImage: manifest.spaImage,
-    verifierImage: manifest.verifierImage,
-  })) {
-    if (!value) {
-      throw new Error(`Release candidate manifest is missing required value: ${key}`);
-    }
-  }
-
-  if (manifest.appSha !== targetSha) {
-    throw new Error(
-      `Release candidate manifest APP_SHA ${manifest.appSha} does not match target SHA ${targetSha}`
-    );
-  }
-
-  return manifest;
+  return parseArtifactReleaseManifestText(content, { sha });
 }
 
 export function selectLatestReleaseCandidateRun(payload, { sha } = {}) {

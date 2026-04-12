@@ -2,6 +2,7 @@
 // @ts-check
 
 import { readFileSync } from 'node:fs';
+import { parseCanonicalReleaseManifestText } from './release-manifest.mjs';
 
 /**
  * @typedef {{
@@ -21,8 +22,9 @@ import { readFileSync } from 'node:fs';
 /**
  * @typedef {{
  *   runSmoke: true;
- *   runReleaseGate: true;
- *   persistEvidence: true;
+ *   runReleaseGate: boolean;
+ *   persistEvidence: boolean;
+ *   supportsPromotionEvidence: boolean;
  *   requireLiveWindowsFirefoxEvidence: boolean;
  * }} VerificationRequirements
  */
@@ -70,32 +72,7 @@ const RELEASE_CANDIDATE_REQUIRED_KEYS = /** @type {const} */ ([
  * @returns {ReleaseManifest}
  */
 export function parseReleaseManifestText(text) {
-  /** @type {Record<string, string>} */
-  const entries = {};
-
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) {
-      continue;
-    }
-
-    const separatorIndex = trimmed.indexOf('=');
-    if (separatorIndex === -1) {
-      continue;
-    }
-
-    const key = trimmed.slice(0, separatorIndex).trim();
-    const value = trimmed.slice(separatorIndex + 1).trim();
-    entries[key] = value;
-  }
-
-  for (const key of RELEASE_CANDIDATE_REQUIRED_KEYS) {
-    if (!entries[key]) {
-      throw new Error(`Release manifest missing required key: ${key}`);
-    }
-  }
-
-  return /** @type {ReleaseManifest} */ (entries);
+  return /** @type {ReleaseManifest} */ (parseCanonicalReleaseManifestText(text));
 }
 
 /**
@@ -136,6 +113,7 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
         runSmoke: true,
         runReleaseGate: true,
         persistEvidence: true,
+        supportsPromotionEvidence: true,
         requireLiveWindowsFirefoxEvidence: false,
       },
     };
@@ -148,8 +126,9 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
     releaseCandidate: null,
     verification: {
       runSmoke: true,
-      runReleaseGate: true,
-      persistEvidence: true,
+      runReleaseGate: false,
+      persistEvidence: false,
+      supportsPromotionEvidence: false,
       requireLiveWindowsFirefoxEvidence: false,
     },
   };
@@ -179,7 +158,9 @@ export function formatStagingReleasePlanEnv(plan, options = {}) {
     STAGING_USE_RELEASE_CANDIDATE: plan.useReleaseCandidate ? '1' : '0',
     STAGING_RELEASE_SHA: plan.releaseCandidate?.appSha ?? '',
     STAGING_RELEASE_RUN_ID: plan.releaseCandidate?.runId ?? '',
+    STAGING_RELEASE_REPOSITORY: plan.releaseCandidate?.repository ?? '',
     STAGING_RELEASE_MANIFEST_B64: manifestBase64,
+    STAGING_SUPPORTS_PROMOTION_EVIDENCE: plan.verification.supportsPromotionEvidence ? '1' : '0',
     STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE: plan.verification
       .requireLiveWindowsFirefoxEvidence
       ? '1'

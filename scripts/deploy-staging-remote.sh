@@ -678,6 +678,7 @@ deploy_from_source() {
 
 load_staging_release_manifest() {
   local release_manifest_b64=""
+  local normalized_manifest_file=""
 
   if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" != "1" ]; then
     return 0
@@ -694,6 +695,14 @@ load_staging_release_manifest() {
   STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
   decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null || true
   decode_release_manifest_base64 "$release_manifest_b64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
+  normalized_manifest_file="$(mktemp)"
+  node "$APP_DIR/scripts/lib/release-manifest.mjs" normalize \
+    --file "$STAGING_RELEASE_MANIFEST_FILE" \
+    --output-file "$normalized_manifest_file" \
+    --sha "${STAGING_RELEASE_SHA:-}" \
+    --repository "${STAGING_RELEASE_REPOSITORY:-}" \
+    --run-id "${STAGING_RELEASE_RUN_ID:-}"
+  mv "$normalized_manifest_file" "$STAGING_RELEASE_MANIFEST_FILE"
   load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"
 
   STAGING_RELEASE_SHA="$RELEASE_MANIFEST_APP_SHA"
@@ -721,6 +730,9 @@ prepare_staging_checkout() {
 }
 
 run_staging_runtime_validation() {
+  log_info "Syncing billing runtime env..."
+  bash scripts/sync-billing-env.sh "$APP_DIR/config/.env"
+
   log_info "Validating runtime config..."
   CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" bash scripts/validate-runtime-config-docker.sh
 }

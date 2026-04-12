@@ -119,6 +119,7 @@ void describe('Migration Tooling', () => {
   void test('staging deploy validates the gateway runtime contract before migrations', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
     const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
+    const billingSyncStep = 'bash scripts/sync-billing-env.sh "$APP_DIR/config/.env"';
     const validateStep = 'bash scripts/validate-runtime-config-docker.sh';
     const emailPreflightStep = 'bash scripts/check-email-delivery-docker.sh';
     const pushStep =
@@ -133,12 +134,17 @@ void describe('Migration Tooling', () => {
       'deploy-staging-local.sh should invoke the dedicated remote deploy script'
     );
     assert.ok(
+      remoteContent.includes(billingSyncStep),
+      'deploy-staging-remote.sh should sync billing env before runtime validation'
+    );
+    assert.ok(
       remoteContent.includes(validateStep),
       'deploy-staging-remote.sh should validate runtime config before migrations'
     );
     assert.ok(
-      remoteContent.indexOf(validateStep) < remoteContent.indexOf(pushStep),
-      'runtime config validation should happen before migrations inside the remote deploy script'
+      remoteContent.indexOf(billingSyncStep) < remoteContent.indexOf(validateStep) &&
+        remoteContent.indexOf(validateStep) < remoteContent.indexOf(pushStep),
+      'staging billing env sync and runtime validation should happen before migrations inside the remote deploy script'
     );
     assert.ok(
       remoteContent.includes(emailPreflightStep) &&
@@ -150,6 +156,7 @@ void describe('Migration Tooling', () => {
 
   void test('production runtime syncs the billing env block before validating runtime config', () => {
     const helper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
+    const syncScript = readFileSync(syncBillingEnvScriptPath, 'utf-8');
 
     assert.ok(existsSync(syncBillingEnvScriptPath), 'scripts/sync-billing-env.sh should exist');
     assert.ok(
@@ -159,6 +166,13 @@ void describe('Migration Tooling', () => {
     assert.ok(
       helper.indexOf('sync-billing-env.sh') < helper.indexOf('validate-runtime-config-docker.sh'),
       'billing env sync should happen before runtime validation'
+    );
+    assert.ok(
+      syncScript.includes('CP_BILLING_MODE') &&
+        syncScript.includes('remove_env_var') &&
+        syncScript.includes('manual_only') &&
+        syncScript.includes('when CP_BILLING_MODE=stripe'),
+      'sync-billing-env.sh should be mode-aware and prune stale Stripe vars outside stripe mode'
     );
   });
 
@@ -546,6 +560,11 @@ void describe('Migration Tooling', () => {
       'staging deploy should resolve and forward a single release-manifest payload for the remote deploy'
     );
     assert.ok(
+      localContent.includes('STAGING_RELEASE_RUN_ID') &&
+        localContent.includes('STAGING_RELEASE_REPOSITORY'),
+      'staging deploy should keep the release-candidate repository identity and run id alongside the manifest payload'
+    );
+    assert.ok(
       localContent.includes('STAGING_RELEASE_WAIT_TIMEOUT_SECONDS'),
       'staging deploy should expose a bounded wait timeout for release candidate availability'
     );
@@ -553,6 +572,11 @@ void describe('Migration Tooling', () => {
       remoteContent.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
         remoteContent.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"'),
       'staging remote deploy should derive the release-candidate image refs from the shared manifest payload'
+    );
+    assert.ok(
+      remoteContent.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
+        remoteContent.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"'),
+      'staging remote deploy should decode and load the shared release-manifest contract before exporting runtime env'
     );
     assert.ok(
       remoteContent.includes(
@@ -593,6 +617,11 @@ void describe('Migration Tooling', () => {
       'deploy-staging-local.sh should default to running the staging release gate during promotion prep'
     );
     assert.ok(
+      localContent.includes('STAGING_SUPPORTS_PROMOTION_EVIDENCE') &&
+        localContent.includes('cannot produce promotion evidence'),
+      'deploy-staging-local.sh should fail early when source-build is asked to produce promotion evidence'
+    );
+    assert.ok(
       existsSync(stagingReleaseGateScriptPath),
       'run-staging-release-gate.sh should exist as the versioned staging release gate helper'
     );
@@ -603,16 +632,27 @@ void describe('Migration Tooling', () => {
       'run-staging-release-gate.sh should delegate to the shared staging verification runner'
     );
     assert.ok(
-      runnerContent.includes('RELEASE_GATE_URL="$CANONICAL_STAGING_URL"'),
+      runnerContent.includes('RELEASE_GATE_URL="$CANONICAL_STAGING_URL"') ||
+        runnerContent.includes('"RELEASE_GATE_URL=$CANONICAL_STAGING_URL"'),
       'staging verification runner should keep the release gate bound to the canonical staging URL'
     );
     assert.ok(
-      runnerContent.includes('RELEASE_GATE_EXPECTED_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN"'),
+      runnerContent.includes('RELEASE_GATE_EXPECTED_ORIGIN=$RELEASE_GATE_EXPECTED_ORIGIN'),
       'staging verification runner should pass the canonical public origin separately from the transport target'
     );
     assert.ok(
       runnerContent.includes('bash "$RESOLVE_HOST_SCRIPT_PATH" "$target_host"'),
       'staging verification runner should resolve canonical hosts explicitly before invoking the local runner'
+    );
+    assert.ok(
+      runnerContent.includes('run_gate_command()'),
+      'staging verification runner should define a shared gate runner instead of duplicating npm invocation boilerplate'
+    );
+    assert.ok(
+      runnerContent.includes('run_gate_command "smoke"') &&
+        runnerContent.includes('run_gate_command "release-gate"') &&
+        runnerContent.includes('run_gate_command "windows-bootstrap-gate"'),
+      'staging verification runner should route smoke, release-gate, and windows-bootstrap-gate through the shared gate runner'
     );
     assert.ok(
       runnerContent.includes('RELEASE_GATE_RESOLVED_ADDRESS='),
@@ -654,7 +694,10 @@ void describe('Migration Tooling', () => {
       'staging verification evidence should record Firefox release artifact presence explicitly'
     );
     assert.ok(
-      runnerContent.includes('npm run test:windows-bootstrap-gate'),
+      runnerContent.includes('npm run test:windows-bootstrap-gate') ||
+        runnerContent.includes(
+          'run_gate_command "windows-bootstrap-gate" "test:windows-bootstrap-gate"'
+        ),
       'staging verification runner should run the live Windows bootstrap gate before persisting release evidence'
     );
     assert.ok(
@@ -705,9 +748,12 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       runnerContent.includes('docker exec classroompath-api printenv STRIPE_WEBHOOK_SECRET') &&
-        runnerContent.includes(
+        (runnerContent.includes(
           'WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET="$windows_bootstrap_webhook_secret"'
-        ),
+        ) ||
+          runnerContent.includes(
+            '"WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET=$windows_bootstrap_webhook_secret"'
+          )),
       'shared staging verification runner should source the live Stripe webhook secret from staging and pass it to the Windows bootstrap gate'
     );
     assert.ok(
@@ -790,7 +836,8 @@ void describe('Migration Tooling', () => {
       'staging verification runner should resolve canonical smoke and release-gate hosts explicitly before invoking the test runners'
     );
     assert.ok(
-      runnerContent.includes('npm run test:smoke'),
+      runnerContent.includes('npm run test:smoke') ||
+        runnerContent.includes('run_gate_command "smoke" "test:smoke"'),
       'staging verification runner should execute the shared smoke entrypoint'
     );
     assert.ok(

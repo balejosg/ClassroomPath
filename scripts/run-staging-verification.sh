@@ -56,6 +56,27 @@ resolve_target_address() {
   printf '\n'
 }
 
+run_gate_command() {
+  local gate_name="$1"
+  local npm_script="$2"
+  local results_file="$3"
+  shift 3
+  local gate_exit_code=0
+
+  set +e
+  (
+    cd "$PROJECT_ROOT"
+    set +e
+    env "$@" npm run "$npm_script" 2>&1 | tee "$results_file"
+    gate_exit_code=${PIPESTATUS[0]}
+    exit "$gate_exit_code"
+  )
+  gate_exit_code=$?
+  set -e
+
+  return "$gate_exit_code"
+}
+
 run_smoke_checks() {
   local staging_host="$1"
   local smoke_target_url="$2"
@@ -78,21 +99,16 @@ run_smoke_checks() {
 
   echo "Smoke target URL: $SMOKE_TARGET_URL" >&2
 
-  set +e
-  (
-    cd "$PROJECT_ROOT"
-    set +e
-    SMOKE_TEST_URL="$SMOKE_TARGET_URL" \
-    SMOKE_TEST_TIMEOUT="15000" \
-    SMOKE_SKIP_CORS="$SMOKE_SKIP_CORS" \
-    SMOKE_ALLOW_MUTATIONS="1" \
-    SMOKE_TEST_RESOLVED_ADDRESS="$smoke_test_resolved_address" \
-      npm run test:smoke 2>&1 | tee /tmp/smoke-results.txt
-    smoke_exit_code=${PIPESTATUS[0]}
-    exit "$smoke_exit_code"
-  )
-  smoke_exit_code=$?
-  set -e
+  if run_gate_command "smoke" "test:smoke" /tmp/smoke-results.txt \
+    "SMOKE_TEST_URL=$SMOKE_TARGET_URL" \
+    "SMOKE_TEST_TIMEOUT=15000" \
+    "SMOKE_SKIP_CORS=$SMOKE_SKIP_CORS" \
+    "SMOKE_ALLOW_MUTATIONS=1" \
+    "SMOKE_TEST_RESOLVED_ADDRESS=$smoke_test_resolved_address"; then
+    smoke_exit_code=0
+  else
+    smoke_exit_code=$?
+  fi
 
   if [ "$smoke_exit_code" -ne 0 ]; then
     echo "Smoke tests FAILED (exit code: $smoke_exit_code)" >&2
@@ -134,6 +150,11 @@ run_release_gate_checks() {
   STAGING_WINDOWS_BOOTSTRAP_RESULT="failed"
   STAGING_FIREFOX_POLICY_RESULT="failed"
 
+  if [ "$STAGING_USE_RELEASE_CANDIDATE" != "1" ]; then
+    echo "Staging runtime cannot produce promotion evidence when IMAGE_SOURCE=source-build" >&2
+    return 1
+  fi
+
   release_gate_target_host=$(printf '%s\n' "$CANONICAL_STAGING_URL" | sed -E 's#^[A-Za-z]+://([^/:]+).*#\1#')
   release_gate_resolved_address="$(resolve_target_address "$release_gate_target_host" 443)"
 
@@ -146,22 +167,17 @@ run_release_gate_checks() {
   echo "Release gate target URL: $CANONICAL_STAGING_URL" >&2
   echo "Release gate expected origin: $RELEASE_GATE_EXPECTED_ORIGIN" >&2
 
-  set +e
-  (
-    cd "$PROJECT_ROOT"
-    set +e
-    RELEASE_GATE_URL="$CANONICAL_STAGING_URL" \
-    RELEASE_GATE_EXPECTED_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN" \
-    RELEASE_GATE_REQUEST_ORIGIN="$release_gate_request_origin" \
-    RELEASE_GATE_TIMEOUT="30000" \
-    RELEASE_GATE_ALLOW_MUTATIONS="1" \
-    RELEASE_GATE_RESOLVED_ADDRESS="$release_gate_resolved_address" \
-      npm run test:release-gate 2>&1 | tee /tmp/release-gate-results.txt
-    release_gate_exit_code=${PIPESTATUS[0]}
-    exit "$release_gate_exit_code"
-  )
-  release_gate_exit_code=$?
-  set -e
+  if run_gate_command "release-gate" "test:release-gate" /tmp/release-gate-results.txt \
+    "RELEASE_GATE_URL=$CANONICAL_STAGING_URL" \
+    "RELEASE_GATE_EXPECTED_ORIGIN=$RELEASE_GATE_EXPECTED_ORIGIN" \
+    "RELEASE_GATE_REQUEST_ORIGIN=$release_gate_request_origin" \
+    "RELEASE_GATE_TIMEOUT=30000" \
+    "RELEASE_GATE_ALLOW_MUTATIONS=1" \
+    "RELEASE_GATE_RESOLVED_ADDRESS=$release_gate_resolved_address"; then
+    release_gate_exit_code=0
+  else
+    release_gate_exit_code=$?
+  fi
 
   if [ "$release_gate_exit_code" -ne 0 ]; then
     echo "Release gate FAILED (exit code: $release_gate_exit_code)" >&2
@@ -196,26 +212,21 @@ run_release_gate_checks() {
 
   echo "Running Windows bootstrap gate against staging..." >&2
 
-  set +e
-  (
-    cd "$PROJECT_ROOT"
-    set +e
-    WINDOWS_BOOTSTRAP_GATE_URL="$CANONICAL_STAGING_URL" \
-    WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN="$RELEASE_GATE_EXPECTED_ORIGIN" \
-    WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH="/api/extensions/firefox/openpath.xpi" \
-    WINDOWS_BOOTSTRAP_GATE_EXPECTED_EXTENSION_ID="$STAGING_FIREFOX_EXTENSION_ID" \
-    WINDOWS_BOOTSTRAP_GATE_EXPECTED_VERSION="$STAGING_FIREFOX_RELEASE_VERSION" \
-    WINDOWS_BOOTSTRAP_GATE_EXPECTED_METADATA_SHA256="$STAGING_FIREFOX_METADATA_SHA256" \
-    WINDOWS_BOOTSTRAP_GATE_EXPECTED_XPI_SHA256="$STAGING_FIREFOX_XPI_SHA256" \
-    WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET="$windows_bootstrap_webhook_secret" \
-    WINDOWS_BOOTSTRAP_GATE_TIMEOUT="30000" \
-    WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS="$release_gate_resolved_address" \
-      npm run test:windows-bootstrap-gate 2>&1 | tee /tmp/windows-bootstrap-gate-results.txt
-    windows_bootstrap_exit_code=${PIPESTATUS[0]}
-    exit "$windows_bootstrap_exit_code"
-  )
-  windows_bootstrap_exit_code=$?
-  set -e
+  if run_gate_command "windows-bootstrap-gate" "test:windows-bootstrap-gate" /tmp/windows-bootstrap-gate-results.txt \
+    "WINDOWS_BOOTSTRAP_GATE_URL=$CANONICAL_STAGING_URL" \
+    "WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN=$RELEASE_GATE_EXPECTED_ORIGIN" \
+    "WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH=/api/extensions/firefox/openpath.xpi" \
+    "WINDOWS_BOOTSTRAP_GATE_EXPECTED_EXTENSION_ID=$STAGING_FIREFOX_EXTENSION_ID" \
+    "WINDOWS_BOOTSTRAP_GATE_EXPECTED_VERSION=$STAGING_FIREFOX_RELEASE_VERSION" \
+    "WINDOWS_BOOTSTRAP_GATE_EXPECTED_METADATA_SHA256=$STAGING_FIREFOX_METADATA_SHA256" \
+    "WINDOWS_BOOTSTRAP_GATE_EXPECTED_XPI_SHA256=$STAGING_FIREFOX_XPI_SHA256" \
+    "WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET=$windows_bootstrap_webhook_secret" \
+    "WINDOWS_BOOTSTRAP_GATE_TIMEOUT=30000" \
+    "WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS=$release_gate_resolved_address"; then
+    windows_bootstrap_exit_code=0
+  else
+    windows_bootstrap_exit_code=$?
+  fi
 
   if [ "$windows_bootstrap_exit_code" -eq 0 ]; then
     STAGING_WINDOWS_BOOTSTRAP_RESULT="success"
