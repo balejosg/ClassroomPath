@@ -1,10 +1,9 @@
-import { execFileSync } from 'node:child_process';
-
 import {
   normalizeWorkflowRunHeadSha,
   sortWorkflowRunsNewestFirst,
   withNormalizedWorkflowRunId,
 } from './github-actions.mjs';
+import { gitOutput } from './git-process.mjs';
 import { parseArtifactReleaseManifestText } from './release-manifest.mjs';
 
 function normalizeOwner(owner) {
@@ -59,10 +58,7 @@ export function detectRepositorySlug({ repository, remoteUrl, cwd } = {}) {
     return parseGitHubRepositoryFromRemote(remoteUrl);
   }
 
-  const detectedRemote = execFileSync('git', ['remote', 'get-url', 'origin'], {
-    cwd,
-    encoding: 'utf8',
-  }).trim();
+  const detectedRemote = gitOutput(['remote', 'get-url', 'origin'], { cwd });
 
   return parseGitHubRepositoryFromRemote(detectedRemote);
 }
@@ -81,10 +77,7 @@ export function detectRepositoryOwner({ repositoryOwner, repository, remoteUrl, 
     return parseGitHubOwnerFromRemote(remoteUrl);
   }
 
-  const detectedRemote = execFileSync('git', ['remote', 'get-url', 'origin'], {
-    cwd,
-    encoding: 'utf8',
-  }).trim();
+  const detectedRemote = gitOutput(['remote', 'get-url', 'origin'], { cwd });
 
   return parseGitHubOwnerFromRemote(detectedRemote);
 }

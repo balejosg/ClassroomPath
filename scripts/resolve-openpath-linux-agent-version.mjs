@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gitOutput as runGitOutput } from './lib/git-process.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
@@ -192,11 +192,7 @@ export function resolveOpenPathLinuxAgentVersion({
 }
 
 function gitOutput(openpathDir, args) {
-  return execFileSync('git', ['-C', openpathDir, ...args], {
-    cwd: projectRoot,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
+  return runGitOutput(['-C', openpathDir, ...args], { cwd: projectRoot });
 }
 
 function isShallowRepository(openpathDir) {
@@ -219,10 +215,7 @@ function fetchOpenPathTags(openpathDir) {
     return entry;
   });
 
-  execFileSync('git', args, {
-    cwd: projectRoot,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  runGitOutput(args, { cwd: projectRoot });
 }
 
 function listReachableReleaseTags(openpathDir) {

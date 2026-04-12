@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
-import { execFileSync } from 'node:child_process';
 import {
   OPENPATH_CI_JOB_NAMES,
   evaluateRequiredChecks,
   parseRunIdFromUrl,
 } from './lib/openpath-ci-checks.mjs';
 import { buildGitHubApiHeaders, isDirectExecution } from './lib/github-actions.mjs';
+import { gitOutput } from './lib/git-process.mjs';
 
 const DEFAULT_REQUIRED_CHECKS = ['CI Success'];
 
@@ -38,9 +38,7 @@ function resolveOpenPathSha() {
     return process.env.OPENPATH_SHA.trim();
   }
 
-  return execFileSync('git', ['rev-parse', 'HEAD:upstream/openpath'], {
-    encoding: 'utf8',
-  }).trim();
+  return gitOutput(['rev-parse', 'HEAD:upstream/openpath']);
 }
 
 async function fetchCheckRuns({ repo, sha, token }) {

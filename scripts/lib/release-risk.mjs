@@ -1,25 +1,9 @@
-import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { gitMaybe, gitOutput } from './git-process.mjs';
 import { readReleaseStateSnapshot } from './release-state-contract.mjs';
 import { evaluateReleaseRiskPaths } from './release-risk-policy.mjs';
-
-function git(args, cwd) {
-  return execFileSync('git', args, {
-    cwd,
-    encoding: 'utf-8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
-}
-
-function gitMaybe(args, cwd) {
-  try {
-    return git(args, cwd);
-  } catch {
-    return '';
-  }
-}
 
 export function resolveReleaseRiskTargetSha(env = process.env, cwd = process.cwd()) {
   if (env.TARGET_SHA) {
@@ -30,7 +14,7 @@ export function resolveReleaseRiskTargetSha(env = process.env, cwd = process.cwd
     return env.GITHUB_SHA;
   }
 
-  return git(['rev-parse', 'HEAD'], cwd);
+  return gitOutput(['rev-parse', 'HEAD'], { cwd, env });
 }
 
 export function resolveReleaseRiskBaseRef(env = process.env, cwd = process.cwd()) {
@@ -50,9 +34,9 @@ export function resolveReleaseRiskBaseRef(env = process.env, cwd = process.cwd()
     }
   }
 
-  gitMaybe(['fetch', '--tags', '--force'], cwd);
+  gitMaybe(['fetch', '--tags', '--force'], { cwd, env });
   const currentRefName = env.GITHUB_REF_NAME || '';
-  const previousTag = gitMaybe(['tag', '--sort=-creatordate'], cwd)
+  const previousTag = gitMaybe(['tag', '--sort=-creatordate'], { cwd, env })
     .split('\n')
     .filter(Boolean)
     .find((tag) => tag.startsWith('v') && tag !== currentRefName);
@@ -66,8 +50,8 @@ export function resolveReleaseRiskBaseRef(env = process.env, cwd = process.cwd()
 
 export function listReleaseRiskChangedFiles(baseRef, targetRef, cwd = process.cwd()) {
   const output = baseRef
-    ? git(['diff', '--name-only', `${baseRef}...${targetRef}`], cwd)
-    : git(['show', '--pretty=', '--name-only', targetRef], cwd);
+    ? gitOutput(['diff', '--name-only', `${baseRef}...${targetRef}`], { cwd })
+    : gitOutput(['show', '--pretty=', '--name-only', targetRef], { cwd });
 
   return output
     .split('\n')
