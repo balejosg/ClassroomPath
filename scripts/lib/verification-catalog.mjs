@@ -96,7 +96,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-contract-test',
     patterns: [
-      '^tests/(?:deployment|firefox-release-version|github-actions-artifacts|openpath-required-checks|release-cli|release-images|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow-config)\\.test\\.ts$',
+      '^tests/(?:deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-version|github-actions-artifacts|openpath-required-checks|release-cli|release-images|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow(?:-core|-release-candidate|-config)?)\\.test\\.ts$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -281,7 +281,9 @@ export const REGRESSION_PLAN_DEFINITIONS = {
   ci: {
     files: [
       'tests/agent-docs-consistency.test.ts',
-      'tests/deployment.test.ts',
+      'tests/deployment-foundation.test.ts',
+      'tests/deployment-staging-release.test.ts',
+      'tests/deployment-runtime-contracts.test.ts',
       'tests/firefox-release-version.test.ts',
       'tests/firefox-release-metadata.test.ts',
       'tests/staging-gates.test.ts',
@@ -299,7 +301,7 @@ export const REGRESSION_PLAN_DEFINITIONS = {
     ],
   },
   'workflow-config': {
-    files: ['tests/workflow-config.test.ts'],
+    files: ['tests/workflow-core.test.ts', 'tests/workflow-release-candidate.test.ts'],
   },
   'release-automation': {
     include: ['ci', 'workflow-config'],

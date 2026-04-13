@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
@@ -11,10 +11,22 @@ const helperPath = resolve(projectRoot, 'scripts/lib/staging-gates.sh');
 const runnerPath = resolve(projectRoot, 'scripts/run-staging-verification.sh');
 
 function runHelper(expression: string): string {
-  return execFileSync('bash', ['-lc', `source scripts/lib/staging-gates.sh; ${expression}`], {
+  const result = spawnSync('bash', ['-lc', `source scripts/lib/staging-gates.sh; ${expression}`], {
     cwd: projectRoot,
     encoding: 'utf8',
-  }).trim();
+  });
+
+  if (result.status !== 0) {
+    throw (
+      result.error ?? new Error(result.stderr || `bash exited with code ${String(result.status)}`)
+    );
+  }
+
+  if (result.error && result.error.code !== 'EPERM') {
+    throw result.error;
+  }
+
+  return result.stdout.trim();
 }
 
 describe('staging gates helper', () => {

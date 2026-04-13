@@ -4,8 +4,6 @@ set -euo pipefail
 
 APP_DIR="/opt/classroompath/app"
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
-RELEASE_MANIFEST_HELPER_PATH=""
-
 if [ -n "$SCRIPT_SOURCE" ]; then
   SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 else
@@ -17,179 +15,50 @@ if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
   REMOTE_BOOTSTRAP_HELPER_PATH="$APP_DIR/scripts/lib/remote-bootstrap.sh"
 fi
 
-if [ -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
-  # shellcheck source=lib/remote-bootstrap.sh
-  source "$REMOTE_BOOTSTRAP_HELPER_PATH"
-else
-  resolve_remote_script_dir() {
-    local app_dir="$1"
-    local script_source="${2:-}"
-
-    if [ -n "$script_source" ]; then
-      cd "$(dirname "$script_source")" && pwd
-      return 0
-    fi
-
-    printf '%s/scripts\n' "$app_dir"
-  }
-
-  resolve_remote_helper_path() {
-    local script_dir="$1"
-    local app_dir="$2"
-    local relative_path="$3"
-    local resolved_path="$script_dir/$relative_path"
-
-    if [ ! -f "$resolved_path" ]; then
-      resolved_path="$app_dir/scripts/$relative_path"
-    fi
-
-    printf '%s\n' "$resolved_path"
-  }
-
-  reload_deployed_common_helpers() {
-    local common_sh_deployed_path="${1:-}"
-
-    if [ -f "$common_sh_deployed_path" ]; then
-      # shellcheck disable=SC1090
-      source "$common_sh_deployed_path"
-    fi
-  }
+if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  printf 'Remote bootstrap helper not found: %s\n' "$REMOTE_BOOTSTRAP_HELPER_PATH" >&2
+  exit 1
 fi
 
-if ! declare -F run_remote_deploy_phases >/dev/null; then
-  run_remote_deploy_phases() {
-    local phase_name=""
-
-    for phase_name in "$@"; do
-      "$phase_name"
-    done
-  }
-fi
+# shellcheck source=lib/remote-bootstrap.sh
+source "$REMOTE_BOOTSTRAP_HELPER_PATH"
 
 SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
 REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-deploy-scaffold.sh")"
-
-if [ -f "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH" ]; then
-  # shellcheck source=lib/remote-deploy-scaffold.sh
-  source "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH"
-else
-  remote_deploy_init_base_helper_paths() {
-    local script_dir="$1"
-    local app_dir="$2"
-
-    COMMON_SH_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/common.sh")"
-    RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-manifest.sh")"
-    RELEASE_MANIFEST_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-manifest-compat.sh")"
-    DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deploy-payload.sh")"
-    RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-state.sh")"
-    RELEASE_STATE_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-state-compat.sh")"
-    RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-runtime.sh")"
-    REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/remote-helper-contracts.sh")"
-  }
-
-  remote_deploy_reload_checked_out_helpers() {
-    local common_sh_deployed_path="${1:-}"
-
-    reload_deployed_common_helpers "$common_sh_deployed_path"
-
-    REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")"
-    if [ -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
-      # shellcheck disable=SC1090
-      source "$REMOTE_HELPER_CONTRACTS_PATH"
-    fi
-
-    refresh_deployed_release_helpers
-  }
+if [ ! -f "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH" ]; then
+  printf 'Remote deploy scaffold helper not found: %s\n' "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH" >&2
+  exit 1
 fi
 
+# shellcheck source=lib/remote-deploy-scaffold.sh
+source "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH"
 remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 
-if [ -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
-  # shellcheck source=lib/remote-helper-contracts.sh
-  source "$REMOTE_HELPER_CONTRACTS_PATH"
-else
-  remote_helper_path_supports_all() {
-    local helper_path="${1:-}"
-    shift || true
-    local required_snippet=""
+if [ ! -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
+  printf 'Remote helper contract helper not found: %s\n' "$REMOTE_HELPER_CONTRACTS_PATH" >&2
+  exit 1
+fi
 
-    [ -f "$helper_path" ] || return 1
+# shellcheck source=lib/remote-helper-contracts.sh
+source "$REMOTE_HELPER_CONTRACTS_PATH"
 
-    for required_snippet in "$@"; do
-      if ! grep -q "$required_snippet" "$helper_path"; then
-        return 1
-      fi
-    done
-
-    return 0
-  }
-
-  release_manifest_helper_supports_contract() {
-    local helper_path="${1:-}"
-    remote_helper_path_supports_all "$helper_path" 'release_manifest_validate_contract()' 'linux_agent_version'
-  }
-
-  release_manifest_compat_helper_supports_contract() {
-    local helper_path="${1:-}"
-    remote_helper_path_supports_all "$helper_path" 'release_manifest_validate_contract()' 'export_release_manifest_runtime_env()'
-  }
-
-  release_state_helper_supports_runtime_contract() {
-    local helper_path="${1:-}"
-    remote_helper_path_supports_all "$helper_path" 'write_deploy_context_state()' 'OPENPATH_LINUX_AGENT_VERSION'
-  }
-
-  release_state_compat_helper_supports_contract() {
-    local helper_path="${1:-}"
-    remote_helper_path_supports_all "$helper_path" 'write_release_state_snapshot_compat()' 'release_state_list_fields_compat()'
-  }
-
-  release_runtime_helper_supports_runtime_contract() {
-    local helper_path="${1:-}"
-    remote_helper_path_supports_all "$helper_path" 'write_release_runtime_state()' 'OPENPATH_LINUX_AGENT_VERSION'
-  }
-
-  refresh_deployed_release_helpers() {
-    RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
-    RELEASE_MANIFEST_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest-compat.sh")"
-    RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
-    RELEASE_STATE_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state-compat.sh")"
-    RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
-
-    if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
-      # shellcheck disable=SC1090
-      source "$RELEASE_MANIFEST_HELPER_PATH"
-    elif release_manifest_compat_helper_supports_contract "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"; then
-      # shellcheck disable=SC1090
-      source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"
-    fi
-
-    if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
-      # shellcheck disable=SC1090
-      source "$RELEASE_STATE_HELPER_PATH"
-    elif release_state_compat_helper_supports_contract "$RELEASE_STATE_COMPAT_HELPER_PATH"; then
-      # shellcheck disable=SC1090
-      source "$RELEASE_STATE_COMPAT_HELPER_PATH"
-    fi
-
-    if release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
-      # shellcheck disable=SC1090
-      source "$RELEASE_RUNTIME_HELPER_PATH"
-    fi
-  }
+if [ ! -f "$COMMON_SH_PATH" ]; then
+  printf 'Shared common helper not found: %s\n' "$COMMON_SH_PATH" >&2
+  exit 1
 fi
 
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
-if ! release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
-  if [ -f "$RELEASE_MANIFEST_COMPAT_HELPER_PATH" ]; then
-    # shellcheck source=lib/release-manifest-compat.sh
-    source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"
-  fi
-else
+if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
   # shellcheck source=lib/release-manifest.sh
   source "$RELEASE_MANIFEST_HELPER_PATH"
+elif release_manifest_compat_helper_supports_contract "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"; then
+  # shellcheck source=lib/release-manifest-compat.sh
+  source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"
+else
+  log_error "Remote release-manifest helpers do not meet the minimum contract"
+  exit 1
 fi
 
 if [ ! -f "$DEPLOY_PAYLOAD_HELPER_PATH" ]; then
@@ -228,115 +97,23 @@ else
   source "$DEPLOY_PAYLOAD_HELPER_PATH"
 fi
 
-if ! release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
-  if [ -f "$RELEASE_STATE_COMPAT_HELPER_PATH" ]; then
-    # shellcheck source=lib/release-state-compat.sh
-    source "$RELEASE_STATE_COMPAT_HELPER_PATH"
-  else
-    write_release_state_snapshot_compat() {
-      local snapshot_type="$1"
-      local state_path="$2"
-      local field=""
-      local value=""
-
-      mkdir -p "$(dirname "$state_path")"
-      : > "$state_path"
-
-      case "$snapshot_type" in
-        current-runtime)
-          while IFS= read -r field; do
-            [ -z "$field" ] && continue
-            value="${!field:-}"
-            printf '%s=%q\n' "$field" "$value" >> "$state_path"
-          done <<'EOF'
-APP_SHA
-IMAGE_SOURCE
-CLASSROOMPATH_GATEWAY_IMAGE
-CLASSROOMPATH_MIGRATIONS_IMAGE
-OPENPATH_API_IMAGE
-OPENPATH_VERSION
-OPENPATH_LINUX_AGENT_VERSION
-CLASSROOMPATH_SPA_IMAGE
-EOF
-          ;;
-        deploy-context)
-          while IFS= read -r field; do
-            [ -z "$field" ] && continue
-            value="${!field:-}"
-            printf '%s=%q\n' "$field" "$value" >> "$state_path"
-          done <<'EOF'
-TARGET_SHA
-APP_SHA
-PREVIOUS_APP_SHA
-IMAGE_SOURCE
-MIGRATION_RISK_LEVEL
-MIGRATION_CHANGED_FILES
-MIGRATION_DESTRUCTIVE_FILES
-PRODUCTION_BACKUP_REFERENCE
-DB_MIGRATED
-FAILURE_STAGE
-DEPLOY_FAILURE_STAGE
-ROLLBACK_ATTEMPTED
-ROLLBACK_RESULT
-EOF
-          ;;
-        *)
-          log_error "Unsupported snapshot fallback: $snapshot_type"
-          return 1
-          ;;
-      esac
-    }
-  fi
-else
+if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
   # shellcheck source=lib/release-state.sh
   source "$RELEASE_STATE_HELPER_PATH"
+elif release_state_compat_helper_supports_contract "$RELEASE_STATE_COMPAT_HELPER_PATH"; then
+  # shellcheck source=lib/release-state-compat.sh
+  source "$RELEASE_STATE_COMPAT_HELPER_PATH"
+else
+  log_error "Remote release-state helpers do not meet the minimum runtime contract"
+  exit 1
 fi
 
-if ! release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
-  load_release_manifest_runtime() {
-    local manifest_path="$1"
-    local expected_sha="${2:-}"
-
-    release_manifest_validate_contract "$manifest_path" "$expected_sha"
-    export_release_manifest_runtime_env "$manifest_path"
-  }
-
-  write_release_runtime_state() {
-    local state_path="$1"
-    local app_sha="$2"
-    local image_source="$3"
-    local gateway_image="$4"
-    local migrations_image="$5"
-    local openpath_api_image="$6"
-    local openpath_version="$7"
-    local openpath_linux_agent_version="$8"
-    local spa_image="$9"
-
-    if declare -F write_release_state_snapshot_compat >/dev/null; then
-      APP_SHA="$app_sha" \
-      IMAGE_SOURCE="$image_source" \
-      CLASSROOMPATH_GATEWAY_IMAGE="$gateway_image" \
-      CLASSROOMPATH_MIGRATIONS_IMAGE="$migrations_image" \
-      OPENPATH_API_IMAGE="$openpath_api_image" \
-      OPENPATH_VERSION="$openpath_version" \
-      OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
-      CLASSROOMPATH_SPA_IMAGE="$spa_image" \
-        write_release_state_snapshot_compat "current-runtime" "$state_path"
-    else
-      APP_SHA="$app_sha" \
-      IMAGE_SOURCE="$image_source" \
-      CLASSROOMPATH_GATEWAY_IMAGE="$gateway_image" \
-      CLASSROOMPATH_MIGRATIONS_IMAGE="$migrations_image" \
-      OPENPATH_API_IMAGE="$openpath_api_image" \
-      OPENPATH_VERSION="$openpath_version" \
-      OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
-      CLASSROOMPATH_SPA_IMAGE="$spa_image" \
-        write_current_release_state "$state_path"
-    fi
-  }
-else
+if release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
   # shellcheck source=lib/release-runtime.sh
   source "$RELEASE_RUNTIME_HELPER_PATH"
+else
+  log_error "Remote release-runtime helper does not meet the minimum contract"
+  exit 1
 fi
 
 STATE_DIR="/opt/classroompath/release-state"

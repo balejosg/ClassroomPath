@@ -46,7 +46,7 @@
     "test:e2e:ui": "npx playwright test --ui",
     "test:ci-regression": "node --input-type=module -e \"import { runCiRegression } from './scripts/run-ci-regression.mjs'; runCiRegression();\" && node --input-type=module -e \"import { runWorkflowConfigRegression } from './scripts/run-ci-regression.mjs'; runWorkflowConfigRegression();\"",
     "test:release-automation": "node --input-type=module -e \"import { runReleaseAutomationRegression } from './scripts/run-ci-regression.mjs'; runReleaseAutomationRegression();\"",
-    "test:deployment": "node --import tsx --test tests/deployment.test.ts",
+    "test:deployment": "node --import tsx --test tests/deployment-foundation.test.ts tests/deployment-staging-release.test.ts tests/deployment-runtime-contracts.test.ts",
     "test:release-gate": "node --import tsx --test tests/release-gate.test.ts",
     "test:release-gate:staging": "RELEASE_GATE_URL=$(node scripts/deploy-targets.mjs get staging publicUrl) RELEASE_GATE_ALLOW_MUTATIONS=1 npm run test:release-gate",
     "test:smoke": "node --import tsx --test tests/smoke.test.ts",

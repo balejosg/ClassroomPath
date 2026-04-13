@@ -16,35 +16,13 @@ if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
   REMOTE_BOOTSTRAP_HELPER_PATH="$APP_DIR/scripts/lib/remote-bootstrap.sh"
 fi
 
-if [ -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
-  # shellcheck source=lib/remote-bootstrap.sh
-  source "$REMOTE_BOOTSTRAP_HELPER_PATH"
-else
-  resolve_remote_script_dir() {
-    local app_dir="$1"
-    local script_source="${2:-}"
-
-    if [ -n "$script_source" ]; then
-      cd "$(dirname "$script_source")" && pwd
-      return 0
-    fi
-
-    printf '%s/scripts\n' "$app_dir"
-  }
-
-  resolve_remote_helper_path() {
-    local script_dir="$1"
-    local app_dir="$2"
-    local relative_path="$3"
-    local resolved_path="$script_dir/$relative_path"
-
-    if [ ! -f "$resolved_path" ]; then
-      resolved_path="$app_dir/scripts/$relative_path"
-    fi
-
-    printf '%s\n' "$resolved_path"
-  }
+if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  printf 'Remote bootstrap helper not found: %s\n' "$REMOTE_BOOTSTRAP_HELPER_PATH" >&2
+  exit 1
 fi
+
+# shellcheck source=lib/remote-bootstrap.sh
+source "$REMOTE_BOOTSTRAP_HELPER_PATH"
 
 SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
 COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
@@ -53,110 +31,31 @@ RELEASE_STATE_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$A
 STAGING_VERIFICATION_RUNNER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "run-staging-verification.sh")"
 REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")"
 
-if [ -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
-  REMOTE_RELEASE_STATE_CONTRACT_MODE="staging-verification"
-  export REMOTE_RELEASE_STATE_CONTRACT_MODE
-  # shellcheck source=lib/remote-helper-contracts.sh
-  source "$REMOTE_HELPER_CONTRACTS_PATH"
-else
-  remote_helper_path_supports_all() {
-    local helper_path="${1:-}"
-    shift || true
-    local required_snippet=""
+if [ ! -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
+  printf 'Remote helper contract helper not found: %s\n' "$REMOTE_HELPER_CONTRACTS_PATH" >&2
+  exit 1
+fi
 
-    [ -f "$helper_path" ] || return 1
+# shellcheck source=lib/remote-helper-contracts.sh
+source "$REMOTE_HELPER_CONTRACTS_PATH"
 
-    for required_snippet in "$@"; do
-      if ! grep -q "$required_snippet" "$helper_path"; then
-        return 1
-      fi
-    done
-
-    return 0
-  }
-
-  release_state_helper_supports_staging_verification_contract() {
-    local helper_path="${1:-}"
-    remote_helper_path_supports_all "$helper_path" 'write_staging_verification_state()' 'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION'
-  }
+if [ ! -f "$COMMON_SH_PATH" ]; then
+  printf 'Shared common helper not found: %s\n' "$COMMON_SH_PATH" >&2
+  exit 1
 fi
 
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
-if ! release_state_helper_supports_staging_verification_contract "$RELEASE_STATE_HELPER_PATH"; then
-  if [ -f "$RELEASE_STATE_COMPAT_HELPER_PATH" ]; then
-    # shellcheck source=lib/release-state-compat.sh
-    source "$RELEASE_STATE_COMPAT_HELPER_PATH"
-  else
-    load_release_state_env() {
-      local state_path="$1"
-
-      if [ ! -f "$state_path" ]; then
-        log_error "Release state file not found: $state_path"
-        return 1
-      fi
-
-      set -a
-      # shellcheck disable=SC1090
-      . "$state_path"
-      set +a
-    }
-
-    write_release_state_snapshot_compat() {
-      local snapshot_type="$1"
-      local state_path="$2"
-      local field=""
-      local value=""
-
-      mkdir -p "$(dirname "$state_path")"
-      : > "$state_path"
-
-      case "$snapshot_type" in
-        staging-verification)
-          while IFS= read -r field; do
-            [ -z "$field" ] && continue
-            value="${!field:-}"
-            printf '%s=%q\n' "$field" "$value" >> "$state_path"
-          done <<'EOF'
-STAGING_VERIFIED_AT
-STAGING_VERIFIED_BY
-STAGING_VERIFIED_APP_SHA
-STAGING_VERIFIED_OPENPATH_SHA
-STAGING_VERIFIED_IMAGE_SOURCE
-STAGING_VERIFIED_GATEWAY_IMAGE
-STAGING_VERIFIED_MIGRATIONS_IMAGE
-STAGING_VERIFIED_OPENPATH_API_IMAGE
-STAGING_VERIFIED_OPENPATH_VERSION
-STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION
-STAGING_VERIFIED_SPA_IMAGE
-STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS
-STAGING_SMOKE_RESULT
-STAGING_SMOKE_STATUS
-STAGING_RELEASE_GATE_RESULT
-STAGING_WINDOWS_BOOTSTRAP_RESULT
-STAGING_FIREFOX_POLICY_RESULT
-STAGING_FIREFOX_EXTENSION_ID
-STAGING_FIREFOX_RELEASE_VERSION
-STAGING_FIREFOX_METADATA_SHA256
-STAGING_FIREFOX_XPI_SHA256
-EOF
-          ;;
-        *)
-          log_error "Unsupported snapshot fallback: $snapshot_type"
-          return 1
-          ;;
-      esac
-    }
-
-    write_staging_verification_state() {
-      local state_path="$1"
-      write_release_state_snapshot_compat "staging-verification" "$state_path"
-    }
-  fi
-else
+if release_state_helper_supports_staging_verification_contract "$RELEASE_STATE_HELPER_PATH"; then
   # shellcheck source=lib/release-state.sh
   source "$RELEASE_STATE_HELPER_PATH"
+elif release_state_compat_helper_supports_contract "$RELEASE_STATE_COMPAT_HELPER_PATH"; then
+  # shellcheck source=lib/release-state-compat.sh
+  source "$RELEASE_STATE_COMPAT_HELPER_PATH"
+else
+  log_error "Remote release-state helpers do not meet the minimum staging verification contract"
+  exit 1
 fi
 
 if [ ! -f "$STAGING_VERIFICATION_RUNNER_PATH" ]; then

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -16,26 +16,49 @@ const projectRoot = resolve(dirname(currentFilePath), '..');
 const cliPath = resolve(projectRoot, 'scripts/release-state-cli.mjs');
 const compatHelperPath = resolve(projectRoot, 'scripts/lib/release-state-compat.sh');
 
+function runCommand(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  encoding: 'utf-8' | 'utf8' = 'utf-8'
+): string {
+  const result = spawnSync(command, args, {
+    cwd: projectRoot,
+    encoding,
+    env,
+  });
+
+  if (result.status !== 0) {
+    throw (
+      result.error ??
+      new Error(result.stderr || `${command} exited with code ${String(result.status)}`)
+    );
+  }
+
+  if (result.error && result.error.code !== 'EPERM') {
+    throw result.error;
+  }
+
+  return result.stdout;
+}
+
 test('release-state CLI writes shell-compatible snapshots through the typed contract', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-write-'));
   const snapshotPath = join(tempDir, 'current-images.env');
 
-  execFileSync(
+  runCommand(
     'node',
     [cliPath, 'write-snapshot', '--snapshot-type', 'current-runtime', '--output', snapshotPath],
     {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        APP_SHA: 'abc123',
-        IMAGE_SOURCE: 'release-candidate',
-        CLASSROOMPATH_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
-        CLASSROOMPATH_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
-        OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
-        OPENPATH_VERSION: '4.1.19',
-        OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
-        CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
-      },
+      ...process.env,
+      APP_SHA: 'abc123',
+      IMAGE_SOURCE: 'release-candidate',
+      CLASSROOMPATH_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+      CLASSROOMPATH_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+      OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+      OPENPATH_VERSION: '4.1.19',
+      OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+      CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
     }
   );
 
@@ -101,7 +124,7 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
     'utf-8'
   );
 
-  execFileSync(
+  runCommand(
     'node',
     [
       cliPath,
@@ -116,17 +139,14 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
       outputPath,
     ],
     {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        EXPECTED_APP_SHA: 'abc123',
-        EXPECTED_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
-        EXPECTED_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
-        EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
-        EXPECTED_OPENPATH_VERSION: '4.1.19',
-        EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
-        EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
-      },
+      ...process.env,
+      EXPECTED_APP_SHA: 'abc123',
+      EXPECTED_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+      EXPECTED_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+      EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+      EXPECTED_OPENPATH_VERSION: '4.1.19',
+      EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+      EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
     }
   );
 
@@ -137,15 +157,18 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
 });
 
 test('release-state CLI lists canonical snapshot fields for shell consumers', () => {
-  const output = execFileSync(
-    'node',
-    [cliPath, 'list-fields', '--snapshot-type', 'staging-verification-run'],
-    {
-      cwd: projectRoot,
-      env: { ...process.env },
-      encoding: 'utf-8',
-    }
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-fields-'));
+  const outputPath = join(tempDir, 'fields.txt');
+
+  runCommand(
+    'bash',
+    [
+      '-lc',
+      `node "${cliPath}" list-fields --snapshot-type staging-verification-run > "${outputPath}"`,
+    ],
+    { ...process.env }
   );
+  const output = readFileSync(outputPath, 'utf-8');
 
   assert.deepEqual(output.trim().split('\n'), [
     'SMOKE_TARGET_URL',
@@ -172,7 +195,7 @@ test('shared shell compatibility helper serializes snapshots through the canonic
 
   assert.ok(existsSync(compatHelperPath), 'release-state-compat.sh should exist');
 
-  execFileSync(
+  runCommand(
     'bash',
     [
       '-lc',
@@ -203,7 +226,7 @@ test('shared shell compatibility helper serializes snapshots through the canonic
         `write_release_state_snapshot_compat staging-verification ${snapshotPath}`,
       ].join('; '),
     ],
-    { cwd: projectRoot, env: { ...process.env } }
+    { ...process.env }
   );
 
   const snapshot = readReleaseStateSnapshot(snapshotPath);
@@ -216,7 +239,7 @@ test('bash release-state helpers preserve shell-only staging verification values
   const tempDir = mkdtempSync(join(tmpdir(), 'release-state-shell-helper-'));
   const snapshotPath = join(tempDir, 'staging-verification-run.env');
 
-  execFileSync(
+  runCommand(
     'bash',
     [
       '-lc',
@@ -237,7 +260,7 @@ test('bash release-state helpers preserve shell-only staging verification values
         `write_staging_verification_run_state ${snapshotPath}`,
       ].join('; '),
     ],
-    { cwd: projectRoot, env: { ...process.env } }
+    { ...process.env }
   );
 
   const snapshot = readReleaseStateSnapshot(snapshotPath);

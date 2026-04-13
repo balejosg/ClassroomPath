@@ -39,17 +39,26 @@ void describe('Deploy Docker Tool Helpers', () => {
 
   void test('staging deploy reuses the release verifier image for remote runtime validation', () => {
     const localDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
+    const localRuntimeHelperPath = resolve(
+      projectRoot,
+      'scripts/lib/staging-deploy-local-runtime.sh'
+    );
     const remoteDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
 
     const localDeploy = readFileSync(localDeployScriptPath, 'utf-8');
+    const localRuntimeHelper = readFileSync(localRuntimeHelperPath, 'utf-8');
     const remoteDeploy = readFileSync(remoteDeployScriptPath, 'utf-8');
     const validationScript = readFileSync(validationScriptPath, 'utf-8');
 
     assert.ok(
-      localDeploy.includes(
-        'remote_assignment STAGING_RELEASE_MANIFEST_B64 "$STAGING_RELEASE_MANIFEST_B64"'
-      ),
-      'deploy-staging-local.sh should forward the shared release manifest payload to the remote staging deploy'
+      localDeploy.includes('source "$SCRIPT_DIR/lib/staging-deploy-local-runtime.sh"') &&
+        localRuntimeHelper.includes(
+          'remote_assignment STAGING_RELEASE_MANIFEST_B64 "$STAGING_RELEASE_MANIFEST_B64"'
+        ) &&
+        localRuntimeHelper.includes(
+          'remote_assignment STAGING_DEPLOY_PAYLOAD_B64 "$STAGING_DEPLOY_PAYLOAD_B64"'
+        ),
+      'staging local runtime helper should forward the shared release manifest and deploy payload to the remote staging deploy'
     );
     assert.ok(
       remoteDeploy.includes('CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}"') &&

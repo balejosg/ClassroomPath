@@ -20,7 +20,7 @@ describe('verify plan', () => {
       '.github/workflows/firefox-release-assets.yml',
       'scripts/openpath-required-checks.mjs',
       'scripts/lib/github-actions.mjs',
-      'tests/workflow-config.test.ts',
+      'tests/workflow-core.test.ts',
       'tests/fixtures/release/manifest.release-candidate.env',
     ];
 

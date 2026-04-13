@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { gitOutput } from '../scripts/lib/git-process.mjs';
@@ -17,7 +17,7 @@ const runGit = (cwd: string, ...args: string[]) => gitOutput(args, { cwd });
 const runRiskScript = (cwd: string, env: Record<string, string>) => {
   const outputPath = join(cwd, 'github-output.env');
 
-  execFileSync('bash', [riskScriptPath], {
+  const result = spawnSync('bash', [riskScriptPath], {
     cwd,
     encoding: 'utf-8',
     env: {
@@ -26,6 +26,16 @@ const runRiskScript = (cwd: string, env: Record<string, string>) => {
       GITHUB_OUTPUT: outputPath,
     },
   });
+
+  if (result.status !== 0) {
+    throw (
+      result.error ?? new Error(result.stderr || `bash exited with code ${String(result.status)}`)
+    );
+  }
+
+  if (result.error && result.error.code !== 'EPERM') {
+    throw result.error;
+  }
 
   return Object.fromEntries(
     readFileSync(outputPath, 'utf-8')
