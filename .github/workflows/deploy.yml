@@ -172,14 +172,17 @@ jobs:
           STAGING_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
-
-          if [ -z "$STAGING_HOST" ] || [ -z "$STAGING_USER" ] || [ -z "$STAGING_SSH_KEY" ]; then
-            echo "::error::STAGING_DEPLOY_HOST, STAGING_DEPLOY_USER, and STAGING_DEPLOY_SSH_KEY must be configured for production promotion"
-            exit 1
-          fi
-
-          bash scripts/resolve-ssh-host.sh "$STAGING_HOST" "${STAGING_PORT:-22}" >> "$GITHUB_OUTPUT"
-          echo "user=$STAGING_USER" >> "$GITHUB_OUTPUT"
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_require_values \
+            "production promotion" \
+            STAGING_DEPLOY_HOST "$STAGING_HOST" \
+            STAGING_DEPLOY_USER "$STAGING_USER" \
+            STAGING_DEPLOY_SSH_KEY "$STAGING_SSH_KEY"
+          github_actions_remote_write_resolved_host_outputs \
+            "$STAGING_HOST" \
+            "${STAGING_PORT:-22}" \
+            "$STAGING_USER" \
+            "production promotion" >> "$GITHUB_OUTPUT"
 
       - name: Resolve production host
         id: resolve-production
@@ -191,66 +194,61 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
-
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
-            echo "::error::DEPLOY_HOST, DEPLOY_USER, and DEPLOY_SSH_KEY must be configured for production promotion"
-            exit 1
-          fi
-
-          bash scripts/resolve-ssh-host.sh "$DEPLOY_HOST" "${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
-          echo "user=$DEPLOY_USER" >> "$GITHUB_OUTPUT"
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_require_values \
+            "production promotion" \
+            DEPLOY_HOST "$DEPLOY_HOST" \
+            DEPLOY_USER "$DEPLOY_USER" \
+            DEPLOY_SSH_KEY "$DEPLOY_SSH_KEY"
+          github_actions_remote_write_resolved_host_outputs \
+            "$DEPLOY_HOST" \
+            "${DEPLOY_PORT:-22}" \
+            "$DEPLOY_USER" \
+            "production promotion" >> "$GITHUB_OUTPUT"
 
       - name: Install staging SSH key
         env:
           STAGING_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$STAGING_SSH_KEY" > ~/.ssh/classroompath-staging-release
-          chmod 600 ~/.ssh/classroompath-staging-release
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_install_ssh_key "$STAGING_SSH_KEY" ~/.ssh/classroompath-staging-release
 
       - name: Install production SSH key
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/classroompath-production-release
-          chmod 600 ~/.ssh/classroompath-production-release
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-release
 
       - name: Read staging release state
         run: |
-          ssh \
-            -o ConnectTimeout=10 \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=accept-new \
-            -i ~/.ssh/classroompath-staging-release \
-            -p "${{ steps.resolve.outputs.port }}" \
-            "${{ steps.resolve.outputs.user }}@${{ steps.resolve.outputs.ip }}" \
-            "cat /opt/classroompath/release-state/current-images.env" > staging-release-state.env
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_read_file \
+            ~/.ssh/classroompath-staging-release \
+            "${{ steps.resolve.outputs.port }}" \
+            "${{ steps.resolve.outputs.user }}" \
+            "${{ steps.resolve.outputs.ip }}" \
+            /opt/classroompath/release-state/current-images.env > staging-release-state.env
 
       - name: Read staging verification evidence
         run: |
-          ssh \
-            -o ConnectTimeout=10 \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=accept-new \
-            -i ~/.ssh/classroompath-staging-release \
-            -p "${{ steps.resolve.outputs.port }}" \
-            "${{ steps.resolve.outputs.user }}@${{ steps.resolve.outputs.ip }}" \
-            "cat /opt/classroompath/release-state/staging-verification.env" > staging-verification.env
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_read_file \
+            ~/.ssh/classroompath-staging-release \
+            "${{ steps.resolve.outputs.port }}" \
+            "${{ steps.resolve.outputs.user }}" \
+            "${{ steps.resolve.outputs.ip }}" \
+            /opt/classroompath/release-state/staging-verification.env > staging-verification.env
 
       - name: Read production release state
         run: |
-          ssh \
-            -o ConnectTimeout=10 \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=accept-new \
-            -i ~/.ssh/classroompath-production-release \
-            -p "${{ steps.resolve-production.outputs.port }}" \
-            "${{ steps.resolve-production.outputs.user }}@${{ steps.resolve-production.outputs.ip }}" \
-            "cat /opt/classroompath/release-state/current-images.env" > production-release-state.env
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_read_file \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            /opt/classroompath/release-state/current-images.env > production-release-state.env
 
       - name: Detect promoted Windows/Firefox risk
         id: risk
@@ -314,13 +312,12 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
           set -euo pipefail
-
-          if [ -z "$DEPLOY_HOST" ]; then
-            echo "::error::DEPLOY_HOST must be configured for production deployment"
-            exit 1
-          fi
-
-          bash scripts/resolve-ssh-host.sh "$DEPLOY_HOST" "${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_write_resolved_host_outputs \
+            "$DEPLOY_HOST" \
+            "${DEPLOY_PORT:-22}" \
+            "" \
+            "production deployment" >> "$GITHUB_OUTPUT"
 
       - name: Deploy via SSH
         env:
@@ -522,13 +519,12 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
           set -euo pipefail
-
-          if [ -z "$DEPLOY_HOST" ]; then
-            echo "::error::DEPLOY_HOST must be configured for rollback"
-            exit 1
-          fi
-
-          bash scripts/resolve-ssh-host.sh "$DEPLOY_HOST" "${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_write_resolved_host_outputs \
+            "$DEPLOY_HOST" \
+            "${DEPLOY_PORT:-22}" \
+            "" \
+            "rollback" >> "$GITHUB_OUTPUT"
 
       - name: Roll back via SSH
         env:

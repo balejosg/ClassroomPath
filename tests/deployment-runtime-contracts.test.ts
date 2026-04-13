@@ -37,6 +37,10 @@ describe('Deployment runtime contracts', () => {
     projectRoot,
     'scripts/lib/deploy-production-runtime.sh'
   );
+  const githubActionsRemoteHelperPath = resolve(
+    projectRoot,
+    'scripts/lib/github-actions-remote.sh'
+  );
   const releaseCandidateWorkflowPath = resolve(
     projectRoot,
     '.github/workflows/release-candidate-images.yml'
@@ -259,6 +263,7 @@ describe('Deployment runtime contracts', () => {
       resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
       'utf-8'
     );
+    const githubActionsRemoteHelper = readFileSync(githubActionsRemoteHelperPath, 'utf-8');
 
     assert.ok(
       releaseStateHelper.includes('load_release_state_env()') &&
@@ -307,6 +312,12 @@ describe('Deployment runtime contracts', () => {
         releaseRuntimeHelper.includes('write_release_runtime_state()')
     );
     assert.ok(
+      githubActionsRemoteHelper.includes('github_actions_remote_write_resolved_host_outputs()') &&
+        githubActionsRemoteHelper.includes('github_actions_remote_install_ssh_key()') &&
+        githubActionsRemoteHelper.includes('github_actions_remote_read_env_key()') &&
+        githubActionsRemoteHelper.includes('github_actions_remote_read_file()')
+    );
+    assert.ok(
       stagingRemote.includes('REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH') &&
         stagingRemote.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
         stagingRemote.includes(
@@ -344,7 +355,9 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       rollbackRemote.includes('DEPLOYMENT_STATE_HELPER_PATH') &&
         rollbackRemote.includes('deployment_state_activate_previous_release') &&
-        rollbackRemote.includes('deployment_state_load_context')
+        rollbackRemote.includes('deployment_state_load_context') &&
+        rollbackRemote.includes('remote_deploy_reload_checked_out_helpers') &&
+        !rollbackRemote.includes('upsert_env_file_var() {')
     );
     assert.ok(
       verifyState.includes('release-state-cli.mjs') &&

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { runProjectCommand } from './helpers/ops-contracts.ts';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
@@ -19,21 +19,13 @@ function runPredicate(
   functionName: string,
   helperPath: string
 ): { stdout: string; status: number } {
-  const stdout = execFileSync(
-    'bash',
+  const stdout = runProjectCommand('bash', [
+    '-lc',
     [
-      '-lc',
-      [
-        'source scripts/lib/remote-helper-contracts.sh',
-        `if ${functionName} "${helperPath}"; then echo supported; else echo unsupported:$?; fi`,
-      ].join('; '),
-    ],
-    {
-      cwd: projectRoot,
-      env: { ...process.env },
-      encoding: 'utf-8',
-    }
-  ).trim();
+      'source scripts/lib/remote-helper-contracts.sh',
+      `if ${functionName} "${helperPath}"; then echo supported; else echo unsupported:$?; fi`,
+    ].join('; '),
+  ]).stdout.trim();
 
   return {
     stdout,
@@ -88,7 +80,7 @@ test('versioned helper contracts reject lower versions even when legacy snippets
   assert.equal(result.status, 1);
 });
 
-test('legacy unversioned helpers still pass during phased rollout when required snippets match', () => {
+test('legacy unversioned helpers are rejected once rollback shares the version-only helper floor', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'remote-helper-contracts-legacy-'));
   const helperPath = writeHelper(
     tempDir,
@@ -102,8 +94,8 @@ test('legacy unversioned helpers still pass during phased rollout when required 
 
   const result = runPredicate('deployment_state_helper_supports_contract', helperPath);
 
-  assert.equal(result.stdout, 'supported');
-  assert.equal(result.status, 0);
+  assert.equal(result.stdout, 'unsupported:2');
+  assert.equal(result.status, 2);
 });
 
 test('helpers without version constants or matching legacy snippets are rejected', () => {
@@ -112,6 +104,6 @@ test('helpers without version constants or matching legacy snippets are rejected
 
   const result = runPredicate('release_manifest_helper_supports_contract', helperPath);
 
-  assert.equal(result.stdout, 'unsupported:1');
-  assert.equal(result.status, 1);
+  assert.equal(result.stdout, 'unsupported:2');
+  assert.equal(result.status, 2);
 });

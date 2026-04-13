@@ -17,123 +17,70 @@ if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
   REMOTE_BOOTSTRAP_HELPER_PATH="$APP_DIR/scripts/lib/remote-bootstrap.sh"
 fi
 
-if [ -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
-  # shellcheck source=lib/remote-bootstrap.sh
-  source "$REMOTE_BOOTSTRAP_HELPER_PATH"
-else
-  resolve_remote_script_dir() {
-    local app_dir="$1"
-    local script_source="${2:-}"
-
-    if [ -n "$script_source" ]; then
-      cd "$(dirname "$script_source")" && pwd
-      return 0
-    fi
-
-    printf '%s/scripts\n' "$app_dir"
-  }
-
-  resolve_remote_helper_path() {
-    local script_dir="$1"
-    local app_dir="$2"
-    local relative_path="$3"
-    local resolved_path="$script_dir/$relative_path"
-
-    if [ ! -f "$resolved_path" ]; then
-      resolved_path="$app_dir/scripts/$relative_path"
-    fi
-
-    printf '%s\n' "$resolved_path"
-  }
-
-  reload_deployed_common_helpers() {
-    local common_sh_deployed_path="${1:-}"
-
-    if [ -f "$common_sh_deployed_path" ]; then
-      # shellcheck disable=SC1090
-      source "$common_sh_deployed_path"
-    fi
-  }
+if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+  printf 'Remote bootstrap helper not found: %s\n' "$REMOTE_BOOTSTRAP_HELPER_PATH" >&2
+  exit 1
 fi
 
+# shellcheck source=lib/remote-bootstrap.sh
+source "$REMOTE_BOOTSTRAP_HELPER_PATH"
+
 SCRIPT_DIR="$(resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE")"
-COMMON_SH_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/common.sh")"
-RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
-DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
+REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-deploy-scaffold.sh")"
+if [ ! -f "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH" ]; then
+  printf 'Remote deploy scaffold helper not found: %s\n' "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH" >&2
+  exit 1
+fi
 
-upsert_env_file_var() {
-  local path="$1"
-  local key="$2"
-  local value="$3"
-  local tmp_file=""
+# shellcheck source=lib/remote-deploy-scaffold.sh
+source "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH"
+remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"
+remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 
-  mkdir -p "$(dirname "$path")"
-  touch "$path"
-  tmp_file="$(mktemp)"
+if [ ! -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
+  printf 'Remote helper contract helper not found: %s\n' "$REMOTE_HELPER_CONTRACTS_PATH" >&2
+  exit 1
+fi
 
-  awk -v key="$key" -v value="$value" '
-    BEGIN { updated = 0 }
-    index($0, key "=") == 1 {
-      print key "=" value
-      updated = 1
-      next
-    }
-    { print }
-    END {
-      if (!updated) {
-        print key "=" value
-      }
-    }
-  ' "$path" > "$tmp_file"
+# shellcheck source=lib/remote-helper-contracts.sh
+source "$REMOTE_HELPER_CONTRACTS_PATH"
 
-  mv "$tmp_file" "$path"
-}
+if [ ! -f "$COMMON_SH_PATH" ]; then
+  printf 'Shared common helper not found: %s\n' "$COMMON_SH_PATH" >&2
+  exit 1
+fi
 
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
-if [ -f "$RELEASE_STATE_HELPER_PATH" ]; then
+if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
   # shellcheck source=lib/release-state.sh
   source "$RELEASE_STATE_HELPER_PATH"
+else
+  log_error "Remote release-state helpers do not meet the minimum runtime contract"
+  exit 1
 fi
 
-if [ -f "$DEPLOYMENT_STATE_HELPER_PATH" ]; then
+if deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"; then
   # shellcheck source=lib/deployment-state.sh
   source "$DEPLOYMENT_STATE_HELPER_PATH"
 else
-  deployment_state_init_paths() {
-    local state_dir="$1"
-    DEPLOYMENT_STATE_DIR="$state_dir"
-    DEPLOYMENT_STATE_CURRENT_FILE="$state_dir/current-images.env"
-    DEPLOYMENT_STATE_PREVIOUS_FILE="$state_dir/previous-images.env"
-    DEPLOYMENT_STATE_CONTEXT_FILE="$state_dir/deploy-context.env"
-  }
-
-  deployment_state_load_previous_release() {
-    if [ ! -f "$DEPLOYMENT_STATE_PREVIOUS_FILE" ]; then
-      log_error "No previous release metadata available: $DEPLOYMENT_STATE_PREVIOUS_FILE"
-      return 1
-    fi
-
-    set -a
-    # shellcheck disable=SC1090
-    . "$DEPLOYMENT_STATE_PREVIOUS_FILE"
-    set +a
-  }
-
-  deployment_state_load_context() {
-    if [ -f "$DEPLOYMENT_STATE_CONTEXT_FILE" ]; then
-      set -a
-      # shellcheck disable=SC1090
-      . "$DEPLOYMENT_STATE_CONTEXT_FILE"
-      set +a
-    fi
-  }
-
-  deployment_state_activate_previous_release() {
-    cp "$DEPLOYMENT_STATE_PREVIOUS_FILE" "$DEPLOYMENT_STATE_CURRENT_FILE"
-  }
+  log_error "Remote deployment-state helper does not meet the minimum contract"
+  exit 1
 fi
+
+refresh_rollback_checked_out_helpers() {
+  remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"
+  remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"
+
+  if ! deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"; then
+    log_error "Checked-out deployment-state helper does not meet the minimum contract"
+    exit 1
+  fi
+
+  # shellcheck source=lib/deployment-state.sh
+  source "$DEPLOYMENT_STATE_HELPER_PATH"
+}
 
 DEPLOY_DIR="/opt/classroompath"
 STATE_DIR="$DEPLOY_DIR/release-state"
@@ -162,7 +109,7 @@ git checkout --detach "$APP_SHA"
 git reset --hard "$APP_SHA"
 git submodule deinit -f --all || true
 git submodule update --init --recursive --force
-reload_deployed_common_helpers "$COMMON_SH_DEPLOYED_PATH"
+refresh_rollback_checked_out_helpers
 
 echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT

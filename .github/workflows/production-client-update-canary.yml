@@ -52,14 +52,17 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
-
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
-            echo "::error::DEPLOY_HOST, DEPLOY_USER, and DEPLOY_SSH_KEY must be configured for production canaries"
-            exit 1
-          fi
-
-          bash scripts/resolve-ssh-host.sh "$DEPLOY_HOST" "${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
-          echo "user=$DEPLOY_USER" >> "$GITHUB_OUTPUT"
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_require_values \
+            "production canaries" \
+            DEPLOY_HOST "$DEPLOY_HOST" \
+            DEPLOY_USER "$DEPLOY_USER" \
+            DEPLOY_SSH_KEY "$DEPLOY_SSH_KEY"
+          github_actions_remote_write_resolved_host_outputs \
+            "$DEPLOY_HOST" \
+            "${DEPLOY_PORT:-22}" \
+            "$DEPLOY_USER" \
+            "production canaries" >> "$GITHUB_OUTPUT"
 
       - name: Install production SSH key
         shell: bash
@@ -67,25 +70,21 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/classroompath-production-release
-          chmod 600 ~/.ssh/classroompath-production-release
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-release
 
       - name: Read production billing mode
         id: read-billing-mode
         shell: bash
         run: |
           set -euo pipefail
-
-          billing_mode="$(ssh \
-            -o ConnectTimeout=10 \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=accept-new \
-            -i ~/.ssh/classroompath-production-release \
-            -p "${{ steps.resolve-production.outputs.port }}" \
-            "${{ steps.resolve-production.outputs.user }}@${{ steps.resolve-production.outputs.ip }}" \
-            "grep '^CP_BILLING_MODE=' /opt/classroompath/app/config/.env | sed 's/^CP_BILLING_MODE=//' | head -n1")"
+          source scripts/lib/github-actions-remote.sh
+          billing_mode="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_BILLING_MODE)"
 
           if [ -z "$billing_mode" ]; then
             billing_mode="manual_only"
@@ -105,16 +104,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          stripe_webhook_secret="$(ssh \
-            -o ConnectTimeout=10 \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=accept-new \
-            -i ~/.ssh/classroompath-production-release \
-            -p "${{ steps.resolve-production.outputs.port }}" \
-            "${{ steps.resolve-production.outputs.user }}@${{ steps.resolve-production.outputs.ip }}" \
-            "grep '^STRIPE_WEBHOOK_SECRET=' /opt/classroompath/app/config/.env | sed 's/^STRIPE_WEBHOOK_SECRET=//' | head -n1")"
+          source scripts/lib/github-actions-remote.sh
+          stripe_webhook_secret="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            STRIPE_WEBHOOK_SECRET)"
 
           if [ -z "$stripe_webhook_secret" ]; then
             echo "::error::STRIPE_WEBHOOK_SECRET is missing on production"
@@ -256,14 +252,17 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
-
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
-            echo "::error::DEPLOY_HOST, DEPLOY_USER, and DEPLOY_SSH_KEY must be configured for production canaries"
-            exit 1
-          fi
-
-          bash scripts/resolve-ssh-host.sh "$DEPLOY_HOST" "${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
-          echo "user=$DEPLOY_USER" >> "$GITHUB_OUTPUT"
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_require_values \
+            "production canaries" \
+            DEPLOY_HOST "$DEPLOY_HOST" \
+            DEPLOY_USER "$DEPLOY_USER" \
+            DEPLOY_SSH_KEY "$DEPLOY_SSH_KEY"
+          github_actions_remote_write_resolved_host_outputs \
+            "$DEPLOY_HOST" \
+            "${DEPLOY_PORT:-22}" \
+            "$DEPLOY_USER" \
+            "production canaries" >> "$GITHUB_OUTPUT"
 
       - name: Install production SSH key
         shell: bash
@@ -271,25 +270,21 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/classroompath-production-release
-          chmod 600 ~/.ssh/classroompath-production-release
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-release
 
       - name: Read production billing mode
         id: read-billing-mode
         shell: bash
         run: |
           set -euo pipefail
-
-          billing_mode="$(ssh \
-            -o ConnectTimeout=10 \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=accept-new \
-            -i ~/.ssh/classroompath-production-release \
-            -p "${{ steps.resolve-production.outputs.port }}" \
-            "${{ steps.resolve-production.outputs.user }}@${{ steps.resolve-production.outputs.ip }}" \
-            "grep '^CP_BILLING_MODE=' /opt/classroompath/app/config/.env | sed 's/^CP_BILLING_MODE=//' | head -n1")"
+          source scripts/lib/github-actions-remote.sh
+          billing_mode="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_BILLING_MODE)"
 
           if [ -z "$billing_mode" ]; then
             billing_mode="manual_only"
@@ -309,16 +304,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          stripe_webhook_secret="$(ssh \
-            -o ConnectTimeout=10 \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=accept-new \
-            -i ~/.ssh/classroompath-production-release \
-            -p "${{ steps.resolve-production.outputs.port }}" \
-            "${{ steps.resolve-production.outputs.user }}@${{ steps.resolve-production.outputs.ip }}" \
-            "grep '^STRIPE_WEBHOOK_SECRET=' /opt/classroompath/app/config/.env | sed 's/^STRIPE_WEBHOOK_SECRET=//' | head -n1")"
+          source scripts/lib/github-actions-remote.sh
+          stripe_webhook_secret="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            STRIPE_WEBHOOK_SECRET)"
 
           if [ -z "$stripe_webhook_secret" ]; then
             echo "::error::STRIPE_WEBHOOK_SECRET is missing on production"

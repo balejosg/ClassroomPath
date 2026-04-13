@@ -282,11 +282,11 @@ describe('Deployment staging and promotion contracts', () => {
         'classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"'
       )
     );
-    assert.ok(deployRemoteScript.includes('upsert_env_file_var() {'));
+    assert.ok(!deployRemoteScript.includes('upsert_env_file_var() {'));
     assert.ok(
       deployRemoteScript.includes('git submodule update --init --recursive --force') &&
         deployRemoteScript.includes('remote_deploy_reload_checked_out_helpers')
     );
-    assert.ok(rollbackRemoteScript.includes('upsert_env_file_var() {'));
+    assert.ok(!rollbackRemoteScript.includes('upsert_env_file_var() {'));
   });
 });

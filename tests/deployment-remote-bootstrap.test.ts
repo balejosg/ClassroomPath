@@ -248,9 +248,7 @@ void describe('Remote Deploy Bootstrap', () => {
         `${scriptName} should keep an absolute path to the deployed helper library after the remote checkout updates the app directory`
       );
       assert.ok(
-        scriptName === 'rollback-production-remote.sh'
-          ? content.includes('reload_deployed_common_helpers() {')
-          : content.includes('remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"'),
+        content.includes('remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"'),
         `${scriptName} should re-source helper functions from the freshly checked out app directory`
       );
     }
@@ -278,6 +276,19 @@ void describe('Remote Deploy Bootstrap', () => {
         !deployRemoteContent.includes('load_release_manifest_runtime() {') &&
         !deployRemoteContent.includes('deployment_state_init_paths() {'),
       'deploy-production-remote.sh should not inline release-state, release-runtime, or deployment-state fallback bodies once the remote contract floor is raised'
+    );
+    assert.ok(
+      rollbackRemoteContent.includes('REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH') &&
+        rollbackRemoteContent.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
+        rollbackRemoteContent.includes(
+          'deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"'
+        ) &&
+        !rollbackRemoteContent.includes('resolve_remote_script_dir() {') &&
+        !rollbackRemoteContent.includes('resolve_remote_helper_path() {') &&
+        !rollbackRemoteContent.includes('reload_deployed_common_helpers() {') &&
+        !rollbackRemoteContent.includes('deployment_state_init_paths() {') &&
+        !rollbackRemoteContent.includes('upsert_env_file_var() {'),
+      'rollback-production-remote.sh should require the shared scaffold and versioned helper contracts without inline fallback bodies'
     );
   });
 

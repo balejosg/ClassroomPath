@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import {
   assertTextExcludesAll,
   assertTextIncludesAll,
+  findWorkflowJob,
+  findWorkflowStepByName,
+  readProjectJson,
   readProjectText,
   readProjectWorkflow,
   type WorkflowDefinition,
@@ -57,7 +60,7 @@ function normalizeNeeds(needs: WorkflowJob['needs']): string[] {
 }
 
 function readPackageJson(): PackageDefinition {
-  return JSON.parse(readProjectText('package.json')) as PackageDefinition;
+  return readProjectJson<PackageDefinition>('package.json');
 }
 
 describe('Workflow core contracts', () => {
@@ -207,10 +210,18 @@ describe('Workflow core contracts', () => {
   test('deploy and smoke workflows reuse shared transport, verifier, and concurrency helpers', () => {
     const deployWorkflow = readWorkflow('.github/workflows/deploy.yml');
     const deployWorkflowText = readText('.github/workflows/deploy.yml');
+    const verifyStagingJob = findWorkflowJob(deployWorkflow, 'verify-staging-release-state');
+    const deployProductionJob = findWorkflowJob(deployWorkflow, 'deploy-production');
     const smokeWorkflowText = readText('.github/workflows/smoke-tests.yml');
     const reusableSmokeWorkflowText = readText('.github/workflows/reusable-smoke-test.yml');
     const cleanupWorkflow = readText('.github/workflows/cleanup-staging.yml');
     const canaryWorkflow = readText('.github/workflows/windows-firefox-canary.yml');
+    const productionClientUpdateCanaryWorkflowText = readText(
+      '.github/workflows/production-client-update-canary.yml'
+    );
+    const windowsProductionBootstrapCanaryWorkflowText = readText(
+      '.github/workflows/windows-production-bootstrap-canary.yml'
+    );
     const concurrency = deployWorkflow.concurrency;
     const jobs = deployWorkflow.jobs ?? {};
 
@@ -220,9 +231,29 @@ describe('Workflow core contracts', () => {
     assert.ok(reusableSmokeWorkflowText.includes('verifier_image:'));
     assert.ok(reusableSmokeWorkflowText.includes('wait-for-ready.sh'));
     assert.ok(!reusableSmokeWorkflowText.includes('npm ci'));
-    assert.ok(deployWorkflowText.includes('bash scripts/resolve-ssh-host.sh'));
+    assert.ok(deployWorkflowText.includes('source scripts/lib/github-actions-remote.sh'));
+    assert.ok(
+      String(findWorkflowStepByName(verifyStagingJob, 'Resolve staging host').run ?? '').includes(
+        'github_actions_remote_write_resolved_host_outputs'
+      )
+    );
+    assert.ok(
+      String(findWorkflowStepByName(deployProductionJob, 'Resolve deploy host').run ?? '').includes(
+        'github_actions_remote_write_resolved_host_outputs'
+      )
+    );
     assert.ok(canaryWorkflow.includes('bash scripts/resolve-ssh-host.sh'));
     assert.ok(cleanupWorkflow.includes('bash scripts/resolve-ssh-host.sh'));
+    assert.ok(
+      productionClientUpdateCanaryWorkflowText.includes(
+        'source scripts/lib/github-actions-remote.sh'
+      )
+    );
+    assert.ok(
+      windowsProductionBootstrapCanaryWorkflowText.includes(
+        'source scripts/lib/github-actions-remote.sh'
+      )
+    );
     assert.ok(!deployWorkflowText.includes('DEPLOY_HOST not configured. Skipping deployment.'));
     assert.ok(deployWorkflowText.includes('verify-staging-release-state.sh'));
     assert.ok(deployWorkflowText.includes('detect-windows-firefox-risk.sh'));
@@ -316,7 +347,7 @@ describe('Workflow core contracts', () => {
     );
     assert.ok(!bootstrapCanaryScriptText.includes("'onboarding.createOrganization'"));
     assert.ok(
-      productionBootstrapWorkflowText.includes("grep '^CP_BILLING_MODE='") &&
+      productionBootstrapWorkflowText.includes('github_actions_remote_read_env_key') &&
         productionBootstrapWorkflowText.includes(
           'Skip bootstrap canary when production is manual-only'
         ) &&
@@ -360,7 +391,7 @@ describe('Workflow core contracts', () => {
     assert.equal(linuxJob?.['runs-on'], 'ubuntu-latest');
     assert.ok(workflowText.includes('create-production-windows-bootstrap-canary.mjs'));
     assert.ok(
-      workflowText.includes("grep '^CP_BILLING_MODE='") &&
+      workflowText.includes('github_actions_remote_read_env_key') &&
         workflowText.includes('Skip production client update canary when billing is manual-only') &&
         workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET') &&
         workflowText.includes('classroompath-production-release')

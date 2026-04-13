@@ -127,34 +127,6 @@ else
   exit 1
 fi
 
-upsert_env_file_var() {
-  local path="$1"
-  local key="$2"
-  local value="$3"
-  local tmp_file=""
-
-  mkdir -p "$(dirname "$path")"
-  touch "$path"
-  tmp_file="$(mktemp)"
-
-  awk -v key="$key" -v value="$value" '
-    BEGIN { updated = 0 }
-    index($0, key "=") == 1 {
-      print key "=" value
-      updated = 1
-      next
-    }
-    { print }
-    END {
-      if (!updated) {
-        print key "=" value
-      }
-    }
-  ' "$path" > "$tmp_file"
-
-  mv "$tmp_file" "$path"
-}
-
 log_info "Starting ClassroomPath Docker deployment..."
 
 DEPLOY_DIR="/opt/classroompath"

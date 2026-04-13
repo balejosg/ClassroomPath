@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +48,14 @@ export type WorkflowDefinition = {
 const currentFilePath = fileURLToPath(import.meta.url);
 const helpersDir = dirname(currentFilePath);
 const projectRoot = resolve(helpersDir, '..', '..');
+const SANITIZED_GIT_ENV_KEYS = [
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_COMMON_DIR',
+  'GIT_DIR',
+  'GIT_INDEX_FILE',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_WORK_TREE',
+] as const;
 
 function resolveProjectPath(relativePath: string): string {
   const filePath = resolve(projectRoot, relativePath);
@@ -60,6 +69,10 @@ export function readProjectText(relativePath: string): string {
 
 export function readProjectWorkflow(relativePath: string): WorkflowDefinition {
   return parseYaml(readProjectText(relativePath)) as WorkflowDefinition;
+}
+
+export function readProjectJson<T>(relativePath: string): T {
+  return JSON.parse(readProjectText(relativePath)) as T;
 }
 
 export function assertTextIncludesAll(
@@ -107,4 +120,62 @@ export function extractShellFunction(content: string, functionName: string): str
 
   const commonIndent = match[1] ?? '';
   return match[0].replace(new RegExp(`\\n${commonIndent}`, 'g'), '\n').trim();
+}
+
+export function extractShellAssignment(content: string, variableName: string): string {
+  const match = content.match(new RegExp(`(?:^|\\n)${variableName}=(.+)(?:\\n|$)`));
+
+  assert.ok(match?.[1], `Expected to find assignment for ${variableName}`);
+
+  return match[1].trim();
+}
+
+export function findWorkflowJob(workflow: WorkflowDefinition, jobName: string): WorkflowJob {
+  const job = workflow.jobs?.[jobName];
+
+  assert.ok(job, `Expected workflow to define job ${jobName}`);
+
+  return job;
+}
+
+export function findWorkflowStepByName(
+  job: WorkflowJob,
+  stepName: string
+): NonNullable<WorkflowJob['steps']>[number] {
+  const step = (job.steps ?? []).find((candidate) => candidate.name === stepName);
+
+  assert.ok(step, `Expected workflow job to define step ${stepName}`);
+
+  return step;
+}
+
+export function sanitizeGitEnv(
+  envOverrides: Record<string, string | undefined> = {}
+): Record<string, string | undefined> {
+  const env = {
+    ...process.env,
+    ...envOverrides,
+  };
+
+  for (const key of SANITIZED_GIT_ENV_KEYS) {
+    delete env[key];
+  }
+
+  return env;
+}
+
+export function runProjectCommand(
+  command: string,
+  args: string[],
+  options: {
+    cwd?: string;
+    env?: Record<string, string | undefined>;
+  } = {}
+): SpawnSyncReturns<string> {
+  return spawnSync(command, args, {
+    cwd: options.cwd ?? projectRoot,
+    env: sanitizeGitEnv(options.env),
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }

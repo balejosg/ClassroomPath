@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { runProjectCommand } from './helpers/ops-contracts.ts';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
@@ -31,10 +31,9 @@ function generateEvidence(envOverrides: Record<string, string | undefined>) {
   const outputDir = mkdtempSync(resolve(tmpdir(), 'classroompath-release-evidence-'));
 
   try {
-    execFileSync('node', [scriptPath], {
+    const result = runProjectCommand(process.execPath, [scriptPath], {
       cwd: outputDir,
       env: {
-        ...process.env,
         GITHUB_REPOSITORY: 'balejosg/ClassroomPath',
         GITHUB_RUN_ID: '123456789',
         GITHUB_SERVER_URL: 'https://github.com',
@@ -53,9 +52,8 @@ function generateEvidence(envOverrides: Record<string, string | undefined>) {
         ROLLBACK_RESULT: 'skipped',
         ...envOverrides,
       },
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
+    assert.equal(result.status, 0, result.stderr);
 
     return {
       json: JSON.parse(
@@ -75,15 +73,13 @@ function generateEvidenceFromInputFile(input: Record<string, string | undefined>
   try {
     writeFileSync(inputPath, `${JSON.stringify(input, null, 2)}\n`, 'utf8');
 
-    execFileSync('node', [scriptPath], {
+    const result = runProjectCommand(process.execPath, [scriptPath], {
       cwd: outputDir,
       env: {
-        ...process.env,
         RELEASE_EVIDENCE_INPUT_PATH: inputPath,
       },
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
+    assert.equal(result.status, 0, result.stderr);
 
     return {
       json: JSON.parse(
