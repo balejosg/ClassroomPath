@@ -294,11 +294,118 @@ if [ ! -f "$STAGING_VERIFICATION_RUNNER_PATH" ]; then
     exit 1
 fi
 
+has_complete_billing_env() {
+    local mode="${CP_BILLING_MODE:-}"
+
+    if [ -z "$mode" ] || [ -z "${CP_PLATFORM_ADMIN_EMAILS:-}" ]; then
+        return 1
+    fi
+
+    case "$mode" in
+        manual_only)
+            return 0
+            ;;
+        stripe)
+            local stripe_name=""
+            for stripe_name in \
+                STRIPE_SECRET_KEY \
+                STRIPE_WEBHOOK_SECRET \
+                STRIPE_ANNUAL_PRICE_1_10 \
+                STRIPE_ANNUAL_PRICE_11_25 \
+                STRIPE_ANNUAL_PRICE_26_50 \
+                STRIPE_ANNUAL_PRICE_51_100 \
+                STRIPE_ONBOARDING_PRICE_1_25 \
+                STRIPE_ONBOARDING_PRICE_26_100 \
+                STRIPE_PILOT_PRICE; do
+                if [ -z "${!stripe_name:-}" ]; then
+                    return 1
+                fi
+            done
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+list_missing_billing_env() {
+    local mode="${CP_BILLING_MODE:-}"
+    local missing=()
+    local name=""
+
+    if [ -z "$mode" ]; then
+        missing+=("CP_BILLING_MODE")
+    fi
+
+    if [ -z "${CP_PLATFORM_ADMIN_EMAILS:-}" ]; then
+        missing+=("CP_PLATFORM_ADMIN_EMAILS")
+    fi
+
+    if [ "$mode" = "stripe" ]; then
+        for name in \
+            STRIPE_SECRET_KEY \
+            STRIPE_WEBHOOK_SECRET \
+            STRIPE_ANNUAL_PRICE_1_10 \
+            STRIPE_ANNUAL_PRICE_11_25 \
+            STRIPE_ANNUAL_PRICE_26_50 \
+            STRIPE_ANNUAL_PRICE_51_100 \
+            STRIPE_ONBOARDING_PRICE_1_25 \
+            STRIPE_ONBOARDING_PRICE_26_100 \
+            STRIPE_PILOT_PRICE; do
+            if [ -z "${!name:-}" ]; then
+                missing+=("$name")
+            fi
+        done
+    fi
+
+    printf '%s\n' "${missing[*]}"
+}
+
+hydrate_billing_env_from_remote_if_needed() {
+    local remote_billing_env=""
+    local line=""
+    local key=""
+    local value=""
+    local grep_pattern=""
+
+    if has_complete_billing_env; then
+        return 0
+    fi
+
+    # Read the canonical staging runtime billing block from /opt/classroompath/app/config/.env.
+    grep_pattern='^(CP_BILLING_MODE|CP_PLATFORM_ADMIN_EMAILS|STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_ANNUAL_PRICE_1_10|STRIPE_ANNUAL_PRICE_11_25|STRIPE_ANNUAL_PRICE_26_50|STRIPE_ANNUAL_PRICE_51_100|STRIPE_ONBOARDING_PRICE_1_25|STRIPE_ONBOARDING_PRICE_26_100|STRIPE_PILOT_PRICE)='
+
+    log_info "Using staging runtime billing env fallback for missing local values..."
+    remote_billing_env="$("${SSH_CMD[@]}" "grep -E \"$grep_pattern\" \"$APP_DIR/config/.env\" 2>/dev/null || true")"
+
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        key="${line%%=*}"
+        value="${line#*=}"
+
+        if [ -z "${!key:-}" ]; then
+            printf -v "$key" '%s' "$value"
+            export "$key"
+        fi
+    done <<< "$remote_billing_env"
+
+    if has_complete_billing_env; then
+        return 0
+    fi
+
+    log_error "Missing billing env after checking local overrides and staging runtime fallback"
+    log_error "Required values still missing: $(list_missing_billing_env)"
+    exit 1
+}
+
 remote_assignment() {
     local key="$1"
     local value="$2"
     printf '%s=%q ' "$key" "$value"
 }
+
+hydrate_billing_env_from_remote_if_needed
 
 REMOTE_ENV_CMD="$(
     remote_assignment STAGING_IMAGE_MODE "$STAGING_IMAGE_MODE"
@@ -310,7 +417,7 @@ REMOTE_ENV_CMD="$(
     remote_assignment STAGING_DEPLOY_PAYLOAD_B64 "$STAGING_DEPLOY_PAYLOAD_B64"
     remote_assignment STAGING_GHCR_USERNAME "$STAGING_GHCR_USERNAME"
     remote_assignment STAGING_GHCR_TOKEN "$STAGING_GHCR_TOKEN"
-    remote_assignment CP_BILLING_MODE "${CP_BILLING_MODE:-stripe}"
+    remote_assignment CP_BILLING_MODE "${CP_BILLING_MODE:-}"
     remote_assignment CP_PLATFORM_ADMIN_EMAILS "${CP_PLATFORM_ADMIN_EMAILS:-}"
     remote_assignment STRIPE_SECRET_KEY "${STRIPE_SECRET_KEY:-}"
     remote_assignment STRIPE_WEBHOOK_SECRET "${STRIPE_WEBHOOK_SECRET:-}"

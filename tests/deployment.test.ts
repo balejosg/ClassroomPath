@@ -161,6 +161,44 @@ void describe('Migration Tooling', () => {
     );
   });
 
+  void test('staging deploy can hydrate the billing env block from the remote runtime when local secrets are absent', () => {
+    const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+
+    assert.ok(
+      localContent.includes('hydrate_billing_env_from_remote_if_needed'),
+      'deploy-staging-local.sh should centralize billing-env fallback in a dedicated helper'
+    );
+    assert.ok(
+      localContent.includes('/opt/classroompath/app/config/.env') &&
+        localContent.includes('CP_PLATFORM_ADMIN_EMAILS') &&
+        localContent.includes('grep -E'),
+      'deploy-staging-local.sh should read the billing block from the staging runtime env when local billing vars are missing'
+    );
+    assert.ok(
+      localContent.includes('Using staging runtime billing env fallback') ||
+        localContent.includes('billing env fallback'),
+      'deploy-staging-local.sh should log when it falls back to the remote billing block'
+    );
+    assert.ok(
+      localContent.includes('if [ -z "${!key:-}" ]; then') &&
+        localContent.includes('printf -v "$key"'),
+      'deploy-staging-local.sh should preserve explicit local billing overrides when hydrating from staging'
+    );
+    assert.ok(
+      localContent.includes(
+        'Missing billing env after checking local overrides and staging runtime fallback'
+      ) && localContent.includes('exit 1'),
+      'deploy-staging-local.sh should fail early if billing config is still incomplete after local and remote checks'
+    );
+    assert.ok(
+      !localContent.includes('cat > "$ENV_FILE"') &&
+        !localContent.includes('cat >> "$ENV_FILE"') &&
+        !localContent.includes('printf > "$ENV_FILE"') &&
+        !localContent.includes('printf >> "$ENV_FILE"'),
+      'deploy-staging-local.sh should not write billing fallback values back into .env.local'
+    );
+  });
+
   void test('production runtime syncs the billing env block before validating runtime config', () => {
     const helper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
     const syncScript = readFileSync(syncBillingEnvScriptPath, 'utf-8');

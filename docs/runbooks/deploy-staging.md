@@ -14,6 +14,9 @@ Canonical public targets live in `config/deploy-targets.json`.
 
 - `.env.local` configured (copy from `.env.local.example`)
 - SSH access to the staging host
+- Optional: local billing overrides may be exported, but they are no longer required for the
+  normal flow. If absent, `deploy:staging` reuses the current billing block from
+  `/opt/classroompath/app/config/.env` on staging for that run.
 
 ## Steps
 
