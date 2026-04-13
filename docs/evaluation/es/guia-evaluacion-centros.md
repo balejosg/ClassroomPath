@@ -14,14 +14,21 @@ Si tu centro está valorando ClassroomPath, esta es la ruta corta:
 2. **Revisa la confianza técnica mínima.**
    Leed la guía de seguridad y confianza: [`../security-trust.md`](../security-trust.md).
    Ahí están enlazados el modelo de sesión, la política de seguridad del core y la postura de privacidad de la extensión.
+   Si queréis separar hechos de mensajes comerciales, revisad también [`../claims-and-evidence.md`](../claims-and-evidence.md).
 
 3. **Usa una checklist común entre TIC y dirección.**
    Trabajad sobre [`../it-evaluation-checklist.md`](../it-evaluation-checklist.md) para evitar que la decisión dependa solo de impresiones o de una demo.
 
-4. **Compara core OSS frente a servicio gestionado.**
+4. **Comprueba el encaje técnico del piloto.**
+   Revisad [`../compatibility-matrix.md`](../compatibility-matrix.md) para confirmar si el entorno que queréis probar encaja con la superficie documentada actualmente.
+
+5. **Compara core OSS frente a servicio gestionado.**
    Leed [`../openpath-vs-classroompath.md`](../openpath-vs-classroompath.md) para decidir si necesitáis autogestión o una vía operativa con menos carga diaria.
 
-5. **Pide el siguiente paso correcto.**
+6. **Diseñad el piloto antes de ampliarlo.**
+   Usad [`../pilot-runbook.md`](../pilot-runbook.md) para dejar claro alcance, responsables, mediciones y criterios de salida.
+
+7. **Pide el siguiente paso correcto.**
    Para presupuesto, piloto o demo, usad [classroompath.eu](https://classroompath.eu/).
 
 ## Qué deberíais tener claro antes de seguir
@@ -30,6 +37,7 @@ Si tu centro está valorando ClassroomPath, esta es la ruta corta:
 - qué aulas o dispositivos entrarían primero en el piloto
 - qué riesgo queréis reducir primero: seguridad, carga operativa o coherencia de política digital
 - qué evidencia interna necesitáis para pasar de piloto a despliegue más amplio
+- qué objeciones técnicas deben quedar resueltas antes de tomar una decisión
 
 ## Qué no deberíais asumir sin confirmación explícita
 

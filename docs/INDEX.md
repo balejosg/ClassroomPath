@@ -32,7 +32,11 @@ Rules:
 ## Evaluation
 
 - Security and trust overview: [`docs/evaluation/security-trust.md`](evaluation/security-trust.md)
+- Claims and evidence map: [`docs/evaluation/claims-and-evidence.md`](evaluation/claims-and-evidence.md)
+- Compatibility matrix: [`docs/evaluation/compatibility-matrix.md`](evaluation/compatibility-matrix.md)
 - IT evaluation checklist: [`docs/evaluation/it-evaluation-checklist.md`](evaluation/it-evaluation-checklist.md)
+- Pilot runbook: [`docs/evaluation/pilot-runbook.md`](evaluation/pilot-runbook.md)
+- IT objections FAQ: [`docs/evaluation/faq-it-objections.md`](evaluation/faq-it-objections.md)
 - OpenPath vs. ClassroomPath: [`docs/evaluation/openpath-vs-classroompath.md`](evaluation/openpath-vs-classroompath.md)
 - Spanish guide for school IT teams: [`docs/evaluation/es/guia-evaluacion-centros.md`](evaluation/es/guia-evaluacion-centros.md)
 

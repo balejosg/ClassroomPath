@@ -27,7 +27,11 @@ Use ClassroomPath when you need:
 ## Start Evaluating
 
 - Security and trust overview: [`docs/evaluation/security-trust.md`](docs/evaluation/security-trust.md)
+- Claims and evidence map: [`docs/evaluation/claims-and-evidence.md`](docs/evaluation/claims-and-evidence.md)
+- Compatibility matrix: [`docs/evaluation/compatibility-matrix.md`](docs/evaluation/compatibility-matrix.md)
 - IT evaluation checklist: [`docs/evaluation/it-evaluation-checklist.md`](docs/evaluation/it-evaluation-checklist.md)
+- Pilot runbook: [`docs/evaluation/pilot-runbook.md`](docs/evaluation/pilot-runbook.md)
+- IT objections FAQ: [`docs/evaluation/faq-it-objections.md`](docs/evaluation/faq-it-objections.md)
 - OpenPath vs. ClassroomPath: [`docs/evaluation/openpath-vs-classroompath.md`](docs/evaluation/openpath-vs-classroompath.md)
 - Spanish guide for school IT teams: [`docs/evaluation/es/guia-evaluacion-centros.md`](docs/evaluation/es/guia-evaluacion-centros.md)
 - Demo, pilot, and pricing route: [classroompath.eu](https://classroompath.eu/)
