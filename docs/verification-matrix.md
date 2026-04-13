@@ -1,47 +1,48 @@
 # Verification Matrix
 
 > Status: maintained
-> Applies to: ClassroomPath release flow
-> Last verified: 2026-03-15
+> Applies to: ClassroomPath verification and release flow
+> Last verified: 2026-04-13
 > Source of truth: `docs/verification-matrix.md`
 
-This matrix is optimized for a solo-dev workflow: trust comes from clear evidence, not from duplicating the same checks in slower lanes.
+This matrix maps the current verification lanes to the evidence they provide.
 
 ## Verification Lanes
 
-| Lane              | Purpose                                                 | Command / Source                                                      | Blocks release |
-| ----------------- | ------------------------------------------------------- | --------------------------------------------------------------------- | -------------- |
-| Commit            | Deterministic local confidence before pushing           | `npm run verify:commit` via pre-commit hook                           | Yes            |
-| Staging           | Verify the real deployed stack from a developer machine | `npm run deploy:staging`                                              | Yes            |
-| Staging evidence  | Persist smoke + release-gate proof for the promoted SHA | `npm run deploy:staging` writes `staging-verification.env` on staging | Yes            |
-| Production deploy | Roll out immutable images by tag only                   | `.github/workflows/deploy.yml`                                        | Yes            |
-| Production smoke  | Verify the live public stack after deploy               | `tests/smoke.test.ts` in `.github/workflows/deploy.yml`               | Yes            |
-| Release evidence  | Publish a transparent summary of what passed            | `release-evidence-<tag>` artifact + job summary                       | No             |
+| Lane                        | Purpose                                                   | Command / Source                                                                         | Blocks release |
+| --------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------- |
+| Commit hook                 | Deterministic local confidence on commit                  | `.husky/pre-commit` -> `npm run verify:commit`                                           | Yes            |
+| Targeted local verification | Extra manual confidence while iterating                   | selected `node --import tsx --test ...`, `npm run test:deployment`, `npm run test:e2e:*` | No             |
+| Staging deploy              | Verify the real deployed staging stack                    | `npm run deploy:staging`                                                                 | Yes            |
+| Staging evidence            | Persist smoke and release-gate proof for the promoted SHA | `staging-verification.env` on the staging host                                           | Yes            |
+| Production deploy           | Roll out immutable images by tag only                     | `.github/workflows/deploy.yml`                                                           | Yes            |
+| Production smoke            | Verify the live public stack after deploy                 | workflow smoke steps against production                                                  | Yes            |
+| Release evidence            | Publish a transparent summary of the promoted release     | `release-evidence-<tag>` artifact + workflow summary                                     | No             |
 
 ## Risk To Proof Mapping
 
-| Risk                                      | Primary proof                                     | Where it runs                     | Notes                                                                                       |
-| ----------------------------------------- | ------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------- |
-| Broken build or type/lint regression      | `verify:commit`                                   | Developer machine                 | Fast local gate; intentionally not duplicated in GitHub Actions                             |
-| Regressed browser/UI flow                 | Full Playwright suite in `verify:commit`          | Developer machine                 | Local verification now fails if Playwright browsers are unavailable or any suite is omitted |
-| Broken staging deployment                 | `npm run deploy:staging`                          | Developer machine + staging host  | Deploys `origin/main`, runs live smoke, and records staging evidence                        |
-| Public auth payload unsafe                | `tests/release-gate.test.ts` via `deploy:staging` | Staging                           | Confirms launch-safe verification URLs and fresh resend tokens once per promoted SHA        |
-| Production image mismatch                 | Immutable digest refs in deploy workflow          | GitHub Actions                    | Digests are saved in `release-image-metadata-<tag>`                                         |
-| Production deploy drift                   | Tag-only deploy workflow                          | GitHub Actions                    | Production reconciles to the tagged commit only                                             |
-| Production stack unavailable after deploy | `tests/smoke.test.ts`                             | GitHub Actions against production | Rollback remains available if smoke fails                                                   |
+| Risk                                      | Primary proof                                                                                                                          | Where it runs                     | Notes                                                               |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------- |
+| Broken build, type, or static regression  | `npm run verify:commit`                                                                                                                | developer machine                 | commit hook is the default gate                                     |
+| Docs/workflow/runtime drift               | targeted regression suites such as `tests/agent-docs-consistency.test.ts`, `tests/deployment-*.test.ts`, `tests/workflow-core.test.ts` | developer machine or CI           | useful when changes are ops-heavy but not product-heavy             |
+| Regressed browser or UI flow              | Playwright lanes chosen by the verification orchestrator                                                                               | developer machine                 | product-impacting changes can escalate to the full suite            |
+| Broken staging deployment                 | `npm run deploy:staging`                                                                                                               | developer machine + staging host  | deploys `origin/main`, runs live verification, and records evidence |
+| Unsafe production migration               | migration risk classification + backup reference requirement                                                                           | GitHub Actions + production host  | destructive migrations need stronger proof                          |
+| Production image mismatch or drift        | tag-only workflow + immutable release manifest                                                                                         | GitHub Actions                    | production reconciles to the tagged commit only                     |
+| Production stack unavailable after deploy | production smoke and readiness checks                                                                                                  | GitHub Actions against production | rollback remains available if smoke fails                           |
 
 ## Reading Results
 
-- `PASS`: strict smoke verification used the canonical public URL.
-- `PASS_WITH_FALLBACK`: staging smoke had to fall back to direct IP / relaxed CORS and should be rerun in strict mode before tagging a release.
-- `FAIL`: the lane did not meet the release bar.
+- `PASS`: strict smoke verification used the canonical public URL
+- `PASS_WITH_FALLBACK`: staging smoke needed direct-IP or relaxed-CORS fallback and should be rerun in strict mode before production tagging when possible
+- `FAIL`: the lane did not meet the release bar
 
 ## Release-Ready Definition
 
 Treat a release candidate as ready when all of these are true:
 
-1. Local `verify:commit` passed before push.
-2. `npm run deploy:staging` exited `0` with `PASS` or a consciously reviewed `PASS_WITH_FALLBACK`.
-3. Staging recorded fresh verification evidence for the exact SHA and immutable image digests.
-4. The production tag workflow finished with production smoke green.
-5. The `release-evidence-<tag>` artifact matches the intended commit, OpenPath SHA, and image digests.
+1. local commit verification passed before push
+2. `npm run deploy:staging` exited `0` with `PASS` or a consciously reviewed `PASS_WITH_FALLBACK`
+3. staging recorded fresh verification evidence for the exact promoted SHA
+4. the production tag workflow finished with production smoke green
+5. the `release-evidence-<tag>` artifact matches the intended ClassroomPath SHA, OpenPath SHA, and image refs

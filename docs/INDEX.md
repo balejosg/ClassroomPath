@@ -1,29 +1,37 @@
 # ClassroomPath Documentation Index
 
 > Status: maintained
-> Applies to: ClassroomPath repository
-> Last verified: 2026-03-13
+> Applies to: first-party ClassroomPath documentation
+> Last verified: 2026-04-13
 > Source of truth: `docs/INDEX.md`
+
+This index is the entrypoint for the maintained ClassroomPath documentation set.
+
+Rules:
+
+- Maintained docs are English-only.
+- Draft docs may change or disappear without notice.
+- Archived docs are historical context only and must not be treated as operational runbooks.
 
 ## Start Here
 
-- Repo overview: [`README.md`](../README.md)
-- LLM agent workflow (commit/deploy rules): [`AGENTS.md`](../AGENTS.md)
-- Workspace routing map: [`agent-manifest.json`](../../agent-manifest.json)
-- OpenPath docs index: [`OpenPath/docs/INDEX.md`](../../OpenPath/docs/INDEX.md)
-- OpenPath SPA public surface ADR: [`OpenPath/docs/adr/0010-public-spa-extension-surface.md`](../../OpenPath/docs/adr/0010-public-spa-extension-surface.md)
+- Repository overview and operator-facing summary: [`README.md`](../README.md)
+- Agent workflow, environment identification, and deployment rules: [`AGENTS.md`](../AGENTS.md)
+- Workspace routing and search policy: [`agent-manifest.json`](../../agent-manifest.json)
+- OpenPath documentation index: [`OpenPath/docs/INDEX.md`](../../OpenPath/docs/INDEX.md)
+- OpenPath SPA wrapper boundary: [`OpenPath/docs/adr/0010-public-spa-extension-surface.md`](../../OpenPath/docs/adr/0010-public-spa-extension-surface.md)
 
 ## Canonical Contracts
 
-- Ports and routes: [`docs/contracts/routes-ports.md`](contracts/routes-ports.md)
-- Environment variables: [`docs/contracts/env.md`](contracts/env.md)
-- Cross-system mutation ordering: [`docs/contracts/cross-system-mutations.md`](contracts/cross-system-mutations.md)
+- Environment variables and runtime policy: [`docs/contracts/env.md`](contracts/env.md)
+- Public routes, passthroughs, and port wiring: [`docs/contracts/routes-ports.md`](contracts/routes-ports.md)
+- Cross-system mutation ledger and retry model: [`docs/contracts/cross-system-mutations.md`](contracts/cross-system-mutations.md)
 - Verification matrix: [`docs/verification-matrix.md`](verification-matrix.md)
 
 ## Operations
 
-- Deploy production (tag-only): [`docs/runbooks/deploy-production.md`](runbooks/deploy-production.md)
-- Deploy staging (mandatory after push): [`docs/runbooks/deploy-staging.md`](runbooks/deploy-staging.md)
+- Deploy staging (local SSH workflow after push): [`docs/runbooks/deploy-staging.md`](runbooks/deploy-staging.md)
+- Deploy production (tag-only promotion): [`docs/runbooks/deploy-production.md`](runbooks/deploy-production.md)
 - Configure Stripe billing: [`docs/runbooks/configure-stripe-billing.md`](runbooks/configure-stripe-billing.md)
 - Canonical deploy targets: [`config/deploy-targets.json`](../config/deploy-targets.json)
 - Update OpenPath submodule: [`docs/runbooks/update-openpath-submodule.md`](runbooks/update-openpath-submodule.md)
@@ -33,10 +41,10 @@
 
 ## Architecture Decisions
 
-- ADRs: `docs/adr/`
+- ClassroomPath ADRs: [`docs/adr/`](adr/)
 - OpenPath boundary contract: [`OpenPath/docs/adr/0010-public-spa-extension-surface.md`](../../OpenPath/docs/adr/0010-public-spa-extension-surface.md)
 
-## Non-Authoritative / Context Only
+## Drafts And Historical Context
 
-- Plans and design notes: [`docs/plans/`](plans/) (drafts; may be stale)
-- Archived docs: [`docs/archive/`](archive/) (historical context only)
+- Draft plans and design notes (may be empty between active efforts): [`docs/plans/`](plans/)
+- Archive boundary and retention policy: [`docs/archive/README.md`](archive/README.md)

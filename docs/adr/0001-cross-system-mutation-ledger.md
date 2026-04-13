@@ -1,12 +1,19 @@
 # ADR 0001: Durable Cross-System Mutation Ledger
 
-**Status:** Accepted  
+> Status: maintained
+> Applies to: ClassroomPath mutation orchestration
+> Last verified: 2026-04-13
+> Source of truth: `docs/adr/0001-cross-system-mutation-ledger.md`
+
+**Decision status:** Accepted  
 **Date:** 2026-04-01  
-**Decision Makers:** ClassroomPath maintainers
+**Decision makers:** ClassroomPath maintainers
 
 ## Context
 
-ClassroomPath performs workflows that span local tenant tables and upstream OpenPath state. Request-scoped compensation alone was not enough because failures could happen after local commit, after upstream mutation, or after process restart.
+ClassroomPath performs workflows that span local tenant tables and upstream OpenPath state.
+Request-scoped compensation alone was not enough because failures could happen after local commit,
+after upstream mutation, or after process restart.
 
 ## Decision
 
@@ -21,7 +28,7 @@ The ledger stores:
 - local result identifiers
 - last error
 
-Supported flows should resume from the stored operation state instead of blindly re-running local creation logic.
+Supported flows resume from the stored operation state instead of blindly re-running local creation logic.
 
 ## Consequences
 

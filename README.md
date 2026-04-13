@@ -1,277 +1,137 @@
 # ClassroomPath
 
-Multi-tenant digital access management for educational institutions.
+> Status: maintained
+> Applies to: product overview, local development, and release workflow
+> Last verified: 2026-04-13
+> Source of truth: `README.md`
 
-Built on [OpenPath](https://github.com/balejosg/openpath) (OSS), ClassroomPath adds the
-organizational workflows, delegated administration, and production-ready operations that schools need
-to run intentional internet access policies at institution scale with a more transparent technical
-foundation.
+ClassroomPath is the multi-tenant SaaS wrapper around [OpenPath](https://github.com/balejosg/openpath).
+It adds organization-aware onboarding, delegated administration, deployment workflows, and operational
+contracts on top of the OpenPath OSS core.
 
 > WARNING: ClassroomPath is distributed under the ClassroomPath Source-Available License 1.0.
 > The source is published for transparency, auditability, and private modification, but the license does not permit reproducing the service.
 > No production use, self-hosting, redistribution, white-labeling, or hosted replicas are allowed without written permission.
 > Deploy and operate this software only in systems and networks where you have explicit authorization.
 
-## Why ClassroomPath?
+## Documentation
 
-Schools do not just need blocking rules. They need an operating model that can:
+- Canonical documentation index: [`docs/INDEX.md`](docs/INDEX.md)
+- Agent workflow and environment routing: [`AGENTS.md`](AGENTS.md)
+- Staging deploy runbook: [`docs/runbooks/deploy-staging.md`](docs/runbooks/deploy-staging.md)
+- Production deploy runbook: [`docs/runbooks/deploy-production.md`](docs/runbooks/deploy-production.md)
 
-- keep institution-managed devices aligned with teaching goals,
-- separate organizations, admins, and data boundaries,
-- handle invites, approvals, and recovery flows without ad-hoc work,
-- give IT teams and school leaders a workflow they can explain and sustain,
-- combine operational control with stronger transparency signals for institutions.
+## What ClassroomPath Adds
 
-ClassroomPath is the SaaS and operational wrapper around OpenPath for that job. It helps educational
-institutions turn digital policy into day-to-day operations across organizations, classrooms, and
-support flows while reducing digital noise on institution-managed devices.
+- Organization-scoped onboarding, invitations, and approval flows
+- Tenant-specific user, classroom, and group management
+- Durable cross-system orchestration for mutations that span ClassroomPath and upstream OpenPath
+- A release workflow that promotes `main` to staging first and production by `v*` tags only
+- A bounded wrapper over the OpenPath React SPA public surface
 
 ## OpenPath vs. ClassroomPath
 
-| Product           | Role                                                                                                                                               |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **OpenPath**      | OSS core for default-deny internet access control, endpoint enforcement, and dashboard-driven approval workflows                                   |
-| **ClassroomPath** | Multi-tenant distribution for educational institutions that adds onboarding, delegated administration, and deployment workflows on top of OpenPath |
-
-## What institutions get
-
-- A clearer way to apply digital access policy on institution-managed devices.
-- Separate organizations with independent users, roles, and approval queues.
-- Lower operational overhead for onboarding, invitations, and account recovery.
-- A production path that wraps OpenPath in a deployable SaaS workflow.
-- An open-source core in OpenPath for stronger transparency and lower vendor opacity.
-- A production deployment at `https://classroompath.eu`, hosted on EU servers.
-
-## Transparency and trust
-
-- **Open-source core**: ClassroomPath is built on OpenPath, the OSS core of the stack.
-- **Source-available service layer**: ClassroomPath-owned code is visible for audit and private modification, not for independent reproduction.
-- **Auditable operations**: policy changes and approval workflows are designed to be explainable and traceable.
-- **EU-hosted production**: ClassroomPath is hosted on EU servers and served from `https://classroompath.eu`.
+| Product         | Role                                                                                                              |
+| --------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `OpenPath`      | OSS core for endpoint enforcement, policy data, browser integration, and the shared UI foundation                 |
+| `ClassroomPath` | SaaS wrapper that adds tenancy, billing/onboarding policy, deploy automation, and environment-specific operations |
 
 ## Live URLs
 
-Machine-readable source of truth: `config/deploy-targets.json`
+Machine-readable source of truth: [`config/deploy-targets.json`](config/deploy-targets.json)
 
 | Environment    | URL                                       | Deploy Trigger           |
 | -------------- | ----------------------------------------- | ------------------------ |
 | **Production** | https://classroompath.eu                  | Git tag `v*`             |
 | **Staging**    | https://classroompath-staging.duckdns.org | `npm run deploy:staging` |
 
-## Docs
-
-- `docs/INDEX.md`
-
 ## Architecture
 
-```
-                    Internet
-                       │
-         ┌─────────────┴─────────────┐
-         ▼                           ▼
-  classroompath.eu         classroompath-staging.duckdns.org
-   (Oracle production)              (local staging)
-         │                           │
-         ▼                           ▼
-┌──────────────────────┐     ┌──────────────────────┐
-│ Nginx Proxy Manager  │     │ Staging app host     │
-│ + Docker Compose     │     │ + Docker Compose     │
-└──────────┬───────────┘     └──────────┬───────────┘
-           │                            │
-           ▼                            ▼
-   PostgreSQL on host            PostgreSQL on staging
-```
+Runtime shape:
 
-### API Routes
+- `gateway` is the public entrypoint and owns `/cp/*`
+- OpenPath API stays internal to the Docker network and is exposed through controlled gateway passthroughs
+- the public hostnames and health endpoints are centralized in `config/deploy-targets.json`
+- ClassroomPath wraps the OpenPath React SPA through the documented public surface, not deep imports into upstream internals
 
-```
-/cp/*      → ClassroomPath Gateway (port 3001) - multi-tenancy
-/api/*     → Gateway (proxies to OpenPath API)
-/trpc/*    → Gateway (proxies to OpenPath tRPC)
-/w/*       → Gateway (proxies tokenized whitelist downloads)
-/*         → SPA (static files)
-```
+## Multi-Tenancy
 
-## Multi-tenancy
+ClassroomPath persists tenancy and orchestration data in `cp_*` tables while continuing to rely on
+OpenPath for upstream policy entities and endpoint-facing behavior. The canonical details live in:
 
-ClassroomPath adds organization-based multi-tenancy on top of OpenPath so multiple institutions or
-organizational units can operate independently while sharing one managed deployment. This keeps access
-boundaries clear, supports delegated administration, and reduces manual coordination.
-
-### User Flow
-
-1. User signs in with email/password or Google (Google is optional and only works for existing/preapproved accounts)
-2. ClassroomPath checks for organization membership
-3. If no membership:
-   - Option A: Create new organization (becomes admin)
-   - Option B: Wait for invitation
-4. Once in an organization, user sees the OpenPath dashboard
-
-### Database Tables
-
-ClassroomPath adds these tables (prefixed with `cp_`):
-
-| Table              | Purpose                                   |
-| ------------------ | ----------------------------------------- |
-| `cp_organizations` | Organization records                      |
-| `cp_memberships`   | User-organization associations with roles |
-| `cp_user_status`   | Tracks users waiting for invitations      |
-
-### Gateway API Endpoints
-
-Gateway API runs on port 3001 with prefix `/cp/`:
-
-| Endpoint                                 | Method | Description                      |
-| ---------------------------------------- | ------ | -------------------------------- |
-| `/cp/health`                             | GET    | Health check                     |
-| `/cp/trpc/onboarding.status`             | GET    | Get user's org membership status |
-| `/cp/trpc/onboarding.createOrganization` | POST   | Create new org                   |
-| `/cp/trpc/onboarding.waitForInvitation`  | POST   | Set waiting status               |
-| `/cp/trpc/onboarding.cancelWaiting`      | POST   | Clear waiting status             |
-
-## Operational outcomes
-
-- Consistent digital access policy across organizations and classrooms.
-- Clear user lifecycle flows for self-service onboarding, invitations, and waiting-room approvals.
-- Delegated administration without sharing a single global operator account.
-- Safer support workflows for recovery, revocation, and tenant-scoped user management.
-- A reproducible promotion path from local verification to staging and production.
-
-## Current Operational Guarantees
-
-- **Durable cross-system orchestration**: high-risk flows persist progress in `cp_mutation_operations` so retries and reconciliation do not depend on request-local state.
-- **Org-admin reconciliation surface**: admins can list failed mutation operations and retry supported ones through the gateway.
-- **Fail-closed runtime config**: production rejects missing or localhost-only browser origins.
-- **Tag-only production deploys**: production still deploys by `v*` tags only, but now classifies migration risk, records deploy context, and supports broader rollback triggers.
-- **Safer staging recovery**: staging deploys attempt to restore the previous application release when startup or readiness checks fail after migrations.
-- **Bounded OpenPath UI contract**: ClassroomPath consumes OpenPath React SPA through explicit public entrypoints instead of deep imports into private source paths.
+- [`docs/contracts/cross-system-mutations.md`](docs/contracts/cross-system-mutations.md)
+- [`docs/contracts/routes-ports.md`](docs/contracts/routes-ports.md)
+- [`docs/SESSION_SECURITY_MODEL.md`](docs/SESSION_SECURITY_MODEL.md)
 
 ## Quick Start (Development)
 
-### 1. Clone with submodules
+1. Clone with submodules.
 
 ```bash
 git clone --recurse-submodules https://github.com/balejosg/ClassroomPath.git
 cd ClassroomPath
 ```
 
-### 2. Install dependencies
+2. Install workspace dependencies.
 
 ```bash
 npm run install:all
 ```
 
-### 3. Configure environment
+3. Create local config files from examples.
 
 ```bash
 cp config/.env.example config/.env
+cp .env.local.example .env.local
 # Edit config/.env with your values
+# Edit .env.local only if you will use the staging deploy workflow
 ```
 
-### 4. Build and run
+4. Build and run the local stack.
 
 ```bash
-# Recommended: run the full stack via Docker Compose
-cd docker
-docker compose up -d --build
+docker compose -f docker/docker-compose.yml up -d --build
 ```
 
 ## Verification
 
+Normal git workflow:
+
+- `.husky/pre-commit` runs `npm run verify:commit`
+- `.husky/pre-push` enforces trunk policy only
+- use manual verification commands when you need targeted confidence outside the hook flow
+
+Manual lanes:
+
 ```bash
-# Canonical local verification lane: requires and runs the full Playwright suite
-npm run verify:full
-
-# Playwright-only alias retained for compatibility; it also runs the full suite
-npm run test:e2e:verify-fast
-
-# Mobile/responsive tagged lane
+npm run test:deployment
+npm run test:e2e:full
 npm run test:e2e:mobile
-
-# Optional for low-resource machines
-PLAYWRIGHT_WORKERS=2 npm run verify:full
+npm run verify:release
 ```
-
-## Release-Ready Definition
-
-- Local `verify:full` is green before push.
-- Playwright browsers are installed locally; missing browsers are a hard failure, not a skipped lane.
-- `npm run deploy:staging` exits `0` and reports `PASS` or `PASS_WITH_FALLBACK`.
-- `npm run test:release-gate:staging` is green before tagging.
-- The production tag workflow finishes green and publishes `release-evidence-<tag>`.
-
-If staging reports `PASS_WITH_FALLBACK`, the smoke run used direct-IP fallback and should be rerun in strict public-URL mode before the production tag whenever possible.
 
 ## Deployment
 
-Canonical runbooks:
-
-- Staging: `docs/runbooks/deploy-staging.md`
-- Production: `docs/runbooks/deploy-production.md`
-- Stripe billing catalog: `docs/runbooks/configure-stripe-billing.md`
-
-### Staging (Local SSH)
-
-Staging is deployed from a developer machine via `npm run deploy:staging` (SSH to the staging host). It always deploys `origin/main`.
-When release-candidate images for `origin/main` are already published, the script deploys those exact images by default and fails if they are missing or drifted. Use `STAGING_IMAGE_MODE=source-build` only as an explicit debug/recovery escape hatch.
-If migrations succeed but startup/readiness fails, the remote script now attempts to restore the previous application release state automatically and records the outcome in `staging-deploy-context.env`.
+Staging promotion:
 
 ```bash
 git push origin main
 npm run deploy:staging
 ```
 
-Staging deploy configuration is local-only via `.env.local` (see `.env.local.example`).
-Canonical public targets stay in `config/deploy-targets.json`.
-
-Before promoting to production, staging should pass the automated release gate:
-
-```bash
-npm run test:release-gate:staging
-```
-
-### Production (GitHub Actions)
-
-Production deploys are triggered by git tags `v*` only. The workflow runs a staging release gate first and only then rolls out to `https://classroompath.eu`.
-Each successful or failed tagged release now publishes a `release-evidence-<tag>` artifact plus a job summary showing the exact SHA, OpenPath SHA, immutable images, and deploy/smoke results.
-Immutable release images are now built on every push to `main`; the production tag resolves and deploys those existing images instead of rebuilding on the tag.
-Destructive migration releases now require a recorded backup or snapshot reference before production migrations run.
-
-Required GitHub Secrets (production only):
-
-| Secret           | Description                |
-| ---------------- | -------------------------- |
-| `DEPLOY_HOST`    | Production server hostname |
-| `DEPLOY_PORT`    | SSH port                   |
-| `DEPLOY_USER`    | SSH username               |
-| `DEPLOY_SSH_KEY` | Private SSH key            |
+Production promotion:
 
 ```bash
 git tag v1.0.1
 git push origin v1.0.1
 ```
 
-Do not use manual SSH deploys as the normal production path; use the production runbook and tags.
+Use the maintained runbooks for the full workflow:
 
-## Server Management
-
-### Docker Commands
-
-```bash
-# View logs
-docker logs -f classroompath-api
-docker logs -f classroompath-gateway
-
-# Restart app
-cd docker && docker compose down && docker compose up -d
-
-# Rebuild
-cd docker && docker compose build --no-cache && docker compose up -d
-```
-
-### Nginx Proxy Manager
-
-Used for SSL termination and reverse proxy with automatic Let's Encrypt certificates.
+- [`docs/runbooks/deploy-staging.md`](docs/runbooks/deploy-staging.md)
+- [`docs/runbooks/deploy-production.md`](docs/runbooks/deploy-production.md)
+- [`docs/runbooks/update-openpath-submodule.md`](docs/runbooks/update-openpath-submodule.md)
+- [`docs/runbooks/configure-stripe-billing.md`](docs/runbooks/configure-stripe-billing.md)
 
 ## Updating OpenPath
 
@@ -279,9 +139,7 @@ Used for SSL termination and reverse proxy with automatic Let's Encrypt certific
 npm run submodule:update
 git add upstream/openpath
 git commit -m "chore: update openpath submodule"
-git push
-
-# Deploy the updated origin/main to staging
+git push origin main
 npm run deploy:staging
 ```
 

@@ -1,16 +1,23 @@
 # ADR 0002: Release Risk Gating And Application-Level Recovery
 
-**Status:** Accepted  
+> Status: maintained
+> Applies to: ClassroomPath release and rollback policy
+> Last verified: 2026-04-13
+> Source of truth: `docs/adr/0002-release-risk-gating.md`
+
+**Decision status:** Accepted  
 **Date:** 2026-04-01  
-**Decision Makers:** ClassroomPath maintainers
+**Decision makers:** ClassroomPath maintainers
 
 ## Context
 
-Production and staging deploys already had immutable-image and smoke-check structure, but destructive migrations still represented a point of no return and failure handling was inconsistent across startup, readiness, and smoke stages.
+Production and staging deploys already had immutable-image and smoke-check structure, but destructive
+migrations still represented a point of no return and failure handling was inconsistent across startup,
+readiness, and smoke stages.
 
 ## Decision
 
-Deploy tooling now classifies changed migrations as `safe`, `expand-contract`, or `destructive`.
+Deploy tooling classifies changed migrations as `safe`, `expand-contract`, or `destructive`.
 
 Rules:
 
@@ -39,4 +46,4 @@ Rules:
 ## Alternatives Considered
 
 - treat every migration the same: rejected because destructive changes need stronger safety gates
-- automatic DB rollback as part of deploy: rejected because the schema/data changes are not generally reversible or safe to auto-undo
+- automatic DB rollback as part of deploy: rejected because schema and data changes are not generally reversible or safe to auto-undo

@@ -1,27 +1,88 @@
 # Session Security Model (ClassroomPath)
 
-## Overview
+> Status: maintained
+> Applies to: ClassroomPath gateway auth/session behavior
+> Last verified: 2026-04-13
+> Source of truth: `docs/SESSION_SECURITY_MODEL.md`
 
-ClassroomPath now uses a mixed model:
+Source files:
 
-- Sensitive tokens are set as HttpOnly cookies by `/cp/trpc/auth.*` and onboarding token refresh.
-- Frontend `localStorage` keeps only a non-sensitive auth marker (`openpath_access_token=cookie-session`).
+- `api/src/lib/session-cookies.ts`
+- `api/src/lib/gateway-hardening.ts`
+- `api/src/lib/openpath-auth-client.ts`
+- `api/src/trpc/routers/auth-session-procedures.ts`
+- `api/src/trpc/routers/auth-registration-procedures.ts`
+- `api/src/trpc/routers/client-telemetry.ts`
+- `react-spa/src/lib/auth-storage.ts`
+- `react-spa/src/views/auth-helpers.ts`
 
-This removes direct token persistence from `localStorage` while preserving current SPA compatibility.
+## Current Model
 
-## XSS and CSRF Notes
+ClassroomPath uses cookie-backed sessions for sensitive auth material.
 
-- **XSS:** JWTs are no longer read from `localStorage`, reducing token exfiltration risk from storage reads.
-- **CSRF:** Cookies are configured with `SameSite=Lax` and credentialed CORS remains origin-restricted.
+- access cookie: `cp_access_token`
+- refresh cookie: `cp_refresh_token`
+- both cookies are `HttpOnly`
+- both cookies are `SameSite=Lax`
+- both cookies become `Secure` in production
+- logout always clears the local session cookies
 
-## Logout Behavior
+The SPA keeps only a non-sensitive marker in `localStorage`:
 
-- SPA logout clears local marker/user data, removing authenticated UI state.
-- Launch policy requires upstream revocation failures to be explicit and observable; silent success is not acceptable.
-- When upstream revocation fails, ClassroomPath now clears local session cookies but returns an explicit degraded `SERVICE_UNAVAILABLE` logout result instead of reporting success.
+- `openpath_access_token=cookie-session`
+- user payload for UI state
+- `requests_api_url` for request routing
 
-## Launch Decisions That Affect Session Flows
+Sensitive JWT values are not intentionally persisted in browser storage by the ClassroomPath SPA.
 
-- Invitation and password-reset flows must keep secret-bearing links server-side even when email delivery fails.
-- Frontend auth and approval failures must be sent to a real backend telemetry sink before launch.
-- Privileged tenant actions must create durable audit events before launch.
+## CSRF And Browser Boundary
+
+Cookie-authenticated mutation requests are protected by origin checks:
+
+- applies to `POST`, `PATCH`, `PUT`, and `DELETE`
+- bearer-token requests are excluded from this CSRF check
+- `Origin` or `Referer` must match an allowed origin or the current request origin
+- invalid cookie-authenticated origins are rejected with `403`
+
+Gateway hardening also applies:
+
+- Content Security Policy
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- strict referrer policy
+- rate limiting for auth, onboarding, and global traffic buckets
+
+## Login, Refresh, And Logout
+
+- `/cp/trpc/auth.login`, `/cp/trpc/auth.refresh`, and Google auth session mutations forward to upstream OpenPath and store session cookies through the gateway
+- `/cp/trpc/auth.logout` always clears local cookies
+- if upstream logout revocation fails, the gateway returns `SERVICE_UNAVAILABLE` instead of silently claiming success
+
+## Verification And Recovery Links
+
+Email verification links are generated server-side and delivered through the email-delivery flow.
+
+Current behavior:
+
+- the backend always returns a `verificationUrl` in the delivery payload
+- the frontend only exposes the manual verification link when email delivery could not be confirmed or when running on localhost-style development hosts
+
+That means the current implementation reduces casual exposure of secret-bearing links in the normal path,
+but it does not claim that verification URLs are never exposed under any condition.
+
+## Frontend Telemetry
+
+Frontend error events are sent to a real backend telemetry sink via `clientTelemetry.report`.
+The payload includes:
+
+- route
+- action
+- user role
+- structured error details
+- timestamp
+
+## Residual Constraints
+
+- cookie sessions still depend on correct `CORS_ORIGINS` and `PUBLIC_URL` configuration
+- application-level rollback does not imply rollback of email or auth side effects already triggered
+- the current UI still conditionally exposes manual verification links in delivery-failure or localhost scenarios

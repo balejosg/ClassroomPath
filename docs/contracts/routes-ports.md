@@ -1,53 +1,86 @@
 # Routes and Ports Contract
 
 > Status: maintained
-> Applies to: ClassroomPath gateway + OpenPath upstream + SPA
-> Last verified: 2026-03-05
+> Applies to: ClassroomPath gateway, OpenPath upstream, and public host routing
+> Last verified: 2026-04-13
 > Source of truth: `docs/contracts/routes-ports.md`
 
-Source of truth:
+Source files:
 
 - `docker/docker-compose.yml`
 - `docker/npm-advanced-config.txt`
+- `docker/spa-nginx.conf`
+- `api/src/lib/gateway/health-routes.ts`
+- `api/src/lib/gateway/proxy-routes.ts`
+- `api/src/lib/gateway/spa-routes.ts`
+- `api/src/lib/openpath-proxy-policy.ts`
+- `config/deploy-targets.json`
 
-## Containers and Ports
+## Containers And Ports
 
 From `docker/docker-compose.yml`:
 
 - `classroompath-gateway`
-  - Listens on: `3001` (container)
-  - Exposes host ports: `3000:3001` and `3001:3001`
-- `classroompath-api` (upstream OpenPath)
-  - Internal-only on Docker network: `3000`
+  - container port: `3001`
+  - host ports: `3000:3001` and `3001:3001`
+- `classroompath-api`
+  - internal Docker-network exposure: `3000`
 - `classroompath-spa`
-  - Exposes host port: `8081:80`
+  - container port: `8080`
+  - host port: `8081:8080`
 
-## Public HTTP Routes (via Nginx Proxy Manager)
+## Public Host Routing
 
-NPM forwards the base domain to the SPA by default, and then uses advanced rules to route API paths to the gateway.
+Nginx Proxy Manager is expected to front the public hostname and route selected paths to the
+gateway. The SPA container serves static assets; the gateway serves the public shell and all
+policy/API entrypoints.
 
-- `/` and all static assets -> SPA
-- `/cp/*` -> gateway (multi-tenancy tRPC and health)
-- `/api/*` -> gateway (proxies to upstream OpenPath API)
-- `/trpc/*` -> gateway (proxies to upstream OpenPath tRPC)
-- `/w/*` -> gateway (proxies tokenized whitelist downloads)
-- `/health` -> upstream health (via gateway/proxy)
+- `/` -> gateway public page handler
+- `/pricing` and `/pricing/` -> gateway public page handler
+- static assets -> served by the built SPA artifacts
+- `/cp/*` -> ClassroomPath gateway
+- `/api/*` -> gateway passthrough policy
+- `/trpc/*` -> gateway passthrough policy
+- `/w/*` -> gateway passthrough policy
+- `/health` -> upstream OpenPath health passthrough
 
-Public upstream passthroughs intentionally include:
+## First-Party Gateway Routes
 
+- `GET /cp/health` -> lightweight gateway health JSON
+- `GET /cp/ready` -> readiness check that can return `503`
+- `POST /cp/stripe/webhook` -> raw-body Stripe webhook entrypoint
+- `/cp/trpc/*` -> tenant-scoped ClassroomPath tRPC surface
+- `/`, `/pricing`, `/pricing/` -> SSR or SPA-shell public routes
+
+## Allowed Upstream Passthroughs
+
+- `GET /health`
+- `GET /api/config`
+- `GET /api/extensions/firefox/openpath.xpi`
+- `/api/extensions/chromium/*`
 - `/api/enroll/*`
 - `/api/requests/auto`
 - `/api/requests/submit`
 - `/api/agent/windows/*`
 - `/api/agent/linux/*`
 - `/api/machines/*`
+- `/w/*`
+- `/trpc/healthReports.submit`
 
-## Health Endpoints
+## Explicit Rejections
 
-- Gateway: `GET /cp/health`
-- Upstream OpenPath API: `GET /health`
+- `/v2` -> `404`
+- `/export` -> `404`
+- raw `/trpc/*` is blocked except `healthReports.submit`
+- unknown raw `/api/*` passthroughs are rejected by gateway policy
 
 ## SSE
 
-- `GET /api/machines/events` is Server-Sent Events.
-- Reverse proxies MUST disable buffering for this path.
+- `GET /api/machines/events` is Server-Sent Events
+- reverse proxies must disable buffering, caching, and gzip for this path
+
+## Operational Notes
+
+- canonical public URLs and health endpoints live in `config/deploy-targets.json`
+- the SPA container nginx config is intentionally simple because the host-level proxy handles
+  API/gateway routing before requests reach the SPA container

@@ -1,44 +1,70 @@
-# GitHub Secrets Configuration (Production Deploy)
+# GitHub Secrets Configuration
 
-Production deployments are triggered by git tags `v*` via `.github/workflows/deploy.yml`.
+> Status: maintained
+> Applies to: ClassroomPath GitHub Actions deploy and verification workflows
+> Last verified: 2026-04-13
+> Source of truth: `docs/SECRETS.md`
 
-Staging deployments are **not** handled by GitHub Actions; they run locally via `npm run deploy:staging`.
+Primary workflow: `.github/workflows/deploy.yml`
 
-## Required Secrets
+Staging deploys still run locally via `npm run deploy:staging`, but GitHub Actions also needs
+staging access for verification, cleanup, and canary workflows.
 
-Configure these in GitHub:
-Settings → Secrets and variables → Actions → New repository secret
+## Production Deploy Secrets
 
-| Secret           | Description                        | Example                                  |
-| ---------------- | ---------------------------------- | ---------------------------------------- |
-| `DEPLOY_HOST`    | Production hostname/IP             | `classroompath.eu`                       |
-| `DEPLOY_USER`    | SSH user on the server             | `deploy`                                 |
-| `DEPLOY_SSH_KEY` | Private SSH key for authentication | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| `DEPLOY_PORT`    | SSH port (optional, default 22)    | `22`                                     |
+Configure these for the production deploy workflow:
 
-## Generating SSH Keys
+- `DEPLOY_HOST`
+- `DEPLOY_PORT`
+- `DEPLOY_USER`
+- `DEPLOY_SSH_KEY`
+
+Production environment/runtime secrets used by the deploy workflow:
+
+- `CP_BILLING_MODE`
+- `CP_PLATFORM_ADMIN_EMAILS`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_ANNUAL_PRICE_1_10`
+- `STRIPE_ANNUAL_PRICE_11_25`
+- `STRIPE_ANNUAL_PRICE_26_50`
+- `STRIPE_ANNUAL_PRICE_51_100`
+- `STRIPE_ONBOARDING_PRICE_1_25`
+- `STRIPE_ONBOARDING_PRICE_26_100`
+- `STRIPE_PILOT_PRICE`
+- `PRODUCTION_DB_BACKUP_COMMAND`
+- `PRODUCTION_DB_BACKUP_ID`
+
+## Staging Access Secrets Used By GitHub Actions
+
+- `STAGING_DEPLOY_HOST`
+- `STAGING_DEPLOY_PORT`
+- `STAGING_DEPLOY_USER`
+- `STAGING_DEPLOY_SSH_KEY`
+
+These are used for:
+
+- staging-state verification in production promotion
+- staging cleanup workflow
+- Windows/Firefox canary workflows
+
+## SSH Key Setup
 
 ```bash
 ssh-keygen -t ed25519 -C "classroompath-deploy" -f ~/.ssh/classroompath_deploy
-
-# Copy the public key to your server
 ssh-copy-id -i ~/.ssh/classroompath_deploy.pub deploy@YOUR_SERVER
-
-# Add the private key (~/.ssh/classroompath_deploy) to DEPLOY_SSH_KEY
 cat ~/.ssh/classroompath_deploy
 ```
 
-## Server Prerequisites (Production)
+Store the private key in the corresponding GitHub secret.
 
-The production workflow deploys Docker Compose, so the server must have:
+## Server Prerequisites
 
-- Docker + `docker compose`
+The production workflow expects:
+
+- Docker with `docker compose`
 - Git
+- repo checkout at `/opt/classroompath/app`
+- real runtime env file at `/opt/classroompath/app/config/.env`
 
-The workflow expects the repo at:
-
-- `/opt/classroompath/app`
-
-And a real environment file at:
-
-- `/opt/classroompath/app/config/.env` (gitignored; create from `config/.env.example`)
+Do not commit the production or staging runtime `.env` files into the repository.

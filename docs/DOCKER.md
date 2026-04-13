@@ -1,107 +1,75 @@
-# Docker Deployment with Nginx Proxy Manager
+# Docker Deployment With Nginx Proxy Manager
+
+> Status: maintained
+> Applies to: local and server Docker Compose deployment shape
+> Last verified: 2026-04-13
+> Source of truth: `docs/DOCKER.md`
+
+Source files:
+
+- `docker/docker-compose.yml`
+- `docker/spa-nginx.conf`
+- `docker/npm-advanced-config.txt`
 
 ClassroomPath deploys as Docker Compose with three services:
 
-- `gateway` (public entrypoint, multi-tenancy)
-- `api` (upstream OpenPath API, internal-only)
-- `spa` (static web UI)
+- `gateway`: public entrypoint, tenancy-aware API surface, SSR public pages
+- `api`: upstream OpenPath API, internal-only on the Docker network
+- `spa`: static SPA assets
 
-## Architecture
+## Runtime Topology
 
-```
-classroompath.eu (or classroompath-staging.duckdns.org)
-         │
-         ▼
-   ┌─────────────────┐
-   │ Nginx Proxy Mgr │
-   │     (NPM)       │
-   └────────┬────────┘
-            │  default forward host
-            ▼
-     classroompath-spa:80
-            │
-            ├─ /cp/*, /api/*, /trpc/*, /w/*, /health, /api/machines/events
-            ▼
-     classroompath-gateway:3001
-            │
-            ▼
-     classroompath-api:3000   (Docker network only)
+```text
+public hostname
+  -> Nginx Proxy Manager
+     -> default forward host: classroompath-spa:8080
+     -> advanced routes for /, /pricing, /cp/*, /api/*, /trpc/*, /w/*, /health
+        point to classroompath-gateway:3001
+     -> gateway proxies selected upstream traffic to classroompath-api:3000
 ```
 
-NPM routing rules live in `docker/npm-advanced-config.txt`.
+## Compose Facts
+
+- compose file: `docker/docker-compose.yml`
+- default compose project name: `classroompath-production`
+- gateway host ports: `3000` and `3001`
+- API is not published publicly; it exposes `3000` on the internal Docker network
+- SPA host port: `8081`
 
 ## Quick Start
 
-### 1. Configure environment
-
 ```bash
 cp config/.env.example config/.env
-${EDITOR:-nano} config/.env
+docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f docker/docker-compose.yml ps
 ```
 
-### 2. Build and start containers
+## Nginx Proxy Manager Setup
 
-```bash
-cd docker
-docker compose up -d --build
-```
+Proxy Host details:
 
-### 3. Verify
+| Field                 | Value                                      |
+| --------------------- | ------------------------------------------ |
+| Domain Names          | `classroompath.eu` or the staging hostname |
+| Scheme                | `http`                                     |
+| Forward Hostname/IP   | `classroompath-spa`                        |
+| Forward Port          | `8080`                                     |
+| Block Common Exploits | enabled                                    |
 
-```bash
-docker compose ps
-docker compose logs -f gateway
-```
+SSL:
 
-### 4. Configure Nginx Proxy Manager
-
-1. Open NPM web UI (usually `http://your-server:81`)
-2. Hosts → Proxy Hosts → Add Proxy Host
-
-Details tab:
-
-| Field                 | Value               |
-| --------------------- | ------------------- |
-| Domain Names          | `classroompath.eu`  |
-| Scheme                | `http`              |
-| Forward Hostname/IP   | `classroompath-spa` |
-| Forward Port          | `80`                |
-| Block Common Exploits | ✅                  |
-
-SSL tab:
-
-| Field           | Value                       |
-| --------------- | --------------------------- |
-| SSL Certificate | Request new SSL Certificate |
-| Force SSL       | ✅                          |
-| HTTP/2 Support  | ✅                          |
+- request a real certificate
+- force SSL
+- enable HTTP/2
 
 Advanced tab:
 
-- Paste the contents of `docker/npm-advanced-config.txt`
+- paste `docker/npm-advanced-config.txt`
 
-## Container Networking Notes
+## Important Notes
 
-The NPM container must be able to reach `classroompath-spa` and `classroompath-gateway` by container name.
-
-If NPM runs in a different Docker network, either:
-
-- attach the ClassroomPath services to the same external network, or
-- use reachable IPs instead of container names.
-
-## Updating
-
-```bash
-git pull --recurse-submodules
-cd docker
-docker compose up -d --build
-```
-
-## Logs
-
-```bash
-docker compose logs -f
-docker compose logs -f gateway
-docker compose logs -f api
-docker compose logs -f spa
-```
+- `docker/spa-nginx.conf` only serves static assets and SPA fallback inside the SPA container
+- host-level routing for `/`, `/pricing`, `/cp/*`, `/api/*`, `/trpc/*`, `/w/*`, `/health`, and `/api/machines/events`
+  is handled by Nginx Proxy Manager, not by the SPA container
+- if Nginx Proxy Manager runs in a different Docker network, it must still be able to resolve
+  `classroompath-spa` and `classroompath-gateway`

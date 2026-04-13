@@ -1,68 +1,93 @@
 # Runbook: Deploy Staging
 
 > Status: maintained
-> Applies to: staging environment
-> Last verified: 2026-03-13
+> Applies to: ClassroomPath staging environment
+> Last verified: 2026-04-13
 > Source of truth: `docs/runbooks/deploy-staging.md`
 
-Staging deploys are executed locally via SSH and always deploy `origin/main`.
-When release-candidate images for `origin/main` already exist in GHCR, the script deploys those exact images by default, runs migrations from the matching prebuilt migrations image, and fails if those artifacts are missing. `source-build` remains available only as an explicit debug/recovery mode.
+Source files:
 
-Canonical public targets live in `config/deploy-targets.json`.
+- `scripts/deploy-staging-local.sh`
+- `scripts/deploy-staging-remote.sh`
+- `scripts/check-staging-health.sh`
+- `scripts/run-staging-verification.sh`
+- `scripts/persist-staging-verification-remote.sh`
+- `config/deploy-targets.json`
+
+Staging deploys are executed locally via SSH and always deploy `origin/main`.
+
+Normal mode uses release-candidate images and their matching migrations image. `STAGING_IMAGE_MODE=source-build`
+is an explicit recovery/debug exception and should not become the default path.
 
 ## Prerequisites
 
-- `.env.local` configured (copy from `.env.local.example`)
+- `.env.local` created from `.env.local.example`
 - SSH access to the staging host
-- Optional: local billing overrides may be exported, but they are no longer required for the
-  normal flow. If absent, `deploy:staging` reuses the current billing block from
-  `/opt/classroompath/app/config/.env` on staging for that run.
+- if release-candidate images are private, valid `STAGING_GHCR_USERNAME` and `STAGING_GHCR_TOKEN`
+- optional local billing overrides only when you intentionally need to override the staging billing block
 
-## Steps
+## Canonical Targets
+
+- public URL: `https://classroompath-staging.duckdns.org`
+- gateway health: `https://classroompath-staging.duckdns.org/cp/health`
+- gateway readiness: `https://classroompath-staging.duckdns.org/cp/ready`
+- upstream health passthrough: `https://classroompath-staging.duckdns.org/health`
+
+Machine-readable source of truth: [`config/deploy-targets.json`](../../config/deploy-targets.json)
+
+## Standard Flow
 
 ```bash
 git add .
 git commit -m "<message>"
 git push origin main
-
 npm run deploy:staging
 ```
 
+## What The Script Does
+
+1. Loads `.env.local`
+2. Resolves the canonical staging URL from `config/deploy-targets.json`
+3. Prepares the release-candidate manifest and SSH payload
+4. Runs the remote staging deploy
+5. Polls remote health and readiness
+6. Runs the staging verification runner
+7. Writes reusable evidence to `/opt/classroompath/release-state/staging-verification.env`
+
 ## Expected Result
 
-- Script exits `0`
-- Script prints `Verification Status: PASS` or `Verification Status: PASS_WITH_FALLBACK`
-- Script prints `Release Gate: success`
-- Script reports `Image Source: release-candidate` when it deployed the prebuilt candidate images
-- Health checks pass:
-  - `https://classroompath-staging.duckdns.org/cp/health`
-  - `https://classroompath-staging.duckdns.org/health`
-- Smoke tests pass (script prints the summary)
-- The staging host stores `/opt/classroompath/release-state/staging-verification.env` for the promoted SHA
-- If startup/readiness fails after migrations, the script attempts to restore the previous application release and records the result in `/opt/classroompath/release-state/staging-deploy-context.env`
+- script exits `0`
+- script prints `Verification Status: PASS` or `Verification Status: PASS_WITH_FALLBACK`
+- script prints `Release Gate: success`
+- script reports `Image Source: release-candidate` unless you intentionally forced `source-build`
+- health and readiness pass
+- `/opt/classroompath/release-state/staging-verification.env` exists for the promoted SHA
+- `/opt/classroompath/release-state/staging-deploy-context.env` records failure/recovery context when needed
 
-If the script reports `PASS_WITH_FALLBACK`, local smoke had to fall back to direct IP / relaxed CORS. Treat that as deploy evidence, but rerun a strict public-domain smoke pass before tagging production when possible.
+If startup or readiness fails after migrations, staging attempts application-level recovery to the
+previous release state. This does not imply automatic database rollback.
 
 ## Promotion Gate
 
-`npm run deploy:staging` now runs the staging release gate by default and records the result in `staging-verification.env`. Production promotion reuses that evidence instead of rerunning the same gate in GitHub Actions.
+`npm run deploy:staging` already runs staging verification and records reusable release-gate
+evidence. Production promotion should consume that evidence instead of rebuilding the same proof.
 
-If you need to rerun the gate diagnostically without redeploying staging, you can still run:
+Optional diagnostic rerun without redeploying:
 
 ```bash
 npm run test:release-gate:staging
 ```
 
-After staging is green, promote using the canonical production runbook:
-
-- [`docs/runbooks/deploy-production.md`](deploy-production.md)
-
 ## Debugging
-
-The deploy script prints the exact SSH + docker commands it runs. If needed:
 
 ```bash
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-gateway --tail 50"
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-api --tail 50"
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "cat /opt/classroompath/release-state/staging-deploy-context.env"
+ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "cat /opt/classroompath/release-state/staging-verification.env"
+curl -sS https://classroompath-staging.duckdns.org/cp/ready
+curl -sS https://classroompath-staging.duckdns.org/api/config
 ```
+
+If the script reports `PASS_WITH_FALLBACK`, the smoke lane used direct-IP or relaxed-CORS fallback.
+Treat that as staging evidence, but rerun a strict public-domain check before tagging production when possible.
