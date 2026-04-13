@@ -5,14 +5,17 @@
 > Last verified: 2026-04-13
 > Source of truth: `README.md`
 
-ClassroomPath is the multi-tenant SaaS wrapper around [OpenPath](https://github.com/balejosg/openpath).
-It adds organization-aware onboarding, delegated administration, deployment workflows, and operational
-contracts on top of the OpenPath OSS core.
+ClassroomPath is the managed service built on top of [OpenPath](https://github.com/balejosg/openpath) for schools that need intentional internet access without turning day-to-day operations into another IT burden.
+It adds organization-aware onboarding, delegated administration, deployment workflows, and operational contracts on top of the OpenPath OSS core.
 
-> WARNING: ClassroomPath is distributed under the ClassroomPath Source-Available License 1.0.
-> The source is published for transparency, auditability, and private modification, but the license does not permit reproducing the service.
-> No production use, self-hosting, redistribution, white-labeling, or hosted replicas are allowed without written permission.
-> Deploy and operate this software only in systems and networks where you have explicit authorization.
+Use ClassroomPath when you need:
+
+- a buyer-friendly route to demo, pilot, or pricing
+- an auditable core instead of a black-box filtering product
+- organization-scoped onboarding and delegated administration
+- a managed path before deciding whether long-term self-operation makes sense
+
+![ClassroomPath onboarding overview](docs/evaluation/assets/onboarding-overview.png)
 
 ## Documentation
 
@@ -20,6 +23,21 @@ contracts on top of the OpenPath OSS core.
 - Agent workflow and environment routing: [`AGENTS.md`](AGENTS.md)
 - Staging deploy runbook: [`docs/runbooks/deploy-staging.md`](docs/runbooks/deploy-staging.md)
 - Production deploy runbook: [`docs/runbooks/deploy-production.md`](docs/runbooks/deploy-production.md)
+
+## Start Evaluating
+
+- Security and trust overview: [`docs/evaluation/security-trust.md`](docs/evaluation/security-trust.md)
+- IT evaluation checklist: [`docs/evaluation/it-evaluation-checklist.md`](docs/evaluation/it-evaluation-checklist.md)
+- OpenPath vs. ClassroomPath: [`docs/evaluation/openpath-vs-classroompath.md`](docs/evaluation/openpath-vs-classroompath.md)
+- Spanish guide for school IT teams: [`docs/evaluation/es/guia-evaluacion-centros.md`](docs/evaluation/es/guia-evaluacion-centros.md)
+- Demo, pilot, and pricing route: [classroompath.eu](https://classroompath.eu/)
+
+## Why IT Teams Trust The Evaluation Path
+
+- **Open core, managed service:** OpenPath remains public and auditable while ClassroomPath adds the managed service layer.
+- **Documented session boundary:** sensitive auth material stays in cookie-backed sessions and mutation requests enforce origin checks. See [`docs/SESSION_SECURITY_MODEL.md`](docs/SESSION_SECURITY_MODEL.md).
+- **Controlled wrapper boundary:** the product wraps the OpenPath SPA through the documented public surface rather than deep imports into unstable internals.
+- **Visible operational discipline:** staging and production promotion paths are documented in this repo, with `main` promoted to staging and `v*` tags reserved for production.
 
 ## What ClassroomPath Adds
 
@@ -36,6 +54,20 @@ contracts on top of the OpenPath OSS core.
 | `OpenPath`      | OSS core for endpoint enforcement, policy data, browser integration, and the shared UI foundation                 |
 | `ClassroomPath` | SaaS wrapper that adds tenancy, billing/onboarding policy, deploy automation, and environment-specific operations |
 
+## Product And Licensing Model
+
+ClassroomPath is distributed under the ClassroomPath Source-Available License 1.0.
+
+This repository is published for transparency, auditability, and private modification, but it does **not** grant the right to reproduce or operate the production service without written permission.
+
+Key boundary:
+
+- source access for review, audit, and private modification
+- local private development and test use only
+- no production use or self-hosting
+- no redistribution, white-labeling, SaaS resale, or hosted replicas
+- separate licensing for [OpenPath](https://github.com/balejosg/openpath), which remains under `AGPL-3.0-or-later`
+
 ## Live URLs
 
 Machine-readable source of truth: [`config/deploy-targets.json`](config/deploy-targets.json)
@@ -44,6 +76,8 @@ Machine-readable source of truth: [`config/deploy-targets.json`](config/deploy-t
 | -------------- | ----------------------------------------- | ------------------------ |
 | **Production** | https://classroompath.eu                  | Git tag `v*`             |
 | **Staging**    | https://classroompath-staging.duckdns.org | `npm run deploy:staging` |
+
+![ClassroomPath dashboard overview](docs/evaluation/assets/dashboard-overview.png)
 
 ## Architecture
 
@@ -145,12 +179,4 @@ npm run deploy:staging
 
 ## License
 
-ClassroomPath Source-Available License 1.0.
-
-See `LICENSE` for full terms, including:
-
-- source access for review, audit, and private modification,
-- local private development and test use only,
-- no production use or self-hosting,
-- no redistribution, white-labeling, SaaS resale, or hosted replicas, and
-- separate licensing for `OpenPath`, which remains under `AGPL-3.0-or-later`.
+See `LICENSE` for the full ClassroomPath Source-Available License 1.0 terms.

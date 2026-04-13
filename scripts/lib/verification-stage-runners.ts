@@ -158,13 +158,20 @@ function createStageExecution(
   switch (stage.runner) {
     case 'format-and-secrets':
       return {
-        cacheValue: { commands: ['npm run format:check', 'npm run security:secrets'] },
-        details: { commands: ['npm run format:check', 'npm run security:secrets'] },
+        cacheValue: {
+          commands: ['npm run format:check', 'npm run security:secrets', 'npm run verify:docs'],
+        },
+        details: {
+          commands: ['npm run format:check', 'npm run security:secrets', 'npm run verify:docs'],
+        },
         run: async () => {
-          await runtime.runParallel(['npm run format:check', 'npm run security:secrets'], {
-            cwd: plan.rootDir,
-            env,
-          });
+          await runtime.runParallel(
+            ['npm run format:check', 'npm run security:secrets', 'npm run verify:docs'],
+            {
+              cwd: plan.rootDir,
+              env,
+            }
+          );
         },
       };
     case 'ops-regression':
@@ -224,11 +231,13 @@ function createStageExecution(
     case 'static-analysis':
       return {
         cacheValue: {
-          command: 'bash scripts/run-turbo.sh verify:static && npm run format:check',
+          command:
+            'bash scripts/run-turbo.sh verify:static && npm run format:check && npm run verify:docs',
           skipOpenPathStatic: plan.skipOpenPathStatic,
         },
         details: {
-          command: 'bash scripts/run-turbo.sh verify:static && npm run format:check',
+          command:
+            'bash scripts/run-turbo.sh verify:static && npm run format:check && npm run verify:docs',
           skipOpenPathStatic: plan.skipOpenPathStatic,
         },
         run: async () => {
@@ -243,6 +252,7 @@ function createStageExecution(
             });
           }
           await runtime.run('npm', ['run', 'format:check'], { cwd: plan.rootDir, env });
+          await runtime.run('npm', ['run', 'verify:docs'], { cwd: plan.rootDir, env });
         },
       };
     case 'security-and-size':

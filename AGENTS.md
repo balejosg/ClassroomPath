@@ -34,6 +34,7 @@ Technical enforcement:
 Normal local verification:
 
 - `git commit` triggers `npm run verify:commit`
+- `npm run verify:docs` is the focused check for maintained repo-hosted documentation
 - use targeted manual suites only when you need extra confidence while iterating
 
 If you push changes to `main`, you must run local staging deployment immediately:

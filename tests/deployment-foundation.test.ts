@@ -234,6 +234,7 @@ describe('Deployment foundation contracts', () => {
     assert.ok(
       verifyShell.includes('exec node --import tsx "$ROOT_DIR/scripts/verify-full.ts" "$@"')
     );
+    assert.equal(packageJson.scripts?.['verify:docs'], 'node scripts/verify-docs.mjs');
     assert.ok(existsSync(verifyPlanPath));
     assert.ok(existsSync(verifyCachePath));
     assert.ok(existsSync(verifyDomainPolicyPath));
@@ -253,6 +254,12 @@ describe('Deployment foundation contracts', () => {
     assert.ok(verifyPlan.includes('needsCoverageGate: needsApiCoverage || needsSpaCoverage'));
     assert.ok(stageRunners.includes('if (plan.needsCoverageGate) {'));
     assert.ok(stageRunners.includes('Skipping coverage gate (no changed API/SPA source files).'));
+    assert.ok(stageRunners.includes('npm run verify:docs'));
+    assert.ok(
+      stageRunners.includes(
+        'bash scripts/run-turbo.sh verify:static && npm run format:check && npm run verify:docs'
+      )
+    );
     assert.ok(
       verifyDocker.includes('export function discoverStaleVerifyComposeProjects(') &&
         verifyDocker.includes("['ps', '-a']") &&

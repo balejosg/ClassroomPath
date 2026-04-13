@@ -120,7 +120,7 @@ describe('verification pipeline', () => {
 
     assert.deepEqual(events, [
       'start:format-and-secrets',
-      'parallel:npm run format:check && npm run security:secrets',
+      'parallel:npm run format:check && npm run security:secrets && npm run verify:docs',
       'complete:format-and-secrets',
       'start:release-automation-regression',
       'run:npm run test:release-automation',

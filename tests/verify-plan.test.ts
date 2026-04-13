@@ -41,6 +41,16 @@ describe('verify plan', () => {
     );
   });
 
+  test('detects the ops-regression scope for maintained documentation diffs', () => {
+    assert.equal(
+      detectVerificationScope(
+        ['AGENTS.md', 'docs/runbooks/deploy-staging.md', 'docs/evaluation/security-trust.md'],
+        'commit'
+      ),
+      'ops-regression'
+    );
+  });
+
   test('forces full verification for release mode even on workflow-only changes', () => {
     assert.equal(
       detectVerificationScope(['.github/workflows/firefox-release-assets.yml'], 'release'),

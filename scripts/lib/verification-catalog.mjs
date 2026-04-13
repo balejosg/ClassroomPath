@@ -51,6 +51,24 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
     ...releasePolicy(),
   },
   {
+    name: 'maintained-docs',
+    patterns: [
+      '^README\\.md$',
+      '^AGENTS\\.md$',
+      '^docs/(?:INDEX|DOCKER|SECRETS|SESSION_SECURITY_MODEL|verification-matrix)\\.md$',
+      '^docs/evaluation/.+\\.md$',
+      '^docs/archive/README\\.md$',
+      '^docs/plans/README\\.md$',
+      '^docs/contracts/.+\\.md$',
+      '^docs/runbooks/.+\\.md$',
+      '^docs/adr/.+\\.md$',
+      '^scripts/verify-docs\\.mjs$',
+      '^tests/docs-verification\\.test\\.ts$',
+    ],
+    capabilities: { ciRelevant: true, verificationScope: 'ops-regression' },
+    ...releasePolicy(),
+  },
+  {
     name: 'deploy-shell',
     patterns: [
       '^scripts/(?:deploy-.+|detect-windows-firefox-risk|rollback-.+|persist-.+|run-staging-release-gate|verify-staging-release-state)\\.sh$',
@@ -280,6 +298,7 @@ export const VERIFICATION_STAGE_DEFINITIONS = Object.fromEntries(
 export const REGRESSION_PLAN_DEFINITIONS = {
   ci: {
     files: [
+      'tests/docs-verification.test.ts',
       'tests/agent-docs-consistency.test.ts',
       'tests/deployment-foundation.test.ts',
       'tests/deployment-staging-release.test.ts',

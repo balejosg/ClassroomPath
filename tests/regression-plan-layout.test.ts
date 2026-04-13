@@ -10,7 +10,8 @@ describe('regression plan layout', () => {
     const releaseAutomationPlan = resolveRegressionPlan('release-automation');
 
     assert.ok(
-      ciPlan.includes('tests/deployment-foundation.test.ts') &&
+      ciPlan.includes('tests/docs-verification.test.ts') &&
+        ciPlan.includes('tests/deployment-foundation.test.ts') &&
         ciPlan.includes('tests/deployment-staging-release.test.ts') &&
         ciPlan.includes('tests/deployment-runtime-contracts.test.ts'),
       'CI regression should target the sharded deployment suites'

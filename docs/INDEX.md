@@ -9,7 +9,8 @@ This index is the entrypoint for the maintained ClassroomPath documentation set.
 
 Rules:
 
-- Maintained docs are English-only.
+- Canonical technical and operational docs are maintained in English.
+- The buyer-facing guide under `docs/evaluation/es/` is a maintained Spanish exception for school IT evaluation.
 - Draft docs may change or disappear without notice.
 - Archived docs are historical context only and must not be treated as operational runbooks.
 
@@ -28,6 +29,13 @@ Rules:
 - Cross-system mutation ledger and retry model: [`docs/contracts/cross-system-mutations.md`](contracts/cross-system-mutations.md)
 - Verification matrix: [`docs/verification-matrix.md`](verification-matrix.md)
 
+## Evaluation
+
+- Security and trust overview: [`docs/evaluation/security-trust.md`](evaluation/security-trust.md)
+- IT evaluation checklist: [`docs/evaluation/it-evaluation-checklist.md`](evaluation/it-evaluation-checklist.md)
+- OpenPath vs. ClassroomPath: [`docs/evaluation/openpath-vs-classroompath.md`](evaluation/openpath-vs-classroompath.md)
+- Spanish guide for school IT teams: [`docs/evaluation/es/guia-evaluacion-centros.md`](evaluation/es/guia-evaluacion-centros.md)
+
 ## Operations
 
 - Deploy staging (local SSH workflow after push): [`docs/runbooks/deploy-staging.md`](runbooks/deploy-staging.md)
@@ -41,10 +49,11 @@ Rules:
 
 ## Architecture Decisions
 
-- ClassroomPath ADRs: [`docs/adr/`](adr/)
+- Cross-system mutation ledger ADR: [`docs/adr/0001-cross-system-mutation-ledger.md`](adr/0001-cross-system-mutation-ledger.md)
+- Release risk gating ADR: [`docs/adr/0002-release-risk-gating.md`](adr/0002-release-risk-gating.md)
 - OpenPath boundary contract: [`OpenPath/docs/adr/0010-public-spa-extension-surface.md`](../../OpenPath/docs/adr/0010-public-spa-extension-surface.md)
 
 ## Drafts And Historical Context
 
-- Draft plans and design notes (may be empty between active efforts): [`docs/plans/`](plans/)
+- Draft plans and design notes (may be empty between active efforts): [`docs/plans/README.md`](plans/README.md)
 - Archive boundary and retention policy: [`docs/archive/README.md`](archive/README.md)
