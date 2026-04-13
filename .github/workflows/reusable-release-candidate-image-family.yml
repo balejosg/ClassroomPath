@@ -147,6 +147,7 @@ jobs:
   publish-manifest:
     name: Publish ${{ inputs.display_name }} Manifest
     runs-on: ubuntu-latest
+    if: ${{ always() && (!inputs.build_required || (needs.build-amd64.result == 'success' && needs.build-arm64.result == 'success')) }}
     needs:
       - build-amd64
       - build-arm64
