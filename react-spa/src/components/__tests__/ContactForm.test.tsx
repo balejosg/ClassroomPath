@@ -23,6 +23,8 @@ describe('ContactForm', () => {
     expect(screen.getByLabelText('Centro educativo')).toBeInTheDocument();
     expect(screen.getByLabelText('Email de contacto')).toBeInTheDocument();
     expect(screen.getByLabelText('Nº de aulas (opcional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Responsable técnico (opcional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('¿Necesitáis partner de implantación?')).toBeInTheDocument();
   });
 
   it('renders the submit button', () => {
@@ -54,7 +56,7 @@ describe('ContactForm', () => {
     });
 
     fireEvent.change(screen.getByLabelText('Qué necesitas'), {
-      target: { value: 'Piloto' },
+      target: { value: 'Activación remota' },
     });
 
     const form = screen.getByRole('button', { name: /Enviar solicitud/i }).closest('form');

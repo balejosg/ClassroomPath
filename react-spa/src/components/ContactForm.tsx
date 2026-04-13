@@ -2,7 +2,8 @@ import React from 'react';
 import { Send, CheckCircle } from 'lucide-react';
 
 type FormState = 'idle' | 'sending' | 'sent' | 'error';
-type ContactIntent = 'Presupuesto' | 'Piloto' | 'Demo';
+type ContactIntent = 'Presupuesto' | 'Activación remota' | 'Demo';
+type DeploymentPartnerNeed = 'No' | 'Sí' | 'No lo sé';
 
 export function ContactForm() {
   const [state, setState] = React.useState<FormState>('idle');
@@ -10,7 +11,10 @@ export function ContactForm() {
   const [center, setCenter] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [classrooms, setClassrooms] = React.useState('');
+  const [technicalOwner, setTechnicalOwner] = React.useState('');
   const [intent, setIntent] = React.useState<ContactIntent>('Presupuesto');
+  const [deploymentPartnerNeed, setDeploymentPartnerNeed] =
+    React.useState<DeploymentPartnerNeed>('No');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +23,7 @@ export function ContactForm() {
     // Build mailto as fallback (in production this should hit an API endpoint)
     const subject = encodeURIComponent('Solicitud ClassroomPath');
     const body = encodeURIComponent(
-      `Qué necesitas: ${intent}\nNombre: ${name}\nCentro: ${center}\nEmail: ${email}\nNº de aulas (aprox.): ${classrooms || 'No indicado'}`
+      `Qué necesitas: ${intent}\nNombre: ${name}\nCentro: ${center}\nEmail: ${email}\nNº de aulas (aprox.): ${classrooms || 'No indicado'}\nResponsable técnico: ${technicalOwner || 'No indicado'}\n¿Necesita partner de implantación?: ${deploymentPartnerNeed}`
     );
     const mailtoUrl = `mailto:hola@classroompath.com?subject=${subject}&body=${body}`;
 
@@ -109,6 +113,42 @@ export function ContactForm() {
           />
         </div>
       </div>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div>
+          <label
+            htmlFor="contact-technical-owner"
+            className="block text-sm font-medium text-slate-700"
+          >
+            Responsable técnico (opcional)
+          </label>
+          <input
+            id="contact-technical-owner"
+            type="text"
+            value={technicalOwner}
+            onChange={(e) => setTechnicalOwner(e.target.value)}
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+            placeholder="Nombre del responsable IT"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="contact-deployment-partner"
+            className="block text-sm font-medium text-slate-700"
+          >
+            ¿Necesitáis partner de implantación?
+          </label>
+          <select
+            id="contact-deployment-partner"
+            value={deploymentPartnerNeed}
+            onChange={(e) => setDeploymentPartnerNeed(e.target.value as DeploymentPartnerNeed)}
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+          >
+            <option value="No">No</option>
+            <option value="Sí">Sí</option>
+            <option value="No lo sé">No lo sé</option>
+          </select>
+        </div>
+      </div>
       <div>
         <label htmlFor="contact-intent" className="block text-sm font-medium text-slate-700">
           Qué necesitas
@@ -120,7 +160,7 @@ export function ContactForm() {
           className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
         >
           <option value="Presupuesto">Presupuesto</option>
-          <option value="Piloto">Piloto</option>
+          <option value="Activación remota">Activación remota</option>
           <option value="Demo">Demo</option>
         </select>
       </div>

@@ -17,11 +17,11 @@ describe('ClassroomPathLandingPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Hasta 30 dispositivos por aula · onboarding guiado · código abierto auditable'
+        'Hasta 30 dispositivos por aula · apoyo remoto al IT del centro · código abierto auditable'
       )
     ).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Calcular precio' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('link', { name: 'Empezar piloto' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Solicitar activación' }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('link', { name: 'Solicitar demo' })).not.toBeInTheDocument();
   });
 
@@ -45,13 +45,14 @@ describe('ClassroomPathLandingPage', () => {
   it('renders the broadened final request section', () => {
     render(<ClassroomPathLandingPage onNavigateToLogin={vi.fn()} />);
 
-    expect(screen.getByText('Solicitar presupuesto, piloto o demo')).toBeInTheDocument();
+    expect(screen.getByText('Solicitar presupuesto, activación o demo')).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Revisa si encaja en tu centro antes de desplegar' })
+      screen.getByRole('heading', { name: 'Coordina el siguiente paso con tu equipo IT' })
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Nombre')).toBeInTheDocument();
     expect(screen.getByLabelText('Centro educativo')).toBeInTheDocument();
     expect(screen.getByLabelText('Email de contacto')).toBeInTheDocument();
+    expect(screen.getByLabelText('Responsable técnico (opcional)')).toBeInTheDocument();
   });
 
   it('navigates to login when the access CTA is clicked', () => {

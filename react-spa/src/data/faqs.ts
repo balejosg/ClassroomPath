@@ -23,7 +23,7 @@ export const LANDING_FAQS: FaqItem[] = [
   },
   {
     q: '¿Cuánto tiempo lleva implantarlo?',
-    a: 'El arranque guiado cubre el primer despliegue y los centros suelen estar operativos en la primera semana.',
+    a: 'Con equipo IT disponible, la activación inicial suele resolverse en una sesión remota y deja definido el siguiente paso para ampliar el despliegue.',
   },
 ];
 
@@ -34,8 +34,8 @@ export const PRICING_FAQS: FaqItem[] = [
     a: 'Un conjunto de hasta 30 dispositivos bajo una política de acceso definida.',
   },
   {
-    q: '¿Puedo empezar con un piloto?',
-    a: 'Sí. Hay un piloto de 5 aulas durante 90 días.',
+    q: '¿Cómo funciona la activación remota?',
+    a: 'La activación remota ligera cuesta 149 €. Incluye checklist técnica, una sesión remota con el IT del centro y apoyo para dejar 1-2 aulas operativas. La implantación la ejecuta el centro o su partner.',
   },
   {
     q: '¿El onboarding está incluido en el recurrente?',

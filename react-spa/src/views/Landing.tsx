@@ -25,8 +25,8 @@ const quickBenefits = [
     text: 'El centro presupuesta y escala con una unidad que entiende: el aula.',
   },
   {
-    title: 'Primer despliegue guiado',
-    text: 'Te acompañamos en el arranque para que no se convierta en otro proyecto paralelo del equipo TIC.',
+    title: 'Activación remota con el IT del centro',
+    text: 'Acompañamos al responsable técnico para dejar el arranque encarrilado sin convertirlo en otro proyecto paralelo.',
   },
   {
     title: 'Software abierto, servicio gestionado',
@@ -42,8 +42,8 @@ const practicalSteps = [
   },
   {
     step: 'Paso 2',
-    title: 'El servicio se pone en marcha',
-    text: 'ClassroomPath arranca con onboarding guiado para que el primer despliegue no dependa de improvisación ni de tickets constantes.',
+    title: 'La activación inicial se prepara con el IT del centro',
+    text: 'ClassroomPath acompaña en remoto al responsable técnico para validar red, dispositivos y el arranque de las primeras aulas.',
   },
   {
     step: 'Paso 3',
@@ -83,8 +83,8 @@ const fitSignals = [
   },
   {
     icon: <Rocket size={20} className="text-sky-600" />,
-    title: 'Despliegue sin infraestructura propia',
-    text: 'Tener una operación gestionada sin cargar más trabajo diario al equipo TIC.',
+    title: 'Despliegue con tu equipo IT',
+    text: 'Arrancar con apoyo remoto acotado sin depender de una implantación pesada por parte del proveedor.',
   },
   {
     icon: <Unlock size={20} className="text-sky-600" />,
@@ -138,7 +138,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                 href="#solicitud"
                 className="hidden rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 md:inline-flex"
               >
-                Empezar piloto
+                Solicitar activación
               </a>
             </div>
           </div>
@@ -165,7 +165,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
                 ClassroomPath convierte la política digital del centro en reglas operativas reales:
                 qué se abre, qué se bloquea y cómo se gestiona, aula por aula. Con precio público,
-                piloto antes de escalar y sin dependencia de proveedor.
+                activación remota ligera y sin dependencia de proveedor.
               </p>
               <div className="mt-8 flex flex-wrap gap-4">
                 <a
@@ -178,11 +178,12 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                   href="#solicitud"
                   className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
-                  Empezar piloto
+                  Solicitar activación
                 </a>
               </div>
               <p className="mt-6 text-sm text-slate-300">
-                Hasta 30 dispositivos por aula · onboarding guiado · código abierto auditable
+                Hasta 30 dispositivos por aula · apoyo remoto al IT del centro · código abierto
+                auditable
               </p>
             </div>
 
@@ -200,8 +201,8 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                   decisión sin más carga diaria para el equipo TIC.
                 </p>
                 <p>
-                  Si necesitas presupuesto, vas a precio por aula. Si necesitas reducir riesgo,
-                  empiezas con piloto.
+                  Si necesitas presupuesto, vas a precio por aula. Si quieres empezar con poco
+                  alcance, solicitas una activación remota.
                 </p>
               </div>
             </div>
@@ -354,7 +355,8 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
               </p>
               <div className="mt-6 space-y-2 text-sm text-slate-700">
                 <p>
-                  Incluye sesión de arranque, guía de implantación y soporte estándar por email.
+                  Incluye sesión remota con el IT del centro, checklist de arranque y soporte
+                  estándar por email.
                 </p>
                 <p>Sin compromiso posterior.</p>
                 <p>Plazas sujetas a disponibilidad y verificación de titularidad pública.</p>
@@ -383,14 +385,14 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                   <ShieldCheck size={32} className="text-sky-600" />
                 </div>
                 <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  Solicitar presupuesto, piloto o demo
+                  Solicitar presupuesto, activación o demo
                 </div>
                 <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                  Revisa si encaja en tu centro antes de desplegar
+                  Coordina el siguiente paso con tu equipo IT
                 </h2>
                 <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600">
-                  Cuéntanos cuántas aulas quieres controlar y qué necesitas: presupuesto, piloto o
-                  demo. Respondemos en 48 h.
+                  Cuéntanos cuántas aulas quieres controlar, quién lidera la parte técnica y si
+                  necesitas presupuesto, activación o demo. Respondemos en 48 h.
                 </p>
               </div>
               <div className="mx-auto mt-10 max-w-2xl">

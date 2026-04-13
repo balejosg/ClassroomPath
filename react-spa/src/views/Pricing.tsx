@@ -7,11 +7,11 @@ import { RevealSection } from '../components/RevealSection';
 import { SharedFooter } from '../components/SharedFooter';
 import { PRICING_FAQS } from '../data/faqs';
 import {
+  ACTIVATION_STARTER,
   INCLUDED_PER_CLASSROOM,
   NOT_INCLUDED_BASE_PLAN,
   ONBOARDING_TIERS,
   PER_CLASSROOM_POINTS,
-  PILOT,
   PRICING_TIERS,
   PUBLIC_CAMPAIGN,
   VALUE_BULLETS,
@@ -41,10 +41,10 @@ const nextStepCards = [
   },
   {
     icon: <School size={18} className="text-sky-600" />,
-    title: 'Empezar con un piloto',
-    text: 'Si necesitas evidencias internas antes de contratar, valida el modelo en 5 aulas durante 90 días.',
-    href: '#pilot',
-    cta: 'Ver piloto',
+    title: 'Solicitar activación remota',
+    text: 'Si quieres empezar con poco alcance, acompasamos el arranque con el IT del centro y dejamos 1-2 aulas operativas.',
+    href: '#activation',
+    cta: 'Ver activación',
   },
   {
     icon: <Building2 size={18} className="text-sky-600" />,
@@ -57,7 +57,7 @@ const nextStepCards = [
 
 const onboardingItems = [
   'Sesión de arranque y definición de criterio',
-  'Configuración inicial y primer despliegue guiado',
+  'Configuración inicial y validación con el IT del centro',
   'Revisión del arranque y siguientes pasos',
 ];
 
@@ -111,10 +111,10 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 Calcular precio
               </a>
               <a
-                href="#pilot"
+                href="#activation"
                 className="hidden rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 md:inline-flex"
               >
-                Empezar piloto
+                Solicitar activación
               </a>
             </div>
           </div>
@@ -148,8 +148,8 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
               </h1>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
                 Primer año = cuota anual por aula + onboarding único. Desde el segundo año, solo
-                mantienes la cuota anual por aula. Si necesitas reducir riesgo interno, empieza con
-                un piloto antes de escalar.
+                mantienes la cuota anual por aula. Si quieres empezar con poco alcance, usa la
+                activación remota ligera y valida el encaje con tu equipo IT antes de ampliar.
               </p>
               <div className="mt-8 flex flex-wrap gap-4">
                 <a
@@ -159,16 +159,16 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   Calcular precio
                 </a>
                 <a
-                  href="#pilot"
+                  href="#activation"
                   className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
-                  Empezar piloto
+                  Solicitar activación
                 </a>
               </div>
               <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-slate-300">
                 <span>
-                  Hasta 30 dispositivos por aula · piloto de 90 días · servicio gestionado sobre
-                  OpenPath
+                  Hasta 30 dispositivos por aula · apoyo remoto al IT del centro · servicio
+                  gestionado sobre OpenPath
                 </span>
                 <a
                   href="#solicitud"
@@ -191,12 +191,12 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                 <div className="mt-1 text-sm text-slate-400">por aula / año</div>
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
-                    <div className="text-sm text-slate-300">Piloto</div>
+                    <div className="text-sm text-slate-300">Activación remota</div>
                     <div className="mt-2 text-2xl font-semibold text-white">
-                      {formatCurrency(PILOT.totalPrice)}
+                      {formatCurrency(ACTIVATION_STARTER.totalPrice)}
                     </div>
                     <div className="mt-1 text-sm text-slate-400">
-                      {PILOT.classrooms} aulas durante {PILOT.durationDays} días
+                      Hasta {ACTIVATION_STARTER.classrooms} aulas con apoyo remoto al IT
                     </div>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
@@ -296,21 +296,23 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
               </a>
 
               <div
-                id="pilot"
+                id="activation"
                 className="rounded-2xl border border-sky-200 bg-sky-50 px-6 py-7 shadow-sm"
               >
                 <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  Piloto
+                  Activación remota ligera
                 </div>
                 <h3 className="mt-3 text-2xl font-semibold text-slate-900">
-                  5 aulas durante 90 días por 290 €
+                  Activa 1-2 aulas con tu equipo IT por 149 €
                 </h3>
-                <p className="mt-3 text-sm leading-7 text-slate-700">{PILOT.tagline}</p>
+                <p className="mt-3 text-sm leading-7 text-slate-700">
+                  {ACTIVATION_STARTER.tagline}
+                </p>
                 <a
                   href="#solicitud"
                   className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
                 >
-                  Solicitar piloto <ArrowRight size={16} />
+                  Solicitar activación <ArrowRight size={16} />
                 </a>
               </div>
             </div>
@@ -606,14 +608,14 @@ export function ClassroomPathPricingPage({ onNavigateToLogin }: ClassroomPathPri
                   <ShieldCheck size={32} className="text-sky-600" />
                 </div>
                 <div className="mt-6 text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  Solicitar presupuesto, piloto o demo
+                  Solicitar presupuesto, activación o demo
                 </div>
                 <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                  Pide presupuesto, piloto o revisión de despliegue
+                  Pide presupuesto, activación o revisión de despliegue
                 </h2>
                 <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600">
-                  Revisamos el número de aulas, la política de acceso prevista y el siguiente paso
-                  recomendado para tu centro o red de centros. Respondemos en 48 h.
+                  Revisamos el número de aulas, la política de acceso prevista y si conviene
+                  activación remota, propuesta anual o partner de implantación. Respondemos en 48 h.
                 </p>
               </div>
               <div className="mx-auto mt-10 max-w-2xl">

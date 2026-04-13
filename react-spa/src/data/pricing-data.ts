@@ -27,6 +27,14 @@ export const PILOT = {
     'Valida el modelo en pocas aulas antes de escalar. Es la opción más útil cuando necesitas comprobar encaje operativo y evidencia interna con poco riesgo.',
 } as const;
 
+export const ACTIVATION_STARTER = {
+  name: 'Activación remota ligera',
+  classrooms: 2,
+  totalPrice: 149,
+  tagline:
+    'Incluye checklist técnica, una sesión remota con el IT del centro y apoyo para dejar 1-2 aulas operativas sin asumir una implantación completa.',
+} as const;
+
 export const PUBLIC_CAMPAIGN = {
   classrooms: 5,
   tagline:
@@ -132,7 +140,7 @@ export const NOT_INCLUDED_BASE_PLAN = [
 export const VALUE_BULLETS = [
   'Precio público desde el primer clic',
   'Unidad de compra clara: el aula',
-  'Piloto para validar antes de escalar',
+  'Activación remota para empezar con poco alcance',
   'Servicio gestionado sobre software abierto',
   'Sin dependencia obligatoria de proveedor',
 ];
