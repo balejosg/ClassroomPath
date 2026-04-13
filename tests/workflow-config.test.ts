@@ -3,8 +3,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-
-import { parse as parseYaml } from 'yaml';
+import {
+  assertTextExcludesAll,
+  assertTextIncludesAll,
+  readProjectText,
+  readProjectWorkflow,
+  type WorkflowDefinition,
+} from './helpers/ops-contracts.ts';
 
 type WorkflowJob = {
   name?: string;
@@ -27,24 +32,6 @@ type WorkflowJob = {
   }>;
 };
 
-type WorkflowDefinition = {
-  concurrency?: string | { group?: string; 'cancel-in-progress'?: boolean };
-  on?: {
-    push?: {
-      branches?: string[];
-      tags?: string[];
-      paths?: string[];
-    };
-    workflow_run?: {
-      workflows?: string[];
-      types?: string[];
-    };
-    workflow_call?: Record<string, unknown>;
-    workflow_dispatch?: Record<string, never>;
-  };
-  jobs?: Record<string, WorkflowJob>;
-};
-
 type PackageDefinition = {
   scripts?: Record<string, string>;
 };
@@ -54,9 +41,11 @@ const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
 
 function readWorkflow(relativePath: string): WorkflowDefinition {
-  const workflowPath = resolve(projectRoot, relativePath);
-  assert.ok(existsSync(workflowPath), `${relativePath} should exist`);
-  return parseYaml(readFileSync(workflowPath, 'utf-8')) as WorkflowDefinition;
+  return readProjectWorkflow(relativePath);
+}
+
+function readText(relativePath: string): string {
+  return readProjectText(relativePath);
 }
 
 function normalizeNeeds(needs: WorkflowJob['needs']): string[] {
@@ -67,14 +56,8 @@ function normalizeNeeds(needs: WorkflowJob['needs']): string[] {
   return Array.isArray(needs) ? needs : [needs];
 }
 
-function readText(relativePath: string): string {
-  const filePath = resolve(projectRoot, relativePath);
-  assert.ok(existsSync(filePath), `${relativePath} should exist`);
-  return readFileSync(filePath, 'utf-8');
-}
-
 function readPackageJson(): PackageDefinition {
-  return JSON.parse(readText('package.json')) as PackageDefinition;
+  return JSON.parse(readProjectText('package.json')) as PackageDefinition;
 }
 
 describe('Workflow configuration hardening', () => {
@@ -148,20 +131,18 @@ describe('Workflow configuration hardening', () => {
     ];
 
     for (const { relativePath, required, forbidden } of cases) {
-      const content = readText(relativePath);
-
-      for (const version of required) {
-        assert.ok(content.includes(version), `${relativePath} should include ${version}`);
-      }
-
-      for (const version of forbidden) {
-        assert.ok(!content.includes(version), `${relativePath} should not include ${version}`);
-      }
+      const content = readProjectText(relativePath);
+      assertTextIncludesAll(content, required, `${relativePath} should include required versions`);
+      assertTextExcludesAll(
+        content,
+        forbidden,
+        `${relativePath} should exclude forbidden versions`
+      );
     }
   });
 
   test('production deploy workflow forwards billing runtime env to the SSH deploy step', () => {
-    const workflow = readWorkflow('.github/workflows/deploy.yml');
+    const workflow = readProjectWorkflow('.github/workflows/deploy.yml');
     const deployStep = workflow.jobs?.['deploy-production']?.steps?.find(
       (step) => step.name === 'Deploy via SSH'
     );
@@ -174,7 +155,7 @@ describe('Workflow configuration hardening', () => {
   });
 
   test('CI workflow exists and defines a stable CI Success summary job', () => {
-    const workflow = readWorkflow('.github/workflows/ci.yml');
+    const workflow = readProjectWorkflow('.github/workflows/ci.yml');
     const jobs = workflow.jobs ?? {};
 
     assert.ok(jobs['detect-relevant-changes'], 'CI workflow should detect relevant changes');

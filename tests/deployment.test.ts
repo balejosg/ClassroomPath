@@ -10,6 +10,12 @@ import assert from 'node:assert';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  assertTextExcludesAll,
+  assertTextIncludesAll,
+  assertTextSequence,
+  readProjectText,
+} from './helpers/ops-contracts.ts';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
@@ -55,6 +61,18 @@ const resolveLatestVerifierImageLibPath = resolve(
 const releaseCandidateLibPath = resolve(projectRoot, 'scripts/lib/release-candidate.mjs');
 const regressionPlanPath = resolve(projectRoot, 'scripts/lib/regression-plan.mjs');
 const stagingGatesHelperPath = resolve(projectRoot, 'scripts/lib/staging-gates.sh');
+const stagingLocalReleaseHelperPath = resolve(
+  projectRoot,
+  'scripts/lib/staging-deploy-local-release.sh'
+);
+const stagingLocalRuntimeHelperPath = resolve(
+  projectRoot,
+  'scripts/lib/staging-deploy-local-runtime.sh'
+);
+const stagingLocalVerifyHelperPath = resolve(
+  projectRoot,
+  'scripts/lib/staging-deploy-local-verify.sh'
+);
 const turboConfigPath = resolve(projectRoot, 'turbo.json');
 const turboRunnerScriptPath = resolve(projectRoot, 'scripts/run-turbo.sh');
 
@@ -162,40 +180,38 @@ void describe('Migration Tooling', () => {
   });
 
   void test('staging deploy can hydrate the billing env block from the remote runtime when local secrets are absent', () => {
-    const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const localContent = readProjectText('scripts/deploy-staging-local.sh');
 
     assert.ok(
-      localContent.includes('hydrate_billing_env_from_remote_if_needed'),
-      'deploy-staging-local.sh should centralize billing-env fallback in a dedicated helper'
+      localContent.includes('source "$SCRIPT_DIR/lib/staging-deploy-local-runtime.sh"'),
+      'deploy-staging-local.sh should source the shared staging runtime helper'
     );
     assert.ok(
-      localContent.includes('/opt/classroompath/app/config/.env') &&
-        localContent.includes('CP_PLATFORM_ADMIN_EMAILS') &&
-        localContent.includes('grep -E'),
-      'deploy-staging-local.sh should read the billing block from the staging runtime env when local billing vars are missing'
+      localContent.includes('source "$SCRIPT_DIR/lib/staging-deploy-local-release.sh"') &&
+        localContent.includes('source "$SCRIPT_DIR/lib/staging-deploy-local-verify.sh"'),
+      'deploy-staging-local.sh should source the shared release and verification helpers'
     );
     assert.ok(
-      localContent.includes('Using staging runtime billing env fallback') ||
-        localContent.includes('billing env fallback'),
-      'deploy-staging-local.sh should log when it falls back to the remote billing block'
+      !localContent.includes('has_complete_billing_env() {') &&
+        !localContent.includes('list_missing_billing_env() {') &&
+        !localContent.includes('hydrate_billing_env_from_remote_if_needed() {') &&
+        !localContent.includes('remote_assignment() {'),
+      'deploy-staging-local.sh should keep billing fallback and remote env serialization out of the entrypoint'
     );
     assert.ok(
-      localContent.includes('if [ -z "${!key:-}" ]; then') &&
-        localContent.includes('printf -v "$key"'),
-      'deploy-staging-local.sh should preserve explicit local billing overrides when hydrating from staging'
+      !localContent.includes('VERIFY_STATE_ENV_CMD="$(') &&
+        !localContent.includes('REMOTE_ENV_CMD="$('),
+      'deploy-staging-local.sh should delegate remote payload assembly to shared staging helpers'
     );
-    assert.ok(
-      localContent.includes(
-        'Missing billing env after checking local overrides and staging runtime fallback'
-      ) && localContent.includes('exit 1'),
-      'deploy-staging-local.sh should fail early if billing config is still incomplete after local and remote checks'
-    );
-    assert.ok(
-      !localContent.includes('cat > "$ENV_FILE"') &&
-        !localContent.includes('cat >> "$ENV_FILE"') &&
-        !localContent.includes('printf > "$ENV_FILE"') &&
-        !localContent.includes('printf >> "$ENV_FILE"'),
-      'deploy-staging-local.sh should not write billing fallback values back into .env.local'
+    assertTextSequence(
+      localContent,
+      [
+        'prepare_staging_local_release_context',
+        'run_staging_local_remote_deploy',
+        'run_staging_local_health_checks',
+        'run_staging_local_verification',
+      ],
+      'deploy-staging-local.sh should orchestrate staging deploy phases in order'
     );
   });
 
@@ -606,6 +622,7 @@ void describe('Migration Tooling', () => {
 
   void test('staging deploy waits for the successful release-candidate manifest before source-build fallback', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const releaseHelperContent = readFileSync(stagingLocalReleaseHelperPath, 'utf-8');
     const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
 
     assert.ok(existsSync(releaseImagesScriptPath), 'release-images.mjs should exist');
@@ -614,8 +631,11 @@ void describe('Migration Tooling', () => {
       'wait-for-release-candidate.mjs should exist'
     );
     assert.ok(
-      localContent.includes('node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest'),
-      'deploy-staging-local.sh should wait for a successful release-candidate manifest for origin/main'
+      localContent.includes('prepare_staging_local_release_context') &&
+        releaseHelperContent.includes(
+          'node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest'
+        ),
+      'staging local deploy should wait for a successful release-candidate manifest for origin/main via the shared release helper'
     );
     assert.ok(
       remoteContent.includes('deploy_with_release_candidates'),
@@ -626,18 +646,18 @@ void describe('Migration Tooling', () => {
       'staging remote deploy should try pulling prebuilt candidate images'
     );
     assert.ok(
-      localContent.includes('STAGING_RELEASE_MANIFEST_FILE') &&
-        localContent.includes('STAGING_RELEASE_MANIFEST_B64'),
-      'staging deploy should resolve and forward a single release-manifest payload for the remote deploy'
+      releaseHelperContent.includes('STAGING_RELEASE_MANIFEST_FILE') &&
+        releaseHelperContent.includes('STAGING_RELEASE_MANIFEST_B64'),
+      'staging local release helper should resolve and forward a single release-manifest payload for the remote deploy'
     );
     assert.ok(
-      localContent.includes('STAGING_RELEASE_RUN_ID') &&
-        localContent.includes('STAGING_RELEASE_REPOSITORY'),
-      'staging deploy should keep the release-candidate repository identity and run id alongside the manifest payload'
+      releaseHelperContent.includes('STAGING_RELEASE_RUN_ID') &&
+        releaseHelperContent.includes('STAGING_RELEASE_REPOSITORY'),
+      'staging local release helper should keep the release-candidate repository identity and run id alongside the manifest payload'
     );
     assert.ok(
-      localContent.includes('STAGING_RELEASE_WAIT_TIMEOUT_SECONDS'),
-      'staging deploy should expose a bounded wait timeout for release candidate availability'
+      releaseHelperContent.includes('STAGING_RELEASE_WAIT_TIMEOUT_SECONDS'),
+      'staging local release helper should expose a bounded wait timeout for release candidate availability'
     );
     assert.ok(
       remoteContent.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
@@ -671,6 +691,8 @@ void describe('Migration Tooling', () => {
 
   void test('staging deploy records reusable verification evidence after smoke and release gate pass', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const releaseHelperContent = readFileSync(stagingLocalReleaseHelperPath, 'utf-8');
+    const verifyHelperContent = readFileSync(stagingLocalVerifyHelperPath, 'utf-8');
     const releaseGateHelperContent = readFileSync(stagingReleaseGateScriptPath, 'utf-8');
     const helperContent = readFileSync(stagingVerifyStateScriptPath, 'utf-8');
     const runnerContent = readFileSync(stagingVerificationRunnerPath, 'utf-8');
@@ -689,9 +711,9 @@ void describe('Migration Tooling', () => {
       'deploy-staging-local.sh should default to running the staging release gate during promotion prep'
     );
     assert.ok(
-      localContent.includes('STAGING_SUPPORTS_PROMOTION_EVIDENCE') &&
-        localContent.includes('cannot produce promotion evidence'),
-      'deploy-staging-local.sh should fail early when source-build is asked to produce promotion evidence'
+      releaseHelperContent.includes('STAGING_SUPPORTS_PROMOTION_EVIDENCE') &&
+        releaseHelperContent.includes('cannot produce promotion evidence'),
+      'staging local release helper should fail early when source-build is asked to produce promotion evidence'
     );
     assert.ok(
       existsSync(stagingReleaseGateScriptPath),
@@ -721,6 +743,11 @@ void describe('Migration Tooling', () => {
       'staging verification should source a shared gate runner instead of duplicating npm invocation boilerplate'
     );
     assert.ok(
+      verifyHelperContent.includes('build_staging_verify_state_env_cmd()') &&
+        verifyHelperContent.includes('run_staging_local_verification()'),
+      'staging local verification helper should own evidence collection and remote persistence wiring'
+    );
+    assert.ok(
       stagingGatesHelper.includes('run_gate_command smoke') &&
         stagingGatesHelper.includes('run_gate_command release-gate') &&
         stagingGatesHelper.includes('run_gate_command windows-bootstrap-gate'),
@@ -732,8 +759,8 @@ void describe('Migration Tooling', () => {
     );
     assert.ok(
       helperContent.includes('STAGING_RELEASE_GATE_RESULT=success') ||
-        localContent.includes('STAGING_GATE_RESULT="success"'),
-      'staging deploy should capture a successful release-gate result'
+        verifyHelperContent.includes('STAGING_GATE_RESULT="success"'),
+      'staging verification flow should capture a successful release-gate result'
     );
     assert.ok(
       helperContent.includes('staging-verification.env'),
@@ -840,21 +867,22 @@ void describe('Migration Tooling', () => {
       'deploy-staging-local.sh should reference the shared staging verification runner'
     );
     assert.ok(
-      localContent.includes(
+      verifyHelperContent.includes(
         'bash "$STAGING_VERIFICATION_RUNNER_PATH" collect "$VERIFICATION_STATE_FILE" "$STAGING_HOST" "$STAGING_SMOKE_URL" "$CANONICAL_STAGING_URL" "$STAGING_USE_RELEASE_CANDIDATE" "${SSH_CMD[@]}"'
       ),
-      'deploy-staging-local.sh should delegate smoke and release-gate verification to the shared runner'
+      'staging local verification helper should delegate smoke and release-gate verification to the shared runner'
     );
     assert.ok(
-      localContent.includes(
-        '"${SSH_CMD[@]}" "${VERIFY_STATE_ENV_CMD}bash -s" < "$STAGING_VERIFY_STATE_SCRIPT_PATH"'
-      ),
-      'deploy-staging-local.sh should delegate evidence persistence to the remote helper script'
+      verifyHelperContent.includes(
+        '"${SSH_CMD[@]}" "${verify_state_env_cmd}bash -s" < "$STAGING_VERIFY_STATE_SCRIPT_PATH"'
+      ) || verifyHelperContent.includes('build_staging_verify_state_env_cmd'),
+      'staging local verification helper should delegate evidence persistence to the remote helper script'
     );
   });
 
   void test('staging deploy delegates remote health polling to a dedicated helper', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const verifyHelperContent = readFileSync(stagingLocalVerifyHelperPath, 'utf-8');
     const helperContent = readFileSync(stagingHealthCheckScriptPath, 'utf-8');
 
     assert.ok(
@@ -868,10 +896,11 @@ void describe('Migration Tooling', () => {
       'deploy-staging-local.sh should reference the dedicated staging health helper'
     );
     assert.ok(
-      localContent.includes(
-        'bash "$STAGING_HEALTH_CHECK_SCRIPT_PATH" "$STAGING_HOST" "${SSH_CMD[@]}"'
-      ),
-      'deploy-staging-local.sh should delegate the remote health polling to the helper script'
+      localContent.includes('run_staging_local_health_checks') &&
+        verifyHelperContent.includes(
+          'bash "$STAGING_HEALTH_CHECK_SCRIPT_PATH" "$STAGING_HOST" "${SSH_CMD[@]}"'
+        ),
+      'staging local verification helper should delegate the remote health polling to the helper script'
     );
     assert.ok(
       helperContent.includes('curl -sf http://localhost:3000/cp/ready 2>/dev/null'),
@@ -1385,6 +1414,8 @@ void describe('Migration Tooling', () => {
 
   void test('release manifest flows through staging and production as a single contract payload', () => {
     const stagingLocal = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const stagingLocalRelease = readFileSync(stagingLocalReleaseHelperPath, 'utf-8');
+    const stagingLocalRuntime = readFileSync(stagingLocalRuntimeHelperPath, 'utf-8');
     const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
     const productionRemote = readFileSync(
       resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
@@ -1425,15 +1456,15 @@ void describe('Migration Tooling', () => {
       'deploy-payload helper should own the versioned workflow-to-script deploy payload contract'
     );
     assert.ok(
-      stagingLocal.includes('STAGING_RELEASE_MANIFEST_FILE=') &&
-        stagingLocal.includes('--output-file "$STAGING_RELEASE_MANIFEST_FILE"'),
-      'deploy-staging-local.sh should materialize the resolved release manifest to a single file'
+      stagingLocalRelease.includes('STAGING_RELEASE_MANIFEST_FILE=') &&
+        stagingLocalRelease.includes('--output-file "$STAGING_RELEASE_MANIFEST_FILE"'),
+      'staging local release helper should materialize the resolved release manifest to a single file'
     );
     assert.ok(
-      stagingLocal.includes('STAGING_DEPLOY_PAYLOAD_B64=') &&
-        stagingLocal.includes('STAGING_DEPLOY_PAYLOAD_B64="${DEPLOY_PAYLOAD_B64:-}"') &&
-        stagingLocal.includes('remote_assignment STAGING_DEPLOY_PAYLOAD_B64'),
-      'deploy-staging-local.sh should forward one versioned deploy payload to the remote deploy'
+      stagingLocalRelease.includes('STAGING_DEPLOY_PAYLOAD_B64=') &&
+        stagingLocalRelease.includes('STAGING_DEPLOY_PAYLOAD_B64="${DEPLOY_PAYLOAD_B64:-}"') &&
+        stagingLocalRuntime.includes('remote_assignment STAGING_DEPLOY_PAYLOAD_B64'),
+      'staging local release/runtime helpers should forward one versioned deploy payload to the remote deploy'
     );
     assert.ok(
       stagingRemote.includes('decode_deploy_payload_base64 "$STAGING_DEPLOY_PAYLOAD_B64"') &&
@@ -1497,6 +1528,7 @@ void describe('Migration Tooling', () => {
     const releaseRuntimeHelper = readFileSync(releaseRuntimeHelperPath, 'utf-8');
     const releasePlanHelper = readFileSync(releasePlanHelperPath, 'utf-8');
     const localDeploy = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const localReleaseHelper = readFileSync(stagingLocalReleaseHelperPath, 'utf-8');
     const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
     const productionRemote = readFileSync(
       resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
@@ -1518,9 +1550,10 @@ void describe('Migration Tooling', () => {
       'release-plan helper should own the typed staging release plan contract and shell export rendering'
     );
     assert.ok(
-      localDeploy.includes('node "$SCRIPT_DIR/lib/release-plan.mjs" render-staging-env') &&
-        localDeploy.includes('STAGING_RELEASE_PLAN_ENV_FILE="$(mktemp)"'),
-      'deploy-staging-local.sh should derive staging image decisions from the typed release-plan helper'
+      localDeploy.includes('prepare_staging_local_release_context') &&
+        localReleaseHelper.includes('node "$SCRIPT_DIR/lib/release-plan.mjs" render-staging-env') &&
+        localReleaseHelper.includes('STAGING_RELEASE_PLAN_ENV_FILE="$(mktemp)"'),
+      'staging local release helper should derive staging image decisions from the typed release-plan helper'
     );
     assert.ok(
       stagingRemote.includes(
@@ -1812,13 +1845,13 @@ void describe('Migration Tooling', () => {
       'persist-staging-verification-remote.sh should reject stale release-state helpers, fall back through the shared release-state compatibility helper, and then delegate persistence to the shared staging verification runner'
     );
     assert.ok(
-      readFileSync(resolve(projectRoot, 'scripts/deploy-staging-local.sh'), 'utf-8').includes(
+      readFileSync(stagingLocalVerifyHelperPath, 'utf-8').includes(
         'remote_assignment STAGING_SMOKE_RESULT "$STAGING_SMOKE_RESULT"'
       ) &&
-        readFileSync(resolve(projectRoot, 'scripts/deploy-staging-local.sh'), 'utf-8').includes(
+        readFileSync(stagingLocalVerifyHelperPath, 'utf-8').includes(
           'remote_assignment STAGING_RELEASE_GATE_RESULT "$STAGING_RELEASE_GATE_RESULT"'
         ),
-      'deploy-staging-local.sh should forward smoke and release-gate evidence to the remote persistence writer'
+      'staging local verification helper should forward smoke and release-gate evidence to the remote persistence writer'
     );
     assert.ok(
       rollbackRemote.includes('DEPLOYMENT_STATE_HELPER_PATH') &&

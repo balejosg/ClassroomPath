@@ -10,22 +10,11 @@ import assert from 'node:assert';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { extractShellFunction } from './helpers/ops-contracts.ts';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
-
-const extractShellFunction = (content: string, functionName: string): string => {
-  const pattern = new RegExp(
-    `(?:^|\\n)([ \\t]*)${functionName}\\(\\) \\{[\\s\\S]*?(?=\\n\\1[a-zA-Z0-9_]+\\(\\) \\{|\\nelse\\n|\\nfi\\n|$)`
-  );
-  const match = content.match(pattern);
-
-  assert.ok(match, `Expected to find ${functionName}()`);
-
-  const commonIndent = match[1] ?? '';
-  return match[0].replace(new RegExp(`\\n${commonIndent}`, 'g'), '\n').trim();
-};
 
 void describe('Remote Deploy Bootstrap', () => {
   const remoteBootstrapHelperPath = resolve(projectRoot, 'scripts/lib/remote-bootstrap.sh');
