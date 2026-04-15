@@ -121,16 +121,7 @@ export async function teacherCanUseGroup(params: {
   groupId: string;
 }): Promise<boolean> {
   const identifiers = await getTeacherGroupIdentifiers(params.userId);
-  if (identifiers.has(params.groupId)) return true;
-
-  // Backwards-compatible: role.groupIds may store group names.
-  const group = await openpathDb
-    .select({ id: openpathSchema.whitelistGroups.id, name: openpathSchema.whitelistGroups.name })
-    .from(openpathSchema.whitelistGroups)
-    .where(eq(openpathSchema.whitelistGroups.id, params.groupId))
-    .limit(1);
-
-  return !!group[0] && identifiers.has(group[0].name);
+  return identifiers.has(params.groupId);
 }
 
 export async function assertCanUseGroup(
@@ -218,9 +209,9 @@ export async function getAccessibleTenantGroupIds(params: {
   if (identifiers.size === 0) return [];
 
   const groups = await openpathDb
-    .select({ id: openpathSchema.whitelistGroups.id, name: openpathSchema.whitelistGroups.name })
+    .select({ id: openpathSchema.whitelistGroups.id })
     .from(openpathSchema.whitelistGroups)
     .where(inArray(openpathSchema.whitelistGroups.id, groupIds));
 
-  return groups.filter((g) => identifiers.has(g.id) || identifiers.has(g.name)).map((g) => g.id);
+  return groups.filter((g) => identifiers.has(g.id)).map((g) => g.id);
 }

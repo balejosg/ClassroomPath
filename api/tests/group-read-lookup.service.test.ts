@@ -65,7 +65,7 @@ async function seedOpenPathUser(userId: string) {
 async function seedOrganizationGroup(params: {
   organizationId: string;
   openpathName: string;
-  publicName: string | null;
+  publicName: string;
 }) {
   const groupId = nextId('grp');
   const orgGroupId = nextId('orggrp');
@@ -145,16 +145,16 @@ void describe('group-read-lookup.service', { concurrency: 1 }, () => {
     assert.equal(result.name, 'public-lookup-name');
   });
 
-  void test('resolves a legacy OpenPath group by name for an assigned teacher', async () => {
+  void test('resolves a tenant group by its public name for an assigned teacher', async () => {
     const userId = nextId('teacher_lookup');
     const organizationId = await seedOrganization(userId);
     await seedMembership({ organizationId, userId, role: 'teacher' });
     await seedOpenPathUser(userId);
-    const legacyOpenpathName = `legacy-group-${nextId('slug')}`;
+    const publicName = `public-group-${nextId('slug').replaceAll('_', '-')}`;
     const groupId = await seedOrganizationGroup({
       organizationId,
-      openpathName: legacyOpenpathName,
-      publicName: 'mapped-legacy-group',
+      openpathName: `openpath-group-${nextId('slug')}`,
+      publicName,
     });
     await seedTeacherRole(userId, [groupId]);
 
@@ -162,24 +162,24 @@ void describe('group-read-lookup.service', { concurrency: 1 }, () => {
       organizationId,
       userId,
       userRole: 'teacher',
-      name: legacyOpenpathName,
+      name: publicName,
     });
 
     assert.ok(result);
     assert.equal(result.id, groupId);
-    assert.equal(result.name, 'mapped-legacy-group');
+    assert.equal(result.name, publicName);
   });
 
-  void test('hides legacy groups from teachers without access and returns null when missing', async () => {
+  void test('hides tenant groups from teachers without access and returns null when missing', async () => {
     const userId = nextId('teacher_hidden');
     const organizationId = await seedOrganization(userId);
     await seedMembership({ organizationId, userId, role: 'teacher' });
     await seedOpenPathUser(userId);
-    const hiddenOpenpathName = `hidden-group-${nextId('slug')}`;
+    const hiddenPublicName = `hidden-group-${nextId('slug').replaceAll('_', '-')}`;
     await seedOrganizationGroup({
       organizationId,
-      openpathName: hiddenOpenpathName,
-      publicName: 'hidden-public-group',
+      openpathName: `openpath-hidden-${nextId('slug')}`,
+      publicName: hiddenPublicName,
     });
     await seedTeacherRole(userId, []);
 
@@ -187,7 +187,7 @@ void describe('group-read-lookup.service', { concurrency: 1 }, () => {
       organizationId,
       userId,
       userRole: 'teacher',
-      name: hiddenOpenpathName,
+      name: hiddenPublicName,
     });
     const missingResult = await getOrganizationGroupByName({
       organizationId,
@@ -198,5 +198,27 @@ void describe('group-read-lookup.service', { concurrency: 1 }, () => {
 
     assert.equal(hiddenResult, null);
     assert.equal(missingResult, null);
+  });
+
+  void test('does not resolve a tenant group by the underlying OpenPath name anymore', async () => {
+    const userId = nextId('admin_lookup');
+    const organizationId = await seedOrganization(userId);
+    await seedMembership({ organizationId, userId, role: 'admin' });
+    await seedOpenPathUser(userId);
+    const openpathName = `openpath-name-${nextId('slug')}`;
+    await seedOrganizationGroup({
+      organizationId,
+      openpathName,
+      publicName: `public-name-${nextId('slug').replaceAll('_', '-')}`,
+    });
+
+    const result = await getOrganizationGroupByName({
+      organizationId,
+      userId,
+      userRole: 'admin',
+      name: openpathName,
+    });
+
+    assert.equal(result, null);
   });
 });

@@ -3,10 +3,8 @@
 # shellcheck shell=bash
 
 RELEASE_MANIFEST_HELPER_MIN_CONTRACT_VERSION=1
-RELEASE_MANIFEST_COMPAT_HELPER_MIN_CONTRACT_VERSION=1
 RELEASE_STATE_RUNTIME_MIN_CONTRACT_VERSION=1
 RELEASE_STATE_STAGING_VERIFICATION_MIN_CONTRACT_VERSION=1
-RELEASE_STATE_COMPAT_HELPER_MIN_CONTRACT_VERSION=1
 DEPLOYMENT_STATE_HELPER_MIN_CONTRACT_VERSION=1
 RELEASE_RUNTIME_HELPER_MIN_CONTRACT_VERSION=1
 
@@ -87,14 +85,6 @@ release_manifest_helper_supports_contract() {
     "$RELEASE_MANIFEST_HELPER_MIN_CONTRACT_VERSION"
 }
 
-release_manifest_compat_helper_supports_contract() {
-  local helper_path="${1:-}"
-  remote_helper_contract_version_at_least \
-    "$helper_path" \
-    RELEASE_MANIFEST_COMPAT_HELPER_CONTRACT_VERSION \
-    "$RELEASE_MANIFEST_COMPAT_HELPER_MIN_CONTRACT_VERSION"
-}
-
 release_state_helper_supports_runtime_contract() {
   local helper_path="${1:-}"
   remote_helper_contract_version_at_least \
@@ -109,14 +99,6 @@ release_state_helper_supports_staging_verification_contract() {
     "$helper_path" \
     RELEASE_STATE_HELPER_CONTRACT_VERSION \
     "$RELEASE_STATE_STAGING_VERIFICATION_MIN_CONTRACT_VERSION"
-}
-
-release_state_compat_helper_supports_contract() {
-  local helper_path="${1:-}"
-  remote_helper_contract_version_at_least \
-    "$helper_path" \
-    RELEASE_STATE_COMPAT_HELPER_CONTRACT_VERSION \
-    "$RELEASE_STATE_COMPAT_HELPER_MIN_CONTRACT_VERSION"
 }
 
 deployment_state_helper_supports_contract() {
@@ -137,9 +119,7 @@ release_runtime_helper_supports_runtime_contract() {
 
 refresh_deployed_release_helpers() {
   RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
-  RELEASE_MANIFEST_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest-compat.sh")"
   RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
-  RELEASE_STATE_COMPAT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state-compat.sh")"
   RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
 
   if [ -n "${DEPLOYMENT_STATE_HELPER_PATH:-}" ]; then
@@ -149,25 +129,22 @@ refresh_deployed_release_helpers() {
   if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
     # shellcheck disable=SC1090
     source "$RELEASE_MANIFEST_HELPER_PATH"
-  elif release_manifest_compat_helper_supports_contract "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"; then
-    # shellcheck disable=SC1090
-    source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"
+  else
+    return 1
   fi
 
   if [ "${REMOTE_RELEASE_STATE_CONTRACT_MODE:-runtime}" = "staging-verification" ]; then
     if release_state_helper_supports_staging_verification_contract "$RELEASE_STATE_HELPER_PATH"; then
       # shellcheck disable=SC1090
       source "$RELEASE_STATE_HELPER_PATH"
-    elif release_state_compat_helper_supports_contract "$RELEASE_STATE_COMPAT_HELPER_PATH"; then
-      # shellcheck disable=SC1090
-      source "$RELEASE_STATE_COMPAT_HELPER_PATH"
+    else
+      return 1
     fi
   elif release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
     # shellcheck disable=SC1090
     source "$RELEASE_STATE_HELPER_PATH"
-  elif release_state_compat_helper_supports_contract "$RELEASE_STATE_COMPAT_HELPER_PATH"; then
-    # shellcheck disable=SC1090
-    source "$RELEASE_STATE_COMPAT_HELPER_PATH"
+  else
+    return 1
   fi
 
   if [ -n "${DEPLOYMENT_STATE_HELPER_PATH:-}" ] && deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"; then

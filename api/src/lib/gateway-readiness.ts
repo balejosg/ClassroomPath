@@ -2,7 +2,8 @@ import { getTableName, isTable, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { extractTrpcData, openPathTrpcUrl } from './openpath-upstream.js';
+import { extractTrpcData } from './openpath/response.js';
+import { openPathTrpcUrl } from './openpath/trpc-client.js';
 
 export interface GatewayDatabaseStatus {
   connected: boolean;

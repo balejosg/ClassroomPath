@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
@@ -14,7 +14,6 @@ import {
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
 const cliPath = resolve(projectRoot, 'scripts/release-state-cli.mjs');
-const compatHelperPath = resolve(projectRoot, 'scripts/lib/release-state-compat.sh');
 
 function runCommand(
   command: string,
@@ -189,11 +188,9 @@ test('release-state CLI lists canonical snapshot fields for shell consumers', ()
   ]);
 });
 
-test('shared shell compatibility helper serializes snapshots through the canonical contract', () => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-compat-'));
+test('canonical shell release-state helper serializes snapshots through the typed contract', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-shell-write-'));
   const snapshotPath = join(tempDir, 'staging-verification.env');
-
-  assert.ok(existsSync(compatHelperPath), 'release-state-compat.sh should exist');
 
   runCommand(
     'bash',
@@ -201,7 +198,7 @@ test('shared shell compatibility helper serializes snapshots through the canonic
       '-lc',
       [
         'source scripts/lib/common.sh',
-        'source scripts/lib/release-state-compat.sh',
+        'source scripts/lib/release-state.sh',
         'STAGING_VERIFIED_AT=2026-04-11T06:00:00Z',
         'STAGING_VERIFIED_BY=github-actions',
         'STAGING_VERIFIED_APP_SHA=abc123',
@@ -223,7 +220,7 @@ test('shared shell compatibility helper serializes snapshots through the canonic
         'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
         'STAGING_FIREFOX_METADATA_SHA256=meta123',
         'STAGING_FIREFOX_XPI_SHA256=xpi123',
-        `write_release_state_snapshot_compat staging-verification ${snapshotPath}`,
+        `write_release_state_snapshot staging-verification ${snapshotPath}`,
       ].join('; '),
     ],
     { ...process.env }

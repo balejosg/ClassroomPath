@@ -1,34 +1,18 @@
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
 import { router, protectedProcedure } from '../trpc.js';
-import { TRPCError } from '@trpc/server';
 import * as onboardingService from '../../services/onboarding.service.js';
-import * as openpathRoles from '../../lib/openpath-roles.js';
-import * as openpathUsers from '../../lib/openpath-users.js';
-import * as jwt from '../../lib/jwt.js';
-import * as pendingUsersService from '../../services/pending-users.service.js';
-import { db, schema } from '../../db/index.js';
-import { config } from '../../config.js';
-import { storeSessionFromPayload } from '../../lib/session-cookies.js';
+import {
+  cancelWaitingForInvitation,
+  createOrganizationSession,
+  listAvailableOrganizations,
+  setWaitingForInvitation,
+} from '../../services/onboarding-flow.service.js';
 
 export const onboardingRouter = router({
   /**
    * List all organizations (for users to select which one to join)
    */
-  listOrganizations: protectedProcedure.query(async () => {
-    if (!config.allowOrgDirectory) {
-      return [];
-    }
-
-    const orgs = await db
-      .select({
-        id: schema.cpOrganizations.id,
-        name: schema.cpOrganizations.name,
-      })
-      .from(schema.cpOrganizations);
-
-    return orgs;
-  }),
+  listOrganizations: protectedProcedure.query(async () => listAvailableOrganizations()),
   /**
    * Get current user's onboarding status
    */
@@ -45,41 +29,13 @@ export const onboardingRouter = router({
         name: z.string().min(2).max(100),
       })
     )
-    .mutation(async ({ ctx, input }) => {
-      if (!config.allowSelfServiceOrgs) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Billing checkout required before creating an organization',
-        });
-      }
-
-      await onboardingService.assertCanStartOnboarding(ctx.user.sub);
-
-      const result = await onboardingService.createOrganization(input.name, ctx.user.sub);
-
-      const user = await openpathUsers.getUserById(ctx.user.sub);
-      if (!user) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'User not found after organization creation',
-        });
-      }
-
-      const roles = await openpathRoles.getUserRoles(ctx.user.sub);
-      const tokens = jwt.generateTokens(user, roles);
-      return storeSessionFromPayload(ctx.res, {
-        success: true,
-        organizationId: result.organizationId,
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          roles,
-        },
-      });
-    }),
+    .mutation(async ({ ctx, input }) =>
+      createOrganizationSession({
+        name: input.name,
+        userId: ctx.user.sub,
+        res: ctx.res,
+      })
+    ),
 
   /**
    * Mark user as waiting for invitation to a specific organization
@@ -92,58 +48,17 @@ export const onboardingRouter = router({
         })
         .optional()
     )
-    .mutation(async ({ ctx, input }) => {
-      await onboardingService.assertCanStartOnboarding(ctx.user.sub);
-
-      const targetOrgId = input?.targetOrganizationId;
-
-      if (targetOrgId) {
-        // Verify organization exists
-        const org = await db
-          .select()
-          .from(schema.cpOrganizations)
-          .where(eq(schema.cpOrganizations.id, targetOrgId))
-          .limit(1);
-
-        if (org.length === 0) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Organization not found',
-          });
-        }
-
-        await pendingUsersService.setWaitingStatusWithOrg(ctx.user.sub, targetOrgId);
-      } else {
-        const orgs = await db
-          .select({ id: schema.cpOrganizations.id })
-          .from(schema.cpOrganizations)
-          .limit(2);
-
-        if (orgs.length === 1) {
-          await pendingUsersService.setWaitingStatusWithOrg(ctx.user.sub, orgs[0].id);
-        } else if (orgs.length === 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'No hay organizaciones disponibles',
-          });
-        } else if (!config.allowOrgDirectory) {
-          await onboardingService.setWaitingStatus(ctx.user.sub);
-        } else {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Debes seleccionar una organización para solicitar acceso',
-          });
-        }
-      }
-
-      return { success: true };
-    }),
+    .mutation(async ({ ctx, input }) =>
+      setWaitingForInvitation({
+        userId: ctx.user.sub,
+        targetOrganizationId: input?.targetOrganizationId,
+      })
+    ),
 
   /**
    * Clear waiting status (user wants to create org instead)
    */
-  cancelWaiting: protectedProcedure.mutation(async ({ ctx }) => {
-    await onboardingService.clearWaitingStatus(ctx.user.sub);
-    return { success: true };
-  }),
+  cancelWaiting: protectedProcedure.mutation(async ({ ctx }) =>
+    cancelWaitingForInvitation(ctx.user.sub)
+  ),
 });

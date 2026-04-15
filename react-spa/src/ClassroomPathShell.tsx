@@ -21,12 +21,9 @@ import {
   normalizeShellPathname,
   type AppTab,
 } from './app/classroom-path-shell-routing';
+import { getShellTitle, type SelectedGroupState } from './app/classroom-path-shell-state';
 
-interface SelectedGroup {
-  id: string;
-  name: string;
-  readOnly?: boolean;
-}
+interface SelectedGroup extends SelectedGroupState {}
 
 function ClassroomPathShellContent() {
   const location = useLocation();
@@ -77,27 +74,6 @@ function ClassroomPathShellContent() {
     <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
   );
 
-  const getTitle = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return admin ? 'Vista General' : 'Mi Panel';
-      case 'classrooms':
-        return admin ? 'Gestión de Aulas' : 'Aulas';
-      case 'groups':
-        return admin ? 'Grupos y Políticas' : 'Mis Políticas';
-      case 'rules':
-        return selectedGroup ? `Reglas: ${selectedGroup.name}` : 'Gestión de Reglas';
-      case 'users':
-        return admin ? 'Administración de Usuarios' : 'Mi Panel';
-      case 'domains':
-        return admin ? 'Solicitudes de Acceso' : 'Mi Panel';
-      case 'settings':
-        return 'Configuración';
-      default:
-        return 'ClassroomPath';
-    }
-  };
-
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
       <Sidebar
@@ -114,7 +90,10 @@ function ClassroomPathShellContent() {
       ) : null}
 
       <div className="flex min-h-screen flex-1 flex-col md:ml-64">
-        <Header onMenuClick={() => setSidebarOpen((current) => !current)} title={getTitle()} />
+        <Header
+          onMenuClick={() => setSidebarOpen((current) => !current)}
+          title={getShellTitle({ activeTab, admin, selectedGroup })}
+        />
 
         <main className="flex-1 overflow-y-auto p-6 md:p-8">
           <div className="mx-auto max-w-7xl">

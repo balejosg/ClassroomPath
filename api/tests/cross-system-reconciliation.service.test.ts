@@ -400,15 +400,6 @@ describe('cross-system-reconciliation.service', () => {
 
       assert.deepStrictEqual(revoked, { success: true });
 
-      await db.insert(schema.cpOrganizationUsers).values({
-        id: 'org_user_target_recon',
-        organizationId: 'org_recon',
-        openpathUserId: 'target_recon',
-        email: 'target_recon@example.com',
-        fullName: 'Target Recon',
-        role: 'teacher',
-      });
-
       const deleteOperation = await getOrCreateMutationOperation({
         operationType: 'users.delete_organization_user',
         idempotencyKey: 'org_recon:target_recon',

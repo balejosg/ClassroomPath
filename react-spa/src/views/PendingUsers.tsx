@@ -1,16 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { UserPlus, UserX, Loader2, AlertCircle, Clock, CheckCircle } from 'lucide-react';
-import { usePendingUsers, useApproveUser, useRejectUser } from '../lib/hooks';
-import { reportError } from '../lib/reportError';
-
-interface PendingUser {
-  userId: string;
-  email: string;
-  name: string;
-  createdAt: string | null;
-}
-
-type RoleOption = 'teacher' | 'admin';
+import {
+  formatPendingUserDate,
+  type RoleOption,
+  usePendingUsersState,
+} from './pending-users-state';
 
 const RoleSelector: React.FC<{
   value: RoleOption;
@@ -29,63 +23,9 @@ const RoleSelector: React.FC<{
 };
 
 export function PendingUsers() {
-  const { data: pendingUsers, isLoading, error, refetch } = usePendingUsers();
-  const approveMutation = useApproveUser();
-  const rejectMutation = useRejectUser();
+  const state = usePendingUsersState();
 
-  const [selectedRoles, setSelectedRoles] = useState<Record<string, RoleOption>>({});
-  const [processingUser, setProcessingUser] = useState<string | null>(null);
-
-  const handleApprove = async (userId: string) => {
-    const role = selectedRoles[userId] || 'teacher';
-    setProcessingUser(userId);
-
-    try {
-      await approveMutation.mutateAsync({ userId, role });
-      refetch();
-    } catch (err) {
-      reportError('Error approving user', err, {
-        action: 'approve-pending-user',
-        userRole: 'admin',
-        targetUserId: userId,
-        assignedRole: role,
-      });
-    } finally {
-      setProcessingUser(null);
-    }
-  };
-
-  const handleReject = async (userId: string) => {
-    if (!confirm('¿Estás seguro de que quieres rechazar esta solicitud?')) return;
-
-    setProcessingUser(userId);
-    try {
-      await rejectMutation.mutateAsync({ userId });
-      refetch();
-    } catch (err) {
-      reportError('Error rejecting user', err, {
-        action: 'reject-pending-user',
-        userRole: 'admin',
-        targetUserId: userId,
-      });
-    } finally {
-      setProcessingUser(null);
-    }
-  };
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return 'Fecha desconocida';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('es-ES', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  if (isLoading) {
+  if (state.isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
@@ -94,13 +34,13 @@ export function PendingUsers() {
     );
   }
 
-  if (error) {
+  if (state.error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
         <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
         <p className="text-red-600 font-medium">Error al cargar solicitudes</p>
         <button
-          onClick={() => refetch()}
+          onClick={() => state.refetch()}
           className="mt-3 text-sm text-red-700 hover:text-red-900 underline"
         >
           Reintentar
@@ -108,8 +48,6 @@ export function PendingUsers() {
       </div>
     );
   }
-
-  const users = (pendingUsers as PendingUser[]) || [];
 
   return (
     <div className="space-y-6">
@@ -122,7 +60,7 @@ export function PendingUsers() {
       </div>
 
       {/* Content */}
-      {users.length === 0 ? (
+      {state.users.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-lg p-12 text-center">
           <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-slate-700 mb-2">
@@ -146,7 +84,7 @@ export function PendingUsers() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {users.map((user) => (
+                {state.users.map((user) => (
                   <tr key={user.userId} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -163,24 +101,24 @@ export function PendingUsers() {
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-600">{user.email}</td>
                     <td className="px-6 py-4 text-sm text-slate-500">
-                      {formatDate(user.createdAt)}
+                      {formatPendingUserDate(user.createdAt)}
                     </td>
                     <td className="px-6 py-4">
                       <RoleSelector
-                        value={selectedRoles[user.userId] || 'teacher'}
+                        value={state.selectedRoles[user.userId] || 'teacher'}
                         onChange={(role) =>
-                          setSelectedRoles((prev) => ({ ...prev, [user.userId]: role }))
+                          state.setSelectedRoles((prev) => ({ ...prev, [user.userId]: role }))
                         }
                       />
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => void handleApprove(user.userId)}
-                          disabled={processingUser === user.userId}
+                          onClick={() => void state.handleApprove(user.userId)}
+                          disabled={state.processingUser === user.userId}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                          {processingUser === user.userId ? (
+                          {state.processingUser === user.userId ? (
                             <Loader2 size={14} className="animate-spin" />
                           ) : (
                             <UserPlus size={14} />
@@ -188,8 +126,8 @@ export function PendingUsers() {
                           Aprobar
                         </button>
                         <button
-                          onClick={() => void handleReject(user.userId)}
-                          disabled={processingUser === user.userId}
+                          onClick={() => void state.handleReject(user.userId)}
+                          disabled={state.processingUser === user.userId}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           <UserX size={14} />
@@ -205,8 +143,7 @@ export function PendingUsers() {
 
           {/* Summary */}
           <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 text-xs text-slate-500">
-            {users.length} solicitud{users.length !== 1 ? 'es' : ''} pendiente
-            {users.length !== 1 ? 's' : ''}
+            {state.summaryLabel}
           </div>
         </div>
       )}

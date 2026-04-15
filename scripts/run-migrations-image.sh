@@ -53,7 +53,7 @@ eval "$(node scripts/derive-openpath-db-env.mjs)"
 
 if [ "$RUN_CP" = "1" ]; then
   echo "[MIGRATIONS] - ClassroomPath API schema..."
-  node --import tsx api/scripts/ensure-legacy-cp-schema.ts
+  node --import tsx api/scripts/cleanup-cp-schema.ts
   npm run db:push -w @classroompath/api
 fi
 

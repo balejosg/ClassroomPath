@@ -47,7 +47,7 @@ export function getAccessToken(): string | null {
   if (token && token !== COOKIE_SESSION_MARKER) {
     return token;
   }
-  return getItem(LEGACY_API_TOKEN_KEY);
+  return null;
 }
 
 export function hasSessionMarker(): boolean {

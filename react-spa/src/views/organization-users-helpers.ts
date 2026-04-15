@@ -31,7 +31,7 @@ export type DeliveryNotice = {
 
 type RoleEntry = { role: string };
 
-type MemberRecord = {
+export type MemberRecord = {
   id: string;
   name: string;
   email: string;
@@ -39,7 +39,7 @@ type MemberRecord = {
   roles: RoleEntry[];
 };
 
-type InvitationRecord = {
+export type InvitationRecord = {
   id: string;
   name: string;
   email: string;

@@ -18,6 +18,11 @@ import {
 import { AuthEntryView } from './app/AuthEntryView';
 import { OnboardingAccessGate } from './app/OnboardingAccessGate';
 import {
+  isUnauthorizedOnboardingError,
+  shouldScheduleLoadingTimeout,
+  shouldSyncAuthenticatedProfile,
+} from './app/classroom-path-app-state';
+import {
   getAuthViewFromPathname,
   getPathForAuthView,
   isBillingCancelPath,
@@ -111,12 +116,7 @@ function AppContent() {
   const { data: status, isLoading, refetch, isError, error } = query;
 
   useEffect(() => {
-    if (!isAuth) {
-      setLoadingTimedOut(false);
-      return;
-    }
-
-    if (!isLoading) {
+    if (!shouldScheduleLoadingTimeout({ isAuth, isLoading })) {
       setLoadingTimedOut(false);
       return;
     }
@@ -131,8 +131,17 @@ function AppContent() {
       return;
     }
 
-    if (!status?.hasMembership || status?.isWaiting) return;
-    if (hasSyncedProfileRef.current) return;
+    if (
+      !shouldSyncAuthenticatedProfile({
+        isAuth,
+        hasMembership: status?.hasMembership,
+        isWaiting: status?.isWaiting,
+        hasSyncedProfile: hasSyncedProfileRef.current,
+      })
+    ) {
+      return;
+    }
+
     hasSyncedProfileRef.current = true;
 
     void (async () => {
@@ -148,17 +157,7 @@ function AppContent() {
   useEffect(() => {
     if (!isAuth || !isError || !error) return;
 
-    const trpcError = error as any;
-    const code = trpcError?.data?.code || trpcError?.shape?.data?.code;
-    const httpStatus = trpcError?.data?.httpStatus || trpcError?.shape?.data?.httpStatus;
-    const message = trpcError?.message || '';
-    const isUnauthorized =
-      code === 'UNAUTHORIZED' ||
-      httpStatus === 401 ||
-      message.toLowerCase().includes('not authenticated') ||
-      message.toLowerCase().includes('unauthorized');
-
-    if (isUnauthorized) {
+    if (isUnauthorizedOnboardingError(error)) {
       clearSession();
       setIsAuth(false);
       navigateToAuthView('login', true);

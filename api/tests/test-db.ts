@@ -6,7 +6,6 @@ import {
   OPENPATH_TEST_RESET_TABLES,
 } from '../src/db/test-table-inventory.js';
 import { db } from '../src/db/index.js';
-import { CP_ORGANIZATION_GROUPS_LEGACY_SCHEMA_REPAIR_SQL } from '../src/db/legacy-schema-repair.js';
 import { openpathDb } from '../src/db/openpath.js';
 
 const TEST_DB_LOCK_KEY = 20260310;
@@ -25,8 +24,6 @@ function isDeadlockError(error: unknown): error is { code: string } {
 
 export async function resetDb(): Promise<void> {
   await withTestDbLock(async () => {
-    await db.execute(sql.raw(CP_ORGANIZATION_GROUPS_LEGACY_SCHEMA_REPAIR_SQL));
-
     await db.execute(
       sql.raw(`
       DO $$

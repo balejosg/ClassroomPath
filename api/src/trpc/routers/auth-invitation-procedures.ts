@@ -2,11 +2,8 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
 import { publicProcedure } from '../trpc.js';
-import {
-  callOpenPathTrpc,
-  loginOpenPathUser,
-  registerOpenPathUser,
-} from '../../lib/openpath-upstream.js';
+import { callOpenPathTrpc } from '../../lib/openpath/trpc-client.js';
+import { loginOpenPathUser, registerOpenPathUser } from '../../lib/openpath/auth-client.js';
 import { synchronizeOpenPathRole } from '../../lib/openpath-roles.js';
 import { storeSessionFromPayload } from '../../lib/session-cookies.js';
 import {

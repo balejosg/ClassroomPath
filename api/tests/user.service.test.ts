@@ -21,7 +21,6 @@ const RUN_ID = Math.random().toString(36).slice(2, 10);
 let counter = 0;
 const organizationIds = new Set<string>();
 const membershipIds = new Set<string>();
-const legacyOrgUserIds = new Set<string>();
 const invitationIds = new Set<string>();
 const userIds = new Set<string>();
 const roleIds = new Set<string>();
@@ -80,12 +79,6 @@ async function seedUser(params: {
 
 after(async () => {
   const trackedUserIds = [...userIds];
-
-  if (legacyOrgUserIds.size > 0) {
-    await db
-      .delete(schema.cpOrganizationUsers)
-      .where(inArray(schema.cpOrganizationUsers.id, [...legacyOrgUserIds]));
-  }
 
   if (invitationIds.size > 0) {
     await db
@@ -223,14 +216,6 @@ describe('user.service', { concurrency: 1 }, () => {
       role: 'teacher',
       groupIds: [],
       createdBy: adminUserId,
-    });
-
-    const legacyOrgUserId = nextId('legacy');
-    legacyOrgUserIds.add(legacyOrgUserId);
-    await db.insert(schema.cpOrganizationUsers).values({
-      id: legacyOrgUserId,
-      organizationId,
-      openpathUserId: targetUserId,
     });
 
     const updatedUser = await updateOrganizationUser({

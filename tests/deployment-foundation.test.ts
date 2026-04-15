@@ -63,20 +63,20 @@ describe('Deployment foundation contracts', () => {
   const classroomPathPackagePath = resolve(projectRoot, 'package.json');
   const preCommitHookPath = resolve(projectRoot, '.husky/pre-commit');
 
-  test('migration runners repair the legacy ClassroomPath schema before db:push', () => {
+  test('migration runners clean the ClassroomPath schema before db:push', () => {
     const dockerContent = readFileSync(migrationsScriptPath, 'utf-8');
     const hostContent = readFileSync(hostMigrationsScriptPath, 'utf-8');
-    const repairStep = 'node --import tsx api/scripts/ensure-legacy-cp-schema.ts';
+    const repairStep = 'node --import tsx api/scripts/cleanup-cp-schema.ts';
     const pushStep = 'npm run db:push -w @classroompath/api';
 
     for (const [scriptName, content] of [
       ['run-migrations-docker.sh', dockerContent],
       ['run-migrations.sh', hostContent],
     ] as const) {
-      assert.ok(content.includes(repairStep), `${scriptName} should repair the legacy schema`);
+      assert.ok(content.includes(repairStep), `${scriptName} should clean the schema`);
       assert.ok(
         content.indexOf(repairStep) < content.indexOf(pushStep),
-        `${scriptName} should repair the legacy schema before db:push`
+        `${scriptName} should clean the schema before db:push`
       );
     }
   });

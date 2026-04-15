@@ -189,16 +189,6 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       'only the admin membership should exist before acceptance'
     );
 
-    const orgLinks = await db
-      .select()
-      .from(cpSchema.cpOrganizationUsers)
-      .where(eq(cpSchema.cpOrganizationUsers.organizationId, orgId));
-    assert.strictEqual(
-      orgLinks.length,
-      0,
-      'invitation flow should not depend on cp_organization_users for tenant scoping'
-    );
-
     const pendingInvitations = await db
       .select()
       .from(cpSchema.cpInvitations)
@@ -407,93 +397,6 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     assert.strictEqual(persistedInvitations[0]?.email, 'mixedcaseuser@example.com');
   });
 
-  test('users.list ignores legacy cp_organization_users rows without a tenant membership', async () => {
-    const orgId = `org-users-legacy-link-${Date.now()}`;
-    const adminUserId = `u-admin-legacy-link-${Date.now()}`;
-    const linkedOnlyUserId = `u-linked-only-${Date.now()}`;
-
-    const adminEmail = uniqueEmail('admin-legacy-link');
-    const linkedOnlyEmail = uniqueEmail('linked-only');
-
-    await openpathDb.insert(openpathSchema.users).values([
-      {
-        id: adminUserId,
-        email: adminEmail,
-        name: 'Admin Legacy Link',
-        passwordHash: 'hashed',
-        isActive: true,
-        emailVerified: true,
-      },
-      {
-        id: linkedOnlyUserId,
-        email: linkedOnlyEmail,
-        name: 'Linked Only User',
-        passwordHash: 'hashed',
-        isActive: true,
-        emailVerified: false,
-      },
-    ]);
-
-    await openpathDb.insert(openpathSchema.roles).values({
-      id: `role-${adminUserId}`,
-      userId: adminUserId,
-      role: 'admin',
-      groupIds: [],
-      createdBy: adminUserId,
-    });
-
-    await db.insert(cpSchema.cpOrganizations).values({
-      id: orgId,
-      name: `Org ${orgId}`,
-      createdBy: adminUserId,
-    });
-
-    await db.insert(cpSchema.cpMemberships).values({
-      id: `mem-${adminUserId}`,
-      userId: adminUserId,
-      organizationId: orgId,
-      role: 'admin',
-      invitedBy: adminUserId,
-    });
-
-    await db.insert(cpSchema.cpOrganizationEntitlements).values({
-      organizationId: orgId,
-      source: 'manual_admin',
-      status: 'active',
-      productKind: 'annual',
-      classroomLimit: 100,
-      grantedBy: adminUserId,
-    });
-
-    await db.insert(cpSchema.cpOrganizationUsers).values({
-      id: `org-user-${linkedOnlyUserId}`,
-      organizationId: orgId,
-      openpathUserId: linkedOnlyUserId,
-    });
-
-    const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: adminUserId,
-      email: adminEmail,
-      name: 'Admin Legacy Link',
-      roles: [{ role: 'admin', groupIds: [] }],
-    });
-
-    const resp = await trpcQuery(
-      integration.baseUrl,
-      'users.list',
-      undefined,
-      bearerAuth(adminToken)
-    );
-    assertStatus(resp, 200);
-
-    const { data } = (await parseTRPC(resp)) as { data: Array<{ id: string }> };
-    assert.ok(
-      data.every((user) => user.id !== linkedOnlyUserId),
-      'legacy cp_organization_users links must not grant tenant visibility without cp_memberships'
-    );
-  });
-
   test('users.list is forbidden for non-admin org members', async () => {
     const orgId = `org-users-nonadmin-${Date.now()}`;
     const userId = `u-nonadmin-${Date.now()}`;
@@ -621,12 +524,6 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       grantedBy: adminUserId,
     });
 
-    await db.insert(cpSchema.cpOrganizationUsers).values({
-      id: `org-user-${targetUserId}`,
-      organizationId: orgId,
-      openpathUserId: targetUserId,
-    });
-
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,
       userId: adminUserId,
@@ -653,17 +550,6 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
         )
       );
     assert.strictEqual(memberships.length, 0, 'tenant membership should be removed');
-
-    const orgLinks = await db
-      .select()
-      .from(cpSchema.cpOrganizationUsers)
-      .where(
-        and(
-          eq(cpSchema.cpOrganizationUsers.organizationId, orgId),
-          eq(cpSchema.cpOrganizationUsers.openpathUserId, targetUserId)
-        )
-      );
-    assert.strictEqual(orgLinks.length, 0, 'tenant org-user link should be removed');
 
     const survivingUsers = await openpathDb
       .select({ id: openpathSchema.users.id })
@@ -749,12 +635,6 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
       grantedBy: adminUserId,
     });
 
-    await db.insert(cpSchema.cpOrganizationUsers).values({
-      id: `org-user-${adminUserId}`,
-      organizationId: orgId,
-      openpathUserId: adminUserId,
-    });
-
     const adminToken = signToken({
       jwtSecret: JWT_SECRET,
       userId: adminUserId,
@@ -778,13 +658,6 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     assert.strictEqual(memberships.length, 1);
     assert.strictEqual(memberships[0]?.userId, adminUserId);
     assert.strictEqual(memberships[0]?.role, 'admin');
-
-    const orgLinks = await db
-      .select()
-      .from(cpSchema.cpOrganizationUsers)
-      .where(eq(cpSchema.cpOrganizationUsers.organizationId, orgId));
-    assert.strictEqual(orgLinks.length, 1);
-    assert.strictEqual(orgLinks[0]?.openpathUserId, adminUserId);
   });
 
   test('users.update mutates tenant-scoped OpenPath profile fields', async () => {

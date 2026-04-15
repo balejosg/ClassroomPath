@@ -56,11 +56,8 @@ source "$COMMON_SH_PATH"
 if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
   # shellcheck source=lib/release-manifest.sh
   source "$RELEASE_MANIFEST_HELPER_PATH"
-elif release_manifest_compat_helper_supports_contract "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"; then
-  # shellcheck source=lib/release-manifest-compat.sh
-  source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"
 else
-  log_error "Remote release-manifest helpers do not meet the minimum contract"
+  log_error "Remote release-manifest helper does not meet the minimum contract"
   exit 1
 fi
 
@@ -103,11 +100,8 @@ fi
 if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
   # shellcheck source=lib/release-state.sh
   source "$RELEASE_STATE_HELPER_PATH"
-elif release_state_compat_helper_supports_contract "$RELEASE_STATE_COMPAT_HELPER_PATH"; then
-  # shellcheck source=lib/release-state-compat.sh
-  source "$RELEASE_STATE_COMPAT_HELPER_PATH"
 else
-  log_error "Remote release-state helpers do not meet the minimum runtime contract"
+  log_error "Remote release-state helper does not meet the minimum runtime contract"
   exit 1
 fi
 

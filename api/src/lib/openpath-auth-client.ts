@@ -1,11 +1,9 @@
 import type { Response } from 'express';
 import { TRPCError } from '@trpc/server';
 import type { TRPC_ERROR_CODE_KEY } from '@trpc/server/rpc';
-import {
-  callOpenPathTrpc,
-  fetchOpenPathMeProfile,
-  type OpenPathForwardRequest,
-} from './openpath-upstream.js';
+import { callOpenPathTrpc } from './openpath/trpc-client.js';
+import { fetchOpenPathMeProfile } from './openpath/auth-client.js';
+import type { OpenPathForwardRequest } from './openpath/headers.js';
 import { logger } from './logger.js';
 import {
   clearSessionCookies,

@@ -59,25 +59,14 @@ export async function deleteOrganizationUser(params: {
             )
             .limit(1);
 
-          await db.transaction(async (tx) => {
-            await tx
-              .delete(schema.cpOrganizationUsers)
-              .where(
-                and(
-                  eq(schema.cpOrganizationUsers.organizationId, params.organizationId),
-                  eq(schema.cpOrganizationUsers.openpathUserId, params.userId)
-                )
-              );
-
-            await tx
-              .delete(schema.cpMemberships)
-              .where(
-                and(
-                  eq(schema.cpMemberships.organizationId, params.organizationId),
-                  eq(schema.cpMemberships.userId, params.userId)
-                )
-              );
-          });
+          await db
+            .delete(schema.cpMemberships)
+            .where(
+              and(
+                eq(schema.cpMemberships.organizationId, params.organizationId),
+                eq(schema.cpMemberships.userId, params.userId)
+              )
+            );
 
           const membershipRole = membership?.role ?? null;
 

@@ -184,9 +184,7 @@ export const cpOrganizationGroups = pgTable(
       .notNull()
       .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
     groupId: varchar('group_id', { length: 50 }).notNull(),
-    // Human-facing slug within the organization. Legacy rows may be null and
-    // should fall back to the underlying OpenPath name until backfilled.
-    publicName: varchar('public_name', { length: 100 }),
+    publicName: varchar('public_name', { length: 100 }).notNull(),
     // Visibility within the organization (aligned with OpenPath values).
     visibility: varchar('visibility', { length: 20 }).default('private').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -197,28 +195,11 @@ export const cpOrganizationGroups = pgTable(
   ]
 );
 
-// Legacy mapping retained for backwards compatibility. Tenant scoping authority lives in cp_memberships.
-export const cpOrganizationUsers = pgTable(
-  'cp_organization_users',
-  {
-    id: varchar('id', { length: 50 }).primaryKey(),
-    organizationId: varchar('organization_id', { length: 50 })
-      .notNull()
-      .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
-    openpathUserId: varchar('openpath_user_id', { length: 50 }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  },
-  (table) => [unique('cp_org_user_key').on(table.organizationId, table.openpathUserId)]
-);
-
 export type OrganizationClassroom = typeof cpOrganizationClassrooms.$inferSelect;
 export type NewOrganizationClassroom = typeof cpOrganizationClassrooms.$inferInsert;
 
 export type OrganizationGroup = typeof cpOrganizationGroups.$inferSelect;
 export type NewOrganizationGroup = typeof cpOrganizationGroups.$inferInsert;
-
-export type OrganizationUser = typeof cpOrganizationUsers.$inferSelect;
-export type NewOrganizationUser = typeof cpOrganizationUsers.$inferInsert;
 
 // =============================================================================
 // SaaS Templates (copy-on-import)

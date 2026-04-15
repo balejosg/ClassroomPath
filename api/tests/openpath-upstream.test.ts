@@ -8,13 +8,13 @@ import {
   extractTrpcData,
   extractUpstreamErrorMessage,
   generateOpenPathEmailVerificationToken,
-  googleLoginOpenPathUser,
   getForwardHeaders,
+  googleLoginOpenPathUser,
   loginOpenPathUser,
   mapUpstreamStatusToTrpcCode,
   openPathTrpcUrl,
-  registerOpenPathUser,
   readUpstreamErrorMessage,
+  registerOpenPathUser,
 } from '../src/lib/openpath-upstream.js';
 
 describe('openpath-upstream', () => {

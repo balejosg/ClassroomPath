@@ -647,12 +647,6 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
       invitedBy: actorUserId,
     });
 
-    await db.insert(cpSchema.cpOrganizationUsers).values({
-      id: `org-user-${targetUserId}`,
-      organizationId: orgId,
-      openpathUserId: targetUserId,
-    });
-
     await assertLastAdminServiceConflict(() =>
       deleteOrganizationUser({
         organizationId: orgId,
@@ -674,11 +668,5 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
       .from(cpSchema.cpMemberships)
       .where(eq(cpSchema.cpMemberships.userId, targetUserId));
     assert.strictEqual(membership?.role, 'admin');
-
-    const orgLinks = await db
-      .select()
-      .from(cpSchema.cpOrganizationUsers)
-      .where(eq(cpSchema.cpOrganizationUsers.openpathUserId, targetUserId));
-    assert.strictEqual(orgLinks.length, 1);
   });
 });

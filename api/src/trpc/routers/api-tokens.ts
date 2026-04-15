@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
-import { callOpenPathTrpc } from '../../lib/openpath-upstream.js';
+import { callOpenPathTrpc } from '../../lib/openpath/trpc-client.js';
 
 type ApiTokenListItem = {
   id: string;

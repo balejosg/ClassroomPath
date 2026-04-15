@@ -115,15 +115,6 @@ async function seed(): Promise<void> {
     })) as any
   );
 
-  // Used by cp users router list/getRole/etc.
-  await db.insert(schema.cpOrganizationUsers).values(
-    roleUsers.map((user) => ({
-      id: `orguser_${user.id}`,
-      organizationId: SEEDED_E2E_ORGANIZATION.id,
-      openpathUserId: user.id,
-    }))
-  );
-
   const waitingUsers = usersToSeed.filter((user) => user.status === 'waiting');
   if (waitingUsers.length > 0) {
     await db.insert(schema.cpUserStatus).values(

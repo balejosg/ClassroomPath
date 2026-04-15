@@ -47,7 +47,7 @@ const GROUP_NAME_2 = `tacc_group_${RUN_ID}_name_2`;
 const GROUP_ID_3 = `tacc_g_${RUN_ID}_3`;
 const GROUP_NAME_3 = `tacc_group_${RUN_ID}_name_3`;
 
-describe('tenant-access', () => {
+describe('tenant-access', { concurrency: 1 }, () => {
   before(async () => {
     // Best-effort cleanup in case a previous run failed mid-hook.
     await db
@@ -91,13 +91,13 @@ describe('tenant-access', () => {
       },
     ]);
 
-    // Teacher owns GROUP_ID by id and GROUP_ID_2 by name (legacy support)
+    // Teacher owns GROUP_ID by id only.
     // NOTE: OpenPath DB enforces a single roles row per user (roles_user_id_key).
     await openpathDb.insert(openpathSchema.roles).values({
       id: `role_t_${RUN_ID}`,
       userId: USER_ID,
       role: 'teacher',
-      groupIds: [GROUP_ID, `  ${GROUP_NAME_2}  `],
+      groupIds: [GROUP_ID],
       createdBy: USER_ID,
     });
 
@@ -168,11 +168,11 @@ describe('tenant-access', () => {
     const identifiers = await getTeacherGroupIdentifiers(USER_ID);
 
     assert.ok(identifiers.has(GROUP_ID));
-    assert.ok(identifiers.has(GROUP_NAME_2));
+    assert.ok(!identifiers.has(GROUP_NAME_2));
     assert.ok(!identifiers.has(`  ${GROUP_NAME_2}  `));
   });
 
-  it('teacherCanUseGroup supports id and name fallback', async () => {
+  it('teacherCanUseGroup supports only assigned group ids', async () => {
     assert.strictEqual(
       await teacherCanUseGroup({ userId: USER_ID, groupId: GROUP_ID }),
       true,
@@ -181,9 +181,27 @@ describe('tenant-access', () => {
 
     assert.strictEqual(
       await teacherCanUseGroup({ userId: USER_ID, groupId: GROUP_ID_2 }),
-      true,
-      'teacher should be able to use group via legacy name ownership'
+      false,
+      'teacher should not gain access through legacy name fallback'
     );
+  });
+
+  it('teacherCanUseGroup ignores legacy group-name identifiers', async () => {
+    await openpathDb
+      .update(openpathSchema.roles)
+      .set({ groupIds: [GROUP_NAME_2] })
+      .where(eq(openpathSchema.roles.userId, USER_ID));
+
+    assert.strictEqual(
+      await teacherCanUseGroup({ userId: USER_ID, groupId: GROUP_ID_2 }),
+      false,
+      'teacher should not gain access from legacy group names'
+    );
+
+    await openpathDb
+      .update(openpathSchema.roles)
+      .set({ groupIds: [GROUP_ID] })
+      .where(eq(openpathSchema.roles.userId, USER_ID));
   });
 
   it('assertCanUseGroup enforces teacher ownership and allows admin', async () => {
@@ -280,7 +298,7 @@ describe('tenant-access', () => {
       userRole: 'teacher',
       userId: USER_ID,
     });
-    assert.deepStrictEqual([...teacherIds].sort(), [GROUP_ID, GROUP_ID_2].sort());
+    assert.deepStrictEqual([...teacherIds].sort(), [GROUP_ID].sort());
 
     const userIds = await getAccessibleTenantGroupIds({
       organizationId: ORG_ID,
@@ -288,6 +306,26 @@ describe('tenant-access', () => {
       userId: USER_ID,
     });
     assert.deepStrictEqual(userIds, []);
+  });
+
+  it('getAccessibleTenantGroupIds ignores legacy name-only assignments', async () => {
+    await openpathDb
+      .update(openpathSchema.roles)
+      .set({ groupIds: [GROUP_NAME_2] })
+      .where(eq(openpathSchema.roles.userId, USER_ID));
+
+    const teacherIds = await getAccessibleTenantGroupIds({
+      organizationId: ORG_ID,
+      userRole: 'teacher',
+      userId: USER_ID,
+    });
+
+    assert.deepStrictEqual(teacherIds, []);
+
+    await openpathDb
+      .update(openpathSchema.roles)
+      .set({ groupIds: [GROUP_ID] })
+      .where(eq(openpathSchema.roles.userId, USER_ID));
   });
 
   it('enforces single-organization membership per user', async () => {

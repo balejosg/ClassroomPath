@@ -1,7 +1,7 @@
 import { router, publicProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 
-import { callOpenPathTrpc } from '../../lib/openpath-upstream.js';
+import { callOpenPathTrpc } from '../../lib/openpath/trpc-client.js';
 
 // Forward healthcheck requests to OpenPath API
 

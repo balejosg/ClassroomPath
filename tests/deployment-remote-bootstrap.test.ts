@@ -20,12 +20,7 @@ void describe('Remote Deploy Bootstrap', () => {
   const remoteBootstrapHelperPath = resolve(projectRoot, 'scripts/lib/remote-bootstrap.sh');
   const remoteHelperContractsPath = resolve(projectRoot, 'scripts/lib/remote-helper-contracts.sh');
   const releaseManifestHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest.sh');
-  const releaseManifestCompatHelperPath = resolve(
-    projectRoot,
-    'scripts/lib/release-manifest-compat.sh'
-  );
   const deployPayloadHelperPath = resolve(projectRoot, 'scripts/lib/deploy-payload.sh');
-  const releaseStateCompatHelperPath = resolve(projectRoot, 'scripts/lib/release-state-compat.sh');
   const stagingRemotePath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
   const productionRemotePath = resolve(projectRoot, 'scripts/deploy-production-remote.sh');
   const rollbackRemotePath = resolve(projectRoot, 'scripts/rollback-production-remote.sh');
@@ -45,14 +40,6 @@ void describe('Remote Deploy Bootstrap', () => {
     assert.ok(
       existsSync(remoteHelperContractsPath),
       'scripts/lib/remote-helper-contracts.sh should exist'
-    );
-    assert.ok(
-      existsSync(releaseManifestCompatHelperPath),
-      'scripts/lib/release-manifest-compat.sh should exist'
-    );
-    assert.ok(
-      existsSync(releaseStateCompatHelperPath),
-      'scripts/lib/release-state-compat.sh should exist'
     );
     assert.ok(
       content.includes('resolve_remote_script_dir()') &&
@@ -76,8 +63,6 @@ void describe('Remote Deploy Bootstrap', () => {
   void test('remote helper libraries publish explicit contract versions', () => {
     for (const helperPath of [
       releaseManifestHelperPath,
-      releaseManifestCompatHelperPath,
-      releaseStateCompatHelperPath,
       resolve(projectRoot, 'scripts/lib/release-state.sh'),
       resolve(projectRoot, 'scripts/lib/deployment-state.sh'),
       resolve(projectRoot, 'scripts/lib/release-runtime.sh'),
@@ -115,9 +100,8 @@ void describe('Remote Deploy Bootstrap', () => {
     }
   });
 
-  void test('shared remote manifest compatibility helper owns the fallback manifest contract', () => {
+  void test('shared release manifest helper owns the remote manifest contract', () => {
     const releaseManifestHelper = readFileSync(releaseManifestHelperPath, 'utf-8');
-    const releaseManifestCompatHelper = readFileSync(releaseManifestCompatHelperPath, 'utf-8');
 
     for (const functionName of [
       'release_manifest_get',
@@ -126,10 +110,9 @@ void describe('Remote Deploy Bootstrap', () => {
       'release_manifest_validate_contract',
       'export_release_manifest_runtime_env',
     ] as const) {
-      assert.strictEqual(
-        extractShellFunction(releaseManifestCompatHelper, functionName),
-        extractShellFunction(releaseManifestHelper, functionName),
-        `release-manifest-compat.sh fallback ${functionName}() should match the primary release-manifest helper`
+      assert.ok(
+        extractShellFunction(releaseManifestHelper, functionName).length > 0,
+        `release-manifest.sh should define ${functionName}()`
       );
     }
   });
@@ -207,17 +190,13 @@ void describe('Remote Deploy Bootstrap', () => {
         remoteContent.includes(
           'remote_deploy_reload_checked_out_helpers "$APP_DIR/scripts/lib/common.sh"'
         ) &&
-        remoteContent.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
-        remoteContent.includes(
-          'elif release_manifest_compat_helper_supports_contract "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"; then'
-        ) &&
-        remoteContent.includes('source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"') &&
+        remoteContent.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
         !remoteContent.includes('decode_release_manifest_base64() {') &&
         !remoteContent.includes('release_manifest_validate_contract() {'),
-      'deploy-staging-remote.sh should source shared helper contracts and manifest compatibility without duplicating inline fallback bodies'
+      'deploy-staging-remote.sh should source shared helper contracts and manifest helpers without duplicating inline fallback bodies'
     );
     assert.ok(
-      !remoteContent.includes('write_release_state_snapshot_compat() {') &&
+      !remoteContent.includes('write_release_state_snapshot() {') &&
         !remoteContent.includes('load_release_manifest_runtime() {'),
       'deploy-staging-remote.sh should not inline release-state or release-runtime fallback bodies once the remote contract floor is raised'
     );
@@ -262,17 +241,13 @@ void describe('Remote Deploy Bootstrap', () => {
         deployRemoteContent.includes(
           'remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"'
         ) &&
-        deployRemoteContent.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
-        deployRemoteContent.includes(
-          'elif release_manifest_compat_helper_supports_contract "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"; then'
-        ) &&
-        deployRemoteContent.includes('source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"') &&
+        deployRemoteContent.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
         !deployRemoteContent.includes('decode_release_manifest_base64() {') &&
         !deployRemoteContent.includes('release_manifest_validate_contract() {'),
-      'deploy-production-remote.sh should source shared helper contracts and manifest compatibility without duplicating inline fallback bodies'
+      'deploy-production-remote.sh should source shared helper contracts and manifest helpers without duplicating inline fallback bodies'
     );
     assert.ok(
-      !deployRemoteContent.includes('write_release_state_snapshot_compat() {') &&
+      !deployRemoteContent.includes('write_release_state_snapshot() {') &&
         !deployRemoteContent.includes('load_release_manifest_runtime() {') &&
         !deployRemoteContent.includes('deployment_state_init_paths() {'),
       'deploy-production-remote.sh should not inline release-state, release-runtime, or deployment-state fallback bodies once the remote contract floor is raised'
@@ -313,7 +288,7 @@ void describe('Remote Deploy Bootstrap', () => {
     }
   });
 
-  void test('remote deploy scripts resolve the shared release-state compatibility helper', () => {
+  void test('remote deploy scripts resolve the shared release-state helper', () => {
     for (const [scriptName, content] of [
       ['deploy-staging-remote.sh', readFileSync(stagingRemotePath, 'utf-8')],
       ['deploy-production-remote.sh', readFileSync(productionRemotePath, 'utf-8')],
@@ -323,9 +298,8 @@ void describe('Remote Deploy Bootstrap', () => {
       ],
     ] as const) {
       assert.ok(
-        content.includes('RELEASE_STATE_COMPAT_HELPER_PATH') &&
-          content.includes('lib/release-state-compat.sh'),
-        `${scriptName} should resolve the shared release-state compatibility helper`
+        content.includes('RELEASE_STATE_HELPER_PATH') && content.includes('lib/release-state.sh'),
+        `${scriptName} should resolve the shared release-state helper`
       );
     }
   });
@@ -338,7 +312,7 @@ void describe('Remote Deploy Bootstrap', () => {
         content.includes('source "$REMOTE_HELPER_CONTRACTS_PATH"') &&
         !content.includes('resolve_remote_script_dir() {') &&
         !content.includes('resolve_remote_helper_path() {') &&
-        !content.includes('write_release_state_snapshot_compat() {') &&
+        !content.includes('write_release_state_snapshot() {') &&
         !content.includes('write_staging_verification_state() {'),
       'persist-staging-verification-remote.sh should require versioned shared helpers instead of carrying inline bootstrap and release-state fallback bodies'
     );

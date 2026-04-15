@@ -73,11 +73,11 @@ describe('auth-storage', () => {
     expect(hasSessionMarker()).toBe(true);
   });
 
-  it('uses legacy token key when modern key is missing', () => {
+  it('ignores legacy token key when modern key is missing', () => {
     window.localStorage.setItem('requests_api_token', 'legacy-token');
 
-    expect(getAccessToken()).toBe('legacy-token');
-    expect(getAuthHeaders()).toEqual({ Authorization: 'Bearer legacy-token' });
+    expect(getAccessToken()).toBeNull();
+    expect(getAuthHeaders()).toEqual({});
     expect(hasSessionMarker()).toBe(false);
   });
 

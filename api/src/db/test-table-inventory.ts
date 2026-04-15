@@ -6,7 +6,6 @@ export const CLASSROOMPATH_TEST_RESET_TABLES = [
   'cp_billing_audit_events',
   'cp_mutation_operations',
   'cp_audit_events',
-  'cp_organization_users',
   'cp_organization_groups',
   'cp_organization_classrooms',
   'cp_invitations',

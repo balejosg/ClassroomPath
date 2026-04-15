@@ -1,6 +1,6 @@
 import type { CreateExpressContextOptions } from '@trpc/server/adapters/express';
 import { ACCESS_COOKIE_NAME, parseCookieValue } from '../lib/session-cookies.js';
-import { validateOpenPathAccessToken } from '../lib/openpath-upstream.js';
+import { validateOpenPathAccessToken } from '../lib/openpath/auth-client.js';
 
 export interface JWTPayload {
   sub: string;

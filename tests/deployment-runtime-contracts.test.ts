@@ -64,9 +64,7 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       migrationsDockerfile.includes('ENTRYPOINT ["sh", "scripts/run-migrations-image.sh"]')
     );
-    assert.ok(
-      migrationsImageScript.includes('node --import tsx api/scripts/ensure-legacy-cp-schema.ts')
-    );
+    assert.ok(migrationsImageScript.includes('node --import tsx api/scripts/cleanup-cp-schema.ts'));
     assert.ok(migrationsImageScript.includes('npm run db:push -w @classroompath/api'));
     assert.ok(migrationsImageScript.includes('npm run db:push -w @openpath/api'));
     assert.ok(migrationsImageScript.includes('node scripts/derive-openpath-db-env.mjs'));
@@ -144,10 +142,6 @@ describe('Deployment runtime contracts', () => {
       resolve(projectRoot, 'scripts/lib/release-manifest.sh'),
       'utf-8'
     );
-    const manifestCompatHelper = readFileSync(
-      resolve(projectRoot, 'scripts/lib/release-manifest-compat.sh'),
-      'utf-8'
-    );
     const deployPayloadHelper = readFileSync(
       resolve(projectRoot, 'scripts/lib/deploy-payload.mjs'),
       'utf-8'
@@ -159,8 +153,6 @@ describe('Deployment runtime contracts', () => {
     assert.ok(manifestHelper.includes('export_release_manifest_runtime_env()'));
     assert.ok(manifestHelper.includes('release_manifest_validate_contract()'));
     assert.ok(manifestHelper.includes('release_manifest_is_canonical_contract()'));
-    assert.ok(manifestCompatHelper.includes('release_manifest_get()'));
-    assert.ok(manifestCompatHelper.includes('export_release_manifest_runtime_env()'));
     assert.ok(deployPayloadHelper.includes('export function buildDeployPayload'));
     assert.ok(deployPayloadHelper.includes('export function encodeDeployPayloadBase64'));
     assert.ok(deployPayloadHelper.includes('export function decodeDeployPayloadBase64'));
@@ -175,11 +167,10 @@ describe('Deployment runtime contracts', () => {
     );
     assert.ok(
       stagingRemote.includes('decode_deploy_payload_base64 "$STAGING_DEPLOY_PAYLOAD_B64"') &&
-        stagingRemote.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
         stagingRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" manifest_base64)"'
         ) &&
-        stagingRemote.includes('source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"') &&
+        stagingRemote.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
         stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"') &&
         stagingRemote.includes('ensure_staging_release_candidate_runtime_env || return 1')
     );
@@ -193,11 +184,10 @@ describe('Deployment runtime contracts', () => {
     );
     assert.ok(
       productionRemote.includes('decode_deploy_payload_base64 "$DEPLOY_PAYLOAD_B64"') &&
-        productionRemote.includes('RELEASE_MANIFEST_COMPAT_HELPER_PATH') &&
         productionRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" manifest_base64)"'
         ) &&
-        productionRemote.includes('source "$RELEASE_MANIFEST_COMPAT_HELPER_PATH"') &&
+        productionRemote.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
         deployProductionContextHelper.includes(
           'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
         ) &&
@@ -220,10 +210,6 @@ describe('Deployment runtime contracts', () => {
   test('release runtime and state helpers stay centralized behind shared scaffold and contract helpers', () => {
     const releaseStateHelper = readFileSync(
       resolve(projectRoot, 'scripts/lib/release-state.sh'),
-      'utf-8'
-    );
-    const releaseStateCompatHelper = readFileSync(
-      resolve(projectRoot, 'scripts/lib/release-state-compat.sh'),
       'utf-8'
     );
     const releaseStateContract = readFileSync(
@@ -273,10 +259,6 @@ describe('Deployment runtime contracts', () => {
         releaseStateHelper.includes('write_staging_verification_state()') &&
         !releaseStateHelper.includes('release_state_fields()') &&
         releaseStateHelper.includes('release_state_cli_available()')
-    );
-    assert.ok(
-      releaseStateCompatHelper.includes('write_release_state_snapshot_compat()') &&
-        releaseStateCompatHelper.includes('list-fields')
     );
     assert.ok(
       releaseStateContract.includes('RELEASE_STATE_SNAPSHOT_DEFINITIONS') &&

@@ -1,9 +1,6 @@
 import { Client } from 'pg';
 
-import {
-  CP_MEMBERSHIPS_SINGLE_ORG_REPAIR_SQL,
-  CP_ORGANIZATION_GROUPS_LEGACY_SCHEMA_REPAIR_SQL,
-} from '../src/db/legacy-schema-repair.js';
+import { cleanupClassroomPathSchema } from '../src/db/schema-cleanup.js';
 
 function getConnectionString(): string {
   return (
@@ -17,9 +14,8 @@ async function main(): Promise<void> {
 
   try {
     await client.connect();
-    await client.query(CP_ORGANIZATION_GROUPS_LEGACY_SCHEMA_REPAIR_SQL);
-    await client.query(CP_MEMBERSHIPS_SINGLE_ORG_REPAIR_SQL);
-    console.log('[MIGRATIONS] Ensured legacy ClassroomPath schema compatibility');
+    await cleanupClassroomPathSchema(client);
+    console.log('[MIGRATIONS] Cleaned ClassroomPath schema for canonical constraints');
   } finally {
     await client.end();
   }
