@@ -39,7 +39,7 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     assert.equal(plan.verification.runReleaseGate, true);
     assert.equal(plan.verification.persistEvidence, true);
     assert.equal(plan.verification.supportsPromotionEvidence, true);
-    assert.equal(plan.verification.requireLiveWindowsFirefoxEvidence, false);
+    assert.equal(plan.verification.requireLiveWindowsFirefoxEvidence, true);
   });
 
   test('renders shell env assignments from the typed plan', () => {
@@ -57,7 +57,7 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     assert.match(rendered, /STAGING_RELEASE_RUN_ID=24006418074/);
     assert.match(rendered, /STAGING_RELEASE_REPOSITORY=balejosg\/ClassroomPath/);
     assert.match(rendered, /STAGING_SUPPORTS_PROMOTION_EVIDENCE=1/);
-    assert.match(rendered, /STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE=0/);
+    assert.match(rendered, /STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE=1/);
   });
 
   test('falls back to source-build planning without a manifest', () => {

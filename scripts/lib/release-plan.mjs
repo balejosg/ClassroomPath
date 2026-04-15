@@ -114,7 +114,7 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
         runReleaseGate: true,
         persistEvidence: true,
         supportsPromotionEvidence: true,
-        requireLiveWindowsFirefoxEvidence: false,
+        requireLiveWindowsFirefoxEvidence: true,
       },
     };
   }

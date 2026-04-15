@@ -96,6 +96,36 @@ await describe('proxy-routes', { concurrency: false }, async () => {
       path: '/api/extensions/firefox/openpath.xpi',
     });
 
+    const bootstrapResponse = await fetch(`${baseUrl}/api/agent/windows/bootstrap/latest.json`);
+    assert.equal(bootstrapResponse.status, 418);
+    assert.deepEqual(await bootstrapResponse.json(), {
+      proxied: true,
+      path: '/api/agent/windows/bootstrap/manifest',
+    });
+
+    const bootstrapFileResponse = await fetch(
+      `${baseUrl}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('runtime/browser-policy-spec.json')}`
+    );
+    assert.equal(bootstrapFileResponse.status, 418);
+    assert.deepEqual(await bootstrapFileResponse.json(), {
+      proxied: true,
+      path: '/api/agent/windows/bootstrap/files/runtime/browser-policy-spec.json',
+    });
+
+    const windowsManifestResponse = await fetch(`${baseUrl}/api/agent/windows/latest.json`);
+    assert.equal(windowsManifestResponse.status, 418);
+    assert.deepEqual(await windowsManifestResponse.json(), {
+      proxied: true,
+      path: '/api/agent/windows/manifest',
+    });
+
+    const linuxManifestResponse = await fetch(`${baseUrl}/api/agent/linux/latest.json`);
+    assert.equal(linuxManifestResponse.status, 418);
+    assert.deepEqual(await linuxManifestResponse.json(), {
+      proxied: true,
+      path: '/api/agent/linux/manifest',
+    });
+
     const whitelistResponse = await fetch(`${baseUrl}/w/token-123/whitelist.txt`);
     assert.equal(whitelistResponse.status, 418);
     assert.deepEqual(await whitelistResponse.json(), {

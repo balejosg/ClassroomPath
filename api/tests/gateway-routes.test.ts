@@ -187,21 +187,30 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
     assert.strictEqual(bootstrapResponse.status, 418);
     assert.deepStrictEqual(await bootstrapResponse.json(), {
       proxied: true,
-      path: '/api/agent/windows/bootstrap/latest.json',
+      path: '/api/agent/windows/bootstrap/manifest',
+    });
+
+    const bootstrapFileResponse = await fetch(
+      `${baseUrl}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('runtime/browser-policy-spec.json')}`
+    );
+    assert.strictEqual(bootstrapFileResponse.status, 418);
+    assert.deepStrictEqual(await bootstrapFileResponse.json(), {
+      proxied: true,
+      path: '/api/agent/windows/bootstrap/files/runtime/browser-policy-spec.json',
     });
 
     const windowsAgentManifestResponse = await fetch(`${baseUrl}/api/agent/windows/latest.json`);
     assert.strictEqual(windowsAgentManifestResponse.status, 418);
     assert.deepStrictEqual(await windowsAgentManifestResponse.json(), {
       proxied: true,
-      path: '/api/agent/windows/latest.json',
+      path: '/api/agent/windows/manifest',
     });
 
     const linuxAgentManifestResponse = await fetch(`${baseUrl}/api/agent/linux/latest.json`);
     assert.strictEqual(linuxAgentManifestResponse.status, 418);
     assert.deepStrictEqual(await linuxAgentManifestResponse.json(), {
       proxied: true,
-      path: '/api/agent/linux/latest.json',
+      path: '/api/agent/linux/manifest',
     });
 
     const firefoxResponse = await fetch(`${baseUrl}/api/extensions/firefox/openpath.xpi`);

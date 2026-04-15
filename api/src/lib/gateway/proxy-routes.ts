@@ -16,6 +16,45 @@ export interface GatewayProxyRoutesOptions {
   proxyMiddlewareFactory?: ProxyMiddlewareFactory;
 }
 
+function encodeWildcardPath(path: string): string {
+  return path
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function rewriteOpenPathProxyPath(reqUrl: string): string {
+  const [requestPath, rawQuery = ''] = reqUrl.split('?', 2);
+
+  switch (requestPath) {
+    case '/api/agent/windows/bootstrap/latest.json':
+      return '/api/agent/windows/bootstrap/manifest';
+    case '/api/agent/windows/latest.json':
+      return '/api/agent/windows/manifest';
+    case '/api/agent/linux/latest.json':
+      return '/api/agent/linux/manifest';
+    case '/api/agent/windows/bootstrap/file': {
+      const filePath = new URLSearchParams(rawQuery).get('path')?.trim();
+      if (!filePath) {
+        return reqUrl;
+      }
+
+      return `/api/agent/windows/bootstrap/files/${encodeWildcardPath(filePath)}`;
+    }
+    case '/api/agent/windows/file': {
+      const filePath = new URLSearchParams(rawQuery).get('path')?.trim();
+      if (!filePath) {
+        return reqUrl;
+      }
+
+      return `/api/agent/windows/files/${encodeWildcardPath(filePath)}`;
+    }
+    default:
+      return reqUrl;
+  }
+}
+
 export function registerGatewayProxyRoutes(app: Express, options: GatewayProxyRoutesOptions): void {
   const proxyMiddlewareFactory =
     options.proxyMiddlewareFactory ?? (createProxyMiddleware as ProxyMiddlewareFactory);
@@ -30,7 +69,8 @@ export function registerGatewayProxyRoutes(app: Express, options: GatewayProxyRo
     const handler = proxyMiddlewareFactory({
       target: options.openPathApiTarget,
       changeOrigin: true,
-      pathRewrite: (_path: string, req: Request) => req.originalUrl || req.url,
+      pathRewrite: (_path: string, req: Request) =>
+        rewriteOpenPathProxyPath(req.originalUrl || req.url),
       on: {
         proxyReq: injectEnrollTicketAuth,
       },
