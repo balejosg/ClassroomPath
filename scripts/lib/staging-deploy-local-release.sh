@@ -44,6 +44,7 @@ prepare_staging_local_release_context() {
     fi
 
     STAGING_IMAGE_SOURCE="$STAGING_IMAGE_MODE"
+    STAGING_DEPLOYMENT_MODE=""
     STAGING_USE_RELEASE_CANDIDATE=0
     STAGING_RELEASE_SHA=""
     STAGING_RELEASE_RUN_ID=""
@@ -53,7 +54,6 @@ prepare_staging_local_release_context() {
     STAGING_RELEASE_PLAN_ENV_FILE=""
     STAGING_DEPLOY_PAYLOAD_ENV_FILE=""
     STAGING_DEPLOY_PAYLOAD_B64=""
-    STAGING_SUPPORTS_PROMOTION_EVIDENCE="0"
     STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE="0"
     VERIFICATION_STATE_FILE=""
 
@@ -94,7 +94,7 @@ prepare_staging_local_release_context() {
         --deploy-ref "refs/heads/main" \
         --deploy-sha "$REMOTE_SHA" \
         --image-source "$STAGING_IMAGE_SOURCE" \
-        --supports-promotion-evidence "${STAGING_SUPPORTS_PROMOTION_EVIDENCE:-0}" \
+        --deployment-mode "$STAGING_DEPLOYMENT_MODE" \
         --manifest-base64 "$STAGING_RELEASE_MANIFEST_B64" > "$STAGING_DEPLOY_PAYLOAD_ENV_FILE"
 
     set -a
@@ -102,8 +102,8 @@ prepare_staging_local_release_context() {
     set +a
     STAGING_DEPLOY_PAYLOAD_B64="${DEPLOY_PAYLOAD_B64:-}"
 
-    if [ "$STAGING_RUN_RELEASE_GATE" = "1" ] && [ "${STAGING_SUPPORTS_PROMOTION_EVIDENCE:-0}" != "1" ]; then
-        log_error "STAGING_IMAGE_MODE=$STAGING_IMAGE_MODE cannot produce promotion evidence"
+    if [ "$STAGING_RUN_RELEASE_GATE" = "1" ] && [ "${STAGING_DEPLOYMENT_MODE:-debug}" != "promotion-eligible" ]; then
+        log_error "STAGING_DEPLOYMENT_MODE=${STAGING_DEPLOYMENT_MODE:-unset} cannot produce promotion evidence"
         log_error "Set STAGING_RUN_RELEASE_GATE=0 for debug or recovery deploys that only need runtime smoke coverage"
         exit 2
     fi

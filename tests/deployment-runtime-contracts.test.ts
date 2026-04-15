@@ -184,7 +184,7 @@ describe('Deployment runtime contracts', () => {
           'payload_image_source="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" image_source)"'
         ) &&
         stagingRemote.includes(
-          'payload_supports_promotion_evidence="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" supports_promotion_evidence)"'
+          'payload_deployment_mode="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" deployment_mode)"'
         ) &&
         stagingRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" manifest_base64)"'
@@ -205,6 +205,9 @@ describe('Deployment runtime contracts', () => {
       productionRemote.includes('decode_deploy_payload_base64 "$DEPLOY_PAYLOAD_B64"') &&
         productionRemote.includes(
           'payload_image_source="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" image_source)"'
+        ) &&
+        productionRemote.includes(
+          'payload_deployment_mode="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" deployment_mode)"'
         ) &&
         productionRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" manifest_base64)"'
@@ -369,7 +372,8 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       verifyState.includes('release-state-cli.mjs') &&
         verifyState.includes('--current ./staging-release-state.env') &&
-        verifyState.includes('--verification ./staging-verification.env')
+        verifyState.includes('--verification ./staging-verification.env') &&
+        verifyState.includes('--report-json ./staging-promotion-eligibility.json')
     );
   });
 

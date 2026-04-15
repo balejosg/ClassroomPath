@@ -53,8 +53,36 @@ function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
   return 'blocked_before_deploy';
 }
 
+function derivePromotionEligibility(env) {
+  const rawEligible = valueOrNull(env.PROMOTION_ELIGIBLE);
+  const fallbackEligible =
+    valueOrNull(env.VERIFY_STAGING_RESULT) === 'success' &&
+    valueOrNull(env.STAGING_SMOKE_RESULT) === 'success' &&
+    valueOrNull(env.STAGING_RELEASE_GATE_RESULT) === 'success';
+  const deploymentMode =
+    valueOrNull(env.PROMOTION_DEPLOYMENT_MODE) ??
+    (valueOrNull(env.STAGING_VERIFIED_IMAGE_SOURCE) === 'source-build'
+      ? 'debug'
+      : fallbackEligible
+        ? 'promotion-eligible'
+        : null);
+
+  return {
+    status:
+      rawEligible === 'true'
+        ? 'eligible'
+        : rawEligible === 'false'
+          ? 'ineligible'
+          : fallbackEligible
+            ? 'eligible'
+            : 'unknown',
+    deploymentMode,
+  };
+}
+
 export function buildReleaseEvidence(env = process.env) {
   const windowsFirefoxHighRisk = isTrueFlag(env.STAGING_WINDOWS_FIREFOX_HIGH_RISK);
+  const promotionEligibility = derivePromotionEligibility(env);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -76,6 +104,7 @@ export function buildReleaseEvidence(env = process.env) {
         rollbackResult: valueOrNull(env.ROLLBACK_RESULT),
       }),
     },
+    promotionEligibility,
     transparency: {
       localVerification: {
         source: 'developer-machine pre-commit verify:commit',
@@ -152,6 +181,8 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     `- Tag: \`${evidence.release.tagName ?? 'n/a'}\``,
     `- ClassroomPath SHA: \`${evidence.release.classroomPathSha ?? 'n/a'}\``,
     `- OpenPath SHA: \`${evidence.release.openPathSha ?? 'n/a'}\``,
+    `- Promotion eligibility: \`${evidence.promotionEligibility.status}\``,
+    `- Deployment mode: \`${evidence.promotionEligibility.deploymentMode ?? 'n/a'}\``,
     evidence.workflowRunUrl ? `- Workflow run: ${evidence.workflowRunUrl}` : '- Workflow run: n/a',
     '',
     '| Gate | Result |',

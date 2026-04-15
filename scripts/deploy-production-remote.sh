@@ -192,15 +192,21 @@ load_deploy_host_preflight_helper() {
 load_production_deploy_payload() {
   local release_manifest_b64=""
   local payload_image_source=""
+  local payload_deployment_mode=""
 
   if [ -n "${DEPLOY_PAYLOAD_B64:-}" ]; then
     DEPLOY_PAYLOAD_FILE="$(mktemp)"
     decode_deploy_payload_base64 "$DEPLOY_PAYLOAD_B64" "$DEPLOY_PAYLOAD_FILE" >/dev/null
     TARGET_SHA="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" deploy_sha)"
     payload_image_source="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" image_source)"
+    payload_deployment_mode="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" deployment_mode)"
     release_manifest_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" manifest_base64)"
     if [ "$payload_image_source" != "release-candidate" ]; then
       log_error "Production deploy payload must resolve immutable release-candidate images"
+      exit 1
+    fi
+    if [ "$payload_deployment_mode" != "promotion-eligible" ]; then
+      log_error "Production deploy payload must come from a promotion-eligible staging release"
       exit 1
     fi
     RELEASE_MANIFEST_B64_FROM_PAYLOAD="$release_manifest_b64"

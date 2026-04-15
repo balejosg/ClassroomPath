@@ -66,6 +66,10 @@ describe('Release candidate workflow contracts', () => {
       workflowText.includes('./.github/workflows/reusable-release-candidate-image-family.yml') &&
         reusableWorkflowText.includes('./.github/actions/publish-release-candidate-manifest')
     );
+    assert.ok(reusableWorkflowText.includes('amd64_duration_seconds:'));
+    assert.ok(reusableWorkflowText.includes('arm64_duration_seconds:'));
+    assert.ok(reusableWorkflowText.includes('publish_duration_seconds:'));
+    assert.ok(reusableWorkflowText.includes('family_duration_seconds:'));
     assert.ok(
       buildImageActionText.includes('actions/download-artifact@v7') &&
         buildImageActionText.includes('docker/build-push-action@v7')
@@ -206,6 +210,10 @@ describe('Release candidate workflow contracts', () => {
       workflowText,
       /CLASSROOMPATH_VERIFIER_IMAGE=\$\{\{\s*needs\.build-verifier-release-candidate\.outputs\.image\s*\}\}/
     );
+    assert.ok(workflowText.includes('release-candidate-timings-${{ github.sha }}'));
+    assert.ok(workflowText.includes('release-candidate-timings.json'));
+    assert.ok(workflowText.includes('## Release Candidate Timings'));
+    assert.ok(workflowText.includes('familyDurationSeconds'));
     assert.doesNotMatch(
       workflowText,
       /needs\.build-gateway-release-candidate\.outputs\.gateway_image/

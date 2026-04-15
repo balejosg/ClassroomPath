@@ -5,11 +5,25 @@ export interface OpenPathProxyRoutePolicy {
   timeout?: number;
 }
 
+export interface OpenPathProxyRewriteRule {
+  publicPath: string;
+  targetPath?: string;
+  rewrite?: (reqUrl: string) => string | null;
+}
+
 export interface OpenPathProxyManifest {
   allowedTrpcProcedures: readonly string[];
   blockedPassthroughPrefixes: readonly string[];
   notFoundRoutes: readonly string[];
   proxyRoutes: readonly OpenPathProxyRoutePolicy[];
+}
+
+function encodeWildcardPath(path: string): string {
+  return path
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
 }
 
 export const OPENPATH_PROXY_MANIFEST = {
@@ -74,12 +88,62 @@ export const OPENPATH_PROXY_MANIFEST = {
   allowedTrpcProcedures: ['healthReports.submit'],
 } as const satisfies OpenPathProxyManifest;
 
+export const OPENPATH_PROXY_REWRITE_RULES = [
+  {
+    publicPath: '/api/agent/windows/bootstrap/latest.json',
+    targetPath: '/api/agent/windows/bootstrap/manifest',
+  },
+  {
+    publicPath: '/api/agent/windows/latest.json',
+    targetPath: '/api/agent/windows/manifest',
+  },
+  {
+    publicPath: '/api/agent/linux/latest.json',
+    targetPath: '/api/agent/linux/manifest',
+  },
+  {
+    publicPath: '/api/agent/windows/bootstrap/file',
+    rewrite(reqUrl: string) {
+      const [, rawQuery = ''] = reqUrl.split('?', 2);
+      const filePath = new URLSearchParams(rawQuery).get('path')?.trim();
+      return filePath ? `/api/agent/windows/bootstrap/files/${encodeWildcardPath(filePath)}` : null;
+    },
+  },
+  {
+    publicPath: '/api/agent/windows/file',
+    rewrite(reqUrl: string) {
+      const [, rawQuery = ''] = reqUrl.split('?', 2);
+      const filePath = new URLSearchParams(rawQuery).get('path')?.trim();
+      return filePath ? `/api/agent/windows/files/${encodeWildcardPath(filePath)}` : null;
+    },
+  },
+] as const satisfies readonly OpenPathProxyRewriteRule[];
+
 function matchesPathPrefix(requestPath: string, candidate: string): boolean {
   return requestPath === candidate || requestPath.startsWith(candidate + '/');
 }
 
 function normalizeRequestPath(reqUrl: string): string {
   return reqUrl.split('?')[0] || '/';
+}
+
+export function rewriteOpenPathProxyUrl(reqUrl: string): string {
+  const requestPath = normalizeRequestPath(reqUrl);
+
+  for (const rule of OPENPATH_PROXY_REWRITE_RULES) {
+    if (requestPath !== rule.publicPath) {
+      continue;
+    }
+
+    if ('targetPath' in rule && rule.targetPath) {
+      return rule.targetPath;
+    }
+
+    const rewritten = 'rewrite' in rule ? rule.rewrite?.(reqUrl) : null;
+    return rewritten ?? reqUrl;
+  }
+
+  return reqUrl;
 }
 
 function isAllowedProcedure(proc: string): boolean {

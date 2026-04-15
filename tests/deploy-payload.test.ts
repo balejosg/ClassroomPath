@@ -14,16 +14,16 @@ describe('deploy payload', () => {
       deployRef: 'refs/tags/v1.2.99',
       deploySha: '0123456789abcdef0123456789abcdef01234567',
       imageSource: 'release-candidate',
-      supportsPromotionEvidence: true,
+      deploymentMode: 'promotion-eligible',
       manifestBase64: 'bWFuaWZlc3Q=',
     });
 
-    assert.equal(payload.version, 2);
+    assert.equal(payload.version, 3);
     assert.equal(payload.targetEnvironment, 'production');
     assert.equal(payload.deployRef, 'refs/tags/v1.2.99');
     assert.equal(payload.deploySha, '0123456789abcdef0123456789abcdef01234567');
     assert.equal(payload.imageSource, 'release-candidate');
-    assert.equal(payload.supportsPromotionEvidence, true);
+    assert.equal(payload.deploymentMode, 'promotion-eligible');
     assert.equal(payload.manifestBase64, 'bWFuaWZlc3Q=');
   });
 
@@ -33,7 +33,7 @@ describe('deploy payload', () => {
       deployRef: 'refs/heads/main',
       deploySha: '89abcdef0123456789abcdef0123456789abcdef',
       imageSource: 'release-candidate',
-      supportsPromotionEvidence: true,
+      deploymentMode: 'promotion-eligible',
       manifestBase64: 'bWFuaWZlc3Q=',
     });
 
@@ -49,11 +49,11 @@ describe('deploy payload', () => {
       deployRef: 'refs/heads/main',
       deploySha: '89abcdef0123456789abcdef0123456789abcdef',
       imageSource: 'source-build',
-      supportsPromotionEvidence: false,
+      deploymentMode: 'debug',
     });
 
     assert.equal(payload.imageSource, 'source-build');
-    assert.equal(payload.supportsPromotionEvidence, false);
+    assert.equal(payload.deploymentMode, 'debug');
     assert.equal(payload.manifestBase64, '');
     assert.deepEqual(decodeDeployPayloadBase64(encodeDeployPayloadBase64(payload)), payload);
   });

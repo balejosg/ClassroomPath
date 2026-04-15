@@ -2,8 +2,10 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import {
   OPENPATH_PROXY_MANIFEST,
+  OPENPATH_PROXY_REWRITE_RULES,
   findBlockedOpenPathPassthroughPath,
   findBlockedOpenPathProcedureFromUrl,
+  rewriteOpenPathProxyUrl,
 } from '../src/lib/openpath-proxy-policy.js';
 
 void describe('openpath-proxy-policy', () => {
@@ -33,6 +35,45 @@ void describe('openpath-proxy-policy', () => {
       '/api-docs',
     ]);
     assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.allowedTrpcProcedures, ['healthReports.submit']);
+    assert.deepStrictEqual(
+      OPENPATH_PROXY_REWRITE_RULES.map((rule) => rule.publicPath),
+      [
+        '/api/agent/windows/bootstrap/latest.json',
+        '/api/agent/windows/latest.json',
+        '/api/agent/linux/latest.json',
+        '/api/agent/windows/bootstrap/file',
+        '/api/agent/windows/file',
+      ]
+    );
+  });
+
+  test('rewrites public gateway aliases through the declarative compatibility map', () => {
+    assert.strictEqual(
+      rewriteOpenPathProxyUrl('/api/agent/windows/bootstrap/latest.json'),
+      '/api/agent/windows/bootstrap/manifest'
+    );
+    assert.strictEqual(
+      rewriteOpenPathProxyUrl('/api/agent/windows/latest.json'),
+      '/api/agent/windows/manifest'
+    );
+    assert.strictEqual(
+      rewriteOpenPathProxyUrl('/api/agent/linux/latest.json'),
+      '/api/agent/linux/manifest'
+    );
+    assert.strictEqual(
+      rewriteOpenPathProxyUrl(
+        '/api/agent/windows/bootstrap/file?path=runtime/browser-policy-spec.json'
+      ),
+      '/api/agent/windows/bootstrap/files/runtime/browser-policy-spec.json'
+    );
+    assert.strictEqual(
+      rewriteOpenPathProxyUrl('/api/agent/windows/file?path=agents/windows/openpath-setup.exe'),
+      '/api/agent/windows/files/agents/windows/openpath-setup.exe'
+    );
+    assert.strictEqual(
+      rewriteOpenPathProxyUrl('/api/agent/windows/file?path=agents/windows/OpenPath Setup.exe'),
+      '/api/agent/windows/files/agents/windows/OpenPath%20Setup.exe'
+    );
   });
 
   test('returns null for non-/trpc URLs', () => {
@@ -62,6 +103,10 @@ void describe('openpath-proxy-policy', () => {
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/agent/windows/file'), null);
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/agent/linux/latest.json'), null);
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/agent/linux/package'), null);
+    assert.strictEqual(
+      findBlockedOpenPathPassthroughPath('/api/extensions/chromium/updates.xml'),
+      null
+    );
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/machines/register'), null);
     assert.strictEqual(
       findBlockedOpenPathPassthroughPath('/api/machines/pc-01/rotate-download-token'),

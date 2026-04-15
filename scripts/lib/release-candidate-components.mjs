@@ -22,6 +22,21 @@ function markAllChanged(flags) {
 
 function applyOpenPathPathClassification(flags, filePath) {
   if (
+    /^docs\//.test(filePath) ||
+    /^\.opencode\//.test(filePath) ||
+    /^\.github\/ISSUE_TEMPLATE\//.test(filePath) ||
+    /^.*\.md$/.test(filePath) ||
+    filePath === 'AGENTS.md'
+  ) {
+    return true;
+  }
+
+  if (/^api\/tests\//.test(filePath) || /^react-spa\/src\/__tests__\//.test(filePath)) {
+    flags.verifierChanged = true;
+    return true;
+  }
+
+  if (
     /^shared\//.test(filePath) ||
     /^api\//.test(filePath) ||
     filePath === 'tsconfig.base.json' ||
@@ -127,10 +142,10 @@ export function classifyReleaseCandidateComponents({ changedFiles, openpathChang
         flags.migrationsChanged = true;
         break;
       case file === 'docker/Dockerfile.api':
+        flags.openpathApiChanged = true;
+        break;
       case file === '.github/workflows/firefox-release-assets.yml':
         flags.openpathApiChanged = true;
-        flags.migrationsChanged = true;
-        flags.verifierChanged = true;
         break;
       case file === 'upstream/openpath':
       case /^upstream\/openpath\//.test(file): {

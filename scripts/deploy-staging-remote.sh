@@ -387,15 +387,15 @@ load_staging_release_manifest() {
   local release_manifest_b64=""
   local normalized_manifest_file=""
   local payload_image_source=""
-  local payload_supports_promotion_evidence=""
+  local payload_deployment_mode=""
 
   if [ -n "${STAGING_DEPLOY_PAYLOAD_B64:-}" ]; then
     STAGING_DEPLOY_PAYLOAD_FILE="$(mktemp)"
     decode_deploy_payload_base64 "$STAGING_DEPLOY_PAYLOAD_B64" "$STAGING_DEPLOY_PAYLOAD_FILE" >/dev/null
     payload_image_source="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" image_source)"
-    payload_supports_promotion_evidence="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" supports_promotion_evidence)"
+    payload_deployment_mode="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" deployment_mode)"
     STAGING_IMAGE_SOURCE="${payload_image_source:-${STAGING_IMAGE_SOURCE:-source-build}}"
-    STAGING_SUPPORTS_PROMOTION_EVIDENCE="${payload_supports_promotion_evidence:-${STAGING_SUPPORTS_PROMOTION_EVIDENCE:-0}}"
+    STAGING_DEPLOYMENT_MODE="${payload_deployment_mode:-${STAGING_DEPLOYMENT_MODE:-debug}}"
     if [ "$STAGING_IMAGE_SOURCE" = "release-candidate" ]; then
       STAGING_USE_RELEASE_CANDIDATE=1
     else

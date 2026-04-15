@@ -1,14 +1,21 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { RequestHandler } from 'express';
 import express from 'express';
 import type { Server } from 'node:http';
+import { dirname, resolve } from 'node:path';
 import { after, before, describe, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { registerGatewayProxyRoutes } from '../src/lib/gateway/proxy-routes.ts';
 
 let server: Server | undefined;
 let baseUrl = '';
 const proxyOptions: unknown[] = [];
+const proxyRoutesPath = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../src/lib/gateway/proxy-routes.ts'
+);
 
 await describe('proxy-routes', { concurrency: false }, async () => {
   before(async () => {
@@ -82,6 +89,13 @@ await describe('proxy-routes', { concurrency: false }, async () => {
   });
 
   test('proxies public enrollment and tokenized download routes upstream', async () => {
+    const configResponse = await fetch(`${baseUrl}/api/config`);
+    assert.equal(configResponse.status, 418);
+    assert.deepEqual(await configResponse.json(), {
+      proxied: true,
+      path: '/api/config',
+    });
+
     const enrollResponse = await fetch(`${baseUrl}/api/enroll/cls_123`);
     assert.equal(enrollResponse.status, 418);
     assert.deepEqual(await enrollResponse.json(), {
@@ -94,6 +108,13 @@ await describe('proxy-routes', { concurrency: false }, async () => {
     assert.deepEqual(await firefoxResponse.json(), {
       proxied: true,
       path: '/api/extensions/firefox/openpath.xpi',
+    });
+
+    const chromiumResponse = await fetch(`${baseUrl}/api/extensions/chromium/updates.xml`);
+    assert.equal(chromiumResponse.status, 418);
+    assert.deepEqual(await chromiumResponse.json(), {
+      proxied: true,
+      path: '/api/extensions/chromium/updates.xml',
     });
 
     const bootstrapResponse = await fetch(`${baseUrl}/api/agent/windows/bootstrap/latest.json`);
@@ -126,6 +147,15 @@ await describe('proxy-routes', { concurrency: false }, async () => {
       path: '/api/agent/linux/manifest',
     });
 
+    const windowsFileResponse = await fetch(
+      `${baseUrl}/api/agent/windows/file?path=${encodeURIComponent('agents/windows/OpenPath Setup.exe')}`
+    );
+    assert.equal(windowsFileResponse.status, 418);
+    assert.deepEqual(await windowsFileResponse.json(), {
+      proxied: true,
+      path: '/api/agent/windows/files/agents/windows/OpenPath%20Setup.exe',
+    });
+
     const whitelistResponse = await fetch(`${baseUrl}/w/token-123/whitelist.txt`);
     assert.equal(whitelistResponse.status, 418);
     assert.deepEqual(await whitelistResponse.json(), {
@@ -146,5 +176,14 @@ await describe('proxy-routes', { concurrency: false }, async () => {
     });
 
     assert.equal(hasProxyReqHook, true);
+  });
+
+  test('delegates alias rewrites to the shared proxy policy module', async () => {
+    const source = await import('../src/lib/gateway/proxy-routes.ts');
+    const moduleText = readFileSync(proxyRoutesPath, 'utf-8');
+
+    assert.equal(typeof source.registerGatewayProxyRoutes, 'function');
+    assert.match(moduleText, /rewriteOpenPathProxyUrl/);
+    assert.ok(!moduleText.includes('switch (requestPath)'));
   });
 });

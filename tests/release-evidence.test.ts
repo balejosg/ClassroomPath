@@ -16,6 +16,10 @@ type ReleaseEvidence = {
   release: {
     outcome: string;
   };
+  promotionEligibility: {
+    status: string;
+    deploymentMode: string | null;
+  };
   jobs: {
     windowsFirefoxCanary: string;
     productionClientUpdateCanary: string;
@@ -125,13 +129,18 @@ describe('release evidence rendering', () => {
     });
 
     assert.equal(json.release.outcome, 'released');
+    assert.equal(json.promotionEligibility.status, 'eligible');
+    assert.equal(json.promotionEligibility.deploymentMode, 'promotion-eligible');
     assert.equal(json.jobs.windowsFirefoxCanary, 'success');
     assert.match(markdown, /Outcome: `released`/);
+    assert.match(markdown, /Promotion eligibility: `eligible`/);
   });
 
   test('renders advisory canary success for high-risk promotions', () => {
     const { json, markdown } = generateEvidence({
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
+      PROMOTION_ELIGIBLE: 'true',
+      PROMOTION_DEPLOYMENT_MODE: 'promotion-eligible',
       STAGING_WINDOWS_BOOTSTRAP_RESULT: 'success',
       STAGING_FIREFOX_POLICY_RESULT: 'success',
       WINDOWS_FIREFOX_CANARY_RESULT: 'success',
@@ -140,6 +149,7 @@ describe('release evidence rendering', () => {
 
     assert.equal(json.jobs.windowsFirefoxCanary, 'success');
     assert.equal(json.jobs.productionClientUpdateCanary, 'success');
+    assert.equal(json.promotionEligibility.status, 'eligible');
     assert.equal(json.stagingVerification.windowsFirefoxHighRisk, 'true');
     assert.equal(json.stagingVerification.windowsBootstrapResult, 'success');
     assert.equal(json.stagingVerification.firefoxPolicyResult, 'success');
@@ -151,14 +161,18 @@ describe('release evidence rendering', () => {
   test('keeps a failed advisory canary visible without changing release outcome', () => {
     const { json, markdown } = generateEvidence({
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
+      PROMOTION_ELIGIBLE: 'false',
+      PROMOTION_DEPLOYMENT_MODE: 'debug',
       STAGING_WINDOWS_BOOTSTRAP_RESULT: 'success',
       STAGING_FIREFOX_POLICY_RESULT: 'success',
       WINDOWS_FIREFOX_CANARY_RESULT: 'failure',
     });
 
     assert.equal(json.release.outcome, 'released');
+    assert.equal(json.promotionEligibility.status, 'ineligible');
     assert.equal(json.jobs.windowsFirefoxCanary, 'failure');
     assert.match(markdown, /\| Windows\/Firefox canary \(advisory\) \| failure \|/);
+    assert.match(markdown, /Promotion eligibility: `ineligible`/);
   });
 
   test('marks the post-release client update canary as deferred for high-risk promotions during deploy evidence generation', () => {

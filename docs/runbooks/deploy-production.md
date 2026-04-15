@@ -55,20 +55,25 @@ git push origin main
 npm run deploy:staging
 ```
 
-3. Create and push the production tag.
+3. Run the explicit pre-tag promotion gate against the live staging evidence.
 
 ```bash
-git tag v1.2.4
-git push origin v1.2.4
+npm run verify:promotion-ready
 ```
 
-4. Monitor the workflow and inspect the release evidence.
+4. Create and push the production tag through the canonical gated script.
+
+```bash
+npm run release:production -- v1.2.4
+```
+
+5. Monitor the workflow and inspect the release evidence.
 
 ```bash
 gh run watch --workflow Deploy
 ```
 
-5. Verify production after the workflow finishes.
+6. Verify production after the workflow finishes.
 
 ```bash
 curl -sS https://classroompath.eu/cp/ready

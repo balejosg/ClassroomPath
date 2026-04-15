@@ -34,6 +34,10 @@ describe('Deployment staging and promotion contracts', () => {
     'scripts/wait-for-release-candidate.mjs'
   );
   const deployWorkflowPath = resolve(projectRoot, '.github/workflows/deploy.yml');
+  const promotionReadyScriptPath = resolve(
+    projectRoot,
+    'scripts/verify-production-promotion-ready.sh'
+  );
   const deployProductionContextHelperPath = resolve(
     projectRoot,
     'scripts/lib/deploy-production-context.sh'
@@ -96,7 +100,7 @@ describe('Deployment staging and promotion contracts', () => {
     assert.ok(existsSync(stagingVerificationRunnerPath));
     assert.ok(localContent.includes('STAGING_RUN_RELEASE_GATE="${STAGING_RUN_RELEASE_GATE:-1}"'));
     assert.ok(
-      releaseHelperContent.includes('STAGING_SUPPORTS_PROMOTION_EVIDENCE') &&
+      releaseHelperContent.includes('STAGING_DEPLOYMENT_MODE') &&
         releaseHelperContent.includes('cannot produce promotion evidence')
     );
     assert.ok(existsSync(stagingReleaseGateScriptPath));
@@ -288,5 +292,22 @@ describe('Deployment staging and promotion contracts', () => {
         deployRemoteScript.includes('remote_deploy_reload_checked_out_helpers')
     );
     assert.ok(!rollbackRemoteScript.includes('upsert_env_file_var() {'));
+  });
+
+  test('production runbook exposes an explicit pre-tag promotion-ready gate', () => {
+    const runbook = readFileSync(
+      resolve(projectRoot, 'docs/runbooks/deploy-production.md'),
+      'utf-8'
+    );
+    const promotionReadyScript = readFileSync(promotionReadyScriptPath, 'utf-8');
+
+    assert.ok(existsSync(promotionReadyScriptPath));
+    assert.ok(
+      promotionReadyScript.includes('release-state-cli.mjs') &&
+        promotionReadyScript.includes('verify-promotion-ready') &&
+        promotionReadyScript.includes('wait-for-release-candidate.mjs') &&
+        promotionReadyScript.includes('resolve-manifest')
+    );
+    assert.ok(runbook.includes('npm run verify:promotion-ready'));
   });
 });

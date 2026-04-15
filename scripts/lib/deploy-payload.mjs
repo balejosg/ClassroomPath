@@ -9,12 +9,12 @@ import {
 
 /**
  * @typedef {{
- *   version: 2;
+ *   version: 3;
  *   targetEnvironment: 'staging' | 'production';
  *   deployRef: string;
  *   deploySha: string;
  *   imageSource: 'release-candidate' | 'source-build';
- *   supportsPromotionEvidence: boolean;
+ *   deploymentMode: 'promotion-eligible' | 'debug';
  *   manifestBase64: string;
  * }} DeployPayload
  */
@@ -25,68 +25,13 @@ import {
  *   deployRef: string;
  *   deploySha: string;
  *   imageSource: 'release-candidate' | 'source-build';
- *   supportsPromotionEvidence: boolean;
+ *   deploymentMode: 'promotion-eligible' | 'debug';
  *   manifestBase64?: string;
  * }} params
  * @returns {DeployPayload}
  */
 export function buildDeployPayload(params) {
   return buildDeployIntent(params);
-}
-
-/**
- * @param {DeployPayload} payload
- * @returns {string}
- */
-function serializeDeployPayload(payload) {
-  return [
-    `version=${payload.version}`,
-    `target_environment=${payload.targetEnvironment}`,
-    `deploy_ref=${payload.deployRef}`,
-    `deploy_sha=${payload.deploySha}`,
-    `image_source=${payload.imageSource}`,
-    `supports_promotion_evidence=${payload.supportsPromotionEvidence ? '1' : '0'}`,
-    `manifest_base64=${payload.manifestBase64}`,
-    '',
-  ].join('\n');
-}
-
-/**
- * @param {string} text
- * @returns {DeployPayload}
- */
-function parseDeployPayloadText(text) {
-  /** @type {Record<string, string>} */
-  const entries = {};
-
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) {
-      continue;
-    }
-
-    const separatorIndex = trimmed.indexOf('=');
-    if (separatorIndex === -1) {
-      continue;
-    }
-
-    const key = trimmed.slice(0, separatorIndex).trim();
-    const value = trimmed.slice(separatorIndex + 1).trim();
-    entries[key] = value;
-  }
-
-  if (entries.version !== '2') {
-    throw new Error(`Unsupported deploy payload version: ${entries.version ?? 'unset'}`);
-  }
-
-  return buildDeployPayload({
-    targetEnvironment: /** @type {'staging' | 'production'} */ (entries.target_environment),
-    deployRef: entries.deploy_ref ?? '',
-    deploySha: entries.deploy_sha ?? '',
-    imageSource: /** @type {'release-candidate' | 'source-build'} */ (entries.image_source),
-    supportsPromotionEvidence: entries.supports_promotion_evidence === '1',
-    manifestBase64: entries.manifest_base64 ?? '',
-  });
 }
 
 /**
@@ -138,8 +83,8 @@ function parseCliArgs(args) {
         parsed.imageSource = value;
         index += 1;
         break;
-      case '--supports-promotion-evidence':
-        parsed.supportsPromotionEvidence = value;
+      case '--deployment-mode':
+        parsed.deploymentMode = value;
         index += 1;
         break;
       case '--manifest-base64':
@@ -168,7 +113,9 @@ function runCli() {
     imageSource: /** @type {'release-candidate' | 'source-build'} */ (
       parsed.imageSource ?? 'release-candidate'
     ),
-    supportsPromotionEvidence: String(parsed.supportsPromotionEvidence ?? '1') === '1',
+    deploymentMode: /** @type {'promotion-eligible' | 'debug'} */ (
+      parsed.deploymentMode ?? 'promotion-eligible'
+    ),
     manifestBase64: parsed.manifestBase64 ?? '',
   });
   const payloadBase64 = encodeDeployPayloadBase64(payload);

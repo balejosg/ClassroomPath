@@ -30,6 +30,7 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     });
 
     assert.equal(plan.imageSource, 'release-candidate');
+    assert.equal(plan.deploymentMode, 'promotion-eligible');
     assert.equal(plan.useReleaseCandidate, true);
     assert.equal(plan.targetSha, '0123456789abcdef0123456789abcdef01234567');
     assert.equal(plan.releaseCandidate?.runId, '24006418074');
@@ -38,7 +39,6 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     assert.equal(plan.verification.runSmoke, true);
     assert.equal(plan.verification.runReleaseGate, true);
     assert.equal(plan.verification.persistEvidence, true);
-    assert.equal(plan.verification.supportsPromotionEvidence, true);
     assert.equal(plan.verification.requireLiveWindowsFirefoxEvidence, true);
   });
 
@@ -52,11 +52,11 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     const rendered = formatStagingReleasePlanEnv(plan);
 
     assert.match(rendered, /STAGING_IMAGE_SOURCE=release-candidate/);
+    assert.match(rendered, /STAGING_DEPLOYMENT_MODE=promotion-eligible/);
     assert.match(rendered, /STAGING_USE_RELEASE_CANDIDATE=1/);
     assert.match(rendered, /STAGING_RELEASE_SHA=0123456789abcdef0123456789abcdef01234567/);
     assert.match(rendered, /STAGING_RELEASE_RUN_ID=24006418074/);
     assert.match(rendered, /STAGING_RELEASE_REPOSITORY=balejosg\/ClassroomPath/);
-    assert.match(rendered, /STAGING_SUPPORTS_PROMOTION_EVIDENCE=1/);
     assert.match(rendered, /STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE=1/);
   });
 
@@ -68,12 +68,12 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     });
 
     assert.equal(plan.imageSource, 'source-build');
+    assert.equal(plan.deploymentMode, 'debug');
     assert.equal(plan.useReleaseCandidate, false);
     assert.equal(plan.targetSha, '89abcdef0123456789abcdef0123456789abcdef');
     assert.equal(plan.releaseCandidate, null);
     assert.equal(plan.verification.runReleaseGate, false);
     assert.equal(plan.verification.persistEvidence, false);
-    assert.equal(plan.verification.supportsPromotionEvidence, false);
     assert.equal(plan.verification.requireLiveWindowsFirefoxEvidence, false);
   });
 
@@ -85,7 +85,7 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     });
     const rendered = formatStagingReleasePlanEnv(plan);
 
-    assert.match(rendered, /STAGING_SUPPORTS_PROMOTION_EVIDENCE=0/);
+    assert.match(rendered, /STAGING_DEPLOYMENT_MODE=debug/);
     assert.match(rendered, /STAGING_RELEASE_REPOSITORY=/);
   });
 });

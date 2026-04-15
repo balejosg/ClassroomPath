@@ -281,3 +281,71 @@ jobs:
           name: release-candidate-images-${{ github.sha }}
           path: release-candidate-images.env
           retention-days: 7
+
+      - name: Persist release candidate timing summary
+        shell: bash
+        run: |
+          cat > release-candidate-timings.json <<EOF
+          {
+            "sha": "${{ github.sha }}",
+            "families": {
+              "gateway": {
+                "buildRequired": ${{ needs.build-gateway-release-candidate.outputs.build_required }},
+                "amd64DurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.amd64_duration_seconds || 0 }},
+                "arm64DurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "publishDurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.publish_duration_seconds || 0 }},
+                "familyDurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.family_duration_seconds || 0 }}
+              },
+              "migrations": {
+                "buildRequired": ${{ needs.build-migrations-release-candidate.outputs.build_required }},
+                "amd64DurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.amd64_duration_seconds || 0 }},
+                "arm64DurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "publishDurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.publish_duration_seconds || 0 }},
+                "familyDurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.family_duration_seconds || 0 }}
+              },
+              "openpathApi": {
+                "buildRequired": ${{ needs.build-openpath-api-release-candidate.outputs.build_required }},
+                "amd64DurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }},
+                "arm64DurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "publishDurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }},
+                "familyDurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }}
+              },
+              "spa": {
+                "buildRequired": ${{ needs.build-spa-release-candidate.outputs.build_required }},
+                "amd64DurationSeconds": ${{ needs.build-spa-release-candidate.outputs.amd64_duration_seconds || 0 }},
+                "arm64DurationSeconds": ${{ needs.build-spa-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "publishDurationSeconds": ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }},
+                "familyDurationSeconds": ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }}
+              },
+              "verifier": {
+                "buildRequired": ${{ needs.build-verifier-release-candidate.outputs.build_required }},
+                "amd64DurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.amd64_duration_seconds || 0 }},
+                "arm64DurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "publishDurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }},
+                "familyDurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }}
+              }
+            }
+          }
+          EOF
+
+      - name: Summarize release candidate timings
+        shell: bash
+        run: |
+          {
+            echo '## Release Candidate Timings'
+            echo
+            echo '| Family | Build Required | amd64 (s) | arm64 (s) | Publish (s) | Critical Path (s) |'
+            echo '| --- | --- | ---: | ---: | ---: | ---: |'
+            echo "| Gateway | ${{ needs.build-gateway-release-candidate.outputs.build_required }} | ${{ needs.build-gateway-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| Migrations | ${{ needs.build-migrations-release-candidate.outputs.build_required }} | ${{ needs.build-migrations-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| OpenPath API | ${{ needs.build-openpath-api-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| SPA | ${{ needs.build-spa-release-candidate.outputs.build_required }} | ${{ needs.build-spa-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| Verifier | ${{ needs.build-verifier-release-candidate.outputs.build_required }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release candidate timing artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-timings-${{ github.sha }}
+          path: release-candidate-timings.json
+          retention-days: 7

@@ -3,12 +3,12 @@
 
 /**
  * @typedef {{
- *   version: 2;
+ *   version: 3;
  *   targetEnvironment: 'staging' | 'production';
  *   deployRef: string;
  *   deploySha: string;
  *   imageSource: 'release-candidate' | 'source-build';
- *   supportsPromotionEvidence: boolean;
+ *   deploymentMode: 'promotion-eligible' | 'debug';
  *   manifestBase64: string;
  * }} DeployIntent
  */
@@ -19,7 +19,7 @@
  *   deployRef: string;
  *   deploySha: string;
  *   imageSource: 'release-candidate' | 'source-build';
- *   supportsPromotionEvidence: boolean;
+ *   deploymentMode: 'promotion-eligible' | 'debug';
  *   manifestBase64?: string;
  * }} params
  * @returns {DeployIntent}
@@ -29,7 +29,7 @@ export function buildDeployIntent({
   deployRef,
   deploySha,
   imageSource,
-  supportsPromotionEvidence,
+  deploymentMode,
   manifestBase64,
 }) {
   if (targetEnvironment !== 'staging' && targetEnvironment !== 'production') {
@@ -40,17 +40,29 @@ export function buildDeployIntent({
     throw new Error(`Unsupported imageSource: ${imageSource}`);
   }
 
+  if (deploymentMode !== 'promotion-eligible' && deploymentMode !== 'debug') {
+    throw new Error(`Unsupported deploymentMode: ${deploymentMode}`);
+  }
+
   if (!deploySha) {
     throw new Error('deploySha is required');
   }
 
+  if (targetEnvironment === 'production' && deploymentMode !== 'promotion-eligible') {
+    throw new Error('Production deploy intent must be promotion-eligible');
+  }
+
+  if (deploymentMode === 'promotion-eligible' && imageSource !== 'release-candidate') {
+    throw new Error('promotion-eligible deploy intent requires release-candidate images');
+  }
+
   return {
-    version: 2,
+    version: 3,
     targetEnvironment,
     deployRef,
     deploySha,
     imageSource,
-    supportsPromotionEvidence: Boolean(supportsPromotionEvidence),
+    deploymentMode,
     manifestBase64: manifestBase64 ?? '',
   };
 }
@@ -62,7 +74,7 @@ function serializeDeployIntent(intent) {
     `deploy_ref=${intent.deployRef}`,
     `deploy_sha=${intent.deploySha}`,
     `image_source=${intent.imageSource}`,
-    `supports_promotion_evidence=${intent.supportsPromotionEvidence ? '1' : '0'}`,
+    `deployment_mode=${intent.deploymentMode}`,
     `manifest_base64=${intent.manifestBase64}`,
     '',
   ].join('\n');
@@ -88,7 +100,7 @@ function parseDeployIntentText(text) {
     entries[key] = value;
   }
 
-  if (entries.version !== '2') {
+  if (entries.version !== '3') {
     throw new Error(`Unsupported deploy intent version: ${entries.version ?? 'unset'}`);
   }
 
@@ -97,7 +109,7 @@ function parseDeployIntentText(text) {
     deployRef: entries.deploy_ref ?? '',
     deploySha: entries.deploy_sha ?? '',
     imageSource: /** @type {'release-candidate' | 'source-build'} */ (entries.image_source),
-    supportsPromotionEvidence: entries.supports_promotion_evidence === '1',
+    deploymentMode: /** @type {'promotion-eligible' | 'debug'} */ (entries.deployment_mode),
     manifestBase64: entries.manifest_base64 ?? '',
   });
 }

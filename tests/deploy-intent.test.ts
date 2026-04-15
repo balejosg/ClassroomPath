@@ -14,17 +14,17 @@ describe('deploy intent', () => {
       deployRef: 'refs/tags/v1.2.99',
       deploySha: '0123456789abcdef0123456789abcdef01234567',
       imageSource: 'release-candidate',
-      supportsPromotionEvidence: true,
+      deploymentMode: 'promotion-eligible',
       manifestBase64: 'bWFuaWZlc3Q=',
     });
 
     assert.deepEqual(intent, {
-      version: 2,
+      version: 3,
       targetEnvironment: 'production',
       deployRef: 'refs/tags/v1.2.99',
       deploySha: '0123456789abcdef0123456789abcdef01234567',
       imageSource: 'release-candidate',
-      supportsPromotionEvidence: true,
+      deploymentMode: 'promotion-eligible',
       manifestBase64: 'bWFuaWZlc3Q=',
     });
   });
@@ -35,7 +35,7 @@ describe('deploy intent', () => {
       deployRef: 'refs/heads/main',
       deploySha: '89abcdef0123456789abcdef0123456789abcdef',
       imageSource: 'source-build',
-      supportsPromotionEvidence: false,
+      deploymentMode: 'debug',
       manifestBase64: '',
     });
 

@@ -82,6 +82,7 @@ STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
 STAGING_IMAGE_MODE="${STAGING_IMAGE_MODE:-release-candidate}"
+STAGING_DEPLOYMENT_MODE="${STAGING_DEPLOYMENT_MODE:-}"
 STAGING_RUN_RELEASE_GATE="${STAGING_RUN_RELEASE_GATE:-1}"
 STAGING_RELEASE_WAIT_TIMEOUT_SECONDS="${STAGING_RELEASE_WAIT_TIMEOUT_SECONDS:-900}"
 STAGING_RELEASE_POLL_SECONDS="${STAGING_RELEASE_POLL_SECONDS:-10}"
@@ -128,6 +129,29 @@ case "$STAGING_IMAGE_MODE" in
         exit 2
         ;;
 esac
+
+if [ -z "$STAGING_DEPLOYMENT_MODE" ]; then
+    if [ "$STAGING_IMAGE_MODE" = "release-candidate" ]; then
+        STAGING_DEPLOYMENT_MODE="promotion-eligible"
+    else
+        STAGING_DEPLOYMENT_MODE="debug"
+    fi
+fi
+
+case "$STAGING_DEPLOYMENT_MODE" in
+    promotion-eligible|debug)
+        ;;
+    *)
+        log_error "Invalid STAGING_DEPLOYMENT_MODE: $STAGING_DEPLOYMENT_MODE"
+        log_error "Allowed values: promotion-eligible, debug"
+        exit 2
+        ;;
+esac
+
+if [ "$STAGING_DEPLOYMENT_MODE" = "promotion-eligible" ] && [ "$STAGING_IMAGE_MODE" != "release-candidate" ]; then
+    log_error "STAGING_DEPLOYMENT_MODE=promotion-eligible requires STAGING_IMAGE_MODE=release-candidate"
+    exit 2
+fi
 
 log_info "Staging deployment to $STAGING_HOST"
 echo ""

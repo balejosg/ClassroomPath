@@ -40,6 +40,7 @@ const deployProductionRuntimeHelperPath = resolve(
 );
 const dockerComposePath = resolve(projectRoot, 'docker/docker-compose.yml');
 const deployProductionRunbookPath = resolve(projectRoot, 'docs/runbooks/deploy-production.md');
+const productionTagScriptPath = resolve(projectRoot, 'scripts/tag-production-release.sh');
 const syncBillingEnvScriptPath = resolve(projectRoot, 'scripts/sync-billing-env.sh');
 const resolveLatestVerifierImageLibPath = resolve(
   projectRoot,
@@ -191,6 +192,14 @@ describe('Deployment foundation contracts', () => {
       packageJson.scripts?.['verify:release'],
       'VERIFY_MODE=release bash scripts/verify-full.sh'
     );
+    assert.equal(
+      packageJson.scripts?.['verify:promotion-ready'],
+      'bash scripts/verify-production-promotion-ready.sh'
+    );
+    assert.equal(
+      packageJson.scripts?.['release:production'],
+      'bash scripts/tag-production-release.sh'
+    );
     assert.ok(
       hook.includes('VERIFY_REPORT_FILE=') &&
         hook.includes('scripts/print-verify-report-summary.mjs')
@@ -244,6 +253,19 @@ describe('Deployment foundation contracts', () => {
     assert.ok(existsSync(releaseCliPath));
     assert.ok(existsSync(deployProductionContextHelperPath));
     assert.ok(existsSync(regressionPlanPath));
+  });
+
+  test('production tagging runs the promotion gate before creating and pushing the tag', () => {
+    const runbook = readFileSync(deployProductionRunbookPath, 'utf-8');
+    const tagScript = readFileSync(productionTagScriptPath, 'utf-8');
+
+    assert.ok(existsSync(productionTagScriptPath));
+    assert.ok(tagScript.includes('bash scripts/verify-production-promotion-ready.sh'));
+    assert.ok(tagScript.includes('git tag "$TAG_NAME" "$main_sha"'));
+    assert.ok(tagScript.includes('git push origin "$TAG_NAME"'));
+    assert.ok(tagScript.includes('HEAD must match origin/main'));
+    assert.ok(runbook.includes('npm run release:production -- v1.2.4'));
+    assert.ok(!runbook.includes('git tag v1.2.4'));
   });
 
   test('verification runners keep coverage and Docker cleanup policy centralized', () => {

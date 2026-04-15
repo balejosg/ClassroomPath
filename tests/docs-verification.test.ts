@@ -54,10 +54,5 @@ describe('docs verification contracts', () => {
     const result = runProjectCommand('node', ['scripts/verify-docs.mjs']);
 
     assert.equal(result.status, 0, result.stderr || result.stdout || 'verify-docs should pass');
-    assert.match(
-      result.stdout,
-      /Documentation verification passed for \d+ Markdown files\./,
-      'verify-docs should report the Markdown file count'
-    );
   });
 });

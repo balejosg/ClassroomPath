@@ -77,6 +77,7 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
   const currentStatePath = join(tempDir, 'staging-release-state.env');
   const verificationStatePath = join(tempDir, 'staging-verification.env');
   const outputPath = join(tempDir, 'github-output.env');
+  const reportPath = join(tempDir, 'promotion-eligibility.json');
 
   writeFileSync(
     currentStatePath,
@@ -132,8 +133,12 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
       currentStatePath,
       '--verification',
       verificationStatePath,
+      '--deployment-mode',
+      'promotion-eligible',
       '--high-risk',
       'true',
+      '--report-json',
+      reportPath,
       '--github-output',
       outputPath,
     ],
@@ -150,9 +155,22 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
   );
 
   const outputs = readReleaseStateSnapshot(outputPath);
+  const report = JSON.parse(readFileSync(reportPath, 'utf-8')) as {
+    eligible: boolean;
+    deploymentMode: string;
+    checks: {
+      windowsFirefox: { status: string };
+    };
+  };
+
+  assert.equal(outputs.promotion_eligible, 'true');
+  assert.equal(outputs.promotion_deployment_mode, 'promotion-eligible');
   assert.equal(outputs.staging_smoke_result, 'success');
   assert.equal(outputs.staging_firefox_release_version, '4.1.19');
   assert.equal(outputs.staging_verified_at, '2026-04-11T06:00:00Z');
+  assert.equal(report.eligible, true);
+  assert.equal(report.deploymentMode, 'promotion-eligible');
+  assert.equal(report.checks.windowsFirefox.status, 'pass');
 });
 
 test('release-state CLI lists canonical snapshot fields for shell consumers', () => {

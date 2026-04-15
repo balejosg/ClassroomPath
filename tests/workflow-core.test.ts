@@ -257,6 +257,8 @@ describe('Workflow core contracts', () => {
     assert.ok(!deployWorkflowText.includes('DEPLOY_HOST not configured. Skipping deployment.'));
     assert.ok(deployWorkflowText.includes('verify-staging-release-state.sh'));
     assert.ok(deployWorkflowText.includes('detect-windows-firefox-risk.sh'));
+    assert.ok(deployWorkflowText.includes('staging-promotion-eligibility.json'));
+    assert.ok(deployWorkflowText.includes('PROMOTION_ELIGIBLE'));
     assert.equal(typeof concurrency, 'object');
     assert.match((concurrency as { group?: string }).group ?? '', /production/i);
     assert.equal((concurrency as { 'cancel-in-progress'?: boolean })['cancel-in-progress'], false);

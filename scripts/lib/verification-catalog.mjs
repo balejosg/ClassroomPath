@@ -71,7 +71,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'deploy-shell',
     patterns: [
-      '^scripts/(?:deploy-.+|detect-windows-firefox-risk|rollback-.+|persist-.+|run-staging-release-gate|verify-staging-release-state)\\.sh$',
+      '^scripts/(?:deploy-.+|detect-windows-firefox-risk|rollback-.+|persist-.+|run-staging-release-gate|tag-production-release|verify-production-promotion-ready|verify-staging-release-state)\\.sh$',
       '^scripts/lib/(?:deployment-state|release-risk|release-runtime|release-state|remote-bootstrap|deploy-production-context|deploy-production-runtime|staging-gates)\\.sh$',
     ],
     capabilities: { ciRelevant: true, verificationScope: 'ops-regression' },
@@ -92,7 +92,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-library',
     patterns: [
-      '^scripts/lib/(?:firefox-release-version|github-actions|github-actions-artifacts|openpath-ci-checks|regression-plan|release-candidate|release-cli|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|verification-catalog|verification-report-contract|verify-report-consumer)\\.mjs$',
+      '^scripts/lib/(?:firefox-release-version|github-actions|github-actions-artifacts|openpath-ci-checks|promotion-eligibility|regression-plan|release-candidate|release-cli|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|verification-catalog|verification-report-contract|verify-report-consumer)\\.mjs$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -114,7 +114,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-contract-test',
     patterns: [
-      '^tests/(?:deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-version|github-actions-artifacts|openpath-required-checks|release-cli|release-images|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow(?:-core|-release-candidate|-config)?)\\.test\\.ts$',
+      '^tests/(?:deploy-intent|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-version|github-actions-artifacts|openpath-required-checks|promotion-eligibility|release-cli|release-images|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow(?:-core|-release-candidate|-config)?)\\.test\\.ts$',
     ],
     capabilities: {
       ciRelevant: true,

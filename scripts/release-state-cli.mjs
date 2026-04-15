@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
 import {
-  buildStagingReleaseEvidenceOutputs,
   getReleaseStateSnapshotFields,
   readReleaseStateSnapshot,
-  validateCurrentReleaseState,
-  validateHighRiskStagingVerification,
-  validateStagingVerification,
   writeReleaseStateSnapshot,
 } from './lib/release-state-contract.mjs';
+import {
+  buildPromotionEligibilityOutputs,
+  evaluatePromotionEligibility,
+} from './lib/promotion-eligibility.mjs';
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
@@ -76,6 +76,14 @@ function expectedRuntimeFromEnv(env) {
   };
 }
 
+function writeReportJson(reportPath, report) {
+  if (!reportPath) {
+    return;
+  }
+
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf-8');
+}
+
 async function main() {
   const { command, options } = parseArgs(process.argv.slice(2));
 
@@ -91,32 +99,41 @@ async function main() {
       process.stdout.write(`${getReleaseStateSnapshotFields(snapshotType).join('\n')}\n`);
       return;
     }
-    case 'verify-staging': {
+    case 'verify-staging':
+    case 'verify-promotion-ready': {
       const currentPath = requireOption(options, 'current');
       const verificationPath = requireOption(options, 'verification');
       const githubOutput = options['github-output'] ?? process.env.GITHUB_OUTPUT ?? '';
+      const reportPath = options['report-json'] ?? '';
       const highRisk = String(options['high-risk'] ?? 'false') === 'true';
+      const deploymentMode = /** @type {'promotion-eligible' | 'debug'} */ (
+        options['deployment-mode'] ?? 'promotion-eligible'
+      );
 
       const currentState = readReleaseStateSnapshot(currentPath);
       const verificationState = readReleaseStateSnapshot(verificationPath);
       const expected = expectedRuntimeFromEnv(process.env);
 
-      const errors = [
-        ...validateCurrentReleaseState(currentState, expected),
-        ...validateStagingVerification(verificationState, expected),
-      ];
+      const report = evaluatePromotionEligibility({
+        deploymentMode,
+        imageSource: /** @type {'release-candidate' | 'source-build'} */ (
+          currentState.IMAGE_SOURCE ?? 'source-build'
+        ),
+        currentState,
+        verificationState,
+        expectedRuntime: expected,
+        highRisk,
+      });
 
-      if (highRisk) {
-        errors.push(...validateHighRiskStagingVerification(verificationState));
-      }
+      writeReportJson(reportPath, report);
 
-      if (errors.length > 0) {
-        emitErrors(errors);
+      if (!report.eligible) {
+        emitErrors(report.errors);
         process.exitCode = 1;
         return;
       }
 
-      appendOutputs(githubOutput, buildStagingReleaseEvidenceOutputs(verificationState));
+      appendOutputs(githubOutput, buildPromotionEligibilityOutputs(report));
       return;
     }
     default:

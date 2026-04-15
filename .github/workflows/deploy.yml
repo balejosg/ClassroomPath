@@ -127,6 +127,7 @@ jobs:
             --target-environment production \
             --deploy-ref "$DEPLOY_REF" \
             --deploy-sha "$DEPLOY_SHA" \
+            --deployment-mode promotion-eligible \
             --manifest-base64 "$RELEASE_MANIFEST_B64" >> "$GITHUB_OUTPUT"
 
       - name: Upload release image manifest
@@ -145,6 +146,8 @@ jobs:
       staging_windows_firefox_high_risk: ${{ steps.risk.outputs.high_risk }}
       staging_windows_firefox_risk_base_ref: ${{ steps.risk.outputs.base_ref }}
       staging_windows_firefox_risk_base_source: ${{ steps.risk.outputs.base_source }}
+      promotion_eligible: ${{ steps.compare.outputs.promotion_eligible }}
+      promotion_deployment_mode: ${{ steps.compare.outputs.promotion_deployment_mode }}
       staging_smoke_result: ${{ steps.compare.outputs.staging_smoke_result }}
       staging_smoke_status: ${{ steps.compare.outputs.staging_smoke_status }}
       staging_release_gate_result: ${{ steps.compare.outputs.staging_release_gate_result }}
@@ -281,6 +284,7 @@ jobs:
             production-release-state.env
             staging-release-state.env
             staging-verification.env
+            staging-promotion-eligibility.json
           retention-days: 7
 
   windows-firefox-canary:
@@ -462,6 +466,8 @@ jobs:
             "VERIFY_OPENPATH_RESULT": "${{ needs.verify-openpath-upstream.result }}",
             "RESOLVE_IMAGES_RESULT": "${{ needs.resolve-release-images.result }}",
             "VERIFY_STAGING_RESULT": "${{ needs.verify-staging-release-state.result }}",
+            "PROMOTION_ELIGIBLE": "${{ needs.verify-staging-release-state.outputs.promotion_eligible }}",
+            "PROMOTION_DEPLOYMENT_MODE": "${{ needs.verify-staging-release-state.outputs.promotion_deployment_mode }}",
             "STAGING_SMOKE_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_smoke_result }}",
             "STAGING_SMOKE_STATUS": "${{ needs.verify-staging-release-state.outputs.staging_smoke_status }}",
             "STAGING_RELEASE_GATE_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_release_gate_result }}",

@@ -3,6 +3,7 @@
 
 import { readFileSync } from 'node:fs';
 import { parseCanonicalReleaseManifestText } from './release-manifest.mjs';
+import { deriveStagingDeploymentMode } from './promotion-eligibility.mjs';
 
 /**
  * @typedef {{
@@ -24,7 +25,6 @@ import { parseCanonicalReleaseManifestText } from './release-manifest.mjs';
  *   runSmoke: true;
  *   runReleaseGate: boolean;
  *   persistEvidence: boolean;
- *   supportsPromotionEvidence: boolean;
  *   requireLiveWindowsFirefoxEvidence: boolean;
  * }} VerificationRequirements
  */
@@ -47,6 +47,7 @@ import { parseCanonicalReleaseManifestText } from './release-manifest.mjs';
 /**
  * @typedef {{
  *   imageSource: 'release-candidate' | 'source-build';
+ *   deploymentMode: 'promotion-eligible' | 'debug';
  *   useReleaseCandidate: boolean;
  *   targetSha: string;
  *   releaseCandidate: ReleaseCandidatePlan | null;
@@ -95,6 +96,7 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
 
     return {
       imageSource: 'release-candidate',
+      deploymentMode: deriveStagingDeploymentMode('release-candidate'),
       useReleaseCandidate: true,
       targetSha: manifest.app_sha,
       releaseCandidate: {
@@ -113,7 +115,6 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
         runSmoke: true,
         runReleaseGate: true,
         persistEvidence: true,
-        supportsPromotionEvidence: true,
         requireLiveWindowsFirefoxEvidence: true,
       },
     };
@@ -121,6 +122,7 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
 
   return {
     imageSource: 'source-build',
+    deploymentMode: deriveStagingDeploymentMode('source-build'),
     useReleaseCandidate: false,
     targetSha: remoteSha,
     releaseCandidate: null,
@@ -128,7 +130,6 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
       runSmoke: true,
       runReleaseGate: false,
       persistEvidence: false,
-      supportsPromotionEvidence: false,
       requireLiveWindowsFirefoxEvidence: false,
     },
   };
@@ -155,12 +156,12 @@ export function formatStagingReleasePlanEnv(plan, options = {}) {
   const manifestBase64 = options.manifestBase64 ?? '';
   const envEntries = {
     STAGING_IMAGE_SOURCE: plan.imageSource,
+    STAGING_DEPLOYMENT_MODE: plan.deploymentMode,
     STAGING_USE_RELEASE_CANDIDATE: plan.useReleaseCandidate ? '1' : '0',
     STAGING_RELEASE_SHA: plan.releaseCandidate?.appSha ?? '',
     STAGING_RELEASE_RUN_ID: plan.releaseCandidate?.runId ?? '',
     STAGING_RELEASE_REPOSITORY: plan.releaseCandidate?.repository ?? '',
     STAGING_RELEASE_MANIFEST_B64: manifestBase64,
-    STAGING_SUPPORTS_PROMOTION_EVIDENCE: plan.verification.supportsPromotionEvidence ? '1' : '0',
     STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE: plan.verification
       .requireLiveWindowsFirefoxEvidence
       ? '1'
