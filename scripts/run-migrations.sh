@@ -42,7 +42,7 @@ fi
 log_info "Cleaning ClassroomPath schema drift..."
 node --import tsx api/scripts/cleanup-cp-schema.ts
 
-log_info "Running drizzle-kit push..."
-npm run db:push -w @classroompath/api
+log_info "Running versioned migrations..."
+npm run db:migrate -w @classroompath/api
 
 log_success "Migrations completed successfully."

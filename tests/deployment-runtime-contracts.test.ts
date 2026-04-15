@@ -78,8 +78,8 @@ describe('Deployment runtime contracts', () => {
       migrationsDockerfile.includes('ENTRYPOINT ["sh", "scripts/run-migrations-image.sh"]')
     );
     assert.ok(migrationsImageScript.includes('node --import tsx api/scripts/cleanup-cp-schema.ts'));
-    assert.ok(migrationsImageScript.includes('npm run db:push -w @classroompath/api'));
-    assert.ok(migrationsImageScript.includes('npm run db:push -w @openpath/api'));
+    assert.ok(migrationsImageScript.includes('npm run db:migrate -w @classroompath/api'));
+    assert.ok(migrationsImageScript.includes('npm run db:migrate -w @openpath/api'));
     assert.ok(migrationsImageScript.includes('node scripts/derive-openpath-db-env.mjs'));
 
     assert.ok(!gatewayDockerfile.includes('COPY . .'));

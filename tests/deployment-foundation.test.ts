@@ -64,11 +64,11 @@ describe('Deployment foundation contracts', () => {
   const classroomPathPackagePath = resolve(projectRoot, 'package.json');
   const preCommitHookPath = resolve(projectRoot, '.husky/pre-commit');
 
-  test('migration runners clean the ClassroomPath schema before db:push', () => {
+  test('migration runners clean the ClassroomPath schema before db:migrate', () => {
     const dockerContent = readFileSync(migrationsScriptPath, 'utf-8');
     const hostContent = readFileSync(hostMigrationsScriptPath, 'utf-8');
     const repairStep = 'node --import tsx api/scripts/cleanup-cp-schema.ts';
-    const pushStep = 'npm run db:push -w @classroompath/api';
+    const migrateStep = 'npm run db:migrate -w @classroompath/api';
 
     for (const [scriptName, content] of [
       ['run-migrations-docker.sh', dockerContent],
@@ -76,8 +76,8 @@ describe('Deployment foundation contracts', () => {
     ] as const) {
       assert.ok(content.includes(repairStep), `${scriptName} should clean the schema`);
       assert.ok(
-        content.indexOf(repairStep) < content.indexOf(pushStep),
-        `${scriptName} should clean the schema before db:push`
+        content.indexOf(repairStep) < content.indexOf(migrateStep),
+        `${scriptName} should clean the schema before db:migrate`
       );
     }
   });

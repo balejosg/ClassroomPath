@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-migrations-docker.sh - Run DB schema pushes using Docker
+# run-migrations-docker.sh - Run DB schema migrations using Docker
 #
 # Why this exists:
 # - Prefer prebuilt migration runner images for staging/prod promotion
@@ -30,8 +30,8 @@ Usage:
   scripts/run-migrations-docker.sh [--cp] [--openpath] [--app-dir <dir>] [--env-file <path>] [--node-image <image>] [--runner-image <image>]
 
 Options:
-  --cp                 Run ClassroomPath gateway API schema push (@classroompath/api)
-  --openpath           Run OpenPath core API schema push (@openpath/api)
+  --cp                 Run ClassroomPath gateway API migrations (@classroompath/api)
+  --openpath           Run OpenPath core API migrations (@openpath/api)
   --app-dir <dir>      Root directory (default: repo root)
   --env-file <path>    Env file to pass to containers (default: <app-dir>/config/.env)
   --node-image <img>   Node image to use (default: pinned digest)
@@ -153,7 +153,7 @@ run_cp_migrations() {
     -w /app \
     --env-file "$ENV_FILE" \
     "$NODE_IMAGE" \
-    sh -c "npm ci --silent -w @classroompath/api && node --import tsx api/scripts/cleanup-cp-schema.ts && npm run db:push -w @classroompath/api" \
+    sh -c "npm ci --silent -w @classroompath/api && node --import tsx api/scripts/cleanup-cp-schema.ts && npm run db:migrate -w @classroompath/api" \
     >"$log" 2>&1; then
     tail -5 "$log"
   else
@@ -177,7 +177,7 @@ run_openpath_migrations() {
     -w /app \
     --env-file "$ENV_FILE" \
     "$NODE_IMAGE" \
-    sh -c "eval \"\$(node /derive-openpath-db-env.mjs)\" && npm ci --silent && npm run db:push -w @openpath/api" \
+    sh -c "eval \"\$(node /derive-openpath-db-env.mjs)\" && npm ci --silent && npm run db:migrate -w @openpath/api" \
     >"$log" 2>&1; then
     tail -5 "$log"
   else
