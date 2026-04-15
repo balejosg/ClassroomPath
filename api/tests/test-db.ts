@@ -328,10 +328,18 @@ export async function resetDb(): Promise<void> {
 }
 
 export async function withTestDbLock<T>(work: () => Promise<T>): Promise<T> {
-  await db.execute(sql.raw(`SELECT pg_advisory_lock(${TEST_DB_LOCK_KEY})`));
+  await acquireTestDbLock();
   try {
     return await work();
   } finally {
-    await db.execute(sql.raw(`SELECT pg_advisory_unlock(${TEST_DB_LOCK_KEY})`));
+    await releaseTestDbLock();
   }
+}
+
+export async function acquireTestDbLock(): Promise<void> {
+  await db.execute(sql.raw(`SELECT pg_advisory_lock(${TEST_DB_LOCK_KEY})`));
+}
+
+export async function releaseTestDbLock(): Promise<void> {
+  await db.execute(sql.raw(`SELECT pg_advisory_unlock(${TEST_DB_LOCK_KEY})`));
 }

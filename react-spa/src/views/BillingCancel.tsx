@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@openpath/public-ui';
+import { Button } from '../openpath/public-ui';
 
 type BillingCancelProps = {
   onBack: () => void;

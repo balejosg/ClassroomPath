@@ -9,6 +9,7 @@ import {
   listPendingUsers,
   rejectUser,
 } from '../src/services/pending-users.service.js';
+import { acquireTestDbLock, releaseTestDbLock } from './test-db.js';
 
 const RUN_ID = Math.random().toString(36).slice(2, 10);
 const ORG_ID = `org_pending_${RUN_ID}`;
@@ -29,6 +30,7 @@ async function deleteMutationOperations(userId: string): Promise<void> {
 
 describe('pending-users.service', () => {
   before(async () => {
+    await acquireTestDbLock();
     await deleteWaitingStatus(WAITING_USER_ID);
     await deleteWaitingStatus(REJECTED_USER_ID);
     await deleteWaitingStatus(MISSING_PROFILE_USER_ID);
@@ -93,34 +95,40 @@ describe('pending-users.service', () => {
   });
 
   after(async () => {
-    await deleteWaitingStatus(WAITING_USER_ID);
-    await deleteWaitingStatus(REJECTED_USER_ID);
-    await deleteWaitingStatus(MISSING_PROFILE_USER_ID);
-    await deleteMutationOperations(WAITING_USER_ID);
-    await deleteMutationOperations(REJECTED_USER_ID);
-    await deleteMutationOperations(MISSING_PROFILE_USER_ID);
-    await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, WAITING_USER_ID));
-    await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, REJECTED_USER_ID));
-    await db
-      .delete(schema.cpMemberships)
-      .where(eq(schema.cpMemberships.userId, MISSING_PROFILE_USER_ID));
-    await db.delete(schema.cpOrganizations).where(eq(schema.cpOrganizations.id, ORG_ID));
-    await openpathDb
-      .delete(openpathSchema.roles)
-      .where(eq(openpathSchema.roles.userId, WAITING_USER_ID));
-    await openpathDb
-      .delete(openpathSchema.roles)
-      .where(eq(openpathSchema.roles.userId, REJECTED_USER_ID));
-    await openpathDb
-      .delete(openpathSchema.roles)
-      .where(eq(openpathSchema.roles.userId, MISSING_PROFILE_USER_ID));
-    await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, APPROVER_ID));
-    await openpathDb
-      .delete(openpathSchema.users)
-      .where(eq(openpathSchema.users.id, WAITING_USER_ID));
-    await openpathDb
-      .delete(openpathSchema.users)
-      .where(eq(openpathSchema.users.id, REJECTED_USER_ID));
+    try {
+      await deleteWaitingStatus(WAITING_USER_ID);
+      await deleteWaitingStatus(REJECTED_USER_ID);
+      await deleteWaitingStatus(MISSING_PROFILE_USER_ID);
+      await deleteMutationOperations(WAITING_USER_ID);
+      await deleteMutationOperations(REJECTED_USER_ID);
+      await deleteMutationOperations(MISSING_PROFILE_USER_ID);
+      await db.delete(schema.cpMemberships).where(eq(schema.cpMemberships.userId, WAITING_USER_ID));
+      await db
+        .delete(schema.cpMemberships)
+        .where(eq(schema.cpMemberships.userId, REJECTED_USER_ID));
+      await db
+        .delete(schema.cpMemberships)
+        .where(eq(schema.cpMemberships.userId, MISSING_PROFILE_USER_ID));
+      await db.delete(schema.cpOrganizations).where(eq(schema.cpOrganizations.id, ORG_ID));
+      await openpathDb
+        .delete(openpathSchema.roles)
+        .where(eq(openpathSchema.roles.userId, WAITING_USER_ID));
+      await openpathDb
+        .delete(openpathSchema.roles)
+        .where(eq(openpathSchema.roles.userId, REJECTED_USER_ID));
+      await openpathDb
+        .delete(openpathSchema.roles)
+        .where(eq(openpathSchema.roles.userId, MISSING_PROFILE_USER_ID));
+      await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, APPROVER_ID));
+      await openpathDb
+        .delete(openpathSchema.users)
+        .where(eq(openpathSchema.users.id, WAITING_USER_ID));
+      await openpathDb
+        .delete(openpathSchema.users)
+        .where(eq(openpathSchema.users.id, REJECTED_USER_ID));
+    } finally {
+      await releaseTestDbLock();
+    }
   });
 
   test('listPendingUsers returns only waiting users with OpenPath profiles and [] when none are waiting', async () => {

@@ -126,7 +126,7 @@ describe('OnboardingAccessGate', () => {
 
     rerender(
       <OnboardingAccessGate
-        status={createStatus({ hasMembership: true })}
+        status={undefined}
         isLoading={false}
         loadingTimedOut={false}
         isError
@@ -142,6 +142,17 @@ describe('OnboardingAccessGate', () => {
     expect(screen.getByText('No se pudo verificar tu acceso')).toBeInTheDocument();
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onLogoutToLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves authenticated content when a transient status error happens after access was already resolved', () => {
+    renderGate({
+      status: createStatus({ hasMembership: true }),
+      isError: true,
+      authenticatedContent: <div>Authenticated Shell</div>,
+    });
+
+    expect(screen.getByText('Authenticated Shell')).toBeInTheDocument();
+    expect(screen.queryByText('No se pudo verificar tu acceso')).not.toBeInTheDocument();
   });
 
   it('routes waiting and onboarding states through their callbacks', () => {

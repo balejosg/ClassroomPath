@@ -1,13 +1,19 @@
 import type { Server } from 'node:http';
-import { open as openFile, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
 import { after, before } from 'node:test';
-import { tmpdir } from 'node:os';
-import { setTimeout as sleep } from 'node:timers/promises';
 import bcrypt from 'bcrypt';
 import express from 'express';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
+import {
+  acquireIntegrationSuiteLock,
+  applyBillingRuntimeEnv,
+  DEFAULT_INTEGRATION_SUITE_LOCK_PATH,
+  getMockEmailDeliveries,
+  installMockResendDelivery,
+  releaseIntegrationSuiteLock,
+  resetMockEmailDeliveries,
+  type MockEmailDelivery,
+} from '@classroompath/testkit';
 import { closeConnection, db, schema } from '../../src/db/index.js';
 import { closeOpenPathConnection, openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { resolveCurrentGroup } from '@openpath/shared';
@@ -34,15 +40,6 @@ export interface IntegrationServerHandle {
   server: Server;
 }
 
-export interface MockEmailDelivery {
-  id: string;
-  from: string;
-  to: string[];
-  subject: string;
-  html: string;
-  text: string;
-}
-
 let mockOpenPathServer: Server | undefined;
 let mockOpenPathBaseUrl: string | undefined;
 const revokedMockTokens = new Set<string>();
@@ -51,15 +48,6 @@ let mockReadyMode: 'ready' | 'degraded' | 'unavailable' = 'ready';
 let mockSystemInfoMode: 'healthy' | 'database-down' | 'unavailable' = 'healthy';
 let mockApiTokensListMode: 'ok' | 'unavailable' = 'ok';
 let mockLogoutMode: 'ok' | 'unavailable' = 'ok';
-const originalFetch = globalThis.fetch.bind(globalThis);
-const mockEmailDeliveries: MockEmailDelivery[] = [];
-let mockEmailDeliveryCounter = 0;
-const INTEGRATION_SUITE_LOCK_PATH = join(tmpdir(), 'classroompath-api-integration.lock');
-const TEST_PUBLIC_URL = 'http://localhost:5173';
-const TEST_PLATFORM_ADMIN_EMAIL = 'platform-admin@classroompath.test';
-const TEST_STRIPE_SECRET_KEY = 'sk_test_integration_harness';
-const TEST_STRIPE_WEBHOOK_SECRET = 'whsec_integration_harness';
-const TEST_STRIPE_PRICE_ID = 'price_integration_harness';
 
 interface MockOpenPathRoleInfo {
   role: string;
@@ -68,92 +56,7 @@ interface MockOpenPathRoleInfo {
 
 type MockCurrentGroupSource = ReturnType<typeof resolveCurrentGroup>['source'];
 
-function installMockResendDelivery(): void {
-  const patchedFetch = globalThis.fetch as typeof globalThis.fetch & {
-    __classroompathMockResend?: boolean;
-  };
-
-  if (patchedFetch.__classroompathMockResend) {
-    return;
-  }
-
-  const fetchWithMock = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url =
-      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-
-    if (url === 'https://api.resend.com/emails') {
-      const rawBody =
-        typeof init?.body === 'string'
-          ? init.body
-          : init?.body instanceof URLSearchParams
-            ? init.body.toString()
-            : '';
-      const payload = rawBody ? (JSON.parse(rawBody) as Record<string, unknown>) : {};
-      const deliveryId = `mock-resend-${String(++mockEmailDeliveryCounter)}`;
-
-      mockEmailDeliveries.push({
-        id: deliveryId,
-        from: typeof payload.from === 'string' ? payload.from : '',
-        to: Array.isArray(payload.to)
-          ? payload.to.filter((value): value is string => typeof value === 'string')
-          : [],
-        subject: typeof payload.subject === 'string' ? payload.subject : '',
-        html: typeof payload.html === 'string' ? payload.html : '',
-        text: typeof payload.text === 'string' ? payload.text : '',
-      });
-
-      return new Response(JSON.stringify({ id: deliveryId }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    return originalFetch(input, init);
-  }) as typeof globalThis.fetch & {
-    __classroompathMockResend?: boolean;
-  };
-
-  fetchWithMock.__classroompathMockResend = true;
-  globalThis.fetch = fetchWithMock;
-}
-
 installMockResendDelivery();
-
-function applyBillingRuntimeEnv(): void {
-  process.env.PUBLIC_URL ??= TEST_PUBLIC_URL;
-  process.env.CORS_ORIGINS ??= process.env.PUBLIC_URL ?? TEST_PUBLIC_URL;
-  process.env.CP_PLATFORM_ADMIN_EMAILS ??= TEST_PLATFORM_ADMIN_EMAIL;
-  process.env.STRIPE_SECRET_KEY ??= TEST_STRIPE_SECRET_KEY;
-  process.env.STRIPE_WEBHOOK_SECRET ??= TEST_STRIPE_WEBHOOK_SECRET;
-  process.env.STRIPE_ANNUAL_PRICE_1_10 ??= TEST_STRIPE_PRICE_ID;
-  process.env.STRIPE_ANNUAL_PRICE_11_25 ??= TEST_STRIPE_PRICE_ID;
-  process.env.STRIPE_ANNUAL_PRICE_26_50 ??= TEST_STRIPE_PRICE_ID;
-  process.env.STRIPE_ANNUAL_PRICE_51_100 ??= TEST_STRIPE_PRICE_ID;
-  process.env.STRIPE_ONBOARDING_PRICE_1_25 ??= TEST_STRIPE_PRICE_ID;
-  process.env.STRIPE_ONBOARDING_PRICE_26_100 ??= TEST_STRIPE_PRICE_ID;
-  process.env.STRIPE_PILOT_PRICE ??= TEST_STRIPE_PRICE_ID;
-}
-
-async function acquireIntegrationSuiteLock() {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      return await openFile(INTEGRATION_SUITE_LOCK_PATH, 'wx');
-    } catch (error) {
-      if (
-        typeof error !== 'object' ||
-        error === null ||
-        !('code' in error) ||
-        error.code !== 'EEXIST'
-      ) {
-        throw error;
-      }
-
-      await sleep(50);
-    }
-  }
-
-  throw new Error('Timed out waiting for the integration suite database lock');
-}
 
 function toMockUserId(prefix: string, email: string): string {
   const slug = email.replace(/[^a-z0-9]/gi, '-').toLowerCase();
@@ -1090,15 +993,7 @@ export function resetMockOpenPathUpstreamState(): void {
   mockSystemInfoMode = 'healthy';
   mockLogoutMode = 'ok';
   mockApiTokensListMode = 'ok';
-  mockEmailDeliveries.length = 0;
-}
-
-export function getMockEmailDeliveries(): MockEmailDelivery[] {
-  return [...mockEmailDeliveries];
-}
-
-export function resetMockEmailDeliveries(): void {
-  mockEmailDeliveries.length = 0;
+  resetMockEmailDeliveries();
 }
 
 export function signToken(params: {
@@ -1309,20 +1204,8 @@ export function useIntegrationServer(options: { resetBeforeStart?: boolean } = {
     try {
       await stopIntegrationServer(currentServer?.server);
     } finally {
-      await integrationSuiteLock?.close();
+      await releaseIntegrationSuiteLock(integrationSuiteLock, DEFAULT_INTEGRATION_SUITE_LOCK_PATH);
       integrationSuiteLock = undefined;
-      await unlink(INTEGRATION_SUITE_LOCK_PATH).catch((error: unknown) => {
-        if (
-          typeof error === 'object' &&
-          error !== null &&
-          'code' in error &&
-          error.code === 'ENOENT'
-        ) {
-          return;
-        }
-
-        throw error;
-      });
     }
   });
 

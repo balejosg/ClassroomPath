@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import type { DbSchedule } from '../src/services/schedules/schedule-write.service.js';
+import type { DbSchedule } from '../src/services/schedules/schedule-write-shared.service.js';
 import {
   presentOneOffSchedule,
   presentOneOffScheduleWithPermissions,

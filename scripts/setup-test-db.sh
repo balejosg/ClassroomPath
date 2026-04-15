@@ -46,14 +46,15 @@ docker exec "${POSTGRES_CONTAINER}" psql -U "${DB_USER}" -d "${TEST_DB}" -c \
   "GRANT ALL ON SCHEMA public TO ${TEST_USER};"
 
 echo "6. Pushing OpenPath schema to test database..."
-cd "${ROOT_DIR}/upstream/openpath/api"
 DB_HOST=localhost DB_PORT=5432 DB_NAME="${TEST_DB}" DB_USER="${DB_USER}" DB_PASSWORD="${DB_PASSWORD}" \
-  npx drizzle-kit push --force
+  bash "${ROOT_DIR}/scripts/run-openpath.sh" --path api npx drizzle-kit push --force
 
 echo "7. Pushing ClassroomPath schema to test database..."
-cd "${ROOT_DIR}/api"
-DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${TEST_DB}" \
-  npx drizzle-kit push --force
+(
+  cd "${ROOT_DIR}/api"
+  DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${TEST_DB}" \
+    npx drizzle-kit push --force
+)
 
 echo "8. Granting table permissions to test user..."
 docker exec "${POSTGRES_CONTAINER}" psql -U "${DB_USER}" -d "${TEST_DB}" -c \

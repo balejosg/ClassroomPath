@@ -246,7 +246,7 @@ function createStageExecution(
             env,
           });
           if (!plan.skipOpenPathStatic) {
-            await runtime.runShell('cd upstream/openpath && npm run verify:static', {
+            await runtime.run('bash', ['scripts/run-openpath.sh', 'npm', 'run', 'verify:static'], {
               cwd: plan.rootDir,
               env,
             });

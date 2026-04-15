@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   Classrooms,
@@ -10,12 +11,16 @@ import {
   Settings,
   Sidebar,
   TeacherDashboard,
-} from '@openpath/public-shell';
-import { isAdmin } from '@openpath/public-auth';
+} from './openpath/public-shell';
+import { isAdmin } from './openpath/public-auth';
 
 import { OrganizationUsers } from './views/OrganizationUsers';
-
-type AppTab = 'dashboard' | 'classrooms' | 'groups' | 'rules' | 'users' | 'domains' | 'settings';
+import {
+  getPathForTab,
+  getTabFromPathname,
+  normalizeShellPathname,
+  type AppTab,
+} from './app/classroom-path-shell-routing';
 
 interface SelectedGroup {
   id: string;
@@ -23,158 +28,54 @@ interface SelectedGroup {
   readOnly?: boolean;
 }
 
-function normalizePathname(pathname: string): string {
-  const trimmed = pathname.replace(/\/+$/, '');
-  return trimmed.length === 0 ? '/' : trimmed;
-}
-
-function getTabFromPathname(pathname: string): AppTab {
-  const normalized = normalizePathname(pathname);
-
-  if (normalized === '/' || normalized.startsWith('/dashboard')) return 'dashboard';
-  if (normalized.startsWith('/aulas')) return 'classrooms';
-  if (normalized.startsWith('/politicas') || normalized.startsWith('/grupos')) return 'groups';
-  if (normalized.startsWith('/reglas')) return 'rules';
-  if (normalized.startsWith('/usuarios')) return 'users';
-  if (normalized.startsWith('/dominios')) return 'domains';
-  if (normalized.startsWith('/configuracion') || normalized.startsWith('/settings'))
-    return 'settings';
-
-  return 'dashboard';
-}
-
-function getPathForTab(tab: AppTab): string {
-  switch (tab) {
-    case 'dashboard':
-      return '/';
-    case 'classrooms':
-      return '/aulas';
-    case 'groups':
-      return '/politicas';
-    case 'rules':
-      return '/reglas';
-    case 'users':
-      return '/usuarios';
-    case 'domains':
-      return '/dominios';
-    case 'settings':
-      return '/configuracion';
-    default:
-      return '/';
-  }
-}
-
-export default function ClassroomPathShell() {
-  const initialPathname = typeof window !== 'undefined' ? window.location.pathname : '/';
-
-  const [activeTab, setActiveTab] = useState<AppTab>(() => getTabFromPathname(initialPathname));
+function ClassroomPathShellContent() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pathname = normalizeShellPathname(location.pathname);
+  const activeTab = getTabFromPathname(pathname);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<SelectedGroup | null>(null);
   const [pendingSelectedClassroomId, setPendingSelectedClassroomId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handlePopState = () => {
-      setActiveTab(getTabFromPathname(window.location.pathname));
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const nextPath = getPathForTab(activeTab);
-    if (window.location.pathname !== nextPath) {
-      window.history.pushState(null, '', nextPath);
-    }
-  }, [activeTab]);
-
   const admin = isAdmin();
+
+  const navigateToTab = (tab: AppTab) => {
+    setPendingSelectedClassroomId(null);
+    setSidebarOpen(false);
+    navigate(getPathForTab(tab));
+  };
 
   const handleNavigateToRules = (group: SelectedGroup) => {
     setSelectedGroup(group);
-    setActiveTab('rules');
+    navigate('/reglas');
   };
 
   const handleBackFromRules = () => {
     setSelectedGroup(null);
-    setActiveTab('groups');
+    navigate('/politicas');
   };
 
   const handleNavigateToClassroom = (classroom: { id: string; name: string }) => {
     setPendingSelectedClassroomId(classroom.id);
-    setActiveTab('classrooms');
+    navigate('/aulas');
   };
 
   const handlePendingSelectedClassroomIdConsumed = () => {
     setPendingSelectedClassroomId(null);
   };
 
-  const handleSidebarTabChange = (tab: string) => {
-    setPendingSelectedClassroomId(null);
-    setActiveTab(tab as AppTab);
-    setSidebarOpen(false);
-  };
+  const renderDashboard = () =>
+    admin ? (
+      <Dashboard
+        onNavigateToRules={handleNavigateToRules}
+        onNavigateToClassroom={handleNavigateToClassroom}
+      />
+    ) : (
+      <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
+    );
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return admin ? (
-          <Dashboard
-            onNavigateToRules={handleNavigateToRules}
-            onNavigateToClassroom={handleNavigateToClassroom}
-          />
-        ) : (
-          <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
-        );
-      case 'classrooms':
-        return (
-          <Classrooms
-            initialSelectedClassroomId={pendingSelectedClassroomId}
-            onInitialSelectedClassroomIdConsumed={handlePendingSelectedClassroomIdConsumed}
-          />
-        );
-      case 'groups':
-        return <Groups onNavigateToRules={handleNavigateToRules} />;
-      case 'rules':
-        return selectedGroup ? (
-          <RulesManager
-            groupId={selectedGroup.id}
-            groupName={selectedGroup.name}
-            readOnly={selectedGroup.readOnly}
-            onBack={handleBackFromRules}
-          />
-        ) : (
-          <Groups onNavigateToRules={handleNavigateToRules} />
-        );
-      case 'users':
-        return admin ? (
-          <OrganizationUsers />
-        ) : (
-          <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
-        );
-      case 'domains':
-        return admin ? (
-          <DomainRequests />
-        ) : (
-          <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
-        );
-      case 'settings':
-        return <Settings />;
-      default:
-        return admin ? (
-          <Dashboard
-            onNavigateToRules={handleNavigateToRules}
-            onNavigateToClassroom={handleNavigateToClassroom}
-          />
-        ) : (
-          <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
-        );
-    }
-  };
+  const renderTeacherFallback = () => (
+    <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
+  );
 
   const getTitle = () => {
     switch (activeTab) {
@@ -199,7 +100,11 @@ export default function ClassroomPathShell() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
-      <Sidebar activeTab={activeTab} setActiveTab={handleSidebarTabChange} isOpen={sidebarOpen} />
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={(tab) => navigateToTab(tab as AppTab)}
+        isOpen={sidebarOpen}
+      />
 
       {sidebarOpen ? (
         <div
@@ -212,9 +117,58 @@ export default function ClassroomPathShell() {
         <Header onMenuClick={() => setSidebarOpen((current) => !current)} title={getTitle()} />
 
         <main className="flex-1 overflow-y-auto p-6 md:p-8">
-          <div className="mx-auto max-w-7xl">{renderContent()}</div>
+          <div className="mx-auto max-w-7xl">
+            <Routes>
+              <Route path="/" element={renderDashboard()} />
+              <Route path="/dashboard" element={<Navigate replace to="/" />} />
+              <Route
+                path="/aulas"
+                element={
+                  <Classrooms
+                    initialSelectedClassroomId={pendingSelectedClassroomId}
+                    onInitialSelectedClassroomIdConsumed={handlePendingSelectedClassroomIdConsumed}
+                  />
+                }
+              />
+              <Route
+                path="/politicas"
+                element={<Groups onNavigateToRules={handleNavigateToRules} />}
+              />
+              <Route path="/grupos" element={<Navigate replace to="/politicas" />} />
+              <Route
+                path="/reglas"
+                element={
+                  selectedGroup ? (
+                    <RulesManager
+                      groupId={selectedGroup.id}
+                      groupName={selectedGroup.name}
+                      readOnly={selectedGroup.readOnly}
+                      onBack={handleBackFromRules}
+                    />
+                  ) : (
+                    <Groups onNavigateToRules={handleNavigateToRules} />
+                  )
+                }
+              />
+              <Route
+                path="/usuarios"
+                element={admin ? <OrganizationUsers /> : renderTeacherFallback()}
+              />
+              <Route
+                path="/dominios"
+                element={admin ? <DomainRequests /> : renderTeacherFallback()}
+              />
+              <Route path="/configuracion" element={<Settings />} />
+              <Route path="/settings" element={<Navigate replace to="/configuracion" />} />
+              <Route path="*" element={<Navigate replace to="/" />} />
+            </Routes>
+          </div>
         </main>
       </div>
     </div>
   );
+}
+
+export default function ClassroomPathShell() {
+  return <ClassroomPathShellContent />;
 }

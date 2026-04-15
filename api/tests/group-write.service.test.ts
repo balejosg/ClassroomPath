@@ -1,6 +1,11 @@
 import assert from 'node:assert';
-import { after, describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 import { and, eq, inArray } from 'drizzle-orm';
+import {
+  acquireIntegrationSuiteLock,
+  DEFAULT_INTEGRATION_SUITE_LOCK_PATH,
+  releaseIntegrationSuiteLock,
+} from '@classroompath/testkit';
 
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
@@ -24,6 +29,7 @@ const groupIds = new Set<string>();
 const orgGroupIds = new Set<string>();
 const ruleIds = new Set<string>();
 const userIds = new Set<string>();
+let integrationSuiteLock: Awaited<ReturnType<typeof acquireIntegrationSuiteLock>> | undefined;
 
 function nextId(prefix: string): string {
   counter += 1;
@@ -69,6 +75,10 @@ async function seedOpenPathUser(params: { userId: string; email: string; name: s
   });
 }
 
+before(async () => {
+  integrationSuiteLock = await acquireIntegrationSuiteLock();
+});
+
 after(async () => {
   if (ruleIds.size > 0) {
     await openpathDb.delete(whitelistRules).where(inArray(whitelistRules.id, [...ruleIds]));
@@ -103,9 +113,12 @@ after(async () => {
       .delete(schema.cpOrganizations)
       .where(inArray(schema.cpOrganizations.id, [...organizationIds]));
   }
+
+  await releaseIntegrationSuiteLock(integrationSuiteLock, DEFAULT_INTEGRATION_SUITE_LOCK_PATH);
+  integrationSuiteLock = undefined;
 });
 
-describe('group-write.service', () => {
+describe('group-write.service', { concurrency: 1 }, () => {
   it('adds and removes teacher group ownership from the mirrored role', async () => {
     const teacherUserId = nextId('teacher');
     const firstGroupId = nextId('grp');

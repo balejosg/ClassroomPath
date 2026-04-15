@@ -10,6 +10,7 @@ import {
   setActiveGroupForTenant,
   updateClassroomForTenant,
 } from '../src/services/classrooms/classroom-write.service.js';
+import { acquireTestDbLock, releaseTestDbLock } from './test-db.js';
 
 const RUN_ID = Math.random().toString(36).slice(2, 10);
 const ORG_ID = `org_classroom_write_${RUN_ID}`;
@@ -43,6 +44,7 @@ async function cleanupTenantClassrooms() {
 
 describe('classroom-write.service', () => {
   before(async () => {
+    await acquireTestDbLock();
     await cleanupTenantClassrooms();
     await db
       .delete(schema.cpOrganizationGroups)
@@ -84,15 +86,19 @@ describe('classroom-write.service', () => {
   });
 
   after(async () => {
-    await cleanupTenantClassrooms();
-    await db
-      .delete(schema.cpOrganizationGroups)
-      .where(eq(schema.cpOrganizationGroups.organizationId, ORG_ID));
-    await db.delete(schema.cpOrganizations).where(eq(schema.cpOrganizations.id, ORG_ID));
-    await openpathDb
-      .delete(openpathSchema.whitelistGroups)
-      .where(eq(openpathSchema.whitelistGroups.id, GROUP_ID));
-    await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, ADMIN_ID));
+    try {
+      await cleanupTenantClassrooms();
+      await db
+        .delete(schema.cpOrganizationGroups)
+        .where(eq(schema.cpOrganizationGroups.organizationId, ORG_ID));
+      await db.delete(schema.cpOrganizations).where(eq(schema.cpOrganizations.id, ORG_ID));
+      await openpathDb
+        .delete(openpathSchema.whitelistGroups)
+        .where(eq(openpathSchema.whitelistGroups.id, GROUP_ID));
+      await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, ADMIN_ID));
+    } finally {
+      await releaseTestDbLock();
+    }
   });
 
   it('creates, updates, activates and deletes tenant classrooms through the extracted write service', async () => {

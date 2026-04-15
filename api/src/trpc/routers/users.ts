@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-import { router, tenantProcedure } from '../trpc.js';
-import { assertOrgAdminTenantProcedureContext } from '../tenant-procedure-helpers.js';
+import { createTenantAdminProcedure, router } from '../trpc.js';
 import {
   assignOrganizationUserRole,
   createOrganizationUser,
@@ -37,73 +36,78 @@ const AssignRoleSchema = z.object({
   groupIds: z.array(z.string()).default([]),
 });
 
+const organizationUserAdminProcedure = createTenantAdminProcedure(
+  'Only organization admins can manage users'
+);
+
 export const usersRouter = router({
-  list: tenantProcedure.query(async ({ ctx }) => {
-    assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
+  list: organizationUserAdminProcedure.query(async ({ ctx }) => {
     return listOrganizationUsers(ctx.organizationId);
   }),
 
-  listInvitations: tenantProcedure.query(async ({ ctx }) => {
-    assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
+  listInvitations: organizationUserAdminProcedure.query(async ({ ctx }) => {
     return listOrganizationInvitations(ctx.organizationId);
   }),
 
-  listMutationOperations: tenantProcedure
+  listMutationOperations: organizationUserAdminProcedure
     .input(
       z.object({ status: z.enum(['in_progress', 'completed', 'failed']).optional() }).optional()
     )
     .query(async ({ ctx, input }) => {
-      assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
       return listOrganizationMutationOperations({
         organizationId: ctx.organizationId,
         status: input?.status,
       });
     }),
 
-  getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
-    return getOrganizationUserById({ organizationId: ctx.organizationId, userId: input.id });
-  }),
+  getById: organizationUserAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return getOrganizationUserById({ organizationId: ctx.organizationId, userId: input.id });
+    }),
 
-  getRole: tenantProcedure.input(z.object({ userId: z.string() })).query(async ({ ctx, input }) => {
-    assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
-    return getOrganizationUserRole({ organizationId: ctx.organizationId, userId: input.userId });
-  }),
+  getRole: organizationUserAdminProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return getOrganizationUserRole({ organizationId: ctx.organizationId, userId: input.userId });
+    }),
 
-  create: tenantProcedure.input(CreateUserSchema).mutation(async ({ ctx, input }) => {
-    assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
-    return createOrganizationUser({
-      organizationId: ctx.organizationId,
-      actedBy: ctx.user.sub,
-      email: input.email,
-      name: input.name,
-      role: input.role,
-    });
-  }),
+  create: organizationUserAdminProcedure
+    .input(CreateUserSchema)
+    .mutation(async ({ ctx, input }) => {
+      return createOrganizationUser({
+        organizationId: ctx.organizationId,
+        actedBy: ctx.user.sub,
+        email: input.email,
+        name: input.name,
+        role: input.role,
+      });
+    }),
 
-  update: tenantProcedure.input(UpdateUserSchema).mutation(async ({ ctx, input }) => {
-    assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
-    return updateOrganizationUser({
-      organizationId: ctx.organizationId,
-      userId: input.id,
-      name: input.name,
-      active: input.active,
-    });
-  }),
+  update: organizationUserAdminProcedure
+    .input(UpdateUserSchema)
+    .mutation(async ({ ctx, input }) => {
+      return updateOrganizationUser({
+        organizationId: ctx.organizationId,
+        userId: input.id,
+        name: input.name,
+        active: input.active,
+      });
+    }),
 
-  delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
-    return deleteOrganizationUser({
-      organizationId: ctx.organizationId,
-      userId: input.id,
-      actedBy: ctx.user.sub,
-    });
-  }),
+  delete: organizationUserAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return deleteOrganizationUser({
+        organizationId: ctx.organizationId,
+        userId: input.id,
+        actedBy: ctx.user.sub,
+      });
+    }),
 
-  revokeInvitation: tenantProcedure
+  revokeInvitation: organizationUserAdminProcedure
     .input(z.object({ invitationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
       return revokeOrganizationInvitation({
         organizationId: ctx.organizationId,
         invitationId: input.invitationId,
@@ -111,10 +115,9 @@ export const usersRouter = router({
       });
     }),
 
-  retryMutationOperation: tenantProcedure
+  retryMutationOperation: organizationUserAdminProcedure
     .input(z.object({ operationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
       return retryOrganizationMutationOperation({
         organizationId: ctx.organizationId,
         operationId: input.operationId,
@@ -122,21 +125,21 @@ export const usersRouter = router({
       });
     }),
 
-  assignRole: tenantProcedure.input(AssignRoleSchema).mutation(async ({ ctx, input }) => {
-    assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
-    return assignOrganizationUserRole({
-      organizationId: ctx.organizationId,
-      userId: input.userId,
-      actedBy: ctx.user.sub,
-      role: input.role,
-      groupIds: input.groupIds,
-    });
-  }),
+  assignRole: organizationUserAdminProcedure
+    .input(AssignRoleSchema)
+    .mutation(async ({ ctx, input }) => {
+      return assignOrganizationUserRole({
+        organizationId: ctx.organizationId,
+        userId: input.userId,
+        actedBy: ctx.user.sub,
+        role: input.role,
+        groupIds: input.groupIds,
+      });
+    }),
 
-  revokeRole: tenantProcedure
+  revokeRole: organizationUserAdminProcedure
     .input(z.object({ userId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      assertOrgAdminTenantProcedureContext(ctx, 'Only organization admins can manage users');
       return revokeOrganizationUserRole({
         organizationId: ctx.organizationId,
         userId: input.userId,

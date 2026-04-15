@@ -1,13 +1,9 @@
 import { z } from 'zod';
-import { GroupVisibility as GroupVisibilitySchema } from '@openpath/shared';
+import { GroupVisibility as GroupVisibilitySchema } from '../../openpath/shared.js';
 
-import { router, tenantProcedure } from '../trpc.js';
+import { router, teacherOrAdminProcedure, tenantMemberProcedure } from '../trpc.js';
 import { publishWhitelistGroupChanged } from '../../db/openpath.js';
 import { assertCanUseGroup, assertCanViewGroup } from '../../lib/tenant-access.js';
-import {
-  assertTeacherOrAdminTenantProcedureContext,
-  assertTenantProcedureContext,
-} from '../tenant-procedure-helpers.js';
 import { cloneGroupIntoOrganization } from '../../services/group-copy.service.js';
 import {
   bulkCreateGroupRules,
@@ -105,8 +101,7 @@ async function createWhitelistRuleForGroup(
 }
 
 export const groupsRouter = router({
-  list: tenantProcedure.query(async ({ ctx }) => {
-    assertTeacherOrAdminTenantProcedureContext(ctx);
+  list: teacherOrAdminProcedure.query(async ({ ctx }) => {
     return listOrganizationGroups({
       organizationId: ctx.organizationId,
       userId: ctx.user.sub,
@@ -114,13 +109,11 @@ export const groupsRouter = router({
     });
   }),
 
-  libraryList: tenantProcedure.query(async ({ ctx }) => {
-    assertTeacherOrAdminTenantProcedureContext(ctx);
+  libraryList: teacherOrAdminProcedure.query(async ({ ctx }) => {
     return listOrganizationLibraryGroups(ctx.organizationId);
   }),
 
-  clone: tenantProcedure.input(CloneGroupSchema).mutation(async ({ ctx, input }) => {
-    assertTenantProcedureContext(ctx);
+  clone: tenantMemberProcedure.input(CloneGroupSchema).mutation(async ({ ctx, input }) => {
     await assertCanViewGroup(ctx, input.sourceGroupId, GROUP_PERMISSION_OPTS);
 
     return cloneGroupIntoOrganization({
@@ -133,8 +126,7 @@ export const groupsRouter = router({
     });
   }),
 
-  stats: tenantProcedure.query(async ({ ctx }) => {
-    assertTeacherOrAdminTenantProcedureContext(ctx);
+  stats: teacherOrAdminProcedure.query(async ({ ctx }) => {
     return getOrganizationGroupStats({
       organizationId: ctx.organizationId,
       userId: ctx.user.sub,
@@ -142,33 +134,35 @@ export const groupsRouter = router({
     });
   }),
 
-  getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    assertTenantProcedureContext(ctx);
-    await assertCanViewGroup(ctx, input.id, GROUP_PERMISSION_OPTS);
-    return getOrganizationGroupById({
-      organizationId: ctx.organizationId,
-      groupId: input.id,
-    });
-  }),
+  getById: tenantMemberProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await assertCanViewGroup(ctx, input.id, GROUP_PERMISSION_OPTS);
+      return getOrganizationGroupById({
+        organizationId: ctx.organizationId,
+        groupId: input.id,
+      });
+    }),
 
-  getRules: tenantProcedure
+  getRules: tenantMemberProcedure
     .input(z.object({ groupId: z.string() }))
     .query(async ({ ctx, input }) => {
       await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
       return listGroupRules({ groupId: input.groupId });
     }),
 
-  getByName: tenantProcedure.input(z.object({ name: z.string() })).query(async ({ ctx, input }) => {
-    assertTeacherOrAdminTenantProcedureContext(ctx);
-    return getOrganizationGroupByName({
-      organizationId: ctx.organizationId,
-      userId: ctx.user.sub,
-      userRole: ctx.userRole,
-      name: input.name,
-    });
-  }),
+  getByName: teacherOrAdminProcedure
+    .input(z.object({ name: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return getOrganizationGroupByName({
+        organizationId: ctx.organizationId,
+        userId: ctx.user.sub,
+        userRole: ctx.userRole,
+        name: input.name,
+      });
+    }),
 
-  listRules: tenantProcedure
+  listRules: tenantMemberProcedure
     .input(
       z.object({
         groupId: z.string(),
@@ -180,30 +174,32 @@ export const groupsRouter = router({
       return listGroupRules(input);
     }),
 
-  listRulesPaginated: tenantProcedure
+  listRulesPaginated: tenantMemberProcedure
     .input(ListRulesPaginatedSchema)
     .query(async ({ ctx, input }) => {
       await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
       return listPaginatedGroupRules(input);
     }),
 
-  listRulesGrouped: tenantProcedure.input(ListRulesGroupedSchema).query(async ({ ctx, input }) => {
-    await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-    return listGroupedGroupRules(input);
-  }),
+  listRulesGrouped: tenantMemberProcedure
+    .input(ListRulesGroupedSchema)
+    .query(async ({ ctx, input }) => {
+      await assertCanViewGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
+      return listGroupedGroupRules(input);
+    }),
 
-  bulkDeleteRules: tenantProcedure.input(BulkDeleteRulesSchema).mutation(async ({ ctx, input }) => {
-    assertTeacherOrAdminTenantProcedureContext(ctx);
-    return bulkDeleteOrganizationGroupRules({
-      organizationId: ctx.organizationId,
-      userId: ctx.user.sub,
-      userRole: ctx.userRole,
-      ids: input.ids,
-    });
-  }),
+  bulkDeleteRules: teacherOrAdminProcedure
+    .input(BulkDeleteRulesSchema)
+    .mutation(async ({ ctx, input }) => {
+      return bulkDeleteOrganizationGroupRules({
+        organizationId: ctx.organizationId,
+        userId: ctx.user.sub,
+        userRole: ctx.userRole,
+        ids: input.ids,
+      });
+    }),
 
-  create: tenantProcedure.input(CreateGroupSchema).mutation(async ({ ctx, input }) => {
-    assertTeacherOrAdminTenantProcedureContext(ctx);
+  create: teacherOrAdminProcedure.input(CreateGroupSchema).mutation(async ({ ctx, input }) => {
     return createOrganizationGroup({
       organizationId: ctx.organizationId,
       actorUserId: ctx.user.sub,
@@ -214,8 +210,7 @@ export const groupsRouter = router({
     });
   }),
 
-  update: tenantProcedure.input(UpdateGroupSchema).mutation(async ({ ctx, input }) => {
-    assertTenantProcedureContext(ctx);
+  update: tenantMemberProcedure.input(UpdateGroupSchema).mutation(async ({ ctx, input }) => {
     return updateOrganizationGroup({
       organizationId: ctx.organizationId,
       userId: ctx.user.sub,
@@ -227,36 +222,39 @@ export const groupsRouter = router({
     });
   }),
 
-  delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    assertTenantProcedureContext(ctx);
-    return deleteOrganizationGroup({
-      organizationId: ctx.organizationId,
-      userId: ctx.user.sub,
-      userRole: ctx.userRole,
-      groupId: input.id,
-    });
-  }),
+  delete: tenantMemberProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return deleteOrganizationGroup({
+        organizationId: ctx.organizationId,
+        userId: ctx.user.sub,
+        userRole: ctx.userRole,
+        groupId: input.id,
+      });
+    }),
 
-  addRule: tenantProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
+  addRule: tenantMemberProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
     return createWhitelistRuleForGroup(ctx, input);
   }),
 
-  createRule: tenantProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
+  createRule: tenantMemberProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
     return createWhitelistRuleForGroup(ctx, input);
   }),
 
-  bulkCreateRules: tenantProcedure.input(BulkCreateRulesSchema).mutation(async ({ ctx, input }) => {
-    await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
+  bulkCreateRules: tenantMemberProcedure
+    .input(BulkCreateRulesSchema)
+    .mutation(async ({ ctx, input }) => {
+      await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
 
-    const insertedCount = await bulkCreateGroupRules(input);
-    if (insertedCount > 0) {
-      await publishWhitelistGroupChanged(input.groupId);
-    }
+      const insertedCount = await bulkCreateGroupRules(input);
+      if (insertedCount > 0) {
+        await publishWhitelistGroupChanged(input.groupId);
+      }
 
-    return { count: insertedCount };
-  }),
+      return { count: insertedCount };
+    }),
 
-  deleteRule: tenantProcedure
+  deleteRule: tenantMemberProcedure
     .input(z.object({ id: z.string(), groupId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
@@ -268,7 +266,7 @@ export const groupsRouter = router({
       return { success: true };
     }),
 
-  updateRule: tenantProcedure
+  updateRule: tenantMemberProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -287,8 +285,7 @@ export const groupsRouter = router({
       return rule;
     }),
 
-  systemStatus: tenantProcedure.query(async ({ ctx }) => {
-    assertTeacherOrAdminTenantProcedureContext(ctx);
+  systemStatus: teacherOrAdminProcedure.query(async ({ ctx }) => {
     return getOrganizationSystemStatus({
       organizationId: ctx.organizationId,
       userId: ctx.user.sub,

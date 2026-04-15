@@ -4,6 +4,11 @@ import { getSingleMembershipOrThrow } from '../lib/tenant-memberships.js';
 import { getRequestId } from '../lib/request-id.js';
 import { logger } from '../lib/logger.js';
 import { assertOrganizationEntitled } from '../services/billing.service.js';
+import {
+  requireOrgAdminTenantProcedureContext,
+  requireTeacherOrAdminTenantProcedureContext,
+  requireTenantProcedureContext,
+} from './tenant-procedure-helpers.js';
 
 const t = initTRPC.context<Context>().create({
   errorFormatter({ shape, ctx }) {
@@ -62,6 +67,24 @@ export const tenantProcedure = protectedProcedure.use(async ({ ctx, next }) => {
     },
   });
 });
+
+export const tenantMemberProcedure = tenantProcedure.use(async ({ ctx, next }) => {
+  return next({ ctx: requireTenantProcedureContext(ctx) });
+});
+
+export const teacherOrAdminProcedure = tenantProcedure.use(async ({ ctx, next }) => {
+  return next({ ctx: requireTeacherOrAdminTenantProcedureContext(ctx) });
+});
+
+export function createTenantAdminProcedure(message = 'Admin access required') {
+  return tenantProcedure.use(async ({ ctx, next }) => {
+    return next({
+      ctx: requireOrgAdminTenantProcedureContext(ctx, message),
+    });
+  });
+}
+
+export const tenantAdminProcedure = createTenantAdminProcedure();
 
 export function logTrpcError(params: { path?: string; ctx?: Context; error: Error }): void {
   const requestId = params.ctx ? getRequestId(params.ctx.req) : undefined;

@@ -1,11 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { router, tenantProcedure } from '../trpc.js';
+import { router, tenantAdminProcedure, tenantMemberProcedure } from '../trpc.js';
 
-import {
-  assertOrgAdminTenantProcedureContext,
-  assertTenantProcedureContext,
-} from '../tenant-procedure-helpers.js';
 import {
   approveTenantRequest,
   createTenantRequest,
@@ -17,7 +13,7 @@ import {
 } from '../../services/requests.service.js';
 
 export const requestsRouter = router({
-  create: tenantProcedure
+  create: tenantMemberProcedure
     .input(
       z.object({
         domain: z.string().trim().min(1),
@@ -34,7 +30,6 @@ export const requestsRouter = router({
         });
       }
 
-      assertTenantProcedureContext(ctx);
       return createTenantRequest({
         ctx,
         input: {
@@ -46,37 +41,35 @@ export const requestsRouter = router({
       });
     }),
 
-  listGroups: tenantProcedure.query(async ({ ctx }) => {
-    assertTenantProcedureContext(ctx);
+  listGroups: tenantMemberProcedure.query(async ({ ctx }) => {
     return listAccessibleRequestGroups(ctx);
   }),
 
-  stats: tenantProcedure.query(async ({ ctx }) => {
-    assertTenantProcedureContext(ctx);
+  stats: tenantMemberProcedure.query(async ({ ctx }) => {
     return getTenantRequestStats(ctx);
   }),
 
-  list: tenantProcedure
+  list: tenantMemberProcedure
     .input(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
     .query(async ({ ctx, input }) => {
-      assertTenantProcedureContext(ctx);
       return listTenantRequests(ctx, input.status);
     }),
 
-  approve: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    assertTenantProcedureContext(ctx);
-    return approveTenantRequest(ctx, input.id);
-  }),
+  approve: tenantMemberProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return approveTenantRequest(ctx, input.id);
+    }),
 
-  reject: tenantProcedure
+  reject: tenantMemberProcedure
     .input(z.object({ id: z.string(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      assertTenantProcedureContext(ctx);
       return rejectTenantRequest(ctx, input.id, input.reason);
     }),
 
-  delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    assertOrgAdminTenantProcedureContext(ctx);
-    return deleteTenantRequest(ctx, input.id);
-  }),
+  delete: tenantAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return deleteTenantRequest(ctx, input.id);
+    }),
 });

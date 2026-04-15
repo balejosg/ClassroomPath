@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, tenantProcedure } from '../trpc.js';
+import { router, teacherOrAdminProcedure, tenantMemberProcedure } from '../trpc.js';
 import {
   getTenantClassroomById,
   listActiveClassroomExemptions,
@@ -17,10 +17,6 @@ import {
 } from '../../services/classrooms/classroom-write.service.js';
 
 import { assertOrgClassroomAccess } from '../../lib/tenant-access.js';
-import {
-  assertTeacherOrAdminTenantProcedureContext,
-  assertTenantProcedureContext,
-} from '../tenant-procedure-helpers.js';
 
 const CreateClassroomSchema = z.object({
   name: z.string().min(1).max(100),
@@ -35,36 +31,34 @@ const UpdateClassroomSchema = z.object({
 });
 
 export const classroomsRouter = router({
-  list: tenantProcedure.query(async ({ ctx }) => {
-    assertTenantProcedureContext(ctx);
+  list: tenantMemberProcedure.query(async ({ ctx }) => {
     return listTenantClassrooms({ organizationId: ctx.organizationId });
   }),
 
-  getById: tenantProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    assertTenantProcedureContext(ctx);
-    await assertOrgClassroomAccess(ctx.organizationId, input.id);
-    return getTenantClassroomById({ classroomId: input.id });
-  }),
+  getById: tenantMemberProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await assertOrgClassroomAccess(ctx.organizationId, input.id);
+      return getTenantClassroomById({ classroomId: input.id });
+    }),
 
-  listMachines: tenantProcedure
+  listMachines: teacherOrAdminProcedure
     .input(z.object({ classroomId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      assertTeacherOrAdminTenantProcedureContext(ctx);
       return listTenantClassroomMachines({
         organizationId: ctx.organizationId,
         classroomId: input.classroomId,
       });
     }),
 
-  listExemptions: tenantProcedure
+  listExemptions: teacherOrAdminProcedure
     .input(z.object({ classroomId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      assertTeacherOrAdminTenantProcedureContext(ctx);
       await assertOrgClassroomAccess(ctx.organizationId, input.classroomId);
       return listActiveClassroomExemptions({ classroomId: input.classroomId });
     }),
 
-  createExemption: tenantProcedure
+  createExemption: teacherOrAdminProcedure
     .input(
       z.object({
         machineId: z.string().min(1),
@@ -73,46 +67,41 @@ export const classroomsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      assertTeacherOrAdminTenantProcedureContext(ctx);
       return createClassroomExemptionForTenant({ ctx, input });
     }),
 
-  deleteExemption: tenantProcedure
+  deleteExemption: teacherOrAdminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      assertTeacherOrAdminTenantProcedureContext(ctx);
       await deleteClassroomExemptionForTenant({ ctx, id: input.id });
       return { success: true };
     }),
 
-  setActiveGroup: tenantProcedure
+  setActiveGroup: teacherOrAdminProcedure
     .input(z.object({ id: z.string(), groupId: z.string().nullable() }))
     .mutation(async ({ ctx, input }) => {
-      assertTeacherOrAdminTenantProcedureContext(ctx);
       return setActiveGroupForTenant({ ctx, classroomId: input.id, groupId: input.groupId });
     }),
 
-  deleteMachine: tenantProcedure
+  deleteMachine: teacherOrAdminProcedure
     .input(z.object({ id: z.string(), classroomId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      assertTeacherOrAdminTenantProcedureContext(ctx);
       await deleteClassroomMachineForTenant({ ctx, input });
       return { success: true };
     }),
 
-  create: tenantProcedure.input(CreateClassroomSchema).mutation(async ({ ctx, input }) => {
-    assertTeacherOrAdminTenantProcedureContext(ctx);
+  create: teacherOrAdminProcedure.input(CreateClassroomSchema).mutation(async ({ ctx, input }) => {
     return createClassroomForTenant({ ctx, input });
   }),
 
-  update: tenantProcedure.input(UpdateClassroomSchema).mutation(async ({ ctx, input }) => {
-    assertTeacherOrAdminTenantProcedureContext(ctx);
+  update: teacherOrAdminProcedure.input(UpdateClassroomSchema).mutation(async ({ ctx, input }) => {
     return updateClassroomForTenant({ ctx, input });
   }),
 
-  delete: tenantProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    assertTeacherOrAdminTenantProcedureContext(ctx);
-    await deleteClassroomForTenant({ ctx, classroomId: input.id });
-    return { success: true };
-  }),
+  delete: teacherOrAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await deleteClassroomForTenant({ ctx, classroomId: input.id });
+      return { success: true };
+    }),
 });

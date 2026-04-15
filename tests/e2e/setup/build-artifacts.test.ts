@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 
-import { isBuildStale } from './build-artifacts.js';
+import { getBuildTarget, isBuildStale } from './build-artifacts.js';
 
 const tempDirs: string[] = [];
 
@@ -33,6 +33,18 @@ afterEach(() => {
 });
 
 describe('build artifact freshness', () => {
+  test('routes OpenPath rebuilds through the shared runner script', () => {
+    const workspace = createTempWorkspace();
+    const openPathTarget = getBuildTarget('openpath-api', workspace);
+    const gatewayTarget = getBuildTarget('gateway', workspace);
+
+    assert.equal(
+      openPathTarget.buildCommand,
+      'bash scripts/run-openpath.sh npm run build --workspace=@openpath/shared && bash scripts/run-openpath.sh npm run build --workspace=@openpath/api'
+    );
+    assert.equal(gatewayTarget.buildCommand, 'cd api && npm run build');
+  });
+
   test('treats a missing dist entry as stale', () => {
     const workspace = createTempWorkspace();
     writeFileAt(workspace, 'src/server.ts', 1_000);

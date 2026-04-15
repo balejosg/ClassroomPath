@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Button } from '@openpath/public-ui';
+import { Button } from '../openpath/public-ui';
 import { supportsOnlineCheckout } from '@classroompath/contracts/onboarding-policy';
 import { cpTrpc } from '../lib/cp-trpc';
 import { persistSession } from '../lib/auth-storage';

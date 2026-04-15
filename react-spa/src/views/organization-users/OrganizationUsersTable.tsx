@@ -1,5 +1,5 @@
 import { AlertCircle, KeyRound, Loader2, Mail, Trash2 } from 'lucide-react';
-import { Button } from '@openpath/public-ui';
+import { Button } from '../../openpath/public-ui';
 
 import {
   MemberRow,

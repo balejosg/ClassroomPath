@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { RefreshCw, ArrowLeft } from 'lucide-react';
-import { Button, Card } from '@openpath/public-ui';
+import { Button, Card } from '../openpath/public-ui';
 import {
   createOnboardingPolicy,
   shouldShowOnboardingAccessPolicyNotice,

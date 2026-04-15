@@ -30,11 +30,23 @@ export function assertTenantProcedureContext(ctx: Context): asserts ctx is Tenan
   }
 }
 
+export function requireTenantProcedureContext(ctx: Context): TenantProcedureContext {
+  assertTenantProcedureContext(ctx);
+  return ctx;
+}
+
 export function assertTeacherOrAdminTenantProcedureContext(
   ctx: Context
 ): asserts ctx is TeacherOrAdminTenantProcedureContext {
   assertTenantProcedureContext(ctx);
   requireTeacherOrAdmin(ctx);
+}
+
+export function requireTeacherOrAdminTenantProcedureContext(
+  ctx: Context
+): TeacherOrAdminTenantProcedureContext {
+  assertTeacherOrAdminTenantProcedureContext(ctx);
+  return ctx;
 }
 
 export function assertOrgAdminTenantProcedureContext(
@@ -46,4 +58,12 @@ export function assertOrgAdminTenantProcedureContext(
   if (ctx.userRole !== 'admin') {
     throw new TRPCError({ code: 'FORBIDDEN', message });
   }
+}
+
+export function requireOrgAdminTenantProcedureContext(
+  ctx: Context,
+  message = 'Admin access required'
+): AdminTenantProcedureContext {
+  assertOrgAdminTenantProcedureContext(ctx, message);
+  return ctx;
 }

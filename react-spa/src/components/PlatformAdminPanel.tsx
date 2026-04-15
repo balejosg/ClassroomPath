@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Button, Card, Input } from '@openpath/public-ui';
+import { Button, Card, Input } from '../openpath/public-ui';
 import {
   useApproveManualBillingRequest,
   useBillingAuditTrail,

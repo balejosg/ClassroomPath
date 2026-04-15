@@ -67,7 +67,7 @@ export function OnboardingAccessGate(props: OnboardingAccessGateProps) {
     return <InlineLoader label="Verificando estado..." />;
   }
 
-  if (props.isError) {
+  if (props.isError && !props.status) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
         <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 shadow-sm">

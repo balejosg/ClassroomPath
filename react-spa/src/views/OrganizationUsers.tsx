@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Search, UserPlus } from 'lucide-react';
-import { Button, ConfirmDialog, DangerConfirmDialog } from '@openpath/public-ui';
+import { Button, ConfirmDialog, DangerConfirmDialog } from '../openpath/public-ui';
 
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { reportError } from '../lib/reportError';

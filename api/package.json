@@ -2,6 +2,12 @@
   "name": "@classroompath/api",
   "version": "1.0.0",
   "type": "module",
+  "exports": {
+    "./trpc-router": {
+      "types": "./src/trpc/router.ts",
+      "import": "./dist/trpc/router.js"
+    }
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",

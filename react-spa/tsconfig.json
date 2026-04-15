@@ -4,6 +4,7 @@
     "baseUrl": ".",
     "skipLibCheck": true,
     "paths": {
+      "@classroompath/trpc-contract": ["../trpc-contract/src/index.ts"],
       "@openpath/openpath.css": ["../upstream/openpath/react-spa/src/index.css"],
       "@openpath/public-auth": ["../upstream/openpath/react-spa/src/public/auth.ts"],
       "@openpath/public-google": ["../upstream/openpath/react-spa/src/public/google.ts"],

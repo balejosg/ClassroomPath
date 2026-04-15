@@ -1,4 +1,4 @@
-import { normalizeUserRoleString } from '@openpath/shared/roles';
+import { normalizeUserRoleString } from '../openpath/roles';
 
 export type InviteRole = 'admin' | 'teacher';
 

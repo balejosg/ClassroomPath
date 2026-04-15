@@ -11,6 +11,18 @@
       "types": "./dist/e2e-runtime.d.ts",
       "import": "./dist/e2e-runtime.js"
     },
+    "./integration-billing-env": {
+      "types": "./dist/integration-billing-env.d.ts",
+      "import": "./dist/integration-billing-env.js"
+    },
+    "./integration-lock": {
+      "types": "./dist/integration-lock.d.ts",
+      "import": "./dist/integration-lock.js"
+    },
+    "./mock-resend": {
+      "types": "./dist/mock-resend.d.ts",
+      "import": "./dist/mock-resend.js"
+    },
     "./tenant-api-harness": {
       "types": "./dist/tenant-api-harness.d.ts",
       "import": "./dist/tenant-api-harness.js"

@@ -1,5 +1,5 @@
 import { ShieldCheck } from 'lucide-react';
-import { Button, Modal } from '@openpath/public-ui';
+import { Button, Modal } from '../../openpath/public-ui';
 
 import { InviteRole } from '../organization-users-helpers';
 

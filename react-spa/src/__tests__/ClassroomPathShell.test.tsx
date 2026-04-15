@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
 
 const mockIsAdmin = vi.fn();
 
-vi.mock('@openpath/public-shell', () => ({
+vi.mock('../openpath/public-shell', () => ({
   Sidebar: ({
     setActiveTab,
   }: {
@@ -101,7 +102,7 @@ vi.mock('@openpath/public-shell', () => ({
   ),
 }));
 
-vi.mock('@openpath/public-auth', () => ({
+vi.mock('../openpath/public-auth', () => ({
   isAdmin: () => mockIsAdmin(),
 }));
 
@@ -111,6 +112,14 @@ vi.mock('../views/OrganizationUsers', () => ({
 
 import ClassroomPathShell from '../ClassroomPathShell';
 
+function renderShell() {
+  return render(
+    <BrowserRouter>
+      <ClassroomPathShell />
+    </BrowserRouter>
+  );
+}
+
 describe('ClassroomPathShell', () => {
   beforeEach(() => {
     mockIsAdmin.mockReset();
@@ -119,14 +128,14 @@ describe('ClassroomPathShell', () => {
   });
 
   it('renders the ClassroomPath users view for admins on the users route', () => {
-    render(<ClassroomPathShell />);
+    renderShell();
 
     expect(screen.getByRole('heading', { name: 'Administración de Usuarios' })).toBeInTheDocument();
     expect(screen.getByText('Organization Users View')).toBeInTheDocument();
   });
 
   it('updates the active route and title when navigating through the sidebar', () => {
-    render(<ClassroomPathShell />);
+    renderShell();
 
     fireEvent.click(screen.getByRole('button', { name: 'Configuración' }));
 
@@ -138,7 +147,7 @@ describe('ClassroomPathShell', () => {
   it('reacts to browser history changes and renders admin routes from pathname aliases', async () => {
     window.history.pushState({}, '', '/grupos');
 
-    render(<ClassroomPathShell />);
+    renderShell();
 
     expect(screen.getByRole('heading', { name: 'Grupos y Políticas' })).toBeInTheDocument();
     expect(screen.getByText('Groups View')).toBeInTheDocument();
@@ -159,7 +168,7 @@ describe('ClassroomPathShell', () => {
   });
 
   it('opens the mobile menu overlay and closes it when the overlay is clicked', () => {
-    render(<ClassroomPathShell />);
+    renderShell();
 
     fireEvent.click(screen.getByRole('button', { name: 'Abrir menú' }));
 
@@ -174,7 +183,7 @@ describe('ClassroomPathShell', () => {
   it('navigates to rules for a selected group and can return to the groups view', () => {
     window.history.pushState({}, '', '/politicas');
 
-    render(<ClassroomPathShell />);
+    renderShell();
 
     fireEvent.click(screen.getByRole('button', { name: 'Ir a reglas del grupo' }));
 
@@ -192,7 +201,7 @@ describe('ClassroomPathShell', () => {
   it('navigates to classrooms for a selected classroom from the dashboard', () => {
     window.history.pushState({}, '', '/');
 
-    render(<ClassroomPathShell />);
+    renderShell();
 
     fireEvent.click(screen.getByRole('button', { name: 'Dashboard a aula' }));
 
@@ -209,11 +218,11 @@ describe('ClassroomPathShell', () => {
   });
 
   it('falls back to the dashboard when an unknown tab is requested', () => {
-    render(<ClassroomPathShell />);
+    renderShell();
 
     fireEvent.click(screen.getByRole('button', { name: 'Tab inválida' }));
 
-    expect(screen.getByRole('heading', { name: 'ClassroomPath' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Vista General' })).toBeInTheDocument();
     expect(screen.getByText('Dashboard View')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
   });
@@ -221,7 +230,7 @@ describe('ClassroomPathShell', () => {
   it('falls back to the teacher dashboard when a non-admin reaches the users tab', () => {
     mockIsAdmin.mockReturnValue(false);
 
-    render(<ClassroomPathShell />);
+    renderShell();
 
     expect(screen.getByRole('heading', { name: 'Mi Panel' })).toBeInTheDocument();
     expect(screen.getByText('Teacher Dashboard View')).toBeInTheDocument();
@@ -231,7 +240,7 @@ describe('ClassroomPathShell', () => {
     mockIsAdmin.mockReturnValue(false);
     window.history.pushState({}, '', '/dominios');
 
-    render(<ClassroomPathShell />);
+    renderShell();
 
     expect(screen.getByRole('heading', { name: 'Mi Panel' })).toBeInTheDocument();
     expect(screen.getByText('Teacher Dashboard View')).toBeInTheDocument();

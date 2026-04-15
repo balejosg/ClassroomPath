@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Loader2, Mail, ShieldCheck } from 'lucide-react';
+import { Loader2, Mail } from 'lucide-react';
 
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { PasswordStrength } from '../components/PasswordStrength';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
+import { AuthSplitLayout } from './auth/AuthSplitLayout';
 import { getPasswordSetupError, persistAuthSession } from './auth-helpers';
 
 interface AcceptInvitationProps {
@@ -117,126 +118,107 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
   }
 
   return (
-    <div className="min-h-screen flex bg-white">
-      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 flex-col justify-center px-12 xl:px-24 relative overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)',
-            backgroundSize: '30px 30px',
-          }}
-        />
-
-        <div className="relative z-10">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-8 shadow-lg shadow-blue-900/50">
-            <ShieldCheck size={32} className="text-white" />
-          </div>
-          <h1 className="text-4xl font-bold text-white leading-tight">Activa tu acceso</h1>
+    <AuthSplitLayout heroTitle="Activa tu acceso">
+      <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-slate-200">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-bold text-slate-900">Completa tu registro</h2>
         </div>
-      </div>
 
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-slate-50">
-        <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-slate-200">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-slate-900">Completa tu registro</h2>
-          </div>
-
-          <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center gap-3">
-              <Mail size={18} className="text-slate-500" />
-              <div>
-                <p className="text-sm font-semibold text-slate-900">{invitation.name}</p>
-                <p className="text-sm text-slate-600">{invitation.email}</p>
-                <p className="text-xs uppercase tracking-wide text-slate-500 mt-1">
-                  {invitation.role === 'admin' ? 'Administrador' : 'Profesor'} ·{' '}
-                  {invitation.organizationName}
-                </p>
-              </div>
+        <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-center gap-3">
+            <Mail size={18} className="text-slate-500" />
+            <div>
+              <p className="text-sm font-semibold text-slate-900">{invitation.name}</p>
+              <p className="text-sm text-slate-600">{invitation.email}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 mt-1">
+                {invitation.role === 'admin' ? 'Administrador' : 'Profesor'} ·{' '}
+                {invitation.organizationName}
+              </p>
             </div>
           </div>
+        </div>
 
-          {error ? (
-            <div className="mb-4 rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700">
-              {error}
-            </div>
-          ) : null}
+        {error ? (
+          <div className="mb-4 rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
 
-          <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Contraseña</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                data-testid="accept-invitation-password"
-                disabled={isBusy}
-                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Crea una contraseña segura"
-              />
-              <PasswordStrength password={password} />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Confirmar contraseña
-              </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                data-testid="accept-invitation-confirm-password"
-                disabled={isBusy}
-                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Repite tu contraseña"
-              />
-            </div>
-
-            <label className="flex items-start gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                checked={termsAccepted}
-                onChange={(event) => setTermsAccepted(event.target.checked)}
-                data-testid="accept-invitation-terms"
-                disabled={isBusy}
-                className="mt-1 h-4 w-4 rounded border-slate-300"
-              />
-              <span>
-                Acepto los{' '}
-                <a href="/terms.html" target="_blank" className="text-blue-600 hover:underline">
-                  términos de servicio
-                </a>
-              </span>
-            </label>
-
-            <button
-              type="submit"
-              data-testid="accept-invitation-submit"
+        <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Contraseña</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              data-testid="accept-invitation-password"
               disabled={isBusy}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
-            >
-              {acceptMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Activando acceso...
-                </>
-              ) : (
-                'Activar acceso'
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 pt-6 border-t border-slate-100 text-center text-sm">
-            <span className="text-slate-500">¿Ya tienes cuenta? </span>
-            <button
-              type="button"
-              onClick={onLoginClick}
-              className="text-blue-600 font-bold hover:underline cursor-pointer"
-            >
-              Inicia sesión
-            </button>
+              className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Crea una contraseña segura"
+            />
+            <PasswordStrength password={password} />
           </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Confirmar contraseña
+            </label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              data-testid="accept-invitation-confirm-password"
+              disabled={isBusy}
+              className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Repite tu contraseña"
+            />
+          </div>
+
+          <label className="flex items-start gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(event) => setTermsAccepted(event.target.checked)}
+              data-testid="accept-invitation-terms"
+              disabled={isBusy}
+              className="mt-1 h-4 w-4 rounded border-slate-300"
+            />
+            <span>
+              Acepto los{' '}
+              <a href="/terms.html" target="_blank" className="text-blue-600 hover:underline">
+                términos de servicio
+              </a>
+            </span>
+          </label>
+
+          <button
+            type="submit"
+            data-testid="accept-invitation-submit"
+            disabled={isBusy}
+            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {acceptMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Activando acceso...
+              </>
+            ) : (
+              'Activar acceso'
+            )}
+          </button>
+        </form>
+
+        <div className="mt-6 pt-6 border-t border-slate-100 text-center text-sm">
+          <span className="text-slate-500">¿Ya tienes cuenta? </span>
+          <button
+            type="button"
+            onClick={onLoginClick}
+            className="text-blue-600 font-bold hover:underline cursor-pointer"
+          >
+            Inicia sesión
+          </button>
         </div>
       </div>
-    </div>
+    </AuthSplitLayout>
   );
 }

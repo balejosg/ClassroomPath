@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
+
 import { DualTRPCProvider } from './lib/dual-trpc-provider';
 import { useOnboardingStatus } from './lib/hooks';
 import { AdminPanel } from './components/AdminPanel';
@@ -16,10 +18,8 @@ import {
 import { AuthEntryView } from './app/AuthEntryView';
 import { OnboardingAccessGate } from './app/OnboardingAccessGate';
 import {
-  type AuthView,
   getAuthViewFromPathname,
   getPathForAuthView,
-  isAuthPath,
   isBillingCancelPath,
   isBillingSuccessPath,
   normalizePathname,
@@ -44,21 +44,19 @@ function FullScreenLoader({ label }: { label: string }) {
 }
 
 function AppContent() {
-  const initialPathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pathname = normalizePathname(location.pathname);
+  const authView = getAuthViewFromPathname(pathname);
 
   const [isAuth, setIsAuth] = useState(hasSessionMarker());
-  const [authView, setAuthView] = useState<AuthView>(() =>
-    getAuthViewFromPathname(initialPathname)
-  );
-  const [pathname, setPathname] = useState(() => normalizePathname(initialPathname));
   const [openPathReady, setOpenPathReady] = useState(false);
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const hasSyncedProfileRef = useRef(false);
-  const isAuthRef = useRef(isAuth);
 
-  useEffect(() => {
-    isAuthRef.current = isAuth;
-  }, [isAuth]);
+  const navigateToAuthView = (view: Parameters<typeof getPathForAuthView>[0], replace = false) => {
+    navigate(getPathForAuthView(view), { replace });
+  };
 
   const clearSessionAndShowLogin = async () => {
     try {
@@ -67,9 +65,8 @@ function AppContent() {
       // Best-effort logout: local cleanup must still happen.
     } finally {
       clearSession();
-      setAuthView('login');
-      setPathname('/login');
       setIsAuth(false);
+      navigateToAuthView('login', true);
     }
   };
 
@@ -102,34 +99,10 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handlePopState = () => {
-      const nextPath = normalizePathname(window.location.pathname);
-      setPathname(nextPath);
-      if (isAuthRef.current) return;
-      setAuthView(getAuthViewFromPathname(nextPath));
-    };
-
     if (window.location.search.includes('test=true') || window.name === 'playwright-test') {
-      (window as any).isPlaywrightTest = true;
+      (window as Window & { isPlaywrightTest?: boolean }).isPlaywrightTest = true;
     }
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || isAuth) return;
-
-    if (authView !== 'login' || isAuthPath(window.location.pathname)) {
-      const nextPath = getPathForAuthView(authView);
-      if (window.location.pathname !== nextPath) {
-        window.history.pushState(null, '', nextPath);
-      }
-      setPathname(normalizePathname(nextPath));
-    }
-  }, [authView, isAuth]);
 
   const query = useOnboardingStatus({
     enabled: isAuth,
@@ -187,11 +160,10 @@ function AppContent() {
 
     if (isUnauthorized) {
       clearSession();
-      setAuthView('login');
-      setPathname('/login');
       setIsAuth(false);
+      navigateToAuthView('login', true);
     }
-  }, [isAuth, isError, error]);
+  }, [error, isAuth, isError, navigate]);
 
   if (!openPathReady) {
     return <FullScreenLoader label="Preparando ClassroomPath..." />;
@@ -202,11 +174,10 @@ function AppContent() {
       <AuthEntryView
         authView={authView}
         onAuthenticated={() => {
-          setAuthView('login');
-          setPathname('/');
           setIsAuth(true);
+          navigate('/', { replace: true });
         }}
-        onSetAuthView={setAuthView}
+        onSetAuthView={(view) => navigateToAuthView(view)}
       />
     );
   }
@@ -215,8 +186,7 @@ function AppContent() {
     return (
       <BillingSuccess
         onComplete={() => {
-          window.history.replaceState(null, '', '/');
-          setPathname('/');
+          navigate('/', { replace: true });
           refetch();
         }}
         onLogout={clearSessionAndShowLogin}
@@ -228,8 +198,7 @@ function AppContent() {
     return (
       <BillingCancel
         onBack={() => {
-          window.history.replaceState(null, '', '/');
-          setPathname('/');
+          navigate('/', { replace: true });
           refetch();
         }}
         onLogout={clearSessionAndShowLogin}
@@ -249,9 +218,8 @@ function AppContent() {
       }}
       onLogoutToLogin={() => {
         clearSession();
-        setAuthView('login');
-        setPathname('/login');
         setIsAuth(false);
+        navigateToAuthView('login', true);
       }}
       onStatusChange={() => refetch()}
       onCancelWaitingSuccess={() => refetch()}
@@ -273,7 +241,9 @@ function AppContent() {
 export function ClassroomPathApp() {
   return (
     <DualTRPCProvider>
-      <AppContent />
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
     </DualTRPCProvider>
   );
 }

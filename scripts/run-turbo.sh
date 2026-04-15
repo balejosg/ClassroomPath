@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+OPENPATH_DIR="${OPENPATH_DIR:-$ROOT_DIR/upstream/openpath}"
 
 if [ $# -lt 1 ]; then
   echo "usage: $0 <build|verify:static> [extra turbo args...]" >&2
@@ -15,8 +16,8 @@ shift
 
 if [ -x "$ROOT_DIR/node_modules/.bin/turbo" ]; then
   TURBO_BIN="$ROOT_DIR/node_modules/.bin/turbo"
-elif [ -x "$ROOT_DIR/upstream/openpath/node_modules/.bin/turbo" ]; then
-  TURBO_BIN="$ROOT_DIR/upstream/openpath/node_modules/.bin/turbo"
+elif [ -x "$OPENPATH_DIR/node_modules/.bin/turbo" ]; then
+  TURBO_BIN="$OPENPATH_DIR/node_modules/.bin/turbo"
 else
   echo "turbo binary not found in root or upstream/openpath installs" >&2
   exit 1

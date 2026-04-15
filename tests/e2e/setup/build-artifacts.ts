@@ -77,7 +77,7 @@ export function getBuildTarget(
           resolve(projectRoot, 'upstream/openpath/api/tsconfig.json'),
         ],
         buildCommand:
-          'cd upstream/openpath && npm run build --workspace=@openpath/shared && npm run build --workspace=@openpath/api',
+          'bash scripts/run-openpath.sh npm run build --workspace=@openpath/shared && bash scripts/run-openpath.sh npm run build --workspace=@openpath/api',
       };
     case 'gateway':
       return {

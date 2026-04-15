@@ -2,6 +2,13 @@ import assert from 'node:assert';
 import { describe, test } from 'node:test';
 
 import { resolveGatewayConfig } from '../src/lib/gateway-config.js';
+import { restoreTrackedEnv, snapshotTrackedEnv } from './helpers/env.js';
+
+const ORIGINAL_ENV = snapshotTrackedEnv();
+
+test.afterEach(() => {
+  restoreTrackedEnv(ORIGINAL_ENV);
+});
 
 await describe('gateway config', async () => {
   await test('uses gateway defaults when env vars are missing', () => {
