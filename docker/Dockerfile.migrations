@@ -31,6 +31,7 @@ COPY api/src ./api/src
 COPY scripts ./scripts
 COPY upstream/openpath/shared/tsconfig.json ./upstream/openpath/shared/tsconfig.json
 COPY upstream/openpath/shared/src ./upstream/openpath/shared/src
+COPY upstream/openpath/api/drizzle.config.ts ./upstream/openpath/api/drizzle.config.ts
 COPY upstream/openpath/api/tsconfig.json ./upstream/openpath/api/tsconfig.json
 COPY upstream/openpath/api/tsconfig.build.json ./upstream/openpath/api/tsconfig.build.json
 COPY upstream/openpath/api/drizzle ./upstream/openpath/api/drizzle

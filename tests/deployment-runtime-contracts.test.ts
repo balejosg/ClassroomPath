@@ -70,6 +70,11 @@ describe('Deployment runtime contracts', () => {
     assert.ok(migrationsDockerfile.includes('COPY api/src ./api/src'));
     assert.ok(migrationsDockerfile.includes('COPY scripts ./scripts'));
     assert.ok(
+      migrationsDockerfile.includes(
+        'COPY upstream/openpath/api/drizzle.config.ts ./upstream/openpath/api/drizzle.config.ts'
+      )
+    );
+    assert.ok(
       migrationsDockerfile.includes('ENTRYPOINT ["sh", "scripts/run-migrations-image.sh"]')
     );
     assert.ok(migrationsImageScript.includes('node --import tsx api/scripts/cleanup-cp-schema.ts'));
