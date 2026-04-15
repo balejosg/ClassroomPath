@@ -8,6 +8,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/deploy-host-preflight.sh
+source "$SCRIPT_DIR/lib/deploy-host-preflight.sh"
 
 log_info "Running ClassroomPath doctor..."
 
@@ -102,5 +104,15 @@ if [ "$REMOTE_OK" != "ok" ]; then
   die "Remote prerequisites failed (missing /opt/classroompath/app or docker not running)" 1
 fi
 log_success "Remote prerequisites OK"
+
+REMOTE_DISK_USAGE=$("${SSH_CMD[@]}" "df / | awk 'NR == 2 { gsub(/%/, \"\", \$5); print \$5 }'" 2>/dev/null || echo "")
+if [ -n "$REMOTE_DISK_USAGE" ]; then
+  log_info "Remote disk usage: ${REMOTE_DISK_USAGE}%"
+  if disk_usage_exceeds_threshold "$REMOTE_DISK_USAGE"; then
+    log_warn "Remote disk usage is above ${DEPLOY_DISK_THRESHOLD_PERCENT}% and may block deploys"
+  fi
+else
+  log_warn "Unable to determine remote disk usage"
+fi
 
 log_success "Doctor checks passed"

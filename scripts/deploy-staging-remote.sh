@@ -50,6 +50,14 @@ fi
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
+if [ ! -f "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" ]; then
+  printf 'Deploy host preflight helper not found: %s\n' "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" >&2
+  exit 1
+fi
+
+# shellcheck source=lib/deploy-host-preflight.sh
+source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"
+
 if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
   # shellcheck source=lib/release-manifest.sh
   source "$RELEASE_MANIFEST_HELPER_PATH"
@@ -376,14 +384,28 @@ deploy_from_source() {
 load_staging_release_manifest() {
   local release_manifest_b64=""
   local normalized_manifest_file=""
+  local payload_image_source=""
+  local payload_supports_promotion_evidence=""
+
+  if [ -n "${STAGING_DEPLOY_PAYLOAD_B64:-}" ]; then
+    STAGING_DEPLOY_PAYLOAD_FILE="$(mktemp)"
+    decode_deploy_payload_base64 "$STAGING_DEPLOY_PAYLOAD_B64" "$STAGING_DEPLOY_PAYLOAD_FILE" >/dev/null
+    payload_image_source="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" image_source)"
+    payload_supports_promotion_evidence="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" supports_promotion_evidence)"
+    STAGING_IMAGE_SOURCE="${payload_image_source:-${STAGING_IMAGE_SOURCE:-source-build}}"
+    STAGING_SUPPORTS_PROMOTION_EVIDENCE="${payload_supports_promotion_evidence:-${STAGING_SUPPORTS_PROMOTION_EVIDENCE:-0}}"
+    if [ "$STAGING_IMAGE_SOURCE" = "release-candidate" ]; then
+      STAGING_USE_RELEASE_CANDIDATE=1
+    else
+      STAGING_USE_RELEASE_CANDIDATE=0
+    fi
+  fi
 
   if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" != "1" ]; then
     return 0
   fi
 
-  if [ -n "${STAGING_DEPLOY_PAYLOAD_B64:-}" ]; then
-    STAGING_DEPLOY_PAYLOAD_FILE="$(mktemp)"
-    decode_deploy_payload_base64 "$STAGING_DEPLOY_PAYLOAD_B64" "$STAGING_DEPLOY_PAYLOAD_FILE" >/dev/null
+  if [ -n "${STAGING_DEPLOY_PAYLOAD_FILE:-}" ] && [ -f "$STAGING_DEPLOY_PAYLOAD_FILE" ]; then
     release_manifest_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" manifest_base64)"
   else
     release_manifest_b64="$STAGING_RELEASE_MANIFEST_B64"
@@ -439,17 +461,7 @@ run_staging_email_delivery_preflight() {
 }
 
 cleanup_staging_disk_if_needed() {
-  log_info "Checking disk space..."
-  DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
-  log_info "Current disk usage: ${DISK_USAGE}%"
-
-  if [ "$DISK_USAGE" -gt 80 ]; then
-    log_warn "Disk usage above 80%, running Docker cleanup..."
-    docker system prune -af --volumes 2>/dev/null || true
-    docker builder prune -af 2>/dev/null || true
-    NEW_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
-    log_info "Disk usage after cleanup: ${NEW_USAGE}%"
-  fi
+  cleanup_docker_disk_if_needed "Staging host"
 }
 
 run_staging_database_migrations() {

@@ -25,7 +25,7 @@ jobs:
       spa_repo: ${{ steps.image-refs.outputs.spa_repo }}
       verifier_repo: ${{ steps.image-refs.outputs.verifier_repo }}
       openpath_sha: ${{ steps.openpath.outputs.sha }}
-      openpath_version: ${{ steps.linux-agent.outputs.version }}
+      openpath_version: ${{ steps.linux-agent.outputs.openpath_version }}
       openpath_linux_agent_version: ${{ steps.linux-agent.outputs.version }}
       gateway_tag: ${{ steps.image-refs.outputs.gateway_tag }}
       migrations_tag: ${{ steps.image-refs.outputs.migrations_tag }}
@@ -117,6 +117,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          submodules: recursive
 
       - name: Detect changed release-candidate components
         id: detect
@@ -125,53 +126,25 @@ jobs:
 
   build-gateway-release-candidate:
     name: Build Gateway Release Candidate
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
       - resolve-previous-release-candidate-manifest
       - detect-release-candidate-components
-    outputs:
-      gateway_image: ${{ steps.publish-manifest.outputs.gateway_image }}
-
-    steps:
-      - name: Decide whether to build gateway image
-        id: mode
-        shell: bash
-        run: |
-          if [ "${{ needs.detect-release-candidate-components.outputs.gateway_changed }}" = 'true' ] || [ "${{ needs.resolve-previous-release-candidate-manifest.outputs.available }}" != 'true' ]; then
-            echo 'build_required=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'build_required=false' >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Checkout with submodules
-        if: steps.mode.outputs.build_required == 'true'
-        uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: Build and push gateway image
-        if: steps.mode.outputs.build_required == 'true'
-        id: build-gateway
-        uses: ./.github/actions/build-release-candidate-image
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          context: .
-          file: docker/Dockerfile.cp-api
-          platforms: linux/amd64,linux/arm64
-          push: 'true'
-          tags: ${{ needs.derive-release-image-refs.outputs.gateway_tag }}
-          cache-scope: release-candidate-gateway
-
-      - name: Publish gateway manifest output
-        id: publish-manifest
-        run: |
-          if [ "${{ steps.mode.outputs.build_required }}" = 'true' ]; then
-            echo "gateway_image=${{ needs.derive-release-image-refs.outputs.gateway_repo }}@${{ steps.build-gateway.outputs.digest }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "gateway_image=${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}" >> "$GITHUB_OUTPUT"
-          fi
+    with:
+      display_name: Gateway Release Candidate
+      build_required: ${{ needs.detect-release-candidate-components.outputs.gateway_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
+      context: .
+      file: docker/Dockerfile.cp-api
+      image_repo: ${{ needs.derive-release-image-refs.outputs.gateway_repo }}
+      tag: ${{ needs.derive-release-image-refs.outputs.gateway_tag }}
+      previous_image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}
+      output_name: gateway_image
+      amd64_cache_scope: release-candidate-gateway-amd64
+      arm64_cache_scope: release-candidate-gateway-arm64
+      checkout_submodules: true
+    secrets:
+      ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
   build-migrations-release-candidate:
     name: Build Migrations Release Candidate

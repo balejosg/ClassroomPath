@@ -27,6 +27,15 @@ else
     changed_files="$(git show --pretty='' --name-only "$HEAD_SHA")"
   fi
 
+  openpath_changed_files=""
+  if printf '%s\n' "$changed_files" | grep -qx 'upstream/openpath'; then
+    openpath_base_sha="$(git rev-parse "$BASE_SHA:upstream/openpath" 2>/dev/null || true)"
+    openpath_head_sha="$(git rev-parse "$HEAD_SHA:upstream/openpath" 2>/dev/null || true)"
+    if [ -n "$openpath_base_sha" ] && [ -n "$openpath_head_sha" ] && [ -d upstream/openpath/.git ]; then
+      openpath_changed_files="$(git -C upstream/openpath diff --name-only "$openpath_base_sha" "$openpath_head_sha" || true)"
+    fi
+  fi
+
   echo "Changed files:"
   if [ -n "$changed_files" ]; then
     echo "$changed_files"
@@ -34,45 +43,17 @@ else
     echo "(none)"
   fi
 
-  while IFS= read -r file; do
-    [ -z "$file" ] && continue
+  changed_files_file="$(mktemp)"
+  openpath_changed_files_file="$(mktemp)"
+  trap 'rm -f "$changed_files_file" "$openpath_changed_files_file"' EXIT
+  printf '%s\n' "$changed_files" > "$changed_files_file"
+  printf '%s\n' "$openpath_changed_files" > "$openpath_changed_files_file"
 
-    case "$file" in
-      package.json|package-lock.json|scripts/*|.github/actions/setup-node/*|.github/actions/setup-docker-build/*|.github/workflows/release-candidate-images.yml)
-        mark_all_changed
-        ;;
-      api/drizzle/*|api/drizzle/**|api/drizzle.config.ts|api/src/db/*|api/src/db/**|api/scripts/*|api/package*.json)
-        gateway_changed=true
-        migrations_changed=true
-        verifier_changed=true
-        ;;
-      api/*|docker/Dockerfile.cp-api|config/*)
-        gateway_changed=true
-        verifier_changed=true
-        ;;
-      react-spa/*|docker/Dockerfile.spa)
-        spa_changed=true
-        verifier_changed=true
-        ;;
-      tests/*|docker/Dockerfile.release-verifier|.github/workflows/smoke-tests.yml|.github/workflows/deploy.yml)
-        verifier_changed=true
-        ;;
-      docker/Dockerfile.migrations)
-        migrations_changed=true
-        ;;
-      # Git diff reports submodule pointer updates as the gitlink path itself, not
-      # as nested files, so rebuild every release-candidate image family because we
-      # cannot infer which OpenPath workspace changed from the parent repo diff.
-      upstream/openpath|upstream/openpath/*)
-        mark_all_changed
-        ;;
-      docker/Dockerfile.api|.github/workflows/firefox-release-assets.yml)
-        openpath_api_changed=true
-        migrations_changed=true
-        verifier_changed=true
-        ;;
-    esac
-  done <<< "$changed_files"
+  eval "$(
+    node scripts/lib/release-candidate-components.mjs classify \
+      --changed-file-list "$changed_files_file" \
+      --openpath-changed-file-list "$openpath_changed_files_file"
+  )"
 fi
 
 echo "gateway_changed=$gateway_changed" >> "$GITHUB_OUTPUT"

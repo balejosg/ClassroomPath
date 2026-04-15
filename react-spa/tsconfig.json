@@ -2,6 +2,7 @@
   "extends": "../upstream/openpath/react-spa/tsconfig.json",
   "compilerOptions": {
     "baseUrl": ".",
+    "composite": false,
     "skipLibCheck": true,
     "paths": {
       "@classroompath/trpc-contract": ["../trpc-contract/src/index.ts"],
@@ -16,6 +17,13 @@
       "@openpath/shared/*": ["../upstream/openpath/shared/src/*"]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "../upstream"]
+  "include": [
+    "src/**/*",
+    "../trpc-contract/src/**/*",
+    "../upstream/openpath/shared/src/**/*",
+    "../upstream/openpath/react-spa/src/**/*",
+    "../upstream/openpath/react-spa/e2e/**/*",
+    "../upstream/openpath/api/src/**/*"
+  ],
+  "exclude": ["node_modules", "dist"]
 }

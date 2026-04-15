@@ -41,6 +41,11 @@ describe('Deployment runtime contracts', () => {
     projectRoot,
     'scripts/lib/github-actions-remote.sh'
   );
+  const deployHostPreflightHelperPath = resolve(
+    projectRoot,
+    'scripts/lib/deploy-host-preflight.sh'
+  );
+  const doctorScriptPath = resolve(projectRoot, 'scripts/doctor.sh');
   const releaseCandidateWorkflowPath = resolve(
     projectRoot,
     '.github/workflows/release-candidate-images.yml'
@@ -60,7 +65,10 @@ describe('Deployment runtime contracts', () => {
     assert.ok(existsSync(migrationsDockerfilePath));
     assert.ok(existsSync(migrationsImageScriptPath));
     assert.ok(existsSync(openPathDbEnvHelperPath));
-    assert.ok(migrationsDockerfile.includes('COPY . .'));
+    assert.ok(!migrationsDockerfile.includes('COPY . .'));
+    assert.ok(migrationsDockerfile.includes('COPY api/scripts ./api/scripts'));
+    assert.ok(migrationsDockerfile.includes('COPY api/src ./api/src'));
+    assert.ok(migrationsDockerfile.includes('COPY scripts ./scripts'));
     assert.ok(
       migrationsDockerfile.includes('ENTRYPOINT ["sh", "scripts/run-migrations-image.sh"]')
     );
@@ -168,6 +176,12 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       stagingRemote.includes('decode_deploy_payload_base64 "$STAGING_DEPLOY_PAYLOAD_B64"') &&
         stagingRemote.includes(
+          'payload_image_source="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" image_source)"'
+        ) &&
+        stagingRemote.includes(
+          'payload_supports_promotion_evidence="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" supports_promotion_evidence)"'
+        ) &&
+        stagingRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" manifest_base64)"'
         ) &&
         stagingRemote.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
@@ -185,7 +199,13 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       productionRemote.includes('decode_deploy_payload_base64 "$DEPLOY_PAYLOAD_B64"') &&
         productionRemote.includes(
+          'payload_image_source="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" image_source)"'
+        ) &&
+        productionRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" manifest_base64)"'
+        ) &&
+        productionRemote.includes(
+          'Production deploy payload must resolve immutable release-candidate images'
         ) &&
         productionRemote.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
         deployProductionContextHelper.includes(
@@ -354,6 +374,8 @@ describe('Deployment runtime contracts', () => {
       resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
       'utf-8'
     );
+    const deployHostPreflightHelper = readFileSync(deployHostPreflightHelperPath, 'utf-8');
+    const doctor = readFileSync(doctorScriptPath, 'utf-8');
     const productionContextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
     const productionRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
     const productionPhaseSequence = [
@@ -367,6 +389,17 @@ describe('Deployment runtime contracts', () => {
       '  start_production_runtime \\',
       '  wait_for_production_runtime_readiness',
     ].join('\n');
+
+    assert.ok(existsSync(deployHostPreflightHelperPath));
+    assert.ok(deployHostPreflightHelper.includes('cleanup_docker_disk_if_needed()'));
+    assert.ok(
+      stagingRemote.includes('source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"') &&
+        productionRemote.includes('source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"')
+    );
+    assert.ok(
+      doctor.includes('source "$SCRIPT_DIR/lib/deploy-host-preflight.sh"') &&
+        doctor.includes('Remote disk usage:')
+    );
 
     assert.ok(
       stagingRemote.includes('prepare_staging_checkout()') &&

@@ -6,30 +6,20 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
 const projectRoot = resolve(scriptDir, '..');
 const DEFAULT_OPENPATH_DIR = resolve(projectRoot, 'upstream/openpath');
-export const DEFAULT_PACKAGES_URL =
-  'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/dists/stable/main/binary-amd64/Packages';
-
-const LINUX_AGENT_CONTRACT_PATHS = [
-  'firefox-extension/',
-  'linux/',
-  'windows/',
-  'runtime/browser-policy-spec.json',
-  'api/src/routes/enrollment.ts',
-  'api/src/routes/machines.ts',
-  'api/src/lib/server-assets.ts',
-];
+export const DEFAULT_PROMOTION_CONTRACTS_BASE_URL =
+  'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/promotion-contracts';
 
 function printUsage() {
   console.error('Usage:');
   console.error(
-    '  node scripts/resolve-openpath-linux-agent-version.mjs [--openpath-dir <path>] [--packages-url <url>]'
+    '  node scripts/resolve-openpath-linux-agent-version.mjs [--openpath-dir <path>] [--promotion-contracts-base-url <url>]'
   );
 }
 
 function parseCliArgs(argv) {
   const options = {
     openpathDir: DEFAULT_OPENPATH_DIR,
-    packagesUrl: DEFAULT_PACKAGES_URL,
+    promotionContractsBaseUrl: DEFAULT_PROMOTION_CONTRACTS_BASE_URL,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -41,8 +31,8 @@ function parseCliArgs(argv) {
       continue;
     }
 
-    if (token === '--packages-url') {
-      options.packagesUrl = String(argv[index + 1] ?? '').trim();
+    if (token === '--promotion-contracts-base-url') {
+      options.promotionContractsBaseUrl = String(argv[index + 1] ?? '').trim();
       index += 1;
       continue;
     }
@@ -53,198 +43,88 @@ function parseCliArgs(argv) {
   return options;
 }
 
-function normalizeList(value) {
-  if (Array.isArray(value)) {
-    return value.map((entry) => String(entry ?? '').trim()).filter(Boolean);
-  }
+/**
+ * @typedef {{
+ *   version: number;
+ *   openpathSha: string;
+ *   packageVersion: string;
+ *   linuxAgentVersion: string;
+ *   aptSuite: string;
+ *   firefoxExtensionVersion: string;
+ *   browserPolicySpecSha256: string;
+ * }} OpenPathPromotionContract
+ */
 
-  return String(value ?? '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+export function buildPromotionContractUrl({ baseUrl, openpathSha }) {
+  const normalizedBaseUrl = String(baseUrl ?? '').replace(/\/+$/, '');
+  const normalizedSha = String(openpathSha ?? '').trim();
+  if (!normalizedBaseUrl) {
+    throw new Error('Promotion contract base URL is required');
+  }
+  if (!normalizedSha) {
+    throw new Error('OpenPath SHA is required');
+  }
+  return `${normalizedBaseUrl}/${normalizedSha}.json`;
 }
 
-function parseReleaseTagVersion(tag) {
-  const match = String(tag ?? '')
-    .trim()
-    .match(/^v(\d+)\.(\d+)\.(\d+)$/);
-  if (!match) {
-    return null;
-  }
-
-  return match.slice(1).map((segment) => Number(segment));
-}
-
-function compareReleaseTags(left, right) {
-  const leftVersion = parseReleaseTagVersion(left);
-  const rightVersion = parseReleaseTagVersion(right);
-
-  if (!leftVersion && !rightVersion) {
-    return 0;
-  }
-
-  if (!leftVersion) {
-    return -1;
-  }
-
-  if (!rightVersion) {
-    return 1;
-  }
-
-  for (let index = 0; index < leftVersion.length; index += 1) {
-    if (leftVersion[index] !== rightVersion[index]) {
-      return leftVersion[index] - rightVersion[index];
-    }
-  }
-
-  return 0;
-}
-
-export function selectLatestReachableOpenPathReleaseTag(tags) {
-  const candidates = [...new Set(normalizeList(tags))].filter((tag) => parseReleaseTagVersion(tag));
-  if (candidates.length === 0) {
-    return '';
-  }
-
-  candidates.sort(compareReleaseTags);
-  return candidates.at(-1) ?? '';
-}
-
-export function stripDebianRevision(version) {
-  const trimmed = String(version ?? '').trim();
-  if (!trimmed) {
-    return '';
-  }
-
-  return trimmed.replace(/-[^-]+$/, '');
-}
-
-export function parsePublishedOpenPathLinuxVersions(content) {
-  const versions = new Set();
-
-  for (const block of String(content ?? '').split(/\r?\n\r?\n+/)) {
-    let packageName = '';
-    let version = '';
-
-    for (const rawLine of block.split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (!line) {
-        continue;
-      }
-
-      const separatorIndex = line.indexOf(':');
-      if (separatorIndex === -1) {
-        continue;
-      }
-
-      const key = line.slice(0, separatorIndex).trim();
-      const value = line.slice(separatorIndex + 1).trim();
-
-      if (key === 'Package') {
-        packageName = value;
-      } else if (key === 'Version') {
-        version = stripDebianRevision(value);
-      }
-    }
-
-    if (packageName === 'openpath-dnsmasq' && version) {
-      versions.add(version);
-    }
-  }
-
-  return [...versions].sort((left, right) => compareReleaseTags(`v${left}`, `v${right}`));
-}
-
-export function touchesLinuxAgentContract(changedFiles) {
-  return normalizeList(changedFiles).some((filePath) => {
-    return LINUX_AGENT_CONTRACT_PATHS.some((contractPath) => {
-      return contractPath.endsWith('/')
-        ? filePath.startsWith(contractPath)
-        : filePath === contractPath;
-    });
+export function parseOpenPathPromotionContract(content) {
+  const parsed = JSON.parse(String(content ?? ''));
+  return /** @type {OpenPathPromotionContract} */ ({
+    version: Number(parsed.version ?? 0),
+    openpathSha: String(parsed.openpathSha ?? '').trim(),
+    packageVersion: String(parsed.packageVersion ?? '').trim(),
+    linuxAgentVersion: String(parsed.linuxAgentVersion ?? '').trim(),
+    aptSuite: String(parsed.aptSuite ?? '').trim(),
+    firefoxExtensionVersion: String(parsed.firefoxExtensionVersion ?? '').trim(),
+    browserPolicySpecSha256: String(parsed.browserPolicySpecSha256 ?? '').trim(),
   });
 }
 
-export function resolveOpenPathLinuxAgentVersion({
-  publishedVersions,
-  reachableTags,
-  changedFilesSinceTag,
-}) {
-  const tag = selectLatestReachableOpenPathReleaseTag(reachableTags);
-  if (!tag) {
-    throw new Error('OpenPath submodule does not contain a reachable stable v* release tag');
+export function resolveOpenPathLinuxAgentVersion({ openpathSha, promotionContract }) {
+  const normalizedSha = String(openpathSha ?? '').trim();
+  if (!normalizedSha) {
+    throw new Error('Pinned OpenPath SHA is required');
   }
 
-  const version = tag.slice(1);
-  if (!new Set(normalizeList(publishedVersions)).has(version)) {
+  if (promotionContract.version !== 1) {
     throw new Error(
-      `OpenPath stable APT metadata does not advertise openpath-dnsmasq ${version}. Publish that package before promoting this ClassroomPath commit.`
+      `Unsupported OpenPath promotion contract version: ${promotionContract.version}`
     );
   }
 
-  if (touchesLinuxAgentContract(changedFilesSinceTag)) {
+  if (promotionContract.openpathSha !== normalizedSha) {
     throw new Error(
-      `OpenPath submodule contains Linux agent changes after ${tag}. Publish a new stable openpath-dnsmasq release before promoting this ClassroomPath commit.`
+      `Published OpenPath promotion contract does not match the pinned OpenPath SHA (${normalizedSha}).`
     );
   }
 
-  return { tag, version };
+  if (!promotionContract.packageVersion) {
+    throw new Error('OpenPath promotion contract packageVersion is required');
+  }
+
+  if (!promotionContract.linuxAgentVersion) {
+    throw new Error('OpenPath promotion contract linuxAgentVersion is required');
+  }
+
+  return {
+    openpathVersion: promotionContract.packageVersion,
+    version: promotionContract.linuxAgentVersion,
+  };
 }
 
 function gitOutput(openpathDir, args) {
   return runGitOutput(['-C', openpathDir, ...args], { cwd: projectRoot });
 }
 
-function isShallowRepository(openpathDir) {
-  return gitOutput(openpathDir, ['rev-parse', '--is-shallow-repository']) === 'true';
+function resolveOpenPathSha(openpathDir) {
+  return gitOutput(openpathDir, ['rev-parse', 'HEAD']);
 }
 
-export function buildFetchOpenPathTagsArgs({ shallow }) {
-  return shallow
-    ? ['-C', DEFAULT_OPENPATH_DIR, 'fetch', '--force', '--tags', '--unshallow', 'origin']
-    : ['-C', DEFAULT_OPENPATH_DIR, 'fetch', '--force', '--tags', 'origin'];
-}
-
-function fetchOpenPathTags(openpathDir) {
-  const shallow = isShallowRepository(openpathDir);
-  const args = buildFetchOpenPathTagsArgs({ shallow }).map((entry, index) => {
-    if (index === 1) {
-      return openpathDir;
-    }
-
-    return entry;
-  });
-
-  runGitOutput(args, { cwd: projectRoot });
-}
-
-function listReachableReleaseTags(openpathDir) {
-  return normalizeList(gitOutput(openpathDir, ['tag', '--merged', 'HEAD', '--list', 'v*']));
-}
-
-function listChangedFilesSinceTag(openpathDir, tag) {
-  return normalizeList(
-    gitOutput(openpathDir, [
-      'diff',
-      '--name-only',
-      `${tag}..HEAD`,
-      '--',
-      'firefox-extension',
-      'linux',
-      'windows',
-      'runtime/browser-policy-spec.json',
-      'api/src/routes/enrollment.ts',
-      'api/src/routes/machines.ts',
-      'api/src/lib/server-assets.ts',
-    ])
-  );
-}
-
-async function downloadPackagesManifest(packagesUrl) {
-  const response = await fetch(packagesUrl);
+async function downloadPromotionContract(url) {
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error(
-      `Failed to download OpenPath stable APT metadata from ${packagesUrl} (${response.status} ${response.statusText})`
+      `Failed to download OpenPath promotion contract from ${url} (${response.status} ${response.statusText})`
     );
   }
 
@@ -259,22 +139,25 @@ function writeOutputs(outputMap) {
 
 async function main() {
   const options = parseCliArgs(process.argv.slice(2));
-  fetchOpenPathTags(options.openpathDir);
+  const openpathSha = resolveOpenPathSha(options.openpathDir);
+  const promotionContract = parseOpenPathPromotionContract(
+    await downloadPromotionContract(
+      buildPromotionContractUrl({
+        baseUrl: options.promotionContractsBaseUrl,
+        openpathSha,
+      })
+    )
+  );
 
-  const reachableTags = listReachableReleaseTags(options.openpathDir);
-  const packagesManifest = await downloadPackagesManifest(options.packagesUrl);
-  const publishedVersions = parsePublishedOpenPathLinuxVersions(packagesManifest);
-  const tag = selectLatestReachableOpenPathReleaseTag(reachableTags);
-  const changedFilesSinceTag = tag ? listChangedFilesSinceTag(options.openpathDir, tag) : [];
   const result = resolveOpenPathLinuxAgentVersion({
-    publishedVersions,
-    reachableTags,
-    changedFilesSinceTag,
+    openpathSha,
+    promotionContract,
   });
 
   writeOutputs({
+    openpath_sha: openpathSha,
+    openpath_version: result.openpathVersion,
     version: result.version,
-    tag: result.tag,
   });
 }
 

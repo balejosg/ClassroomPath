@@ -38,18 +38,12 @@ function normalizeNeeds(needs: WorkflowJob['needs']): string[] {
 }
 
 describe('Release candidate workflow contracts', () => {
-  test('release candidate detector fans OpenPath gitlink changes out to every image family', () => {
+  test('release candidate detector classifies OpenPath gitlink changes through the shared component mapper', () => {
     const detectScriptPath = resolve(projectRoot, 'scripts/detect-release-candidate-components.sh');
     const detectScript = readFileSync(detectScriptPath, 'utf-8');
 
-    assert.match(
-      detectScript,
-      /mark_all_changed\(\) \{[\s\S]*gateway_changed=true[\s\S]*migrations_changed=true[\s\S]*openpath_api_changed=true[\s\S]*spa_changed=true[\s\S]*verifier_changed=true[\s\S]*\}/
-    );
-    assert.match(
-      detectScript,
-      /upstream\/openpath\|upstream\/openpath\/\*\)[\s\S]*mark_all_changed/
-    );
+    assert.match(detectScript, /node scripts\/lib\/release-candidate-components\.mjs classify/);
+    assert.ok(!detectScript.includes('cannot infer which OpenPath workspace changed'));
   });
 
   test('release candidate workflow keeps Firefox signing and reusable family contracts centralized', () => {
@@ -105,7 +99,10 @@ describe('Release candidate workflow contracts', () => {
       deriveLinuxAgentVersionRun.includes('node scripts/resolve-openpath-linux-agent-version.mjs')
     );
     assert.equal(deriveCheckout?.with?.['fetch-depth'], 0);
-    assert.ok(jobs['build-gateway-release-candidate']);
+    assert.equal(
+      jobs['build-gateway-release-candidate']?.uses,
+      './.github/workflows/reusable-release-candidate-image-family.yml'
+    );
     assert.ok(jobs['build-openpath-api-release-candidate']);
     assert.ok(jobs['build-spa-release-candidate']);
     assert.ok(jobs['build-migrations-release-candidate']);
@@ -138,9 +135,26 @@ describe('Release candidate workflow contracts', () => {
     ]) {
       const jobNeeds = normalizeNeeds(jobs[jobName]?.needs);
       assert.ok(jobNeeds.includes('derive-release-image-refs'));
+      assert.ok(
+        String(jobs[jobName]?.uses ?? '').includes(
+          './.github/workflows/reusable-release-candidate-image-family.yml'
+        )
+      );
       assert.ok(!String(jobs[jobName]?.uses ?? '').includes('actions/setup-node@v6'));
     }
 
+    assert.equal(
+      jobs['build-gateway-release-candidate']?.with?.['amd64_cache_scope'],
+      'release-candidate-gateway-amd64'
+    );
+    assert.equal(
+      jobs['build-gateway-release-candidate']?.with?.['arm64_cache_scope'],
+      'release-candidate-gateway-arm64'
+    );
+
+    const detectCheckout = jobs['detect-release-candidate-components']?.steps?.find(
+      (step) => step.name === 'Checkout'
+    );
     const firefoxPrepNeeds = normalizeNeeds(jobs['resolve-openpath-firefox-release-assets']?.needs);
     assert.deepEqual(
       firefoxPrepNeeds.sort(),
@@ -163,6 +177,8 @@ describe('Release candidate workflow contracts', () => {
       jobs['resolve-openpath-firefox-release-assets']?.with?.['artifact_name'],
       'openpath-firefox-release-assets'
     );
+    assert.equal(detectCheckout?.with?.['fetch-depth'], 0);
+    assert.equal(detectCheckout?.with?.submodules, 'recursive');
     assert.ok(!workflowText.includes('wait-for-release-candidate.mjs resolve-firefox-assets'));
     assert.ok(!workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
   });

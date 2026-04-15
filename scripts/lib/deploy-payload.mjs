@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 // @ts-check
 
+import {
+  buildDeployIntent,
+  decodeDeployIntentBase64,
+  encodeDeployIntentBase64,
+} from './deploy-intent.mjs';
+
 /**
  * @typedef {{
- *   version: 1;
+ *   version: 2;
  *   targetEnvironment: 'staging' | 'production';
  *   deployRef: string;
  *   deploySha: string;
+ *   imageSource: 'release-candidate' | 'source-build';
+ *   supportsPromotionEvidence: boolean;
  *   manifestBase64: string;
  * }} DeployPayload
  */
@@ -16,30 +24,14 @@
  *   targetEnvironment: 'staging' | 'production';
  *   deployRef: string;
  *   deploySha: string;
- *   manifestBase64: string;
+ *   imageSource: 'release-candidate' | 'source-build';
+ *   supportsPromotionEvidence: boolean;
+ *   manifestBase64?: string;
  * }} params
  * @returns {DeployPayload}
  */
-export function buildDeployPayload({ targetEnvironment, deployRef, deploySha, manifestBase64 }) {
-  if (targetEnvironment !== 'staging' && targetEnvironment !== 'production') {
-    throw new Error(`Unsupported target environment: ${targetEnvironment}`);
-  }
-
-  if (!deploySha) {
-    throw new Error('deploySha is required');
-  }
-
-  if (!manifestBase64) {
-    throw new Error('manifestBase64 is required');
-  }
-
-  return {
-    version: 1,
-    targetEnvironment,
-    deployRef,
-    deploySha,
-    manifestBase64,
-  };
+export function buildDeployPayload(params) {
+  return buildDeployIntent(params);
 }
 
 /**
@@ -52,6 +44,8 @@ function serializeDeployPayload(payload) {
     `target_environment=${payload.targetEnvironment}`,
     `deploy_ref=${payload.deployRef}`,
     `deploy_sha=${payload.deploySha}`,
+    `image_source=${payload.imageSource}`,
+    `supports_promotion_evidence=${payload.supportsPromotionEvidence ? '1' : '0'}`,
     `manifest_base64=${payload.manifestBase64}`,
     '',
   ].join('\n');
@@ -81,7 +75,7 @@ function parseDeployPayloadText(text) {
     entries[key] = value;
   }
 
-  if (entries.version !== '1') {
+  if (entries.version !== '2') {
     throw new Error(`Unsupported deploy payload version: ${entries.version ?? 'unset'}`);
   }
 
@@ -89,6 +83,8 @@ function parseDeployPayloadText(text) {
     targetEnvironment: /** @type {'staging' | 'production'} */ (entries.target_environment),
     deployRef: entries.deploy_ref ?? '',
     deploySha: entries.deploy_sha ?? '',
+    imageSource: /** @type {'release-candidate' | 'source-build'} */ (entries.image_source),
+    supportsPromotionEvidence: entries.supports_promotion_evidence === '1',
     manifestBase64: entries.manifest_base64 ?? '',
   });
 }
@@ -98,7 +94,7 @@ function parseDeployPayloadText(text) {
  * @returns {string}
  */
 export function encodeDeployPayloadBase64(payload) {
-  return Buffer.from(serializeDeployPayload(payload), 'utf8').toString('base64');
+  return encodeDeployIntentBase64(payload);
 }
 
 /**
@@ -106,11 +102,7 @@ export function encodeDeployPayloadBase64(payload) {
  * @returns {DeployPayload}
  */
 export function decodeDeployPayloadBase64(payloadBase64) {
-  if (!payloadBase64) {
-    throw new Error('Deploy payload is empty');
-  }
-
-  return parseDeployPayloadText(Buffer.from(payloadBase64, 'base64').toString('utf8'));
+  return decodeDeployIntentBase64(payloadBase64);
 }
 
 function shellQuote(value) {
@@ -142,6 +134,14 @@ function parseCliArgs(args) {
         parsed.deploySha = value;
         index += 1;
         break;
+      case '--image-source':
+        parsed.imageSource = value;
+        index += 1;
+        break;
+      case '--supports-promotion-evidence':
+        parsed.supportsPromotionEvidence = value;
+        index += 1;
+        break;
       case '--manifest-base64':
         parsed.manifestBase64 = value;
         index += 1;
@@ -165,6 +165,10 @@ function runCli() {
     targetEnvironment: /** @type {'staging' | 'production'} */ (parsed.targetEnvironment),
     deployRef: parsed.deployRef ?? '',
     deploySha: parsed.deploySha ?? '',
+    imageSource: /** @type {'release-candidate' | 'source-build'} */ (
+      parsed.imageSource ?? 'release-candidate'
+    ),
+    supportsPromotionEvidence: String(parsed.supportsPromotionEvidence ?? '1') === '1',
     manifestBase64: parsed.manifestBase64 ?? '',
   });
   const payloadBase64 = encodeDeployPayloadBase64(payload);

@@ -53,6 +53,14 @@ fi
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
+if [ ! -f "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" ]; then
+  printf 'Deploy host preflight helper not found: %s\n' "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" >&2
+  exit 1
+fi
+
+# shellcheck source=lib/deploy-host-preflight.sh
+source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"
+
 if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
   # shellcheck source=lib/release-manifest.sh
   source "$RELEASE_MANIFEST_HELPER_PATH"
@@ -161,30 +169,23 @@ login_production_registry() {
 }
 
 cleanup_production_disk_if_needed() {
-  local disk_usage=""
-  local new_usage=""
-
-  log_info "Checking disk space..."
-  disk_usage="$(df / | tail -1 | awk '{print $5}' | tr -d '%')"
-  log_info "Current disk usage: ${disk_usage}%"
-
-  if [ "$disk_usage" -gt 80 ]; then
-    log_warn "Disk usage above 80%, running Docker cleanup..."
-    docker system prune -af --volumes 2>/dev/null || true
-    docker builder prune -af 2>/dev/null || true
-    new_usage="$(df / | tail -1 | awk '{print $5}' | tr -d '%')"
-    log_info "Disk usage after cleanup: ${new_usage}%"
-  fi
+  cleanup_docker_disk_if_needed "Production host"
 }
 
 load_production_deploy_payload() {
   local release_manifest_b64=""
+  local payload_image_source=""
 
   if [ -n "${DEPLOY_PAYLOAD_B64:-}" ]; then
     DEPLOY_PAYLOAD_FILE="$(mktemp)"
     decode_deploy_payload_base64 "$DEPLOY_PAYLOAD_B64" "$DEPLOY_PAYLOAD_FILE" >/dev/null
     TARGET_SHA="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" deploy_sha)"
+    payload_image_source="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" image_source)"
     release_manifest_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" manifest_base64)"
+    if [ "$payload_image_source" != "release-candidate" ]; then
+      log_error "Production deploy payload must resolve immutable release-candidate images"
+      exit 1
+    fi
     RELEASE_MANIFEST_B64_FROM_PAYLOAD="$release_manifest_b64"
   else
     TARGET_SHA="${DEPLOY_SHA:-}"

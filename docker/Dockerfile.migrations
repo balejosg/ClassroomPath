@@ -22,7 +22,20 @@ RUN --mount=type=cache,target=/root/.npm set -eux; \
     sleep $((attempt * 5)); \
   done
 
-COPY . .
+# Copy only the migration/runtime inputs so workflow-only changes do not
+# invalidate the release-candidate migrations cache.
+COPY api/drizzle.config.ts ./api/drizzle.config.ts
+COPY api/tsconfig.json ./api/tsconfig.json
+COPY api/scripts ./api/scripts
+COPY api/src ./api/src
+COPY scripts ./scripts
+COPY upstream/openpath/shared/tsconfig.json ./upstream/openpath/shared/tsconfig.json
+COPY upstream/openpath/shared/src ./upstream/openpath/shared/src
+COPY upstream/openpath/api/tsconfig.json ./upstream/openpath/api/tsconfig.json
+COPY upstream/openpath/api/tsconfig.build.json ./upstream/openpath/api/tsconfig.build.json
+COPY upstream/openpath/api/drizzle ./upstream/openpath/api/drizzle
+COPY upstream/openpath/api/scripts ./upstream/openpath/api/scripts
+COPY upstream/openpath/api/src ./upstream/openpath/api/src
 RUN chown -R node:node /app
 USER node
 ENTRYPOINT ["sh", "scripts/run-migrations-image.sh"]

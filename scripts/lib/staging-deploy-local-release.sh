@@ -93,6 +93,8 @@ prepare_staging_local_release_context() {
         --target-environment staging \
         --deploy-ref "refs/heads/main" \
         --deploy-sha "$REMOTE_SHA" \
+        --image-source "$STAGING_IMAGE_SOURCE" \
+        --supports-promotion-evidence "${STAGING_SUPPORTS_PROMOTION_EVIDENCE:-0}" \
         --manifest-base64 "$STAGING_RELEASE_MANIFEST_B64" > "$STAGING_DEPLOY_PAYLOAD_ENV_FILE"
 
     set -a

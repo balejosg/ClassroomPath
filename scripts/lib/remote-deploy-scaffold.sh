@@ -7,6 +7,7 @@ remote_deploy_init_base_helper_paths() {
   local app_dir="$2"
 
   COMMON_SH_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/common.sh")"
+  DEPLOY_HOST_PREFLIGHT_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deploy-host-preflight.sh")"
   RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-manifest.sh")"
   DEPLOY_PAYLOAD_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deploy-payload.sh")"
   RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-state.sh")"
@@ -32,6 +33,12 @@ remote_deploy_reload_checked_out_helpers() {
   if [ -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
     # shellcheck disable=SC1090
     source "$REMOTE_HELPER_CONTRACTS_PATH"
+  fi
+
+  DEPLOY_HOST_PREFLIGHT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-host-preflight.sh")"
+  if [ -f "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" ]; then
+    # shellcheck disable=SC1090
+    source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"
   fi
 
   refresh_deployed_release_helpers
