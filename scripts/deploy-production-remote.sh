@@ -66,14 +66,6 @@ fi
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
-if [ ! -f "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" ]; then
-  printf 'Deploy host preflight helper not found: %s\n' "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" >&2
-  exit 1
-fi
-
-# shellcheck source=lib/deploy-host-preflight.sh
-source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"
-
 if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
   # shellcheck source=lib/release-manifest.sh
   source "$RELEASE_MANIFEST_HELPER_PATH"
@@ -185,6 +177,18 @@ cleanup_production_disk_if_needed() {
   cleanup_docker_disk_if_needed "Production host"
 }
 
+load_deploy_host_preflight_helper() {
+  DEPLOY_HOST_PREFLIGHT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-host-preflight.sh")"
+
+  if [ ! -f "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" ]; then
+    printf 'Deploy host preflight helper not found after checkout: %s\n' "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" >&2
+    exit 1
+  fi
+
+  # shellcheck source=lib/deploy-host-preflight.sh
+  source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"
+}
+
 load_production_deploy_payload() {
   local release_manifest_b64=""
   local payload_image_source=""
@@ -239,6 +243,7 @@ prepare_production_checkout() {
   git submodule deinit -f --all || true
   git submodule update --init --recursive --force
   remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"
+  load_deploy_host_preflight_helper
   log_info "Production checkout is now at $(git rev-parse HEAD)"
 
   DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-context.sh")"

@@ -331,6 +331,29 @@ void describe('Remote Deploy Bootstrap', () => {
     }
   });
 
+  void test('remote deploys load the host preflight helper only after checkout refreshes the repo', () => {
+    for (const [scriptName, content, reloadCall] of [
+      [
+        'deploy-staging-remote.sh',
+        readFileSync(stagingRemotePath, 'utf-8'),
+        'remote_deploy_reload_checked_out_helpers "$APP_DIR/scripts/lib/common.sh"',
+      ],
+      [
+        'deploy-production-remote.sh',
+        readFileSync(productionRemotePath, 'utf-8'),
+        'remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"',
+      ],
+    ] as const) {
+      assert.ok(
+        content.includes('load_deploy_host_preflight_helper() {') &&
+          content.includes('Deploy host preflight helper not found after checkout') &&
+          content.includes(reloadCall) &&
+          content.includes('load_deploy_host_preflight_helper'),
+        `${scriptName} should delay preflight helper loading until after the checkout refreshes the remote repo`
+      );
+    }
+  });
+
   void test('remote deploy scripts resolve the shared release-state helper', () => {
     for (const [scriptName, content] of [
       ['deploy-staging-remote.sh', readFileSync(stagingRemotePath, 'utf-8')],

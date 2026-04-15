@@ -60,14 +60,6 @@ fi
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
-if [ ! -f "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" ]; then
-  printf 'Deploy host preflight helper not found: %s\n' "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" >&2
-  exit 1
-fi
-
-# shellcheck source=lib/deploy-host-preflight.sh
-source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"
-
 if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
   # shellcheck source=lib/release-manifest.sh
   source "$RELEASE_MANIFEST_HELPER_PATH"
@@ -437,6 +429,18 @@ load_staging_release_manifest() {
   STAGING_RELEASE_SHA="$RELEASE_MANIFEST_APP_SHA"
 }
 
+load_deploy_host_preflight_helper() {
+  DEPLOY_HOST_PREFLIGHT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-host-preflight.sh")"
+
+  if [ ! -f "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" ]; then
+    printf 'Deploy host preflight helper not found after checkout: %s\n' "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH" >&2
+    exit 1
+  fi
+
+  # shellcheck source=lib/deploy-host-preflight.sh
+  source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"
+}
+
 prepare_staging_checkout() {
   cd "$APP_DIR"
 
@@ -450,6 +454,7 @@ prepare_staging_checkout() {
   git submodule sync --recursive
   git submodule update --init --recursive --force
   remote_deploy_reload_checked_out_helpers "$APP_DIR/scripts/lib/common.sh"
+  load_deploy_host_preflight_helper
   log_info "Staging checkout is now at $(git rev-parse HEAD)"
 
   load_staging_release_manifest
