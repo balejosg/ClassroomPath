@@ -183,6 +183,35 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(!workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
   });
 
+  test('release candidate manifest publisher reads the reusable family image output for every image slot', () => {
+    const workflowText = readText('.github/workflows/release-candidate-images.yml');
+
+    assert.match(
+      workflowText,
+      /CLASSROOMPATH_GATEWAY_IMAGE=\$\{\{\s*needs\.build-gateway-release-candidate\.outputs\.image\s*\}\}/
+    );
+    assert.match(
+      workflowText,
+      /CLASSROOMPATH_MIGRATIONS_IMAGE=\$\{\{\s*needs\.build-migrations-release-candidate\.outputs\.image\s*\}\}/
+    );
+    assert.match(
+      workflowText,
+      /OPENPATH_API_IMAGE=\$\{\{\s*needs\.build-openpath-api-release-candidate\.outputs\.image\s*\}\}/
+    );
+    assert.match(
+      workflowText,
+      /CLASSROOMPATH_SPA_IMAGE=\$\{\{\s*needs\.build-spa-release-candidate\.outputs\.image\s*\}\}/
+    );
+    assert.match(
+      workflowText,
+      /CLASSROOMPATH_VERIFIER_IMAGE=\$\{\{\s*needs\.build-verifier-release-candidate\.outputs\.image\s*\}\}/
+    );
+    assert.doesNotMatch(
+      workflowText,
+      /needs\.build-gateway-release-candidate\.outputs\.gateway_image/
+    );
+  });
+
   test('Firefox release asset producer signs and publishes versioned artifacts', () => {
     const workflow = readWorkflow('.github/workflows/firefox-release-assets.yml');
     const workflowText = readText('.github/workflows/firefox-release-assets.yml');

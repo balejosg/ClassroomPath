@@ -266,7 +266,7 @@ jobs:
         run: |
           cat > release-candidate-images.env <<EOF
           APP_SHA=${{ github.sha }}
-          CLASSROOMPATH_GATEWAY_IMAGE=${{ needs.build-gateway-release-candidate.outputs.gateway_image }}
+          CLASSROOMPATH_GATEWAY_IMAGE=${{ needs.build-gateway-release-candidate.outputs.image }}
           CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.build-migrations-release-candidate.outputs.image }}
           OPENPATH_API_IMAGE=${{ needs.build-openpath-api-release-candidate.outputs.image }}
           OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version }}
