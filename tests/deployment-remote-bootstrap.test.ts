@@ -288,6 +288,49 @@ void describe('Remote Deploy Bootstrap', () => {
     }
   });
 
+  void test('streamed remote deploys recover helper paths locally when the host scaffold is older', () => {
+    for (const [scriptName, content, expectedHelpers] of [
+      [
+        'deploy-staging-remote.sh',
+        readFileSync(stagingRemotePath, 'utf-8'),
+        [
+          'COMMON_SH_PATH',
+          'DEPLOY_HOST_PREFLIGHT_HELPER_PATH',
+          'RELEASE_MANIFEST_HELPER_PATH',
+          'DEPLOY_PAYLOAD_HELPER_PATH',
+          'RELEASE_STATE_HELPER_PATH',
+          'RELEASE_RUNTIME_HELPER_PATH',
+          'REMOTE_HELPER_CONTRACTS_PATH',
+        ],
+      ],
+      [
+        'deploy-production-remote.sh',
+        readFileSync(productionRemotePath, 'utf-8'),
+        [
+          'COMMON_SH_PATH',
+          'DEPLOY_HOST_PREFLIGHT_HELPER_PATH',
+          'RELEASE_MANIFEST_HELPER_PATH',
+          'DEPLOY_PAYLOAD_HELPER_PATH',
+          'RELEASE_STATE_HELPER_PATH',
+          'RELEASE_RUNTIME_HELPER_PATH',
+          'REMOTE_HELPER_CONTRACTS_PATH',
+          'DEPLOYMENT_STATE_HELPER_PATH',
+          'DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH',
+          'DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH',
+        ],
+      ],
+    ] as const) {
+      for (const helperName of expectedHelpers) {
+        assert.ok(
+          content.includes(
+            `: "\${${helperName}:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR"`
+          ),
+          `${scriptName} should recover ${helperName} directly when an older remote scaffold leaves it unset`
+        );
+      }
+    }
+  });
+
   void test('remote deploy scripts resolve the shared release-state helper', () => {
     for (const [scriptName, content] of [
       ['deploy-staging-remote.sh', readFileSync(stagingRemotePath, 'utf-8')],
