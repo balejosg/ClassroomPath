@@ -30,6 +30,8 @@ await describe('gateway hardening helpers', async () => {
     const rules = createGatewayRateLimitRules({
       authRateLimitMax: 5,
       authRateLimitWindowMs: 60_000,
+      agentDeliveryRateLimitMax: 500,
+      agentDeliveryRateLimitWindowMs: 60_000,
       globalRateLimitMax: 50,
       globalRateLimitWindowMs: 60_000,
       onboardingRateLimitMax: 5,
@@ -38,17 +40,48 @@ await describe('gateway hardening helpers', async () => {
 
     const globalRule = rules.find((rule) => rule.bucket === 'global');
     const authRule = rules.find((rule) => rule.bucket === 'auth');
+    const agentDeliveryRule = rules.find((rule) => rule.bucket === 'agentDelivery');
     const onboardingRule = rules.find((rule) => rule.bucket === 'onboarding');
 
     assert.ok(globalRule);
     assert.ok(authRule);
+    assert.ok(agentDeliveryRule);
     assert.ok(onboardingRule);
     assert.strictEqual(globalRule?.matches('/cp/trpc/users.list'), true);
     assert.strictEqual(globalRule?.matches('/cp/health'), false);
+    assert.strictEqual(globalRule?.matches('/api/agent/windows/bootstrap/latest.json'), false);
+    assert.strictEqual(
+      globalRule?.matches(
+        '/api/agent/windows/bootstrap/file?path=runtime%2Fbrowser-policy-spec.json'
+      ),
+      false
+    );
+    assert.strictEqual(globalRule?.matches('/api/agent/windows/latest.json'), false);
+    assert.strictEqual(globalRule?.matches('/api/agent/linux/latest.json'), false);
     assert.strictEqual(authRule?.matches('/cp/trpc/auth.login'), true);
     assert.strictEqual(authRule?.matches('/cp/trpc/auth.googleSignup'), true);
     assert.strictEqual(authRule?.matches('/trpc/auth.resetPassword?batch=1'), true);
     assert.strictEqual(authRule?.matches('/cp/trpc/onboarding.waitForInvitation'), false);
+    assert.strictEqual(
+      agentDeliveryRule?.matches('/api/agent/windows/bootstrap/latest.json'),
+      true
+    );
+    assert.strictEqual(
+      agentDeliveryRule?.matches(
+        '/api/agent/windows/bootstrap/file?path=runtime%2Fbrowser-policy-spec.json'
+      ),
+      true
+    );
+    assert.strictEqual(
+      agentDeliveryRule?.matches('/api/agent/windows/bootstrap/files/Install-OpenPath.ps1'),
+      true
+    );
+    assert.strictEqual(agentDeliveryRule?.matches('/api/agent/windows/latest.json'), true);
+    assert.strictEqual(
+      agentDeliveryRule?.matches('/api/agent/windows/file?path=OpenPath.ps1'),
+      true
+    );
+    assert.strictEqual(agentDeliveryRule?.matches('/api/agent/linux/latest.json'), true);
     assert.strictEqual(onboardingRule?.matches('/cp/trpc/onboarding.waitForInvitation'), true);
     assert.strictEqual(onboardingRule?.matches('/cp/trpc/auth.login'), false);
   });

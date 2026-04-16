@@ -6,6 +6,8 @@ import { getClientIp } from './http-request-meta.js';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, parseCookieValue } from './session-cookies.js';
 
 export interface GatewayRateLimitOptions {
+  agentDeliveryRateLimitMax: number;
+  agentDeliveryRateLimitWindowMs: number;
   authRateLimitMax: number;
   authRateLimitWindowMs: number;
   globalRateLimitMax: number;
@@ -15,7 +17,7 @@ export interface GatewayRateLimitOptions {
 }
 
 export interface GatewayRateLimitRule {
-  bucket: 'auth' | 'global' | 'onboarding';
+  bucket: 'agentDelivery' | 'auth' | 'global' | 'onboarding';
   limit: number;
   windowMs: number;
   matches: (path: string) => boolean;
@@ -55,6 +57,10 @@ export function buildGatewayContentSecurityPolicy(nodeEnv = process.env.NODE_ENV
   ].join('; ');
 }
 
+function isAgentDeliveryPath(path: string): boolean {
+  return /^\/api\/agent\/(?:windows|linux)(?:[/?]|$)/.test(path);
+}
+
 export const applyGatewaySecurityHeaders: RequestHandler = (_req, res, next) => {
   res.setHeader('Content-Security-Policy', buildGatewayContentSecurityPolicy());
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
@@ -90,10 +96,17 @@ export function createGatewayRateLimitRules(
         ),
     },
     {
+      bucket: 'agentDelivery',
+      limit: options.agentDeliveryRateLimitMax,
+      windowMs: options.agentDeliveryRateLimitWindowMs,
+      matches: isAgentDeliveryPath,
+    },
+    {
       bucket: 'global',
       limit: options.globalRateLimitMax,
       windowMs: options.globalRateLimitWindowMs,
-      matches: (path: string) => !/^\/cp\/(?:health|ready)(?:\?|$)/.test(path),
+      matches: (path: string) =>
+        !/^\/cp\/(?:health|ready)(?:\?|$)/.test(path) && !isAgentDeliveryPath(path),
     },
   ];
 }

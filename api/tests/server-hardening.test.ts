@@ -92,6 +92,8 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
       enableRateLimit: true,
       globalRateLimitMax: 3,
       globalRateLimitWindowMs: 60_000,
+      agentDeliveryRateLimitMax: 6,
+      agentDeliveryRateLimitWindowMs: 60_000,
       jsonBodyLimit: '1kb',
       authRateLimitWindowMs: 60_000,
       authRateLimitMax: 5,
@@ -228,6 +230,33 @@ await describe('gateway server hardening', { concurrency: false }, async () => {
     });
 
     assert.strictEqual(limitedResponse.status, 429);
+  });
+
+  test('uses a dedicated bucket for high-volume agent delivery requests', async () => {
+    const path = `${baseUrl}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('runtime/browser-policy-spec.json')}`;
+    const headers = requestHeaders({
+      Authorization: 'Bearer test-enrollment-token',
+      'X-Forwarded-For': '198.51.100.56',
+    });
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const response = await fetch(path, { headers });
+
+      assert.notStrictEqual(
+        response.status,
+        429,
+        `agent delivery attempt ${String(attempt + 1)} should not use the global bucket`
+      );
+    }
+
+    const limitedResponse = await fetch(path, { headers });
+    assert.strictEqual(limitedResponse.status, 429);
+
+    const body = (await limitedResponse.json()) as {
+      error?: { code?: string; data?: { bucket?: string } };
+    };
+    assert.strictEqual(body.error?.code, 'TOO_MANY_REQUESTS');
+    assert.strictEqual(body.error?.data?.bucket, 'agentDelivery');
   });
 
   test('rate limits repeated auth attempts by caller IP', async () => {

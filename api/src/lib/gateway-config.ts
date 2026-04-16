@@ -1,4 +1,6 @@
 export interface GatewayAppOptions {
+  agentDeliveryRateLimitMax?: number;
+  agentDeliveryRateLimitWindowMs?: number;
   authRateLimitMax?: number;
   authRateLimitWindowMs?: number;
   enableRateLimit?: boolean;
@@ -11,6 +13,8 @@ export interface GatewayAppOptions {
 }
 
 export interface GatewayRuntimeConfig {
+  agentDeliveryRateLimitMax: number;
+  agentDeliveryRateLimitWindowMs: number;
   authRateLimitMax: number;
   authRateLimitWindowMs: number;
   corsOrigins: string[];
@@ -82,6 +86,11 @@ export function resolveGatewayConfig(
   options: GatewayAppOptions = {},
   env: Record<string, string | undefined> = process.env
 ): GatewayRuntimeConfig {
+  const agentDeliveryRateLimitMax =
+    options.agentDeliveryRateLimitMax ?? parseIntegerEnv(env.CP_AGENT_DELIVERY_RATE_LIMIT_MAX, 500);
+  const agentDeliveryRateLimitWindowMs =
+    options.agentDeliveryRateLimitWindowMs ??
+    parseIntegerEnv(env.CP_AGENT_DELIVERY_RATE_LIMIT_WINDOW_MS, 60_000);
   const authRateLimitMax =
     options.authRateLimitMax ?? parseIntegerEnv(env.CP_AUTH_RATE_LIMIT_MAX, 5);
   const authRateLimitWindowMs =
@@ -97,6 +106,8 @@ export function resolveGatewayConfig(
     options.globalRateLimitWindowMs ?? parseIntegerEnv(env.CP_GLOBAL_RATE_LIMIT_WINDOW_MS, 60_000);
 
   return {
+    agentDeliveryRateLimitMax,
+    agentDeliveryRateLimitWindowMs,
     authRateLimitMax,
     authRateLimitWindowMs,
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, env),

@@ -17,6 +17,8 @@ await describe('gateway config', async () => {
     assert.deepStrictEqual(config, {
       authRateLimitMax: 5,
       authRateLimitWindowMs: 60_000,
+      agentDeliveryRateLimitMax: 500,
+      agentDeliveryRateLimitWindowMs: 60_000,
       corsOrigins: ['http://localhost:5173'],
       enableRateLimit: false,
       globalRateLimitMax: 120,
@@ -40,6 +42,8 @@ await describe('gateway config', async () => {
         CP_ENABLE_RATE_LIMIT_IN_TEST: 'true',
         CP_AUTH_RATE_LIMIT_MAX: '7',
         CP_AUTH_RATE_LIMIT_WINDOW_MS: '120000',
+        CP_AGENT_DELIVERY_RATE_LIMIT_MAX: '450',
+        CP_AGENT_DELIVERY_RATE_LIMIT_WINDOW_MS: '30000',
         CP_ONBOARDING_RATE_LIMIT_MAX: '3',
         CP_ONBOARDING_RATE_LIMIT_WINDOW_MS: '90000',
         CP_SERVE_SPA: 'false',
@@ -51,6 +55,8 @@ await describe('gateway config', async () => {
     assert.deepStrictEqual(config, {
       authRateLimitMax: 7,
       authRateLimitWindowMs: 120_000,
+      agentDeliveryRateLimitMax: 450,
+      agentDeliveryRateLimitWindowMs: 30_000,
       corsOrigins: ['https://a.example', 'https://b.example'],
       enableRateLimit: true,
       globalRateLimitMax: 120,
