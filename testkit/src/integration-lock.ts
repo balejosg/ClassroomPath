@@ -3,15 +3,34 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
+const DEFAULT_INTEGRATION_SUITE_LOCK_TIMEOUT_MS = 120_000;
+const INTEGRATION_SUITE_LOCK_POLL_MS = 50;
+
 export const DEFAULT_INTEGRATION_SUITE_LOCK_PATH = join(
   tmpdir(),
   'classroompath-api-integration.lock'
 );
 
+function resolveIntegrationSuiteLockTimeoutMs(): number {
+  const rawValue = process.env.CLASSROOMPATH_INTEGRATION_LOCK_TIMEOUT_MS;
+  if (!rawValue) {
+    return DEFAULT_INTEGRATION_SUITE_LOCK_TIMEOUT_MS;
+  }
+
+  const parsedValue = Number(rawValue);
+  if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+    return DEFAULT_INTEGRATION_SUITE_LOCK_TIMEOUT_MS;
+  }
+
+  return parsedValue;
+}
+
 export async function acquireIntegrationSuiteLock(
   lockPath = DEFAULT_INTEGRATION_SUITE_LOCK_PATH
 ): Promise<FileHandle> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  const deadline = Date.now() + resolveIntegrationSuiteLockTimeoutMs();
+
+  while (Date.now() < deadline) {
     try {
       return await openFile(lockPath, 'wx');
     } catch (error) {
@@ -24,7 +43,7 @@ export async function acquireIntegrationSuiteLock(
         throw error;
       }
 
-      await sleep(50);
+      await sleep(INTEGRATION_SUITE_LOCK_POLL_MS);
     }
   }
 
