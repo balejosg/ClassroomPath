@@ -153,7 +153,7 @@ run_cp_migrations() {
     -w /app \
     --env-file "$ENV_FILE" \
     "$NODE_IMAGE" \
-    sh -c "npm ci --silent -w @classroompath/api && node --import tsx api/scripts/cleanup-cp-schema.ts && npm run db:migrate -w @classroompath/api" \
+    sh -c "npm ci --silent -w @classroompath/api && node --import tsx api/scripts/cleanup-cp-schema.ts && node --import tsx api/scripts/baseline-cp-migrations.ts && npm run db:migrate -w @classroompath/api" \
     >"$log" 2>&1; then
     tail -5 "$log"
   else

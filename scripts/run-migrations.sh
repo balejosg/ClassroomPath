@@ -42,6 +42,9 @@ fi
 log_info "Cleaning ClassroomPath schema drift..."
 node --import tsx api/scripts/cleanup-cp-schema.ts
 
+log_info "Reconciling ClassroomPath migration ledger..."
+node --import tsx api/scripts/baseline-cp-migrations.ts
+
 log_info "Running versioned migrations..."
 npm run db:migrate -w @classroompath/api
 
