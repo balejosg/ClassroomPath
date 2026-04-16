@@ -29,6 +29,12 @@ remote_deploy_reload_checked_out_helpers() {
 
   reload_deployed_common_helpers "$common_sh_deployed_path"
 
+  REMOTE_BOOTSTRAP_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-bootstrap.sh")"
+  if [ -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
+    # shellcheck disable=SC1090
+    source "$REMOTE_BOOTSTRAP_HELPER_PATH"
+  fi
+
   REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")"
   if [ -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
     # shellcheck disable=SC1090

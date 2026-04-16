@@ -72,7 +72,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
     name: 'deploy-shell',
     patterns: [
       '^scripts/(?:deploy-.+|detect-windows-firefox-risk|rollback-.+|persist-.+|run-staging-release-gate|tag-production-release|verify-production-promotion-ready|verify-staging-release-state)\\.sh$',
-      '^scripts/lib/(?:deployment-state|release-risk|release-runtime|release-state|remote-bootstrap|deploy-production-context|deploy-production-runtime|staging-gates)\\.sh$',
+      '^scripts/lib/(?:deployment-state|release-risk|release-runtime|release-state|remote-bootstrap|remote-deploy-scaffold|deploy-production-context|deploy-production-runtime|staging-gates)\\.sh$',
     ],
     capabilities: { ciRelevant: true, verificationScope: 'ops-regression' },
     ...releasePolicy(),

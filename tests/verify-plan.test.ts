@@ -42,6 +42,13 @@ describe('verify plan', () => {
     );
   });
 
+  test('detects the ops-regression scope for remote deploy scaffold changes', () => {
+    assert.equal(
+      detectVerificationScope(['scripts/lib/remote-deploy-scaffold.sh'], 'commit'),
+      'ops-regression'
+    );
+  });
+
   test('detects the ops-regression scope for maintained documentation diffs', () => {
     assert.equal(
       detectVerificationScope(

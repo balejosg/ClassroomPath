@@ -18,6 +18,10 @@ const projectRoot = resolve(testDir, '..');
 
 void describe('Remote Deploy Bootstrap', () => {
   const remoteBootstrapHelperPath = resolve(projectRoot, 'scripts/lib/remote-bootstrap.sh');
+  const remoteDeployScaffoldHelperPath = resolve(
+    projectRoot,
+    'scripts/lib/remote-deploy-scaffold.sh'
+  );
   const remoteHelperContractsPath = resolve(projectRoot, 'scripts/lib/remote-helper-contracts.sh');
   const releaseManifestHelperPath = resolve(projectRoot, 'scripts/lib/release-manifest.sh');
   const deployPayloadHelperPath = resolve(projectRoot, 'scripts/lib/deploy-payload.sh');
@@ -352,6 +356,16 @@ void describe('Remote Deploy Bootstrap', () => {
         `${scriptName} should delay preflight helper loading until after the checkout refreshes the remote repo`
       );
     }
+  });
+
+  void test('remote deploy reload refreshes bootstrap helpers after checkout', () => {
+    const remoteDeployScaffold = readFileSync(remoteDeployScaffoldHelperPath, 'utf-8');
+
+    assert.ok(
+      remoteDeployScaffold.includes('REMOTE_BOOTSTRAP_HELPER_PATH=') &&
+        remoteDeployScaffold.includes('source "$REMOTE_BOOTSTRAP_HELPER_PATH"'),
+      'remote-deploy-scaffold.sh should reload remote-bootstrap.sh after checkout so newly introduced phase helpers are available'
+    );
   });
 
   void test('remote deploy scripts resolve the shared release-state helper', () => {
