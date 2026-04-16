@@ -4,7 +4,6 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import {
   Classrooms,
   Dashboard,
-  DomainRequests,
   Groups,
   Header,
   RulesManager,
@@ -15,6 +14,7 @@ import {
 import { isAdmin } from './openpath/public-auth';
 
 import { OrganizationUsers } from './views/OrganizationUsers';
+import { DomainRequestsPage } from './views/DomainRequestsPage';
 import {
   getPathForTab,
   getTabFromPathname,
@@ -80,6 +80,7 @@ function ClassroomPathShellContent() {
         activeTab={activeTab}
         setActiveTab={(tab) => navigateToTab(tab as AppTab)}
         isOpen={sidebarOpen}
+        allowDomainRequestsForNonAdmins
       />
 
       {sidebarOpen ? (
@@ -133,10 +134,7 @@ function ClassroomPathShellContent() {
                 path="/usuarios"
                 element={admin ? <OrganizationUsers /> : renderTeacherFallback()}
               />
-              <Route
-                path="/dominios"
-                element={admin ? <DomainRequests /> : renderTeacherFallback()}
-              />
+              <Route path="/dominios" element={<DomainRequestsPage />} />
               <Route path="/configuracion" element={<Settings />} />
               <Route path="/settings" element={<Navigate replace to="/configuracion" />} />
               <Route path="*" element={<Navigate replace to="/" />} />

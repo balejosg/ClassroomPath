@@ -104,6 +104,18 @@ async function seedTeacherRoleOwnership(params: {
   });
 }
 
+function createMockPushSubscription(label: string) {
+  const suffix = encodeURIComponent(label);
+  return {
+    endpoint: `https://push.example.test/${suffix}`,
+    expirationTime: null,
+    keys: {
+      p256dh: `p256dh-${suffix}`,
+      auth: `auth-${suffix}`,
+    },
+  };
+}
+
 describe('ClassroomPath requests integration (/cp/trpc)', async () => {
   test('approve creates whitelist rule and marks request approved', async () => {
     await resetDb();
@@ -241,6 +253,109 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
       bearerAuth(allowedToken)
     );
     assertStatus(allowedResp, 200);
+  });
+
+  test('push.subscribe stores subscriptions only for teacher-accessible tenant groups', async () => {
+    await resetDb();
+
+    const teacherId = 'req-push-teacher';
+    const teacherEmail = uniqueEmail('req-push-teacher');
+    const orgId = 'org-push-teacher';
+    const ownedGroupId = 'group-push-owned';
+    const otherGroupId = 'group-push-other';
+
+    await seedOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Push Teacher' });
+    await seedTenant({ orgId, userId: teacherId, userRole: 'teacher' });
+    await seedGroupForOrg({ orgId, groupId: ownedGroupId });
+    await seedGroupForOrg({ orgId, groupId: otherGroupId });
+    await seedTeacherRoleOwnership({ userId: teacherId, groupId: ownedGroupId });
+
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: teacherId,
+      email: teacherEmail,
+      name: 'Push Teacher',
+      roles: [{ role: 'teacher', groupIds: [ownedGroupId] }],
+    });
+
+    const deniedResp = await trpcMutate(
+      integration.baseUrl,
+      'push.subscribe',
+      {
+        subscription: createMockPushSubscription('denied'),
+        groupIds: [otherGroupId],
+      },
+      bearerAuth(token)
+    );
+    assertStatus(deniedResp, 403);
+
+    const allowedResp = await trpcMutate(
+      integration.baseUrl,
+      'push.subscribe',
+      {
+        subscription: createMockPushSubscription('allowed'),
+        groupIds: [ownedGroupId],
+      },
+      bearerAuth(token)
+    );
+    assertStatus(allowedResp, 200);
+
+    const parsed = (await parseTRPC(allowedResp)) as {
+      data?: { success?: boolean; subscriptionId?: string; groupIds?: string[] };
+    };
+    assert.strictEqual(parsed.data?.success, true);
+    assert.ok(parsed.data?.subscriptionId);
+    assert.deepStrictEqual(parsed.data?.groupIds, [ownedGroupId]);
+  });
+
+  test('notification approve action uses cookie session to approve one pending request', async () => {
+    await resetDb();
+
+    const teacherId = 'req-action-teacher';
+    const teacherEmail = uniqueEmail('req-action-teacher');
+    const orgId = 'org-action-teacher';
+    const groupId = 'group-action-owned';
+    const requestId = 'request-action-approve';
+
+    await seedOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Action Teacher' });
+    await seedTenant({ orgId, userId: teacherId, userRole: 'teacher' });
+    await seedGroupForOrg({ orgId, groupId });
+    await seedTeacherRoleOwnership({ userId: teacherId, groupId });
+    await seedRequest({ requestId, groupId, domain: 'approve-from-notification.test' });
+
+    const token = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: teacherId,
+      email: teacherEmail,
+      name: 'Action Teacher',
+      roles: [{ role: 'teacher', groupIds: [groupId] }],
+    });
+
+    const response = await fetch(
+      `${integration.baseUrl}/cp/notification-actions/domain-request/approve`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `cp_access_token=${token}`,
+          Origin: integration.baseUrl,
+        },
+        body: JSON.stringify({ requestId }),
+      }
+    );
+
+    assertStatus(response, 200);
+    assert.deepStrictEqual(await response.json(), {
+      status: 'approved',
+      requestId,
+    });
+
+    const updatedRequest = await openpathDb
+      .select()
+      .from(openpathSchema.requests)
+      .where(eq(openpathSchema.requests.id, requestId))
+      .limit(1);
+    assert.strictEqual(updatedRequest[0]?.status, 'approved');
   });
 
   test('reject marks request rejected and stores resolution note', async () => {

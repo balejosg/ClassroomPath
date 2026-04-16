@@ -81,4 +81,17 @@ export const config = {
   get stripe() {
     return resolveStripeConfig(process.env);
   },
+  get vapidPublicKey() {
+    return trimToNull(process.env.VAPID_PUBLIC_KEY) ?? '';
+  },
+  get vapidPrivateKey() {
+    return trimToNull(process.env.VAPID_PRIVATE_KEY) ?? '';
+  },
+  get vapidContact() {
+    return (
+      trimToNull(process.env.VAPID_CONTACT) ??
+      trimToNull(process.env.VAPID_SUBJECT) ??
+      `mailto:admin@${new URL(resolvePublicUrl(process.env)).hostname}`
+    );
+  },
 };

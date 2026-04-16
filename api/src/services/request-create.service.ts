@@ -3,12 +3,14 @@ import { nanoid } from 'nanoid';
 import { and, eq, sql } from 'drizzle-orm';
 
 import { openpathDb, requests } from '../db/openpath.js';
+import { logger } from '../lib/logger.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
 import {
   assertCanManageGroup,
   assertGroupBelongsToTenant,
   serializeRequestDates,
 } from './request-shared.service.js';
+import { notifyTenantTeachersOfNewRequest } from './push.service.js';
 
 export async function createTenantRequest(params: {
   ctx: TenantProcedureContext;
@@ -59,6 +61,14 @@ export async function createTenantRequest(params: {
       message: 'Failed to create request',
     });
   }
+
+  void notifyTenantTeachersOfNewRequest(created).catch((error) => {
+    // Push delivery is best-effort and must not block request creation.
+    logger.warn('Failed to notify teachers of new domain request', {
+      requestId: created.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   return serializeRequestDates(created);
 }

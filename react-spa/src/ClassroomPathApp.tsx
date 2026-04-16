@@ -8,6 +8,7 @@ import { GroupLibrary } from './components/GroupLibrary';
 import { cpTrpc } from './lib/cp-trpc';
 import { setReportErrorSink } from './lib/reportError';
 import { createReportErrorSink } from './lib/reportErrorSink';
+import { registerClassroomPathServiceWorker } from './pwa/register-service-worker';
 import {
   clearRequestsApiUrl,
   clearSession,
@@ -153,6 +154,14 @@ function AppContent() {
       }
     })();
   }, [isAuth, status?.hasMembership, status?.isWaiting]);
+
+  useEffect(() => {
+    if (!isAuth) return;
+
+    void registerClassroomPathServiceWorker().catch(() => {
+      // Registration is opportunistic; the in-view push control reports actionable errors.
+    });
+  }, [isAuth]);
 
   useEffect(() => {
     if (!isAuth || !isError || !error) return;

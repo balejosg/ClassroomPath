@@ -24,6 +24,7 @@ export interface ComposeGatewayAppOptions {
   jsonBodyLimit: GatewayApplicationRoutesOptions['jsonBodyLimit'];
   trpcMiddleware: GatewayApplicationRoutesOptions['trpcMiddleware'];
   stripeWebhookHandler: GatewayApplicationRoutesOptions['stripeWebhookHandler'];
+  notificationApproveDomainRequestHandler: GatewayApplicationRoutesOptions['notificationApproveDomainRequestHandler'];
   serveSpa: boolean;
   reactSpaPath: GatewaySpaRoutesOptions['reactSpaPath'];
 }
@@ -44,6 +45,7 @@ export function composeGatewayApp(options: ComposeGatewayAppOptions): Express {
     jsonBodyLimit: options.jsonBodyLimit,
     trpcMiddleware: options.trpcMiddleware,
     stripeWebhookHandler: options.stripeWebhookHandler,
+    notificationApproveDomainRequestHandler: options.notificationApproveDomainRequestHandler,
   });
 
   if (options.serveSpa) {

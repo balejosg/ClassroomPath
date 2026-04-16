@@ -236,13 +236,13 @@ describe('ClassroomPathShell', () => {
     expect(screen.getByText('Teacher Dashboard View')).toBeInTheDocument();
   });
 
-  it('uses the teacher fallback when a non-admin reaches the domains tab', () => {
+  it('renders domain requests when a non-admin teacher reaches the domains tab', () => {
     mockIsAdmin.mockReturnValue(false);
     window.history.pushState({}, '', '/dominios');
 
     renderShell();
 
-    expect(screen.getByRole('heading', { name: 'Mi Panel' })).toBeInTheDocument();
-    expect(screen.getByText('Teacher Dashboard View')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Solicitudes de Acceso' })).toBeInTheDocument();
+    expect(screen.getByText('Domain Requests View')).toBeInTheDocument();
   });
 });

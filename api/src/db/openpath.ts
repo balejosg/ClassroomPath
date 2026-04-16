@@ -210,6 +210,17 @@ export const requests = pgTable('requests', {
   resolutionNote: text('resolution_note'),
 });
 
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: varchar('id', { length: 50 }).primaryKey(),
+  userId: varchar('user_id', { length: 50 }).notNull(),
+  groupIds: text('group_ids').array().notNull(),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
 export const passwordResetTokens = pgTable('password_reset_tokens', {
   id: varchar('id', { length: 50 }).primaryKey(),
   userId: varchar('user_id', { length: 50 }).notNull(),
@@ -236,6 +247,7 @@ export const openpathSchema = {
   whitelistGroups,
   whitelistRules,
   requests,
+  pushSubscriptions,
   passwordResetTokens,
   emailVerificationTokens,
 };

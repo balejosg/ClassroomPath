@@ -30,6 +30,7 @@ describe('test table inventory', () => {
 
   it('defines the canonical OpenPath reset tables', () => {
     assert.deepStrictEqual(OPENPATH_TEST_RESET_TABLES, [
+      'push_subscriptions',
       'whitelist_rules',
       'whitelist_groups',
       'users',

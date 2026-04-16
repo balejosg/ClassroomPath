@@ -25,7 +25,7 @@ export function getShellTitle(args: {
     case 'users':
       return admin ? 'Administración de Usuarios' : 'Mi Panel';
     case 'domains':
-      return admin ? 'Solicitudes de Acceso' : 'Mi Panel';
+      return 'Solicitudes de Acceso';
     case 'settings':
       return 'Configuración';
     default:

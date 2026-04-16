@@ -9,6 +9,7 @@ import { type GatewayAppOptions, resolveGatewayConfig } from './lib/gateway-conf
 import { composeGatewayApp } from './lib/gateway/compose-gateway.js';
 import { getGatewayReadiness } from './lib/gateway-readiness.js';
 import { logger } from './lib/logger.js';
+import { notificationApproveDomainRequestHandler } from './lib/notification-actions-route.js';
 import { stripeWebhookHandler } from './lib/stripe-webhook-route.js';
 import { createContext } from './trpc/context.js';
 import { appRouter } from './trpc/router.js';
@@ -44,6 +45,7 @@ export function createGatewayApp(options: GatewayAppOptions = {}) {
     jsonBodyLimit: gatewayConfig.jsonBodyLimit,
     trpcMiddleware,
     stripeWebhookHandler,
+    notificationApproveDomainRequestHandler,
     serveSpa: gatewayConfig.serveSpa,
     reactSpaPath,
   });

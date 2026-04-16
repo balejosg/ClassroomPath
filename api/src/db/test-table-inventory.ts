@@ -18,6 +18,7 @@ export const CLASSROOMPATH_TEST_RESET_TABLES = [
 ] as const;
 
 export const OPENPATH_TEST_RESET_TABLES = [
+  'push_subscriptions',
   'whitelist_rules',
   'whitelist_groups',
   'users',

@@ -19,6 +19,7 @@ export interface GatewayApplicationRoutesOptions {
   jsonBodyLimit: string;
   trpcMiddleware: RequestHandler;
   stripeWebhookHandler: RequestHandler;
+  notificationApproveDomainRequestHandler: RequestHandler;
 }
 
 export function registerGatewayApplicationRoutes(
@@ -31,6 +32,10 @@ export function registerGatewayApplicationRoutes(
     options.stripeWebhookHandler
   );
   app.use(express.json({ limit: options.jsonBodyLimit }));
+  app.post(
+    '/cp/notification-actions/domain-request/approve',
+    options.notificationApproveDomainRequestHandler
+  );
   app.use('/cp/trpc', options.trpcMiddleware);
 
   app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {

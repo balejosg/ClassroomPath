@@ -24,11 +24,15 @@ await describe('application-routes', { concurrency: false }, async () => {
     const stripeWebhookHandler: RequestHandler = (_req, res) => {
       res.json({ received: true });
     };
+    const notificationApproveDomainRequestHandler: RequestHandler = (_req, res) => {
+      res.json({ status: 'approved' });
+    };
 
     registerGatewayApplicationRoutes(app, {
       jsonBodyLimit: '1kb',
       trpcMiddleware,
       stripeWebhookHandler,
+      notificationApproveDomainRequestHandler,
     });
 
     server = app.listen(port);
@@ -86,5 +90,18 @@ await describe('application-routes', { concurrency: false }, async () => {
 
     assert.equal(body.error?.code, 'PAYLOAD_TOO_LARGE');
     assert.match(body.error?.message ?? '', /payload too large/i);
+  });
+
+  test('mounts notification approval actions before the tRPC handler', async () => {
+    const response = await fetch(`${baseUrl}/cp/notification-actions/domain-request/approve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ requestId: 'req_123' }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { status: 'approved' });
   });
 });

@@ -21,6 +21,9 @@ await describe('compose-gateway', { concurrency: false }, async () => {
     const stripeWebhookHandler: RequestHandler = (_req, res) => {
       res.json({ received: true });
     };
+    const notificationApproveDomainRequestHandler: RequestHandler = (_req, res) => {
+      res.json({ status: 'approved' });
+    };
 
     const composed = composeGatewayApp({
       app,
@@ -38,6 +41,7 @@ await describe('compose-gateway', { concurrency: false }, async () => {
       jsonBodyLimit: '1kb',
       trpcMiddleware,
       stripeWebhookHandler,
+      notificationApproveDomainRequestHandler,
       serveSpa: false,
       reactSpaPath: '/tmp/classroompath-missing-spa',
     });
@@ -84,6 +88,19 @@ await describe('compose-gateway', { concurrency: false }, async () => {
     });
     assert.equal(trpcResponse.status, 200);
     assert.deepEqual(await trpcResponse.json(), { ok: true });
+
+    const notificationActionResponse = await fetch(
+      `${baseUrl}/cp/notification-actions/domain-request/approve`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ requestId: 'req_123' }),
+      }
+    );
+    assert.equal(notificationActionResponse.status, 200);
+    assert.deepEqual(await notificationActionResponse.json(), { status: 'approved' });
 
     const blockedResponse = await fetch(`${baseUrl}/trpc/groups.list`);
     assert.equal(blockedResponse.status, 403);
