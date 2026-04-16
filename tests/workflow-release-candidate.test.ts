@@ -80,6 +80,13 @@ describe('Release candidate workflow contracts', () => {
     );
   });
 
+  test('release candidate image builds avoid noisy automatic buildx cleanup annotations', () => {
+    const setupDockerBuildActionText = readText('.github/actions/setup-docker-build/action.yml');
+
+    assert.ok(setupDockerBuildActionText.includes('docker/setup-buildx-action@v4'));
+    assert.match(setupDockerBuildActionText, /cleanup:\s*false/);
+  });
+
   test('release candidate workflow builds immutable artifacts for every main SHA before production tagging', () => {
     const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
     const jobs = workflow.jobs ?? {};
