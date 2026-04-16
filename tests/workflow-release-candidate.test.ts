@@ -115,7 +115,7 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(jobs['publish-release-candidate-manifest']);
     const concurrency = workflow.concurrency;
     assert.equal(typeof concurrency, 'object');
-    assert.equal((concurrency as { 'cancel-in-progress'?: boolean })['cancel-in-progress'], true);
+    assert.equal((concurrency as { 'cancel-in-progress'?: boolean })['cancel-in-progress'], false);
 
     const manifestNeeds = normalizeNeeds(jobs['publish-release-candidate-manifest']?.needs);
     assert.deepEqual(
