@@ -110,13 +110,19 @@ describe('Workflow core contracts', () => {
 
   test('CI workflow keeps structured change detection, regression routing, and verification reporting', () => {
     const workflow = readWorkflow('.github/workflows/ci.yml');
-    const buildJob = workflow.jobs?.['build-and-validate'];
+    const productJob = workflow.jobs?.['product-validation'];
+    const opsJob = workflow.jobs?.['ops-regression'];
+    const releaseAutomationJob = workflow.jobs?.['release-automation'];
     const detectJob = workflow.jobs?.['detect-relevant-changes'];
-    const steps = buildJob?.steps ?? [];
+    const opsSteps = opsJob?.steps ?? [];
+    const releaseAutomationSteps = releaseAutomationJob?.steps ?? [];
     const detectStep = (detectJob?.steps ?? []).find((step) => step.id === 'filter');
-    const regressionStep = steps.find((step) => step.name === 'Run CI regression tests');
-    const summaryStep = steps.find((step) => step.name === 'Summarize verification report');
-    const uploadStep = steps.find((step) => step.name === 'Upload verification report artifact');
+    const regressionStep = opsSteps.find((step) => step.name === 'Run ops regression tests');
+    const releaseRegressionStep = releaseAutomationSteps.find(
+      (step) => step.name === 'Run release automation regression tests'
+    );
+    const summaryStep = opsSteps.find((step) => step.name === 'Summarize verification report');
+    const uploadStep = opsSteps.find((step) => step.name === 'Upload verification report artifact');
     const packageJson = readPackageJson();
     const verifyFast = packageJson.scripts?.['verify:fast'] ?? '';
     const commitSmoke = packageJson.scripts?.['test:e2e:commit-smoke'] ?? '';
@@ -131,6 +137,9 @@ describe('Workflow core contracts', () => {
 
     assert.ok(workflow.jobs?.['detect-relevant-changes']);
     assert.equal(workflow.jobs?.['ci-success']?.name, 'CI Success');
+    assert.equal(productJob?.name, 'Product Validation');
+    assert.equal(opsJob?.name, 'Ops Regression');
+    assert.equal(releaseAutomationJob?.name, 'Release Automation Regression');
     assert.equal(
       workflow.jobs?.['detect-relevant-changes']?.outputs?.['domain_owners'],
       '${{ steps.filter.outputs.domain_owners }}'
@@ -140,14 +149,33 @@ describe('Workflow core contracts', () => {
       '${{ steps.filter.outputs.reviewers }}'
     );
     assert.equal(
+      workflow.jobs?.['detect-relevant-changes']?.outputs?.['product_validation'],
+      '${{ steps.filter.outputs.product_validation }}'
+    );
+    assert.equal(
+      workflow.jobs?.['detect-relevant-changes']?.outputs?.['ops_regression'],
+      '${{ steps.filter.outputs.ops_regression }}'
+    );
+    assert.equal(
+      workflow.jobs?.['detect-relevant-changes']?.outputs?.['release_automation'],
+      '${{ steps.filter.outputs.release_automation }}'
+    );
+    assert.ok(workflow.jobs?.['product-validation']);
+    assert.ok(workflow.jobs?.['ops-regression']);
+    assert.ok(workflow.jobs?.['release-automation']);
+    assert.equal(
       workflow.jobs?.['detect-relevant-changes']?.outputs?.['release_gates'],
       '${{ steps.filter.outputs.release_gates }}'
     );
     assert.equal(String(regressionStep?.run ?? '').includes('npm run test:ci-regression'), true);
+    assert.equal(
+      String(releaseRegressionStep?.run ?? '').includes('npm run test:release-automation'),
+      true
+    );
     assert.match(String(regressionStep?.run ?? ''), /VERIFY_REPORT_FILE=/);
     assert.ok(String(summaryStep?.run ?? '').includes('scripts/print-verify-report-summary.mjs'));
     assert.equal(uploadStep?.uses, 'actions/upload-artifact@v7');
-    assert.equal(String(uploadStep?.with?.name ?? ''), 'classroompath-ci-verification-report');
+    assert.equal(String(uploadStep?.with?.name ?? ''), 'classroompath-ops-regression-report');
     assert.ok(String(detectStep?.run ?? '').includes('scripts/detect-ci-relevant-changes.mjs'));
     assert.ok(
       !String(detectStep?.run ?? '').includes("grep -Eq '^(api/|react-spa/|docker/|scripts/")
@@ -184,9 +212,30 @@ describe('Workflow core contracts', () => {
     assert.match(verificationCatalog, /tests\/workflow-release-candidate\.test\.ts/);
   });
 
+  test('CI change detector exposes independent validation scopes', async () => {
+    const { detectCiRelevantChanges } = await import('../scripts/detect-ci-relevant-changes.mjs');
+
+    assert.deepEqual(detectCiRelevantChanges(['react-spa/src/ClassroomPathShell.tsx']), {
+      ci_relevant: 'true',
+      product_validation: 'true',
+      ops_regression: 'false',
+      release_automation: 'false',
+      domain_owners: 'application',
+      release_gates: 'staging-release-gate',
+      required_approvals: 'application',
+      reviewers: 'application',
+    });
+
+    assert.equal(
+      detectCiRelevantChanges(['scripts/deploy-production-remote.sh']).ops_regression,
+      'true'
+    );
+    assert.equal(detectCiRelevantChanges(['.github/workflows/ci.yml']).release_automation, 'true');
+  });
+
   test('CI and security workflows keep shared dependency and cache policy', () => {
     const workflow = readWorkflow('.github/workflows/ci.yml');
-    const buildJob = workflow.jobs?.['build-and-validate'];
+    const buildJob = workflow.jobs?.['product-validation'];
     const steps = buildJob?.steps ?? [];
     const classroomPathInstall = steps.find(
       (step) => step.name === 'Install ClassroomPath dependencies'
