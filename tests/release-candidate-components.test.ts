@@ -120,4 +120,20 @@ describe('release candidate component classification', () => {
       }
     );
   });
+
+  test('keeps ClassroomPath dependency lockfile changes out of OpenPath API signing', () => {
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: ['package-lock.json'],
+        openpathChangedFiles: [],
+      }),
+      {
+        gatewayChanged: true,
+        migrationsChanged: true,
+        openpathApiChanged: false,
+        spaChanged: true,
+        verifierChanged: true,
+      }
+    );
+  });
 });

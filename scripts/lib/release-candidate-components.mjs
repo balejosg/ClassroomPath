@@ -20,6 +20,13 @@ function markAllChanged(flags) {
   flags.verifierChanged = true;
 }
 
+function markClassroomPathRuntimeChanged(flags) {
+  flags.gatewayChanged = true;
+  flags.migrationsChanged = true;
+  flags.spaChanged = true;
+  flags.verifierChanged = true;
+}
+
 function applyOpenPathPathClassification(flags, filePath) {
   if (
     /^docs\//.test(filePath) ||
@@ -106,6 +113,8 @@ export function classifyReleaseCandidateComponents({ changedFiles, openpathChang
   for (const file of normalizedChangedFiles) {
     switch (true) {
       case /^(package\.json|package-lock\.json)$/.test(file):
+        markClassroomPathRuntimeChanged(flags);
+        break;
       case /^scripts\//.test(file):
       case /^\.github\/actions\/setup-node\//.test(file):
       case /^\.github\/actions\/setup-docker-build\//.test(file):
