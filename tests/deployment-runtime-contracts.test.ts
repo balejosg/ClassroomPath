@@ -66,6 +66,7 @@ describe('Deployment runtime contracts', () => {
     assert.ok(existsSync(migrationsImageScriptPath));
     assert.ok(existsSync(openPathDbEnvHelperPath));
     assert.ok(!migrationsDockerfile.includes('COPY . .'));
+    assert.ok(migrationsDockerfile.includes('COPY api/drizzle ./api/drizzle'));
     assert.ok(migrationsDockerfile.includes('COPY api/scripts ./api/scripts'));
     assert.ok(migrationsDockerfile.includes('COPY api/src ./api/src'));
     assert.ok(migrationsDockerfile.includes('COPY scripts ./scripts'));
