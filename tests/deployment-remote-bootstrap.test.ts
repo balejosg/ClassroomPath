@@ -388,8 +388,9 @@ void describe('Remote Deploy Bootstrap', () => {
     const remoteBootstrap = readFileSync(remoteBootstrapHelperPath, 'utf-8');
 
     assert.ok(
-      remoteBootstrap.includes('run_remote_deploy_phases()'),
-      'remote-bootstrap.sh should own ordered phase execution'
+      remoteBootstrap.includes('run_remote_deploy_phases()') &&
+        remoteBootstrap.includes('run_remote_deploy_phase_group()'),
+      'remote-bootstrap.sh should own ordered and parallel-safe phase execution'
     );
 
     for (const [scriptName, content, phases] of [
@@ -398,8 +399,7 @@ void describe('Remote Deploy Bootstrap', () => {
         readFileSync(stagingRemotePath, 'utf-8'),
         [
           'prepare_staging_checkout',
-          'run_staging_runtime_validation',
-          'run_staging_email_delivery_preflight',
+          'run_staging_preflight_checks',
           'cleanup_staging_disk_if_needed',
           'run_staging_database_migrations',
           'start_staging_runtime',

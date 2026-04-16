@@ -43,3 +43,33 @@ run_remote_deploy_phases() {
     "$phase_name"
   done
 }
+
+run_remote_deploy_phase_group() {
+  local group_name="$1"
+  shift
+
+  local phase_name=""
+  local -a phase_names=()
+  local -a phase_pids=()
+  local -a failed_phases=()
+  local index=0
+  local status=0
+
+  for phase_name in "$@"; do
+    "$phase_name" &
+    phase_names+=("$phase_name")
+    phase_pids+=("$!")
+  done
+
+  for index in "${!phase_pids[@]}"; do
+    if ! wait "${phase_pids[$index]}"; then
+      status=1
+      failed_phases+=("${phase_names[$index]}")
+    fi
+  done
+
+  if [ "$status" -ne 0 ]; then
+    printf 'Remote deploy phase group failed (%s): %s\n' "$group_name" "${failed_phases[*]}" >&2
+    return "$status"
+  fi
+}

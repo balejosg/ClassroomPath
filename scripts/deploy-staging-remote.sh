@@ -475,6 +475,10 @@ run_staging_email_delivery_preflight() {
   CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" bash scripts/check-email-delivery-docker.sh
 }
 
+run_staging_preflight_checks() {
+  run_remote_deploy_phase_group staging-preflight run_staging_runtime_validation run_staging_email_delivery_preflight
+}
+
 cleanup_staging_disk_if_needed() {
   cleanup_docker_disk_if_needed "Staging host"
 }
@@ -589,8 +593,7 @@ wait_for_staging_runtime_readiness() {
 
 run_remote_deploy_phases \
   prepare_staging_checkout \
-  run_staging_runtime_validation \
-  run_staging_email_delivery_preflight \
+  run_staging_preflight_checks \
   cleanup_staging_disk_if_needed \
   run_staging_database_migrations \
   start_staging_runtime \

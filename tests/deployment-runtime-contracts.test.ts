@@ -415,6 +415,10 @@ describe('Deployment runtime contracts', () => {
       stagingRemote.includes('prepare_staging_checkout()') &&
         stagingRemote.includes('run_staging_runtime_validation()') &&
         stagingRemote.includes('run_staging_email_delivery_preflight()') &&
+        stagingRemote.includes('run_staging_preflight_checks()') &&
+        stagingRemote.includes(
+          'run_remote_deploy_phase_group staging-preflight run_staging_runtime_validation run_staging_email_delivery_preflight'
+        ) &&
         stagingRemote.includes('cleanup_staging_disk_if_needed()') &&
         stagingRemote.includes('run_staging_database_migrations()') &&
         stagingRemote.includes('start_staging_runtime()') &&
