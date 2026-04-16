@@ -29,6 +29,7 @@ describe('Deployment staging and promotion contracts', () => {
   );
   const stagingGatesHelperPath = resolve(projectRoot, 'scripts/lib/staging-gates.sh');
   const releaseImagesScriptPath = resolve(projectRoot, 'scripts/release-images.mjs');
+  const releasePlanScriptPath = resolve(projectRoot, 'scripts/lib/release-plan.mjs');
   const waitForReleaseCandidateScriptPath = resolve(
     projectRoot,
     'scripts/wait-for-release-candidate.mjs'
@@ -47,9 +48,10 @@ describe('Deployment staging and promotion contracts', () => {
     'scripts/lib/deploy-production-runtime.sh'
   );
 
-  test('staging deploy waits for a successful release-candidate manifest before source-build fallback', () => {
+  test('staging deploy requires a successful release-candidate manifest for origin main', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
     const releaseHelperContent = readFileSync(stagingLocalReleaseHelperPath, 'utf-8');
+    const releasePlanContent = readFileSync(releasePlanScriptPath, 'utf-8');
     const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
 
     assert.ok(existsSync(releaseImagesScriptPath));
@@ -62,10 +64,13 @@ describe('Deployment staging and promotion contracts', () => {
     );
     assert.ok(remoteContent.includes('deploy_with_release_candidates'));
     assert.ok(remoteContent.includes('docker compose pull gateway api spa'));
+    assert.ok(localContent.includes('Allowed value: release-candidate'));
+    assert.ok(localContent.includes('does not support source-build staging deploys'));
     assert.ok(
       releaseHelperContent.includes('STAGING_RELEASE_MANIFEST_FILE') &&
         releaseHelperContent.includes('STAGING_RELEASE_MANIFEST_B64')
     );
+    assert.ok(releasePlanContent.includes('release-candidate manifest APP_SHA'));
     assert.ok(
       releaseHelperContent.includes('STAGING_RELEASE_RUN_ID') &&
         releaseHelperContent.includes('STAGING_RELEASE_REPOSITORY')
@@ -80,11 +85,11 @@ describe('Deployment staging and promotion contracts', () => {
         'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"'
       )
     );
-    assert.ok(remoteContent.includes('if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then'));
     assert.ok(
       !localContent.includes('node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA"')
     );
     assert.ok(!localContent.includes('Falling back to source build for staging'));
+    assert.ok(!localContent.includes('source-build|'));
   });
 
   test('staging deploy records reusable smoke, release-gate, and Windows/Firefox evidence', () => {

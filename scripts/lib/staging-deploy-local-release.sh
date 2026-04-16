@@ -68,8 +68,6 @@ prepare_staging_local_release_context() {
     elif [ "$STAGING_IMAGE_MODE" = "release-candidate" ]; then
         log_error "STAGING_IMAGE_MODE=release-candidate requires origin/main to be reachable"
         exit 1
-    else
-        log_warn "STAGING_IMAGE_MODE=source-build skips release candidates and is intended only for debug or recovery"
     fi
 
     STAGING_RELEASE_PLAN_ENV_FILE="$(mktemp)"

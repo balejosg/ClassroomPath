@@ -94,6 +94,12 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
       throw new Error('release-candidate staging plan requires a manifest');
     }
 
+    if (manifest.app_sha !== remoteSha) {
+      throw new Error(
+        `release-candidate manifest APP_SHA does not match target SHA: manifest=${manifest.app_sha} target=${remoteSha}`
+      );
+    }
+
     return {
       imageSource: 'release-candidate',
       deploymentMode: deriveStagingDeploymentMode('release-candidate'),

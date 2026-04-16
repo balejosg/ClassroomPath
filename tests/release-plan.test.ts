@@ -25,7 +25,7 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     const manifest = parseReleaseManifestText(manifestText);
     const plan = buildStagingReleasePlan({
       imageMode: 'release-candidate',
-      remoteSha: '89abcdef0123456789abcdef0123456789abcdef',
+      remoteSha: '0123456789abcdef0123456789abcdef01234567',
       manifest,
     });
 
@@ -42,11 +42,25 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     assert.equal(plan.verification.requireLiveWindowsFirefoxEvidence, true);
   });
 
+  test('rejects release-candidate manifests for a different app sha', () => {
+    const manifest = parseReleaseManifestText(manifestText);
+
+    assert.throws(
+      () =>
+        buildStagingReleasePlan({
+          imageMode: 'release-candidate',
+          remoteSha: '89abcdef0123456789abcdef0123456789abcdef',
+          manifest,
+        }),
+      /release-candidate manifest APP_SHA does not match target SHA/
+    );
+  });
+
   test('renders shell env assignments from the typed plan', () => {
     const manifest = parseReleaseManifestText(manifestText);
     const plan = buildStagingReleasePlan({
       imageMode: 'release-candidate',
-      remoteSha: '89abcdef0123456789abcdef0123456789abcdef',
+      remoteSha: '0123456789abcdef0123456789abcdef01234567',
       manifest,
     });
     const rendered = formatStagingReleasePlanEnv(plan);
