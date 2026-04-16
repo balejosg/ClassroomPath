@@ -27,6 +27,11 @@ function markClassroomPathRuntimeChanged(flags) {
   flags.verifierChanged = true;
 }
 
+function markClassroomPathOpsChanged(flags) {
+  flags.migrationsChanged = true;
+  flags.verifierChanged = true;
+}
+
 function applyOpenPathPathClassification(flags, filePath) {
   if (
     /^docs\//.test(filePath) ||
@@ -116,6 +121,8 @@ export function classifyReleaseCandidateComponents({ changedFiles, openpathChang
         markClassroomPathRuntimeChanged(flags);
         break;
       case /^scripts\//.test(file):
+        markClassroomPathOpsChanged(flags);
+        break;
       case /^\.github\/actions\/setup-node\//.test(file):
       case /^\.github\/actions\/setup-docker-build\//.test(file):
       case file === '.github/workflows/release-candidate-images.yml':

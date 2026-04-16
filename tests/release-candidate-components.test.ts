@@ -136,4 +136,20 @@ describe('release candidate component classification', () => {
       }
     );
   });
+
+  test('keeps ClassroomPath scripts changes out of OpenPath API signing', () => {
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: ['scripts/lib/release-candidate-components.mjs'],
+        openpathChangedFiles: [],
+      }),
+      {
+        gatewayChanged: false,
+        migrationsChanged: true,
+        openpathApiChanged: false,
+        spaChanged: false,
+        verifierChanged: true,
+      }
+    );
+  });
 });
