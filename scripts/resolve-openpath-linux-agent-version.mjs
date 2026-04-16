@@ -112,6 +112,61 @@ export function resolveOpenPathLinuxAgentVersion({ openpathSha, promotionContrac
   };
 }
 
+export function isMissingPromotionContractError(error) {
+  return Number(error?.status ?? 0) === 404;
+}
+
+export async function resolveOpenPathLinuxAgentVersionFromContracts({
+  pinnedOpenpathSha,
+  candidateOpenpathShas,
+  promotionContractsBaseUrl,
+  downloadText = downloadPromotionContract,
+}) {
+  const normalizedPinnedSha = String(pinnedOpenpathSha ?? '').trim();
+  if (!normalizedPinnedSha) {
+    throw new Error('Pinned OpenPath SHA is required');
+  }
+
+  const candidates = [
+    ...new Set(
+      [normalizedPinnedSha, ...(candidateOpenpathShas ?? [])]
+        .map((candidate) => String(candidate ?? '').trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  for (const candidateSha of candidates) {
+    const url = buildPromotionContractUrl({
+      baseUrl: promotionContractsBaseUrl,
+      openpathSha: candidateSha,
+    });
+
+    try {
+      const promotionContract = parseOpenPathPromotionContract(await downloadText(url));
+      const result = resolveOpenPathLinuxAgentVersion({
+        openpathSha: candidateSha,
+        promotionContract,
+      });
+
+      return {
+        openpathSha: normalizedPinnedSha,
+        promotionContractSha: candidateSha,
+        openpathVersion: result.openpathVersion,
+        version: result.version,
+      };
+    } catch (error) {
+      if (isMissingPromotionContractError(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error(
+    `No OpenPath promotion contract found for pinned SHA ${normalizedPinnedSha} or its first-parent ancestors.`
+  );
+}
+
 function gitOutput(openpathDir, args) {
   return runGitOutput(['-C', openpathDir, ...args], { cwd: projectRoot });
 }
@@ -120,12 +175,22 @@ function resolveOpenPathSha(openpathDir) {
   return gitOutput(openpathDir, ['rev-parse', 'HEAD']);
 }
 
+function resolveOpenPathCandidateShas(openpathDir) {
+  return gitOutput(openpathDir, ['rev-list', '--first-parent', '--max-count=50', 'HEAD'])
+    .split('\n')
+    .map((sha) => sha.trim())
+    .filter(Boolean);
+}
+
 async function downloadPromotionContract(url) {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(
+    const error = new Error(
       `Failed to download OpenPath promotion contract from ${url} (${response.status} ${response.statusText})`
     );
+    error.status = response.status;
+    error.statusText = response.statusText;
+    throw error;
   }
 
   return response.text();
@@ -140,22 +205,15 @@ function writeOutputs(outputMap) {
 async function main() {
   const options = parseCliArgs(process.argv.slice(2));
   const openpathSha = resolveOpenPathSha(options.openpathDir);
-  const promotionContract = parseOpenPathPromotionContract(
-    await downloadPromotionContract(
-      buildPromotionContractUrl({
-        baseUrl: options.promotionContractsBaseUrl,
-        openpathSha,
-      })
-    )
-  );
-
-  const result = resolveOpenPathLinuxAgentVersion({
-    openpathSha,
-    promotionContract,
+  const result = await resolveOpenPathLinuxAgentVersionFromContracts({
+    pinnedOpenpathSha: openpathSha,
+    candidateOpenpathShas: resolveOpenPathCandidateShas(options.openpathDir),
+    promotionContractsBaseUrl: options.promotionContractsBaseUrl,
   });
 
   writeOutputs({
     openpath_sha: openpathSha,
+    openpath_promotion_contract_sha: result.promotionContractSha,
     openpath_version: result.openpathVersion,
     version: result.version,
   });

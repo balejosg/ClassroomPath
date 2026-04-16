@@ -80,7 +80,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-cli',
     patterns: [
-      '^scripts/(?:detect-ci-relevant-changes|firefox-release-version|openpath-required-checks|print-verify-report-summary|release-images|release-risk-cli|release-state-cli|resolve-latest-verifier-image|run-ci-regression|verify-full|wait-for-release-candidate)\\.(?:mjs|ts)$',
+      '^scripts/(?:detect-ci-relevant-changes|firefox-release-version|openpath-required-checks|print-verify-report-summary|release-images|release-risk-cli|release-state-cli|resolve-latest-verifier-image|resolve-openpath-linux-agent-version|run-ci-regression|verify-full|wait-for-release-candidate)\\.(?:mjs|ts)$',
     ],
     capabilities: {
       ciRelevant: true,

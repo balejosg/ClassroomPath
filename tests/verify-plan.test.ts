@@ -19,6 +19,7 @@ describe('verify plan', () => {
     const stagedFiles = [
       '.github/workflows/firefox-release-assets.yml',
       'scripts/openpath-required-checks.mjs',
+      'scripts/resolve-openpath-linux-agent-version.mjs',
       'scripts/lib/github-actions.mjs',
       'tests/workflow-core.test.ts',
       'tests/fixtures/release/manifest.release-candidate.env',
