@@ -118,6 +118,8 @@ describe('Workflow core contracts', () => {
     const summaryStep = steps.find((step) => step.name === 'Summarize verification report');
     const uploadStep = steps.find((step) => step.name === 'Upload verification report artifact');
     const packageJson = readPackageJson();
+    const verifyFast = packageJson.scripts?.['verify:fast'] ?? '';
+    const commitSmoke = packageJson.scripts?.['test:e2e:commit-smoke'] ?? '';
     const ciRegression = packageJson.scripts?.['test:ci-regression'] ?? '';
     const releaseAutomationRegression = packageJson.scripts?.['test:release-automation'] ?? '';
     const ciRegressionHelper = readText('scripts/run-ci-regression.mjs');
@@ -150,6 +152,9 @@ describe('Workflow core contracts', () => {
     assert.ok(
       !String(detectStep?.run ?? '').includes("grep -Eq '^(api/|react-spa/|docker/|scripts/")
     );
+    assert.equal(verifyFast, 'VERIFY_MODE=fast bash scripts/verify-full.sh');
+    assert.match(commitSmoke, /playwright test --grep @commit-smoke/);
+    assert.doesNotMatch(commitSmoke, /test:e2e:full/);
     assert.match(
       ciRegression,
       /^node --input-type=module -e "import \{ runCiRegression \} from '\.\/scripts\/run-ci-regression\.mjs'; runCiRegression\(\);" && node --input-type=module -e "import \{ runWorkflowConfigRegression \} from '\.\/scripts\/run-ci-regression\.mjs'; runWorkflowConfigRegression\(\);"$/

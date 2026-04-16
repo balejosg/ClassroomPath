@@ -10,6 +10,7 @@ import {
 } from '../scripts/lib/verification-catalog.mjs';
 import {
   listVerificationStageRunnerIds,
+  resolvePlaywrightVerificationCommand,
   runVerificationPipeline,
 } from '../scripts/lib/verification-stage-runners.ts';
 
@@ -28,12 +29,13 @@ function buildPlanFixture(
       reviewers: ['release-engineering'],
     },
     mode: 'commit',
+    e2eDepth: scope === 'full' ? 'commit-smoke' : 'skip',
     needsApiCoverage: false,
     needsCoverageGate: false,
     needsSpaCoverage: false,
     playwrightCacheDir: '/tmp/playwright',
     playwrightWorkers: 3,
-    rootDir: '/tmp/classroompath',
+    rootDir: process.cwd(),
     skipOpenPathStatic: false,
     stagedFiles: [],
     submoduleOnly: false,
@@ -126,5 +128,18 @@ describe('verification pipeline', () => {
       'run:npm run test:release-automation',
       'complete:release-automation-regression',
     ]);
+  });
+
+  test('full pipeline resolves e2e command from verification mode', () => {
+    const plan = buildPlanFixture('full');
+    assert.equal(resolvePlaywrightVerificationCommand(plan), 'npm run test:e2e:commit-smoke');
+
+    plan.mode = 'fast';
+    plan.e2eDepth = 'skip';
+    assert.equal(resolvePlaywrightVerificationCommand(plan), null);
+
+    plan.mode = 'release';
+    plan.e2eDepth = 'full';
+    assert.equal(resolvePlaywrightVerificationCommand(plan), 'npm run test:e2e:full');
   });
 });

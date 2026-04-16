@@ -30,6 +30,12 @@ export {
 } from './verify-docker.ts';
 export { hasPlaywrightBrowsers } from './verify-playwright.ts';
 
+export function resolvePlaywrightVerificationCommand(plan: VerifyPlan): string | null {
+  if (plan.e2eDepth === 'skip') return null;
+  if (plan.e2eDepth === 'commit-smoke') return 'npm run test:e2e:commit-smoke';
+  return 'npm run test:e2e:full';
+}
+
 type VerificationStageExecution = {
   artifacts?: VerifyStageArtifact[];
   cacheValue?: unknown;
@@ -349,7 +355,13 @@ function createStageExecution(
     case 'playwright-e2e':
       return {
         details: { workers: plan.playwrightWorkers },
+        skipReason: plan.e2eDepth === 'skip' ? 'fast verification skips Playwright E2E' : undefined,
         run: async () => {
+          const command = resolvePlaywrightVerificationCommand(plan);
+          if (!command) {
+            return;
+          }
+
           if (!plan.browsersAvailable) {
             throw new Error(
               `Playwright browsers are required for local verification and are not installed. Cache: ${plan.playwrightCacheDir}`
@@ -357,6 +369,12 @@ function createStageExecution(
           }
 
           console.log(`Using Playwright workers: ${String(plan.playwrightWorkers)}`);
+          if (plan.e2eDepth === 'commit-smoke') {
+            console.log('Running commit-smoke Playwright suite...');
+            await runtime.runShell(command, { cwd: plan.rootDir, env });
+            return;
+          }
+
           console.log('Running full E2E Playwright suite...');
           await runPlaywrightVerification(plan, env, runtime);
         },

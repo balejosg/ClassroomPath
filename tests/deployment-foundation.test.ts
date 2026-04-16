@@ -208,8 +208,14 @@ describe('Deployment foundation contracts', () => {
       packageJson.scripts?.['test:release-automation'],
       `node --input-type=module -e "import { runReleaseAutomationRegression } from './scripts/run-ci-regression.mjs'; runReleaseAutomationRegression();"`
     );
-    assert.ok(packageJson.scripts?.['test:e2e:verify-fast'] === 'npm run test:e2e:full');
-    assert.ok(packageJson.scripts?.['test:e2e:commit-smoke'] === 'npm run test:e2e:full');
+    assert.ok(
+      packageJson.scripts?.['test:e2e:verify-fast'] ===
+        'E2E_SKIP_DB_PUSH=1 npx playwright test --grep @commit-smoke'
+    );
+    assert.ok(
+      packageJson.scripts?.['test:e2e:commit-smoke'] ===
+        'E2E_SKIP_DB_PUSH=1 npx playwright test --grep @commit-smoke'
+    );
     assert.ok(
       verifyPlan.includes('verificationScope: detectVerificationScope(stagedFiles, mode)') &&
         verifyPlan.includes('releaseAutomationSafe')
@@ -224,7 +230,10 @@ describe('Deployment foundation contracts', () => {
           'Running deployment/workflow regression instead of full product verification'
         )
     );
-    assert.ok(stageRunners.includes('Running full E2E Playwright suite...'));
+    assert.ok(
+      stageRunners.includes('Running commit-smoke Playwright suite...') &&
+        stageRunners.includes('Running full E2E Playwright suite...')
+    );
     assert.ok(
       verifyPlaywright.includes(
         'Playwright verification cannot skip tests; skipped: ${String(skipped)}'

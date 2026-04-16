@@ -1,7 +1,8 @@
 import { flattenVerifyDomainPolicies, type VerifyFileDomain } from './verify-domain-policy.ts';
 
-export type VerifyMode = 'commit' | 'release';
+export type VerifyMode = 'fast' | 'commit' | 'release';
 export type VerifyScope = 'full' | 'ops-regression' | 'release-automation';
+export type VerifyE2eDepth = 'skip' | 'commit-smoke' | 'full';
 export type VerifyDomainSummary = {
   matchedDomains: string[];
   owners: string[];
@@ -15,6 +16,7 @@ export type VerifyPlan = {
   composeFile: string;
   composeProjectName: string;
   domainSummary: VerifyDomainSummary;
+  e2eDepth: VerifyE2eDepth;
   mode: VerifyMode;
   needsApiCoverage: boolean;
   needsCoverageGate: boolean;
@@ -39,6 +41,7 @@ export const RELEASE_AUTOMATION_FILE_PATTERNS = VERIFY_FILE_DOMAINS.filter(
 ).map((domain) => domain.pattern);
 
 export function resolveVerifyMode(env: NodeJS.ProcessEnv): VerifyMode {
+  if (env.VERIFY_MODE === 'fast') return 'fast';
   return env.VERIFY_MODE === 'release' ? 'release' : 'commit';
 }
 
@@ -104,6 +107,9 @@ export function detectCoverageNeeds(stagedFiles: string[]): {
 
 export function detectVerificationScope(stagedFiles: string[], mode: VerifyMode): VerifyScope {
   if (mode !== 'commit' || stagedFiles.length === 0) {
+    if (mode === 'fast' && stagedFiles.length > 0) {
+      return detectVerificationScope(stagedFiles, 'commit');
+    }
     return 'full';
   }
 
@@ -128,6 +134,12 @@ export function detectVerificationScope(stagedFiles: string[], mode: VerifyMode)
   }
 
   return 'full';
+}
+
+export function detectE2eDepth(mode: VerifyMode): VerifyE2eDepth {
+  if (mode === 'release') return 'full';
+  if (mode === 'fast') return 'skip';
+  return 'commit-smoke';
 }
 
 export function createVerifyPlan({
@@ -162,6 +174,7 @@ export function createVerifyPlan({
     composeFile,
     composeProjectName,
     domainSummary: summarizeVerifyDomains(stagedFiles),
+    e2eDepth: detectE2eDepth(mode),
     mode,
     needsApiCoverage,
     needsCoverageGate,

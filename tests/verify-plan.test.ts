@@ -58,6 +58,56 @@ describe('verify plan', () => {
     );
   });
 
+  test('chooses e2e depth from verification mode', () => {
+    assert.equal(
+      createVerifyPlan({
+        browsersAvailable: true,
+        composeFile: 'docker/docker-compose.test.yml',
+        composeProjectName: 'classroompath_test_fixture',
+        mode: 'fast',
+        playwrightCacheDir: '/tmp/playwright',
+        playwrightWorkers: 4,
+        rootDir: '/tmp/classroompath',
+        stagedFiles: ['react-spa/src/ClassroomPathShell.tsx'],
+        testDbPort: 54321,
+        workspaceFingerprint: 'fixture-fingerprint',
+      }).e2eDepth,
+      'skip'
+    );
+
+    assert.equal(
+      createVerifyPlan({
+        browsersAvailable: true,
+        composeFile: 'docker/docker-compose.test.yml',
+        composeProjectName: 'classroompath_test_fixture',
+        mode: 'commit',
+        playwrightCacheDir: '/tmp/playwright',
+        playwrightWorkers: 4,
+        rootDir: '/tmp/classroompath',
+        stagedFiles: ['react-spa/src/ClassroomPathShell.tsx'],
+        testDbPort: 54321,
+        workspaceFingerprint: 'fixture-fingerprint',
+      }).e2eDepth,
+      'commit-smoke'
+    );
+
+    assert.equal(
+      createVerifyPlan({
+        browsersAvailable: true,
+        composeFile: 'docker/docker-compose.test.yml',
+        composeProjectName: 'classroompath_test_fixture',
+        mode: 'release',
+        playwrightCacheDir: '/tmp/playwright',
+        playwrightWorkers: 4,
+        rootDir: '/tmp/classroompath',
+        stagedFiles: ['react-spa/src/ClassroomPathShell.tsx'],
+        testDbPort: 54321,
+        workspaceFingerprint: 'fixture-fingerprint',
+      }).e2eDepth,
+      'full'
+    );
+  });
+
   test('builds a plan that preserves the release-automation scope and coverage decisions', () => {
     const plan = createVerifyPlan({
       browsersAvailable: true,
