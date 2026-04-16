@@ -2,16 +2,16 @@
 
 > Status: maintained
 > Applies to: ClassroomPath updates that consume a newer OpenPath commit
-> Last verified: 2026-04-13
+> Last verified: 2026-04-16
 > Source of truth: `docs/runbooks/update-openpath-submodule.md`
 
 ClassroomPath consumes OpenPath as a git submodule at `upstream/openpath/`.
 
 Before changing the ClassroomPath wrapper around OpenPath, also review:
 
-- [`agent-manifest.json`](../../../agent-manifest.json)
-- [`OpenPath/docs/INDEX.md`](../../../OpenPath/docs/INDEX.md)
-- [`OpenPath/docs/adr/0010-public-spa-extension-surface.md`](../../../OpenPath/docs/adr/0010-public-spa-extension-surface.md)
+- `agent-manifest.json` in the workspace root
+- [`upstream/openpath/docs/INDEX.md`](../../upstream/openpath/docs/INDEX.md)
+- [`upstream/openpath/docs/adr/0010-public-spa-extension-surface.md`](../../upstream/openpath/docs/adr/0010-public-spa-extension-surface.md)
 
 ## Standard Flow
 

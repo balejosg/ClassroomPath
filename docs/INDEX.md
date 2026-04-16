@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: first-party ClassroomPath documentation
-> Last verified: 2026-04-13
+> Last verified: 2026-04-16
 > Source of truth: `docs/INDEX.md`
 
 This index is the entrypoint for the maintained ClassroomPath documentation set.
@@ -18,9 +18,9 @@ Rules:
 
 - Repository overview and operator-facing summary: [`README.md`](../README.md)
 - Agent workflow, environment identification, and deployment rules: [`AGENTS.md`](../AGENTS.md)
-- Workspace routing and search policy: [`agent-manifest.json`](../../agent-manifest.json)
-- OpenPath documentation index: [`OpenPath/docs/INDEX.md`](../../OpenPath/docs/INDEX.md)
-- OpenPath SPA wrapper boundary: [`OpenPath/docs/adr/0010-public-spa-extension-surface.md`](../../OpenPath/docs/adr/0010-public-spa-extension-surface.md)
+- Workspace routing and search policy: `agent-manifest.json` in the workspace root
+- OpenPath documentation index: [`upstream/openpath/docs/INDEX.md`](../upstream/openpath/docs/INDEX.md)
+- OpenPath SPA wrapper boundary: [`upstream/openpath/docs/adr/0010-public-spa-extension-surface.md`](../upstream/openpath/docs/adr/0010-public-spa-extension-surface.md)
 
 ## Canonical Contracts
 
@@ -55,7 +55,7 @@ Rules:
 
 - Cross-system mutation ledger ADR: [`docs/adr/0001-cross-system-mutation-ledger.md`](adr/0001-cross-system-mutation-ledger.md)
 - Release risk gating ADR: [`docs/adr/0002-release-risk-gating.md`](adr/0002-release-risk-gating.md)
-- OpenPath boundary contract: [`OpenPath/docs/adr/0010-public-spa-extension-surface.md`](../../OpenPath/docs/adr/0010-public-spa-extension-surface.md)
+- OpenPath boundary contract: [`upstream/openpath/docs/adr/0010-public-spa-extension-surface.md`](../upstream/openpath/docs/adr/0010-public-spa-extension-surface.md)
 
 ## Drafts And Historical Context
 
