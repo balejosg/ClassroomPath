@@ -9,6 +9,7 @@ import {
   getVerificationStageDefinition,
 } from '../scripts/lib/verification-catalog.mjs';
 import {
+  isStageCacheEnabled,
   listVerificationStageRunnerIds,
   resolvePlaywrightVerificationCommand,
   runVerificationPipeline,
@@ -141,5 +142,13 @@ describe('verification pipeline', () => {
     plan.mode = 'release';
     plan.e2eDepth = 'full';
     assert.equal(resolvePlaywrightVerificationCommand(plan), 'npm run test:e2e:full');
+  });
+
+  test('release mode disables diff-safe stage cache', () => {
+    const plan = buildPlanFixture('full');
+    assert.equal(isStageCacheEnabled(plan, 'build'), true);
+
+    plan.mode = 'release';
+    assert.equal(isStageCacheEnabled(plan, 'build'), false);
   });
 });

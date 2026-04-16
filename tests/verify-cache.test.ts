@@ -18,6 +18,7 @@ const FIXTURE_PLAN = {
     reviewers: ['release-engineering'],
   },
   mode: 'commit',
+  e2eDepth: 'commit-smoke',
   needsApiCoverage: false,
   needsCoverageGate: false,
   needsSpaCoverage: false,
@@ -50,6 +51,43 @@ describe('verify cache', () => {
       assert.equal(await cache.shouldReuse('build', { key: cacheKey }), true);
     } finally {
       rmSync(cacheDir, { force: true, recursive: true });
+    }
+  });
+
+  test('stage cache keys include lockfiles and verification inputs', () => {
+    const rootDir = mkdtempSync(join(tmpdir(), 'classroompath-verify-cache-key-test-'));
+
+    try {
+      mkdirSync(join(rootDir, 'upstream/openpath'), { recursive: true });
+      mkdirSync(join(rootDir, 'scripts/lib'), { recursive: true });
+      mkdirSync(join(rootDir, 'docker'), { recursive: true });
+      writeFileSync(join(rootDir, 'package-lock.json'), '{"root":1}\n', 'utf8');
+      writeFileSync(
+        join(rootDir, 'upstream/openpath/package-lock.json'),
+        '{"upstream":1}\n',
+        'utf8'
+      );
+      writeFileSync(join(rootDir, 'scripts/verify-full.ts'), 'verify-v1\n', 'utf8');
+      writeFileSync(
+        join(rootDir, 'scripts/lib/verification-stage-runners.ts'),
+        'runner-v1\n',
+        'utf8'
+      );
+      writeFileSync(join(rootDir, 'docker/Dockerfile.cp-api'), 'docker-v1\n', 'utf8');
+
+      const plan = { ...FIXTURE_PLAN, rootDir };
+      const firstKey = createVerifyCache(plan).buildStageCacheKey('build', {
+        command: 'npm run build',
+      });
+
+      writeFileSync(join(rootDir, 'package-lock.json'), '{"root":2}\n', 'utf8');
+      const secondKey = createVerifyCache(plan).buildStageCacheKey('build', {
+        command: 'npm run build',
+      });
+
+      assert.notEqual(firstKey, secondKey);
+    } finally {
+      rmSync(rootDir, { force: true, recursive: true });
     }
   });
 });

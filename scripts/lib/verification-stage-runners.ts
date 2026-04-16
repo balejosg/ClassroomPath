@@ -69,8 +69,7 @@ function createStageCache(
   validate?: () => boolean,
   artifacts?: VerifyStageArtifact[]
 ) {
-  const definition = getVerificationStageDefinition(plan.verificationScope, stageId);
-  if (!definition || definition.cache !== 'diff-safe') {
+  if (!isStageCacheEnabled(plan, stageId)) {
     return undefined;
   }
 
@@ -83,6 +82,15 @@ function createStageCache(
     shouldReuse: cache.shouldReuse,
     validate,
   };
+}
+
+export function isStageCacheEnabled(plan: VerifyPlan, stageId: string): boolean {
+  if (plan.mode === 'release') {
+    return false;
+  }
+
+  const definition = getVerificationStageDefinition(plan.verificationScope, stageId);
+  return definition?.cache === 'diff-safe';
 }
 
 function printPipelineBanner(banner?: { lines?: string[] }) {

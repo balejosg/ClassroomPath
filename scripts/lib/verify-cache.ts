@@ -32,6 +32,34 @@ function createDigest(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
+const CACHE_INPUT_PATHS = [
+  'package-lock.json',
+  'upstream/openpath/package-lock.json',
+  'scripts/verify-full.sh',
+  'scripts/verify-full.ts',
+  'scripts/lib/verify-plan.ts',
+  'scripts/lib/verify-cache.ts',
+  'scripts/lib/verification-catalog.mjs',
+  'scripts/lib/verification-stage-runners.ts',
+  'docker/Dockerfile.cp-api',
+  'docker/Dockerfile.migrations',
+  'docker/Dockerfile.release-verifier',
+  'docker/Dockerfile.spa',
+  'docker/docker-compose.test.yml',
+] as const;
+
+function hashCacheInput(rootDir: string, relativePath: string) {
+  const absolutePath = join(rootDir, relativePath);
+  if (!existsSync(absolutePath)) {
+    return { path: relativePath, sha256: null };
+  }
+
+  return {
+    path: relativePath,
+    sha256: createHash('sha256').update(readFileSync(absolutePath)).digest('hex'),
+  };
+}
+
 function loadCacheState(cacheFile: string): VerifyCacheState {
   if (!existsSync(cacheFile)) {
     return { entries: {}, version: 1 };
@@ -83,6 +111,11 @@ export function createVerifyCache(
 
   function buildStageCacheKey(stageId: string, value: unknown = null): string {
     return createDigest({
+      cacheInputs: CACHE_INPUT_PATHS.map((relativePath) =>
+        hashCacheInput(plan.rootDir, relativePath)
+      ),
+      mode: plan.mode,
+      nodeVersion: process.version,
       planFingerprint: plan.workspaceFingerprint,
       stageId,
       value,
