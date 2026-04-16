@@ -64,7 +64,7 @@ npm run verify:promotion-ready
 4. Create and push the production tag through the canonical gated script.
 
 ```bash
-npm run release:production -- v1.2.4
+npm run promote:production -- v1.2.4
 ```
 
 5. Monitor the workflow and inspect the release evidence.

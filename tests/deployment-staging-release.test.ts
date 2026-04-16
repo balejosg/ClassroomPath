@@ -314,5 +314,6 @@ describe('Deployment staging and promotion contracts', () => {
         promotionReadyScript.includes('resolve-manifest')
     );
     assert.ok(runbook.includes('npm run verify:promotion-ready'));
+    assert.ok(runbook.includes('npm run promote:production -- v1.2.4'));
   });
 });

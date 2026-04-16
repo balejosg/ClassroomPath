@@ -200,6 +200,10 @@ describe('Deployment foundation contracts', () => {
       packageJson.scripts?.['release:production'],
       'bash scripts/tag-production-release.sh'
     );
+    assert.equal(
+      packageJson.scripts?.['promote:production'],
+      'bash scripts/tag-production-release.sh'
+    );
     assert.ok(
       hook.includes('VERIFY_REPORT_FILE=') &&
         hook.includes('scripts/print-verify-report-summary.mjs')
@@ -273,7 +277,7 @@ describe('Deployment foundation contracts', () => {
     assert.ok(tagScript.includes('git tag "$TAG_NAME" "$main_sha"'));
     assert.ok(tagScript.includes('git push origin "$TAG_NAME"'));
     assert.ok(tagScript.includes('HEAD must match origin/main'));
-    assert.ok(runbook.includes('npm run release:production -- v1.2.4'));
+    assert.ok(runbook.includes('npm run promote:production -- v1.2.4'));
     assert.ok(!runbook.includes('git tag v1.2.4'));
   });
 
