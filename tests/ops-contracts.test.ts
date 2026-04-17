@@ -39,10 +39,10 @@ describe('Ops contracts helpers', () => {
 
   test('workflow helpers can locate jobs and steps structurally', () => {
     const workflow = readProjectWorkflow('.github/workflows/ci.yml');
-    const job = findWorkflowJob(workflow, 'build-and-validate');
-    const step = findWorkflowStepByName(job, 'Run CI regression tests');
+    const job = findWorkflowJob(workflow, 'ops-regression');
+    const step = findWorkflowStepByName(job, 'Run ops regression tests');
 
-    assert.equal(step.name, 'Run CI regression tests');
+    assert.equal(step.name, 'Run ops regression tests');
   });
 
   test('extractShellAssignment returns right-hand-side expressions', () => {

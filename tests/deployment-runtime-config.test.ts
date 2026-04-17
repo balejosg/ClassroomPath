@@ -18,6 +18,7 @@ const projectRoot = resolve(testDir, '..');
 interface DockerComposeService {
   build?: { context: string; dockerfile: string };
   image?: string;
+  platform?: string;
   ports?: Array<string | number>;
   expose?: Array<string | number>;
   env_file?: string[];
@@ -120,6 +121,20 @@ void describe('Docker Compose Configuration', () => {
       'SPA should use nginx image'
     );
     assert.ok(spa.depends_on?.includes('api'), 'SPA should depend on API');
+  });
+
+  void test('release runtime services pin the supported container platform', () => {
+    const content = readFileSync(composePath, 'utf-8');
+    const compose = parseYaml(content) as DockerCompose;
+    const expectedPlatform = '${CLASSROOMPATH_CONTAINER_PLATFORM:-linux/amd64}';
+
+    for (const serviceName of ['gateway', 'api', 'spa']) {
+      assert.strictEqual(
+        compose.services[serviceName]?.platform,
+        expectedPlatform,
+        `${serviceName} should run on the declared deploy target platform`
+      );
+    }
   });
 
   void test('services reference upstream/openpath (submodule)', () => {
@@ -259,8 +274,8 @@ void describe('Environment Configuration', () => {
     assert.ok(existsSync(deployTargetsPath), 'config/deploy-targets.json should exist');
 
     const targets = JSON.parse(readFileSync(deployTargetsPath, 'utf-8')) as {
-      staging?: { publicUrl?: string };
-      production?: { publicUrl?: string };
+      staging?: { publicUrl?: string; containerPlatform?: string };
+      production?: { publicUrl?: string; containerPlatform?: string };
     };
 
     assert.strictEqual(
@@ -272,6 +287,16 @@ void describe('Environment Configuration', () => {
       targets.production?.publicUrl,
       'https://classroompath.eu',
       'Production public URL should stay centralized in deploy-targets.json'
+    );
+    assert.strictEqual(
+      targets.staging?.containerPlatform,
+      'linux/amd64',
+      'Staging deploy target should explicitly declare the supported image platform'
+    );
+    assert.strictEqual(
+      targets.production?.containerPlatform,
+      'linux/amd64',
+      'Production deploy target should explicitly declare the supported image platform'
     );
   });
 

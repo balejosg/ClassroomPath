@@ -102,6 +102,7 @@ require_cmd node
 
 CANONICAL_STAGING_URL="$(node "$SCRIPT_DIR/deploy-targets.mjs" get staging publicUrl)"
 STAGING_SMOKE_URL="${STAGING_SMOKE_URL:-$CANONICAL_STAGING_URL}"
+STAGING_CONTAINER_PLATFORM="${STAGING_CONTAINER_PLATFORM:-$(node "$SCRIPT_DIR/deploy-targets.mjs" get staging containerPlatform)}"
 
 # Validate required env vars
 if [ -z "${STAGING_SSH_KEY:-}" ]; then

@@ -45,6 +45,8 @@ ensure_production_release_candidate_runtime_env() {
 apply_production_runtime_deploy_impl() {
   cd "$APP_DIR/docker"
   export COMPOSE_PROJECT_NAME=classroompath-production
+  configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/amd64}" || return 1
+  verify_deploy_container_platform || return 1
   ensure_production_release_candidate_runtime_env || return 1
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"

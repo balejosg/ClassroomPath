@@ -69,10 +69,12 @@ jobs:
       staging_gateway_health_url: ${{ steps.deploy-targets.outputs.staging_gateway_health_url }}
       staging_ready_url: ${{ steps.deploy-targets.outputs.staging_ready_url }}
       staging_api_config_url: ${{ steps.deploy-targets.outputs.staging_api_config_url }}
+      staging_container_platform: ${{ steps.deploy-targets.outputs.staging_container_platform }}
       production_public_url: ${{ steps.deploy-targets.outputs.production_public_url }}
       production_gateway_health_url: ${{ steps.deploy-targets.outputs.production_gateway_health_url }}
       production_ready_url: ${{ steps.deploy-targets.outputs.production_ready_url }}
       production_api_config_url: ${{ steps.deploy-targets.outputs.production_api_config_url }}
+      production_container_platform: ${{ steps.deploy-targets.outputs.production_container_platform }}
 
     steps:
       - name: Checkout
@@ -331,6 +333,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}
           DEPLOY_PAYLOAD_B64: ${{ needs.resolve-release-images.outputs.payload_base64 }}
+          PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}
           PRODUCTION_DB_BACKUP_COMMAND: ${{ secrets.PRODUCTION_DB_BACKUP_COMMAND }}
           PRODUCTION_DB_BACKUP_ID: ${{ secrets.PRODUCTION_DB_BACKUP_ID }}
           CP_BILLING_MODE: ${{ vars.CP_BILLING_MODE }}
@@ -352,7 +355,7 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 20m
-          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE
+          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE
           script_path: scripts/deploy-production-remote.sh
 
   smoke-test-production:

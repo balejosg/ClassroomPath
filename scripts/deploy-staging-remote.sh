@@ -43,6 +43,7 @@ remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 : "${RELEASE_STATE_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")}"
 : "${RELEASE_RUNTIME_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")}"
 : "${REMOTE_HELPER_CONTRACTS_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")}"
+: "${DEPLOY_CONTAINER_PLATFORM_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")}"
 
 if [ ! -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
   printf 'Remote helper contract helper not found: %s\n' "$REMOTE_HELPER_CONTRACTS_PATH" >&2
@@ -441,6 +442,18 @@ load_deploy_host_preflight_helper() {
   source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"
 }
 
+load_deploy_container_platform_helper() {
+  DEPLOY_CONTAINER_PLATFORM_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")"
+
+  if [ ! -f "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH" ]; then
+    printf 'Deploy container platform helper not found after checkout: %s\n' "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH" >&2
+    exit 1
+  fi
+
+  # shellcheck source=lib/deploy-container-platform.sh
+  source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"
+}
+
 prepare_staging_checkout() {
   cd "$APP_DIR"
 
@@ -455,6 +468,9 @@ prepare_staging_checkout() {
   git submodule update --init --recursive --force
   remote_deploy_reload_checked_out_helpers "$APP_DIR/scripts/lib/common.sh"
   load_deploy_host_preflight_helper
+  load_deploy_container_platform_helper
+  configure_deploy_container_platform "${STAGING_CONTAINER_PLATFORM:-linux/amd64}"
+  verify_deploy_container_platform
   log_info "Staging checkout is now at $(git rev-parse HEAD)"
 
   load_staging_release_manifest

@@ -45,6 +45,10 @@ describe('Deployment runtime contracts', () => {
     projectRoot,
     'scripts/lib/deploy-host-preflight.sh'
   );
+  const deployContainerPlatformHelperPath = resolve(
+    projectRoot,
+    'scripts/lib/deploy-container-platform.sh'
+  );
   const doctorScriptPath = resolve(projectRoot, 'scripts/doctor.sh');
   const releaseCandidateWorkflowPath = resolve(
     projectRoot,
@@ -162,6 +166,7 @@ describe('Deployment runtime contracts', () => {
     );
     const deployProductionContextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
     const deployProductionRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
+    const deployContainerPlatformHelper = readFileSync(deployContainerPlatformHelperPath, 'utf-8');
 
     assert.ok(manifestHelper.includes('decode_release_manifest_base64()'));
     assert.ok(manifestHelper.includes('export_release_manifest_runtime_env()'));
@@ -177,7 +182,8 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       stagingLocalRelease.includes('STAGING_DEPLOY_PAYLOAD_B64=') &&
         stagingLocalRelease.includes('STAGING_DEPLOY_PAYLOAD_B64="${DEPLOY_PAYLOAD_B64:-}"') &&
-        stagingLocalRuntime.includes('remote_assignment STAGING_DEPLOY_PAYLOAD_B64')
+        stagingLocalRuntime.includes('remote_assignment STAGING_DEPLOY_PAYLOAD_B64') &&
+        stagingLocalRuntime.includes('remote_assignment STAGING_CONTAINER_PLATFORM')
     );
     assert.ok(
       stagingRemote.includes('decode_deploy_payload_base64 "$STAGING_DEPLOY_PAYLOAD_B64"') &&
@@ -192,7 +198,12 @@ describe('Deployment runtime contracts', () => {
         ) &&
         stagingRemote.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
         stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"') &&
-        stagingRemote.includes('ensure_staging_release_candidate_runtime_env || return 1')
+        stagingRemote.includes('ensure_staging_release_candidate_runtime_env || return 1') &&
+        stagingRemote.includes('source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"') &&
+        stagingRemote.includes(
+          'configure_deploy_container_platform "${STAGING_CONTAINER_PLATFORM:-linux/amd64}"'
+        ) &&
+        stagingRemote.includes('verify_deploy_container_platform')
     );
     assert.ok(
       workflow.includes('payload_base64: ${{ steps.deploy-payload.outputs.payload_base64 }}')
@@ -200,7 +211,12 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       workflow.includes(
         'DEPLOY_PAYLOAD_B64: ${{ needs.resolve-release-images.outputs.payload_base64 }}'
-      ) && workflow.includes('envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64')
+      ) &&
+        workflow.includes(
+          'PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}'
+        ) &&
+        workflow.includes('envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64') &&
+        workflow.includes('PRODUCTION_CONTAINER_PLATFORM')
     );
     assert.ok(
       productionRemote.includes('decode_deploy_payload_base64 "$DEPLOY_PAYLOAD_B64"') &&
@@ -232,7 +248,18 @@ describe('Deployment runtime contracts', () => {
         ) &&
         deployProductionRuntimeHelper.includes(
           'OPENPATH_LINUX_AGENT_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" linux_agent_version)"'
-        )
+        ) &&
+        productionRemote.includes('source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"') &&
+        deployProductionRuntimeHelper.includes(
+          'configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/amd64}"'
+        ) &&
+        deployProductionRuntimeHelper.includes('verify_deploy_container_platform')
+    );
+    assert.ok(
+      deployContainerPlatformHelper.includes('configure_deploy_container_platform()') &&
+        deployContainerPlatformHelper.includes('verify_deploy_container_platform()') &&
+        deployContainerPlatformHelper.includes('DOCKER_DEFAULT_PLATFORM') &&
+        deployContainerPlatformHelper.includes('CLASSROOMPATH_CONTAINER_PLATFORM')
     );
   });
 

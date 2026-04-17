@@ -49,6 +49,7 @@ remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 : "${DEPLOYMENT_STATE_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")}"
 : "${DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-context.sh")}"
 : "${DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-runtime.sh")}"
+: "${DEPLOY_CONTAINER_PLATFORM_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")}"
 
 if [ ! -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
   printf 'Remote helper contract helper not found: %s\n' "$REMOTE_HELPER_CONTRACTS_PATH" >&2
@@ -189,6 +190,18 @@ load_deploy_host_preflight_helper() {
   source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"
 }
 
+load_deploy_container_platform_helper() {
+  DEPLOY_CONTAINER_PLATFORM_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")"
+
+  if [ ! -f "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH" ]; then
+    printf 'Deploy container platform helper not found after checkout: %s\n' "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH" >&2
+    exit 1
+  fi
+
+  # shellcheck source=lib/deploy-container-platform.sh
+  source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"
+}
+
 load_production_deploy_payload() {
   local release_manifest_b64=""
   local payload_image_source=""
@@ -250,6 +263,9 @@ prepare_production_checkout() {
   git submodule update --init --recursive --force
   remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"
   load_deploy_host_preflight_helper
+  load_deploy_container_platform_helper
+  configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/amd64}"
+  verify_deploy_container_platform
   log_info "Production checkout is now at $(git rev-parse HEAD)"
 
   DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-context.sh")"
