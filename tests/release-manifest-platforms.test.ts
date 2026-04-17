@@ -16,6 +16,7 @@ const releaseManifest = [
   'openpath_api_image=ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
   'openpath_version=4.1.25',
   'linux_agent_version=4.1.25',
+  'linux_agent_apt_suite=stable',
   'spa_image=ghcr.io/balejosg/classroompath-spa@sha256:4',
   'verifier_image=ghcr.io/balejosg/classroompath-release-verifier@sha256:5',
   '',
