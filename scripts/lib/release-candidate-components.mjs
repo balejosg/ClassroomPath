@@ -125,7 +125,10 @@ export function classifyReleaseCandidateComponents({ changedFiles, openpathChang
         break;
       case /^\.github\/actions\/setup-node\//.test(file):
       case /^\.github\/actions\/setup-docker-build\//.test(file):
+      case /^\.github\/actions\/build-release-candidate-image\//.test(file):
+      case /^\.github\/actions\/publish-release-candidate-manifest\//.test(file):
       case file === '.github/workflows/release-candidate-images.yml':
+      case file === '.github/workflows/reusable-release-candidate-image-family.yml':
         markAllChanged(flags);
         return flags;
       case /^api\/drizzle\//.test(file):

@@ -19,8 +19,9 @@ Configure these for the production deploy workflow:
 - `DEPLOY_USER`
 - `DEPLOY_SSH_KEY`
 
-`DEPLOY_HOST` must point to a native `amd64`/`x86_64` host while ARM64 release images are
-discontinued. Before changing it, run:
+`DEPLOY_HOST` points to the production server. The current production server target is
+`linux/arm64`; ARM64 support here is for ClassroomPath server images, not endpoint client
+artifacts. Before changing the host or access path, run:
 
 ```bash
 DEPLOY_SSH_KEY=~/.ssh/classroompath_deploy \

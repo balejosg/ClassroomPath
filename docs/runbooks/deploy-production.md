@@ -30,7 +30,7 @@ This is the canonical promotion path. Do not replace it with ad-hoc SSH deploys.
 - production app path: `/opt/classroompath/app`
 - production compose dir: `/opt/classroompath/app/docker`
 - production env file: `/opt/classroompath/app/config/.env`
-- container platform: `linux/amd64`
+- container platform: `linux/arm64`
 - production host readiness gate: `npm run verify:production-host -- <candidate-host>`
 
 Machine-readable public targets: [`config/deploy-targets.json`](../../config/deploy-targets.json)
@@ -40,19 +40,20 @@ Machine-readable public targets: [`config/deploy-targets.json`](../../config/dep
 - do not deploy production from a normal local shell flow
 - do not use `workflow_dispatch` as the canonical release path
 - staging must be validated first from a developer machine with `npm run deploy:staging`
-- ARM64 release images and ARM64 production hosts are discontinued for now; production promotion is blocked unless the host is native `amd64`/`x86_64`
+- Production server images support linux/arm64 because the production host remains ARM64.
+- ARM64 client artifacts are not required for the Windows/Linux endpoint clients.
 - before changing `DEPLOY_HOST`, validate the candidate host with `npm run verify:production-host -- <candidate-host>`
 - destructive migration releases require a recorded backup or snapshot reference before production migrations run
 - if server drift is discovered, backport to git and reconcile production through a new tag
 
-## Moving Production To A Native amd64 Host
+## Production Host Readiness
 
-Production cannot be promoted while `classroompath.eu` resolves to an ARM64 host. Prepare the
-replacement host outside git, then validate it before changing GitHub secrets.
+Production remains on the existing ARM64 host. Validate that host before tagging; do not move
+production to a different architecture as part of normal promotion.
 
-Required candidate host state:
+Required host state:
 
-- native `amd64`/`x86_64` Linux host
+- native `arm64`/`aarch64` Linux host for the current production target
 - Docker and the Docker Compose plugin available to the deploy user
 - deploy SSH user and key installed
 - git checkout at `/opt/classroompath/app`
@@ -68,9 +69,9 @@ npm run verify:production-host -- <candidate-host>
 ```
 
 Only after that gate passes, update the GitHub production deploy secrets (`DEPLOY_HOST`,
-`DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`) to point at the native amd64 host. Do not create a
+`DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`) if the host or access path changed. Do not create a
 production tag until both `npm run verify:production-host -- <candidate-host>` and
-`npm run verify:promotion-ready` pass against the same host.
+`npm run verify:promotion-ready` pass against the production host.
 
 ## Promotion Steps
 

@@ -13,6 +13,6 @@
     "readyUrl": "https://classroompath.eu/cp/ready",
     "apiHealthUrl": "https://classroompath.eu/health",
     "apiConfigUrl": "https://classroompath.eu/api/config",
-    "containerPlatform": "linux/amd64"
+    "containerPlatform": "linux/arm64"
   }
 }

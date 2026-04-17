@@ -18,8 +18,8 @@ usage() {
 Usage: bash scripts/verify-production-host-readiness.sh [deploy-host]
 
 Read-only preflight for a production host candidate before updating DEPLOY_HOST
-or creating a production tag. The host must be native amd64 while ARM64 release
-images are discontinued.
+or creating a production tag. The host architecture must match the configured
+production server container platform.
 
 Environment:
   DEPLOY_HOST                 Production host to check when no argument is passed
@@ -77,7 +77,7 @@ SSH_CMD=(
 
 log_info "Checking production host candidate: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PORT}"
 
-"${SSH_CMD[@]}" 'bash -s' <<'REMOTE_CHECK'
+"${SSH_CMD[@]}" "TARGET_CONTAINER_PLATFORM=$CLASSROOMPATH_CONTAINER_PLATFORM bash -s" <<'REMOTE_CHECK'
 set -euo pipefail
 
 fail() {
@@ -89,15 +89,26 @@ info() {
   printf '[INFO] %s\n' "$*"
 }
 
-host_arch="$(uname -m 2>/dev/null || true)"
-case "$host_arch" in
-  x86_64|amd64)
-    info "Host architecture is native amd64 ($host_arch)"
-    ;;
-  *)
-    fail "Host architecture is $host_arch; ARM64 hosts are unsupported while ARM64 release images are discontinued"
-    ;;
-esac
+verify_host_arch_matches_target_platform() {
+  local target_platform="${TARGET_CONTAINER_PLATFORM:-}"
+  local host_arch=""
+
+  host_arch="$(uname -m 2>/dev/null || true)"
+  case "$target_platform:$host_arch" in
+    linux/amd64:x86_64|linux/amd64:amd64)
+      info "Host architecture matches $target_platform ($host_arch)"
+      return 0
+      ;;
+    linux/arm64:aarch64|linux/arm64:arm64)
+      info "Host architecture matches $target_platform ($host_arch)"
+      return 0
+      ;;
+  esac
+
+  fail "Host architecture $host_arch does not match target container platform $target_platform"
+}
+
+verify_host_arch_matches_target_platform
 
 for required_cmd in bash git docker; do
   command -v "$required_cmd" >/dev/null 2>&1 || fail "Missing required command: $required_cmd"
@@ -124,4 +135,4 @@ docker info >/dev/null 2>&1 || fail "Docker daemon is not reachable by this SSH 
 info "Production host candidate passed read-only readiness checks"
 REMOTE_CHECK
 
-log_success "Production host candidate is ready for linux/amd64 promotion gates"
+log_success "Production host candidate is ready for $CLASSROOMPATH_CONTAINER_PLATFORM promotion gates"

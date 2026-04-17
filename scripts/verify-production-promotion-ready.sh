@@ -93,19 +93,19 @@ verify_production_container_platform_ready() {
 
   configure_deploy_container_platform "$target_platform"
   case "$CLASSROOMPATH_CONTAINER_PLATFORM" in
-    linux/amd64)
+    linux/amd64|linux/arm64)
       host_arch="$("${PRODUCTION_SSH_CMD[@]}" "uname -m" | tr -d '\r\n')" || {
         die "Unable to detect production host architecture before tagging" 1
       }
 
-      case "$host_arch" in
-        x86_64|amd64)
-          log_info "Production host supports linux/amd64 containers natively ($host_arch)"
+      case "$CLASSROOMPATH_CONTAINER_PLATFORM:$host_arch" in
+        linux/amd64:x86_64|linux/amd64:amd64|linux/arm64:aarch64|linux/arm64:arm64)
+          log_info "Production host supports $CLASSROOMPATH_CONTAINER_PLATFORM containers natively ($host_arch)"
           return 0
           ;;
       esac
 
-      die "Production host must be amd64 for linux/amd64 containers (uname -m=$host_arch). ARM64 hosts are unsupported while ARM64 release images are discontinued; move production to amd64 before tagging." 1
+      die "Production host architecture $host_arch does not match target container platform $CLASSROOMPATH_CONTAINER_PLATFORM." 1
       ;;
     *)
       normalize_deploy_container_platform "$CLASSROOMPATH_CONTAINER_PLATFORM" >/dev/null

@@ -341,17 +341,13 @@ describe('Deployment staging and promotion contracts', () => {
     assert.ok(!promotionReadyScript.includes('qemu-x86_64'));
     assert.ok(runbook.includes('npm run verify:promotion-ready'));
     assert.ok(runbook.includes('npm run promote:production -- v1.2.4'));
-    assert.ok(
-      runbook.includes(
-        'ARM64 release images and ARM64 production hosts are discontinued for now'
-      ) && runbook.includes('amd64')
-    );
+    assert.ok(runbook.includes('Production server images support linux/arm64'));
     assert.ok(runbook.includes('npm run verify:production-host -- <candidate-host>'));
     assert.ok(secretsDoc.includes('npm run verify:production-host -- <candidate-host>'));
     assert.ok(packageJson.includes('"verify:production-host"'));
     assert.ok(
-      productionHostReadinessScript.includes('Host architecture is native amd64') &&
-        productionHostReadinessScript.includes('ARM64 hosts are unsupported') &&
+      productionHostReadinessScript.includes('verify_host_arch_matches_target_platform') &&
+        productionHostReadinessScript.includes('linux/arm64') &&
         productionHostReadinessScript.includes('test -d /opt/classroompath/app/.git') &&
         productionHostReadinessScript.includes('docker compose version') &&
         productionHostReadinessScript.includes('docker info') &&

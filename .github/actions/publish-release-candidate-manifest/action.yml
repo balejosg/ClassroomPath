@@ -3,7 +3,7 @@ description: 'Publish the release-candidate image tag and emit the canonical ima
 
 inputs:
   build-required:
-    description: 'Whether the manifest must be rebuilt from the amd64 digest'
+    description: 'Whether the manifest must be rebuilt from the server image digests'
     required: true
   username:
     description: 'Registry username'
@@ -19,6 +19,10 @@ inputs:
     required: true
   amd64-digest:
     description: 'amd64 image digest'
+    required: false
+    default: ''
+  arm64-digest:
+    description: 'arm64 image digest'
     required: false
     default: ''
   previous-image:
@@ -43,17 +47,19 @@ runs:
         username: ${{ inputs.username }}
         password: ${{ inputs.password }}
 
-    - name: Publish amd64 image tag
+    - name: Publish multiarch image tag
       if: ${{ inputs.build-required == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
 
         test -n "${{ inputs.amd64-digest }}"
+        test -n "${{ inputs.arm64-digest }}"
 
         docker buildx imagetools create \
           --tag "${{ inputs.tag }}" \
-          "${{ inputs.image-repo }}@${{ inputs.amd64-digest }}"
+          "${{ inputs.image-repo }}@${{ inputs.amd64-digest }}" \
+          "${{ inputs.image-repo }}@${{ inputs.arm64-digest }}"
 
     - name: Publish manifest output
       id: publish

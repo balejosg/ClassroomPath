@@ -295,8 +295,8 @@ void describe('Environment Configuration', () => {
     );
     assert.strictEqual(
       targets.production?.containerPlatform,
-      'linux/amd64',
-      'Production deploy target should explicitly declare the supported image platform'
+      'linux/arm64',
+      'Production deploy target should match the existing ARM64 server platform'
     );
   });
 

@@ -20,6 +20,24 @@ describe('release candidate component classification', () => {
     );
   });
 
+  test('maps release-candidate image workflow plumbing changes to every server image family', () => {
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: [
+          '.github/workflows/reusable-release-candidate-image-family.yml',
+          '.github/actions/publish-release-candidate-manifest/action.yml',
+        ],
+      }),
+      {
+        gatewayChanged: true,
+        migrationsChanged: true,
+        openpathApiChanged: true,
+        spaChanged: true,
+        verifierChanged: true,
+      }
+    );
+  });
+
   test('maps OpenPath shared and public SPA changes to the dependent ClassroomPath families', () => {
     assert.deepEqual(
       classifyOpenPathChangedPaths([
