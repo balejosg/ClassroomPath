@@ -8,11 +8,13 @@ const projectRoot = resolve(scriptDir, '..');
 const DEFAULT_OPENPATH_DIR = resolve(projectRoot, 'upstream/openpath');
 export const DEFAULT_PROMOTION_CONTRACTS_BASE_URL =
   'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/promotion-contracts';
+export const DEFAULT_OPENPATH_APT_BASE_URL =
+  'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt';
 
 function printUsage() {
   console.error('Usage:');
   console.error(
-    '  node scripts/resolve-openpath-linux-agent-version.mjs [--openpath-dir <path>] [--promotion-contracts-base-url <url>]'
+    '  node scripts/resolve-openpath-linux-agent-version.mjs [--openpath-dir <path>] [--promotion-contracts-base-url <url>] [--apt-base-url <url>]'
   );
 }
 
@@ -20,6 +22,7 @@ function parseCliArgs(argv) {
   const options = {
     openpathDir: DEFAULT_OPENPATH_DIR,
     promotionContractsBaseUrl: DEFAULT_PROMOTION_CONTRACTS_BASE_URL,
+    aptBaseUrl: DEFAULT_OPENPATH_APT_BASE_URL,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -33,6 +36,12 @@ function parseCliArgs(argv) {
 
     if (token === '--promotion-contracts-base-url') {
       options.promotionContractsBaseUrl = String(argv[index + 1] ?? '').trim();
+      index += 1;
+      continue;
+    }
+
+    if (token === '--apt-base-url') {
+      options.aptBaseUrl = String(argv[index + 1] ?? '').trim();
       index += 1;
       continue;
     }
@@ -65,6 +74,18 @@ export function buildPromotionContractUrl({ baseUrl, openpathSha }) {
     throw new Error('OpenPath SHA is required');
   }
   return `${normalizedBaseUrl}/${normalizedSha}.json`;
+}
+
+export function buildAptPackagesUrl({ baseUrl, aptSuite }) {
+  const normalizedBaseUrl = String(baseUrl ?? '').replace(/\/+$/, '');
+  const normalizedAptSuite = String(aptSuite ?? '').trim();
+  if (!normalizedBaseUrl) {
+    throw new Error('OpenPath APT base URL is required');
+  }
+  if (!['stable', 'unstable'].includes(normalizedAptSuite)) {
+    throw new Error('OpenPath APT suite must be stable or unstable');
+  }
+  return `${normalizedBaseUrl}/dists/${normalizedAptSuite}/main/binary-amd64/Packages`;
 }
 
 export function parseOpenPathPromotionContract(content) {
@@ -117,6 +138,37 @@ export function resolveOpenPathLinuxAgentVersion({ openpathSha, promotionContrac
   };
 }
 
+export function parseOpenPathDnsmasqAptVersions(content) {
+  return String(content ?? '')
+    .split(/\n\s*\n/)
+    .map((entry) => {
+      const fields = Object.fromEntries(
+        entry
+          .split('\n')
+          .map((line) => line.match(/^([^:]+):\s*(.*)$/))
+          .filter(Boolean)
+          .map((match) => [match[1], match[2].trim()])
+      );
+      return fields.Package === 'openpath-dnsmasq'
+        ? String(fields.Version ?? '').replace(/-[^-]+$/, '')
+        : '';
+    })
+    .filter(Boolean);
+}
+
+export function assertOpenPathLinuxAgentVersionAdvertised({
+  aptPackagesContent,
+  linuxAgentVersion,
+  aptSuite,
+}) {
+  const versions = parseOpenPathDnsmasqAptVersions(aptPackagesContent);
+  if (!versions.includes(linuxAgentVersion)) {
+    throw new Error(
+      `OpenPath linuxAgentVersion ${linuxAgentVersion} is not advertised by the ${aptSuite} APT metadata. Advertised versions: ${versions.join(', ') || 'none'}.`
+    );
+  }
+}
+
 export function isMissingPromotionContractError(error) {
   return Number(error?.status ?? 0) === 404;
 }
@@ -125,6 +177,7 @@ export async function resolveOpenPathLinuxAgentVersionFromContracts({
   pinnedOpenpathSha,
   candidateOpenpathShas,
   promotionContractsBaseUrl,
+  aptBaseUrl = DEFAULT_OPENPATH_APT_BASE_URL,
   downloadText = downloadPromotionContract,
 }) {
   const normalizedPinnedSha = String(pinnedOpenpathSha ?? '').trim();
@@ -151,6 +204,15 @@ export async function resolveOpenPathLinuxAgentVersionFromContracts({
       const result = resolveOpenPathLinuxAgentVersion({
         openpathSha: candidateSha,
         promotionContract,
+      });
+      const aptPackagesUrl = buildAptPackagesUrl({
+        baseUrl: aptBaseUrl,
+        aptSuite: result.aptSuite,
+      });
+      assertOpenPathLinuxAgentVersionAdvertised({
+        aptPackagesContent: await downloadText(aptPackagesUrl),
+        linuxAgentVersion: result.version,
+        aptSuite: result.aptSuite,
       });
 
       return {
@@ -215,6 +277,7 @@ async function main() {
     pinnedOpenpathSha: openpathSha,
     candidateOpenpathShas: resolveOpenPathCandidateShas(options.openpathDir),
     promotionContractsBaseUrl: options.promotionContractsBaseUrl,
+    aptBaseUrl: options.aptBaseUrl,
   });
 
   writeOutputs({

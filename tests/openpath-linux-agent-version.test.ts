@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  DEFAULT_OPENPATH_APT_BASE_URL,
   DEFAULT_PROMOTION_CONTRACTS_BASE_URL,
+  assertOpenPathLinuxAgentVersionAdvertised,
+  buildAptPackagesUrl,
   buildPromotionContractUrl,
+  parseOpenPathDnsmasqAptVersions,
   parseOpenPathPromotionContract,
   resolveOpenPathLinuxAgentVersionFromContracts,
   resolveOpenPathLinuxAgentVersion,
@@ -25,6 +29,20 @@ describe('OpenPath Linux agent version resolution', () => {
         openpathSha: '0123456789abcdef0123456789abcdef01234567',
       }),
       'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/promotion-contracts/0123456789abcdef0123456789abcdef01234567.json'
+    );
+  });
+
+  test('derives the APT Packages URL from the selected suite', () => {
+    assert.equal(
+      DEFAULT_OPENPATH_APT_BASE_URL,
+      'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt'
+    );
+    assert.equal(
+      buildAptPackagesUrl({
+        baseUrl: DEFAULT_OPENPATH_APT_BASE_URL,
+        aptSuite: 'unstable',
+      }),
+      'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/dists/unstable/main/binary-amd64/Packages'
     );
   });
 
@@ -75,6 +93,32 @@ describe('OpenPath Linux agent version resolution', () => {
     );
   });
 
+  test('parses openpath-dnsmasq versions from APT metadata', () => {
+    assert.deepEqual(
+      parseOpenPathDnsmasqAptVersions(`
+Package: other
+Version: 1.0.0-1
+
+Package: openpath-dnsmasq
+Version: 0.0.20260417203821-1
+Architecture: all
+`),
+      ['0.0.20260417203821']
+    );
+  });
+
+  test('fails closed when the promotion contract version is missing from selected APT metadata', () => {
+    assert.throws(
+      () =>
+        assertOpenPathLinuxAgentVersionAdvertised({
+          aptPackagesContent: 'Package: openpath-dnsmasq\nVersion: 0.0.20260417203821-1\n',
+          linuxAgentVersion: '0.0.1382',
+          aptSuite: 'unstable',
+        }),
+      /is not advertised by the unstable APT metadata/
+    );
+  });
+
   test('falls back to the nearest ancestor promotion contract for OpenPath commits without package changes', async () => {
     const pinnedSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const parentSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -93,6 +137,10 @@ describe('OpenPath Linux agent version resolution', () => {
           throw error;
         }
 
+        if (url.endsWith('/dists/unstable/main/binary-amd64/Packages')) {
+          return 'Package: openpath-dnsmasq\nVersion: 0.0.412-1\n';
+        }
+
         return JSON.stringify({
           version: 1,
           openpathSha: parentSha,
@@ -108,6 +156,7 @@ describe('OpenPath Linux agent version resolution', () => {
     assert.deepEqual(requestedUrls, [
       `${baseUrl}/${pinnedSha}.json`,
       `${baseUrl}/${parentSha}.json`,
+      `${DEFAULT_OPENPATH_APT_BASE_URL}/dists/unstable/main/binary-amd64/Packages`,
     ]);
     assert.deepEqual(result, {
       openpathSha: pinnedSha,
