@@ -311,9 +311,16 @@ describe('Deployment staging and promotion contracts', () => {
       promotionReadyScript.includes('release-state-cli.mjs') &&
         promotionReadyScript.includes('verify-promotion-ready') &&
         promotionReadyScript.includes('wait-for-release-candidate.mjs') &&
-        promotionReadyScript.includes('resolve-manifest')
+        promotionReadyScript.includes('resolve-manifest') &&
+        promotionReadyScript.includes('source "$SCRIPT_DIR/lib/deploy-container-platform.sh"') &&
+        promotionReadyScript.includes('verify_production_container_platform_ready') &&
+        promotionReadyScript.includes('configure_deploy_container_platform "$target_platform"')
     );
     assert.ok(runbook.includes('npm run verify:promotion-ready'));
     assert.ok(runbook.includes('npm run promote:production -- v1.2.4'));
+    assert.ok(
+      runbook.includes('ARM64 release images are discontinued for now') &&
+        runbook.includes('linux/amd64')
+    );
   });
 });

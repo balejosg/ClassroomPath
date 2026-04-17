@@ -30,6 +30,7 @@ This is the canonical promotion path. Do not replace it with ad-hoc SSH deploys.
 - production app path: `/opt/classroompath/app`
 - production compose dir: `/opt/classroompath/app/docker`
 - production env file: `/opt/classroompath/app/config/.env`
+- container platform: `linux/amd64`
 
 Machine-readable public targets: [`config/deploy-targets.json`](../../config/deploy-targets.json)
 
@@ -38,6 +39,7 @@ Machine-readable public targets: [`config/deploy-targets.json`](../../config/dep
 - do not deploy production from a normal local shell flow
 - do not use `workflow_dispatch` as the canonical release path
 - staging must be validated first from a developer machine with `npm run deploy:staging`
+- ARM64 release images are discontinued for now; production promotion is blocked unless the host can run `linux/amd64` containers natively or through enabled `qemu-x86_64` binfmt
 - destructive migration releases require a recorded backup or snapshot reference before production migrations run
 - if server drift is discovered, backport to git and reconcile production through a new tag
 

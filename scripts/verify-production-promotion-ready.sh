@@ -9,6 +9,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 # shellcheck source=lib/release-manifest.sh
 source "$SCRIPT_DIR/lib/release-manifest.sh"
+# shellcheck source=lib/deploy-container-platform.sh
+source "$SCRIPT_DIR/lib/deploy-container-platform.sh"
 
 require_cmd git
 require_cmd node
@@ -82,27 +84,68 @@ SSH_CMD=(
   "${STAGING_USER}@${STAGING_HOST}"
 )
 
+verify_production_container_platform_ready() {
+  local target_platform="${1:-linux/amd64}"
+  local host_arch=""
+
+  configure_deploy_container_platform "$target_platform"
+  case "$CLASSROOMPATH_CONTAINER_PLATFORM" in
+    linux/amd64)
+      host_arch="$("${PRODUCTION_SSH_CMD[@]}" "uname -m" | tr -d '\r\n')" || {
+        die "Unable to detect production host architecture before tagging" 1
+      }
+
+      case "$host_arch" in
+        x86_64|amd64)
+          log_info "Production host supports linux/amd64 containers natively ($host_arch)"
+          return 0
+          ;;
+      esac
+
+      if "${PRODUCTION_SSH_CMD[@]}" "test -r /proc/sys/fs/binfmt_misc/qemu-x86_64 && grep -q '^enabled$' /proc/sys/fs/binfmt_misc/qemu-x86_64"; then
+        log_info "Production host supports linux/amd64 containers through qemu-x86_64 binfmt"
+        return 0
+      fi
+
+      die "Production host cannot run linux/amd64 containers (uname -m=$host_arch). ARM64 release images are discontinued for now; move production to amd64 or install amd64 binfmt before tagging." 1
+      ;;
+    *)
+      normalize_deploy_container_platform "$CLASSROOMPATH_CONTAINER_PLATFORM" >/dev/null
+      ;;
+  esac
+}
+
 PRODUCTION_SSH_CMD=()
-if [ -n "${DEPLOY_HOST:-}" ] && [ -n "${DEPLOY_SSH_KEY:-}" ]; then
-  DEPLOY_SSH_KEY="$(expand_tilde "$DEPLOY_SSH_KEY")"
-  if [ -f "$DEPLOY_SSH_KEY" ]; then
-    PRODUCTION_SSH_CMD=(
-      ssh
-      -o "ConnectTimeout=10"
-      -o "BatchMode=yes"
-      -o "IdentitiesOnly=yes"
-      -o "StrictHostKeyChecking=${DEPLOY_SSH_STRICT_HOSTKEY}"
-      -i "$DEPLOY_SSH_KEY"
-      -p "$DEPLOY_PORT"
-      "${DEPLOY_USER}@${DEPLOY_HOST}"
-    )
-  fi
+if [ -z "${DEPLOY_HOST:-}" ]; then
+  die "DEPLOY_HOST must be set before production promotion" 1
 fi
+
+if [ -z "${DEPLOY_SSH_KEY:-}" ]; then
+  die "DEPLOY_SSH_KEY must be set before production promotion" 1
+fi
+
+DEPLOY_SSH_KEY="$(expand_tilde "$DEPLOY_SSH_KEY")"
+if [ ! -f "$DEPLOY_SSH_KEY" ]; then
+  die "Production SSH key not found: $DEPLOY_SSH_KEY" 1
+fi
+
+PRODUCTION_SSH_CMD=(
+  ssh
+  -o "ConnectTimeout=10"
+  -o "BatchMode=yes"
+  -o "IdentitiesOnly=yes"
+  -o "StrictHostKeyChecking=${DEPLOY_SSH_STRICT_HOSTKEY}"
+  -i "$DEPLOY_SSH_KEY"
+  -p "$DEPLOY_PORT"
+  "${DEPLOY_USER}@${DEPLOY_HOST}"
+)
+
+verify_production_container_platform_ready "$(node "$SCRIPT_DIR/deploy-targets.mjs" get production containerPlatform)"
 
 "${SSH_CMD[@]}" "cat /opt/classroompath/release-state/current-images.env" > "$current_state_file"
 "${SSH_CMD[@]}" "cat /opt/classroompath/release-state/staging-verification.env" > "$verification_state_file"
 
-if [ "${#PRODUCTION_SSH_CMD[@]}" -gt 0 ] && "${PRODUCTION_SSH_CMD[@]}" "test -f /opt/classroompath/release-state/current-images.env" >/dev/null 2>&1; then
+if "${PRODUCTION_SSH_CMD[@]}" "test -f /opt/classroompath/release-state/current-images.env" >/dev/null 2>&1; then
   "${PRODUCTION_SSH_CMD[@]}" "cat /opt/classroompath/release-state/current-images.env" > "$production_state_file" || true
 fi
 
