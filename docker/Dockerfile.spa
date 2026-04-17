@@ -18,7 +18,7 @@ COPY upstream/openpath/react-spa/package*.json ./upstream/openpath/react-spa/
 COPY upstream/openpath/api/package*.json ./upstream/openpath/api/
 
 # Install dependencies.
-# Retry to tolerate transient multi-arch registry failures in CI.
+# Retry to tolerate transient registry failures in CI.
 RUN --mount=type=cache,target=/root/.npm set -eux; \
   for attempt in 1 2 3; do \
     npm ci --no-audit --no-fund && break; \

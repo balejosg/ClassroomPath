@@ -1,5 +1,5 @@
 name: 'Publish Release Candidate Manifest'
-description: 'Merge multi-architecture release-candidate digests and emit the canonical image ref'
+description: 'Publish the release-candidate image tag and emit the canonical image ref'
 
 inputs:
   build-required:
@@ -19,10 +19,6 @@ inputs:
     required: true
   amd64-digest:
     description: 'amd64 image digest'
-    required: false
-    default: ''
-  arm64-digest:
-    description: 'arm64 image digest'
     required: false
     default: ''
   previous-image:
@@ -47,7 +43,7 @@ runs:
         username: ${{ inputs.username }}
         password: ${{ inputs.password }}
 
-    - name: Merge per-architecture digests
+    - name: Publish amd64 image tag
       if: ${{ inputs.build-required == 'true' }}
       shell: bash
       run: |
@@ -55,8 +51,7 @@ runs:
 
         docker buildx imagetools create \
           --tag "${{ inputs.tag }}" \
-          "${{ inputs.image-repo }}@${{ inputs.amd64-digest }}" \
-          "${{ inputs.image-repo }}@${{ inputs.arm64-digest }}"
+          "${{ inputs.image-repo }}@${{ inputs.amd64-digest }}"
 
     - name: Publish manifest output
       id: publish

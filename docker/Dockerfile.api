@@ -17,7 +17,7 @@ COPY shared/package.docker.json ./shared/package.json
 COPY api/package.docker.json ./api/package.json
 
 # Install ALL dependencies for building.
-# Retry to tolerate transient multi-arch registry failures in CI.
+# Retry to tolerate transient registry failures in CI.
 RUN --mount=type=cache,target=/root/.npm set -eux; \
   for attempt in 1 2 3; do \
     npm ci --no-audit --no-fund && break; \

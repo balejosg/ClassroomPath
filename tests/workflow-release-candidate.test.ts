@@ -67,7 +67,9 @@ describe('Release candidate workflow contracts', () => {
         reusableWorkflowText.includes('./.github/actions/publish-release-candidate-manifest')
     );
     assert.ok(reusableWorkflowText.includes('amd64_duration_seconds:'));
-    assert.ok(reusableWorkflowText.includes('arm64_duration_seconds:'));
+    assert.ok(!reusableWorkflowText.includes('arm64_duration_seconds:'));
+    assert.ok(!reusableWorkflowText.includes('build-arm64:'));
+    assert.ok(!reusableWorkflowText.includes('ubuntu-24.04-arm'));
     assert.ok(reusableWorkflowText.includes('publish_duration_seconds:'));
     assert.ok(reusableWorkflowText.includes('family_duration_seconds:'));
     assert.ok(
@@ -76,7 +78,8 @@ describe('Release candidate workflow contracts', () => {
     );
     assert.ok(
       publishManifestActionText.includes('docker buildx imagetools create') &&
-        publishManifestActionText.includes('docker buildx imagetools inspect')
+        publishManifestActionText.includes('docker buildx imagetools inspect') &&
+        !publishManifestActionText.includes('arm64-digest')
     );
   });
 
@@ -158,10 +161,7 @@ describe('Release candidate workflow contracts', () => {
       jobs['build-gateway-release-candidate']?.with?.['amd64_cache_scope'],
       'release-candidate-gateway-amd64'
     );
-    assert.equal(
-      jobs['build-gateway-release-candidate']?.with?.['arm64_cache_scope'],
-      'release-candidate-gateway-arm64'
-    );
+    assert.equal(jobs['build-gateway-release-candidate']?.with?.['arm64_cache_scope'], undefined);
 
     const detectCheckout = jobs['detect-release-candidate-components']?.steps?.find(
       (step) => step.name === 'Checkout'
