@@ -263,14 +263,14 @@ describe('Workflow core contracts', () => {
     assert.ok(securityWorkflow.includes('aquasecurity/trivy-action@v0.35.0'));
     assert.ok(!securityWorkflow.includes('aquasecurity/trivy-action@master'));
     assert.ok(securityWorkflow.includes('./.github/actions/setup-node'));
+    assert.ok(securityWorkflow.includes('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true'));
+    assert.ok(securityWorkflow.includes('github/codeql-action/upload-sarif@v4'));
+    assert.ok(!securityWorkflow.includes('github/codeql-action/upload-sarif@v3'));
     assert.equal(secretScanCheckoutStep?.with?.['fetch-depth'], 0);
-    assert.equal(gitleaksStep?.uses, 'gacts/gitleaks@v1');
-    assert.equal(gitleaksStep?.with?.version, '8.30.1');
-    assert.equal(gitleaksStep?.with?.['github-token'], '${{ secrets.GITHUB_TOKEN }}');
+    assert.equal(gitleaksStep?.uses, 'gitleaks/gitleaks-action@v2.3.9');
     assert.equal(gitleaksSarifStep?.uses, 'github/codeql-action/upload-sarif@v4');
-    assert.equal(gitleaksSarifStep?.with?.sarif_file, '${{ steps.gitleaks.outputs.sarif }}');
-    assert.ok(!securityWorkflow.includes('gitleaks/gitleaks-action@v2'));
-    assert.ok(!securityWorkflow.includes('GITLEAKS_LICENSE'));
+    assert.equal(gitleaksSarifStep?.with?.sarif_file, 'results.sarif');
+    assert.doesNotMatch(securityWorkflow, /gitleaks\/gitleaks-action@v2(?:\s|$)/);
     assert.ok(setupNodeAction.includes("cache: 'npm'") || setupNodeAction.includes('cache: npm'));
   });
 

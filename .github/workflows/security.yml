@@ -18,6 +18,8 @@ jobs:
   trivy-config-scan:
     name: Docker Config Security Scan
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout code
@@ -34,7 +36,7 @@ jobs:
           output: classroompath-trivy-results.sarif
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always() && hashFiles('classroompath-trivy-results.sarif') != ''
         with:
           sarif_file: classroompath-trivy-results.sarif
@@ -95,6 +97,8 @@ jobs:
   secret-scan:
     name: Secret Scanning
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout code
@@ -104,16 +108,16 @@ jobs:
 
       - name: Run Gitleaks
         id: gitleaks
-        uses: gacts/gitleaks@v1
-        with:
-          version: 8.30.1
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+        uses: gitleaks/gitleaks-action@v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: Upload Gitleaks SARIF
         uses: github/codeql-action/upload-sarif@v4
-        if: always() && steps.gitleaks.outputs.sarif != ''
+        if: always() && hashFiles('results.sarif') != ''
         with:
-          sarif_file: ${{ steps.gitleaks.outputs.sarif }}
+          sarif_file: results.sarif
 
   security-summary:
     name: Security Summary
