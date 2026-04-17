@@ -102,12 +102,7 @@ verify_production_container_platform_ready() {
           ;;
       esac
 
-      if "${PRODUCTION_SSH_CMD[@]}" "test -r /proc/sys/fs/binfmt_misc/qemu-x86_64 && grep -q '^enabled$' /proc/sys/fs/binfmt_misc/qemu-x86_64"; then
-        log_info "Production host supports linux/amd64 containers through qemu-x86_64 binfmt"
-        return 0
-      fi
-
-      die "Production host cannot run linux/amd64 containers (uname -m=$host_arch). ARM64 release images are discontinued for now; move production to amd64 or install amd64 binfmt before tagging." 1
+      die "Production host must be amd64 for linux/amd64 containers (uname -m=$host_arch). ARM64 hosts are unsupported while ARM64 release images are discontinued; move production to amd64 before tagging." 1
       ;;
     *)
       normalize_deploy_container_platform "$CLASSROOMPATH_CONTAINER_PLATFORM" >/dev/null

@@ -316,11 +316,13 @@ describe('Deployment staging and promotion contracts', () => {
         promotionReadyScript.includes('verify_production_container_platform_ready') &&
         promotionReadyScript.includes('configure_deploy_container_platform "$target_platform"')
     );
+    assert.ok(!promotionReadyScript.includes('qemu-x86_64'));
     assert.ok(runbook.includes('npm run verify:promotion-ready'));
     assert.ok(runbook.includes('npm run promote:production -- v1.2.4'));
     assert.ok(
-      runbook.includes('ARM64 release images are discontinued for now') &&
-        runbook.includes('linux/amd64')
+      runbook.includes(
+        'ARM64 release images and ARM64 production hosts are discontinued for now'
+      ) && runbook.includes('amd64')
     );
   });
 });

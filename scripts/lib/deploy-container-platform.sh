@@ -27,7 +27,6 @@ configure_deploy_container_platform() {
 
 host_supports_amd64_containers() {
   local host_arch=""
-  local binfmt_entry="/proc/sys/fs/binfmt_misc/qemu-x86_64"
 
   host_arch="$(uname -m 2>/dev/null || true)"
   case "$host_arch" in
@@ -35,10 +34,6 @@ host_supports_amd64_containers() {
       return 0
       ;;
   esac
-
-  if [ -r "$binfmt_entry" ] && grep -q '^enabled$' "$binfmt_entry"; then
-    return 0
-  fi
 
   return 1
 }
@@ -51,7 +46,7 @@ verify_deploy_container_platform() {
       fi
 
       log_error "This host cannot run linux/amd64 containers"
-      log_error "Move the target to amd64 or install amd64 binfmt emulation before deploying"
+      log_error "ARM64 hosts are unsupported while ARM64 release images are discontinued; move the target to amd64 before deploying"
       return 1
       ;;
     *)
