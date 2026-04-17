@@ -70,6 +70,7 @@ describe('OpenPath Linux agent version resolution', () => {
       {
         openpathVersion: '0.0.412',
         version: '0.0.412',
+        aptSuite: 'unstable',
       }
     );
   });
@@ -113,6 +114,7 @@ describe('OpenPath Linux agent version resolution', () => {
       promotionContractSha: parentSha,
       openpathVersion: '0.0.412',
       version: '0.0.412',
+      aptSuite: 'unstable',
     });
   });
 

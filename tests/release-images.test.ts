@@ -175,6 +175,7 @@ describe('release image helpers', () => {
         openpathApiImage: 'ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
         openpathVersion: '4.1.3',
         linuxAgentVersion: '4.1.3',
+        linuxAgentAptSuite: 'unstable',
         spaImage: 'ghcr.io/balejosg/classroompath-spa@sha256:4',
         verifierImage: 'ghcr.io/balejosg/classroompath-release-verifier@sha256:5',
       }

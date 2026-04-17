@@ -121,6 +121,7 @@ describe('wait-for-release-candidate helpers', () => {
           'ghcr.io/balejosg/classroompath-openpath-api@sha256:f5a5f80a2737b42c1a159b9270d45b0c034f2a7040ce0557b7ca06a8ace7ca83',
         openpathVersion: '4.1.11',
         linuxAgentVersion: '4.1.11',
+        linuxAgentAptSuite: 'unstable',
         spaImage:
           'ghcr.io/balejosg/classroompath-spa@sha256:4605cd785107285424fedad1421513b6d009763453b04116103bdc5b64df05a6',
         verifierImage:
@@ -140,6 +141,7 @@ describe('wait-for-release-candidate helpers', () => {
         'ghcr.io/balejosg/classroompath-openpath-api@sha256:f5a5f80a2737b42c1a159b9270d45b0c034f2a7040ce0557b7ca06a8ace7ca83',
       openpath_version: '4.1.11',
       linux_agent_version: '4.1.11',
+      linux_agent_apt_suite: 'unstable',
       spa_image:
         'ghcr.io/balejosg/classroompath-spa@sha256:4605cd785107285424fedad1421513b6d009763453b04116103bdc5b64df05a6',
       verifier_image:
@@ -165,6 +167,7 @@ describe('wait-for-release-candidate helpers', () => {
         openpathApiImage: 'ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
         openpathVersion: '4.1.3',
         linuxAgentVersion: '4.1.3',
+        linuxAgentAptSuite: 'unstable',
         spaImage: 'ghcr.io/balejosg/classroompath-spa@sha256:4',
         verifierImage: 'ghcr.io/balejosg/classroompath-release-verifier@sha256:5',
       },

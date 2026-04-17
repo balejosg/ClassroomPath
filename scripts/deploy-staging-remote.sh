@@ -233,11 +233,13 @@ restore_previous_release_state() {
     export CLASSROOMPATH_SPA_IMAGE
     upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
     upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
+    upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
     docker compose pull gateway api spa
     compose_up_force_recreate_no_build
   else
     remove_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION
     remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION
+    remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE
     unset CLASSROOMPATH_GATEWAY_IMAGE OPENPATH_API_IMAGE CLASSROOMPATH_SPA_IMAGE
     docker compose build
     docker compose up -d --force-recreate
@@ -295,7 +297,7 @@ deploy_with_release_candidates() {
 
   ensure_staging_release_candidate_runtime_env || return 1
 
-  if [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
+  if [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
     log_error "Release candidate manifest is incomplete"
     return 1
   fi
@@ -312,6 +314,7 @@ deploy_with_release_candidates() {
   export COMPOSE_PROJECT_NAME=classroompath-staging
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
 
   log_info "Pulling release candidate migrations image for ${STAGING_RELEASE_SHA:-origin-main}..."
   docker pull "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
@@ -341,14 +344,14 @@ ensure_staging_release_candidate_runtime_env() {
     return 0
   fi
 
-  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ]; then
+  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
     if [ -n "${STAGING_RELEASE_MANIFEST_FILE:-}" ] && [ -f "$STAGING_RELEASE_MANIFEST_FILE" ]; then
       load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE" "${STAGING_RELEASE_SHA:-}"
       STAGING_RELEASE_SHA="${RELEASE_MANIFEST_APP_SHA:-${STAGING_RELEASE_SHA:-}}"
     fi
   fi
 
-  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ]; then
+  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
     log_error "Release candidate manifest did not export OpenPath runtime versions"
     return 1
   fi
@@ -362,6 +365,7 @@ deploy_from_source() {
   unset CLASSROOMPATH_GATEWAY_IMAGE OPENPATH_API_IMAGE CLASSROOMPATH_SPA_IMAGE
   remove_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION
   remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION
+  remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE
   RESOLVED_OPENPATH_VERSION=""
   RESOLVED_OPENPATH_LINUX_AGENT_VERSION=""
 

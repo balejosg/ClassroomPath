@@ -12,7 +12,7 @@ ensure_production_release_candidate_runtime_env() {
     return 0
   fi
 
-  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ]; then
+  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
     release_manifest_b64="${RELEASE_MANIFEST_B64_FROM_PAYLOAD:-${RELEASE_MANIFEST_B64:-}}"
     if [ -n "$release_manifest_b64" ]; then
       RELEASE_MANIFEST_FILE="$(mktemp)"
@@ -25,16 +25,18 @@ ensure_production_release_candidate_runtime_env() {
     fi
   fi
 
-  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ]; then
+  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
     if [ -n "${RELEASE_MANIFEST_FILE:-}" ] && [ -f "$RELEASE_MANIFEST_FILE" ]; then
       export OPENPATH_VERSION
       OPENPATH_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" openpath_version)"
       export OPENPATH_LINUX_AGENT_VERSION
       OPENPATH_LINUX_AGENT_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" linux_agent_version)"
+      export OPENPATH_LINUX_AGENT_APT_SUITE
+      OPENPATH_LINUX_AGENT_APT_SUITE="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" linux_agent_apt_suite)"
     fi
   fi
 
-  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ]; then
+  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
     log_error "Release candidate manifest did not export OpenPath runtime versions"
     return 1
   fi
@@ -50,6 +52,7 @@ apply_production_runtime_deploy_impl() {
   ensure_production_release_candidate_runtime_env || return 1
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
   bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"
   bash "$APP_DIR/scripts/validate-runtime-config-docker.sh" --app-dir "$APP_DIR" --env-file "$APP_DIR/config/.env"
 

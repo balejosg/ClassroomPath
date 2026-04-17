@@ -106,9 +106,14 @@ export function resolveOpenPathLinuxAgentVersion({ openpathSha, promotionContrac
     throw new Error('OpenPath promotion contract linuxAgentVersion is required');
   }
 
+  if (!['stable', 'unstable'].includes(promotionContract.aptSuite)) {
+    throw new Error('OpenPath promotion contract aptSuite must be stable or unstable');
+  }
+
   return {
     openpathVersion: promotionContract.packageVersion,
     version: promotionContract.linuxAgentVersion,
+    aptSuite: promotionContract.aptSuite,
   };
 }
 
@@ -153,6 +158,7 @@ export async function resolveOpenPathLinuxAgentVersionFromContracts({
         promotionContractSha: candidateSha,
         openpathVersion: result.openpathVersion,
         version: result.version,
+        aptSuite: result.aptSuite,
       };
     } catch (error) {
       if (isMissingPromotionContractError(error)) {
@@ -216,6 +222,7 @@ async function main() {
     openpath_promotion_contract_sha: result.promotionContractSha,
     openpath_version: result.openpathVersion,
     version: result.version,
+    apt_suite: result.aptSuite,
   });
 }
 

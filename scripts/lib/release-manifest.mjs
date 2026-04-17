@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
  *   openpath_api_image: string;
  *   openpath_version: string;
  *   linux_agent_version: string;
+ *   linux_agent_apt_suite: string;
  *   spa_image: string;
  *   verifier_image: string;
  * }} CanonicalReleaseManifest
@@ -27,6 +28,7 @@ const CANONICAL_RELEASE_MANIFEST_KEYS = /** @type {const} */ ([
   'openpath_api_image',
   'openpath_version',
   'linux_agent_version',
+  'linux_agent_apt_suite',
   'spa_image',
   'verifier_image',
 ]);
@@ -86,6 +88,7 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
     openpath_api_image: assignments.openpath_api_image,
     openpath_version: assignments.openpath_version,
     linux_agent_version: assignments.linux_agent_version,
+    linux_agent_apt_suite: assignments.linux_agent_apt_suite,
     spa_image: assignments.spa_image,
     verifier_image: assignments.verifier_image,
   });
@@ -101,6 +104,7 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
  *   openpathApiImage: string;
  *   openpathVersion: string;
  *   linuxAgentVersion: string;
+ *   linuxAgentAptSuite: string;
  *   spaImage: string;
  *   verifierImage: string;
  * }}
@@ -114,6 +118,7 @@ export function parseArtifactReleaseManifestText(text, options = {}) {
     openpathApiImage: assignments.OPENPATH_API_IMAGE,
     openpathVersion: assignments.OPENPATH_VERSION ?? assignments.OPENPATH_LINUX_AGENT_VERSION ?? '',
     linuxAgentVersion: assignments.OPENPATH_LINUX_AGENT_VERSION ?? '',
+    linuxAgentAptSuite: assignments.OPENPATH_LINUX_AGENT_APT_SUITE ?? '',
     spaImage: assignments.CLASSROOMPATH_SPA_IMAGE,
     verifierImage: assignments.CLASSROOMPATH_VERIFIER_IMAGE,
   };
@@ -159,6 +164,7 @@ export function buildCanonicalReleaseManifest({ repository, runId, manifest }) {
     openpath_api_image: manifest.openpathApiImage,
     openpath_version: manifest.openpathVersion,
     linux_agent_version: manifest.linuxAgentVersion,
+    linux_agent_apt_suite: manifest.linuxAgentAptSuite,
     spa_image: manifest.spaImage,
     verifier_image: manifest.verifierImage,
   };

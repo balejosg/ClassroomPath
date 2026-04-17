@@ -48,6 +48,7 @@ release_manifest_is_canonical_contract() {
     openpath_api_image \
     openpath_version \
     linux_agent_version \
+    linux_agent_apt_suite \
     spa_image \
     verifier_image; do
     if ! release_manifest_get "$manifest_path" "$key" >/dev/null 2>&1; then
@@ -66,6 +67,7 @@ release_manifest_validate_contract() {
   local app_sha=""
   local openpath_version=""
   local linux_agent_version=""
+  local linux_agent_apt_suite=""
   local image_key=""
   local image_ref=""
 
@@ -74,6 +76,7 @@ release_manifest_validate_contract() {
   app_sha="$(release_manifest_require_key "$manifest_path" app_sha)" || return 1
   openpath_version="$(release_manifest_require_key "$manifest_path" openpath_version)" || return 1
   linux_agent_version="$(release_manifest_require_key "$manifest_path" linux_agent_version)" || return 1
+  linux_agent_apt_suite="$(release_manifest_require_key "$manifest_path" linux_agent_apt_suite)" || return 1
 
   if [[ ! "$repository" =~ ^[^/]+/[^/]+$ ]]; then
     log_error "Release manifest repository is invalid: $repository"
@@ -102,6 +105,11 @@ release_manifest_validate_contract() {
 
   if [[ ! "$linux_agent_version" =~ ^[0-9]+(\.[0-9]+)*(-[0-9A-Za-z._-]+)?$ ]]; then
     log_error "Release manifest linux_agent_version is invalid: $linux_agent_version"
+    return 1
+  fi
+
+  if [ "$linux_agent_apt_suite" != "stable" ] && [ "$linux_agent_apt_suite" != "unstable" ]; then
+    log_error "Release manifest linux_agent_apt_suite is invalid: $linux_agent_apt_suite"
     return 1
   fi
 
@@ -159,6 +167,9 @@ export_release_manifest_runtime_env() {
 
   export OPENPATH_LINUX_AGENT_VERSION
   OPENPATH_LINUX_AGENT_VERSION="$(release_manifest_require_key "$manifest_path" linux_agent_version)"
+
+  export OPENPATH_LINUX_AGENT_APT_SUITE
+  OPENPATH_LINUX_AGENT_APT_SUITE="$(release_manifest_require_key "$manifest_path" linux_agent_apt_suite)"
 
   export CLASSROOMPATH_SPA_IMAGE
   CLASSROOMPATH_SPA_IMAGE="$(release_manifest_require_key "$manifest_path" spa_image)"

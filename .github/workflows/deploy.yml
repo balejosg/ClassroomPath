@@ -61,6 +61,7 @@ jobs:
       openpath_api_image: ${{ steps.release-images.outputs.openpath_api_image }}
       openpath_version: ${{ steps.release-images.outputs.openpath_version }}
       openpath_linux_agent_version: ${{ steps.release-images.outputs.linux_agent_version }}
+      openpath_linux_agent_apt_suite: ${{ steps.release-images.outputs.linux_agent_apt_suite }}
       spa_image: ${{ steps.release-images.outputs.spa_image }}
       verifier_image: ${{ steps.release-images.outputs.verifier_image }}
       manifest_base64: ${{ steps.release-images.outputs.manifest_base64 }}
@@ -310,6 +311,7 @@ jobs:
           EXPECTED_OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
           EXPECTED_OPENPATH_VERSION: ${{ needs.resolve-release-images.outputs.openpath_version }}
           EXPECTED_OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
+          EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_apt_suite }}
           EXPECTED_SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
         run: bash scripts/verify-staging-release-state.sh
 

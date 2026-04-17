@@ -87,7 +87,10 @@ describe('Deployment staging and promotion contracts', () => {
     assert.ok(
       remoteContent.includes(
         'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"'
-      )
+      ) &&
+        remoteContent.includes(
+          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"'
+        )
     );
     assert.ok(
       !localContent.includes('node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA"')
@@ -262,6 +265,7 @@ describe('Deployment staging and promotion contracts', () => {
       )
     );
     assert.ok(workflowContent.includes('OPENPATH_LINUX_AGENT_VERSION'));
+    assert.ok(workflowContent.includes('OPENPATH_LINUX_AGENT_APT_SUITE'));
     assert.ok(workflowContent.includes('verify-staging-release-state'));
     assert.ok(
       deployRemoteScript.includes(
@@ -285,6 +289,9 @@ describe('Deployment staging and promotion contracts', () => {
         deployRuntimeHelper.includes('"${OPENPATH_LINUX_AGENT_VERSION:-}"') &&
         deployRuntimeHelper.includes(
           'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"'
+        ) &&
+        deployRuntimeHelper.includes(
+          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"'
         )
     );
     assert.ok(

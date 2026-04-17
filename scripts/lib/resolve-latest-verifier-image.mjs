@@ -37,6 +37,7 @@ export function buildLatestVerifierImageOutputs({ manifest, headSha, runId }) {
     head_sha: headSha,
     openpath_version: manifest.openpathVersion,
     linux_agent_version: manifest.linuxAgentVersion,
+    linux_agent_apt_suite: manifest.linuxAgentAptSuite,
     migrations_image: manifest.migrationsImage,
     openpath_api_image: manifest.openpathApiImage,
     run_id: String(runId),

@@ -15,6 +15,7 @@ import { deriveStagingDeploymentMode } from './promotion-eligibility.mjs';
  *   openpath_api_image: string;
  *   openpath_version: string;
  *   linux_agent_version: string;
+ *   linux_agent_apt_suite: string;
  *   spa_image: string;
  *   verifier_image: string;
  * }} ReleaseManifest
@@ -39,6 +40,7 @@ import { deriveStagingDeploymentMode } from './promotion-eligibility.mjs';
  *   openpathApiImage: string;
  *   openpathVersion: string;
  *   linuxAgentVersion: string;
+ *   linuxAgentAptSuite: string;
  *   spaImage: string;
  *   verifierImage: string;
  * }} ReleaseCandidatePlan
@@ -64,6 +66,7 @@ const RELEASE_CANDIDATE_REQUIRED_KEYS = /** @type {const} */ ([
   'openpath_api_image',
   'openpath_version',
   'linux_agent_version',
+  'linux_agent_apt_suite',
   'spa_image',
   'verifier_image',
 ]);
@@ -114,6 +117,7 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
         openpathApiImage: manifest.openpath_api_image,
         openpathVersion: manifest.openpath_version,
         linuxAgentVersion: manifest.linux_agent_version,
+        linuxAgentAptSuite: manifest.linux_agent_apt_suite,
         spaImage: manifest.spa_image,
         verifierImage: manifest.verifier_image,
       },

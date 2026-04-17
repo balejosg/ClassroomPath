@@ -229,6 +229,10 @@ describe('Release candidate workflow contracts', () => {
       workflowText,
       /CLASSROOMPATH_VERIFIER_IMAGE=\$\{\{\s*needs\.build-verifier-release-candidate\.outputs\.image\s*\}\}/
     );
+    assert.match(
+      workflowText,
+      /OPENPATH_LINUX_AGENT_APT_SUITE=\$\{\{\s*needs\.derive-release-image-refs\.outputs\.openpath_linux_agent_apt_suite\s*\}\}/
+    );
     assert.ok(workflowText.includes('release-candidate-timings-${{ github.sha }}'));
     assert.ok(workflowText.includes('release-candidate-timings.json'));
     assert.ok(workflowText.includes('## Release Candidate Timings'));

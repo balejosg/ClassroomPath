@@ -17,6 +17,7 @@ migrations_image=ghcr.io/balejosg/classroompath-migrations@sha256:bbbbbbbbbbbbbb
 openpath_api_image=ghcr.io/balejosg/openpath-api@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 openpath_version=4.1.11
 linux_agent_version=4.1.11-1
+linux_agent_apt_suite=unstable
 spa_image=ghcr.io/balejosg/classroompath-spa@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 `.trim();
@@ -36,6 +37,7 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     assert.equal(plan.releaseCandidate?.runId, '24006418074');
     assert.equal(plan.releaseCandidate?.openpathVersion, '4.1.11');
     assert.equal(plan.releaseCandidate?.linuxAgentVersion, '4.1.11-1');
+    assert.equal(plan.releaseCandidate?.linuxAgentAptSuite, 'unstable');
     assert.equal(plan.verification.runSmoke, true);
     assert.equal(plan.verification.runReleaseGate, true);
     assert.equal(plan.verification.persistEvidence, true);

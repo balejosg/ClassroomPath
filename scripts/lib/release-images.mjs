@@ -234,6 +234,7 @@ export function buildReleaseManifestOutputs(parsedManifest) {
     openpath_api_image: parsedManifest.openpathApiImage,
     openpath_version: parsedManifest.openpathVersion,
     linux_agent_version: parsedManifest.linuxAgentVersion,
+    linux_agent_apt_suite: parsedManifest.linuxAgentAptSuite,
     spa_image: parsedManifest.spaImage,
     verifier_image: parsedManifest.verifierImage,
   };

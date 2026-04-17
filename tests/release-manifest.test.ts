@@ -25,6 +25,7 @@ describe('release manifest normalization', () => {
       openpath_api_image: 'ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
       openpath_version: '4.1.3',
       linux_agent_version: '4.1.3',
+      linux_agent_apt_suite: 'unstable',
       spa_image: 'ghcr.io/balejosg/classroompath-spa@sha256:4',
       verifier_image: 'ghcr.io/balejosg/classroompath-release-verifier@sha256:5',
     });
@@ -42,5 +43,6 @@ describe('release manifest normalization', () => {
     assert.match(serialized, /^repository=balejosg\/ClassroomPath$/m);
     assert.match(serialized, /^run_id=24006418074$/m);
     assert.match(serialized, /^app_sha=target-sha$/m);
+    assert.match(serialized, /^linux_agent_apt_suite=unstable$/m);
   });
 });
