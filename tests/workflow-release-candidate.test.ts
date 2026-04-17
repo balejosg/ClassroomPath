@@ -67,9 +67,9 @@ describe('Release candidate workflow contracts', () => {
         reusableWorkflowText.includes('./.github/actions/publish-release-candidate-manifest')
     );
     assert.ok(reusableWorkflowText.includes('amd64_duration_seconds:'));
-    assert.ok(!reusableWorkflowText.includes('arm64_duration_seconds:'));
-    assert.ok(!reusableWorkflowText.includes('build-arm64:'));
-    assert.ok(!reusableWorkflowText.includes('ubuntu-24.04-arm'));
+    assert.ok(reusableWorkflowText.includes('arm64_duration_seconds:'));
+    assert.ok(reusableWorkflowText.includes('build-arm64:'));
+    assert.ok(reusableWorkflowText.includes('ubuntu-24.04-arm'));
     assert.ok(reusableWorkflowText.includes('publish_duration_seconds:'));
     assert.ok(reusableWorkflowText.includes('family_duration_seconds:'));
     assert.ok(
@@ -79,7 +79,7 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(
       publishManifestActionText.includes('docker buildx imagetools create') &&
         publishManifestActionText.includes('docker buildx imagetools inspect') &&
-        !publishManifestActionText.includes('arm64-digest')
+        publishManifestActionText.includes('arm64-digest')
     );
   });
 
@@ -161,7 +161,17 @@ describe('Release candidate workflow contracts', () => {
       jobs['build-gateway-release-candidate']?.with?.['amd64_cache_scope'],
       'release-candidate-gateway-amd64'
     );
-    assert.equal(jobs['build-gateway-release-candidate']?.with?.['arm64_cache_scope'], undefined);
+
+    for (const [jobName, cachePrefix] of [
+      ['build-gateway-release-candidate', 'release-candidate-gateway'],
+      ['build-migrations-release-candidate', 'release-candidate-migrations'],
+      ['build-openpath-api-release-candidate', 'release-candidate-openpath-api'],
+      ['build-spa-release-candidate', 'release-candidate-spa'],
+      ['build-verifier-release-candidate', 'release-candidate-verifier'],
+    ] as const) {
+      assert.equal(jobs[jobName]?.with?.['amd64_cache_scope'], `${cachePrefix}-amd64`);
+      assert.equal(jobs[jobName]?.with?.['arm64_cache_scope'], `${cachePrefix}-arm64`);
+    }
 
     const detectCheckout = jobs['detect-release-candidate-components']?.steps?.find(
       (step) => step.name === 'Checkout'
@@ -220,6 +230,7 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(workflowText.includes('release-candidate-timings-${{ github.sha }}'));
     assert.ok(workflowText.includes('release-candidate-timings.json'));
     assert.ok(workflowText.includes('## Release Candidate Timings'));
+    assert.ok(workflowText.includes('arm64DurationSeconds'));
     assert.ok(workflowText.includes('familyDurationSeconds'));
     assert.doesNotMatch(
       workflowText,
