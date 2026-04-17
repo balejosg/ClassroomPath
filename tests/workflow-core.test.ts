@@ -247,6 +247,7 @@ describe('Workflow core contracts', () => {
     const securityWorkflowDefinition = readWorkflow('.github/workflows/security.yml');
     const secretScanJob = findWorkflowJob(securityWorkflowDefinition, 'secret-scan');
     const secretScanCheckoutStep = findWorkflowStepByName(secretScanJob, 'Checkout code');
+    const gitleaksInstallStep = findWorkflowStepByName(secretScanJob, 'Install Gitleaks');
     const gitleaksStep = findWorkflowStepByName(secretScanJob, 'Run Gitleaks');
     const gitleaksSarifStep = findWorkflowStepByName(secretScanJob, 'Upload Gitleaks SARIF');
     const securityWorkflow = readText('.github/workflows/security.yml');
@@ -263,14 +264,22 @@ describe('Workflow core contracts', () => {
     assert.ok(securityWorkflow.includes('aquasecurity/trivy-action@v0.35.0'));
     assert.ok(!securityWorkflow.includes('aquasecurity/trivy-action@master'));
     assert.ok(securityWorkflow.includes('./.github/actions/setup-node'));
-    assert.ok(securityWorkflow.includes('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true'));
     assert.ok(securityWorkflow.includes('github/codeql-action/upload-sarif@v4'));
     assert.ok(!securityWorkflow.includes('github/codeql-action/upload-sarif@v3'));
     assert.equal(secretScanCheckoutStep?.with?.['fetch-depth'], 0);
-    assert.equal(gitleaksStep?.uses, 'gitleaks/gitleaks-action@v2.3.9');
+    assert.match(String(gitleaksInstallStep?.run ?? ''), /version="8\.30\.1"/);
+    assert.match(String(gitleaksInstallStep?.run ?? ''), /gitleaks_\$\{version\}_checksums\.txt/);
+    assert.match(String(gitleaksInstallStep?.run ?? ''), /sha256sum -c/);
+    assert.equal(
+      (gitleaksStep as { env?: Record<string, unknown> })?.env?.GITHUB_BEFORE_SHA,
+      '${{ github.event.before }}'
+    );
+    assert.match(String(gitleaksStep?.run ?? ''), /\/tmp\/gitleaks detect/);
     assert.equal(gitleaksSarifStep?.uses, 'github/codeql-action/upload-sarif@v4');
     assert.equal(gitleaksSarifStep?.with?.sarif_file, 'results.sarif');
-    assert.doesNotMatch(securityWorkflow, /gitleaks\/gitleaks-action@v2(?:\s|$)/);
+    assert.doesNotMatch(securityWorkflow, /gitleaks\/gitleaks-action/);
+    assert.doesNotMatch(securityWorkflow, /gacts\/gitleaks/);
+    assert.doesNotMatch(securityWorkflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24/);
     assert.ok(setupNodeAction.includes("cache: 'npm'") || setupNodeAction.includes('cache: npm'));
   });
 
