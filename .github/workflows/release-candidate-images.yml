@@ -141,7 +141,6 @@ jobs:
       previous_image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}
       output_name: gateway_image
       amd64_cache_scope: release-candidate-gateway-amd64
-      arm64_cache_scope: release-candidate-gateway-arm64
       checkout_submodules: true
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
@@ -163,7 +162,6 @@ jobs:
       previous_image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}
       output_name: migrations_image
       amd64_cache_scope: release-candidate-migrations-amd64
-      arm64_cache_scope: release-candidate-migrations-arm64
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -197,7 +195,6 @@ jobs:
       previous_image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}
       output_name: openpath_api_image
       amd64_cache_scope: release-candidate-openpath-api-amd64
-      arm64_cache_scope: release-candidate-openpath-api-arm64
       artifact_name: openpath-firefox-release-assets
       artifact_path: ./upstream/openpath/firefox-extension
       verify_paths: |
@@ -225,7 +222,6 @@ jobs:
       previous_image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}
       output_name: spa_image
       amd64_cache_scope: release-candidate-spa-amd64
-      arm64_cache_scope: release-candidate-spa-arm64
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -246,7 +242,6 @@ jobs:
       previous_image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}
       output_name: verifier_image
       amd64_cache_scope: release-candidate-verifier-amd64
-      arm64_cache_scope: release-candidate-verifier-arm64
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -292,35 +287,30 @@ jobs:
               "gateway": {
                 "buildRequired": ${{ needs.build-gateway-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.amd64_duration_seconds || 0 }},
-                "arm64DurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.arm64_duration_seconds || 0 }},
                 "publishDurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.family_duration_seconds || 0 }}
               },
               "migrations": {
                 "buildRequired": ${{ needs.build-migrations-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.amd64_duration_seconds || 0 }},
-                "arm64DurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.arm64_duration_seconds || 0 }},
                 "publishDurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.family_duration_seconds || 0 }}
               },
               "openpathApi": {
                 "buildRequired": ${{ needs.build-openpath-api-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }},
-                "arm64DurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.arm64_duration_seconds || 0 }},
                 "publishDurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }}
               },
               "spa": {
                 "buildRequired": ${{ needs.build-spa-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-spa-release-candidate.outputs.amd64_duration_seconds || 0 }},
-                "arm64DurationSeconds": ${{ needs.build-spa-release-candidate.outputs.arm64_duration_seconds || 0 }},
                 "publishDurationSeconds": ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }}
               },
               "verifier": {
                 "buildRequired": ${{ needs.build-verifier-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.amd64_duration_seconds || 0 }},
-                "arm64DurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.arm64_duration_seconds || 0 }},
                 "publishDurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }}
               }
@@ -334,13 +324,13 @@ jobs:
           {
             echo '## Release Candidate Timings'
             echo
-            echo '| Family | Build Required | amd64 (s) | arm64 (s) | Publish (s) | Critical Path (s) |'
-            echo '| --- | --- | ---: | ---: | ---: | ---: |'
-            echo "| Gateway | ${{ needs.build-gateway-release-candidate.outputs.build_required }} | ${{ needs.build-gateway-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.family_duration_seconds || 0 }} |"
-            echo "| Migrations | ${{ needs.build-migrations-release-candidate.outputs.build_required }} | ${{ needs.build-migrations-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.family_duration_seconds || 0 }} |"
-            echo "| OpenPath API | ${{ needs.build-openpath-api-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }} |"
-            echo "| SPA | ${{ needs.build-spa-release-candidate.outputs.build_required }} | ${{ needs.build-spa-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }} |"
-            echo "| Verifier | ${{ needs.build-verifier-release-candidate.outputs.build_required }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo '| Family | Build Required | amd64 (s) | Publish (s) | Critical Path (s) |'
+            echo '| --- | --- | ---: | ---: | ---: |'
+            echo "| Gateway | ${{ needs.build-gateway-release-candidate.outputs.build_required }} | ${{ needs.build-gateway-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| Migrations | ${{ needs.build-migrations-release-candidate.outputs.build_required }} | ${{ needs.build-migrations-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| OpenPath API | ${{ needs.build-openpath-api-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| SPA | ${{ needs.build-spa-release-candidate.outputs.build_required }} | ${{ needs.build-spa-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| Verifier | ${{ needs.build-verifier-release-candidate.outputs.build_required }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload release candidate timing artifact

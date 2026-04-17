@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       build_required:
-        description: Whether this image family should build fresh architecture images.
+        description: Whether this image family should build a fresh amd64 image.
         required: true
         type: boolean
       context:
@@ -34,10 +34,6 @@ on:
         type: string
       amd64_cache_scope:
         description: Cache scope for the amd64 build.
-        required: true
-        type: string
-      arm64_cache_scope:
-        description: Cache scope for the arm64 build.
         required: true
         type: string
       artifact_name:
@@ -78,9 +74,6 @@ on:
       amd64_duration_seconds:
         description: Elapsed seconds for the amd64 build job.
         value: ${{ jobs.build-amd64.outputs.duration_seconds }}
-      arm64_duration_seconds:
-        description: Elapsed seconds for the arm64 build job.
-        value: ${{ jobs.build-arm64.outputs.duration_seconds }}
       publish_duration_seconds:
         description: Elapsed seconds for the manifest publish job.
         value: ${{ jobs.publish-manifest.outputs.publish_duration_seconds }}
@@ -142,62 +135,12 @@ jobs:
           start_epoch="${{ steps.start.outputs.epoch }}"
           echo "seconds=$(( end_epoch - start_epoch ))" >> "$GITHUB_OUTPUT"
 
-  build-arm64:
-    name: Build ${{ inputs.display_name }} (arm64)
-    if: inputs.build_required
-    runs-on: ubuntu-24.04-arm
-    outputs:
-      image_digest: ${{ steps.build-image.outputs.digest }}
-      duration_seconds: ${{ steps.record-duration.outputs.seconds }}
-
-    steps:
-      - name: Record arm64 build start
-        id: start
-        shell: bash
-        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout
-        if: ${{ !inputs.checkout_submodules }}
-        uses: actions/checkout@v6
-
-      - name: Checkout with submodules
-        if: inputs.checkout_submodules
-        uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: Build and push arm64 image
-        id: build-image
-        uses: ./.github/actions/build-release-candidate-image
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.ghcr_password }}
-          context: ${{ inputs.context }}
-          file: ${{ inputs.file }}
-          platforms: linux/arm64
-          outputs: type=image,name=${{ inputs.image_repo }},push-by-digest=true,name-canonical=true,push=true
-          cache-scope: ${{ inputs.arm64_cache_scope }}
-          artifact-name: ${{ inputs.artifact_name }}
-          artifact-path: ${{ inputs.artifact_path }}
-          verify-paths: ${{ inputs.verify_paths }}
-
-      - name: Record arm64 build duration
-        id: record-duration
-        if: ${{ always() }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          end_epoch="$(date +%s)"
-          start_epoch="${{ steps.start.outputs.epoch }}"
-          echo "seconds=$(( end_epoch - start_epoch ))" >> "$GITHUB_OUTPUT"
-
   publish-manifest:
     name: Publish ${{ inputs.display_name }} Manifest
     runs-on: ubuntu-latest
-    if: ${{ always() && (!inputs.build_required || (needs.build-amd64.result == 'success' && needs.build-arm64.result == 'success')) }}
+    if: ${{ always() && (!inputs.build_required || needs.build-amd64.result == 'success') }}
     needs:
       - build-amd64
-      - build-arm64
     outputs:
       image: ${{ steps.publish-manifest.outputs.image }}
       publish_duration_seconds: ${{ steps.record-publish-duration.outputs.seconds }}
@@ -222,7 +165,6 @@ jobs:
           tag: ${{ inputs.tag }}
           image-repo: ${{ inputs.image_repo }}
           amd64-digest: ${{ needs.build-amd64.outputs.image_digest }}
-          arm64-digest: ${{ needs.build-arm64.outputs.image_digest }}
           previous-image: ${{ inputs.previous_image }}
           output-name: ${{ inputs.output_name }}
 
@@ -243,18 +185,11 @@ jobs:
         run: |
           set -euo pipefail
           amd64_seconds="${{ needs.build-amd64.outputs.duration_seconds }}"
-          arm64_seconds="${{ needs.build-arm64.outputs.duration_seconds }}"
           publish_seconds="${{ steps.record-publish-duration.outputs.seconds }}"
           [ -n "$amd64_seconds" ] || amd64_seconds=0
-          [ -n "$arm64_seconds" ] || arm64_seconds=0
           [ -n "$publish_seconds" ] || publish_seconds=0
           if [ "${{ inputs.build_required }}" = 'true' ]; then
-            if [ "$amd64_seconds" -gt "$arm64_seconds" ]; then
-              build_seconds="$amd64_seconds"
-            else
-              build_seconds="$arm64_seconds"
-            fi
-            family_seconds=$(( build_seconds + publish_seconds ))
+            family_seconds=$(( amd64_seconds + publish_seconds ))
           else
             family_seconds="$publish_seconds"
           fi

@@ -21,10 +21,6 @@ inputs:
     description: 'amd64 image digest'
     required: false
     default: ''
-  arm64-digest:
-    description: 'arm64 image digest'
-    required: false
-    default: ''
   previous-image:
     description: 'Previously published image ref to reuse when no rebuild is needed'
     required: true
@@ -47,19 +43,15 @@ runs:
         username: ${{ inputs.username }}
         password: ${{ inputs.password }}
 
-    - name: Publish multi-arch image tag
+    - name: Publish amd64 image tag
       if: ${{ inputs.build-required == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
 
-        test -n "${{ inputs.amd64-digest }}"
-        test -n "${{ inputs.arm64-digest }}"
-
         docker buildx imagetools create \
           --tag "${{ inputs.tag }}" \
-          "${{ inputs.image-repo }}@${{ inputs.amd64-digest }}" \
-          "${{ inputs.image-repo }}@${{ inputs.arm64-digest }}"
+          "${{ inputs.image-repo }}@${{ inputs.amd64-digest }}"
 
     - name: Publish manifest output
       id: publish
