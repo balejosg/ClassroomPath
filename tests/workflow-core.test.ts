@@ -335,6 +335,31 @@ describe('Workflow core contracts', () => {
     assert.ok(!deployNeeds.includes('release-gate-staging'));
   });
 
+  test('staging cleanup workflow runs recurring non-disruptive disk maintenance', () => {
+    const cleanupWorkflowPath = '.github/workflows/cleanup-staging.yml';
+    const cleanupWorkflow = readWorkflow(cleanupWorkflowPath);
+    const cleanupWorkflowText = readText(cleanupWorkflowPath);
+    const cleanupJob = findWorkflowJob(cleanupWorkflow, 'cleanup-staging');
+    const steps = cleanupJob.steps ?? [];
+    const checkoutStep = steps.find((step) => step.uses === 'actions/checkout@v6');
+    const cleanupStep = findWorkflowStepByName(cleanupJob, 'Check and clean staging disk via SSH');
+    const cleanupScript = String(cleanupStep.run ?? cleanupStep.with?.script ?? '');
+
+    assert.ok(cleanupWorkflowText.includes('schedule:'));
+    assert.ok(cleanupWorkflowText.includes('cron:'));
+    assert.ok(checkoutStep, 'cleanup workflow should check out scripts before resolving SSH host');
+    assert.ok(cleanupScript.includes('docker system prune -af'));
+    assert.ok(cleanupScript.includes('docker builder prune -af'));
+    assert.ok(cleanupScript.includes('GITHUB_STEP_SUMMARY'));
+    assert.ok(cleanupScript.includes('::warning::'));
+    assert.ok(cleanupScript.includes('::error::'));
+    assert.ok(cleanupScript.includes('exit 1'));
+    assert.doesNotMatch(cleanupScript, /docker stop\b/);
+    assert.doesNotMatch(cleanupScript, /docker rm -f\b/);
+    assert.doesNotMatch(cleanupScript, /docker compose down\b/);
+    assert.doesNotMatch(cleanupScript, /--volumes\b/);
+  });
+
   test('Windows canary workflows keep live staging and production bootstrap coverage', () => {
     const windowsFirefoxWorkflowText = readText('.github/workflows/windows-firefox-canary.yml');
     const windowsFirefoxWorkflow = readWorkflow('.github/workflows/windows-firefox-canary.yml');

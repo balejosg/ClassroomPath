@@ -1,14 +1,22 @@
-name: Cleanup Staging Containers
+name: Staging Disk Maintenance
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * *'
 
 jobs:
   cleanup-staging:
-    name: Cleanup Staging Docker Containers
+    name: Check and Clean Staging Disk
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
       - name: Resolve staging host
         id: resolve
         shell: bash
@@ -18,51 +26,105 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -z "$STAGING_DEPLOY_HOST" ]; then
+          if [ -z "${STAGING_DEPLOY_HOST:-}" ]; then
             echo "STAGING_DEPLOY_HOST not configured"
             exit 1
           fi
 
           bash scripts/resolve-ssh-host.sh "$STAGING_DEPLOY_HOST" "${STAGING_DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
 
-      - name: Cleanup containers via SSH
-        uses: appleboy/ssh-action@v1.2.4
-        with:
-          host: ${{ steps.resolve.outputs.ip }}
-          username: ${{ secrets.STAGING_DEPLOY_USER }}
-          key: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
-          port: ${{ steps.resolve.outputs.port }}
-          timeout: 60s
-          command_timeout: 5m
-          script: |
-            set -e
-            echo "🧹 Cleaning up Docker containers and resources..."
+      - name: Check and clean staging disk via SSH
+        shell: bash
+        env:
+          STAGING_DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+          STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+          STAGING_DEPLOY_PORT: ${{ steps.resolve.outputs.port }}
+          STAGING_DEPLOY_IP: ${{ steps.resolve.outputs.ip }}
+          STAGING_DISK_WARNING_THRESHOLD: '80'
+          STAGING_DISK_CRITICAL_THRESHOLD: '90'
+        run: |
+          set -euo pipefail
 
-            cd /opt/classroompath/app/docker
+          if [ -z "${STAGING_DEPLOY_USER:-}" ] || [ -z "${STAGING_DEPLOY_SSH_KEY:-}" ]; then
+            echo "Missing staging SSH credentials"
+            exit 1
+          fi
 
-            # Stop all containers (both old naming and new naming)
-            echo "Stopping containers..."
-            docker stop classroompath-gateway classroompath-api classroompath-spa 2>/dev/null || true
-            docker stop classroompath-staging-gateway-1 classroompath-staging-api-1 classroompath-staging-spa-1 2>/dev/null || true
+          key_file="$(mktemp)"
+          output_file="$(mktemp)"
+          trap 'rm -f "$key_file" "$output_file"' EXIT
+          printf '%s\n' "$STAGING_DEPLOY_SSH_KEY" > "$key_file"
+          chmod 600 "$key_file"
 
-            # Remove all containers
-            echo "Removing containers..."
-            docker rm -f classroompath-gateway classroompath-api classroompath-spa 2>/dev/null || true
-            docker rm -f classroompath-staging-gateway-1 classroompath-staging-api-1 classroompath-staging-spa-1 2>/dev/null || true
+          ssh_opts=(
+            -i "$key_file"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=no
+            -o UserKnownHostsFile=/dev/null
+            -p "${STAGING_DEPLOY_PORT:-22}"
+          )
 
-            # Clean up with docker compose
-            export COMPOSE_PROJECT_NAME=classroompath-staging
-            docker compose down --remove-orphans --volumes 2>/dev/null || true
+          ssh "${ssh_opts[@]}" "${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_IP}" \
+            "STAGING_DISK_WARNING_THRESHOLD='${STAGING_DISK_WARNING_THRESHOLD}' STAGING_DISK_CRITICAL_THRESHOLD='${STAGING_DISK_CRITICAL_THRESHOLD}' bash -s" \
+            >"$output_file" <<'REMOTE_SCRIPT'
+          set -euo pipefail
 
-            # Remove any dangling containers
-            echo "Removing dangling containers..."
-            docker ps -a --filter "name=classroompath" --format "{{.Names}}" | xargs -r docker rm -f 2>/dev/null || true
+          warning_threshold="${STAGING_DISK_WARNING_THRESHOLD:-80}"
+          critical_threshold="${STAGING_DISK_CRITICAL_THRESHOLD:-90}"
 
-            # Prune unused resources
-            echo "Pruning unused Docker resources..."
-            docker system prune -af --volumes || true
+          disk_usage_percent() {
+            df / | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }'
+          }
 
-            echo "✅ Cleanup complete!"
+          before="$(disk_usage_percent)"
+          cleaned="false"
+
+          printf 'DISK_BEFORE=%s\n' "$before"
+          docker system df || true
+
+          if [ "$before" -ge "$warning_threshold" ]; then
+            cleaned="true"
+            docker system prune -af || true
+            docker builder prune -af || true
+          fi
+
+          after="$(disk_usage_percent)"
+          printf 'DISK_AFTER=%s\n' "$after"
+          printf 'CLEANUP_RAN=%s\n' "$cleaned"
+          printf 'WARNING_THRESHOLD=%s\n' "$warning_threshold"
+          printf 'CRITICAL_THRESHOLD=%s\n' "$critical_threshold"
+          docker system df || true
+          REMOTE_SCRIPT
+
+          cat "$output_file"
+
+          disk_before="$(awk -F= '/^DISK_BEFORE=/{print $2}' "$output_file" | tail -1)"
+          disk_after="$(awk -F= '/^DISK_AFTER=/{print $2}' "$output_file" | tail -1)"
+          cleanup_ran="$(awk -F= '/^CLEANUP_RAN=/{print $2}' "$output_file" | tail -1)"
+
+          {
+            echo "### Staging disk maintenance"
             echo ""
-            echo "Current Docker status:"
-            docker ps -a | grep classroompath || echo "No classroompath containers found"
+            echo "| Metric | Value |"
+            echo "| --- | --- |"
+            echo "| Host | ${STAGING_DEPLOY_IP} |"
+            echo "| Disk before | ${disk_before:-unknown}% |"
+            echo "| Disk after | ${disk_after:-unknown}% |"
+            echo "| Cleanup ran | ${cleanup_ran:-unknown} |"
+            echo "| Warning threshold | ${STAGING_DISK_WARNING_THRESHOLD}% |"
+            echo "| Critical threshold | ${STAGING_DISK_CRITICAL_THRESHOLD}% |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "${disk_after:-}" ]; then
+            echo "::error::Unable to determine staging disk usage after cleanup"
+            exit 1
+          fi
+
+          if [ "$disk_after" -ge "$STAGING_DISK_WARNING_THRESHOLD" ]; then
+            echo "::warning::Staging disk usage remains at ${disk_after}% after Docker cleanup"
+          fi
+
+          if [ "$disk_after" -ge "$STAGING_DISK_CRITICAL_THRESHOLD" ]; then
+            echo "::error::Staging disk usage remains above critical threshold (${disk_after}% >= ${STAGING_DISK_CRITICAL_THRESHOLD}%)"
+            exit 1
+          fi
