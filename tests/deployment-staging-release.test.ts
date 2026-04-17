@@ -358,5 +358,18 @@ describe('Deployment staging and promotion contracts', () => {
         productionHostReadinessScript.includes('current-images.env') &&
         !productionHostReadinessScript.includes('qemu-x86_64')
     );
+    assert.ok(
+      productionHostReadinessScript.includes(
+        'DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"'
+      ) && productionHostReadinessScript.includes('-F "$DEPLOY_SSH_CONFIG"'),
+      'production host readiness should not depend on /etc/ssh/ssh_config.d'
+    );
+    assert.ok(
+      promotionReadyScript.includes('STAGING_SSH_CONFIG="${STAGING_SSH_CONFIG:-/dev/null}"') &&
+        promotionReadyScript.includes('DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"') &&
+        promotionReadyScript.includes('-F "$STAGING_SSH_CONFIG"') &&
+        promotionReadyScript.includes('-F "$DEPLOY_SSH_CONFIG"'),
+      'promotion readiness should isolate both staging and production SSH clients'
+    );
   });
 });

@@ -26,6 +26,7 @@ Environment:
   DEPLOY_PORT                 SSH port (default: 22)
   DEPLOY_USER                 SSH user (default: deploy)
   DEPLOY_SSH_KEY              Private key path
+  DEPLOY_SSH_CONFIG           SSH client config file (default: /dev/null)
   DEPLOY_SSH_STRICT_HOSTKEY   StrictHostKeyChecking value (default: accept-new)
 EOF
 }
@@ -38,6 +39,7 @@ fi
 DEPLOY_HOST="${1:-${DEPLOY_HOST:-}}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
+DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"
 DEPLOY_SSH_STRICT_HOSTKEY="${DEPLOY_SSH_STRICT_HOSTKEY:-accept-new}"
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -63,6 +65,7 @@ configure_deploy_container_platform "$(node "$SCRIPT_DIR/deploy-targets.mjs" get
 
 SSH_CMD=(
   ssh
+  -F "$DEPLOY_SSH_CONFIG"
   -o "ConnectTimeout=10"
   -o "BatchMode=yes"
   -o "IdentitiesOnly=yes"

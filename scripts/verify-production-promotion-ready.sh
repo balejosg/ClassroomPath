@@ -24,10 +24,12 @@ fi
 STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
 STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
+STAGING_SSH_CONFIG="${STAGING_SSH_CONFIG:-/dev/null}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
 DEPLOY_HOST="${DEPLOY_HOST:-}"
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
+DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"
 DEPLOY_SSH_STRICT_HOSTKEY="${DEPLOY_SSH_STRICT_HOSTKEY:-accept-new}"
 
 if [ -z "${STAGING_SSH_KEY:-}" ]; then
@@ -75,6 +77,7 @@ export EXPECTED_SPA_IMAGE="$CLASSROOMPATH_SPA_IMAGE"
 
 SSH_CMD=(
   ssh
+  -F "$STAGING_SSH_CONFIG"
   -o "ConnectTimeout=10"
   -o "BatchMode=yes"
   -o "IdentitiesOnly=yes"
@@ -126,6 +129,7 @@ fi
 
 PRODUCTION_SSH_CMD=(
   ssh
+  -F "$DEPLOY_SSH_CONFIG"
   -o "ConnectTimeout=10"
   -o "BatchMode=yes"
   -o "IdentitiesOnly=yes"
