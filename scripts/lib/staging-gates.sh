@@ -145,6 +145,44 @@ run_gate_command() {
   return "$gate_exit_code"
 }
 
+print_staging_public_ingress_diagnostics() {
+  local target_host="$1"
+  local target_url="$2"
+  local public_ip=""
+
+  echo "Public ingress diagnostics:" >&2
+  echo "  target_url=$target_url" >&2
+  echo "  target_host=$target_host" >&2
+
+  if command -v getent >/dev/null 2>&1; then
+    {
+      printf '  getent ahostsv4: '
+      getent ahostsv4 "$target_host" 2>/dev/null | awk '{print $1}' | sort -u | paste -sd ',' -
+    } >&2 || true
+  fi
+
+  if command -v dig >/dev/null 2>&1; then
+    {
+      printf '  dig default: '
+      dig +short "$target_host" A 2>/dev/null | sort -u | paste -sd ',' -
+      printf '  dig @1.1.1.1: '
+      dig @1.1.1.1 +short "$target_host" A 2>/dev/null | sort -u | paste -sd ',' -
+      printf '  dig @8.8.8.8: '
+      dig @8.8.8.8 +short "$target_host" A 2>/dev/null | sort -u | paste -sd ',' -
+    } >&2 || true
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    public_ip="$(curl --max-time 5 -fsS https://api.ipify.org 2>/dev/null || true)"
+    if [ -n "$public_ip" ]; then
+      echo "  local egress public IP: $public_ip" >&2
+    fi
+
+    echo "  curl public endpoint:" >&2
+    curl --max-time 10 -Ik "$target_url" >&2 || true
+  fi
+}
+
 run_staging_smoke_gate() {
   local staging_host="$1"
   local smoke_target_url="$2"
@@ -181,6 +219,7 @@ run_staging_smoke_gate() {
   if [ "$smoke_exit_code" -ne 0 ]; then
     echo "Smoke tests FAILED (exit code: $smoke_exit_code)" >&2
     echo "Review output above for details" >&2
+    print_staging_public_ingress_diagnostics "$smoke_target_host" "$SMOKE_TARGET_URL"
     echo >&2
     echo "Common issues:" >&2
     echo "  - NPM reverse proxy not routing correctly" >&2

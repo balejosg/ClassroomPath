@@ -26,6 +26,67 @@ $(remote_assignment STATE_DIR "$STATE_DIR")$(remote_assignment APP_DIR "$APP_DIR
 EOF
 }
 
+mark_staging_local_verification_failed() {
+    local deploy_context_file="$STATE_DIR/staging-deploy-context.env"
+    local marker_output=""
+    local marker_env_cmd=""
+
+    marker_env_cmd="$(remote_assignment STATE_DIR "$STATE_DIR")$(remote_assignment APP_DIR "$APP_DIR")$(remote_assignment DEPLOY_CONTEXT_FILE "$deploy_context_file")"
+
+    if marker_output="$("${SSH_CMD[@]}" "${marker_env_cmd}bash -s" 2>&1 <<'REMOTE_MARKER'
+set -euo pipefail
+
+COMMON_SH_PATH="$APP_DIR/scripts/lib/common.sh"
+RELEASE_STATE_SH_PATH="$APP_DIR/scripts/lib/release-state.sh"
+
+if [ -f "$COMMON_SH_PATH" ]; then
+  # shellcheck disable=SC1090
+  source "$COMMON_SH_PATH"
+fi
+
+if [ ! -f "$RELEASE_STATE_SH_PATH" ]; then
+  echo "release-state helper not found at $RELEASE_STATE_SH_PATH" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+source "$RELEASE_STATE_SH_PATH"
+
+if [ -f "$DEPLOY_CONTEXT_FILE" ]; then
+  load_release_state_env "$DEPLOY_CONTEXT_FILE" || true
+fi
+
+if [ -f "$STATE_DIR/current-images.env" ]; then
+  # shellcheck disable=SC1090
+  source "$STATE_DIR/current-images.env"
+fi
+
+TARGET_SHA="${TARGET_SHA:-${APP_SHA:-}}"
+APP_SHA="${APP_SHA:-}"
+PREVIOUS_APP_SHA="${PREVIOUS_APP_SHA:-}"
+IMAGE_SOURCE="${IMAGE_SOURCE:-}"
+MIGRATION_RISK_LEVEL="${MIGRATION_RISK_LEVEL:-unknown}"
+MIGRATION_CHANGED_FILES="${MIGRATION_CHANGED_FILES:-}"
+MIGRATION_DESTRUCTIVE_FILES="${MIGRATION_DESTRUCTIVE_FILES:-}"
+PRODUCTION_BACKUP_REFERENCE="${PRODUCTION_BACKUP_REFERENCE:-}"
+DB_MIGRATED="${DB_MIGRATED:-0}"
+FAILURE_STAGE="verification"
+DEPLOY_FAILURE_STAGE="verification"
+ROLLBACK_ATTEMPTED="${ROLLBACK_ATTEMPTED:-0}"
+ROLLBACK_RESULT="${ROLLBACK_RESULT:-not_attempted}"
+
+write_deploy_context_state "$DEPLOY_CONTEXT_FILE"
+REMOTE_MARKER
+    )"; then
+        log_info "Staging deploy context marked as verification failure"
+    else
+        log_warn "Unable to mark staging deploy context as verification failure"
+        if [ -n "$marker_output" ]; then
+            printf '%s\n' "$marker_output" >&2
+        fi
+    fi
+}
+
 run_staging_local_verification() {
     log_info "Running staging verification against staging..."
 
@@ -34,6 +95,7 @@ run_staging_local_verification() {
 
     if [ "$STAGING_RUN_RELEASE_GATE" = "1" ]; then
         if ! bash "$STAGING_VERIFICATION_RUNNER_PATH" collect "$VERIFICATION_STATE_FILE" "$STAGING_HOST" "$STAGING_SMOKE_URL" "$CANONICAL_STAGING_URL" "$STAGING_USE_RELEASE_CANDIDATE" "${SSH_CMD[@]}"; then
+            mark_staging_local_verification_failed
             exit 1
         fi
 
@@ -54,6 +116,7 @@ run_staging_local_verification() {
         log_warn "Production tag workflow will fail until staging verification evidence is refreshed"
 
         if ! bash "$STAGING_VERIFICATION_RUNNER_PATH" smoke "$VERIFICATION_STATE_FILE" "$STAGING_HOST" "$STAGING_SMOKE_URL" "${SSH_CMD[@]}"; then
+            mark_staging_local_verification_failed
             exit 1
         fi
 

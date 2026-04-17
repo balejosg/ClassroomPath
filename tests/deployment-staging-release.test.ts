@@ -133,6 +133,13 @@ describe('Deployment staging and promotion contracts', () => {
         stagingGatesHelper.includes('run_gate_command windows-bootstrap-gate')
     );
     assert.ok(
+      stagingGatesHelper.includes('print_staging_public_ingress_diagnostics()') &&
+        stagingGatesHelper.includes('https://api.ipify.org') &&
+        stagingGatesHelper.includes('dig @1.1.1.1') &&
+        stagingGatesHelper.includes('curl --max-time'),
+      'staging smoke failures should include public DNS and ingress diagnostics'
+    );
+    assert.ok(
       persistHelperContent.includes('staging-verification.env') &&
         persistHelperContent.includes(
           'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=$STAGING_FIREFOX_RELEASE_ARTIFACTS'
@@ -179,6 +186,13 @@ describe('Deployment staging and promotion contracts', () => {
       verifyHelperContent.includes(
         'bash "$STAGING_VERIFICATION_RUNNER_PATH" collect "$VERIFICATION_STATE_FILE" "$STAGING_HOST" "$STAGING_SMOKE_URL" "$CANONICAL_STAGING_URL" "$STAGING_USE_RELEASE_CANDIDATE" "${SSH_CMD[@]}"'
       )
+    );
+    assert.ok(
+      verifyHelperContent.includes('mark_staging_local_verification_failed()') &&
+        verifyHelperContent.includes('DEPLOY_FAILURE_STAGE="verification"') &&
+        verifyHelperContent.includes('FAILURE_STAGE="verification"') &&
+        verifyHelperContent.includes('write_deploy_context_state "$DEPLOY_CONTEXT_FILE"'),
+      'staging deploy should overwrite the remote deploy context when post-deploy verification fails'
     );
   });
 
