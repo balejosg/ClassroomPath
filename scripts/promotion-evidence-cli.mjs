@@ -3,38 +3,23 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
+import { parseCommandLine, requireCliOption, runCli } from './lib/release-cli.mjs';
+
 const BEGIN_MARKER = 'CLASSROOMPATH_PROMOTION_EVIDENCE_V1_BEGIN';
 const END_MARKER = 'CLASSROOMPATH_PROMOTION_EVIDENCE_V1_END';
-
-function parseArgs(argv) {
-  const [command, ...rest] = argv;
-  const options = {};
-
-  for (let index = 0; index < rest.length; index += 1) {
-    const token = rest[index];
-    if (!token.startsWith('--')) {
-      continue;
-    }
-
-    const key = token.slice(2);
-    const next = rest[index + 1];
-    if (next && !next.startsWith('--')) {
-      options[key] = next;
-      index += 1;
-    } else {
-      options[key] = 'true';
-    }
-  }
-
-  return { command, options };
-}
+const VALUE_FLAGS = [
+  '--tag',
+  '--commit',
+  '--staging-current',
+  '--staging-verification',
+  '--output',
+  '--message-file',
+  '--staging-current-output',
+  '--staging-verification-output',
+];
 
 function requireOption(options, name) {
-  const value = options[name];
-  if (!value) {
-    throw new Error(`Missing required option --${name}`);
-  }
-  return value;
+  return requireCliOption(options, name, `Missing required option --${name}`);
 }
 
 function encodeFile(path) {
@@ -115,8 +100,8 @@ function extractTagMessage(options) {
   );
 }
 
-async function main() {
-  const { command, options } = parseArgs(process.argv.slice(2));
+function main(argv) {
+  const { command, options } = parseCommandLine(argv, { valueFlags: VALUE_FLAGS });
 
   switch (command) {
     case 'write-tag-message':
@@ -130,4 +115,4 @@ async function main() {
   }
 }
 
-await main();
+runCli(main);

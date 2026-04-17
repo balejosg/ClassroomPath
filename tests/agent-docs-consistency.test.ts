@@ -61,14 +61,22 @@ describe('Agent docs consistency', () => {
       agentsDoc.includes('npm run deploy:staging'),
       'AGENTS should document the local staging deployment command'
     );
-    assert.match(
-      agentsDoc,
-      /tag `v\*`|git tag v1\.x\.x && git push origin v1\.x\.x/,
-      'AGENTS should describe tag-based production promotions'
+    assert.ok(
+      agentsDoc.includes('npm run promote:production -- v1.2.4'),
+      'AGENTS should document the canonical production promotion command'
     );
     assert.ok(
       agentsDoc.includes('verify staging evidence'),
       'AGENTS should require verifying staging evidence before production tagging'
+    );
+    assert.ok(
+      agentsDoc.includes('annotated tag') && agentsDoc.includes('Promotion evidence'),
+      'AGENTS should explain that production tags carry embedded staging evidence'
+    );
+    assert.match(
+      agentsDoc,
+      /Production server images require linux\/arm64[\s\S]*Endpoint client\s+arm64 builds are discontinued for now/,
+      'AGENTS should distinguish server ARM64 from discontinued endpoint client ARM64 builds'
     );
   });
 

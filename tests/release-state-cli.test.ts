@@ -22,7 +22,8 @@ function runCommand(
   env: NodeJS.ProcessEnv,
   encoding: 'utf-8' | 'utf8' = 'utf-8'
 ): string {
-  const result = spawnSync(command, args, {
+  const executable = command === 'node' ? process.execPath : command;
+  const result = spawnSync(executable, args, {
     cwd: projectRoot,
     encoding,
     env,
@@ -31,7 +32,7 @@ function runCommand(
   if (result.status !== 0) {
     throw (
       result.error ??
-      new Error(result.stderr || `${command} exited with code ${String(result.status)}`)
+      new Error(result.stderr || `${executable} exited with code ${String(result.status)}`)
     );
   }
 
@@ -239,6 +240,24 @@ test('promotion evidence CLI embeds and extracts staging evidence from annotated
 
   assert.equal(readFileSync(extractedCurrentPath, 'utf-8'), currentStateText);
   assert.equal(readFileSync(extractedVerificationPath, 'utf-8'), verificationStateText);
+});
+
+test('promotion evidence CLI rejects unknown options through the shared parser', () => {
+  const result = spawnSync(
+    process.execPath,
+    [promotionEvidenceCliPath, 'write-tag-message', '--unexpected', 'value'],
+    {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+      env: { ...process.env },
+    }
+  );
+
+  assert.equal(result.status, 1);
+  if (result.error?.code === 'EPERM') {
+    return;
+  }
+  assert.match(result.stderr, /Unknown argument: --unexpected/);
 });
 
 test('release-state CLI lists canonical snapshot fields for shell consumers', () => {

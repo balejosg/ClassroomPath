@@ -122,7 +122,8 @@ curl -sS https://classroompath.eu/api/config
 ## What The Workflow Verifies
 
 1. persisted staging verification evidence for the exact promoted SHA
-2. immutable image references and release manifest compatibility
+2. immutable image references, release manifest compatibility, and production `linux/arm64`
+   platform support for every runtime image
 3. migration risk as `safe`, `expand-contract`, or `destructive`
 4. backup/snapshot reference for destructive migrations
 5. Dockerized runtime config on the production host

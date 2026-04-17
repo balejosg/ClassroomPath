@@ -83,6 +83,13 @@ jobs:
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
 
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Resolve approved release candidate manifest
         id: release-images
         shell: bash
@@ -115,6 +122,17 @@ jobs:
           while IFS='=' read -r key value; do
             echo "production_${key}=$value" >> "$GITHUB_OUTPUT"
           done < <(node scripts/deploy-targets.mjs outputs production)
+
+      - name: Verify production release image platforms
+        shell: bash
+        env:
+          RELEASE_MANIFEST_B64: ${{ steps.release-images.outputs.manifest_base64 }}
+          PRODUCTION_CONTAINER_PLATFORM: ${{ steps.deploy-targets.outputs.production_container_platform }}
+        run: |
+          set -euo pipefail
+          node scripts/verify-release-manifest-platforms.mjs verify \
+            --manifest-base64 "$RELEASE_MANIFEST_B64" \
+            --target-platform "$PRODUCTION_CONTAINER_PLATFORM"
 
       - name: Build deploy payload
         id: deploy-payload

@@ -18,6 +18,8 @@ describe('regression plan layout', () => {
     );
     assert.ok(
       workflowPlan.includes('tests/workflow-core.test.ts') &&
+        workflowPlan.includes('tests/workflow-deploy.test.ts') &&
+        workflowPlan.includes('tests/workflow-production-client-canary.test.ts') &&
         workflowPlan.includes('tests/workflow-release-candidate.test.ts'),
       'workflow-config regression should target the sharded workflow suites'
     );
@@ -28,6 +30,8 @@ describe('regression plan layout', () => {
     );
     assert.ok(
       releaseAutomationPlan.includes('tests/workflow-core.test.ts') &&
+        releaseAutomationPlan.includes('tests/workflow-deploy.test.ts') &&
+        releaseAutomationPlan.includes('tests/workflow-production-client-canary.test.ts') &&
         releaseAutomationPlan.includes('tests/workflow-release-candidate.test.ts') &&
         releaseAutomationPlan.includes('tests/verification-pipeline.test.ts'),
       'release automation regression should compose the sharded workflow suites with the release verification suites'

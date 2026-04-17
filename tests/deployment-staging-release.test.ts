@@ -276,7 +276,9 @@ describe('Deployment staging and promotion contracts', () => {
         releaseStateHelper.includes('PASS_WITH_FALLBACK')
     );
     assert.ok(!workflowContent.includes('name: Release Gate Staging'));
-    assert.ok(!workflowContent.includes('docker buildx imagetools inspect'));
+    assert.ok(workflowContent.includes('Verify production release image platforms'));
+    assert.ok(workflowContent.includes('verify-release-manifest-platforms.mjs'));
+    assert.ok(workflowContent.includes('PRODUCTION_CONTAINER_PLATFORM'));
     assert.ok(!workflowContent.includes('run: sleep 30'));
     assert.ok(
       deployRuntimeHelper.includes('write_release_runtime_state') &&

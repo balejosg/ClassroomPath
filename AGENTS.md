@@ -46,17 +46,24 @@ git push origin main
 npm run deploy:staging
 ```
 
-Before production promotion, verify staging evidence and then promote by tag only:
+Before production promotion, verify staging evidence and then promote through the canonical
+tagging script:
 
 ```bash
-ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 \
-  "cat /opt/classroompath/release-state/staging-verification.env"
-git tag v1.2.3
-git push origin v1.2.3
+npm run verify:promotion-ready
+npm run promote:production -- v1.2.4
 ```
 
 Production is tag-only. Do not use ad-hoc SSH deploys or `workflow_dispatch` as the canonical path.
-Canonical production trigger: tag `v*`.
+Canonical production trigger: annotated tag `v*`.
+
+The promotion script writes `Promotion evidence` into the annotated tag message so GitHub Actions
+can reuse the staging release state without re-reading staging over SSH. The SSH read path in
+`.github/workflows/deploy.yml` is fallback-only for legacy/lightweight tags.
+
+Production server images require linux/arm64 because the production host is ARM64. Endpoint client
+arm64 builds are discontinued for now; do not remove server `linux/arm64` image support when
+disabling or discussing endpoint client ARM64 work.
 
 ## Environment Identification
 

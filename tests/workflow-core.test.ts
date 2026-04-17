@@ -14,27 +14,6 @@ import {
   type WorkflowDefinition,
 } from './helpers/ops-contracts.ts';
 
-type WorkflowJob = {
-  name?: string;
-  if?: string;
-  needs?: string | string[];
-  outputs?: Record<string, string>;
-  'runs-on'?: string | string[];
-  uses?: string;
-  secrets?: string | Record<string, string>;
-  with?: Record<string, unknown>;
-  steps?: Array<{
-    name?: string;
-    id?: string;
-    if?: string;
-    run?: string;
-    uses?: string;
-    with?: Record<string, unknown>;
-    'continue-on-error'?: boolean;
-    'working-directory'?: string;
-  }>;
-};
-
 type PackageDefinition = {
   scripts?: Record<string, string>;
 };
@@ -49,14 +28,6 @@ function readWorkflow(relativePath: string): WorkflowDefinition {
 
 function readText(relativePath: string): string {
   return readProjectText(relativePath);
-}
-
-function normalizeNeeds(needs: WorkflowJob['needs']): string[] {
-  if (!needs) {
-    return [];
-  }
-
-  return Array.isArray(needs) ? needs : [needs];
 }
 
 function readPackageJson(): PackageDefinition {
@@ -209,6 +180,8 @@ describe('Workflow core contracts', () => {
     );
     assert.match(ciRegressionHelper, /!key\.startsWith\('npm_'\)/);
     assert.match(verificationCatalog, /tests\/workflow-core\.test\.ts/);
+    assert.match(verificationCatalog, /tests\/workflow-deploy\.test\.ts/);
+    assert.match(verificationCatalog, /tests\/workflow-production-client-canary\.test\.ts/);
     assert.match(verificationCatalog, /tests\/workflow-release-candidate\.test\.ts/);
   });
 
@@ -281,92 +254,6 @@ describe('Workflow core contracts', () => {
     assert.doesNotMatch(securityWorkflow, /gacts\/gitleaks/);
     assert.doesNotMatch(securityWorkflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24/);
     assert.ok(setupNodeAction.includes("cache: 'npm'") || setupNodeAction.includes('cache: npm'));
-  });
-
-  test('deploy and smoke workflows reuse shared transport, verifier, and concurrency helpers', () => {
-    const deployWorkflow = readWorkflow('.github/workflows/deploy.yml');
-    const deployWorkflowText = readText('.github/workflows/deploy.yml');
-    const verifyStagingJob = findWorkflowJob(deployWorkflow, 'verify-staging-release-state');
-    const deployProductionJob = findWorkflowJob(deployWorkflow, 'deploy-production');
-    const smokeWorkflowText = readText('.github/workflows/smoke-tests.yml');
-    const reusableSmokeWorkflowText = readText('.github/workflows/reusable-smoke-test.yml');
-    const cleanupWorkflow = readText('.github/workflows/cleanup-staging.yml');
-    const canaryWorkflow = readText('.github/workflows/windows-firefox-canary.yml');
-    const productionClientUpdateCanaryWorkflowText = readText(
-      '.github/workflows/production-client-update-canary.yml'
-    );
-    const windowsProductionBootstrapCanaryWorkflowText = readText(
-      '.github/workflows/windows-production-bootstrap-canary.yml'
-    );
-    const concurrency = deployWorkflow.concurrency;
-    const jobs = deployWorkflow.jobs ?? {};
-
-    assert.ok(smokeWorkflowText.includes('./.github/workflows/reusable-smoke-test.yml'));
-    assert.ok(smokeWorkflowText.includes('resolve-latest-verifier-image.mjs'));
-    assert.ok(reusableSmokeWorkflowText.includes('run-smoke-in-verifier.sh'));
-    assert.ok(reusableSmokeWorkflowText.includes('verifier_image:'));
-    assert.ok(reusableSmokeWorkflowText.includes('wait-for-ready.sh'));
-    assert.ok(!reusableSmokeWorkflowText.includes('npm ci'));
-    assert.ok(deployWorkflowText.includes('source scripts/lib/github-actions-remote.sh'));
-    assert.ok(
-      String(findWorkflowStepByName(verifyStagingJob, 'Resolve staging host').run ?? '').includes(
-        'github_actions_remote_write_resolved_host_outputs'
-      )
-    );
-    assert.ok(
-      String(findWorkflowStepByName(deployProductionJob, 'Resolve deploy host').run ?? '').includes(
-        'github_actions_remote_write_resolved_host_outputs'
-      )
-    );
-    assert.ok(canaryWorkflow.includes('bash scripts/resolve-ssh-host.sh'));
-    assert.ok(cleanupWorkflow.includes('bash scripts/resolve-ssh-host.sh'));
-    assert.ok(
-      productionClientUpdateCanaryWorkflowText.includes(
-        'source scripts/lib/github-actions-remote.sh'
-      )
-    );
-    assert.ok(
-      windowsProductionBootstrapCanaryWorkflowText.includes(
-        'source scripts/lib/github-actions-remote.sh'
-      )
-    );
-    assert.ok(!deployWorkflowText.includes('DEPLOY_HOST not configured. Skipping deployment.'));
-    assert.ok(deployWorkflowText.includes('verify-staging-release-state.sh'));
-    assert.ok(deployWorkflowText.includes('Extract staging evidence from production tag'));
-    assert.ok(deployWorkflowText.includes('promotion-evidence-cli.mjs extract-tag-message'));
-    assert.ok(
-      String(
-        findWorkflowStepByName(verifyStagingJob, 'Read staging release state')?.if ?? ''
-      ).includes("steps.tag-evidence.outputs.source != 'tag'")
-    );
-    assert.ok(
-      String(
-        findWorkflowStepByName(verifyStagingJob, 'Read staging verification evidence')?.if ?? ''
-      ).includes("steps.tag-evidence.outputs.source != 'tag'")
-    );
-    assert.ok(deployWorkflowText.includes('detect-windows-firefox-risk.sh'));
-    assert.ok(deployWorkflowText.includes('staging-promotion-eligibility.json'));
-    assert.ok(deployWorkflowText.includes('PROMOTION_ELIGIBLE'));
-    assert.equal(typeof concurrency, 'object');
-    assert.match((concurrency as { group?: string }).group ?? '', /production/i);
-    assert.equal((concurrency as { 'cancel-in-progress'?: boolean })['cancel-in-progress'], false);
-    assert.ok(jobs['resolve-release-images']);
-    assert.ok((jobs['resolve-release-images']?.outputs ?? {})['payload_base64']);
-    assert.ok(jobs['verify-staging-release-state']);
-    assert.ok(jobs['deploy-production']);
-    assert.ok(jobs['smoke-test-production']);
-    assert.ok(jobs['rollback-production']);
-    assert.ok(jobs['release-evidence']);
-    assert.ok(jobs['windows-firefox-canary']);
-    assert.equal(
-      jobs['windows-firefox-canary']?.uses,
-      './.github/workflows/windows-firefox-canary.yml'
-    );
-    assert.ok(!jobs['production-client-update-canary']);
-    const deployNeeds = normalizeNeeds(jobs['deploy-production']?.needs);
-    assert.ok(deployNeeds.includes('resolve-release-images'));
-    assert.ok(deployNeeds.includes('verify-staging-release-state'));
-    assert.ok(!deployNeeds.includes('release-gate-staging'));
   });
 
   test('staging cleanup workflow runs recurring non-disruptive disk maintenance', () => {
@@ -488,44 +375,5 @@ describe('Workflow core contracts', () => {
     );
     assert.ok(productionBootstrapWorkflowText.includes('extensions.json'));
     assert.ok(productionBootstrapWorkflowText.includes('classroompath.eu'));
-  });
-
-  test('post-release production client update canary stays decoupled from deploy completion', () => {
-    const workflowPath = '.github/workflows/production-client-update-canary.yml';
-    const workflowText = readText(workflowPath);
-    const workflow = readWorkflow(workflowPath);
-    const jobs = workflow.jobs ?? {};
-    const windowsJob = jobs['windows-client-self-update-canary'];
-    const linuxJob = jobs['linux-client-self-update-canary'];
-
-    assert.ok(workflow.on?.workflow_run?.workflows?.includes('Deploy'));
-    assert.ok(workflow.on?.workflow_run?.types?.includes('completed'));
-    assert.ok(workflowText.includes('workflow_dispatch:'));
-    assert.ok(!workflowText.includes('workflow_call:'));
-    assert.equal(windowsJob?.['runs-on'], 'windows-latest');
-    assert.equal(linuxJob?.['runs-on'], 'ubuntu-latest');
-    assert.ok(workflowText.includes('create-production-windows-bootstrap-canary.mjs'));
-    assert.ok(
-      workflowText.includes('github_actions_remote_read_env_key') &&
-        workflowText.includes('Skip production client update canary when billing is manual-only') &&
-        workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET') &&
-        workflowText.includes('classroompath-production-release')
-    );
-    assert.ok(
-      workflowText.includes('OpenPath.ps1') && workflowText.includes('self-update --silent')
-    );
-    assert.ok(workflowText.includes('config.json') && workflowText.includes('lastAgentUpdateAt'));
-    assert.ok(
-      workflowText.includes('/api/enroll/$CLASSROOM_ID') &&
-        workflowText.includes('sudo bash "$enroll_script"')
-    );
-    assert.ok(workflowText.includes('/usr/local/bin/openpath-agent-update.sh --force'));
-    assert.ok(workflowText.includes('openpath-agent-update.timer'));
-    assert.ok(
-      String(windowsJob?.if ?? '').includes("github.event.workflow_run.conclusion == 'success'")
-    );
-    assert.ok(
-      String(linuxJob?.if ?? '').includes("github.event.workflow_run.conclusion == 'success'")
-    );
   });
 });

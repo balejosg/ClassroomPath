@@ -80,7 +80,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-cli',
     patterns: [
-      '^scripts/(?:detect-ci-relevant-changes|firefox-release-version|openpath-required-checks|print-verify-report-summary|release-images|release-risk-cli|release-state-cli|resolve-latest-verifier-image|resolve-openpath-linux-agent-version|run-ci-regression|verify-full|wait-for-release-candidate)\\.(?:mjs|ts)$',
+      '^scripts/(?:detect-ci-relevant-changes|firefox-release-version|openpath-required-checks|print-verify-report-summary|release-images|release-risk-cli|release-state-cli|resolve-latest-verifier-image|resolve-openpath-linux-agent-version|run-ci-regression|verify-full|verify-release-manifest-platforms|wait-for-release-candidate)\\.(?:mjs|ts)$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -114,7 +114,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-contract-test',
     patterns: [
-      '^tests/(?:deploy-intent|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-version|github-actions-artifacts|openpath-required-checks|promotion-eligibility|release-cli|release-images|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow(?:-core|-release-candidate|-config)?)\\.test\\.ts$',
+      '^tests/(?:deploy-intent|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-version|github-actions-artifacts|openpath-required-checks|promotion-eligibility|release-cli|release-images|release-manifest-platforms|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow(?:-core|-deploy|-production-client-canary|-release-candidate|-config)?)\\.test\\.ts$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -311,6 +311,7 @@ export const REGRESSION_PLAN_DEFINITIONS = {
       'tests/release-cli.test.ts',
       'tests/release-evidence.test.ts',
       'tests/release-images.test.ts',
+      'tests/release-manifest-platforms.test.ts',
       'tests/release-risk.test.ts',
       'tests/release-risk-policy.test.ts',
       'tests/release-state-cli.test.ts',
@@ -320,7 +321,12 @@ export const REGRESSION_PLAN_DEFINITIONS = {
     ],
   },
   'workflow-config': {
-    files: ['tests/workflow-core.test.ts', 'tests/workflow-release-candidate.test.ts'],
+    files: [
+      'tests/workflow-core.test.ts',
+      'tests/workflow-deploy.test.ts',
+      'tests/workflow-production-client-canary.test.ts',
+      'tests/workflow-release-candidate.test.ts',
+    ],
   },
   'release-automation': {
     include: ['ci', 'workflow-config'],
