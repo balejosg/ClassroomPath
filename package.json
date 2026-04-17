@@ -60,6 +60,7 @@
     "format:fix": "prettier --write .",
     "verify:docs": "node scripts/verify-docs.mjs",
     "verify:promotion-ready": "bash scripts/verify-production-promotion-ready.sh",
+    "verify:production-host": "bash scripts/verify-production-host-readiness.sh",
     "release:production": "bash scripts/tag-production-release.sh",
     "verify:static": "bash scripts/run-turbo.sh verify:static",
     "security:secrets": "secretlint '**/*.{js,ts,tsx,json,yml,yaml,env,env.*}'",

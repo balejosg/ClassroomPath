@@ -39,6 +39,10 @@ describe('Deployment staging and promotion contracts', () => {
     projectRoot,
     'scripts/verify-production-promotion-ready.sh'
   );
+  const productionHostReadinessScriptPath = resolve(
+    projectRoot,
+    'scripts/verify-production-host-readiness.sh'
+  );
   const deployProductionContextHelperPath = resolve(
     projectRoot,
     'scripts/lib/deploy-production-context.sh'
@@ -304,9 +308,13 @@ describe('Deployment staging and promotion contracts', () => {
       resolve(projectRoot, 'docs/runbooks/deploy-production.md'),
       'utf-8'
     );
+    const secretsDoc = readFileSync(resolve(projectRoot, 'docs/SECRETS.md'), 'utf-8');
+    const packageJson = readFileSync(resolve(projectRoot, 'package.json'), 'utf-8');
     const promotionReadyScript = readFileSync(promotionReadyScriptPath, 'utf-8');
+    const productionHostReadinessScript = readFileSync(productionHostReadinessScriptPath, 'utf-8');
 
     assert.ok(existsSync(promotionReadyScriptPath));
+    assert.ok(existsSync(productionHostReadinessScriptPath));
     assert.ok(
       promotionReadyScript.includes('release-state-cli.mjs') &&
         promotionReadyScript.includes('verify-promotion-ready') &&
@@ -323,6 +331,18 @@ describe('Deployment staging and promotion contracts', () => {
       runbook.includes(
         'ARM64 release images and ARM64 production hosts are discontinued for now'
       ) && runbook.includes('amd64')
+    );
+    assert.ok(runbook.includes('npm run verify:production-host -- <candidate-host>'));
+    assert.ok(secretsDoc.includes('npm run verify:production-host -- <candidate-host>'));
+    assert.ok(packageJson.includes('"verify:production-host"'));
+    assert.ok(
+      productionHostReadinessScript.includes('Host architecture is native amd64') &&
+        productionHostReadinessScript.includes('ARM64 hosts are unsupported') &&
+        productionHostReadinessScript.includes('test -d /opt/classroompath/app/.git') &&
+        productionHostReadinessScript.includes('docker compose version') &&
+        productionHostReadinessScript.includes('docker info') &&
+        productionHostReadinessScript.includes('current-images.env') &&
+        !productionHostReadinessScript.includes('qemu-x86_64')
     );
   });
 });

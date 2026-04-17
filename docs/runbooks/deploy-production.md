@@ -31,6 +31,7 @@ This is the canonical promotion path. Do not replace it with ad-hoc SSH deploys.
 - production compose dir: `/opt/classroompath/app/docker`
 - production env file: `/opt/classroompath/app/config/.env`
 - container platform: `linux/amd64`
+- production host readiness gate: `npm run verify:production-host -- <candidate-host>`
 
 Machine-readable public targets: [`config/deploy-targets.json`](../../config/deploy-targets.json)
 
@@ -40,8 +41,36 @@ Machine-readable public targets: [`config/deploy-targets.json`](../../config/dep
 - do not use `workflow_dispatch` as the canonical release path
 - staging must be validated first from a developer machine with `npm run deploy:staging`
 - ARM64 release images and ARM64 production hosts are discontinued for now; production promotion is blocked unless the host is native `amd64`/`x86_64`
+- before changing `DEPLOY_HOST`, validate the candidate host with `npm run verify:production-host -- <candidate-host>`
 - destructive migration releases require a recorded backup or snapshot reference before production migrations run
 - if server drift is discovered, backport to git and reconcile production through a new tag
+
+## Moving Production To A Native amd64 Host
+
+Production cannot be promoted while `classroompath.eu` resolves to an ARM64 host. Prepare the
+replacement host outside git, then validate it before changing GitHub secrets.
+
+Required candidate host state:
+
+- native `amd64`/`x86_64` Linux host
+- Docker and the Docker Compose plugin available to the deploy user
+- deploy SSH user and key installed
+- git checkout at `/opt/classroompath/app`
+- compose directory at `/opt/classroompath/app/docker`
+- runtime env file at `/opt/classroompath/app/config/.env`
+- optional release state at `/opt/classroompath/release-state/current-images.env`
+
+Run the read-only readiness gate against the candidate:
+
+```bash
+DEPLOY_SSH_KEY=~/.ssh/classroompath_deploy \
+npm run verify:production-host -- <candidate-host>
+```
+
+Only after that gate passes, update the GitHub production deploy secrets (`DEPLOY_HOST`,
+`DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`) to point at the native amd64 host. Do not create a
+production tag until both `npm run verify:production-host -- <candidate-host>` and
+`npm run verify:promotion-ready` pass against the same host.
 
 ## Promotion Steps
 

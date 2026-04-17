@@ -19,6 +19,17 @@ Configure these for the production deploy workflow:
 - `DEPLOY_USER`
 - `DEPLOY_SSH_KEY`
 
+`DEPLOY_HOST` must point to a native `amd64`/`x86_64` host while ARM64 release images are
+discontinued. Before changing it, run:
+
+```bash
+DEPLOY_SSH_KEY=~/.ssh/classroompath_deploy \
+npm run verify:production-host -- <candidate-host>
+```
+
+Do not create or push a production tag until the host-readiness gate and
+`npm run verify:promotion-ready` both pass against the same host.
+
 Production environment/runtime secrets used by the deploy workflow:
 
 - `CP_BILLING_MODE`
