@@ -10,6 +10,7 @@ import {
   buildReleaseCandidateManifestOutputs,
   formatFirefoxReleaseAssetsTimeoutError,
   formatReleaseCandidateRunFailure,
+  formatReleaseCandidateWaitProgress,
   resolveLatestSuccessfulReleaseCandidateManifest,
   resolveWorkflowRunId,
   selectLatestArtifact,
@@ -84,6 +85,26 @@ describe('wait-for-release-candidate helpers', () => {
       message,
       /last_success_without_artifact=\{run_id=321, status=completed, conclusion=success/
     );
+  });
+
+  test('formats release candidate wait progress with SHA, state, run context, and run URL', () => {
+    const message = formatReleaseCandidateWaitProgress({
+      repository: 'balejosg/ClassroomPath',
+      targetSha: 'abc123',
+      lastState: 'pending',
+      latestRun: {
+        databaseId: 987,
+        status: 'in_progress',
+        updatedAt: '2026-03-27T11:00:00Z',
+      },
+    });
+
+    assert.match(message, /sha=abc123/);
+    assert.match(message, /last_state=pending/);
+    assert.match(message, /run_id=987/);
+    assert.match(message, /status=in_progress/);
+    assert.match(message, /updated_at=2026-03-27T11:00:00Z/);
+    assert.match(message, /https:\/\/github\.com\/balejosg\/ClassroomPath\/actions\/runs\/987/);
   });
 
   test('builds the full manifest contract for output files and stdout', () => {

@@ -57,8 +57,39 @@ export function formatWorkflowRunContext(run) {
   return `{${details.join(', ')}}`;
 }
 
+export function formatWorkflowRunUrl({ repository, run }) {
+  const repo = String(repository ?? '').trim();
+  const runId = normalizeWorkflowRunId(run);
+
+  if (!repo || !runId) {
+    return null;
+  }
+
+  return `https://github.com/${repo}/actions/runs/${runId}`;
+}
+
 export function formatReleaseCandidateRunFailure({ targetSha, run }) {
   return `Release candidate workflow run for SHA ${targetSha} failed (${formatWorkflowRunContext(run)})`;
+}
+
+export function formatReleaseCandidateWaitProgress({
+  repository,
+  targetSha,
+  lastState = 'missing',
+  latestRun = null,
+}) {
+  const details = [
+    `sha=${targetSha}`,
+    `last_state=${lastState}`,
+    `latest_run=${formatWorkflowRunContext(latestRun)}`,
+  ];
+  const runUrl = formatWorkflowRunUrl({ repository, run: latestRun });
+
+  if (runUrl) {
+    details.push(`run_url=${runUrl}`);
+  }
+
+  return `Waiting for release candidate manifest (${details.join('; ')})`;
 }
 
 export function formatFirefoxReleaseAssetsTimeoutError({
@@ -342,6 +373,16 @@ export function waitForReleaseCandidateManifest({
         status: 'pending',
         context: { lastState: state, latestRun: run },
       };
+    },
+    onPending({ lastState = 'missing', latestRun = null } = {}) {
+      console.error(
+        formatReleaseCandidateWaitProgress({
+          repository: repo,
+          targetSha,
+          lastState,
+          latestRun,
+        })
+      );
     },
     formatTimeoutError({ lastState = 'missing', latestRun = null }) {
       return `Timed out waiting for a successful release candidate manifest for SHA ${targetSha} (last_state=${lastState}; latest_run=${formatWorkflowRunContext(latestRun)})`;

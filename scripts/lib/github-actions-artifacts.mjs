@@ -163,6 +163,7 @@ export function waitForArtifactResolution({
   timeoutSeconds = 900,
   intervalSeconds = 10,
   attempt,
+  onPending,
   formatTimeoutError,
 } = {}) {
   if (typeof attempt !== 'function') {
@@ -186,6 +187,10 @@ export function waitForArtifactResolution({
     }
 
     timeoutContext = result.context ?? timeoutContext;
+
+    if (typeof onPending === 'function') {
+      onPending(timeoutContext);
+    }
 
     if (Date.now() >= deadline) {
       throw new Error(formatTimeoutError(timeoutContext));

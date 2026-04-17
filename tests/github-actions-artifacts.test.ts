@@ -47,6 +47,33 @@ describe('github-actions-artifacts helper', () => {
     );
   });
 
+  test('reports pending resolution context before sleeping or timing out', () => {
+    const pendingContexts: Array<Record<string, unknown>> = [];
+
+    assert.throws(
+      () =>
+        waitForArtifactResolution({
+          timeoutSeconds: 0,
+          intervalSeconds: 0,
+          attempt() {
+            return {
+              status: 'pending',
+              context: { lastState: 'missing', latestRunId: 12345 },
+            };
+          },
+          onPending(context) {
+            pendingContexts.push(context);
+          },
+          formatTimeoutError() {
+            return 'timeout';
+          },
+        }),
+      /timeout/
+    );
+
+    assert.deepEqual(pendingContexts, [{ lastState: 'missing', latestRunId: 12345 }]);
+  });
+
   test('requires both the attempt callback and timeout formatter', () => {
     assert.throws(() => waitForArtifactResolution({ formatTimeoutError() {} }), /attempt callback/);
     assert.throws(() => waitForArtifactResolution({ attempt() {} }), /timeout formatter/);
