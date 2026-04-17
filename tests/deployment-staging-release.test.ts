@@ -325,6 +325,10 @@ describe('Deployment staging and promotion contracts', () => {
     const secretsDoc = readFileSync(resolve(projectRoot, 'docs/SECRETS.md'), 'utf-8');
     const packageJson = readFileSync(resolve(projectRoot, 'package.json'), 'utf-8');
     const promotionReadyScript = readFileSync(promotionReadyScriptPath, 'utf-8');
+    const tagProductionScript = readFileSync(
+      resolve(projectRoot, 'scripts/tag-production-release.sh'),
+      'utf-8'
+    );
     const productionHostReadinessScript = readFileSync(productionHostReadinessScriptPath, 'utf-8');
 
     assert.ok(existsSync(promotionReadyScriptPath));
@@ -339,6 +343,11 @@ describe('Deployment staging and promotion contracts', () => {
         promotionReadyScript.includes('configure_deploy_container_platform "$target_platform"')
     );
     assert.ok(!promotionReadyScript.includes('qemu-x86_64'));
+    assert.ok(promotionReadyScript.includes('PROMOTION_EVIDENCE_DIR'));
+    assert.ok(tagProductionScript.includes('promotion-evidence-cli.mjs'));
+    assert.ok(
+      tagProductionScript.includes('git tag -a "$TAG_NAME" "$main_sha" -F "$tag_message_file"')
+    );
     assert.ok(runbook.includes('npm run verify:promotion-ready'));
     assert.ok(runbook.includes('npm run promote:production -- v1.2.4'));
     assert.ok(runbook.includes('Production server images support linux/arm64'));

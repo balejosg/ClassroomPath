@@ -64,10 +64,25 @@ if git ls-remote --exit-code --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1
   die "Remote tag already exists on origin: $TAG_NAME" 1
 fi
 
-log_info "Verifying staging promotion eligibility before tagging $TAG_NAME..."
-bash scripts/verify-production-promotion-ready.sh
+promotion_evidence_dir="$(mktemp -d)"
+tag_message_file="$(mktemp)"
+cleanup() {
+  rm -rf "$promotion_evidence_dir"
+  rm -f "$tag_message_file"
+}
+trap cleanup EXIT
 
-git tag "$TAG_NAME" "$main_sha"
+log_info "Verifying staging promotion eligibility before tagging $TAG_NAME..."
+PROMOTION_EVIDENCE_DIR="$promotion_evidence_dir" bash scripts/verify-production-promotion-ready.sh
+
+node scripts/promotion-evidence-cli.mjs write-tag-message \
+  --tag "$TAG_NAME" \
+  --commit "$main_sha" \
+  --staging-current "$promotion_evidence_dir/staging-current-images.env" \
+  --staging-verification "$promotion_evidence_dir/staging-verification.env" \
+  --output "$tag_message_file"
+
+git tag -a "$TAG_NAME" "$main_sha" -F "$tag_message_file"
 log_success "Created production tag $TAG_NAME at $main_sha"
 
 if [ "$PUSH_MODE" = "--local-only" ]; then

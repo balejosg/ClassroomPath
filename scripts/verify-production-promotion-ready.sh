@@ -162,6 +162,12 @@ node "$SCRIPT_DIR/release-state-cli.mjs" verify-promotion-ready \
   --high-risk "${HIGH_RISK:-false}" \
   --report-json "$report_json_file"
 
+if [ -n "${PROMOTION_EVIDENCE_DIR:-}" ]; then
+  mkdir -p "$PROMOTION_EVIDENCE_DIR"
+  install -m 600 "$current_state_file" "$PROMOTION_EVIDENCE_DIR/staging-current-images.env"
+  install -m 600 "$verification_state_file" "$PROMOTION_EVIDENCE_DIR/staging-verification.env"
+fi
+
 log_success "Staging release for $TARGET_SHA is promotion-ready"
 if [ -n "${PROMOTION_REPORT_JSON_PATH:-}" ]; then
   log_info "Structured report written to $PROMOTION_REPORT_JSON_PATH"

@@ -14,6 +14,7 @@ import {
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
 const cliPath = resolve(projectRoot, 'scripts/release-state-cli.mjs');
+const promotionEvidenceCliPath = resolve(projectRoot, 'scripts/promotion-evidence-cli.mjs');
 
 function runCommand(
   command: string,
@@ -171,6 +172,73 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
   assert.equal(report.eligible, true);
   assert.equal(report.deploymentMode, 'promotion-eligible');
   assert.equal(report.checks.windowsFirefox.status, 'pass');
+});
+
+test('promotion evidence CLI embeds and extracts staging evidence from annotated tag messages', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'promotion-evidence-cli-'));
+  const currentStatePath = join(tempDir, 'current-images.env');
+  const verificationStatePath = join(tempDir, 'staging-verification.env');
+  const tagMessagePath = join(tempDir, 'tag-message.txt');
+  const extractedCurrentPath = join(tempDir, 'extracted-current-images.env');
+  const extractedVerificationPath = join(tempDir, 'extracted-staging-verification.env');
+
+  const currentStateText = [
+    'APP_SHA=abc123',
+    'IMAGE_SOURCE=release-candidate',
+    'CLASSROOMPATH_GATEWAY_IMAGE=ghcr.io/balejosg/classroompath-gateway:abc123',
+    '',
+  ].join('\n');
+  const verificationStateText = [
+    'STAGING_VERIFIED_AT=2026-04-11T06:00:00Z',
+    'STAGING_VERIFIED_APP_SHA=abc123',
+    'STAGING_SMOKE_STATUS=PASS',
+    '',
+  ].join('\n');
+
+  writeFileSync(currentStatePath, currentStateText, 'utf-8');
+  writeFileSync(verificationStatePath, verificationStateText, 'utf-8');
+
+  runCommand(
+    'node',
+    [
+      promotionEvidenceCliPath,
+      'write-tag-message',
+      '--tag',
+      'v1.2.131',
+      '--commit',
+      'abc123',
+      '--staging-current',
+      currentStatePath,
+      '--staging-verification',
+      verificationStatePath,
+      '--output',
+      tagMessagePath,
+    ],
+    { ...process.env }
+  );
+
+  const tagMessage = readFileSync(tagMessagePath, 'utf-8');
+  assert.match(tagMessage, /CLASSROOMPATH_PROMOTION_EVIDENCE_V1_BEGIN/);
+  assert.match(tagMessage, /staging-current-images.env.base64=/);
+  assert.match(tagMessage, /staging-verification.env.base64=/);
+
+  runCommand(
+    'node',
+    [
+      promotionEvidenceCliPath,
+      'extract-tag-message',
+      '--message-file',
+      tagMessagePath,
+      '--staging-current-output',
+      extractedCurrentPath,
+      '--staging-verification-output',
+      extractedVerificationPath,
+    ],
+    { ...process.env }
+  );
+
+  assert.equal(readFileSync(extractedCurrentPath, 'utf-8'), currentStateText);
+  assert.equal(readFileSync(extractedVerificationPath, 'utf-8'), verificationStateText);
 });
 
 test('release-state CLI lists canonical snapshot fields for shell consumers', () => {

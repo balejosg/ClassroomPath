@@ -274,7 +274,8 @@ describe('Deployment foundation contracts', () => {
 
     assert.ok(existsSync(productionTagScriptPath));
     assert.ok(tagScript.includes('bash scripts/verify-production-promotion-ready.sh'));
-    assert.ok(tagScript.includes('git tag "$TAG_NAME" "$main_sha"'));
+    assert.ok(tagScript.includes('git tag -a "$TAG_NAME" "$main_sha" -F "$tag_message_file"'));
+    assert.ok(tagScript.includes('PROMOTION_EVIDENCE_DIR="$promotion_evidence_dir"'));
     assert.ok(tagScript.includes('git push origin "$TAG_NAME"'));
     assert.ok(tagScript.includes('HEAD must match origin/main'));
     assert.ok(runbook.includes('npm run promote:production -- v1.2.4'));

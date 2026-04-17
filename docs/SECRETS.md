@@ -56,9 +56,14 @@ Production environment/runtime secrets used by the deploy workflow:
 
 These are used for:
 
-- staging-state verification in production promotion
+- staging-state verification in production promotion for legacy/lightweight tags
 - staging cleanup workflow
 - Windows/Firefox canary workflows
+
+Current production tags created by `npm run promote:production -- vX.Y.Z` embed
+the locally verified staging release-state evidence in the annotated tag. The
+Deploy workflow validates that embedded evidence first, then falls back to these
+staging SSH secrets only when promoting an older tag without embedded evidence.
 
 ## SSH Key Setup
 

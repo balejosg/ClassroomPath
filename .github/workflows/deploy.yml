@@ -225,7 +225,24 @@ jobs:
           source scripts/lib/github-actions-remote.sh
           github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-release
 
+      - name: Extract staging evidence from production tag
+        id: tag-evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)' > production-tag-message.txt
+          if node scripts/promotion-evidence-cli.mjs extract-tag-message \
+            --message-file production-tag-message.txt \
+            --staging-current-output staging-release-state.env \
+            --staging-verification-output staging-verification.env 2>/dev/null; then
+            echo "source=tag" >> "$GITHUB_OUTPUT"
+          else
+            rm -f staging-release-state.env staging-verification.env
+            echo "source=ssh" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Read staging release state
+        if: steps.tag-evidence.outputs.source != 'tag'
         run: |
           source scripts/lib/github-actions-remote.sh
           github_actions_remote_read_file \
@@ -236,6 +253,7 @@ jobs:
             /opt/classroompath/release-state/current-images.env > staging-release-state.env
 
       - name: Read staging verification evidence
+        if: steps.tag-evidence.outputs.source != 'tag'
         run: |
           source scripts/lib/github-actions-remote.sh
           github_actions_remote_read_file \

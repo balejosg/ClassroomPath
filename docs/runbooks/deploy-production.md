@@ -99,6 +99,13 @@ npm run verify:promotion-ready
 npm run promote:production -- v1.2.4
 ```
 
+The script creates an annotated production tag. The annotation embeds the
+staging release-state evidence that was just verified locally, so the GitHub
+Deploy workflow can validate the same evidence even when the runner cannot
+reach staging over SSH. This is a fallback for runner connectivity, not a bypass:
+the workflow still compares the embedded evidence against the approved release
+candidate manifest and the promoted commit SHA.
+
 5. Monitor the workflow and inspect the release evidence.
 
 ```bash
