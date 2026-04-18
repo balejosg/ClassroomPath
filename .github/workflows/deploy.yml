@@ -331,7 +331,6 @@ jobs:
     name: Windows Firefox Canary
     needs: verify-staging-release-state
     if: needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk == 'true'
-    continue-on-error: true
     uses: ./.github/workflows/windows-firefox-canary.yml
     secrets: inherit
 
@@ -523,7 +522,7 @@ jobs:
             "STAGING_FIREFOX_METADATA_SHA256": "${{ needs.verify-staging-release-state.outputs.staging_firefox_metadata_sha256 }}",
             "STAGING_FIREFOX_XPI_SHA256": "${{ needs.verify-staging-release-state.outputs.staging_firefox_xpi_sha256 }}",
             "STAGING_VERIFIED_AT": "${{ needs.verify-staging-release-state.outputs.staging_verified_at }}",
-            "WINDOWS_FIREFOX_CANARY_RESULT": "${{ needs.windows-firefox-canary.result }}",
+            "WINDOWS_FIREFOX_CANARY_RESULT": "${{ needs.windows-firefox-canary.outputs.canary_result || needs.windows-firefox-canary.result }}",
             "DEPLOY_RESULT": "${{ needs.deploy-production.result }}",
             "PRODUCTION_SMOKE_RESULT": "${{ needs.smoke-test-production.result }}",
             "ROLLBACK_RESULT": "${{ needs.rollback-production.result }}",

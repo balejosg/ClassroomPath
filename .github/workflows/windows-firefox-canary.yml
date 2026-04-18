@@ -2,6 +2,10 @@ name: Windows Firefox Canary
 
 on:
   workflow_call:
+    outputs:
+      canary_result:
+        description: Advisory Windows/Firefox canary result for release evidence.
+        value: ${{ jobs.windows-firefox-canary.outputs.canary_result }}
     secrets:
       STAGING_DEPLOY_HOST:
         required: true
@@ -20,6 +24,8 @@ jobs:
   windows-firefox-canary:
     name: Windows Firefox Canary
     runs-on: windows-latest
+    outputs:
+      canary_result: ${{ steps.result.outputs.canary_result }}
 
     steps:
       - name: Checkout
@@ -48,6 +54,8 @@ jobs:
           echo "key_path=$HOME/.ssh/classroompath-staging-canary" >> "$GITHUB_OUTPUT"
 
       - name: Download staging Firefox release evidence and assets
+        id: staging_assets
+        continue-on-error: true
         shell: bash
         env:
           STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
@@ -86,6 +94,9 @@ jobs:
           base64 -d openpath-firefox-extension.xpi.base64 > openpath-firefox-extension.xpi
 
       - name: Run Firefox policy canary
+        id: firefox_policy
+        if: steps.staging_assets.outcome == 'success'
+        continue-on-error: true
         shell: pwsh
         run: |
           Get-Content staging-verification.env | ForEach-Object {
@@ -193,3 +204,23 @@ jobs:
           if ($registryAddon -and $registryAddon.active -eq $false) {
             throw "Firefox registered the extension id $($metadata.extensionId) but did not activate it"
           }
+
+      - name: Record canary result
+        id: result
+        if: always()
+        shell: bash
+        env:
+          STAGING_ASSETS_OUTCOME: ${{ steps.staging_assets.outcome }}
+          FIREFOX_POLICY_OUTCOME: ${{ steps.firefox_policy.outcome }}
+        run: |
+          set -euo pipefail
+
+          result=failure
+          if [ "$STAGING_ASSETS_OUTCOME" = "success" ] && [ "$FIREFOX_POLICY_OUTCOME" = "success" ]; then
+            result=success
+          fi
+
+          echo "canary_result=$result" >> "$GITHUB_OUTPUT"
+          if [ "$result" != "success" ]; then
+            echo "::warning::Windows/Firefox canary is advisory and reported $result (staging assets: $STAGING_ASSETS_OUTCOME, Firefox policy: $FIREFOX_POLICY_OUTCOME)."
+          fi

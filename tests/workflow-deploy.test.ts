@@ -12,7 +12,6 @@ import {
 type WorkflowJob = {
   needs?: string | string[];
   uses?: string;
-  'continue-on-error'?: boolean;
   outputs?: Record<string, string>;
   steps?: Array<{
     name?: string;
@@ -49,6 +48,8 @@ describe('Deploy workflow contracts', () => {
     const reusableSmokeWorkflowText = readText('.github/workflows/reusable-smoke-test.yml');
     const cleanupWorkflow = readText('.github/workflows/cleanup-staging.yml');
     const canaryWorkflow = readText('.github/workflows/windows-firefox-canary.yml');
+    const canaryReusableWorkflow = readWorkflow('.github/workflows/windows-firefox-canary.yml');
+    const canaryReusableJob = findWorkflowJob(canaryReusableWorkflow, 'windows-firefox-canary');
     const productionClientUpdateCanaryWorkflowText = readText(
       '.github/workflows/production-client-update-canary.yml'
     );
@@ -127,10 +128,28 @@ describe('Deploy workflow contracts', () => {
       jobs['windows-firefox-canary']?.uses,
       './.github/workflows/windows-firefox-canary.yml'
     );
+    assert.ok(
+      !('continue-on-error' in jobs['windows-firefox-canary']),
+      'reusable workflow jobs cannot use continue-on-error in the caller'
+    );
     assert.equal(
-      jobs['windows-firefox-canary']?.['continue-on-error'],
-      true,
-      'the advisory Windows/Firefox canary should stay visible without failing the production deploy workflow'
+      canaryReusableJob.outputs?.canary_result,
+      '${{ steps.result.outputs.canary_result }}'
+    );
+    assert.equal(
+      findWorkflowStepByName(
+        canaryReusableJob,
+        'Download staging Firefox release evidence and assets'
+      )?.['continue-on-error'],
+      true
+    );
+    assert.equal(
+      findWorkflowStepByName(canaryReusableJob, 'Run Firefox policy canary')?.['continue-on-error'],
+      true
+    );
+    assert.match(
+      deployWorkflowText,
+      /"WINDOWS_FIREFOX_CANARY_RESULT": "\$\{\{ needs\.windows-firefox-canary\.outputs\.canary_result \|\| needs\.windows-firefox-canary\.result \}\}"/
     );
     assert.ok(!jobs['production-client-update-canary']);
     const deployNeeds = normalizeNeeds(jobs['deploy-production']?.needs);
