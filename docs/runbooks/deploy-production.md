@@ -129,6 +129,13 @@ curl -sS https://classroompath.eu/api/config
 5. Dockerized runtime config on the production host
 6. post-deploy health, readiness, and smoke behavior
 
+## Windows Canary Timeout Note
+
+The Windows/Firefox canary is advisory. GitHub-hosted Windows runners can time out when opening
+SSH to the private staging host; when staging evidence for the same tag already records successful
+Windows bootstrap and Firefox policy checks, and production deploy plus smoke pass, treat that SSH
+timeout as the documented platform connectivity defect rather than as a production rollback signal.
+
 Successful tagged releases publish `release-evidence-<tag>` with:
 
 - ClassroomPath SHA

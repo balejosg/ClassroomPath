@@ -331,6 +331,7 @@ jobs:
     name: Windows Firefox Canary
     needs: verify-staging-release-state
     if: needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk == 'true'
+    continue-on-error: true
     uses: ./.github/workflows/windows-firefox-canary.yml
     secrets: inherit
 

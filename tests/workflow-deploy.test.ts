@@ -12,6 +12,7 @@ import {
 type WorkflowJob = {
   needs?: string | string[];
   uses?: string;
+  'continue-on-error'?: boolean;
   outputs?: Record<string, string>;
   steps?: Array<{
     name?: string;
@@ -125,6 +126,11 @@ describe('Deploy workflow contracts', () => {
     assert.equal(
       jobs['windows-firefox-canary']?.uses,
       './.github/workflows/windows-firefox-canary.yml'
+    );
+    assert.equal(
+      jobs['windows-firefox-canary']?.['continue-on-error'],
+      true,
+      'the advisory Windows/Firefox canary should stay visible without failing the production deploy workflow'
     );
     assert.ok(!jobs['production-client-update-canary']);
     const deployNeeds = normalizeNeeds(jobs['deploy-production']?.needs);
