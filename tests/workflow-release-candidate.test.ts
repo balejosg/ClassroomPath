@@ -43,7 +43,28 @@ describe('Release candidate workflow contracts', () => {
     const detectScript = readFileSync(detectScriptPath, 'utf-8');
 
     assert.match(detectScript, /node scripts\/lib\/release-candidate-components\.mjs classify/);
+    assert.match(detectScript, /git -C upstream\/openpath rev-parse --is-inside-work-tree/);
+    assert.match(detectScript, /__unknown_openpath_gitlink_change__/);
+    assert.ok(!detectScript.includes('-d upstream/openpath/.git'));
     assert.ok(!detectScript.includes('cannot infer which OpenPath workspace changed'));
+  });
+
+  test('release candidate detector rebuilds every image family when an OpenPath gitlink diff is unknown', async () => {
+    const { classifyReleaseCandidateComponents } =
+      await import('../scripts/lib/release-candidate-components.mjs');
+
+    const flags = classifyReleaseCandidateComponents({
+      changedFiles: ['upstream/openpath'],
+      openpathChangedFiles: ['__unknown_openpath_gitlink_change__'],
+    });
+
+    assert.deepEqual(flags, {
+      gatewayChanged: true,
+      migrationsChanged: true,
+      openpathApiChanged: true,
+      spaChanged: true,
+      verifierChanged: true,
+    });
   });
 
   test('release candidate workflow keeps Firefox signing and reusable family contracts centralized', () => {

@@ -31,8 +31,17 @@ else
   if printf '%s\n' "$changed_files" | grep -qx 'upstream/openpath'; then
     openpath_base_sha="$(git rev-parse "$BASE_SHA:upstream/openpath" 2>/dev/null || true)"
     openpath_head_sha="$(git rev-parse "$HEAD_SHA:upstream/openpath" 2>/dev/null || true)"
-    if [ -n "$openpath_base_sha" ] && [ -n "$openpath_head_sha" ] && [ -d upstream/openpath/.git ]; then
+    if
+      [ -n "$openpath_base_sha" ] &&
+        [ -n "$openpath_head_sha" ] &&
+        git -C upstream/openpath rev-parse --is-inside-work-tree >/dev/null 2>&1
+    then
       openpath_changed_files="$(git -C upstream/openpath diff --name-only "$openpath_base_sha" "$openpath_head_sha" || true)"
+    fi
+
+    if [ -z "$openpath_changed_files" ]; then
+      echo 'Unable to derive OpenPath gitlink diff; rebuilding every release-candidate image family.' >&2
+      openpath_changed_files='__unknown_openpath_gitlink_change__'
     fi
   fi
 
