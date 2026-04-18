@@ -159,6 +159,7 @@ describe('Deploy workflow contracts', () => {
     assert.ok(deployNeeds.includes('resolve-release-images'));
     assert.ok(deployNeeds.includes('verify-staging-release-state'));
     assert.ok(deployNeeds.includes('windows-firefox-canary'));
+    assert.match(String(jobs['deploy-production']?.if ?? ''), /^always\(\) && /);
     assert.match(
       String(jobs['deploy-production']?.if ?? ''),
       /needs\.windows-firefox-canary\.result == 'success' \|\| needs\.windows-firefox-canary\.result == 'skipped'/
