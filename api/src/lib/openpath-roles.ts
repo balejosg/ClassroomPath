@@ -18,6 +18,20 @@ function toMirroredOpenPathRole(role: string): RoleInfo['role'] {
   return role === 'admin' ? 'admin' : 'teacher';
 }
 
+async function resolveRoleCreatorId(params: { userId: string; actedBy: string }): Promise<string> {
+  if (params.actedBy === params.userId) {
+    return params.userId;
+  }
+
+  const [actor] = await openpathDb
+    .select({ id: openpathSchema.users.id })
+    .from(openpathSchema.users)
+    .where(eq(openpathSchema.users.id, params.actedBy))
+    .limit(1);
+
+  return actor?.id ?? params.userId;
+}
+
 export async function getUserRoles(userId: string): Promise<RoleInfo[]> {
   const result = await openpathDb
     .select()
@@ -61,12 +75,17 @@ export async function synchronizeOpenPathRole(params: {
       : normalizeGroupIds(existing[0]?.groupIds);
 
   if (existing.length === 0) {
+    const createdBy = await resolveRoleCreatorId({
+      userId: params.userId,
+      actedBy: params.actedBy,
+    });
+
     await openpathDb.insert(openpathSchema.roles).values({
       id: nanoid(),
       userId: params.userId,
       role: mirroredRole,
       groupIds: nextGroupIds,
-      createdBy: params.actedBy,
+      createdBy,
     });
 
     return {
