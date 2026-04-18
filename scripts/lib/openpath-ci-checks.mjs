@@ -5,6 +5,91 @@ export const OPENPATH_CI_JOB_NAMES = [
   'Delivery Contracts (Node)',
 ];
 
+export const OPENPATH_BASE_REQUIRED_CHECKS = ['CI Success'];
+
+export const OPENPATH_HIGH_RISK_REQUIRED_CHECKS = [
+  {
+    check: 'E2E Summary',
+    patterns: [
+      /^windows\//,
+      /^linux\//,
+      /^firefox-extension\//,
+      /^tests\/e2e\//,
+      /^api\/.*\/token-delivery[^/]*$/,
+      /^api\/.*token-delivery[^/]*$/,
+      /^\.github\/workflows\/(?:ci|e2e|installer).*\.ya?ml$/,
+    ],
+  },
+  {
+    check: 'Installer Contracts Success',
+    patterns: [
+      /^windows\//,
+      /^linux\//,
+      /^firefox-extension\//,
+      /^api\/.*\/token-delivery[^/]*$/,
+      /^api\/.*token-delivery[^/]*$/,
+      /^\.github\/workflows\/(?:ci|e2e|installer).*\.ya?ml$/,
+    ],
+  },
+  {
+    check: 'Build and Release Scripts',
+    patterns: [
+      /^package(?:-lock)?\.json$/,
+      /^VERSION$/,
+      /^\.github\/workflows\/(?:ci|e2e|installer|release).*\.ya?ml$/,
+      /^scripts\/.*(?:build|release|installer).*$/,
+    ],
+  },
+];
+
+function uniqueValues(values) {
+  return [...new Set(values)];
+}
+
+export function evaluateOpenPathChangedFilesRisk(changedFiles) {
+  const matchedFiles = [];
+  const matchedChecks = new Set();
+
+  for (const changedFile of changedFiles) {
+    const fileChecks = OPENPATH_HIGH_RISK_REQUIRED_CHECKS.filter((rule) =>
+      rule.patterns.some((pattern) => pattern.test(changedFile))
+    );
+
+    if (fileChecks.length === 0) {
+      continue;
+    }
+
+    matchedFiles.push(changedFile);
+    for (const rule of fileChecks) {
+      matchedChecks.add(rule.check);
+    }
+  }
+
+  return {
+    highRisk: matchedChecks.size > 0,
+    matchedFiles,
+    matchedChecks: [...matchedChecks],
+  };
+}
+
+export function resolveOpenPathRequiredChecks({ explicitRequiredChecks, changedFiles = [] } = {}) {
+  const risk = evaluateOpenPathChangedFilesRisk(changedFiles);
+
+  if (explicitRequiredChecks && explicitRequiredChecks.length > 0) {
+    return {
+      requiredChecks: uniqueValues(explicitRequiredChecks),
+      highRisk: risk.highRisk,
+      matchedFiles: risk.matchedFiles,
+    };
+  }
+
+  return {
+    requiredChecks: uniqueValues([...OPENPATH_BASE_REQUIRED_CHECKS, ...risk.matchedChecks]),
+    highRisk: risk.highRisk,
+    matchedFiles: risk.matchedFiles,
+  };
+}
+
 export function parseTimestamp(value) {
   if (!value) {
     return 0;

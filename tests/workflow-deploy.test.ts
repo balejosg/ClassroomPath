@@ -92,6 +92,9 @@ describe('Deploy workflow contracts', () => {
     assert.ok(deployWorkflowText.includes('verify-staging-release-state.sh'));
     assert.ok(deployWorkflowText.includes('Extract staging evidence from production tag'));
     assert.ok(deployWorkflowText.includes('promotion-evidence-cli.mjs extract-tag-message'));
+    assert.ok(deployWorkflowText.includes('Resolve OpenPath required-check base'));
+    assert.ok(deployWorkflowText.includes('OPENPATH_BASE_SHA'));
+    assert.ok(!deployWorkflowText.includes('OPENPATH_REQUIRED_CHECKS: CI Success'));
     assert.ok(
       String(
         findWorkflowStepByName(verifyStagingJob, 'Read staging release state')?.if ?? ''
@@ -155,6 +158,11 @@ describe('Deploy workflow contracts', () => {
     const deployNeeds = normalizeNeeds(jobs['deploy-production']?.needs);
     assert.ok(deployNeeds.includes('resolve-release-images'));
     assert.ok(deployNeeds.includes('verify-staging-release-state'));
+    assert.ok(deployNeeds.includes('windows-firefox-canary'));
+    assert.match(
+      String(jobs['deploy-production']?.if ?? ''),
+      /needs\.windows-firefox-canary\.result == 'success' \|\| needs\.windows-firefox-canary\.result == 'skipped'/
+    );
     assert.ok(!deployNeeds.includes('release-gate-staging'));
   });
 });

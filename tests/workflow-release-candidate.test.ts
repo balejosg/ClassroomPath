@@ -291,4 +291,12 @@ describe('Release candidate workflow contracts', () => {
       )
     );
   });
+
+  test('OpenPath sync workflow lets the required-check script derive risk from the upstream diff', () => {
+    const workflowText = readText('.github/workflows/sync-openpath.yml');
+
+    assert.ok(workflowText.includes('OPENPATH_BASE_SHA: ${{ steps.check.outputs.current }}'));
+    assert.ok(workflowText.includes('OPENPATH_SHA: ${{ steps.check.outputs.latest }}'));
+    assert.ok(!workflowText.includes('OPENPATH_REQUIRED_CHECKS: CI Success'));
+  });
 });

@@ -4,6 +4,7 @@ import {
   OPENPATH_CI_JOB_NAMES,
   evaluateRequiredChecks,
   parseRunIdFromUrl,
+  resolveOpenPathRequiredChecks,
 } from './lib/openpath-ci-checks.mjs';
 import { buildGitHubApiHeaders, isDirectExecution } from './lib/github-actions.mjs';
 import { gitOutput } from './lib/git-process.mjs';
@@ -17,8 +18,9 @@ Verifies that the target OpenPath commit has the required GitHub check-runs in s
 
 Environment variables:
   OPENPATH_SHA              Commit SHA to verify. Defaults to the local upstream/openpath submodule SHA.
+  OPENPATH_BASE_SHA         Optional previous OpenPath SHA used to derive risk-aware required checks.
   OPENPATH_REPO             GitHub repo in owner/name form. Default: balejosg/openpath
-  OPENPATH_REQUIRED_CHECKS  Comma-separated list of required check names.
+  OPENPATH_REQUIRED_CHECKS  Comma-separated explicit override of required check names.
   GITHUB_TOKEN or GH_TOKEN  Token used to query the GitHub API.
 `);
 }
@@ -39,6 +41,21 @@ function resolveOpenPathSha() {
   }
 
   return gitOutput(['rev-parse', 'HEAD:upstream/openpath']);
+}
+
+function resolveOpenPathBaseSha() {
+  return process.env.OPENPATH_BASE_SHA?.trim() || '';
+}
+
+function listOpenPathChangedFiles({ baseSha, sha }) {
+  if (!baseSha) {
+    return [];
+  }
+
+  return gitOutput(['-C', 'upstream/openpath', 'diff', '--name-only', baseSha, sha])
+    .split('\n')
+    .map((value) => value.trim())
+    .filter(Boolean);
 }
 
 async function fetchCheckRuns({ repo, sha, token }) {
@@ -119,8 +136,17 @@ async function main() {
 
   const repo = process.env.OPENPATH_REPO?.trim() || 'balejosg/openpath';
   const sha = resolveOpenPathSha();
+  const baseSha = resolveOpenPathBaseSha();
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  const requiredChecks = parseRequiredChecks(process.env.OPENPATH_REQUIRED_CHECKS);
+  const explicitRequiredChecks = process.env.OPENPATH_REQUIRED_CHECKS
+    ? parseRequiredChecks(process.env.OPENPATH_REQUIRED_CHECKS)
+    : undefined;
+  const changedFiles = listOpenPathChangedFiles({ baseSha, sha });
+  const requiredCheckResolution = resolveOpenPathRequiredChecks({
+    explicitRequiredChecks,
+    changedFiles,
+  });
+  const requiredChecks = requiredCheckResolution.requiredChecks;
 
   if (!token) {
     throw new Error('GITHUB_TOKEN or GH_TOKEN must be set');
@@ -149,7 +175,12 @@ async function main() {
     return;
   }
 
-  console.log(`OpenPath required checks passed for ${repo}@${sha}: ${requiredChecks.join(', ')}`);
+  const riskSummary = requiredCheckResolution.highRisk
+    ? `high-risk diff: ${requiredCheckResolution.matchedFiles.join(', ')}`
+    : 'low-risk diff';
+  console.log(
+    `OpenPath required checks passed for ${repo}@${sha}: ${requiredChecks.join(', ')} (${riskSummary})`
+  );
 }
 
 if (isDirectExecution(import.meta.url, process.argv[1])) {

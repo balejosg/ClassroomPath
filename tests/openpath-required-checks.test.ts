@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { buildOpenPathCiRecoveryScenario } from './helpers/release-fixtures.ts';
 import {
   evaluateRequiredChecks,
+  resolveOpenPathRequiredChecks,
   OPENPATH_CI_JOB_NAMES,
 } from '../scripts/lib/openpath-ci-checks.mjs';
 
@@ -268,5 +269,60 @@ describe('evaluateRequiredChecks', () => {
     assert.equal(result.ok, false);
     assert.deepEqual(result.missing, ['CI Success']);
     assert.deepEqual(result.failing, []);
+  });
+});
+
+describe('resolveOpenPathRequiredChecks', () => {
+  it('keeps low-risk OpenPath promotions on the CI summary gate', () => {
+    const result = resolveOpenPathRequiredChecks({
+      changedFiles: ['docs/INDEX.md', 'README.md'],
+    });
+
+    assert.deepEqual(result.requiredChecks, ['CI Success']);
+    assert.equal(result.highRisk, false);
+    assert.deepEqual(result.matchedFiles, []);
+  });
+
+  it('requires E2E and installer evidence for Windows, Linux, Firefox, and token delivery changes', () => {
+    const result = resolveOpenPathRequiredChecks({
+      changedFiles: [
+        'windows/OpenPath.psm1',
+        'linux/lib/firefox-policy.sh',
+        'firefox-extension/src/lib/request-api.ts',
+        'api/src/routes/token-delivery.ts',
+      ],
+    });
+
+    assert.equal(result.highRisk, true);
+    assert.deepEqual(result.requiredChecks, [
+      'CI Success',
+      'E2E Summary',
+      'Installer Contracts Success',
+    ]);
+    assert.deepEqual(result.matchedFiles, [
+      'windows/OpenPath.psm1',
+      'linux/lib/firefox-policy.sh',
+      'firefox-extension/src/lib/request-api.ts',
+      'api/src/routes/token-delivery.ts',
+    ]);
+  });
+
+  it('adds build and release scripts only for release infrastructure changes', () => {
+    const result = resolveOpenPathRequiredChecks({
+      changedFiles: ['package-lock.json', 'VERSION', '.github/workflows/release.yml'],
+    });
+
+    assert.equal(result.highRisk, true);
+    assert.deepEqual(result.requiredChecks, ['CI Success', 'Build and Release Scripts']);
+  });
+
+  it('honors OPENPATH_REQUIRED_CHECKS as an explicit override', () => {
+    const result = resolveOpenPathRequiredChecks({
+      explicitRequiredChecks: ['CI Success'],
+      changedFiles: ['windows/OpenPath.psm1'],
+    });
+
+    assert.equal(result.highRisk, true);
+    assert.deepEqual(result.requiredChecks, ['CI Success']);
   });
 });
