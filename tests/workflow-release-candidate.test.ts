@@ -67,6 +67,29 @@ describe('Release candidate workflow contracts', () => {
     });
   });
 
+  test('release candidate detector changes rebuild every image family', async () => {
+    const { classifyReleaseCandidateComponents } =
+      await import('../scripts/lib/release-candidate-components.mjs');
+
+    for (const changedFile of [
+      'scripts/detect-release-candidate-components.sh',
+      'scripts/lib/release-candidate-components.mjs',
+    ]) {
+      const flags = classifyReleaseCandidateComponents({
+        changedFiles: [changedFile],
+        openpathChangedFiles: [],
+      });
+
+      assert.deepEqual(flags, {
+        gatewayChanged: true,
+        migrationsChanged: true,
+        openpathApiChanged: true,
+        spaChanged: true,
+        verifierChanged: true,
+      });
+    }
+  });
+
   test('release candidate workflow keeps Firefox signing and reusable family contracts centralized', () => {
     const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
     const firefoxAssetsJob = workflow.jobs?.['resolve-openpath-firefox-release-assets'];

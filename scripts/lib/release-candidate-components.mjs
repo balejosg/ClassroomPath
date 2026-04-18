@@ -120,6 +120,10 @@ export function classifyReleaseCandidateComponents({ changedFiles, openpathChang
       case /^(package\.json|package-lock\.json)$/.test(file):
         markClassroomPathRuntimeChanged(flags);
         break;
+      case file === 'scripts/detect-release-candidate-components.sh':
+      case file === 'scripts/lib/release-candidate-components.mjs':
+        markAllChanged(flags);
+        return flags;
       case /^scripts\//.test(file):
         markClassroomPathOpsChanged(flags);
         break;
