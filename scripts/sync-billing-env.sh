@@ -25,6 +25,10 @@ required_vars=(
   CP_PLATFORM_ADMIN_EMAILS
 )
 
+optional_billing_vars=(
+  CP_CLIENT_CANARY_ADMIN_TOKEN
+)
+
 upsert_env_var() {
   local path="$1"
   local key="$2"
@@ -76,6 +80,12 @@ done
 
 for name in "${required_vars[@]}"; do
   upsert_env_var "$ENV_FILE" "$name" "${!name}"
+done
+
+for name in "${optional_billing_vars[@]}"; do
+  if [ -n "${!name:-}" ]; then
+    upsert_env_var "$ENV_FILE" "$name" "${!name}"
+  fi
 done
 
 case "$CP_BILLING_MODE" in

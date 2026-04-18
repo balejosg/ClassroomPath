@@ -27,12 +27,16 @@ await describe('application-routes', { concurrency: false }, async () => {
     const notificationApproveDomainRequestHandler: RequestHandler = (_req, res) => {
       res.json({ status: 'approved' });
     };
+    const clientCanaryManualBillingApprovalHandler: RequestHandler = (_req, res) => {
+      res.json({ status: 'canary-approved' });
+    };
 
     registerGatewayApplicationRoutes(app, {
       jsonBodyLimit: '1kb',
       trpcMiddleware,
       stripeWebhookHandler,
       notificationApproveDomainRequestHandler,
+      clientCanaryManualBillingApprovalHandler,
     });
 
     server = app.listen(port);
@@ -103,5 +107,21 @@ await describe('application-routes', { concurrency: false }, async () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { status: 'approved' });
+  });
+
+  test('mounts internal client canary manual approval before the tRPC handler', async () => {
+    const response = await fetch(
+      `${baseUrl}/cp/internal/client-canary/manual-request/req_123/approve`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ok: true }),
+      }
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { status: 'canary-approved' });
   });
 });

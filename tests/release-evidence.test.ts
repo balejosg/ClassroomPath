@@ -148,13 +148,13 @@ describe('release evidence rendering', () => {
     });
 
     assert.equal(json.jobs.windowsFirefoxCanary, 'success');
-    assert.equal(json.jobs.productionClientUpdateCanary, 'success');
+    assert.equal(json.jobs.productionClientUpdateCanary, 'live-tested');
     assert.equal(json.promotionEligibility.status, 'eligible');
     assert.equal(json.stagingVerification.windowsFirefoxHighRisk, 'true');
     assert.equal(json.stagingVerification.windowsBootstrapResult, 'success');
     assert.equal(json.stagingVerification.firefoxPolicyResult, 'success');
     assert.match(markdown, /\| Windows\/Firefox canary \(advisory\) \| success \|/);
-    assert.match(markdown, /\| Production client update canary \(post-release\) \| success \|/);
+    assert.match(markdown, /\| Production client update canary \(post-release\) \| live-tested \|/);
     assert.match(markdown, /Windows\/Firefox high risk: `true`/);
   });
 
@@ -175,15 +175,18 @@ describe('release evidence rendering', () => {
     assert.match(markdown, /Promotion eligibility: `ineligible`/);
   });
 
-  test('marks the post-release client update canary as deferred for high-risk promotions during deploy evidence generation', () => {
+  test('marks deploy-time post-release client update canary evidence as pending without inventing endpoint evidence', () => {
     const { json, markdown } = generateEvidence({
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
     });
 
     assert.equal(json.release.outcome, 'released');
-    assert.equal(json.jobs.productionClientUpdateCanary, 'deferred');
+    assert.equal(json.jobs.productionClientUpdateCanary, 'pending-post-release');
     assert.match(markdown, /Outcome: `released`/);
-    assert.match(markdown, /\| Production client update canary \(post-release\) \| deferred \|/);
+    assert.match(
+      markdown,
+      /\| Production client update canary \(post-release\) \| pending-post-release \|/
+    );
   });
 
   test('marks the advisory canary as not applicable for low-risk promotions', () => {
@@ -208,7 +211,22 @@ describe('release evidence rendering', () => {
     });
 
     assert.equal(json.release.outcome, 'released');
-    assert.equal(json.jobs.productionClientUpdateCanary, 'failure');
-    assert.match(markdown, /\| Production client update canary \(post-release\) \| failure \|/);
+    assert.equal(json.jobs.productionClientUpdateCanary, 'failed');
+    assert.match(markdown, /\| Production client update canary \(post-release\) \| failed \|/);
+  });
+
+  test('normalizes explicit post-release client evidence states', () => {
+    for (const state of ['live-tested', 'skipped-by-billing-mode', 'advisory-only', 'failed']) {
+      const { json, markdown } = generateEvidence({
+        STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
+        PRODUCTION_CLIENT_UPDATE_CANARY_RESULT: state,
+      });
+
+      assert.equal(json.jobs.productionClientUpdateCanary, state);
+      assert.match(
+        markdown,
+        new RegExp(`\\| Production client update canary \\(post-release\\) \\| ${state} \\|`)
+      );
+    }
   });
 });

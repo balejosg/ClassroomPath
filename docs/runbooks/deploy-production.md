@@ -173,6 +173,7 @@ The workflow also syncs billing/runtime values from GitHub Environment secrets b
 
 - `CP_BILLING_MODE`
 - `CP_PLATFORM_ADMIN_EMAILS`
+- `CP_CLIENT_CANARY_ADMIN_TOKEN`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_ANNUAL_PRICE_1_10`

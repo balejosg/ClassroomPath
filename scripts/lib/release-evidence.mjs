@@ -30,7 +30,29 @@ function derivePostReleaseCanaryResult({ highRisk, canaryResult }) {
     return 'not_applicable';
   }
 
-  return valueOrNull(canaryResult) ?? 'deferred';
+  const normalized = valueOrNull(canaryResult);
+  if (!normalized) {
+    return 'pending-post-release';
+  }
+
+  if (normalized === 'success') {
+    return 'live-tested';
+  }
+
+  if (normalized === 'failure') {
+    return 'failed';
+  }
+
+  if (
+    normalized === 'live-tested' ||
+    normalized === 'skipped-by-billing-mode' ||
+    normalized === 'advisory-only' ||
+    normalized === 'failed'
+  ) {
+    return normalized;
+  }
+
+  return normalized;
 }
 
 function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
@@ -107,9 +129,9 @@ export function buildReleaseEvidence(env = process.env) {
     promotionEligibility,
     transparency: {
       localVerification: {
-        source: 'developer-machine pre-commit verify:commit',
+        source: 'developer-machine explicit verification',
         reproducedInGitHubActions: false,
-        note: 'GitHub Actions reuses staging verification evidence for the tagged SHA instead of rerunning the same staging gate during production promotion.',
+        note: 'Pre-commit is a fast local guard; GitHub Actions reuses staging verification evidence for the tagged SHA instead of rerunning the same staging gate during production promotion.',
       },
     },
     targets: {
@@ -228,9 +250,9 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     '',
     '### Trust Model',
     '',
-    '- Local `verify:commit` is the mandatory developer-side gate and now includes the full Playwright suite.',
+    '- Local pre-commit is a fast format/secrets guard; `verify:incremental`, `verify:commit`, and release gates provide progressively stronger developer-side evidence.',
     '- Staging records smoke + release-gate evidence for the exact promoted SHA and image digests.',
-    '- The Windows/Firefox canary is advisory evidence before deployment; the production client update canary is deferred post-release validation on GitHub-hosted Windows and Linux runners.',
+    '- The Windows/Firefox canary is advisory evidence before deployment; the production client update canary records explicit post-release states on GitHub-hosted Windows and Linux runners.',
     '- GitHub Actions reuses that staging evidence instead of rerunning the same gate during production promotion.',
     '- Canonical public URLs come from `config/deploy-targets.json`.',
     '',

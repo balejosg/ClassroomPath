@@ -19,6 +19,9 @@ const timeoutMs = Number.parseInt(
 );
 const stripeWebhookSecret =
   process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET ?? '';
+const adminCanaryToken = process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN ?? '';
+const billingMode = process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE ?? 'stripe';
+const CANARY_MARKER = '[client-canary]';
 
 function readCurrentTermsVersion() {
   const sourcePath = resolve('api/src/services/legal-consent.service.ts');
@@ -82,6 +85,107 @@ function stripeSignature(payload) {
     .digest('hex');
 
   return `t=${timestamp},v1=${signature}`;
+}
+
+async function activateStripeBilling({ cookieHeader, organizationName }) {
+  const { data: checkout } = await postTrpc(
+    'billing.createCheckout',
+    {
+      kind: 'annual',
+      organizationName,
+      classrooms: 12,
+    },
+    cookieHeader
+  );
+
+  assert.equal(
+    typeof checkout.checkoutSessionId,
+    'string',
+    'billing.createCheckout should return a checkout session id'
+  );
+  assert.equal(
+    typeof checkout.checkoutUrl,
+    'string',
+    'billing.createCheckout should return a checkout URL'
+  );
+
+  const webhookPayload = JSON.stringify({
+    id: `evt_${Date.now()}`,
+    type: 'checkout.session.completed',
+    data: {
+      object: {
+        id: checkout.checkoutSessionId,
+        customer: `cus_${Date.now()}`,
+        subscription: `sub_${Date.now()}`,
+        payment_status: 'paid',
+      },
+    },
+  });
+
+  const webhookResponse = await fetchWithRetry(`${apiUrl}/cp/stripe/webhook`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Stripe-Signature': stripeSignature(webhookPayload),
+    },
+    body: webhookPayload,
+  });
+
+  assert.equal(webhookResponse.status, 200, 'stripe webhook should activate the checkout');
+
+  return { activationMode: 'stripe' };
+}
+
+async function activateManualBilling({ cookieHeader, organizationName }) {
+  assert.ok(
+    adminCanaryToken,
+    'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN must be set for manual_only canaries'
+  );
+
+  const { data: manualRequest } = await postTrpc(
+    'billing.createManualRequest',
+    {
+      kind: 'custom_quote',
+      organizationName,
+      classrooms: 12,
+      note: `${CANARY_MARKER} automated production client canary`,
+    },
+    cookieHeader
+  );
+
+  assert.equal(
+    typeof manualRequest.requestId,
+    'string',
+    'billing.createManualRequest should return a request id'
+  );
+
+  const approvalResponse = await fetchWithRetry(
+    `${apiUrl}/cp/internal/client-canary/manual-request/${encodeURIComponent(manualRequest.requestId)}/approve`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminCanaryToken}`,
+        'Content-Type': 'application/json',
+        Origin: requestOrigin,
+      },
+      body: JSON.stringify({}),
+    }
+  );
+
+  assert.equal(
+    approvalResponse.status,
+    200,
+    'client canary manual billing approval should succeed'
+  );
+  const approval = await approvalResponse.json();
+  assert.equal(approval.status, 'approved', 'manual billing approval should report approved');
+  assert.equal(typeof approval.organizationId, 'string');
+
+  return {
+    activationMode: 'manual_only',
+    manualRequestId: manualRequest.requestId,
+    organizationId: approval.organizationId,
+  };
 }
 
 async function fetchWithTimeout(input, init = {}) {
@@ -190,51 +294,18 @@ async function main() {
   const initialCookieHeader = extractCookies(loginResult.response);
   assert.ok(initialCookieHeader, 'auth.login should issue a session cookie');
 
-  const organizationName = `Windows Production Bootstrap Canary Org ${Date.now()}`;
-  const { data: checkout } = await postTrpc(
-    'billing.createCheckout',
-    {
-      kind: 'annual',
-      organizationName,
-      classrooms: 12,
-    },
-    initialCookieHeader
+  const organizationName = `${CANARY_MARKER} Windows Production Bootstrap Canary Org ${Date.now()}`;
+  const activation =
+    billingMode === 'stripe'
+      ? await activateStripeBilling({ cookieHeader: initialCookieHeader, organizationName })
+      : billingMode === 'manual_only'
+        ? await activateManualBilling({ cookieHeader: initialCookieHeader, organizationName })
+        : null;
+
+  assert.ok(
+    activation,
+    'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE must be stripe or manual_only'
   );
-
-  assert.equal(
-    typeof checkout.checkoutSessionId,
-    'string',
-    'billing.createCheckout should return a checkout session id'
-  );
-  assert.equal(
-    typeof checkout.checkoutUrl,
-    'string',
-    'billing.createCheckout should return a checkout URL'
-  );
-
-  const webhookPayload = JSON.stringify({
-    id: `evt_${Date.now()}`,
-    type: 'checkout.session.completed',
-    data: {
-      object: {
-        id: checkout.checkoutSessionId,
-        customer: `cus_${Date.now()}`,
-        subscription: `sub_${Date.now()}`,
-        payment_status: 'paid',
-      },
-    },
-  });
-
-  const webhookResponse = await fetchWithRetry(`${apiUrl}/cp/stripe/webhook`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Stripe-Signature': stripeSignature(webhookPayload),
-    },
-    body: webhookPayload,
-  });
-
-  assert.equal(webhookResponse.status, 200, 'stripe webhook should activate the checkout');
 
   const refreshedLoginResult = await postTrpc('auth.login', { email, password });
   const cookieHeader = extractCookies(refreshedLoginResult.response);
@@ -355,6 +426,9 @@ async function main() {
   const summary = {
     apiUrl,
     requestOrigin,
+    billingMode,
+    activationMode: activation.activationMode,
+    manualRequestId: activation.manualRequestId ?? null,
     email,
     groupId: group.id,
     classroomId: classroom.id,
@@ -375,6 +449,9 @@ async function main() {
   for (const [key, value] of Object.entries({
     api_url: summary.apiUrl,
     request_origin: summary.requestOrigin,
+    billing_mode: summary.billingMode,
+    activation_mode: summary.activationMode,
+    manual_request_id: summary.manualRequestId ?? '',
     email: summary.email,
     classroom_id: summary.classroomId,
     group_id: summary.groupId,

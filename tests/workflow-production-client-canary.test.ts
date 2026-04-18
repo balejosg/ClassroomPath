@@ -20,10 +20,21 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(workflowText.includes('create-production-windows-bootstrap-canary.mjs'));
     assert.ok(
       workflowText.includes('github_actions_remote_read_env_key') &&
-        workflowText.includes('Skip production client update canary when billing is manual-only') &&
+        workflowText.includes('CP_CLIENT_CANARY_ADMIN_TOKEN') &&
         workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET') &&
         workflowText.includes('classroompath-production-release')
     );
+    assert.ok(
+      !workflowText.includes('Skip production client update canary when billing is manual-only')
+    );
+    assert.ok(workflowText.includes('client_canary_admin_token'));
+    assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE'));
+    assert.ok(workflowText.includes('Write Windows client canary evidence'));
+    assert.ok(workflowText.includes('Write Linux client canary evidence'));
+    assert.ok(workflowText.includes('production-client-canary-evidence-windows.json'));
+    assert.ok(workflowText.includes('production-client-canary-evidence-linux.json'));
+    assert.ok(workflowText.includes('live-tested'));
+    assert.ok(workflowText.includes('failed'));
     assert.ok(
       workflowText.includes('OpenPath.ps1') && workflowText.includes('self-update --silent')
     );
@@ -40,5 +51,20 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(
       String(linuxJob?.if ?? '').includes("github.event.workflow_run.conclusion == 'success'")
     );
+  });
+
+  test('production provisioning helper supports Stripe and manual-only live canary activation', () => {
+    const scriptText = readProjectText('scripts/create-production-windows-bootstrap-canary.mjs');
+
+    assert.ok(scriptText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE'));
+    assert.ok(scriptText.includes('billing.createCheckout'));
+    assert.ok(scriptText.includes('/cp/stripe/webhook'));
+    assert.ok(scriptText.includes('billing.createManualRequest'));
+    assert.ok(
+      scriptText.includes('/cp/internal/client-canary/manual-request/') &&
+        scriptText.includes('/approve')
+    );
+    assert.ok(scriptText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'));
+    assert.ok(scriptText.includes('billingMode'));
   });
 });

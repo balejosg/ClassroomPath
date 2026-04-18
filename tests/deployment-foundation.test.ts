@@ -174,6 +174,7 @@ describe('Deployment foundation contracts', () => {
   test('verify-full keeps the release lane on full Playwright and routes policy through the typed orchestrator', () => {
     const packageJson = JSON.parse(readFileSync(classroomPathPackagePath, 'utf-8')) as {
       scripts?: Record<string, string>;
+      'lint-staged'?: Record<string, string[]>;
     };
     const hook = readFileSync(preCommitHookPath, 'utf-8');
     const verifyScript = readFileSync(verifyFullOrchestratorPath, 'utf-8');
@@ -188,6 +189,13 @@ describe('Deployment foundation contracts', () => {
       packageJson.scripts?.['verify:commit'],
       'VERIFY_MODE=commit bash scripts/verify-full.sh'
     );
+    assert.equal(packageJson.scripts?.['verify:precommit'], 'lint-staged');
+    assert.equal(packageJson.scripts?.['verify:incremental'], 'npm run verify:fast');
+    assert.deepEqual(packageJson['lint-staged']?.['*.{js,ts,tsx,mjs,cjs}'], [
+      'prettier --write',
+      'secretlint',
+    ]);
+    assert.ok(!JSON.stringify(packageJson['lint-staged']).includes('eslint --fix'));
     assert.equal(
       packageJson.scripts?.['verify:release'],
       'VERIFY_MODE=release bash scripts/verify-full.sh'
@@ -204,10 +212,9 @@ describe('Deployment foundation contracts', () => {
       packageJson.scripts?.['promote:production'],
       'bash scripts/tag-production-release.sh'
     );
-    assert.ok(
-      hook.includes('VERIFY_REPORT_FILE=') &&
-        hook.includes('scripts/print-verify-report-summary.mjs')
-    );
+    assert.ok(hook.includes('npm run verify:precommit'));
+    assert.ok(!hook.includes('npm run verify:commit'));
+    assert.ok(!hook.includes('VERIFY_REPORT_FILE='));
     assert.equal(
       packageJson.scripts?.['test:release-automation'],
       `node --input-type=module -e "import { runReleaseAutomationRegression } from './scripts/run-ci-regression.mjs'; runReleaseAutomationRegression();"`

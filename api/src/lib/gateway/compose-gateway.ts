@@ -25,6 +25,7 @@ export interface ComposeGatewayAppOptions {
   trpcMiddleware: GatewayApplicationRoutesOptions['trpcMiddleware'];
   stripeWebhookHandler: GatewayApplicationRoutesOptions['stripeWebhookHandler'];
   notificationApproveDomainRequestHandler: GatewayApplicationRoutesOptions['notificationApproveDomainRequestHandler'];
+  clientCanaryManualBillingApprovalHandler: GatewayApplicationRoutesOptions['clientCanaryManualBillingApprovalHandler'];
   serveSpa: boolean;
   reactSpaPath: GatewaySpaRoutesOptions['reactSpaPath'];
 }
@@ -46,6 +47,7 @@ export function composeGatewayApp(options: ComposeGatewayAppOptions): Express {
     trpcMiddleware: options.trpcMiddleware,
     stripeWebhookHandler: options.stripeWebhookHandler,
     notificationApproveDomainRequestHandler: options.notificationApproveDomainRequestHandler,
+    clientCanaryManualBillingApprovalHandler: options.clientCanaryManualBillingApprovalHandler,
   });
 
   if (options.serveSpa) {

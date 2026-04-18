@@ -69,6 +69,8 @@
     "verify:migrations:metadata": "npm --workspace=@classroompath/api run verify:migrations",
     "stripe:setup": "node --import tsx scripts/setup-stripe-billing.ts",
     "verify:fast": "VERIFY_MODE=fast bash scripts/verify-full.sh",
+    "verify:precommit": "lint-staged",
+    "verify:incremental": "npm run verify:fast",
     "verify:commit": "VERIFY_MODE=commit bash scripts/verify-full.sh",
     "verify:release": "VERIFY_MODE=release bash scripts/verify-full.sh",
     "verify:full": "npm run verify:release",
@@ -82,7 +84,6 @@
   "type": "module",
   "lint-staged": {
     "*.{js,ts,tsx,mjs,cjs}": [
-      "eslint --fix",
       "prettier --write",
       "secretlint"
     ],

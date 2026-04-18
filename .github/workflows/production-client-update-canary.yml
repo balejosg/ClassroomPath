@@ -21,6 +21,9 @@ concurrency:
   group: production-client-update-canary-${{ github.run_id }}
   cancel-in-progress: false
 
+# Evidence states emitted by this workflow:
+# live-tested, skipped-by-billing-mode, advisory-only, failed
+
 jobs:
   windows-client-self-update-canary:
     name: Windows Client Self-Update Canary
@@ -92,12 +95,26 @@ jobs:
 
           echo "billing_mode=$billing_mode" >> "$GITHUB_OUTPUT"
 
-      - name: Skip production client update canary when billing is manual-only
-        if: steps.read-billing-mode.outputs.billing_mode != 'stripe'
+      - name: Read production client canary admin token
+        if: steps.read-billing-mode.outputs.billing_mode == 'manual_only'
         shell: bash
         run: |
           set -euo pipefail
-          echo "Production billing mode is ${{ steps.read-billing-mode.outputs.billing_mode }}; skipping client update canary provisioning."
+          source scripts/lib/github-actions-remote.sh
+          client_canary_admin_token="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_CLIENT_CANARY_ADMIN_TOKEN)"
+
+          if [ -z "$client_canary_admin_token" ]; then
+            echo "::error::CP_CLIENT_CANARY_ADMIN_TOKEN is missing on production"
+            exit 1
+          fi
+
+          echo "::add-mask::$client_canary_admin_token"
+          echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN=$client_canary_admin_token" >> "$GITHUB_ENV"
 
       - name: Read production Stripe webhook secret
         if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
@@ -121,15 +138,14 @@ jobs:
           echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET=$stripe_webhook_secret" >> "$GITHUB_ENV"
 
       - name: Provision production enrollment canary
-        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         id: provision
         shell: bash
         env:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
       - name: Download and run live Windows enrollment script
-        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         shell: pwsh
         env:
           CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
@@ -157,7 +173,6 @@ jobs:
           }
 
       - name: Force installed Windows client self-update
-        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         shell: pwsh
         env:
           EXPECTED_AGENT_VERSION: ${{ steps.provision.outputs.bootstrap_manifest_version }}
@@ -212,6 +227,23 @@ jobs:
 
           Write-Host "Windows client self-update restored $installedVersion via manifest version $env:EXPECTED_AGENT_VERSION"
 
+      - name: Write Windows client canary evidence
+        if: always()
+        id: evidence
+        shell: bash
+        env:
+          CLIENT_CANARY_PLATFORM: windows
+          CLIENT_CANARY_JOB_STATUS: ${{ job.status }}
+          CLIENT_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
+          CLIENT_CANARY_LIVE_STEPS_EXECUTED: true
+          CLIENT_CANARY_API_URL: ${{ steps.provision.outputs.api_url }}
+          CLIENT_CANARY_CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
+          CLIENT_CANARY_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
+          CLIENT_CANARY_EXTENSION_VERSION: ${{ steps.provision.outputs.extension_version }}
+          CLIENT_CANARY_BOOTSTRAP_MANIFEST_VERSION: ${{ steps.provision.outputs.bootstrap_manifest_version }}
+          CLIENT_CANARY_EVIDENCE_PATH: production-client-canary-evidence-windows.json
+        run: node scripts/write-production-client-canary-evidence.mjs
+
       - name: Upload Windows self-update artifacts
         if: always()
         continue-on-error: true
@@ -220,6 +252,7 @@ jobs:
           name: production-windows-client-self-update-canary
           path: |
             production-windows-bootstrap-canary.json
+            production-client-canary-evidence-windows.json
             ${{ runner.temp }}/windows-client-self-update.log
 
   linux-client-self-update-canary:
@@ -292,12 +325,26 @@ jobs:
 
           echo "billing_mode=$billing_mode" >> "$GITHUB_OUTPUT"
 
-      - name: Skip production client update canary when billing is manual-only
-        if: steps.read-billing-mode.outputs.billing_mode != 'stripe'
+      - name: Read production client canary admin token
+        if: steps.read-billing-mode.outputs.billing_mode == 'manual_only'
         shell: bash
         run: |
           set -euo pipefail
-          echo "Production billing mode is ${{ steps.read-billing-mode.outputs.billing_mode }}; skipping client update canary provisioning."
+          source scripts/lib/github-actions-remote.sh
+          client_canary_admin_token="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_CLIENT_CANARY_ADMIN_TOKEN)"
+
+          if [ -z "$client_canary_admin_token" ]; then
+            echo "::error::CP_CLIENT_CANARY_ADMIN_TOKEN is missing on production"
+            exit 1
+          fi
+
+          echo "::add-mask::$client_canary_admin_token"
+          echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN=$client_canary_admin_token" >> "$GITHUB_ENV"
 
       - name: Read production Stripe webhook secret
         if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
@@ -321,14 +368,13 @@ jobs:
           echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET=$stripe_webhook_secret" >> "$GITHUB_ENV"
 
       - name: Provision production enrollment canary
-        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         id: provision
         env:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
       - name: Download and run live Linux enrollment script
-        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         env:
           CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
           ENROLLMENT_TOKEN: ${{ steps.provision.outputs.enrollment_token }}
@@ -347,7 +393,6 @@ jobs:
           sudo bash "$enroll_script"
 
       - name: Force installed Linux client self-update
-        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         run: |
           set -euo pipefail
 
@@ -388,6 +433,22 @@ jobs:
 
           echo "Linux client self-update force-verified version $actual_version"
 
+      - name: Write Linux client canary evidence
+        if: always()
+        id: evidence
+        env:
+          CLIENT_CANARY_PLATFORM: linux
+          CLIENT_CANARY_JOB_STATUS: ${{ job.status }}
+          CLIENT_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
+          CLIENT_CANARY_LIVE_STEPS_EXECUTED: true
+          CLIENT_CANARY_API_URL: ${{ steps.provision.outputs.api_url }}
+          CLIENT_CANARY_CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
+          CLIENT_CANARY_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
+          CLIENT_CANARY_EXTENSION_VERSION: ${{ steps.provision.outputs.extension_version }}
+          CLIENT_CANARY_BOOTSTRAP_MANIFEST_VERSION: ${{ steps.provision.outputs.bootstrap_manifest_version }}
+          CLIENT_CANARY_EVIDENCE_PATH: production-client-canary-evidence-linux.json
+        run: node scripts/write-production-client-canary-evidence.mjs
+
       - name: Upload Linux self-update artifacts
         if: always()
         continue-on-error: true
@@ -396,4 +457,5 @@ jobs:
           name: production-linux-client-self-update-canary
           path: |
             production-windows-bootstrap-canary.json
+            production-client-canary-evidence-linux.json
             ${{ runner.temp }}/linux-client-self-update.log

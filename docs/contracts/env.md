@@ -43,6 +43,7 @@ Dockerized stack.
 - `CP_ALLOW_SELF_SERVICE_ORGS`: defaults to `false`
 - `CP_ALLOW_ORG_DIRECTORY`: defaults to `false`
 - `CP_PLATFORM_ADMIN_EMAILS`: required when self-service org creation is disabled
+- `CP_CLIENT_CANARY_ADMIN_TOKEN`: optional runtime secret used only by the post-release client canary to approve canary-scoped manual billing requests
 - `CP_BILLING_MODE`: `manual_only` or `stripe`, defaults to `manual_only`
 
 If `CP_BILLING_MODE=stripe` and self-service org creation is disabled, all Stripe credentials and

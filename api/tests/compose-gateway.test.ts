@@ -24,6 +24,9 @@ await describe('compose-gateway', { concurrency: false }, async () => {
     const notificationApproveDomainRequestHandler: RequestHandler = (_req, res) => {
       res.json({ status: 'approved' });
     };
+    const clientCanaryManualBillingApprovalHandler: RequestHandler = (_req, res) => {
+      res.json({ status: 'canary-approved' });
+    };
 
     const composed = composeGatewayApp({
       app,
@@ -42,6 +45,7 @@ await describe('compose-gateway', { concurrency: false }, async () => {
       trpcMiddleware,
       stripeWebhookHandler,
       notificationApproveDomainRequestHandler,
+      clientCanaryManualBillingApprovalHandler,
       serveSpa: false,
       reactSpaPath: '/tmp/classroompath-missing-spa',
     });
