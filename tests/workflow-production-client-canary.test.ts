@@ -53,7 +53,7 @@ describe('Production client update canary workflow contracts', () => {
     );
   });
 
-  test('production client canary artifact uploads are required evidence', () => {
+  test('production client canary artifact uploads are best-effort evidence', () => {
     const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
     const jobs = workflow.jobs ?? {};
 
@@ -84,10 +84,39 @@ describe('Production client update canary workflow contracts', () => {
       assert.equal(ensureStep?.shell, shell);
       assert.ok(String(ensureStep?.run ?? '').includes(logFile));
       assert.equal(uploadStep?.uses, 'actions/upload-artifact@v7');
-      assert.ok(!('continue-on-error' in (uploadStep ?? {})));
+      assert.equal(uploadStep?.['continue-on-error'], true);
       assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
       assert.equal(uploadStep?.with?.['retention-days'], 14);
     }
+  });
+
+  test('linux enrollment canary retries transient registration failures', () => {
+    const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
+    const linuxJob = workflow.jobs?.['linux-client-self-update-canary'];
+    const enrollmentStep = linuxJob?.steps?.find((step) =>
+      String(step.name ?? '').includes('Download and run live Linux enrollment script')
+    );
+    const enrollmentScript = String(enrollmentStep?.run ?? '');
+
+    assert.ok(enrollmentStep, 'Linux enrollment step must exist');
+    assert.ok(
+      enrollmentScript.includes('for attempt in 1 2 3'),
+      'Linux enrollment should retry transient setup failures'
+    );
+    assert.ok(
+      enrollmentScript.includes('Linux enrollment attempt $attempt failed'),
+      'Linux enrollment should log retry attempts'
+    );
+    assert.ok(
+      /if sudo bash "\$enroll_script"; then[\s\S]*else\s+enrollment_status=\$\?/m.test(
+        enrollmentScript
+      ),
+      'Linux enrollment should preserve the enrollment command status inside a set -e-compatible branch'
+    );
+    assert.ok(
+      enrollmentScript.includes('exit "$enrollment_status"'),
+      'Linux enrollment should preserve final setup failure status'
+    );
   });
 
   test('production provisioning helper supports Stripe and manual-only live canary activation', () => {

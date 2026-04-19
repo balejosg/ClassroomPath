@@ -267,6 +267,7 @@ jobs:
 
       - name: Upload Windows self-update artifacts
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: production-windows-client-self-update-canary
@@ -412,7 +413,24 @@ jobs:
             "$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID" \
             -o "$enroll_script"
 
-          sudo bash "$enroll_script"
+          enrollment_status=1
+          for attempt in 1 2 3; do
+            if sudo bash "$enroll_script"; then
+              enrollment_status=0
+              break
+            else
+              enrollment_status=$?
+            fi
+
+            echo "::warning::Linux enrollment attempt $attempt failed with status $enrollment_status"
+            if [ "$attempt" != "3" ]; then
+              sleep "$((attempt * 10))"
+            fi
+          done
+
+          if [ "$enrollment_status" -ne 0 ]; then
+            exit "$enrollment_status"
+          fi
 
       - name: Force installed Linux client self-update
         run: |
@@ -494,6 +512,7 @@ jobs:
 
       - name: Upload Linux self-update artifacts
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: production-linux-client-self-update-canary
