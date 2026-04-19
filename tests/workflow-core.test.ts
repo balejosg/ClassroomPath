@@ -34,6 +34,44 @@ function readPackageJson(): PackageDefinition {
   return readProjectJson<PackageDefinition>('package.json');
 }
 
+function assertNpmCiJobsUseSharedNodeSetup(relativePath: string) {
+  const workflow = readWorkflow(relativePath);
+
+  for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
+    const steps = job.steps ?? [];
+    const npmCiIndexes = steps
+      .map((step, index) => ({ step, index }))
+      .filter(({ step }) => String(step.run ?? '').includes('npm ci'));
+
+    for (const { step, index } of npmCiIndexes) {
+      const setupStep = steps
+        .slice(0, index)
+        .find((candidate) => candidate.uses === './.github/actions/setup-node');
+
+      assert.ok(
+        setupStep,
+        `${relativePath} job ${jobName} must run shared setup-node before ${step.name ?? 'npm ci'}`
+      );
+    }
+
+    const installsRoot = npmCiIndexes.some(
+      ({ step }) => !step['working-directory'] && step.run === 'npm ci'
+    );
+    const installsOpenPath = npmCiIndexes.some(
+      ({ step }) => step['working-directory'] === 'upstream/openpath' && step.run === 'npm ci'
+    );
+
+    if (installsRoot && installsOpenPath) {
+      const setupStep = steps.find((step) => step.uses === './.github/actions/setup-node');
+      assert.match(
+        String(setupStep?.with?.['cache-dependency-path'] ?? ''),
+        /package-lock\.json[\s\S]*upstream\/openpath\/package-lock\.json/,
+        `${relativePath} job ${jobName} must cache both root and OpenPath npm lockfiles`
+      );
+    }
+  }
+}
+
 describe('Workflow core contracts', () => {
   test('GitHub Actions workflows pin current action majors and shared setup actions', () => {
     const cases = [
@@ -180,6 +218,7 @@ describe('Workflow core contracts', () => {
     );
     assert.match(ciRegressionHelper, /!key\.startsWith\('npm_'\)/);
     assert.match(verificationCatalog, /tests\/workflow-core\.test\.ts/);
+    assert.match(verificationCatalog, /tests\/ci-routing-measurement\.test\.ts/);
     assert.match(verificationCatalog, /tests\/workflow-deploy\.test\.ts/);
     assert.match(verificationCatalog, /tests\/workflow-production-client-canary\.test\.ts/);
     assert.match(verificationCatalog, /tests\/workflow-release-candidate\.test\.ts/);
@@ -254,6 +293,17 @@ describe('Workflow core contracts', () => {
     assert.doesNotMatch(securityWorkflow, /gacts\/gitleaks/);
     assert.doesNotMatch(securityWorkflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24/);
     assert.ok(setupNodeAction.includes("cache: 'npm'") || setupNodeAction.includes('cache: npm'));
+  });
+
+  test('ClassroomPath npm install jobs use the shared cache-enabled setup-node action', () => {
+    for (const workflowPath of [
+      '.github/workflows/ci.yml',
+      '.github/workflows/firefox-release-assets.yml',
+      '.github/workflows/release-candidate-images.yml',
+      '.github/workflows/security.yml',
+    ]) {
+      assertNpmCiJobsUseSharedNodeSetup(workflowPath);
+    }
   });
 
   test('staging cleanup workflow runs recurring non-disruptive disk maintenance', () => {
