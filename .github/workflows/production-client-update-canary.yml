@@ -244,6 +244,27 @@ jobs:
           CLIENT_CANARY_EVIDENCE_PATH: production-client-canary-evidence-windows.json
         run: node scripts/write-production-client-canary-evidence.mjs
 
+      - name: Ensure Windows self-update artifact files
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          foreach ($requiredPath in @(
+            'production-windows-bootstrap-canary.json',
+            'production-client-canary-evidence-windows.json'
+          )) {
+            if (-not (Test-Path $requiredPath)) {
+              throw "Required Windows canary artifact was not created: $requiredPath"
+            }
+          }
+
+          $logPath = Join-Path $env:RUNNER_TEMP 'windows-client-self-update.log'
+          if (-not (Test-Path $logPath)) {
+            'Windows self-update log was not created before artifact upload.' |
+              Set-Content -Path $logPath -Encoding UTF8
+          }
+
       - name: Upload Windows self-update artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -449,6 +470,27 @@ jobs:
           CLIENT_CANARY_BOOTSTRAP_MANIFEST_VERSION: ${{ steps.provision.outputs.bootstrap_manifest_version }}
           CLIENT_CANARY_EVIDENCE_PATH: production-client-canary-evidence-linux.json
         run: node scripts/write-production-client-canary-evidence.mjs
+
+      - name: Ensure Linux self-update artifact files
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for required_path in \
+            production-windows-bootstrap-canary.json \
+            production-client-canary-evidence-linux.json
+          do
+            if [ ! -f "$required_path" ]; then
+              echo "::error::Required Linux canary artifact was not created: $required_path"
+              exit 1
+            fi
+          done
+
+          log_path="$RUNNER_TEMP/linux-client-self-update.log"
+          if [ ! -f "$log_path" ]; then
+            printf '%s\n' 'Linux self-update log was not created before artifact upload.' > "$log_path"
+          fi
 
       - name: Upload Linux self-update artifacts
         if: always()

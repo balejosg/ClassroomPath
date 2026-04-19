@@ -57,15 +57,32 @@ describe('Production client update canary workflow contracts', () => {
     const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
     const jobs = workflow.jobs ?? {};
 
-    for (const jobName of [
-      'windows-client-self-update-canary',
-      'linux-client-self-update-canary',
-    ]) {
+    for (const [jobName, platform, shell, logFile] of [
+      ['windows-client-self-update-canary', 'Windows', 'pwsh', 'windows-client-self-update.log'],
+      ['linux-client-self-update-canary', 'Linux', 'bash', 'linux-client-self-update.log'],
+    ] as const) {
       const job = jobs[jobName];
+      const ensureStepIndex =
+        job?.steps?.findIndex((step) =>
+          String(step.name ?? '').includes(`Ensure ${platform} self-update artifact files`)
+        ) ?? -1;
+      const uploadStepIndex =
+        job?.steps?.findIndex((step) =>
+          String(step.name ?? '').includes('self-update artifacts')
+        ) ?? -1;
       const uploadStep = job?.steps?.find((step) =>
         String(step.name ?? '').includes('self-update artifacts')
       );
+      const ensureStep = ensureStepIndex >= 0 ? job?.steps?.[ensureStepIndex] : undefined;
 
+      assert.ok(ensureStepIndex >= 0, `${jobName} must create missing log artifacts`);
+      assert.ok(
+        ensureStepIndex < uploadStepIndex,
+        `${jobName} must create missing log artifacts before upload`
+      );
+      assert.equal(ensureStep?.if, 'always()');
+      assert.equal(ensureStep?.shell, shell);
+      assert.ok(String(ensureStep?.run ?? '').includes(logFile));
       assert.equal(uploadStep?.uses, 'actions/upload-artifact@v7');
       assert.ok(!('continue-on-error' in (uploadStep ?? {})));
       assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
