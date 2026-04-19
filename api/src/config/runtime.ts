@@ -29,10 +29,19 @@ export interface RuntimeConfig {
   openpathUrl: string;
   port: number;
   publicUrl: string;
+  pushNotificationsEnabled: boolean;
   resendApiKey: string | null;
   resendFromEmail: string | null;
   platformAdminEmails: string[];
   stripe: StripeRuntimeConfig;
+}
+
+export interface PushRuntimeConfig {
+  enabled: boolean;
+  publicKey: string;
+  privateKey: string;
+  contact: string;
+  required: boolean;
 }
 
 export function requireJwtSecret(env: RuntimeEnv = process.env): string {
@@ -108,6 +117,53 @@ export function resolveEmailDeliveryMode(env: RuntimeEnv = process.env): EmailDe
     : 'disabled';
 }
 
+export function resolvePushRuntimeConfig(env: RuntimeEnv = process.env): PushRuntimeConfig {
+  const publicKey = trimToNull(env.VAPID_PUBLIC_KEY) ?? '';
+  const privateKey = trimToNull(env.VAPID_PRIVATE_KEY) ?? '';
+  const publicUrl = trimToNull(env.PUBLIC_URL);
+  const contact =
+    trimToNull(env.VAPID_CONTACT) ??
+    trimToNull(env.VAPID_SUBJECT) ??
+    (publicUrl ? `mailto:admin@${new URL(normalizePublicUrl(publicUrl, env)).hostname}` : '');
+
+  return {
+    enabled: Boolean(publicKey && privateKey && contact),
+    publicKey,
+    privateKey,
+    contact,
+    required: parseBooleanEnv(env.CP_REQUIRE_PUSH_NOTIFICATIONS, false),
+  };
+}
+
+export function assertPushRuntimeConfigured(env: RuntimeEnv = process.env): void {
+  const push = resolvePushRuntimeConfig(env);
+  const hasExplicitPushConfig = Boolean(
+    trimToNull(env.VAPID_PUBLIC_KEY) ||
+    trimToNull(env.VAPID_PRIVATE_KEY) ||
+    trimToNull(env.VAPID_CONTACT) ||
+    trimToNull(env.VAPID_SUBJECT)
+  );
+
+  if (!push.required && !hasExplicitPushConfig) {
+    return;
+  }
+
+  const missing: string[] = [];
+  if (!push.publicKey) {
+    missing.push('VAPID_PUBLIC_KEY');
+  }
+  if (!push.privateKey) {
+    missing.push('VAPID_PRIVATE_KEY');
+  }
+  if (!push.contact) {
+    missing.push('VAPID_CONTACT');
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`${missing.join(', ')} must be set for push notifications`);
+  }
+}
+
 export function resolveRuntimeConfig(env: RuntimeEnv = process.env): RuntimeConfig {
   const resendApiKey = trimToNull(env.RESEND_API_KEY);
   const resendFromEmail = trimToNull(env.RESEND_FROM_EMAIL);
@@ -124,6 +180,7 @@ export function resolveRuntimeConfig(env: RuntimeEnv = process.env): RuntimeConf
     emailDeliveryMode: resolveEmailDeliveryMode(env),
     allowSelfServiceOrgs: parseBooleanEnv(env.CP_ALLOW_SELF_SERVICE_ORGS, false),
     allowOrgDirectory: parseBooleanEnv(env.CP_ALLOW_ORG_DIRECTORY, false),
+    pushNotificationsEnabled: resolvePushRuntimeConfig(env).enabled,
     billingMode: resolveBillingMode(env),
     platformAdminEmails: resolvePlatformAdminEmails(env),
     stripe: resolveStripeConfig(env),
@@ -138,6 +195,7 @@ export function assertRuntimeSecretsConfigured(env: RuntimeEnv = process.env): v
   void gatewayConfig.corsOrigins;
 
   assertBillingRuntimeConfigured(runtimeConfig);
+  assertPushRuntimeConfigured(env);
 
   if (!gatewayConfig.corsOrigins.includes(gatewayConfig.publicOrigin)) {
     throw new Error('CORS_ORIGINS must include the PUBLIC_URL origin');

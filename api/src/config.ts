@@ -1,4 +1,5 @@
 export {
+  assertPushRuntimeConfigured,
   assertRuntimeSecretsConfigured,
   requireJwtSecret,
   resolveEmailDeliveryMode,
@@ -6,7 +7,9 @@ export {
   resolveOpenPathUrl,
   resolvePort,
   resolvePublicUrl,
+  resolvePushRuntimeConfig,
   resolveRuntimeConfig,
+  type PushRuntimeConfig,
   type RuntimeConfig,
 } from './config/runtime.js';
 export {
@@ -27,7 +30,9 @@ import {
   resolveOpenPathUrl,
   resolvePort,
   resolvePublicUrl,
+  resolvePushRuntimeConfig,
   resolveRuntimeConfig,
+  type PushRuntimeConfig,
 } from './config/runtime.js';
 import {
   resolveBillingMode,
@@ -81,17 +86,19 @@ export const config = {
   get stripe() {
     return resolveStripeConfig(process.env);
   },
+  get pushNotificationsEnabled() {
+    return resolvePushRuntimeConfig(process.env).enabled;
+  },
+  get push(): PushRuntimeConfig {
+    return resolvePushRuntimeConfig(process.env);
+  },
   get vapidPublicKey() {
-    return trimToNull(process.env.VAPID_PUBLIC_KEY) ?? '';
+    return resolvePushRuntimeConfig(process.env).publicKey;
   },
   get vapidPrivateKey() {
-    return trimToNull(process.env.VAPID_PRIVATE_KEY) ?? '';
+    return resolvePushRuntimeConfig(process.env).privateKey;
   },
   get vapidContact() {
-    return (
-      trimToNull(process.env.VAPID_CONTACT) ??
-      trimToNull(process.env.VAPID_SUBJECT) ??
-      `mailto:admin@${new URL(resolvePublicUrl(process.env)).hostname}`
-    );
+    return resolvePushRuntimeConfig(process.env).contact;
   },
 };

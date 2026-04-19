@@ -19,6 +19,7 @@ const SMOKE_TEST_URL = process.env.SMOKE_TEST_URL;
 const SMOKE_TEST_TIMEOUT = parseInt(process.env.SMOKE_TEST_TIMEOUT || '10000', 10);
 const SMOKE_SKIP_CORS = process.env.SMOKE_SKIP_CORS === '1';
 const SMOKE_ALLOW_MUTATIONS = process.env.SMOKE_ALLOW_MUTATIONS === '1';
+const SMOKE_REQUIRE_PUSH = process.env.SMOKE_REQUIRE_PUSH === '1';
 const SMOKE_TEST_RETRIES = parseInt(process.env.SMOKE_TEST_RETRIES || '2', 10);
 const SMOKE_TEST_RETRY_DELAY_MS = parseInt(process.env.SMOKE_TEST_RETRY_DELAY_MS || '1000', 10);
 const SMOKE_TEST_RESOLVED_ADDRESS = process.env.SMOKE_TEST_RESOLVED_ADDRESS;
@@ -73,6 +74,11 @@ interface RegistrationSmokeResponse {
   verificationRequired?: boolean;
   verificationUrl?: string;
   termsVersion?: string;
+}
+
+interface VapidPublicKeyResponse {
+  enabled?: boolean;
+  publicKey?: string;
 }
 
 /**
@@ -390,6 +396,33 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
         403,
         'Sensitive OpenPath procedures must be blocked on /trpc (use /cp/trpc)'
       );
+    });
+
+    void test('GET /cp/trpc/push.getVapidPublicKey exposes enabled push when required', async () => {
+      if (!SMOKE_REQUIRE_PUSH) {
+        return;
+      }
+
+      const response = await fetchWithRetry(
+        `${SMOKE_TEST_URL}/cp/trpc/push.getVapidPublicKey?batch=1&input=%7B%7D`,
+        {
+          method: 'GET',
+        }
+      );
+
+      assert.strictEqual(
+        response.status,
+        200,
+        `push.getVapidPublicKey should return 200, got ${response.status}`
+      );
+
+      const raw = (await response.json()) as unknown;
+      const parsed = parseTrpcEnvelope<VapidPublicKeyResponse>(raw);
+
+      assert.ok(!parsed.error, `Expected push public key success, got ${JSON.stringify(raw)}`);
+      assert.strictEqual(parsed.data?.enabled, true);
+      assert.equal(typeof parsed.data?.publicKey, 'string');
+      assert.ok(parsed.data?.publicKey && parsed.data.publicKey.length > 0);
     });
   });
 

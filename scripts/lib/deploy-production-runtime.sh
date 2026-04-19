@@ -53,6 +53,7 @@ apply_production_runtime_deploy_impl() {
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
+  export CP_REQUIRE_PUSH_NOTIFICATIONS=1
   bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"
   bash "$APP_DIR/scripts/validate-runtime-config-docker.sh" --app-dir "$APP_DIR" --env-file "$APP_DIR/config/.env"
 

@@ -146,6 +146,29 @@ describe('runtime config contract', () => {
     );
   });
 
+  it('requires complete VAPID configuration when push notifications are required', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = 'production-secret-value';
+    process.env.PUBLIC_URL = 'https://classroompath.eu';
+    process.env.CORS_ORIGINS = 'https://classroompath.eu';
+    process.env.CP_BILLING_MODE = 'manual_only';
+    process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.eu';
+    process.env.CP_REQUIRE_PUSH_NOTIFICATIONS = '1';
+    process.env.VAPID_PUBLIC_KEY = 'public-key';
+    delete process.env.VAPID_PRIVATE_KEY;
+    process.env.VAPID_CONTACT = 'mailto:ops@classroompath.eu';
+
+    const tag = `runtime-config-required-push-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const configModule = await import(`../src/config.ts?${tag}`);
+
+    assert.throws(() => configModule.assertRuntimeSecretsConfigured(), /VAPID_PRIVATE_KEY/);
+
+    process.env.VAPID_PRIVATE_KEY = 'private-key';
+
+    assert.doesNotThrow(() => configModule.assertRuntimeSecretsConfigured());
+    assert.equal(configModule.resolveRuntimeConfig().pushNotificationsEnabled, true);
+  });
+
   it('derives the email delivery mode from the runtime env contract', async () => {
     process.env.NODE_ENV = 'test';
     process.env.JWT_SECRET = 'test-jwt-secret';

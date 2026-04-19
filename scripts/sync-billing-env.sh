@@ -29,6 +29,12 @@ optional_billing_vars=(
   CP_CLIENT_CANARY_ADMIN_TOKEN
 )
 
+push_vars=(
+  VAPID_PUBLIC_KEY
+  VAPID_PRIVATE_KEY
+  VAPID_CONTACT
+)
+
 upsert_env_var() {
   local path="$1"
   local key="$2"
@@ -87,6 +93,32 @@ for name in "${optional_billing_vars[@]}"; do
     upsert_env_var "$ENV_FILE" "$name" "${!name}"
   fi
 done
+
+push_required="${CP_REQUIRE_PUSH_NOTIFICATIONS:-}"
+push_configured="0"
+for name in "${push_vars[@]}"; do
+  if [ -n "${!name:-}" ]; then
+    push_configured="1"
+  fi
+done
+
+if [ "$push_required" = "1" ] || [ "$push_configured" = "1" ]; then
+  for name in "${push_vars[@]}"; do
+    if [ -z "${!name:-}" ]; then
+      log_error "$name must be set when push notifications are required or partially configured"
+      exit 1
+    fi
+  done
+
+  for name in "${push_vars[@]}"; do
+    upsert_env_var "$ENV_FILE" "$name" "${!name}"
+  done
+  upsert_env_var "$ENV_FILE" VAPID_SUBJECT "$VAPID_CONTACT"
+fi
+
+if [ -n "$push_required" ]; then
+  upsert_env_var "$ENV_FILE" CP_REQUIRE_PUSH_NOTIFICATIONS "$push_required"
+fi
 
 case "$CP_BILLING_MODE" in
   manual_only)

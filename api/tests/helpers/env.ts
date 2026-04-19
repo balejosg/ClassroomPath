@@ -10,6 +10,7 @@ const trackedEnvKeys = [
   'CP_ONBOARDING_RATE_LIMIT_MAX',
   'CP_ONBOARDING_RATE_LIMIT_WINDOW_MS',
   'CP_PLATFORM_ADMIN_EMAILS',
+  'CP_REQUIRE_PUSH_NOTIFICATIONS',
   'CP_SERVE_SPA',
   'CORS_ORIGINS',
   'JWT_SECRET',
@@ -27,6 +28,10 @@ const trackedEnvKeys = [
   'STRIPE_PILOT_PRICE',
   'STRIPE_SECRET_KEY',
   'STRIPE_WEBHOOK_SECRET',
+  'VAPID_CONTACT',
+  'VAPID_PRIVATE_KEY',
+  'VAPID_PUBLIC_KEY',
+  'VAPID_SUBJECT',
 ] as const;
 
 type TrackedEnvKey = (typeof trackedEnvKeys)[number];

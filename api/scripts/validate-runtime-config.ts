@@ -8,6 +8,7 @@ console.log(
       emailDeliveryMode: runtimeConfig.emailDeliveryMode,
       openpathUrl: runtimeConfig.openpathUrl,
       publicUrl: runtimeConfig.publicUrl,
+      pushNotificationsEnabled: runtimeConfig.pushNotificationsEnabled,
     },
     null,
     2

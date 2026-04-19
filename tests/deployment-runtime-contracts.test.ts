@@ -167,6 +167,10 @@ describe('Deployment runtime contracts', () => {
     const deployProductionContextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
     const deployProductionRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
     const deployContainerPlatformHelper = readFileSync(deployContainerPlatformHelperPath, 'utf-8');
+    const syncBillingEnvScript = readFileSync(
+      resolve(projectRoot, 'scripts/sync-billing-env.sh'),
+      'utf-8'
+    );
 
     assert.ok(manifestHelper.includes('decode_release_manifest_base64()'));
     assert.ok(manifestHelper.includes('export_release_manifest_runtime_env()'));
@@ -215,8 +219,13 @@ describe('Deployment runtime contracts', () => {
         workflow.includes(
           'PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}'
         ) &&
+        workflow.includes('VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}') &&
+        workflow.includes('VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}') &&
+        workflow.includes('VAPID_CONTACT: ${{ secrets.VAPID_CONTACT }}') &&
         workflow.includes('envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64') &&
-        workflow.includes('PRODUCTION_CONTAINER_PLATFORM')
+        workflow.includes('PRODUCTION_CONTAINER_PLATFORM') &&
+        workflow.includes('VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_CONTACT') &&
+        workflow.includes("SMOKE_REQUIRE_PUSH: '1'")
     );
     assert.ok(
       productionRemote.includes('decode_deploy_payload_base64 "$DEPLOY_PAYLOAD_B64"') &&
@@ -253,7 +262,12 @@ describe('Deployment runtime contracts', () => {
         deployProductionRuntimeHelper.includes(
           'configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/amd64}"'
         ) &&
-        deployProductionRuntimeHelper.includes('verify_deploy_container_platform')
+        deployProductionRuntimeHelper.includes('verify_deploy_container_platform') &&
+        deployProductionRuntimeHelper.includes('CP_REQUIRE_PUSH_NOTIFICATIONS=1') &&
+        syncBillingEnvScript.includes('VAPID_PUBLIC_KEY') &&
+        syncBillingEnvScript.includes('VAPID_PRIVATE_KEY') &&
+        syncBillingEnvScript.includes('VAPID_CONTACT') &&
+        syncBillingEnvScript.includes('VAPID_SUBJECT')
     );
     assert.ok(
       deployContainerPlatformHelper.includes('configure_deploy_container_platform()') &&
