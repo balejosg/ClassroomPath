@@ -124,28 +124,33 @@ test.describe('Session Error Handling', () => {
 
     await expectDashboard(page);
 
+    await page.addInitScript(() => {
+      const nativeMatchMedia = window.matchMedia.bind(window);
+      window.matchMedia = (query: string) => {
+        if (query === '(display-mode: standalone)') {
+          return {
+            matches: true,
+            media: query,
+            onchange: null,
+            addEventListener: () => undefined,
+            removeEventListener: () => undefined,
+            addListener: () => undefined,
+            removeListener: () => undefined,
+            dispatchEvent: () => false,
+          } as MediaQueryList;
+        }
+
+        return nativeMatchMedia(query);
+      };
+    });
+
     // Clear session (ClassroomPath persists auth in localStorage)
     await clearAuth(context);
 
-    // Reload; app should show an unauthenticated entry point.
+    // Reload; expired sessions should go to login, not the public landing.
     await page.reload();
-    await expect
-      .poll(
-        async () => {
-          const loginVisible = await page
-            .getByTestId('login-email')
-            .isVisible()
-            .catch(() => false);
-          const landingEntryVisible = await page
-            .getByRole('link', { name: 'Acceder', exact: true })
-            .isVisible()
-            .catch(() => false);
-
-          return loginVisible || landingEntryVisible;
-        },
-        { timeout: 15000, message: 'Expected an unauthenticated entry point after session expiry' }
-      )
-      .toBe(true);
+    await expect(page.getByTestId('login-email')).toBeVisible({ timeout: 15000 });
+    await expect(page).toHaveURL(/\/login$/);
   });
 
   test('should handle concurrent session gracefully @errors @session', async ({
@@ -172,13 +177,9 @@ test.describe('Session Error Handling', () => {
       .getByTestId('login-email')
       .isVisible()
       .catch(() => false);
-    const isBackAtLanding = await page
-      .getByRole('link', { name: 'Acceder', exact: true })
-      .isVisible()
-      .catch(() => false);
     const hasSessionWarning = await page.getByText(/sesión|session|otro dispositivo/i).isVisible();
 
-    expect(isStillLoggedIn || isBackAtLogin || isBackAtLanding || hasSessionWarning).toBe(true);
+    expect(isStillLoggedIn || isBackAtLogin || hasSessionWarning).toBe(true);
 
     await context2.close();
   });

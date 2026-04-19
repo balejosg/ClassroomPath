@@ -34,6 +34,32 @@ export function isAuthPath(pathname: string): boolean {
   );
 }
 
+export function isStandaloneDisplayMode(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const navigatorWithStandalone = window.navigator as Navigator & { standalone?: boolean };
+  return (
+    window.matchMedia?.('(display-mode: standalone)').matches === true ||
+    navigatorWithStandalone.standalone === true
+  );
+}
+
+export function shouldRouteUnauthenticatedToLogin(params: {
+  pathname: string;
+  isStandalone: boolean;
+}): boolean {
+  const normalized = normalizePathname(params.pathname);
+
+  if (normalized.startsWith('/login')) return false;
+  if (normalized.startsWith('/register')) return false;
+  if (normalized.startsWith('/reset-password')) return false;
+  if (normalized.startsWith('/accept-invitation')) return false;
+  if (normalized === '/') return params.isStandalone;
+  if (normalized.startsWith('/pricing')) return false;
+
+  return true;
+}
+
 export function isBillingSuccessPath(pathname: string): boolean {
   return normalizePathname(pathname).startsWith('/billing/success');
 }

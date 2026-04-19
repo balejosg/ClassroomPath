@@ -5,6 +5,7 @@ import {
   getPathForAuthView,
   isAuthPath,
   normalizePathname,
+  shouldRouteUnauthenticatedToLogin,
 } from '../classroom-path-auth-routing';
 
 describe('classroom-path-auth-routing', () => {
@@ -29,6 +30,20 @@ describe('classroom-path-auth-routing', () => {
     expect(isAuthPath('/login')).toBe(true);
     expect(isAuthPath('/register')).toBe(true);
     expect(isAuthPath('/cp/dashboard')).toBe(false);
+  });
+
+  it('keeps the public landing on the web but routes app and protected visits to login', () => {
+    expect(shouldRouteUnauthenticatedToLogin({ pathname: '/', isStandalone: false })).toBe(false);
+    expect(shouldRouteUnauthenticatedToLogin({ pathname: '/pricing', isStandalone: false })).toBe(
+      false
+    );
+    expect(shouldRouteUnauthenticatedToLogin({ pathname: '/', isStandalone: true })).toBe(true);
+    expect(
+      shouldRouteUnauthenticatedToLogin({ pathname: '/classrooms', isStandalone: false })
+    ).toBe(true);
+    expect(shouldRouteUnauthenticatedToLogin({ pathname: '/login', isStandalone: true })).toBe(
+      false
+    );
   });
 
   it('builds the canonical path for each auth view', () => {

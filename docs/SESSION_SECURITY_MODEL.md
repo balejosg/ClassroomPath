@@ -25,6 +25,8 @@ ClassroomPath uses cookie-backed sessions for sensitive auth material.
 - both cookies are `HttpOnly`
 - both cookies are `SameSite=Lax`
 - both cookies become `Secure` in production
+- `cp_access_token` is a short-lived persistent cookie, currently 15 minutes
+- `cp_refresh_token` is a persistent cookie, currently 30 days
 - logout always clears the local session cookies
 
 The SPA keeps only a non-sensitive marker in `localStorage`:
@@ -55,6 +57,7 @@ Gateway hardening also applies:
 ## Login, Refresh, And Logout
 
 - `/cp/trpc/auth.login`, `/cp/trpc/auth.refresh`, and Google auth session mutations forward to upstream OpenPath and store session cookies through the gateway
+- the SPA uses `/cp/trpc/auth.refresh` to recover from an expired access token while the refresh cookie remains valid
 - `/cp/trpc/auth.logout` always clears local cookies
 - if upstream logout revocation fails, the gateway returns `SERVICE_UNAVAILABLE` instead of silently claiming success
 

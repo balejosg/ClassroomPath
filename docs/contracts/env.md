@@ -29,6 +29,8 @@ Dockerized stack.
 - `DATABASE_URL`: PostgreSQL connection string
 - `PUBLIC_URL`: absolute external URL; production rejects localhost values
 - `JWT_SECRET`: JWT signing secret
+- `JWT_ACCESS_EXPIRY`: access token lifetime; ClassroomPath defaults to `15m`
+- `JWT_REFRESH_EXPIRY`: refresh token lifetime; ClassroomPath defaults to `30d`
 - `CORS_ORIGINS`: comma-separated browser origins; deployed environments must include the `PUBLIC_URL` origin
 
 ### Gateway And Routing

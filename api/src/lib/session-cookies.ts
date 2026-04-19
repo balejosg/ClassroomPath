@@ -2,6 +2,8 @@ import type { Response } from 'express';
 
 export const ACCESS_COOKIE_NAME = 'cp_access_token';
 export const REFRESH_COOKIE_NAME = 'cp_refresh_token';
+export const ACCESS_COOKIE_MAX_AGE_MS = 15 * 60 * 1000;
+export const REFRESH_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 export interface SessionTokenPair {
   accessToken: string;
   refreshToken: string;
@@ -19,6 +21,7 @@ export function setSessionCookies(res: Pick<Response, 'cookie'>, tokens: Session
     secure,
     sameSite: 'lax',
     path: '/',
+    maxAge: ACCESS_COOKIE_MAX_AGE_MS,
   });
 
   res.cookie(REFRESH_COOKIE_NAME, tokens.refreshToken, {
@@ -26,6 +29,7 @@ export function setSessionCookies(res: Pick<Response, 'cookie'>, tokens: Session
     secure,
     sameSite: 'lax',
     path: '/',
+    maxAge: REFRESH_COOKIE_MAX_AGE_MS,
   });
 }
 

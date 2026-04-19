@@ -78,6 +78,14 @@ void describe('Docker Compose Configuration', () => {
     );
     assert.ok(api.env_file, 'API should use env_file');
     assert.ok(
+      api.environment?.includes('JWT_ACCESS_EXPIRY=${JWT_ACCESS_EXPIRY:-15m}'),
+      'API should default short-lived access tokens for cookie-backed session refresh'
+    );
+    assert.ok(
+      api.environment?.includes('JWT_REFRESH_EXPIRY=${JWT_REFRESH_EXPIRY:-30d}'),
+      'API should default refresh tokens to the ClassroomPath 30-day session policy'
+    );
+    assert.ok(
       api.extra_hosts?.includes('host.docker.internal:host-gateway'),
       'API should resolve host.docker.internal for host services like PostgreSQL'
     );
@@ -225,7 +233,15 @@ void describe('Environment Configuration', () => {
 
   void test('.env.example contains required variables', () => {
     const content = readFileSync(envExamplePath, 'utf-8');
-    const requiredVars = ['PORT', 'PUBLIC_URL', 'JWT_SECRET', 'DATABASE_URL', 'CORS_ORIGINS'];
+    const requiredVars = [
+      'PORT',
+      'PUBLIC_URL',
+      'JWT_SECRET',
+      'DATABASE_URL',
+      'CORS_ORIGINS',
+      'JWT_ACCESS_EXPIRY',
+      'JWT_REFRESH_EXPIRY',
+    ];
 
     for (const envVar of requiredVars) {
       assert.ok(content.includes(envVar), `Required variable ${envVar} should be documented`);

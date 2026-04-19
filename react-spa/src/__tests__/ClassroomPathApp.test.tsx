@@ -25,6 +25,7 @@ const localStorageMock: Storage = {
 };
 
 const mockUseOnboardingStatus = vi.fn();
+const mockUseRefreshSession = vi.fn();
 const mockLogoutMutate = vi.fn();
 const mockAuthMeQuery = vi.fn();
 const mockClearRequestsApiUrl = vi.fn();
@@ -39,6 +40,7 @@ vi.mock('../lib/dual-trpc-provider', () => ({
 
 vi.mock('../lib/hooks', () => ({
   useOnboardingStatus: (...args: unknown[]) => mockUseOnboardingStatus(...args),
+  useRefreshSession: (...args: unknown[]) => mockUseRefreshSession(...args),
 }));
 
 vi.mock('../lib/cp-trpc', () => ({
@@ -167,6 +169,22 @@ function makeOnboardingQuery(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function setStandaloneDisplayMode(matches: boolean): void {
+  Object.defineProperty(window, 'matchMedia', {
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(display-mode: standalone)' ? matches : false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+    configurable: true,
+  });
+}
+
 describe('ClassroomPathApp', () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -178,7 +196,11 @@ describe('ClassroomPathApp', () => {
     });
     mockHasSessionMarker.mockReturnValue(false);
     mockUseOnboardingStatus.mockReturnValue(makeOnboardingQuery());
+    mockUseRefreshSession.mockReturnValue({
+      mutateAsync: vi.fn().mockRejectedValue(new Error('No refresh session')),
+    });
     mockAuthMeQuery.mockResolvedValue({ user: { id: 'persisted-user' } });
+    setStandaloneDisplayMode(false);
     window.localStorage.clear();
     window.history.pushState({}, '', '/login');
   });
@@ -254,8 +276,56 @@ describe('ClassroomPathApp', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it('clears the session when onboarding status becomes unauthorized', async () => {
+  it('routes unauthenticated protected paths to login instead of landing', async () => {
+    window.history.pushState({}, '', '/classrooms');
+
+    render(<ClassroomPathApp />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Login View')).toBeInTheDocument();
+      expect(window.location.pathname).toBe('/login');
+    });
+  });
+
+  it('routes standalone app visits at root to login when no session marker exists', async () => {
+    setStandaloneDisplayMode(true);
+    window.history.pushState({}, '', '/');
+
+    render(<ClassroomPathApp />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Login View')).toBeInTheDocument();
+      expect(window.location.pathname).toBe('/login');
+    });
+  });
+
+  it('refreshes the session when onboarding status becomes unauthorized and refresh succeeds', async () => {
     mockHasSessionMarker.mockReturnValue(true);
+    const refetch = vi.fn();
+    const refresh = vi.fn().mockResolvedValue({ user: { id: 'refreshed-user' } });
+    mockUseRefreshSession.mockReturnValue({ mutateAsync: refresh });
+    mockUseOnboardingStatus.mockReturnValue(
+      makeOnboardingQuery({
+        isError: true,
+        error: { data: { code: 'UNAUTHORIZED', httpStatus: 401 }, message: 'Unauthorized' },
+        refetch,
+      })
+    );
+
+    render(<ClassroomPathApp />);
+
+    await waitFor(() => {
+      expect(refresh).toHaveBeenCalledWith({});
+      expect(mockPersistSession).toHaveBeenCalledWith({ user: { id: 'refreshed-user' } });
+      expect(refetch).toHaveBeenCalledTimes(1);
+      expect(mockClearSession).not.toHaveBeenCalled();
+    });
+  });
+
+  it('clears the session when onboarding status becomes unauthorized and refresh fails', async () => {
+    mockHasSessionMarker.mockReturnValue(true);
+    const refresh = vi.fn().mockRejectedValue(new Error('Refresh token required'));
+    mockUseRefreshSession.mockReturnValue({ mutateAsync: refresh });
     mockUseOnboardingStatus.mockReturnValue(
       makeOnboardingQuery({
         isError: true,
@@ -266,6 +336,7 @@ describe('ClassroomPathApp', () => {
     render(<ClassroomPathApp />);
 
     await waitFor(() => {
+      expect(refresh).toHaveBeenCalledWith({});
       expect(mockClearSession).toHaveBeenCalledTimes(1);
       expect(screen.getByText('Login View')).toBeInTheDocument();
     });

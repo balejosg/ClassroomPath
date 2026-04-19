@@ -35,6 +35,7 @@ import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../src/lib/session-cookies.js';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
+const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
 
 async function seedTenantOrganization(params: { token: string; name: string }): Promise<string> {
   const decoded = jwt.decode(params.token) as jwt.JwtPayload | null;
@@ -210,8 +211,12 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.ok(parsed.data?.user);
 
     const setCookies = getSetCookieHeaders(response);
-    assert.ok(setCookies.some((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`)));
-    assert.ok(setCookies.some((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`)));
+    const accessCookie = setCookies.find((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`));
+    const refreshCookie = setCookies.find((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`));
+    assert.ok(accessCookie);
+    assert.ok(refreshCookie);
+    assert.match(accessCookie, /Max-Age=\d+/i);
+    assert.match(refreshCookie, new RegExp(`Max-Age=${THIRTY_DAYS_SECONDS}`, 'i'));
     assert.ok(setCookies.every((cookie) => /HttpOnly/i.test(cookie)));
   });
 

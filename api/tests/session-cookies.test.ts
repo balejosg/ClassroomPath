@@ -13,8 +13,11 @@ import {
   stripSessionTokens,
 } from '../src/lib/session-cookies.js';
 
+const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
 describe('session cookie helpers', () => {
-  it('sets secure HttpOnly cookies with expected names', () => {
+  it('sets persistent secure HttpOnly cookies with expected names', () => {
     const calls: Array<{ name: string; value: string; options: Record<string, unknown> }> = [];
     const res = {
       cookie(name: string, value: string, options: Record<string, unknown>) {
@@ -38,6 +41,8 @@ describe('session cookie helpers', () => {
     assert.equal(calls[1]?.options.sameSite, 'lax');
     assert.equal(calls[0]?.options.path, '/');
     assert.equal(calls[1]?.options.path, '/');
+    assert.equal(calls[0]?.options.maxAge, FIFTEEN_MINUTES_MS);
+    assert.equal(calls[1]?.options.maxAge, THIRTY_DAYS_MS);
   });
 
   it('parses cookie values from Cookie header', () => {

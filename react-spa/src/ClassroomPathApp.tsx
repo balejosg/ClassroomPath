@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import { DualTRPCProvider } from './lib/dual-trpc-provider';
-import { useOnboardingStatus } from './lib/hooks';
+import { useOnboardingStatus, useRefreshSession } from './lib/hooks';
 import { AdminPanel } from './components/AdminPanel';
 import { GroupLibrary } from './components/GroupLibrary';
 import { cpTrpc } from './lib/cp-trpc';
@@ -26,9 +26,11 @@ import {
 import {
   getAuthViewFromPathname,
   getPathForAuthView,
+  isStandaloneDisplayMode,
   isBillingCancelPath,
   isBillingSuccessPath,
   normalizePathname,
+  shouldRouteUnauthenticatedToLogin,
 } from './app/classroom-path-auth-routing';
 import { BillingCancel } from './views/BillingCancel';
 import { BillingSuccess } from './views/BillingSuccess';
@@ -37,6 +39,14 @@ import './index.css';
 const ClassroomPathShell = React.lazy(() => import('./ClassroomPathShell'));
 
 const TEACHER_GROUPS_FEATURE_KEY = 'openpath_teacher_groups_enabled';
+
+function extractSessionUser(payload: unknown): unknown | undefined {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  return (payload as { user?: unknown }).user;
+}
 
 function FullScreenLoader({ label }: { label: string }) {
   return (
@@ -54,11 +64,20 @@ function AppContent() {
   const navigate = useNavigate();
   const pathname = normalizePathname(location.pathname);
   const authView = getAuthViewFromPathname(pathname);
+  const shouldShowLogin =
+    !hasSessionMarker() &&
+    shouldRouteUnauthenticatedToLogin({
+      pathname,
+      isStandalone: isStandaloneDisplayMode(),
+    });
+  const effectiveAuthView = shouldShowLogin ? 'login' : authView;
 
   const [isAuth, setIsAuth] = useState(hasSessionMarker());
   const [openPathReady, setOpenPathReady] = useState(false);
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const hasSyncedProfileRef = useRef(false);
+  const hasAttemptedSessionRefreshRef = useRef(false);
+  const isRefreshingSessionRef = useRef(false);
 
   const navigateToAuthView = (view: Parameters<typeof getPathForAuthView>[0], replace = false) => {
     navigate(getPathForAuthView(view), { replace });
@@ -113,8 +132,15 @@ function AppContent() {
   const query = useOnboardingStatus({
     enabled: isAuth,
   });
+  const refreshMutation = useRefreshSession();
 
   const { data: status, isLoading, refetch, isError, error } = query;
+
+  useEffect(() => {
+    if (!isAuth && shouldShowLogin && pathname !== '/login') {
+      navigateToAuthView('login', true);
+    }
+  }, [isAuth, navigate, pathname, shouldShowLogin]);
 
   useEffect(() => {
     if (!shouldScheduleLoadingTimeout({ isAuth, isLoading })) {
@@ -164,14 +190,44 @@ function AppContent() {
   }, [isAuth]);
 
   useEffect(() => {
-    if (!isAuth || !isError || !error) return;
-
-    if (isUnauthorizedOnboardingError(error)) {
-      clearSession();
-      setIsAuth(false);
-      navigateToAuthView('login', true);
+    if (!isAuth) {
+      hasAttemptedSessionRefreshRef.current = false;
+      return;
     }
-  }, [error, isAuth, isError, navigate]);
+
+    if (!isError || !error) {
+      hasAttemptedSessionRefreshRef.current = false;
+      return;
+    }
+
+    if (!isUnauthorizedOnboardingError(error)) {
+      hasAttemptedSessionRefreshRef.current = false;
+      return;
+    }
+
+    if (hasAttemptedSessionRefreshRef.current || isRefreshingSessionRef.current) {
+      return;
+    }
+
+    hasAttemptedSessionRefreshRef.current = true;
+    isRefreshingSessionRef.current = true;
+
+    void (async () => {
+      try {
+        const payload = await refreshMutation.mutateAsync({});
+        persistSession({ user: extractSessionUser(payload) });
+        setIsAuth(true);
+        setLoadingTimedOut(false);
+        refetch();
+      } catch {
+        clearSession();
+        setIsAuth(false);
+        navigateToAuthView('login', true);
+      } finally {
+        isRefreshingSessionRef.current = false;
+      }
+    })();
+  }, [error, isAuth, isError, navigate, refetch, refreshMutation]);
 
   if (!openPathReady) {
     return <FullScreenLoader label="Preparando ClassroomPath..." />;
@@ -180,7 +236,7 @@ function AppContent() {
   if (!isAuth) {
     return (
       <AuthEntryView
-        authView={authView}
+        authView={effectiveAuthView}
         onAuthenticated={() => {
           setIsAuth(true);
           navigate('/', { replace: true });
