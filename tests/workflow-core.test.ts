@@ -218,6 +218,7 @@ describe('Workflow core contracts', () => {
     );
     assert.match(ciRegressionHelper, /!key\.startsWith\('npm_'\)/);
     assert.match(verificationCatalog, /tests\/workflow-core\.test\.ts/);
+    assert.match(verificationCatalog, /tests\/ci-cache-measurement\.test\.ts/);
     assert.match(verificationCatalog, /tests\/ci-routing-measurement\.test\.ts/);
     assert.match(verificationCatalog, /tests\/workflow-deploy\.test\.ts/);
     assert.match(verificationCatalog, /tests\/workflow-production-client-canary\.test\.ts/);
