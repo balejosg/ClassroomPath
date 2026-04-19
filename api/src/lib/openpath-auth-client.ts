@@ -9,6 +9,7 @@ import {
   clearSessionCookies,
   parseCookieValue,
   REFRESH_COOKIE_NAME,
+  type SessionCookieOptions,
   storeSessionFromPayload,
 } from './session-cookies.js';
 
@@ -26,6 +27,7 @@ interface OpenPathAuthCallOptions {
 
 interface OpenPathSessionMutationOptions extends OpenPathAuthCallOptions {
   res: Pick<Response, 'cookie'>;
+  session?: SessionCookieOptions;
 }
 
 export async function forwardOpenPathAuthProcedure(
@@ -38,7 +40,7 @@ export async function forwardOpenPathSessionMutation(
   options: OpenPathSessionMutationOptions
 ): Promise<unknown> {
   const payload = await callOpenPathTrpc(options);
-  return storeSessionFromPayload(options.res, payload);
+  return storeSessionFromPayload(options.res, payload, options.session);
 }
 
 export async function getOpenPathMeProfile(params: {

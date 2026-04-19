@@ -8,7 +8,11 @@ import {
   getOpenPathMeProfile,
   logoutOpenPathSession,
 } from '../src/lib/openpath-auth-client.js';
-import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../src/lib/session-cookies.js';
+import {
+  ACCESS_COOKIE_NAME,
+  REFRESH_COOKIE_NAME,
+  SESSION_MODE_COOKIE_NAME,
+} from '../src/lib/session-cookies.js';
 
 const originalFetch = globalThis.fetch;
 
@@ -61,6 +65,7 @@ describe('openpath-auth-client', () => {
     assert.deepStrictEqual(calls, [
       { name: ACCESS_COOKIE_NAME, value: 'access-token' },
       { name: REFRESH_COOKIE_NAME, value: 'refresh-token' },
+      { name: SESSION_MODE_COOKIE_NAME, value: 'web' },
     ]);
   });
 
@@ -244,7 +249,7 @@ describe('openpath-auth-client', () => {
     assert.deepStrictEqual(JSON.parse(seenBody), { refreshToken: 'refresh-token' });
     assert.deepStrictEqual(
       cookieCalls.map((cookie) => cookie.name).sort(),
-      [ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME].sort()
+      [ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, SESSION_MODE_COOKIE_NAME].sort()
     );
     assert.ok(cookieCalls.every((cookie) => cookie.value === ''));
   });

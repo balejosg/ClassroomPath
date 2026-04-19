@@ -31,6 +31,17 @@ function buildLoginPath(nextPath) {
   return `/login?next=${encodeURIComponent(resolveInternalPath(nextPath, '/dominios'))}`;
 }
 
+async function refreshAppSession() {
+  const response = await fetch('/cp/trpc/auth.refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ json: { clientMode: 'app' } }),
+  });
+
+  return response.ok;
+}
+
 async function openClientWindow(path) {
   const targetPath = resolveInternalPath(path, '/dominios');
   const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
@@ -69,12 +80,19 @@ self.addEventListener('notificationclick', (event) => {
 
   if (event.action === 'approve' && requestId) {
     event.waitUntil(
-      fetch('/cp/notification-actions/domain-request/approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ requestId }),
-      })
+      refreshAppSession()
+        .then((refreshed) => {
+          if (!refreshed) {
+            return { ok: false };
+          }
+
+          return fetch('/cp/notification-actions/domain-request/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ requestId }),
+          });
+        })
         .then((response) => {
           if (response.ok) {
             return openClientWindow(`/dominios?approved=${encodeURIComponent(requestId)}`);
@@ -82,7 +100,7 @@ self.addEventListener('notificationclick', (event) => {
 
           return openClientWindow(buildLoginPath(approvalUrl));
         })
-        .catch(() => openClientWindow(approvalUrl))
+        .catch(() => openClientWindow(buildLoginPath(approvalUrl)))
     );
     return;
   }

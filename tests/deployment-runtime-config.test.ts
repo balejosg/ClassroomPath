@@ -78,8 +78,8 @@ void describe('Docker Compose Configuration', () => {
     );
     assert.ok(api.env_file, 'API should use env_file');
     assert.ok(
-      api.environment?.includes('JWT_ACCESS_EXPIRY=${JWT_ACCESS_EXPIRY:-15m}'),
-      'API should default short-lived access tokens for cookie-backed session refresh'
+      api.environment?.includes('JWT_ACCESS_EXPIRY=${JWT_ACCESS_EXPIRY:-24h}'),
+      'API should default access tokens to the ClassroomPath 24-hour web session policy'
     );
     assert.ok(
       api.environment?.includes('JWT_REFRESH_EXPIRY=${JWT_REFRESH_EXPIRY:-30d}'),

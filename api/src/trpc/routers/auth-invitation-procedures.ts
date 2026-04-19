@@ -14,6 +14,8 @@ import { recordTermsAcceptance } from '../../services/legal-consent.service.js';
 import { assertCurrentTermsVersion } from './auth-payloads.js';
 import { resolveRegistrationEmailVerification } from './auth-verification-flow.js';
 
+const clientModeInput = z.enum(['web', 'app']).optional();
+
 async function getInvitationOrThrow(token: string) {
   const invitation = await getInvitationByToken(token);
   if (!invitation) {
@@ -42,6 +44,7 @@ export const authInvitationProcedures = {
         password: z.string().min(8),
         termsAccepted: z.literal(true),
         termsVersion: z.string().min(1).max(50),
+        clientMode: clientModeInput,
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -102,6 +105,8 @@ export const authInvitationProcedures = {
         upstreamFailureMessage: 'Invitation activation failed',
         unavailableMessage: 'Authentication service unavailable',
       });
-      return storeSessionFromPayload(ctx.res, sessionPayload);
+      return storeSessionFromPayload(ctx.res, sessionPayload, {
+        clientMode: input.clientMode ?? 'web',
+      });
     }),
 };

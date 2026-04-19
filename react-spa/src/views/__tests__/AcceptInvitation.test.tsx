@@ -195,6 +195,7 @@ describe('AcceptInvitation', () => {
         password: 'StrongPass1',
         termsAccepted: true,
         termsVersion: '2026-03-09',
+        clientMode: 'web',
       });
     });
 

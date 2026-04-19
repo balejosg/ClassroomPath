@@ -7,6 +7,7 @@ import {
   listAvailableOrganizations,
   setWaitingForInvitation,
 } from '../../services/onboarding-flow.service.js';
+import { parseSessionClientMode } from '../../lib/session-cookies.js';
 
 export const onboardingRouter = router({
   /**
@@ -34,6 +35,10 @@ export const onboardingRouter = router({
         name: input.name,
         userId: ctx.user.sub,
         res: ctx.res,
+        clientMode:
+          parseSessionClientMode(
+            typeof ctx.req.headers.cookie === 'string' ? ctx.req.headers.cookie : undefined
+          ) ?? 'web',
       })
     ),
 

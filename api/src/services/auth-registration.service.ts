@@ -7,6 +7,7 @@ import { openpathDb, openpathSchema } from '../db/openpath.js';
 import { generateId } from '../lib/id.js';
 import { logger } from '../lib/logger.js';
 import { storeSessionFromPayload } from '../lib/session-cookies.js';
+import type { SessionClientMode } from '../lib/session-cookies.js';
 import { googleLoginOpenPathUser, registerOpenPathUser } from '../lib/openpath/auth-client.js';
 import { recordTermsAcceptance } from './legal-consent.service.js';
 import {
@@ -254,6 +255,7 @@ export async function signUpWithGoogle(params: {
   res: Pick<Response, 'cookie'>;
   idToken: string;
   termsVersion: string;
+  clientMode: SessionClientMode;
 }) {
   assertCurrentTermsVersion(params.termsVersion);
 
@@ -272,7 +274,7 @@ export async function signUpWithGoogle(params: {
     termsVersion: params.termsVersion,
   });
 
-  return storeSessionFromPayload(params.res, session);
+  return storeSessionFromPayload(params.res, session, { clientMode: params.clientMode });
 }
 
 export async function generateEmailVerificationDelivery(params: { email: string }) {

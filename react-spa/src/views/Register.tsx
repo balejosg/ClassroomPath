@@ -5,6 +5,7 @@ import GoogleLoginButton from '../components/GoogleLoginButton';
 import { validateEmail, validatePassword, ERROR_MESSAGES_ES } from '../utils/validation';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { reportError } from '../lib/reportError';
+import { getSessionClientMode } from '../lib/session-client-mode';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
 import {
   getPasswordSetupError,
@@ -95,6 +96,7 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
         idToken,
         termsAccepted: true,
         termsVersion: CURRENT_TERMS_VERSION,
+        clientMode: getSessionClientMode(),
       });
 
       persistAuthSession(result);

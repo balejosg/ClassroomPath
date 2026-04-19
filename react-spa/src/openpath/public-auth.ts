@@ -1,1 +1,1 @@
-export { isAdmin } from '@openpath/public-auth';
+export { isAdmin, setUnauthorizedResponseHandler } from '@openpath/public-auth';

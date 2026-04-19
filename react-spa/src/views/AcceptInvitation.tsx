@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Loader2, Mail } from 'lucide-react';
 
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
+import { getSessionClientMode } from '../lib/session-client-mode';
 import { PasswordStrength } from '../components/PasswordStrength';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
 import { AuthSplitLayout } from './auth/AuthSplitLayout';
@@ -58,6 +59,7 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
         password,
         termsAccepted: true,
         termsVersion: CURRENT_TERMS_VERSION,
+        clientMode: getSessionClientMode(),
       });
       persistAuthSession(result);
       onSuccess();

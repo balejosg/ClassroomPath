@@ -8,7 +8,14 @@ import {
   logoutOpenPathSession,
 } from '../../lib/openpath-auth-client.js';
 import { normalizeEmailAddress } from './auth-payloads.js';
-import { parseCookieValue, REFRESH_COOKIE_NAME } from '../../lib/session-cookies.js';
+import {
+  normalizeSessionClientMode,
+  parseCookieValue,
+  parseSessionClientMode,
+  REFRESH_COOKIE_NAME,
+} from '../../lib/session-cookies.js';
+
+const clientModeInput = z.enum(['web', 'app']).optional();
 
 export const authSessionProcedures = {
   login: publicProcedure
@@ -16,6 +23,7 @@ export const authSessionProcedures = {
       z.object({
         email: z.string().trim().email(),
         password: z.string().min(1),
+        clientMode: clientModeInput,
       })
     )
     .mutation(async ({ input, ctx }) =>
@@ -27,6 +35,7 @@ export const authSessionProcedures = {
           email: normalizeEmailAddress(input.email),
           password: input.password,
         },
+        session: { clientMode: input.clientMode ?? 'web' },
         defaultErrorCode: 'UNAUTHORIZED',
         upstreamFailureMessage: 'Login failed',
         unavailableMessage: 'Authentication service unavailable',
@@ -34,15 +43,20 @@ export const authSessionProcedures = {
     ),
 
   refresh: publicProcedure
-    .input(z.object({ refreshToken: z.string().min(1).optional() }).optional())
+    .input(
+      z
+        .object({
+          refreshToken: z.string().min(1).optional(),
+          clientMode: clientModeInput,
+        })
+        .optional()
+    )
     .mutation(async ({ input, ctx }) => {
+      const cookieHeader =
+        typeof ctx.req.headers.cookie === 'string' ? ctx.req.headers.cookie : undefined;
       const refreshToken =
-        input?.refreshToken ??
-        parseCookieValue(
-          typeof ctx.req.headers.cookie === 'string' ? ctx.req.headers.cookie : undefined,
-          REFRESH_COOKIE_NAME
-        ) ??
-        undefined;
+        input?.refreshToken ?? parseCookieValue(cookieHeader, REFRESH_COOKIE_NAME) ?? undefined;
+      const clientMode = input?.clientMode ?? parseSessionClientMode(cookieHeader) ?? 'web';
 
       if (!refreshToken) {
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Refresh token required' });
@@ -53,6 +67,7 @@ export const authSessionProcedures = {
         req: ctx.req,
         res: ctx.res,
         input: { refreshToken },
+        session: { clientMode },
         defaultErrorCode: 'UNAUTHORIZED',
         upstreamFailureMessage: 'Session refresh failed',
         unavailableMessage: 'Authentication service unavailable',
@@ -63,6 +78,7 @@ export const authSessionProcedures = {
     .input(
       z.object({
         idToken: z.string().min(1),
+        clientMode: clientModeInput,
       })
     )
     .mutation(async ({ input, ctx }) =>
@@ -70,7 +86,10 @@ export const authSessionProcedures = {
         procedure: 'auth.googleLogin',
         req: ctx.req,
         res: ctx.res,
-        input,
+        input: {
+          idToken: input.idToken,
+        },
+        session: { clientMode: normalizeSessionClientMode(input.clientMode) ?? 'web' },
         defaultErrorCode: 'UNAUTHORIZED',
         upstreamFailureMessage: 'Google login failed',
         unavailableMessage: 'Authentication service unavailable',

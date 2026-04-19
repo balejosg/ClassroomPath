@@ -10,9 +10,9 @@ export interface TokensResult {
   tokenType: 'Bearer';
 }
 
-const JWT_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRY ?? process.env.JWT_EXPIRES_IN ?? '15m';
+const JWT_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRY ?? process.env.JWT_EXPIRES_IN ?? '24h';
 const JWT_REFRESH_EXPIRES_IN =
-  process.env.JWT_REFRESH_EXPIRY ?? process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+  process.env.JWT_REFRESH_EXPIRY ?? process.env.JWT_REFRESH_EXPIRES_IN ?? '30d';
 
 export function generateTokens(user: User, roles: RoleInfo[]): TokensResult {
   const accessPayload = {

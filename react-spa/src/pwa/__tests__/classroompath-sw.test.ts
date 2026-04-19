@@ -59,7 +59,10 @@ describe('classroompath service worker', () => {
   });
 
   it('falls back to login with next approval URL when direct approval loses authentication', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 401 });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce({ ok: false, status: 401 });
     const { listeners, openWindow } = loadServiceWorker({
       fetch: fetchMock as unknown as typeof fetch,
     });
@@ -79,12 +82,22 @@ describe('classroompath service worker', () => {
 
     await waitUntil.mock.results[0]?.value;
 
-    expect(fetchMock).toHaveBeenCalledWith('/cp/notification-actions/domain-request/approve', {
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/cp/trpc/auth.refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ requestId: 'req_123' }),
+      body: JSON.stringify({ json: { clientMode: 'app' } }),
     });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/cp/notification-actions/domain-request/approve',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ requestId: 'req_123' }),
+      }
+    );
     expect(openWindow).toHaveBeenCalledWith('/login?next=%2Fdominios%2Faprobar%2Freq_123');
   });
 });

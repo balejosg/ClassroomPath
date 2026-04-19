@@ -35,6 +35,7 @@ import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../src/lib/session-cookies.js';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
+const ONE_DAY_SECONDS = 24 * 60 * 60;
 const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
 
 async function seedTenantOrganization(params: { token: string; name: string }): Promise<string> {
@@ -215,9 +216,37 @@ describe('ClassroomPath Gateway Integration', async () => {
     const refreshCookie = setCookies.find((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`));
     assert.ok(accessCookie);
     assert.ok(refreshCookie);
-    assert.match(accessCookie, /Max-Age=\d+/i);
-    assert.match(refreshCookie, new RegExp(`Max-Age=${THIRTY_DAYS_SECONDS}`, 'i'));
+    assert.match(accessCookie, new RegExp(`Max-Age=${ONE_DAY_SECONDS}`, 'i'));
+    assert.match(refreshCookie, new RegExp(`Max-Age=${ONE_DAY_SECONDS}`, 'i'));
     assert.ok(setCookies.every((cookie) => /HttpOnly/i.test(cookie)));
+  });
+
+  test('/cp/trpc/auth.login keeps standalone app refresh sessions for 30 days', async () => {
+    const email = uniqueEmail('login-app-session');
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: `login-app-session-${Date.now()}`,
+      email,
+      name: 'Login App Session User',
+      passwordHash: 'hashed',
+      isActive: true,
+      emailVerified: true,
+    });
+
+    const response = await trpcMutate(integration.baseUrl, 'auth.login', {
+      email,
+      password: 'password123',
+      clientMode: 'app',
+    });
+
+    assertStatus(response, 200);
+    const setCookies = getSetCookieHeaders(response);
+    const accessCookie = setCookies.find((cookie) => cookie.includes(`${ACCESS_COOKIE_NAME}=`));
+    const refreshCookie = setCookies.find((cookie) => cookie.includes(`${REFRESH_COOKIE_NAME}=`));
+    assert.ok(accessCookie);
+    assert.ok(refreshCookie);
+    assert.match(accessCookie, new RegExp(`Max-Age=${ONE_DAY_SECONDS}`, 'i'));
+    assert.match(refreshCookie, new RegExp(`Max-Age=${THIRTY_DAYS_SECONDS}`, 'i'));
   });
 
   test('/cp/trpc/auth.register persists consent metadata and returns email verification delivery details', async () => {

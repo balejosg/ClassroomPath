@@ -11,6 +11,8 @@ import {
 } from '../../services/auth-registration.service.js';
 import { assertCurrentTermsVersion, normalizeEmailAddress } from './auth-payloads.js';
 
+const clientModeInput = z.enum(['web', 'app']).optional();
+
 export const authRegistrationProcedures = {
   register: publicProcedure
     .input(
@@ -38,6 +40,7 @@ export const authRegistrationProcedures = {
         idToken: z.string().min(1),
         termsAccepted: z.literal(true),
         termsVersion: z.string().min(1).max(50),
+        clientMode: clientModeInput,
       })
     )
     .mutation(async ({ input, ctx }) =>
@@ -46,6 +49,7 @@ export const authRegistrationProcedures = {
         res: ctx.res,
         idToken: input.idToken,
         termsVersion: input.termsVersion,
+        clientMode: input.clientMode ?? 'web',
       })
     ),
 

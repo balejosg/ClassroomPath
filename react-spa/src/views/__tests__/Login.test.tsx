@@ -144,6 +144,7 @@ describe('Login View', () => {
       expect(mockLoginMutateAsync).toHaveBeenCalledWith({
         email: 'teacher@example.com',
         password: 'password123',
+        clientMode: 'web',
       });
     });
     expect(mockPersistSession).toHaveBeenCalledWith({

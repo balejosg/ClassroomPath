@@ -6,6 +6,7 @@ import { db, schema } from '../db/index.js';
 import { config } from '../config.js';
 import * as jwt from '../lib/jwt.js';
 import { storeSessionFromPayload } from '../lib/session-cookies.js';
+import type { SessionClientMode } from '../lib/session-cookies.js';
 import * as openpathRoles from '../lib/openpath-roles.js';
 import * as openpathUsers from '../lib/openpath-users.js';
 import * as onboardingService from './onboarding.service.js';
@@ -28,6 +29,7 @@ export async function createOrganizationSession(params: {
   name: string;
   userId: string;
   res: Pick<Response, 'cookie'>;
+  clientMode: SessionClientMode;
 }) {
   if (!config.allowSelfServiceOrgs) {
     throw new TRPCError({
@@ -51,18 +53,22 @@ export async function createOrganizationSession(params: {
   const roles = await openpathRoles.getUserRoles(params.userId);
   const tokens = jwt.generateTokens(user, roles);
 
-  return storeSessionFromPayload(params.res, {
-    success: true,
-    organizationId: result.organizationId,
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      roles,
+  return storeSessionFromPayload(
+    params.res,
+    {
+      success: true,
+      organizationId: result.organizationId,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        roles,
+      },
     },
-  });
+    { clientMode: params.clientMode }
+  );
 }
 
 export async function setWaitingForInvitation(params: {

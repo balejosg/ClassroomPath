@@ -291,6 +291,7 @@ describe('Register View', () => {
         idToken: 'google-id-token',
         termsAccepted: true,
         termsVersion: CURRENT_TERMS_VERSION,
+        clientMode: 'web',
       });
     });
 

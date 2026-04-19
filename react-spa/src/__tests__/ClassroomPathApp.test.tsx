@@ -28,11 +28,13 @@ const mockUseOnboardingStatus = vi.fn();
 const mockUseRefreshSession = vi.fn();
 const mockLogoutMutate = vi.fn();
 const mockAuthMeQuery = vi.fn();
+const mockRefreshMutate = vi.fn();
 const mockClearRequestsApiUrl = vi.fn();
 const mockClearSession = vi.fn();
 const mockHasSessionMarker = vi.fn();
 const mockPersistSession = vi.fn();
 const mockSetRequestsApiUrl = vi.fn();
+const mockSetUnauthorizedResponseHandler = vi.fn();
 
 vi.mock('../lib/dual-trpc-provider', () => ({
   DualTRPCProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -48,8 +50,14 @@ vi.mock('../lib/cp-trpc', () => ({
     auth: {
       logout: { mutate: (...args: unknown[]) => mockLogoutMutate(...args) },
       me: { query: (...args: unknown[]) => mockAuthMeQuery(...args) },
+      refresh: { mutate: (...args: unknown[]) => mockRefreshMutate(...args) },
     },
   },
+}));
+
+vi.mock('../openpath/public-auth', () => ({
+  setUnauthorizedResponseHandler: (...args: unknown[]) =>
+    mockSetUnauthorizedResponseHandler(...args),
 }));
 
 vi.mock('../lib/auth-storage', () => ({
@@ -355,7 +363,7 @@ describe('ClassroomPathApp', () => {
     render(<ClassroomPathApp />);
 
     await waitFor(() => {
-      expect(refresh).toHaveBeenCalledWith({});
+      expect(refresh).toHaveBeenCalledWith({ clientMode: 'web' });
       expect(mockPersistSession).toHaveBeenCalledWith({ user: { id: 'refreshed-user' } });
       expect(refetch).toHaveBeenCalledTimes(1);
       expect(mockClearSession).not.toHaveBeenCalled();
@@ -376,7 +384,7 @@ describe('ClassroomPathApp', () => {
     render(<ClassroomPathApp />);
 
     await waitFor(() => {
-      expect(refresh).toHaveBeenCalledWith({});
+      expect(refresh).toHaveBeenCalledWith({ clientMode: 'web' });
       expect(mockClearSession).toHaveBeenCalledTimes(1);
       expect(screen.getByText('Login View')).toBeInTheDocument();
     });

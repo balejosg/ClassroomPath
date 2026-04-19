@@ -8,6 +8,8 @@ import { GroupLibrary } from './components/GroupLibrary';
 import { cpTrpc } from './lib/cp-trpc';
 import { setReportErrorSink } from './lib/reportError';
 import { createReportErrorSink } from './lib/reportErrorSink';
+import { getSessionClientMode } from './lib/session-client-mode';
+import { setUnauthorizedResponseHandler } from './openpath/public-auth';
 import { registerClassroomPathServiceWorker } from './pwa/register-service-worker';
 import {
   clearRequestsApiUrl,
@@ -104,6 +106,22 @@ function AppContent() {
     return () => {
       setReportErrorSink(null);
     };
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedResponseHandler(async () => {
+      try {
+        const payload = await cpTrpc.auth.refresh.mutate({
+          clientMode: getSessionClientMode(),
+        });
+        persistSession({ user: extractSessionUser(payload) });
+        return 'retry';
+      } catch {
+        return false;
+      }
+    });
+
+    return () => setUnauthorizedResponseHandler(null);
   }, []);
 
   useEffect(() => {
@@ -217,7 +235,9 @@ function AppContent() {
 
     void (async () => {
       try {
-        const payload = await refreshMutation.mutateAsync({});
+        const payload = await refreshMutation.mutateAsync({
+          clientMode: getSessionClientMode(),
+        });
         persistSession({ user: extractSessionUser(payload) });
         setIsAuth(true);
         setLoadingTimedOut(false);

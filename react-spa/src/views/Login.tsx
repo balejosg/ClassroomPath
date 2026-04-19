@@ -3,6 +3,7 @@ import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { reportError } from '../lib/reportError';
+import { getSessionClientMode } from '../lib/session-client-mode';
 import { AuthSplitLayout } from './auth/AuthSplitLayout';
 import {
   normalizeEmailAddress,
@@ -126,7 +127,11 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
     setEmail(normalizedEmail);
 
     try {
-      const result = await loginMutation.mutateAsync({ email: normalizedEmail, password });
+      const result = await loginMutation.mutateAsync({
+        email: normalizedEmail,
+        password,
+        clientMode: getSessionClientMode(),
+      });
       persistAuthSession(result);
       onLogin();
     } catch (err) {
@@ -154,7 +159,10 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
     setVerificationUrl('');
     setShowResendVerification(false);
     try {
-      const result = await googleLoginMutation.mutateAsync({ idToken });
+      const result = await googleLoginMutation.mutateAsync({
+        idToken,
+        clientMode: getSessionClientMode(),
+      });
       persistAuthSession(result);
       onLogin();
     } catch (err: any) {
