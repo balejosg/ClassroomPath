@@ -2,10 +2,19 @@
 
 > Status: maintained
 > Applies to: ClassroomPath verification and release flow
-> Last verified: 2026-04-13
+> Last verified: 2026-04-19
 > Source of truth: `docs/verification-matrix.md`
 
 This matrix maps the current verification lanes to the evidence they provide.
+
+## Current Local Timing Baseline
+
+Measured on April 19, 2026:
+
+- `npm run verify:precommit` completed in `0.168s` with no staged files.
+- Commit-hook sample with one staged Markdown file completed in `0.747s`.
+- `npm run verify:incremental` completed in `11:28.28` on a warm local tree.
+- OpenPath `bash scripts/verify-full.sh` completed in `1:30.35` after sandbox restrictions were removed.
 
 ## Verification Lanes
 
