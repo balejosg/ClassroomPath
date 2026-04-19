@@ -15,6 +15,7 @@ import { isAdmin } from './openpath/public-auth';
 
 import { OrganizationUsers } from './views/OrganizationUsers';
 import { DomainRequestsPage } from './views/DomainRequestsPage';
+import { DomainRequestApprovalPage } from './views/DomainRequestApprovalPage';
 import {
   getPathForTab,
   getTabFromPathname,
@@ -134,6 +135,7 @@ function ClassroomPathShellContent() {
                 path="/usuarios"
                 element={admin ? <OrganizationUsers /> : renderTeacherFallback()}
               />
+              <Route path="/dominios/aprobar/:requestId" element={<DomainRequestApprovalPage />} />
               <Route path="/dominios" element={<DomainRequestsPage />} />
               <Route path="/configuracion" element={<Settings />} />
               <Route path="/settings" element={<Navigate replace to="/configuracion" />} />

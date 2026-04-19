@@ -183,6 +183,11 @@ describe('push service', () => {
       assert.deepStrictEqual(result, { sent: 1, failed: 2 });
       assert.strictEqual(setVapidMock.mock.callCount(), 1);
       assert.strictEqual(sendMock.mock.callCount(), 3);
+      const payload = JSON.parse(sendMock.mock.calls[0]?.arguments[1] as string) as {
+        data?: { approvalUrl?: string; url?: string };
+      };
+      assert.strictEqual(payload.data?.approvalUrl, '/dominios/aprobar/req_push');
+      assert.strictEqual(payload.data?.url, '/dominios?highlight=req_push');
       assert.strictEqual(deleteMock.mock.callCount(), 1);
     } finally {
       selectMock.mock.restore();

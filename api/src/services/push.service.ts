@@ -210,6 +210,7 @@ export async function notifyTenantTeachersOfNewRequest(
       requestId: request.id,
       domain: request.domain,
       groupId: request.groupId,
+      approvalUrl: `/dominios/aprobar/${encodeURIComponent(request.id)}`,
       url: `/dominios?highlight=${encodeURIComponent(request.id)}`,
     },
     actions: [{ action: 'approve', title: 'Aprobar' }],

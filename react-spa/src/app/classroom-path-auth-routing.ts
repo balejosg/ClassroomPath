@@ -60,6 +60,27 @@ export function shouldRouteUnauthenticatedToLogin(params: {
   return true;
 }
 
+export function getSafeInternalNextPath(search: string): string | null {
+  const next = new URLSearchParams(search).get('next');
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return null;
+
+  try {
+    const parsed = new URL(next, window.location.origin);
+    if (parsed.origin !== window.location.origin) return null;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+export function getLoginPathForRedirect(pathname: string, search = ''): string {
+  const normalized = normalizePathname(pathname);
+  if (normalized === '/') return '/login';
+
+  const next = `${normalized}${search}`;
+  return `/login?next=${encodeURIComponent(next)}`;
+}
+
 export function isBillingSuccessPath(pathname: string): boolean {
   return normalizePathname(pathname).startsWith('/billing/success');
 }

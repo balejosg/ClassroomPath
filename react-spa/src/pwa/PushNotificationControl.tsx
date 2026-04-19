@@ -1,8 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import { cpTrpc } from '../lib/cp-trpc';
 
-type PushState = 'idle' | 'enabling' | 'enabled' | 'denied' | 'unsupported' | 'disabled' | 'error';
+type PushState =
+  | 'idle'
+  | 'enabling'
+  | 'enabled'
+  | 'denied'
+  | 'unsupported'
+  | 'install-ios'
+  | 'disabled'
+  | 'error';
 
 function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
   const padding = '='.repeat((4 - (value.length % 4)) % 4);
@@ -22,8 +30,32 @@ function hasPushSupport(): boolean {
     typeof window !== 'undefined' &&
     'Notification' in window &&
     'serviceWorker' in navigator &&
-    'PushManager' in window
+    typeof window.PushManager !== 'undefined'
   );
+}
+
+function isAppleMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+
+  const userAgent = navigator.userAgent || '';
+  const classicIos = /iPad|iPhone|iPod/.test(userAgent);
+  const modernIpad = /Macintosh/.test(userAgent) && navigator.maxTouchPoints > 1;
+  return classicIos || modernIpad;
+}
+
+function isStandaloneApp(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const navigatorWithStandalone = window.navigator as Navigator & { standalone?: boolean };
+  return (
+    window.matchMedia?.('(display-mode: standalone)').matches === true ||
+    navigatorWithStandalone.standalone === true
+  );
+}
+
+function getInitialPushState(): PushState {
+  if (isAppleMobileDevice() && !isStandaloneApp()) return 'install-ios';
+  return hasPushSupport() ? 'idle' : 'unsupported';
 }
 
 function subscriptionToInput(subscription: PushSubscription) {
@@ -39,14 +71,45 @@ function subscriptionToInput(subscription: PushSubscription) {
 }
 
 export function PushNotificationControl() {
-  const [state, setState] = useState<PushState>(() => (hasPushSupport() ? 'idle' : 'unsupported'));
+  const [state, setState] = useState<PushState>(getInitialPushState);
   const [message, setMessage] = useState('');
   const buttonLabel = useMemo(
     () => (state === 'enabling' ? 'Activando...' : 'Activar notificaciones'),
     [state]
   );
 
+  useEffect(() => {
+    if (state !== 'idle') return;
+
+    let active = true;
+    void cpTrpc.push.getStatus
+      .query()
+      .then((status) => {
+        if (!active) return;
+        if (!status.pushEnabled) {
+          setState('disabled');
+          setMessage('Notificaciones no configuradas');
+          return;
+        }
+        if (status.subscriptionCount > 0) {
+          setState('enabled');
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setState('idle');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [state]);
+
   const enableNotifications = async () => {
+    if (state === 'install-ios') {
+      return;
+    }
+
     if (!hasPushSupport()) {
       setState('unsupported');
       return;
@@ -74,10 +137,13 @@ export function PushNotificationControl() {
       const registration = await navigator.serviceWorker.register('/classroompath-sw.js', {
         scope: '/',
       });
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToArrayBuffer(vapid.publicKey),
-      });
+      const existingSubscription = await registration.pushManager.getSubscription?.();
+      const subscription =
+        existingSubscription ??
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToArrayBuffer(vapid.publicKey),
+        }));
 
       await cpTrpc.push.subscribe.mutate({
         subscription: subscriptionToInput(subscription),
@@ -93,6 +159,18 @@ export function PushNotificationControl() {
 
   if (state === 'unsupported') {
     return null;
+  }
+
+  if (state === 'install-ios') {
+    return (
+      <div className="mb-4 rounded-md border border-sky-200 bg-sky-50 p-4 text-slate-900">
+        <p className="text-sm font-semibold">Instala ClassroomPath en este iPhone</p>
+        <p className="mt-1 text-sm text-slate-700">
+          En Safari, abre compartir y pulsa Añadir a pantalla de inicio. Después abre ClassroomPath
+          desde el icono y activa las notificaciones.
+        </p>
+      </div>
+    );
   }
 
   return (

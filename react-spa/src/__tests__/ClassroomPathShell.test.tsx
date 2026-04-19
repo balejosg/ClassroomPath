@@ -110,6 +110,10 @@ vi.mock('../views/OrganizationUsers', () => ({
   OrganizationUsers: () => <div>Organization Users View</div>,
 }));
 
+vi.mock('../views/DomainRequestApprovalPage', () => ({
+  DomainRequestApprovalPage: () => <div>Focused Approval View</div>,
+}));
+
 import ClassroomPathShell from '../ClassroomPathShell';
 
 function renderShell() {
@@ -244,5 +248,16 @@ describe('ClassroomPathShell', () => {
 
     expect(screen.getByRole('heading', { name: 'Solicitudes de Acceso' })).toBeInTheDocument();
     expect(screen.getByText('Domain Requests View')).toBeInTheDocument();
+  });
+
+  it('renders the focused notification approval route before the general requests page', () => {
+    mockIsAdmin.mockReturnValue(false);
+    window.history.pushState({}, '', '/dominios/aprobar/req_123');
+
+    renderShell();
+
+    expect(screen.getByRole('heading', { name: 'Solicitudes de Acceso' })).toBeInTheDocument();
+    expect(screen.getByText('Focused Approval View')).toBeInTheDocument();
+    expect(screen.queryByText('Domain Requests View')).not.toBeInTheDocument();
   });
 });

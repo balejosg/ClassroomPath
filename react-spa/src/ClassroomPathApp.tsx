@@ -26,6 +26,8 @@ import {
 import {
   getAuthViewFromPathname,
   getPathForAuthView,
+  getLoginPathForRedirect,
+  getSafeInternalNextPath,
   isStandaloneDisplayMode,
   isBillingCancelPath,
   isBillingSuccessPath,
@@ -63,6 +65,7 @@ function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const pathname = normalizePathname(location.pathname);
+  const currentSearch = location.search;
   const authView = getAuthViewFromPathname(pathname);
   const shouldShowLogin =
     !hasSessionMarker() &&
@@ -138,9 +141,9 @@ function AppContent() {
 
   useEffect(() => {
     if (!isAuth && shouldShowLogin && pathname !== '/login') {
-      navigateToAuthView('login', true);
+      navigate(getLoginPathForRedirect(pathname, currentSearch), { replace: true });
     }
-  }, [isAuth, navigate, pathname, shouldShowLogin]);
+  }, [currentSearch, isAuth, navigate, pathname, shouldShowLogin]);
 
   useEffect(() => {
     if (!shouldScheduleLoadingTimeout({ isAuth, isLoading })) {
@@ -239,7 +242,7 @@ function AppContent() {
         authView={effectiveAuthView}
         onAuthenticated={() => {
           setIsAuth(true);
-          navigate('/', { replace: true });
+          navigate(getSafeInternalNextPath(location.search) ?? '/', { replace: true });
         }}
         onSetAuthView={(view) => navigateToAuthView(view)}
       />
