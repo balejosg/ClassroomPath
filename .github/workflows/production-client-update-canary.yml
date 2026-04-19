@@ -246,7 +246,6 @@ jobs:
 
       - name: Upload Windows self-update artifacts
         if: always()
-        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: production-windows-client-self-update-canary
@@ -254,6 +253,8 @@ jobs:
             production-windows-bootstrap-canary.json
             production-client-canary-evidence-windows.json
             ${{ runner.temp }}/windows-client-self-update.log
+          if-no-files-found: error
+          retention-days: 14
 
   linux-client-self-update-canary:
     name: Linux Client Self-Update Canary
@@ -451,7 +452,6 @@ jobs:
 
       - name: Upload Linux self-update artifacts
         if: always()
-        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: production-linux-client-self-update-canary
@@ -459,3 +459,5 @@ jobs:
             production-windows-bootstrap-canary.json
             production-client-canary-evidence-linux.json
             ${{ runner.temp }}/linux-client-self-update.log
+          if-no-files-found: error
+          retention-days: 14

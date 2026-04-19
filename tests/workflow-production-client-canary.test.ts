@@ -53,6 +53,26 @@ describe('Production client update canary workflow contracts', () => {
     );
   });
 
+  test('production client canary artifact uploads are required evidence', () => {
+    const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
+    const jobs = workflow.jobs ?? {};
+
+    for (const jobName of [
+      'windows-client-self-update-canary',
+      'linux-client-self-update-canary',
+    ]) {
+      const job = jobs[jobName];
+      const uploadStep = job?.steps?.find((step) =>
+        String(step.name ?? '').includes('self-update artifacts')
+      );
+
+      assert.equal(uploadStep?.uses, 'actions/upload-artifact@v7');
+      assert.ok(!('continue-on-error' in (uploadStep ?? {})));
+      assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
+      assert.equal(uploadStep?.with?.['retention-days'], 14);
+    }
+  });
+
   test('production provisioning helper supports Stripe and manual-only live canary activation', () => {
     const scriptText = readProjectText('scripts/create-production-windows-bootstrap-canary.mjs');
 
