@@ -41,7 +41,7 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(workflowText.includes('config.json') && workflowText.includes('lastAgentUpdateAt'));
     assert.ok(
       workflowText.includes('/api/enroll/$CLASSROOM_ID') &&
-        workflowText.includes('sudo bash "$enroll_script"')
+        workflowText.includes('sudo bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"')
     );
     assert.ok(workflowText.includes('/usr/local/bin/openpath-agent-update.sh --force'));
     assert.ok(workflowText.includes('openpath-agent-update.timer'));
@@ -88,6 +88,14 @@ describe('Production client update canary workflow contracts', () => {
       assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
       assert.equal(uploadStep?.with?.['retention-days'], 14);
     }
+
+    const linuxUploadStep = jobs['linux-client-self-update-canary']?.steps?.find((step) =>
+      String(step.name ?? '').includes('self-update artifacts')
+    );
+    assert.ok(
+      String(linuxUploadStep?.with?.path ?? '').includes('linux-client-enrollment.log'),
+      'Linux canary artifacts must include the live enrollment log'
+    );
   });
 
   test('linux enrollment canary retries transient registration failures', () => {
@@ -108,10 +116,14 @@ describe('Production client update canary workflow contracts', () => {
       'Linux enrollment should log retry attempts'
     );
     assert.ok(
-      /if sudo bash "\$enroll_script"; then[\s\S]*else\s+enrollment_status=\$\?/m.test(
+      /if sudo bash "\$enroll_script" 2>&1 \| tee -a "\$enrollment_log"; then[\s\S]*else\s+enrollment_status="\$\{PIPESTATUS\[0\]\}"/m.test(
         enrollmentScript
       ),
-      'Linux enrollment should preserve the enrollment command status inside a set -e-compatible branch'
+      'Linux enrollment should preserve the enrollment command status while teeing diagnostics'
+    );
+    assert.ok(
+      enrollmentScript.includes('linux-client-enrollment.log'),
+      'Linux enrollment should persist its output for failed canary diagnosis'
     );
     assert.ok(
       enrollmentScript.includes('exit "$enrollment_status"'),

@@ -407,6 +407,8 @@ jobs:
           workspace="$RUNNER_TEMP/linux-client-self-update-canary"
           mkdir -p "$workspace"
           enroll_script="$workspace/enroll.sh"
+          enrollment_log="$RUNNER_TEMP/linux-client-enrollment.log"
+          : > "$enrollment_log"
 
           curl -fsSL \
             -H "Authorization: Bearer $ENROLLMENT_TOKEN" \
@@ -415,11 +417,12 @@ jobs:
 
           enrollment_status=1
           for attempt in 1 2 3; do
-            if sudo bash "$enroll_script"; then
+            echo "===== Linux enrollment attempt $attempt =====" | tee -a "$enrollment_log"
+            if sudo bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"; then
               enrollment_status=0
               break
             else
-              enrollment_status=$?
+              enrollment_status="${PIPESTATUS[0]}"
             fi
 
             echo "::warning::Linux enrollment attempt $attempt failed with status $enrollment_status"
@@ -510,6 +513,11 @@ jobs:
             printf '%s\n' 'Linux self-update log was not created before artifact upload.' > "$log_path"
           fi
 
+          enrollment_log_path="$RUNNER_TEMP/linux-client-enrollment.log"
+          if [ ! -f "$enrollment_log_path" ]; then
+            printf '%s\n' 'Linux enrollment log was not created before artifact upload.' > "$enrollment_log_path"
+          fi
+
       - name: Upload Linux self-update artifacts
         if: always()
         continue-on-error: true
@@ -519,6 +527,7 @@ jobs:
           path: |
             production-windows-bootstrap-canary.json
             production-client-canary-evidence-linux.json
+            ${{ runner.temp }}/linux-client-enrollment.log
             ${{ runner.temp }}/linux-client-self-update.log
           if-no-files-found: error
           retention-days: 14
