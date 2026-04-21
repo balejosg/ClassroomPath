@@ -311,6 +311,7 @@ jobs:
       - name: Upload Windows self-update artifacts
         if: always()
         continue-on-error: true
+        timeout-minutes: 2
         uses: actions/upload-artifact@v7
         with:
           name: production-windows-client-self-update-canary
@@ -592,6 +593,7 @@ jobs:
       - name: Upload Linux self-update artifacts
         if: always()
         continue-on-error: true
+        timeout-minutes: 2
         uses: actions/upload-artifact@v7
         with:
           name: production-linux-client-self-update-canary

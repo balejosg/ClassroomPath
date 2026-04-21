@@ -98,6 +98,7 @@ describe('Production client update canary workflow contracts', () => {
       assert.ok(String(ensureStep?.run ?? '').includes(logFile));
       assert.equal(uploadStep?.uses, 'actions/upload-artifact@v7');
       assert.equal(uploadStep?.['continue-on-error'], true);
+      assert.equal(uploadStep?.['timeout-minutes'], 2);
       assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
       assert.equal(uploadStep?.with?.['retention-days'], 14);
     }
