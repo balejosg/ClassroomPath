@@ -13,7 +13,7 @@ concurrency:
 jobs:
   windows-production-bootstrap-canary:
     name: Windows Production Bootstrap Canary
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     timeout-minutes: 30
     env:
       PRODUCTION_BASE_URL: https://classroompath.eu

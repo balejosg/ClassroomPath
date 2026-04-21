@@ -451,7 +451,15 @@ describe('Workflow core contracts', () => {
     );
     assert.ok(productionBootstrapWorkflow.on?.workflow_dispatch);
     assert.ok(productionBootstrapJob);
-    assert.equal(productionBootstrapJob?.['runs-on'], 'windows-latest');
+    assert.deepEqual(productionBootstrapJob?.['runs-on'], [
+      'self-hosted',
+      'Windows',
+      'X64',
+      'proxmox',
+      'classroompath',
+    ]);
+    assert.ok(!productionBootstrapWorkflowText.includes('DEPLOY_LAN_HOST'));
+    assert.ok(!productionBootstrapWorkflowText.includes('DEPLOY_LAN_PORT'));
     assert.ok(
       productionBootstrapSteps.some(
         (step) =>
