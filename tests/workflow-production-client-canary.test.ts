@@ -124,6 +124,20 @@ describe('Production client update canary workflow contracts', () => {
       'Linux canary artifacts must include the live enrollment log'
     );
     assert.ok(
+      String(linuxUploadStep?.with?.path ?? '').includes('linux-client-enrollment-download.json'),
+      'Linux canary artifacts must include enrollment download diagnostics'
+    );
+    assert.ok(
+      String(linuxUploadStep?.with?.path ?? '').includes(
+        'linux-client-enrollment-download.headers'
+      ),
+      'Linux canary artifacts must include enrollment download headers'
+    );
+    assert.ok(
+      String(linuxUploadStep?.with?.path ?? '').includes('linux-client-enrollment-download.body'),
+      'Linux canary artifacts must include enrollment download body'
+    );
+    assert.ok(
       String(linuxUploadStep?.with?.path ?? '').includes(
         'production-linux-firefox-block-page-canary.json'
       ),
@@ -147,6 +161,15 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(
       enrollmentScript.includes('for attempt in 1 2 3'),
       'Linux enrollment should retry transient setup failures'
+    );
+    assert.ok(
+      enrollmentScript.includes('linux-client-enrollment-download.json') &&
+        enrollmentScript.includes('Linux enrollment script download returned HTTP $http_status'),
+      'Linux enrollment should persist HTTP diagnostics when script download fails'
+    );
+    assert.ok(
+      enrollmentScript.includes('body.slice(0, 4000)'),
+      'Linux enrollment diagnostics should include a bounded response body preview'
     );
     assert.ok(
       enrollmentScript.includes('Linux enrollment attempt $attempt failed'),

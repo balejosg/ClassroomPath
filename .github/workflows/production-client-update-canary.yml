@@ -470,13 +470,41 @@ jobs:
           workspace="$RUNNER_TEMP/linux-client-self-update-canary"
           mkdir -p "$workspace"
           enroll_script="$workspace/enroll.sh"
+          download_headers="$RUNNER_TEMP/linux-client-enrollment-download.headers"
+          download_body="$RUNNER_TEMP/linux-client-enrollment-download.body"
+          download_meta="$RUNNER_TEMP/linux-client-enrollment-download.json"
           enrollment_log="$RUNNER_TEMP/linux-client-enrollment.log"
           : > "$enrollment_log"
 
-          curl -fsSL \
-            -H "Authorization: Bearer $ENROLLMENT_TOKEN" \
-            "$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID" \
-            -o "$enroll_script"
+          http_status="$(
+            curl -sS -L \
+              -D "$download_headers" \
+              -o "$download_body" \
+              -w '%{http_code}' \
+              -H "Authorization: Bearer $ENROLLMENT_TOKEN" \
+              "$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID"
+          )"
+
+          node -e '
+            const fs = require("node:fs");
+            const [status, headersPath, bodyPath, outputPath] = process.argv.slice(1);
+            const headers = fs.existsSync(headersPath) ? fs.readFileSync(headersPath, "utf8") : "";
+            const body = fs.existsSync(bodyPath) ? fs.readFileSync(bodyPath, "utf8") : "";
+            fs.writeFileSync(outputPath, `${JSON.stringify({
+              status: Number(status),
+              headers,
+              bodyPreview: body.slice(0, 4000)
+            }, null, 2)}\n`);
+          ' "$http_status" "$download_headers" "$download_body" "$download_meta"
+
+          if [ "$http_status" != "200" ]; then
+            echo "::error::Linux enrollment script download returned HTTP $http_status"
+            cat "$download_meta"
+            exit 1
+          fi
+
+          cp "$download_body" "$enroll_script"
+          chmod 700 "$enroll_script"
 
           enrollment_status=1
           for attempt in 1 2 3; do
@@ -596,6 +624,21 @@ jobs:
             printf '%s\n' 'Linux enrollment log was not created before artifact upload.' > "$enrollment_log_path"
           fi
 
+          enrollment_download_meta_path="$RUNNER_TEMP/linux-client-enrollment-download.json"
+          if [ ! -f "$enrollment_download_meta_path" ]; then
+            printf '%s\n' '{"status":null,"headers":"","bodyPreview":"Linux enrollment download diagnostics were not created before artifact upload."}' > "$enrollment_download_meta_path"
+          fi
+
+          enrollment_download_headers_path="$RUNNER_TEMP/linux-client-enrollment-download.headers"
+          if [ ! -f "$enrollment_download_headers_path" ]; then
+            printf '%s\n' 'Linux enrollment download headers were not created before artifact upload.' > "$enrollment_download_headers_path"
+          fi
+
+          enrollment_download_body_path="$RUNNER_TEMP/linux-client-enrollment-download.body"
+          if [ ! -f "$enrollment_download_body_path" ]; then
+            printf '%s\n' 'Linux enrollment download body was not created before artifact upload.' > "$enrollment_download_body_path"
+          fi
+
           block_page_log_path="$RUNNER_TEMP/linux-firefox-block-page-canary.log"
           if [ ! -f "$block_page_log_path" ]; then
             printf '%s\n' 'Linux Firefox blocked-page canary log was not created before artifact upload.' > "$block_page_log_path"
@@ -617,6 +660,9 @@ jobs:
             production-client-canary-evidence-linux.json
             production-linux-firefox-block-page-canary.json
             ${{ runner.temp }}/linux-client-enrollment.log
+            ${{ runner.temp }}/linux-client-enrollment-download.json
+            ${{ runner.temp }}/linux-client-enrollment-download.headers
+            ${{ runner.temp }}/linux-client-enrollment-download.body
             ${{ runner.temp }}/linux-client-self-update.log
             ${{ runner.temp }}/linux-firefox-block-page-canary.log
             ${{ runner.temp }}/linux-firefox-block-page-canary/**
