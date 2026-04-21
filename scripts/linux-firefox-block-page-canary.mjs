@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { constants, accessSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 
@@ -12,6 +12,12 @@ import * as firefox from 'selenium-webdriver/firefox.js';
 const DEFAULT_EXTENSION_ID = 'monitor-bloqueos@openpath';
 const DEFAULT_BLOCKED_URL = 'https://www.mozilla.org/';
 const DEFAULT_TIMEOUT_MS = 30000;
+const NATIVE_HOST_NAME = 'whitelist_native_host';
+const NATIVE_HOST_MANIFEST_CANDIDATES = [
+  '/usr/lib/mozilla/native-messaging-hosts/whitelist_native_host.json',
+  '/usr/lib64/mozilla/native-messaging-hosts/whitelist_native_host.json',
+  join(process.env.HOME ?? '', '.mozilla/native-messaging-hosts/whitelist_native_host.json'),
+].filter((candidate) => candidate.length > 0);
 
 function valueOrFallback(value, fallback) {
   const trimmed = String(value ?? '').trim();
@@ -56,6 +62,75 @@ function readFirefoxPolicy(extensionId) {
   }
 
   return { path: null, text: '' };
+}
+
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return { parseError: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function summarizeFirefoxPolicy(policy, extensionId) {
+  if (!policy.path) {
+    return { path: null, managedExtension: null };
+  }
+
+  const parsed = safeJsonParse(policy.text);
+  const policyRoot = parsed?.policies ?? {};
+  const managedExtension = policyRoot?.ExtensionSettings?.[extensionId] ?? null;
+  return {
+    path: policy.path,
+    managedExtension:
+      managedExtension && typeof managedExtension === 'object'
+        ? {
+            installation_mode: managedExtension.installation_mode ?? null,
+            install_url: managedExtension.install_url ?? null,
+          }
+        : null,
+    parseError: parsed.parseError ?? null,
+  };
+}
+
+function canExecute(path) {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readNativeHostManifest() {
+  const candidates = [];
+
+  for (const manifestPath of NATIVE_HOST_MANIFEST_CANDIDATES) {
+    if (!existsSync(manifestPath)) {
+      candidates.push({ path: manifestPath, exists: false });
+      continue;
+    }
+
+    const text = readFileSync(manifestPath, 'utf8');
+    const parsed = safeJsonParse(text);
+    const nativeHostPath = typeof parsed.path === 'string' ? parsed.path : '';
+    candidates.push({
+      path: manifestPath,
+      exists: true,
+      name: parsed.name ?? null,
+      type: parsed.type ?? null,
+      nativeHostPath: nativeHostPath || null,
+      nativeHostExecutable: nativeHostPath ? canExecute(nativeHostPath) : false,
+      allowed_extensions: Array.isArray(parsed.allowed_extensions) ? parsed.allowed_extensions : [],
+      parseError: parsed.parseError ?? null,
+    });
+  }
+
+  return {
+    expectedName: NATIVE_HOST_NAME,
+    selected: candidates.find((candidate) => candidate.exists) ?? null,
+    candidates,
+  };
 }
 
 function extractExtensionUuid(prefsContent, extensionId) {
@@ -103,6 +178,26 @@ function writeGitHubErrorAnnotation(message) {
   process.stdout.write(`::error title=Linux Firefox blocked-page canary::${escaped}\n`);
 }
 
+function writeInlineDiagnosticsSummary(evidence) {
+  const summary = {
+    status: evidence.status,
+    blockedUrl: evidence.blockedUrl,
+    blockedHostname: evidence.blockedHostname,
+    firefoxBinary: evidence.firefoxBinary,
+    policy: evidence.policySummary,
+    nativeHostManifest: evidence.nativeHostManifest,
+    extensionUuid: evidence.extensionUuid,
+    extensionDiagnostics: evidence.extensionDiagnostics,
+    currentUrl: evidence.currentUrl,
+    title: evidence.title,
+    error: evidence.error ? String(evidence.error).split('\n')[0] : null,
+  };
+
+  process.stdout.write(
+    `[linux-firefox-block-page-canary] Diagnostics summary\n${JSON.stringify(summary, null, 2)}\n`
+  );
+}
+
 async function writeDiagnostics(driver, diagnosticsDir, name) {
   mkdirSync(diagnosticsDir, { recursive: true });
   const basePath = join(diagnosticsDir, name);
@@ -130,6 +225,76 @@ async function writeDiagnostics(driver, diagnosticsDir, name) {
       title: null,
     });
   }
+}
+
+async function queryExtensionDiagnostics(driver, extensionUuid, blockedHostname, timeoutMs) {
+  const diagnosticsUrl = `moz-extension://${extensionUuid}/blocked/blocked.html?domain=${encodeURIComponent(
+    blockedHostname
+  )}&error=OPENPATH_DIAGNOSTIC&origin=linux-firefox-canary`;
+
+  await driver.get(diagnosticsUrl);
+  await driver.wait(until.elementLocated(By.css('#blocked-domain')), timeoutMs);
+
+  return await driver.executeAsyncScript(
+    `
+const domain = arguments[0];
+const done = arguments[arguments.length - 1];
+const runtime =
+  (globalThis.browser && globalThis.browser.runtime) ||
+  (globalThis.chrome && globalThis.chrome.runtime);
+
+if (!runtime || typeof runtime.sendMessage !== 'function') {
+  done({ success: false, error: 'browser.runtime.sendMessage is unavailable' });
+  return;
+}
+
+Promise.resolve(runtime.sendMessage({
+  action: 'getOpenPathDiagnostics',
+  domains: [domain],
+})).then(
+  (response) => done(response),
+  (error) => done({
+    success: false,
+    error: error && (error.stack || error.message) ? String(error.stack || error.message) : String(error),
+  })
+);
+`,
+    blockedHostname
+  );
+}
+
+function assertExtensionDiagnosticsBlocksHostname(diagnostics, blockedHostname) {
+  assert.equal(
+    diagnostics?.success,
+    true,
+    `Extension diagnostics failed: ${JSON.stringify(diagnostics)}`
+  );
+  assert.equal(
+    diagnostics?.nativeAvailable,
+    true,
+    `Firefox native messaging host is not available: ${JSON.stringify(diagnostics)}`
+  );
+  assert.equal(
+    diagnostics?.nativeCheck?.success,
+    true,
+    `Native check failed: ${JSON.stringify(diagnostics?.nativeCheck)}`
+  );
+
+  const nativeResult = diagnostics.nativeCheck.results?.find(
+    (result) => result?.domain === blockedHostname
+  );
+  assert.ok(nativeResult, `Native check did not return ${blockedHostname}`);
+  assert.equal(
+    nativeResult.inWhitelist,
+    false,
+    `Native check says ${blockedHostname} is whitelisted`
+  );
+  assert.equal(nativeResult.resolves, false, `Native check says ${blockedHostname} resolves`);
+  assert.notEqual(
+    nativeResult.policyActive,
+    false,
+    `Native check says DNS policy is inactive for ${blockedHostname}`
+  );
 }
 
 async function main() {
@@ -165,7 +330,10 @@ async function main() {
     extensionId,
     firefoxBinary: null,
     policyPath: null,
+    policySummary: null,
+    nativeHostManifest: null,
     extensionUuid: null,
+    extensionDiagnostics: null,
     currentUrl: null,
     title: null,
     blockedDomainText: null,
@@ -177,6 +345,8 @@ async function main() {
     const policy = readFirefoxPolicy(extensionId);
     evidence.firefoxBinary = firefoxBinary;
     evidence.policyPath = policy.path;
+    evidence.policySummary = summarizeFirefoxPolicy(policy, extensionId);
+    evidence.nativeHostManifest = readNativeHostManifest();
 
     assert.ok(policy.path, `Firefox policies.json did not reference ${extensionId}`);
     assert.ok(
@@ -201,6 +371,14 @@ async function main() {
     const profileDir = capabilities.get('moz:profile');
     assert.equal(typeof profileDir, 'string', 'Firefox did not expose moz:profile');
     evidence.extensionUuid = await waitForExtensionUuid(profileDir, extensionId, timeoutMs);
+    evidence.extensionDiagnostics = await queryExtensionDiagnostics(
+      driver,
+      evidence.extensionUuid,
+      blockedHostname,
+      timeoutMs
+    );
+    assertExtensionDiagnosticsBlocksHostname(evidence.extensionDiagnostics, blockedHostname);
+    writeInlineDiagnosticsSummary(evidence);
 
     try {
       await driver.get(blockedUrl);
@@ -240,6 +418,7 @@ async function main() {
     evidence.status = 'success';
     await writeDiagnostics(driver, diagnosticsDir, 'success');
     writeJson(outputPath, evidence);
+    writeInlineDiagnosticsSummary(evidence);
     process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
   } catch (error) {
     evidence.error = error instanceof Error ? error.stack || error.message : String(error);
@@ -250,6 +429,7 @@ async function main() {
       mkdirSync(dirname(outputPath), { recursive: true });
     }
     writeJson(outputPath, evidence);
+    writeInlineDiagnosticsSummary(evidence);
     throw error;
   } finally {
     if (driver) {

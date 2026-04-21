@@ -10,10 +10,13 @@ describe('Production client update canary workflow contracts', () => {
     const jobs = workflow.jobs ?? {};
     const windowsJob = jobs['windows-client-self-update-canary'];
     const linuxJob = jobs['linux-client-self-update-canary'];
+    const workflowDispatchInputs = workflow.on?.workflow_dispatch?.inputs ?? {};
 
     assert.ok(workflow.on?.workflow_run?.workflows?.includes('Deploy'));
     assert.ok(workflow.on?.workflow_run?.types?.includes('completed'));
     assert.ok(workflowText.includes('workflow_dispatch:'));
+    assert.equal(workflowDispatchInputs.target_platform?.default, 'both');
+    assert.deepEqual(workflowDispatchInputs.target_platform?.options, ['both', 'linux', 'windows']);
     assert.ok(!workflowText.includes('workflow_call:'));
     assert.deepEqual(windowsJob?.['runs-on'], [
       'self-hosted',
@@ -63,6 +66,14 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.ok(
       String(linuxJob?.if ?? '').includes("github.event.workflow_run.conclusion == 'success'")
+    );
+    assert.ok(
+      String(windowsJob?.if ?? '').includes("github.event.inputs.target_platform != 'linux'"),
+      'Manual Linux-only production canary runs must not wait for the Windows runner'
+    );
+    assert.ok(
+      String(linuxJob?.if ?? '').includes("github.event.inputs.target_platform != 'windows'"),
+      'Manual Windows-only production canary runs must not consume Linux runner time'
     );
   });
 
@@ -209,6 +220,18 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(firefoxScript.includes('selenium-webdriver'));
     assert.ok(firefoxScript.includes('monitor-bloqueos@openpath'));
     assert.ok(firefoxScript.includes('/blocked/blocked.html'));
+    assert.ok(
+      firefoxScript.includes('getOpenPathDiagnostics'),
+      'Linux Firefox canary should query extension/native diagnostics before navigating'
+    );
+    assert.ok(
+      firefoxScript.includes('whitelist_native_host.json'),
+      'Linux Firefox canary should report native host manifest state inline'
+    );
+    assert.ok(
+      firefoxScript.includes('writeInlineDiagnosticsSummary'),
+      'Linux Firefox canary should print enough diagnostics before artifact upload'
+    );
     assert.ok(firefoxScript.includes('production-linux-firefox-block-page-canary.json'));
     assert.ok(firefoxScript.includes('LINUX_FIREFOX_BLOCK_PAGE_CANARY_URL'));
     assert.ok(firefoxScript.includes('::error title=Linux Firefox blocked-page canary::'));

@@ -13,6 +13,15 @@ on:
         default: https://classroompath.eu
         required: false
         type: string
+      target_platform:
+        description: Platform canary to run for manual diagnostics.
+        default: both
+        required: false
+        type: choice
+        options:
+          - both
+          - linux
+          - windows
 
 permissions:
   contents: read
@@ -27,7 +36,9 @@ concurrency:
 jobs:
   windows-client-self-update-canary:
     name: Windows Client Self-Update Canary
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'linux') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     timeout-minutes: 35
     env:
@@ -325,7 +336,9 @@ jobs:
 
   linux-client-self-update-canary:
     name: Linux Client Self-Update Canary
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'windows') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
