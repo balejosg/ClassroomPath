@@ -28,6 +28,38 @@ jobs:
           enable-cache: false
           cache-dependency-path: package-lock.json
 
+      - name: Reset persistent Windows canary state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $openPathRoot = 'C:\OpenPath'
+          $uninstallPath = Join-Path $openPathRoot 'Uninstall-OpenPath.ps1'
+          if (Test-Path $uninstallPath) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $uninstallPath
+          }
+
+          Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue |
+            Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
+
+          Get-NetFirewallRule -DisplayName 'OpenPath-*' -ErrorAction SilentlyContinue |
+            Remove-NetFirewallRule -ErrorAction SilentlyContinue
+
+          $acrylicService = Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue
+          if ($acrylicService) {
+            Stop-Service -Name $acrylicService.Name -Force -ErrorAction SilentlyContinue
+            sc.exe delete $acrylicService.Name | Out-Null
+          }
+
+          foreach ($policyPath in @(
+            (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\distribution\policies.json'),
+            (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\distribution\policies.json')
+          )) {
+            Remove-Item -LiteralPath $policyPath -Force -ErrorAction SilentlyContinue
+          }
+
+          Remove-Item -LiteralPath 'C:\OpenPath' -Recurse -Force -ErrorAction SilentlyContinue
+
       - name: Resolve production host
         id: resolve-production
         shell: bash

@@ -492,6 +492,9 @@ describe('Workflow core contracts', () => {
       productionBootstrapWorkflowText.includes('/api/enroll/') &&
         productionBootstrapWorkflowText.includes('windows.ps1')
     );
+    assert.ok(productionBootstrapWorkflowText.includes('Reset persistent Windows canary state'));
+    assert.ok(productionBootstrapWorkflowText.includes("Get-ScheduledTask -TaskName 'OpenPath-*'"));
+    assert.ok(productionBootstrapWorkflowText.includes("Remove-Item -LiteralPath 'C:\\OpenPath'"));
     assert.ok(productionBootstrapWorkflowText.includes('browser-policy-spec.json'));
     assert.ok(productionBootstrapWorkflowText.includes('Update-OpenPath.ps1'));
     assert.ok(productionBootstrapWorkflowText.includes('Browser policy spec not found'));
