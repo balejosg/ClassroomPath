@@ -97,6 +97,12 @@ function writeJson(path, payload) {
   writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 
+function writeGitHubErrorAnnotation(message) {
+  const summary = String(message).split('\n')[0].slice(0, 500);
+  const escaped = summary.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  process.stdout.write(`::error title=Linux Firefox blocked-page canary::${escaped}\n`);
+}
+
 async function writeDiagnostics(driver, diagnosticsDir, name) {
   mkdirSync(diagnosticsDir, { recursive: true });
   const basePath = join(diagnosticsDir, name);
@@ -237,6 +243,7 @@ async function main() {
     process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
   } catch (error) {
     evidence.error = error instanceof Error ? error.stack || error.message : String(error);
+    writeGitHubErrorAnnotation(evidence.error);
     if (driver) {
       await writeDiagnostics(driver, diagnosticsDir, 'failure');
     } else {

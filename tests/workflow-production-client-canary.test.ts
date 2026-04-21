@@ -209,6 +209,7 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(firefoxScript.includes('/blocked/blocked.html'));
     assert.ok(firefoxScript.includes('production-linux-firefox-block-page-canary.json'));
     assert.ok(firefoxScript.includes('LINUX_FIREFOX_BLOCK_PAGE_CANARY_URL'));
+    assert.ok(firefoxScript.includes('::error title=Linux Firefox blocked-page canary::'));
   });
 
   test('production provisioning helper supports Stripe and manual-only live canary activation', () => {
