@@ -403,7 +403,13 @@ describe('Workflow core contracts', () => {
       : [];
 
     assert.ok(windowsFirefoxJob);
-    assert.equal(windowsFirefoxJob?.['runs-on'], 'windows-latest');
+    assert.deepEqual(windowsFirefoxJob?.['runs-on'], [
+      'self-hosted',
+      'Windows',
+      'X64',
+      'proxmox',
+      'classroompath',
+    ]);
     assert.ok(windowsFirefoxWorkflowText.includes('workflow_call'));
     assert.ok(windowsFirefoxWorkflowText.includes('staging-verification.env'));
     assert.ok(

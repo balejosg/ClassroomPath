@@ -23,7 +23,7 @@ permissions:
 jobs:
   windows-firefox-canary:
     name: Windows Firefox Canary
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     outputs:
       canary_result: ${{ steps.result.outputs.canary_result }}
 
