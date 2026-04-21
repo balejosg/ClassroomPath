@@ -68,6 +68,17 @@ jobs:
             sc.exe delete $acrylicService.Name | Out-Null
           }
 
+          foreach ($acrylicPath in @(
+            (Join-Path ${env:ProgramFiles(x86)} 'Acrylic DNS Proxy'),
+            (Join-Path ${env:ProgramFiles} 'Acrylic DNS Proxy')
+          )) {
+            $acrylicServicePath = Join-Path $acrylicPath 'AcrylicService.exe'
+            if (Test-Path $acrylicServicePath) {
+              & $acrylicServicePath /UNINSTALL 2>$null
+            }
+            Remove-Item -LiteralPath $acrylicPath -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
           foreach ($policyPath in @(
             (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\distribution\policies.json'),
             (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\distribution\policies.json')
