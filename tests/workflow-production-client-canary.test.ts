@@ -41,8 +41,10 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE'));
     assert.ok(workflowText.includes('Write Windows client canary evidence'));
     assert.ok(workflowText.includes('Write Linux client canary evidence'));
+    assert.ok(workflowText.includes('Verify Linux Firefox blocked page canary'));
     assert.ok(workflowText.includes('production-client-canary-evidence-windows.json'));
     assert.ok(workflowText.includes('production-client-canary-evidence-linux.json'));
+    assert.ok(workflowText.includes('production-linux-firefox-block-page-canary.json'));
     assert.ok(workflowText.includes('live-tested'));
     assert.ok(workflowText.includes('failed'));
     assert.ok(
@@ -55,6 +57,7 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.ok(workflowText.includes('/usr/local/bin/openpath-agent-update.sh --force'));
     assert.ok(workflowText.includes('openpath-agent-update.timer'));
+    assert.ok(workflowText.includes('scripts/linux-firefox-block-page-canary.mjs'));
     assert.ok(
       String(windowsJob?.if ?? '').includes("github.event.workflow_run.conclusion == 'success'")
     );
@@ -106,6 +109,16 @@ describe('Production client update canary workflow contracts', () => {
       String(linuxUploadStep?.with?.path ?? '').includes('linux-client-enrollment.log'),
       'Linux canary artifacts must include the live enrollment log'
     );
+    assert.ok(
+      String(linuxUploadStep?.with?.path ?? '').includes(
+        'production-linux-firefox-block-page-canary.json'
+      ),
+      'Linux canary artifacts must include Firefox blocked-page evidence'
+    );
+    assert.ok(
+      String(linuxUploadStep?.with?.path ?? '').includes('linux-firefox-block-page-canary.log'),
+      'Linux canary artifacts must include Firefox blocked-page diagnostics'
+    );
   });
 
   test('linux enrollment canary retries transient registration failures', () => {
@@ -139,6 +152,50 @@ describe('Production client update canary workflow contracts', () => {
       enrollmentScript.includes('exit "$enrollment_status"'),
       'Linux enrollment should preserve final setup failure status'
     );
+  });
+
+  test('linux client canary verifies Firefox renders the extension blocked page', () => {
+    const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
+    const linuxJob = workflow.jobs?.['linux-client-self-update-canary'];
+    const firefoxStepIndex =
+      linuxJob?.steps?.findIndex(
+        (step) => step.name === 'Verify Linux Firefox blocked page canary'
+      ) ?? -1;
+    const enrollmentStepIndex =
+      linuxJob?.steps?.findIndex((step) =>
+        String(step.name ?? '').includes('Download and run live Linux enrollment script')
+      ) ?? -1;
+    const evidenceStepIndex =
+      linuxJob?.steps?.findIndex((step) =>
+        String(step.name ?? '').includes('Write Linux client canary evidence')
+      ) ?? -1;
+    const firefoxStep = firefoxStepIndex >= 0 ? linuxJob?.steps?.[firefoxStepIndex] : undefined;
+    const firefoxScript = readProjectText('scripts/linux-firefox-block-page-canary.mjs');
+
+    assert.ok(firefoxStep, 'Linux canary must exercise Firefox blocked-page rendering');
+    assert.ok(
+      enrollmentStepIndex >= 0 && enrollmentStepIndex < firefoxStepIndex,
+      'Firefox blocked-page canary must run after live enrollment installs the client'
+    );
+    assert.ok(
+      firefoxStepIndex < evidenceStepIndex,
+      'Firefox blocked-page canary must run before Linux evidence is written'
+    );
+    assert.equal(firefoxStep?.shell, 'bash');
+    assert.ok(String(firefoxStep?.run ?? '').includes('linux-firefox-block-page-canary.mjs'));
+    assert.ok(String(firefoxStep?.env?.EXPECTED_EXTENSION_ID ?? '').includes('extension_id'));
+    assert.ok(
+      String(firefoxStep?.env?.LINUX_FIREFOX_BLOCK_PAGE_CANARY_URL ?? '').includes(
+        'www.mozilla.org'
+      ),
+      'Linux Firefox canary should use a real resolvable domain outside the seeded whitelist'
+    );
+
+    assert.ok(firefoxScript.includes('selenium-webdriver'));
+    assert.ok(firefoxScript.includes('monitor-bloqueos@openpath'));
+    assert.ok(firefoxScript.includes('/blocked/blocked.html'));
+    assert.ok(firefoxScript.includes('production-linux-firefox-block-page-canary.json'));
+    assert.ok(firefoxScript.includes('LINUX_FIREFOX_BLOCK_PAGE_CANARY_URL'));
   });
 
   test('production provisioning helper supports Stripe and manual-only live canary activation', () => {

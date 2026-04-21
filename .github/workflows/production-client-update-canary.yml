@@ -478,6 +478,21 @@ jobs:
             exit "$enrollment_status"
           fi
 
+      - name: Verify Linux Firefox blocked page canary
+        shell: bash
+        env:
+          EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
+          LINUX_FIREFOX_BLOCK_PAGE_CANARY_URL: https://www.mozilla.org/
+          LINUX_FIREFOX_BLOCK_PAGE_CANARY_OUTPUT: production-linux-firefox-block-page-canary.json
+          LINUX_FIREFOX_BLOCK_PAGE_CANARY_DIAGNOSTICS_DIR: ${{ runner.temp }}/linux-firefox-block-page-canary
+        run: |
+          set -euo pipefail
+
+          block_page_log="$RUNNER_TEMP/linux-firefox-block-page-canary.log"
+          : > "$block_page_log"
+
+          node scripts/linux-firefox-block-page-canary.mjs 2>&1 | tee "$block_page_log"
+
       - name: Force installed Linux client self-update
         run: |
           set -euo pipefail
@@ -561,6 +576,15 @@ jobs:
             printf '%s\n' 'Linux enrollment log was not created before artifact upload.' > "$enrollment_log_path"
           fi
 
+          block_page_log_path="$RUNNER_TEMP/linux-firefox-block-page-canary.log"
+          if [ ! -f "$block_page_log_path" ]; then
+            printf '%s\n' 'Linux Firefox blocked-page canary log was not created before artifact upload.' > "$block_page_log_path"
+          fi
+
+          if [ ! -f production-linux-firefox-block-page-canary.json ]; then
+            printf '%s\n' '{"status":"failed","error":"Linux Firefox blocked-page canary did not create evidence before artifact upload"}' > production-linux-firefox-block-page-canary.json
+          fi
+
       - name: Upload Linux self-update artifacts
         if: always()
         continue-on-error: true
@@ -570,7 +594,10 @@ jobs:
           path: |
             production-windows-bootstrap-canary.json
             production-client-canary-evidence-linux.json
+            production-linux-firefox-block-page-canary.json
             ${{ runner.temp }}/linux-client-enrollment.log
             ${{ runner.temp }}/linux-client-self-update.log
+            ${{ runner.temp }}/linux-firefox-block-page-canary.log
+            ${{ runner.temp }}/linux-firefox-block-page-canary/**
           if-no-files-found: error
           retention-days: 14
