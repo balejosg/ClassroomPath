@@ -81,9 +81,23 @@ describe('Production client update canary workflow contracts', () => {
     const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
     const jobs = workflow.jobs ?? {};
 
-    for (const [jobName, platform, shell, logFile] of [
-      ['windows-client-self-update-canary', 'Windows', 'pwsh', 'windows-client-self-update.log'],
-      ['linux-client-self-update-canary', 'Linux', 'bash', 'linux-client-self-update.log'],
+    for (const [jobName, platform, shell, logFile, archiveFile, archiveCommand] of [
+      [
+        'windows-client-self-update-canary',
+        'Windows',
+        'pwsh',
+        'windows-client-self-update.log',
+        'production-windows-client-self-update-canary.zip',
+        'Compress-Archive',
+      ],
+      [
+        'linux-client-self-update-canary',
+        'Linux',
+        'bash',
+        'linux-client-self-update.log',
+        'production-linux-client-self-update-canary.tar.gz',
+        'tar -czf',
+      ],
     ] as const) {
       const job = jobs[jobName];
       const ensureStepIndex =
@@ -110,6 +124,8 @@ describe('Production client update canary workflow contracts', () => {
       assert.equal(ensureStep?.if, 'always()');
       assert.equal(ensureStep?.shell, shell);
       assert.ok(String(ensureStep?.run ?? '').includes(logFile));
+      assert.ok(String(ensureStep?.run ?? '').includes(archiveFile));
+      assert.ok(String(ensureStep?.run ?? '').includes(archiveCommand));
       assert.equal(uploadStep?.uses, 'actions/upload-artifact@v7');
       assert.equal(
         uploadStep?.['continue-on-error'],
@@ -117,39 +133,38 @@ describe('Production client update canary workflow contracts', () => {
         `${jobName} artifact upload failures must fail the canary evidence gate`
       );
       assert.equal(uploadStep?.['timeout-minutes'], 10);
+      assert.equal(uploadStep?.with?.path, archiveFile);
       assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
       assert.equal(uploadStep?.with?.['retention-days'], 14);
     }
 
-    const linuxUploadStep = jobs['linux-client-self-update-canary']?.steps?.find((step) =>
-      String(step.name ?? '').includes('self-update artifacts')
+    const linuxEnsureStep = jobs['linux-client-self-update-canary']?.steps?.find((step) =>
+      String(step.name ?? '').includes('Ensure Linux self-update artifact files')
     );
     assert.ok(
-      String(linuxUploadStep?.with?.path ?? '').includes('linux-client-enrollment.log'),
+      String(linuxEnsureStep?.run ?? '').includes('linux-client-enrollment.log'),
       'Linux canary artifacts must include the live enrollment log'
     );
     assert.ok(
-      String(linuxUploadStep?.with?.path ?? '').includes('linux-client-enrollment-download.json'),
+      String(linuxEnsureStep?.run ?? '').includes('linux-client-enrollment-download.json'),
       'Linux canary artifacts must include enrollment download diagnostics'
     );
     assert.ok(
-      String(linuxUploadStep?.with?.path ?? '').includes(
-        'linux-client-enrollment-download.headers'
-      ),
+      String(linuxEnsureStep?.run ?? '').includes('linux-client-enrollment-download.headers'),
       'Linux canary artifacts must include enrollment download headers'
     );
     assert.ok(
-      String(linuxUploadStep?.with?.path ?? '').includes('linux-client-enrollment-download.body'),
+      String(linuxEnsureStep?.run ?? '').includes('linux-client-enrollment-download.body'),
       'Linux canary artifacts must include enrollment download body'
     );
     assert.ok(
-      String(linuxUploadStep?.with?.path ?? '').includes(
+      String(linuxEnsureStep?.run ?? '').includes(
         'production-linux-firefox-block-page-canary.json'
       ),
       'Linux canary artifacts must include Firefox blocked-page evidence'
     );
     assert.ok(
-      String(linuxUploadStep?.with?.path ?? '').includes('linux-firefox-block-page-canary.log'),
+      String(linuxEnsureStep?.run ?? '').includes('linux-firefox-block-page-canary.log'),
       'Linux canary artifacts must include Firefox blocked-page diagnostics'
     );
   });

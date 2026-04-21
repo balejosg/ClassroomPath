@@ -320,16 +320,28 @@ jobs:
               Set-Content -Path $logPath -Encoding UTF8
           }
 
+          $archivePath = 'production-windows-client-self-update-canary.zip'
+          if (Test-Path $archivePath) {
+            Remove-Item -Path $archivePath -Force
+          }
+
+          Compress-Archive -Path @(
+            'production-windows-bootstrap-canary.json',
+            'production-client-canary-evidence-windows.json',
+            $logPath
+          ) -DestinationPath $archivePath -Force
+
+          if (-not (Test-Path $archivePath)) {
+            throw "Required Windows canary artifact archive was not created: $archivePath"
+          }
+
       - name: Upload Windows self-update artifacts
         if: always()
         timeout-minutes: 10
         uses: actions/upload-artifact@v7
         with:
           name: production-windows-client-self-update-canary
-          path: |
-            production-windows-bootstrap-canary.json
-            production-client-canary-evidence-windows.json
-            ${{ runner.temp }}/windows-client-self-update.log
+          path: production-windows-client-self-update-canary.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -643,8 +655,31 @@ jobs:
             printf '%s\n' 'Linux Firefox blocked-page canary log was not created before artifact upload.' > "$block_page_log_path"
           fi
 
+          diagnostics_dir="$RUNNER_TEMP/linux-firefox-block-page-canary"
+          mkdir -p "$diagnostics_dir"
+
           if [ ! -f production-linux-firefox-block-page-canary.json ]; then
             printf '%s\n' '{"status":"failed","error":"Linux Firefox blocked-page canary did not create evidence before artifact upload"}' > production-linux-firefox-block-page-canary.json
+          fi
+
+          archive_path="production-linux-client-self-update-canary.tar.gz"
+          rm -f "$archive_path"
+          tar -czf "$archive_path" \
+            production-windows-bootstrap-canary.json \
+            production-client-canary-evidence-linux.json \
+            production-linux-firefox-block-page-canary.json \
+            -C "$RUNNER_TEMP" \
+            linux-client-enrollment.log \
+            linux-client-enrollment-download.json \
+            linux-client-enrollment-download.headers \
+            linux-client-enrollment-download.body \
+            linux-client-self-update.log \
+            linux-firefox-block-page-canary.log \
+            linux-firefox-block-page-canary
+
+          if [ ! -s "$archive_path" ]; then
+            echo "::error::Required Linux canary artifact archive was not created: $archive_path"
+            exit 1
           fi
 
       - name: Upload Linux self-update artifacts
@@ -653,16 +688,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: production-linux-client-self-update-canary
-          path: |
-            production-windows-bootstrap-canary.json
-            production-client-canary-evidence-linux.json
-            production-linux-firefox-block-page-canary.json
-            ${{ runner.temp }}/linux-client-enrollment.log
-            ${{ runner.temp }}/linux-client-enrollment-download.json
-            ${{ runner.temp }}/linux-client-enrollment-download.headers
-            ${{ runner.temp }}/linux-client-enrollment-download.body
-            ${{ runner.temp }}/linux-client-self-update.log
-            ${{ runner.temp }}/linux-firefox-block-page-canary.log
-            ${{ runner.temp }}/linux-firefox-block-page-canary/**
+          path: production-linux-client-self-update-canary.tar.gz
           if-no-files-found: error
           retention-days: 14
