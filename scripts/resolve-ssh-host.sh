@@ -11,6 +11,12 @@ if [ -z "$HOST" ]; then
   exit 1
 fi
 
+if [[ "$HOST" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+  printf 'ip=%s\n' "$HOST"
+  printf 'port=%s\n' "$PORT"
+  exit 0
+fi
+
 for attempt in $(seq 1 "$MAX_RETRIES"); do
   IP=""
 
