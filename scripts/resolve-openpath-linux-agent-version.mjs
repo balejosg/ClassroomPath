@@ -16,6 +16,9 @@ function printUsage() {
   console.error(
     '  node scripts/resolve-openpath-linux-agent-version.mjs [--openpath-dir <path>] [--promotion-contracts-base-url <url>] [--apt-base-url <url>]'
   );
+  console.error(
+    '  node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin [--linux-agent-version <version>] [--apt-suite <stable|unstable>] [--apt-base-url <url>]'
+  );
 }
 
 function parseCliArgs(argv) {
@@ -36,6 +39,40 @@ function parseCliArgs(argv) {
 
     if (token === '--promotion-contracts-base-url') {
       options.promotionContractsBaseUrl = String(argv[index + 1] ?? '').trim();
+      index += 1;
+      continue;
+    }
+
+    if (token === '--apt-base-url') {
+      options.aptBaseUrl = String(argv[index + 1] ?? '').trim();
+      index += 1;
+      continue;
+    }
+
+    throw new Error(`Unknown argument: ${token}`);
+  }
+
+  return options;
+}
+
+function parseVerifyRuntimePinCliArgs(argv) {
+  const options = {
+    linuxAgentVersion: process.env.OPENPATH_LINUX_AGENT_VERSION?.trim() ?? '',
+    aptSuite: process.env.OPENPATH_LINUX_AGENT_APT_SUITE?.trim() ?? '',
+    aptBaseUrl: DEFAULT_OPENPATH_APT_BASE_URL,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+
+    if (token === '--linux-agent-version') {
+      options.linuxAgentVersion = String(argv[index + 1] ?? '').trim();
+      index += 1;
+      continue;
+    }
+
+    if (token === '--apt-suite') {
+      options.aptSuite = String(argv[index + 1] ?? '').trim();
       index += 1;
       continue;
     }
@@ -169,6 +206,35 @@ export function assertOpenPathLinuxAgentVersionAdvertised({
   }
 }
 
+export async function assertOpenPathLinuxAgentRuntimePinAdvertised({
+  aptBaseUrl = DEFAULT_OPENPATH_APT_BASE_URL,
+  aptSuite,
+  linuxAgentVersion,
+  downloadText = downloadPromotionContract,
+}) {
+  const normalizedVersion = String(linuxAgentVersion ?? '').trim();
+  const normalizedSuite = String(aptSuite ?? '').trim();
+
+  if (!normalizedVersion) {
+    throw new Error('OPENPATH_LINUX_AGENT_VERSION is required');
+  }
+
+  if (!['stable', 'unstable'].includes(normalizedSuite)) {
+    throw new Error('OPENPATH_LINUX_AGENT_APT_SUITE must be stable or unstable');
+  }
+
+  const aptPackagesUrl = buildAptPackagesUrl({
+    baseUrl: aptBaseUrl,
+    aptSuite: normalizedSuite,
+  });
+
+  assertOpenPathLinuxAgentVersionAdvertised({
+    aptPackagesContent: await downloadText(aptPackagesUrl),
+    linuxAgentVersion: normalizedVersion,
+    aptSuite: normalizedSuite,
+  });
+}
+
 export function isMissingPromotionContractError(error) {
   return Number(error?.status ?? 0) === 404;
 }
@@ -271,6 +337,19 @@ function writeOutputs(outputMap) {
 }
 
 async function main() {
+  if (process.argv[2] === 'verify-runtime-pin') {
+    const options = parseVerifyRuntimePinCliArgs(process.argv.slice(3));
+    await assertOpenPathLinuxAgentRuntimePinAdvertised({
+      aptBaseUrl: options.aptBaseUrl,
+      aptSuite: options.aptSuite,
+      linuxAgentVersion: options.linuxAgentVersion,
+    });
+    console.log(
+      `OpenPath Linux agent ${options.linuxAgentVersion} is advertised by ${options.aptSuite} APT metadata`
+    );
+    return;
+  }
+
   const options = parseCliArgs(process.argv.slice(2));
   const openpathSha = resolveOpenPathSha(options.openpathDir);
   const result = await resolveOpenPathLinuxAgentVersionFromContracts({

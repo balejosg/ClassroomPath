@@ -152,8 +152,24 @@ describe('Release candidate workflow contracts', () => {
       jobs['derive-release-image-refs']?.steps?.find(
         (step) => step.name === 'Resolve OpenPath Linux agent version'
       )?.run ?? '';
+    const waitForOpenPathAptPublishRun =
+      jobs['derive-release-image-refs']?.steps?.find(
+        (step) => step.name === 'Wait for OpenPath prerelease APT publish'
+      )?.run ?? '';
+    const deriveStepNames =
+      jobs['derive-release-image-refs']?.steps?.map((step) => step.name ?? '') ?? [];
     const deriveCheckout = jobs['derive-release-image-refs']?.steps?.find(
       (step) => step.name === 'Checkout'
+    );
+    assert.ok(
+      waitForOpenPathAptPublishRun.includes(
+        'OPENPATH_REQUIRED_CHECKS="Publish Prerelease to APT Repository / Publish to APT Repository (unstable)"'
+      )
+    );
+    assert.ok(waitForOpenPathAptPublishRun.includes('node scripts/openpath-required-checks.mjs'));
+    assert.ok(
+      deriveStepNames.indexOf('Wait for OpenPath prerelease APT publish') <
+        deriveStepNames.indexOf('Resolve OpenPath Linux agent version')
     );
     assert.ok(
       deriveLinuxAgentVersionRun.includes('node scripts/resolve-openpath-linux-agent-version.mjs')

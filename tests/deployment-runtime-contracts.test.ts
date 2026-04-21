@@ -54,6 +54,11 @@ describe('Deployment runtime contracts', () => {
     projectRoot,
     '.github/workflows/release-candidate-images.yml'
   );
+  const productionDeployWorkflowPath = resolve(projectRoot, '.github/workflows/deploy.yml');
+  const productionPromotionReadyScriptPath = resolve(
+    projectRoot,
+    'scripts/verify-production-promotion-ready.sh'
+  );
 
   test('release images package the migration entrypoint and narrow Docker build inputs', () => {
     const migrationsDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.migrations');
@@ -155,7 +160,7 @@ describe('Deployment runtime contracts', () => {
       resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
       'utf-8'
     );
-    const workflow = readFileSync(resolve(projectRoot, '.github/workflows/deploy.yml'), 'utf-8');
+    const workflow = readFileSync(productionDeployWorkflowPath, 'utf-8');
     const manifestHelper = readFileSync(
       resolve(projectRoot, 'scripts/lib/release-manifest.sh'),
       'utf-8'
@@ -167,6 +172,10 @@ describe('Deployment runtime contracts', () => {
     const deployProductionContextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
     const deployProductionRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
     const deployContainerPlatformHelper = readFileSync(deployContainerPlatformHelperPath, 'utf-8');
+    const verifyProductionPromotionReadyScript = readFileSync(
+      productionPromotionReadyScriptPath,
+      'utf-8'
+    );
     const syncBillingEnvScript = readFileSync(
       resolve(projectRoot, 'scripts/sync-billing-env.sh'),
       'utf-8'
@@ -257,6 +266,12 @@ describe('Deployment runtime contracts', () => {
         ) &&
         deployProductionRuntimeHelper.includes(
           'OPENPATH_LINUX_AGENT_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" linux_agent_version)"'
+        ) &&
+        workflow.includes(
+          'node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin'
+        ) &&
+        verifyProductionPromotionReadyScript.includes(
+          'node "$SCRIPT_DIR/resolve-openpath-linux-agent-version.mjs" verify-runtime-pin'
         ) &&
         productionRemote.includes('source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"') &&
         deployProductionRuntimeHelper.includes(

@@ -5,6 +5,7 @@ import {
   DEFAULT_OPENPATH_APT_BASE_URL,
   DEFAULT_PROMOTION_CONTRACTS_BASE_URL,
   assertOpenPathLinuxAgentVersionAdvertised,
+  assertOpenPathLinuxAgentRuntimePinAdvertised,
   buildAptPackagesUrl,
   buildPromotionContractUrl,
   parseOpenPathDnsmasqAptVersions,
@@ -116,6 +117,37 @@ Architecture: all
           aptSuite: 'unstable',
         }),
       /is not advertised by the unstable APT metadata/
+    );
+  });
+
+  test('verifies the runtime Linux agent pin against current APT metadata', async () => {
+    const requestedUrls: string[] = [];
+
+    await assertOpenPathLinuxAgentRuntimePinAdvertised({
+      aptBaseUrl: 'https://example.test/apt',
+      aptSuite: 'unstable',
+      linuxAgentVersion: '0.0.20260421051157',
+      downloadText: async (url) => {
+        requestedUrls.push(url);
+        return 'Package: openpath-dnsmasq\nVersion: 0.0.20260421051157-1\n';
+      },
+    });
+
+    assert.deepEqual(requestedUrls, [
+      'https://example.test/apt/dists/unstable/main/binary-amd64/Packages',
+    ]);
+  });
+
+  test('fails closed when the runtime Linux agent pin is stale against current APT metadata', async () => {
+    await assert.rejects(
+      () =>
+        assertOpenPathLinuxAgentRuntimePinAdvertised({
+          aptBaseUrl: 'https://example.test/apt',
+          aptSuite: 'unstable',
+          linuxAgentVersion: '0.0.20260421043406',
+          downloadText: async () => 'Package: openpath-dnsmasq\nVersion: 0.0.20260421051157-1\n',
+        }),
+      /0\.0\.20260421043406 is not advertised by the unstable APT metadata/
     );
   });
 

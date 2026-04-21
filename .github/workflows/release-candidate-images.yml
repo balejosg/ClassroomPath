@@ -6,6 +6,8 @@ on:
       - main
 
 permissions:
+  actions: read
+  checks: read
   contents: read
   packages: write
 
@@ -55,6 +57,25 @@ jobs:
         id: openpath
         run: |
           echo "sha=$(git rev-parse HEAD:upstream/openpath)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for OpenPath prerelease APT publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPENPATH_SHA: ${{ steps.openpath.outputs.sha }}
+          OPENPATH_REQUIRED_CHECKS: Publish Prerelease to APT Repository / Publish to APT Repository (unstable)
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if OPENPATH_REQUIRED_CHECKS="Publish Prerelease to APT Repository / Publish to APT Repository (unstable)" \
+              node scripts/openpath-required-checks.mjs; then
+              exit 0
+            fi
+            if [ "$attempt" = "60" ]; then
+              echo "::error::OpenPath prerelease APT publish did not complete for $OPENPATH_SHA"
+              exit 1
+            fi
+            sleep 10
+          done
 
       - name: Resolve OpenPath Linux agent version
         id: linux-agent

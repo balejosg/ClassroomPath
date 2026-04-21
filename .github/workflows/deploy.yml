@@ -152,6 +152,15 @@ jobs:
             --manifest-base64 "$RELEASE_MANIFEST_B64" \
             --target-platform "$PRODUCTION_CONTAINER_PLATFORM"
 
+      - name: Verify OpenPath Linux agent APT pin
+        shell: bash
+        env:
+          OPENPATH_LINUX_AGENT_VERSION: ${{ steps.release-images.outputs.linux_agent_version }}
+          OPENPATH_LINUX_AGENT_APT_SUITE: ${{ steps.release-images.outputs.linux_agent_apt_suite }}
+        run: |
+          set -euo pipefail
+          node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin
+
       - name: Build deploy payload
         id: deploy-payload
         shell: bash
