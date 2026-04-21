@@ -117,6 +117,37 @@ describe('Workflow core contracts', () => {
     }
   });
 
+  test('self-hosted Linux runner smoke workflow is manual and pinned to the ClassroomPath runner', () => {
+    const workflowText = readText('.github/workflows/self-hosted-linux-runner-smoke.yml');
+    const workflow = readWorkflow('.github/workflows/self-hosted-linux-runner-smoke.yml');
+    const smokeJob = workflow.jobs?.smoke;
+
+    assert.ok(
+      workflow.on?.workflow_dispatch,
+      'self-hosted runner smoke must expose only manual dispatch'
+    );
+    assert.ok(
+      !workflow.on?.push && !workflow.on?.workflow_run,
+      'self-hosted runner smoke must not run on automatic repository events'
+    );
+    assert.deepEqual(smokeJob?.['runs-on'], [
+      'self-hosted',
+      'Linux',
+      'X64',
+      'proxmox',
+      'classroompath',
+    ]);
+    assert.ok(
+      workflowText.includes('classroompath-linux-102'),
+      'self-hosted runner smoke should verify the expected ClassroomPath runner name'
+    );
+    assert.ok(
+      workflowText.includes('actions/checkout@v6') &&
+        workflowText.includes('persist-credentials: false'),
+      'self-hosted runner smoke should use checkout without persisted credentials'
+    );
+  });
+
   test('CI workflow keeps structured change detection, regression routing, and verification reporting', () => {
     const workflow = readWorkflow('.github/workflows/ci.yml');
     const productJob = workflow.jobs?.['product-validation'];
