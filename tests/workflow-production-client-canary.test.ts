@@ -86,8 +86,10 @@ describe('Production client update canary workflow contracts', () => {
       const uploadStep = job?.steps?.find((step) =>
         String(step.name ?? '').includes('self-update artifacts')
       );
+      const checkoutStep = job?.steps?.find((step) => step.name === 'Checkout');
       const ensureStep = ensureStepIndex >= 0 ? job?.steps?.[ensureStepIndex] : undefined;
 
+      assert.equal(checkoutStep?.with?.['persist-credentials'], false);
       assert.ok(ensureStepIndex >= 0, `${jobName} must create missing log artifacts`);
       assert.ok(
         ensureStepIndex < uploadStepIndex,
