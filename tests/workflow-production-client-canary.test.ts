@@ -100,6 +100,7 @@ describe('Production client update canary workflow contracts', () => {
       const checkoutStep = job?.steps?.find((step) => step.name === 'Checkout');
       const ensureStep = ensureStepIndex >= 0 ? job?.steps?.[ensureStepIndex] : undefined;
 
+      assert.equal(job?.['timeout-minutes'], 35, `${jobName} must not hang indefinitely`);
       assert.equal(checkoutStep?.with?.['persist-credentials'], false);
       assert.ok(ensureStepIndex >= 0, `${jobName} must create missing log artifacts`);
       assert.ok(
