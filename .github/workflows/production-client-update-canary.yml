@@ -341,6 +341,10 @@ jobs:
           enable-cache: false
           cache-dependency-path: package-lock.json
 
+      - name: Install Linux Firefox canary dependencies
+        shell: bash
+        run: npm ci --ignore-scripts
+
       - name: Resolve production host
         id: resolve-production
         shell: bash

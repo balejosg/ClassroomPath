@@ -169,7 +169,13 @@ describe('Production client update canary workflow contracts', () => {
       linuxJob?.steps?.findIndex((step) =>
         String(step.name ?? '').includes('Write Linux client canary evidence')
       ) ?? -1;
+    const dependencyStepIndex =
+      linuxJob?.steps?.findIndex((step) =>
+        String(step.name ?? '').includes('Install Linux Firefox canary dependencies')
+      ) ?? -1;
     const firefoxStep = firefoxStepIndex >= 0 ? linuxJob?.steps?.[firefoxStepIndex] : undefined;
+    const dependencyStep =
+      dependencyStepIndex >= 0 ? linuxJob?.steps?.[dependencyStepIndex] : undefined;
     const firefoxScript = readProjectText('scripts/linux-firefox-block-page-canary.mjs');
 
     assert.ok(firefoxStep, 'Linux canary must exercise Firefox blocked-page rendering');
@@ -178,9 +184,15 @@ describe('Production client update canary workflow contracts', () => {
       'Firefox blocked-page canary must run after live enrollment installs the client'
     );
     assert.ok(
+      dependencyStepIndex >= 0 && dependencyStepIndex < firefoxStepIndex,
+      'Firefox blocked-page canary must install npm dependencies before loading selenium-webdriver'
+    );
+    assert.ok(
       firefoxStepIndex < evidenceStepIndex,
       'Firefox blocked-page canary must run before Linux evidence is written'
     );
+    assert.equal(dependencyStep?.shell, 'bash');
+    assert.ok(String(dependencyStep?.run ?? '').includes('npm ci --ignore-scripts'));
     assert.equal(firefoxStep?.shell, 'bash');
     assert.ok(String(firefoxStep?.run ?? '').includes('linux-firefox-block-page-canary.mjs'));
     assert.ok(String(firefoxStep?.env?.EXPECTED_EXTENSION_ID ?? '').includes('extension_id'));
