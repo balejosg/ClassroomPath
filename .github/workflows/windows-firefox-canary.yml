@@ -37,9 +37,20 @@ jobs:
         env:
           STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
           STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          STAGING_DEPLOY_LAN_HOST: 192.168.1.114
+          STAGING_DEPLOY_LAN_PORT: 22
+          RUNNER_ENVIRONMENT_CONTEXT: ${{ runner.environment }}
         run: |
           set -euo pipefail
-          bash scripts/resolve-ssh-host.sh "$STAGING_DEPLOY_HOST" "${STAGING_DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+          target_host="$STAGING_DEPLOY_HOST"
+          target_port="${STAGING_DEPLOY_PORT:-22}"
+          if [ "$RUNNER_ENVIRONMENT_CONTEXT" = "self-hosted" ]; then
+            target_host="$STAGING_DEPLOY_LAN_HOST"
+            target_port="$STAGING_DEPLOY_LAN_PORT"
+          fi
+
+          bash scripts/resolve-ssh-host.sh "$target_host" "$target_port" >> "$GITHUB_OUTPUT"
 
       - name: Install staging SSH key
         id: ssh

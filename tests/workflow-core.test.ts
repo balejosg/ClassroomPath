@@ -412,6 +412,9 @@ describe('Workflow core contracts', () => {
     ]);
     assert.ok(windowsFirefoxWorkflowText.includes('workflow_call'));
     assert.ok(windowsFirefoxWorkflowText.includes('staging-verification.env'));
+    assert.ok(windowsFirefoxWorkflowText.includes('RUNNER_ENVIRONMENT_CONTEXT'));
+    assert.ok(windowsFirefoxWorkflowText.includes('STAGING_DEPLOY_LAN_HOST: 192.168.1.114'));
+    assert.ok(windowsFirefoxWorkflowText.includes('STAGING_DEPLOY_LAN_PORT: 22'));
     assert.ok(
       windowsFirefoxSteps.some(
         (step) => typeof step === 'object' && step !== null && step.uses === 'actions/checkout@v6'
