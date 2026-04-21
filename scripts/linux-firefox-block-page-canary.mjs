@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { constants, accessSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 import { Builder, By, until } from 'selenium-webdriver';
 import * as firefox from 'selenium-webdriver/firefox.js';
@@ -227,6 +228,16 @@ async function writeDiagnostics(driver, diagnosticsDir, name) {
   }
 }
 
+export async function quitDriverQuietly(driver, evidence = {}, logger = console) {
+  try {
+    await driver.quit();
+  } catch (error) {
+    const message = error instanceof Error ? error.stack || error.message : String(error);
+    evidence.cleanupError = message;
+    logger.warn(`[linux-firefox-block-page-canary] Firefox driver cleanup failed: ${message}`);
+  }
+}
+
 async function queryExtensionDiagnostics(driver, extensionUuid, blockedHostname, timeoutMs) {
   const diagnosticsUrl = `moz-extension://${extensionUuid}/blocked/blocked.html?domain=${encodeURIComponent(
     blockedHostname
@@ -433,9 +444,11 @@ async function main() {
     throw error;
   } finally {
     if (driver) {
-      await driver.quit();
+      await quitDriverQuietly(driver, evidence);
     }
   }
 }
 
-await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}
