@@ -147,7 +147,80 @@ function extractExtensionUuid(prefsContent, extensionId) {
   return typeof uuidMap[extensionId] === 'string' ? uuidMap[extensionId] : null;
 }
 
-async function waitForExtensionUuid(profileDir, extensionId, timeoutMs) {
+function extractExtensionUuidFromExtensionsJson(profileDir, extensionId) {
+  const extensionsJsonPath = join(profileDir, 'extensions.json');
+  if (!existsSync(extensionsJsonPath)) {
+    return null;
+  }
+
+  const payload = safeJsonParse(readFileSync(extensionsJsonPath, 'utf8'));
+  const addons = Array.isArray(payload?.addons) ? payload.addons : [];
+  const addon = addons.find((candidate) => candidate?.id === extensionId);
+  const rootUri = typeof addon?.rootURI === 'string' ? addon.rootURI : '';
+  const match = rootUri.match(/^moz-extension:\/\/([^/]+)\//);
+  return match?.[1] ?? null;
+}
+
+function summarizePrefsContent(prefsContent) {
+  if (!prefsContent) {
+    return 'missing';
+  }
+
+  const match = prefsContent.match(
+    /user_pref\("extensions\.webextensions\.uuids",\s*"((?:\\.|[^"])*)"\);/
+  );
+  if (!match) {
+    return 'present-no-uuids';
+  }
+
+  try {
+    const uuidJson = JSON.parse(`"${match[1]}"`);
+    const uuidMap = JSON.parse(uuidJson);
+    return `uuids:[${Object.keys(uuidMap).join(',')}]`;
+  } catch {
+    return 'malformed-uuids';
+  }
+}
+
+function summarizeProfileFile(path) {
+  if (!existsSync(path)) {
+    return 'missing';
+  }
+
+  try {
+    return readFileSync(path, 'utf8').length > 0 ? 'present' : 'empty';
+  } catch (error) {
+    return `unreadable:${error?.code ?? 'unknown'}`;
+  }
+}
+
+function summarizeExtensionsJson(profileDir) {
+  const extensionsJsonPath = join(profileDir, 'extensions.json');
+  if (!existsSync(extensionsJsonPath)) {
+    return 'missing';
+  }
+
+  const parsed = safeJsonParse(readFileSync(extensionsJsonPath, 'utf8'));
+  if (parsed?.parseError) {
+    return 'malformed';
+  }
+
+  const addons = Array.isArray(parsed?.addons) ? parsed.addons : [];
+  const addonIds = addons.flatMap((addon) =>
+    typeof addon?.id === 'string' && addon.id ? [addon.id] : []
+  );
+  return `addons:[${addonIds.join(',')}]`;
+}
+
+function buildFirefoxProfileDiagnostics(profileDir, prefsContent) {
+  return [
+    `prefs.js=${summarizePrefsContent(prefsContent)}`,
+    `extensions.json=${summarizeExtensionsJson(profileDir)}`,
+    `addonStartup.json.lz4=${summarizeProfileFile(join(profileDir, 'addonStartup.json.lz4'))}`,
+  ].join('; ');
+}
+
+export async function waitForExtensionUuid(profileDir, extensionId, timeoutMs) {
   const prefsPath = join(profileDir, 'prefs.js');
   const deadline = Date.now() + timeoutMs;
   let latestPrefs = '';
@@ -155,17 +228,30 @@ async function waitForExtensionUuid(profileDir, extensionId, timeoutMs) {
   while (Date.now() < deadline) {
     if (existsSync(prefsPath)) {
       latestPrefs = readFileSync(prefsPath, 'utf8');
-      const uuid = extractExtensionUuid(latestPrefs, extensionId);
+      let uuid = null;
+      try {
+        uuid = extractExtensionUuid(latestPrefs, extensionId);
+      } catch {
+        uuid = null;
+      }
       if (uuid) {
         return uuid;
       }
+    }
+
+    const extensionsJsonUuid = extractExtensionUuidFromExtensionsJson(profileDir, extensionId);
+    if (extensionsJsonUuid) {
+      return extensionsJsonUuid;
     }
 
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
   }
 
   throw new Error(
-    `Firefox did not register extension UUID for ${extensionId}; prefs.js length=${latestPrefs.length}`
+    `Firefox did not register extension UUID for ${extensionId}; ${buildFirefoxProfileDiagnostics(
+      profileDir,
+      latestPrefs
+    )}`
   );
 }
 
