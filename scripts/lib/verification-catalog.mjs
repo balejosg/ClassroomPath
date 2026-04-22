@@ -80,7 +80,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-cli',
     patterns: [
-      '^scripts/(?:detect-ci-relevant-changes|firefox-release-version|measure-ci-cache|measure-ci-routing|openpath-required-checks|print-verify-report-summary|release-images|release-risk-cli|release-state-cli|resolve-firefox-release-assets-cache|resolve-latest-verifier-image|resolve-openpath-linux-agent-version|run-ci-regression|verify-full|verify-release-manifest-platforms|wait-for-release-candidate)\\.(?:mjs|ts)$',
+      '^scripts/(?:detect-ci-relevant-changes|firefox-release-version|measure-ci-cache|measure-ci-routing|measure-release-candidate-timings|openpath-required-checks|print-verify-report-summary|release-images|release-risk-cli|release-state-cli|resolve-firefox-release-assets-cache|resolve-latest-verifier-image|resolve-openpath-linux-agent-version|run-ci-regression|verify-full|verify-release-manifest-platforms|wait-for-release-candidate)\\.(?:mjs|ts)$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -114,7 +114,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-contract-test',
     patterns: [
-      '^tests/(?:ci-cache-measurement|ci-routing-measurement|deploy-intent|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-assets-cache|firefox-release-version|github-actions-artifacts|openpath-required-checks|promotion-eligibility|release-cli|release-images|release-manifest-platforms|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow(?:-core|-deploy|-production-client-canary|-release-candidate|-config)?)\\.test\\.ts$',
+      '^tests/(?:ci-cache-measurement|ci-routing-measurement|deploy-intent|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-assets-cache|firefox-release-version|github-actions-artifacts|openpath-required-checks|promotion-eligibility|release-candidate-timings|release-cli|release-images|release-manifest-platforms|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow(?:-core|-deploy|-production-client-canary|-release-candidate|-config)?)\\.test\\.ts$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -309,6 +309,7 @@ export const REGRESSION_PLAN_DEFINITIONS = {
       'api/tests/openpath-proxy-policy.test.ts',
       'tests/openpath-required-checks.test.ts',
       'tests/release-cli.test.ts',
+      'tests/release-candidate-timings.test.ts',
       'tests/release-evidence.test.ts',
       'tests/release-images.test.ts',
       'tests/release-manifest-platforms.test.ts',

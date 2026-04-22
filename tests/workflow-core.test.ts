@@ -282,6 +282,8 @@ describe('Workflow core contracts', () => {
     assert.match(verificationCatalog, /tests\/workflow-core\.test\.ts/);
     assert.match(verificationCatalog, /tests\/ci-cache-measurement\.test\.ts/);
     assert.match(verificationCatalog, /tests\/ci-routing-measurement\.test\.ts/);
+    assert.match(verificationCatalog, /measure-release-candidate-timings/);
+    assert.match(verificationCatalog, /tests\/release-candidate-timings\.test\.ts/);
     assert.match(verificationCatalog, /tests\/workflow-deploy\.test\.ts/);
     assert.match(verificationCatalog, /tests\/workflow-production-client-canary\.test\.ts/);
     assert.match(verificationCatalog, /tests\/workflow-release-candidate\.test\.ts/);
