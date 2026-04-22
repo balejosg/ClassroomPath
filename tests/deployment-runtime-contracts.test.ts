@@ -135,7 +135,8 @@ describe('Deployment runtime contracts', () => {
     assert.ok(spaDockerignore.includes('upstream/openpath/react-spa/src/**/__tests__/**'));
 
     assert.ok(existsSync(verifierDockerfilePath));
-    assert.ok(verifierDockerfile.includes('COPY . .'));
+    assert.ok(verifierDockerfile.includes('COPY --chown=node:node . .'));
+    assert.ok(!verifierDockerfile.includes('chown -R node:node /app'));
     assert.ok(verifierDockerfile.includes('npm ci'));
     assert.ok(verifierDockerfile.includes('--mount=type=cache,target=/root/.npm'));
     assert.ok(verifierDockerignore.includes('scripts/**'));
