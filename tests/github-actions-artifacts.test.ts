@@ -94,7 +94,7 @@ describe('github-actions-artifacts helper', () => {
     assert.throws(() => waitForArtifactResolution({ attempt() {} }), /timeout formatter/);
   });
 
-  test('downloads artifact archives through gh output files instead of buffering stdout', () => {
+  test('downloads artifact archives through gh stdout when gh api has no output flag', () => {
     const tempDir = mkdtempSync(resolve(tmpdir(), 'github-actions-artifacts-test-'));
     const fakeBin = resolve(tempDir, 'bin');
     const commandLog = resolve(tempDir, 'commands.log');
@@ -177,8 +177,10 @@ printf 'extracted' > "$dest/extracted.txt"
       });
       artifactDir = result.artifactDir;
 
+      const loggedCommand = readFileSync(commandLog, 'utf8');
       assert.equal(existsSync(resolve(result.artifactDir, 'extracted.txt')), true);
-      assert.match(readFileSync(commandLog, 'utf8'), /--output/);
+      assert.match(loggedCommand, /gh api repos\/owner\/repo\/actions\/artifacts\/123\/zip/);
+      assert.doesNotMatch(loggedCommand, /--output/);
     } finally {
       if (artifactDir) {
         cleanupTemporaryArtifactDir(artifactDir);
