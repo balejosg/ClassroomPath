@@ -3,6 +3,13 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+import {
+  cleanupTemporaryArtifactDir,
+  listGitHubWorkflowRuns,
+  readArtifactTextFile,
+  tryDownloadRunArtifact,
+} from './lib/github-actions-artifacts.mjs';
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -125,19 +132,138 @@ export function summarizeReleaseCandidateTimings(timings) {
   };
 }
 
+function normalizePositiveInteger(value, fallback) {
+  const numberValue = Number(value);
+  return Number.isInteger(numberValue) && numberValue > 0 ? numberValue : fallback;
+}
+
+function parseNamedOptions(argv) {
+  const options = {};
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const current = argv[index];
+    if (!current.startsWith('--')) {
+      throw new Error(`Unexpected argument: ${current}`);
+    }
+
+    const name = current.slice(2);
+    const value = argv[index + 1];
+    if (!value || value.startsWith('--')) {
+      throw new Error(`Missing value for --${name}`);
+    }
+
+    options[name] = value;
+    index += 1;
+  }
+
+  return options;
+}
+
+function parseLatestOptions(argv) {
+  const options = parseNamedOptions(argv);
+  const repo = options.repo ?? process.env.GITHUB_REPOSITORY;
+
+  if (!repo) {
+    throw new Error('latest mode requires --repo or GITHUB_REPOSITORY');
+  }
+
+  return {
+    repo,
+    workflow: options.workflow ?? 'release-candidate-images.yml',
+    limit: normalizePositiveInteger(options.limit, 3),
+    cwd: process.cwd(),
+  };
+}
+
+export function collectLatestReleaseCandidateTimings({
+  repo,
+  workflow = 'release-candidate-images.yml',
+  limit = 3,
+  cwd = process.cwd(),
+  listWorkflowRuns = listGitHubWorkflowRuns,
+  downloadTimingArtifact = tryDownloadRunArtifact,
+  readArtifactTextFile: readTimingArtifactText = readArtifactTextFile,
+  cleanupTemporaryArtifactDir: cleanupTimingArtifactDir = cleanupTemporaryArtifactDir,
+} = {}) {
+  if (!repo) {
+    throw new Error('repo is required to collect release-candidate timings');
+  }
+
+  const requestedSamples = normalizePositiveInteger(limit, 3);
+  const runs = listWorkflowRuns({
+    repo,
+    workflow,
+    cwd,
+    limit: Math.max(requestedSamples * 4, requestedSamples),
+  });
+  const timings = [];
+
+  for (const run of runs) {
+    if (
+      run?.status !== 'completed' ||
+      run?.conclusion !== 'success' ||
+      !run?.headSha ||
+      !run?.databaseId
+    ) {
+      continue;
+    }
+
+    const artifactName = `release-candidate-timings-${run.headSha}`;
+    const artifact = downloadTimingArtifact({
+      repo,
+      runId: run.databaseId,
+      artifactName,
+      cwd,
+      tempPrefix: 'classroompath-rc-timings-',
+    });
+
+    if (!artifact?.found) {
+      continue;
+    }
+
+    try {
+      timings.push(
+        JSON.parse(
+          readTimingArtifactText({
+            artifactDir: artifact.artifactDir,
+            fileName: 'release-candidate-timings.json',
+          })
+        )
+      );
+    } finally {
+      cleanupTimingArtifactDir(artifact.artifactDir);
+    }
+
+    if (timings.length >= requestedSamples) {
+      break;
+    }
+  }
+
+  return timings;
+}
+
 function readTimingFiles(paths) {
   return paths.map((path) => JSON.parse(readFileSync(path, 'utf8')));
 }
 
 function main(argv = process.argv.slice(2)) {
   if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
-    console.error('Usage: node scripts/measure-release-candidate-timings.mjs <timings.json...>');
+    console.error(
+      [
+        'Usage:',
+        '  node scripts/measure-release-candidate-timings.mjs <timings.json...>',
+        '  node scripts/measure-release-candidate-timings.mjs latest --repo owner/repo [--limit 3] [--workflow release-candidate-images.yml]',
+      ].join('\n')
+    );
     return argv.length === 0 ? 1 : 0;
   }
 
-  process.stdout.write(
-    `${JSON.stringify(summarizeReleaseCandidateTimings(readTimingFiles(argv)), null, 2)}\n`
-  );
+  const timings =
+    argv[0] === 'latest'
+      ? collectLatestReleaseCandidateTimings(parseLatestOptions(argv.slice(1)))
+      : readTimingFiles(argv);
+
+  process.stdout.write(`${JSON.stringify(summarizeReleaseCandidateTimings(timings), null, 2)}\n`);
   return 0;
 }
 

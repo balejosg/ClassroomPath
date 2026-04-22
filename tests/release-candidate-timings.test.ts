@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { summarizeReleaseCandidateTimings } from '../scripts/measure-release-candidate-timings.mjs';
+import {
+  collectLatestReleaseCandidateTimings,
+  summarizeReleaseCandidateTimings,
+} from '../scripts/measure-release-candidate-timings.mjs';
 
 test('summarizeReleaseCandidateTimings identifies the repeated release-candidate gate', () => {
   const summary = summarizeReleaseCandidateTimings([
@@ -87,4 +90,96 @@ test('summarizeReleaseCandidateTimings asks for more samples before optimizing o
   assert.equal(summary.gateCandidate?.platform, 'arm64');
   assert.equal(summary.recommendation.action, 'measure-more');
   assert.match(summary.recommendation.reason, /at least two/);
+});
+
+test('collectLatestReleaseCandidateTimings downloads successful timing artifacts in run order', () => {
+  const downloadedArtifacts: string[] = [];
+  const cleanedArtifactDirs: string[] = [];
+
+  const timings = collectLatestReleaseCandidateTimings({
+    repo: 'owner/repo',
+    workflow: 'release-candidate-images.yml',
+    limit: 2,
+    cwd: '/repo',
+    listWorkflowRuns() {
+      return [
+        {
+          databaseId: 101,
+          headSha: 'first-sha',
+          status: 'completed',
+          conclusion: 'success',
+        },
+        {
+          databaseId: 102,
+          headSha: 'failed-sha',
+          status: 'completed',
+          conclusion: 'failure',
+        },
+        {
+          databaseId: 103,
+          headSha: 'second-sha',
+          status: 'completed',
+          conclusion: 'success',
+        },
+      ];
+    },
+    downloadTimingArtifact({ artifactName }) {
+      downloadedArtifacts.push(artifactName);
+      return { found: true, artifactDir: `/tmp/${artifactName}` };
+    },
+    readArtifactTextFile({ artifactDir }) {
+      return JSON.stringify({ sha: artifactDir.replace('/tmp/release-candidate-timings-', '') });
+    },
+    cleanupTemporaryArtifactDir(artifactDir) {
+      cleanedArtifactDirs.push(artifactDir);
+    },
+  });
+
+  assert.deepEqual(timings, [{ sha: 'first-sha' }, { sha: 'second-sha' }]);
+  assert.deepEqual(downloadedArtifacts, [
+    'release-candidate-timings-first-sha',
+    'release-candidate-timings-second-sha',
+  ]);
+  assert.deepEqual(cleanedArtifactDirs, [
+    '/tmp/release-candidate-timings-first-sha',
+    '/tmp/release-candidate-timings-second-sha',
+  ]);
+});
+
+test('collectLatestReleaseCandidateTimings skips successful runs without timing artifacts', () => {
+  const timings = collectLatestReleaseCandidateTimings({
+    repo: 'owner/repo',
+    workflow: 'release-candidate-images.yml',
+    limit: 1,
+    cwd: '/repo',
+    listWorkflowRuns() {
+      return [
+        {
+          databaseId: 101,
+          headSha: 'missing-sha',
+          status: 'completed',
+          conclusion: 'success',
+        },
+        {
+          databaseId: 102,
+          headSha: 'available-sha',
+          status: 'completed',
+          conclusion: 'success',
+        },
+      ];
+    },
+    downloadTimingArtifact({ artifactName }) {
+      if (artifactName.includes('missing-sha')) {
+        return { found: false, artifactDir: null };
+      }
+
+      return { found: true, artifactDir: '/tmp/available' };
+    },
+    readArtifactTextFile() {
+      return JSON.stringify({ sha: 'available-sha' });
+    },
+    cleanupTemporaryArtifactDir() {},
+  });
+
+  assert.deepEqual(timings, [{ sha: 'available-sha' }]);
 });
