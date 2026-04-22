@@ -46,8 +46,9 @@ gh api repos/balejosg/ClassroomPath/actions/runs/<run-id>/artifacts \
   --jq '.artifacts[] | [.name,.expired,.size_in_bytes,.created_at] | @tsv'
 ```
 
-For OpenPath runner timing after a submodule update, use the upstream runbook at
-`upstream/openpath/docs/ci-cd-runner-measurement.md`.
+For OpenPath runner timing after a submodule update, use the maintained
+OpenPath runbook:
+`https://github.com/balejosg/Openpath/blob/main/docs/ci-cd-runner-measurement.md`.
 
 ## Latest Submodule Update Evidence
 
