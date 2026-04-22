@@ -124,6 +124,18 @@ describe('Deploy workflow contracts', () => {
     assert.ok(jobs['verify-staging-release-state']);
     assert.ok(jobs['deploy-production']);
     assert.ok(jobs['smoke-test-production']);
+    const productionSmokeJob = jobs['smoke-test-production'];
+    const enrollmentStep = productionSmokeJob?.steps?.find((step) =>
+      String(step.name ?? '').includes('Download live Linux enrollment script')
+    );
+    assert.ok(enrollmentStep, 'production smoke must download a live Linux enrollment script');
+    assert.match(String(enrollmentStep?.run ?? ''), /\/api\/enroll\/\$CLASSROOM_ID/);
+    assert.match(String(enrollmentStep?.run ?? ''), /Authorization: Bearer \$ENROLLMENT_TOKEN/);
+    assert.match(String(enrollmentStep?.run ?? ''), /OPENPATH_LINUX_AGENT_VERSION/);
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /head -n 1 "\$enroll_script" \| grep -Eq '\^#!.*bash'/
+    );
     assert.ok(jobs['rollback-production']);
     assert.ok(jobs['release-evidence']);
     assert.ok(jobs['windows-firefox-canary']);

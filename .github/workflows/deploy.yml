@@ -452,6 +452,45 @@ jobs:
           PRODUCTION_READY_URL: ${{ needs.resolve-release-images.outputs.production_ready_url }}
         run: bash scripts/wait-for-ready.sh "$PRODUCTION_READY_URL"
 
+      - name: Provision production enrollment smoke canary
+        id: provision-enrollment
+        env:
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN: ${{ secrets.CP_CLIENT_CANARY_ADMIN_TOKEN }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ vars.CP_BILLING_MODE || 'stripe' }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        run: node scripts/create-production-windows-bootstrap-canary.mjs
+
+      - name: Download live Linux enrollment script
+        shell: bash
+        env:
+          PRODUCTION_BASE_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
+          CLASSROOM_ID: ${{ steps.provision-enrollment.outputs.classroom_id }}
+          ENROLLMENT_TOKEN: ${{ steps.provision-enrollment.outputs.enrollment_token }}
+          OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
+        run: |
+          set -euo pipefail
+
+          enroll_script="$RUNNER_TEMP/production-linux-enrollment.sh"
+          http_status="$(
+            curl -sS \
+              -o "$enroll_script" \
+              -w '%{http_code}' \
+              -H "Authorization: Bearer $ENROLLMENT_TOKEN" \
+              "$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID"
+          )"
+
+          if [ "$http_status" != "200" ]; then
+            echo "::error::Linux enrollment script download returned HTTP $http_status"
+            sed -n '1,80p' "$enroll_script" || true
+            exit 1
+          fi
+
+          test -s "$enroll_script"
+          head -n 1 "$enroll_script" | grep -Eq '^#!.*bash'
+          grep -F "LINUX_AGENT_VERSION=" "$enroll_script"
+          grep -F "$OPENPATH_LINUX_AGENT_VERSION" "$enroll_script"
+
       - name: Run smoke tests against production
         id: smoke
         env:

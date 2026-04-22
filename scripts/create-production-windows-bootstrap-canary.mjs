@@ -269,6 +269,14 @@ function setGithubOutput(key, value) {
   appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${String(value)}\n`, 'utf8');
 }
 
+function maskGithubSecret(value) {
+  if (!process.env.GITHUB_ACTIONS || !value) {
+    return;
+  }
+
+  process.stdout.write(`::add-mask::${String(value)}\n`);
+}
+
 async function main() {
   const email = `${uniqueValue('windows-production-bootstrap-canary')}@test.local`;
   const password = `SecurePassword123!-${Math.random().toString(36).slice(2, 8)}`;
@@ -369,6 +377,7 @@ async function main() {
     'string',
     'ticket endpoint should return an enrollment token'
   );
+  maskGithubSecret(ticketPayload.enrollmentToken);
 
   const authHeaders = {
     Authorization: `Bearer ${ticketPayload.enrollmentToken}`,

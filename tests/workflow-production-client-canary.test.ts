@@ -293,5 +293,7 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.ok(scriptText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'));
     assert.ok(scriptText.includes('billingMode'));
+    assert.ok(scriptText.includes('::add-mask::'));
+    assert.ok(scriptText.includes('maskGithubSecret(ticketPayload.enrollmentToken)'));
   });
 });
