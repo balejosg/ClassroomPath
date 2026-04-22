@@ -1,7 +1,22 @@
 import assert from 'node:assert/strict';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 
-import { waitForArtifactResolution } from '../scripts/lib/github-actions-artifacts.mjs';
+import {
+  cleanupTemporaryArtifactDir,
+  downloadArtifactById,
+  waitForArtifactResolution,
+} from '../scripts/lib/github-actions-artifacts.mjs';
 
 describe('github-actions-artifacts helper', () => {
   test('retries pending attempts until the artifact resolver succeeds', () => {
@@ -77,5 +92,104 @@ describe('github-actions-artifacts helper', () => {
   test('requires both the attempt callback and timeout formatter', () => {
     assert.throws(() => waitForArtifactResolution({ formatTimeoutError() {} }), /attempt callback/);
     assert.throws(() => waitForArtifactResolution({ attempt() {} }), /timeout formatter/);
+  });
+
+  test('downloads artifact archives through gh output files instead of buffering stdout', () => {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'github-actions-artifacts-test-'));
+    const fakeBin = resolve(tempDir, 'bin');
+    const commandLog = resolve(tempDir, 'commands.log');
+    const originalPath = process.env.PATH;
+    const originalCommandLog = process.env.COMMAND_LOG;
+    let artifactDir: string | null = null;
+
+    mkdirSync(fakeBin);
+    writeFileSync(
+      resolve(fakeBin, 'gh'),
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'gh' >> "$COMMAND_LOG"
+printf ' %q' "$@" >> "$COMMAND_LOG"
+printf '\\n' >> "$COMMAND_LOG"
+
+if [ "$1" != "api" ]; then
+  exit 2
+fi
+
+output_file=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--output" ]; then
+    output_file="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+
+if [ -z "$output_file" ]; then
+  head -c 2097152 /dev/zero
+  exit 0
+fi
+
+printf 'zip archive placeholder' > "$output_file"
+`,
+      'utf8'
+    );
+    writeFileSync(
+      resolve(fakeBin, 'unzip'),
+      `#!/usr/bin/env bash
+set -euo pipefail
+archive=''
+dest=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -d)
+      dest="$2"
+      shift 2
+      ;;
+    -*)
+      shift
+      ;;
+    *)
+      archive="$1"
+      shift
+      ;;
+  esac
+done
+
+test -s "$archive"
+mkdir -p "$dest"
+printf 'extracted' > "$dest/extracted.txt"
+`,
+      'utf8'
+    );
+    chmodSync(resolve(fakeBin, 'gh'), 0o755);
+    chmodSync(resolve(fakeBin, 'unzip'), 0o755);
+
+    try {
+      process.env.COMMAND_LOG = commandLog;
+      process.env.PATH = `${fakeBin}${delimiter}${originalPath ?? ''}`;
+
+      const result = downloadArtifactById({
+        repo: 'owner/repo',
+        artifactId: 123,
+        cwd: tempDir,
+        tempPrefix: 'github-actions-artifacts-test-download-',
+      });
+      artifactDir = result.artifactDir;
+
+      assert.equal(existsSync(resolve(result.artifactDir, 'extracted.txt')), true);
+      assert.match(readFileSync(commandLog, 'utf8'), /--output/);
+    } finally {
+      if (artifactDir) {
+        cleanupTemporaryArtifactDir(artifactDir);
+      }
+      process.env.PATH = originalPath;
+      if (originalCommandLog === undefined) {
+        delete process.env.COMMAND_LOG;
+      } else {
+        process.env.COMMAND_LOG = originalCommandLog;
+      }
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

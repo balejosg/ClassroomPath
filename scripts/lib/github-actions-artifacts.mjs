@@ -1,13 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import {
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -121,17 +113,15 @@ export function downloadArtifactById({ repo, artifactId, cwd, tempPrefix } = {})
   const artifactArchivePath = resolve(artifactDir, 'artifact.zip');
 
   try {
-    const artifactZip = execFileSync(
+    execFileSync(
       'gh',
-      ['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`],
+      ['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`, '--output', artifactArchivePath],
       {
         cwd,
-        encoding: null,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        encoding: 'utf8',
+        stdio: ['ignore', 'ignore', 'pipe'],
       }
     );
-
-    writeFileSync(artifactArchivePath, artifactZip);
     execFileSync('unzip', ['-oq', artifactArchivePath, '-d', artifactDir], {
       cwd,
       encoding: 'utf8',
