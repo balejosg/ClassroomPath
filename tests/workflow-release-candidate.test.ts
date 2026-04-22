@@ -13,7 +13,13 @@ type WorkflowJob = {
   needs?: string | string[];
   uses?: string;
   with?: Record<string, unknown>;
-  steps?: Array<{ name?: string; run?: string; uses?: string; with?: Record<string, unknown> }>;
+  steps?: Array<{
+    name?: string;
+    run?: string;
+    uses?: string;
+    with?: Record<string, unknown>;
+    env?: Record<string, unknown>;
+  }>;
   'runs-on'?: string | string[];
 };
 
@@ -156,17 +162,26 @@ describe('Release candidate workflow contracts', () => {
       jobs['derive-release-image-refs']?.steps?.find(
         (step) => step.name === 'Wait for OpenPath prerelease APT publish'
       )?.run ?? '';
+    const waitForOpenPathAptPublishEnv =
+      jobs['derive-release-image-refs']?.steps?.find(
+        (step) => step.name === 'Wait for OpenPath prerelease APT publish'
+      )?.env ?? {};
     const deriveStepNames =
       jobs['derive-release-image-refs']?.steps?.map((step) => step.name ?? '') ?? [];
     const deriveCheckout = jobs['derive-release-image-refs']?.steps?.find(
       (step) => step.name === 'Checkout'
     );
-    assert.ok(
-      waitForOpenPathAptPublishRun.includes(
-        'OPENPATH_REQUIRED_CHECKS="Publish Prerelease to APT Repository / Publish to APT Repository (unstable)"'
-      )
+    assert.equal(
+      waitForOpenPathAptPublishEnv['OPENPATH_REQUIRED_CHECKS'],
+      'Publish Prerelease to APT Repository / Publish to APT Repository (unstable)'
     );
-    assert.ok(waitForOpenPathAptPublishRun.includes('node scripts/openpath-required-checks.mjs'));
+    assert.ok(
+      waitForOpenPathAptPublishRun.includes('node scripts/openpath-required-checks.mjs wait')
+    );
+    assert.ok(waitForOpenPathAptPublishRun.includes('OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS'));
+    assert.ok(waitForOpenPathAptPublishRun.includes('OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS'));
+    assert.ok(!waitForOpenPathAptPublishRun.includes('for attempt in $(seq 1 60)'));
+    assert.ok(!waitForOpenPathAptPublishRun.includes('sleep 10'));
     assert.ok(
       deriveStepNames.indexOf('Wait for OpenPath prerelease APT publish') <
         deriveStepNames.indexOf('Resolve OpenPath Linux agent version')

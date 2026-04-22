@@ -3,10 +3,12 @@ import { describe, it } from 'node:test';
 
 import { buildOpenPathCiRecoveryScenario } from './helpers/release-fixtures.ts';
 import {
+  classifyRequiredCheckWaitState,
   evaluateRequiredChecks,
   resolveOpenPathRequiredChecks,
   OPENPATH_CI_JOB_NAMES,
 } from '../scripts/lib/openpath-ci-checks.mjs';
+import { parseWaitOptions } from '../scripts/openpath-required-checks.mjs';
 
 function buildCompletedWorkflowJob(name: string, overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -272,6 +274,81 @@ describe('evaluateRequiredChecks', () => {
   });
 });
 
+describe('classifyRequiredCheckWaitState', () => {
+  const aptCheck = 'Publish Prerelease to APT Repository / Publish to APT Repository (unstable)';
+
+  it('classifies missing checks as pending for wait mode', () => {
+    const state = classifyRequiredCheckWaitState({
+      checkRuns: [],
+      requiredChecks: [aptCheck],
+    });
+
+    assert.equal(state.kind, 'pending');
+    assert.deepEqual(state.pending, [aptCheck]);
+    assert.deepEqual(state.terminalFailures, []);
+  });
+
+  it('classifies in-progress checks as pending for wait mode', () => {
+    const state = classifyRequiredCheckWaitState({
+      checkRuns: [
+        {
+          name: aptCheck,
+          status: 'in_progress',
+          conclusion: null,
+          started_at: '2026-04-22T07:00:00Z',
+        },
+      ],
+      requiredChecks: [aptCheck],
+    });
+
+    assert.equal(state.kind, 'pending');
+    assert.deepEqual(state.pending, [aptCheck]);
+    assert.deepEqual(state.terminalFailures, []);
+  });
+
+  it('classifies terminal non-success checks as terminal failures', () => {
+    const state = classifyRequiredCheckWaitState({
+      checkRuns: [
+        {
+          name: aptCheck,
+          status: 'completed',
+          conclusion: 'failure',
+          completed_at: '2026-04-22T07:03:00Z',
+        },
+      ],
+      requiredChecks: [aptCheck],
+    });
+
+    assert.equal(state.kind, 'terminal_failure');
+    assert.deepEqual(state.pending, []);
+    assert.deepEqual(state.terminalFailures, [
+      {
+        name: aptCheck,
+        status: 'completed',
+        conclusion: 'failure',
+      },
+    ]);
+  });
+
+  it('classifies all required checks passing as passed', () => {
+    const state = classifyRequiredCheckWaitState({
+      checkRuns: [
+        {
+          name: aptCheck,
+          status: 'completed',
+          conclusion: 'success',
+          completed_at: '2026-04-22T07:03:00Z',
+        },
+      ],
+      requiredChecks: [aptCheck],
+    });
+
+    assert.equal(state.kind, 'passed');
+    assert.deepEqual(state.pending, []);
+    assert.deepEqual(state.terminalFailures, []);
+  });
+});
+
 describe('resolveOpenPathRequiredChecks', () => {
   it('keeps low-risk OpenPath promotions on the CI summary gate', () => {
     const result = resolveOpenPathRequiredChecks({
@@ -324,5 +401,41 @@ describe('resolveOpenPathRequiredChecks', () => {
 
     assert.equal(result.highRisk, true);
     assert.deepEqual(result.requiredChecks, ['CI Success']);
+  });
+});
+
+describe('parseWaitOptions', () => {
+  it('uses compatible defaults', () => {
+    assert.deepEqual(parseWaitOptions({}), {
+      timeoutSeconds: 600,
+      intervalSeconds: 10,
+      failFast: true,
+    });
+  });
+
+  it('parses explicit wait settings', () => {
+    assert.deepEqual(
+      parseWaitOptions({
+        OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS: '120',
+        OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS: '5',
+        OPENPATH_REQUIRED_CHECKS_FAIL_FAST: 'false',
+      }),
+      {
+        timeoutSeconds: 120,
+        intervalSeconds: 5,
+        failFast: false,
+      }
+    );
+  });
+
+  it('rejects invalid timeout and interval values', () => {
+    assert.throws(
+      () => parseWaitOptions({ OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS: '0' }),
+      /OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS must be a positive integer/
+    );
+    assert.throws(
+      () => parseWaitOptions({ OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS: '-1' }),
+      /OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS must be a positive integer/
+    );
   });
 });

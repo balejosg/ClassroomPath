@@ -65,17 +65,10 @@ jobs:
           OPENPATH_REQUIRED_CHECKS: Publish Prerelease to APT Repository / Publish to APT Repository (unstable)
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 60); do
-            if OPENPATH_REQUIRED_CHECKS="Publish Prerelease to APT Repository / Publish to APT Repository (unstable)" \
-              node scripts/openpath-required-checks.mjs; then
-              exit 0
-            fi
-            if [ "$attempt" = "60" ]; then
-              echo "::error::OpenPath prerelease APT publish did not complete for $OPENPATH_SHA"
-              exit 1
-            fi
-            sleep 10
-          done
+          OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS=600 \
+          OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS=10 \
+          OPENPATH_REQUIRED_CHECKS_FAIL_FAST=true \
+            node scripts/openpath-required-checks.mjs wait
 
       - name: Resolve OpenPath Linux agent version
         id: linux-agent

@@ -224,3 +224,49 @@ export function evaluateRequiredChecks({ checkRuns, requiredChecks, workflowJobs
     failing,
   };
 }
+
+export function classifyRequiredCheckWaitState({ checkRuns, requiredChecks, workflowJobs = [] }) {
+  const evaluation = evaluateRequiredChecks({ checkRuns, requiredChecks, workflowJobs });
+
+  if (evaluation.ok) {
+    return {
+      kind: 'passed',
+      pending: [],
+      terminalFailures: [],
+      evaluation,
+    };
+  }
+
+  const latestByName = selectLatestCheckRuns(checkRuns);
+  const terminalFailures = [];
+  const pending = [];
+
+  for (const checkName of requiredChecks) {
+    const checkRun = latestByName.get(checkName);
+
+    if (!checkRun) {
+      pending.push(checkName);
+      continue;
+    }
+
+    if (checkRun.status === 'completed' && checkRun.conclusion !== 'success') {
+      terminalFailures.push({
+        name: checkName,
+        status: checkRun.status ?? 'unknown',
+        conclusion: checkRun.conclusion ?? 'unknown',
+      });
+      continue;
+    }
+
+    if (checkRun.status !== 'completed') {
+      pending.push(checkName);
+    }
+  }
+
+  return {
+    kind: terminalFailures.length > 0 ? 'terminal_failure' : 'pending',
+    pending,
+    terminalFailures,
+    evaluation,
+  };
+}
