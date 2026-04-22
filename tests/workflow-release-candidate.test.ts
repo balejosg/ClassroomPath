@@ -302,7 +302,12 @@ describe('Release candidate workflow contracts', () => {
   });
 
   test('release candidate manifest publisher reads the reusable family image output for every image slot', () => {
+    const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
     const workflowText = readText('.github/workflows/release-candidate-images.yml');
+    const publishSteps = workflow.jobs?.['publish-release-candidate-manifest']?.steps ?? [];
+    const publishStepNames = publishSteps.map((step) => step.name ?? '');
+    const checkoutIndex = publishStepNames.indexOf('Checkout');
+    const summarizeIndex = publishStepNames.indexOf('Summarize release candidate timings');
 
     assert.match(
       workflowText,
@@ -337,6 +342,9 @@ describe('Release candidate workflow contracts', () => {
         'node scripts/measure-release-candidate-timings.mjs release-candidate-timings.json'
       )
     );
+    assert.notEqual(checkoutIndex, -1);
+    assert.notEqual(summarizeIndex, -1);
+    assert.ok(checkoutIndex < summarizeIndex);
     assert.ok(workflowText.includes('arm64DurationSeconds'));
     assert.ok(workflowText.includes('familyDurationSeconds'));
     assert.doesNotMatch(

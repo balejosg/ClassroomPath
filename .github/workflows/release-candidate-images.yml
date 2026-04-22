@@ -281,6 +281,9 @@ jobs:
       - build-verifier-release-candidate
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Persist release candidate image manifest
         run: |
           cat > release-candidate-images.env <<EOF
