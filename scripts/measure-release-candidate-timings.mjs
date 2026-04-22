@@ -52,7 +52,7 @@ function summarizeTimingSample(timing) {
     }
   );
 
-  return {
+  const sample = {
     sha: String(timing?.sha ?? ''),
     gateFamily: gateFamily.family,
     gatePlatform: gateFamily.platform,
@@ -60,6 +60,16 @@ function summarizeTimingSample(timing) {
     platformDurationSeconds: gateFamily.platformDurationSeconds,
     buildRequired: gateFamily.buildRequired,
   };
+
+  if (timing?.runId) {
+    sample.runId = timing.runId;
+  }
+
+  if (timing?.runUrl) {
+    sample.runUrl = String(timing.runUrl);
+  }
+
+  return sample;
 }
 
 function selectGateCandidate(samples) {
@@ -175,6 +185,10 @@ function parseLatestOptions(argv) {
   };
 }
 
+function buildRunUrl(repo, runId) {
+  return `https://github.com/${repo}/actions/runs/${runId}`;
+}
+
 export function collectLatestReleaseCandidateTimings({
   repo,
   workflow = 'release-candidate-images.yml',
@@ -222,14 +236,17 @@ export function collectLatestReleaseCandidateTimings({
     }
 
     try {
-      timings.push(
-        JSON.parse(
-          readTimingArtifactText({
-            artifactDir: artifact.artifactDir,
-            fileName: 'release-candidate-timings.json',
-          })
-        )
+      const timing = JSON.parse(
+        readTimingArtifactText({
+          artifactDir: artifact.artifactDir,
+          fileName: 'release-candidate-timings.json',
+        })
       );
+      timings.push({
+        ...timing,
+        runId: run.databaseId,
+        runUrl: buildRunUrl(repo, run.databaseId),
+      });
     } finally {
       cleanupTimingArtifactDir(artifact.artifactDir);
     }

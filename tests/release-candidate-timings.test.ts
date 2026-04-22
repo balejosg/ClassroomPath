@@ -92,6 +92,27 @@ test('summarizeReleaseCandidateTimings asks for more samples before optimizing o
   assert.match(summary.recommendation.reason, /at least two/);
 });
 
+test('summarizeReleaseCandidateTimings preserves source run metadata on samples', () => {
+  const summary = summarizeReleaseCandidateTimings([
+    {
+      sha: 'metadata-sha',
+      runId: 12345,
+      runUrl: 'https://github.com/owner/repo/actions/runs/12345',
+      families: {
+        verifier: {
+          buildRequired: true,
+          amd64DurationSeconds: 85,
+          arm64DurationSeconds: 329,
+          familyDurationSeconds: 348,
+        },
+      },
+    },
+  ]);
+
+  assert.equal(summary.samples[0]?.runId, 12345);
+  assert.equal(summary.samples[0]?.runUrl, 'https://github.com/owner/repo/actions/runs/12345');
+});
+
 test('collectLatestReleaseCandidateTimings downloads successful timing artifacts in run order', () => {
   const downloadedArtifacts: string[] = [];
   const cleanedArtifactDirs: string[] = [];
@@ -135,7 +156,18 @@ test('collectLatestReleaseCandidateTimings downloads successful timing artifacts
     },
   });
 
-  assert.deepEqual(timings, [{ sha: 'first-sha' }, { sha: 'second-sha' }]);
+  assert.deepEqual(timings, [
+    {
+      sha: 'first-sha',
+      runId: 101,
+      runUrl: 'https://github.com/owner/repo/actions/runs/101',
+    },
+    {
+      sha: 'second-sha',
+      runId: 103,
+      runUrl: 'https://github.com/owner/repo/actions/runs/103',
+    },
+  ]);
   assert.deepEqual(downloadedArtifacts, [
     'release-candidate-timings-first-sha',
     'release-candidate-timings-second-sha',
@@ -181,5 +213,11 @@ test('collectLatestReleaseCandidateTimings skips successful runs without timing 
     cleanupTemporaryArtifactDir() {},
   });
 
-  assert.deepEqual(timings, [{ sha: 'available-sha' }]);
+  assert.deepEqual(timings, [
+    {
+      sha: 'available-sha',
+      runId: 102,
+      runUrl: 'https://github.com/owner/repo/actions/runs/102',
+    },
+  ]);
 });
