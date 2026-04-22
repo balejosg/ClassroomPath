@@ -47,9 +47,15 @@ describe('Release candidate workflow contracts', () => {
   test('release candidate detector classifies OpenPath gitlink changes through the shared component mapper', () => {
     const detectScriptPath = resolve(projectRoot, 'scripts/detect-release-candidate-components.sh');
     const detectScript = readFileSync(detectScriptPath, 'utf-8');
+    const fetchDiffBaseScript = readProjectText('scripts/fetch-release-candidate-diff-base.sh');
 
     assert.match(detectScript, /node scripts\/lib\/release-candidate-components\.mjs classify/);
     assert.match(detectScript, /git -C upstream\/openpath rev-parse --is-inside-work-tree/);
+    assert.match(fetchDiffBaseScript, /git fetch --no-tags --depth=1 origin "\$BASE_SHA"/);
+    assert.match(
+      fetchDiffBaseScript,
+      /git -C upstream\/openpath fetch --no-tags --depth=1 origin "\$openpath_base_sha" "\$openpath_head_sha"/
+    );
     assert.match(detectScript, /__unknown_openpath_gitlink_change__/);
     assert.ok(!detectScript.includes('-d upstream/openpath/.git'));
     assert.ok(!detectScript.includes('cannot infer which OpenPath workspace changed'));
@@ -190,7 +196,7 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(
       deriveLinuxAgentVersionRun.includes('node scripts/resolve-openpath-linux-agent-version.mjs')
     );
-    assert.equal(deriveCheckout?.with?.['fetch-depth'], 0);
+    assert.equal(deriveCheckout?.with?.['fetch-depth'], 1);
     assert.equal(
       jobs['build-gateway-release-candidate']?.uses,
       './.github/workflows/reusable-release-candidate-image-family.yml'
@@ -257,6 +263,9 @@ describe('Release candidate workflow contracts', () => {
     const detectCheckout = jobs['detect-release-candidate-components']?.steps?.find(
       (step) => step.name === 'Checkout'
     );
+    const fetchDiffBaseStep = jobs['detect-release-candidate-components']?.steps?.find(
+      (step) => step.name === 'Fetch release candidate diff base'
+    );
     const openpathApiNeeds = normalizeNeeds(jobs['build-openpath-api-release-candidate']?.needs);
     assert.deepEqual(
       openpathApiNeeds.sort(),
@@ -279,8 +288,16 @@ describe('Release candidate workflow contracts', () => {
         'openpath_api_changed'
       )
     );
-    assert.equal(detectCheckout?.with?.['fetch-depth'], 0);
+    assert.equal(detectCheckout?.with?.['fetch-depth'], 1);
     assert.equal(detectCheckout?.with?.submodules, 'recursive');
+    assert.ok(
+      String(fetchDiffBaseStep?.run ?? '').includes(
+        'bash scripts/fetch-release-candidate-diff-base.sh'
+      )
+    );
+    assert.ok(
+      String(fetchDiffBaseStep?.run ?? '').includes('${{ github.event.before }} ${{ github.sha }}')
+    );
     assert.ok(!workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
   });
 

@@ -40,7 +40,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: recursive
 
       - name: Setup Node.js
@@ -131,8 +131,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: recursive
+
+      - name: Fetch release candidate diff base
+        shell: bash
+        run: bash scripts/fetch-release-candidate-diff-base.sh ${{ github.event.before }} ${{ github.sha }}
 
       - name: Detect changed release-candidate components
         id: detect
