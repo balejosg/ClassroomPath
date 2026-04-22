@@ -45,6 +45,11 @@ on:
         required: false
         type: string
         default: ''
+      openpath_sha:
+        description: Optional OpenPath SHA used to resolve versioned Firefox release assets.
+        required: false
+        type: string
+        default: ''
       artifact_path:
         description: Optional destination path for the downloaded artifact.
         required: false
@@ -89,6 +94,7 @@ on:
         value: ${{ jobs.publish-manifest.outputs.family_duration_seconds }}
 
 permissions:
+  actions: read
   contents: read
   packages: write
 
@@ -129,6 +135,7 @@ jobs:
           outputs: type=image,name=${{ inputs.image_repo }},push-by-digest=true,name-canonical=true,push=true
           cache-scope: ${{ inputs.amd64_cache_scope }}
           artifact-name: ${{ inputs.artifact_name }}
+          openpath-sha: ${{ inputs.openpath_sha }}
           artifact-path: ${{ inputs.artifact_path }}
           verify-paths: ${{ inputs.verify_paths }}
 
@@ -178,6 +185,7 @@ jobs:
           outputs: type=image,name=${{ inputs.image_repo }},push-by-digest=true,name-canonical=true,push=true
           cache-scope: ${{ inputs.arm64_cache_scope }}
           artifact-name: ${{ inputs.artifact_name }}
+          openpath-sha: ${{ inputs.openpath_sha }}
           artifact-path: ${{ inputs.artifact_path }}
           verify-paths: ${{ inputs.verify_paths }}
 

@@ -409,6 +409,46 @@ export function waitForFirefoxReleaseAssets({
     timeoutSeconds,
     intervalSeconds,
     attempt() {
+      const artifactsPayload = listGitHubArtifacts({ repo, artifactName, cwd });
+      try {
+        const artifact = selectLatestArtifact(artifactsPayload, { artifactName });
+        const artifactId = artifact.id ?? artifact.databaseId;
+        if (!artifactId) {
+          throw new Error(`Firefox release assets artifact ${artifactName} has no artifact id`);
+        }
+
+        const { artifactDir } = downloadArtifactZipById({
+          repo,
+          artifactId,
+          cwd,
+          tempPrefix: 'classroompath-firefox-assets-',
+        });
+
+        try {
+          if (outputDir) {
+            copyArtifactContents({ artifactDir, outputDir });
+          }
+
+          return {
+            status: 'resolved',
+            value: {
+              repository: repo,
+              runId: resolveArtifactRunId(artifact) ?? '',
+              artifactName,
+            },
+          };
+        } finally {
+          cleanupTemporaryArtifactDir(artifactDir);
+        }
+      } catch (artifactError) {
+        if (
+          !(artifactError instanceof Error) ||
+          !artifactError.message.includes(`No artifact found with name ${artifactName}`)
+        ) {
+          throw artifactError;
+        }
+      }
+
       const payload = listGitHubWorkflowRuns({
         repo,
         workflow: 'firefox-release-assets.yml',

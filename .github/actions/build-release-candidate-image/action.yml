@@ -37,6 +37,10 @@ inputs:
     description: 'Artifact name to download before the build'
     required: false
     default: ''
+  openpath-sha:
+    description: 'OpenPath SHA used to resolve versioned Firefox release assets'
+    required: false
+    default: ''
   artifact-path:
     description: 'Destination path for the downloaded artifact'
     required: false
@@ -61,11 +65,25 @@ runs:
         password: ${{ inputs.password }}
 
     - name: Download release artifact
-      if: ${{ inputs.artifact-name != '' && inputs.artifact-path != '' }}
+      if: ${{ inputs.artifact-name != '' && inputs.artifact-path != '' && inputs.openpath-sha == '' }}
       uses: actions/download-artifact@v7
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.artifact-path }}
+
+    - name: Resolve Firefox release artifact
+      if: ${{ inputs.artifact-name != '' && inputs.artifact-path != '' && inputs.openpath-sha != '' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        node scripts/wait-for-release-candidate.mjs resolve-firefox-assets \
+          --openpath-sha "${{ inputs.openpath-sha }}" \
+          --timeout-seconds 900 \
+          --interval-seconds 10 \
+          --output-dir "${{ inputs.artifact-path }}"
 
     - name: Verify downloaded release artifacts
       if: ${{ inputs.verify-paths != '' }}

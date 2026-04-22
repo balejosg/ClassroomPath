@@ -96,9 +96,8 @@ describe('Release candidate workflow contracts', () => {
     }
   });
 
-  test('release candidate workflow keeps Firefox signing and reusable family contracts centralized', () => {
+  test('release candidate workflow keeps image family contracts centralized', () => {
     const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
-    const firefoxAssetsJob = workflow.jobs?.['resolve-openpath-firefox-release-assets'];
     const workflowText = readText('.github/workflows/release-candidate-images.yml');
     const reusableWorkflowText = readText(
       '.github/workflows/reusable-release-candidate-image-family.yml'
@@ -110,8 +109,10 @@ describe('Release candidate workflow contracts', () => {
       '.github/actions/publish-release-candidate-manifest/action.yml'
     );
 
-    assert.equal(firefoxAssetsJob?.uses, './.github/workflows/firefox-release-assets.yml');
-    assert.equal(firefoxAssetsJob?.secrets, 'inherit');
+    assert.equal(
+      workflow.jobs?.['resolve-openpath-firefox-release-assets']?.uses,
+      './.github/workflows/firefox-release-assets.yml'
+    );
     assert.ok(
       workflowText.includes('./.github/workflows/reusable-release-candidate-image-family.yml') &&
         reusableWorkflowText.includes('./.github/actions/publish-release-candidate-manifest')
@@ -198,7 +199,10 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(jobs['build-spa-release-candidate']);
     assert.ok(jobs['build-migrations-release-candidate']);
     assert.ok(jobs['build-verifier-release-candidate']);
-    assert.ok(jobs['resolve-openpath-firefox-release-assets']);
+    assert.equal(
+      jobs['resolve-openpath-firefox-release-assets']?.uses,
+      './.github/workflows/firefox-release-assets.yml'
+    );
     assert.ok(jobs['publish-release-candidate-manifest']);
     const concurrency = workflow.concurrency;
     assert.equal(typeof concurrency, 'object');
@@ -253,9 +257,9 @@ describe('Release candidate workflow contracts', () => {
     const detectCheckout = jobs['detect-release-candidate-components']?.steps?.find(
       (step) => step.name === 'Checkout'
     );
-    const firefoxPrepNeeds = normalizeNeeds(jobs['resolve-openpath-firefox-release-assets']?.needs);
+    const openpathApiNeeds = normalizeNeeds(jobs['build-openpath-api-release-candidate']?.needs);
     assert.deepEqual(
-      firefoxPrepNeeds.sort(),
+      openpathApiNeeds.sort(),
       [
         'derive-release-image-refs',
         'detect-release-candidate-components',
@@ -263,21 +267,20 @@ describe('Release candidate workflow contracts', () => {
       ].sort()
     );
     assert.equal(
-      jobs['resolve-openpath-firefox-release-assets']?.uses,
-      './.github/workflows/firefox-release-assets.yml'
-    );
-    assert.ok(
-      String(
-        jobs['resolve-openpath-firefox-release-assets']?.with?.['build_required'] ?? ''
-      ).includes('openpath_api_changed')
+      jobs['build-openpath-api-release-candidate']?.with?.['artifact_name'],
+      'openpath-firefox-release-assets-${{ needs.derive-release-image-refs.outputs.openpath_sha }}'
     );
     assert.equal(
-      jobs['resolve-openpath-firefox-release-assets']?.with?.['artifact_name'],
-      'openpath-firefox-release-assets'
+      jobs['build-openpath-api-release-candidate']?.with?.['openpath_sha'],
+      '${{ needs.derive-release-image-refs.outputs.openpath_sha }}'
+    );
+    assert.ok(
+      String(jobs['build-openpath-api-release-candidate']?.with?.['build_required'] ?? '').includes(
+        'openpath_api_changed'
+      )
     );
     assert.equal(detectCheckout?.with?.['fetch-depth'], 0);
     assert.equal(detectCheckout?.with?.submodules, 'recursive');
-    assert.ok(!workflowText.includes('wait-for-release-candidate.mjs resolve-firefox-assets'));
     assert.ok(!workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
   });
 
@@ -329,9 +332,7 @@ describe('Release candidate workflow contracts', () => {
     const firefoxVersionLib = readText('scripts/lib/firefox-release-version.mjs');
     const githubActionsLib = readText('scripts/lib/github-actions.mjs');
 
-    assert.ok(workflow.on?.push?.branches?.includes('main'));
-    assert.ok(workflow.on?.push?.paths?.includes('upstream/openpath'));
-    assert.ok(workflow.on?.push?.paths?.includes('docker/Dockerfile.api'));
+    assert.equal(workflow.on?.push, undefined);
     assert.ok(workflowText.includes('workflow_dispatch:'));
     assert.ok(workflow.on?.workflow_call);
     assert.ok(assetJob);
@@ -339,6 +340,10 @@ describe('Release candidate workflow contracts', () => {
     assert.ok((assetJob?.steps ?? []).some((step) => step.uses === './.github/actions/setup-node'));
     assert.ok(assetJobRun.includes('npm ci'));
     assert.ok(assetJobRun.includes('npm run build --workspace=@openpath/firefox-extension'));
+    assert.ok(assetJobRun.includes('release:payload-hash --workspace=@openpath/firefox-extension'));
+    assert.ok(assetJobRun.includes('FIREFOX_RELEASE_PAYLOAD_HASH='));
+    assert.ok(assetJobRun.includes('node scripts/resolve-firefox-release-assets-cache.mjs'));
+    assert.ok(assetJobRun.includes('payload-hash.txt'));
     assert.ok(assetJobRun.includes('OPENPATH_FIREFOX_RELEASE_VERSION='));
     assert.ok(assetJobRun.includes('node scripts/firefox-release-version.mjs'));
     assert.ok(assetJobRun.includes('--manifest upstream/openpath/firefox-extension/manifest.json'));
@@ -353,12 +358,17 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(
       assetJobRun.includes('npm run sign:firefox-release --workspace=@openpath/firefox-extension')
     );
+    assert.ok(workflowText.includes("steps.cache.outputs.resolved != 'true'"));
     assert.ok(workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
     assert.ok(workflowText.includes('WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}'));
     assert.ok(
       workflowText.includes('artifact_name="openpath-firefox-release-assets-${OPENPATH_SHA}"')
     );
+    assert.ok(
+      workflowText.includes('openpath-firefox-release-assets-${FIREFOX_RELEASE_PAYLOAD_HASH}')
+    );
     assert.ok(existsSync(resolve(projectRoot, 'scripts/firefox-release-version.mjs')));
+    assert.ok(existsSync(resolve(projectRoot, 'scripts/resolve-firefox-release-assets-cache.mjs')));
     assert.ok(existsSync(resolve(projectRoot, 'scripts/lib/openpath-ci-checks.mjs')));
     assert.ok(
       readText('scripts/openpath-required-checks.mjs').includes(

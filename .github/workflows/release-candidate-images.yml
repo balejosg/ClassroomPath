@@ -191,7 +191,7 @@ jobs:
       - detect-release-candidate-components
     with:
       build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_api_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
-      artifact_name: openpath-firefox-release-assets
+      artifact_name: openpath-firefox-release-assets-${{ needs.derive-release-image-refs.outputs.openpath_sha }}
     secrets: inherit
 
   build-openpath-api-release-candidate:
@@ -201,7 +201,6 @@ jobs:
       - derive-release-image-refs
       - resolve-previous-release-candidate-manifest
       - detect-release-candidate-components
-      - resolve-openpath-firefox-release-assets
     with:
       display_name: OpenPath API Release Candidate
       build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_api_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
@@ -213,7 +212,8 @@ jobs:
       output_name: openpath_api_image
       amd64_cache_scope: release-candidate-openpath-api-amd64
       arm64_cache_scope: release-candidate-openpath-api-arm64
-      artifact_name: openpath-firefox-release-assets
+      artifact_name: openpath-firefox-release-assets-${{ needs.derive-release-image-refs.outputs.openpath_sha }}
+      openpath_sha: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
       artifact_path: ./upstream/openpath/firefox-extension
       verify_paths: |
         ./upstream/openpath/firefox-extension/dist/background.js
