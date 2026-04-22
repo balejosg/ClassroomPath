@@ -15,6 +15,11 @@ import {
   resolveWorkflowRunId,
   selectLatestArtifact,
 } from '../scripts/wait-for-release-candidate.mjs';
+import {
+  GITHUB_CLI_MAX_BUFFER_BYTES,
+  buildDownloadArtifactZipArgs,
+  buildListGitHubArtifactsArgs,
+} from '../scripts/lib/github-actions-artifacts.mjs';
 
 describe('wait-for-release-candidate helpers', () => {
   test('uses databaseId from gh run list payloads when id is absent', () => {
@@ -41,6 +46,32 @@ describe('wait-for-release-candidate helpers', () => {
           { artifactName: 'release-candidate-images-missing' }
         ),
       /No artifact found with name release-candidate-images-missing/
+    );
+  });
+
+  test('bounds GitHub artifact listing output before JSON parsing', () => {
+    assert.ok(GITHUB_CLI_MAX_BUFFER_BYTES >= 16 * 1024 * 1024);
+    assert.deepEqual(
+      buildListGitHubArtifactsArgs({
+        repo: 'balejosg/ClassroomPath',
+        artifactName: 'openpath-firefox-release-assets-sha with space',
+      }),
+      [
+        'api',
+        'repos/balejosg/ClassroomPath/actions/artifacts?per_page=100&name=openpath-firefox-release-assets-sha%20with%20space',
+        '--jq',
+        '{artifacts: [.artifacts[] | {id, name, expired, created_at, updated_at, expires_at, workflow_run: {id: .workflow_run.id}}]}',
+      ]
+    );
+  });
+
+  test('downloads artifact zips through stdout instead of unsupported gh api output flags', () => {
+    assert.deepEqual(
+      buildDownloadArtifactZipArgs({
+        repo: 'balejosg/ClassroomPath',
+        artifactId: 123,
+      }),
+      ['api', 'repos/balejosg/ClassroomPath/actions/artifacts/123/zip']
     );
   });
 

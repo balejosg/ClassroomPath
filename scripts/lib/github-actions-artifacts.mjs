@@ -1,7 +1,49 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+
+export const GITHUB_CLI_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+const GITHUB_ARTIFACTS_JQ =
+  '{artifacts: [.artifacts[] | {id, name, expired, created_at, updated_at, expires_at, workflow_run: {id: .workflow_run.id}}]}';
+
+function runGitHubCli(args, { cwd, stdio = ['ignore', 'pipe', 'pipe'] } = {}) {
+  return execFileSync('gh', args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: GITHUB_CLI_MAX_BUFFER_BYTES,
+    stdio,
+  });
+}
+
+function runGitHubCliBuffer(args, { cwd } = {}) {
+  return execFileSync('gh', args, {
+    cwd,
+    maxBuffer: GITHUB_CLI_MAX_BUFFER_BYTES,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+export function buildListGitHubArtifactsArgs({ repo, artifactName, perPage = 100 }) {
+  return [
+    'api',
+    `repos/${repo}/actions/artifacts?per_page=${String(perPage)}&name=${encodeURIComponent(artifactName)}`,
+    '--jq',
+    GITHUB_ARTIFACTS_JQ,
+  ];
+}
+
+export function buildDownloadArtifactZipArgs({ repo, artifactId }) {
+  return ['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`];
+}
 
 export function sleep(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
@@ -25,28 +67,15 @@ export function listGitHubWorkflowRuns({ repo, workflow, sha, cwd, limit = 30 })
     args.splice(8, 0, '--commit', sha);
   }
 
-  const output = execFileSync('gh', args, {
-    cwd,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
+  const output = runGitHubCli(args, { cwd }).trim();
 
   return JSON.parse(output || '[]');
 }
 
 export function listGitHubArtifacts({ repo, artifactName, cwd, perPage = 100 }) {
-  const output = execFileSync(
-    'gh',
-    [
-      'api',
-      `repos/${repo}/actions/artifacts?per_page=${String(perPage)}&name=${encodeURIComponent(artifactName)}`,
-    ],
-    {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }
-  ).trim();
+  const output = runGitHubCli(buildListGitHubArtifactsArgs({ repo, artifactName, perPage }), {
+    cwd,
+  }).trim();
 
   return JSON.parse(output || '{"artifacts":[]}');
 }
@@ -67,8 +96,7 @@ export function downloadRunArtifact({ repo, runId, artifactName, cwd, tempPrefix
   const artifactDir = createTemporaryArtifactDir(tempPrefix);
 
   try {
-    execFileSync(
-      'gh',
+    runGitHubCli(
       [
         'run',
         'download',
@@ -82,8 +110,6 @@ export function downloadRunArtifact({ repo, runId, artifactName, cwd, tempPrefix
       ],
       {
         cwd,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
       }
     );
 
@@ -113,14 +139,9 @@ export function downloadArtifactById({ repo, artifactId, cwd, tempPrefix } = {})
   const artifactArchivePath = resolve(artifactDir, 'artifact.zip');
 
   try {
-    execFileSync(
-      'gh',
-      ['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`, '--output', artifactArchivePath],
-      {
-        cwd,
-        encoding: 'utf8',
-        stdio: ['ignore', 'ignore', 'pipe'],
-      }
+    writeFileSync(
+      artifactArchivePath,
+      runGitHubCliBuffer(buildDownloadArtifactZipArgs({ repo, artifactId }), { cwd })
     );
     execFileSync('unzip', ['-oq', artifactArchivePath, '-d', artifactDir], {
       cwd,
