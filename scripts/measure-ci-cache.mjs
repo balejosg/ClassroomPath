@@ -58,12 +58,14 @@ function createCommandRecord({ workflowPath, jobId, job, step, scriptName = null
     jobName: String(job.name ?? jobId),
     stepName: String(step.name ?? ''),
     command: String(step.run ?? ''),
+    workingDirectory: String(step['working-directory'] ?? ''),
     scriptName,
   };
 }
 
 function collectWorkflowCommands({ packageJson, workflows }) {
   const browserDownloadCommands = [];
+  const dependencyInstallCommands = [];
   const directTestCommands = [];
   const turboBackedCommands = [];
 
@@ -85,6 +87,10 @@ function collectWorkflowCommands({ packageJson, workflows }) {
 
         if (/(?:^|[\s;&|()])(?:npx\s+)?playwright\s+install\b/.test(command)) {
           browserDownloadCommands.push(record);
+        }
+
+        if (/(?:^|[\s;&|()])npm\s+ci\b/.test(command)) {
+          dependencyInstallCommands.push(record);
         }
 
         if (/(?:^|[\s;&|()])(?:npx\s+)?playwright\s+test\b/.test(command)) {
@@ -119,6 +125,7 @@ function collectWorkflowCommands({ packageJson, workflows }) {
 
   return {
     browserDownloadCommands,
+    dependencyInstallCommands,
     directTestCommands,
     turboBackedCommands,
   };
@@ -135,6 +142,13 @@ function parseCompletedSeconds(startedAt, completedAt) {
   return Math.round((completed - started) / 1000);
 }
 
+function parseCompletedSecondsFromRecord(record) {
+  return parseCompletedSeconds(
+    record.startedAt ?? record.started_at,
+    record.completedAt ?? record.completed_at
+  );
+}
+
 function collectTimingSamples(jobSamples, relevantJobNames) {
   const relevantNames = new Set(relevantJobNames);
   const samples = [];
@@ -146,7 +160,7 @@ function collectTimingSamples(jobSamples, relevantJobNames) {
         continue;
       }
 
-      const durationSeconds = parseCompletedSeconds(job.startedAt, job.completedAt);
+      const durationSeconds = parseCompletedSecondsFromRecord(job);
       if (durationSeconds === null) {
         continue;
       }
@@ -156,6 +170,48 @@ function collectTimingSamples(jobSamples, relevantJobNames) {
         jobName,
         durationSeconds,
       });
+    }
+  }
+
+  return samples;
+}
+
+function collectStepTimingSamples(jobSamples, relevantCommands) {
+  const relevantStepsByJobName = new Map();
+  const samples = [];
+
+  for (const command of relevantCommands) {
+    const stepNames = relevantStepsByJobName.get(command.jobName) ?? new Set();
+    stepNames.add(command.stepName);
+    relevantStepsByJobName.set(command.jobName, stepNames);
+  }
+
+  for (const sample of asArray(jobSamples)) {
+    for (const job of asArray(sample.jobs)) {
+      const jobName = String(job.name ?? '');
+      const relevantStepNames = relevantStepsByJobName.get(jobName);
+      if (!relevantStepNames || job.conclusion !== 'success') {
+        continue;
+      }
+
+      for (const step of asArray(job.steps)) {
+        const stepName = String(step.name ?? '');
+        if (!relevantStepNames.has(stepName) || step.conclusion !== 'success') {
+          continue;
+        }
+
+        const durationSeconds = parseCompletedSecondsFromRecord(step);
+        if (durationSeconds === null) {
+          continue;
+        }
+
+        samples.push({
+          workflowName: String(sample.workflowName ?? ''),
+          jobName,
+          stepName,
+          durationSeconds,
+        });
+      }
     }
   }
 
@@ -189,6 +245,29 @@ function buildPlaywrightRecommendation(playwright) {
   };
 }
 
+function buildDependencyInstallRecommendation(commands, timingSamples) {
+  if (commands.length === 0) {
+    return {
+      action: 'do-not-change',
+      reason: 'No npm ci commands were found in the audited workflows.',
+    };
+  }
+
+  if (timingSamples.length < 2) {
+    return {
+      action: 'measure-more',
+      reason:
+        'npm ci commands exist, but at least two successful dependency install timing samples are required before consolidating jobs.',
+    };
+  }
+
+  return {
+    action: 'evaluate-consolidation',
+    reason:
+      'Repeated dependency install timing samples exist; compare duplicate install cost against the diagnostic value of separate CI lanes before consolidating.',
+  };
+}
+
 function buildTurboRecommendation(turboBackedCommands, timingSamples) {
   if (turboBackedCommands.length === 0) {
     return {
@@ -214,6 +293,10 @@ function buildTurboRecommendation(turboBackedCommands, timingSamples) {
 
 export function buildCiCacheMeasurement({ packageJson, workflows, jobSamples = [] }) {
   const commands = collectWorkflowCommands({ packageJson, workflows });
+  const dependencyInstallTimingSamples = collectStepTimingSamples(
+    jobSamples,
+    commands.dependencyInstallCommands
+  );
   const turboTimingSamples = collectTimingSamples(
     jobSamples,
     commands.turboBackedCommands.map((command) => command.jobName)
@@ -231,6 +314,14 @@ export function buildCiCacheMeasurement({ packageJson, workflows, jobSamples = [
     playwright: {
       ...playwright,
       recommendation: buildPlaywrightRecommendation(playwright),
+    },
+    dependencyInstalls: {
+      commands: commands.dependencyInstallCommands,
+      timingSamples: dependencyInstallTimingSamples,
+      recommendation: buildDependencyInstallRecommendation(
+        commands.dependencyInstallCommands,
+        dependencyInstallTimingSamples
+      ),
     },
     turbo: {
       ...turbo,
