@@ -331,6 +331,12 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(workflowText.includes('release-candidate-timings-${{ github.sha }}'));
     assert.ok(workflowText.includes('release-candidate-timings.json'));
     assert.ok(workflowText.includes('## Release Candidate Timings'));
+    assert.ok(workflowText.includes('### Gate Candidate'));
+    assert.ok(
+      workflowText.includes(
+        'node scripts/measure-release-candidate-timings.mjs release-candidate-timings.json'
+      )
+    );
     assert.ok(workflowText.includes('arm64DurationSeconds'));
     assert.ok(workflowText.includes('familyDurationSeconds'));
     assert.doesNotMatch(

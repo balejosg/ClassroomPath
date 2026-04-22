@@ -361,6 +361,12 @@ jobs:
             echo "| OpenPath API | ${{ needs.build-openpath-api-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }} |"
             echo "| SPA | ${{ needs.build-spa-release-candidate.outputs.build_required }} | ${{ needs.build-spa-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }} |"
             echo "| Verifier | ${{ needs.build-verifier-release-candidate.outputs.build_required }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo
+            echo '### Gate Candidate'
+            echo
+            echo '```json'
+            node scripts/measure-release-candidate-timings.mjs release-candidate-timings.json
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload release candidate timing artifact
