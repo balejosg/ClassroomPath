@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: agent workflow inside the ClassroomPath repository
-> Last verified: 2026-04-13
+> Last verified: 2026-04-22
 > Source of truth: `AGENTS.md`
 
 SaaS distribution wrapper for OpenPath. Provides tenancy, deployment, and environment-specific
@@ -36,6 +36,9 @@ Normal local verification:
 - `git commit` triggers `npm run verify:commit`
 - `npm run verify:docs` is the focused check for maintained repo-hosted documentation
 - use targeted manual suites only when you need extra confidence while iterating
+- for CI/CD optimization or runner follow-up, use `docs/verification-matrix.md`
+  to record run IDs, per-job durations, cache signals, artifact evidence, and
+  the highest evidence rung before changing workflow routing or cache policy
 
 If you push changes to `main`, you must run local staging deployment immediately:
 

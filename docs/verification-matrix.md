@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: ClassroomPath verification and release flow
-> Last verified: 2026-04-19
+> Last verified: 2026-04-22
 > Source of truth: `docs/verification-matrix.md`
 
 This matrix maps the current verification lanes to the evidence they provide.
@@ -15,6 +15,52 @@ Measured on April 19, 2026:
 - Commit-hook sample with one staged Markdown file completed in `0.747s`.
 - `npm run verify:incremental` completed in `11:28.28` on a warm local tree.
 - OpenPath `bash scripts/verify-full.sh` completed in `1:30.35` after sandbox restrictions were removed.
+
+## CI/CD Timing Measurement Method
+
+When optimizing CI/CD, record timing from GitHub workflow evidence, not from
+memory or local wall-clock estimates. A future agent should collect:
+
+- ClassroomPath commit SHA and GitHub workflow run ID.
+- OpenPath submodule SHA when a run is caused by an upstream update.
+- Workflow conclusion and total wall-clock time from `createdAt` to `updatedAt`.
+- Per-job durations for `CI`, `Security Scanning`, `Firefox Release Assets`,
+  `Release Candidate Images`, deploy, smoke, and client canary jobs when those
+  lanes are relevant.
+- Whether jobs were skipped, queued, or actually executed.
+- Cache signals from logs when proposing new cache state.
+- Artifact names, sizes, and retained state when evidence artifacts are part of
+  the claim.
+- Highest completed evidence rung from the workspace evidence ladder.
+
+Useful commands:
+
+```bash
+gh run list --repo balejosg/ClassroomPath --branch main --limit 10 \
+  --json databaseId,workflowName,headSha,status,conclusion,createdAt,updatedAt
+
+gh run view <run-id> --repo balejosg/ClassroomPath \
+  --json name,headSha,status,conclusion,createdAt,updatedAt,jobs
+
+gh api repos/balejosg/ClassroomPath/actions/runs/<run-id>/artifacts \
+  --jq '.artifacts[] | [.name,.expired,.size_in_bytes,.created_at] | @tsv'
+```
+
+For OpenPath runner timing after a submodule update, use the upstream runbook at
+`upstream/openpath/docs/ci-cd-runner-measurement.md`.
+
+## Latest Submodule Update Evidence
+
+The latest OpenPath runner artifact fix was propagated through ClassroomPath in
+commit `e96bc07` (`chore: update openpath submodule for windows artifact upload
+fix`), pointing at OpenPath `ecb7a69c`.
+
+Remote evidence for `e96bc07`:
+
+- `CI` run `24761232998`: `success`.
+- `Security Scanning` run `24761232984`: `success`.
+- `Firefox Release Assets` run `24761232987`: `success`.
+- `Release Candidate Images` run `24761232993`: `success`.
 
 ## Verification Lanes
 
