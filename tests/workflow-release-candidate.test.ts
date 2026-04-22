@@ -399,6 +399,9 @@ describe('Release candidate workflow contracts', () => {
 
     assert.ok(workflowText.includes('OPENPATH_BASE_SHA: ${{ steps.check.outputs.current }}'));
     assert.ok(workflowText.includes('OPENPATH_SHA: ${{ steps.check.outputs.latest }}'));
+    assert.ok(workflowText.includes('node scripts/openpath-required-checks.mjs wait'));
+    assert.ok(workflowText.includes('OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS'));
+    assert.ok(workflowText.includes('OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS'));
     assert.ok(!workflowText.includes('OPENPATH_REQUIRED_CHECKS: CI Success'));
   });
 });

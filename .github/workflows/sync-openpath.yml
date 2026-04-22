@@ -70,7 +70,10 @@ jobs:
           OPENPATH_SHA: ${{ steps.check.outputs.latest }}
         run: |
           echo "Verifying OpenPath checks for $OPENPATH_SHA"
-          node scripts/openpath-required-checks.mjs
+          OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS=600 \
+          OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS=10 \
+          OPENPATH_REQUIRED_CHECKS_FAIL_FAST=true \
+            node scripts/openpath-required-checks.mjs wait
 
       - name: Update submodule
         if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
