@@ -158,12 +158,53 @@ describe('release candidate component classification', () => {
   test('keeps ClassroomPath scripts changes out of OpenPath API signing', () => {
     assert.deepEqual(
       classifyReleaseCandidateComponents({
-        changedFiles: ['scripts/lib/release-candidate-components.mjs'],
+        changedFiles: ['scripts/deploy-staging-local.sh'],
         openpathChangedFiles: [],
       }),
       {
         gatewayChanged: false,
         migrationsChanged: true,
+        openpathApiChanged: false,
+        spaChanged: false,
+        verifierChanged: true,
+      }
+    );
+  });
+
+  test('keeps release timing measurement changes out of image rebuilds', () => {
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: [
+          'scripts/measure-release-candidate-timings.mjs',
+          'tests/release-candidate-timings.test.ts',
+        ],
+        openpathChangedFiles: [],
+      }),
+      {
+        gatewayChanged: false,
+        migrationsChanged: false,
+        openpathApiChanged: false,
+        spaChanged: false,
+        verifierChanged: false,
+      }
+    );
+  });
+
+  test('keeps verifier runtime smoke files scoped to the verifier image', () => {
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: [
+          'tests/smoke.test.ts',
+          'tests/release-gate.test.ts',
+          'tests/release-gate-policy.ts',
+          'tests/helpers/resolved-fetch.ts',
+          'tests/helpers/release-gate-client.ts',
+        ],
+        openpathChangedFiles: [],
+      }),
+      {
+        gatewayChanged: false,
+        migrationsChanged: false,
         openpathApiChanged: false,
         spaChanged: false,
         verifierChanged: true,

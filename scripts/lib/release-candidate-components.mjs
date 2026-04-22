@@ -32,6 +32,23 @@ function markClassroomPathOpsChanged(flags) {
   flags.verifierChanged = true;
 }
 
+function isReleaseMeasurementOnlyFile(filePath) {
+  return (
+    filePath === 'scripts/measure-release-candidate-timings.mjs' ||
+    filePath === 'tests/release-candidate-timings.test.ts'
+  );
+}
+
+function isVerifierRuntimeTestFile(filePath) {
+  return (
+    filePath === 'tests/smoke.test.ts' ||
+    filePath === 'tests/release-gate.test.ts' ||
+    filePath === 'tests/release-gate-policy.ts' ||
+    filePath === 'tests/helpers/resolved-fetch.ts' ||
+    filePath === 'tests/helpers/release-gate-client.ts'
+  );
+}
+
 function applyOpenPathPathClassification(flags, filePath) {
   if (
     /^docs\//.test(filePath) ||
@@ -117,6 +134,8 @@ export function classifyReleaseCandidateComponents({ changedFiles, openpathChang
 
   for (const file of normalizedChangedFiles) {
     switch (true) {
+      case isReleaseMeasurementOnlyFile(file):
+        break;
       case /^(package\.json|package-lock\.json)$/.test(file):
         markClassroomPathRuntimeChanged(flags);
         break;
@@ -155,11 +174,13 @@ export function classifyReleaseCandidateComponents({ changedFiles, openpathChang
         flags.spaChanged = true;
         flags.verifierChanged = true;
         break;
-      case /^tests\//.test(file):
+      case isVerifierRuntimeTestFile(file):
       case file === 'docker/Dockerfile.release-verifier':
       case file === '.github/workflows/smoke-tests.yml':
       case file === '.github/workflows/deploy.yml':
         flags.verifierChanged = true;
+        break;
+      case /^tests\//.test(file):
         break;
       case file === 'docker/Dockerfile.migrations':
         flags.migrationsChanged = true;

@@ -1,0 +1,15 @@
+.git
+.github
+.opencode
+docs/**
+scripts/**
+tests/**
+!tests/
+!tests/helpers/
+!tests/helpers/resolved-fetch.ts
+!tests/helpers/release-gate-client.ts
+!tests/release-gate-policy.ts
+!tests/release-gate.test.ts
+!tests/smoke.test.ts
+react-spa/src/**/__tests__/**
+upstream/openpath/react-spa/src/**/__tests__/**

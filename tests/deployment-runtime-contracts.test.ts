@@ -15,6 +15,10 @@ describe('Deployment runtime contracts', () => {
   const spaDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.spa');
   const spaDockerignorePath = resolve(projectRoot, 'docker/Dockerfile.spa.dockerignore');
   const verifierDockerfilePath = resolve(projectRoot, 'docker/Dockerfile.release-verifier');
+  const verifierDockerignorePath = resolve(
+    projectRoot,
+    'docker/Dockerfile.release-verifier.dockerignore'
+  );
   const stagingDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
   const stagingLocalReleaseHelperPath = resolve(
     projectRoot,
@@ -70,6 +74,7 @@ describe('Deployment runtime contracts', () => {
     const spaDockerfile = readFileSync(spaDockerfilePath, 'utf-8');
     const spaDockerignore = readFileSync(spaDockerignorePath, 'utf-8');
     const verifierDockerfile = readFileSync(verifierDockerfilePath, 'utf-8');
+    const verifierDockerignore = readFileSync(verifierDockerignorePath, 'utf-8');
 
     assert.ok(existsSync(migrationsDockerfilePath));
     assert.ok(existsSync(migrationsImageScriptPath));
@@ -133,6 +138,13 @@ describe('Deployment runtime contracts', () => {
     assert.ok(verifierDockerfile.includes('COPY . .'));
     assert.ok(verifierDockerfile.includes('npm ci'));
     assert.ok(verifierDockerfile.includes('--mount=type=cache,target=/root/.npm'));
+    assert.ok(verifierDockerignore.includes('scripts/**'));
+    assert.ok(verifierDockerignore.includes('tests/**'));
+    assert.ok(verifierDockerignore.includes('!tests/smoke.test.ts'));
+    assert.ok(verifierDockerignore.includes('!tests/release-gate.test.ts'));
+    assert.ok(verifierDockerignore.includes('!tests/release-gate-policy.ts'));
+    assert.ok(verifierDockerignore.includes('!tests/helpers/resolved-fetch.ts'));
+    assert.ok(verifierDockerignore.includes('!tests/helpers/release-gate-client.ts'));
     assert.ok(
       verifierDockerfile.includes('tests/release-gate.test.ts') ||
         verifierDockerfile.includes('tests/smoke.test.ts') ||
