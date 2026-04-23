@@ -77,7 +77,7 @@ describe('Production client update canary workflow contracts', () => {
     );
   });
 
-  test('production client canary artifact uploads retry transient transport failures', () => {
+  test('production client canary artifact archives are required and uploads are best effort', () => {
     const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
     const jobs = workflow.jobs ?? {};
 
@@ -104,25 +104,11 @@ describe('Production client update canary workflow contracts', () => {
         job?.steps?.findIndex((step) =>
           String(step.name ?? '').includes(`Ensure ${platform} self-update artifact files`)
         ) ?? -1;
-      const firstUploadStepIndex =
+      const uploadStepIndex =
         job?.steps?.findIndex((step) =>
           String(step.name ?? '').includes(`Upload ${platform} self-update artifacts`)
         ) ?? -1;
-      const retryPauseStepIndex =
-        job?.steps?.findIndex((step) =>
-          String(step.name ?? '').includes(
-            `Pause before retrying ${platform} self-update artifact upload`
-          )
-        ) ?? -1;
-      const retryUploadStepIndex =
-        job?.steps?.findIndex((step) =>
-          String(step.name ?? '').includes(`Retry ${platform} self-update artifact upload`)
-        ) ?? -1;
-      const uploadStep = firstUploadStepIndex >= 0 ? job?.steps?.[firstUploadStepIndex] : undefined;
-      const retryPauseStep =
-        retryPauseStepIndex >= 0 ? job?.steps?.[retryPauseStepIndex] : undefined;
-      const retryUploadStep =
-        retryUploadStepIndex >= 0 ? job?.steps?.[retryUploadStepIndex] : undefined;
+      const uploadStep = uploadStepIndex >= 0 ? job?.steps?.[uploadStepIndex] : undefined;
       const checkoutStep = job?.steps?.find((step) => step.name === 'Checkout');
       const ensureStep = ensureStepIndex >= 0 ? job?.steps?.[ensureStepIndex] : undefined;
 
@@ -130,11 +116,16 @@ describe('Production client update canary workflow contracts', () => {
       assert.equal(checkoutStep?.with?.['persist-credentials'], false);
       assert.ok(ensureStepIndex >= 0, `${jobName} must create missing log artifacts`);
       assert.ok(
-        ensureStepIndex < firstUploadStepIndex,
+        ensureStepIndex < uploadStepIndex,
         `${jobName} must create missing log artifacts before upload`
       );
-      assert.ok(firstUploadStepIndex < retryPauseStepIndex);
-      assert.ok(retryPauseStepIndex < retryUploadStepIndex);
+      assert.equal(
+        job?.steps?.some((step) =>
+          String(step.name ?? '').includes(`Retry ${platform} self-update artifact upload`)
+        ),
+        false,
+        `${jobName} must not hang on artifact-service transport retries`
+      );
       assert.equal(ensureStep?.if, 'always()');
       assert.equal(ensureStep?.shell, shell);
       assert.ok(String(ensureStep?.run ?? '').includes(logFile));
@@ -144,30 +135,13 @@ describe('Production client update canary workflow contracts', () => {
       assert.equal(
         uploadStep?.['continue-on-error'],
         true,
-        `${jobName} should retry transient artifact upload transport failures`
+        `${jobName} artifact transport failures must not mask functional canary results`
       );
       assert.equal(uploadStep?.['timeout-minutes'], 10);
       assert.equal(uploadStep?.with?.path, archiveFile);
       assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
       assert.equal(uploadStep?.with?.['retention-days'], 14);
       assert.equal(uploadStep?.with?.overwrite, true);
-      assert.ok(
-        String(retryPauseStep?.if ?? '').includes(
-          `steps.upload_${platform.toLowerCase()}_self_update_artifacts.outcome == 'failure'`
-        )
-      );
-      assert.equal(retryPauseStep?.shell, shell);
-      assert.equal(retryUploadStep?.uses, 'actions/upload-artifact@v7');
-      assert.equal(
-        retryUploadStep?.['continue-on-error'],
-        undefined,
-        `${jobName} must fail when artifact upload still fails after retry`
-      );
-      assert.equal(retryUploadStep?.['timeout-minutes'], 10);
-      assert.equal(retryUploadStep?.with?.path, archiveFile);
-      assert.equal(retryUploadStep?.with?.['if-no-files-found'], 'error');
-      assert.equal(retryUploadStep?.with?.['retention-days'], 14);
-      assert.equal(retryUploadStep?.with?.overwrite, true);
     }
 
     const linuxEnsureStep = jobs['linux-client-self-update-canary']?.steps?.find((step) =>

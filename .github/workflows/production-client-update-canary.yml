@@ -336,25 +336,8 @@ jobs:
           }
 
       - name: Upload Windows self-update artifacts
-        id: upload_windows_self_update_artifacts
         if: always()
         continue-on-error: true
-        timeout-minutes: 10
-        uses: actions/upload-artifact@v7
-        with:
-          name: production-windows-client-self-update-canary
-          path: production-windows-client-self-update-canary.zip
-          if-no-files-found: error
-          retention-days: 14
-          overwrite: true
-
-      - name: Pause before retrying Windows self-update artifact upload
-        if: always() && steps.upload_windows_self_update_artifacts.outcome == 'failure'
-        shell: pwsh
-        run: Start-Sleep -Seconds 30
-
-      - name: Retry Windows self-update artifact upload
-        if: always() && steps.upload_windows_self_update_artifacts.outcome == 'failure'
         timeout-minutes: 10
         uses: actions/upload-artifact@v7
         with:
@@ -702,25 +685,8 @@ jobs:
           fi
 
       - name: Upload Linux self-update artifacts
-        id: upload_linux_self_update_artifacts
         if: always()
         continue-on-error: true
-        timeout-minutes: 10
-        uses: actions/upload-artifact@v7
-        with:
-          name: production-linux-client-self-update-canary
-          path: production-linux-client-self-update-canary.tar.gz
-          if-no-files-found: error
-          retention-days: 14
-          overwrite: true
-
-      - name: Pause before retrying Linux self-update artifact upload
-        if: always() && steps.upload_linux_self_update_artifacts.outcome == 'failure'
-        shell: bash
-        run: sleep 30
-
-      - name: Retry Linux self-update artifact upload
-        if: always() && steps.upload_linux_self_update_artifacts.outcome == 'failure'
         timeout-minutes: 10
         uses: actions/upload-artifact@v7
         with:
