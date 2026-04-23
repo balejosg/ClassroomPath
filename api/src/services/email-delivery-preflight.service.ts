@@ -20,6 +20,8 @@ interface EmailDeliveryPreflightOptions {
   recipient?: string;
   requireProvider?: SendEmailResult['provider'] | false;
   sendEmail?: SendEmail;
+  maxAttempts?: number;
+  retryDelayMs?: number;
 }
 
 interface EmailDeliveryPreflightBaseResult {
@@ -70,6 +72,10 @@ function classifyProviderError(error: EmailDeliveryProviderError): EmailDelivery
   };
 }
 
+function isTransientProviderError(error: EmailDeliveryProviderError): boolean {
+  return error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
 export async function checkTransactionalEmailDelivery(
   options: EmailDeliveryPreflightOptions = {}
 ): Promise<EmailDeliveryPreflightResult> {
@@ -77,38 +83,58 @@ export async function checkTransactionalEmailDelivery(
   const requireProvider = options.requireProvider ?? 'resend';
   const sendEmail = options.sendEmail ?? sendTransactionalEmail;
   const to = options.recipient ?? defaultRecipient(now);
+  const maxAttempts = Math.max(1, options.maxAttempts ?? 3);
+  const retryDelayMs = Math.max(0, options.retryDelayMs ?? 2000);
 
-  try {
-    const result = await sendEmail({
-      to,
-      subject: 'ClassroomPath email delivery preflight',
-      html: '<p>ClassroomPath email delivery preflight</p>',
-      text: 'ClassroomPath email delivery preflight',
-    });
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const result = await sendEmail({
+        to,
+        subject: 'ClassroomPath email delivery preflight',
+        html: '<p>ClassroomPath email delivery preflight</p>',
+        text: 'ClassroomPath email delivery preflight',
+      });
 
-    if (!result.sent || (requireProvider && result.provider !== requireProvider)) {
+      if (!result.sent || (requireProvider && result.provider !== requireProvider)) {
+        return {
+          ok: false,
+          code: 'provider_mismatch',
+          provider: result.provider,
+        };
+      }
+
+      return {
+        ok: true,
+        code: 'success',
+        provider: result.provider,
+        id: result.id,
+      };
+    } catch (error) {
+      if (error instanceof EmailDeliveryProviderError) {
+        const classifiedError = classifyProviderError(error);
+        const shouldRetry = isTransientProviderError(error) && attempt < maxAttempts;
+
+        if (!shouldRetry) {
+          return classifiedError;
+        }
+
+        if (retryDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        }
+        continue;
+      }
+
       return {
         ok: false,
-        code: 'provider_mismatch',
-        provider: result.provider,
+        code: 'delivery_failed',
+        message: error instanceof Error ? error.message : 'Unknown email delivery failure',
       };
     }
-
-    return {
-      ok: true,
-      code: 'success',
-      provider: result.provider,
-      id: result.id,
-    };
-  } catch (error) {
-    if (error instanceof EmailDeliveryProviderError) {
-      return classifyProviderError(error);
-    }
-
-    return {
-      ok: false,
-      code: 'delivery_failed',
-      message: error instanceof Error ? error.message : 'Unknown email delivery failure',
-    };
   }
+
+  return {
+    ok: false,
+    code: 'delivery_failed',
+    message: 'Unknown email delivery failure',
+  };
 }
