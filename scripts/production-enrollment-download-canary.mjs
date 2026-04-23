@@ -37,7 +37,8 @@ function linuxMarkerChecks(content, expectedLinuxAgentVersion) {
   };
 
   if (expectedLinuxAgentVersion) {
-    checks.hasExpectedLinuxAgentVersion = script.includes(expectedLinuxAgentVersion);
+    checks.hasExpectedLinuxAgentVersion =
+      checks.hasLinuxAgentVersionAssignment && script.includes(expectedLinuxAgentVersion);
   }
 
   return checks;
@@ -55,6 +56,14 @@ function windowsMarkerChecks(content) {
 
 function allChecksPass(checks) {
   return Object.values(checks).every(Boolean);
+}
+
+function boundedFailurePreview(status, body) {
+  if (status === 200) {
+    return undefined;
+  }
+
+  return String(body ?? '').slice(0, 1000);
 }
 
 async function downloadScript({ url, enrollmentToken, fetchImpl }) {
@@ -111,6 +120,7 @@ export async function runProductionEnrollmentDownloadCanary({
       contentLength: contentLength(linux.body),
       ok: linux.status === 200 && contentLength(linux.body) > 0 && allChecksPass(linuxChecks),
       markerChecks: linuxChecks,
+      failurePreview: boundedFailurePreview(linux.status, linux.body),
     },
     windows: {
       url: windowsUrl,
@@ -118,6 +128,7 @@ export async function runProductionEnrollmentDownloadCanary({
       contentLength: contentLength(windows.body),
       ok: windows.status === 200 && contentLength(windows.body) > 0 && allChecksPass(windowsChecks),
       markerChecks: windowsChecks,
+      failurePreview: boundedFailurePreview(windows.status, windows.body),
     },
     workflowRunId: process.env.GITHUB_RUN_ID || null,
     workflowSha: process.env.GITHUB_SHA || null,

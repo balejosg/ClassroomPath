@@ -108,6 +108,28 @@ jobs:
 
           echo "billing_mode=$billing_mode" >> "$GITHUB_OUTPUT"
 
+      - name: Read production Linux enrollment runtime
+        id: read-linux-runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          linux_agent_version="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-enrollment-canary \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            OPENPATH_LINUX_AGENT_VERSION)"
+          linux_agent_apt_suite="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-enrollment-canary \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            OPENPATH_LINUX_AGENT_APT_SUITE)"
+
+          echo "linux_agent_version=$linux_agent_version" >> "$GITHUB_OUTPUT"
+          echo "linux_agent_apt_suite=${linux_agent_apt_suite:-stable}" >> "$GITHUB_OUTPUT"
+
       - name: Read production client canary admin token
         if: steps.read-billing-mode.outputs.billing_mode == 'manual_only'
         shell: bash
@@ -163,7 +185,7 @@ jobs:
           PRODUCTION_ENROLLMENT_CANARY_BASE_URL: ${{ env.PRODUCTION_BASE_URL }}
           CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
           ENROLLMENT_TOKEN: ${{ steps.provision.outputs.enrollment_token }}
-          OPENPATH_LINUX_AGENT_VERSION: ${{ steps.provision.outputs.bootstrap_manifest_version }}
+          OPENPATH_LINUX_AGENT_VERSION: ${{ steps.read-linux-runtime.outputs.linux_agent_version }}
           PRODUCTION_ENROLLMENT_CANARY_OUTPUT: production-enrollment-download-canary.json
         run: |
           set -euo pipefail

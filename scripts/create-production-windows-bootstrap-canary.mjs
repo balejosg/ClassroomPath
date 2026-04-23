@@ -277,6 +277,14 @@ function maskGithubSecret(value) {
   process.stdout.write(`::add-mask::${String(value)}\n`);
 }
 
+function sanitizeSummaryForArtifact(summary) {
+  return {
+    ...summary,
+    enrollmentToken: summary.enrollmentToken ? '[redacted]' : '',
+    enrollmentTokenPresent: Boolean(summary.enrollmentToken),
+  };
+}
+
 async function main() {
   const email = `${uniqueValue('windows-production-bootstrap-canary')}@test.local`;
   const password = `SecurePassword123!-${Math.random().toString(36).slice(2, 8)}`;
@@ -448,10 +456,11 @@ async function main() {
     extensionVersion: metadata.version,
     bootstrapManifestVersion: manifest.version ?? '',
   };
+  const artifactSummary = sanitizeSummaryForArtifact(summary);
 
   writeFileSync(
     resolve('production-windows-bootstrap-canary.json'),
-    `${JSON.stringify(summary, null, 2)}\n`,
+    `${JSON.stringify(artifactSummary, null, 2)}\n`,
     'utf8'
   );
 
@@ -474,7 +483,7 @@ async function main() {
     setGithubOutput(key, value);
   }
 
-  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(artifactSummary, null, 2)}\n`);
 }
 
 await main();

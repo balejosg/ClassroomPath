@@ -45,6 +45,20 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(helperText.includes('/windows.ps1'));
     assert.ok(workflowText.includes('Production Enrollment Download Canary Failed'));
     assert.ok(workflowText.includes('close-smoke-recovery.mjs'));
+    assert.ok(workflowText.includes('Read production Linux enrollment runtime'));
+    assert.ok(workflowText.includes('OPENPATH_LINUX_AGENT_VERSION'));
+    assert.ok(
+      workflowText.includes(
+        'OPENPATH_LINUX_AGENT_VERSION: ${{ steps.read-linux-runtime.outputs.linux_agent_version }}'
+      ),
+      'download canary should validate the production Linux runtime pin, not the Windows bootstrap manifest version'
+    );
+    assert.ok(
+      !workflowText.includes(
+        'OPENPATH_LINUX_AGENT_VERSION: ${{ steps.provision.outputs.bootstrap_manifest_version }}'
+      ),
+      'Windows bootstrap manifest versions must not be used as Linux package pins'
+    );
   });
 
   test('post-release production client update canary stays decoupled from deploy completion', () => {
@@ -378,5 +392,8 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(scriptText.includes('billingMode'));
     assert.ok(scriptText.includes('::add-mask::'));
     assert.ok(scriptText.includes('maskGithubSecret(ticketPayload.enrollmentToken)'));
+    assert.ok(scriptText.includes('sanitizeSummaryForArtifact'));
+    assert.ok(scriptText.includes("enrollmentToken: summary.enrollmentToken ? '[redacted]' : ''"));
+    assert.ok(scriptText.includes('enrollment_token: summary.enrollmentToken'));
   });
 });

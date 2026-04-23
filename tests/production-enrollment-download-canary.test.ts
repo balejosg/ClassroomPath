@@ -73,4 +73,45 @@ describe('production enrollment download canary', () => {
     assert.ok(!serializedEvidence.includes('secret-token'));
     assert.ok(!serializedEvidence.includes('Install-OpenPath.ps1'));
   });
+
+  test('keeps failed response diagnostics bounded and does not treat error text as a script marker', async () => {
+    const outputPath = join(mkdtempSync(join(tmpdir(), 'cp-enrollment-canary-')), 'evidence.json');
+
+    const evidence = await runProductionEnrollmentDownloadCanary({
+      baseUrl: 'https://classroompath.eu/',
+      classroomId: 'classroom-123',
+      enrollmentToken: 'secret-token',
+      expectedLinuxAgentVersion: '0.0.20260423054341',
+      outputPath,
+      now: () => new Date('2026-04-23T08:30:00.000Z'),
+      fetchImpl: async (url) => {
+        if (String(url).endsWith('/windows.ps1')) {
+          return new Response(
+            [
+              '# OpenPath Enrollment (Windows)',
+              '$env:OPENPATH_VERSION = "0.0.20260421051157"',
+              'api/agent/windows/bootstrap/manifest',
+              'Install-OpenPath.ps1',
+            ].join('\n'),
+            { status: 200 }
+          );
+        }
+
+        return new Response(
+          'OPENPATH_LINUX_AGENT_VERSION 0.0.20260423054341 is not advertised by APT suites unstable, stable',
+          { status: 500 }
+        );
+      },
+    });
+
+    assert.equal(evidence.linux.status, 500);
+    assert.equal(evidence.linux.ok, false);
+    assert.equal(evidence.linux.markerChecks.hasLinuxAgentVersionAssignment, false);
+    assert.equal(evidence.linux.markerChecks.hasExpectedLinuxAgentVersion, false);
+    assert.match(
+      evidence.linux.failurePreview ?? '',
+      /not advertised by APT suites unstable, stable/
+    );
+    assert.equal(evidence.windows.ok, true);
+  });
 });
