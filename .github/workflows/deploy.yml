@@ -576,7 +576,72 @@ jobs:
           download_body="$RUNNER_TEMP/production-linux-enrollment-download.body"
           download_meta="$RUNNER_TEMP/production-linux-enrollment-download.json"
           enrollment_log="$RUNNER_TEMP/production-linux-enrollment.log"
+          firefox_state_dir="$RUNNER_TEMP/production-linux-firefox-state"
           : > "$enrollment_log"
+          mkdir -p "$firefox_state_dir"
+
+          collect_firefox_state() {
+            local exit_status="${1:-0}"
+            local snapshot_dir="$firefox_state_dir/$(date -u '+%Y%m%dT%H%M%SZ')"
+            mkdir -p "$snapshot_dir"
+
+            {
+              echo "exitStatus: $exit_status"
+              echo "date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+              echo "runnerUser: $(id -un 2>/dev/null || true)"
+              echo "runnerHome: ${HOME:-}"
+              echo "firefoxBinary: $(command -v firefox || true)"
+              firefox --version || true
+              echo "geckodriverBinary: $(command -v geckodriver || true)"
+              geckodriver --version || true
+              echo "openpathBinary: $(command -v openpath || true)"
+              if command -v openpath >/dev/null 2>&1; then
+                openpath status || true
+                openpath health || true
+              fi
+              echo "runningProcesses:"
+              ps -ef | grep -E '[f]irefox|[g]eckodriver' || true
+              echo "mozillaExtensionDir:"
+              sudo ls -la /usr/share/mozilla/extensions/{ec8030f7-c20a-464f-9b0e-13a3a9e97384} || true
+              echo "firefoxPolicies:"
+              sudo cat /etc/firefox/policies/policies.json || true
+            } > "$snapshot_dir/summary.txt" 2>&1
+
+            for root in \
+              "$HOME/.mozilla/firefox" \
+              "$HOME/snap/firefox/common/.mozilla/firefox" \
+              /root/.mozilla/firefox \
+              /root/snap/firefox/common/.mozilla/firefox
+            do
+              label="$(printf '%s' "$root" | tr '/.' '__')"
+              {
+                echo "root=$root"
+                if [ -d "$root" ]; then
+                  find "$root" -maxdepth 2 -type d | sort || true
+                  find "$root" -maxdepth 2 -type f \( -name prefs.js -o -name extensions.json \) | sort || true
+                else
+                  echo "(missing)"
+                fi
+              } > "$snapshot_dir/profile-root-${label}.txt" 2>&1
+
+              if [ ! -d "$root" ]; then
+                continue
+              fi
+
+              while IFS= read -r file; do
+                safe_name="${label}_$(basename "$(dirname "$file")")_$(basename "$file")"
+                sed -n '1,240p' "$file" > "$snapshot_dir/$safe_name" 2>&1 || true
+              done < <(find "$root" -maxdepth 2 -type f \( -name prefs.js -o -name extensions.json \) | sort)
+            done
+          }
+
+          cleanup_linux_enrollment() {
+            local exit_status=$?
+            set +e
+            collect_firefox_state "$exit_status"
+          }
+
+          trap cleanup_linux_enrollment EXIT
 
           http_status="$(
             curl -sS -L \
@@ -646,6 +711,65 @@ jobs:
             } 2>&1 | tee -a "$enrollment_log"
             exit "$enrollment_status"
           fi
+
+      - name: Ensure Linux enrollment diagnostic artifacts
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          enrollment_log_path="$RUNNER_TEMP/production-linux-enrollment.log"
+          if [ ! -f "$enrollment_log_path" ]; then
+            printf '%s\n' 'Linux enrollment log was not created before artifact upload.' > "$enrollment_log_path"
+          fi
+
+          enrollment_download_meta_path="$RUNNER_TEMP/production-linux-enrollment-download.json"
+          if [ ! -f "$enrollment_download_meta_path" ]; then
+            printf '%s\n' '{"status":null,"headers":"","bodyPreview":"Linux enrollment download diagnostics were not created before artifact upload."}' > "$enrollment_download_meta_path"
+          fi
+
+          enrollment_download_headers_path="$RUNNER_TEMP/production-linux-enrollment-download.headers"
+          if [ ! -f "$enrollment_download_headers_path" ]; then
+            printf '%s\n' 'Linux enrollment download headers were not created before artifact upload.' > "$enrollment_download_headers_path"
+          fi
+
+          enrollment_download_body_path="$RUNNER_TEMP/production-linux-enrollment-download.body"
+          if [ ! -f "$enrollment_download_body_path" ]; then
+            printf '%s\n' 'Linux enrollment download body was not created before artifact upload.' > "$enrollment_download_body_path"
+          fi
+
+          firefox_state_dir="$RUNNER_TEMP/production-linux-firefox-state"
+          mkdir -p "$firefox_state_dir"
+          if [ -z "$(find "$firefox_state_dir" -mindepth 1 -print -quit)" ]; then
+            printf '%s\n' 'Firefox state snapshots were not created before artifact upload.' > "$firefox_state_dir/placeholder.txt"
+          fi
+
+          archive_path="production-linux-enrollment-diagnostics.tar.gz"
+          rm -f "$archive_path"
+          tar -czf "$archive_path" \
+            -C "$RUNNER_TEMP" \
+            production-linux-enrollment.log \
+            production-linux-enrollment-download.json \
+            production-linux-enrollment-download.headers \
+            production-linux-enrollment-download.body \
+            production-linux-firefox-state
+
+          if [ ! -s "$archive_path" ]; then
+            echo "::error::Required Linux enrollment diagnostic archive was not created: $archive_path"
+            exit 1
+          fi
+
+      - name: Upload Linux enrollment diagnostics
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-linux-enrollment-diagnostics
+          path: production-linux-enrollment-diagnostics.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
 
       - name: Verify production Linux Firefox blocked page canary
         shell: bash
@@ -737,11 +861,13 @@ jobs:
           name: smoke-test-results-production
           path: |
             smoke-results.txt
+            production-linux-enrollment-diagnostics.tar.gz
             production-linux-firefox-block-page-canary.json
             ${{ runner.temp }}/production-linux-enrollment-download.json
             ${{ runner.temp }}/production-linux-enrollment-download.headers
             ${{ runner.temp }}/production-linux-enrollment-download.body
             ${{ runner.temp }}/production-linux-enrollment.log
+            ${{ runner.temp }}/production-linux-firefox-state
             ${{ runner.temp }}/production-linux-firefox-block-page-canary.log
             ${{ runner.temp }}/production-linux-firefox-block-page-canary
           retention-days: 7

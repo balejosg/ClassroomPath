@@ -191,11 +191,67 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       String(enrollmentStep?.run ?? ''),
+      /production-linux-firefox-state/,
+      'production Linux enrollment should capture Firefox state snapshots before the workflow can hang'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /extensions\.json/,
+      'production Linux enrollment diagnostics should snapshot Firefox extensions state'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /prefs\.js/,
+      'production Linux enrollment diagnostics should snapshot Firefox profile prefs'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /firefox --version/,
+      'production Linux enrollment diagnostics should record the Firefox runtime version'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
       /head -n 1 "\$enroll_script" \| grep -Eq '\^#!.*bash'/
     );
+    const ensureEnrollmentArtifactsStep = productionSmokeJob?.steps?.find(
+      (step) => step.name === 'Ensure Linux enrollment diagnostic artifacts'
+    );
+    assert.equal(
+      ensureEnrollmentArtifactsStep?.if,
+      'always()',
+      'Linux enrollment diagnostics must be materialized even when the enrollment step fails'
+    );
+    assert.ok(
+      String(ensureEnrollmentArtifactsStep?.run ?? '').includes(
+        'production-linux-enrollment-diagnostics.tar.gz'
+      ),
+      'Linux enrollment diagnostics should be packaged immediately after the enrollment step'
+    );
+    assert.ok(
+      String(ensureEnrollmentArtifactsStep?.run ?? '').includes('production-linux-firefox-state'),
+      'Linux enrollment diagnostic archive must include the Firefox state snapshot directory'
+    );
+    const uploadEnrollmentDiagnosticsStep = productionSmokeJob?.steps?.find(
+      (step) => step.name === 'Upload Linux enrollment diagnostics'
+    );
+    assert.equal(uploadEnrollmentDiagnosticsStep?.if, 'always()');
+    assert.equal(uploadEnrollmentDiagnosticsStep?.uses, 'actions/upload-artifact@v7');
+    assert.equal(uploadEnrollmentDiagnosticsStep?.['continue-on-error'], true);
+    assert.equal(uploadEnrollmentDiagnosticsStep?.['timeout-minutes'], 10);
+    assert.equal(
+      uploadEnrollmentDiagnosticsStep?.with?.path,
+      'production-linux-enrollment-diagnostics.tar.gz'
+    );
+    assert.equal(uploadEnrollmentDiagnosticsStep?.with?.['if-no-files-found'], 'error');
+    assert.equal(uploadEnrollmentDiagnosticsStep?.with?.overwrite, true);
     const uploadResultsStep = findWorkflowStepByName(
       productionSmokeJob,
       'Upload smoke test results'
+    );
+    assert.ok(
+      String(uploadResultsStep?.with?.path ?? '').includes(
+        'production-linux-enrollment-diagnostics.tar.gz'
+      )
     );
     assert.ok(
       String(uploadResultsStep?.with?.path ?? '').includes(
@@ -212,9 +268,20 @@ describe('Deploy workflow contracts', () => {
         'production-linux-enrollment-download.body'
       )
     );
+    assert.ok(
+      String(uploadResultsStep?.with?.path ?? '').includes('production-linux-firefox-state')
+    );
     const linuxFirefoxCanaryStepIndex =
       productionSmokeJob?.steps?.findIndex(
         (step) => step.name === 'Verify production Linux Firefox blocked page canary'
+      ) ?? -1;
+    const ensureEnrollmentArtifactsStepIndex =
+      productionSmokeJob?.steps?.findIndex(
+        (step) => step.name === 'Ensure Linux enrollment diagnostic artifacts'
+      ) ?? -1;
+    const uploadEnrollmentDiagnosticsStepIndex =
+      productionSmokeJob?.steps?.findIndex(
+        (step) => step.name === 'Upload Linux enrollment diagnostics'
       ) ?? -1;
     const linuxFirefoxCanaryStep =
       linuxFirefoxCanaryStepIndex >= 0
@@ -223,6 +290,15 @@ describe('Deploy workflow contracts', () => {
     assert.ok(
       linuxFirefoxCanaryStepIndex > linuxEnrollmentStepIndex,
       'production smoke must verify Linux Firefox after live Linux enrollment'
+    );
+    assert.ok(
+      ensureEnrollmentArtifactsStepIndex > linuxEnrollmentStepIndex,
+      'Linux enrollment diagnostics must be materialized immediately after the live enrollment step'
+    );
+    assert.ok(
+      uploadEnrollmentDiagnosticsStepIndex > ensureEnrollmentArtifactsStepIndex &&
+        uploadEnrollmentDiagnosticsStepIndex < linuxFirefoxCanaryStepIndex,
+      'Linux enrollment diagnostics should upload before the Firefox blocked-page canary runs'
     );
     assert.ok(
       String(linuxFirefoxCanaryStep?.run ?? '').includes(
