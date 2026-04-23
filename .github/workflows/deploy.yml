@@ -558,6 +558,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Download and run live Linux enrollment script
+        timeout-minutes: 12
         shell: bash
         env:
           PRODUCTION_BASE_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
@@ -593,7 +594,31 @@ jobs:
           grep -F "$OPENPATH_LINUX_AGENT_VERSION" "$enroll_script"
 
           chmod 700 "$enroll_script"
-          sudo bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"
+          enrollment_status=0
+          if timeout 10m sudo bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"; then
+            enrollment_status=0
+          else
+            enrollment_status="${PIPESTATUS[0]}"
+          fi
+
+          if [ "$enrollment_status" -ne 0 ]; then
+            echo "::error::Linux enrollment failed or timed out with status $enrollment_status" | tee -a "$enrollment_log"
+            {
+              echo "===== Linux enrollment diagnostics ====="
+              echo "date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+              echo "openpath binary: $(command -v openpath || true)"
+              if command -v openpath >/dev/null 2>&1; then
+                openpath status || true
+                openpath health || true
+              fi
+              systemctl status dnsmasq --no-pager || true
+              systemctl status openpath-dnsmasq.timer --no-pager || true
+              systemctl status dnsmasq-watchdog.timer --no-pager || true
+              ip route || true
+              cat /etc/resolv.conf || true
+            } 2>&1 | tee -a "$enrollment_log"
+            exit "$enrollment_status"
+          fi
 
       - name: Verify production Linux Firefox blocked page canary
         shell: bash

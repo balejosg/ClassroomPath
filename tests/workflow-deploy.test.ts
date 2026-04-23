@@ -159,6 +159,21 @@ describe('Deploy workflow contracts', () => {
     assert.match(String(enrollmentStep?.run ?? ''), /Authorization: Bearer \$ENROLLMENT_TOKEN/);
     assert.match(String(enrollmentStep?.run ?? ''), /OPENPATH_LINUX_AGENT_VERSION/);
     assert.match(String(enrollmentStep?.run ?? ''), /sudo bash "\$enroll_script"/);
+    assert.equal(
+      enrollmentStep?.['timeout-minutes'],
+      12,
+      'production Linux enrollment must not hang the deploy smoke indefinitely'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /timeout 10m sudo bash "\$enroll_script"/,
+      'production Linux enrollment must bound the installer execution and preserve diagnostics'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /openpath status/,
+      'production Linux enrollment diagnostics should include OpenPath status when available'
+    );
     assert.match(
       String(enrollmentStep?.run ?? ''),
       /head -n 1 "\$enroll_script" \| grep -Eq '\^#!.*bash'/
