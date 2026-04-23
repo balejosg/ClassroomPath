@@ -163,6 +163,13 @@ describe('Deploy workflow contracts', () => {
     assert.match(String(enrollmentStep?.run ?? ''), /\/api\/enroll\/\$CLASSROOM_ID/);
     assert.match(String(enrollmentStep?.run ?? ''), /Authorization: Bearer \$ENROLLMENT_TOKEN/);
     assert.match(String(enrollmentStep?.run ?? ''), /OPENPATH_LINUX_AGENT_VERSION/);
+    assert.match(String(enrollmentStep?.run ?? ''), /production-linux-enrollment-download\.json/);
+    assert.match(String(enrollmentStep?.run ?? ''), /body\.slice\(0, 4000\)/);
+    assert.match(String(enrollmentStep?.run ?? ''), /for attempt in 1 2 3/);
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /Linux enrollment attempt \$attempt failed with status \$enrollment_status/
+    );
     assert.match(
       String(enrollmentStep?.run ?? ''),
       /sudo timeout --kill-after=30s 10m bash "\$enroll_script"/
@@ -185,6 +192,25 @@ describe('Deploy workflow contracts', () => {
     assert.match(
       String(enrollmentStep?.run ?? ''),
       /head -n 1 "\$enroll_script" \| grep -Eq '\^#!.*bash'/
+    );
+    const uploadResultsStep = findWorkflowStepByName(
+      productionSmokeJob,
+      'Upload smoke test results'
+    );
+    assert.ok(
+      String(uploadResultsStep?.with?.path ?? '').includes(
+        'production-linux-enrollment-download.json'
+      )
+    );
+    assert.ok(
+      String(uploadResultsStep?.with?.path ?? '').includes(
+        'production-linux-enrollment-download.headers'
+      )
+    );
+    assert.ok(
+      String(uploadResultsStep?.with?.path ?? '').includes(
+        'production-linux-enrollment-download.body'
+      )
     );
     const linuxFirefoxCanaryStepIndex =
       productionSmokeJob?.steps?.findIndex(

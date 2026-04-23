@@ -572,35 +572,61 @@ jobs:
           workspace="$RUNNER_TEMP/production-linux-enrollment"
           mkdir -p "$workspace"
           enroll_script="$workspace/enroll.sh"
+          download_headers="$RUNNER_TEMP/production-linux-enrollment-download.headers"
+          download_body="$RUNNER_TEMP/production-linux-enrollment-download.body"
+          download_meta="$RUNNER_TEMP/production-linux-enrollment-download.json"
           enrollment_log="$RUNNER_TEMP/production-linux-enrollment.log"
           : > "$enrollment_log"
 
           http_status="$(
-            curl -sS \
-              -o "$enroll_script" \
+            curl -sS -L \
+              -D "$download_headers" \
+              -o "$download_body" \
               -w '%{http_code}' \
               -H "Authorization: Bearer $ENROLLMENT_TOKEN" \
               "$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID"
           )"
 
+          node -e '
+            const fs = require("node:fs");
+            const [status, headersPath, bodyPath, outputPath] = process.argv.slice(1);
+            const headers = fs.existsSync(headersPath) ? fs.readFileSync(headersPath, "utf8") : "";
+            const body = fs.existsSync(bodyPath) ? fs.readFileSync(bodyPath, "utf8") : "";
+            fs.writeFileSync(outputPath, `${JSON.stringify({
+              status: Number(status),
+              headers,
+              bodyPreview: body.slice(0, 4000)
+            }, null, 2)}\n`);
+          ' "$http_status" "$download_headers" "$download_body" "$download_meta"
+
           if [ "$http_status" != "200" ]; then
             echo "::error::Linux enrollment script download returned HTTP $http_status"
-            sed -n '1,80p' "$enroll_script" || true
+            cat "$download_meta"
             exit 1
           fi
 
+          cp "$download_body" "$enroll_script"
           test -s "$enroll_script"
           head -n 1 "$enroll_script" | grep -Eq '^#!.*bash'
           grep -F "LINUX_AGENT_VERSION=" "$enroll_script"
           grep -F "$OPENPATH_LINUX_AGENT_VERSION" "$enroll_script"
 
           chmod 700 "$enroll_script"
-          enrollment_status=0
-          if sudo timeout --kill-after=30s 10m bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"; then
-            enrollment_status=0
-          else
-            enrollment_status="${PIPESTATUS[0]}"
-          fi
+          enrollment_status=1
+          for attempt in 1 2 3; do
+            echo "===== Linux enrollment attempt $attempt =====" | tee -a "$enrollment_log"
+            if sudo timeout --kill-after=30s 10m bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"; then
+              enrollment_status=0
+              break
+            else
+              enrollment_status="${PIPESTATUS[0]}"
+            fi
+
+            echo "::warning::Linux enrollment attempt $attempt failed with status $enrollment_status" | tee -a "$enrollment_log"
+            if [ "$attempt" != "3" ]; then
+              sleep "$((attempt * 10))"
+            fi
+          done
 
           if [ "$enrollment_status" -ne 0 ]; then
             echo "::error::Linux enrollment failed or timed out with status $enrollment_status" | tee -a "$enrollment_log"
@@ -712,6 +738,9 @@ jobs:
           path: |
             smoke-results.txt
             production-linux-firefox-block-page-canary.json
+            ${{ runner.temp }}/production-linux-enrollment-download.json
+            ${{ runner.temp }}/production-linux-enrollment-download.headers
+            ${{ runner.temp }}/production-linux-enrollment-download.body
             ${{ runner.temp }}/production-linux-enrollment.log
             ${{ runner.temp }}/production-linux-firefox-block-page-canary.log
             ${{ runner.temp }}/production-linux-firefox-block-page-canary
