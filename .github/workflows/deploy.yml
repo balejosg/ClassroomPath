@@ -566,8 +566,12 @@ jobs:
           CLASSROOM_ID: ${{ steps.provision-enrollment.outputs.classroom_id }}
           ENROLLMENT_TOKEN: ${{ steps.provision-enrollment.outputs.enrollment_token }}
           OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
+          PRODUCTION_SMOKE_SSH_PORT: ${{ steps.resolve-production.outputs.port }}
+          PRODUCTION_SMOKE_SSH_USER: ${{ steps.resolve-production.outputs.user }}
+          PRODUCTION_SMOKE_SSH_IP: ${{ steps.resolve-production.outputs.ip }}
         run: |
           set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
 
           workspace="$RUNNER_TEMP/production-linux-enrollment"
           mkdir -p "$workspace"
@@ -577,6 +581,10 @@ jobs:
           download_meta="$RUNNER_TEMP/production-linux-enrollment-download.json"
           enrollment_log="$RUNNER_TEMP/production-linux-enrollment.log"
           firefox_state_dir="$RUNNER_TEMP/production-linux-firefox-state"
+          early_mirror_status_path="$RUNNER_TEMP/production-linux-enrollment-remote-mirror-status.txt"
+          archive_path="production-linux-enrollment-diagnostics.tar.gz"
+          key_path="$HOME/.ssh/classroompath-production-smoke"
+          remote_root="/opt/classroompath/release-state/production-smoke-diagnostics/${GITHUB_RUN_ID}/attempt-${GITHUB_RUN_ATTEMPT}"
           : > "$enrollment_log"
           mkdir -p "$firefox_state_dir"
 
@@ -635,10 +643,129 @@ jobs:
             done
           }
 
+          ensure_local_enrollment_diagnostics() {
+            if [ ! -f "$enrollment_log" ]; then
+              printf '%s\n' 'Linux enrollment log was not created before early mirror.' > "$enrollment_log"
+            fi
+
+            if [ ! -f "$download_meta" ]; then
+              printf '%s\n' '{"status":null,"headers":"","bodyPreview":"Linux enrollment download diagnostics were not created before early mirror."}' > "$download_meta"
+            fi
+
+            if [ ! -f "$download_headers" ]; then
+              printf '%s\n' 'Linux enrollment download headers were not created before early mirror.' > "$download_headers"
+            fi
+
+            if [ ! -f "$download_body" ]; then
+              printf '%s\n' 'Linux enrollment download body was not created before early mirror.' > "$download_body"
+            fi
+
+            mkdir -p "$firefox_state_dir"
+            if [ -z "$(find "$firefox_state_dir" -mindepth 1 -print -quit)" ]; then
+              printf '%s\n' 'Firefox state snapshots were not created before early mirror.' > "$firefox_state_dir/placeholder.txt"
+            fi
+
+            rm -f "$archive_path"
+            tar -czf "$archive_path" \
+              -C "$RUNNER_TEMP" \
+              production-linux-enrollment.log \
+              production-linux-enrollment-download.json \
+              production-linux-enrollment-download.headers \
+              production-linux-enrollment-download.body \
+              production-linux-firefox-state
+          }
+
+          remote_write_from_file() {
+            local local_path="$1"
+            local remote_path="$2"
+
+            github_actions_remote_ssh \
+              "$key_path" \
+              "$PRODUCTION_SMOKE_SSH_PORT" \
+              "$PRODUCTION_SMOKE_SSH_USER" \
+              "$PRODUCTION_SMOKE_SSH_IP" \
+              "cat > '$remote_path'" < "$local_path"
+          }
+
+          write_remote_mirror_status() {
+            local exit_status="${1:-0}"
+            local phase="${2:-unknown}"
+            local archive_copied="${3:-unknown}"
+            local log_copied="${4:-unknown}"
+            local meta_copied="${5:-unknown}"
+            local status_file
+            status_file="$(mktemp)"
+
+            {
+              printf 'runId=%s\n' "$GITHUB_RUN_ID"
+              printf 'runAttempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+              printf 'savedAt=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+              printf 'phase=%s\n' "$phase"
+              printf 'exitStatus=%s\n' "$exit_status"
+              printf 'remoteRoot=%s\n' "$remote_root"
+              printf 'archivePresent=%s\n' "$(test -s "$archive_path" && echo yes || echo no)"
+              printf 'archiveCopied=%s\n' "$archive_copied"
+              printf 'logPresent=%s\n' "$(test -s "$enrollment_log" && echo yes || echo no)"
+              printf 'logCopied=%s\n' "$log_copied"
+              printf 'downloadMetaPresent=%s\n' "$(test -s "$download_meta" && echo yes || echo no)"
+              printf 'downloadMetaCopied=%s\n' "$meta_copied"
+              printf 'firefoxSnapshotCount=%s\n' "$(find "$firefox_state_dir" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
+            } > "$status_file"
+
+            cp "$status_file" "$early_mirror_status_path"
+            remote_write_from_file "$status_file" "$remote_root/mirror-status.txt"
+            rm -f "$status_file"
+          }
+
+          mirror_linux_enrollment_diagnostics() {
+            local exit_status="${1:-0}"
+            local archive_copied="no"
+            local log_copied="no"
+            local meta_copied="no"
+
+            if [ -z "${PRODUCTION_SMOKE_SSH_PORT:-}" ] || [ -z "${PRODUCTION_SMOKE_SSH_USER:-}" ] || [ -z "${PRODUCTION_SMOKE_SSH_IP:-}" ]; then
+              printf 'phase=skipped\nreason=missing-ssh-context\nexitStatus=%s\n' "$exit_status" > "$early_mirror_status_path"
+              return 0
+            fi
+
+            if ! github_actions_remote_ssh \
+              "$key_path" \
+              "$PRODUCTION_SMOKE_SSH_PORT" \
+              "$PRODUCTION_SMOKE_SSH_USER" \
+              "$PRODUCTION_SMOKE_SSH_IP" \
+              "mkdir -p '$remote_root'"
+            then
+              printf 'phase=mkdir-failed\nremoteRoot=%s\nexitStatus=%s\n' "$remote_root" "$exit_status" > "$early_mirror_status_path"
+              return 0
+            fi
+
+            if ! write_remote_mirror_status "$exit_status" "starting" "$archive_copied" "$log_copied" "$meta_copied"; then
+              printf 'phase=marker-write-failed\nremoteRoot=%s\nexitStatus=%s\n' "$remote_root" "$exit_status" > "$early_mirror_status_path"
+              return 0
+            fi
+
+            if remote_write_from_file "$archive_path" "$remote_root/production-linux-enrollment-diagnostics.tar.gz"; then
+              archive_copied="yes"
+            fi
+
+            if remote_write_from_file "$enrollment_log" "$remote_root/production-linux-enrollment.log"; then
+              log_copied="yes"
+            fi
+
+            if remote_write_from_file "$download_meta" "$remote_root/production-linux-enrollment-download.json"; then
+              meta_copied="yes"
+            fi
+
+            write_remote_mirror_status "$exit_status" "complete" "$archive_copied" "$log_copied" "$meta_copied" || true
+          }
+
           cleanup_linux_enrollment() {
             local exit_status=$?
             set +e
             collect_firefox_state "$exit_status"
+            ensure_local_enrollment_diagnostics
+            mirror_linux_enrollment_diagnostics "$exit_status"
+            return "$exit_status"
           }
 
           trap cleanup_linux_enrollment EXIT

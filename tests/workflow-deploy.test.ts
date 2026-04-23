@@ -196,6 +196,26 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       String(enrollmentStep?.run ?? ''),
+      /source scripts\/lib\/github-actions-remote\.sh/,
+      'production Linux enrollment should load the shared remote helper before attempting early diagnostic persistence'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /\/opt\/classroompath\/release-state\/production-smoke-diagnostics/,
+      'production Linux enrollment should know the remote diagnostics root while the failing step is still alive'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /mirror-status\.txt/,
+      'production Linux enrollment should write a minimal remote marker file from inside the failing step'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /github_actions_remote_ssh/,
+      'production Linux enrollment should reuse the shared SSH helper for early remote persistence'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
       /extensions\.json/,
       'production Linux enrollment diagnostics should snapshot Firefox extensions state'
     );
