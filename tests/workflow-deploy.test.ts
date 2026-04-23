@@ -263,13 +263,18 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),
-      /\bscp\b/,
-      'Linux enrollment diagnostic mirror should use SSH copy instead of depending only on GitHub artifacts'
+      /remote_write_from_file[\s\S]*production-linux-enrollment-diagnostics\.tar\.gz/,
+      'Linux enrollment diagnostic mirror should stream the tarball through the shared SSH helper'
+    );
+    assert.match(
+      String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),
+      /mirror_status=/,
+      'Linux enrollment diagnostic mirror should record whether the remote write actually succeeded'
     );
     assert.match(
       String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),
       /github_actions_remote_ssh/,
-      'Linux enrollment diagnostic mirror should reuse the shared remote helper for remote directory setup'
+      'Linux enrollment diagnostic mirror should reuse the shared remote helper for all remote writes'
     );
     assert.equal(
       summarizeEnrollmentDiagnosticsStep?.if,
@@ -280,6 +285,11 @@ describe('Deploy workflow contracts', () => {
       String(summarizeEnrollmentDiagnosticsStep?.run ?? ''),
       /\$GITHUB_STEP_SUMMARY/,
       'Linux enrollment diagnostics summary should be written to the GitHub step summary'
+    );
+    assert.match(
+      String(summarizeEnrollmentDiagnosticsStep?.run ?? ''),
+      /MIRROR_STATUS/,
+      'Linux enrollment diagnostics summary should surface the remote mirror status inline'
     );
     assert.match(
       String(summarizeEnrollmentDiagnosticsStep?.run ?? ''),

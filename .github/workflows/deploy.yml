@@ -789,55 +789,92 @@ jobs:
           remote_root="/opt/classroompath/release-state/production-smoke-diagnostics/${GITHUB_RUN_ID}/attempt-${GITHUB_RUN_ATTEMPT}"
           archive_sha="$(sha256sum production-linux-enrollment-diagnostics.tar.gz | awk '{print $1}')"
           saved_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          mirror_status="success"
+          mirror_failure_detail=""
 
-          github_actions_remote_ssh \
+          remote_write_from_file() {
+            local local_path="$1"
+            local remote_path="$2"
+
+            github_actions_remote_ssh \
+              "$key_path" \
+              "$PRODUCTION_SMOKE_SSH_PORT" \
+              "$PRODUCTION_SMOKE_SSH_USER" \
+              "$PRODUCTION_SMOKE_SSH_IP" \
+              "cat > '$remote_path'" < "$local_path"
+          }
+
+          if ! github_actions_remote_ssh \
             "$key_path" \
             "$PRODUCTION_SMOKE_SSH_PORT" \
             "$PRODUCTION_SMOKE_SSH_USER" \
             "$PRODUCTION_SMOKE_SSH_IP" \
             "mkdir -p '$remote_root'"
+          then
+            mirror_status="failure"
+            mirror_failure_detail="mkdir"
+          fi
 
-          scp_common=(
-            -o ConnectTimeout=10
-            -o BatchMode=yes
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=accept-new
-            -i "$key_path"
-            -P "$PRODUCTION_SMOKE_SSH_PORT"
-          )
-
-          scp "${scp_common[@]}" \
+          if [ "$mirror_status" = "success" ] && ! remote_write_from_file \
             production-linux-enrollment-diagnostics.tar.gz \
-            "$PRODUCTION_SMOKE_SSH_USER@$PRODUCTION_SMOKE_SSH_IP:$remote_root/production-linux-enrollment-diagnostics.tar.gz"
-          scp "${scp_common[@]}" \
-            "$RUNNER_TEMP/production-linux-enrollment.log" \
-            "$PRODUCTION_SMOKE_SSH_USER@$PRODUCTION_SMOKE_SSH_IP:$remote_root/production-linux-enrollment.log"
-          scp "${scp_common[@]}" \
-            "$RUNNER_TEMP/production-linux-enrollment-download.json" \
-            "$PRODUCTION_SMOKE_SSH_USER@$PRODUCTION_SMOKE_SSH_IP:$remote_root/production-linux-enrollment-download.json"
+            "$remote_root/production-linux-enrollment-diagnostics.tar.gz"
+          then
+            mirror_status="failure"
+            mirror_failure_detail="archive"
+          fi
 
-          github_actions_remote_ssh \
-            "$key_path" \
-            "$PRODUCTION_SMOKE_SSH_PORT" \
-            "$PRODUCTION_SMOKE_SSH_USER" \
-            "$PRODUCTION_SMOKE_SSH_IP" \
-            "cat > '$remote_root/manifest.txt' <<'EOF'
-          runId=$GITHUB_RUN_ID
-          runAttempt=$GITHUB_RUN_ATTEMPT
-          savedAt=$saved_at
-          archive=production-linux-enrollment-diagnostics.tar.gz
-          archiveSha256=$archive_sha
-          enrollmentLog=production-linux-enrollment.log
-          enrollmentDownloadMeta=production-linux-enrollment-download.json
-          EOF"
+          if [ "$mirror_status" = "success" ] && ! remote_write_from_file \
+            "$RUNNER_TEMP/production-linux-enrollment.log" \
+            "$remote_root/production-linux-enrollment.log"
+          then
+            mirror_status="failure"
+            mirror_failure_detail="log"
+          fi
+
+          if [ "$mirror_status" = "success" ] && ! remote_write_from_file \
+            "$RUNNER_TEMP/production-linux-enrollment-download.json" \
+            "$remote_root/production-linux-enrollment-download.json"
+          then
+            mirror_status="failure"
+            mirror_failure_detail="download-meta"
+          fi
+
+          if [ "$mirror_status" = "success" ]; then
+            manifest_file="$(mktemp)"
+            cat > "$manifest_file" <<EOF
+            runId=$GITHUB_RUN_ID
+            runAttempt=$GITHUB_RUN_ATTEMPT
+            savedAt=$saved_at
+            archive=production-linux-enrollment-diagnostics.tar.gz
+            archiveSha256=$archive_sha
+            enrollmentLog=production-linux-enrollment.log
+            enrollmentDownloadMeta=production-linux-enrollment-download.json
+            EOF
+
+            if ! remote_write_from_file "$manifest_file" "$remote_root/manifest.txt"; then
+              mirror_status="failure"
+              mirror_failure_detail="manifest"
+            fi
+
+            rm -f "$manifest_file"
+          fi
 
           echo "remote_path=$remote_root" >> "$GITHUB_OUTPUT"
+          echo "mirror_status=$mirror_status" >> "$GITHUB_OUTPUT"
+          echo "mirror_failure_detail=$mirror_failure_detail" >> "$GITHUB_OUTPUT"
+
+          if [ "$mirror_status" != "success" ]; then
+            echo "::warning::Linux enrollment diagnostics remote mirror failed at $mirror_failure_detail (target: $remote_root)"
+            exit 1
+          fi
 
       - name: Summarize Linux enrollment diagnostics
         if: always()
         shell: bash
         env:
           MIRRORED_REMOTE_PATH: ${{ steps.mirror-linux-enrollment-diagnostics.outputs.remote_path }}
+          MIRROR_STATUS: ${{ steps.mirror-linux-enrollment-diagnostics.outputs.mirror_status }}
+          MIRROR_FAILURE_DETAIL: ${{ steps.mirror-linux-enrollment-diagnostics.outputs.mirror_failure_detail }}
         run: |
           set -euo pipefail
 
@@ -854,7 +891,11 @@ jobs:
             echo "- Workflow run: \`$GITHUB_RUN_ID\` attempt \`$GITHUB_RUN_ATTEMPT\`"
             echo "- Archive: \`$archive_path\`"
             echo "- Archive sha256: \`$archive_sha\`"
-            if [ -n "$MIRRORED_REMOTE_PATH" ]; then
+            echo "- Remote mirror status: \`${MIRROR_STATUS:-unknown}\`"
+            if [ -n "$MIRROR_FAILURE_DETAIL" ]; then
+              echo "- Remote mirror failure detail: \`$MIRROR_FAILURE_DETAIL\`"
+            fi
+            if [ -n "$MIRRORED_REMOTE_PATH" ] && [ "${MIRROR_STATUS:-}" = "success" ]; then
               echo "- Mirrored remote path: \`$MIRRORED_REMOTE_PATH\`"
             else
               echo "- Mirrored remote path: unavailable"
@@ -885,7 +926,11 @@ jobs:
 
           echo "===== Linux enrollment diagnostics summary ====="
           echo "Archive sha256: $archive_sha"
-          if [ -n "$MIRRORED_REMOTE_PATH" ]; then
+          echo "Remote mirror status: ${MIRROR_STATUS:-unknown}"
+          if [ -n "$MIRROR_FAILURE_DETAIL" ]; then
+            echo "Remote mirror failure detail: $MIRROR_FAILURE_DETAIL"
+          fi
+          if [ -n "$MIRRORED_REMOTE_PATH" ] && [ "${MIRROR_STATUS:-}" = "success" ]; then
             echo "Mirrored remote path: $MIRRORED_REMOTE_PATH"
           else
             echo "Mirrored remote path: unavailable"
