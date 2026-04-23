@@ -11,7 +11,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: production-deploy
+  group: production-deploy-v2
   cancel-in-progress: false
 
 # NOTE: Staging deploys are handled locally via `npm run deploy:staging`.
