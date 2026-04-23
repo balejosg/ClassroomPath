@@ -22,6 +22,7 @@ on:
         type: choice
         options:
           - both
+          - download
           - linux
           - windows
 
@@ -214,6 +215,7 @@ jobs:
     name: Windows Client Self-Update Canary
     if: >-
       github.event_name != 'schedule' &&
+      github.event.inputs.target_platform != 'download' &&
       ((github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'linux') ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
     runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
@@ -563,6 +565,7 @@ jobs:
     name: Linux Client Self-Update Canary
     if: >-
       github.event_name != 'schedule' &&
+      github.event.inputs.target_platform != 'download' &&
       ((github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'windows') ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest

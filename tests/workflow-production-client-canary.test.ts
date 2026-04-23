@@ -23,8 +23,20 @@ describe('Production client update canary workflow contracts', () => {
       'scheduled download checks must not consume the persistent Windows runner'
     );
     assert.ok(
+      String(existingWindowsJob?.if ?? '').includes(
+        "github.event.inputs.target_platform != 'download'"
+      ),
+      'manual download-only canary runs must not consume the persistent Windows runner'
+    );
+    assert.ok(
       String(existingLinuxJob?.if ?? '').includes("github.event_name != 'schedule'"),
       'scheduled download checks must not run the full Linux install canary'
+    );
+    assert.ok(
+      String(existingLinuxJob?.if ?? '').includes(
+        "github.event.inputs.target_platform != 'download'"
+      ),
+      'manual download-only canary runs must not run the full Linux install canary'
     );
     assert.ok(workflowText.includes('scripts/production-enrollment-download-canary.mjs'));
     assert.ok(workflowText.includes('production-enrollment-download-canary.json'));
@@ -47,7 +59,12 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(workflow.on?.workflow_run?.types?.includes('completed'));
     assert.ok(workflowText.includes('workflow_dispatch:'));
     assert.equal(workflowDispatchInputs.target_platform?.default, 'both');
-    assert.deepEqual(workflowDispatchInputs.target_platform?.options, ['both', 'linux', 'windows']);
+    assert.deepEqual(workflowDispatchInputs.target_platform?.options, [
+      'both',
+      'download',
+      'linux',
+      'windows',
+    ]);
     assert.ok(!workflowText.includes('workflow_call:'));
     assert.deepEqual(windowsJob?.['runs-on'], [
       'self-hosted',
