@@ -431,6 +431,7 @@ jobs:
   smoke-test-production:
     name: Smoke Test Production
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [deploy-production, resolve-release-images]
     if: always() && needs.deploy-production.result == 'success' && needs.resolve-release-images.result == 'success'
     permissions:
@@ -704,6 +705,7 @@ jobs:
 
       - name: Upload smoke test results
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: smoke-test-results-production

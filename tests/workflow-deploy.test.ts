@@ -126,6 +126,11 @@ describe('Deploy workflow contracts', () => {
     assert.ok(jobs['deploy-production']);
     assert.ok(jobs['smoke-test-production']);
     const productionSmokeJob = jobs['smoke-test-production'];
+    assert.equal(
+      productionSmokeJob?.['timeout-minutes'],
+      25,
+      'production smoke job must not be able to hang the deploy workflow indefinitely'
+    );
     assert.ok(
       String(
         findWorkflowStepByName(productionSmokeJob, 'Read production billing mode')?.run ?? ''
@@ -223,6 +228,14 @@ describe('Deploy workflow contracts', () => {
       /api\/agent\/windows\/bootstrap\/manifest/
     );
     assert.match(String(windowsEnrollmentStep?.run ?? ''), /\$env:OPENPATH_VERSION/);
+    const uploadSmokeResultsStep = productionSmokeJob?.steps?.find(
+      (step) => step.name === 'Upload smoke test results'
+    );
+    assert.equal(
+      uploadSmokeResultsStep?.['continue-on-error'],
+      true,
+      'production smoke artifact upload must not keep a failed canary job stuck'
+    );
     assert.ok(jobs['rollback-production']);
     assert.ok(
       normalizeNeeds(jobs['rollback-production']?.needs).includes('resolve-release-images'),
