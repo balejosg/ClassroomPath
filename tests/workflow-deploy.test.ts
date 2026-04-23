@@ -234,10 +234,63 @@ describe('Deploy workflow contracts', () => {
     const uploadEnrollmentDiagnosticsStep = productionSmokeJob?.steps?.find(
       (step) => step.name === 'Upload Linux enrollment diagnostics'
     );
+    const mirrorEnrollmentDiagnosticsStep = productionSmokeJob?.steps?.find(
+      (step) => step.name === 'Mirror Linux enrollment diagnostics to production release state'
+    );
+    const summarizeEnrollmentDiagnosticsStep = productionSmokeJob?.steps?.find(
+      (step) => step.name === 'Summarize Linux enrollment diagnostics'
+    );
     assert.equal(uploadEnrollmentDiagnosticsStep?.if, 'always()');
     assert.equal(uploadEnrollmentDiagnosticsStep?.uses, 'actions/upload-artifact@v7');
     assert.equal(uploadEnrollmentDiagnosticsStep?.['continue-on-error'], true);
     assert.equal(uploadEnrollmentDiagnosticsStep?.['timeout-minutes'], 10);
+    assert.equal(
+      mirrorEnrollmentDiagnosticsStep?.if,
+      'always()',
+      'Linux enrollment diagnostics should be mirrored even when the smoke step fails'
+    );
+    assert.equal(mirrorEnrollmentDiagnosticsStep?.['continue-on-error'], true);
+    assert.equal(mirrorEnrollmentDiagnosticsStep?.['timeout-minutes'], 5);
+    assert.match(
+      String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),
+      /\/opt\/classroompath\/release-state\/production-smoke-diagnostics/,
+      'Linux enrollment diagnostics should be mirrored to production release-state for out-of-band retrieval'
+    );
+    assert.match(
+      String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),
+      /production-linux-enrollment-diagnostics\.tar\.gz/,
+      'Linux enrollment diagnostic mirror should copy the tarball that the workflow packaged locally'
+    );
+    assert.match(
+      String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),
+      /\bscp\b/,
+      'Linux enrollment diagnostic mirror should use SSH copy instead of depending only on GitHub artifacts'
+    );
+    assert.match(
+      String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),
+      /github_actions_remote_ssh/,
+      'Linux enrollment diagnostic mirror should reuse the shared remote helper for remote directory setup'
+    );
+    assert.equal(
+      summarizeEnrollmentDiagnosticsStep?.if,
+      'always()',
+      'Linux enrollment diagnostics summary should be emitted even when the smoke step fails'
+    );
+    assert.match(
+      String(summarizeEnrollmentDiagnosticsStep?.run ?? ''),
+      /\$GITHUB_STEP_SUMMARY/,
+      'Linux enrollment diagnostics summary should be written to the GitHub step summary'
+    );
+    assert.match(
+      String(summarizeEnrollmentDiagnosticsStep?.run ?? ''),
+      /production-linux-enrollment-download\.json/,
+      'Linux enrollment diagnostics summary should surface the download metadata inline'
+    );
+    assert.match(
+      String(summarizeEnrollmentDiagnosticsStep?.run ?? ''),
+      /tar -tzf production-linux-enrollment-diagnostics\.tar\.gz/,
+      'Linux enrollment diagnostics summary should list the packaged tarball contents inline'
+    );
     assert.equal(
       uploadEnrollmentDiagnosticsStep?.with?.path,
       'production-linux-enrollment-diagnostics.tar.gz'
@@ -283,6 +336,14 @@ describe('Deploy workflow contracts', () => {
       productionSmokeJob?.steps?.findIndex(
         (step) => step.name === 'Upload Linux enrollment diagnostics'
       ) ?? -1;
+    const mirrorEnrollmentDiagnosticsStepIndex =
+      productionSmokeJob?.steps?.findIndex(
+        (step) => step.name === 'Mirror Linux enrollment diagnostics to production release state'
+      ) ?? -1;
+    const summarizeEnrollmentDiagnosticsStepIndex =
+      productionSmokeJob?.steps?.findIndex(
+        (step) => step.name === 'Summarize Linux enrollment diagnostics'
+      ) ?? -1;
     const linuxFirefoxCanaryStep =
       linuxFirefoxCanaryStepIndex >= 0
         ? productionSmokeJob?.steps?.[linuxFirefoxCanaryStepIndex]
@@ -294,6 +355,14 @@ describe('Deploy workflow contracts', () => {
     assert.ok(
       ensureEnrollmentArtifactsStepIndex > linuxEnrollmentStepIndex,
       'Linux enrollment diagnostics must be materialized immediately after the live enrollment step'
+    );
+    assert.ok(
+      mirrorEnrollmentDiagnosticsStepIndex > ensureEnrollmentArtifactsStepIndex,
+      'Linux enrollment diagnostics should be mirrored to production release-state immediately after packaging'
+    );
+    assert.ok(
+      summarizeEnrollmentDiagnosticsStepIndex > mirrorEnrollmentDiagnosticsStepIndex,
+      'Linux enrollment diagnostics summary should be emitted after the remote mirror step'
     );
     assert.ok(
       uploadEnrollmentDiagnosticsStepIndex > ensureEnrollmentArtifactsStepIndex &&

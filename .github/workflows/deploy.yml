@@ -771,6 +771,134 @@ jobs:
           retention-days: 14
           overwrite: true
 
+      - name: Mirror Linux enrollment diagnostics to production release state
+        id: mirror-linux-enrollment-diagnostics
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        shell: bash
+        env:
+          PRODUCTION_SMOKE_SSH_PORT: ${{ steps.resolve-production.outputs.port }}
+          PRODUCTION_SMOKE_SSH_USER: ${{ steps.resolve-production.outputs.user }}
+          PRODUCTION_SMOKE_SSH_IP: ${{ steps.resolve-production.outputs.ip }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+
+          key_path="$HOME/.ssh/classroompath-production-smoke"
+          remote_root="/opt/classroompath/release-state/production-smoke-diagnostics/${GITHUB_RUN_ID}/attempt-${GITHUB_RUN_ATTEMPT}"
+          archive_sha="$(sha256sum production-linux-enrollment-diagnostics.tar.gz | awk '{print $1}')"
+          saved_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+          github_actions_remote_ssh \
+            "$key_path" \
+            "$PRODUCTION_SMOKE_SSH_PORT" \
+            "$PRODUCTION_SMOKE_SSH_USER" \
+            "$PRODUCTION_SMOKE_SSH_IP" \
+            "mkdir -p '$remote_root'"
+
+          scp_common=(
+            -o ConnectTimeout=10
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=accept-new
+            -i "$key_path"
+            -P "$PRODUCTION_SMOKE_SSH_PORT"
+          )
+
+          scp "${scp_common[@]}" \
+            production-linux-enrollment-diagnostics.tar.gz \
+            "$PRODUCTION_SMOKE_SSH_USER@$PRODUCTION_SMOKE_SSH_IP:$remote_root/production-linux-enrollment-diagnostics.tar.gz"
+          scp "${scp_common[@]}" \
+            "$RUNNER_TEMP/production-linux-enrollment.log" \
+            "$PRODUCTION_SMOKE_SSH_USER@$PRODUCTION_SMOKE_SSH_IP:$remote_root/production-linux-enrollment.log"
+          scp "${scp_common[@]}" \
+            "$RUNNER_TEMP/production-linux-enrollment-download.json" \
+            "$PRODUCTION_SMOKE_SSH_USER@$PRODUCTION_SMOKE_SSH_IP:$remote_root/production-linux-enrollment-download.json"
+
+          github_actions_remote_ssh \
+            "$key_path" \
+            "$PRODUCTION_SMOKE_SSH_PORT" \
+            "$PRODUCTION_SMOKE_SSH_USER" \
+            "$PRODUCTION_SMOKE_SSH_IP" \
+            "cat > '$remote_root/manifest.txt' <<'EOF'
+          runId=$GITHUB_RUN_ID
+          runAttempt=$GITHUB_RUN_ATTEMPT
+          savedAt=$saved_at
+          archive=production-linux-enrollment-diagnostics.tar.gz
+          archiveSha256=$archive_sha
+          enrollmentLog=production-linux-enrollment.log
+          enrollmentDownloadMeta=production-linux-enrollment-download.json
+          EOF"
+
+          echo "remote_path=$remote_root" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize Linux enrollment diagnostics
+        if: always()
+        shell: bash
+        env:
+          MIRRORED_REMOTE_PATH: ${{ steps.mirror-linux-enrollment-diagnostics.outputs.remote_path }}
+        run: |
+          set -euo pipefail
+
+          archive_path="production-linux-enrollment-diagnostics.tar.gz"
+          download_meta_path="$RUNNER_TEMP/production-linux-enrollment-download.json"
+          enrollment_log_path="$RUNNER_TEMP/production-linux-enrollment.log"
+          firefox_state_dir="$RUNNER_TEMP/production-linux-firefox-state"
+          archive_sha="$(sha256sum "$archive_path" | awk '{print $1}')"
+          latest_firefox_snapshot="$(find "$firefox_state_dir" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1 || true)"
+
+          {
+            echo "## Production Linux enrollment diagnostics"
+            echo
+            echo "- Workflow run: \`$GITHUB_RUN_ID\` attempt \`$GITHUB_RUN_ATTEMPT\`"
+            echo "- Archive: \`$archive_path\`"
+            echo "- Archive sha256: \`$archive_sha\`"
+            if [ -n "$MIRRORED_REMOTE_PATH" ]; then
+              echo "- Mirrored remote path: \`$MIRRORED_REMOTE_PATH\`"
+            else
+              echo "- Mirrored remote path: unavailable"
+            fi
+            echo
+            echo "### Archive contents"
+            echo '```text'
+            tar -tzf production-linux-enrollment-diagnostics.tar.gz | sed -n '1,120p'
+            echo '```'
+            echo
+            echo "### Download metadata"
+            echo '```json'
+            sed -n '1,160p' "$download_meta_path"
+            echo '```'
+            echo
+            echo "### Enrollment log tail"
+            echo '```text'
+            tail -n 120 "$enrollment_log_path"
+            echo '```'
+            if [ -n "$latest_firefox_snapshot" ] && [ -f "$latest_firefox_snapshot/summary.txt" ]; then
+              echo
+              echo "### Firefox snapshot summary"
+              echo '```text'
+              sed -n '1,160p' "$latest_firefox_snapshot/summary.txt"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "===== Linux enrollment diagnostics summary ====="
+          echo "Archive sha256: $archive_sha"
+          if [ -n "$MIRRORED_REMOTE_PATH" ]; then
+            echo "Mirrored remote path: $MIRRORED_REMOTE_PATH"
+          else
+            echo "Mirrored remote path: unavailable"
+          fi
+          echo "--- Download metadata ---"
+          sed -n '1,120p' "$download_meta_path"
+          echo "--- Enrollment log tail ---"
+          tail -n 80 "$enrollment_log_path"
+          if [ -n "$latest_firefox_snapshot" ] && [ -f "$latest_firefox_snapshot/summary.txt" ]; then
+            echo "--- Firefox snapshot summary ---"
+            sed -n '1,120p' "$latest_firefox_snapshot/summary.txt"
+          fi
+
       - name: Verify production Linux Firefox blocked page canary
         shell: bash
         env:
