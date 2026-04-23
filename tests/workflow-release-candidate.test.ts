@@ -165,6 +165,10 @@ describe('Release candidate workflow contracts', () => {
       jobs['derive-release-image-refs']?.steps?.find(
         (step) => step.name === 'Resolve OpenPath Linux agent version'
       )?.run ?? '';
+    const verifyInstallabilityStep = jobs['derive-release-image-refs']?.steps?.find(
+      (step) => step.name === 'Verify OpenPath Linux agent APT installability'
+    );
+    const verifyInstallabilityRun = verifyInstallabilityStep?.run ?? '';
     const waitForOpenPathAptPublishRun =
       jobs['derive-release-image-refs']?.steps?.find(
         (step) => step.name === 'Wait for OpenPath prerelease APT publish'
@@ -196,8 +200,21 @@ describe('Release candidate workflow contracts', () => {
         deriveStepNames.indexOf('Resolve OpenPath Linux agent version')
     );
     assert.ok(
+      deriveStepNames.indexOf('Resolve OpenPath Linux agent version') <
+        deriveStepNames.indexOf('Verify OpenPath Linux agent APT installability')
+    );
+    assert.ok(
       deriveLinuxAgentVersionRun.includes('node scripts/resolve-openpath-linux-agent-version.mjs')
     );
+    assert.ok(verifyInstallabilityStep, 'RC workflow must verify the exact APT pin is installable');
+    assert.ok(verifyInstallabilityRun.includes('git diff --quiet'));
+    assert.ok(verifyInstallabilityRun.includes('upstream/openpath'));
+    assert.ok(
+      verifyInstallabilityRun.includes(
+        'node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script'
+      )
+    );
+    assert.ok(verifyInstallabilityRun.includes('docker run --rm -i ubuntu:24.04 bash'));
     assert.equal(deriveCheckout?.with?.['fetch-depth'], 1);
     assert.equal(
       jobs['build-gateway-release-candidate']?.uses,
@@ -301,6 +318,19 @@ describe('Release candidate workflow contracts', () => {
       String(fetchDiffBaseStep?.run ?? '').includes('${{ github.event.before }} ${{ github.sha }}')
     );
     assert.ok(!workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
+  });
+
+  test('migrations release image avoids recursive ownership fixups on arm64 builds', () => {
+    const dockerfile = readText('docker/Dockerfile.migrations');
+
+    assert.ok(!dockerfile.includes('chown -R node:node /app'));
+    assert.ok(dockerfile.includes('RUN chown node:node /app'));
+    assert.ok(dockerfile.includes('COPY --chown=node:node api/drizzle ./api/drizzle'));
+    assert.ok(
+      dockerfile.includes(
+        'COPY --chown=node:node upstream/openpath/api/src ./upstream/openpath/api/src'
+      )
+    );
   });
 
   test('release candidate manifest publisher reads the reusable family image output for every image slot', () => {

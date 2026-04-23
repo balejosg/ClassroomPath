@@ -19,6 +19,9 @@ function printUsage() {
   console.error(
     '  node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin [--linux-agent-version <version>] [--apt-suite <stable|unstable>] [--apt-base-url <url>]'
   );
+  console.error(
+    '  node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script [--linux-agent-version <version>] [--apt-suite <stable|unstable>] [--apt-base-url <url>]'
+  );
 }
 
 function parseCliArgs(argv) {
@@ -235,6 +238,47 @@ export async function assertOpenPathLinuxAgentRuntimePinAdvertised({
   });
 }
 
+function shellSingleQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
+export function renderOpenPathLinuxAgentInstallProbeScript({
+  aptBaseUrl = DEFAULT_OPENPATH_APT_BASE_URL,
+  aptSuite,
+  linuxAgentVersion,
+}) {
+  const normalizedVersion = String(linuxAgentVersion ?? '').trim();
+  const normalizedSuite = String(aptSuite ?? '').trim();
+  const normalizedBaseUrl = String(aptBaseUrl ?? '')
+    .trim()
+    .replace(/\/+$/, '');
+
+  if (!normalizedVersion) {
+    throw new Error('OPENPATH_LINUX_AGENT_VERSION is required');
+  }
+
+  if (!['stable', 'unstable'].includes(normalizedSuite)) {
+    throw new Error('OPENPATH_LINUX_AGENT_APT_SUITE must be stable or unstable');
+  }
+
+  if (!normalizedBaseUrl) {
+    throw new Error('OpenPath APT base URL is required');
+  }
+
+  const packagePin = `openpath-dnsmasq=${normalizedVersion}-1`;
+  const setupFlag = normalizedSuite === 'unstable' ? '--unstable' : '--stable';
+
+  return `set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+export OPENPATH_APT_REPO_URL=${shellSingleQuote(normalizedBaseUrl)}
+apt-get update -qq
+apt-get install -y --no-install-recommends ca-certificates curl gnupg
+curl -fsSL "\${OPENPATH_APT_REPO_URL}/apt-setup.sh" | bash -s -- ${setupFlag}
+apt-cache show ${shellSingleQuote(packagePin)} >/dev/null
+apt-get install -y --download-only ${shellSingleQuote(packagePin)}
+`;
+}
+
 export function isMissingPromotionContractError(error) {
   return Number(error?.status ?? 0) === 404;
 }
@@ -346,6 +390,18 @@ async function main() {
     });
     console.log(
       `OpenPath Linux agent ${options.linuxAgentVersion} is advertised by ${options.aptSuite} APT metadata`
+    );
+    return;
+  }
+
+  if (process.argv[2] === 'install-probe-script') {
+    const options = parseVerifyRuntimePinCliArgs(process.argv.slice(3));
+    process.stdout.write(
+      renderOpenPathLinuxAgentInstallProbeScript({
+        aptBaseUrl: options.aptBaseUrl,
+        aptSuite: options.aptSuite,
+        linuxAgentVersion: options.linuxAgentVersion,
+      })
     );
     return;
   }

@@ -1,6 +1,8 @@
 name: Production Client Update Canary
 
 on:
+  schedule:
+    - cron: '0 */6 * * *'
   workflow_run:
     workflows:
       - Deploy
@@ -25,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: production-client-update-canary-${{ github.run_id }}
@@ -34,11 +37,185 @@ concurrency:
 # live-tested, skipped-by-billing-mode, advisory-only, failed
 
 jobs:
+  production-enrollment-download-canary:
+    name: Production Enrollment Download Canary
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || 'https://classroompath.eu' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+        with:
+          enable-cache: false
+          cache-dependency-path: package-lock.json
+
+      - name: Resolve production host
+        id: resolve-production
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_require_values \
+            "production enrollment download canary" \
+            DEPLOY_HOST "$DEPLOY_HOST" \
+            DEPLOY_USER "$DEPLOY_USER" \
+            DEPLOY_SSH_KEY "$DEPLOY_SSH_KEY"
+          github_actions_remote_write_resolved_host_outputs \
+            "$DEPLOY_HOST" \
+            "${DEPLOY_PORT:-22}" \
+            "$DEPLOY_USER" \
+            "production enrollment download canary" >> "$GITHUB_OUTPUT"
+
+      - name: Install production SSH key
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-enrollment-canary
+
+      - name: Read production billing mode
+        id: read-billing-mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          billing_mode="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-enrollment-canary \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_BILLING_MODE)"
+
+          if [ -z "$billing_mode" ]; then
+            billing_mode="manual_only"
+          fi
+
+          echo "billing_mode=$billing_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Read production client canary admin token
+        if: steps.read-billing-mode.outputs.billing_mode == 'manual_only'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          client_canary_admin_token="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-enrollment-canary \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_CLIENT_CANARY_ADMIN_TOKEN)"
+
+          if [ -z "$client_canary_admin_token" ]; then
+            echo "::error::CP_CLIENT_CANARY_ADMIN_TOKEN is missing on production"
+            exit 1
+          fi
+
+          echo "::add-mask::$client_canary_admin_token"
+          echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN=$client_canary_admin_token" >> "$GITHUB_ENV"
+
+      - name: Read production Stripe webhook secret
+        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          stripe_webhook_secret="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-enrollment-canary \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            STRIPE_WEBHOOK_SECRET)"
+
+          if [ -z "$stripe_webhook_secret" ]; then
+            echo "::error::STRIPE_WEBHOOK_SECRET is missing on production"
+            exit 1
+          fi
+
+          echo "::add-mask::$stripe_webhook_secret"
+          echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET=$stripe_webhook_secret" >> "$GITHUB_ENV"
+
+      - name: Provision production enrollment canary
+        id: provision
+        env:
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
+        run: node scripts/create-production-windows-bootstrap-canary.mjs
+
+      - name: Download live production enrollment scripts
+        shell: bash
+        env:
+          PRODUCTION_ENROLLMENT_CANARY_BASE_URL: ${{ env.PRODUCTION_BASE_URL }}
+          CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
+          ENROLLMENT_TOKEN: ${{ steps.provision.outputs.enrollment_token }}
+          OPENPATH_LINUX_AGENT_VERSION: ${{ steps.provision.outputs.bootstrap_manifest_version }}
+          PRODUCTION_ENROLLMENT_CANARY_OUTPUT: production-enrollment-download-canary.json
+        run: |
+          set -euo pipefail
+          node scripts/production-enrollment-download-canary.mjs
+          test -f production-enrollment-download-canary.json
+
+      - name: Upload production enrollment download canary artifact
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-enrollment-download-canary
+          path: |
+            production-enrollment-download-canary.json
+            production-windows-bootstrap-canary.json
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+
+      - name: Create issue on production enrollment download failure
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          ISSUE_TITLE: Production Enrollment Download Canary Failed
+          ISSUE_LABELS: enrollment-canary-failure,production,automated,priority-high
+          SMOKE_ENVIRONMENT: production-enrollment-download
+          SMOKE_PUBLIC_URL: ${{ env.PRODUCTION_BASE_URL }}
+          SMOKE_READY_URL: ${{ env.PRODUCTION_BASE_URL }}/readyz
+          SMOKE_API_HEALTH_URL: ${{ env.PRODUCTION_BASE_URL }}/api/health
+          SMOKE_API_CONFIG_URL: ${{ env.PRODUCTION_BASE_URL }}/api/config
+        run: node scripts/report-smoke-failure.mjs
+
+      - name: Close production enrollment download issue on recovery
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          ISSUE_LABELS: enrollment-canary-failure,production,automated,priority-high
+          SMOKE_ENVIRONMENT: production-enrollment-download
+        run: node scripts/close-smoke-recovery.mjs
+
   windows-client-self-update-canary:
     name: Windows Client Self-Update Canary
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'linux') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      github.event_name != 'schedule' &&
+      ((github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'linux') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
     runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     timeout-minutes: 35
     env:
@@ -385,8 +562,9 @@ jobs:
   linux-client-self-update-canary:
     name: Linux Client Self-Update Canary
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'windows') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      github.event_name != 'schedule' &&
+      ((github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'windows') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:

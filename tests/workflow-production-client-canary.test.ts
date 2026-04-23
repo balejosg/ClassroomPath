@@ -4,6 +4,37 @@ import { describe, test } from 'node:test';
 import { readProjectText, readProjectWorkflow } from './helpers/ops-contracts.ts';
 
 describe('Production client update canary workflow contracts', () => {
+  test('scheduled production enrollment download canary checks live scripts without consuming client runners', () => {
+    const workflowText = readProjectText('.github/workflows/production-client-update-canary.yml');
+    const helperText = readProjectText('scripts/production-enrollment-download-canary.mjs');
+    const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
+    const jobs = workflow.jobs ?? {};
+    const downloadJob = jobs['production-enrollment-download-canary'];
+    const existingWindowsJob = jobs['windows-client-self-update-canary'];
+    const existingLinuxJob = jobs['linux-client-self-update-canary'];
+
+    assert.ok(
+      workflow.on?.schedule?.some((entry) => entry.cron === '0 */6 * * *'),
+      'production enrollment download canary should run every six hours'
+    );
+    assert.equal(downloadJob?.['runs-on'], 'ubuntu-latest');
+    assert.ok(
+      String(existingWindowsJob?.if ?? '').includes("github.event_name != 'schedule'"),
+      'scheduled download checks must not consume the persistent Windows runner'
+    );
+    assert.ok(
+      String(existingLinuxJob?.if ?? '').includes("github.event_name != 'schedule'"),
+      'scheduled download checks must not run the full Linux install canary'
+    );
+    assert.ok(workflowText.includes('scripts/production-enrollment-download-canary.mjs'));
+    assert.ok(workflowText.includes('production-enrollment-download-canary.json'));
+    assert.ok(workflowText.includes('production-enrollment-download-canary'));
+    assert.ok(helperText.includes('/api/enroll/'));
+    assert.ok(helperText.includes('/windows.ps1'));
+    assert.ok(workflowText.includes('Production Enrollment Download Canary Failed'));
+    assert.ok(workflowText.includes('close-smoke-recovery.mjs'));
+  });
+
   test('post-release production client update canary stays decoupled from deploy completion', () => {
     const workflowText = readProjectText('.github/workflows/production-client-update-canary.yml');
     const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');

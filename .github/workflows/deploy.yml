@@ -160,6 +160,8 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin
+          node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script \
+            | docker run --rm -i ubuntu:24.04 bash
 
       - name: Build deploy payload
         id: deploy-payload

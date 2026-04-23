@@ -76,6 +76,23 @@ jobs:
           node scripts/resolve-openpath-linux-agent-version.mjs \
             --openpath-dir upstream/openpath >> "$GITHUB_OUTPUT"
 
+      - name: Verify OpenPath Linux agent APT installability
+        env:
+          OPENPATH_LINUX_AGENT_VERSION: ${{ steps.linux-agent.outputs.version }}
+          OPENPATH_LINUX_AGENT_APT_SUITE: ${{ steps.linux-agent.outputs.apt_suite }}
+        run: |
+          set -euo pipefail
+          before_sha="${{ github.event.before }}"
+          if [ "$before_sha" != "0000000000000000000000000000000000000000" ] \
+            && git diff --quiet "$before_sha" "${{ github.sha }}" -- upstream/openpath; then
+            echo "OpenPath submodule unchanged; skipping installability probe."
+            exit 0
+          fi
+
+          node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin
+          node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script \
+            | docker run --rm -i ubuntu:24.04 bash
+
   resolve-previous-release-candidate-manifest:
     name: Resolve Previous Release Candidate Manifest
     runs-on: ubuntu-latest

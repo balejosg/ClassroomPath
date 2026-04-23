@@ -80,13 +80,13 @@ describe('Deployment runtime contracts', () => {
     assert.ok(existsSync(migrationsImageScriptPath));
     assert.ok(existsSync(openPathDbEnvHelperPath));
     assert.ok(!migrationsDockerfile.includes('COPY . .'));
-    assert.ok(migrationsDockerfile.includes('COPY api/drizzle ./api/drizzle'));
-    assert.ok(migrationsDockerfile.includes('COPY api/scripts ./api/scripts'));
-    assert.ok(migrationsDockerfile.includes('COPY api/src ./api/src'));
-    assert.ok(migrationsDockerfile.includes('COPY scripts ./scripts'));
+    assert.ok(migrationsDockerfile.includes('COPY --chown=node:node api/drizzle ./api/drizzle'));
+    assert.ok(migrationsDockerfile.includes('COPY --chown=node:node api/scripts ./api/scripts'));
+    assert.ok(migrationsDockerfile.includes('COPY --chown=node:node api/src ./api/src'));
+    assert.ok(migrationsDockerfile.includes('COPY --chown=node:node scripts ./scripts'));
     assert.ok(
       migrationsDockerfile.includes(
-        'COPY upstream/openpath/api/drizzle.config.ts ./upstream/openpath/api/drizzle.config.ts'
+        'COPY --chown=node:node upstream/openpath/api/drizzle.config.ts ./upstream/openpath/api/drizzle.config.ts'
       )
     );
     assert.ok(

@@ -35,6 +35,9 @@ export type WorkflowDefinition = {
       tags?: string[];
       paths?: string[];
     };
+    schedule?: Array<{
+      cron?: string;
+    }>;
     workflow_run?: {
       workflows?: string[];
       types?: string[];

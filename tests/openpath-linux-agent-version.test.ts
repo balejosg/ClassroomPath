@@ -7,6 +7,7 @@ import {
   assertOpenPathLinuxAgentVersionAdvertised,
   assertOpenPathLinuxAgentRuntimePinAdvertised,
   buildAptPackagesUrl,
+  renderOpenPathLinuxAgentInstallProbeScript,
   buildPromotionContractUrl,
   parseOpenPathDnsmasqAptVersions,
   parseOpenPathPromotionContract,
@@ -148,6 +149,22 @@ Architecture: all
           downloadText: async () => 'Package: openpath-dnsmasq\nVersion: 0.0.20260421051157-1\n',
         }),
       /0\.0\.20260421043406 is not advertised by the unstable APT metadata/
+    );
+  });
+
+  test('renders a disposable APT installability probe for the exact Linux agent pin', () => {
+    const script = renderOpenPathLinuxAgentInstallProbeScript({
+      aptBaseUrl: 'https://example.test/apt',
+      aptSuite: 'unstable',
+      linuxAgentVersion: '0.0.20260421051157',
+    });
+
+    assert.match(script, /OPENPATH_APT_REPO_URL='https:\/\/example\.test\/apt'/);
+    assert.match(script, /apt-setup\.sh" \| bash -s -- --unstable/);
+    assert.match(script, /apt-cache show 'openpath-dnsmasq=0\.0\.20260421051157-1'/);
+    assert.match(
+      script,
+      /apt-get install -y --download-only 'openpath-dnsmasq=0\.0\.20260421051157-1'/
     );
   });
 
