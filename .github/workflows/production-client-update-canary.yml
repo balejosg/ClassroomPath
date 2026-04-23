@@ -2,7 +2,7 @@ name: Production Client Update Canary
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '*/15 * * * *'
   workflow_run:
     workflows:
       - Deploy

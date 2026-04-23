@@ -14,8 +14,8 @@ describe('Production client update canary workflow contracts', () => {
     const existingLinuxJob = jobs['linux-client-self-update-canary'];
 
     assert.ok(
-      workflow.on?.schedule?.some((entry) => entry.cron === '0 */6 * * *'),
-      'production enrollment download canary should run every six hours'
+      workflow.on?.schedule?.some((entry) => entry.cron === '*/15 * * * *'),
+      'production enrollment download canary should run every 15 minutes'
     );
     assert.equal(downloadJob?.['runs-on'], 'ubuntu-latest');
     assert.ok(
