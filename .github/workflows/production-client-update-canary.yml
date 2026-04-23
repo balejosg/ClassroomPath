@@ -719,6 +719,31 @@ jobs:
             exit 1
           fi
 
+      - name: Restore Linux runner DNS before artifact upload
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+
+          if command -v openpath >/dev/null 2>&1; then
+            sudo openpath disable || true
+          fi
+
+          sudo systemctl stop dnsmasq || true
+          sudo systemctl stop openpath-dnsmasq.timer || true
+          sudo systemctl stop dnsmasq-watchdog.timer || true
+
+          if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved; then
+            default_interface="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+            if [ -n "$default_interface" ]; then
+              sudo resolvectl dns "$default_interface" 1.1.1.1 8.8.8.8 || true
+            fi
+            sudo resolvectl flush-caches || true
+          else
+            printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf >/dev/null || true
+          fi
+
       - name: Upload Linux self-update artifacts
         if: always()
         continue-on-error: true

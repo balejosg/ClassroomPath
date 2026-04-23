@@ -146,16 +146,44 @@ describe('Deploy workflow contracts', () => {
       ).includes('STRIPE_WEBHOOK_SECRET'),
       'stripe production smoke should read the webhook secret from production'
     );
-    const enrollmentStep = productionSmokeJob?.steps?.find((step) =>
-      String(step.name ?? '').includes('Download live Linux enrollment script')
-    );
+    const linuxEnrollmentStepIndex =
+      productionSmokeJob?.steps?.findIndex((step) =>
+        String(step.name ?? '').includes('Download and run live Linux enrollment script')
+      ) ?? -1;
+    const enrollmentStep =
+      linuxEnrollmentStepIndex >= 0
+        ? productionSmokeJob?.steps?.[linuxEnrollmentStepIndex]
+        : undefined;
     assert.ok(enrollmentStep, 'production smoke must download a live Linux enrollment script');
     assert.match(String(enrollmentStep?.run ?? ''), /\/api\/enroll\/\$CLASSROOM_ID/);
     assert.match(String(enrollmentStep?.run ?? ''), /Authorization: Bearer \$ENROLLMENT_TOKEN/);
     assert.match(String(enrollmentStep?.run ?? ''), /OPENPATH_LINUX_AGENT_VERSION/);
+    assert.match(String(enrollmentStep?.run ?? ''), /sudo bash "\$enroll_script"/);
     assert.match(
       String(enrollmentStep?.run ?? ''),
       /head -n 1 "\$enroll_script" \| grep -Eq '\^#!.*bash'/
+    );
+    const linuxFirefoxCanaryStepIndex =
+      productionSmokeJob?.steps?.findIndex(
+        (step) => step.name === 'Verify production Linux Firefox blocked page canary'
+      ) ?? -1;
+    const linuxFirefoxCanaryStep =
+      linuxFirefoxCanaryStepIndex >= 0
+        ? productionSmokeJob?.steps?.[linuxFirefoxCanaryStepIndex]
+        : undefined;
+    assert.ok(
+      linuxFirefoxCanaryStepIndex > linuxEnrollmentStepIndex,
+      'production smoke must verify Linux Firefox after live Linux enrollment'
+    );
+    assert.ok(
+      String(linuxFirefoxCanaryStep?.run ?? '').includes(
+        'scripts/linux-firefox-block-page-canary.mjs'
+      )
+    );
+    assert.ok(
+      String(linuxFirefoxCanaryStep?.run ?? '').includes(
+        'production-linux-firefox-block-page-canary.json'
+      )
     );
     const windowsEnrollmentStep = productionSmokeJob?.steps?.find((step) =>
       String(step.name ?? '').includes('Download live Windows enrollment script')

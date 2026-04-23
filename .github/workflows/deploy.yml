@@ -439,6 +439,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+        with:
+          enable-cache: false
+          cache-dependency-path: package-lock.json
+
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -545,7 +551,11 @@ jobs:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
-      - name: Download live Linux enrollment script
+      - name: Install Linux Firefox canary dependencies
+        shell: bash
+        run: npm ci --ignore-scripts
+
+      - name: Download and run live Linux enrollment script
         shell: bash
         env:
           PRODUCTION_BASE_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
@@ -555,7 +565,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          enroll_script="$RUNNER_TEMP/production-linux-enrollment.sh"
+          workspace="$RUNNER_TEMP/production-linux-enrollment"
+          mkdir -p "$workspace"
+          enroll_script="$workspace/enroll.sh"
+          enrollment_log="$RUNNER_TEMP/production-linux-enrollment.log"
+          : > "$enrollment_log"
+
           http_status="$(
             curl -sS \
               -o "$enroll_script" \
@@ -574,6 +589,50 @@ jobs:
           head -n 1 "$enroll_script" | grep -Eq '^#!.*bash'
           grep -F "LINUX_AGENT_VERSION=" "$enroll_script"
           grep -F "$OPENPATH_LINUX_AGENT_VERSION" "$enroll_script"
+
+          chmod 700 "$enroll_script"
+          sudo bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"
+
+      - name: Verify production Linux Firefox blocked page canary
+        shell: bash
+        env:
+          EXPECTED_EXTENSION_ID: ${{ steps.provision-enrollment.outputs.extension_id }}
+          LINUX_FIREFOX_BLOCK_PAGE_CANARY_URL: https://www.mozilla.org/
+          LINUX_FIREFOX_BLOCK_PAGE_CANARY_OUTPUT: production-linux-firefox-block-page-canary.json
+          LINUX_FIREFOX_BLOCK_PAGE_CANARY_DIAGNOSTICS_DIR: ${{ runner.temp }}/production-linux-firefox-block-page-canary
+        run: |
+          set -euo pipefail
+
+          block_page_log="$RUNNER_TEMP/production-linux-firefox-block-page-canary.log"
+          : > "$block_page_log"
+
+          node scripts/linux-firefox-block-page-canary.mjs 2>&1 | tee "$block_page_log"
+          test -f production-linux-firefox-block-page-canary.json
+
+      - name: Restore Linux runner DNS after production Firefox canary
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+
+          if command -v openpath >/dev/null 2>&1; then
+            sudo openpath disable || true
+          fi
+
+          sudo systemctl stop dnsmasq || true
+          sudo systemctl stop openpath-dnsmasq.timer || true
+          sudo systemctl stop dnsmasq-watchdog.timer || true
+
+          if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved; then
+            default_interface="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+            if [ -n "$default_interface" ]; then
+              sudo resolvectl dns "$default_interface" 1.1.1.1 8.8.8.8 || true
+            fi
+            sudo resolvectl flush-caches || true
+          else
+            printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf >/dev/null || true
+          fi
 
       - name: Download live Windows enrollment script
         shell: bash
@@ -621,7 +680,12 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: smoke-test-results-production
-          path: smoke-results.txt
+          path: |
+            smoke-results.txt
+            production-linux-firefox-block-page-canary.json
+            ${{ runner.temp }}/production-linux-enrollment.log
+            ${{ runner.temp }}/production-linux-firefox-block-page-canary.log
+            ${{ runner.temp }}/production-linux-firefox-block-page-canary
           retention-days: 7
 
       - name: Report smoke test failure
