@@ -53,6 +53,15 @@ fi
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
+DEPLOY_CONTAINER_PLATFORM_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")"
+if [ ! -f "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH" ]; then
+  printf 'Deploy container platform helper not found: %s\n' "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH" >&2
+  exit 1
+fi
+
+# shellcheck source=lib/deploy-container-platform.sh
+source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"
+
 if release_state_helper_supports_runtime_contract "$RELEASE_STATE_HELPER_PATH"; then
   # shellcheck source=lib/release-state.sh
   source "$RELEASE_STATE_HELPER_PATH"
@@ -116,6 +125,8 @@ trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
 
 cd "$APP_DIR/docker"
 export COMPOSE_PROJECT_NAME=classroompath-production
+configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/arm64}"
+verify_deploy_container_platform
 upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
 upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
 

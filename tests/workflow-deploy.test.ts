@@ -41,6 +41,7 @@ describe('Deploy workflow contracts', () => {
   test('deploy and smoke workflows reuse shared transport, verifier, and concurrency helpers', () => {
     const deployWorkflow = readWorkflow('.github/workflows/deploy.yml');
     const deployWorkflowText = readText('.github/workflows/deploy.yml');
+    const rollbackProductionScript = readText('scripts/rollback-production-remote.sh');
     const verifyStagingJob = findWorkflowJob(deployWorkflow, 'verify-staging-release-state');
     const deployProductionJob = findWorkflowJob(deployWorkflow, 'deploy-production');
     const resolveReleaseImagesJob = findWorkflowJob(deployWorkflow, 'resolve-release-images');
@@ -125,6 +126,26 @@ describe('Deploy workflow contracts', () => {
     assert.ok(jobs['deploy-production']);
     assert.ok(jobs['smoke-test-production']);
     const productionSmokeJob = jobs['smoke-test-production'];
+    assert.ok(
+      String(
+        findWorkflowStepByName(productionSmokeJob, 'Read production billing mode')?.run ?? ''
+      ).includes('github_actions_remote_read_env_key'),
+      'production smoke should read the live billing mode from production before provisioning canaries'
+    );
+    assert.ok(
+      String(
+        findWorkflowStepByName(productionSmokeJob, 'Read production client canary admin token')
+          ?.run ?? ''
+      ).includes('CP_CLIENT_CANARY_ADMIN_TOKEN'),
+      'manual-only production smoke should read the canary admin token from production'
+    );
+    assert.ok(
+      String(
+        findWorkflowStepByName(productionSmokeJob, 'Read production Stripe webhook secret')?.run ??
+          ''
+      ).includes('STRIPE_WEBHOOK_SECRET'),
+      'stripe production smoke should read the webhook secret from production'
+    );
     const enrollmentStep = productionSmokeJob?.steps?.find((step) =>
       String(step.name ?? '').includes('Download live Linux enrollment script')
     );
@@ -137,6 +158,25 @@ describe('Deploy workflow contracts', () => {
       /head -n 1 "\$enroll_script" \| grep -Eq '\^#!.*bash'/
     );
     assert.ok(jobs['rollback-production']);
+    assert.ok(
+      normalizeNeeds(jobs['rollback-production']?.needs).includes('resolve-release-images'),
+      'rollback must receive the resolved production container platform'
+    );
+    assert.ok(
+      String(
+        jobs['rollback-production']?.steps?.find((step) => step.name === 'Roll back via SSH')?.with
+          ?.envs ?? ''
+      ).includes('PRODUCTION_CONTAINER_PLATFORM'),
+      'rollback SSH step must forward PRODUCTION_CONTAINER_PLATFORM'
+    );
+    assert.ok(
+      rollbackProductionScript.includes('deploy-container-platform.sh') &&
+        rollbackProductionScript.includes(
+          'configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/arm64}"'
+        ) &&
+        rollbackProductionScript.includes('verify_deploy_container_platform'),
+      'rollback must force the production container platform before docker compose pull/up'
+    );
     assert.ok(jobs['release-evidence']);
     assert.ok(jobs['windows-firefox-canary']);
     assert.equal(

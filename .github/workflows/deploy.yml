@@ -452,13 +452,97 @@ jobs:
           PRODUCTION_READY_URL: ${{ needs.resolve-release-images.outputs.production_ready_url }}
         run: bash scripts/wait-for-ready.sh "$PRODUCTION_READY_URL"
 
+      - name: Resolve production host
+        id: resolve-production
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_write_resolved_host_outputs \
+            "$DEPLOY_HOST" \
+            "${DEPLOY_PORT:-22}" \
+            "$DEPLOY_USER" \
+            "production smoke" >> "$GITHUB_OUTPUT"
+
+      - name: Install production SSH key
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-smoke
+
+      - name: Read production billing mode
+        id: read-billing-mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          billing_mode="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-smoke \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_BILLING_MODE)"
+
+          if [ -z "$billing_mode" ]; then
+            billing_mode="manual_only"
+          fi
+
+          echo "billing_mode=$billing_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Read production client canary admin token
+        if: steps.read-billing-mode.outputs.billing_mode == 'manual_only'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          client_canary_admin_token="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-smoke \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_CLIENT_CANARY_ADMIN_TOKEN)"
+
+          if [ -z "$client_canary_admin_token" ]; then
+            echo "::error::CP_CLIENT_CANARY_ADMIN_TOKEN is missing on production"
+            exit 1
+          fi
+
+          echo "::add-mask::$client_canary_admin_token"
+          echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN=$client_canary_admin_token" >> "$GITHUB_ENV"
+
+      - name: Read production Stripe webhook secret
+        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          stripe_webhook_secret="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-smoke \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            STRIPE_WEBHOOK_SECRET)"
+
+          if [ -z "$stripe_webhook_secret" ]; then
+            echo "::error::STRIPE_WEBHOOK_SECRET is missing on production"
+            exit 1
+          fi
+
+          echo "::add-mask::$stripe_webhook_secret"
+          echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET=$stripe_webhook_secret" >> "$GITHUB_ENV"
+
       - name: Provision production enrollment smoke canary
         id: provision-enrollment
         env:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
-          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN: ${{ secrets.CP_CLIENT_CANARY_ADMIN_TOKEN }}
-          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ vars.CP_BILLING_MODE || 'stripe' }}
-          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
       - name: Download live Linux enrollment script
@@ -618,7 +702,7 @@ jobs:
   rollback-production:
     name: Roll Back Production
     runs-on: ubuntu-latest
-    needs: [deploy-production, smoke-test-production]
+    needs: [deploy-production, smoke-test-production, resolve-release-images]
     if: always() && (needs.deploy-production.result == 'failure' || needs.smoke-test-production.result == 'failure')
     permissions:
       contents: read
@@ -647,6 +731,7 @@ jobs:
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}
         uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ steps.resolve.outputs.ip }}
@@ -655,5 +740,5 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 15m
-          envs: GHCR_USERNAME,GHCR_TOKEN
+          envs: GHCR_USERNAME,GHCR_TOKEN,PRODUCTION_CONTAINER_PLATFORM
           script_path: scripts/rollback-production-remote.sh
