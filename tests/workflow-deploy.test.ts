@@ -158,7 +158,10 @@ describe('Deploy workflow contracts', () => {
     assert.match(String(enrollmentStep?.run ?? ''), /\/api\/enroll\/\$CLASSROOM_ID/);
     assert.match(String(enrollmentStep?.run ?? ''), /Authorization: Bearer \$ENROLLMENT_TOKEN/);
     assert.match(String(enrollmentStep?.run ?? ''), /OPENPATH_LINUX_AGENT_VERSION/);
-    assert.match(String(enrollmentStep?.run ?? ''), /sudo bash "\$enroll_script"/);
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /sudo timeout --kill-after=30s 10m bash "\$enroll_script"/
+    );
     assert.equal(
       enrollmentStep?.['timeout-minutes'],
       12,
@@ -166,8 +169,8 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       String(enrollmentStep?.run ?? ''),
-      /timeout 10m sudo bash "\$enroll_script"/,
-      'production Linux enrollment must bound the installer execution and preserve diagnostics'
+      /sudo timeout --kill-after=30s 10m bash "\$enroll_script"/,
+      'production Linux enrollment must hard-bound the root installer process tree and preserve diagnostics'
     );
     assert.match(
       String(enrollmentStep?.run ?? ''),

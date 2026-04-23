@@ -760,7 +760,7 @@ jobs:
           enrollment_status=1
           for attempt in 1 2 3; do
             echo "===== Linux enrollment attempt $attempt =====" | tee -a "$enrollment_log"
-            if sudo bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"; then
+            if sudo timeout --kill-after=30s 10m bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"; then
               enrollment_status=0
               break
             else

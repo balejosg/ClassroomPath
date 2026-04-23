@@ -124,7 +124,9 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(workflowText.includes('config.json') && workflowText.includes('lastAgentUpdateAt'));
     assert.ok(
       workflowText.includes('/api/enroll/$CLASSROOM_ID') &&
-        workflowText.includes('sudo bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"')
+        workflowText.includes(
+          'sudo timeout --kill-after=30s 10m bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"'
+        )
     );
     assert.ok(workflowText.includes('/usr/local/bin/openpath-agent-update.sh --force'));
     assert.ok(workflowText.includes('openpath-agent-update.timer'));
@@ -293,10 +295,10 @@ describe('Production client update canary workflow contracts', () => {
       'Linux enrollment should log retry attempts'
     );
     assert.ok(
-      /if sudo bash "\$enroll_script" 2>&1 \| tee -a "\$enrollment_log"; then[\s\S]*else\s+enrollment_status="\$\{PIPESTATUS\[0\]\}"/m.test(
+      /if sudo timeout --kill-after=30s 10m bash "\$enroll_script" 2>&1 \| tee -a "\$enrollment_log"; then[\s\S]*else\s+enrollment_status="\$\{PIPESTATUS\[0\]\}"/m.test(
         enrollmentScript
       ),
-      'Linux enrollment should preserve the enrollment command status while teeing diagnostics'
+      'Linux enrollment should hard-bound the root installer process tree while teeing diagnostics'
     );
     assert.ok(
       enrollmentScript.includes('linux-client-enrollment.log'),

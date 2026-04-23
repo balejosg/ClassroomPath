@@ -595,7 +595,7 @@ jobs:
 
           chmod 700 "$enroll_script"
           enrollment_status=0
-          if timeout 10m sudo bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"; then
+          if sudo timeout --kill-after=30s 10m bash "$enroll_script" 2>&1 | tee -a "$enrollment_log"; then
             enrollment_status=0
           else
             enrollment_status="${PIPESTATUS[0]}"
