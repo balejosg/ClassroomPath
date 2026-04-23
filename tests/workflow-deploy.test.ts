@@ -157,6 +157,26 @@ describe('Deploy workflow contracts', () => {
       String(enrollmentStep?.run ?? ''),
       /head -n 1 "\$enroll_script" \| grep -Eq '\^#!.*bash'/
     );
+    const windowsEnrollmentStep = productionSmokeJob?.steps?.find((step) =>
+      String(step.name ?? '').includes('Download live Windows enrollment script')
+    );
+    assert.ok(
+      windowsEnrollmentStep,
+      'production smoke must download a live Windows enrollment script'
+    );
+    assert.match(
+      String(windowsEnrollmentStep?.run ?? ''),
+      /\/api\/enroll\/\$CLASSROOM_ID\/windows\.ps1/
+    );
+    assert.match(
+      String(windowsEnrollmentStep?.run ?? ''),
+      /Authorization: Bearer \$ENROLLMENT_TOKEN/
+    );
+    assert.match(
+      String(windowsEnrollmentStep?.run ?? ''),
+      /api\/agent\/windows\/bootstrap\/manifest/
+    );
+    assert.match(String(windowsEnrollmentStep?.run ?? ''), /\$env:OPENPATH_VERSION/);
     assert.ok(jobs['rollback-production']);
     assert.ok(
       normalizeNeeds(jobs['rollback-production']?.needs).includes('resolve-release-images'),

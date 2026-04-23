@@ -575,6 +575,36 @@ jobs:
           grep -F "LINUX_AGENT_VERSION=" "$enroll_script"
           grep -F "$OPENPATH_LINUX_AGENT_VERSION" "$enroll_script"
 
+      - name: Download live Windows enrollment script
+        shell: bash
+        env:
+          PRODUCTION_BASE_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
+          CLASSROOM_ID: ${{ steps.provision-enrollment.outputs.classroom_id }}
+          ENROLLMENT_TOKEN: ${{ steps.provision-enrollment.outputs.enrollment_token }}
+        run: |
+          set -euo pipefail
+
+          windows_script="$RUNNER_TEMP/production-windows-enrollment.ps1"
+          http_status="$(
+            curl -sS \
+              -o "$windows_script" \
+              -w '%{http_code}' \
+              -H "Authorization: Bearer $ENROLLMENT_TOKEN" \
+              "$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID/windows.ps1"
+          )"
+
+          if [ "$http_status" != "200" ]; then
+            echo "::error::Windows enrollment script download returned HTTP $http_status"
+            sed -n '1,80p' "$windows_script" || true
+            exit 1
+          fi
+
+          test -s "$windows_script"
+          grep -F 'OpenPath Enrollment (Windows)' "$windows_script"
+          grep -F 'api/agent/windows/bootstrap/manifest' "$windows_script"
+          grep -F '$env:OPENPATH_VERSION' "$windows_script"
+          grep -F 'Install-OpenPath.ps1' "$windows_script"
+
       - name: Run smoke tests against production
         id: smoke
         env:
