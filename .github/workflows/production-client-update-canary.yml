@@ -349,6 +349,27 @@ jobs:
             throw "Required Windows canary artifact archive was not created: $archivePath"
           }
 
+      - name: Restore Windows runner DNS before artifact upload
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+
+          $dnsServers = @('1.1.1.1', '8.8.8.8')
+          $activeAdapters = Get-NetAdapter -ErrorAction SilentlyContinue |
+            Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' }
+
+          foreach ($adapter in $activeAdapters) {
+            Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+          }
+
+          if (-not $activeAdapters) {
+            Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+          }
+
+          Clear-DnsClientCache -ErrorAction SilentlyContinue
+
       - name: Upload Windows self-update artifacts
         if: always()
         continue-on-error: true

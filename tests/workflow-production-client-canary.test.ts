@@ -114,9 +114,17 @@ describe('Production client update canary workflow contracts', () => {
         job?.steps?.findIndex((step) =>
           String(step.name ?? '').includes(`Upload ${platform} self-update artifacts`)
         ) ?? -1;
+      const restoreDnsStepIndex =
+        platform === 'Windows'
+          ? (job?.steps?.findIndex((step) =>
+              String(step.name ?? '').includes('Restore Windows runner DNS before artifact upload')
+            ) ?? -1)
+          : -1;
       const uploadStep = uploadStepIndex >= 0 ? job?.steps?.[uploadStepIndex] : undefined;
       const checkoutStep = job?.steps?.find((step) => step.name === 'Checkout');
       const ensureStep = ensureStepIndex >= 0 ? job?.steps?.[ensureStepIndex] : undefined;
+      const restoreDnsStep =
+        restoreDnsStepIndex >= 0 ? job?.steps?.[restoreDnsStepIndex] : undefined;
 
       assert.equal(job?.['timeout-minutes'], 35, `${jobName} must not hang indefinitely`);
       assert.equal(checkoutStep?.with?.['persist-credentials'], false);
@@ -125,6 +133,18 @@ describe('Production client update canary workflow contracts', () => {
         ensureStepIndex < uploadStepIndex,
         `${jobName} must create missing log artifacts before upload`
       );
+      if (platform === 'Windows') {
+        assert.ok(
+          ensureStepIndex < restoreDnsStepIndex && restoreDnsStepIndex < uploadStepIndex,
+          'Windows canary should restore runner DNS after functional evidence and before artifact upload'
+        );
+        assert.equal(restoreDnsStep?.if, 'always()');
+        assert.equal(restoreDnsStep?.['continue-on-error'], true);
+        assert.ok(
+          String(restoreDnsStep?.run ?? '').includes('Set-DnsClientServerAddress') &&
+            String(restoreDnsStep?.run ?? '').includes('Clear-DnsClientCache')
+        );
+      }
       assert.equal(
         job?.steps?.some((step) =>
           String(step.name ?? '').includes(`Retry ${platform} self-update artifact upload`)
