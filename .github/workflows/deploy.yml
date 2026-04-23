@@ -590,11 +590,13 @@ jobs:
 
           collect_firefox_state() {
             local exit_status="${1:-0}"
-            local snapshot_dir="$firefox_state_dir/$(date -u '+%Y%m%dT%H%M%SZ')"
+            local snapshot_label="${2:-exit}"
+            local snapshot_dir="$firefox_state_dir/${snapshot_label}-$(date -u '+%Y%m%dT%H%M%SZ')"
             mkdir -p "$snapshot_dir"
 
             {
               echo "exitStatus: $exit_status"
+              echo "snapshotLabel: $snapshot_label"
               echo "date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
               echo "runnerUser: $(id -un 2>/dev/null || true)"
               echo "runnerHome: ${HOME:-}"
@@ -687,6 +689,41 @@ jobs:
               "cat > '$remote_path'" < "$local_path"
           }
 
+          verify_remote_file_copy() {
+            local local_path="$1"
+            local remote_path="$2"
+            local local_size=""
+            local remote_size=""
+            local local_sha=""
+            local remote_sha=""
+
+            [ -s "$local_path" ] || return 1
+
+            local_size="$(wc -c < "$local_path" | tr -d ' ')"
+            remote_size="$(
+              github_actions_remote_file_size \
+                "$key_path" \
+                "$PRODUCTION_SMOKE_SSH_PORT" \
+                "$PRODUCTION_SMOKE_SSH_USER" \
+                "$PRODUCTION_SMOKE_SSH_IP" \
+                "$remote_path" 2>/dev/null || true
+            )"
+            [ -n "$remote_size" ] || return 1
+            [ "$remote_size" = "$local_size" ] || return 1
+
+            local_sha="$(sha256sum "$local_path" | awk '{print $1}')"
+            remote_sha="$(
+              github_actions_remote_sha256_file \
+                "$key_path" \
+                "$PRODUCTION_SMOKE_SSH_PORT" \
+                "$PRODUCTION_SMOKE_SSH_USER" \
+                "$PRODUCTION_SMOKE_SSH_IP" \
+                "$remote_path" 2>/dev/null || true
+            )"
+            [ -n "$remote_sha" ] || return 1
+            [ "$remote_sha" = "$local_sha" ]
+          }
+
           write_remote_mirror_status() {
             local exit_status="${1:-0}"
             local phase="${2:-unknown}"
@@ -713,7 +750,8 @@ jobs:
             } > "$status_file"
 
             cp "$status_file" "$early_mirror_status_path"
-            remote_write_from_file "$status_file" "$remote_root/mirror-status.txt"
+            remote_write_from_file "$status_file" "$remote_root/mirror-status.txt" \
+              && verify_remote_file_copy "$status_file" "$remote_root/mirror-status.txt"
             rm -f "$status_file"
           }
 
@@ -744,15 +782,18 @@ jobs:
               return 0
             fi
 
-            if remote_write_from_file "$archive_path" "$remote_root/production-linux-enrollment-diagnostics.tar.gz"; then
+            if remote_write_from_file "$archive_path" "$remote_root/production-linux-enrollment-diagnostics.tar.gz" \
+              && verify_remote_file_copy "$archive_path" "$remote_root/production-linux-enrollment-diagnostics.tar.gz"; then
               archive_copied="yes"
             fi
 
-            if remote_write_from_file "$enrollment_log" "$remote_root/production-linux-enrollment.log"; then
+            if remote_write_from_file "$enrollment_log" "$remote_root/production-linux-enrollment.log" \
+              && verify_remote_file_copy "$enrollment_log" "$remote_root/production-linux-enrollment.log"; then
               log_copied="yes"
             fi
 
-            if remote_write_from_file "$download_meta" "$remote_root/production-linux-enrollment-download.json"; then
+            if remote_write_from_file "$download_meta" "$remote_root/production-linux-enrollment-download.json" \
+              && verify_remote_file_copy "$download_meta" "$remote_root/production-linux-enrollment-download.json"; then
               meta_copied="yes"
             fi
 
@@ -814,6 +855,7 @@ jobs:
               enrollment_status="${PIPESTATUS[0]}"
             fi
 
+            collect_firefox_state "$enrollment_status" "attempt-$attempt" || true
             echo "::warning::Linux enrollment attempt $attempt failed with status $enrollment_status" | tee -a "$enrollment_log"
             if [ "$attempt" != "3" ]; then
               sleep "$((attempt * 10))"
@@ -931,6 +973,41 @@ jobs:
               "cat > '$remote_path'" < "$local_path"
           }
 
+          verify_remote_file_copy() {
+            local local_path="$1"
+            local remote_path="$2"
+            local local_size=""
+            local remote_size=""
+            local local_sha=""
+            local remote_sha=""
+
+            [ -s "$local_path" ] || return 1
+
+            local_size="$(wc -c < "$local_path" | tr -d ' ')"
+            remote_size="$(
+              github_actions_remote_file_size \
+                "$key_path" \
+                "$PRODUCTION_SMOKE_SSH_PORT" \
+                "$PRODUCTION_SMOKE_SSH_USER" \
+                "$PRODUCTION_SMOKE_SSH_IP" \
+                "$remote_path" 2>/dev/null || true
+            )"
+            [ -n "$remote_size" ] || return 1
+            [ "$remote_size" = "$local_size" ] || return 1
+
+            local_sha="$(sha256sum "$local_path" | awk '{print $1}')"
+            remote_sha="$(
+              github_actions_remote_sha256_file \
+                "$key_path" \
+                "$PRODUCTION_SMOKE_SSH_PORT" \
+                "$PRODUCTION_SMOKE_SSH_USER" \
+                "$PRODUCTION_SMOKE_SSH_IP" \
+                "$remote_path" 2>/dev/null || true
+            )"
+            [ -n "$remote_sha" ] || return 1
+            [ "$remote_sha" = "$local_sha" ]
+          }
+
           if ! github_actions_remote_ssh \
             "$key_path" \
             "$PRODUCTION_SMOKE_SSH_PORT" \
@@ -948,6 +1025,12 @@ jobs:
           then
             mirror_status="failure"
             mirror_failure_detail="archive"
+          elif [ "$mirror_status" = "success" ] && ! verify_remote_file_copy \
+            production-linux-enrollment-diagnostics.tar.gz \
+            "$remote_root/production-linux-enrollment-diagnostics.tar.gz"
+          then
+            mirror_status="failure"
+            mirror_failure_detail="archive-verify"
           fi
 
           if [ "$mirror_status" = "success" ] && ! remote_write_from_file \
@@ -956,6 +1039,12 @@ jobs:
           then
             mirror_status="failure"
             mirror_failure_detail="log"
+          elif [ "$mirror_status" = "success" ] && ! verify_remote_file_copy \
+            "$RUNNER_TEMP/production-linux-enrollment.log" \
+            "$remote_root/production-linux-enrollment.log"
+          then
+            mirror_status="failure"
+            mirror_failure_detail="log-verify"
           fi
 
           if [ "$mirror_status" = "success" ] && ! remote_write_from_file \
@@ -964,6 +1053,12 @@ jobs:
           then
             mirror_status="failure"
             mirror_failure_detail="download-meta"
+          elif [ "$mirror_status" = "success" ] && ! verify_remote_file_copy \
+            "$RUNNER_TEMP/production-linux-enrollment-download.json" \
+            "$remote_root/production-linux-enrollment-download.json"
+          then
+            mirror_status="failure"
+            mirror_failure_detail="download-meta-verify"
           fi
 
           if [ "$mirror_status" = "success" ]; then
@@ -981,6 +1076,9 @@ jobs:
             if ! remote_write_from_file "$manifest_file" "$remote_root/manifest.txt"; then
               mirror_status="failure"
               mirror_failure_detail="manifest"
+            elif ! verify_remote_file_copy "$manifest_file" "$remote_root/manifest.txt"; then
+              mirror_status="failure"
+              mirror_failure_detail="manifest-verify"
             fi
 
             rm -f "$manifest_file"

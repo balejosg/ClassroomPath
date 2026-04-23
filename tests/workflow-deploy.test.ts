@@ -211,6 +211,21 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       String(enrollmentStep?.run ?? ''),
+      /collect_firefox_state "\$enrollment_status" "attempt-\$attempt"/,
+      'production Linux enrollment should snapshot Firefox state for each failed attempt before retrying'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /github_actions_remote_file_size/,
+      'production Linux enrollment early mirror should verify remote file sizes instead of trusting ssh success alone'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
+      /github_actions_remote_sha256_file/,
+      'production Linux enrollment early mirror should verify remote file hashes instead of trusting ssh success alone'
+    );
+    assert.match(
+      String(enrollmentStep?.run ?? ''),
       /github_actions_remote_ssh/,
       'production Linux enrollment should reuse the shared SSH helper for early remote persistence'
     );
@@ -290,6 +305,16 @@ describe('Deploy workflow contracts', () => {
       String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),
       /mirror_status=/,
       'Linux enrollment diagnostic mirror should record whether the remote write actually succeeded'
+    );
+    assert.match(
+      String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),
+      /github_actions_remote_file_size/,
+      'Linux enrollment diagnostic mirror should verify remote file size after each upload'
+    );
+    assert.match(
+      String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),
+      /github_actions_remote_sha256_file/,
+      'Linux enrollment diagnostic mirror should verify remote file hash after each upload'
     );
     assert.match(
       String(mirrorEnrollmentDiagnosticsStep?.run ?? ''),

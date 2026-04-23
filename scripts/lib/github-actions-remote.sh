@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # github-actions-remote.sh - Shared remote host/bootstrap helpers for GitHub Actions
 # shellcheck shell=bash
+# shellcheck disable=SC2034
 
 GITHUB_ACTIONS_REMOTE_HELPER_CONTRACT_VERSION=1
 GITHUB_ACTIONS_REMOTE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -101,4 +102,34 @@ github_actions_remote_read_file() {
   local file_path="$5"
 
   github_actions_remote_ssh "$key_path" "$port" "$user" "$ip" "cat '$file_path'"
+}
+
+github_actions_remote_file_size() {
+  local key_path="$1"
+  local port="$2"
+  local user="$3"
+  local ip="$4"
+  local file_path="$5"
+
+  github_actions_remote_ssh \
+    "$key_path" \
+    "$port" \
+    "$user" \
+    "$ip" \
+    "test -f '$file_path' && wc -c < '$file_path' | tr -d ' '"
+}
+
+github_actions_remote_sha256_file() {
+  local key_path="$1"
+  local port="$2"
+  local user="$3"
+  local ip="$4"
+  local file_path="$5"
+
+  github_actions_remote_ssh \
+    "$key_path" \
+    "$port" \
+    "$user" \
+    "$ip" \
+    "test -f '$file_path' && if command -v sha256sum >/dev/null 2>&1; then sha256sum '$file_path' | awk '{print \$1}'; else shasum -a 256 '$file_path' | awk '{print \$1}'; fi"
 }

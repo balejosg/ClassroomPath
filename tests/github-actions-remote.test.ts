@@ -19,6 +19,8 @@ describe('github-actions remote helper', () => {
     assert.match(extractShellFunction(helper, 'github_actions_remote_install_ssh_key'), /\(\) \{/);
     assert.match(extractShellFunction(helper, 'github_actions_remote_read_env_key'), /\(\) \{/);
     assert.match(extractShellFunction(helper, 'github_actions_remote_read_file'), /\(\) \{/);
+    assert.match(extractShellFunction(helper, 'github_actions_remote_file_size'), /\(\) \{/);
+    assert.match(extractShellFunction(helper, 'github_actions_remote_sha256_file'), /\(\) \{/);
   });
 
   test('can emit resolved-host outputs from the shared helper entrypoint', () => {
