@@ -30,6 +30,12 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(workflowText.includes("Get-ScheduledTask -TaskName 'OpenPath-*'"));
     assert.ok(workflowText.includes("Remove-Item -LiteralPath 'C:\\OpenPath'"));
     assert.ok(workflowText.includes('Acrylic DNS Proxy'));
+    assert.ok(
+      workflowText.includes('Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex') &&
+        workflowText.includes("Set-DnsClientServerAddress -InterfaceAlias 'Ethernet'") &&
+        workflowText.includes('Clear-DnsClientCache'),
+      'Windows canary reset must restore external DNS after removing Acrylic/OpenPath'
+    );
     assert.ok(workflowText.includes('create-production-windows-bootstrap-canary.mjs'));
     assert.ok(
       workflowText.includes('github_actions_remote_read_env_key') &&

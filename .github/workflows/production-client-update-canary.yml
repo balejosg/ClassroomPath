@@ -100,6 +100,20 @@ jobs:
 
           Remove-Item -LiteralPath 'C:\OpenPath' -Recurse -Force -ErrorAction SilentlyContinue
 
+          $dnsServers = @('1.1.1.1', '8.8.8.8')
+          $activeAdapters = Get-NetAdapter -ErrorAction SilentlyContinue |
+            Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' }
+
+          foreach ($adapter in $activeAdapters) {
+            Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+          }
+
+          if (-not $activeAdapters) {
+            Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+          }
+
+          Clear-DnsClientCache -ErrorAction SilentlyContinue
+
       - name: Resolve production host
         id: resolve-production
         shell: bash
