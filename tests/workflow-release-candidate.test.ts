@@ -185,7 +185,9 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(
       waitForOpenPathAptPublishRun.includes('node scripts/openpath-required-checks.mjs wait')
     );
-    assert.ok(waitForOpenPathAptPublishRun.includes('OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS'));
+    assert.ok(
+      waitForOpenPathAptPublishRun.includes('OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS=2400')
+    );
     assert.ok(waitForOpenPathAptPublishRun.includes('OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS'));
     assert.ok(!waitForOpenPathAptPublishRun.includes('for attempt in $(seq 1 60)'));
     assert.ok(!waitForOpenPathAptPublishRun.includes('sleep 10'));
@@ -414,7 +416,7 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(workflowText.includes('OPENPATH_BASE_SHA: ${{ steps.check.outputs.current }}'));
     assert.ok(workflowText.includes('OPENPATH_SHA: ${{ steps.check.outputs.latest }}'));
     assert.ok(workflowText.includes('node scripts/openpath-required-checks.mjs wait'));
-    assert.ok(workflowText.includes('OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS'));
+    assert.ok(workflowText.includes('OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS=2400'));
     assert.ok(workflowText.includes('OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS'));
     assert.ok(!workflowText.includes('OPENPATH_REQUIRED_CHECKS: CI Success'));
   });
