@@ -156,6 +156,7 @@ describe('Release candidate workflow contracts', () => {
 
     assert.ok(workflow.on?.push?.branches?.includes('main'));
     assert.ok(!workflow.on?.push?.paths);
+    assert.ok(workflowText.includes('workflow_dispatch:'));
     assert.ok(jobs['derive-release-image-refs']);
     const deriveOpenPathShaRun =
       jobs['derive-release-image-refs']?.steps?.find((step) => step.name === 'Resolve OpenPath SHA')
@@ -208,6 +209,7 @@ describe('Release candidate workflow contracts', () => {
     );
     assert.ok(verifyInstallabilityStep, 'RC workflow must verify the exact APT pin is installable');
     assert.ok(verifyInstallabilityRun.includes('git diff --quiet'));
+    assert.ok(verifyInstallabilityRun.includes('[ -n "$before_sha" ]'));
     assert.ok(verifyInstallabilityRun.includes('upstream/openpath'));
     assert.ok(
       verifyInstallabilityRun.includes(
@@ -314,9 +316,9 @@ describe('Release candidate workflow contracts', () => {
         'bash scripts/fetch-release-candidate-diff-base.sh'
       )
     );
-    assert.ok(
-      String(fetchDiffBaseStep?.run ?? '').includes('${{ github.event.before }} ${{ github.sha }}')
-    );
+    assert.equal(fetchDiffBaseStep?.env?.BASE_SHA, '${{ github.event.before }}');
+    assert.equal(fetchDiffBaseStep?.env?.HEAD_SHA, '${{ github.sha }}');
+    assert.ok(String(fetchDiffBaseStep?.run ?? '').includes('"$BASE_SHA" "$HEAD_SHA"'));
     assert.ok(!workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
   });
 
