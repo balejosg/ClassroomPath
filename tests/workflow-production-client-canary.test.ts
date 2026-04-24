@@ -87,8 +87,15 @@ describe('Production client update canary workflow contracts', () => {
       'proxmox',
       'classroompath',
     ]);
-    assert.equal(linuxJob?.['runs-on'], 'ubuntu-latest');
+    assert.deepEqual(linuxJob?.['runs-on'], [
+      'self-hosted',
+      'Linux',
+      'X64',
+      'proxmox',
+      'classroompath',
+    ]);
     assert.ok(workflowText.includes('Reset persistent Windows canary state'));
+    assert.ok(workflowText.includes('Reset persistent Linux canary state'));
     assert.ok(workflowText.includes("Get-ScheduledTask -TaskName 'OpenPath-*'"));
     assert.ok(workflowText.includes("Remove-Item -LiteralPath 'C:\\OpenPath'"));
     assert.ok(workflowText.includes('Acrylic DNS Proxy'));
@@ -130,6 +137,8 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.ok(workflowText.includes('/usr/local/bin/openpath-agent-update.sh --force'));
     assert.ok(workflowText.includes('openpath-agent-update.timer'));
+    assert.ok(workflowText.includes('/usr/local/lib/openpath/uninstall.sh --auto-yes'));
+    assert.ok(workflowText.includes('sudo apt-get purge -y openpath-dnsmasq'));
     assert.ok(workflowText.includes('scripts/linux-firefox-block-page-canary.mjs'));
     assert.ok(
       String(windowsJob?.if ?? '').includes("github.event.workflow_run.conclusion == 'success'")
@@ -209,7 +218,11 @@ describe('Production client update canary workflow contracts', () => {
       } else {
         assert.ok(
           String(restoreDnsStep?.run ?? '').includes('sudo openpath disable') &&
-            String(restoreDnsStep?.run ?? '').includes('sudo systemctl stop dnsmasq')
+            String(restoreDnsStep?.run ?? '').includes('sudo systemctl stop dnsmasq') &&
+            String(restoreDnsStep?.run ?? '').includes(
+              '/usr/local/lib/openpath/uninstall.sh --auto-yes'
+            ) &&
+            String(restoreDnsStep?.run ?? '').includes('sudo apt-get purge -y openpath-dnsmasq')
         );
       }
       assert.equal(
@@ -329,6 +342,10 @@ describe('Production client update canary workflow contracts', () => {
       linuxJob?.steps?.findIndex((step) =>
         String(step.name ?? '').includes('Install Linux Firefox canary dependencies')
       ) ?? -1;
+    const resetStepIndex =
+      linuxJob?.steps?.findIndex((step) =>
+        String(step.name ?? '').includes('Reset persistent Linux canary state')
+      ) ?? -1;
     const firefoxStep = firefoxStepIndex >= 0 ? linuxJob?.steps?.[firefoxStepIndex] : undefined;
     const dependencyStep =
       dependencyStepIndex >= 0 ? linuxJob?.steps?.[dependencyStepIndex] : undefined;
@@ -342,6 +359,10 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(
       dependencyStepIndex >= 0 && dependencyStepIndex < firefoxStepIndex,
       'Firefox blocked-page canary must install npm dependencies before loading selenium-webdriver'
+    );
+    assert.ok(
+      resetStepIndex >= 0 && resetStepIndex < enrollmentStepIndex,
+      'persistent Linux canary runner must be reset before live enrollment mutates it'
     );
     assert.ok(
       firefoxStepIndex < evidenceStepIndex,
