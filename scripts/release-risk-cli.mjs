@@ -48,6 +48,9 @@ function readStdin() {
 }
 
 function printDiagnostics(result, changedFiles) {
+  if (result.canary) {
+    console.log(`Release risk canary: ${result.canary}`);
+  }
   console.log(`Release risk base source: ${result.baseSource ?? 'unknown'}`);
   console.log(`Release risk base ref: ${result.baseRef || '(none)'}`);
   console.log(`Release risk target SHA: ${result.targetSha}`);
@@ -73,7 +76,7 @@ async function main() {
         .split(/\r?\n/u)
         .map((line) => line.trim())
         .filter(Boolean);
-      const result = evaluateReleaseRisk(changedFiles);
+      const result = evaluateReleaseRisk(changedFiles, { canary: options.canary });
       process.exitCode = result.highRisk ? 0 : 1;
       return;
     }
@@ -82,8 +85,8 @@ async function main() {
       const targetSha = resolveReleaseRiskTargetSha(process.env, cwd);
       const { baseRef, baseSource } = resolveReleaseRiskBaseRef(process.env, cwd);
       const changedFiles = listReleaseRiskChangedFiles(baseRef, targetSha, cwd);
-      const risk = evaluateReleaseRisk(changedFiles);
-      const result = { ...risk, baseRef, baseSource, targetSha };
+      const risk = evaluateReleaseRisk(changedFiles, { canary: options.canary });
+      const result = { ...risk, baseRef, baseSource, targetSha, canary: options.canary };
 
       printDiagnostics(result, changedFiles);
       emitReleaseRiskOutputs(options['github-output'] ?? process.env.GITHUB_OUTPUT ?? '', result);

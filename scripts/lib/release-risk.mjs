@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 
 import { gitMaybe, gitOutput } from './git-process.mjs';
 import { readReleaseStateSnapshot } from './release-state-contract.mjs';
-import { evaluateReleaseRiskPaths } from './release-risk-policy.mjs';
+import {
+  evaluateReleaseRiskPaths,
+  evaluateReleaseRiskPathsForCanary,
+} from './release-risk-policy.mjs';
 
 export function resolveReleaseRiskTargetSha(env = process.env, cwd = process.cwd()) {
   if (env.TARGET_SHA) {
@@ -59,7 +62,11 @@ export function listReleaseRiskChangedFiles(baseRef, targetRef, cwd = process.cw
     .filter(Boolean);
 }
 
-export function evaluateReleaseRisk(changedFiles) {
+export function evaluateReleaseRisk(changedFiles, options = {}) {
+  if (options.canary) {
+    return evaluateReleaseRiskPathsForCanary(changedFiles, options.canary);
+  }
+
   return evaluateReleaseRiskPaths(changedFiles);
 }
 

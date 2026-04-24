@@ -107,6 +107,11 @@ describe('Deploy workflow contracts', () => {
       ).includes("steps.tag-evidence.outputs.source != 'tag'")
     );
     assert.ok(deployWorkflowText.includes('detect-windows-firefox-risk.sh'));
+    assert.ok(deployWorkflowText.includes('detect-email-delivery-risk.sh'));
+    assert.equal(
+      verifyStagingJob.outputs?.staging_email_delivery_high_risk,
+      '${{ steps.email-risk.outputs.high_risk }}'
+    );
     assert.ok(deployWorkflowText.includes('staging-promotion-eligibility.json'));
     assert.ok(deployWorkflowText.includes('PROMOTION_ELIGIBLE'));
     assert.ok(deployWorkflowText.includes('Verify production release image platforms'));
@@ -521,6 +526,11 @@ describe('Deploy workflow contracts', () => {
       String(jobs['deploy-production']?.if ?? ''),
       /needs\.windows-firefox-canary\.result == 'success' \|\| needs\.windows-firefox-canary\.result == 'skipped'/
     );
+    assert.match(
+      deployWorkflowText,
+      /CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:\s+\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_email_delivery_high_risk == 'true' && '0' \|\| '1' \}\}/
+    );
+    assert.match(deployWorkflowText, /envs: .*CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA/);
     assert.ok(!deployNeeds.includes('release-gate-staging'));
   });
 });

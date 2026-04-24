@@ -44,6 +44,26 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
     patterns: ['^docker/Dockerfile\\.api$'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
   },
+  {
+    id: 'classroompath-email-delivery-runtime',
+    description:
+      'Transactional email runtime changes must not be promoted while the provider cannot accept live delivery checks.',
+    patterns: ['^api/src/services/email\\.service\\.ts$'],
+    canaries: ['email-delivery-preflight'],
+  },
+  {
+    id: 'classroompath-onboarding-runtime',
+    description:
+      'Authentication and onboarding email flows depend on live transactional email delivery.',
+    patterns: ['^api/src/trpc/routers/auth', '^api/src/services/invitation'],
+    canaries: ['email-delivery-preflight'],
+  },
+  {
+    id: 'classroompath-billing-runtime',
+    description: 'Billing and paid onboarding changes depend on live transactional email delivery.',
+    patterns: ['^api/src/(?:services|config)/billing', '^api/src/trpc/routers/billing'],
+    canaries: ['email-delivery-preflight'],
+  },
 ];
 
 export function compileReleaseRiskPolicy(definitions = RELEASE_RISK_POLICY_DEFINITIONS) {
@@ -76,4 +96,15 @@ export function evaluateReleaseRiskPaths(
     highRisk: matchedRules.size > 0,
     matchedRules: [...matchedRules.values()],
   };
+}
+
+export function evaluateReleaseRiskPathsForCanary(
+  changedFiles,
+  canary,
+  definitions = RELEASE_RISK_POLICY_DEFINITIONS
+) {
+  return evaluateReleaseRiskPaths(
+    changedFiles,
+    definitions.filter((definition) => definition.canaries.includes(canary))
+  );
 }

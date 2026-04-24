@@ -98,8 +98,10 @@ void describe('Deploy Docker Tool Helpers', () => {
     );
     assert.ok(
       emailContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"') &&
-        emailContent.includes('docker_run_node_tool_with_verifier_fallback'),
-      'check-email-delivery-docker.sh should source and use the shared deploy-images helper'
+        emailContent.includes('docker_run_node_tool_with_verifier_fallback') &&
+        emailContent.includes('CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA=%s') &&
+        emailContent.includes('"$EMAIL_CHECK_ENV_FILE"'),
+      'check-email-delivery-docker.sh should source and use the shared deploy-images helper while preserving deploy policy env only for email checks'
     );
     assert.ok(
       smokeContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),

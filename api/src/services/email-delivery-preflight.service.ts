@@ -9,11 +9,13 @@ type EmailDeliveryPreflightCode =
   | 'success'
   | 'delivery_failed'
   | 'provider_application_not_found'
+  | 'provider_daily_quota_exceeded'
   | 'provider_mismatch'
   | 'provider_unauthorized'
   | 'provider_unavailable';
 
 type SendEmail = (params: SendEmailParams) => Promise<SendEmailResult>;
+type EmailPreflightPolicyEnv = Record<string, string | undefined>;
 
 interface EmailDeliveryPreflightOptions {
   now?: () => number;
@@ -63,6 +65,19 @@ function classifyProviderError(error: EmailDeliveryProviderError): EmailDelivery
     };
   }
 
+  if (
+    error.status === 429 &&
+    (/daily_quota_exceeded/i.test(body) || /daily email sending quota/i.test(body))
+  ) {
+    return {
+      ok: false,
+      code: 'provider_daily_quota_exceeded',
+      provider: 'resend',
+      status: error.status,
+      message: body || error.message,
+    };
+  }
+
   return {
     ok: false,
     code: 'provider_unavailable',
@@ -70,6 +85,21 @@ function classifyProviderError(error: EmailDeliveryProviderError): EmailDelivery
     status: error.status,
     message: body || error.message,
   };
+}
+
+function isTruthyEnvFlag(value: string | undefined): boolean {
+  return value === '1' || /^true$/i.test(value ?? '') || /^yes$/i.test(value ?? '');
+}
+
+export function shouldAcceptEmailPreflightFailure(
+  result: EmailDeliveryPreflightResult,
+  env: EmailPreflightPolicyEnv = process.env as EmailPreflightPolicyEnv
+): boolean {
+  return (
+    result.ok === false &&
+    result.code === 'provider_daily_quota_exceeded' &&
+    isTruthyEnvFlag(env['CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA'])
+  );
 }
 
 function isTransientProviderError(error: EmailDeliveryProviderError): boolean {

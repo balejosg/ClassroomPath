@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { EmailDeliveryProviderError } from '../src/services/email.service.js';
-import { checkTransactionalEmailDelivery } from '../src/services/email-delivery-preflight.service.js';
+import {
+  checkTransactionalEmailDelivery,
+  shouldAcceptEmailPreflightFailure,
+} from '../src/services/email-delivery-preflight.service.js';
 
 describe('email delivery preflight', () => {
   it('passes only when a real Resend delivery succeeds', async () => {
@@ -112,5 +115,72 @@ describe('email delivery preflight', () => {
     assert.equal(result.code, 'provider_unavailable');
     assert.equal(result.provider, 'resend');
     assert.equal(result.status, 408);
+  });
+
+  it('classifies Resend daily quota exhaustion separately after retries are exhausted', async () => {
+    let attempts = 0;
+
+    const result = await checkTransactionalEmailDelivery({
+      now: () => 1234567890,
+      retryDelayMs: 0,
+      sendEmail: async () => {
+        attempts += 1;
+        throw new EmailDeliveryProviderError('Email delivery failed', {
+          status: 429,
+          body: '{"statusCode":429,"message":"You have reached your daily email sending quota.","name":"daily_quota_exceeded"}',
+        });
+      },
+    });
+
+    assert.equal(attempts, 3);
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'provider_daily_quota_exceeded');
+    assert.equal(result.provider, 'resend');
+    assert.equal(result.status, 429);
+    assert.match(result.message ?? '', /daily email sending quota/);
+  });
+
+  it('keeps non-quota 429 provider failures unavailable', async () => {
+    const result = await checkTransactionalEmailDelivery({
+      now: () => 1234567890,
+      maxAttempts: 1,
+      retryDelayMs: 0,
+      sendEmail: async () => {
+        throw new EmailDeliveryProviderError('Email delivery failed', {
+          status: 429,
+          body: '{"statusCode":429,"message":"Rate limit exceeded","name":"rate_limit_exceeded"}',
+        });
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'provider_unavailable');
+    assert.equal(result.provider, 'resend');
+    assert.equal(result.status, 429);
+  });
+
+  it('only accepts daily quota failures when the deploy policy flag is enabled', () => {
+    const dailyQuotaResult = {
+      ok: false as const,
+      code: 'provider_daily_quota_exceeded' as const,
+      provider: 'resend' as const,
+      status: 429,
+      message: 'daily_quota_exceeded',
+    };
+
+    assert.equal(
+      shouldAcceptEmailPreflightFailure(dailyQuotaResult, {
+        CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA: '1',
+      }),
+      true
+    );
+    assert.equal(shouldAcceptEmailPreflightFailure(dailyQuotaResult, {}), false);
+    assert.equal(
+      shouldAcceptEmailPreflightFailure(
+        { ...dailyQuotaResult, code: 'provider_unavailable' },
+        { CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA: '1' }
+      ),
+      false
+    );
   });
 });

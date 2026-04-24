@@ -365,6 +365,12 @@ describe('Deployment runtime contracts', () => {
         releaseStateContract.includes('buildStagingReleaseEvidenceOutputs(')
     );
     assert.ok(
+      productionRemote.includes(
+        'CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA="${CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:-0}"'
+      ) && productionRemote.includes('bash scripts/check-email-delivery-docker.sh'),
+      'production email delivery preflight must propagate the risk-gated quota policy into Docker'
+    );
+    assert.ok(
       remoteDeployScaffoldHelper.includes('remote_deploy_init_base_helper_paths()') &&
         remoteDeployScaffoldHelper.includes('remote_deploy_init_production_helper_paths()') &&
         remoteDeployScaffoldHelper.includes('remote_deploy_reload_checked_out_helpers()')

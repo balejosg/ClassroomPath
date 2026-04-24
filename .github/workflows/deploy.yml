@@ -195,6 +195,7 @@ jobs:
       staging_windows_firefox_high_risk: ${{ steps.risk.outputs.high_risk }}
       staging_windows_firefox_risk_base_ref: ${{ steps.risk.outputs.base_ref }}
       staging_windows_firefox_risk_base_source: ${{ steps.risk.outputs.base_source }}
+      staging_email_delivery_high_risk: ${{ steps.email-risk.outputs.high_risk }}
       promotion_eligible: ${{ steps.compare.outputs.promotion_eligible }}
       promotion_deployment_mode: ${{ steps.compare.outputs.promotion_deployment_mode }}
       staging_smoke_result: ${{ steps.compare.outputs.staging_smoke_result }}
@@ -328,6 +329,14 @@ jobs:
           TARGET_SHA: ${{ github.sha }}
         run: bash scripts/detect-windows-firefox-risk.sh
 
+      - name: Detect promoted email delivery risk
+        id: email-risk
+        shell: bash
+        env:
+          PRODUCTION_RELEASE_STATE_PATH: production-release-state.env
+          TARGET_SHA: ${{ github.sha }}
+        run: bash scripts/detect-email-delivery-risk.sh
+
       - name: Compare staging release state
         id: compare
         shell: bash
@@ -417,6 +426,7 @@ jobs:
           STRIPE_ONBOARDING_PRICE_1_25: ${{ secrets.STRIPE_ONBOARDING_PRICE_1_25 }}
           STRIPE_ONBOARDING_PRICE_26_100: ${{ secrets.STRIPE_ONBOARDING_PRICE_26_100 }}
           STRIPE_PILOT_PRICE: ${{ secrets.STRIPE_PILOT_PRICE }}
+          CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA: ${{ needs.verify-staging-release-state.outputs.staging_email_delivery_high_risk == 'true' && '0' || '1' }}
         uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ steps.resolve.outputs.ip }}
@@ -425,7 +435,7 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 20m
-          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,CP_CLIENT_CANARY_ADMIN_TOKEN,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_CONTACT,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE
+          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,CP_CLIENT_CANARY_ADMIN_TOKEN,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_CONTACT,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE,CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA
           script_path: scripts/deploy-production-remote.sh
 
   smoke-test-production:
@@ -1343,6 +1353,7 @@ jobs:
             "STAGING_SMOKE_STATUS": "${{ needs.verify-staging-release-state.outputs.staging_smoke_status }}",
             "STAGING_RELEASE_GATE_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_release_gate_result }}",
             "STAGING_WINDOWS_FIREFOX_HIGH_RISK": "${{ needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk }}",
+            "STAGING_EMAIL_DELIVERY_HIGH_RISK": "${{ needs.verify-staging-release-state.outputs.staging_email_delivery_high_risk }}",
             "STAGING_WINDOWS_FIREFOX_RISK_BASE_REF": "${{ needs.verify-staging-release-state.outputs.staging_windows_firefox_risk_base_ref }}",
             "STAGING_WINDOWS_FIREFOX_RISK_BASE_SOURCE": "${{ needs.verify-staging-release-state.outputs.staging_windows_firefox_risk_base_source }}",
             "STAGING_WINDOWS_BOOTSTRAP_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_windows_bootstrap_result }}",

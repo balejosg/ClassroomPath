@@ -70,10 +70,16 @@ if [ ! -f "$ENV_FILE" ]; then
   die "Env file not found: $ENV_FILE" 1
 fi
 
+EMAIL_CHECK_ENV_FILE="$(mktemp)"
+trap 'rm -f "$EMAIL_CHECK_ENV_FILE"' EXIT
+cat "$ENV_FILE" > "$EMAIL_CHECK_ENV_FILE"
+printf '\nCP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA=%s\n' \
+  "${CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:-0}" >> "$EMAIL_CHECK_ENV_FILE"
+
 docker_run_node_tool_with_verifier_fallback \
   "EMAIL" \
   "$APP_DIR" \
-  "$ENV_FILE" \
+  "$EMAIL_CHECK_ENV_FILE" \
   "$NODE_IMAGE" \
   "$EMAIL_CHECK_NODE_IMAGE_FALLBACK" \
   "api/scripts/check-email-delivery.ts" \

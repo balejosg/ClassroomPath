@@ -298,7 +298,9 @@ run_production_database_migrations() {
   login_production_registry
 
   log_info "Checking transactional email delivery..."
-  CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" bash scripts/check-email-delivery-docker.sh
+  CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA="${CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:-0}" \
+    CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" \
+    bash scripts/check-email-delivery-docker.sh
 
   log_info "Running database migrations from the release candidate runner..."
   bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"
