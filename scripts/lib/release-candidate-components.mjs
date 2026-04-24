@@ -62,6 +62,7 @@ function applyOpenPathPathClassification(flags, filePath) {
   if (
     /^docs\//.test(filePath) ||
     /^\.opencode\//.test(filePath) ||
+    /^\.github\//.test(filePath) ||
     /^\.github\/ISSUE_TEMPLATE\//.test(filePath) ||
     /^.*\.md$/.test(filePath) ||
     filePath === 'AGENTS.md'
@@ -74,14 +75,17 @@ function applyOpenPathPathClassification(flags, filePath) {
     return true;
   }
 
+  if (/^tests\//.test(filePath)) {
+    return true;
+  }
+
   if (
     /^shared\//.test(filePath) ||
     /^api\//.test(filePath) ||
     filePath === 'tsconfig.base.json' ||
     filePath === 'package.json' ||
     filePath === 'package-lock.json' ||
-    /^scripts\//.test(filePath) ||
-    /^\.github\//.test(filePath)
+    /^scripts\//.test(filePath)
   ) {
     if (/^shared\//.test(filePath) || filePath === 'tsconfig.base.json') {
       flags.gatewayChanged = true;

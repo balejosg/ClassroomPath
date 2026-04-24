@@ -81,6 +81,24 @@ describe('release candidate component classification', () => {
     );
   });
 
+  test('keeps OpenPath CI and repo-level test changes out of release image rebuilds', () => {
+    assert.deepEqual(
+      classifyOpenPathChangedPaths([
+        '.github/workflows/prerelease-deb.yml',
+        '.github/workflows/release-scripts.yml',
+        'tests/install.bats',
+        'tests/repo-config/workflow-contracts.test.mjs',
+      ]),
+      {
+        gatewayChanged: false,
+        migrationsChanged: false,
+        openpathApiChanged: false,
+        spaChanged: false,
+        verifierChanged: false,
+      }
+    );
+  });
+
   test('still falls back to rebuilding every image family for ambiguous OpenPath paths', () => {
     assert.deepEqual(classifyOpenPathChangedPaths(['misc/custom-generator.ts']), {
       gatewayChanged: true,
