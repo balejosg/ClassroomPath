@@ -2,19 +2,20 @@
 
 > Status: maintained
 > Applies to: ClassroomPath verification and release flow
-> Last verified: 2026-04-22
+> Last verified: 2026-04-24
 > Source of truth: `docs/verification-matrix.md`
 
 This matrix maps the current verification lanes to the evidence they provide.
 
 ## Current Local Timing Baseline
 
-Measured on April 19, 2026:
+Measured on April 19 and April 24, 2026:
 
 - `npm run verify:precommit` completed in `0.168s` with no staged files.
 - Commit-hook sample with one staged Markdown file completed in `0.747s`.
 - `npm run verify:incremental` completed in `11:28.28` on a warm local tree.
 - OpenPath `bash scripts/verify-full.sh` completed in `1:30.35` after sandbox restrictions were removed.
+- OpenPath pre-commit with no staged files completed in `0.117s`.
 
 ## CI/CD Timing Measurement Method
 
@@ -28,6 +29,8 @@ memory or local wall-clock estimates. A future agent should collect:
   `Release Candidate Images`, deploy, smoke, and client canary jobs when those
   lanes are relevant.
 - Whether jobs were skipped, queued, or actually executed.
+- Windows runner identity and job timestamps when a lane depends on target
+  Windows behavior.
 - Cache signals from logs when proposing new cache state.
 - Artifact names, sizes, and retained state when evidence artifacts are part of
   the claim.
@@ -49,6 +52,26 @@ gh api repos/balejosg/ClassroomPath/actions/runs/<run-id>/artifacts \
 For OpenPath runner timing after a submodule update, use the maintained
 OpenPath runbook:
 `https://github.com/balejosg/Openpath/blob/main/docs/ci-cd-runner-measurement.md`.
+
+## Windows Runner Capacity Policy
+
+ClassroomPath release evidence still depends on real target-platform Windows
+coverage for Windows/Firefox and client-update canaries. Do not add a second
+runner process to the same Windows VM when there is no spare RAM; these canaries
+mutate DNS, browser policy, scheduled tasks, services, and installed client
+state, so co-locating another destructive runner weakens the evidence instead
+of improving throughput.
+
+The current speed plan is:
+
+1. keep production and staging Windows canaries on the pinned self-hosted
+   ClassroomPath Windows runner;
+2. use OpenPath's GitHub-hosted Windows Pester lane as advisory capacity
+   measurement only;
+3. promote any hosted Windows lane only after repeated green samples prove it
+   does not reduce release confidence;
+4. spend optimization effort on the current constraint: Windows queue pressure
+   and the longest target-platform jobs, not the already-fast pre-commit hook.
 
 ## Latest Submodule Update Evidence
 
