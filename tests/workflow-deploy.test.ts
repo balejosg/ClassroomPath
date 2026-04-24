@@ -473,9 +473,17 @@ describe('Deploy workflow contracts', () => {
     const windowsEnrollmentStep = productionSmokeJob?.steps?.find((step) =>
       String(step.name ?? '').includes('Download live Windows enrollment script')
     );
+    const windowsEnrollmentStepIndex =
+      productionSmokeJob?.steps?.findIndex((step) =>
+        String(step.name ?? '').includes('Download live Windows enrollment script')
+      ) ?? -1;
     assert.ok(
       windowsEnrollmentStep,
       'production smoke must download a live Windows enrollment script'
+    );
+    assert.ok(
+      windowsEnrollmentStepIndex >= 0 && windowsEnrollmentStepIndex < linuxEnrollmentStepIndex,
+      'production smoke must download the Windows script before Linux enrollment mutates runner DNS/firewall state'
     );
     assert.match(
       String(windowsEnrollmentStep?.run ?? ''),
