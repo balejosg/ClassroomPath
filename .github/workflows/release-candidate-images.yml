@@ -145,6 +145,7 @@ jobs:
       openpath_api_changed: ${{ steps.detect.outputs.openpath_api_changed }}
       spa_changed: ${{ steps.detect.outputs.spa_changed }}
       verifier_changed: ${{ steps.detect.outputs.verifier_changed }}
+      manifest_only: ${{ steps.detect.outputs.manifest_only }}
 
     steps:
       - name: Checkout
@@ -170,6 +171,7 @@ jobs:
 
   build-gateway-release-candidate:
     name: Build Gateway Release Candidate
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -192,6 +194,7 @@ jobs:
 
   build-migrations-release-candidate:
     name: Build Migrations Release Candidate
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -213,6 +216,7 @@ jobs:
 
   resolve-openpath-firefox-release-assets:
     name: Resolve OpenPath Firefox Release Assets
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
     uses: ./.github/workflows/firefox-release-assets.yml
     needs:
       - derive-release-image-refs
@@ -225,6 +229,7 @@ jobs:
 
   build-openpath-api-release-candidate:
     name: Build OpenPath API Release Candidate
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -254,6 +259,7 @@ jobs:
 
   build-spa-release-candidate:
     name: Build SPA Release Candidate
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -275,6 +281,7 @@ jobs:
 
   build-verifier-release-candidate:
     name: Build Release Verifier Candidate
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -297,8 +304,11 @@ jobs:
   publish-release-candidate-manifest:
     name: Publish Release Candidate Manifest
     runs-on: ubuntu-latest
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
     needs:
       - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
       - build-gateway-release-candidate
       - build-migrations-release-candidate
       - build-openpath-api-release-candidate
@@ -389,6 +399,111 @@ jobs:
             echo "| OpenPath API | ${{ needs.build-openpath-api-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }} |"
             echo "| SPA | ${{ needs.build-spa-release-candidate.outputs.build_required }} | ${{ needs.build-spa-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }} |"
             echo "| Verifier | ${{ needs.build-verifier-release-candidate.outputs.build_required }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo
+            echo '### Gate Candidate'
+            echo
+            echo '```json'
+            node scripts/measure-release-candidate-timings.mjs release-candidate-timings.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release candidate timing artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-timings-${{ github.sha }}
+          path: release-candidate-timings.json
+          retention-days: 7
+
+  publish-manifest-only-release-candidate:
+    name: Publish Manifest-Only Release Candidate
+    runs-on: ubuntu-latest
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available == 'true' && needs.detect-release-candidate-components.outputs.manifest_only == 'true' }}
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Persist release candidate image manifest
+        run: |
+          cat > release-candidate-images.env <<EOF
+          APP_SHA=${{ github.sha }}
+          CLASSROOMPATH_GATEWAY_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}
+          CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}
+          OPENPATH_API_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}
+          OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version }}
+          OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version }}
+          OPENPATH_LINUX_AGENT_APT_SUITE=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite }}
+          CLASSROOMPATH_SPA_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}
+          CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}
+          EOF
+
+      - name: Upload release candidate image manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-images-${{ github.sha }}
+          path: release-candidate-images.env
+          retention-days: 7
+
+      - name: Persist release candidate timing summary
+        shell: bash
+        run: |
+          cat > release-candidate-timings.json <<EOF
+          {
+            "sha": "${{ github.sha }}",
+            "manifestOnly": true,
+            "families": {
+              "gateway": {
+                "buildRequired": false,
+                "amd64DurationSeconds": 0,
+                "arm64DurationSeconds": 0,
+                "publishDurationSeconds": 0,
+                "familyDurationSeconds": 0
+              },
+              "migrations": {
+                "buildRequired": false,
+                "amd64DurationSeconds": 0,
+                "arm64DurationSeconds": 0,
+                "publishDurationSeconds": 0,
+                "familyDurationSeconds": 0
+              },
+              "openpathApi": {
+                "buildRequired": false,
+                "amd64DurationSeconds": 0,
+                "arm64DurationSeconds": 0,
+                "publishDurationSeconds": 0,
+                "familyDurationSeconds": 0
+              },
+              "spa": {
+                "buildRequired": false,
+                "amd64DurationSeconds": 0,
+                "arm64DurationSeconds": 0,
+                "publishDurationSeconds": 0,
+                "familyDurationSeconds": 0
+              },
+              "verifier": {
+                "buildRequired": false,
+                "amd64DurationSeconds": 0,
+                "arm64DurationSeconds": 0,
+                "publishDurationSeconds": 0,
+                "familyDurationSeconds": 0
+              }
+            }
+          }
+          EOF
+
+      - name: Summarize release candidate timings
+        shell: bash
+        run: |
+          {
+            echo '## Release Candidate Timings'
+            echo
+            echo '### Manifest-Only Fast Path'
+            echo
+            echo 'Reused the previous release-candidate image manifest and refreshed the OpenPath version pins for this commit.'
             echo
             echo '### Gate Candidate'
             echo

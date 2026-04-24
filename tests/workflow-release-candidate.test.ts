@@ -12,6 +12,7 @@ import {
 type WorkflowJob = {
   needs?: string | string[];
   uses?: string;
+  if?: string;
   with?: Record<string, unknown>;
   steps?: Array<{
     name?: string;
@@ -244,7 +245,9 @@ describe('Release candidate workflow contracts', () => {
         'build-openpath-api-release-candidate',
         'build-spa-release-candidate',
         'build-verifier-release-candidate',
+        'detect-release-candidate-components',
         'derive-release-image-refs',
+        'resolve-previous-release-candidate-manifest',
       ].sort()
     );
 
@@ -320,6 +323,59 @@ describe('Release candidate workflow contracts', () => {
     assert.equal(fetchDiffBaseStep?.env?.HEAD_SHA, '${{ github.sha }}');
     assert.ok(String(fetchDiffBaseStep?.run ?? '').includes('"$BASE_SHA" "$HEAD_SHA"'));
     assert.ok(!workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
+  });
+
+  test('release candidate workflow publishes manifest-only changes without image-family jobs', () => {
+    const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
+    const jobs = workflow.jobs ?? {};
+    const workflowText = readText('.github/workflows/release-candidate-images.yml');
+    const detectJob = jobs['detect-release-candidate-components'];
+    const fastManifestJob = jobs['publish-manifest-only-release-candidate'];
+    const regularManifestJob = jobs['publish-release-candidate-manifest'];
+    const manifestOnlyIf =
+      "needs.resolve-previous-release-candidate-manifest.outputs.available == 'true' && needs.detect-release-candidate-components.outputs.manifest_only == 'true'";
+    const regularPathIf =
+      "needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true'";
+
+    assert.equal(detectJob?.outputs?.manifest_only, '${{ steps.detect.outputs.manifest_only }}');
+    assert.ok(fastManifestJob, 'workflow must have a manifest-only fast-path publisher');
+    assert.deepEqual(
+      normalizeNeeds(fastManifestJob?.needs).sort(),
+      [
+        'derive-release-image-refs',
+        'detect-release-candidate-components',
+        'resolve-previous-release-candidate-manifest',
+      ].sort()
+    );
+    assert.ok(String(fastManifestJob?.if ?? '').includes(manifestOnlyIf));
+    assert.ok(String(regularManifestJob?.if ?? '').includes(regularPathIf));
+
+    for (const jobName of [
+      'build-gateway-release-candidate',
+      'build-migrations-release-candidate',
+      'resolve-openpath-firefox-release-assets',
+      'build-openpath-api-release-candidate',
+      'build-spa-release-candidate',
+      'build-verifier-release-candidate',
+    ]) {
+      assert.ok(
+        String(jobs[jobName]?.if ?? '').includes(regularPathIf),
+        `${jobName} should be skipped on manifest-only changes with a previous manifest`
+      );
+    }
+
+    assert.match(
+      workflowText,
+      /CLASSROOMPATH_GATEWAY_IMAGE=\$\{\{\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.gateway_image\s*\}\}/
+    );
+    assert.match(
+      workflowText,
+      /OPENPATH_API_IMAGE=\$\{\{\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.openpath_api_image\s*\}\}/
+    );
+    assert.ok(workflowText.includes('"manifestOnly": true'));
+    assert.ok(workflowText.includes('### Manifest-Only Fast Path'));
+    assert.ok(workflowText.includes('release-candidate-images-${{ github.sha }}'));
+    assert.ok(workflowText.includes('release-candidate-timings-${{ github.sha }}'));
   });
 
   test('migrations release image avoids recursive ownership fixups on arm64 builds', () => {

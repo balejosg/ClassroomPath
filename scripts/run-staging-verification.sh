@@ -77,6 +77,19 @@ run_release_gate_subcommand() {
   write_staging_verification_run_state "$state_file"
 }
 
+read_staging_state_value() {
+  local state_file="$1"
+  local field_name="$2"
+
+  (
+    set -a
+    # shellcheck disable=SC1090
+    . "$state_file"
+    set +a
+    printf '%s' "${!field_name:-}"
+  )
+}
+
 run_collect_subcommand() {
   if [ "$#" -lt 6 ]; then
     echo "Usage: run-staging-verification.sh collect <state-file> <staging-host> <smoke-url> <canonical-staging-url> <staging-use-release-candidate> <ssh-cmd...>" >&2
@@ -90,12 +103,48 @@ run_collect_subcommand() {
   local staging_use_release_candidate="$5"
   shift 5
   local -a ssh_cmd=("$@")
+  local smoke_state_file=""
+  local release_gate_state_file=""
+  local smoke_log_file=""
+  local release_gate_log_file=""
+  local smoke_pid=""
+  local release_gate_pid=""
+  local smoke_status=0
+  local release_gate_status=0
+
+  smoke_state_file="$(mktemp)"
+  release_gate_state_file="$(mktemp)"
+  smoke_log_file="$(mktemp)"
+  release_gate_log_file="$(mktemp)"
+
+  run_smoke_subcommand "$smoke_state_file" "$staging_host" "$smoke_target_url" "${ssh_cmd[@]}" >"$smoke_log_file" 2>&1 &
+  smoke_pid="$!"
+  run_release_gate_subcommand "$release_gate_state_file" "$staging_host" "$canonical_staging_url" "$staging_use_release_candidate" "${ssh_cmd[@]}" >"$release_gate_log_file" 2>&1 &
+  release_gate_pid="$!"
+
+  wait "$smoke_pid" || smoke_status=$?
+  wait "$release_gate_pid" || release_gate_status=$?
+
+  printf '%s\n' '--- staging smoke output ---' >&2
+  cat "$smoke_log_file" >&2
+  printf '%s\n' '--- staging release-gate output ---' >&2
+  cat "$release_gate_log_file" >&2
+
+  if [ "$smoke_status" -ne 0 ] || [ "$release_gate_status" -ne 0 ]; then
+    rm -f "$smoke_state_file" "$release_gate_state_file" "$smoke_log_file" "$release_gate_log_file"
+    return 1
+  fi
 
   reset_staging_verification_env
-  run_staging_smoke_gate "$staging_host" "$smoke_target_url" "${ssh_cmd[@]}"
-  run_staging_release_gate "$canonical_staging_url" "$staging_use_release_candidate" "${ssh_cmd[@]}"
-  run_staging_windows_bootstrap_gate "$canonical_staging_url" "${ssh_cmd[@]}"
+  # shellcheck disable=SC1090
+  . "$release_gate_state_file"
+  SMOKE_TARGET_URL="$(read_staging_state_value "$smoke_state_file" SMOKE_TARGET_URL)"
+  SMOKE_SKIP_CORS="$(read_staging_state_value "$smoke_state_file" SMOKE_SKIP_CORS)"
+  STAGING_SMOKE_RESULT="$(read_staging_state_value "$smoke_state_file" STAGING_SMOKE_RESULT)"
+  STAGING_SMOKE_STATUS="$(read_staging_state_value "$smoke_state_file" STAGING_SMOKE_STATUS)"
   write_staging_verification_run_state "$state_file"
+
+  rm -f "$smoke_state_file" "$release_gate_state_file" "$smoke_log_file" "$release_gate_log_file"
 }
 
 main() {

@@ -39,6 +39,15 @@ function isReleaseMeasurementOnlyFile(filePath) {
   );
 }
 
+function isProductionCanaryHarnessFile(filePath) {
+  return (
+    filePath === 'scripts/create-production-windows-bootstrap-canary.mjs' ||
+    filePath === 'scripts/linux-firefox-block-page-canary.mjs' ||
+    filePath === 'scripts/production-enrollment-download-canary.mjs' ||
+    filePath === 'scripts/write-production-client-canary-evidence.mjs'
+  );
+}
+
 function isVerifierRuntimeTestFile(filePath) {
   return (
     filePath === 'tests/smoke.test.ts' ||
@@ -135,6 +144,7 @@ export function classifyReleaseCandidateComponents({ changedFiles, openpathChang
   for (const file of normalizedChangedFiles) {
     switch (true) {
       case isReleaseMeasurementOnlyFile(file):
+      case isProductionCanaryHarnessFile(file):
         break;
       case /^(package\.json|package-lock\.json)$/.test(file):
         markClassroomPathRuntimeChanged(flags);
@@ -209,6 +219,16 @@ export function classifyReleaseCandidateComponents({ changedFiles, openpathChang
   return flags;
 }
 
+export function isManifestOnlyReleaseCandidateChange(flags) {
+  return (
+    !flags.gatewayChanged &&
+    !flags.migrationsChanged &&
+    !flags.openpathApiChanged &&
+    !flags.spaChanged &&
+    !flags.verifierChanged
+  );
+}
+
 function parseListFile(path) {
   if (!path) {
     return [];
@@ -264,6 +284,7 @@ function runCli() {
       `openpath_api_changed=${flags.openpathApiChanged}`,
       `spa_changed=${flags.spaChanged}`,
       `verifier_changed=${flags.verifierChanged}`,
+      `manifest_only=${isManifestOnlyReleaseCandidateChange(flags)}`,
       '',
     ].join('\n')
   );

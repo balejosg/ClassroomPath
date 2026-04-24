@@ -191,6 +191,14 @@ describe('Deployment staging and promotion contracts', () => {
       )
     );
     assert.ok(
+      runnerContent.includes('run_smoke_subcommand "$smoke_state_file"') &&
+        runnerContent.includes('run_release_gate_subcommand "$release_gate_state_file"') &&
+        runnerContent.includes('wait "$smoke_pid"') &&
+        runnerContent.includes('wait "$release_gate_pid"') &&
+        runnerContent.includes('read_staging_state_value "$smoke_state_file" STAGING_SMOKE_RESULT'),
+      'staging collect should run smoke in parallel with the release-gate/windows-bootstrap chain and merge evidence'
+    );
+    assert.ok(
       verifyHelperContent.includes('mark_staging_local_verification_failed()') &&
         verifyHelperContent.includes('DEPLOY_FAILURE_STAGE="verification"') &&
         verifyHelperContent.includes('FAILURE_STAGE="verification"') &&

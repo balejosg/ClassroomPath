@@ -171,6 +171,27 @@ describe('release candidate component classification', () => {
     );
   });
 
+  test('keeps production canary harness changes out of release image rebuilds', () => {
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: [
+          'scripts/create-production-windows-bootstrap-canary.mjs',
+          'scripts/production-enrollment-download-canary.mjs',
+          'scripts/write-production-client-canary-evidence.mjs',
+          'tests/workflow-production-client-canary.test.ts',
+        ],
+        openpathChangedFiles: [],
+      }),
+      {
+        gatewayChanged: false,
+        migrationsChanged: false,
+        openpathApiChanged: false,
+        spaChanged: false,
+        verifierChanged: false,
+      }
+    );
+  });
+
   test('keeps release timing measurement changes out of image rebuilds', () => {
     assert.deepEqual(
       classifyReleaseCandidateComponents({
