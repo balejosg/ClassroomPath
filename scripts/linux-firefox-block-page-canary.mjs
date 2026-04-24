@@ -453,6 +453,7 @@ async function main() {
 
     const options = new firefox.Options();
     options.setBinary(firefoxBinary);
+    options.setPageLoadStrategy('none');
     options.addArguments('-headless');
     options.setPreference('network.dns.disablePrefetch', true);
     options.setPreference('network.trr.mode', 5);

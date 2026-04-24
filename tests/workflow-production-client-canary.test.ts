@@ -469,6 +469,10 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(firefoxScript.includes('monitor-bloqueos@openpath'));
     assert.ok(firefoxScript.includes('/blocked/blocked.html'));
     assert.ok(
+      firefoxScript.includes("setPageLoadStrategy('none')"),
+      'Linux Firefox canary must not depend on Marionette normal page-load completion for moz-extension pages'
+    );
+    assert.ok(
       firefoxScript.includes('getOpenPathDiagnostics'),
       'Linux Firefox canary should query extension/native diagnostics before navigating'
     );
