@@ -330,6 +330,76 @@ describe('Production client update canary workflow contracts', () => {
     );
   });
 
+  test('linux canary repairs persistent runner DNS before live enrollment', () => {
+    const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
+    const linuxJob = workflow.jobs?.['linux-client-self-update-canary'];
+    const steps = linuxJob?.steps ?? [];
+    const resetStepIndex = steps.findIndex((step) =>
+      String(step.name ?? '').includes('Reset persistent Linux canary state')
+    );
+    const dependencyStepIndex = steps.findIndex((step) =>
+      String(step.name ?? '').includes('Install Linux Firefox canary dependencies')
+    );
+    const dnsHealthStepIndex = steps.findIndex(
+      (step) => step.name === 'Verify Linux runner DNS before enrollment'
+    );
+    const enrollmentStepIndex = steps.findIndex((step) =>
+      String(step.name ?? '').includes('Download and run live Linux enrollment script')
+    );
+    const restoreStepIndex = steps.findIndex((step) =>
+      String(step.name ?? '').includes('Restore Linux runner DNS before artifact upload')
+    );
+    const resetScript = String(steps[resetStepIndex]?.run ?? '');
+    const dnsHealthScript = String(steps[dnsHealthStepIndex]?.run ?? '');
+    const restoreScript = String(steps[restoreStepIndex]?.run ?? '');
+
+    assert.ok(resetStepIndex >= 0, 'Linux canary reset step must exist');
+    assert.ok(dnsHealthStepIndex >= 0, 'Linux canary must verify runner DNS before enrollment');
+    assert.ok(restoreStepIndex >= 0, 'Linux canary restore step must exist');
+    assert.ok(
+      resetStepIndex < dnsHealthStepIndex &&
+        dnsHealthStepIndex < dependencyStepIndex &&
+        dependencyStepIndex < enrollmentStepIndex,
+      'Linux canary must repair and verify runner DNS before network-dependent setup and live enrollment'
+    );
+
+    for (const [label, script] of [
+      ['reset', resetScript],
+      ['restore', restoreScript],
+    ] as const) {
+      assert.ok(
+        script.includes('sudo systemctl reset-failed dnsmasq'),
+        `${label} step must clear dnsmasq start-limit-hit state`
+      );
+      assert.ok(
+        script.includes('/etc/systemd/system/dnsmasq.service.d/openpath-override.conf') &&
+          script.includes('/etc/systemd/system/dnsmasq.service.d/whitelist-override.conf') &&
+          script.includes('/etc/dnsmasq.d/openpath.conf'),
+        `${label} step must remove stale OpenPath dnsmasq overrides`
+      );
+      assert.ok(
+        script.includes('restore_linux_canary_external_dns'),
+        `${label} step must restore external DNS after OpenPath cleanup`
+      );
+      assert.ok(
+        script.includes('sudo systemctl daemon-reload'),
+        `${label} step must reload systemd after removing dnsmasq drop-ins`
+      );
+    }
+
+    assert.ok(
+      dnsHealthScript.includes('raw.githubusercontent.com') &&
+        dnsHealthScript.includes('getent hosts') &&
+        dnsHealthScript.includes('Linux canary runner DNS is not healthy before enrollment'),
+      'Linux canary should fail with explicit DNS diagnostics before downloading enrollment scripts'
+    );
+    assert.ok(
+      dnsHealthScript.includes('/etc/resolv.conf') &&
+        dnsHealthScript.includes('systemctl status dnsmasq'),
+      'Linux canary DNS health failure should include resolver and dnsmasq diagnostics'
+    );
+  });
+
   test('linux client canary verifies Firefox renders the extension blocked page', () => {
     const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
     const linuxJob = workflow.jobs?.['linux-client-self-update-canary'];

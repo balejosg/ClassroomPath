@@ -615,12 +615,25 @@ jobs:
         run: |
           set +e
 
+          restore_linux_canary_external_dns() {
+            if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved; then
+              default_interface="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+              if [ -n "$default_interface" ]; then
+                sudo resolvectl dns "$default_interface" 1.1.1.1 8.8.8.8 || true
+              fi
+              sudo resolvectl flush-caches || true
+            else
+              printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf >/dev/null || true
+            fi
+          }
+
           sudo systemctl stop openpath-sse-listener || true
           sudo systemctl stop captive-portal-detector || true
           sudo systemctl stop openpath-agent-update.timer || true
           sudo systemctl stop openpath-dnsmasq.timer || true
           sudo systemctl stop dnsmasq-watchdog.timer || true
           sudo systemctl stop dnsmasq || true
+          sudo systemctl reset-failed dnsmasq || true
 
           if [ -x /usr/local/lib/openpath/uninstall.sh ]; then
             sudo /usr/local/lib/openpath/uninstall.sh --auto-yes || true
@@ -644,15 +657,48 @@ jobs:
             /etc/chromium/native-messaging-hosts/openpath_native_host.json \
             /etc/opt/chrome/native-messaging-hosts/openpath_native_host.json \
             /etc/opt/edge/native-messaging-hosts/openpath_native_host.json || true
+          sudo rm -f \
+            /etc/systemd/system/dnsmasq.service.d/openpath-override.conf \
+            /etc/systemd/system/dnsmasq.service.d/whitelist-override.conf \
+            /etc/dnsmasq.d/openpath.conf \
+            /etc/tmpfiles.d/openpath-dnsmasq.conf || true
+          sudo rmdir /etc/systemd/system/dnsmasq.service.d 2>/dev/null || true
+          sudo systemctl daemon-reload || true
+          sudo systemctl reset-failed dnsmasq || true
 
-          if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved; then
-            default_interface="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
-            if [ -n "$default_interface" ]; then
-              sudo resolvectl dns "$default_interface" 1.1.1.1 8.8.8.8 || true
+          restore_linux_canary_external_dns
+
+      - name: Verify Linux runner DNS before enrollment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          restore_linux_canary_external_dns() {
+            if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved; then
+              default_interface="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+              if [ -n "$default_interface" ]; then
+                sudo resolvectl dns "$default_interface" 1.1.1.1 8.8.8.8 || true
+              fi
+              sudo resolvectl flush-caches || true
+            else
+              printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf >/dev/null || true
             fi
-            sudo resolvectl flush-caches || true
-          else
-            printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf >/dev/null || true
+          }
+
+          if ! getent hosts raw.githubusercontent.com >/dev/null 2>&1; then
+            restore_linux_canary_external_dns
+            sleep 2
+          fi
+
+          if ! getent hosts raw.githubusercontent.com >/dev/null 2>&1; then
+            echo "::error::Linux canary runner DNS is not healthy before enrollment"
+            echo "--- /etc/resolv.conf ---"
+            cat /etc/resolv.conf || true
+            echo "--- dnsmasq service status ---"
+            sudo systemctl status dnsmasq --no-pager || true
+            echo "--- systemd-resolved status ---"
+            sudo systemctl status systemd-resolved --no-pager || true
+            exit 1
           fi
 
       - name: Install Linux Firefox canary dependencies
@@ -1012,12 +1058,25 @@ jobs:
         run: |
           set +e
 
+          restore_linux_canary_external_dns() {
+            if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved; then
+              default_interface="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+              if [ -n "$default_interface" ]; then
+                sudo resolvectl dns "$default_interface" 1.1.1.1 8.8.8.8 || true
+              fi
+              sudo resolvectl flush-caches || true
+            else
+              printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf >/dev/null || true
+            fi
+          }
+
           sudo systemctl stop openpath-sse-listener || true
           sudo systemctl stop captive-portal-detector || true
           sudo systemctl stop openpath-agent-update.timer || true
           sudo systemctl stop openpath-dnsmasq.timer || true
           sudo systemctl stop dnsmasq-watchdog.timer || true
           sudo systemctl stop dnsmasq || true
+          sudo systemctl reset-failed dnsmasq || true
 
           if [ -x /usr/local/lib/openpath/uninstall.sh ]; then
             sudo /usr/local/lib/openpath/uninstall.sh --auto-yes || true
@@ -1043,16 +1102,16 @@ jobs:
             /etc/chromium/native-messaging-hosts/openpath_native_host.json \
             /etc/opt/chrome/native-messaging-hosts/openpath_native_host.json \
             /etc/opt/edge/native-messaging-hosts/openpath_native_host.json || true
+          sudo rm -f \
+            /etc/systemd/system/dnsmasq.service.d/openpath-override.conf \
+            /etc/systemd/system/dnsmasq.service.d/whitelist-override.conf \
+            /etc/dnsmasq.d/openpath.conf \
+            /etc/tmpfiles.d/openpath-dnsmasq.conf || true
+          sudo rmdir /etc/systemd/system/dnsmasq.service.d 2>/dev/null || true
+          sudo systemctl daemon-reload || true
+          sudo systemctl reset-failed dnsmasq || true
 
-          if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved; then
-            default_interface="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
-            if [ -n "$default_interface" ]; then
-              sudo resolvectl dns "$default_interface" 1.1.1.1 8.8.8.8 || true
-            fi
-            sudo resolvectl flush-caches || true
-          else
-            printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf >/dev/null || true
-          fi
+          restore_linux_canary_external_dns
 
       - name: Upload Linux self-update artifacts
         if: always()
