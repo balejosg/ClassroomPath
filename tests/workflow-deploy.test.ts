@@ -396,6 +396,10 @@ describe('Deploy workflow contracts', () => {
       productionSmokeJob?.steps?.findIndex(
         (step) => step.name === 'Upload Linux enrollment diagnostics'
       ) ?? -1;
+    const restoreAfterFailedEnrollmentStepIndex =
+      productionSmokeJob?.steps?.findIndex(
+        (step) => step.name === 'Restore Linux runner network after failed enrollment'
+      ) ?? -1;
     const mirrorEnrollmentDiagnosticsStepIndex =
       productionSmokeJob?.steps?.findIndex(
         (step) => step.name === 'Mirror Linux enrollment diagnostics to production release state'
@@ -421,6 +425,12 @@ describe('Deploy workflow contracts', () => {
       'Linux enrollment diagnostics should be mirrored to production release-state immediately after packaging'
     );
     assert.ok(
+      restoreAfterFailedEnrollmentStepIndex > ensureEnrollmentArtifactsStepIndex &&
+        restoreAfterFailedEnrollmentStepIndex < uploadEnrollmentDiagnosticsStepIndex &&
+        restoreAfterFailedEnrollmentStepIndex < mirrorEnrollmentDiagnosticsStepIndex,
+      'failed Linux enrollment must restore runner networking before artifact upload or remote mirror'
+    );
+    assert.ok(
       summarizeEnrollmentDiagnosticsStepIndex > mirrorEnrollmentDiagnosticsStepIndex,
       'Linux enrollment diagnostics summary should be emitted after the remote mirror step'
     );
@@ -433,6 +443,19 @@ describe('Deploy workflow contracts', () => {
       String(linuxFirefoxCanaryStep?.run ?? '').includes(
         'scripts/linux-firefox-block-page-canary.mjs'
       )
+    );
+    const restoreAfterFailedEnrollmentStep = productionSmokeJob?.steps?.find(
+      (step) => step.name === 'Restore Linux runner network after failed enrollment'
+    );
+    assert.equal(restoreAfterFailedEnrollmentStep?.if, 'failure()');
+    assert.equal(restoreAfterFailedEnrollmentStep?.['continue-on-error'], true);
+    assert.ok(
+      String(restoreAfterFailedEnrollmentStep?.run ?? '').includes('sudo openpath disable'),
+      'failed enrollment cleanup should disable OpenPath before network-dependent diagnostics'
+    );
+    assert.ok(
+      String(restoreAfterFailedEnrollmentStep?.run ?? '').includes('sudo systemctl stop dnsmasq'),
+      'failed enrollment cleanup should stop dnsmasq before network-dependent diagnostics'
     );
     assert.ok(
       String(linuxFirefoxCanaryStep?.run ?? '').includes(
