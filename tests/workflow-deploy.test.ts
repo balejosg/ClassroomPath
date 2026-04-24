@@ -123,7 +123,7 @@ describe('Deploy workflow contracts', () => {
       ).includes('--target-platform "$PRODUCTION_CONTAINER_PLATFORM"')
     );
     assert.equal(typeof concurrency, 'object');
-    assert.match((concurrency as { group?: string }).group ?? '', /production/i);
+    assert.equal((concurrency as { group?: string }).group, 'production-deploy-v3');
     assert.equal((concurrency as { 'cancel-in-progress'?: boolean })['cancel-in-progress'], false);
     assert.ok(jobs['resolve-release-images']);
     assert.ok((jobs['resolve-release-images']?.outputs ?? {})['payload_base64']);
