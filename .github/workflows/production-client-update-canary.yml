@@ -790,7 +790,18 @@ jobs:
           block_page_log="$RUNNER_TEMP/linux-firefox-block-page-canary.log"
           : > "$block_page_log"
 
-          node scripts/linux-firefox-block-page-canary.mjs 2>&1 | tee "$block_page_log"
+          set +e
+          timeout --kill-after=30s 3m node scripts/linux-firefox-block-page-canary.mjs 2>&1 | tee "$block_page_log"
+          canary_status="${PIPESTATUS[0]}"
+          set -e
+
+          if [ "$canary_status" -ne 0 ]; then
+            if [ "$canary_status" -eq 124 ] || [ "$canary_status" -eq 137 ]; then
+              printf '%s\n' '{"status":"failed","error":"Linux Firefox blocked-page canary timed out"}' > production-linux-firefox-block-page-canary.json
+              echo "::error title=Linux Firefox blocked-page canary::Timed out after 3 minutes"
+            fi
+            exit "$canary_status"
+          fi
 
       - name: Force installed Linux client self-update
         run: |

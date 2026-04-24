@@ -444,6 +444,14 @@ describe('Deploy workflow contracts', () => {
         'scripts/linux-firefox-block-page-canary.mjs'
       )
     );
+    assert.ok(
+      String(linuxFirefoxCanaryStep?.run ?? '').includes('timeout --kill-after=30s'),
+      'production Firefox blocked-page canary must have an external watchdog timeout'
+    );
+    assert.ok(
+      String(linuxFirefoxCanaryStep?.run ?? '').includes('PIPESTATUS[0]'),
+      'production Firefox blocked-page canary must preserve the node exit status through tee'
+    );
     const restoreAfterFailedEnrollmentStep = productionSmokeJob?.steps?.find(
       (step) => step.name === 'Restore Linux runner network after failed enrollment'
     );

@@ -351,6 +351,14 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(String(dependencyStep?.run ?? '').includes('npm ci --ignore-scripts'));
     assert.equal(firefoxStep?.shell, 'bash');
     assert.ok(String(firefoxStep?.run ?? '').includes('linux-firefox-block-page-canary.mjs'));
+    assert.ok(
+      String(firefoxStep?.run ?? '').includes('timeout --kill-after=30s'),
+      'Linux Firefox blocked-page canary must have an external watchdog timeout'
+    );
+    assert.ok(
+      String(firefoxStep?.run ?? '').includes('PIPESTATUS[0]'),
+      'Linux Firefox blocked-page canary must preserve the node exit status through tee'
+    );
     assert.ok(String(firefoxStep?.env?.EXPECTED_EXTENSION_ID ?? '').includes('extension_id'));
     assert.ok(
       String(firefoxStep?.env?.LINUX_FIREFOX_BLOCK_PAGE_CANARY_URL ?? '').includes(
