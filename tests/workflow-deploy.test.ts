@@ -498,6 +498,14 @@ describe('Deploy workflow contracts', () => {
       /api\/agent\/windows\/bootstrap\/manifest/
     );
     assert.match(String(windowsEnrollmentStep?.run ?? ''), /\$env:OPENPATH_VERSION/);
+    const runProductionSmokeStepIndex =
+      productionSmokeJob?.steps?.findIndex((step) =>
+        String(step.name ?? '').includes('Run smoke tests against production')
+      ) ?? -1;
+    assert.ok(
+      runProductionSmokeStepIndex >= 0 && runProductionSmokeStepIndex < linuxEnrollmentStepIndex,
+      'production smoke must verify the app before Linux enrollment mutates runner DNS/firewall state'
+    );
     const uploadSmokeResultsStep = productionSmokeJob?.steps?.find(
       (step) => step.name === 'Upload smoke test results'
     );

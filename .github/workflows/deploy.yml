@@ -594,6 +594,17 @@ jobs:
           grep -F '$env:OPENPATH_VERSION' "$windows_script"
           grep -F 'Install-OpenPath.ps1' "$windows_script"
 
+      - name: Run smoke tests against production
+        id: smoke
+        env:
+          SMOKE_TEST_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
+          SMOKE_TEST_TIMEOUT: '30000'
+          SMOKE_REQUIRE_PUSH: '1'
+          CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
+        run: |
+          bash scripts/run-smoke-in-verifier.sh
+          echo "exit_code=0" >> "$GITHUB_OUTPUT"
+
       - name: Install Linux Firefox canary dependencies
         shell: bash
         run: npm ci --ignore-scripts
@@ -1286,17 +1297,6 @@ jobs:
           else
             printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf >/dev/null || true
           fi
-
-      - name: Run smoke tests against production
-        id: smoke
-        env:
-          SMOKE_TEST_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
-          SMOKE_TEST_TIMEOUT: '30000'
-          SMOKE_REQUIRE_PUSH: '1'
-          CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
-        run: |
-          bash scripts/run-smoke-in-verifier.sh
-          echo "exit_code=0" >> "$GITHUB_OUTPUT"
 
       - name: Upload smoke test results
         if: always()
