@@ -393,6 +393,24 @@ describe('resolveOpenPathRequiredChecks', () => {
     assert.deepEqual(result.requiredChecks, ['CI Success', 'Build and Release Scripts']);
   });
 
+  it('does not require release-script checks for Debian package and E2E workflow changes', () => {
+    const result = resolveOpenPathRequiredChecks({
+      changedFiles: [
+        '.github/workflows/e2e-tests.yml',
+        'linux/debian-package/DEBIAN/postinst',
+        'tests/install.bats',
+        'tests/repo-config/workflow-contracts.test.mjs',
+      ],
+    });
+
+    assert.equal(result.highRisk, true);
+    assert.deepEqual(result.requiredChecks, [
+      'CI Success',
+      'E2E Summary',
+      'Installer Contracts Success',
+    ]);
+  });
+
   it('honors OPENPATH_REQUIRED_CHECKS as an explicit override', () => {
     const result = resolveOpenPathRequiredChecks({
       explicitRequiredChecks: ['CI Success'],

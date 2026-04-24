@@ -36,7 +36,7 @@ export const OPENPATH_HIGH_RISK_REQUIRED_CHECKS = [
     patterns: [
       /^package(?:-lock)?\.json$/,
       /^VERSION$/,
-      /^\.github\/workflows\/(?:ci|e2e|installer|release).*\.ya?ml$/,
+      /^\.github\/workflows\/release.*\.ya?ml$/,
       /^scripts\/.*(?:build|release|installer).*$/,
     ],
   },
