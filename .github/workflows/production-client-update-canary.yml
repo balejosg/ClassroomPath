@@ -774,6 +774,30 @@ jobs:
           enrollment_log="$RUNNER_TEMP/linux-client-enrollment.log"
           : > "$enrollment_log"
 
+          collect_linux_dnsmasq_diagnostics() {
+            local reason="${1:-unknown}"
+            set +e
+            {
+              echo "===== Linux dnsmasq diagnostics: $reason ====="
+              date -u
+              echo "--- /etc/resolv.conf ---"
+              cat /etc/resolv.conf
+              echo "--- /run/dnsmasq/resolv.conf ---"
+              sudo cat /run/dnsmasq/resolv.conf
+              echo "--- /etc/dnsmasq.d ---"
+              sudo find /etc/dnsmasq.d -maxdepth 1 -type f -print -exec sed -n '1,220p' {} \;
+              echo "--- dnsmasq service status ---"
+              sudo systemctl status dnsmasq --no-pager
+              echo "--- dnsmasq journal ---"
+              sudo journalctl -u dnsmasq -n 120 --no-pager
+              echo "--- dnsmasq config test ---"
+              sudo dnsmasq --test
+              echo "--- port 53 sockets ---"
+              sudo ss -tulpn | grep ':53 ' || true
+            } 2>&1 | tee -a "$enrollment_log"
+            set -e
+          }
+
           http_status="$(
             curl -sS -L \
               -D "$download_headers" \
@@ -815,6 +839,7 @@ jobs:
             fi
 
             echo "::warning::Linux enrollment attempt $attempt failed with status $enrollment_status"
+            collect_linux_dnsmasq_diagnostics "attempt $attempt failed with status $enrollment_status"
             if [ "$attempt" != "3" ]; then
               sleep "$((attempt * 10))"
             fi

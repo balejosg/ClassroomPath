@@ -308,6 +308,13 @@ describe('Production client update canary workflow contracts', () => {
       'Linux enrollment should log retry attempts'
     );
     assert.ok(
+      enrollmentScript.includes('systemctl status dnsmasq') &&
+        enrollmentScript.includes('journalctl -u dnsmasq') &&
+        enrollmentScript.includes('dnsmasq --test') &&
+        enrollmentScript.includes('ss -tulpn'),
+      'Linux enrollment should capture dnsmasq diagnostics before retrying or failing'
+    );
+    assert.ok(
       /if sudo timeout --kill-after=30s 10m bash "\$enroll_script" 2>&1 \| tee -a "\$enrollment_log"; then[\s\S]*else\s+enrollment_status="\$\{PIPESTATUS\[0\]\}"/m.test(
         enrollmentScript
       ),
