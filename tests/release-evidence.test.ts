@@ -26,7 +26,7 @@ type ReleaseEvidence = {
     productionClientUpdateCanary: string;
   };
   artifacts: {
-    windowsProductionBootstrapCanary: string;
+    windowsProductionBootstrapCanary: string | null;
   };
   stagingVerification: {
     windowsFirefoxHighRisk: string;
@@ -235,6 +235,7 @@ describe('release evidence rendering', () => {
     const { json, markdown } = generateEvidence({
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
       WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'success',
+      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT: 'success',
     });
 
     assert.equal(json.jobs.windowsProductionBootstrapCanary, 'success');
@@ -246,6 +247,19 @@ describe('release evidence rendering', () => {
       markdown,
       /Windows production bootstrap canary: `windows-production-bootstrap-canary`/
     );
+  });
+
+  test('does not trust a bootstrap canary success output when the reusable job failed later', () => {
+    const { json, markdown } = generateEvidence({
+      STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
+      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'success',
+      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT: 'failure',
+    });
+
+    assert.equal(json.jobs.windowsProductionBootstrapCanary, 'failure');
+    assert.equal(json.artifacts.windowsProductionBootstrapCanary, null);
+    assert.match(markdown, /\| Windows production bootstrap canary \| failure \|/);
+    assert.match(markdown, /Windows production bootstrap canary: `n\/a`/);
   });
 
   test('normalizes explicit post-release client evidence states', () => {

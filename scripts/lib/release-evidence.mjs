@@ -55,9 +55,18 @@ function derivePostReleaseCanaryResult({ highRisk, canaryResult }) {
   return normalized;
 }
 
-function deriveProductionBootstrapCanaryResult({ highRisk, canaryResult }) {
+function deriveProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResult }) {
   if (!highRisk) {
     return 'not_applicable';
+  }
+
+  const normalizedJobResult = valueOrNull(jobResult);
+  if (
+    normalizedJobResult &&
+    normalizedJobResult !== 'success' &&
+    normalizedJobResult !== 'skipped'
+  ) {
+    return normalizedJobResult;
   }
 
   return valueOrNull(canaryResult) ?? 'pending-post-release';
@@ -113,6 +122,11 @@ function derivePromotionEligibility(env) {
 export function buildReleaseEvidence(env = process.env) {
   const windowsFirefoxHighRisk = isTrueFlag(env.STAGING_WINDOWS_FIREFOX_HIGH_RISK);
   const promotionEligibility = derivePromotionEligibility(env);
+  const windowsProductionBootstrapCanary = deriveProductionBootstrapCanaryResult({
+    highRisk: windowsFirefoxHighRisk,
+    canaryResult: env.WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT,
+    jobResult: env.WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT,
+  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -164,10 +178,7 @@ export function buildReleaseEvidence(env = process.env) {
         highRisk: windowsFirefoxHighRisk,
         canaryResult: env.WINDOWS_FIREFOX_CANARY_RESULT,
       }),
-      windowsProductionBootstrapCanary: deriveProductionBootstrapCanaryResult({
-        highRisk: windowsFirefoxHighRisk,
-        canaryResult: env.WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT,
-      }),
+      windowsProductionBootstrapCanary,
       productionClientUpdateCanary: derivePostReleaseCanaryResult({
         highRisk: windowsFirefoxHighRisk,
         canaryResult: env.PRODUCTION_CLIENT_UPDATE_CANARY_RESULT,
@@ -200,7 +211,10 @@ export function buildReleaseEvidence(env = process.env) {
         ? `staging-release-state-${env.TAG_NAME}`
         : null,
       productionSmokeResults: 'smoke-test-results-production',
-      windowsProductionBootstrapCanary: 'windows-production-bootstrap-canary',
+      windowsProductionBootstrapCanary:
+        windowsProductionBootstrapCanary === 'success'
+          ? 'windows-production-bootstrap-canary'
+          : null,
       releaseEvidence: valueOrNull(env.TAG_NAME)
         ? `release-evidence-${env.TAG_NAME}`
         : 'release-evidence',
@@ -260,7 +274,7 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     `- Release image metadata: \`${evidence.artifacts.releaseImageMetadata ?? 'n/a'}\``,
     `- Staging release state + verification: \`${evidence.artifacts.stagingReleaseState ?? 'n/a'}\``,
     `- Production smoke results: \`${evidence.artifacts.productionSmokeResults}\``,
-    `- Windows production bootstrap canary: \`${evidence.artifacts.windowsProductionBootstrapCanary}\``,
+    `- Windows production bootstrap canary: \`${evidence.artifacts.windowsProductionBootstrapCanary ?? 'n/a'}\``,
     `- Release evidence bundle: \`${evidence.artifacts.releaseEvidence ?? 'n/a'}\``,
     '',
     '### Trust Model',

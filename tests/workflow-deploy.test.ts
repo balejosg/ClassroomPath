@@ -313,6 +313,10 @@ describe('Deploy workflow contracts', () => {
       deployWorkflowText,
       /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-production-bootstrap-canary\.result \}\}"/
     );
+    assert.match(
+      deployWorkflowText,
+      /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary\.result \}\}"/
+    );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(
       jobs['windows-production-bootstrap-canary']?.uses,
