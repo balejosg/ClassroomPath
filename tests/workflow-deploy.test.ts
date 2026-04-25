@@ -366,7 +366,12 @@ describe('Deploy workflow contracts', () => {
       deployWorkflowText,
       /CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:\s+\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_email_delivery_high_risk == 'true' && '0' \|\| '1' \}\}/
     );
+    assert.match(
+      deployWorkflowText,
+      /CP_EMAIL_PREFLIGHT_MODE:\s+\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_email_delivery_high_risk == 'true' && 'required' \|\| 'skip' \}\}/
+    );
     assert.match(deployWorkflowText, /envs: .*CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA/);
+    assert.match(deployWorkflowText, /envs: .*CP_EMAIL_PREFLIGHT_MODE/);
     assert.ok(!deployNeeds.includes('release-gate-staging'));
   });
 });

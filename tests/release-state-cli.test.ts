@@ -112,6 +112,10 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
       'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION=4.1.19',
       'STAGING_VERIFIED_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
       'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present',
+      'STAGING_EMAIL_PREFLIGHT_MODE=required',
+      'STAGING_EMAIL_DELIVERY_HIGH_RISK=true',
+      'STAGING_EMAIL_PREFLIGHT_RESULT=success',
+      'STAGING_EMAIL_PREFLIGHT_PROVIDER=resend',
       'STAGING_SMOKE_RESULT=success',
       'STAGING_SMOKE_STATUS=PASS',
       'STAGING_RELEASE_GATE_RESULT=success',
@@ -168,6 +172,8 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
   assert.equal(outputs.promotion_eligible, 'true');
   assert.equal(outputs.promotion_deployment_mode, 'promotion-eligible');
   assert.equal(outputs.staging_smoke_result, 'success');
+  assert.equal(outputs.staging_email_preflight_result, 'success');
+  assert.equal(outputs.staging_email_preflight_mode, 'required');
   assert.equal(outputs.staging_firefox_release_version, '4.1.19');
   assert.equal(outputs.staging_verified_at, '2026-04-11T06:00:00Z');
   assert.equal(report.eligible, true);
@@ -283,6 +289,10 @@ test('release-state CLI lists canonical snapshot fields for shell consumers', ()
     'RELEASE_GATE_EXPECTED_ORIGIN',
     'STAGING_RELEASE_GATE_RESULT',
     'STAGING_VERIFIED_AT',
+    'STAGING_EMAIL_PREFLIGHT_MODE',
+    'STAGING_EMAIL_DELIVERY_HIGH_RISK',
+    'STAGING_EMAIL_PREFLIGHT_RESULT',
+    'STAGING_EMAIL_PREFLIGHT_PROVIDER',
     'STAGING_FIREFOX_RELEASE_ARTIFACTS',
     'STAGING_WINDOWS_BOOTSTRAP_RESULT',
     'STAGING_FIREFOX_POLICY_RESULT',
@@ -316,6 +326,10 @@ test('canonical shell release-state helper serializes snapshots through the type
         'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION=4.1.19',
         'STAGING_VERIFIED_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
         'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present',
+        'STAGING_EMAIL_PREFLIGHT_MODE=skip',
+        'STAGING_EMAIL_DELIVERY_HIGH_RISK=false',
+        'STAGING_EMAIL_PREFLIGHT_RESULT=skipped-low-risk',
+        'STAGING_EMAIL_PREFLIGHT_PROVIDER=skipped',
         'STAGING_SMOKE_RESULT=success',
         'STAGING_SMOKE_STATUS=PASS',
         'STAGING_RELEASE_GATE_RESULT=success',
@@ -333,6 +347,7 @@ test('canonical shell release-state helper serializes snapshots through the type
 
   const snapshot = readReleaseStateSnapshot(snapshotPath);
   assert.equal(snapshot.STAGING_VERIFIED_APP_SHA, 'abc123');
+  assert.equal(snapshot.STAGING_EMAIL_PREFLIGHT_RESULT, 'skipped-low-risk');
   assert.equal(snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION, '4.1.19');
   assert.equal(snapshot.STAGING_FIREFOX_XPI_SHA256, 'xpi123');
 });
@@ -352,6 +367,10 @@ test('bash release-state helpers preserve shell-only staging verification values
         'STAGING_SMOKE_STATUS=PASS',
         'STAGING_RELEASE_GATE_RESULT=success',
         'STAGING_VERIFIED_AT=2026-04-11T10:00:00Z',
+        'STAGING_EMAIL_PREFLIGHT_MODE=skip',
+        'STAGING_EMAIL_DELIVERY_HIGH_RISK=false',
+        'STAGING_EMAIL_PREFLIGHT_RESULT=skipped-low-risk',
+        'STAGING_EMAIL_PREFLIGHT_PROVIDER=skipped',
         'STAGING_FIREFOX_RELEASE_ARTIFACTS=present',
         'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
         'STAGING_FIREFOX_POLICY_RESULT=success',
@@ -368,6 +387,7 @@ test('bash release-state helpers preserve shell-only staging verification values
   const snapshot = readReleaseStateSnapshot(snapshotPath);
   assert.equal(snapshot.STAGING_SMOKE_RESULT, 'success');
   assert.equal(snapshot.STAGING_RELEASE_GATE_RESULT, 'success');
+  assert.equal(snapshot.STAGING_EMAIL_PREFLIGHT_RESULT, 'skipped-low-risk');
   assert.equal(snapshot.STAGING_VERIFIED_AT, '2026-04-11T10:00:00Z');
   assert.equal(snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT, 'success');
   assert.equal(snapshot.STAGING_FIREFOX_EXTENSION_ID, 'openpath@example');

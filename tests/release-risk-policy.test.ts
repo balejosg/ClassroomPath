@@ -64,6 +64,14 @@ test('release risk policy evaluates email delivery preflight risk independently'
     ['api/src/services/email-delivery-preflight.service.ts'],
     'email-delivery-preflight'
   );
+  const recoveryChange = evaluateReleaseRiskPathsForCanary(
+    ['api/src/services/auth-recovery.service.ts'],
+    'email-delivery-preflight'
+  );
+  const emailConfigChange = evaluateReleaseRiskPathsForCanary(
+    ['api/src/config/runtime.ts'],
+    'email-delivery-preflight'
+  );
   const clientRuntimeChange = evaluateReleaseRiskPathsForCanary(
     ['upstream/openpath/linux/debian-package/DEBIAN/control'],
     'email-delivery-preflight'
@@ -77,6 +85,10 @@ test('release risk policy evaluates email delivery preflight risk independently'
   assert.equal(emailRuntimeChange.matchedRules[0]?.id, 'classroompath-email-delivery-runtime');
   assert.equal(onboardingChange.highRisk, true);
   assert.equal(onboardingChange.matchedRules[0]?.id, 'classroompath-onboarding-runtime');
+  assert.equal(recoveryChange.highRisk, true);
+  assert.equal(recoveryChange.matchedRules[0]?.id, 'classroompath-onboarding-runtime');
+  assert.equal(emailConfigChange.highRisk, true);
+  assert.equal(emailConfigChange.matchedRules[0]?.id, 'classroompath-email-delivery-runtime');
   assert.equal(deployToolingChange.highRisk, false);
   assert.equal(clientRuntimeChange.highRisk, false);
   assert.equal(windowsFirefoxRisk.highRisk, true);

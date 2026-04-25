@@ -103,6 +103,7 @@ describe('Deployment foundation contracts', () => {
     );
     assert.ok(
       remoteContent.includes(emailPreflightStep) &&
+        remoteContent.includes('CP_EMAIL_PREFLIGHT_MODE="${CP_EMAIL_PREFLIGHT_MODE:-required}"') &&
         remoteContent.indexOf(validateStep) < remoteContent.indexOf(emailPreflightStep) &&
         remoteContent.indexOf(emailPreflightStep) < remoteContent.indexOf(pushStep)
     );

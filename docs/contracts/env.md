@@ -57,11 +57,13 @@ price IDs become mandatory. If `CP_BILLING_MODE=manual_only`, deploy-time sync r
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 - `CP_FAKE_EMAIL_DELIVERY`
+- `CP_EMAIL_PREFLIGHT_MODE`
 
 Runtime mode summary:
 
 - `CP_FAKE_EMAIL_DELIVERY=true` forces mock delivery
 - otherwise, real delivery requires both `RESEND_API_KEY` and `RESEND_FROM_EMAIL`
+- deploy scripts set `CP_EMAIL_PREFLIGHT_MODE=required` only for email/auth/onboarding/billing risk or forced checks; `skip` records low-risk evidence without consuming Resend quota
 
 ### Stripe Billing
 

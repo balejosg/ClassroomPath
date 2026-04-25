@@ -60,8 +60,6 @@ if [ -z "$ENV_FILE" ]; then
   ENV_FILE="$APP_DIR/config/.env"
 fi
 
-require_cmd docker
-
 if [ ! -d "$APP_DIR" ]; then
   die "App dir not found: $APP_DIR" 1
 fi
@@ -70,11 +68,27 @@ if [ ! -f "$ENV_FILE" ]; then
   die "Env file not found: $ENV_FILE" 1
 fi
 
+EMAIL_PREFLIGHT_MODE="${CP_EMAIL_PREFLIGHT_MODE:-required}"
+case "$EMAIL_PREFLIGHT_MODE" in
+  required)
+    ;;
+  skip)
+    printf '{"ok":true,"code":"skipped-low-risk","provider":"skipped","skipped":true}\n'
+    exit 0
+    ;;
+  *)
+    die "Invalid CP_EMAIL_PREFLIGHT_MODE: $EMAIL_PREFLIGHT_MODE (expected required or skip)" 2
+    ;;
+esac
+
+require_cmd docker
+
 EMAIL_CHECK_ENV_FILE="$(mktemp)"
 trap 'rm -f "$EMAIL_CHECK_ENV_FILE"' EXIT
 cat "$ENV_FILE" > "$EMAIL_CHECK_ENV_FILE"
 printf '\nCP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA=%s\n' \
   "${CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:-0}" >> "$EMAIL_CHECK_ENV_FILE"
+printf 'CP_EMAIL_PREFLIGHT_MODE=%s\n' "$EMAIL_PREFLIGHT_MODE" >> "$EMAIL_CHECK_ENV_FILE"
 
 docker_run_node_tool_with_verifier_fallback \
   "EMAIL" \

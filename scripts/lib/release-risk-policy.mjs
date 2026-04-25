@@ -48,14 +48,24 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
     id: 'classroompath-email-delivery-runtime',
     description:
       'Transactional email runtime changes must not be promoted while the provider cannot accept live delivery checks.',
-    patterns: ['^api/src/services/email\\.service\\.ts$'],
+    patterns: [
+      '^api/src/services/email\\.service\\.ts$',
+      '^api/src/config/(?:runtime|billing|shared)\\.ts$',
+      '^api/src/config\\.ts$',
+      '^config/\\.env\\.example$',
+      '^docs/contracts/env\\.md$',
+    ],
     canaries: ['email-delivery-preflight'],
   },
   {
     id: 'classroompath-onboarding-runtime',
     description:
       'Authentication and onboarding email flows depend on live transactional email delivery.',
-    patterns: ['^api/src/trpc/routers/auth', '^api/src/services/invitation'],
+    patterns: [
+      '^api/src/trpc/routers/auth',
+      '^api/src/services/invitation',
+      '^api/src/services/auth-recovery\\.service\\.ts$',
+    ],
     canaries: ['email-delivery-preflight'],
   },
   {

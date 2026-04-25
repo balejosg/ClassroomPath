@@ -27,28 +27,43 @@ export class EmailDeliveryProviderError extends Error {
   }
 }
 
+function isReservedTestRecipient(to: string): boolean {
+  const normalized = to.trim().toLowerCase();
+  return normalized.endsWith('@test.local') || normalized.endsWith('@classroompath.test');
+}
+
+async function writeMockDelivery(params: SendEmailParams): Promise<SendEmailResult> {
+  await appendTestEmailSinkEntry({
+    to: params.to,
+    subject: params.subject,
+    html: params.html,
+    text: params.text,
+    createdAt: new Date().toISOString(),
+  });
+  logger.info('Email delivery mocked for test environment', {
+    to: params.to,
+    subject: params.subject,
+  });
+  return { sent: true, provider: 'mock', id: 'mock-email' };
+}
+
 export async function sendTransactionalEmail(params: SendEmailParams): Promise<SendEmailResult> {
-  if (config.emailDeliveryMode === 'mock') {
-    await appendTestEmailSinkEntry({
-      to: params.to,
-      subject: params.subject,
-      html: params.html,
-      text: params.text,
-      createdAt: new Date().toISOString(),
-    });
-    logger.info('Email delivery mocked for test environment', {
-      to: params.to,
-      subject: params.subject,
-    });
-    return { sent: true, provider: 'mock', id: 'mock-email' };
+  const emailDeliveryMode = config.emailDeliveryMode;
+
+  if (emailDeliveryMode === 'mock') {
+    return writeMockDelivery(params);
   }
 
-  if (config.emailDeliveryMode !== 'resend') {
+  if (emailDeliveryMode !== 'resend') {
     logger.warn('Resend delivery disabled because credentials are not configured', {
       to: params.to,
       subject: params.subject,
     });
     return { sent: false, provider: 'disabled' };
+  }
+
+  if (isReservedTestRecipient(params.to)) {
+    return writeMockDelivery(params);
   }
 
   const response = await fetch('https://api.resend.com/emails', {

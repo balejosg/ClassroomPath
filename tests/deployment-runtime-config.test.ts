@@ -250,7 +250,12 @@ void describe('Environment Configuration', () => {
 
   void test('.env.example documents the email delivery contract for deployed environments', () => {
     const content = readFileSync(envExamplePath, 'utf-8');
-    const requiredVars = ['RESEND_API_KEY', 'RESEND_FROM_EMAIL', 'CP_FAKE_EMAIL_DELIVERY'];
+    const requiredVars = [
+      'RESEND_API_KEY',
+      'RESEND_FROM_EMAIL',
+      'CP_FAKE_EMAIL_DELIVERY',
+      'CP_EMAIL_PREFLIGHT_MODE',
+    ];
 
     for (const envVar of requiredVars) {
       assert.ok(content.includes(envVar), `Email delivery variable ${envVar} should be documented`);

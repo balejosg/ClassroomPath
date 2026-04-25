@@ -492,7 +492,9 @@ run_staging_runtime_validation() {
 
 run_staging_email_delivery_preflight() {
   log_info "Checking transactional email delivery..."
-  CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" bash scripts/check-email-delivery-docker.sh
+  CP_EMAIL_PREFLIGHT_MODE="${CP_EMAIL_PREFLIGHT_MODE:-required}" \
+    CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" \
+    bash scripts/check-email-delivery-docker.sh
 }
 
 run_staging_preflight_checks() {

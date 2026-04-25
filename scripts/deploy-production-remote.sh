@@ -299,6 +299,7 @@ run_production_database_migrations() {
 
   log_info "Checking transactional email delivery..."
   CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA="${CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:-0}" \
+    CP_EMAIL_PREFLIGHT_MODE="${CP_EMAIL_PREFLIGHT_MODE:-required}" \
     CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" \
     bash scripts/check-email-delivery-docker.sh
 

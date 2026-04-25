@@ -165,6 +165,11 @@ Remote evidence for `e96bc07`:
   gate with explicitly skipped target-platform lanes; runtime, product,
   browser, API, shared, installer, and Selenium changes still require the
   relevant OpenPath platform evidence.
+- Transactional email provider checks are risk-gated. Staging and production
+  run a live Resend preflight for email/auth/onboarding/billing changes or
+  forced checks; low-risk deploys record `skipped-low-risk` and keep the
+  registration/release gates on reserved test recipients that do not consume
+  Resend quota.
 
 ## Risk To Proof Mapping
 
