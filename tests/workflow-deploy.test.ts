@@ -81,6 +81,26 @@ describe('Deploy workflow contracts', () => {
       )
     );
     assert.ok(canaryWorkflow.includes('bash scripts/resolve-ssh-host.sh'));
+    const canarySteps = canaryReusableJob?.steps ?? [];
+    const canaryPreCheckoutDnsStepIndex = canarySteps.findIndex(
+      (step) => step.name === 'Restore Windows runner DNS before checkout'
+    );
+    const canaryCheckoutStepIndex = canarySteps.findIndex((step) => step.name === 'Checkout');
+    const canaryPreCheckoutDnsStep =
+      canaryPreCheckoutDnsStepIndex >= 0 ? canarySteps[canaryPreCheckoutDnsStepIndex] : undefined;
+    assert.ok(
+      canaryPreCheckoutDnsStepIndex >= 0 &&
+        canaryCheckoutStepIndex >= 0 &&
+        canaryPreCheckoutDnsStepIndex < canaryCheckoutStepIndex,
+      'Windows Firefox canary must restore DNS before checkout on the persistent Windows runner'
+    );
+    assert.equal(canaryPreCheckoutDnsStep?.shell, 'pwsh');
+    assert.match(String(canaryPreCheckoutDnsStep?.run ?? ''), /Set-DnsClientServerAddress/);
+    assert.match(String(canaryPreCheckoutDnsStep?.run ?? ''), /Clear-DnsClientCache/);
+    assert.match(
+      String(canaryPreCheckoutDnsStep?.run ?? ''),
+      /Test-NetConnection github\.com -Port 443/
+    );
     assert.ok(cleanupWorkflow.includes('bash scripts/resolve-ssh-host.sh'));
     assert.ok(
       productionClientUpdateCanaryWorkflowText.includes(

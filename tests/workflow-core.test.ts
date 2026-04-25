@@ -192,6 +192,23 @@ describe('Workflow core contracts', () => {
         workflowText.includes('persist-credentials: false'),
       'self-hosted Windows runner smoke should use checkout without persisted credentials'
     );
+    const smokeSteps = smokeJob?.steps ?? [];
+    const preCheckoutDnsStepIndex = smokeSteps.findIndex(
+      (step) => step.name === 'Restore Windows runner DNS before checkout'
+    );
+    const checkoutStepIndex = smokeSteps.findIndex((step) => step.name === 'Checkout');
+    const preCheckoutDnsStep =
+      preCheckoutDnsStepIndex >= 0 ? smokeSteps[preCheckoutDnsStepIndex] : undefined;
+    assert.ok(
+      preCheckoutDnsStepIndex >= 0 &&
+        checkoutStepIndex >= 0 &&
+        preCheckoutDnsStepIndex < checkoutStepIndex,
+      'self-hosted Windows runner smoke must restore DNS before checkout'
+    );
+    assert.equal(preCheckoutDnsStep?.shell, 'pwsh');
+    assert.match(String(preCheckoutDnsStep?.run ?? ''), /Set-DnsClientServerAddress/);
+    assert.match(String(preCheckoutDnsStep?.run ?? ''), /Clear-DnsClientCache/);
+    assert.match(String(preCheckoutDnsStep?.run ?? ''), /Test-NetConnection github\.com -Port 443/);
     assert.ok(
       workflowText.includes('./.github/actions/restore-windows-runner-dns') &&
         workflowText.includes('Test-NetConnection github.com -Port 443'),

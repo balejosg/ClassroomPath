@@ -28,10 +28,29 @@ describe('Production client update canary workflow contracts', () => {
       const resetDnsStep = steps.find(
         (step) => step.name === 'Restore Windows runner DNS after reset'
       );
+      const checkoutStepIndex = steps.findIndex((step) => step.name === 'Checkout');
+      const preCheckoutDnsStepIndex = steps.findIndex(
+        (step) => step.name === 'Restore Windows runner DNS before checkout'
+      );
+      const preCheckoutDnsStep =
+        preCheckoutDnsStepIndex >= 0 ? steps[preCheckoutDnsStepIndex] : undefined;
       const artifactDnsStep = steps.find((step) =>
         String(step.name ?? '').includes('Restore Windows runner DNS before artifact upload')
       );
 
+      assert.ok(
+        preCheckoutDnsStepIndex >= 0 &&
+          checkoutStepIndex >= 0 &&
+          preCheckoutDnsStepIndex < checkoutStepIndex,
+        `${workflowPath} must restore DNS before checkout because local actions are unavailable before checkout`
+      );
+      assert.equal(preCheckoutDnsStep?.shell, 'pwsh');
+      assert.match(String(preCheckoutDnsStep?.run ?? ''), /Set-DnsClientServerAddress/);
+      assert.match(String(preCheckoutDnsStep?.run ?? ''), /Clear-DnsClientCache/);
+      assert.match(
+        String(preCheckoutDnsStep?.run ?? ''),
+        /Test-NetConnection github\.com -Port 443/
+      );
       assert.equal(resetDnsStep?.uses, './.github/actions/restore-windows-runner-dns');
       assert.equal(artifactDnsStep?.uses, './.github/actions/restore-windows-runner-dns');
       assert.equal(artifactDnsStep?.if, 'always()');
