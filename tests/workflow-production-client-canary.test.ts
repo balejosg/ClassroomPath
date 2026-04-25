@@ -542,6 +542,7 @@ describe('Production client update canary workflow contracts', () => {
     );
     const ajaxStep = ajaxStepIndex >= 0 ? steps[ajaxStepIndex] : undefined;
     const ajaxScript = String(ajaxStep?.run ?? '');
+    const resetStep = steps.find((step) => step.name === 'Reset persistent Windows canary state');
     const ajaxCanaryScript = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
 
     assert.ok(
@@ -555,6 +556,8 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(!workflowText.includes('Skip bootstrap canary when production is manual-only'));
     assert.ok(workflowText.includes('Read production client canary admin token'));
     assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'));
+    assert.ok(String(resetStep?.run ?? '').includes('Set-DnsClientServerAddress'));
+    assert.ok(String(resetStep?.run ?? '').includes('Clear-DnsClientCache'));
     assert.ok(
       String(provisionStep?.env?.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE ?? '').includes(
         'steps.read-billing-mode.outputs.billing_mode'
