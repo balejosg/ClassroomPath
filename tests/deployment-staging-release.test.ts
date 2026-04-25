@@ -418,5 +418,19 @@ describe('Deployment staging and promotion contracts', () => {
         promotionReadyScript.includes('-F "$DEPLOY_SSH_CONFIG"'),
       'promotion readiness should isolate both staging and production SSH clients'
     );
+    assert.ok(
+      promotionReadyScript.includes('git rev-parse "$TARGET_SHA:upstream/openpath"') &&
+        promotionReadyScript.includes('OPENPATH_SHA="$openpath_sha"') &&
+        promotionReadyScript.includes('OPENPATH_BASE_SHA="$openpath_base_sha"') &&
+        promotionReadyScript.includes('node "$SCRIPT_DIR/openpath-required-checks.mjs"'),
+      'promotion readiness should verify required OpenPath checks for the exact staged submodule SHA'
+    );
+    assert.ok(
+      promotionReadyScript.indexOf('node "$SCRIPT_DIR/openpath-required-checks.mjs"') <
+        promotionReadyScript.indexOf(
+          'log_success "Staging release for $TARGET_SHA is promotion-ready"'
+        ),
+      'OpenPath required checks should pass before promotion-ready can be reported'
+    );
   });
 });

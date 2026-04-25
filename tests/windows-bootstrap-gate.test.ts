@@ -33,6 +33,13 @@ type ClassroomPayload = {
   name?: string;
 };
 
+type OnboardingStatusPayload = {
+  hasMembership?: boolean;
+  billing?: {
+    status?: string;
+  } | null;
+};
+
 type EnrollmentTicketPayload = {
   success?: boolean;
   enrollmentToken?: string;
@@ -298,6 +305,49 @@ async function postTrpc<T>(
   throw new Error(`${procedure} exhausted retry attempts`);
 }
 
+async function waitForTeacherMembership(cookieHeader: string): Promise<void> {
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    const { data: status } = await postTrpc<OnboardingStatusPayload>(
+      'onboarding.status',
+      {},
+      cookieHeader
+    );
+    if (status.hasMembership === true) {
+      return;
+    }
+
+    await sleep(1000);
+  }
+
+  throw new Error('Teacher membership did not become visible after billing activation');
+}
+
+async function resolveTeacherCookieAfterBilling(input: {
+  cookieHeader: string;
+  email: string;
+  password: string;
+}): Promise<string> {
+  let refreshedCookieHeader = input.cookieHeader;
+
+  try {
+    const refreshResult = await timedBootstrapGateStep('refresh teacher session', () =>
+      postTrpc('auth.refresh', {}, input.cookieHeader)
+    );
+    refreshedCookieHeader = extractCookies(refreshResult.response) || input.cookieHeader;
+  } catch {
+    const fallbackLoginResult = await timedBootstrapGateStep('fallback relogin teacher', () =>
+      postTrpc('auth.login', { email: input.email, password: input.password })
+    );
+    refreshedCookieHeader = extractCookies(fallbackLoginResult.response) || input.cookieHeader;
+  }
+
+  await timedBootstrapGateStep('poll onboarding status', () =>
+    waitForTeacherMembership(refreshedCookieHeader)
+  );
+
+  return refreshedCookieHeader;
+}
+
 describe(
   'Windows bootstrap gate',
   {
@@ -375,10 +425,11 @@ describe(
       );
       assert.strictEqual(webhookResponse.status, 200, `webhook returned ${webhookResponse.status}`);
 
-      const reloginResult = await timedBootstrapGateStep('relogin teacher', () =>
-        postTrpc('auth.login', { email, password })
-      );
-      const refreshedCookieHeader = extractCookies(reloginResult.response) || cookieHeader;
+      const refreshedCookieHeader = await resolveTeacherCookieAfterBilling({
+        cookieHeader,
+        email,
+        password,
+      });
 
       const { data: classroom } = await timedBootstrapGateStep('create classroom', () =>
         postTrpc<ClassroomPayload>(

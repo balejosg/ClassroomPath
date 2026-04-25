@@ -115,6 +115,8 @@ describe('staging gates helper', () => {
       'login teacher',
       'create checkout',
       'stripe webhook',
+      'refresh teacher session',
+      'poll onboarding status',
       'create classroom',
       'create enrollment ticket',
       'read bootstrap manifest',
@@ -129,5 +131,16 @@ describe('staging gates helper', () => {
         `missing timed stage: ${stage}`
       );
     }
+
+    assert.doesNotMatch(
+      content,
+      /timedBootstrapGateStep\(\s*'relogin teacher'/,
+      'windows bootstrap gate should not use a second full login on the hot path'
+    );
+    assert.match(
+      content,
+      /timedBootstrapGateStep\(\s*'fallback relogin teacher'/,
+      'windows bootstrap gate should keep the slower login path as explicit fallback evidence'
+    );
   });
 });

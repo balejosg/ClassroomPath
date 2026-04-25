@@ -1,6 +1,11 @@
 name: Windows Production Bootstrap Canary
 
 on:
+  workflow_call:
+    outputs:
+      canary_result:
+        description: Production Windows bootstrap and AJAX auto-allow canary result.
+        value: ${{ jobs.windows-production-bootstrap-canary.outputs.canary_result }}
   workflow_dispatch: {}
 
 permissions:
@@ -15,6 +20,8 @@ jobs:
     name: Windows Production Bootstrap Canary
     runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     timeout-minutes: 30
+    outputs:
+      canary_result: ${{ steps.result.outputs.canary_result }}
     env:
       PRODUCTION_BASE_URL: https://classroompath.eu
 
@@ -121,12 +128,26 @@ jobs:
 
           echo "billing_mode=$billing_mode" >> "$GITHUB_OUTPUT"
 
-      - name: Skip bootstrap canary when production is manual-only
-        if: steps.read-billing-mode.outputs.billing_mode != 'stripe'
+      - name: Read production client canary admin token
+        if: steps.read-billing-mode.outputs.billing_mode == 'manual_only'
         shell: bash
         run: |
           set -euo pipefail
-          echo "Production billing mode is ${{ steps.read-billing-mode.outputs.billing_mode }}; skipping bootstrap canary."
+          source scripts/lib/github-actions-remote.sh
+          client_canary_admin_token="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_CLIENT_CANARY_ADMIN_TOKEN)"
+
+          if [ -z "$client_canary_admin_token" ]; then
+            echo "::error::CP_CLIENT_CANARY_ADMIN_TOKEN is missing on production"
+            exit 1
+          fi
+
+          echo "::add-mask::$client_canary_admin_token"
+          echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN=$client_canary_admin_token" >> "$GITHUB_ENV"
 
       - name: Read production Stripe webhook secret
         if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
@@ -150,15 +171,14 @@ jobs:
           echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET=$stripe_webhook_secret" >> "$GITHUB_ENV"
 
       - name: Provision production enrollment canary
-        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         id: provision
         shell: bash
         env:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
       - name: Download and run live windows.ps1 enrollment script
-        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         shell: pwsh
         env:
           CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
@@ -186,7 +206,6 @@ jobs:
           }
 
       - name: Re-run Update-OpenPath.ps1 and validate Firefox managed install
-        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         shell: pwsh
         env:
           EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
@@ -333,6 +352,26 @@ jobs:
             throw "Firefox installed version $($registryAddon.version) instead of $env:EXPECTED_EXTENSION_VERSION"
           }
 
+      - name: Verify Windows AJAX auto-allow canary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/windows-ajax-auto-allow-canary.mjs
+
+      - name: Record canary result
+        id: result
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          result=success
+          if [ "$JOB_STATUS" != "success" ]; then
+            result=failure
+          fi
+          echo "canary_result=$result" >> "$GITHUB_OUTPUT"
+
       - name: Upload production bootstrap canary artifacts
         if: always()
         continue-on-error: true
@@ -341,5 +380,6 @@ jobs:
           name: windows-production-bootstrap-canary
           path: |
             production-windows-bootstrap-canary.json
+            production-windows-ajax-auto-allow-canary.json
             ${{ runner.temp }}/Update-OpenPath.log
             ${{ runner.temp }}/windows-production-bootstrap-firefox.log

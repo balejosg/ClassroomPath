@@ -58,6 +58,40 @@ cd "$PROJECT_ROOT"
 git fetch origin main --quiet
 TARGET_SHA="${TARGET_SHA:-$(git rev-parse origin/main)}"
 
+verify_openpath_required_checks() {
+  local openpath_sha=""
+  local openpath_base_sha=""
+  local previous_tag=""
+
+  if [ -z "${GITHUB_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ]; then
+    die "GITHUB_TOKEN or GH_TOKEN must be set before verifying OpenPath promotion checks" 1
+  fi
+
+  openpath_sha="$(git rev-parse "$TARGET_SHA:upstream/openpath")"
+
+  if ! git -C upstream/openpath cat-file -e "$openpath_sha^{commit}" >/dev/null 2>&1; then
+    git -C upstream/openpath fetch --no-tags origin "$openpath_sha" --quiet
+  fi
+
+  previous_tag="$(git tag --sort=-creatordate | grep '^v' | head -n 1 || true)"
+  if [ -n "$previous_tag" ] && git rev-parse "$previous_tag:upstream/openpath" >/dev/null 2>&1; then
+    openpath_base_sha="$(git rev-parse "$previous_tag:upstream/openpath")"
+  fi
+
+  if [ -n "$openpath_base_sha" ] && [ "$openpath_base_sha" != "$openpath_sha" ]; then
+    if ! git -C upstream/openpath cat-file -e "$openpath_base_sha^{commit}" >/dev/null 2>&1; then
+      git -C upstream/openpath fetch --no-tags origin "$openpath_base_sha" --quiet
+    fi
+  fi
+
+  log_info "Verifying required OpenPath checks for staged submodule SHA $openpath_sha..."
+  OPENPATH_SHA="$openpath_sha" \
+  OPENPATH_BASE_SHA="$openpath_base_sha" \
+    node "$SCRIPT_DIR/openpath-required-checks.mjs"
+}
+
+verify_openpath_required_checks
+
 release_manifest_file="$(mktemp)"
 current_state_file="$(mktemp)"
 verification_state_file="$(mktemp)"

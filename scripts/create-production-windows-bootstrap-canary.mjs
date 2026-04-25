@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 
 const DEFAULT_API_URL = 'https://classroompath.eu';
+const WINDOWS_AJAX_AUTO_ALLOW_ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
 const apiUrl = (process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL ?? DEFAULT_API_URL).replace(
   /\/$/,
   ''
@@ -277,6 +278,58 @@ function maskGithubSecret(value) {
   process.stdout.write(`::add-mask::${String(value)}\n`);
 }
 
+async function timedCanaryStep(name, operation) {
+  const startedAt = Date.now();
+  let status = 'success';
+
+  try {
+    return await operation();
+  } catch (error) {
+    status = 'failure';
+    throw error;
+  } finally {
+    const durationSeconds = Number(((Date.now() - startedAt) / 1000).toFixed(3));
+    process.stdout.write(
+      `Production Windows bootstrap canary timing: ${name} ${status} ${durationSeconds}s\n`
+    );
+  }
+}
+
+async function waitForTeacherMembership(cookieHeader) {
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    const { data: status } = await postTrpc('onboarding.status', {}, cookieHeader);
+    if (status.hasMembership === true) {
+      return status;
+    }
+
+    await sleep(1000);
+  }
+
+  throw new Error('Teacher membership did not become visible after billing activation');
+}
+
+async function resolveTeacherCookieAfterBilling({ cookieHeader, email, password }) {
+  let refreshedCookieHeader = cookieHeader;
+
+  try {
+    const refreshResult = await timedCanaryStep('refresh teacher session', () =>
+      postTrpc('auth.refresh', {}, cookieHeader)
+    );
+    refreshedCookieHeader = extractCookies(refreshResult.response) || cookieHeader;
+  } catch {
+    const fallbackLoginResult = await timedCanaryStep('fallback relogin teacher', () =>
+      postTrpc('auth.login', { email, password })
+    );
+    refreshedCookieHeader = extractCookies(fallbackLoginResult.response) || cookieHeader;
+  }
+
+  await timedCanaryStep('poll onboarding status', () =>
+    waitForTeacherMembership(refreshedCookieHeader)
+  );
+
+  return refreshedCookieHeader;
+}
+
 function sanitizeSummaryForArtifact(summary) {
   return {
     ...summary,
@@ -323,9 +376,12 @@ async function main() {
     'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE must be stripe or manual_only'
   );
 
-  const refreshedLoginResult = await postTrpc('auth.login', { email, password });
-  const cookieHeader = extractCookies(refreshedLoginResult.response);
-  assert.ok(cookieHeader, 'auth.login should reissue a session cookie after billing activation');
+  const cookieHeader = await resolveTeacherCookieAfterBilling({
+    cookieHeader: initialCookieHeader,
+    email,
+    password,
+  });
+  assert.ok(cookieHeader, 'auth.refresh should preserve a session cookie after billing activation');
 
   const canaryGroupName = uniqueValue('windows-production-bootstrap-canary-group');
   const { data: group } = await postTrpc(
@@ -344,8 +400,8 @@ async function main() {
     {
       groupId: group.id,
       type: 'whitelist',
-      value: 'example.com',
-      comment: 'Production Windows bootstrap canary seed rule',
+      value: WINDOWS_AJAX_AUTO_ALLOW_ORIGIN_HOST,
+      comment: 'Production Windows bootstrap canary AJAX origin seed rule',
     },
     cookieHeader
   );

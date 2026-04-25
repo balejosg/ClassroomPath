@@ -15,6 +15,7 @@ export const OPENPATH_HIGH_RISK_REQUIRED_CHECKS = [
       /^linux\//,
       /^firefox-extension\//,
       /^tests\/e2e\//,
+      /^tests\/selenium\//,
       /^api\/.*\/token-delivery[^/]*$/,
       /^api\/.*token-delivery[^/]*$/,
       /^\.github\/workflows\/(?:ci|e2e|installer).*\.ya?ml$/,

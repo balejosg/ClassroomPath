@@ -366,6 +366,7 @@ describe('resolveOpenPathRequiredChecks', () => {
         'windows/OpenPath.psm1',
         'linux/lib/firefox-policy.sh',
         'firefox-extension/src/lib/request-api.ts',
+        'tests/selenium/student-policy-driver-browser.ts',
         'api/src/routes/token-delivery.ts',
       ],
     });
@@ -380,6 +381,7 @@ describe('resolveOpenPathRequiredChecks', () => {
       'windows/OpenPath.psm1',
       'linux/lib/firefox-policy.sh',
       'firefox-extension/src/lib/request-api.ts',
+      'tests/selenium/student-policy-driver-browser.ts',
       'api/src/routes/token-delivery.ts',
     ]);
   });

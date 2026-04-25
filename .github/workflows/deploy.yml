@@ -631,6 +631,13 @@ jobs:
           echo "  curl -i ${{ needs.resolve-release-images.outputs.production_ready_url }}"
           echo "  docker logs classroompath-api --tail 50"
 
+  windows-production-bootstrap-canary:
+    name: Windows Production Bootstrap Canary
+    needs: [verify-staging-release-state, deploy-production]
+    if: needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk == 'true' && needs.deploy-production.result == 'success'
+    uses: ./.github/workflows/windows-production-bootstrap-canary.yml
+    secrets: inherit
+
   release-evidence:
     name: Release Evidence
     runs-on: ubuntu-latest
@@ -642,6 +649,7 @@ jobs:
         windows-firefox-canary,
         deploy-production,
         smoke-test-production,
+        windows-production-bootstrap-canary,
         rollback-production,
       ]
     if: always() && startsWith(github.ref, 'refs/tags/v')
@@ -699,6 +707,7 @@ jobs:
             "STAGING_FIREFOX_XPI_SHA256": "${{ needs.verify-staging-release-state.outputs.staging_firefox_xpi_sha256 }}",
             "STAGING_VERIFIED_AT": "${{ needs.verify-staging-release-state.outputs.staging_verified_at }}",
             "WINDOWS_FIREFOX_CANARY_RESULT": "${{ needs.windows-firefox-canary.outputs.canary_result || needs.windows-firefox-canary.result }}",
+            "WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "${{ needs.windows-production-bootstrap-canary.outputs.canary_result || needs.windows-production-bootstrap-canary.result }}",
             "DEPLOY_RESULT": "${{ needs.deploy-production.result }}",
             "PRODUCTION_SMOKE_RESULT": "${{ needs.smoke-test-production.result }}",
             "ROLLBACK_RESULT": "${{ needs.rollback-production.result }}",

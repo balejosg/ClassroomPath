@@ -501,11 +501,77 @@ describe('Production client update canary workflow contracts', () => {
         scriptText.includes('/approve')
     );
     assert.ok(scriptText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'));
+    assert.ok(scriptText.includes("'auth.refresh'"));
+    assert.ok(scriptText.includes("'onboarding.status'"));
+    assert.ok(scriptText.includes('fallback relogin teacher'));
+    assert.ok(
+      scriptText.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'),
+      'production Windows bootstrap canary should seed the AJAX origin in the initial whitelist'
+    );
     assert.ok(scriptText.includes('billingMode'));
     assert.ok(scriptText.includes('::add-mask::'));
     assert.ok(scriptText.includes('maskGithubSecret(ticketPayload.enrollmentToken)'));
     assert.ok(scriptText.includes('sanitizeSummaryForArtifact'));
     assert.ok(scriptText.includes("enrollmentToken: summary.enrollmentToken ? '[redacted]' : ''"));
     assert.ok(scriptText.includes('enrollment_token: summary.enrollmentToken'));
+  });
+
+  test('windows production bootstrap canary proves AJAX auto-allow on manual-only production', () => {
+    const workflowText = readProjectText(
+      '.github/workflows/windows-production-bootstrap-canary.yml'
+    );
+    const workflow = readProjectWorkflow(
+      '.github/workflows/windows-production-bootstrap-canary.yml'
+    );
+    const job = workflow.jobs?.['windows-production-bootstrap-canary'];
+    const steps = job?.steps ?? [];
+    const provisionStep = steps.find(
+      (step) => step.name === 'Provision production enrollment canary'
+    );
+    const installStepIndex = steps.findIndex((step) =>
+      String(step.name ?? '').includes('Re-run Update-OpenPath.ps1')
+    );
+    const ajaxStepIndex = steps.findIndex(
+      (step) => step.name === 'Verify Windows AJAX auto-allow canary'
+    );
+    const uploadStepIndex = steps.findIndex((step) =>
+      String(step.name ?? '').includes('Upload production bootstrap canary artifacts')
+    );
+    const ajaxStep = ajaxStepIndex >= 0 ? steps[ajaxStepIndex] : undefined;
+    const ajaxScript = String(ajaxStep?.run ?? '');
+    const ajaxCanaryScript = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+
+    assert.ok(
+      workflow.on?.workflow_call,
+      'Windows bootstrap canary should be reusable from deploy'
+    );
+    assert.equal(
+      workflow.on.workflow_call.outputs?.canary_result?.value,
+      '${{ jobs.windows-production-bootstrap-canary.outputs.canary_result }}'
+    );
+    assert.ok(!workflowText.includes('Skip bootstrap canary when production is manual-only'));
+    assert.ok(workflowText.includes('Read production client canary admin token'));
+    assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'));
+    assert.ok(
+      String(provisionStep?.env?.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE ?? '').includes(
+        'steps.read-billing-mode.outputs.billing_mode'
+      ),
+      'production bootstrap canary should exercise manual_only via the provisioning helper'
+    );
+    assert.ok(ajaxStep, 'Windows bootstrap canary must include an AJAX auto-allow proof');
+    assert.ok(
+      installStepIndex >= 0 && installStepIndex < ajaxStepIndex && ajaxStepIndex < uploadStepIndex,
+      'AJAX proof should run after live Windows enrollment/Firefox install and before artifacts'
+    );
+    assert.equal(ajaxStep?.shell, 'pwsh');
+    assert.ok(ajaxScript.includes('node scripts/windows-ajax-auto-allow-canary.mjs'));
+    assert.ok(ajaxCanaryScript.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
+    assert.ok(ajaxCanaryScript.includes('ajax-auto-allow-target.127.0.0.1.sslip.io'));
+    assert.ok(ajaxCanaryScript.includes('Access-Control-Allow-Origin'));
+    assert.ok(ajaxCanaryScript.includes('fetch('));
+    assert.ok(ajaxCanaryScript.includes('C:\\\\OpenPath\\\\data\\\\whitelist.txt'));
+    assert.ok(ajaxCanaryScript.includes('Auto-allow AJAX target was not written to whitelist'));
+    assert.ok(ajaxCanaryScript.includes('production-windows-ajax-auto-allow-canary.json'));
+    assert.ok(workflowText.includes('Record canary result'));
   });
 });
