@@ -262,6 +262,46 @@ async function postTrpc(procedure, payload, cookieHeader = '') {
   throw new Error(`${procedure} exhausted retry attempts`);
 }
 
+async function getTrpc(procedure, input, cookieHeader = '') {
+  const headers = {
+    Origin: requestOrigin,
+  };
+
+  if (cookieHeader) {
+    headers.Cookie = cookieHeader;
+  }
+
+  let url = `${apiUrl}/cp/trpc/${procedure}`;
+  if (input !== undefined) {
+    url += `?input=${encodeURIComponent(JSON.stringify(input))}`;
+  }
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const response = await fetchWithRetry(url, { headers });
+    const raw = await response.json();
+    const envelope = Array.isArray(raw) ? raw[0] : raw;
+
+    if (response.status === 429) {
+      const retryAfterMs = extractRetryAfterMs(envelope);
+      if (retryAfterMs && attempt < 3) {
+        await sleep(retryAfterMs + 250);
+        continue;
+      }
+    }
+
+    assert.equal(response.status, 200, `${procedure} returned ${response.status}`);
+    assert.ok(!envelope?.error, `${procedure} returned tRPC error ${JSON.stringify(raw)}`);
+    const data = extractTrpcData(envelope);
+    assert.ok(data, `${procedure} returned no JSON payload`);
+    return {
+      data,
+      response,
+    };
+  }
+
+  throw new Error(`${procedure} exhausted retry attempts`);
+}
+
 function setGithubOutput(key, value) {
   if (!process.env.GITHUB_OUTPUT) {
     return;
@@ -297,7 +337,7 @@ async function timedCanaryStep(name, operation) {
 
 async function waitForTeacherMembership(cookieHeader) {
   for (let attempt = 1; attempt <= 12; attempt += 1) {
-    const { data: status } = await postTrpc('onboarding.status', {}, cookieHeader);
+    const { data: status } = await getTrpc('onboarding.status', undefined, cookieHeader);
     if (status.hasMembership === true) {
       return status;
     }

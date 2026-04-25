@@ -305,11 +305,56 @@ async function postTrpc<T>(
   throw new Error(`${procedure} exhausted retry attempts`);
 }
 
+async function getTrpc<T>(
+  procedure: string,
+  input?: Record<string, unknown>,
+  cookieHeader = ''
+): Promise<{ data: T; response: Response }> {
+  assert.ok(WINDOWS_BOOTSTRAP_GATE_URL, 'WINDOWS_BOOTSTRAP_GATE_URL must be set');
+
+  const headers: Record<string, string> = {};
+
+  if (WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN) {
+    headers.Origin = WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN;
+  }
+
+  if (cookieHeader) {
+    headers.Cookie = cookieHeader;
+  }
+
+  let url = `${WINDOWS_BOOTSTRAP_GATE_URL}/cp/trpc/${procedure}`;
+  if (input !== undefined) {
+    url += `?input=${encodeURIComponent(JSON.stringify(input))}`;
+  }
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const response = await fetchWithRetry(url, { headers });
+    const raw = (await response.json()) as TrpcEnvelope<T> | Array<TrpcEnvelope<T>>;
+    const envelope = Array.isArray(raw) ? raw[0] : raw;
+
+    if (response.status === 429) {
+      const retryAfterMs = extractRetryAfterMs(envelope);
+      if (retryAfterMs && attempt < 3) {
+        await sleep(retryAfterMs + 250);
+        continue;
+      }
+    }
+
+    assert.strictEqual(response.status, 200, `${procedure} returned ${response.status}`);
+    assert.ok(!envelope?.error, `${procedure} returned tRPC error ${JSON.stringify(raw)}`);
+    const data = extractTrpcData(envelope);
+    assert.ok(data, `${procedure} returned no JSON payload`);
+    return { data: data as T, response };
+  }
+
+  throw new Error(`${procedure} exhausted retry attempts`);
+}
+
 async function waitForTeacherMembership(cookieHeader: string): Promise<void> {
   for (let attempt = 1; attempt <= 12; attempt += 1) {
-    const { data: status } = await postTrpc<OnboardingStatusPayload>(
+    const { data: status } = await getTrpc<OnboardingStatusPayload>(
       'onboarding.status',
-      {},
+      undefined,
       cookieHeader
     );
     if (status.hasMembership === true) {
