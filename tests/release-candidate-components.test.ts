@@ -40,6 +40,22 @@ describe('release candidate component classification', () => {
     );
   });
 
+  test('keeps manifest publish action changes out of image rebuilds', () => {
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: ['.github/actions/publish-release-candidate-manifest/action.yml'],
+        openpathChangedFiles: [],
+      }),
+      {
+        gatewayChanged: false,
+        migrationsChanged: false,
+        openpathApiChanged: false,
+        spaChanged: false,
+        verifierChanged: false,
+      }
+    );
+  });
+
   test('maps OpenPath shared and public SPA changes to the dependent ClassroomPath families', () => {
     assert.deepEqual(
       classifyOpenPathChangedPaths([
