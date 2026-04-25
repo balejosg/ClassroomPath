@@ -179,6 +179,47 @@ describe('Workflow core contracts', () => {
     );
   });
 
+  test('OpenPath sync workflow automates checked handoff without depending on OpenPath callbacks', () => {
+    const workflowText = readText('.github/workflows/sync-openpath.yml');
+    const workflow = readWorkflow('.github/workflows/sync-openpath.yml');
+    const syncJob = findWorkflowJob(workflow, 'sync');
+    const resolveModeStep = findWorkflowStepByName(syncJob, 'Resolve sync mode');
+    const verifyStep = findWorkflowStepByName(syncJob, 'Verify OpenPath upstream checks');
+    const directPushStep = findWorkflowStepByName(syncJob, 'Commit and push direct sync');
+    const pullRequestStep = findWorkflowStepByName(syncJob, 'Open Pull Request');
+
+    assert.equal(workflow.on?.schedule?.[0]?.cron, '*/5 * * * *');
+    assert.match(
+      String(resolveModeStep.run ?? ''),
+      /github\.event_name[\s\S]*mode="direct-main"/,
+      'scheduled sync should default to direct-main mode'
+    );
+    assert.match(
+      String(verifyStep.run ?? ''),
+      /OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS=2400[\s\S]*node scripts\/openpath-required-checks\.mjs wait/,
+      'sync must wait for the same upstream quality gate before updating the submodule'
+    );
+    assert.match(
+      String(directPushStep.if ?? ''),
+      /steps\.mode\.outputs\.mode == 'direct-main'/,
+      'direct handoff should be gated to direct-main mode'
+    );
+    assert.match(
+      String(directPushStep.run ?? ''),
+      /CLASSROOMPATH_SYNC_TOKEN[\s\S]*x-access-token:\$\{CLASSROOMPATH_SYNC_TOKEN\}[\s\S]*HEAD:main/,
+      'direct handoff should push with a ClassroomPath-owned token so downstream CI runs'
+    );
+    assert.match(
+      String(pullRequestStep.if ?? ''),
+      /steps\.mode\.outputs\.mode == 'pull-request'/,
+      'manual fallback should retain the pull request path'
+    );
+    assert.ok(
+      !workflowText.includes('repository_dispatch') && !workflowText.includes('workflow_run'),
+      'ClassroomPath sync should not require an OpenPath-side callback'
+    );
+  });
+
   test('CI workflow keeps structured change detection, regression routing, and verification reporting', () => {
     const workflow = readWorkflow('.github/workflows/ci.yml');
     const productJob = workflow.jobs?.['product-validation'];

@@ -2,8 +2,17 @@ name: Sync OpenPath
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'How to publish a verified OpenPath submodule update'
+        required: false
+        default: 'direct-main'
+        type: choice
+        options:
+          - direct-main
+          - pull-request
 
 permissions:
   contents: write
@@ -38,6 +47,26 @@ jobs:
             exit 0
           fi
           echo "locked=false" >> $GITHUB_OUTPUT
+
+      - name: Resolve sync mode
+        id: mode
+        if: steps.lock.outputs.locked != 'true'
+        run: |
+          mode="${{ github.event.inputs.mode || 'direct-main' }}"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            mode="direct-main"
+          fi
+
+          case "$mode" in
+            direct-main|pull-request)
+              echo "mode=$mode" >> "$GITHUB_OUTPUT"
+              echo "OpenPath sync mode: $mode"
+              ;;
+            *)
+              echo "::error::Unsupported OpenPath sync mode: $mode"
+              exit 1
+              ;;
+          esac
 
       - name: Check for OpenPath updates
         id: check
@@ -83,10 +112,28 @@ jobs:
           cd ../..
           git add upstream/openpath
 
-          git add upstream/openpath
+      - name: Commit and push direct sync
+        if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && steps.mode.outputs.mode == 'direct-main' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
+        env:
+          CLASSROOMPATH_SYNC_TOKEN: ${{ secrets.CLASSROOMPATH_SYNC_TOKEN }}
+        run: |
+          if [ -z "$CLASSROOMPATH_SYNC_TOKEN" ]; then
+            echo "::error::CLASSROOMPATH_SYNC_TOKEN is required for direct OpenPath handoff so the resulting push triggers ClassroomPath CI."
+            exit 1
+          fi
+
+          if git diff --cached --quiet; then
+            echo "OpenPath submodule already points at ${{ steps.check.outputs.latest }}."
+            exit 0
+          fi
+
+          git config user.name "classroompath-openpath-sync"
+          git config user.email "classroompath-openpath-sync@users.noreply.github.com"
+          git commit -m "chore: update openpath submodule to ${{ steps.check.outputs.latest }}"
+          git push "https://x-access-token:${CLASSROOMPATH_SYNC_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
 
       - name: Open Pull Request
-        if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
+        if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && steps.mode.outputs.mode == 'pull-request' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -100,11 +147,11 @@ jobs:
             - Latest:   ${{ steps.check.outputs.latest }}
 
             Notes:
-            - This workflow opens/updates a PR instead of pushing to main.
+            - This workflow was run in pull-request mode.
             - Staging deployment must still be run locally via `npm run deploy:staging` after merge.
 
       - name: Deploy note
-        if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
+        if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && steps.mode.outputs.mode == 'pull-request' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           echo "OpenPath submodule sync PR created/updated. Staging deployment must be run locally via npm run deploy:staging (after merge)."
 
