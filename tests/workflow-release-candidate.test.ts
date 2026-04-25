@@ -141,6 +141,8 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(
       publishManifestActionText.includes('docker buildx imagetools create') &&
         publishManifestActionText.includes('docker buildx imagetools inspect') &&
+        publishManifestActionText.includes('seq 1 36') &&
+        publishManifestActionText.includes('Waiting for manifest digest') &&
         publishManifestActionText.includes('amd64-digest') &&
         publishManifestActionText.includes('arm64-digest')
     );

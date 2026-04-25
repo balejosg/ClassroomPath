@@ -69,16 +69,23 @@ runs:
 
         if [ "${{ inputs.build-required }}" = 'true' ]; then
           manifest_digest=''
-          for attempt in $(seq 1 12); do
+          for attempt in $(seq 1 36); do
             if manifest_digest="$(docker buildx imagetools inspect "${{ inputs.tag }}" 2>/dev/null | awk '/^Digest:/ {print $2; exit}')" && [ -n "$manifest_digest" ]; then
+              echo "Resolved manifest digest for ${{ inputs.tag }} on attempt ${attempt}."
               break
             fi
 
             manifest_digest=''
-            sleep 5
+            echo "Waiting for manifest digest for ${{ inputs.tag }} (attempt ${attempt}/36)..." >&2
+            if [ "$attempt" -lt 36 ]; then
+              sleep 5
+            fi
           done
 
-          test -n "$manifest_digest"
+          if [ -z "$manifest_digest" ]; then
+            echo "::error::Timed out waiting for manifest digest for ${{ inputs.tag }} after 36 attempts." >&2
+            exit 1
+          fi
           image="${{ inputs.image-repo }}@$manifest_digest"
         else
           image="${{ inputs.previous-image }}"
