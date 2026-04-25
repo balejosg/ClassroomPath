@@ -525,13 +525,19 @@ describe('Workflow core contracts', () => {
     assert.ok(!bootstrapCanaryScriptText.includes("'onboarding.createOrganization'"));
     assert.ok(
       productionBootstrapWorkflowText.includes('github_actions_remote_read_env_key') &&
+        productionBootstrapWorkflowText.includes('CP_CLIENT_CANARY_ADMIN_TOKEN') &&
         productionBootstrapWorkflowText.includes(
-          'Skip bootstrap canary when production is manual-only'
+          'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'
         ) &&
         productionBootstrapWorkflowText.includes(
           'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET'
         ) &&
         productionBootstrapWorkflowText.includes('classroompath-production-release')
+    );
+    assert.ok(
+      !productionBootstrapWorkflowText.includes(
+        'Skip bootstrap canary when production is manual-only'
+      )
     );
     assert.ok(
       productionBootstrapWorkflowText.includes('/api/enroll/') &&
