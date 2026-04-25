@@ -28,7 +28,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          runner_json="$(gh api repos/${{ github.repository }}/actions/runners --paginate --jq '.runners[] | select(.name == "classroompath-windows-103")')"
+          runner_json_path="$(mktemp)"
+          runner_error_path="$(mktemp)"
+
+          if ! gh api repos/${{ github.repository }}/actions/runners --paginate --jq '.runners[] | select(.name == "classroompath-windows-103")' >"$runner_json_path" 2>"$runner_error_path"; then
+            runner_error="$(cat "$runner_error_path")"
+            if grep -q 'Resource not accessible by integration' "$runner_error_path"; then
+              echo "::warning::GITHUB_TOKEN cannot inspect self-hosted runner registration; continuing with on-runner smoke. $runner_error"
+              echo "runner_online=unknown" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "::error::Failed to inspect Windows runner registration: $runner_error"
+            exit 1
+          fi
+
+          runner_json="$(cat "$runner_json_path")"
 
           if [ -z "$runner_json" ]; then
             echo "::error::Expected Windows runner is not registered: $RUNNER_NAME"

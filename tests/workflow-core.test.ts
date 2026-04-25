@@ -170,8 +170,10 @@ describe('Workflow core contracts', () => {
     assert.equal(inspectJob?.['runs-on'], 'ubuntu-latest');
     assert.ok(
       workflowText.includes('gh api repos/${{ github.repository }}/actions/runners') &&
-        workflowText.includes('classroompath-windows-103'),
-      'watchdog must inspect runner registration before queueing self-hosted work'
+        workflowText.includes('classroompath-windows-103') &&
+        workflowText.includes('Resource not accessible by integration') &&
+        workflowText.includes('runner_online=unknown'),
+      'watchdog must inspect runner registration when permitted and degrade when GITHUB_TOKEN lacks runner-admin access'
     );
     assert.deepEqual(smokeJob?.needs, ['inspect-runner-registration']);
     assert.deepEqual(smokeJob?.['runs-on'], [
