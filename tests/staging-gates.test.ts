@@ -9,6 +9,7 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
 const helperPath = resolve(projectRoot, 'scripts/lib/staging-gates.sh');
 const runnerPath = resolve(projectRoot, 'scripts/run-staging-verification.sh');
+const windowsBootstrapGatePath = resolve(projectRoot, 'tests/windows-bootstrap-gate.test.ts');
 
 function runHelper(expression: string): string {
   const result = spawnSync('bash', ['-lc', `source scripts/lib/staging-gates.sh; ${expression}`], {
@@ -87,5 +88,46 @@ describe('staging gates helper', () => {
       !content.includes('run_smoke_checks()') && !content.includes('run_release_gate_checks()'),
       'run-staging-verification.sh should no longer own the full gate bodies inline'
     );
+  });
+
+  test('windows bootstrap gate emits per-stage timing evidence', () => {
+    const content = readFileSync(windowsBootstrapGatePath, 'utf8');
+
+    assert.match(
+      content,
+      /type BootstrapGateTiming/,
+      'windows bootstrap gate should keep structured timing entries'
+    );
+    assert.match(
+      content,
+      /async function timedBootstrapGateStep/,
+      'windows bootstrap gate should centralize per-stage timing'
+    );
+    assert.match(
+      content,
+      /Windows bootstrap gate timing/,
+      'windows bootstrap gate should emit searchable timing output'
+    );
+
+    for (const stage of [
+      'register teacher',
+      'verify email',
+      'login teacher',
+      'create checkout',
+      'stripe webhook',
+      'create classroom',
+      'create enrollment ticket',
+      'read bootstrap manifest',
+      'download runtime policy spec',
+      'download private Firefox metadata',
+      'download private Firefox XPI',
+      'download public Firefox XPI',
+    ]) {
+      assert.match(
+        content,
+        new RegExp(`timedBootstrapGateStep\\(\\s*'${stage}'`),
+        `missing timed stage: ${stage}`
+      );
+    }
   });
 });

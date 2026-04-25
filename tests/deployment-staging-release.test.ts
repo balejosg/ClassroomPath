@@ -372,6 +372,22 @@ describe('Deployment staging and promotion contracts', () => {
     assert.ok(secretsDoc.includes('npm run verify:production-host -- <candidate-host>'));
     assert.ok(packageJson.includes('"verify:production-host"'));
     assert.ok(
+      packageJson.includes('"deploy:staging:assume-yes"'),
+      'package.json should expose an explicit non-interactive staging deploy command'
+    );
+    assert.ok(
+      packageJson.includes('env DEPLOY_ASSUME_YES=1 npm run deploy:staging'),
+      'deploy:staging:assume-yes should use the portable env prefix form'
+    );
+    assert.ok(
+      promotionReadyScript.includes(
+        'node "$SCRIPT_DIR/deploy-targets.mjs" get production publicUrl'
+      ) &&
+        promotionReadyScript.includes('DEFAULT_DEPLOY_SSH_KEY="$HOME/.ssh/classroompath_deploy"') &&
+        !promotionReadyScript.includes('DEPLOY_HOST must be set before production promotion'),
+      'promotion-ready should derive production host and SSH key defaults from canonical local config'
+    );
+    assert.ok(
       productionHostReadinessScript.includes('verify_host_arch_matches_target_platform') &&
         productionHostReadinessScript.includes('linux/arm64') &&
         productionHostReadinessScript.includes('test -d /opt/classroompath/app/.git') &&
@@ -385,6 +401,15 @@ describe('Deployment staging and promotion contracts', () => {
         'DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"'
       ) && productionHostReadinessScript.includes('-F "$DEPLOY_SSH_CONFIG"'),
       'production host readiness should not depend on /etc/ssh/ssh_config.d'
+    );
+    assert.ok(
+      productionHostReadinessScript.includes(
+        'DEPLOY_HOST="${1:-${DEPLOY_HOST:-$(resolve_default_deploy_host)}}"'
+      ) &&
+        productionHostReadinessScript.includes(
+          'DEFAULT_DEPLOY_SSH_KEY="$HOME/.ssh/classroompath_deploy"'
+        ),
+      'production host readiness should default to canonical production host and key when available'
     );
     assert.ok(
       promotionReadyScript.includes('STAGING_SSH_CONFIG="${STAGING_SSH_CONFIG:-/dev/null}"') &&

@@ -36,11 +36,24 @@ if [ -f "$ENV_LOCAL" ]; then
   load_env_file "$ENV_LOCAL" || true
 fi
 
-DEPLOY_HOST="${1:-${DEPLOY_HOST:-}}"
+resolve_default_deploy_host() {
+  local public_url
+  public_url="$(node "$SCRIPT_DIR/deploy-targets.mjs" get production publicUrl)"
+  public_url="${public_url#http://}"
+  public_url="${public_url#https://}"
+  printf '%s\n' "${public_url%%/*}"
+}
+
+DEPLOY_HOST="${1:-${DEPLOY_HOST:-$(resolve_default_deploy_host)}}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
 DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"
 DEPLOY_SSH_STRICT_HOSTKEY="${DEPLOY_SSH_STRICT_HOSTKEY:-accept-new}"
+DEFAULT_DEPLOY_SSH_KEY="$HOME/.ssh/classroompath_deploy"
+
+if [ -z "${DEPLOY_SSH_KEY:-}" ] && [ -f "$DEFAULT_DEPLOY_SSH_KEY" ]; then
+  DEPLOY_SSH_KEY="$DEFAULT_DEPLOY_SSH_KEY"
+fi
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   usage

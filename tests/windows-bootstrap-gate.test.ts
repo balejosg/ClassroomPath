@@ -48,6 +48,15 @@ type FirefoxReleaseMetadata = {
   version?: string;
 };
 
+type BootstrapGateTiming = {
+  name: string;
+  status: 'success' | 'failure';
+  durationMs: number;
+  durationSeconds: number;
+};
+
+const bootstrapGateTimings: BootstrapGateTiming[] = [];
+
 function extractTrpcData<T>(envelope: TrpcEnvelope<T> | undefined): T | undefined {
   const data = envelope?.result?.data;
   if (!data) {
@@ -188,6 +197,30 @@ function sha256Hex(input: Uint8Array | string): string {
   return createHash('sha256').update(input).digest('hex');
 }
 
+async function timedBootstrapGateStep<T>(name: string, operation: () => Promise<T>): Promise<T> {
+  const startedAt = Date.now();
+  let status: BootstrapGateTiming['status'] = 'success';
+
+  try {
+    return await operation();
+  } catch (error) {
+    status = 'failure';
+    throw error;
+  } finally {
+    const durationMs = Date.now() - startedAt;
+    const timing = {
+      name,
+      status,
+      durationMs,
+      durationSeconds: Math.round((durationMs / 1000) * 1000) / 1000,
+    };
+    bootstrapGateTimings.push(timing);
+    console.log(
+      `Windows bootstrap gate timing: ${timing.name} ${timing.status} ${timing.durationSeconds}s`
+    );
+  }
+}
+
 function stripeSignature(payload: string): string {
   assert.ok(
     WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET,
@@ -272,37 +305,46 @@ describe(
   },
   () => {
     test('staging bootstrap endpoints expose signed Firefox release artifacts', async () => {
+      bootstrapGateTimings.length = 0;
       const email = uniqueEmail('windows-bootstrap-gate');
       const password = 'SecurePassword123!';
 
-      const { data: registration } = await postTrpc<RegistrationPayload>('auth.register', {
-        email,
-        name: 'Windows Bootstrap Gate',
-        password,
-        termsAccepted: true,
-        termsVersion: CURRENT_TERMS_VERSION,
-      });
+      const { data: registration } = await timedBootstrapGateStep('register teacher', () =>
+        postTrpc<RegistrationPayload>('auth.register', {
+          email,
+          name: 'Windows Bootstrap Gate',
+          password,
+          termsAccepted: true,
+          termsVersion: CURRENT_TERMS_VERSION,
+        })
+      );
 
       assert.equal(registration.email, email);
       assert.equal(typeof registration.verificationUrl, 'string');
 
-      await postTrpc('auth.verifyEmail', {
-        email,
-        token: extractTokenFromVerificationUrl(registration.verificationUrl!),
-      });
+      await timedBootstrapGateStep('verify email', () =>
+        postTrpc('auth.verifyEmail', {
+          email,
+          token: extractTokenFromVerificationUrl(registration.verificationUrl!),
+        })
+      );
 
-      const loginResult = await postTrpc('auth.login', { email, password });
+      const loginResult = await timedBootstrapGateStep('login teacher', () =>
+        postTrpc('auth.login', { email, password })
+      );
       const cookieHeader = extractCookies(loginResult.response);
       assert.ok(cookieHeader.length > 0, 'auth.login should issue a session cookie');
 
-      const { data: checkout } = await postTrpc<CheckoutPayload>(
-        'billing.createCheckout',
-        {
-          kind: 'annual',
-          organizationName: `Bootstrap Gate Org ${Date.now()}`,
-          classrooms: 12,
-        },
-        cookieHeader
+      const { data: checkout } = await timedBootstrapGateStep('create checkout', () =>
+        postTrpc<CheckoutPayload>(
+          'billing.createCheckout',
+          {
+            kind: 'annual',
+            organizationName: `Bootstrap Gate Org ${Date.now()}`,
+            classrooms: 12,
+          },
+          cookieHeader
+        )
       );
 
       assert.equal(typeof checkout.checkoutSessionId, 'string');
@@ -321,36 +363,38 @@ describe(
         },
       });
 
-      const webhookResponse = await fetchWithRetry(
-        `${WINDOWS_BOOTSTRAP_GATE_URL}/cp/stripe/webhook`,
-        {
+      const webhookResponse = await timedBootstrapGateStep('stripe webhook', () =>
+        fetchWithRetry(`${WINDOWS_BOOTSTRAP_GATE_URL}/cp/stripe/webhook`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Stripe-Signature': stripeSignature(webhookPayload),
           },
           body: webhookPayload,
-        }
+        })
       );
       assert.strictEqual(webhookResponse.status, 200, `webhook returned ${webhookResponse.status}`);
 
-      const reloginResult = await postTrpc('auth.login', { email, password });
+      const reloginResult = await timedBootstrapGateStep('relogin teacher', () =>
+        postTrpc('auth.login', { email, password })
+      );
       const refreshedCookieHeader = extractCookies(reloginResult.response) || cookieHeader;
 
-      const { data: classroom } = await postTrpc<ClassroomPayload>(
-        'classrooms.create',
-        {
-          name: `bootstrap-gate-${Date.now()}`,
-          displayName: 'Bootstrap Gate Classroom',
-        },
-        refreshedCookieHeader
+      const { data: classroom } = await timedBootstrapGateStep('create classroom', () =>
+        postTrpc<ClassroomPayload>(
+          'classrooms.create',
+          {
+            name: `bootstrap-gate-${Date.now()}`,
+            displayName: 'Bootstrap Gate Classroom',
+          },
+          refreshedCookieHeader
+        )
       );
 
       assert.ok(classroom.id, 'classrooms.create should return a classroom id');
 
-      const ticketResponse = await fetchWithRetry(
-        `${WINDOWS_BOOTSTRAP_GATE_URL}/api/enroll/${classroom.id}/ticket`,
-        {
+      const ticketResponse = await timedBootstrapGateStep('create enrollment ticket', () =>
+        fetchWithRetry(`${WINDOWS_BOOTSTRAP_GATE_URL}/api/enroll/${classroom.id}/ticket`, {
           method: 'POST',
           headers: {
             Cookie: refreshedCookieHeader,
@@ -358,7 +402,7 @@ describe(
               ? { Origin: WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN }
               : {}),
           },
-        }
+        })
       );
 
       assert.strictEqual(ticketResponse.status, 200, `ticket returned ${ticketResponse.status}`);
@@ -373,11 +417,10 @@ describe(
           : {}),
       };
 
-      const manifestResponse = await fetchWithRetry(
-        `${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/latest.json`,
-        {
+      const manifestResponse = await timedBootstrapGateStep('read bootstrap manifest', () =>
+        fetchWithRetry(`${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/latest.json`, {
           headers: authHeaders,
-        }
+        })
       );
       assert.strictEqual(
         manifestResponse.status,
@@ -406,11 +449,13 @@ describe(
       assert.ok(xpiEntry, 'bootstrap manifest should include the signed Firefox XPI');
       assert.ok((xpiEntry?.size ?? 0) > 0, 'signed Firefox XPI should be non-empty');
 
-      const runtimeSpecResponse = await fetchWithRetry(
-        `${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('runtime/browser-policy-spec.json')}`,
-        {
-          headers: authHeaders,
-        }
+      const runtimeSpecResponse = await timedBootstrapGateStep('download runtime policy spec', () =>
+        fetchWithRetry(
+          `${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('runtime/browser-policy-spec.json')}`,
+          {
+            headers: authHeaders,
+          }
+        )
       );
       assert.strictEqual(runtimeSpecResponse.status, 200);
       const runtimeSpecText = await runtimeSpecResponse.text();
@@ -432,11 +477,15 @@ describe(
         'browser policy spec should include the Chromium search block pattern'
       );
 
-      const metadataResponse = await fetchWithRetry(
-        `${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('browser-extension/firefox-release/metadata.json')}`,
-        {
-          headers: authHeaders,
-        }
+      const metadataResponse = await timedBootstrapGateStep(
+        'download private Firefox metadata',
+        () =>
+          fetchWithRetry(
+            `${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('browser-extension/firefox-release/metadata.json')}`,
+            {
+              headers: authHeaders,
+            }
+          )
       );
       assert.strictEqual(metadataResponse.status, 200);
       const metadataText = await metadataResponse.text();
@@ -471,11 +520,13 @@ describe(
         );
       }
 
-      const xpiResponse = await fetchWithRetry(
-        `${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('browser-extension/firefox-release/openpath-firefox-extension.xpi')}`,
-        {
-          headers: authHeaders,
-        }
+      const xpiResponse = await timedBootstrapGateStep('download private Firefox XPI', () =>
+        fetchWithRetry(
+          `${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('browser-extension/firefox-release/openpath-firefox-extension.xpi')}`,
+          {
+            headers: authHeaders,
+          }
+        )
       );
       assert.strictEqual(xpiResponse.status, 200);
       const xpiBuffer = new Uint8Array(await xpiResponse.arrayBuffer());
@@ -489,8 +540,10 @@ describe(
         );
       }
 
-      const publicXpiResponse = await fetchWithRetry(
-        `${WINDOWS_BOOTSTRAP_GATE_URL}${WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH}`
+      const publicXpiResponse = await timedBootstrapGateStep('download public Firefox XPI', () =>
+        fetchWithRetry(
+          `${WINDOWS_BOOTSTRAP_GATE_URL}${WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH}`
+        )
       );
       assert.strictEqual(publicXpiResponse.status, 200);
       assert.match(
@@ -508,6 +561,8 @@ describe(
           'public Firefox XPI hash should match staging evidence'
         );
       }
+
+      console.log(`Windows bootstrap gate timing summary: ${JSON.stringify(bootstrapGateTimings)}`);
     });
   }
 );
