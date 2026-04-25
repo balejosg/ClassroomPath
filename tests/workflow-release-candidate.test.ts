@@ -51,6 +51,9 @@ describe('Release candidate workflow contracts', () => {
     const fetchDiffBaseScript = readProjectText('scripts/fetch-release-candidate-diff-base.sh');
 
     assert.match(detectScript, /node scripts\/lib\/release-candidate-components\.mjs classify/);
+    assert.match(detectScript, /git show "\$BASE_SHA:package\.json"/);
+    assert.match(detectScript, /--package-json-before/);
+    assert.match(detectScript, /--package-json-after/);
     assert.match(detectScript, /git -C upstream\/openpath rev-parse --is-inside-work-tree/);
     assert.match(fetchDiffBaseScript, /git fetch --no-tags --depth=1 origin "\$BASE_SHA"/);
     assert.match(

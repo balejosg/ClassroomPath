@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  classifyPackageJsonChange,
   classifyOpenPathChangedPaths,
   classifyReleaseCandidateComponents,
+  PACKAGE_JSON_CHANGE_KIND,
 } from '../scripts/lib/release-candidate-components.mjs';
 
 describe('release candidate component classification', () => {
@@ -162,6 +164,87 @@ describe('release candidate component classification', () => {
       classifyReleaseCandidateComponents({
         changedFiles: ['package-lock.json'],
         openpathChangedFiles: [],
+      }),
+      {
+        gatewayChanged: true,
+        migrationsChanged: true,
+        openpathApiChanged: false,
+        spaChanged: true,
+        verifierChanged: true,
+      }
+    );
+  });
+
+  test('keeps package.json operational script-only changes out of image rebuilds', () => {
+    assert.equal(
+      classifyPackageJsonChange(
+        JSON.stringify({
+          name: 'classroompath',
+          scripts: {
+            build: 'bash scripts/build-classroompath.sh',
+          },
+          dependencies: {
+            express: '1.0.0',
+          },
+        }),
+        JSON.stringify({
+          name: 'classroompath',
+          scripts: {
+            build: 'bash scripts/build-classroompath.sh',
+            'release:evidence-bundle': 'node scripts/release-evidence-bundle.mjs',
+          },
+          dependencies: {
+            express: '1.0.0',
+          },
+        })
+      ),
+      PACKAGE_JSON_CHANGE_KIND.OPERATIONAL_SCRIPTS_ONLY
+    );
+
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: ['package.json'],
+        openpathChangedFiles: [],
+        packageJsonChangeKind: PACKAGE_JSON_CHANGE_KIND.OPERATIONAL_SCRIPTS_ONLY,
+      }),
+      {
+        gatewayChanged: false,
+        migrationsChanged: false,
+        openpathApiChanged: false,
+        spaChanged: false,
+        verifierChanged: false,
+      }
+    );
+  });
+
+  test('keeps package.json dependency changes on the runtime rebuild path', () => {
+    assert.equal(
+      classifyPackageJsonChange(
+        JSON.stringify({
+          scripts: {
+            'release:evidence-bundle': 'node scripts/release-evidence-bundle.mjs',
+          },
+          dependencies: {
+            express: '1.0.0',
+          },
+        }),
+        JSON.stringify({
+          scripts: {
+            'release:evidence-bundle': 'node scripts/release-evidence-bundle.mjs',
+          },
+          dependencies: {
+            express: '1.0.1',
+          },
+        })
+      ),
+      PACKAGE_JSON_CHANGE_KIND.RUNTIME
+    );
+
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: ['package.json'],
+        openpathChangedFiles: [],
+        packageJsonChangeKind: PACKAGE_JSON_CHANGE_KIND.RUNTIME,
       }),
       {
         gatewayChanged: true,

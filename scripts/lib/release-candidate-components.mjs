@@ -12,6 +12,28 @@ function createEmptyFlags() {
   };
 }
 
+export const PACKAGE_JSON_CHANGE_KIND = Object.freeze({
+  OPERATIONAL_SCRIPTS_ONLY: 'operational_scripts_only',
+  RUNTIME: 'runtime',
+});
+
+const OPERATIONAL_PACKAGE_SCRIPT_PATTERNS = [
+  /^db:test:/,
+  /^deploy:/,
+  /^format:/,
+  /^promote:/,
+  /^release:/,
+  /^security:/,
+  /^stripe:/,
+  /^test:/,
+  /^verify:/,
+  /^doctor$/,
+  /^lint$/,
+  /^size:check$/,
+  /^submodule:update$/,
+  /^typecheck$/,
+];
+
 function markAllChanged(flags) {
   flags.gatewayChanged = true;
   flags.migrationsChanged = true;
@@ -56,6 +78,80 @@ function isVerifierRuntimeTestFile(filePath) {
     filePath === 'tests/helpers/resolved-fetch.ts' ||
     filePath === 'tests/helpers/release-gate-client.ts'
   );
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  if (isPlainObject(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function isOperationalPackageScript(scriptName) {
+  return OPERATIONAL_PACKAGE_SCRIPT_PATTERNS.some((pattern) => pattern.test(scriptName));
+}
+
+function readScripts(packageJson) {
+  const scripts = packageJson.scripts ?? {};
+  return isPlainObject(scripts) ? scripts : null;
+}
+
+export function classifyPackageJsonChange(beforeText, afterText) {
+  let beforePackage;
+  let afterPackage;
+  try {
+    beforePackage = JSON.parse(beforeText);
+    afterPackage = JSON.parse(afterText);
+  } catch {
+    return PACKAGE_JSON_CHANGE_KIND.RUNTIME;
+  }
+
+  if (!isPlainObject(beforePackage) || !isPlainObject(afterPackage)) {
+    return PACKAGE_JSON_CHANGE_KIND.RUNTIME;
+  }
+
+  const beforeScripts = readScripts(beforePackage);
+  const afterScripts = readScripts(afterPackage);
+  if (!beforeScripts || !afterScripts) {
+    return PACKAGE_JSON_CHANGE_KIND.RUNTIME;
+  }
+
+  const beforeWithoutScripts = { ...beforePackage };
+  const afterWithoutScripts = { ...afterPackage };
+  delete beforeWithoutScripts.scripts;
+  delete afterWithoutScripts.scripts;
+  if (stableStringify(beforeWithoutScripts) !== stableStringify(afterWithoutScripts)) {
+    return PACKAGE_JSON_CHANGE_KIND.RUNTIME;
+  }
+
+  const changedScriptNames = new Set([
+    ...Object.keys(beforeScripts).filter(
+      (scriptName) =>
+        stableStringify(beforeScripts[scriptName]) !== stableStringify(afterScripts[scriptName])
+    ),
+    ...Object.keys(afterScripts).filter(
+      (scriptName) =>
+        stableStringify(beforeScripts[scriptName]) !== stableStringify(afterScripts[scriptName])
+    ),
+  ]);
+
+  if ([...changedScriptNames].every((scriptName) => isOperationalPackageScript(scriptName))) {
+    return PACKAGE_JSON_CHANGE_KIND.OPERATIONAL_SCRIPTS_ONLY;
+  }
+
+  return PACKAGE_JSON_CHANGE_KIND.RUNTIME;
 }
 
 function applyOpenPathPathClassification(flags, filePath) {
@@ -139,7 +235,11 @@ export function classifyOpenPathChangedPaths(filePaths) {
   return flags;
 }
 
-export function classifyReleaseCandidateComponents({ changedFiles, openpathChangedFiles }) {
+export function classifyReleaseCandidateComponents({
+  changedFiles,
+  openpathChangedFiles,
+  packageJsonChangeKind = PACKAGE_JSON_CHANGE_KIND.RUNTIME,
+}) {
   const flags = createEmptyFlags();
   const normalizedChangedFiles = [
     ...new Set((changedFiles ?? []).map((entry) => String(entry ?? '').trim()).filter(Boolean)),
@@ -150,7 +250,12 @@ export function classifyReleaseCandidateComponents({ changedFiles, openpathChang
       case isReleaseMeasurementOnlyFile(file):
       case isProductionCanaryHarnessFile(file):
         break;
-      case /^(package\.json|package-lock\.json)$/.test(file):
+      case file === 'package.json':
+        if (packageJsonChangeKind !== PACKAGE_JSON_CHANGE_KIND.OPERATIONAL_SCRIPTS_ONLY) {
+          markClassroomPathRuntimeChanged(flags);
+        }
+        break;
+      case file === 'package-lock.json':
         markClassroomPathRuntimeChanged(flags);
         break;
       case file === 'scripts/detect-release-candidate-components.sh':
@@ -245,7 +350,7 @@ function parseListFile(path) {
 }
 
 function parseCliArgs(argv) {
-  /** @type {{ changedFileList?: string; openpathChangedFileList?: string }} */
+  /** @type {{ changedFileList?: string; openpathChangedFileList?: string; packageJsonBefore?: string; packageJsonAfter?: string }} */
   const parsed = {};
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -259,6 +364,14 @@ function parseCliArgs(argv) {
         break;
       case '--openpath-changed-file-list':
         parsed.openpathChangedFileList = value;
+        index += 1;
+        break;
+      case '--package-json-before':
+        parsed.packageJsonBefore = value;
+        index += 1;
+        break;
+      case '--package-json-after':
+        parsed.packageJsonAfter = value;
         index += 1;
         break;
       default:
@@ -276,9 +389,17 @@ function runCli() {
   }
 
   const parsed = parseCliArgs(args);
+  const packageJsonChangeKind =
+    parsed.packageJsonBefore && parsed.packageJsonAfter
+      ? classifyPackageJsonChange(
+          readFileSync(parsed.packageJsonBefore, 'utf8'),
+          readFileSync(parsed.packageJsonAfter, 'utf8')
+        )
+      : PACKAGE_JSON_CHANGE_KIND.RUNTIME;
   const flags = classifyReleaseCandidateComponents({
     changedFiles: parseListFile(parsed.changedFileList),
     openpathChangedFiles: parseListFile(parsed.openpathChangedFileList),
+    packageJsonChangeKind,
   });
 
   process.stdout.write(

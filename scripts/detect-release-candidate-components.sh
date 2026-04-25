@@ -52,16 +52,43 @@ else
     echo "(none)"
   fi
 
+  cleanup_files=()
+  cleanup() {
+    if [ "${#cleanup_files[@]}" -gt 0 ]; then
+      rm -f "${cleanup_files[@]}"
+    fi
+  }
+
   changed_files_file="$(mktemp)"
   openpath_changed_files_file="$(mktemp)"
-  trap 'rm -f "$changed_files_file" "$openpath_changed_files_file"' EXIT
+  cleanup_files+=("$changed_files_file" "$openpath_changed_files_file")
+  trap cleanup EXIT
   printf '%s\n' "$changed_files" > "$changed_files_file"
   printf '%s\n' "$openpath_changed_files" > "$openpath_changed_files_file"
+
+  package_json_args=()
+  if printf '%s\n' "$changed_files" | grep -qx 'package.json'; then
+    package_json_before_file="$(mktemp)"
+    package_json_after_file="$(mktemp)"
+    cleanup_files+=("$package_json_before_file" "$package_json_after_file")
+    if
+      git show "$BASE_SHA:package.json" > "$package_json_before_file" 2>/dev/null &&
+        git show "$HEAD_SHA:package.json" > "$package_json_after_file" 2>/dev/null
+    then
+      package_json_args=(
+        --package-json-before "$package_json_before_file"
+        --package-json-after "$package_json_after_file"
+      )
+    else
+      echo 'Unable to derive package.json semantic diff; treating it as a runtime release-candidate change.' >&2
+    fi
+  fi
 
   eval "$(
     node scripts/lib/release-candidate-components.mjs classify \
       --changed-file-list "$changed_files_file" \
-      --openpath-changed-file-list "$openpath_changed_files_file"
+      --openpath-changed-file-list "$openpath_changed_files_file" \
+      "${package_json_args[@]}"
   )"
 fi
 
