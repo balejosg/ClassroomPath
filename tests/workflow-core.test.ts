@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -72,6 +72,13 @@ function assertNpmCiJobsUseSharedNodeSetup(relativePath: string) {
   }
 }
 
+function workflowPaths(): string[] {
+  return readdirSync(resolve(projectRoot, '.github/workflows'))
+    .filter((entry) => /\.ya?ml$/.test(entry))
+    .sort()
+    .map((entry) => `.github/workflows/${entry}`);
+}
+
 describe('Workflow core contracts', () => {
   test('GitHub Actions workflows pin current action majors and shared setup actions', () => {
     const cases = [
@@ -115,6 +122,69 @@ describe('Workflow core contracts', () => {
         `${relativePath} should exclude forbidden versions`
       );
     }
+  });
+
+  test('self-hosted Windows jobs restore runner DNS before checkout', () => {
+    const coveredJobs: string[] = [];
+
+    for (const relativePath of workflowPaths()) {
+      const workflow = readWorkflow(relativePath);
+
+      for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
+        const runsOn = Array.isArray(job['runs-on']) ? job['runs-on'] : [job['runs-on']];
+        const isSelfHostedWindowsJob = runsOn.includes('self-hosted') && runsOn.includes('Windows');
+
+        if (!isSelfHostedWindowsJob) {
+          continue;
+        }
+
+        const steps = job.steps ?? [];
+        const checkoutStepIndex = steps.findIndex((step) =>
+          String(step.uses ?? '').startsWith('actions/checkout@')
+        );
+
+        if (checkoutStepIndex < 0) {
+          continue;
+        }
+
+        const preCheckoutDnsStepIndex = steps.findIndex(
+          (step) => step.name === 'Restore Windows runner DNS before checkout'
+        );
+        const preCheckoutDnsStep =
+          preCheckoutDnsStepIndex >= 0 ? steps[preCheckoutDnsStepIndex] : undefined;
+        const location = `${relativePath} job ${jobName}`;
+
+        assert.ok(
+          preCheckoutDnsStepIndex >= 0 && preCheckoutDnsStepIndex < checkoutStepIndex,
+          `${location} must restore DNS before actions/checkout because local actions are unavailable before checkout`
+        );
+        assert.equal(preCheckoutDnsStep?.shell, 'pwsh', `${location} must use PowerShell`);
+        assert.match(
+          String(preCheckoutDnsStep?.run ?? ''),
+          /Set-DnsClientServerAddress/,
+          `${location} must set explicit DNS servers`
+        );
+        assert.match(
+          String(preCheckoutDnsStep?.run ?? ''),
+          /Clear-DnsClientCache/,
+          `${location} must clear the DNS cache`
+        );
+        assert.match(
+          String(preCheckoutDnsStep?.run ?? ''),
+          /Test-NetConnection github\.com -Port 443/,
+          `${location} must prove GitHub connectivity before checkout`
+        );
+
+        coveredJobs.push(location);
+      }
+    }
+
+    assert.deepEqual(coveredJobs, [
+      '.github/workflows/production-client-update-canary.yml job windows-client-self-update-canary',
+      '.github/workflows/self-hosted-windows-runner-smoke.yml job smoke',
+      '.github/workflows/windows-firefox-canary.yml job windows-firefox-canary',
+      '.github/workflows/windows-production-bootstrap-canary.yml job windows-production-bootstrap-canary',
+    ]);
   });
 
   test('self-hosted Linux runner smoke workflow is manual and pinned to the ClassroomPath runner', () => {
