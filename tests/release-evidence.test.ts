@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
@@ -10,6 +10,7 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
 const scriptPath = resolve(projectRoot, 'scripts/write-release-evidence.mjs');
+const evidenceBundleScriptPath = resolve(projectRoot, 'scripts/release-evidence-bundle.mjs');
 const evidenceHelperPath = resolve(projectRoot, 'scripts/lib/release-evidence.mjs');
 
 type ReleaseEvidence = {
@@ -101,6 +102,26 @@ function generateEvidenceFromInputFile(input: Record<string, string | undefined>
 }
 
 describe('release evidence rendering', () => {
+  test('release evidence bundle CLI is exposed for incident handoffs', () => {
+    const packageJson = JSON.parse(readFileSync(resolve(projectRoot, 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+
+    assert.ok(existsSync(evidenceBundleScriptPath));
+    assert.equal(
+      packageJson.scripts?.['release:evidence-bundle'],
+      'node scripts/release-evidence-bundle.mjs'
+    );
+
+    const result = runProjectCommand(process.execPath, [evidenceBundleScriptPath, '--help']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Usage: npm run release:evidence-bundle --/);
+    assert.match(result.stdout, /--deploy-run <id>/);
+    assert.match(result.stdout, /--canary-run <id>/);
+    assert.match(result.stdout, /production-health\.json/);
+  });
+
   test('release evidence rendering is delegated to the typed helper module', () => {
     const wrapper = readFileSync(scriptPath, 'utf8');
     const helper = readFileSync(evidenceHelperPath, 'utf8');

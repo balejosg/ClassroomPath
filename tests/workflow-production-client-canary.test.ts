@@ -3,7 +3,42 @@ import { describe, test } from 'node:test';
 
 import { readProjectText, readProjectWorkflow } from './helpers/ops-contracts.ts';
 
+const windowsRunnerDnsActionPath = '.github/actions/restore-windows-runner-dns/action.yml';
+
 describe('Production client update canary workflow contracts', () => {
+  test('Windows canaries share the runner DNS restoration action', () => {
+    const actionText = readProjectText(windowsRunnerDnsActionPath);
+
+    assert.ok(actionText.includes('Set-DnsClientServerAddress'));
+    assert.ok(actionText.includes('Clear-DnsClientCache'));
+    assert.ok(actionText.includes('Test-NetConnection github.com -Port 443'));
+
+    for (const [workflowPath, jobName] of [
+      [
+        '.github/workflows/production-client-update-canary.yml',
+        'windows-client-self-update-canary',
+      ],
+      [
+        '.github/workflows/windows-production-bootstrap-canary.yml',
+        'windows-production-bootstrap-canary',
+      ],
+    ] as const) {
+      const workflow = readProjectWorkflow(workflowPath);
+      const steps = workflow.jobs?.[jobName]?.steps ?? [];
+      const resetDnsStep = steps.find(
+        (step) => step.name === 'Restore Windows runner DNS after reset'
+      );
+      const artifactDnsStep = steps.find((step) =>
+        String(step.name ?? '').includes('Restore Windows runner DNS before artifact upload')
+      );
+
+      assert.equal(resetDnsStep?.uses, './.github/actions/restore-windows-runner-dns');
+      assert.equal(artifactDnsStep?.uses, './.github/actions/restore-windows-runner-dns');
+      assert.equal(artifactDnsStep?.if, 'always()');
+      assert.equal(artifactDnsStep?.['continue-on-error'], true);
+    }
+  });
+
   test('scheduled production enrollment download canary checks live scripts without consuming client runners', () => {
     const workflowText = readProjectText('.github/workflows/production-client-update-canary.yml');
     const helperText = readProjectText('scripts/production-enrollment-download-canary.mjs');
@@ -100,9 +135,8 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(workflowText.includes("Remove-Item -LiteralPath 'C:\\OpenPath'"));
     assert.ok(workflowText.includes('Acrylic DNS Proxy'));
     assert.ok(
-      workflowText.includes('Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex') &&
-        workflowText.includes("Set-DnsClientServerAddress -InterfaceAlias 'Ethernet'") &&
-        workflowText.includes('Clear-DnsClientCache'),
+      workflowText.includes('Restore Windows runner DNS after reset') &&
+        workflowText.includes('./.github/actions/restore-windows-runner-dns'),
       'Windows canary reset must restore external DNS after removing Acrylic/OpenPath'
     );
     assert.ok(workflowText.includes('create-production-windows-bootstrap-canary.mjs'));
@@ -211,10 +245,7 @@ describe('Production client update canary workflow contracts', () => {
       assert.equal(restoreDnsStep?.if, 'always()');
       assert.equal(restoreDnsStep?.['continue-on-error'], true);
       if (platform === 'Windows') {
-        assert.ok(
-          String(restoreDnsStep?.run ?? '').includes('Set-DnsClientServerAddress') &&
-            String(restoreDnsStep?.run ?? '').includes('Clear-DnsClientCache')
-        );
+        assert.equal(restoreDnsStep?.uses, './.github/actions/restore-windows-runner-dns');
       } else {
         assert.ok(
           String(restoreDnsStep?.run ?? '').includes('sudo openpath disable') &&
@@ -556,8 +587,11 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(!workflowText.includes('Skip bootstrap canary when production is manual-only'));
     assert.ok(workflowText.includes('Read production client canary admin token'));
     assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'));
-    assert.ok(String(resetStep?.run ?? '').includes('Set-DnsClientServerAddress'));
-    assert.ok(String(resetStep?.run ?? '').includes('Clear-DnsClientCache'));
+    assert.ok(resetStep, 'Windows bootstrap canary must reset persistent state');
+    assert.equal(
+      steps.find((step) => step.name === 'Restore Windows runner DNS after reset')?.uses,
+      './.github/actions/restore-windows-runner-dns'
+    );
     assert.ok(
       String(provisionStep?.env?.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE ?? '').includes(
         'steps.read-billing-mode.outputs.billing_mode'
@@ -586,8 +620,7 @@ describe('Production client update canary workflow contracts', () => {
     const restoreDnsStep = restoreDnsStepIndex >= 0 ? steps[restoreDnsStepIndex] : undefined;
     assert.equal(restoreDnsStep?.if, 'always()');
     assert.equal(restoreDnsStep?.['continue-on-error'], true);
-    assert.ok(String(restoreDnsStep?.run ?? '').includes('Set-DnsClientServerAddress'));
-    assert.ok(String(restoreDnsStep?.run ?? '').includes('Clear-DnsClientCache'));
+    assert.equal(restoreDnsStep?.uses, './.github/actions/restore-windows-runner-dns');
     const uploadStep = uploadStepIndex >= 0 ? steps[uploadStepIndex] : undefined;
     assert.equal(
       uploadStep?.['continue-on-error'],

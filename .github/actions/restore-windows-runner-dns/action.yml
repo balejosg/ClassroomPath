@@ -1,0 +1,47 @@
+name: Restore Windows Runner DNS
+description: Restore external DNS on the persistent Windows runner and verify GitHub connectivity.
+
+inputs:
+  dns-servers:
+    description: Comma-separated DNS servers to apply to active non-loopback adapters.
+    default: 1.1.1.1,8.8.8.8
+  require-github-connectivity:
+    description: Whether to fail when github.com cannot be reached after DNS restore.
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Restore DNS client servers
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+
+        $dnsServers = '${{ inputs.dns-servers }}'.Split(',') |
+          ForEach-Object { $_.Trim() } |
+          Where-Object { $_ }
+        if (-not $dnsServers) {
+          throw 'At least one DNS server must be configured'
+        }
+
+        $activeAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue |
+          Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' })
+
+        foreach ($adapter in $activeAdapters) {
+          Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+        }
+
+        if (-not $activeAdapters) {
+          Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+        }
+
+        Clear-DnsClientCache -ErrorAction SilentlyContinue
+
+        $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
+        if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
+          $message = "GitHub connectivity check failed after DNS restore. NameResolution=$($githubProbe.NameResolutionSucceeded) Tcp443=$($githubProbe.TcpTestSucceeded)"
+          if ('${{ inputs.require-github-connectivity }}' -eq 'true') {
+            throw $message
+          }
+          Write-Warning $message
+        }

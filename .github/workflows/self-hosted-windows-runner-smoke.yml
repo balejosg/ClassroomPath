@@ -1,9 +1,12 @@
 name: Self-Hosted Windows Runner Smoke
 
 on:
+  schedule:
+    - cron: '*/30 * * * *'
   workflow_dispatch: {}
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -11,8 +14,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  inspect-runner-registration:
+    name: Inspect Windows runner registration
+    runs-on: ubuntu-latest
+    outputs:
+      runner-online: ${{ steps.inspect.outputs.runner_online }}
+    steps:
+      - name: Inspect GitHub runner registration
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUNNER_NAME: classroompath-windows-103
+        shell: bash
+        run: |
+          set -euo pipefail
+          runner_json="$(gh api repos/${{ github.repository }}/actions/runners --paginate --jq '.runners[] | select(.name == "classroompath-windows-103")')"
+
+          if [ -z "$runner_json" ]; then
+            echo "::error::Expected Windows runner is not registered: $RUNNER_NAME"
+            exit 1
+          fi
+
+          status="$(jq -r '.status' <<<"$runner_json")"
+          busy="$(jq -r '.busy' <<<"$runner_json")"
+          echo "Runner $RUNNER_NAME status=$status busy=$busy"
+
+          if [ "$status" != "online" ]; then
+            echo "runner_online=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Windows runner is not online: $RUNNER_NAME"
+            exit 1
+          fi
+
+          if [ "$busy" = "true" ]; then
+            echo "::warning::Windows runner is currently busy; smoke may queue behind active work"
+          fi
+
+          echo "runner_online=true" >> "$GITHUB_OUTPUT"
+
   smoke:
     name: Windows runner smoke
+    needs: [inspect-runner-registration]
     runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     timeout-minutes: 10
     steps:
@@ -33,6 +74,17 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Restore Windows runner DNS before smoke
+        uses: ./.github/actions/restore-windows-runner-dns
+
+      - name: Verify GitHub network connectivity
+        shell: pwsh
+        run: |
+          $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
+          if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
+            throw "GitHub connectivity failed. NameResolution=$($githubProbe.NameResolutionSucceeded) Tcp443=$($githubProbe.TcpTestSucceeded)"
+          }
 
       - name: Repository smoke
         shell: pwsh

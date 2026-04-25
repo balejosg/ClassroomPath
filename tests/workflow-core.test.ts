@@ -151,16 +151,29 @@ describe('Workflow core contracts', () => {
   test('self-hosted Windows runner smoke workflow is manual and pinned to the ClassroomPath runner', () => {
     const workflowText = readText('.github/workflows/self-hosted-windows-runner-smoke.yml');
     const workflow = readWorkflow('.github/workflows/self-hosted-windows-runner-smoke.yml');
+    const inspectJob = workflow.jobs?.['inspect-runner-registration'];
     const smokeJob = workflow.jobs?.smoke;
 
     assert.ok(
       workflow.on?.workflow_dispatch,
-      'self-hosted Windows runner smoke must expose only manual dispatch'
+      'self-hosted Windows runner smoke must expose manual dispatch'
+    );
+    assert.equal(
+      workflow.on?.schedule?.[0]?.cron,
+      '*/30 * * * *',
+      'self-hosted Windows runner smoke must run as a watchdog every 30 minutes'
     );
     assert.ok(
       !workflow.on?.push && !workflow.on?.workflow_run,
-      'self-hosted Windows runner smoke must not run on automatic repository events'
+      'self-hosted Windows runner smoke must not run on push or deploy events'
     );
+    assert.equal(inspectJob?.['runs-on'], 'ubuntu-latest');
+    assert.ok(
+      workflowText.includes('gh api repos/${{ github.repository }}/actions/runners') &&
+        workflowText.includes('classroompath-windows-103'),
+      'watchdog must inspect runner registration before queueing self-hosted work'
+    );
+    assert.deepEqual(smokeJob?.needs, ['inspect-runner-registration']);
     assert.deepEqual(smokeJob?.['runs-on'], [
       'self-hosted',
       'Windows',
@@ -176,6 +189,11 @@ describe('Workflow core contracts', () => {
       workflowText.includes('actions/checkout@v6') &&
         workflowText.includes('persist-credentials: false'),
       'self-hosted Windows runner smoke should use checkout without persisted credentials'
+    );
+    assert.ok(
+      workflowText.includes('./.github/actions/restore-windows-runner-dns') &&
+        workflowText.includes('Test-NetConnection github.com -Port 443'),
+      'watchdog smoke must restore DNS and prove GitHub connectivity from the Windows runner'
     );
   });
 
