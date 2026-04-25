@@ -28,6 +28,19 @@ describe('verify plan', () => {
     assert.equal(detectVerificationScope(stagedFiles, 'commit'), 'release-automation');
   });
 
+  test('detects release automation scope for production canary and evidence helpers', () => {
+    for (const stagedFile of [
+      '.github/workflows/windows-production-bootstrap-canary.yml',
+      'scripts/create-production-windows-bootstrap-canary.mjs',
+      'scripts/windows-ajax-auto-allow-canary.mjs',
+      'scripts/lib/release-evidence.mjs',
+      'tests/release-evidence.test.ts',
+      'tests/workflow-production-client-canary.test.ts',
+    ]) {
+      assert.equal(detectVerificationScope([stagedFile], 'commit'), 'release-automation');
+    }
+  });
+
   test('keeps full verification for product code changes', () => {
     assert.equal(detectVerificationScope(['react-spa/src/App.tsx'], 'commit'), 'full');
   });

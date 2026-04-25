@@ -62,7 +62,7 @@ prepare_staging_local_release_context() {
         STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
         node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest \
             --sha "$REMOTE_SHA" \
-            --timeout-seconds "$STAGING_RELEASE_WAIT_TIMEOUT_SECONDS" \
+            --timeout-seconds "$STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS" \
             --interval-seconds "$STAGING_RELEASE_POLL_SECONDS" \
             --output-file "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
     elif [ "$STAGING_IMAGE_MODE" = "release-candidate" ]; then

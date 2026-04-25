@@ -573,5 +573,17 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(ajaxCanaryScript.includes('Auto-allow AJAX target was not written to whitelist'));
     assert.ok(ajaxCanaryScript.includes('production-windows-ajax-auto-allow-canary.json'));
     assert.ok(workflowText.includes('Record canary result'));
+    const uploadStep = uploadStepIndex >= 0 ? steps[uploadStepIndex] : undefined;
+    assert.equal(
+      uploadStep?.['continue-on-error'],
+      undefined,
+      'production bootstrap canary artifacts are release evidence and must not be best-effort'
+    );
+    assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
+    assert.match(String(uploadStep?.with?.path ?? ''), /production-windows-bootstrap-canary\.json/);
+    assert.match(
+      String(uploadStep?.with?.path ?? ''),
+      /production-windows-ajax-auto-allow-canary\.json/
+    );
   });
 });

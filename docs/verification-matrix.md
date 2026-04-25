@@ -2,20 +2,72 @@
 
 > Status: maintained
 > Applies to: ClassroomPath verification and release flow
-> Last verified: 2026-04-24
+> Last verified: 2026-04-25
 > Source of truth: `docs/verification-matrix.md`
 
 This matrix maps the current verification lanes to the evidence they provide.
 
+## Test Portfolio Baseline
+
+ClassroomPath uses a practical test pyramid with a heavier contract layer than
+a typical single-service web app. That is intentional: the SaaS wrapper must
+prove tenancy, billing, OpenPath integration, release automation, staging
+evidence, and production-promotion contracts before expensive live deployment
+checks.
+
+Latest tracked-test inventory, excluding fixtures, snapshots, and the
+`upstream/openpath` submodule:
+
+| Component                  |                  Unit | Integration / contract |                                                 E2E |
+| -------------------------- | --------------------: | ---------------------: | --------------------------------------------------: |
+| API                        | 201 files / 497 cases |   26 files / 174 cases |      Covered by browser E2E where user flow matters |
+| React SPA wrapper          |  71 files / 279 cases |                      - | Covered by browser E2E where tenant routing matters |
+| Release and ops automation |                     - |   60 files / 327 cases |                                                   - |
+| Browser E2E                |                     - |                      - |                                 16 files / 90 cases |
+
+The inventory is file- and case-count based. Treat it as a drift signal, not as
+an exact assertion count.
+
+## Component Quality-Speed Policy
+
+Use the cheapest layer that proves the risk:
+
+- API changes should stay unit-first and add integration only for tenancy,
+  billing, cross-system mutations, database behavior, OpenPath proxy behavior,
+  or gateway wiring. Coverage for changed API files remains the speed-quality
+  compromise.
+- React SPA wrapper changes should keep most behavior in Vitest tests for
+  shell state, routing, auth entry points, OpenPath public-surface consumption,
+  and visible component states. Browser E2E should be reserved for flows where
+  tenant routing, API state, and user navigation interact.
+- Release and ops changes should use contract tests as the primary quality
+  layer. Workflow, deploy, release-candidate, canary, and promotion behavior is
+  cheaper and more reliable to test as deterministic contracts than by relying
+  on staging or production as the first signal.
+- Browser E2E should remain small and purposeful: onboarding, auth/email,
+  organization management, waiting-room behavior, domain approval, visual
+  regression, and performance. Do not add E2E for simple component branches
+  that Vitest can cover.
+- OpenPath submodule updates should not duplicate all OpenPath verification in
+  ClassroomPath. Trust the upstream required checks, then prove the wrapper
+  build, release contracts, and any ClassroomPath-specific tenant or deploy
+  behavior affected by the new SHA.
+
+Do not expand `.test-allowlist`. It is legacy debt only. When touching an
+allowlisted file, add a focused test or route it through an existing contract
+suite.
+
 ## Current Local Timing Baseline
 
-Measured on April 19 and April 24, 2026:
+Measured on April 19, April 24, and April 25, 2026:
 
 - `npm run verify:precommit` completed in `0.168s` with no staged files.
 - Commit-hook sample with one staged Markdown file completed in `0.747s`.
 - `npm run verify:incremental` completed in `11:28.28` on a warm local tree.
 - OpenPath `bash scripts/verify-full.sh` completed in `1:30.35` after sandbox restrictions were removed.
 - OpenPath pre-commit with no staged files completed in `0.117s`.
+- Current tracked-test distribution is roughly 57% unit, 37% integration or
+  contract, and 7% E2E by heuristic case count.
 
 ## CI/CD Timing Measurement Method
 
@@ -98,6 +150,21 @@ Remote evidence for `e96bc07`:
 | Production deploy           | Roll out immutable images by tag only                     | `.github/workflows/deploy.yml`                                                           | Yes            |
 | Production smoke            | Verify the live public stack after deploy                 | workflow smoke steps against production                                                  | Yes            |
 | Release evidence            | Publish a transparent summary of the promoted release     | `release-evidence-<tag>` artifact + workflow summary                                     | No             |
+
+## Current CI/CD Efficiency Controls
+
+- Staging now waits up to `3600s` for the release-candidate manifest by default
+  through `STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS`, while the old
+  `STAGING_RELEASE_WAIT_TIMEOUT_SECONDS` override remains supported.
+- `Release Candidate Images` cancels obsolete push-triggered runs on the same
+  ref so a stale RC cannot block the newest SHA from publishing.
+- Release evidence records the Windows production bootstrap canary result and
+  expects the `windows-production-bootstrap-canary` artifact alongside smoke,
+  image, staging, and release-evidence bundles.
+- OpenPath release-infrastructure-only changes can satisfy the `E2E Summary`
+  gate with explicitly skipped target-platform lanes; runtime, product,
+  browser, API, shared, installer, and Selenium changes still require the
+  relevant OpenPath platform evidence.
 
 ## Risk To Proof Mapping
 

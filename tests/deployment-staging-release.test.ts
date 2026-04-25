@@ -79,7 +79,17 @@ describe('Deployment staging and promotion contracts', () => {
       releaseHelperContent.includes('STAGING_RELEASE_RUN_ID') &&
         releaseHelperContent.includes('STAGING_RELEASE_REPOSITORY')
     );
-    assert.ok(releaseHelperContent.includes('STAGING_RELEASE_WAIT_TIMEOUT_SECONDS'));
+    assert.ok(
+      localContent.includes(
+        'STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS="${STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS:-${STAGING_RELEASE_WAIT_TIMEOUT_SECONDS:-3600}}"'
+      )
+    );
+    assert.ok(
+      localContent.includes(
+        'STAGING_RELEASE_WAIT_TIMEOUT_SECONDS="${STAGING_RELEASE_WAIT_TIMEOUT_SECONDS:-$STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS}"'
+      )
+    );
+    assert.ok(releaseHelperContent.includes('STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS'));
     assert.ok(
       remoteContent.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
         remoteContent.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"')

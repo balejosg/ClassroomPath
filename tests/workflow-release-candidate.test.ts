@@ -234,7 +234,14 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(jobs['publish-release-candidate-manifest']);
     const concurrency = workflow.concurrency;
     assert.equal(typeof concurrency, 'object');
-    assert.equal((concurrency as { 'cancel-in-progress'?: boolean })['cancel-in-progress'], false);
+    assert.equal(
+      (concurrency as { group?: string }).group,
+      'release-candidate-images-${{ github.ref }}'
+    );
+    assert.equal(
+      (concurrency as { 'cancel-in-progress'?: string })['cancel-in-progress'],
+      "${{ github.event_name == 'push' }}"
+    );
 
     const manifestNeeds = normalizeNeeds(jobs['publish-release-candidate-manifest']?.needs);
     assert.deepEqual(

@@ -372,9 +372,23 @@ jobs:
           fi
           echo "canary_result=$result" >> "$GITHUB_OUTPUT"
 
+      - name: Verify production bootstrap canary evidence artifacts
+        if: steps.result.outputs.canary_result == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for required_artifact in \
+            production-windows-bootstrap-canary.json \
+            production-windows-ajax-auto-allow-canary.json
+          do
+            if [ ! -s "$required_artifact" ]; then
+              echo "::error::$required_artifact is missing or empty after a successful canary"
+              exit 1
+            fi
+          done
+
       - name: Upload production bootstrap canary artifacts
         if: always()
-        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: windows-production-bootstrap-canary
@@ -383,3 +397,4 @@ jobs:
             production-windows-ajax-auto-allow-canary.json
             ${{ runner.temp }}/Update-OpenPath.log
             ${{ runner.temp }}/windows-production-bootstrap-firefox.log
+          if-no-files-found: error
