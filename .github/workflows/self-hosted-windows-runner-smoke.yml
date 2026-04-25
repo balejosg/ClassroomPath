@@ -110,4 +110,6 @@ jobs:
           if (-not (Test-Path .github/workflows -PathType Container)) {
             throw 'workflow directory was not checked out'
           }
+          $workspace = (Get-Location).Path
+          git config --global --add safe.directory $workspace
           git status --short

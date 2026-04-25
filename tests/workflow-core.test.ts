@@ -197,6 +197,11 @@ describe('Workflow core contracts', () => {
         workflowText.includes('Test-NetConnection github.com -Port 443'),
       'watchdog smoke must restore DNS and prove GitHub connectivity from the Windows runner'
     );
+    assert.ok(
+      workflowText.includes('git config --global --add safe.directory $workspace') &&
+        workflowText.includes('git status --short'),
+      'watchdog smoke must tolerate persistent runner workspace ownership drift'
+    );
   });
 
   test('OpenPath sync workflow automates checked handoff without depending on OpenPath callbacks', () => {
