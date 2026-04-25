@@ -630,10 +630,16 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(ajaxScript.includes('node scripts/windows-ajax-auto-allow-canary.mjs'));
     assert.ok(ajaxCanaryScript.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
     assert.ok(ajaxCanaryScript.includes('ajax-auto-allow-target.127.0.0.1.sslip.io'));
+    assert.ok(
+      ajaxCanaryScript.includes('ajax-auto-allow-asset.127.0.0.1.sslip.io'),
+      'Windows AJAX canary must cover non-XHR page subresources'
+    );
     assert.ok(ajaxCanaryScript.includes('Access-Control-Allow-Origin'));
     assert.ok(ajaxCanaryScript.includes('fetch('));
+    assert.ok(ajaxCanaryScript.includes('new Image()'));
     assert.ok(ajaxCanaryScript.includes('C:\\\\OpenPath\\\\data\\\\whitelist.txt'));
     assert.ok(ajaxCanaryScript.includes('Auto-allow AJAX target was not written to whitelist'));
+    assert.ok(ajaxCanaryScript.includes('Auto-allow image target was not written to whitelist'));
     assert.ok(ajaxCanaryScript.includes('production-windows-ajax-auto-allow-canary.json'));
     assert.ok(workflowText.includes('Record canary result'));
     const restoreDnsStep = restoreDnsStepIndex >= 0 ? steps[restoreDnsStepIndex] : undefined;

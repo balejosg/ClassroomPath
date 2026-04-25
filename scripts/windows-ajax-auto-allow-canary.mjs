@@ -11,6 +11,7 @@ import process from 'node:process';
 
 const ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
 const TARGET_HOST = 'ajax-auto-allow-target.127.0.0.1.sslip.io';
+const ASSET_HOST = 'ajax-auto-allow-asset.127.0.0.1.sslip.io';
 const PORT = Number.parseInt(process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18088', 10);
 const TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS ?? '90000',
@@ -44,7 +45,7 @@ function writeGithubOutput(key, value) {
   appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${String(value)}\n`, 'utf8');
 }
 
-function buildPage(targetUrl) {
+function buildPage(targetUrl, assetUrl) {
   return `<!doctype html>
 <html>
 <head><meta charset="utf-8"><title>Windows AJAX Auto-Allow Canary</title></head>
@@ -53,6 +54,7 @@ function buildPage(targetUrl) {
 <script>
 const statusEl = document.getElementById('status');
 const targetUrl = ${JSON.stringify(targetUrl)};
+const assetUrl = ${JSON.stringify(assetUrl)};
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function report(payload) {
@@ -63,25 +65,53 @@ async function report(payload) {
   });
 }
 
+function loadImage(url) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve({ ok: true });
+    image.onerror = () => resolve({ ok: false, error: 'image load failed' });
+    image.src = url + '?attempt=' + Date.now();
+  });
+}
+
 (async () => {
   const attempts = [];
+  let fetchSucceeded = false;
+  let imageSucceeded = false;
   for (let attempt = 1; attempt <= 40; attempt += 1) {
+    const attemptResult = { attempt };
     try {
       statusEl.textContent = 'fetch attempt ' + attempt;
-      const response = await fetch(targetUrl, { cache: 'no-store', mode: 'cors' });
-      attempts.push({ attempt, ok: response.ok, status: response.status });
+      const response = fetchSucceeded
+        ? { ok: true, status: 200 }
+        : await fetch(targetUrl, { cache: 'no-store', mode: 'cors' });
+      attemptResult.fetch = { ok: response.ok, status: response.status };
       if (response.ok) {
-        await report({ success: true, attempts, targetUrl });
-        statusEl.textContent = 'success';
-        return;
+        fetchSucceeded = true;
       }
     } catch (error) {
-      attempts.push({ attempt, error: String(error && error.message ? error.message : error) });
+      attemptResult.fetch = { error: String(error && error.message ? error.message : error) };
+    }
+
+    if (!imageSucceeded) {
+      statusEl.textContent = 'image attempt ' + attempt;
+      const imageResult = await loadImage(assetUrl);
+      attemptResult.image = imageResult;
+      imageSucceeded = imageResult.ok === true;
+    } else {
+      attemptResult.image = { ok: true };
+    }
+
+    attempts.push(attemptResult);
+    if (fetchSucceeded && imageSucceeded) {
+        await report({ success: true, attempts, targetUrl, assetUrl });
+        statusEl.textContent = 'success';
+        return;
     }
     await sleep(2500);
   }
 
-  await report({ success: false, attempts, targetUrl });
+  await report({ success: false, attempts, targetUrl, assetUrl });
   statusEl.textContent = 'failed';
 })();
 </script>
@@ -94,11 +124,18 @@ async function readWhitelistContainsTarget() {
   return contents.toLowerCase().includes(TARGET_HOST);
 }
 
+async function readWhitelistContainsAsset() {
+  const contents = await readFile(WHITELIST_PATH, 'utf8');
+  return contents.toLowerCase().includes(ASSET_HOST);
+}
+
 async function main() {
   const firefoxPath = findFirefox();
   const targetUrl = `http://${TARGET_HOST}:${PORT}/data.json`;
+  const assetUrl = `http://${ASSET_HOST}:${PORT}/pixel.png`;
   const originUrl = `http://${ORIGIN_HOST}:${PORT}/`;
   let targetHits = 0;
+  let assetHits = 0;
   let resultPayload = null;
   let resolveResult;
   const resultPromise = new Promise((resolve) => {
@@ -141,11 +178,25 @@ async function main() {
       return;
     }
 
+    if (host === ASSET_HOST && String(req.url ?? '').startsWith('/pixel.png')) {
+      assetHits += 1;
+      const transparentPixel = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+        'base64'
+      );
+      res.writeHead(200, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'image/png',
+      });
+      res.end(transparentPixel);
+      return;
+    }
+
     res.writeHead(200, {
       'Cache-Control': 'no-store',
       'Content-Type': 'text/html; charset=utf-8',
     });
-    res.end(buildPage(targetUrl));
+    res.end(buildPage(targetUrl, assetUrl));
   });
 
   await new Promise((resolve, reject) => {
@@ -181,13 +232,17 @@ async function main() {
     const result = await resultPromise;
     clearTimeout(timeout);
     const whitelistContainsTarget = await readWhitelistContainsTarget().catch(() => false);
+    const whitelistContainsAsset = await readWhitelistContainsAsset().catch(() => false);
     const summary = {
       ...result,
       originHost: ORIGIN_HOST,
       targetHost: TARGET_HOST,
+      assetHost: ASSET_HOST,
       targetHits,
+      assetHits,
       whitelistPath: WHITELIST_PATH,
       whitelistContainsTarget,
+      whitelistContainsAsset,
       firefoxOutput: firefoxOutput.slice(-4000),
     };
 
@@ -200,6 +255,10 @@ async function main() {
 
     if (!summary.whitelistContainsTarget) {
       throw new Error('Auto-allow AJAX target was not written to whitelist');
+    }
+
+    if (!summary.whitelistContainsAsset) {
+      throw new Error('Auto-allow image target was not written to whitelist');
     }
   } finally {
     firefox.kill('SIGTERM');
