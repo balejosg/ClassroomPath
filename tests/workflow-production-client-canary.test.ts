@@ -537,6 +537,9 @@ describe('Production client update canary workflow contracts', () => {
     const uploadStepIndex = steps.findIndex((step) =>
       String(step.name ?? '').includes('Upload production bootstrap canary artifacts')
     );
+    const restoreDnsStepIndex = steps.findIndex((step) =>
+      String(step.name ?? '').includes('Restore Windows runner DNS before artifact upload')
+    );
     const ajaxStep = ajaxStepIndex >= 0 ? steps[ajaxStepIndex] : undefined;
     const ajaxScript = String(ajaxStep?.run ?? '');
     const ajaxCanaryScript = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
@@ -563,6 +566,10 @@ describe('Production client update canary workflow contracts', () => {
       installStepIndex >= 0 && installStepIndex < ajaxStepIndex && ajaxStepIndex < uploadStepIndex,
       'AJAX proof should run after live Windows enrollment/Firefox install and before artifacts'
     );
+    assert.ok(
+      ajaxStepIndex < restoreDnsStepIndex && restoreDnsStepIndex < uploadStepIndex,
+      'Windows bootstrap canary should restore runner DNS before uploading artifacts'
+    );
     assert.equal(ajaxStep?.shell, 'pwsh');
     assert.ok(ajaxScript.includes('node scripts/windows-ajax-auto-allow-canary.mjs'));
     assert.ok(ajaxCanaryScript.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
@@ -573,6 +580,11 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(ajaxCanaryScript.includes('Auto-allow AJAX target was not written to whitelist'));
     assert.ok(ajaxCanaryScript.includes('production-windows-ajax-auto-allow-canary.json'));
     assert.ok(workflowText.includes('Record canary result'));
+    const restoreDnsStep = restoreDnsStepIndex >= 0 ? steps[restoreDnsStepIndex] : undefined;
+    assert.equal(restoreDnsStep?.if, 'always()');
+    assert.equal(restoreDnsStep?.['continue-on-error'], true);
+    assert.ok(String(restoreDnsStep?.run ?? '').includes('Set-DnsClientServerAddress'));
+    assert.ok(String(restoreDnsStep?.run ?? '').includes('Clear-DnsClientCache'));
     const uploadStep = uploadStepIndex >= 0 ? steps[uploadStepIndex] : undefined;
     assert.equal(
       uploadStep?.['continue-on-error'],
