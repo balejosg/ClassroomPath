@@ -428,7 +428,7 @@ jobs:
           STRIPE_PILOT_PRICE: ${{ secrets.STRIPE_PILOT_PRICE }}
           CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA: ${{ needs.verify-staging-release-state.outputs.staging_email_delivery_high_risk == 'true' && '0' || '1' }}
           CP_EMAIL_PREFLIGHT_MODE: ${{ needs.verify-staging-release-state.outputs.staging_email_delivery_high_risk == 'true' && 'required' || 'skip' }}
-        uses: appleboy/ssh-action@v1.2.4
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ steps.resolve.outputs.ip }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -765,7 +765,7 @@ jobs:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}
-        uses: appleboy/ssh-action@v1.2.4
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ steps.resolve.outputs.ip }}
           username: ${{ secrets.DEPLOY_USER }}
