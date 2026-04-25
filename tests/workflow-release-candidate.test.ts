@@ -512,6 +512,15 @@ describe('Release candidate workflow contracts', () => {
 
   test('OpenPath sync workflow lets the required-check script derive risk from the upstream diff', () => {
     const workflowText = readText('.github/workflows/sync-openpath.yml');
+    const workflow = readWorkflow('.github/workflows/sync-openpath.yml');
+    const steps = workflow.jobs?.sync?.steps ?? [];
+    const installabilityStep = steps.find(
+      (step) => step.name === 'Verify OpenPath Linux agent APT installability'
+    );
+    const updateSubmoduleIndex = steps.findIndex((step) => step.name === 'Update submodule');
+    const installabilityIndex = steps.findIndex(
+      (step) => step.name === 'Verify OpenPath Linux agent APT installability'
+    );
 
     assert.ok(workflowText.includes('OPENPATH_BASE_SHA: ${{ steps.check.outputs.current }}'));
     assert.ok(workflowText.includes('OPENPATH_SHA: ${{ steps.check.outputs.latest }}'));
@@ -519,5 +528,27 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(workflowText.includes('OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS=2400'));
     assert.ok(workflowText.includes('OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS'));
     assert.ok(!workflowText.includes('OPENPATH_REQUIRED_CHECKS: CI Success'));
+    assert.ok(
+      installabilityStep,
+      'OpenPath sync should not advance ClassroomPath until the exact Linux APT pin is installable'
+    );
+    assert.match(
+      String(installabilityStep?.run ?? ''),
+      /node scripts\/resolve-openpath-linux-agent-version\.mjs[\s\S]*--openpath-dir upstream\/openpath/
+    );
+    assert.match(
+      String(installabilityStep?.run ?? ''),
+      /node scripts\/resolve-openpath-linux-agent-version\.mjs verify-runtime-pin/
+    );
+    assert.match(
+      String(installabilityStep?.run ?? ''),
+      /node scripts\/resolve-openpath-linux-agent-version\.mjs install-probe-script[\s\S]*docker run --rm -i ubuntu:24\.04 bash/
+    );
+    assert.ok(
+      installabilityIndex >= 0 &&
+        updateSubmoduleIndex >= 0 &&
+        installabilityIndex < updateSubmoduleIndex,
+      'OpenPath sync should verify APT installability before updating the submodule'
+    );
   });
 });

@@ -12,6 +12,24 @@ import process from 'node:process';
 const ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
 const TARGET_HOST = 'ajax-auto-allow-target.127.0.0.1.sslip.io';
 const ASSET_HOST = 'ajax-auto-allow-asset.127.0.0.1.sslip.io';
+const AUTO_ALLOW_PROBES = Object.freeze([
+  {
+    id: 'ajax-fetch',
+    kind: 'fetch',
+    host: TARGET_HOST,
+    path: '/data.json',
+    expectedWhitelistHost: TARGET_HOST,
+    failureMessage: 'Auto-allow AJAX target was not written to whitelist',
+  },
+  {
+    id: 'image-subresource',
+    kind: 'image',
+    host: ASSET_HOST,
+    path: '/pixel.png',
+    expectedWhitelistHost: ASSET_HOST,
+    failureMessage: 'Auto-allow image target was not written to whitelist',
+  },
+]);
 const PORT = Number.parseInt(process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18088', 10);
 const TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS ?? '90000',
@@ -45,7 +63,17 @@ function writeGithubOutput(key, value) {
   appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${String(value)}\n`, 'utf8');
 }
 
-function buildPage(targetUrl, assetUrl) {
+function buildProbeUrl(probe) {
+  return `http://${probe.host}:${PORT}${probe.path}`;
+}
+
+function buildPage(probes) {
+  const browserProbes = probes.map((probe) => ({
+    id: probe.id,
+    kind: probe.kind,
+    url: buildProbeUrl(probe),
+  }));
+
   return `<!doctype html>
 <html>
 <head><meta charset="utf-8"><title>Windows AJAX Auto-Allow Canary</title></head>
@@ -53,8 +81,7 @@ function buildPage(targetUrl, assetUrl) {
 <pre id="status">starting</pre>
 <script>
 const statusEl = document.getElementById('status');
-const targetUrl = ${JSON.stringify(targetUrl)};
-const assetUrl = ${JSON.stringify(assetUrl)};
+const probes = ${JSON.stringify(browserProbes)};
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function report(payload) {
@@ -63,6 +90,19 @@ async function report(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
+}
+
+async function runProbe(probe) {
+  if (probe.kind === 'fetch') {
+    const response = await fetch(probe.url, { cache: 'no-store', mode: 'cors' });
+    return { ok: response.ok, status: response.status };
+  }
+
+  if (probe.kind === 'image') {
+    return await loadImage(probe.url);
+  }
+
+  return { ok: false, error: 'unsupported probe kind: ' + probe.kind };
 }
 
 function loadImage(url) {
@@ -76,42 +116,37 @@ function loadImage(url) {
 
 (async () => {
   const attempts = [];
-  let fetchSucceeded = false;
-  let imageSucceeded = false;
+  const completed = Object.fromEntries(probes.map((probe) => [probe.id, false]));
   for (let attempt = 1; attempt <= 40; attempt += 1) {
-    const attemptResult = { attempt };
-    try {
-      statusEl.textContent = 'fetch attempt ' + attempt;
-      const response = fetchSucceeded
-        ? { ok: true, status: 200 }
-        : await fetch(targetUrl, { cache: 'no-store', mode: 'cors' });
-      attemptResult.fetch = { ok: response.ok, status: response.status };
-      if (response.ok) {
-        fetchSucceeded = true;
+    const attemptResult = { attempt, probes: {} };
+    for (const probe of probes) {
+      if (completed[probe.id]) {
+        attemptResult.probes[probe.id] = { ok: true, skipped: true };
+        continue;
       }
-    } catch (error) {
-      attemptResult.fetch = { error: String(error && error.message ? error.message : error) };
-    }
 
-    if (!imageSucceeded) {
-      statusEl.textContent = 'image attempt ' + attempt;
-      const imageResult = await loadImage(assetUrl);
-      attemptResult.image = imageResult;
-      imageSucceeded = imageResult.ok === true;
-    } else {
-      attemptResult.image = { ok: true };
+      try {
+        statusEl.textContent = probe.id + ' attempt ' + attempt;
+        const probeResult = await runProbe(probe);
+        attemptResult.probes[probe.id] = probeResult;
+        completed[probe.id] = probeResult.ok === true;
+      } catch (error) {
+        attemptResult.probes[probe.id] = {
+          error: String(error && error.message ? error.message : error)
+        };
+      }
     }
 
     attempts.push(attemptResult);
-    if (fetchSucceeded && imageSucceeded) {
-        await report({ success: true, attempts, targetUrl, assetUrl });
+    if (Object.values(completed).every(Boolean)) {
+        await report({ success: true, attempts, probes });
         statusEl.textContent = 'success';
         return;
     }
     await sleep(2500);
   }
 
-  await report({ success: false, attempts, targetUrl, assetUrl });
+  await report({ success: false, attempts, probes });
   statusEl.textContent = 'failed';
 })();
 </script>
@@ -119,23 +154,17 @@ function loadImage(url) {
 </html>`;
 }
 
-async function readWhitelistContainsTarget() {
+async function readWhitelistContainsHost(host) {
   const contents = await readFile(WHITELIST_PATH, 'utf8');
-  return contents.toLowerCase().includes(TARGET_HOST);
-}
-
-async function readWhitelistContainsAsset() {
-  const contents = await readFile(WHITELIST_PATH, 'utf8');
-  return contents.toLowerCase().includes(ASSET_HOST);
+  return contents.toLowerCase().includes(String(host).toLowerCase());
 }
 
 async function main() {
   const firefoxPath = findFirefox();
-  const targetUrl = `http://${TARGET_HOST}:${PORT}/data.json`;
-  const assetUrl = `http://${ASSET_HOST}:${PORT}/pixel.png`;
+  const targetUrl = buildProbeUrl(AUTO_ALLOW_PROBES[0]);
+  const assetUrl = buildProbeUrl(AUTO_ALLOW_PROBES[1]);
   const originUrl = `http://${ORIGIN_HOST}:${PORT}/`;
-  let targetHits = 0;
-  let assetHits = 0;
+  const probeHits = Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, 0]));
   let resultPayload = null;
   let resolveResult;
   const resultPromise = new Promise((resolve) => {
@@ -167,19 +196,25 @@ async function main() {
       return;
     }
 
-    if (host === TARGET_HOST && req.url === '/data.json') {
-      targetHits += 1;
+    const matchedProbe = AUTO_ALLOW_PROBES.find(
+      (probe) => host === probe.host && String(req.url ?? '').startsWith(probe.path)
+    );
+
+    if (matchedProbe?.id === 'ajax-fetch') {
+      probeHits[matchedProbe.id] += 1;
       res.writeHead(200, {
         'Access-Control-Allow-Origin': `http://${ORIGIN_HOST}:${PORT}`,
         'Cache-Control': 'no-store',
         'Content-Type': 'application/json',
       });
-      res.end(JSON.stringify({ ok: true, target: TARGET_HOST, targetHits }));
+      res.end(
+        JSON.stringify({ ok: true, target: TARGET_HOST, targetHits: probeHits['ajax-fetch'] })
+      );
       return;
     }
 
-    if (host === ASSET_HOST && String(req.url ?? '').startsWith('/pixel.png')) {
-      assetHits += 1;
+    if (matchedProbe?.id === 'image-subresource') {
+      probeHits[matchedProbe.id] += 1;
       const transparentPixel = Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
         'base64'
@@ -196,7 +231,7 @@ async function main() {
       'Cache-Control': 'no-store',
       'Content-Type': 'text/html; charset=utf-8',
     });
-    res.end(buildPage(targetUrl, assetUrl));
+    res.end(buildPage(AUTO_ALLOW_PROBES));
   });
 
   await new Promise((resolve, reject) => {
@@ -225,21 +260,43 @@ async function main() {
       success: false,
       error: `Timed out after ${TIMEOUT_MS}ms waiting for AJAX auto-allow success`,
       targetUrl,
+      assetUrl,
     });
   }, TIMEOUT_MS);
 
   try {
     const result = await resultPromise;
     clearTimeout(timeout);
-    const whitelistContainsTarget = await readWhitelistContainsTarget().catch(() => false);
-    const whitelistContainsAsset = await readWhitelistContainsAsset().catch(() => false);
+    const probeEvidence = [];
+    for (const probe of AUTO_ALLOW_PROBES) {
+      probeEvidence.push({
+        id: probe.id,
+        kind: probe.kind,
+        host: probe.host,
+        url: buildProbeUrl(probe),
+        hits: probeHits[probe.id] ?? 0,
+        expectedWhitelistHost: probe.expectedWhitelistHost,
+        whitelistContainsExpectedHost: await readWhitelistContainsHost(
+          probe.expectedWhitelistHost
+        ).catch(() => false),
+      });
+    }
+    const whitelistContainsTarget =
+      probeEvidence.find((probe) => probe.id === 'ajax-fetch')?.whitelistContainsExpectedHost ??
+      false;
+    const whitelistContainsAsset =
+      probeEvidence.find((probe) => probe.id === 'image-subresource')
+        ?.whitelistContainsExpectedHost ?? false;
     const summary = {
       ...result,
       originHost: ORIGIN_HOST,
       targetHost: TARGET_HOST,
       assetHost: ASSET_HOST,
-      targetHits,
-      assetHits,
+      targetUrl,
+      assetUrl,
+      targetHits: probeHits['ajax-fetch'] ?? 0,
+      assetHits: probeHits['image-subresource'] ?? 0,
+      probeEvidence,
       whitelistPath: WHITELIST_PATH,
       whitelistContainsTarget,
       whitelistContainsAsset,
@@ -253,12 +310,11 @@ async function main() {
       throw new Error(`Windows AJAX auto-allow canary failed: ${JSON.stringify(summary)}`);
     }
 
-    if (!summary.whitelistContainsTarget) {
-      throw new Error('Auto-allow AJAX target was not written to whitelist');
-    }
-
-    if (!summary.whitelistContainsAsset) {
-      throw new Error('Auto-allow image target was not written to whitelist');
+    for (const probe of AUTO_ALLOW_PROBES) {
+      const evidence = probeEvidence.find((item) => item.id === probe.id);
+      if (!evidence?.whitelistContainsExpectedHost) {
+        throw new Error(probe.failureMessage);
+      }
     }
   } finally {
     firefox.kill('SIGTERM');
