@@ -70,6 +70,10 @@ prepare_openpath_firefox_assets_from_image() {
     return 1
   fi
 
+  chmod 755 "$tmp_dir"
+  chmod 644 "$tmp_dir/metadata.json"
+  chmod 644 "$tmp_dir/openpath-firefox-extension.xpi"
+
   docker rm "$assets_container" >/dev/null 2>&1 || true
   rm -rf "$target_dir"
   mv "$tmp_dir" "$target_dir"

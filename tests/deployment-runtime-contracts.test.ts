@@ -237,6 +237,9 @@ describe('Deployment runtime contracts', () => {
         stagingRemote.includes('ensure_staging_release_candidate_runtime_env || return 1') &&
         stagingRemote.includes('prepare_openpath_firefox_assets_from_image') &&
         releaseRuntimeHelper.includes('docker pull "$OPENPATH_FIREFOX_ASSETS_IMAGE"') &&
+        releaseRuntimeHelper.includes('chmod 755 "$tmp_dir"') &&
+        releaseRuntimeHelper.includes('chmod 644 "$tmp_dir/metadata.json"') &&
+        releaseRuntimeHelper.includes('chmod 644 "$tmp_dir/openpath-firefox-extension.xpi"') &&
         releaseRuntimeHelper.includes(
           'docker cp "$assets_container:/openpath-firefox-release/metadata.json"'
         ) &&
