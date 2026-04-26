@@ -672,6 +672,14 @@ describe('Production client update canary workflow contracts', () => {
       'Windows AJAX canary should fail explicitly when Firefox exits before reporting'
     );
     assert.ok(
+      ajaxCanaryScript.includes('PROBE_TIMEOUT_MS'),
+      'Windows AJAX canary should not let one blocked request starve the remaining probes'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('withTimeout(runProbeOnce(probe)'),
+      'Windows AJAX canary should retry all probe kinds even when fetch hangs'
+    );
+    assert.ok(
       ajaxCanaryScript.includes('const AUTO_ALLOW_PROBES = Object.freeze'),
       'Windows AJAX canary should declare subresource probes in one maintainable table'
     );

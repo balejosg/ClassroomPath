@@ -204,6 +204,7 @@ function buildPage(probes) {
 const statusEl = document.getElementById('status');
 const probes = ${JSON.stringify(browserProbes)};
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const PROBE_TIMEOUT_MS = 4000;
 
 async function report(payload) {
   await fetch('/result', {
@@ -214,6 +215,10 @@ async function report(payload) {
 }
 
 async function runProbe(probe) {
+  return await withTimeout(runProbeOnce(probe), PROBE_TIMEOUT_MS, probe.id);
+}
+
+async function runProbeOnce(probe) {
   if (probe.kind === 'fetch') {
     const response = await fetch(probe.url, { cache: 'no-store', mode: 'cors' });
     return { ok: response.ok, status: response.status };
@@ -232,6 +237,27 @@ async function runProbe(probe) {
   }
 
   return { ok: false, error: 'unsupported probe kind: ' + probe.kind };
+}
+
+function withTimeout(promise, timeoutMs, probeId) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      resolve({ ok: false, error: probeId + ' timed out after ' + timeoutMs + 'ms' });
+    }, timeoutMs);
+
+    promise
+      .then((result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        resolve({
+          ok: false,
+          error: String(error && error.message ? error.message : error)
+        });
+      });
+  });
 }
 
 function loadImage(url) {
