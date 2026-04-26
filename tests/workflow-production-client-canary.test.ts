@@ -634,16 +634,28 @@ describe('Production client update canary workflow contracts', () => {
       ajaxCanaryScript.includes('ajax-auto-allow-asset.127.0.0.1.sslip.io'),
       'Windows AJAX canary must cover non-XHR page subresources'
     );
+    assert.ok(
+      ajaxCanaryScript.includes('ajax-auto-allow-script.127.0.0.1.sslip.io'),
+      'Windows AJAX canary must cover script subresources'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('ajax-auto-allow-stylesheet.127.0.0.1.sslip.io'),
+      'Windows AJAX canary must cover stylesheet subresources'
+    );
     assert.ok(ajaxCanaryScript.includes('Access-Control-Allow-Origin'));
     assert.ok(ajaxCanaryScript.includes('fetch('));
     assert.ok(ajaxCanaryScript.includes('new Image()'));
+    assert.ok(ajaxCanaryScript.includes("document.createElement('script')"));
+    assert.ok(ajaxCanaryScript.includes("document.createElement('link')"));
     assert.ok(
       ajaxCanaryScript.includes('const AUTO_ALLOW_PROBES = Object.freeze'),
       'Windows AJAX canary should declare subresource probes in one maintainable table'
     );
     assert.ok(
       ajaxCanaryScript.includes("id: 'ajax-fetch'") &&
-        ajaxCanaryScript.includes("id: 'image-subresource'"),
+        ajaxCanaryScript.includes("id: 'image-subresource'") &&
+        ajaxCanaryScript.includes("id: 'script-subresource'") &&
+        ajaxCanaryScript.includes("id: 'stylesheet-subresource'"),
       'Windows AJAX canary should identify each probe in evidence artifacts'
     );
     assert.ok(
@@ -653,6 +665,10 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(ajaxCanaryScript.includes('C:\\\\OpenPath\\\\data\\\\whitelist.txt'));
     assert.ok(ajaxCanaryScript.includes('Auto-allow AJAX target was not written to whitelist'));
     assert.ok(ajaxCanaryScript.includes('Auto-allow image target was not written to whitelist'));
+    assert.ok(ajaxCanaryScript.includes('Auto-allow script target was not written to whitelist'));
+    assert.ok(
+      ajaxCanaryScript.includes('Auto-allow stylesheet target was not written to whitelist')
+    );
     assert.ok(ajaxCanaryScript.includes('production-windows-ajax-auto-allow-canary.json'));
     assert.ok(workflowText.includes('Record canary result'));
     const restoreDnsStep = restoreDnsStepIndex >= 0 ? steps[restoreDnsStepIndex] : undefined;

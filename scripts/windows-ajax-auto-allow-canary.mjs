@@ -12,6 +12,8 @@ import process from 'node:process';
 const ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
 const TARGET_HOST = 'ajax-auto-allow-target.127.0.0.1.sslip.io';
 const ASSET_HOST = 'ajax-auto-allow-asset.127.0.0.1.sslip.io';
+const SCRIPT_HOST = 'ajax-auto-allow-script.127.0.0.1.sslip.io';
+const STYLESHEET_HOST = 'ajax-auto-allow-stylesheet.127.0.0.1.sslip.io';
 const AUTO_ALLOW_PROBES = Object.freeze([
   {
     id: 'ajax-fetch',
@@ -28,6 +30,22 @@ const AUTO_ALLOW_PROBES = Object.freeze([
     path: '/pixel.png',
     expectedWhitelistHost: ASSET_HOST,
     failureMessage: 'Auto-allow image target was not written to whitelist',
+  },
+  {
+    id: 'script-subresource',
+    kind: 'script',
+    host: SCRIPT_HOST,
+    path: '/asset.js',
+    expectedWhitelistHost: SCRIPT_HOST,
+    failureMessage: 'Auto-allow script target was not written to whitelist',
+  },
+  {
+    id: 'stylesheet-subresource',
+    kind: 'stylesheet',
+    host: STYLESHEET_HOST,
+    path: '/style.css',
+    expectedWhitelistHost: STYLESHEET_HOST,
+    failureMessage: 'Auto-allow stylesheet target was not written to whitelist',
   },
 ]);
 const PORT = Number.parseInt(process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18088', 10);
@@ -102,6 +120,14 @@ async function runProbe(probe) {
     return await loadImage(probe.url);
   }
 
+  if (probe.kind === 'script') {
+    return await loadScript(probe.url);
+  }
+
+  if (probe.kind === 'stylesheet') {
+    return await loadStylesheet(probe.url);
+  }
+
   return { ok: false, error: 'unsupported probe kind: ' + probe.kind };
 }
 
@@ -111,6 +137,28 @@ function loadImage(url) {
     image.onload = () => resolve({ ok: true });
     image.onerror = () => resolve({ ok: false, error: 'image load failed' });
     image.src = url + '?attempt=' + Date.now();
+  });
+}
+
+function loadScript(url) {
+  return new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.async = true;
+    script.onload = () => resolve({ ok: true });
+    script.onerror = () => resolve({ ok: false, error: 'script load failed' });
+    script.src = url + '?attempt=' + Date.now();
+    document.body.appendChild(script);
+  });
+}
+
+function loadStylesheet(url) {
+  return new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.onload = () => resolve({ ok: true });
+    link.onerror = () => resolve({ ok: false, error: 'stylesheet load failed' });
+    link.href = url + '?attempt=' + Date.now();
+    document.head.appendChild(link);
   });
 }
 
@@ -227,6 +275,26 @@ async function main() {
       return;
     }
 
+    if (matchedProbe?.id === 'script-subresource') {
+      probeHits[matchedProbe.id] += 1;
+      res.writeHead(200, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'application/javascript; charset=utf-8',
+      });
+      res.end('window.__openpathAjaxAutoAllowScriptProbe = true;');
+      return;
+    }
+
+    if (matchedProbe?.id === 'stylesheet-subresource') {
+      probeHits[matchedProbe.id] += 1;
+      res.writeHead(200, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'text/css; charset=utf-8',
+      });
+      res.end('body { --openpath-ajax-auto-allow-style-probe: loaded; }');
+      return;
+    }
+
     res.writeHead(200, {
       'Cache-Control': 'no-store',
       'Content-Type': 'text/html; charset=utf-8',
@@ -292,6 +360,8 @@ async function main() {
       originHost: ORIGIN_HOST,
       targetHost: TARGET_HOST,
       assetHost: ASSET_HOST,
+      scriptHost: SCRIPT_HOST,
+      stylesheetHost: STYLESHEET_HOST,
       targetUrl,
       assetUrl,
       targetHits: probeHits['ajax-fetch'] ?? 0,
