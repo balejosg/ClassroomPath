@@ -428,6 +428,26 @@ describe('Deploy workflow contracts', () => {
       windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs?.base_url?.required,
       true
     );
+    const windowsProductionBootstrapCanaryJob = findWorkflowJob(
+      windowsProductionBootstrapCanaryWorkflow,
+      'windows-production-bootstrap-canary'
+    );
+    assert.ok(
+      String(
+        findWorkflowStepByName(windowsProductionBootstrapCanaryJob, 'Read production billing mode')
+          ?.run ?? ''
+      ).includes('if [ "$TARGET_ENVIRONMENT" = "staging" ]; then'),
+      'staging bootstrap canary must not SSH to the staging host to read billing mode'
+    );
+    assert.ok(
+      String(
+        findWorkflowStepByName(
+          windowsProductionBootstrapCanaryJob,
+          'Read production client canary admin token'
+        )?.run ?? ''
+      ).includes('client_canary_admin_token="${CP_CLIENT_CANARY_ADMIN_TOKEN:-}"'),
+      'staging bootstrap canary should read its manual approval token from inherited secrets'
+    );
     assert.match(
       deployWorkflowText,
       /CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:\s+\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_email_delivery_high_risk == 'true' && '0' \|\| '1' \}\}/
