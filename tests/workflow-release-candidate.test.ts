@@ -157,6 +157,9 @@ describe('Release candidate workflow contracts', () => {
 
   test('release candidate workflow builds immutable artifacts for every main SHA before production tagging', () => {
     const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
+    const firefoxAssetsDockerignore = readText(
+      'docker/Dockerfile.openpath-firefox-assets.dockerignore'
+    );
     const jobs = workflow.jobs ?? {};
     const workflowText = readText('.github/workflows/release-candidate-images.yml');
 
@@ -336,6 +339,15 @@ describe('Release candidate workflow contracts', () => {
     assert.equal(
       jobs['build-openpath-firefox-assets-release-candidate']?.with?.file,
       'docker/Dockerfile.openpath-firefox-assets'
+    );
+    assert.ok(
+      firefoxAssetsDockerignore.includes(
+        '!upstream/openpath/firefox-extension/build/firefox-release/metadata.json'
+      ) &&
+        firefoxAssetsDockerignore.includes(
+          '!upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi'
+        ),
+      'Firefox assets Dockerfile-specific ignore must keep release artifacts in the Docker build context'
     );
     assert.equal(
       jobs['build-openpath-firefox-assets-release-candidate']?.with?.image_repo,

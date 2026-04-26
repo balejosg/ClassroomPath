@@ -1,0 +1,9 @@
+*
+
+!upstream/
+!upstream/openpath/
+!upstream/openpath/firefox-extension/
+!upstream/openpath/firefox-extension/build/
+!upstream/openpath/firefox-extension/build/firefox-release/
+!upstream/openpath/firefox-extension/build/firefox-release/metadata.json
+!upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
