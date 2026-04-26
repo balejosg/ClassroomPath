@@ -459,6 +459,7 @@ async function main() {
     };
 
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+    console.error(`WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`);
     writeGithubOutput('windows_ajax_auto_allow_result', 'failure');
     server.close();
     await rm(profileDir, { recursive: true, force: true }).catch(() => {});
@@ -541,6 +542,12 @@ async function main() {
     };
 
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+    const summaryLine = `WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`;
+    if (summary.success) {
+      console.log(summaryLine);
+    } else {
+      console.error(summaryLine);
+    }
     writeGithubOutput('windows_ajax_auto_allow_result', summary.success ? 'success' : 'failure');
 
     if (!summary.success) {

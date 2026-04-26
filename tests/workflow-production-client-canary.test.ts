@@ -680,6 +680,10 @@ describe('Production client update canary workflow contracts', () => {
       'Windows AJAX canary should retry all probe kinds even when fetch hangs'
     );
     assert.ok(
+      ajaxCanaryScript.includes('WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY'),
+      'Windows AJAX canary should print functional evidence before artifact upload'
+    );
+    assert.ok(
       ajaxCanaryScript.includes('const AUTO_ALLOW_PROBES = Object.freeze'),
       'Windows AJAX canary should declare subresource probes in one maintainable table'
     );
