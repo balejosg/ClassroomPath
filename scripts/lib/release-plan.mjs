@@ -12,6 +12,7 @@ import { deriveStagingDeploymentMode } from './promotion-eligibility.mjs';
  *   app_sha: string;
  *   gateway_image: string;
  *   migrations_image: string;
+ *   openpath_firefox_assets_image: string;
  *   openpath_api_image: string;
  *   openpath_version: string;
  *   linux_agent_version: string;
@@ -37,6 +38,7 @@ import { deriveStagingDeploymentMode } from './promotion-eligibility.mjs';
  *   appSha: string;
  *   gatewayImage: string;
  *   migrationsImage: string;
+ *   openpathFirefoxAssetsImage: string;
  *   openpathApiImage: string;
  *   openpathVersion: string;
  *   linuxAgentVersion: string;
@@ -63,6 +65,7 @@ const RELEASE_CANDIDATE_REQUIRED_KEYS = /** @type {const} */ ([
   'app_sha',
   'gateway_image',
   'migrations_image',
+  'openpath_firefox_assets_image',
   'openpath_api_image',
   'openpath_version',
   'linux_agent_version',
@@ -114,6 +117,7 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
         appSha: manifest.app_sha,
         gatewayImage: manifest.gateway_image,
         migrationsImage: manifest.migrations_image,
+        openpathFirefoxAssetsImage: manifest.openpath_firefox_assets_image,
         openpathApiImage: manifest.openpath_api_image,
         openpathVersion: manifest.openpath_version,
         linuxAgentVersion: manifest.linux_agent_version,

@@ -51,6 +51,7 @@ describe('release image helpers', () => {
       repositoryOwner: 'balejosg',
       gatewayRepo: 'ghcr.io/balejosg/classroompath-gateway',
       migrationsRepo: 'ghcr.io/balejosg/classroompath-migrations',
+      openpathFirefoxAssetsRepo: 'ghcr.io/balejosg/classroompath-openpath-firefox-assets',
       openpathApiRepo: 'ghcr.io/balejosg/classroompath-openpath-api',
       spaRepo: 'ghcr.io/balejosg/classroompath-spa',
       verifierRepo: 'ghcr.io/balejosg/classroompath-release-verifier',
@@ -67,6 +68,7 @@ describe('release image helpers', () => {
         repositoryOwner: 'balejosg',
         gatewayRepo: 'ghcr.io/balejosg/classroompath-gateway',
         migrationsRepo: 'ghcr.io/balejosg/classroompath-migrations',
+        openpathFirefoxAssetsRepo: 'ghcr.io/balejosg/classroompath-openpath-firefox-assets',
         openpathApiRepo: 'ghcr.io/balejosg/classroompath-openpath-api',
         spaRepo: 'ghcr.io/balejosg/classroompath-spa',
         verifierRepo: 'ghcr.io/balejosg/classroompath-release-verifier',
@@ -74,6 +76,8 @@ describe('release image helpers', () => {
           'ghcr.io/balejosg/classroompath-gateway:9765eec8fe9b1ca1dce5671406dde86bded437d8',
         migrationsTag:
           'ghcr.io/balejosg/classroompath-migrations:9765eec8fe9b1ca1dce5671406dde86bded437d8',
+        openpathFirefoxAssetsTag:
+          'ghcr.io/balejosg/classroompath-openpath-firefox-assets:9765eec8fe9b1ca1dce5671406dde86bded437d8',
         openpathApiTag:
           'ghcr.io/balejosg/classroompath-openpath-api:9765eec8fe9b1ca1dce5671406dde86bded437d8',
         spaTag: 'ghcr.io/balejosg/classroompath-spa:9765eec8fe9b1ca1dce5671406dde86bded437d8',
@@ -172,6 +176,8 @@ describe('release image helpers', () => {
         appSha: 'target-sha',
         gatewayImage: 'ghcr.io/balejosg/classroompath-gateway@sha256:1',
         migrationsImage: 'ghcr.io/balejosg/classroompath-migrations@sha256:2',
+        openpathFirefoxAssetsImage:
+          'ghcr.io/balejosg/classroompath-openpath-firefox-assets@sha256:6',
         openpathApiImage: 'ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
         openpathVersion: '4.1.3',
         linuxAgentVersion: '4.1.3',

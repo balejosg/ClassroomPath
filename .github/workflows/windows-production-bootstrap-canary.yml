@@ -2,6 +2,15 @@ name: Windows Production Bootstrap Canary
 
 on:
   workflow_call:
+    inputs:
+      target_environment:
+        description: Target environment to exercise.
+        required: true
+        type: string
+      base_url:
+        description: Public base URL for the target environment.
+        required: true
+        type: string
     outputs:
       canary_result:
         description: Production Windows bootstrap and AJAX auto-allow canary result.
@@ -23,7 +32,8 @@ jobs:
     outputs:
       canary_result: ${{ steps.result.outputs.canary_result }}
     env:
-      PRODUCTION_BASE_URL: https://classroompath.eu
+      TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'production' }}
+      PRODUCTION_BASE_URL: ${{ inputs.base_url || 'https://classroompath.eu' }}
 
     steps:
       - name: Restore Windows runner DNS before checkout
@@ -109,32 +119,64 @@ jobs:
         id: resolve-production
         shell: bash
         env:
+          TARGET_ENVIRONMENT: ${{ env.TARGET_ENVIRONMENT }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          STAGING_DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+          STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
+          case "$TARGET_ENVIRONMENT" in
+            staging)
+              target_host="$STAGING_DEPLOY_HOST"
+              target_port="${STAGING_DEPLOY_PORT:-22}"
+              target_user="$STAGING_DEPLOY_USER"
+              target_key="$STAGING_DEPLOY_SSH_KEY"
+              target_label="staging canaries"
+              ;;
+            production)
+              target_host="$DEPLOY_HOST"
+              target_port="${DEPLOY_PORT:-22}"
+              target_user="$DEPLOY_USER"
+              target_key="$DEPLOY_SSH_KEY"
+              target_label="production canaries"
+              ;;
+            *)
+              echo "::error::Unsupported TARGET_ENVIRONMENT: $TARGET_ENVIRONMENT"
+              exit 1
+              ;;
+          esac
           github_actions_remote_require_values \
-            "production canaries" \
-            DEPLOY_HOST "$DEPLOY_HOST" \
-            DEPLOY_USER "$DEPLOY_USER" \
-            DEPLOY_SSH_KEY "$DEPLOY_SSH_KEY"
+            "$target_label" \
+            TARGET_HOST "$target_host" \
+            TARGET_USER "$target_user" \
+            TARGET_SSH_KEY "$target_key"
           github_actions_remote_write_resolved_host_outputs \
-            "$DEPLOY_HOST" \
-            "${DEPLOY_PORT:-22}" \
-            "$DEPLOY_USER" \
-            "production canaries" >> "$GITHUB_OUTPUT"
+            "$target_host" \
+            "$target_port" \
+            "$target_user" \
+            "$target_label" >> "$GITHUB_OUTPUT"
 
       - name: Install production SSH key
         shell: bash
         env:
+          TARGET_ENVIRONMENT: ${{ env.TARGET_ENVIRONMENT }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
-          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-release
+          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            target_key="$STAGING_DEPLOY_SSH_KEY"
+          else
+            target_key="$DEPLOY_SSH_KEY"
+          fi
+          github_actions_remote_install_ssh_key "$target_key" ~/.ssh/classroompath-production-release
 
       - name: Read production billing mode
         id: read-billing-mode

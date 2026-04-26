@@ -1,0 +1,8 @@
+# syntax=docker/dockerfile:1.7
+
+FROM alpine:3.20
+
+WORKDIR /openpath-firefox-release
+
+COPY upstream/openpath/firefox-extension/build/firefox-release/metadata.json ./
+COPY upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi ./

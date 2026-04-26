@@ -60,6 +60,9 @@ describe('Deploy workflow contracts', () => {
     const windowsProductionBootstrapCanaryWorkflowText = readText(
       '.github/workflows/windows-production-bootstrap-canary.yml'
     );
+    const windowsProductionBootstrapCanaryWorkflow = readWorkflow(
+      '.github/workflows/windows-production-bootstrap-canary.yml'
+    );
     const concurrency = deployWorkflow.concurrency;
     const jobs = deployWorkflow.jobs ?? {};
 
@@ -331,6 +334,10 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       deployWorkflowText,
+      /"WINDOWS_STAGING_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-staging-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-staging-bootstrap-canary\.result \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
       /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-production-bootstrap-canary\.result \}\}"/
     );
     assert.match(
@@ -339,8 +346,29 @@ describe('Deploy workflow contracts', () => {
     );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(
+      jobs['windows-staging-bootstrap-canary']?.uses,
+      './.github/workflows/windows-production-bootstrap-canary.yml'
+    );
+    assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.target_environment, 'staging');
+    assert.equal(
+      jobs['windows-staging-bootstrap-canary']?.with?.base_url,
+      '${{ needs.resolve-release-images.outputs.staging_public_url }}'
+    );
+    assert.match(
+      String(jobs['windows-staging-bootstrap-canary']?.if ?? ''),
+      /staging_windows_firefox_high_risk == 'true'/
+    );
+    assert.equal(
       jobs['windows-production-bootstrap-canary']?.uses,
       './.github/workflows/windows-production-bootstrap-canary.yml'
+    );
+    assert.equal(
+      jobs['windows-production-bootstrap-canary']?.with?.target_environment,
+      'production'
+    );
+    assert.equal(
+      jobs['windows-production-bootstrap-canary']?.with?.base_url,
+      '${{ needs.resolve-release-images.outputs.production_public_url }}'
     );
     assert.match(
       String(jobs['windows-production-bootstrap-canary']?.if ?? ''),
@@ -354,13 +382,42 @@ describe('Deploy workflow contracts', () => {
     assert.ok(deployNeeds.includes('resolve-release-images'));
     assert.ok(deployNeeds.includes('verify-staging-release-state'));
     assert.ok(deployNeeds.includes('windows-firefox-canary'));
+    assert.ok(
+      deployNeeds.includes('windows-staging-bootstrap-canary'),
+      'production deploy must wait for the live Windows AJAX auto-allow canary on staging'
+    );
     assert.ok(productionBootstrapNeeds.includes('verify-staging-release-state'));
     assert.ok(productionBootstrapNeeds.includes('deploy-production'));
+    assert.ok(releaseEvidenceNeeds.includes('windows-staging-bootstrap-canary'));
     assert.ok(releaseEvidenceNeeds.includes('windows-production-bootstrap-canary'));
     assert.match(String(jobs['deploy-production']?.if ?? ''), /^always\(\) && /);
     assert.match(
       String(jobs['deploy-production']?.if ?? ''),
       /needs\.windows-firefox-canary\.result == 'success' \|\| needs\.windows-firefox-canary\.result == 'skipped'/
+    );
+    assert.match(
+      String(jobs['deploy-production']?.if ?? ''),
+      /needs\.windows-staging-bootstrap-canary\.result == 'success' \|\| needs\.windows-staging-bootstrap-canary\.result == 'skipped'/
+    );
+    assert.ok(
+      normalizeNeeds(jobs['rollback-production']?.needs).includes(
+        'windows-production-bootstrap-canary'
+      ),
+      'rollback must observe post-deploy production bootstrap canary failures'
+    );
+    assert.match(
+      String(jobs['rollback-production']?.if ?? ''),
+      /needs\.windows-production-bootstrap-canary\.result == 'failure'/
+    );
+    assert.ok(windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs);
+    assert.equal(
+      windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs?.target_environment
+        ?.required,
+      true
+    );
+    assert.equal(
+      windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs?.base_url?.required,
+      true
     );
     assert.match(
       deployWorkflowText,

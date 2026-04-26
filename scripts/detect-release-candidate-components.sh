@@ -94,6 +94,7 @@ fi
 
 echo "gateway_changed=$gateway_changed" >> "$GITHUB_OUTPUT"
 echo "migrations_changed=$migrations_changed" >> "$GITHUB_OUTPUT"
+echo "openpath_firefox_assets_changed=${openpath_firefox_assets_changed:-false}" >> "$GITHUB_OUTPUT"
 echo "openpath_api_changed=$openpath_api_changed" >> "$GITHUB_OUTPUT"
 echo "spa_changed=$spa_changed" >> "$GITHUB_OUTPUT"
 echo "verifier_changed=$verifier_changed" >> "$GITHUB_OUTPUT"

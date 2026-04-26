@@ -70,6 +70,14 @@ else
   exit 1
 fi
 
+if release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
+  # shellcheck source=lib/release-runtime.sh
+  source "$RELEASE_RUNTIME_HELPER_PATH"
+else
+  log_error "Remote release-runtime helpers do not meet the minimum runtime contract"
+  exit 1
+fi
+
 if deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"; then
   # shellcheck source=lib/deployment-state.sh
   source "$DEPLOYMENT_STATE_HELPER_PATH"
@@ -89,6 +97,14 @@ refresh_rollback_checked_out_helpers() {
 
   # shellcheck source=lib/deployment-state.sh
   source "$DEPLOYMENT_STATE_HELPER_PATH"
+
+  if ! release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
+    log_error "Checked-out release-runtime helper does not meet the minimum runtime contract"
+    exit 1
+  fi
+
+  # shellcheck source=lib/release-runtime.sh
+  source "$RELEASE_RUNTIME_HELPER_PATH"
 }
 
 DEPLOY_DIR="/opt/classroompath"
@@ -96,7 +112,7 @@ STATE_DIR="$DEPLOY_DIR/release-state"
 deployment_state_init_paths "$STATE_DIR"
 deployment_state_load_previous_release
 
-if [ -z "${APP_SHA:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
+if [ -z "${APP_SHA:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
   log_error "Previous release metadata is incomplete"
   exit 1
 fi
@@ -129,8 +145,10 @@ configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/arm6
 verify_deploy_container_platform
 upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
 upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
+upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
 
 log_info "Pulling previous immutable images for rollback..."
+prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "$APP_SHA"
 docker compose pull gateway api spa
 log_info "Recreating containers from previous release state..."
 docker compose up -d --force-recreate --no-build

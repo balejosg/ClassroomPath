@@ -228,6 +228,10 @@ describe('Release candidate workflow contracts', () => {
       jobs['build-gateway-release-candidate']?.uses,
       './.github/workflows/reusable-release-candidate-image-family.yml'
     );
+    assert.equal(
+      jobs['build-openpath-firefox-assets-release-candidate']?.uses,
+      './.github/workflows/reusable-release-candidate-image-family.yml'
+    );
     assert.ok(jobs['build-openpath-api-release-candidate']);
     assert.ok(jobs['build-spa-release-candidate']);
     assert.ok(jobs['build-migrations-release-candidate']);
@@ -254,6 +258,7 @@ describe('Release candidate workflow contracts', () => {
       [
         'build-gateway-release-candidate',
         'build-migrations-release-candidate',
+        'build-openpath-firefox-assets-release-candidate',
         'build-openpath-api-release-candidate',
         'build-spa-release-candidate',
         'build-verifier-release-candidate',
@@ -266,6 +271,7 @@ describe('Release candidate workflow contracts', () => {
     for (const jobName of [
       'build-gateway-release-candidate',
       'build-migrations-release-candidate',
+      'build-openpath-firefox-assets-release-candidate',
       'build-openpath-api-release-candidate',
       'build-spa-release-candidate',
       'build-verifier-release-candidate',
@@ -303,6 +309,47 @@ describe('Release candidate workflow contracts', () => {
       (step) => step.name === 'Fetch release candidate diff base'
     );
     const openpathApiNeeds = normalizeNeeds(jobs['build-openpath-api-release-candidate']?.needs);
+    const openpathFirefoxAssetsNeeds = normalizeNeeds(
+      jobs['build-openpath-firefox-assets-release-candidate']?.needs
+    );
+    assert.equal(
+      jobs['derive-release-image-refs']?.outputs?.openpath_firefox_assets_repo,
+      '${{ steps.image-refs.outputs.openpath_firefox_assets_repo }}'
+    );
+    assert.equal(
+      jobs['derive-release-image-refs']?.outputs?.openpath_firefox_assets_tag,
+      '${{ steps.image-refs.outputs.openpath_firefox_assets_tag }}'
+    );
+    assert.equal(
+      jobs['detect-release-candidate-components']?.outputs?.openpath_firefox_assets_changed,
+      '${{ steps.detect.outputs.openpath_firefox_assets_changed }}'
+    );
+    assert.deepEqual(
+      openpathFirefoxAssetsNeeds.sort(),
+      [
+        'derive-release-image-refs',
+        'detect-release-candidate-components',
+        'resolve-previous-release-candidate-manifest',
+        'resolve-openpath-firefox-release-assets',
+      ].sort()
+    );
+    assert.equal(
+      jobs['build-openpath-firefox-assets-release-candidate']?.with?.file,
+      'docker/Dockerfile.openpath-firefox-assets'
+    );
+    assert.equal(
+      jobs['build-openpath-firefox-assets-release-candidate']?.with?.image_repo,
+      '${{ needs.derive-release-image-refs.outputs.openpath_firefox_assets_repo }}'
+    );
+    assert.equal(
+      jobs['build-openpath-firefox-assets-release-candidate']?.with?.previous_image,
+      '${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_firefox_assets_image }}'
+    );
+    assert.ok(
+      String(
+        jobs['build-openpath-firefox-assets-release-candidate']?.with?.build_required ?? ''
+      ).includes('openpath_firefox_assets_changed')
+    );
     assert.deepEqual(
       openpathApiNeeds.sort(),
       [
@@ -311,10 +358,8 @@ describe('Release candidate workflow contracts', () => {
         'resolve-previous-release-candidate-manifest',
       ].sort()
     );
-    assert.equal(
-      jobs['build-openpath-api-release-candidate']?.with?.['artifact_name'],
-      'openpath-firefox-release-assets-${{ needs.derive-release-image-refs.outputs.openpath_sha }}'
-    );
+    assert.equal(jobs['build-openpath-api-release-candidate']?.with?.['artifact_name'], undefined);
+    assert.equal(jobs['build-openpath-api-release-candidate']?.with?.['artifact_path'], undefined);
     assert.equal(
       jobs['build-openpath-api-release-candidate']?.with?.['openpath_sha'],
       '${{ needs.derive-release-image-refs.outputs.openpath_sha }}'
@@ -366,6 +411,7 @@ describe('Release candidate workflow contracts', () => {
       'build-gateway-release-candidate',
       'build-migrations-release-candidate',
       'resolve-openpath-firefox-release-assets',
+      'build-openpath-firefox-assets-release-candidate',
       'build-openpath-api-release-candidate',
       'build-spa-release-candidate',
       'build-verifier-release-candidate',
@@ -379,6 +425,10 @@ describe('Release candidate workflow contracts', () => {
     assert.match(
       workflowText,
       /CLASSROOMPATH_GATEWAY_IMAGE=\$\{\{\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.gateway_image\s*\}\}/
+    );
+    assert.match(
+      workflowText,
+      /OPENPATH_FIREFOX_ASSETS_IMAGE=\$\{\{\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.openpath_firefox_assets_image\s*\}\}/
     );
     assert.match(
       workflowText,
@@ -418,6 +468,10 @@ describe('Release candidate workflow contracts', () => {
     assert.match(
       workflowText,
       /CLASSROOMPATH_MIGRATIONS_IMAGE=\$\{\{\s*needs\.build-migrations-release-candidate\.outputs\.image\s*\}\}/
+    );
+    assert.match(
+      workflowText,
+      /OPENPATH_FIREFOX_ASSETS_IMAGE=\$\{\{\s*needs\.build-openpath-firefox-assets-release-candidate\.outputs\.image\s*\}\}/
     );
     assert.match(
       workflowText,

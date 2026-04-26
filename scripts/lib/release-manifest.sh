@@ -45,6 +45,7 @@ release_manifest_is_canonical_contract() {
     app_sha \
     gateway_image \
     migrations_image \
+    openpath_firefox_assets_image \
     openpath_api_image \
     openpath_version \
     linux_agent_version \
@@ -113,7 +114,7 @@ release_manifest_validate_contract() {
     return 1
   fi
 
-  for image_key in gateway_image migrations_image openpath_api_image spa_image verifier_image; do
+  for image_key in gateway_image migrations_image openpath_firefox_assets_image openpath_api_image spa_image verifier_image; do
     image_ref="$(release_manifest_require_key "$manifest_path" "$image_key")" || return 1
     if [[ ! "$image_ref" =~ @sha256:[0-9a-f]{64}$ ]]; then
       log_error "Release manifest image ref is not pinned by digest: $image_key=$image_ref"
@@ -158,6 +159,9 @@ export_release_manifest_runtime_env() {
 
   export CLASSROOMPATH_MIGRATIONS_IMAGE
   CLASSROOMPATH_MIGRATIONS_IMAGE="$(release_manifest_require_key "$manifest_path" migrations_image)"
+
+  export OPENPATH_FIREFOX_ASSETS_IMAGE
+  OPENPATH_FIREFOX_ASSETS_IMAGE="$(release_manifest_require_key "$manifest_path" openpath_firefox_assets_image)"
 
   export OPENPATH_API_IMAGE
   OPENPATH_API_IMAGE="$(release_manifest_require_key "$manifest_path" openpath_api_image)"

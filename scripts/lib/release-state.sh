@@ -50,6 +50,7 @@ APP_SHA
 IMAGE_SOURCE
 CLASSROOMPATH_GATEWAY_IMAGE
 CLASSROOMPATH_MIGRATIONS_IMAGE
+OPENPATH_FIREFOX_ASSETS_IMAGE
 OPENPATH_API_IMAGE
 OPENPATH_VERSION
 OPENPATH_LINUX_AGENT_VERSION
@@ -82,6 +83,7 @@ STAGING_VERIFIED_OPENPATH_SHA
 STAGING_VERIFIED_IMAGE_SOURCE
 STAGING_VERIFIED_GATEWAY_IMAGE
 STAGING_VERIFIED_MIGRATIONS_IMAGE
+STAGING_VERIFIED_OPENPATH_FIREFOX_ASSETS_IMAGE
 STAGING_VERIFIED_OPENPATH_API_IMAGE
 STAGING_VERIFIED_OPENPATH_VERSION
 STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION
@@ -217,6 +219,7 @@ verify_current_release_state_matches_expected() {
   release_state_assert_equal "Staging APP_SHA" "$EXPECTED_APP_SHA" "${APP_SHA:-}" || return 1
   release_state_assert_equal "Gateway image" "$EXPECTED_GATEWAY_IMAGE" "${CLASSROOMPATH_GATEWAY_IMAGE:-}" || return 1
   release_state_assert_equal "Migrations image" "$EXPECTED_MIGRATIONS_IMAGE" "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" || return 1
+  release_state_assert_equal "OpenPath Firefox assets image" "$EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE" "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" || return 1
   release_state_assert_equal "OpenPath API image" "$EXPECTED_OPENPATH_API_IMAGE" "${OPENPATH_API_IMAGE:-}" || return 1
   release_state_assert_equal "OpenPath version" "$EXPECTED_OPENPATH_VERSION" "${OPENPATH_VERSION:-}" || return 1
   release_state_assert_equal "SPA image" "$EXPECTED_SPA_IMAGE" "${CLASSROOMPATH_SPA_IMAGE:-}" || return 1
@@ -254,6 +257,10 @@ verify_staging_release_evidence_matches_expected() {
     "Verified migrations image" \
     "$EXPECTED_MIGRATIONS_IMAGE" \
     "${STAGING_VERIFIED_MIGRATIONS_IMAGE:-}" || return 1
+  release_state_assert_equal \
+    "Verified OpenPath Firefox assets image" \
+    "$EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE" \
+    "${STAGING_VERIFIED_OPENPATH_FIREFOX_ASSETS_IMAGE:-}" || return 1
   release_state_assert_equal \
     "Verified OpenPath API image" \
     "$EXPECTED_OPENPATH_API_IMAGE" \

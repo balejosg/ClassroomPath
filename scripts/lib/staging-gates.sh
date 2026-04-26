@@ -299,18 +299,18 @@ run_staging_release_gate() {
 
   echo "Verifying Firefox release artifacts inside classroompath-api..." >&2
   "${ssh_cmd[@]}" \
-    "docker exec classroompath-api test -f /app/firefox-extension/build/firefox-release/metadata.json && docker exec classroompath-api test -f /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi"
+    "docker exec classroompath-api test -f /openpath-firefox-release/metadata.json && docker exec classroompath-api test -f /openpath-firefox-release/openpath-firefox-extension.xpi"
 
   echo "Verifying shared browser policy spec inside classroompath-api..." >&2
   "${ssh_cmd[@]}" "docker exec classroompath-api test -f /app/runtime/browser-policy-spec.json"
 
   STAGING_FIREFOX_RELEASE_ARTIFACTS="present"
   local staging_firefox_metadata_json=""
-  staging_firefox_metadata_json="$("${ssh_cmd[@]}" "docker exec classroompath-api cat /app/firefox-extension/build/firefox-release/metadata.json")"
+  staging_firefox_metadata_json="$("${ssh_cmd[@]}" "docker exec classroompath-api cat /openpath-firefox-release/metadata.json")"
   STAGING_FIREFOX_EXTENSION_ID="$(printf '%s' "$staging_firefox_metadata_json" | node "$STAGING_GATES_SCRIPT_DIR/read-firefox-release-metadata.mjs" --field extensionId)"
   STAGING_FIREFOX_RELEASE_VERSION="$(printf '%s' "$staging_firefox_metadata_json" | node "$STAGING_GATES_SCRIPT_DIR/read-firefox-release-metadata.mjs" --field version)"
-  STAGING_FIREFOX_METADATA_SHA256="$("${ssh_cmd[@]}" "docker exec classroompath-api sha256sum /app/firefox-extension/build/firefox-release/metadata.json | awk '{print \$1}'")"
-  STAGING_FIREFOX_XPI_SHA256="$("${ssh_cmd[@]}" "docker exec classroompath-api sha256sum /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi | awk '{print \$1}'")"
+  STAGING_FIREFOX_METADATA_SHA256="$("${ssh_cmd[@]}" "docker exec classroompath-api sha256sum /openpath-firefox-release/metadata.json | awk '{print \$1}'")"
+  STAGING_FIREFOX_XPI_SHA256="$("${ssh_cmd[@]}" "docker exec classroompath-api sha256sum /openpath-firefox-release/openpath-firefox-extension.xpi | awk '{print \$1}'")"
 
   RELEASE_GATE_RESOLVED_ADDRESS="$release_gate_resolved_address"
 }

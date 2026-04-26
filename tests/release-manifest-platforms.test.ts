@@ -13,6 +13,7 @@ const releaseManifest = [
   'app_sha=abcdef',
   'gateway_image=ghcr.io/balejosg/classroompath-gateway@sha256:1',
   'migrations_image=ghcr.io/balejosg/classroompath-migrations@sha256:2',
+  'openpath_firefox_assets_image=ghcr.io/balejosg/classroompath-openpath-firefox-assets@sha256:6',
   'openpath_api_image=ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
   'openpath_version=4.1.25',
   'linux_agent_version=4.1.25',
@@ -34,6 +35,7 @@ describe('release manifest platform verifier', () => {
     assert.deepEqual(listReleaseManifestImages(releaseManifest), [
       'ghcr.io/balejosg/classroompath-gateway@sha256:1',
       'ghcr.io/balejosg/classroompath-migrations@sha256:2',
+      'ghcr.io/balejosg/classroompath-openpath-firefox-assets@sha256:6',
       'ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
       'ghcr.io/balejosg/classroompath-spa@sha256:4',
       'ghcr.io/balejosg/classroompath-release-verifier@sha256:5',

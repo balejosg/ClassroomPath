@@ -172,10 +172,10 @@ describe('Deployment staging and promotion contracts', () => {
     );
     assert.ok(
       stagingGatesHelper.includes(
-        'classroompath-api test -f /app/firefox-extension/build/firefox-release/metadata.json'
+        'classroompath-api test -f /openpath-firefox-release/metadata.json'
       ) &&
         stagingGatesHelper.includes(
-          'classroompath-api test -f /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi'
+          'classroompath-api test -f /openpath-firefox-release/openpath-firefox-extension.xpi'
         ) &&
         stagingGatesHelper.includes(
           'classroompath-api test -f /app/runtime/browser-policy-spec.json'
@@ -304,6 +304,7 @@ describe('Deployment staging and promotion contracts', () => {
     assert.ok(!workflowContent.includes('run: sleep 30'));
     assert.ok(
       deployRuntimeHelper.includes('write_release_runtime_state') &&
+        deployRuntimeHelper.includes('OPENPATH_FIREFOX_ASSETS_IMAGE') &&
         deployRuntimeHelper.includes('"${OPENPATH_LINUX_AGENT_VERSION:-}"') &&
         deployRuntimeHelper.includes(
           'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"'
@@ -340,6 +341,17 @@ describe('Deployment staging and promotion contracts', () => {
     assert.ok(
       deployRemoteScript.includes('git submodule update --init --recursive --force') &&
         deployRemoteScript.includes('remote_deploy_reload_checked_out_helpers')
+    );
+    assert.ok(
+      rollbackRemoteScript.includes('OPENPATH_FIREFOX_ASSETS_IMAGE') &&
+        rollbackRemoteScript.includes('release_runtime_helper_supports_runtime_contract') &&
+        rollbackRemoteScript.includes('source "$RELEASE_RUNTIME_HELPER_PATH"') &&
+        rollbackRemoteScript.includes(
+          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release'
+        ) &&
+        rollbackRemoteScript.includes(
+          'prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "$APP_SHA"'
+        )
     );
     assert.ok(!rollbackRemoteScript.includes('upsert_env_file_var() {'));
   });

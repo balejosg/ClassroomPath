@@ -22,6 +22,17 @@ describe('release candidate component classification', () => {
     );
   });
 
+  test('maps OpenPath Firefox extension changes to the Firefox assets family without rebuilding OpenPath API', () => {
+    const flags = classifyOpenPathChangedPaths([
+      'firefox-extension/src/background.ts',
+      'firefox-extension/manifest.json',
+    ]);
+
+    assert.equal(flags.openpathApiChanged, false);
+    assert.equal(flags.openpathFirefoxAssetsChanged, true);
+    assert.equal(flags.verifierChanged, true);
+  });
+
   test('maps release-candidate image workflow plumbing changes to every server image family', () => {
     assert.deepEqual(
       classifyReleaseCandidateComponents({
@@ -143,20 +154,18 @@ describe('release candidate component classification', () => {
     );
   });
 
-  test('keeps firefox asset workflow changes scoped to the OpenPath API family', () => {
-    assert.deepEqual(
-      classifyReleaseCandidateComponents({
-        changedFiles: ['.github/workflows/firefox-release-assets.yml'],
-        openpathChangedFiles: [],
-      }),
-      {
-        gatewayChanged: false,
-        migrationsChanged: false,
-        openpathApiChanged: true,
-        spaChanged: false,
-        verifierChanged: false,
-      }
-    );
+  test('keeps firefox asset workflow changes scoped to the Firefox assets family', () => {
+    const flags = classifyReleaseCandidateComponents({
+      changedFiles: ['.github/workflows/firefox-release-assets.yml'],
+      openpathChangedFiles: [],
+    });
+
+    assert.equal(flags.gatewayChanged, false);
+    assert.equal(flags.migrationsChanged, false);
+    assert.equal(flags.openpathApiChanged, false);
+    assert.equal(flags.openpathFirefoxAssetsChanged, true);
+    assert.equal(flags.spaChanged, false);
+    assert.equal(flags.verifierChanged, false);
   });
 
   test('keeps top-level OpenPath API dockerfile changes out of unrelated release families', () => {

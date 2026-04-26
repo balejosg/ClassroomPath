@@ -157,6 +157,9 @@ describe('Deployment runtime contracts', () => {
     const content = readFileSync(releaseCandidateWorkflowPath, 'utf-8');
 
     assert.ok(content.includes('build-verifier-release-candidate'));
+    assert.ok(content.includes('build-openpath-firefox-assets-release-candidate'));
+    assert.ok(content.includes('docker/Dockerfile.openpath-firefox-assets'));
+    assert.ok(content.includes('OPENPATH_FIREFOX_ASSETS_IMAGE='));
     assert.ok(content.includes('docker/Dockerfile.release-verifier'));
     assert.ok(content.includes('CLASSROOMPATH_VERIFIER_IMAGE='));
     assert.ok(content.includes('OPENPATH_LINUX_AGENT_VERSION='));
@@ -184,6 +187,11 @@ describe('Deployment runtime contracts', () => {
     );
     const deployProductionContextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
     const deployProductionRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
+    const releaseRuntimeHelper = readFileSync(
+      resolve(projectRoot, 'scripts/lib/release-runtime.sh'),
+      'utf-8'
+    );
+    const dockerCompose = readFileSync(resolve(projectRoot, 'docker/docker-compose.yml'), 'utf-8');
     const deployContainerPlatformHelper = readFileSync(deployContainerPlatformHelperPath, 'utf-8');
     const verifyProductionPromotionReadyScript = readFileSync(
       productionPromotionReadyScriptPath,
@@ -196,6 +204,8 @@ describe('Deployment runtime contracts', () => {
 
     assert.ok(manifestHelper.includes('decode_release_manifest_base64()'));
     assert.ok(manifestHelper.includes('export_release_manifest_runtime_env()'));
+    assert.ok(manifestHelper.includes('openpath_firefox_assets_image'));
+    assert.ok(manifestHelper.includes('OPENPATH_FIREFOX_ASSETS_IMAGE'));
     assert.ok(manifestHelper.includes('release_manifest_validate_contract()'));
     assert.ok(manifestHelper.includes('release_manifest_is_canonical_contract()'));
     assert.ok(deployPayloadHelper.includes('export function buildDeployPayload'));
@@ -225,6 +235,11 @@ describe('Deployment runtime contracts', () => {
         stagingRemote.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
         stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"') &&
         stagingRemote.includes('ensure_staging_release_candidate_runtime_env || return 1') &&
+        stagingRemote.includes('prepare_openpath_firefox_assets_from_image') &&
+        releaseRuntimeHelper.includes('docker pull "$OPENPATH_FIREFOX_ASSETS_IMAGE"') &&
+        releaseRuntimeHelper.includes(
+          'docker cp "$assets_container:/openpath-firefox-release/metadata.json"'
+        ) &&
         stagingRemote.includes('source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"') &&
         stagingRemote.includes(
           'configure_deploy_container_platform "${STAGING_CONTAINER_PLATFORM:-linux/amd64}"'
@@ -270,6 +285,11 @@ describe('Deployment runtime contracts', () => {
         deployProductionRuntimeHelper.includes(
           'ensure_production_release_candidate_runtime_env || return 1'
         ) &&
+        deployProductionRuntimeHelper.includes('prepare_openpath_firefox_assets_from_image') &&
+        releaseRuntimeHelper.includes('docker pull "$OPENPATH_FIREFOX_ASSETS_IMAGE"') &&
+        releaseRuntimeHelper.includes(
+          'docker cp "$assets_container:/openpath-firefox-release/openpath-firefox-extension.xpi"'
+        ) &&
         deployProductionRuntimeHelper.includes('RELEASE_MANIFEST_B64_FROM_PAYLOAD') &&
         deployProductionRuntimeHelper.includes(
           'decode_release_manifest_base64 "$release_manifest_b64" "$RELEASE_MANIFEST_FILE"'
@@ -296,6 +316,13 @@ describe('Deployment runtime contracts', () => {
         syncBillingEnvScript.includes('VAPID_PRIVATE_KEY') &&
         syncBillingEnvScript.includes('VAPID_CONTACT') &&
         syncBillingEnvScript.includes('VAPID_SUBJECT')
+    );
+    assert.ok(
+      dockerCompose.includes('OPENPATH_FIREFOX_RELEASE_ROOT=/openpath-firefox-release') &&
+        dockerCompose.includes(
+          '${OPENPATH_FIREFOX_RELEASE_DIR:-/opt/classroompath/openpath-firefox-release/current}:/openpath-firefox-release:ro'
+        ),
+      'OpenPath API runtime should consume the separately published Firefox assets image through a read-only mount'
     );
     assert.ok(
       deployContainerPlatformHelper.includes('configure_deploy_container_platform()') &&

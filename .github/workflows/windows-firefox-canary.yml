@@ -120,11 +120,11 @@ jobs:
 
           ssh "${SSH_OPTS[@]}" \
             "${STAGING_DEPLOY_USER}@${{ steps.resolve.outputs.ip }}" \
-            "docker exec classroompath-api cat /app/firefox-extension/build/firefox-release/metadata.json" > metadata.json
+            "docker exec classroompath-api cat /openpath-firefox-release/metadata.json" > metadata.json
 
           ssh "${SSH_OPTS[@]}" \
             "${STAGING_DEPLOY_USER}@${{ steps.resolve.outputs.ip }}" \
-            "docker exec classroompath-api base64 -w0 /app/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi" > openpath-firefox-extension.xpi.base64
+            "docker exec classroompath-api base64 -w0 /openpath-firefox-release/openpath-firefox-extension.xpi" > openpath-firefox-extension.xpi.base64
 
           base64 -d openpath-firefox-extension.xpi.base64 > openpath-firefox-extension.xpi
 

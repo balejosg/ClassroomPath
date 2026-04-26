@@ -11,6 +11,7 @@ import { parseCommandLine, requireCliOption } from './lib/release-cli.mjs';
 const RUNTIME_IMAGE_KEYS = /** @type {const} */ ([
   'gateway_image',
   'migrations_image',
+  'openpath_firefox_assets_image',
   'openpath_api_image',
   'spa_image',
   'verifier_image',

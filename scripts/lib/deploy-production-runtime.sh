@@ -12,7 +12,7 @@ ensure_production_release_candidate_runtime_env() {
     return 0
   fi
 
-  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
+  if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
     release_manifest_b64="${RELEASE_MANIFEST_B64_FROM_PAYLOAD:-${RELEASE_MANIFEST_B64:-}}"
     if [ -n "$release_manifest_b64" ]; then
       RELEASE_MANIFEST_FILE="$(mktemp)"
@@ -25,7 +25,7 @@ ensure_production_release_candidate_runtime_env() {
     fi
   fi
 
-  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
+  if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
     if [ -n "${RELEASE_MANIFEST_FILE:-}" ] && [ -f "$RELEASE_MANIFEST_FILE" ]; then
       export OPENPATH_VERSION
       OPENPATH_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" openpath_version)"
@@ -53,6 +53,7 @@ apply_production_runtime_deploy_impl() {
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
   export CP_REQUIRE_PUSH_NOTIFICATIONS=1
   bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"
   bash "$APP_DIR/scripts/validate-runtime-config-docker.sh" --app-dir "$APP_DIR" --env-file "$APP_DIR/config/.env"
@@ -62,6 +63,9 @@ apply_production_runtime_deploy_impl() {
   fi
 
   login_production_registry
+
+  log_info "Preparing OpenPath Firefox release assets..."
+  prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "${TARGET_SHA:-current}"
 
   log_info "Pulling immutable release images..."
   docker compose pull gateway api spa
@@ -84,6 +88,7 @@ apply_production_runtime_deploy_impl() {
     "release-candidate" \
     "$CLASSROOMPATH_GATEWAY_IMAGE" \
     "$CLASSROOMPATH_MIGRATIONS_IMAGE" \
+    "$OPENPATH_FIREFOX_ASSETS_IMAGE" \
     "$OPENPATH_API_IMAGE" \
     "${OPENPATH_VERSION:-}" \
     "${OPENPATH_LINUX_AGENT_VERSION:-}" \

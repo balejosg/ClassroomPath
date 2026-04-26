@@ -24,6 +24,7 @@ jobs:
       repository_owner: ${{ steps.image-refs.outputs.repository_owner }}
       gateway_repo: ${{ steps.image-refs.outputs.gateway_repo }}
       migrations_repo: ${{ steps.image-refs.outputs.migrations_repo }}
+      openpath_firefox_assets_repo: ${{ steps.image-refs.outputs.openpath_firefox_assets_repo }}
       openpath_api_repo: ${{ steps.image-refs.outputs.openpath_api_repo }}
       spa_repo: ${{ steps.image-refs.outputs.spa_repo }}
       verifier_repo: ${{ steps.image-refs.outputs.verifier_repo }}
@@ -33,6 +34,7 @@ jobs:
       openpath_linux_agent_apt_suite: ${{ steps.linux-agent.outputs.apt_suite }}
       gateway_tag: ${{ steps.image-refs.outputs.gateway_tag }}
       migrations_tag: ${{ steps.image-refs.outputs.migrations_tag }}
+      openpath_firefox_assets_tag: ${{ steps.image-refs.outputs.openpath_firefox_assets_tag }}
       openpath_api_tag: ${{ steps.image-refs.outputs.openpath_api_tag }}
       spa_tag: ${{ steps.image-refs.outputs.spa_tag }}
       verifier_tag: ${{ steps.image-refs.outputs.verifier_tag }}
@@ -103,6 +105,7 @@ jobs:
       available: ${{ steps.export.outputs.available }}
       gateway_image: ${{ steps.export.outputs.gateway_image }}
       migrations_image: ${{ steps.export.outputs.migrations_image }}
+      openpath_firefox_assets_image: ${{ steps.export.outputs.openpath_firefox_assets_image }}
       openpath_api_image: ${{ steps.export.outputs.openpath_api_image }}
       spa_image: ${{ steps.export.outputs.spa_image }}
       verifier_image: ${{ steps.export.outputs.verifier_image }}
@@ -142,6 +145,7 @@ jobs:
     outputs:
       gateway_changed: ${{ steps.detect.outputs.gateway_changed }}
       migrations_changed: ${{ steps.detect.outputs.migrations_changed }}
+      openpath_firefox_assets_changed: ${{ steps.detect.outputs.openpath_firefox_assets_changed }}
       openpath_api_changed: ${{ steps.detect.outputs.openpath_api_changed }}
       spa_changed: ${{ steps.detect.outputs.spa_changed }}
       verifier_changed: ${{ steps.detect.outputs.verifier_changed }}
@@ -223,9 +227,38 @@ jobs:
       - resolve-previous-release-candidate-manifest
       - detect-release-candidate-components
     with:
-      build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_api_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
+      build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_firefox_assets_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
       artifact_name: openpath-firefox-release-assets-${{ needs.derive-release-image-refs.outputs.openpath_sha }}
     secrets: inherit
+
+  build-openpath-firefox-assets-release-candidate:
+    name: Build OpenPath Firefox Assets Release Candidate
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
+    uses: ./.github/workflows/reusable-release-candidate-image-family.yml
+    needs:
+      - derive-release-image-refs
+      - resolve-previous-release-candidate-manifest
+      - detect-release-candidate-components
+      - resolve-openpath-firefox-release-assets
+    with:
+      display_name: OpenPath Firefox Assets Release Candidate
+      build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_firefox_assets_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
+      context: .
+      file: docker/Dockerfile.openpath-firefox-assets
+      image_repo: ${{ needs.derive-release-image-refs.outputs.openpath_firefox_assets_repo }}
+      tag: ${{ needs.derive-release-image-refs.outputs.openpath_firefox_assets_tag }}
+      previous_image: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_firefox_assets_image }}
+      output_name: openpath_firefox_assets_image
+      amd64_cache_scope: release-candidate-openpath-firefox-assets-amd64
+      arm64_cache_scope: release-candidate-openpath-firefox-assets-arm64
+      artifact_name: openpath-firefox-release-assets-${{ needs.derive-release-image-refs.outputs.openpath_sha }}
+      artifact_path: ./upstream/openpath/firefox-extension
+      verify_paths: |
+        ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
+        ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
+      checkout_submodules: true
+    secrets:
+      ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
   build-openpath-api-release-candidate:
     name: Build OpenPath API Release Candidate
@@ -246,13 +279,7 @@ jobs:
       output_name: openpath_api_image
       amd64_cache_scope: release-candidate-openpath-api-amd64
       arm64_cache_scope: release-candidate-openpath-api-arm64
-      artifact_name: openpath-firefox-release-assets-${{ needs.derive-release-image-refs.outputs.openpath_sha }}
       openpath_sha: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
-      artifact_path: ./upstream/openpath/firefox-extension
-      verify_paths: |
-        ./upstream/openpath/firefox-extension/dist/background.js
-        ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
-        ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
       checkout_submodules: true
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
@@ -311,6 +338,7 @@ jobs:
       - detect-release-candidate-components
       - build-gateway-release-candidate
       - build-migrations-release-candidate
+      - build-openpath-firefox-assets-release-candidate
       - build-openpath-api-release-candidate
       - build-spa-release-candidate
       - build-verifier-release-candidate
@@ -325,6 +353,7 @@ jobs:
           APP_SHA=${{ github.sha }}
           CLASSROOMPATH_GATEWAY_IMAGE=${{ needs.build-gateway-release-candidate.outputs.image }}
           CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.build-migrations-release-candidate.outputs.image }}
+          OPENPATH_FIREFOX_ASSETS_IMAGE=${{ needs.build-openpath-firefox-assets-release-candidate.outputs.image }}
           OPENPATH_API_IMAGE=${{ needs.build-openpath-api-release-candidate.outputs.image }}
           OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version }}
           OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version }}
@@ -361,6 +390,13 @@ jobs:
                 "publishDurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.family_duration_seconds || 0 }}
               },
+              "openpathFirefoxAssets": {
+                "buildRequired": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.build_required }},
+                "amd64DurationSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_duration_seconds || 0 }},
+                "arm64DurationSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "publishDurationSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.publish_duration_seconds || 0 }},
+                "familyDurationSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.family_duration_seconds || 0 }}
+              },
               "openpathApi": {
                 "buildRequired": ${{ needs.build-openpath-api-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }},
@@ -396,6 +432,7 @@ jobs:
             echo '| --- | --- | ---: | ---: | ---: | ---: |'
             echo "| Gateway | ${{ needs.build-gateway-release-candidate.outputs.build_required }} | ${{ needs.build-gateway-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.family_duration_seconds || 0 }} |"
             echo "| Migrations | ${{ needs.build-migrations-release-candidate.outputs.build_required }} | ${{ needs.build-migrations-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| OpenPath Firefox Assets | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.family_duration_seconds || 0 }} |"
             echo "| OpenPath API | ${{ needs.build-openpath-api-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }} |"
             echo "| SPA | ${{ needs.build-spa-release-candidate.outputs.build_required }} | ${{ needs.build-spa-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }} |"
             echo "| Verifier | ${{ needs.build-verifier-release-candidate.outputs.build_required }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }} |"
@@ -433,6 +470,7 @@ jobs:
           APP_SHA=${{ github.sha }}
           CLASSROOMPATH_GATEWAY_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}
           CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}
+          OPENPATH_FIREFOX_ASSETS_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_firefox_assets_image }}
           OPENPATH_API_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}
           OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version }}
           OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version }}
@@ -464,6 +502,13 @@ jobs:
                 "familyDurationSeconds": 0
               },
               "migrations": {
+                "buildRequired": false,
+                "amd64DurationSeconds": 0,
+                "arm64DurationSeconds": 0,
+                "publishDurationSeconds": 0,
+                "familyDurationSeconds": 0
+              },
+              "openpathFirefoxAssets": {
                 "buildRequired": false,
                 "amd64DurationSeconds": 0,
                 "arm64DurationSeconds": 0,

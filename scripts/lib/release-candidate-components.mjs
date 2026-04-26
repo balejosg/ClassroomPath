@@ -3,13 +3,19 @@
 import { readFileSync } from 'node:fs';
 
 function createEmptyFlags() {
-  return {
+  const flags = {
     gatewayChanged: false,
     migrationsChanged: false,
     openpathApiChanged: false,
     spaChanged: false,
     verifierChanged: false,
   };
+  Object.defineProperty(flags, 'openpathFirefoxAssetsChanged', {
+    value: false,
+    writable: true,
+    enumerable: false,
+  });
+  return flags;
 }
 
 export const PACKAGE_JSON_CHANGE_KIND = Object.freeze({
@@ -38,6 +44,7 @@ function markAllChanged(flags) {
   flags.gatewayChanged = true;
   flags.migrationsChanged = true;
   flags.openpathApiChanged = true;
+  flags.openpathFirefoxAssetsChanged = true;
   flags.spaChanged = true;
   flags.verifierChanged = true;
 }
@@ -201,8 +208,13 @@ function applyOpenPathPathClassification(flags, filePath) {
     return true;
   }
 
+  if (/^firefox-extension\//.test(filePath)) {
+    flags.openpathFirefoxAssetsChanged = true;
+    flags.verifierChanged = true;
+    return true;
+  }
+
   if (
-    /^firefox-extension\//.test(filePath) ||
     /^linux\//.test(filePath) ||
     /^windows\//.test(filePath) ||
     filePath === 'runtime/browser-policy-spec.json'
@@ -307,7 +319,7 @@ export function classifyReleaseCandidateComponents({
         flags.openpathApiChanged = true;
         break;
       case file === '.github/workflows/firefox-release-assets.yml':
-        flags.openpathApiChanged = true;
+        flags.openpathFirefoxAssetsChanged = true;
         break;
       case file === 'upstream/openpath':
       case /^upstream\/openpath\//.test(file): {
@@ -315,6 +327,7 @@ export function classifyReleaseCandidateComponents({
         flags.gatewayChanged ||= openpathFlags.gatewayChanged;
         flags.migrationsChanged ||= openpathFlags.migrationsChanged;
         flags.openpathApiChanged ||= openpathFlags.openpathApiChanged;
+        flags.openpathFirefoxAssetsChanged ||= openpathFlags.openpathFirefoxAssetsChanged;
         flags.spaChanged ||= openpathFlags.spaChanged;
         flags.verifierChanged ||= openpathFlags.verifierChanged;
         break;
@@ -332,6 +345,7 @@ export function isManifestOnlyReleaseCandidateChange(flags) {
     !flags.gatewayChanged &&
     !flags.migrationsChanged &&
     !flags.openpathApiChanged &&
+    !flags.openpathFirefoxAssetsChanged &&
     !flags.spaChanged &&
     !flags.verifierChanged
   );
@@ -405,6 +419,7 @@ function runCli() {
     [
       `gateway_changed=${flags.gatewayChanged}`,
       `migrations_changed=${flags.migrationsChanged}`,
+      `openpath_firefox_assets_changed=${flags.openpathFirefoxAssetsChanged}`,
       `openpath_api_changed=${flags.openpathApiChanged}`,
       `spa_changed=${flags.spaChanged}`,
       `verifier_changed=${flags.verifierChanged}`,

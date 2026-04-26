@@ -10,6 +10,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
  *   app_sha: string;
  *   gateway_image: string;
  *   migrations_image: string;
+ *   openpath_firefox_assets_image: string;
  *   openpath_api_image: string;
  *   openpath_version: string;
  *   linux_agent_version: string;
@@ -25,6 +26,7 @@ const CANONICAL_RELEASE_MANIFEST_KEYS = /** @type {const} */ ([
   'app_sha',
   'gateway_image',
   'migrations_image',
+  'openpath_firefox_assets_image',
   'openpath_api_image',
   'openpath_version',
   'linux_agent_version',
@@ -85,6 +87,7 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
     app_sha: assignments.app_sha,
     gateway_image: assignments.gateway_image,
     migrations_image: assignments.migrations_image,
+    openpath_firefox_assets_image: assignments.openpath_firefox_assets_image,
     openpath_api_image: assignments.openpath_api_image,
     openpath_version: assignments.openpath_version,
     linux_agent_version: assignments.linux_agent_version,
@@ -101,6 +104,7 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
  *   appSha: string;
  *   gatewayImage: string;
  *   migrationsImage: string;
+ *   openpathFirefoxAssetsImage: string;
  *   openpathApiImage: string;
  *   openpathVersion: string;
  *   linuxAgentVersion: string;
@@ -115,6 +119,7 @@ export function parseArtifactReleaseManifestText(text, options = {}) {
     appSha: assignments.APP_SHA,
     gatewayImage: assignments.CLASSROOMPATH_GATEWAY_IMAGE,
     migrationsImage: assignments.CLASSROOMPATH_MIGRATIONS_IMAGE,
+    openpathFirefoxAssetsImage: assignments.OPENPATH_FIREFOX_ASSETS_IMAGE,
     openpathApiImage: assignments.OPENPATH_API_IMAGE,
     openpathVersion: assignments.OPENPATH_VERSION ?? assignments.OPENPATH_LINUX_AGENT_VERSION ?? '',
     linuxAgentVersion: assignments.OPENPATH_LINUX_AGENT_VERSION ?? '',
@@ -161,6 +166,7 @@ export function buildCanonicalReleaseManifest({ repository, runId, manifest }) {
     app_sha: manifest.appSha,
     gateway_image: manifest.gatewayImage,
     migrations_image: manifest.migrationsImage,
+    openpath_firefox_assets_image: manifest.openpathFirefoxAssetsImage,
     openpath_api_image: manifest.openpathApiImage,
     openpath_version: manifest.openpathVersion,
     linux_agent_version: manifest.linuxAgentVersion,

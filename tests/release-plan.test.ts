@@ -14,6 +14,7 @@ run_id=24006418074
 app_sha=0123456789abcdef0123456789abcdef01234567
 gateway_image=ghcr.io/balejosg/classroompath-gateway@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 migrations_image=ghcr.io/balejosg/classroompath-migrations@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+openpath_firefox_assets_image=ghcr.io/balejosg/classroompath-openpath-firefox-assets@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 openpath_api_image=ghcr.io/balejosg/openpath-api@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 openpath_version=4.1.11
 linux_agent_version=4.1.11-1
@@ -35,6 +36,10 @@ verifier_image=ghcr.io/balejosg/classroompath-verifier@sha256:eeeeeeeeeeeeeeeeee
     assert.equal(plan.useReleaseCandidate, true);
     assert.equal(plan.targetSha, '0123456789abcdef0123456789abcdef01234567');
     assert.equal(plan.releaseCandidate?.runId, '24006418074');
+    assert.equal(
+      plan.releaseCandidate?.openpathFirefoxAssetsImage,
+      'ghcr.io/balejosg/classroompath-openpath-firefox-assets@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+    );
     assert.equal(plan.releaseCandidate?.openpathVersion, '4.1.11');
     assert.equal(plan.releaseCandidate?.linuxAgentVersion, '4.1.11-1');
     assert.equal(plan.releaseCandidate?.linuxAgentAptSuite, 'unstable');

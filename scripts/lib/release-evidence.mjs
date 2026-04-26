@@ -199,6 +199,7 @@ export function buildReleaseEvidence(env = process.env) {
     immutableImages: {
       gateway: valueOrNull(env.GATEWAY_IMAGE),
       migrations: valueOrNull(env.MIGRATIONS_IMAGE),
+      openPathFirefoxAssets: valueOrNull(env.OPENPATH_FIREFOX_ASSETS_IMAGE),
       openPathApi: valueOrNull(env.OPENPATH_API_IMAGE),
       spa: valueOrNull(env.SPA_IMAGE),
       verifier: valueOrNull(env.VERIFIER_IMAGE),

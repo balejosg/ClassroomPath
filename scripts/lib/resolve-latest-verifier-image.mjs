@@ -39,6 +39,7 @@ export function buildLatestVerifierImageOutputs({ manifest, headSha, runId }) {
     linux_agent_version: manifest.linuxAgentVersion,
     linux_agent_apt_suite: manifest.linuxAgentAptSuite,
     migrations_image: manifest.migrationsImage,
+    openpath_firefox_assets_image: manifest.openpathFirefoxAssetsImage,
     openpath_api_image: manifest.openpathApiImage,
     run_id: String(runId),
     spa_image: manifest.spaImage,

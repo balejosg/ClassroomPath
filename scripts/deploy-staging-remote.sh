@@ -130,6 +130,7 @@ mkdir -p "$STATE_DIR"
 IMAGE_SOURCE="source-build"
 RESOLVED_GATEWAY_IMAGE="classroompath-gateway:local"
 RESOLVED_MIGRATIONS_IMAGE="classroompath-migrations:local"
+RESOLVED_OPENPATH_FIREFOX_ASSETS_IMAGE=""
 RESOLVED_OPENPATH_API_IMAGE="classroompath-api:local"
 RESOLVED_OPENPATH_VERSION=""
 RESOLVED_OPENPATH_LINUX_AGENT_VERSION=""
@@ -166,6 +167,7 @@ write_release_state() {
     "$IMAGE_SOURCE" \
     "$RESOLVED_GATEWAY_IMAGE" \
     "$RESOLVED_MIGRATIONS_IMAGE" \
+    "${RESOLVED_OPENPATH_FIREFOX_ASSETS_IMAGE:-}" \
     "$RESOLVED_OPENPATH_API_IMAGE" \
     "$RESOLVED_OPENPATH_VERSION" \
     "$RESOLVED_OPENPATH_LINUX_AGENT_VERSION" \
@@ -297,7 +299,7 @@ deploy_with_release_candidates() {
 
   ensure_staging_release_candidate_runtime_env || return 1
 
-  if [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
+  if [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
     log_error "Release candidate manifest is incomplete"
     return 1
   fi
@@ -315,9 +317,13 @@ deploy_with_release_candidates() {
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
 
   log_info "Pulling release candidate migrations image for ${STAGING_RELEASE_SHA:-origin-main}..."
   docker pull "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
+
+  log_info "Preparing OpenPath Firefox release assets for ${STAGING_RELEASE_SHA:-origin-main}..."
+  prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "${STAGING_RELEASE_SHA:-origin-main}" || return 1
 
   log_info "Pulling release candidate images for ${STAGING_RELEASE_SHA:-origin-main}..."
   docker compose pull gateway api spa || return 1
@@ -331,6 +337,7 @@ deploy_with_release_candidates() {
   IMAGE_SOURCE="release-candidate"
   RESOLVED_GATEWAY_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_GATEWAY_IMAGE")"
   RESOLVED_MIGRATIONS_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_MIGRATIONS_IMAGE")"
+  RESOLVED_OPENPATH_FIREFOX_ASSETS_IMAGE="$(resolve_pulled_digest "$OPENPATH_FIREFOX_ASSETS_IMAGE")"
   RESOLVED_OPENPATH_API_IMAGE="$(resolve_pulled_digest "$OPENPATH_API_IMAGE")"
   RESOLVED_OPENPATH_VERSION="${OPENPATH_VERSION:-}"
   RESOLVED_OPENPATH_LINUX_AGENT_VERSION="${OPENPATH_LINUX_AGENT_VERSION:-}"
@@ -344,14 +351,14 @@ ensure_staging_release_candidate_runtime_env() {
     return 0
   fi
 
-  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
+  if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
     if [ -n "${STAGING_RELEASE_MANIFEST_FILE:-}" ] && [ -f "$STAGING_RELEASE_MANIFEST_FILE" ]; then
       load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE" "${STAGING_RELEASE_SHA:-}"
       STAGING_RELEASE_SHA="${RELEASE_MANIFEST_APP_SHA:-${STAGING_RELEASE_SHA:-}}"
     fi
   fi
 
-  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
+  if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
     log_error "Release candidate manifest did not export OpenPath runtime versions"
     return 1
   fi

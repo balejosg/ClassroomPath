@@ -25,6 +25,8 @@ describe('resolve latest verifier image', () => {
       head_sha: 'newer-sha',
       gateway_image: 'ghcr.io/balejosg/classroompath-gateway@sha256:1',
       migrations_image: 'ghcr.io/balejosg/classroompath-migrations@sha256:2',
+      openpath_firefox_assets_image:
+        'ghcr.io/balejosg/classroompath-openpath-firefox-assets@sha256:6',
       openpath_api_image: 'ghcr.io/balejosg/classroompath-openpath-api@sha256:3',
       openpath_version: '4.1.3',
       linux_agent_version: '4.1.3',
