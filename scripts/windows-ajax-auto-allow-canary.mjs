@@ -2,7 +2,7 @@
 
 import { createServer } from 'node:http';
 import { appendFileSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -58,7 +58,16 @@ const FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS = Number.parseInt(
   10
 );
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
+const OPENPATH_ROOT = process.env.OPENPATH_ROOT ?? 'C:\\OpenPath';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? 'C:\\OpenPath\\data\\whitelist.txt';
+const NATIVE_ROOT =
+  process.env.OPENPATH_FIREFOX_NATIVE_ROOT ??
+  join(OPENPATH_ROOT, 'browser-extension', 'firefox', 'native');
+const NATIVE_STATE_PATH = join(NATIVE_ROOT, 'native-state.json');
+const NATIVE_MANIFEST_PATH = join(NATIVE_ROOT, 'whitelist_native_host.json');
+const NATIVE_LOG_PATH = join(NATIVE_ROOT, 'native-host.log');
+const NATIVE_WHITELIST_PATH = join(NATIVE_ROOT, 'whitelist.txt');
+const NATIVE_HOST_SCRIPT_PATH = join(NATIVE_ROOT, 'OpenPath-NativeHost.ps1');
 const ARTIFACT_PATH =
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT ??
   'production-windows-ajax-auto-allow-canary.json';
@@ -92,6 +101,263 @@ function buildProbeUrl(probe) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function redactSensitiveWindowsCanaryValue(value) {
+  return String(value)
+    .replace(/\/w\/[^/?#]+\/whitelist\.txt/gi, '/w/[redacted]/whitelist.txt')
+    .replace(/("?(?:machineToken|token)"?\s*[:=]\s*)"?[^",\s}]+"?/gi, '$1"[redacted]"');
+}
+
+function redactWindowsCanaryObject(value) {
+  if (typeof value === 'string') {
+    return redactSensitiveWindowsCanaryValue(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactWindowsCanaryObject(item));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        /token/i.test(key) && typeof item === 'string'
+          ? '[redacted]'
+          : redactWindowsCanaryObject(item),
+      ])
+    );
+  }
+
+  return value;
+}
+
+async function readTextIfExists(path, maxChars = 4000) {
+  try {
+    const contents = await readFile(path, 'utf8');
+    return redactSensitiveWindowsCanaryValue(contents.slice(-maxChars));
+  } catch (error) {
+    return {
+      unavailable: true,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function readJsonIfExists(path) {
+  try {
+    return redactWindowsCanaryObject(JSON.parse(await readFile(path, 'utf8')));
+  } catch (error) {
+    return {
+      unavailable: true,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function readFileEvidence(path, expectedHosts = []) {
+  try {
+    const [fileStat, contents] = await Promise.all([stat(path), readFile(path, 'utf8')]);
+    const lowerContents = contents.toLowerCase();
+    return {
+      path,
+      present: true,
+      size: fileStat.size,
+      whitelistMtimeMs: fileStat.mtimeMs,
+      containsExpectedHosts: Object.fromEntries(
+        expectedHosts.map((host) => [host, lowerContents.includes(host.toLowerCase())])
+      ),
+    };
+  } catch (error) {
+    return {
+      path,
+      present: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function runPowerShell(args, { input, timeoutMs = 10000 } = {}) {
+  return new Promise((resolve) => {
+    const powershell = spawn(process.env.PWSH_PATH ?? 'powershell.exe', args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = Buffer.alloc(0);
+    let stderr = '';
+    const timeout = setTimeout(() => {
+      powershell.kill('SIGTERM');
+      resolve({
+        success: false,
+        timedOut: true,
+        stdout: '',
+        stdoutBuffer: Buffer.alloc(0),
+        stderr: stderr.slice(-4000),
+      });
+    }, timeoutMs);
+
+    powershell.stdout.on('data', (chunk) => {
+      stdout = Buffer.concat([stdout, Buffer.from(chunk)]);
+    });
+    powershell.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    powershell.once('error', (error) => {
+      clearTimeout(timeout);
+      resolve({
+        success: false,
+        error: error.message,
+        stdout: '',
+        stdoutBuffer: Buffer.alloc(0),
+        stderr: stderr.slice(-4000),
+      });
+    });
+    powershell.once('exit', (code, signal) => {
+      clearTimeout(timeout);
+      resolve({
+        success: code === 0,
+        code,
+        signal,
+        stdout: stdout.toString('utf8'),
+        stdoutBuffer: stdout,
+        stderr: stderr.slice(-4000),
+      });
+    });
+
+    if (input) {
+      powershell.stdin.write(input);
+    }
+    powershell.stdin.end();
+  });
+}
+
+async function readScheduledTaskEvidence() {
+  const command = `
+$task = Get-ScheduledTask -TaskName 'OpenPath-Update' -ErrorAction SilentlyContinue
+$info = Get-ScheduledTaskInfo -TaskName 'OpenPath-Update' -ErrorAction SilentlyContinue
+[pscustomobject]@{
+  present = $null -ne $task
+  state = if ($task) { [string]$task.State } else { '' }
+  lastRunTime = if ($info) { [string]$info.LastRunTime } else { '' }
+  lastTaskResult = if ($info) { $info.LastTaskResult } else { $null }
+  nextRunTime = if ($info) { [string]$info.NextRunTime } else { '' }
+} | ConvertTo-Json -Compress
+`;
+  const result = await runPowerShell(
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
+    { timeoutMs: 10000 }
+  );
+
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error ?? result.stderr ?? `PowerShell exited ${String(result.code)}`,
+    };
+  }
+
+  try {
+    return { success: true, ...JSON.parse(result.stdout) };
+  } catch {
+    return { success: false, raw: redactSensitiveWindowsCanaryValue(result.stdout) };
+  }
+}
+
+async function sendNativeProtocolMessage(message) {
+  if (!existsSync(NATIVE_HOST_SCRIPT_PATH)) {
+    return { success: false, error: `${NATIVE_HOST_SCRIPT_PATH} is not present` };
+  }
+
+  const messageBytes = Buffer.from(JSON.stringify(message), 'utf8');
+  const lengthBytes = Buffer.alloc(4);
+  lengthBytes.writeInt32LE(messageBytes.length, 0);
+  const result = await runPowerShell(
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', NATIVE_HOST_SCRIPT_PATH],
+    { input: Buffer.concat([lengthBytes, messageBytes]), timeoutMs: 15000 }
+  );
+
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error ?? result.stderr ?? `Native host exited ${String(result.code)}`,
+    };
+  }
+
+  const stdout = result.stdoutBuffer ?? Buffer.from(result.stdout, 'binary');
+  if (stdout.length < 4) {
+    return { success: false, error: 'Native host returned no framed response' };
+  }
+
+  const responseLength = stdout.readInt32LE(0);
+  const responseBody = stdout.subarray(4, 4 + responseLength).toString('utf8');
+  try {
+    const response = JSON.parse(responseBody);
+    if (response?.action === 'get-machine-token') {
+      return {
+        success: response.success === true,
+        action: response.action,
+        tokenPresent: typeof response.token === 'string' && response.token.length > 0,
+        ...(response.error ? { error: response.error } : {}),
+      };
+    }
+
+    return redactWindowsCanaryObject(response);
+  } catch {
+    return {
+      success: false,
+      error: 'Native host returned invalid JSON',
+      raw: redactSensitiveWindowsCanaryValue(responseBody),
+    };
+  }
+}
+
+async function collectWindowsAutoAllowDiagnostics(phase) {
+  const expectedHosts = AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost);
+  const [globalWhitelist, nativeWhitelist, nativeState, nativeLogTail, task] = await Promise.all([
+    readFileEvidence(WHITELIST_PATH, expectedHosts),
+    readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts),
+    readJsonIfExists(NATIVE_STATE_PATH),
+    readTextIfExists(NATIVE_LOG_PATH),
+    readScheduledTaskEvidence(),
+  ]);
+  const [ping, getConfig, getHostname, getMachineToken, check] = await Promise.all([
+    sendNativeProtocolMessage({ action: 'ping' }),
+    sendNativeProtocolMessage({ action: 'get-config' }),
+    sendNativeProtocolMessage({ action: 'get-hostname' }),
+    sendNativeProtocolMessage({ action: 'get-machine-token' }),
+    sendNativeProtocolMessage({
+      action: 'check',
+      domains: [ORIGIN_HOST, ...expectedHosts],
+    }),
+  ]);
+  const nativeProtocol = {
+    ping,
+    getConfig,
+    getHostname,
+    getMachineToken,
+    check,
+  };
+
+  return redactWindowsCanaryObject({
+    phase,
+    collectedAt: new Date().toISOString(),
+    openPathRoot: OPENPATH_ROOT,
+    whitelist: {
+      global: globalWhitelist,
+      native: nativeWhitelist,
+    },
+    nativeHost: {
+      root: NATIVE_ROOT,
+      statePath: NATIVE_STATE_PATH,
+      statePresent: existsSync(NATIVE_STATE_PATH),
+      state: nativeState,
+      manifestPath: NATIVE_MANIFEST_PATH,
+      manifestPresent: existsSync(NATIVE_MANIFEST_PATH),
+      scriptPath: NATIVE_HOST_SCRIPT_PATH,
+      scriptPresent: existsSync(NATIVE_HOST_SCRIPT_PATH),
+      logPath: NATIVE_LOG_PATH,
+      logTail: nativeLogTail,
+      taskName: 'OpenPath-Update',
+      task,
+    },
+    nativeProtocol,
+  });
 }
 
 function waitForProcessExit(processHandle, timeoutMs = 10000) {
@@ -441,6 +707,7 @@ async function main() {
     server.listen(PORT, '0.0.0.0', resolve);
   });
 
+  const preflightDiagnostics = await collectWindowsAutoAllowDiagnostics('preflight');
   const profileDir = await mkdtemp(join(tmpdir(), 'windows-ajax-auto-allow-firefox-'));
   const firefoxExtensionWarmup = await waitForFirefoxExtensionReady({ firefoxPath, profileDir });
   if (!firefoxExtensionWarmup.ready) {
@@ -456,6 +723,10 @@ async function main() {
       assetUrl,
       firefoxExtensionWarmup,
       whitelistPath: WHITELIST_PATH,
+      diagnostics: {
+        preflight: preflightDiagnostics,
+        postFailure: await collectWindowsAutoAllowDiagnostics('post-firefox-warmup-failure'),
+      },
     };
 
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
@@ -501,6 +772,9 @@ async function main() {
   try {
     const result = await resultPromise;
     clearTimeout(timeout);
+    const postAttemptDiagnostics = await collectWindowsAutoAllowDiagnostics(
+      result?.success ? 'post-success' : 'post-failure'
+    );
     const probeEvidence = [];
     for (const probe of AUTO_ALLOW_PROBES) {
       probeEvidence.push({
@@ -539,6 +813,10 @@ async function main() {
       whitelistContainsAsset,
       firefoxExtensionWarmup,
       firefoxOutput: firefoxOutput.slice(-4000),
+      diagnostics: {
+        preflight: preflightDiagnostics,
+        postAttempt: postAttemptDiagnostics,
+      },
     };
 
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');

@@ -698,6 +698,22 @@ describe('Production client update canary workflow contracts', () => {
       ajaxCanaryScript.includes('expectedWhitelistHost'),
       'Windows AJAX canary should validate whitelist writes from probe metadata'
     );
+    assert.ok(
+      ajaxCanaryScript.includes('collectWindowsAutoAllowDiagnostics'),
+      'Windows AJAX canary should collect native-host diagnostics on success and failure'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('redactSensitiveWindowsCanaryValue'),
+      'Windows AJAX canary diagnostics must redact machine tokens before writing artifacts'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('nativeProtocol') &&
+        ajaxCanaryScript.includes('tokenPresent') &&
+        ajaxCanaryScript.includes('OpenPath-Update') &&
+        ajaxCanaryScript.includes('native-host.log') &&
+        ajaxCanaryScript.includes('whitelistMtimeMs'),
+      'Windows AJAX canary artifacts should expose native protocol, task, log, and whitelist state'
+    );
     assert.ok(ajaxCanaryScript.includes('C:\\\\OpenPath\\\\data\\\\whitelist.txt'));
     assert.ok(ajaxCanaryScript.includes('Auto-allow AJAX target was not written to whitelist'));
     assert.ok(ajaxCanaryScript.includes('Auto-allow image target was not written to whitelist'));
