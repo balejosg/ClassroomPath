@@ -343,7 +343,7 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       deployWorkflowText,
-      /"WINDOWS_STAGING_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-staging-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-staging-bootstrap-canary\.result \}\}"/
+      /"WINDOWS_STAGING_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_windows_bootstrap_result \}\}"/
     );
     assert.match(
       deployWorkflowText,
@@ -355,17 +355,9 @@ describe('Deploy workflow contracts', () => {
     );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(
-      jobs['windows-staging-bootstrap-canary']?.uses,
-      './.github/workflows/windows-production-bootstrap-canary.yml'
-    );
-    assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.target_environment, 'staging');
-    assert.equal(
-      jobs['windows-staging-bootstrap-canary']?.with?.base_url,
-      '${{ needs.resolve-release-images.outputs.staging_public_url }}'
-    );
-    assert.match(
-      String(jobs['windows-staging-bootstrap-canary']?.if ?? ''),
-      /staging_windows_firefox_high_risk == 'true'/
+      jobs['windows-staging-bootstrap-canary'],
+      undefined,
+      'production deploy must not duplicate the live Windows bootstrap gate already embedded in staging evidence'
     );
     assert.equal(
       jobs['windows-production-bootstrap-canary']?.uses,
@@ -391,22 +383,19 @@ describe('Deploy workflow contracts', () => {
     assert.ok(deployNeeds.includes('resolve-release-images'));
     assert.ok(deployNeeds.includes('verify-staging-release-state'));
     assert.ok(deployNeeds.includes('windows-firefox-canary'));
-    assert.ok(
-      deployNeeds.includes('windows-staging-bootstrap-canary'),
-      'production deploy must wait for the live Windows AJAX auto-allow canary on staging'
-    );
+    assert.ok(!deployNeeds.includes('windows-staging-bootstrap-canary'));
     assert.ok(productionBootstrapNeeds.includes('verify-staging-release-state'));
     assert.ok(productionBootstrapNeeds.includes('deploy-production'));
-    assert.ok(releaseEvidenceNeeds.includes('windows-staging-bootstrap-canary'));
+    assert.ok(!releaseEvidenceNeeds.includes('windows-staging-bootstrap-canary'));
     assert.ok(releaseEvidenceNeeds.includes('windows-production-bootstrap-canary'));
     assert.match(String(jobs['deploy-production']?.if ?? ''), /^always\(\) && /);
     assert.match(
       String(jobs['deploy-production']?.if ?? ''),
       /needs\.windows-firefox-canary\.result == 'success' \|\| needs\.windows-firefox-canary\.result == 'skipped'/
     );
-    assert.match(
+    assert.doesNotMatch(
       String(jobs['deploy-production']?.if ?? ''),
-      /needs\.windows-staging-bootstrap-canary\.result == 'success' \|\| needs\.windows-staging-bootstrap-canary\.result == 'skipped'/
+      /windows-staging-bootstrap-canary/
     );
     assert.ok(
       normalizeNeeds(jobs['rollback-production']?.needs).includes(
@@ -432,28 +421,13 @@ describe('Deploy workflow contracts', () => {
       windowsProductionBootstrapCanaryWorkflow,
       'windows-production-bootstrap-canary'
     );
-    assert.ok(
+    assert.doesNotMatch(
       String(
-        findWorkflowStepByName(windowsProductionBootstrapCanaryJob, 'Read production billing mode')
+        findWorkflowStepByName(windowsProductionBootstrapCanaryJob, 'Resolve production host')
           ?.run ?? ''
-      ).includes('if [ "$TARGET_ENVIRONMENT" = "staging" ]; then'),
-      'staging bootstrap canary must not SSH to the staging host to read billing mode'
-    );
-    assert.ok(
-      String(
-        findWorkflowStepByName(windowsProductionBootstrapCanaryJob, 'Read production billing mode')
-          ?.run ?? ''
-      ).includes('billing_mode="stripe"'),
-      'staging bootstrap canary should follow the staging Stripe activation path'
-    );
-    assert.ok(
-      String(
-        findWorkflowStepByName(
-          windowsProductionBootstrapCanaryJob,
-          'Read production Stripe webhook secret'
-        )?.run ?? ''
-      ).includes('stripe_webhook_secret="${STRIPE_WEBHOOK_SECRET:-}"'),
-      'staging bootstrap canary should read its Stripe webhook secret from inherited secrets'
+      ),
+      /STAGING_DEPLOY_/,
+      'production bootstrap canary should not carry a staging SSH/secrets path'
     );
     assert.match(
       deployWorkflowText,

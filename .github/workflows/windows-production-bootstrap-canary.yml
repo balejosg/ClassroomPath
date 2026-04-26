@@ -124,59 +124,32 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
-          STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
-          STAGING_DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
-          STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
-          case "$TARGET_ENVIRONMENT" in
-            staging)
-              target_host="$STAGING_DEPLOY_HOST"
-              target_port="${STAGING_DEPLOY_PORT:-22}"
-              target_user="$STAGING_DEPLOY_USER"
-              target_key="$STAGING_DEPLOY_SSH_KEY"
-              target_label="staging canaries"
-              ;;
-            production)
-              target_host="$DEPLOY_HOST"
-              target_port="${DEPLOY_PORT:-22}"
-              target_user="$DEPLOY_USER"
-              target_key="$DEPLOY_SSH_KEY"
-              target_label="production canaries"
-              ;;
-            *)
-              echo "::error::Unsupported TARGET_ENVIRONMENT: $TARGET_ENVIRONMENT"
-              exit 1
-              ;;
-          esac
+          if [ "$TARGET_ENVIRONMENT" != "production" ]; then
+            echo "::error::Unsupported TARGET_ENVIRONMENT: $TARGET_ENVIRONMENT"
+            exit 1
+          fi
           github_actions_remote_require_values \
-            "$target_label" \
-            TARGET_HOST "$target_host" \
-            TARGET_USER "$target_user" \
-            TARGET_SSH_KEY "$target_key"
+            "production canaries" \
+            TARGET_HOST "$DEPLOY_HOST" \
+            TARGET_USER "$DEPLOY_USER" \
+            TARGET_SSH_KEY "$DEPLOY_SSH_KEY"
           github_actions_remote_write_resolved_host_outputs \
-            "$target_host" \
-            "$target_port" \
-            "$target_user" \
-            "$target_label" >> "$GITHUB_OUTPUT"
+            "$DEPLOY_HOST" \
+            "${DEPLOY_PORT:-22}" \
+            "$DEPLOY_USER" \
+            "production canaries" >> "$GITHUB_OUTPUT"
 
       - name: Install production SSH key
         shell: bash
         env:
-          TARGET_ENVIRONMENT: ${{ env.TARGET_ENVIRONMENT }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
-          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
-            target_key="$STAGING_DEPLOY_SSH_KEY"
-          else
-            target_key="$DEPLOY_SSH_KEY"
-          fi
-          github_actions_remote_install_ssh_key "$target_key" ~/.ssh/classroompath-production-release
+          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-release
 
       - name: Read production billing mode
         id: read-billing-mode
@@ -184,16 +157,12 @@ jobs:
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
-          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
-            billing_mode="stripe"
-          else
-            billing_mode="$(github_actions_remote_read_env_key \
-              ~/.ssh/classroompath-production-release \
-              "${{ steps.resolve-production.outputs.port }}" \
-              "${{ steps.resolve-production.outputs.user }}" \
-              "${{ steps.resolve-production.outputs.ip }}" \
-              CP_BILLING_MODE)"
-          fi
+          billing_mode="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_BILLING_MODE)"
 
           if [ -z "$billing_mode" ]; then
             billing_mode="manual_only"
@@ -204,21 +173,15 @@ jobs:
       - name: Read production client canary admin token
         if: steps.read-billing-mode.outputs.billing_mode == 'manual_only'
         shell: bash
-        env:
-          CP_CLIENT_CANARY_ADMIN_TOKEN: ${{ secrets.CP_CLIENT_CANARY_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
-          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
-            client_canary_admin_token="${CP_CLIENT_CANARY_ADMIN_TOKEN:-}"
-          else
-            client_canary_admin_token="$(github_actions_remote_read_env_key \
-              ~/.ssh/classroompath-production-release \
-              "${{ steps.resolve-production.outputs.port }}" \
-              "${{ steps.resolve-production.outputs.user }}" \
-              "${{ steps.resolve-production.outputs.ip }}" \
-              CP_CLIENT_CANARY_ADMIN_TOKEN)"
-          fi
+          client_canary_admin_token="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            CP_CLIENT_CANARY_ADMIN_TOKEN)"
 
           if [ -z "$client_canary_admin_token" ]; then
             echo "::error::CP_CLIENT_CANARY_ADMIN_TOKEN is missing for $TARGET_ENVIRONMENT"
@@ -231,21 +194,15 @@ jobs:
       - name: Read production Stripe webhook secret
         if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         shell: bash
-        env:
-          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
-          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
-            stripe_webhook_secret="${STRIPE_WEBHOOK_SECRET:-}"
-          else
-            stripe_webhook_secret="$(github_actions_remote_read_env_key \
-              ~/.ssh/classroompath-production-release \
-              "${{ steps.resolve-production.outputs.port }}" \
-              "${{ steps.resolve-production.outputs.user }}" \
-              "${{ steps.resolve-production.outputs.ip }}" \
-              STRIPE_WEBHOOK_SECRET)"
-          fi
+          stripe_webhook_secret="$(github_actions_remote_read_env_key \
+            ~/.ssh/classroompath-production-release \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            STRIPE_WEBHOOK_SECRET)"
 
           if [ -z "$stripe_webhook_secret" ]; then
             echo "::error::STRIPE_WEBHOOK_SECRET is missing for $TARGET_ENVIRONMENT"
