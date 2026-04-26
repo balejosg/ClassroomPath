@@ -660,6 +660,18 @@ describe('Production client update canary workflow contracts', () => {
       'Windows AJAX canary artifacts should preserve extension readiness evidence'
     );
     assert.ok(
+      ajaxCanaryScript.includes('waitForProcessExit(warmup)'),
+      'Windows AJAX canary should wait for the warmup browser to release the profile'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('originHits'),
+      'Windows AJAX canary artifacts should show whether the allowed origin loaded'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('Firefox exited before AJAX auto-allow result'),
+      'Windows AJAX canary should fail explicitly when Firefox exits before reporting'
+    );
+    assert.ok(
       ajaxCanaryScript.includes('const AUTO_ALLOW_PROBES = Object.freeze'),
       'Windows AJAX canary should declare subresource probes in one maintainable table'
     );

@@ -94,6 +94,32 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function waitForProcessExit(processHandle, timeoutMs = 10000) {
+  return new Promise((resolve) => {
+    if (processHandle.exitCode !== null || processHandle.signalCode !== null) {
+      resolve({
+        code: processHandle.exitCode,
+        signal: processHandle.signalCode,
+        timedOut: false,
+      });
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      resolve({
+        code: processHandle.exitCode,
+        signal: processHandle.signalCode,
+        timedOut: true,
+      });
+    }, timeoutMs);
+
+    processHandle.once('exit', (code, signal) => {
+      clearTimeout(timeout);
+      resolve({ code, signal, timedOut: false });
+    });
+  });
+}
+
 async function readProfileExtensionEvidence(profileDir) {
   const registryPath = join(profileDir, 'extensions.json');
   const profileExtensionPath = join(profileDir, 'extensions', `${EXPECTED_EXTENSION_ID}.xpi`);
@@ -151,10 +177,13 @@ async function waitForFirefoxExtensionReady({ firefoxPath, profileDir }) {
     warmup.kill('SIGTERM');
   }
 
+  const exit = await waitForProcessExit(warmup);
+
   return {
     ...evidence,
     ready: evidence.registryAddonPresent || evidence.profileExtensionPresent,
     timeoutMs: FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS,
+    exit,
     firefoxOutput: output.slice(-4000),
   };
 }
@@ -287,6 +316,7 @@ async function main() {
   const assetUrl = buildProbeUrl(AUTO_ALLOW_PROBES[1]);
   const originUrl = `http://${ORIGIN_HOST}:${PORT}/`;
   const probeHits = Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, 0]));
+  let originHits = 0;
   let resultPayload = null;
   let resolveResult;
   const resultPromise = new Promise((resolve) => {
@@ -321,6 +351,10 @@ async function main() {
     const matchedProbe = AUTO_ALLOW_PROBES.find(
       (probe) => host === probe.host && String(req.url ?? '').startsWith(probe.path)
     );
+
+    if (host === ORIGIN_HOST) {
+      originHits += 1;
+    }
 
     if (matchedProbe?.id === 'ajax-fetch') {
       probeHits[matchedProbe.id] += 1;
@@ -419,6 +453,14 @@ async function main() {
   firefox.stderr.on('data', (chunk) => {
     firefoxOutput += chunk.toString();
   });
+  firefox.once('exit', (code, signal) => {
+    resolveResult({
+      success: false,
+      error: `Firefox exited before AJAX auto-allow result (code=${String(code)}, signal=${String(signal)})`,
+      targetUrl,
+      assetUrl,
+    });
+  });
 
   const timeout = setTimeout(() => {
     resolveResult({
@@ -461,6 +503,7 @@ async function main() {
       stylesheetHost: STYLESHEET_HOST,
       targetUrl,
       assetUrl,
+      originHits,
       targetHits: probeHits['ajax-fetch'] ?? 0,
       assetHits: probeHits['image-subresource'] ?? 0,
       probeEvidence,
