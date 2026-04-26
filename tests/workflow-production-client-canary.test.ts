@@ -648,6 +648,18 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(ajaxCanaryScript.includes("document.createElement('script')"));
     assert.ok(ajaxCanaryScript.includes("document.createElement('link')"));
     assert.ok(
+      ajaxCanaryScript.includes('waitForFirefoxExtensionReady'),
+      'Windows AJAX canary must warm the same Firefox profile before navigating'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS'),
+      'Windows AJAX canary should fail explicitly when the forced extension is not ready'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('firefoxExtensionWarmup'),
+      'Windows AJAX canary artifacts should preserve extension readiness evidence'
+    );
+    assert.ok(
       ajaxCanaryScript.includes('const AUTO_ALLOW_PROBES = Object.freeze'),
       'Windows AJAX canary should declare subresource probes in one maintainable table'
     );

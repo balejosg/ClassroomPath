@@ -53,6 +53,11 @@ const TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS ?? '90000',
   10
 );
+const FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS = Number.parseInt(
+  process.env.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_WARMUP_TIMEOUT_MS ?? '60000',
+  10
+);
+const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? 'C:\\OpenPath\\data\\whitelist.txt';
 const ARTIFACT_PATH =
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT ??
@@ -83,6 +88,75 @@ function writeGithubOutput(key, value) {
 
 function buildProbeUrl(probe) {
   return `http://${probe.host}:${PORT}${probe.path}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readProfileExtensionEvidence(profileDir) {
+  const registryPath = join(profileDir, 'extensions.json');
+  const profileExtensionPath = join(profileDir, 'extensions', `${EXPECTED_EXTENSION_ID}.xpi`);
+  let registryAddon = null;
+
+  if (existsSync(registryPath)) {
+    try {
+      const registry = JSON.parse(await readFile(registryPath, 'utf8'));
+      registryAddon =
+        registry?.addons?.find((addon) => addon?.id === EXPECTED_EXTENSION_ID) ?? null;
+    } catch {
+      registryAddon = null;
+    }
+  }
+
+  return {
+    expectedExtensionId: EXPECTED_EXTENSION_ID,
+    registryPath,
+    profileExtensionPath,
+    registryAddonPresent: registryAddon !== null,
+    profileExtensionPresent: existsSync(profileExtensionPath),
+    registryAddonActive: registryAddon?.active,
+    registryAddonVersion: registryAddon?.version,
+  };
+}
+
+async function waitForFirefoxExtensionReady({ firefoxPath, profileDir }) {
+  const warmup = spawn(
+    firefoxPath,
+    ['-headless', '-no-remote', '-profile', profileDir, 'about:blank'],
+    {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }
+  );
+  let output = '';
+  warmup.stdout.on('data', (chunk) => {
+    output += chunk.toString();
+  });
+  warmup.stderr.on('data', (chunk) => {
+    output += chunk.toString();
+  });
+
+  const deadline = Date.now() + FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS;
+  let evidence = await readProfileExtensionEvidence(profileDir);
+  while (Date.now() < deadline) {
+    evidence = await readProfileExtensionEvidence(profileDir);
+    if (evidence.registryAddonPresent || evidence.profileExtensionPresent) {
+      break;
+    }
+
+    await sleep(2000);
+  }
+
+  if (!warmup.killed) {
+    warmup.kill('SIGTERM');
+  }
+
+  return {
+    ...evidence,
+    ready: evidence.registryAddonPresent || evidence.profileExtensionPresent,
+    timeoutMs: FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS,
+    firefoxOutput: output.slice(-4000),
+  };
 }
 
 function buildPage(probes) {
@@ -308,6 +382,29 @@ async function main() {
   });
 
   const profileDir = await mkdtemp(join(tmpdir(), 'windows-ajax-auto-allow-firefox-'));
+  const firefoxExtensionWarmup = await waitForFirefoxExtensionReady({ firefoxPath, profileDir });
+  if (!firefoxExtensionWarmup.ready) {
+    const summary = {
+      success: false,
+      error: `Timed out after ${FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS}ms waiting for Firefox extension ${EXPECTED_EXTENSION_ID} to be ready`,
+      originHost: ORIGIN_HOST,
+      targetHost: TARGET_HOST,
+      assetHost: ASSET_HOST,
+      scriptHost: SCRIPT_HOST,
+      stylesheetHost: STYLESHEET_HOST,
+      targetUrl,
+      assetUrl,
+      firefoxExtensionWarmup,
+      whitelistPath: WHITELIST_PATH,
+    };
+
+    await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+    writeGithubOutput('windows_ajax_auto_allow_result', 'failure');
+    server.close();
+    await rm(profileDir, { recursive: true, force: true }).catch(() => {});
+    throw new Error(`Windows AJAX auto-allow canary failed: ${JSON.stringify(summary)}`);
+  }
+
   const firefox = spawn(
     firefoxPath,
     ['-headless', '-no-remote', '-profile', profileDir, originUrl],
@@ -370,6 +467,7 @@ async function main() {
       whitelistPath: WHITELIST_PATH,
       whitelistContainsTarget,
       whitelistContainsAsset,
+      firefoxExtensionWarmup,
       firefoxOutput: firefoxOutput.slice(-4000),
     };
 
