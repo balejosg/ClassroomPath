@@ -346,6 +346,7 @@ jobs:
           EXPECTED_APP_SHA: ${{ github.sha }}
           EXPECTED_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
           EXPECTED_MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
+          EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_firefox_assets_image }}
           EXPECTED_OPENPATH_API_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_api_image }}
           EXPECTED_OPENPATH_VERSION: ${{ needs.resolve-release-images.outputs.openpath_version }}
           EXPECTED_OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}

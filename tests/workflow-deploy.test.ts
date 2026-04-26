@@ -138,6 +138,15 @@ describe('Deploy workflow contracts', () => {
       verifyStagingJob.outputs?.staging_email_delivery_high_risk,
       '${{ steps.email-risk.outputs.high_risk }}'
     );
+    assert.equal(
+      String(
+        findWorkflowStepByName(verifyStagingJob, 'Compare staging release state')?.env?.[
+          'EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE'
+        ]
+      ),
+      '${{ needs.resolve-release-images.outputs.openpath_firefox_assets_image }}',
+      'production promotion must compare the staged OpenPath Firefox assets image'
+    );
     assert.ok(deployWorkflowText.includes('staging-promotion-eligibility.json'));
     assert.ok(deployWorkflowText.includes('PROMOTION_ELIGIBLE'));
     assert.ok(deployWorkflowText.includes('Verify production release image platforms'));
