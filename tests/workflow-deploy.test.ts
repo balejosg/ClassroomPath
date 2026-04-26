@@ -441,12 +441,19 @@ describe('Deploy workflow contracts', () => {
     );
     assert.ok(
       String(
+        findWorkflowStepByName(windowsProductionBootstrapCanaryJob, 'Read production billing mode')
+          ?.run ?? ''
+      ).includes('billing_mode="stripe"'),
+      'staging bootstrap canary should follow the staging Stripe activation path'
+    );
+    assert.ok(
+      String(
         findWorkflowStepByName(
           windowsProductionBootstrapCanaryJob,
-          'Read production client canary admin token'
+          'Read production Stripe webhook secret'
         )?.run ?? ''
-      ).includes('client_canary_admin_token="${CP_CLIENT_CANARY_ADMIN_TOKEN:-}"'),
-      'staging bootstrap canary should read its manual approval token from inherited secrets'
+      ).includes('stripe_webhook_secret="${STRIPE_WEBHOOK_SECRET:-}"'),
+      'staging bootstrap canary should read its Stripe webhook secret from inherited secrets'
     );
     assert.match(
       deployWorkflowText,

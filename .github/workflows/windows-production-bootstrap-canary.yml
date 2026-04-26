@@ -185,7 +185,7 @@ jobs:
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
           if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
-            billing_mode="manual_only"
+            billing_mode="stripe"
           else
             billing_mode="$(github_actions_remote_read_env_key \
               ~/.ssh/classroompath-production-release \
