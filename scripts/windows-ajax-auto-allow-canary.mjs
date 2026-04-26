@@ -57,6 +57,14 @@ const FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_WARMUP_TIMEOUT_MS ?? '60000',
   10
 );
+const REMOTE_WHITELIST_TIMEOUT_MS = Number.parseInt(
+  process.env.WINDOWS_AJAX_AUTO_ALLOW_REMOTE_WHITELIST_TIMEOUT_MS ?? '10000',
+  10
+);
+const MAX_ATTEMPT_EVIDENCE = Number.parseInt(
+  process.env.WINDOWS_AJAX_AUTO_ALLOW_MAX_ATTEMPT_EVIDENCE ?? '60',
+  10
+);
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
 const OPENPATH_ROOT = process.env.OPENPATH_ROOT ?? 'C:\\OpenPath';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? 'C:\\OpenPath\\data\\whitelist.txt';
@@ -172,6 +180,57 @@ async function readFileEvidence(path, expectedHosts = []) {
       present: false,
       error: error instanceof Error ? error.message : String(error),
     };
+  }
+}
+
+async function collectRemoteWhitelistEvidence(expectedHosts = []) {
+  let whitelistUrl = '';
+  try {
+    const nativeState = JSON.parse(await readFile(NATIVE_STATE_PATH, 'utf8'));
+    whitelistUrl = typeof nativeState?.whitelistUrl === 'string' ? nativeState.whitelistUrl : '';
+  } catch (error) {
+    return {
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  if (!whitelistUrl) {
+    return {
+      available: false,
+      error: 'native-state whitelistUrl missing',
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REMOTE_WHITELIST_TIMEOUT_MS);
+  try {
+    const response = await fetch(whitelistUrl, {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const contents = await response.text();
+    const lowerContents = contents.toLowerCase();
+    return {
+      available: true,
+      fetched: true,
+      url: redactSensitiveWindowsCanaryValue(whitelistUrl),
+      status: response.status,
+      ok: response.ok,
+      size: contents.length,
+      containsExpectedHosts: Object.fromEntries(
+        expectedHosts.map((host) => [host, lowerContents.includes(host.toLowerCase())])
+      ),
+    };
+  } catch (error) {
+    return {
+      available: true,
+      fetched: false,
+      url: redactSensitiveWindowsCanaryValue(whitelistUrl),
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -309,13 +368,15 @@ async function sendNativeProtocolMessage(message) {
 
 async function collectWindowsAutoAllowDiagnostics(phase) {
   const expectedHosts = AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost);
-  const [globalWhitelist, nativeWhitelist, nativeState, nativeLogTail, task] = await Promise.all([
-    readFileEvidence(WHITELIST_PATH, expectedHosts),
-    readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts),
-    readJsonIfExists(NATIVE_STATE_PATH),
-    readTextIfExists(NATIVE_LOG_PATH),
-    readScheduledTaskEvidence(),
-  ]);
+  const [globalWhitelist, nativeWhitelist, nativeState, nativeLogTail, task, remoteWhitelist] =
+    await Promise.all([
+      readFileEvidence(WHITELIST_PATH, expectedHosts),
+      readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts),
+      readJsonIfExists(NATIVE_STATE_PATH),
+      readTextIfExists(NATIVE_LOG_PATH),
+      readScheduledTaskEvidence(),
+      collectRemoteWhitelistEvidence(expectedHosts),
+    ]);
   const [ping, getConfig, getHostname, getMachineToken, check] = await Promise.all([
     sendNativeProtocolMessage({ action: 'ping' }),
     sendNativeProtocolMessage({ action: 'get-config' }),
@@ -341,7 +402,9 @@ async function collectWindowsAutoAllowDiagnostics(phase) {
     whitelist: {
       global: globalWhitelist,
       native: nativeWhitelist,
+      remoteWhitelist,
     },
+    remoteWhitelist,
     nativeHost: {
       root: NATIVE_ROOT,
       statePath: NATIVE_STATE_PATH,
@@ -480,6 +543,18 @@ async function report(payload) {
   });
 }
 
+async function reportAttempt(attemptResult, completed) {
+  try {
+    await fetch('/attempt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attempt: attemptResult, completedProbes: completed })
+    });
+  } catch {
+    // The final /result payload still carries attempts if the page reaches it.
+  }
+}
+
 async function runProbe(probe) {
   return await withTimeout(runProbeOnce(probe), PROBE_TIMEOUT_MS, probe.id);
 }
@@ -581,6 +656,7 @@ function loadStylesheet(url) {
     }
 
     attempts.push(attemptResult);
+    await reportAttempt(attemptResult, completed);
     if (Object.values(completed).every(Boolean)) {
         await report({ success: true, attempts, probes });
         statusEl.textContent = 'success';
@@ -610,6 +686,9 @@ async function main() {
   const probeHits = Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, 0]));
   let originHits = 0;
   let resultPayload = null;
+  const browserAttempts = [];
+  let completedProbes = Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, false]));
+  let lastAttemptAt = null;
   let resolveResult;
   const resultPromise = new Promise((resolve) => {
     resolveResult = resolve;
@@ -636,6 +715,35 @@ async function main() {
         res.writeHead(204);
         res.end();
         resolveResult(resultPayload);
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/attempt') {
+      let body = '';
+      req.setEncoding('utf8');
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+      req.on('end', () => {
+        try {
+          const payload = redactWindowsCanaryObject(JSON.parse(body));
+          browserAttempts.push(payload.attempt ?? payload);
+          if (payload.completedProbes && typeof payload.completedProbes === 'object') {
+            completedProbes = payload.completedProbes;
+          }
+        } catch {
+          browserAttempts.push({
+            error: 'invalid attempt payload',
+            raw: redactSensitiveWindowsCanaryValue(body.slice(-1000)),
+          });
+        }
+        if (browserAttempts.length > MAX_ATTEMPT_EVIDENCE) {
+          browserAttempts.splice(0, browserAttempts.length - MAX_ATTEMPT_EVIDENCE);
+        }
+        lastAttemptAt = new Date().toISOString();
+        res.writeHead(204);
+        res.end();
       });
       return;
     }
@@ -757,6 +865,9 @@ async function main() {
       error: `Firefox exited before AJAX auto-allow result (code=${String(code)}, signal=${String(signal)})`,
       targetUrl,
       assetUrl,
+      attempts: browserAttempts,
+      completedProbes,
+      lastAttemptAt,
     });
   });
 
@@ -766,6 +877,9 @@ async function main() {
       error: `Timed out after ${TIMEOUT_MS}ms waiting for AJAX auto-allow success`,
       targetUrl,
       assetUrl,
+      attempts: browserAttempts,
+      completedProbes,
+      lastAttemptAt,
     });
   }, TIMEOUT_MS);
 
@@ -807,6 +921,9 @@ async function main() {
       originHits,
       targetHits: probeHits['ajax-fetch'] ?? 0,
       assetHits: probeHits['image-subresource'] ?? 0,
+      attempts: result?.attempts ?? browserAttempts,
+      completedProbes: result?.completedProbes ?? completedProbes,
+      lastAttemptAt: result?.lastAttemptAt ?? lastAttemptAt,
       probeEvidence,
       whitelistPath: WHITELIST_PATH,
       whitelistContainsTarget,

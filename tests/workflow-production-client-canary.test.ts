@@ -714,6 +714,21 @@ describe('Production client update canary workflow contracts', () => {
         ajaxCanaryScript.includes('whitelistMtimeMs'),
       'Windows AJAX canary artifacts should expose native protocol, task, log, and whitelist state'
     );
+    assert.ok(
+      ajaxCanaryScript.includes("req.url === '/attempt'") &&
+        ajaxCanaryScript.includes('browserAttempts') &&
+        ajaxCanaryScript.includes('completedProbes') &&
+        ajaxCanaryScript.includes('lastAttemptAt') &&
+        ajaxCanaryScript.includes('reportAttempt(attemptResult, completed)'),
+      'Windows AJAX canary timeout artifacts should preserve incremental browser attempt evidence'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('collectRemoteWhitelistEvidence') &&
+        ajaxCanaryScript.includes('remoteWhitelist') &&
+        ajaxCanaryScript.includes('containsExpectedHosts') &&
+        ajaxCanaryScript.includes('redactSensitiveWindowsCanaryValue(whitelistUrl)'),
+      'Windows AJAX canary diagnostics should compare redacted remote whitelist state against expected hosts'
+    );
     assert.ok(ajaxCanaryScript.includes('C:\\\\OpenPath\\\\data\\\\whitelist.txt'));
     assert.ok(ajaxCanaryScript.includes('Auto-allow AJAX target was not written to whitelist'));
     assert.ok(ajaxCanaryScript.includes('Auto-allow image target was not written to whitelist'));
