@@ -10,8 +10,9 @@ import {
   whitelistRules,
 } from '../db/openpath.js';
 import { assertCanUseGroup } from '../lib/tenant-access.js';
-import { runMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
-import { getMutationResult, getOrCreateMutationOperation } from '../lib/cross-system-mutations.js';
+import { getOrCreateOrganizationMutationOperation } from '../lib/cross-system-mutation-definitions.js';
+import { runDeleteMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
+import { getMutationResult } from '../lib/cross-system-mutations.js';
 import { removeGroupFromTeacherRole } from './group-role-membership.service.js';
 
 type GroupActor = {
@@ -40,69 +41,58 @@ export async function deleteOrganizationGroup(params: GroupActor & { groupId: st
     GROUP_PERMISSION_OPTS
   );
 
-  const operation = await getOrCreateMutationOperation({
-    operationType: 'groups.delete_group',
-    idempotencyKey: `${params.organizationId}:${params.groupId}`,
+  const operation = await getOrCreateOrganizationMutationOperation({
+    kind: 'groupDelete',
     organizationId: params.organizationId,
     userId: params.userId,
-    metadata: { groupId: params.groupId, userRole: params.userRole ?? null },
+    groupId: params.groupId,
+    userRole: params.userRole,
   });
 
   if (operation.status === 'completed') {
     return { success: true };
   }
 
-  await runMutationWorkflow({
+  await runDeleteMutationWorkflow({
     operation,
     initialResult: getMutationResult<{ success: true; groupId: string }>(operation),
     initialState: {},
     metadata: operation.metadata as Record<string, unknown>,
-    steps: [
-      {
-        step: 'local_committed',
-        shouldRun: ({ result }) => !result,
-        run: async () => {
-          await db
-            .delete(schema.cpOrganizationGroups)
-            .where(
-              and(
-                eq(schema.cpOrganizationGroups.organizationId, params.organizationId),
-                eq(schema.cpOrganizationGroups.groupId, params.groupId)
-              )
-            );
+    commitLocalDelete: async () => {
+      await db
+        .delete(schema.cpOrganizationGroups)
+        .where(
+          and(
+            eq(schema.cpOrganizationGroups.organizationId, params.organizationId),
+            eq(schema.cpOrganizationGroups.groupId, params.groupId)
+          )
+        );
 
-          return {
-            result: { success: true, groupId: params.groupId },
-          };
-        },
-      },
-      {
-        step: 'completed',
-        completed: true,
-        shouldRun: ({ result }) => Boolean(result),
-        run: async ({ result }) => {
-          const stillReferenced = await db
-            .select({ id: schema.cpOrganizationGroups.id })
-            .from(schema.cpOrganizationGroups)
-            .where(eq(schema.cpOrganizationGroups.groupId, params.groupId))
-            .limit(1);
+      return {
+        result: { success: true as const, groupId: params.groupId },
+      };
+    },
+    completeDelete: async ({ result }) => {
+      const stillReferenced = await db
+        .select({ id: schema.cpOrganizationGroups.id })
+        .from(schema.cpOrganizationGroups)
+        .where(eq(schema.cpOrganizationGroups.groupId, params.groupId))
+        .limit(1);
 
-          if (stillReferenced.length === 0) {
-            await deleteOpenPathGroupCascade(params.groupId);
+      if (stillReferenced.length === 0) {
+        await deleteOpenPathGroupCascade(params.groupId);
 
-            if (params.userRole === 'teacher') {
-              await removeGroupFromTeacherRole({ userId: params.userId, groupId: params.groupId });
-            }
+        if (params.userRole === 'teacher') {
+          await removeGroupFromTeacherRole({ userId: params.userId, groupId: params.groupId });
+        }
 
-            await notifyOpenPathGroupChanged(params.groupId);
-          }
+        await notifyOpenPathGroupChanged(params.groupId);
+      }
 
-          return {
-            result: result ?? { success: true, groupId: params.groupId },
-          };
-        },
-      },
-    ],
+      return {
+        result: result ?? { success: true as const, groupId: params.groupId },
+      };
+    },
   });
 
   return { success: true };

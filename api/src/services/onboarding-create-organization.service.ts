@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { generateId } from '../lib/id.js';
-import { runMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
-import { getMutationResult, getOrCreateMutationOperation } from '../lib/cross-system-mutations.js';
+import { getOrCreateOrganizationMutationOperation } from '../lib/cross-system-mutation-definitions.js';
+import { runLocalFirstMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
+import { getMutationResult } from '../lib/cross-system-mutations.js';
 import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
 import { SINGLE_ORG_MEMBERSHIP_MESSAGE } from '../lib/tenant-memberships.js';
@@ -12,11 +13,10 @@ export async function createOrganization(
   name: string,
   userId: string
 ): Promise<{ organizationId: string; membershipId: string }> {
-  const operation = await getOrCreateMutationOperation({
-    operationType: 'onboarding.create_organization',
-    idempotencyKey: userId,
+  const operation = await getOrCreateOrganizationMutationOperation({
+    kind: 'onboardingCreateOrganization',
     userId,
-    metadata: { name },
+    name,
   });
 
   const storedResult = getMutationResult<{ organizationId: string; membershipId: string }>(
@@ -29,7 +29,7 @@ export async function createOrganization(
   }
 
   try {
-    const workflow = await runMutationWorkflow({
+    const workflow = await runLocalFirstMutationWorkflow({
       operation,
       initialResult: localResult,
       initialState: { organizationId: localResult?.organizationId ?? null },
@@ -37,63 +37,53 @@ export async function createOrganization(
         ...(operation.metadata as Record<string, unknown>),
         name,
       },
-      steps: [
-        {
-          step: 'local_committed',
-          shouldRun: ({ result }) => !result,
-          run: async () => {
-            await assertCanStartOnboarding(userId);
+      commitLocal: async () => {
+        await assertCanStartOnboarding(userId);
 
-            const organizationId = generateId('org');
-            const membershipId = generateId('mem');
+        const organizationId = generateId('org');
+        const membershipId = generateId('mem');
 
-            await db.transaction(async (tx) => {
-              await tx.insert(schema.cpOrganizations).values({
-                id: organizationId,
-                name,
-                createdBy: userId,
-              });
+        await db.transaction(async (tx) => {
+          await tx.insert(schema.cpOrganizations).values({
+            id: organizationId,
+            name,
+            createdBy: userId,
+          });
 
-              await tx.insert(schema.cpMemberships).values({
-                id: membershipId,
-                userId,
-                organizationId,
-                role: 'admin',
-                invitedBy: null,
-              });
+          await tx.insert(schema.cpMemberships).values({
+            id: membershipId,
+            userId,
+            organizationId,
+            role: 'admin',
+            invitedBy: null,
+          });
 
-              await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
-            });
+          await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, userId));
+        });
 
-            return {
-              organizationId,
-              result: { organizationId, membershipId },
-              state: { organizationId },
-            };
-          },
-        },
-        {
-          step: 'completed',
-          completed: true,
-          shouldRun: ({ result }) => Boolean(result),
-          run: async ({ result, state }) => {
-            if (!result) {
-              return;
-            }
+        return {
+          organizationId,
+          result: { organizationId, membershipId },
+          state: { organizationId },
+        };
+      },
+      syncUpstream: async ({ result, state }) => {
+        if (!result) {
+          return;
+        }
 
-            await synchronizeOpenPathRole({
-              userId,
-              actedBy: userId,
-              groupIds: [],
-            });
+        await synchronizeOpenPathRole({
+          userId,
+          actedBy: userId,
+          groupIds: [],
+        });
 
-            return {
-              organizationId: state.organizationId,
-              result,
-            };
-          },
-        },
-      ],
+        return {
+          organizationId: state.organizationId,
+          result,
+        };
+      },
+      complete: async ({ result }) => (result ? { result } : undefined),
     });
 
     localResult = workflow.result;

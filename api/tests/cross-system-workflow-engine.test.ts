@@ -3,9 +3,16 @@ import assert from 'node:assert/strict';
 
 import {
   getMutationOperationById,
+  getMutationResult,
   getOrCreateMutationOperation,
+  setMutationOperationProgress,
 } from '../src/lib/cross-system-mutations.js';
-import { runMutationWorkflow } from '../src/lib/cross-system-workflow-engine.js';
+import {
+  runDeleteMutationWorkflow,
+  runLocalFirstMutationWorkflow,
+  runMutationWorkflow,
+  runUpstreamFirstProvisioningWorkflow,
+} from '../src/lib/cross-system-workflow-engine.js';
 import { resetDb, withTestDbLock } from './test-db.js';
 
 void describe('cross-system-workflow-engine', () => {
@@ -104,6 +111,158 @@ void describe('cross-system-workflow-engine', () => {
         name: 'Error',
         message: 'workflow exploded',
       });
+    });
+  });
+
+  void test('local-first family resumes after local commit without repeating local work', async () => {
+    await withTestDbLock(async () => {
+      await resetDb();
+
+      const operation = await getOrCreateMutationOperation({
+        operationType: 'workflow.local_first',
+        idempotencyKey: 'local-first-resume',
+        metadata: { family: 'local-first' },
+      });
+
+      await setMutationOperationProgress(operation.id, {
+        step: 'local_committed',
+        result: { membershipId: 'mem_resume' },
+      });
+
+      const resumed = await getMutationOperationById(operation.id);
+      assert.ok(resumed);
+
+      let localCommits = 0;
+      let upstreamSyncs = 0;
+      let completions = 0;
+
+      const workflow = await runLocalFirstMutationWorkflow({
+        operation: resumed,
+        initialResult: getMutationResult<{ membershipId: string }>(resumed),
+        initialState: {},
+        metadata: resumed.metadata,
+        commitLocal: async () => {
+          localCommits += 1;
+          return { result: { membershipId: 'mem_new' } };
+        },
+        syncUpstream: async ({ result }) => {
+          upstreamSyncs += 1;
+          return { result: result ?? { membershipId: 'mem_missing' } };
+        },
+        complete: async ({ result }) => {
+          completions += 1;
+          return { result: result ?? { membershipId: 'mem_missing' } };
+        },
+      });
+
+      assert.equal(localCommits, 0);
+      assert.equal(upstreamSyncs, 1);
+      assert.equal(completions, 1);
+      assert.deepEqual(workflow.result, { membershipId: 'mem_resume' });
+
+      const completed = await getMutationOperationById(operation.id);
+      assert.equal(completed?.status, 'completed');
+      assert.equal(completed?.currentStep, 'completed');
+    });
+  });
+
+  void test('upstream-first family resumes from stored upstream result before linking locally', async () => {
+    await withTestDbLock(async () => {
+      await resetDb();
+
+      const operation = await getOrCreateMutationOperation({
+        operationType: 'workflow.upstream_first',
+        idempotencyKey: 'upstream-first-resume',
+        metadata: { family: 'upstream-first' },
+      });
+
+      await setMutationOperationProgress(operation.id, {
+        step: 'upstream_created',
+        result: { classroomId: 'classroom_resume' },
+      });
+
+      const resumed = await getMutationOperationById(operation.id);
+      assert.ok(resumed);
+
+      let upstreamCreates = 0;
+      let localLinks = 0;
+      let completions = 0;
+
+      const workflow = await runUpstreamFirstProvisioningWorkflow({
+        operation: resumed,
+        initialResult: getMutationResult<{ classroomId: string }>(resumed),
+        initialState: {},
+        metadata: resumed.metadata,
+        createUpstream: async () => {
+          upstreamCreates += 1;
+          return { result: { classroomId: 'classroom_new' } };
+        },
+        linkLocal: async ({ result }) => {
+          localLinks += 1;
+          return { result: result ?? { classroomId: 'classroom_missing' } };
+        },
+        complete: async ({ result }) => {
+          completions += 1;
+          return { result: result ?? { classroomId: 'classroom_missing' } };
+        },
+      });
+
+      assert.equal(upstreamCreates, 0);
+      assert.equal(localLinks, 1);
+      assert.equal(completions, 1);
+      assert.deepEqual(workflow.result, { classroomId: 'classroom_resume' });
+
+      const completed = await getMutationOperationById(operation.id);
+      assert.equal(completed?.status, 'completed');
+      assert.equal(completed?.currentStep, 'completed');
+    });
+  });
+
+  void test('delete family retries from the ledger result and completes cleanup', async () => {
+    await withTestDbLock(async () => {
+      await resetDb();
+
+      const operation = await getOrCreateMutationOperation({
+        operationType: 'workflow.delete',
+        idempotencyKey: 'delete-retry',
+        metadata: { family: 'delete' },
+      });
+
+      await setMutationOperationProgress(operation.id, {
+        step: 'local_committed',
+        status: 'failed',
+        result: { success: true, groupId: 'group_resume' },
+        lastError: { message: 'upstream cleanup failed' },
+      });
+
+      const resumed = await getMutationOperationById(operation.id);
+      assert.ok(resumed);
+
+      let localDeletes = 0;
+      let cleanupRuns = 0;
+
+      const workflow = await runDeleteMutationWorkflow({
+        operation: resumed,
+        initialResult: getMutationResult<{ success: true; groupId: string }>(resumed),
+        initialState: {},
+        metadata: resumed.metadata,
+        commitLocalDelete: async () => {
+          localDeletes += 1;
+          return { result: { success: true, groupId: 'group_new' } };
+        },
+        completeDelete: async ({ result }) => {
+          cleanupRuns += 1;
+          return { result: result ?? { success: true, groupId: 'group_missing' } };
+        },
+      });
+
+      assert.equal(localDeletes, 0);
+      assert.equal(cleanupRuns, 1);
+      assert.deepEqual(workflow.result, { success: true, groupId: 'group_resume' });
+
+      const completed = await getMutationOperationById(operation.id);
+      assert.equal(completed?.status, 'completed');
+      assert.equal(completed?.lastError, null);
     });
   });
 });

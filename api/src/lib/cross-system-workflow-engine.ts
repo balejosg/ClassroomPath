@@ -47,6 +47,55 @@ export interface MutationWorkflowStepDefinition<
   step: CrossSystemMutationStep;
 }
 
+type MutationWorkflowStepRunner<
+  TResult extends Record<string, unknown>,
+  TState,
+  TMetadata extends Record<string, unknown>,
+> = (
+  context: MutationWorkflowContext<TResult, TState, TMetadata>
+) => Promise<void | MutationWorkflowStepUpdate<TResult, TState, TMetadata>>;
+
+interface MutationWorkflowFamilyParams<
+  TResult extends Record<string, unknown>,
+  TState,
+  TMetadata extends Record<string, unknown>,
+> {
+  initialResult: TResult | null;
+  initialState: TState;
+  metadata: TMetadata;
+  operation: MutationOperationRecord;
+}
+
+export interface LocalFirstMutationWorkflowParams<
+  TResult extends Record<string, unknown>,
+  TState,
+  TMetadata extends Record<string, unknown>,
+> extends MutationWorkflowFamilyParams<TResult, TState, TMetadata> {
+  commitLocal: MutationWorkflowStepRunner<TResult, TState, TMetadata>;
+  localCommitProof?: 'result' | 'current-step';
+  complete: MutationWorkflowStepRunner<TResult, TState, TMetadata>;
+  syncUpstream: MutationWorkflowStepRunner<TResult, TState, TMetadata>;
+}
+
+export interface UpstreamFirstProvisioningWorkflowParams<
+  TResult extends Record<string, unknown>,
+  TState,
+  TMetadata extends Record<string, unknown>,
+> extends MutationWorkflowFamilyParams<TResult, TState, TMetadata> {
+  complete: MutationWorkflowStepRunner<TResult, TState, TMetadata>;
+  createUpstream: MutationWorkflowStepRunner<TResult, TState, TMetadata>;
+  linkLocal: MutationWorkflowStepRunner<TResult, TState, TMetadata>;
+}
+
+export interface DeleteMutationWorkflowParams<
+  TResult extends Record<string, unknown>,
+  TState,
+  TMetadata extends Record<string, unknown>,
+> extends MutationWorkflowFamilyParams<TResult, TState, TMetadata> {
+  commitLocalDelete: MutationWorkflowStepRunner<TResult, TState, TMetadata>;
+  completeDelete: MutationWorkflowStepRunner<TResult, TState, TMetadata>;
+}
+
 function mergeWorkflowMetadata<TMetadata extends Record<string, unknown>>(
   current: TMetadata,
   patch: Partial<TMetadata> | undefined
@@ -63,6 +112,17 @@ function applyWorkflowStateUpdate<TState>(
   }
 
   return typeof update === 'function' ? (update as (current: TState) => TState)(current) : update;
+}
+
+function hasReachedStep(
+  currentStep: string,
+  targetStep: CrossSystemMutationStep,
+  stepOrder: CrossSystemMutationStep[]
+): boolean {
+  const currentIndex = stepOrder.indexOf(currentStep as CrossSystemMutationStep);
+  const targetIndex = stepOrder.indexOf(targetStep);
+
+  return currentIndex >= 0 && targetIndex >= 0 && currentIndex >= targetIndex;
 }
 
 export async function runMutationWorkflow<
@@ -124,4 +184,120 @@ export async function runMutationWorkflow<
   }
 
   return { metadata, result, state };
+}
+
+export async function runLocalFirstMutationWorkflow<
+  TResult extends Record<string, unknown>,
+  TState,
+  TMetadata extends Record<string, unknown>,
+>(
+  params: LocalFirstMutationWorkflowParams<TResult, TState, TMetadata>
+): Promise<{ metadata: TMetadata; result: TResult | null; state: TState }> {
+  const stepOrder: CrossSystemMutationStep[] = [
+    'pending',
+    'local_committed',
+    'synced_upstream',
+    'completed',
+  ];
+  const localCommitProof = params.localCommitProof ?? 'result';
+
+  return runMutationWorkflow({
+    operation: params.operation,
+    initialResult: params.initialResult,
+    initialState: params.initialState,
+    metadata: params.metadata,
+    steps: [
+      {
+        step: 'local_committed',
+        shouldRun: ({ result }) =>
+          localCommitProof === 'result'
+            ? !result
+            : !hasReachedStep(params.operation.currentStep, 'local_committed', stepOrder),
+        run: params.commitLocal,
+      },
+      {
+        step: 'synced_upstream',
+        shouldRun: ({ result }) =>
+          Boolean(result) &&
+          !hasReachedStep(params.operation.currentStep, 'synced_upstream', stepOrder),
+        run: params.syncUpstream,
+      },
+      {
+        step: 'completed',
+        completed: true,
+        shouldRun: ({ result }) => Boolean(result),
+        run: params.complete,
+      },
+    ],
+  });
+}
+
+export async function runUpstreamFirstProvisioningWorkflow<
+  TResult extends Record<string, unknown>,
+  TState,
+  TMetadata extends Record<string, unknown>,
+>(
+  params: UpstreamFirstProvisioningWorkflowParams<TResult, TState, TMetadata>
+): Promise<{ metadata: TMetadata; result: TResult | null; state: TState }> {
+  const stepOrder: CrossSystemMutationStep[] = [
+    'pending',
+    'upstream_created',
+    'local_linked',
+    'completed',
+  ];
+
+  return runMutationWorkflow({
+    operation: params.operation,
+    initialResult: params.initialResult,
+    initialState: params.initialState,
+    metadata: params.metadata,
+    steps: [
+      {
+        step: 'upstream_created',
+        shouldRun: ({ result }) => !result,
+        run: params.createUpstream,
+      },
+      {
+        step: 'local_linked',
+        shouldRun: ({ result }) =>
+          Boolean(result) &&
+          !hasReachedStep(params.operation.currentStep, 'local_linked', stepOrder),
+        run: params.linkLocal,
+      },
+      {
+        step: 'completed',
+        completed: true,
+        shouldRun: ({ result }) => Boolean(result),
+        run: params.complete,
+      },
+    ],
+  });
+}
+
+export async function runDeleteMutationWorkflow<
+  TResult extends Record<string, unknown>,
+  TState,
+  TMetadata extends Record<string, unknown>,
+>(
+  params: DeleteMutationWorkflowParams<TResult, TState, TMetadata>
+): Promise<{ metadata: TMetadata; result: TResult | null; state: TState }> {
+  return runMutationWorkflow({
+    operation: params.operation,
+    initialResult: params.initialResult,
+    initialState: params.initialState,
+    metadata: params.metadata,
+    steps: [
+      {
+        step: 'local_committed',
+        shouldRun: ({ result }) => !result,
+        run: params.commitLocalDelete,
+      },
+      {
+        step: 'completed',
+        completed: true,
+        shouldRun: ({ result }) => Boolean(result),
+        run: params.completeDelete,
+      },
+    ],
+  });
 }

@@ -2,7 +2,8 @@ import { TRPCError } from '@trpc/server';
 
 import { whitelistGroups } from '../db/openpath.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
-import { getMutationResult, getOrCreateMutationOperation } from '../lib/cross-system-mutations.js';
+import { getOrCreateOrganizationMutationOperation } from '../lib/cross-system-mutation-definitions.js';
+import { getMutationResult } from '../lib/cross-system-mutations.js';
 import {
   normalizeOrganizationGroupFromRulesParams,
   type CreateOrganizationGroupFromRulesParams,
@@ -18,19 +19,16 @@ export async function createOrganizationGroupFromRules(
   visibility: string;
 }> {
   const normalized = normalizeOrganizationGroupFromRulesParams(params);
-  const operation = await getOrCreateMutationOperation({
-    operationType: 'groups.create_group',
-    idempotencyKey: `${normalized.organizationId}:${normalized.publicName}`,
+  const operation = await getOrCreateOrganizationMutationOperation({
+    kind: 'groupCreate',
     organizationId: normalized.organizationId,
-    userId: normalized.actorUserId,
-    metadata: {
-      actorRole: normalized.actorRole ?? null,
-      displayName: normalized.displayName,
-      enabled: normalized.enabled,
-      publicName: normalized.publicName,
-      rules: normalized.rules,
-      visibility: normalized.visibility,
-    },
+    actorUserId: normalized.actorUserId,
+    actorRole: normalized.actorRole,
+    displayName: normalized.displayName,
+    enabled: normalized.enabled,
+    publicName: normalized.publicName,
+    rules: normalized.rules,
+    visibility: normalized.visibility,
   });
 
   const storedResult = getMutationResult<{

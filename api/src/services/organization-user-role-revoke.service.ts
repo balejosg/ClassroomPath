@@ -2,9 +2,10 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { runMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
+import { getOrCreateOrganizationMutationOperation } from '../lib/cross-system-mutation-definitions.js';
+import { runLocalFirstMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
 import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
-import { getMutationResult, getOrCreateMutationOperation } from '../lib/cross-system-mutations.js';
+import { getMutationResult } from '../lib/cross-system-mutations.js';
 import { recordUserRoleRevokedAuditEvent } from './audit.service.js';
 import {
   assertManagedOrganizationUser,
@@ -22,84 +23,66 @@ export async function revokeOrganizationUserRole(params: {
     userId: params.userId,
     nextRole: 'teacher',
   });
-  const operation = await getOrCreateMutationOperation({
-    operationType: 'users.revoke_role',
-    idempotencyKey: `${params.organizationId}:${params.userId}`,
+  const operation = await getOrCreateOrganizationMutationOperation({
+    kind: 'userRevokeRole',
     organizationId: params.organizationId,
     userId: params.userId,
-    metadata: { actedBy: params.actedBy },
+    actedBy: params.actedBy,
   });
 
   if (operation.status === 'completed') {
     return { success: true };
   }
 
-  await runMutationWorkflow({
+  await runLocalFirstMutationWorkflow({
     operation,
     initialResult: getMutationResult<{ success: true }>(operation),
-    initialState: { syncedUpstream: operation.currentStep === 'synced_upstream' },
+    initialState: {},
     metadata: operation.metadata as Record<string, unknown>,
-    steps: [
-      {
-        step: 'local_committed',
-        shouldRun: () => true,
-        run: async () => {
-          await db.transaction(async (tx) => {
-            await tx
-              .update(schema.cpMemberships)
-              .set({ role: 'teacher' })
-              .where(
-                and(
-                  eq(schema.cpMemberships.organizationId, params.organizationId),
-                  eq(schema.cpMemberships.userId, params.userId)
-                )
-              );
-          });
+    localCommitProof: 'current-step',
+    commitLocal: async () => {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(schema.cpMemberships)
+          .set({ role: 'teacher' })
+          .where(
+            and(
+              eq(schema.cpMemberships.organizationId, params.organizationId),
+              eq(schema.cpMemberships.userId, params.userId)
+            )
+          );
+      });
 
-          return { result: { success: true } };
-        },
-      },
-      {
-        step: 'synced_upstream',
-        shouldRun: ({ result, state }) => Boolean(result) && !state.syncedUpstream,
-        run: async ({ result }) => {
-          if (!result) {
-            return;
-          }
+      return { result: { success: true as const } };
+    },
+    syncUpstream: async ({ result }) => {
+      if (!result) {
+        return;
+      }
 
-          await synchronizeOpenPathRole({
-            userId: params.userId,
-            actedBy: params.actedBy,
-            groupIds: [],
-          });
+      await synchronizeOpenPathRole({
+        userId: params.userId,
+        actedBy: params.actedBy,
+        groupIds: [],
+      });
 
-          return {
-            result,
-            state: (current) => ({ ...current, syncedUpstream: true }),
-          };
-        },
-      },
-      {
-        step: 'completed',
-        completed: true,
-        shouldRun: ({ result }) => Boolean(result),
-        run: async ({ result }) => {
-          if (!result) {
-            return;
-          }
+      return { result };
+    },
+    complete: async ({ result }) => {
+      if (!result) {
+        return;
+      }
 
-          await recordUserRoleRevokedAuditEvent({
-            organizationId: params.organizationId,
-            actorUserId: params.actedBy,
-            userId: params.userId,
-            role: 'teacher',
-            groupIds: [],
-          });
+      await recordUserRoleRevokedAuditEvent({
+        organizationId: params.organizationId,
+        actorUserId: params.actedBy,
+        userId: params.userId,
+        role: 'teacher',
+        groupIds: [],
+      });
 
-          return { result };
-        },
-      },
-    ],
+      return { result };
+    },
   });
 
   return { success: true };

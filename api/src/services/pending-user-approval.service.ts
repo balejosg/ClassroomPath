@@ -1,8 +1,9 @@
 import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
 import { SINGLE_ORG_MEMBERSHIP_MESSAGE } from '../lib/tenant-memberships.js';
-import { runMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
-import { getMutationResult, getOrCreateMutationOperation } from '../lib/cross-system-mutations.js';
+import { getOrCreateOrganizationMutationOperation } from '../lib/cross-system-mutation-definitions.js';
+import { runLocalFirstMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
+import { getMutationResult } from '../lib/cross-system-mutations.js';
 import { recordPendingUserApprovedAuditEvent } from './audit.service.js';
 import { commitPendingUserMembership } from './pending-user-membership-commit.service.js';
 
@@ -12,12 +13,12 @@ export async function approveUser(
   role: 'admin' | 'teacher',
   approvedBy: string
 ): Promise<{ membershipId: string }> {
-  const operation = await getOrCreateMutationOperation({
-    operationType: 'pending_users.approve_user',
-    idempotencyKey: `${organizationId}:${userId}`,
+  const operation = await getOrCreateOrganizationMutationOperation({
+    kind: 'pendingUserApproval',
     organizationId,
     userId,
-    metadata: { role, approvedBy },
+    role,
+    approvedBy,
   });
 
   const storedResult = getMutationResult<{ membershipId: string }>(operation);
@@ -28,71 +29,53 @@ export async function approveUser(
   }
 
   try {
-    const workflow = await runMutationWorkflow({
+    const workflow = await runLocalFirstMutationWorkflow({
       operation,
       initialResult: localResult,
-      initialState: { syncedUpstream: operation.currentStep === 'synced_upstream' },
+      initialState: {},
       metadata: {
         ...(operation.metadata as Record<string, unknown>),
         role,
         approvedBy,
       },
-      steps: [
-        {
-          step: 'local_committed',
-          shouldRun: ({ result }) => !result,
-          run: async () => {
-            const result = await commitPendingUserMembership({
-              userId,
-              organizationId,
-              role,
-              approvedBy,
-            });
+      commitLocal: async () => {
+        const result = await commitPendingUserMembership({
+          userId,
+          organizationId,
+          role,
+          approvedBy,
+        });
 
-            return { result };
-          },
-        },
-        {
-          step: 'synced_upstream',
-          shouldRun: ({ result, state }) => Boolean(result) && !state.syncedUpstream,
-          run: async ({ result }) => {
-            if (!result) {
-              return;
-            }
+        return { result };
+      },
+      syncUpstream: async ({ result }) => {
+        if (!result) {
+          return;
+        }
 
-            await synchronizeOpenPathRole({
-              userId,
-              actedBy: approvedBy,
-              groupIds: [],
-            });
+        await synchronizeOpenPathRole({
+          userId,
+          actedBy: approvedBy,
+          groupIds: [],
+        });
 
-            return {
-              result,
-              state: (current) => ({ ...current, syncedUpstream: true }),
-            };
-          },
-        },
-        {
-          step: 'completed',
-          completed: true,
-          shouldRun: ({ result }) => Boolean(result),
-          run: async ({ result }) => {
-            if (!result) {
-              return;
-            }
+        return { result };
+      },
+      complete: async ({ result }) => {
+        if (!result) {
+          return;
+        }
 
-            await recordPendingUserApprovedAuditEvent({
-              organizationId,
-              actorUserId: approvedBy,
-              userId,
-              membershipId: result.membershipId,
-              role,
-            });
+        await recordPendingUserApprovedAuditEvent({
+          organizationId,
+          actorUserId: approvedBy,
+          userId,
+          membershipId: result.membershipId,
+          role,
+        });
 
-            return { result };
-          },
-        },
-      ],
+        return { result };
+      },
     });
 
     localResult = workflow.result;

@@ -1,8 +1,6 @@
 import { TRPCError } from '@trpc/server';
-import {
-  getMutationResult,
-  getOrCreateMutationOperation,
-} from '../../lib/cross-system-mutations.js';
+import { getOrCreateOrganizationMutationOperation } from '../../lib/cross-system-mutation-definitions.js';
+import { getMutationResult } from '../../lib/cross-system-mutations.js';
 import { throwConflictOnUniqueViolation } from '../../lib/pg-errors.js';
 import { presentTenantClassroom } from './classroom-access.service.js';
 import { normalizeCreateClassroomParams } from './classroom-create-params.service.js';
@@ -21,16 +19,13 @@ export async function createClassroomForTenant(params: {
 
   await assertUsableGroupIfProvided(params.ctx, params.input.defaultGroupId);
 
-  const operation = await getOrCreateMutationOperation({
-    operationType: 'classrooms.create_classroom',
-    idempotencyKey: `${normalized.organizationId}:${normalized.publicName}`,
+  const operation = await getOrCreateOrganizationMutationOperation({
+    kind: 'classroomCreate',
     organizationId: normalized.organizationId,
     userId: normalized.userId,
-    metadata: {
-      defaultGroupId: normalized.defaultGroupId ?? null,
-      displayName: normalized.displayName,
-      publicName: normalized.publicName,
-    },
+    publicName: normalized.publicName,
+    displayName: normalized.displayName,
+    defaultGroupId: normalized.defaultGroupId,
   });
 
   const storedResult = getMutationResult<{ classroomId: string }>(operation);

@@ -13,6 +13,14 @@ import {
   createClassroomForTenant,
   deleteClassroomForTenant,
 } from './classrooms/classroom-write.service.js';
+import type {
+  GroupRuleRecord,
+  OrganizationRole,
+} from '../lib/cross-system-mutation-definitions.js';
+export {
+  buildOrganizationMutationOperation,
+  getOrganizationMutationWorkflowFamily,
+} from '../lib/cross-system-mutation-definitions.js';
 
 type RetryContext = {
   operation: MutationOperationRecord;
@@ -21,14 +29,6 @@ type RetryContext = {
 };
 
 type RetryHandler = (context: RetryContext) => Promise<unknown>;
-
-type OrganizationRole = 'admin' | 'teacher';
-
-type GroupRuleRecord = {
-  type: string;
-  value: string;
-  comment: string | null;
-};
 
 function readString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;

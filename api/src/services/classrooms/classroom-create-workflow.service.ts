@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../../db/index.js';
 import { classrooms, openpathDb } from '../../db/openpath.js';
 import * as schema from '../../db/schema.js';
-import { runMutationWorkflow } from '../../lib/cross-system-workflow-engine.js';
+import { runUpstreamFirstProvisioningWorkflow } from '../../lib/cross-system-workflow-engine.js';
 import type {
   getMutationResult,
   getOrCreateMutationOperation,
@@ -37,83 +37,68 @@ export async function runCreateClassroomWorkflow(params: {
       )[0]
     : undefined;
 
-  const workflow = await runMutationWorkflow({
+  const workflow = await runUpstreamFirstProvisioningWorkflow({
     operation: params.operation,
     initialResult: params.storedResult,
     initialState: { classroom },
     metadata: params.operation.metadata as Record<string, unknown>,
-    steps: [
-      {
-        step: 'upstream_created',
-        shouldRun: ({ result }) => !result,
-        run: async () => {
-          const classroomId = nanoid();
-          const [createdClassroom] = await openpathDb
-            .insert(classrooms)
-            .values({
-              id: classroomId,
-              name: params.scopedName,
-              displayName: params.displayName,
-              defaultGroupId: params.defaultGroupId,
-            })
-            .returning();
+    createUpstream: async () => {
+      const classroomId = nanoid();
+      const [createdClassroom] = await openpathDb
+        .insert(classrooms)
+        .values({
+          id: classroomId,
+          name: params.scopedName,
+          displayName: params.displayName,
+          defaultGroupId: params.defaultGroupId,
+        })
+        .returning();
 
-          return {
-            organizationId: params.organizationId,
-            result: { classroomId },
-            state: { classroom: createdClassroom },
-          };
-        },
-      },
-      {
-        step: 'local_committed',
-        shouldRun: ({ result, state }) => Boolean(result) && Boolean(state.classroom),
-        run: async ({ result, state }) => {
-          if (!result || !state.classroom) {
-            return;
-          }
+      return {
+        organizationId: params.organizationId,
+        result: { classroomId },
+        state: { classroom: createdClassroom },
+      };
+    },
+    linkLocal: async ({ result, state }) => {
+      if (!result || !state.classroom) {
+        return;
+      }
 
-          const existingLink = await db
-            .select({ id: schema.cpOrganizationClassrooms.id })
-            .from(schema.cpOrganizationClassrooms)
-            .where(
-              and(
-                eq(schema.cpOrganizationClassrooms.organizationId, params.organizationId),
-                eq(schema.cpOrganizationClassrooms.classroomId, state.classroom.id)
-              )
-            )
-            .limit(1);
+      const existingLink = await db
+        .select({ id: schema.cpOrganizationClassrooms.id })
+        .from(schema.cpOrganizationClassrooms)
+        .where(
+          and(
+            eq(schema.cpOrganizationClassrooms.organizationId, params.organizationId),
+            eq(schema.cpOrganizationClassrooms.classroomId, state.classroom.id)
+          )
+        )
+        .limit(1);
 
-          if (existingLink.length === 0) {
-            await db.insert(schema.cpOrganizationClassrooms).values({
-              id: nanoid(),
-              organizationId: params.organizationId,
-              classroomId: state.classroom.id,
-            });
-          }
+      if (existingLink.length === 0) {
+        await db.insert(schema.cpOrganizationClassrooms).values({
+          id: nanoid(),
+          organizationId: params.organizationId,
+          classroomId: state.classroom.id,
+        });
+      }
 
-          return {
-            organizationId: params.organizationId,
-            result,
-          };
-        },
-      },
-      {
-        step: 'completed',
-        completed: true,
-        shouldRun: ({ result }) => Boolean(result),
-        run: async ({ result }) => {
-          if (!result) {
-            return;
-          }
+      return {
+        organizationId: params.organizationId,
+        result,
+      };
+    },
+    complete: async ({ result }) => {
+      if (!result) {
+        return;
+      }
 
-          return {
-            organizationId: params.organizationId,
-            result,
-          };
-        },
-      },
-    ],
+      return {
+        organizationId: params.organizationId,
+        result,
+      };
+    },
   });
 
   classroom = workflow.state.classroom;

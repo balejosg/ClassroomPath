@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 
 import { openpathDb, publishWhitelistGroupChanged, whitelistGroups } from '../db/openpath.js';
-import { runMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
+import { runUpstreamFirstProvisioningWorkflow } from '../lib/cross-system-workflow-engine.js';
 import type {
   getMutationResult,
   getOrCreateMutationOperation,
@@ -47,80 +47,65 @@ export async function runCreateOrganizationGroupFromRulesWorkflow(params: {
       )[0]
     : undefined;
 
-  const workflow = await runMutationWorkflow({
+  const workflow = await runUpstreamFirstProvisioningWorkflow({
     operation: params.operation,
     initialResult: params.storedResult,
     initialState: {
       group,
     },
     metadata: params.operation.metadata as Record<string, unknown>,
-    steps: [
-      {
-        step: 'upstream_created',
-        shouldRun: ({ result }) => !result,
-        run: async () => {
-          const createdGroup = await createSeededUpstreamGroup({
-            name: params.name,
-            displayName: params.displayName,
-            enabled: params.enabled,
-            rules: params.rules,
-          });
+    createUpstream: async () => {
+      const createdGroup = await createSeededUpstreamGroup({
+        name: params.name,
+        displayName: params.displayName,
+        enabled: params.enabled,
+        rules: params.rules,
+      });
 
-          return {
-            organizationId: params.organizationId,
-            result: {
-              groupId: createdGroup.id,
-              publicName: params.publicName,
-              visibility: params.visibility,
-            },
-            state: (current: { group?: typeof whitelistGroups.$inferSelect }) => ({
-              ...current,
-              group: createdGroup,
-            }),
-          };
+      return {
+        organizationId: params.organizationId,
+        result: {
+          groupId: createdGroup.id,
+          publicName: params.publicName,
+          visibility: params.visibility,
         },
-      },
-      {
-        step: 'local_linked',
-        shouldRun: ({ result, state }) => Boolean(result) && Boolean(state.group),
-        run: async ({ result, state }) => {
-          if (!result || !state.group) {
-            return;
-          }
+        state: (current: { group?: typeof whitelistGroups.$inferSelect }) => ({
+          ...current,
+          group: createdGroup,
+        }),
+      };
+    },
+    linkLocal: async ({ result, state }) => {
+      if (!result || !state.group) {
+        return;
+      }
 
-          await linkOrganizationGroup({
-            organizationId: params.organizationId,
-            actorUserId: params.actorUserId,
-            actorRole: params.actorRole,
-            groupId: state.group.id,
-            publicName: params.publicName,
-            visibility: params.visibility,
-          });
+      await linkOrganizationGroup({
+        organizationId: params.organizationId,
+        actorUserId: params.actorUserId,
+        actorRole: params.actorRole,
+        groupId: state.group.id,
+        publicName: params.publicName,
+        visibility: params.visibility,
+      });
 
-          return {
-            organizationId: params.organizationId,
-            result,
-          };
-        },
-      },
-      {
-        step: 'completed',
-        completed: true,
-        shouldRun: ({ result, state }) => Boolean(result) && Boolean(state.group),
-        run: async ({ result, state }) => {
-          if (!result || !state.group) {
-            return;
-          }
+      return {
+        organizationId: params.organizationId,
+        result,
+      };
+    },
+    complete: async ({ result, state }) => {
+      if (!result || !state.group) {
+        return;
+      }
 
-          await publishWhitelistGroupChanged(state.group.id);
+      await publishWhitelistGroupChanged(state.group.id);
 
-          return {
-            organizationId: params.organizationId,
-            result,
-          };
-        },
-      },
-    ],
+      return {
+        organizationId: params.organizationId,
+        result,
+      };
+    },
   });
 
   group = workflow.state.group;
