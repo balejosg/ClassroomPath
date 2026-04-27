@@ -54,10 +54,16 @@ Default order:
 From the shared workspace, use `../scripts/validate-hypothesis.sh` when choosing the first pass:
 
 - `../scripts/validate-hypothesis.sh classroompath local`
-- `../scripts/validate-hypothesis.sh classroompath windows-bootstrap-gh`
+- `../scripts/validate-hypothesis.sh classroompath windows-bootstrap-gh --integration`
 - `../scripts/validate-hypothesis.sh classroompath windows-ajax-direct`
 
 The Windows direct diagnostic stays staging-first by default and requires explicit confirmation for production.
+
+Repo-local fallback when the workspace wrapper is unavailable:
+
+- `npm run verify:incremental`
+- `npm run diagnostics:windows-ajax:direct -- --environment staging`
+- `npm run diagnostics:runner -- --suite windows-bootstrap-ajax --integration` only when workflow-shaped integration evidence is the goal
 
 Use GitHub Actions runner workflows for integration/deployment time, not as the default development loop when the direct runner lane can answer the question sooner.
 
