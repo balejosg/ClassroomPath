@@ -76,6 +76,7 @@ const NATIVE_MANIFEST_PATH = join(NATIVE_ROOT, 'whitelist_native_host.json');
 const NATIVE_LOG_PATH = join(NATIVE_ROOT, 'native-host.log');
 const NATIVE_WHITELIST_PATH = join(NATIVE_ROOT, 'whitelist.txt');
 const NATIVE_HOST_SCRIPT_PATH = join(NATIVE_ROOT, 'OpenPath-NativeHost.ps1');
+const OPENPATH_LOG_PATH = join(OPENPATH_ROOT, 'data', 'logs', 'openpath.log');
 const ARTIFACT_PATH =
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT ??
   'production-windows-ajax-auto-allow-canary.json';
@@ -287,11 +288,13 @@ function runPowerShell(args, { input, timeoutMs = 10000 } = {}) {
   });
 }
 
-async function readScheduledTaskEvidence() {
+async function readScheduledTaskEvidence(taskName = 'OpenPath-Update') {
+  const escapedTaskName = String(taskName).replace(/'/g, "''");
   const command = `
-$task = Get-ScheduledTask -TaskName 'OpenPath-Update' -ErrorAction SilentlyContinue
-$info = Get-ScheduledTaskInfo -TaskName 'OpenPath-Update' -ErrorAction SilentlyContinue
+$task = Get-ScheduledTask -TaskName '${escapedTaskName}' -ErrorAction SilentlyContinue
+$info = Get-ScheduledTaskInfo -TaskName '${escapedTaskName}' -ErrorAction SilentlyContinue
 [pscustomobject]@{
+  taskName = '${escapedTaskName}'
   present = $null -ne $task
   state = if ($task) { [string]$task.State } else { '' }
   lastRunTime = if ($info) { [string]$info.LastRunTime } else { '' }
@@ -368,15 +371,25 @@ async function sendNativeProtocolMessage(message) {
 
 async function collectWindowsAutoAllowDiagnostics(phase) {
   const expectedHosts = AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost);
-  const [globalWhitelist, nativeWhitelist, nativeState, nativeLogTail, task, remoteWhitelist] =
-    await Promise.all([
-      readFileEvidence(WHITELIST_PATH, expectedHosts),
-      readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts),
-      readJsonIfExists(NATIVE_STATE_PATH),
-      readTextIfExists(NATIVE_LOG_PATH),
-      readScheduledTaskEvidence(),
-      collectRemoteWhitelistEvidence(expectedHosts),
-    ]);
+  const [
+    globalWhitelist,
+    nativeWhitelist,
+    nativeState,
+    nativeLogTail,
+    openPathLogTail,
+    updateTask,
+    sseTask,
+    remoteWhitelist,
+  ] = await Promise.all([
+    readFileEvidence(WHITELIST_PATH, expectedHosts),
+    readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts),
+    readJsonIfExists(NATIVE_STATE_PATH),
+    readTextIfExists(NATIVE_LOG_PATH),
+    readTextIfExists(OPENPATH_LOG_PATH),
+    readScheduledTaskEvidence('OpenPath-Update'),
+    readScheduledTaskEvidence('OpenPath-SSE'),
+    collectRemoteWhitelistEvidence(expectedHosts),
+  ]);
   const [ping, getConfig, getHostname, getMachineToken, check] = await Promise.all([
     sendNativeProtocolMessage({ action: 'ping' }),
     sendNativeProtocolMessage({ action: 'get-config' }),
@@ -416,8 +429,14 @@ async function collectWindowsAutoAllowDiagnostics(phase) {
       scriptPresent: existsSync(NATIVE_HOST_SCRIPT_PATH),
       logPath: NATIVE_LOG_PATH,
       logTail: nativeLogTail,
+      openPathLogPath: OPENPATH_LOG_PATH,
+      openPathLogTail,
+      tasks: {
+        update: updateTask,
+        sse: sseTask,
+      },
       taskName: 'OpenPath-Update',
-      task,
+      task: updateTask,
     },
     nativeProtocol,
   });

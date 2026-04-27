@@ -710,7 +710,9 @@ describe('Production client update canary workflow contracts', () => {
       ajaxCanaryScript.includes('nativeProtocol') &&
         ajaxCanaryScript.includes('tokenPresent') &&
         ajaxCanaryScript.includes('OpenPath-Update') &&
+        ajaxCanaryScript.includes('OpenPath-SSE') &&
         ajaxCanaryScript.includes('native-host.log') &&
+        ajaxCanaryScript.includes('openpath.log') &&
         ajaxCanaryScript.includes('whitelistMtimeMs'),
       'Windows AJAX canary artifacts should expose native protocol, task, log, and whitelist state'
     );
