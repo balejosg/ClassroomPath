@@ -2,10 +2,10 @@
 
 import { createServer } from 'node:http';
 import { appendFileSync } from 'node:fs';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 import {
@@ -63,13 +63,23 @@ const CANARY_API_URL = (process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL ?? ''
 );
 const CANARY_GROUP_ID = process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '';
 const CANARY_ADMIN_TOKEN = process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN ?? '';
+const FIREFOX_MODE = process.env.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE ?? 'managed';
+const LOCAL_ADDON_PATH = process.env.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH ?? '';
+const GECKODRIVER_PATH = process.env.GECKODRIVER_PATH ?? '';
+const USE_SELENIUM_FIREFOX = FIREFOX_MODE === 'selenium' || LOCAL_ADDON_PATH.trim().length > 0;
 
 function findFirefox() {
-  const candidates = [
+  const unsignedAddonCandidates = [
+    process.env.FIREFOX_PATH,
+    'C:\\Program Files\\Firefox Developer Edition\\firefox.exe',
+    'C:\\Program Files\\Firefox Nightly\\firefox.exe',
+  ].filter(Boolean);
+  const releaseCandidates = [
     process.env.FIREFOX_PATH,
     'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
     'C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe',
   ].filter(Boolean);
+  const candidates = USE_SELENIUM_FIREFOX ? unsignedAddonCandidates : releaseCandidates;
 
   const firefoxPath = candidates.find((candidate) => existsSync(candidate));
   if (!firefoxPath) {
@@ -614,6 +624,90 @@ async function waitForFirefoxExtensionReady({ firefoxPath, profileDir }) {
   };
 }
 
+async function suspendFirefoxEnterprisePolicy(firefoxPath) {
+  const policyPath = join(dirname(firefoxPath), 'distribution', 'policies.json');
+  const backupPath = `${policyPath}.openpath-direct-${process.pid}-${Date.now()}.bak`;
+  if (!existsSync(policyPath)) {
+    return {
+      suspended: false,
+      policyPath,
+      backupPath: null,
+    };
+  }
+
+  await rename(policyPath, backupPath);
+  return {
+    suspended: true,
+    policyPath,
+    backupPath,
+  };
+}
+
+async function restoreFirefoxEnterprisePolicy(managedPolicySuspension) {
+  if (!managedPolicySuspension?.suspended || !managedPolicySuspension.backupPath) {
+    return;
+  }
+
+  await rm(managedPolicySuspension.policyPath, { force: true }).catch(() => {});
+  await rename(managedPolicySuspension.backupPath, managedPolicySuspension.policyPath);
+}
+
+async function launchFirefoxWithLocalAddon({ firefoxPath, profileDir, originUrl }) {
+  if (!LOCAL_ADDON_PATH || !existsSync(LOCAL_ADDON_PATH)) {
+    throw new Error(
+      `WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH is required for Selenium mode and was not found: ${LOCAL_ADDON_PATH || '<empty>'}`
+    );
+  }
+
+  const [{ Builder }, firefox] = await Promise.all([
+    import('selenium-webdriver'),
+    import('selenium-webdriver/firefox.js'),
+  ]);
+
+  const options = new firefox.Options();
+  options.setBinary(firefoxPath);
+  options.setProfile(profileDir);
+  options.addArguments('-headless');
+  options.addExtensions(LOCAL_ADDON_PATH);
+  options.setPreference('network.dns.disablePrefetch', true);
+  options.setPreference('network.trr.mode', 5);
+  options.setPreference('network.trr.uri', '');
+  options.setPreference('network.dnsCacheExpiration', 0);
+  options.setPreference('network.dnsCacheExpirationGracePeriod', 0);
+  options.setPreference('dom.webnotifications.enabled', true);
+  options.setPreference('extensions.experiments.enabled', true);
+  options.setPreference('xpinstall.signatures.required', false);
+  options.setPreference('extensions.langpacks.signatures.required', false);
+  options.setPreference('extensions.blocklist.enabled', false);
+
+  let builder = new Builder().forBrowser('firefox').setFirefoxOptions(options);
+  if (GECKODRIVER_PATH && existsSync(GECKODRIVER_PATH)) {
+    builder = builder.setFirefoxService(new firefox.ServiceBuilder(GECKODRIVER_PATH));
+  }
+
+  const driver = await builder.build();
+  await driver.manage().setTimeouts({ implicit: 2_000, pageLoad: 30_000, script: 15_000 });
+
+  const capabilities = await driver.getCapabilities();
+  const activeProfileDir = capabilities.get('moz:profile') || profileDir;
+  const extensionEvidence = await readProfileExtensionEvidence(String(activeProfileDir));
+
+  await driver.get(originUrl);
+
+  return {
+    driver,
+    firefoxExtensionWarmup: {
+      ...extensionEvidence,
+      ready: true,
+      mode: 'selenium',
+      localAddonPath: LOCAL_ADDON_PATH,
+      geckodriverPath: GECKODRIVER_PATH || null,
+      profileDir: activeProfileDir,
+      timeoutMs: FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS,
+    },
+  };
+}
+
 function buildPage(probes) {
   const browserProbes = probes.map((probe) => ({
     id: probe.id,
@@ -995,7 +1089,33 @@ async function main() {
 
   const preflightDiagnostics = await collectWindowsAutoAllowDiagnostics('preflight');
   const profileDir = await mkdtemp(join(tmpdir(), 'windows-ajax-auto-allow-firefox-'));
-  const firefoxExtensionWarmup = await waitForFirefoxExtensionReady({ firefoxPath, profileDir });
+  let firefoxExtensionWarmup;
+  let firefox = null;
+  let firefoxOutput = '';
+  let seleniumDriver = null;
+  let managedPolicySuspension = null;
+
+  if (USE_SELENIUM_FIREFOX) {
+    managedPolicySuspension = await suspendFirefoxEnterprisePolicy(firefoxPath);
+    try {
+      const seleniumSession = await launchFirefoxWithLocalAddon({
+        firefoxPath,
+        profileDir,
+        originUrl,
+      });
+      firefoxExtensionWarmup = {
+        ...seleniumSession.firefoxExtensionWarmup,
+        managedPolicySuspension,
+      };
+      seleniumDriver = seleniumSession.driver;
+    } catch (error) {
+      await restoreFirefoxEnterprisePolicy(managedPolicySuspension).catch(() => {});
+      throw error;
+    }
+  } else {
+    firefoxExtensionWarmup = await waitForFirefoxExtensionReady({ firefoxPath, profileDir });
+  }
+
   if (!firefoxExtensionWarmup.ready) {
     const summary = {
       success: false,
@@ -1020,37 +1140,35 @@ async function main() {
     writeGithubOutput('windows_ajax_auto_allow_result', 'failure');
     server.close();
     await rm(profileDir, { recursive: true, force: true }).catch(() => {});
+    await restoreFirefoxEnterprisePolicy(managedPolicySuspension).catch(() => {});
     throw new Error(`Windows AJAX auto-allow canary failed: ${JSON.stringify(summary)}`);
   }
 
-  const firefox = spawn(
-    firefoxPath,
-    ['-headless', '-no-remote', '-profile', profileDir, originUrl],
-    {
+  if (!USE_SELENIUM_FIREFOX) {
+    firefox = spawn(firefoxPath, ['-headless', '-no-remote', '-profile', profileDir, originUrl], {
       stdio: ['ignore', 'pipe', 'pipe'],
-    }
-  );
-  let firefoxOutput = '';
-  firefox.stdout.on('data', (chunk) => {
-    firefoxOutput += chunk.toString();
-  });
-  firefox.stderr.on('data', (chunk) => {
-    firefoxOutput += chunk.toString();
-  });
-  firefox.once('exit', (code, signal) => {
-    resolveResult({
-      success: false,
-      error: `Firefox exited before AJAX auto-allow result (code=${String(code)}, signal=${String(signal)})`,
-      targetUrl,
-      assetUrl,
-      attempts: browserAttempts,
-      completedProbes,
-      completedCandidateEvents,
-      pageResourceCandidateEvents,
-      pageObserverInstalled,
-      lastAttemptAt,
     });
-  });
+    firefox.stdout.on('data', (chunk) => {
+      firefoxOutput += chunk.toString();
+    });
+    firefox.stderr.on('data', (chunk) => {
+      firefoxOutput += chunk.toString();
+    });
+    firefox.once('exit', (code, signal) => {
+      resolveResult({
+        success: false,
+        error: `Firefox exited before AJAX auto-allow result (code=${String(code)}, signal=${String(signal)})`,
+        targetUrl,
+        assetUrl,
+        attempts: browserAttempts,
+        completedProbes,
+        completedCandidateEvents,
+        pageResourceCandidateEvents,
+        pageObserverInstalled,
+        lastAttemptAt,
+      });
+    });
+  }
 
   const timeout = setTimeout(() => {
     resolveResult({
@@ -1130,7 +1248,13 @@ async function main() {
 
     assertWindowsAutoAllowCanarySuccess(summary);
   } finally {
-    firefox.kill('SIGTERM');
+    if (firefox !== null) {
+      firefox.kill('SIGTERM');
+    }
+    if (seleniumDriver !== null) {
+      await seleniumDriver.quit().catch(() => {});
+    }
+    await restoreFirefoxEnterprisePolicy(managedPolicySuspension).catch(() => {});
     server.close();
     await rm(profileDir, { recursive: true, force: true }).catch(() => {});
   }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -13,8 +13,12 @@ const DEFAULT_PROXMOX_HOST = 'whitelist-proxmox';
 const DEFAULT_WINDOWS_RUNNER_VMID = '103';
 const DEFAULT_CANARY_TIMEOUT_MS = '180000';
 const DEFAULT_POST_FAILURE_OBSERVATION_MS = '60000';
+const DEFAULT_FIREFOX_EXTENSION_SOURCE = 'managed';
 const WINDOWS_WORKSPACE = 'C:\\Windows\\Temp\\openpath-ajax-direct';
 const OPENPATH_ROOT_ON_WINDOWS = 'C:\\OpenPath';
+const LOCAL_FIREFOX_XPI_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\openpath-firefox-extension.xpi`;
+const SELENIUM_NODE_MODULES_ZIP_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\selenium-node-modules.zip`;
+const BINARY_UPLOAD_CHUNK_CHARS = 700000;
 const DRY_RUN = process.env.WINDOWS_AJAX_DIRECT_DRY_RUN === '1';
 
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -59,6 +63,24 @@ const CANARY_SCRIPT_UPLOADS = [
   },
 ];
 
+const SELENIUM_NODE_MODULES = [
+  'selenium-webdriver',
+  '@bazel/runfiles',
+  'jszip',
+  'tmp',
+  'ws',
+  'pako',
+  'setimmediate',
+  'readable-stream',
+  'core-util-is',
+  'inherits',
+  'isarray',
+  'string_decoder',
+  'safe-buffer',
+  'immediate',
+  'lie',
+];
+
 function printUsage() {
   console.error(`Usage:
   npm run diagnostics:windows-ajax:direct -- [options]
@@ -73,6 +95,8 @@ Options:
   --canary-timeout-ms <ms>    Browser canary timeout (default: ${DEFAULT_CANARY_TIMEOUT_MS})
   --post-failure-observation-ms <ms>
                               Extra local observation window after canary failure (default: ${DEFAULT_POST_FAILURE_OBSERVATION_MS})
+  --firefox-extension-source <mode>
+                              managed | local (default: ${DEFAULT_FIREFOX_EXTENSION_SOURCE})
   --skip-reset                Do not uninstall the existing OpenPath Windows client before enrollment
   --confirm-production        Required when --environment production
 `);
@@ -93,6 +117,8 @@ function parseArgs(argv) {
     postFailureObservationMs:
       process.env.WINDOWS_AJAX_DIRECT_POST_FAILURE_OBSERVATION_MS ??
       DEFAULT_POST_FAILURE_OBSERVATION_MS,
+    firefoxExtensionSource:
+      process.env.WINDOWS_AJAX_DIRECT_FIREFOX_EXTENSION_SOURCE ?? DEFAULT_FIREFOX_EXTENSION_SOURCE,
     skipReset: false,
     confirmProduction: false,
   };
@@ -124,6 +150,8 @@ function parseArgs(argv) {
       options.canaryTimeoutMs = next();
     } else if (arg === '--post-failure-observation-ms') {
       options.postFailureObservationMs = next();
+    } else if (arg === '--firefox-extension-source') {
+      options.firefoxExtensionSource = next();
     } else if (arg === '--skip-reset') {
       options.skipReset = true;
     } else if (arg === '--confirm-production') {
@@ -203,6 +231,28 @@ function ensureFilesExist(options) {
     const sourcePath = resolve(projectRoot, upload.source);
     if (!existsSync(sourcePath)) {
       throw new Error(`Required canary helper is missing: ${sourcePath}`);
+    }
+  }
+
+  if (options.firefoxExtensionSource === 'local') {
+    for (const relativePath of [
+      'package.json',
+      'firefox-extension/manifest.json',
+      'firefox-extension/build-xpi.sh',
+    ]) {
+      const sourcePath = resolve(options.openpathRoot, relativePath);
+      if (!existsSync(sourcePath)) {
+        throw new Error(`Required local Firefox extension file is missing: ${sourcePath}`);
+      }
+    }
+
+    for (const moduleName of SELENIUM_NODE_MODULES) {
+      const modulePath = resolve(projectRoot, 'node_modules', moduleName);
+      if (!existsSync(modulePath)) {
+        throw new Error(
+          `Required local Selenium dependency is missing: ${modulePath}. Run npm install in ClassroomPath first.`
+        );
+      }
     }
   }
 }
@@ -296,6 +346,42 @@ Set-Content -LiteralPath $path -Value $content -Encoding UTF8
   }
 
   runGuestPowerShell(options, script, { input: content });
+}
+
+function writeGuestBinary(options, localSourcePath, destinationPath) {
+  const initializeScript = `
+$ErrorActionPreference = 'Stop'
+$path = ${psSingleQuote(destinationPath)}
+$parent = Split-Path -Parent $path
+New-Item -ItemType Directory -Force -Path $parent | Out-Null
+[System.IO.File]::WriteAllBytes($path, [byte[]]::new(0))
+`;
+  const appendScript = `
+$ErrorActionPreference = 'Stop'
+$path = ${psSingleQuote(destinationPath)}
+$content = [Console]::In.ReadToEnd()
+$bytes = [Convert]::FromBase64String($content)
+$stream = [System.IO.File]::Open($path, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write)
+try {
+  $stream.Write($bytes, 0, $bytes.Length)
+} finally {
+  $stream.Dispose()
+}
+`;
+
+  if (DRY_RUN) {
+    console.log(`guest-upload-binary: ${localSourcePath} -> ${destinationPath}`);
+    runGuestPowerShell(options, initializeScript);
+    runGuestPowerShell(options, appendScript, { input: '<base64-chunk>' });
+    return;
+  }
+
+  const base64 = readFileSync(localSourcePath).toString('base64');
+  runGuestPowerShell(options, initializeScript);
+  for (let offset = 0; offset < base64.length; offset += BINARY_UPLOAD_CHUNK_CHARS) {
+    const chunk = base64.slice(offset, offset + BINARY_UPLOAD_CHUNK_CHARS);
+    runGuestPowerShell(options, appendScript, { input: chunk });
+  }
 }
 
 function readGuestText(options, sourcePath, maxChars = 200000) {
@@ -520,6 +606,136 @@ if ($LASTEXITCODE -ne 0) {
   runGuestPowerShell(options, script, { timeoutSeconds: 1200 });
 }
 
+function buildLocalFirefoxExtension(options, artifactDir) {
+  if (options.firefoxExtensionSource !== 'local') {
+    return null;
+  }
+
+  const extensionRoot = resolve(options.openpathRoot, 'firefox-extension');
+  const localXpiPath = resolve(artifactDir, 'openpath-firefox-extension.xpi');
+
+  if (DRY_RUN) {
+    console.log('local: npm run build --workspace=@openpath/firefox-extension');
+    console.log(`local: bash ${resolve(extensionRoot, 'build-xpi.sh')}`);
+    return {
+      localPath: localXpiPath,
+      remotePath: LOCAL_FIREFOX_XPI_ON_WINDOWS,
+    };
+  }
+
+  mkdirSync(artifactDir, { recursive: true });
+  runCommand(['npm', 'run', 'build', '--workspace=@openpath/firefox-extension'], {
+    cwd: options.openpathRoot,
+  });
+  runCommand(['bash', 'firefox-extension/build-xpi.sh'], { cwd: options.openpathRoot });
+
+  const manifest = JSON.parse(readFileSync(resolve(extensionRoot, 'manifest.json'), 'utf8'));
+  const version = manifest?.version;
+  if (typeof version !== 'string' || !version.trim()) {
+    throw new Error('Firefox extension manifest version is missing');
+  }
+
+  const builtXpiPath = resolve(extensionRoot, `monitor-bloqueos-red-${version}.xpi`);
+  if (!existsSync(builtXpiPath)) {
+    throw new Error(`Local Firefox extension XPI was not produced: ${builtXpiPath}`);
+  }
+
+  copyFileSync(builtXpiPath, localXpiPath);
+  return {
+    localPath: localXpiPath,
+    remotePath: LOCAL_FIREFOX_XPI_ON_WINDOWS,
+  };
+}
+
+function buildSeleniumNodeModulesBundle(options, artifactDir) {
+  if (options.firefoxExtensionSource !== 'local') {
+    return null;
+  }
+
+  const localPath = resolve(artifactDir, 'selenium-node-modules.zip');
+  if (DRY_RUN) {
+    console.log(`local: zip ${localPath} ${SELENIUM_NODE_MODULES.join(' ')}`);
+    return {
+      localPath,
+      remotePath: SELENIUM_NODE_MODULES_ZIP_ON_WINDOWS,
+    };
+  }
+
+  mkdirSync(artifactDir, { recursive: true });
+  rmSync(localPath, { force: true });
+  runCommand(
+    [
+      'zip',
+      '-qr',
+      localPath,
+      ...SELENIUM_NODE_MODULES.map((moduleName) => `node_modules/${moduleName}`),
+    ],
+    { cwd: projectRoot }
+  );
+
+  return {
+    localPath,
+    remotePath: SELENIUM_NODE_MODULES_ZIP_ON_WINDOWS,
+  };
+}
+
+function ensureLocalFirefoxCanarySupport(options) {
+  if (options.firefoxExtensionSource !== 'local') {
+    return;
+  }
+
+  const script = `
+$ErrorActionPreference = 'Stop'
+$workspace = ${psSingleQuote(WINDOWS_WORKSPACE)}
+New-Item -ItemType Directory -Force -Path $workspace | Out-Null
+$zipPath = ${psSingleQuote(SELENIUM_NODE_MODULES_ZIP_ON_WINDOWS)}
+$seleniumModule = Join-Path $workspace 'node_modules\\selenium-webdriver'
+if (-not (Test-Path -LiteralPath $seleniumModule)) {
+  if (-not (Test-Path -LiteralPath $zipPath)) {
+    throw "Selenium node_modules bundle missing: $zipPath"
+  }
+  Expand-Archive -LiteralPath $zipPath -DestinationPath $workspace -Force
+}
+if (-not (Test-Path -LiteralPath $seleniumModule)) {
+  throw "Selenium node_modules bundle did not create $seleniumModule"
+}
+$gecko = (Get-Command geckodriver.exe -ErrorAction SilentlyContinue).Source
+if (-not $gecko -and (Test-Path -LiteralPath 'C:\\tools\\selenium\\geckodriver.exe')) {
+  $gecko = 'C:\\tools\\selenium\\geckodriver.exe'
+}
+if (-not $gecko) {
+  if (-not (Get-Command choco.exe -ErrorAction SilentlyContinue)) {
+    throw 'geckodriver.exe is required for local Firefox extension diagnostics and Chocolatey is not available to install it'
+  }
+  choco install geckodriver --no-progress -y
+  $gecko = (Get-Command geckodriver.exe -ErrorAction SilentlyContinue).Source
+}
+if (-not $gecko) {
+  throw 'geckodriver.exe is required for local Firefox extension diagnostics'
+}
+$firefoxDevCandidates = @(
+  'C:\\Program Files\\Firefox Developer Edition\\firefox.exe',
+  'C:\\Program Files\\Firefox Nightly\\firefox.exe'
+)
+$firefoxDev = $firefoxDevCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $firefoxDev) {
+  if (-not (Get-Command choco.exe -ErrorAction SilentlyContinue)) {
+    throw 'Firefox Developer Edition or Nightly is required for unsigned local extension diagnostics and Chocolatey is not available to install it'
+  }
+  choco install firefox-dev --pre --no-progress -y
+  $firefoxDev = $firefoxDevCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+}
+if (-not $firefoxDev) {
+  choco install firefox-nightly --pre --no-progress -y
+  $firefoxDev = $firefoxDevCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+}
+if (-not $firefoxDev) {
+  throw 'Firefox Developer Edition or Nightly is required for unsigned local extension diagnostics'
+}
+`;
+  runGuestPowerShell(options, script, { timeoutSeconds: 900 });
+}
+
 function resetWindowsClient(options, baseUrl) {
   const script = `
 $ErrorActionPreference = 'Continue'
@@ -593,9 +809,21 @@ Start-ScheduledTask -TaskName 'OpenPath-Watchdog'
   runGuestPowerShell(options, script, { timeoutSeconds: 300 });
 }
 
-function runAjaxCanary(options, summary, billingContext) {
+function runAjaxCanary(options, summary, billingContext, localFirefoxExtension) {
   const artifactPath = `${WINDOWS_WORKSPACE}\\production-windows-ajax-auto-allow-canary.json`;
   const scriptPath = `${WINDOWS_WORKSPACE}\\scripts\\windows-ajax-auto-allow-canary.mjs`;
+  const localFirefoxEnv =
+    localFirefoxExtension === null
+      ? ''
+      : `
+$env:WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE = 'selenium'
+$env:WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH = ${psSingleQuote(localFirefoxExtension.remotePath)}
+$gecko = (Get-Command geckodriver.exe -ErrorAction SilentlyContinue).Source
+if (-not $gecko -and (Test-Path -LiteralPath 'C:\\tools\\selenium\\geckodriver.exe')) { $gecko = 'C:\\tools\\selenium\\geckodriver.exe' }
+if ($gecko) { $env:GECKODRIVER_PATH = $gecko }
+$firefoxPath = @('C:\\Program Files\\Firefox Developer Edition\\firefox.exe','C:\\Program Files\\Firefox Nightly\\firefox.exe') | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if ($firefoxPath) { $env:FIREFOX_PATH = $firefoxPath }
+`;
   const script = `
 $ErrorActionPreference = 'Stop'
 $env:OPENPATH_ROOT = ${psSingleQuote(OPENPATH_ROOT_ON_WINDOWS)}
@@ -605,6 +833,7 @@ $env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN = ${psSingleQuote(billingContext
 $env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT = ${psSingleQuote(artifactPath)}
 $env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS = ${psSingleQuote(options.canaryTimeoutMs)}
 $env:WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS = ${psSingleQuote(options.postFailureObservationMs)}
+${localFirefoxEnv}
 node ${psSingleQuote(scriptPath)}
 if ($LASTEXITCODE -ne 0) {
   throw "windows-ajax-auto-allow-canary.mjs exited with code $LASTEXITCODE"
@@ -656,6 +885,11 @@ function main() {
     process.exit(1);
   }
 
+  if (!['managed', 'local'].includes(options.firefoxExtensionSource)) {
+    console.error(`Unsupported Firefox extension source: ${options.firefoxExtensionSource}`);
+    process.exit(1);
+  }
+
   if (options.environment === 'production' && !options.confirmProduction) {
     console.error('Direct production diagnostics require --confirm-production.');
     process.exit(1);
@@ -677,6 +911,7 @@ function main() {
   console.log(`target_environment=${options.environment}`);
   console.log(`base_url=${baseUrl}`);
   console.log(`artifact_dir=${artifactDir}`);
+  console.log(`firefox_extension_source=${options.firefoxExtensionSource}`);
   console.log(
     `proxmox_guest_agent=ssh ${options.proxmoxHost} qm guest exec ${options.vmid} -- powershell.exe`
   );
@@ -684,6 +919,8 @@ function main() {
   if (!DRY_RUN) {
     mkdirSync(artifactDir, { recursive: true });
   }
+  const localFirefoxExtension = buildLocalFirefoxExtension(options, artifactDir);
+  const seleniumNodeModulesBundle = buildSeleniumNodeModulesBundle(options, artifactDir);
 
   const billingContext = resolveBillingContext(options, env);
   const summary = provisionCanary({ options, baseUrl, artifactDir, billingContext, env });
@@ -693,6 +930,14 @@ function main() {
   if (!options.skipReset) {
     resetWindowsClient(options, baseUrl);
   }
+  if (seleniumNodeModulesBundle !== null) {
+    writeGuestBinary(
+      options,
+      seleniumNodeModulesBundle.localPath,
+      seleniumNodeModulesBundle.remotePath
+    );
+  }
+  ensureLocalFirefoxCanarySupport(options);
   installWindowsClient(options, summary);
 
   for (const upload of OPENPATH_OVERLAYS) {
@@ -704,10 +949,17 @@ function main() {
   for (const upload of CANARY_SCRIPT_UPLOADS) {
     writeGuestText(options, resolve(projectRoot, upload.source), upload.destination);
   }
+  if (localFirefoxExtension !== null) {
+    writeGuestBinary(options, localFirefoxExtension.localPath, localFirefoxExtension.remotePath);
+    console.log('guest-env: WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE=selenium');
+    console.log(
+      `guest-env: WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH=${localFirefoxExtension.remotePath}`
+    );
+  }
   console.log(`guest-env: WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=${summary.apiUrl}`);
   let canaryError = null;
   try {
-    runAjaxCanary(options, summary, billingContext);
+    runAjaxCanary(options, summary, billingContext, localFirefoxExtension);
   } catch (error) {
     canaryError = error;
   } finally {
