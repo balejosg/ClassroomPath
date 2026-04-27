@@ -731,6 +731,25 @@ describe('Production client update canary workflow contracts', () => {
         ajaxCanaryScript.includes('redactSensitiveWindowsCanaryValue(whitelistUrl)'),
       'Windows AJAX canary diagnostics should compare redacted remote whitelist state against expected hosts'
     );
+    assert.ok(
+      ajaxCanaryScript.includes('collectCanaryGroupDiagnostics') &&
+        ajaxCanaryScript.includes('/cp/internal/client-canary/group/') &&
+        ajaxCanaryScript.includes('WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID') &&
+        ajaxCanaryScript.includes('WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN'),
+      'Windows AJAX canary diagnostics should capture protected server-side request/rule state for the canary group'
+    );
+    assert.ok(
+      String(ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL ?? '').includes(
+        'PRODUCTION_BASE_URL'
+      ) &&
+        String(ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '').includes(
+          'steps.provision.outputs.group_id'
+        ) &&
+        String(ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN ?? '').includes(
+          'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'
+        ),
+      'Windows AJAX canary workflow should pass base URL, canary group, and protected diagnostics token into the diagnostic script'
+    );
     assert.ok(ajaxCanaryScript.includes('C:\\\\OpenPath\\\\data\\\\whitelist.txt'));
     assert.ok(ajaxCanaryScript.includes('Auto-allow AJAX target was not written to whitelist'));
     assert.ok(ajaxCanaryScript.includes('Auto-allow image target was not written to whitelist'));

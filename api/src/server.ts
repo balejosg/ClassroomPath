@@ -8,7 +8,10 @@ import { createGatewayRateLimitRules, createRateLimitMiddleware } from './lib/ga
 import { type GatewayAppOptions, resolveGatewayConfig } from './lib/gateway-config.js';
 import { composeGatewayApp } from './lib/gateway/compose-gateway.js';
 import { getGatewayReadiness } from './lib/gateway-readiness.js';
-import { clientCanaryManualBillingApprovalHandler } from './lib/client-canary-manual-approval-route.js';
+import {
+  clientCanaryGroupDiagnosticsHandler,
+  clientCanaryManualBillingApprovalHandler,
+} from './lib/client-canary-manual-approval-route.js';
 import { logger } from './lib/logger.js';
 import { notificationApproveDomainRequestHandler } from './lib/notification-actions-route.js';
 import { stripeWebhookHandler } from './lib/stripe-webhook-route.js';
@@ -48,6 +51,7 @@ export function createGatewayApp(options: GatewayAppOptions = {}) {
     stripeWebhookHandler,
     notificationApproveDomainRequestHandler,
     clientCanaryManualBillingApprovalHandler,
+    clientCanaryGroupDiagnosticsHandler,
     serveSpa: gatewayConfig.serveSpa,
     reactSpaPath,
   });

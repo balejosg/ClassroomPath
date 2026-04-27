@@ -396,6 +396,10 @@ jobs:
 
       - name: Verify Windows AJAX auto-allow canary
         shell: pwsh
+        env:
+          WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL: ${{ env.PRODUCTION_BASE_URL }}
+          WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: ${{ steps.provision.outputs.group_id }}
+          WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: ${{ env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
           node scripts/windows-ajax-auto-allow-canary.mjs

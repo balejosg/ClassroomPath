@@ -26,6 +26,7 @@ export interface ComposeGatewayAppOptions {
   stripeWebhookHandler: GatewayApplicationRoutesOptions['stripeWebhookHandler'];
   notificationApproveDomainRequestHandler: GatewayApplicationRoutesOptions['notificationApproveDomainRequestHandler'];
   clientCanaryManualBillingApprovalHandler: GatewayApplicationRoutesOptions['clientCanaryManualBillingApprovalHandler'];
+  clientCanaryGroupDiagnosticsHandler: GatewayApplicationRoutesOptions['clientCanaryGroupDiagnosticsHandler'];
   serveSpa: boolean;
   reactSpaPath: GatewaySpaRoutesOptions['reactSpaPath'];
 }
@@ -48,6 +49,7 @@ export function composeGatewayApp(options: ComposeGatewayAppOptions): Express {
     stripeWebhookHandler: options.stripeWebhookHandler,
     notificationApproveDomainRequestHandler: options.notificationApproveDomainRequestHandler,
     clientCanaryManualBillingApprovalHandler: options.clientCanaryManualBillingApprovalHandler,
+    clientCanaryGroupDiagnosticsHandler: options.clientCanaryGroupDiagnosticsHandler,
   });
 
   if (options.serveSpa) {

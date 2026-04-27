@@ -27,6 +27,9 @@ await describe('compose-gateway', { concurrency: false }, async () => {
     const clientCanaryManualBillingApprovalHandler: RequestHandler = (_req, res) => {
       res.json({ status: 'canary-approved' });
     };
+    const clientCanaryGroupDiagnosticsHandler: RequestHandler = (_req, res) => {
+      res.json({ status: 'canary-diagnostics' });
+    };
 
     const composed = composeGatewayApp({
       app,
@@ -46,6 +49,7 @@ await describe('compose-gateway', { concurrency: false }, async () => {
       stripeWebhookHandler,
       notificationApproveDomainRequestHandler,
       clientCanaryManualBillingApprovalHandler,
+      clientCanaryGroupDiagnosticsHandler,
       serveSpa: false,
       reactSpaPath: '/tmp/classroompath-missing-spa',
     });
@@ -105,6 +109,12 @@ await describe('compose-gateway', { concurrency: false }, async () => {
     );
     assert.equal(notificationActionResponse.status, 200);
     assert.deepEqual(await notificationActionResponse.json(), { status: 'approved' });
+
+    const canaryDiagnosticsResponse = await fetch(
+      `${baseUrl}/cp/internal/client-canary/group/group_123/diagnostics`
+    );
+    assert.equal(canaryDiagnosticsResponse.status, 200);
+    assert.deepEqual(await canaryDiagnosticsResponse.json(), { status: 'canary-diagnostics' });
 
     const blockedResponse = await fetch(`${baseUrl}/trpc/groups.list`);
     assert.equal(blockedResponse.status, 403);

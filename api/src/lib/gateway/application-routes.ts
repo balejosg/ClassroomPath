@@ -21,6 +21,7 @@ export interface GatewayApplicationRoutesOptions {
   stripeWebhookHandler: RequestHandler;
   notificationApproveDomainRequestHandler: RequestHandler;
   clientCanaryManualBillingApprovalHandler: RequestHandler;
+  clientCanaryGroupDiagnosticsHandler: RequestHandler;
 }
 
 export function registerGatewayApplicationRoutes(
@@ -40,6 +41,10 @@ export function registerGatewayApplicationRoutes(
   app.post(
     '/cp/internal/client-canary/manual-request/:requestId/approve',
     options.clientCanaryManualBillingApprovalHandler
+  );
+  app.get(
+    '/cp/internal/client-canary/group/:groupId/diagnostics',
+    options.clientCanaryGroupDiagnosticsHandler
   );
   app.use('/cp/trpc', options.trpcMiddleware);
 

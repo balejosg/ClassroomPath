@@ -30,6 +30,9 @@ await describe('application-routes', { concurrency: false }, async () => {
     const clientCanaryManualBillingApprovalHandler: RequestHandler = (_req, res) => {
       res.json({ status: 'canary-approved' });
     };
+    const clientCanaryGroupDiagnosticsHandler: RequestHandler = (_req, res) => {
+      res.json({ status: 'canary-diagnostics' });
+    };
 
     registerGatewayApplicationRoutes(app, {
       jsonBodyLimit: '1kb',
@@ -37,6 +40,7 @@ await describe('application-routes', { concurrency: false }, async () => {
       stripeWebhookHandler,
       notificationApproveDomainRequestHandler,
       clientCanaryManualBillingApprovalHandler,
+      clientCanaryGroupDiagnosticsHandler,
     });
 
     server = app.listen(port);
@@ -123,5 +127,19 @@ await describe('application-routes', { concurrency: false }, async () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { status: 'canary-approved' });
+  });
+
+  test('mounts internal client canary group diagnostics before the tRPC handler', async () => {
+    const response = await fetch(
+      `${baseUrl}/cp/internal/client-canary/group/group_123/diagnostics`,
+      {
+        headers: {
+          Accept: 'application/json',
+        },
+      }
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { status: 'canary-diagnostics' });
   });
 });

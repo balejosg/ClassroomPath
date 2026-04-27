@@ -3,7 +3,10 @@ import express from 'express';
 import type { Server } from 'node:http';
 import { afterEach, describe, test } from 'node:test';
 
-import { clientCanaryManualBillingApprovalHandler } from '../src/lib/client-canary-manual-approval-route.ts';
+import {
+  clientCanaryGroupDiagnosticsHandler,
+  clientCanaryManualBillingApprovalHandler,
+} from '../src/lib/client-canary-manual-approval-route.ts';
 import { getAvailablePort } from './test-utils.js';
 
 let server: Server | undefined;
@@ -15,6 +18,10 @@ async function startServer() {
   app.post(
     '/cp/internal/client-canary/manual-request/:requestId/approve',
     clientCanaryManualBillingApprovalHandler
+  );
+  app.get(
+    '/cp/internal/client-canary/group/:groupId/diagnostics',
+    clientCanaryGroupDiagnosticsHandler
   );
 
   const port = await getAvailablePort();
@@ -77,6 +84,21 @@ describe('client canary manual approval route', () => {
       `${baseUrl}/cp/internal/client-canary/manual-request/bill_req_123/approve`,
       {
         method: 'POST',
+        headers: { Authorization: 'Bearer wrong-token' },
+      }
+    );
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), { error: 'forbidden' });
+  });
+
+  test('rejects group diagnostics requests with mismatched tokens before reading canary state', async () => {
+    process.env.CP_CLIENT_CANARY_ADMIN_TOKEN = 'expected-token';
+    const baseUrl = await startServer();
+
+    const response = await fetch(
+      `${baseUrl}/cp/internal/client-canary/group/group_123/diagnostics?host=ajax-auto-allow-target.127.0.0.1.sslip.io`,
+      {
         headers: { Authorization: 'Bearer wrong-token' },
       }
     );

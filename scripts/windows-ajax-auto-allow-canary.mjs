@@ -80,6 +80,12 @@ const OPENPATH_LOG_PATH = join(OPENPATH_ROOT, 'data', 'logs', 'openpath.log');
 const ARTIFACT_PATH =
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT ??
   'production-windows-ajax-auto-allow-canary.json';
+const CANARY_API_URL = (process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL ?? '').replace(
+  /\/$/,
+  ''
+);
+const CANARY_GROUP_ID = process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '';
+const CANARY_ADMIN_TOKEN = process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN ?? '';
 
 function findFirefox() {
   const candidates = [
@@ -235,6 +241,71 @@ async function collectRemoteWhitelistEvidence(expectedHosts = []) {
   }
 }
 
+async function collectCanaryGroupDiagnostics(expectedHosts = []) {
+  if (!CANARY_API_URL || !CANARY_GROUP_ID || !CANARY_ADMIN_TOKEN) {
+    return {
+      available: false,
+      error:
+        'WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL, WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID, or WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN missing',
+    };
+  }
+
+  let diagnosticsUrl;
+  try {
+    diagnosticsUrl = new URL(
+      `/cp/internal/client-canary/group/${encodeURIComponent(CANARY_GROUP_ID)}/diagnostics`,
+      CANARY_API_URL
+    );
+  } catch (error) {
+    return {
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  for (const host of expectedHosts) {
+    diagnosticsUrl.searchParams.append('host', host);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REMOTE_WHITELIST_TIMEOUT_MS);
+  try {
+    const response = await fetch(diagnosticsUrl, {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${CANARY_ADMIN_TOKEN}`,
+      },
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { raw: redactSensitiveWindowsCanaryValue(text.slice(-4000)) };
+    }
+
+    return redactWindowsCanaryObject({
+      available: true,
+      fetched: true,
+      url: diagnosticsUrl.toString(),
+      status: response.status,
+      ok: response.ok,
+      body,
+    });
+  } catch (error) {
+    return {
+      available: true,
+      fetched: false,
+      url: diagnosticsUrl.toString(),
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function runPowerShell(args, { input, timeoutMs = 10000 } = {}) {
   return new Promise((resolve) => {
     const powershell = spawn(process.env.PWSH_PATH ?? 'powershell.exe', args, {
@@ -380,6 +451,7 @@ async function collectWindowsAutoAllowDiagnostics(phase) {
     updateTask,
     sseTask,
     remoteWhitelist,
+    canaryGroup,
   ] = await Promise.all([
     readFileEvidence(WHITELIST_PATH, expectedHosts),
     readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts),
@@ -389,6 +461,7 @@ async function collectWindowsAutoAllowDiagnostics(phase) {
     readScheduledTaskEvidence('OpenPath-Update'),
     readScheduledTaskEvidence('OpenPath-SSE'),
     collectRemoteWhitelistEvidence(expectedHosts),
+    collectCanaryGroupDiagnostics(expectedHosts),
   ]);
   const [ping, getConfig, getHostname, getMachineToken, check] = await Promise.all([
     sendNativeProtocolMessage({ action: 'ping' }),
@@ -439,6 +512,9 @@ async function collectWindowsAutoAllowDiagnostics(phase) {
       task: updateTask,
     },
     nativeProtocol,
+    server: {
+      canaryGroup,
+    },
   });
 }
 
