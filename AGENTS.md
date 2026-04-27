@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: agent workflow inside the ClassroomPath repository
-> Last verified: 2026-04-22
+> Last verified: 2026-04-27
 > Source of truth: `AGENTS.md`
 
 SaaS distribution wrapper for OpenPath. Provides tenancy, deployment, and environment-specific
@@ -39,6 +39,27 @@ Normal local verification:
 - for CI/CD optimization or runner follow-up, use `docs/verification-matrix.md`
   to record run IDs, per-job durations, cache signals, artifact evidence, and
   the highest evidence rung before changing workflow routing or cache policy
+
+## Hypothesis Validation Order
+
+Do not use `npm run deploy:staging`, production tagging, or a broad CI workflow as the first hypothesis check when a cheaper lane can falsify the change.
+
+Default order:
+
+- `npm run verify:incremental`
+- direct runner connection for Windows bootstrap/canary hypotheses
+- `npm run deploy:staging` for integrated staging evidence
+- production tag workflow for promotion evidence only
+
+From the shared workspace, use `../scripts/validate-hypothesis.sh` when choosing the first pass:
+
+- `../scripts/validate-hypothesis.sh classroompath local`
+- `../scripts/validate-hypothesis.sh classroompath windows-bootstrap-gh`
+- `../scripts/validate-hypothesis.sh classroompath windows-ajax-direct`
+
+The Windows direct diagnostic stays staging-first by default and requires explicit confirmation for production.
+
+Use GitHub Actions runner workflows for integration/deployment time, not as the default development loop when the direct runner lane can answer the question sooner.
 
 If you push changes to `main`, you must run local staging deployment immediately:
 

@@ -42,6 +42,8 @@ Rules:
 
 ## Operations
 
+- Shared workspace hypothesis-validation wrapper: [`../../scripts/validate-hypothesis.sh`](../../scripts/validate-hypothesis.sh)
+- Direct Windows runner diagnostic: [`scripts/run-windows-ajax-direct.mjs`](../scripts/run-windows-ajax-direct.mjs)
 - Deploy staging (local SSH workflow after push): [`docs/runbooks/deploy-staging.md`](runbooks/deploy-staging.md)
 - Deploy production (tag-only promotion): [`docs/runbooks/deploy-production.md`](runbooks/deploy-production.md)
 - Configure Stripe billing: [`docs/runbooks/configure-stripe-billing.md`](runbooks/configure-stripe-billing.md)
