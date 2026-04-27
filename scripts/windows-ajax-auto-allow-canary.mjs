@@ -66,7 +66,8 @@ const CANARY_ADMIN_TOKEN = process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKE
 const FIREFOX_MODE = process.env.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE ?? 'managed';
 const LOCAL_ADDON_PATH = process.env.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH ?? '';
 const GECKODRIVER_PATH = process.env.GECKODRIVER_PATH ?? '';
-const USE_SELENIUM_FIREFOX = FIREFOX_MODE === 'selenium' || LOCAL_ADDON_PATH.trim().length > 0;
+const USE_LOCAL_FIREFOX_ADDON = LOCAL_ADDON_PATH.trim().length > 0;
+const USE_SELENIUM_FIREFOX = FIREFOX_MODE === 'selenium' || USE_LOCAL_FIREFOX_ADDON;
 
 function findFirefox() {
   const unsignedAddonCandidates = [
@@ -79,7 +80,7 @@ function findFirefox() {
     'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
     'C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe',
   ].filter(Boolean);
-  const candidates = USE_SELENIUM_FIREFOX ? unsignedAddonCandidates : releaseCandidates;
+  const candidates = USE_LOCAL_FIREFOX_ADDON ? unsignedAddonCandidates : releaseCandidates;
 
   const firefoxPath = candidates.find((candidate) => existsSync(candidate));
   if (!firefoxPath) {
@@ -652,10 +653,10 @@ async function restoreFirefoxEnterprisePolicy(managedPolicySuspension) {
   await rename(managedPolicySuspension.backupPath, managedPolicySuspension.policyPath);
 }
 
-async function launchFirefoxWithLocalAddon({ firefoxPath, profileDir, originUrl }) {
-  if (!LOCAL_ADDON_PATH || !existsSync(LOCAL_ADDON_PATH)) {
+async function launchFirefoxWithSelenium({ firefoxPath, profileDir, originUrl }) {
+  if (USE_LOCAL_FIREFOX_ADDON && !existsSync(LOCAL_ADDON_PATH)) {
     throw new Error(
-      `WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH is required for Selenium mode and was not found: ${LOCAL_ADDON_PATH || '<empty>'}`
+      `WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH was not found: ${LOCAL_ADDON_PATH || '<empty>'}`
     );
   }
 
@@ -668,7 +669,9 @@ async function launchFirefoxWithLocalAddon({ firefoxPath, profileDir, originUrl 
   options.setBinary(firefoxPath);
   options.setProfile(profileDir);
   options.addArguments('-headless');
-  options.addExtensions(LOCAL_ADDON_PATH);
+  if (USE_LOCAL_FIREFOX_ADDON) {
+    options.addExtensions(LOCAL_ADDON_PATH);
+  }
   options.setPreference('network.dns.disablePrefetch', true);
   options.setPreference('network.trr.mode', 5);
   options.setPreference('network.trr.uri', '');
@@ -699,8 +702,8 @@ async function launchFirefoxWithLocalAddon({ firefoxPath, profileDir, originUrl 
     firefoxExtensionWarmup: {
       ...extensionEvidence,
       ready: true,
-      mode: 'selenium',
-      localAddonPath: LOCAL_ADDON_PATH,
+      mode: USE_LOCAL_FIREFOX_ADDON ? 'selenium-local-addon' : 'selenium-managed',
+      localAddonPath: USE_LOCAL_FIREFOX_ADDON ? LOCAL_ADDON_PATH : null,
       geckodriverPath: GECKODRIVER_PATH || null,
       profileDir: activeProfileDir,
       timeoutMs: FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS,
@@ -1096,17 +1099,21 @@ async function main() {
   let managedPolicySuspension = null;
 
   if (USE_SELENIUM_FIREFOX) {
-    managedPolicySuspension = await suspendFirefoxEnterprisePolicy(firefoxPath);
+    managedPolicySuspension = USE_LOCAL_FIREFOX_ADDON
+      ? await suspendFirefoxEnterprisePolicy(firefoxPath)
+      : null;
     try {
-      const seleniumSession = await launchFirefoxWithLocalAddon({
+      const seleniumSession = await launchFirefoxWithSelenium({
         firefoxPath,
         profileDir,
         originUrl,
       });
-      firefoxExtensionWarmup = {
-        ...seleniumSession.firefoxExtensionWarmup,
-        managedPolicySuspension,
-      };
+      firefoxExtensionWarmup = USE_LOCAL_FIREFOX_ADDON
+        ? {
+            ...seleniumSession.firefoxExtensionWarmup,
+            managedPolicySuspension,
+          }
+        : seleniumSession.firefoxExtensionWarmup;
       seleniumDriver = seleniumSession.driver;
     } catch (error) {
       await restoreFirefoxEnterprisePolicy(managedPolicySuspension).catch(() => {});

@@ -234,6 +234,15 @@ function ensureFilesExist(options) {
     }
   }
 
+  for (const moduleName of SELENIUM_NODE_MODULES) {
+    const modulePath = resolve(projectRoot, 'node_modules', moduleName);
+    if (!existsSync(modulePath)) {
+      throw new Error(
+        `Required local Selenium dependency is missing: ${modulePath}. Run npm install in ClassroomPath first.`
+      );
+    }
+  }
+
   if (options.firefoxExtensionSource === 'local') {
     for (const relativePath of [
       'package.json',
@@ -243,15 +252,6 @@ function ensureFilesExist(options) {
       const sourcePath = resolve(options.openpathRoot, relativePath);
       if (!existsSync(sourcePath)) {
         throw new Error(`Required local Firefox extension file is missing: ${sourcePath}`);
-      }
-    }
-
-    for (const moduleName of SELENIUM_NODE_MODULES) {
-      const modulePath = resolve(projectRoot, 'node_modules', moduleName);
-      if (!existsSync(modulePath)) {
-        throw new Error(
-          `Required local Selenium dependency is missing: ${modulePath}. Run npm install in ClassroomPath first.`
-        );
       }
     }
   }
@@ -648,10 +648,6 @@ function buildLocalFirefoxExtension(options, artifactDir) {
 }
 
 function buildSeleniumNodeModulesBundle(options, artifactDir) {
-  if (options.firefoxExtensionSource !== 'local') {
-    return null;
-  }
-
   const localPath = resolve(artifactDir, 'selenium-node-modules.zip');
   if (DRY_RUN) {
     console.log(`local: zip ${localPath} ${SELENIUM_NODE_MODULES.join(' ')}`);
@@ -679,11 +675,8 @@ function buildSeleniumNodeModulesBundle(options, artifactDir) {
   };
 }
 
-function ensureLocalFirefoxCanarySupport(options) {
-  if (options.firefoxExtensionSource !== 'local') {
-    return;
-  }
-
+function ensureSeleniumFirefoxCanarySupport(options) {
+  const requireUnsignedAddonChannel = options.firefoxExtensionSource === 'local';
   const script = `
 $ErrorActionPreference = 'Stop'
 $workspace = ${psSingleQuote(WINDOWS_WORKSPACE)}
@@ -711,8 +704,19 @@ if (-not $gecko) {
   $gecko = (Get-Command geckodriver.exe -ErrorAction SilentlyContinue).Source
 }
 if (-not $gecko) {
-  throw 'geckodriver.exe is required for local Firefox extension diagnostics'
+  throw 'geckodriver.exe is required for Firefox extension diagnostics'
 }
+if (${requireUnsignedAddonChannel ? '$false' : '$true'}) {
+  $firefoxReleaseCandidates = @(
+    'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
+    'C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe'
+  )
+  $firefoxRelease = $firefoxReleaseCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+  if (-not $firefoxRelease) {
+    throw 'Firefox Release is required for managed signed extension diagnostics'
+  }
+}
+if (${requireUnsignedAddonChannel ? '$false' : '$true'}) { return }
 $firefoxDevCandidates = @(
   'C:\\Program Files\\Firefox Developer Edition\\firefox.exe',
   'C:\\Program Files\\Firefox Nightly\\firefox.exe'
@@ -812,9 +816,23 @@ Start-ScheduledTask -TaskName 'OpenPath-Watchdog'
 function runAjaxCanary(options, summary, billingContext, localFirefoxExtension) {
   const artifactPath = `${WINDOWS_WORKSPACE}\\production-windows-ajax-auto-allow-canary.json`;
   const scriptPath = `${WINDOWS_WORKSPACE}\\scripts\\windows-ajax-auto-allow-canary.mjs`;
-  const localFirefoxEnv =
+  const firefoxEnv =
     localFirefoxExtension === null
-      ? ''
+      ? `
+$env:WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE = 'selenium'
+$gecko = (Get-Command geckodriver.exe -ErrorAction SilentlyContinue).Source
+if (-not $gecko -and (Test-Path -LiteralPath 'C:\\tools\\selenium\\geckodriver.exe')) { $gecko = 'C:\\tools\\selenium\\geckodriver.exe' }
+if ($gecko) { $env:GECKODRIVER_PATH = $gecko }
+$policyFirefoxPath = @(
+  'C:\\Program Files\\Mozilla Firefox',
+  'C:\\Program Files (x86)\\Mozilla Firefox'
+) | Where-Object {
+  (Test-Path -LiteralPath (Join-Path $_ 'firefox.exe')) -and
+  (Test-Path -LiteralPath (Join-Path $_ 'distribution\\policies.json')) -and
+  ((Get-Content -LiteralPath (Join-Path $_ 'distribution\\policies.json') -Raw) -match 'monitor-bloqueos@openpath')
+} | ForEach-Object { Join-Path $_ 'firefox.exe' } | Select-Object -First 1
+if ($policyFirefoxPath) { $env:FIREFOX_PATH = $policyFirefoxPath }
+`
       : `
 $env:WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE = 'selenium'
 $env:WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH = ${psSingleQuote(localFirefoxExtension.remotePath)}
@@ -833,7 +851,7 @@ $env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN = ${psSingleQuote(billingContext
 $env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT = ${psSingleQuote(artifactPath)}
 $env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS = ${psSingleQuote(options.canaryTimeoutMs)}
 $env:WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS = ${psSingleQuote(options.postFailureObservationMs)}
-${localFirefoxEnv}
+${firefoxEnv}
 node ${psSingleQuote(scriptPath)}
 if ($LASTEXITCODE -ne 0) {
   throw "windows-ajax-auto-allow-canary.mjs exited with code $LASTEXITCODE"
@@ -937,7 +955,7 @@ function main() {
       seleniumNodeModulesBundle.remotePath
     );
   }
-  ensureLocalFirefoxCanarySupport(options);
+  ensureSeleniumFirefoxCanarySupport(options);
   installWindowsClient(options, summary);
 
   for (const upload of OPENPATH_OVERLAYS) {
@@ -949,9 +967,9 @@ function main() {
   for (const upload of CANARY_SCRIPT_UPLOADS) {
     writeGuestText(options, resolve(projectRoot, upload.source), upload.destination);
   }
+  console.log('guest-env: WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE=selenium');
   if (localFirefoxExtension !== null) {
     writeGuestBinary(options, localFirefoxExtension.localPath, localFirefoxExtension.remotePath);
-    console.log('guest-env: WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE=selenium');
     console.log(
       `guest-env: WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH=${localFirefoxExtension.remotePath}`
     );

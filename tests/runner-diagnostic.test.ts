@@ -222,6 +222,19 @@ describe('runner diagnostic wrapper', () => {
     );
   });
 
+  test('direct Windows AJAX diagnostic runs managed signed Firefox through Selenium', () => {
+    const result = runDirectDiagnostic(['--firefox-extension-source', 'managed']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /firefox_extension_source=managed/);
+    assert.match(
+      result.stdout,
+      /guest-upload-binary: .*selenium-node-modules\.zip -> C:\\Windows\\Temp\\openpath-ajax-direct\\selenium-node-modules\.zip/
+    );
+    assert.match(result.stdout, /guest-env: WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE=selenium/);
+    assert.doesNotMatch(result.stdout, /WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH=/);
+  });
+
   test('direct Windows AJAX local extension mode does not require npm inside the runner', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
 
@@ -246,6 +259,18 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /selenium-webdriver/);
     assert.match(script, /addExtensions\(LOCAL_ADDON_PATH\)/);
     assert.match(script, /setFirefoxService/);
+  });
+
+  test('Windows AJAX canary supports Selenium with enterprise-managed Firefox addons', () => {
+    const script = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+
+    assert.match(script, /USE_LOCAL_FIREFOX_ADDON/);
+    assert.match(script, /launchFirefoxWithSelenium/);
+    assert.match(
+      script,
+      /mode: USE_LOCAL_FIREFOX_ADDON \? 'selenium-local-addon' : 'selenium-managed'/
+    );
+    assert.doesNotMatch(script, /WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH is required/);
   });
 
   test('Windows AJAX local addon mode suspends managed Firefox policy during Selenium', () => {

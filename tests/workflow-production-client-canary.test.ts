@@ -771,6 +771,11 @@ describe('Production client update canary workflow contracts', () => {
       'Windows bootstrap canary should restore runner DNS before uploading artifacts'
     );
     assert.equal(ajaxStep?.shell, 'pwsh');
+    assert.equal(
+      ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE,
+      'selenium',
+      'Windows AJAX canary should use the runner-validated Selenium managed Firefox launcher'
+    );
     assert.ok(ajaxScript.includes('node scripts/windows-ajax-auto-allow-canary.mjs'));
     assert.ok(ajaxCanaryEvidenceText.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
     assert.ok(ajaxCanaryEvidenceText.includes('ajax-auto-allow-target.127.0.0.1.sslip.io'));
