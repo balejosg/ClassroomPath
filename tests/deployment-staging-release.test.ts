@@ -331,11 +331,10 @@ describe('Deployment staging and promotion contracts', () => {
           'COMMON_SH_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/common.sh")"'
         )
     );
-    assert.ok(deployContextHelper.includes('classify_migration_risk() {'));
     assert.ok(
-      deployContextHelper.includes(
-        'classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"'
-      )
+      deployContextHelper.includes('release_execution_classify_and_gate_production_migrations') &&
+        !deployContextHelper.includes('classify_sql_migration_file()') &&
+        !deployContextHelper.includes('classify_migration_risk() {')
     );
     assert.ok(!deployRemoteScript.includes('upsert_env_file_var() {'));
     assert.ok(

@@ -42,6 +42,7 @@ remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 : "${DEPLOY_PAYLOAD_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-payload.sh")}"
 : "${RELEASE_STATE_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")}"
 : "${RELEASE_RUNTIME_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")}"
+: "${RELEASE_EXECUTION_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-execution.sh")}"
 : "${REMOTE_HELPER_CONTRACTS_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")}"
 : "${DEPLOY_CONTAINER_PLATFORM_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")}"
 
@@ -176,16 +177,7 @@ write_release_state() {
 
 write_deploy_context() {
   APP_SHA="${STAGING_RELEASE_SHA:-origin-main}" \
-  IMAGE_SOURCE="$IMAGE_SOURCE" \
-  PREVIOUS_APP_SHA="${PREVIOUS_APP_SHA:-}" \
-  MIGRATION_RISK_LEVEL="${MIGRATION_RISK_LEVEL:-safe}" \
-  MIGRATION_CHANGED_FILES="${MIGRATION_CHANGED_FILES:-}" \
-  MIGRATION_DESTRUCTIVE_FILES="${MIGRATION_DESTRUCTIVE_FILES:-}" \
-  DB_MIGRATED="${DB_MIGRATED}" \
-  FAILURE_STAGE="${FAILURE_STAGE}" \
-  ROLLBACK_ATTEMPTED="${ROLLBACK_ATTEMPTED}" \
-  ROLLBACK_RESULT="${ROLLBACK_RESULT}" \
-    write_deploy_context_state "$DEPLOY_CONTEXT_FILE"
+    release_execution_write_deploy_context "$DEPLOY_CONTEXT_FILE"
 }
 
 resolve_pulled_digest() {
@@ -201,7 +193,7 @@ resolve_pulled_digest() {
 }
 
 classify_migration_risk() {
-  eval "$(node "$SCRIPT_DIR/classify-migration-risk.mjs" --repo-root "$APP_DIR" --from "$PREVIOUS_APP_SHA" --to "${STAGING_RELEASE_SHA:-origin/main}")"
+  release_execution_classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "${STAGING_RELEASE_SHA:-origin/main}"
 }
 
 restore_previous_release_state() {
@@ -256,8 +248,10 @@ restore_previous_release_state() {
 fail_after_migrations() {
   local message="$1"
   log_error "$message"
-  if restore_previous_release_state; then
+  if release_execution_staging_restore_is_eligible && restore_previous_release_state; then
     log_warn "Previous staging release restored after failure"
+  elif ! release_execution_staging_restore_is_eligible; then
+    log_warn "Previous staging release restore is not eligible at stage ${FAILURE_STAGE:-unknown}"
   else
     log_error "Failed to restore previous staging release"
   fi
@@ -478,6 +472,15 @@ prepare_staging_checkout() {
   git submodule sync --recursive
   git submodule update --init --recursive --force
   remote_deploy_reload_checked_out_helpers "$APP_DIR/scripts/lib/common.sh"
+  RELEASE_EXECUTION_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-execution.sh")"
+  if release_execution_helper_supports_contract "$RELEASE_EXECUTION_HELPER_PATH"; then
+    # shellcheck source=lib/release-execution.sh
+    source "$RELEASE_EXECUTION_HELPER_PATH"
+  else
+    log_error "Checked-out release-execution helper does not meet the minimum contract"
+    exit 1
+  fi
+  release_execution_init_context "$DEPLOY_CONTEXT_FILE"
   load_deploy_host_preflight_helper
   load_deploy_container_platform_helper
   configure_deploy_container_platform "${STAGING_CONTAINER_PLATFORM:-linux/amd64}"
@@ -486,7 +489,7 @@ prepare_staging_checkout() {
 
   load_staging_release_manifest
   classify_migration_risk
-  write_deploy_context
+  release_execution_mark_stage preflight
 }
 
 run_staging_runtime_validation() {
@@ -513,8 +516,7 @@ cleanup_staging_disk_if_needed() {
 }
 
 run_staging_database_migrations() {
-  FAILURE_STAGE="migrations"
-  write_deploy_context
+  release_execution_mark_stage migrations
 
   if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
     log_info "Running database migrations from workspace sources..."
@@ -529,8 +531,7 @@ run_staging_database_migrations() {
   fi
 
   DB_MIGRATED=1
-  FAILURE_STAGE="startup"
-  write_deploy_context
+  release_execution_mark_stage startup
 }
 
 start_staging_runtime() {
@@ -591,8 +592,7 @@ wait_for_staging_runtime_readiness() {
     sleep 5
   done
 
-  FAILURE_STAGE="readiness"
-  write_deploy_context
+  release_execution_mark_stage readiness
 
   local ready_check=""
   for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
@@ -603,8 +603,7 @@ wait_for_staging_runtime_readiness() {
 
     if echo "$ready_check" | grep -q '"ready":true'; then
       log_success "Application readiness OK"
-      FAILURE_STAGE="completed"
-      write_deploy_context
+      release_execution_mark_stage completed
       return 0
     fi
 

@@ -7,6 +7,7 @@ RELEASE_STATE_RUNTIME_MIN_CONTRACT_VERSION=1
 RELEASE_STATE_STAGING_VERIFICATION_MIN_CONTRACT_VERSION=1
 DEPLOYMENT_STATE_HELPER_MIN_CONTRACT_VERSION=1
 RELEASE_RUNTIME_HELPER_MIN_CONTRACT_VERSION=1
+RELEASE_EXECUTION_HELPER_MIN_CONTRACT_VERSION=1
 
 remote_helper_path_supports_all() {
   local helper_path="${1:-}"
@@ -117,10 +118,19 @@ release_runtime_helper_supports_runtime_contract() {
     "$RELEASE_RUNTIME_HELPER_MIN_CONTRACT_VERSION"
 }
 
+release_execution_helper_supports_contract() {
+  local helper_path="${1:-}"
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    RELEASE_EXECUTION_HELPER_CONTRACT_VERSION \
+    "$RELEASE_EXECUTION_HELPER_MIN_CONTRACT_VERSION"
+}
+
 refresh_deployed_release_helpers() {
   RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
   RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
   RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
+  RELEASE_EXECUTION_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-execution.sh")"
 
   if [ -n "${DEPLOYMENT_STATE_HELPER_PATH:-}" ]; then
     DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
@@ -155,5 +165,10 @@ refresh_deployed_release_helpers() {
   if [ -n "${RELEASE_RUNTIME_HELPER_PATH:-}" ] && release_runtime_helper_supports_runtime_contract "$RELEASE_RUNTIME_HELPER_PATH"; then
     # shellcheck disable=SC1090
     source "$RELEASE_RUNTIME_HELPER_PATH"
+  fi
+
+  if [ -n "${RELEASE_EXECUTION_HELPER_PATH:-}" ] && release_execution_helper_supports_contract "$RELEASE_EXECUTION_HELPER_PATH"; then
+    # shellcheck disable=SC1090
+    source "$RELEASE_EXECUTION_HELPER_PATH"
   fi
 }

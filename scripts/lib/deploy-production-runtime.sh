@@ -122,8 +122,7 @@ wait_for_production_runtime_readiness_impl() {
     exit 1
   fi
 
-  DEPLOY_FAILURE_STAGE="readiness"
-  write_deploy_context
+  release_execution_mark_stage readiness
   log_info "Checking full application readiness..."
 
   local ready_check=""
@@ -131,8 +130,7 @@ wait_for_production_runtime_readiness_impl() {
     ready_check=$(curl -sf http://localhost:3001/cp/ready 2>/dev/null || echo '{"ready":false}')
     if echo "$ready_check" | grep -q '"ready":true'; then
       log_success "Application readiness OK"
-      DEPLOY_FAILURE_STAGE="completed"
-      write_deploy_context
+      release_execution_mark_stage completed
       log_success "Deployment successful"
       docker logs classroompath-gateway --tail 5
       return 0

@@ -45,6 +45,7 @@ remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 : "${DEPLOY_PAYLOAD_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-payload.sh")}"
 : "${RELEASE_STATE_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")}"
 : "${RELEASE_RUNTIME_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")}"
+: "${RELEASE_EXECUTION_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-execution.sh")}"
 : "${REMOTE_HELPER_CONTRACTS_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")}"
 : "${DEPLOYMENT_STATE_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")}"
 : "${DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-context.sh")}"
@@ -144,6 +145,7 @@ mkdir -p "$STATE_DIR"
 deployment_state_init_paths "$STATE_DIR"
 
 DB_MIGRATED=0
+FAILURE_STAGE="preflight"
 DEPLOY_FAILURE_STAGE="preflight"
 PREVIOUS_APP_SHA=""
 MIGRATION_RISK_LEVEL="safe"
@@ -262,6 +264,15 @@ prepare_production_checkout() {
   git submodule deinit -f --all || true
   git submodule update --init --recursive --force
   remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"
+  RELEASE_EXECUTION_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-execution.sh")"
+  if release_execution_helper_supports_contract "$RELEASE_EXECUTION_HELPER_PATH"; then
+    # shellcheck source=lib/release-execution.sh
+    source "$RELEASE_EXECUTION_HELPER_PATH"
+  else
+    log_error "Checked-out release-execution helper does not meet the minimum contract"
+    exit 1
+  fi
+  release_execution_init_context "$DEPLOY_CONTEXT_FILE"
   load_deploy_host_preflight_helper
   load_deploy_container_platform_helper
   configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/amd64}"
@@ -291,8 +302,7 @@ classify_production_migration_risk() {
 }
 
 run_production_database_migrations() {
-  DEPLOY_FAILURE_STAGE="migrations"
-  write_deploy_context
+  release_execution_mark_stage migrations
 
   cleanup_production_disk_if_needed
   login_production_registry
@@ -307,8 +317,7 @@ run_production_database_migrations() {
   bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"
 
   DB_MIGRATED=1
-  DEPLOY_FAILURE_STAGE="startup"
-  write_deploy_context
+  release_execution_mark_stage startup
 }
 
 plan_production_runtime_deploy() {
