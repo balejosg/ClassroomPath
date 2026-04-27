@@ -2,8 +2,108 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { readProjectText, readProjectWorkflow } from './helpers/ops-contracts.ts';
+import {
+  WINDOWS_AUTO_ALLOW_PROBES,
+  assertWindowsAutoAllowCanarySuccess,
+  buildWindowsAutoAllowCanarySummary,
+  redactWindowsCanaryObject,
+} from '../scripts/lib/windows-auto-allow-canary-evidence.mjs';
 
 const windowsRunnerDnsActionPath = '.github/actions/restore-windows-runner-dns/action.yml';
+
+describe('Windows AJAX auto-allow canary evidence contracts', () => {
+  test('keeps probe metadata and failure messages in one importable table', () => {
+    assert.deepEqual(
+      WINDOWS_AUTO_ALLOW_PROBES.map((probe) => probe.id),
+      ['ajax-fetch', 'image-subresource', 'script-subresource', 'stylesheet-subresource']
+    );
+    assert.ok(
+      WINDOWS_AUTO_ALLOW_PROBES.every(
+        (probe) => probe.expectedWhitelistHost && probe.failureMessage
+      )
+    );
+    assert.ok(
+      WINDOWS_AUTO_ALLOW_PROBES.some(
+        (probe) => probe.failureMessage === 'Auto-allow AJAX target was not written to whitelist'
+      )
+    );
+  });
+
+  test('classifies canary summary from probe evidence without live side effects', () => {
+    const successfulSummary = buildWindowsAutoAllowCanarySummary({
+      result: { success: true },
+      probeEvidence: WINDOWS_AUTO_ALLOW_PROBES.map((probe) => ({
+        id: probe.id,
+        kind: probe.kind,
+        host: probe.host,
+        url: `http://${probe.host}:18088${probe.path}`,
+        hits: 1,
+        expectedWhitelistHost: probe.expectedWhitelistHost,
+        whitelistContainsExpectedHost: true,
+      })),
+      originHits: 1,
+      attempts: [{ ok: true }],
+      completedProbes: Object.fromEntries(
+        WINDOWS_AUTO_ALLOW_PROBES.map((probe) => [probe.id, true])
+      ),
+      lastAttemptAt: '2026-04-27T10:00:00.000Z',
+      whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
+      firefoxExtensionWarmup: { success: true },
+      firefoxOutput: 'ready',
+      diagnostics: { preflight: {}, postAttempt: {} },
+    });
+
+    assert.equal(successfulSummary.success, true);
+    assert.equal(successfulSummary.whitelistContainsTarget, true);
+    assert.equal(successfulSummary.whitelistContainsAsset, true);
+    assert.equal(successfulSummary.targetHits, 1);
+    assert.equal(successfulSummary.assetHits, 1);
+    assert.equal(successfulSummary.scriptHits, 1);
+    assert.equal(successfulSummary.stylesheetHits, 1);
+    assert.doesNotThrow(() => assertWindowsAutoAllowCanarySuccess(successfulSummary));
+
+    const failedSummary = buildWindowsAutoAllowCanarySummary({
+      result: { success: true },
+      probeEvidence: WINDOWS_AUTO_ALLOW_PROBES.map((probe) => ({
+        id: probe.id,
+        kind: probe.kind,
+        host: probe.host,
+        url: `http://${probe.host}:18088${probe.path}`,
+        hits: 0,
+        expectedWhitelistHost: probe.expectedWhitelistHost,
+        whitelistContainsExpectedHost: false,
+      })),
+      originHits: 1,
+      attempts: [],
+      completedProbes: {},
+      lastAttemptAt: '',
+      whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
+      firefoxExtensionWarmup: { success: true },
+      firefoxOutput: '',
+      diagnostics: { preflight: {}, postAttempt: {} },
+    });
+
+    assert.throws(
+      () => assertWindowsAutoAllowCanarySuccess(failedSummary),
+      /Auto-allow AJAX target was not written to whitelist/
+    );
+  });
+
+  test('redacts machine tokens and remote whitelist URLs in evidence objects', () => {
+    assert.deepEqual(
+      redactWindowsCanaryObject({
+        machineToken: 'secret-token',
+        whitelistUrl: 'https://classroompath.eu/w/group-secret/whitelist.txt',
+        native: { raw: 'machineToken=another-secret' },
+      }),
+      {
+        machineToken: '[redacted]',
+        whitelistUrl: 'https://classroompath.eu/w/[redacted]/whitelist.txt',
+        native: { raw: 'machineToken="[redacted]"' },
+      }
+    );
+  });
+});
 
 describe('Production client update canary workflow contracts', () => {
   test('Windows canaries share the runner DNS restoration action', () => {
@@ -594,6 +694,10 @@ describe('Production client update canary workflow contracts', () => {
     const ajaxScript = String(ajaxStep?.run ?? '');
     const resetStep = steps.find((step) => step.name === 'Reset persistent Windows canary state');
     const ajaxCanaryScript = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+    const ajaxCanaryEvidenceModule = readProjectText(
+      'scripts/lib/windows-auto-allow-canary-evidence.mjs'
+    );
+    const ajaxCanaryEvidenceText = `${ajaxCanaryScript}\n${ajaxCanaryEvidenceModule}`;
 
     assert.ok(
       workflow.on?.workflow_call,
@@ -628,18 +732,18 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.equal(ajaxStep?.shell, 'pwsh');
     assert.ok(ajaxScript.includes('node scripts/windows-ajax-auto-allow-canary.mjs'));
-    assert.ok(ajaxCanaryScript.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
-    assert.ok(ajaxCanaryScript.includes('ajax-auto-allow-target.127.0.0.1.sslip.io'));
+    assert.ok(ajaxCanaryEvidenceText.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
+    assert.ok(ajaxCanaryEvidenceText.includes('ajax-auto-allow-target.127.0.0.1.sslip.io'));
     assert.ok(
-      ajaxCanaryScript.includes('ajax-auto-allow-asset.127.0.0.1.sslip.io'),
+      ajaxCanaryEvidenceText.includes('ajax-auto-allow-asset.127.0.0.1.sslip.io'),
       'Windows AJAX canary must cover non-XHR page subresources'
     );
     assert.ok(
-      ajaxCanaryScript.includes('ajax-auto-allow-script.127.0.0.1.sslip.io'),
+      ajaxCanaryEvidenceText.includes('ajax-auto-allow-script.127.0.0.1.sslip.io'),
       'Windows AJAX canary must cover script subresources'
     );
     assert.ok(
-      ajaxCanaryScript.includes('ajax-auto-allow-stylesheet.127.0.0.1.sslip.io'),
+      ajaxCanaryEvidenceText.includes('ajax-auto-allow-stylesheet.127.0.0.1.sslip.io'),
       'Windows AJAX canary must cover stylesheet subresources'
     );
     assert.ok(ajaxCanaryScript.includes('Access-Control-Allow-Origin'));
@@ -684,18 +788,18 @@ describe('Production client update canary workflow contracts', () => {
       'Windows AJAX canary should print functional evidence before artifact upload'
     );
     assert.ok(
-      ajaxCanaryScript.includes('const AUTO_ALLOW_PROBES = Object.freeze'),
-      'Windows AJAX canary should declare subresource probes in one maintainable table'
+      ajaxCanaryEvidenceModule.includes('WINDOWS_AUTO_ALLOW_PROBES = Object.freeze'),
+      'Windows AJAX canary should declare subresource probes in one importable table'
     );
     assert.ok(
-      ajaxCanaryScript.includes("id: 'ajax-fetch'") &&
-        ajaxCanaryScript.includes("id: 'image-subresource'") &&
-        ajaxCanaryScript.includes("id: 'script-subresource'") &&
-        ajaxCanaryScript.includes("id: 'stylesheet-subresource'"),
+      ajaxCanaryEvidenceModule.includes("id: 'ajax-fetch'") &&
+        ajaxCanaryEvidenceModule.includes("id: 'image-subresource'") &&
+        ajaxCanaryEvidenceModule.includes("id: 'script-subresource'") &&
+        ajaxCanaryEvidenceModule.includes("id: 'stylesheet-subresource'"),
       'Windows AJAX canary should identify each probe in evidence artifacts'
     );
     assert.ok(
-      ajaxCanaryScript.includes('expectedWhitelistHost'),
+      ajaxCanaryEvidenceModule.includes('expectedWhitelistHost'),
       'Windows AJAX canary should validate whitelist writes from probe metadata'
     );
     assert.ok(
@@ -751,11 +855,17 @@ describe('Production client update canary workflow contracts', () => {
       'Windows AJAX canary workflow should pass base URL, canary group, and protected diagnostics token into the diagnostic script'
     );
     assert.ok(ajaxCanaryScript.includes('C:\\\\OpenPath\\\\data\\\\whitelist.txt'));
-    assert.ok(ajaxCanaryScript.includes('Auto-allow AJAX target was not written to whitelist'));
-    assert.ok(ajaxCanaryScript.includes('Auto-allow image target was not written to whitelist'));
-    assert.ok(ajaxCanaryScript.includes('Auto-allow script target was not written to whitelist'));
     assert.ok(
-      ajaxCanaryScript.includes('Auto-allow stylesheet target was not written to whitelist')
+      ajaxCanaryEvidenceText.includes('Auto-allow AJAX target was not written to whitelist')
+    );
+    assert.ok(
+      ajaxCanaryEvidenceText.includes('Auto-allow image target was not written to whitelist')
+    );
+    assert.ok(
+      ajaxCanaryEvidenceText.includes('Auto-allow script target was not written to whitelist')
+    );
+    assert.ok(
+      ajaxCanaryEvidenceText.includes('Auto-allow stylesheet target was not written to whitelist')
     );
     assert.ok(ajaxCanaryScript.includes('production-windows-ajax-auto-allow-canary.json'));
     assert.ok(workflowText.includes('Record canary result'));

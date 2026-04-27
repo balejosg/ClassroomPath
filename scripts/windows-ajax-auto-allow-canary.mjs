@@ -8,46 +8,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
-
-const ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
-const TARGET_HOST = 'ajax-auto-allow-target.127.0.0.1.sslip.io';
-const ASSET_HOST = 'ajax-auto-allow-asset.127.0.0.1.sslip.io';
-const SCRIPT_HOST = 'ajax-auto-allow-script.127.0.0.1.sslip.io';
-const STYLESHEET_HOST = 'ajax-auto-allow-stylesheet.127.0.0.1.sslip.io';
-const AUTO_ALLOW_PROBES = Object.freeze([
-  {
-    id: 'ajax-fetch',
-    kind: 'fetch',
-    host: TARGET_HOST,
-    path: '/data.json',
-    expectedWhitelistHost: TARGET_HOST,
-    failureMessage: 'Auto-allow AJAX target was not written to whitelist',
-  },
-  {
-    id: 'image-subresource',
-    kind: 'image',
-    host: ASSET_HOST,
-    path: '/pixel.png',
-    expectedWhitelistHost: ASSET_HOST,
-    failureMessage: 'Auto-allow image target was not written to whitelist',
-  },
-  {
-    id: 'script-subresource',
-    kind: 'script',
-    host: SCRIPT_HOST,
-    path: '/asset.js',
-    expectedWhitelistHost: SCRIPT_HOST,
-    failureMessage: 'Auto-allow script target was not written to whitelist',
-  },
-  {
-    id: 'stylesheet-subresource',
-    kind: 'stylesheet',
-    host: STYLESHEET_HOST,
-    path: '/style.css',
-    expectedWhitelistHost: STYLESHEET_HOST,
-    failureMessage: 'Auto-allow stylesheet target was not written to whitelist',
-  },
-]);
+import {
+  WINDOWS_AUTO_ALLOW_ASSET_HOST as ASSET_HOST,
+  WINDOWS_AUTO_ALLOW_ORIGIN_HOST as ORIGIN_HOST,
+  WINDOWS_AUTO_ALLOW_PROBES as AUTO_ALLOW_PROBES,
+  WINDOWS_AUTO_ALLOW_SCRIPT_HOST as SCRIPT_HOST,
+  WINDOWS_AUTO_ALLOW_STYLESHEET_HOST as STYLESHEET_HOST,
+  WINDOWS_AUTO_ALLOW_TARGET_HOST as TARGET_HOST,
+  assertWindowsAutoAllowCanarySuccess,
+  buildWindowsAutoAllowCanarySummary,
+  buildWindowsAutoAllowProbeUrl,
+  redactSensitiveWindowsCanaryValue,
+  redactWindowsCanaryObject,
+} from './lib/windows-auto-allow-canary-evidence.mjs';
 const PORT = Number.parseInt(process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18088', 10);
 const TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS ?? '90000',
@@ -111,38 +84,11 @@ function writeGithubOutput(key, value) {
 }
 
 function buildProbeUrl(probe) {
-  return `http://${probe.host}:${PORT}${probe.path}`;
+  return buildWindowsAutoAllowProbeUrl(probe, PORT);
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function redactSensitiveWindowsCanaryValue(value) {
-  return String(value)
-    .replace(/\/w\/[^/?#]+\/whitelist\.txt/gi, '/w/[redacted]/whitelist.txt')
-    .replace(/("?(?:machineToken|token)"?\s*[:=]\s*)"?[^",\s}]+"?/gi, '$1"[redacted]"');
-}
-
-function redactWindowsCanaryObject(value) {
-  if (typeof value === 'string') {
-    return redactSensitiveWindowsCanaryValue(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => redactWindowsCanaryObject(item));
-  }
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
-        key,
-        /token/i.test(key) && typeof item === 'string'
-          ? '[redacted]'
-          : redactWindowsCanaryObject(item),
-      ])
-    );
-  }
-
-  return value;
 }
 
 async function readTextIfExists(path, maxChars = 4000) {
@@ -998,38 +944,21 @@ async function main() {
         ).catch(() => false),
       });
     }
-    const whitelistContainsTarget =
-      probeEvidence.find((probe) => probe.id === 'ajax-fetch')?.whitelistContainsExpectedHost ??
-      false;
-    const whitelistContainsAsset =
-      probeEvidence.find((probe) => probe.id === 'image-subresource')
-        ?.whitelistContainsExpectedHost ?? false;
-    const summary = {
-      ...result,
-      originHost: ORIGIN_HOST,
-      targetHost: TARGET_HOST,
-      assetHost: ASSET_HOST,
-      scriptHost: SCRIPT_HOST,
-      stylesheetHost: STYLESHEET_HOST,
-      targetUrl,
-      assetUrl,
+    const summary = buildWindowsAutoAllowCanarySummary({
+      result: { ...result, targetUrl, assetUrl },
+      probeEvidence,
       originHits,
-      targetHits: probeHits['ajax-fetch'] ?? 0,
-      assetHits: probeHits['image-subresource'] ?? 0,
       attempts: result?.attempts ?? browserAttempts,
       completedProbes: result?.completedProbes ?? completedProbes,
       lastAttemptAt: result?.lastAttemptAt ?? lastAttemptAt,
-      probeEvidence,
       whitelistPath: WHITELIST_PATH,
-      whitelistContainsTarget,
-      whitelistContainsAsset,
       firefoxExtensionWarmup,
       firefoxOutput: firefoxOutput.slice(-4000),
       diagnostics: {
         preflight: preflightDiagnostics,
         postAttempt: postAttemptDiagnostics,
       },
-    };
+    });
 
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
     const summaryLine = `WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`;
@@ -1040,16 +969,7 @@ async function main() {
     }
     writeGithubOutput('windows_ajax_auto_allow_result', summary.success ? 'success' : 'failure');
 
-    if (!summary.success) {
-      throw new Error(`Windows AJAX auto-allow canary failed: ${JSON.stringify(summary)}`);
-    }
-
-    for (const probe of AUTO_ALLOW_PROBES) {
-      const evidence = probeEvidence.find((item) => item.id === probe.id);
-      if (!evidence?.whitelistContainsExpectedHost) {
-        throw new Error(probe.failureMessage);
-      }
-    }
+    assertWindowsAutoAllowCanarySuccess(summary);
   } finally {
     firefox.kill('SIGTERM');
     server.close();
