@@ -666,6 +666,46 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(scriptText.includes('enrollment_token: summary.enrollmentToken'));
   });
 
+  test('windows bootstrap canary exposes a staging-first manual diagnostic dispatch', () => {
+    const workflowText = readProjectText(
+      '.github/workflows/windows-production-bootstrap-canary.yml'
+    );
+    const workflow = readProjectWorkflow(
+      '.github/workflows/windows-production-bootstrap-canary.yml'
+    );
+    const dispatchInputs = workflow.on?.workflow_dispatch?.inputs ?? {};
+    const job = workflow.jobs?.['windows-production-bootstrap-canary'];
+
+    assert.equal(dispatchInputs.target_environment?.default, 'staging');
+    assert.deepEqual(dispatchInputs.target_environment?.options, ['staging', 'production']);
+    assert.equal(dispatchInputs.base_url?.required, false);
+    assert.equal(dispatchInputs.diagnostic_mode?.default, 'true');
+    assert.ok(
+      String(job?.env?.TARGET_ENVIRONMENT ?? '').includes("inputs.target_environment || 'staging'"),
+      'manual bootstrap diagnostics should default to staging, while deploy passes production explicitly'
+    );
+    assert.ok(workflowText.includes('Resolve diagnostic target'));
+    assert.ok(
+      workflowText.includes('node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" publicUrl')
+    );
+    assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=${base_url%/}'));
+    assert.ok(workflowText.includes('WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=${base_url%/}'));
+    assert.ok(
+      !workflowText.includes(
+        'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}'
+      )
+    );
+    assert.ok(
+      !workflowText.includes(
+        'WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL: ${{ env.PRODUCTION_BASE_URL }}'
+      )
+    );
+    assert.ok(workflowText.includes('STAGING_DEPLOY_HOST'));
+    assert.ok(workflowText.includes('DEPLOY_HOST'));
+    assert.ok(workflowText.includes('TARGET_SSH_KEY_PATH'));
+    assert.ok(workflowText.includes('RUNNER_DIAGNOSTIC_MODE'));
+  });
+
   test('windows production bootstrap canary proves AJAX auto-allow on manual-only production', () => {
     const workflowText = readProjectText(
       '.github/workflows/windows-production-bootstrap-canary.yml'
@@ -708,7 +748,7 @@ describe('Production client update canary workflow contracts', () => {
       '${{ jobs.windows-production-bootstrap-canary.outputs.canary_result }}'
     );
     assert.ok(!workflowText.includes('Skip bootstrap canary when production is manual-only'));
-    assert.ok(workflowText.includes('Read production client canary admin token'));
+    assert.ok(workflowText.includes('Read target client canary admin token'));
     assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'));
     assert.ok(resetStep, 'Windows bootstrap canary must reset persistent state');
     assert.equal(
@@ -843,9 +883,7 @@ describe('Production client update canary workflow contracts', () => {
       'Windows AJAX canary diagnostics should capture protected server-side request/rule state for the canary group'
     );
     assert.ok(
-      String(ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL ?? '').includes(
-        'PRODUCTION_BASE_URL'
-      ) &&
+      workflowText.includes('WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=${base_url%/}') &&
         String(ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '').includes(
           'steps.provision.outputs.group_id'
         ) &&

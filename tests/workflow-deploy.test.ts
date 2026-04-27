@@ -421,13 +421,13 @@ describe('Deploy workflow contracts', () => {
       windowsProductionBootstrapCanaryWorkflow,
       'windows-production-bootstrap-canary'
     );
-    assert.doesNotMatch(
+    assert.match(
       String(
-        findWorkflowStepByName(windowsProductionBootstrapCanaryJob, 'Resolve production host')
-          ?.run ?? ''
+        findWorkflowStepByName(windowsProductionBootstrapCanaryJob, 'Resolve target host')?.run ??
+          ''
       ),
       /STAGING_DEPLOY_/,
-      'production bootstrap canary should not carry a staging SSH/secrets path'
+      'manual bootstrap diagnostics should be able to resolve staging SSH/secrets without changing the production deploy caller'
     );
     assert.match(
       deployWorkflowText,

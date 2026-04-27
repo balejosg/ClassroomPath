@@ -615,8 +615,8 @@ describe('Workflow core contracts', () => {
       'proxmox',
       'classroompath',
     ]);
-    assert.ok(!productionBootstrapWorkflowText.includes('DEPLOY_LAN_HOST'));
-    assert.ok(!productionBootstrapWorkflowText.includes('DEPLOY_LAN_PORT'));
+    assert.ok(productionBootstrapWorkflowText.includes('STAGING_DEPLOY_LAN_HOST: 192.168.1.114'));
+    assert.ok(productionBootstrapWorkflowText.includes('STAGING_DEPLOY_LAN_PORT: 22'));
     assert.ok(
       productionBootstrapSteps.some(
         (step) =>
@@ -644,7 +644,7 @@ describe('Workflow core contracts', () => {
         productionBootstrapWorkflowText.includes(
           'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET'
         ) &&
-        productionBootstrapWorkflowText.includes('classroompath-production-release')
+        productionBootstrapWorkflowText.includes('TARGET_SSH_KEY_PATH')
     );
     assert.ok(
       !productionBootstrapWorkflowText.includes(
@@ -671,6 +671,10 @@ describe('Workflow core contracts', () => {
         productionBootstrapWorkflowText.includes('force_installed')
     );
     assert.ok(productionBootstrapWorkflowText.includes('extensions.json'));
-    assert.ok(productionBootstrapWorkflowText.includes('classroompath.eu'));
+    assert.ok(
+      productionBootstrapWorkflowText.includes(
+        'node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" publicUrl'
+      )
+    );
   });
 });

@@ -11,11 +11,37 @@ on:
         description: Public base URL for the target environment.
         required: true
         type: string
+      diagnostic_mode:
+        description: Whether this run is diagnostic-only.
+        required: false
+        default: 'false'
+        type: string
     outputs:
       canary_result:
         description: Production Windows bootstrap and AJAX auto-allow canary result.
         value: ${{ jobs.windows-production-bootstrap-canary.outputs.canary_result }}
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Target environment to exercise.
+        default: staging
+        required: false
+        type: choice
+        options:
+          - staging
+          - production
+      base_url:
+        description: Optional public base URL override.
+        required: false
+        type: string
+      diagnostic_mode:
+        description: Mark this manual run as diagnostic-only.
+        default: 'true'
+        required: false
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 permissions:
   contents: read
@@ -32,8 +58,9 @@ jobs:
     outputs:
       canary_result: ${{ steps.result.outputs.canary_result }}
     env:
-      TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'production' }}
-      PRODUCTION_BASE_URL: ${{ inputs.base_url || 'https://classroompath.eu' }}
+      TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'staging' }}
+      PRODUCTION_BASE_URL: ${{ inputs.base_url }}
+      RUNNER_DIAGNOSTIC_MODE: ${{ inputs.diagnostic_mode || 'false' }}
 
     steps:
       - name: Restore Windows runner DNS before checkout
@@ -68,6 +95,29 @@ jobs:
         with:
           enable-cache: false
           cache-dependency-path: package-lock.json
+
+      - name: Resolve diagnostic target
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$TARGET_ENVIRONMENT" != "staging" ] && [ "$TARGET_ENVIRONMENT" != "production" ]; then
+            echo "::error::Unsupported TARGET_ENVIRONMENT: $TARGET_ENVIRONMENT"
+            exit 1
+          fi
+
+          base_url="$PRODUCTION_BASE_URL"
+          if [ -z "$base_url" ]; then
+            base_url="$(node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" publicUrl)"
+          fi
+
+          echo "PRODUCTION_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
+          echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=${base_url%/}" >> "$GITHUB_ENV"
+          echo "WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=${base_url%/}" >> "$GITHUB_ENV"
+          echo "Resolved $TARGET_ENVIRONMENT diagnostic target: ${base_url%/}"
+          if [ "$RUNNER_DIAGNOSTIC_MODE" = "true" ]; then
+            echo "Diagnostic-only runner canary; this run is not production release evidence."
+          fi
 
       - name: Reset persistent Windows canary state
         shell: pwsh
@@ -115,7 +165,7 @@ jobs:
       - name: Restore Windows runner DNS after reset
         uses: ./.github/actions/restore-windows-runner-dns
 
-      - name: Resolve production host
+      - name: Resolve target host
         id: resolve-production
         shell: bash
         env:
@@ -124,41 +174,59 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          STAGING_DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+          STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+          STAGING_DEPLOY_LAN_HOST: 192.168.1.114
+          STAGING_DEPLOY_LAN_PORT: 22
+          RUNNER_ENVIRONMENT_CONTEXT: ${{ runner.environment }}
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
-          if [ "$TARGET_ENVIRONMENT" != "production" ]; then
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            target_host="$DEPLOY_HOST"
+            target_port="${DEPLOY_PORT:-22}"
+            target_user="$DEPLOY_USER"
+            target_key="$DEPLOY_SSH_KEY"
+          elif [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            target_host="$STAGING_DEPLOY_HOST"
+            target_port="${STAGING_DEPLOY_PORT:-22}"
+            target_user="$STAGING_DEPLOY_USER"
+            target_key="$STAGING_DEPLOY_SSH_KEY"
+            if [ "$RUNNER_ENVIRONMENT_CONTEXT" = "self-hosted" ]; then
+              target_host="$STAGING_DEPLOY_LAN_HOST"
+              target_port="$STAGING_DEPLOY_LAN_PORT"
+            fi
+          else
             echo "::error::Unsupported TARGET_ENVIRONMENT: $TARGET_ENVIRONMENT"
             exit 1
           fi
+
           github_actions_remote_require_values \
-            "production canaries" \
-            TARGET_HOST "$DEPLOY_HOST" \
-            TARGET_USER "$DEPLOY_USER" \
-            TARGET_SSH_KEY "$DEPLOY_SSH_KEY"
+            "$TARGET_ENVIRONMENT canaries" \
+            TARGET_HOST "$target_host" \
+            TARGET_USER "$target_user" \
+            TARGET_SSH_KEY "$target_key"
+
+          github_actions_remote_install_ssh_key "$target_key" ~/.ssh/classroompath-bootstrap-canary
+          echo "TARGET_SSH_KEY_PATH=$HOME/.ssh/classroompath-bootstrap-canary" >> "$GITHUB_ENV"
+
           github_actions_remote_write_resolved_host_outputs \
-            "$DEPLOY_HOST" \
-            "${DEPLOY_PORT:-22}" \
-            "$DEPLOY_USER" \
-            "production canaries" >> "$GITHUB_OUTPUT"
+            "$target_host" \
+            "$target_port" \
+            "$target_user" \
+            "$TARGET_ENVIRONMENT canaries" >> "$GITHUB_OUTPUT"
 
-      - name: Install production SSH key
-        shell: bash
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          source scripts/lib/github-actions-remote.sh
-          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-release
-
-      - name: Read production billing mode
+      - name: Read target billing mode
         id: read-billing-mode
         shell: bash
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
           billing_mode="$(github_actions_remote_read_env_key \
-            ~/.ssh/classroompath-production-release \
+            "$TARGET_SSH_KEY_PATH" \
             "${{ steps.resolve-production.outputs.port }}" \
             "${{ steps.resolve-production.outputs.user }}" \
             "${{ steps.resolve-production.outputs.ip }}" \
@@ -170,14 +238,14 @@ jobs:
 
           echo "billing_mode=$billing_mode" >> "$GITHUB_OUTPUT"
 
-      - name: Read production client canary admin token
+      - name: Read target client canary admin token
         if: steps.read-billing-mode.outputs.billing_mode == 'manual_only'
         shell: bash
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
           client_canary_admin_token="$(github_actions_remote_read_env_key \
-            ~/.ssh/classroompath-production-release \
+            "$TARGET_SSH_KEY_PATH" \
             "${{ steps.resolve-production.outputs.port }}" \
             "${{ steps.resolve-production.outputs.user }}" \
             "${{ steps.resolve-production.outputs.ip }}" \
@@ -191,14 +259,14 @@ jobs:
           echo "::add-mask::$client_canary_admin_token"
           echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN=$client_canary_admin_token" >> "$GITHUB_ENV"
 
-      - name: Read production Stripe webhook secret
+      - name: Read target Stripe webhook secret
         if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
         shell: bash
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
           stripe_webhook_secret="$(github_actions_remote_read_env_key \
-            ~/.ssh/classroompath-production-release \
+            "$TARGET_SSH_KEY_PATH" \
             "${{ steps.resolve-production.outputs.port }}" \
             "${{ steps.resolve-production.outputs.user }}" \
             "${{ steps.resolve-production.outputs.ip }}" \
@@ -216,7 +284,6 @@ jobs:
         id: provision
         shell: bash
         env:
-          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
@@ -397,7 +464,6 @@ jobs:
       - name: Verify Windows AJAX auto-allow canary
         shell: pwsh
         env:
-          WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL: ${{ env.PRODUCTION_BASE_URL }}
           WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: ${{ steps.provision.outputs.group_id }}
           WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: ${{ env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN }}
         run: |
