@@ -106,21 +106,39 @@ function listOpenPathChangedFiles({ baseSha, sha }) {
     .filter(Boolean);
 }
 
-async function fetchCheckRuns({ repo, sha, token }) {
-  const response = await fetch(`https://api.github.com/repos/${repo}/commits/${sha}/check-runs`, {
-    headers: buildGitHubApiHeaders({
-      token,
-      userAgent: 'classroompath-openpath-required-checks',
-    }),
-  });
+const GITHUB_PAGE_SIZE = 100;
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`GitHub API returned ${response.status}: ${body}`);
+export async function fetchCheckRuns({ repo, sha, token }) {
+  const checkRuns = [];
+  let page = 1;
+
+  while (true) {
+    const url = new URL(`https://api.github.com/repos/${repo}/commits/${sha}/check-runs`);
+    url.searchParams.set('per_page', String(GITHUB_PAGE_SIZE));
+    url.searchParams.set('page', String(page));
+
+    const response = await fetch(url, {
+      headers: buildGitHubApiHeaders({
+        token,
+        userAgent: 'classroompath-openpath-required-checks',
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`GitHub API returned ${response.status}: ${body}`);
+    }
+
+    const payload = await response.json();
+    const pageCheckRuns = payload.check_runs ?? [];
+    checkRuns.push(...pageCheckRuns);
+
+    if (pageCheckRuns.length < GITHUB_PAGE_SIZE) {
+      return checkRuns;
+    }
+
+    page += 1;
   }
-
-  const payload = await response.json();
-  return payload.check_runs ?? [];
 }
 
 function selectLatestOpenPathCiRunId(checkRuns) {

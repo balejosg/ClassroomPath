@@ -8,7 +8,7 @@ import {
   resolveOpenPathRequiredChecks,
   OPENPATH_CI_JOB_NAMES,
 } from '../scripts/lib/openpath-ci-checks.mjs';
-import { parseWaitOptions } from '../scripts/openpath-required-checks.mjs';
+import { fetchCheckRuns, parseWaitOptions } from '../scripts/openpath-required-checks.mjs';
 
 function buildCompletedWorkflowJob(name: string, overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -30,6 +30,13 @@ function buildCompletedWorkflowJob(name: string, overrides: Partial<Record<strin
     ],
     ...overrides,
   };
+}
+
+function buildFetchResponse(payload: unknown) {
+  return {
+    ok: true,
+    json: async () => payload,
+  } as Response;
 }
 
 describe('evaluateRequiredChecks', () => {
@@ -457,5 +464,55 @@ describe('parseWaitOptions', () => {
       () => parseWaitOptions({ OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS: '-1' }),
       /OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS must be a positive integer/
     );
+  });
+});
+
+describe('fetchCheckRuns', () => {
+  it('fetches later pages so high-risk required checks are not falsely missing', async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      const page = new URL(url).searchParams.get('page');
+
+      if (page === '1') {
+        return buildFetchResponse({
+          check_runs: Array.from({ length: 100 }, (_, index) => ({
+            name: `Unrelated Check ${index}`,
+            status: 'completed',
+            conclusion: 'success',
+            completed_at: '2026-04-27T18:00:00Z',
+          })),
+        });
+      }
+
+      return buildFetchResponse({
+        check_runs: [
+          {
+            name: 'Build and Release Scripts',
+            status: 'completed',
+            conclusion: 'success',
+            completed_at: '2026-04-27T18:40:00Z',
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    try {
+      const checkRuns = await fetchCheckRuns({
+        repo: 'balejosg/openpath',
+        sha: '01e495c70bcbf6261ebce05d16d7119319d92f36',
+        token: 'test-token',
+      });
+
+      assert.equal(checkRuns.length, 101);
+      assert.equal(checkRuns.at(-1)?.name, 'Build and Release Scripts');
+      assert.equal(new URL(requestedUrls[0]).searchParams.get('per_page'), '100');
+      assert.equal(new URL(requestedUrls[1]).searchParams.get('page'), '2');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
