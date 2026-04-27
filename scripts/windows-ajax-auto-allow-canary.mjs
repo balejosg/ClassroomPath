@@ -34,6 +34,10 @@ const REMOTE_WHITELIST_TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_REMOTE_WHITELIST_TIMEOUT_MS ?? '10000',
   10
 );
+const POST_FAILURE_OBSERVATION_MS = Number.parseInt(
+  process.env.WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS ?? '0',
+  10
+);
 const MAX_ATTEMPT_EVIDENCE = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_MAX_ATTEMPT_EVIDENCE ?? '60',
   10
@@ -134,6 +138,58 @@ async function readFileEvidence(path, expectedHosts = []) {
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function evidenceContainsAllExpectedHosts(evidence, expectedHosts = []) {
+  if (!evidence?.containsExpectedHosts) {
+    return false;
+  }
+
+  return expectedHosts.every((host) => evidence.containsExpectedHosts[host] === true);
+}
+
+async function waitForLocalWhitelistObservation(expectedHosts = [], timeoutMs = 0) {
+  const startedAt = Date.now();
+  let globalWhitelist = await readFileEvidence(WHITELIST_PATH, expectedHosts);
+  let nativeWhitelist = await readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts);
+  const containsAllExpectedHosts = () =>
+    evidenceContainsAllExpectedHosts(globalWhitelist, expectedHosts) ||
+    evidenceContainsAllExpectedHosts(nativeWhitelist, expectedHosts);
+
+  if (timeoutMs <= 0) {
+    return {
+      observed: containsAllExpectedHosts(),
+      timeoutMs,
+      elapsedMs: Date.now() - startedAt,
+      global: globalWhitelist,
+      native: nativeWhitelist,
+    };
+  }
+
+  const deadline = startedAt + timeoutMs;
+  while (Date.now() < deadline) {
+    if (containsAllExpectedHosts()) {
+      return {
+        observed: true,
+        timeoutMs,
+        elapsedMs: Date.now() - startedAt,
+        global: globalWhitelist,
+        native: nativeWhitelist,
+      };
+    }
+
+    await sleep(2000);
+    globalWhitelist = await readFileEvidence(WHITELIST_PATH, expectedHosts);
+    nativeWhitelist = await readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts);
+  }
+
+  return {
+    observed: containsAllExpectedHosts(),
+    timeoutMs,
+    elapsedMs: Date.now() - startedAt,
+    global: globalWhitelist,
+    native: nativeWhitelist,
+  };
 }
 
 async function collectRemoteWhitelistEvidence(expectedHosts = []) {
@@ -575,6 +631,49 @@ const statusEl = document.getElementById('status');
 const probes = ${JSON.stringify(browserProbes)};
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PROBE_TIMEOUT_MS = 4000;
+const CANARY_TIMEOUT_MS = ${TIMEOUT_MS};
+const pageResourceCandidateEvents = [];
+const completedCandidateEvents = Object.fromEntries(probes.map((probe) => [probe.id, false]));
+
+function isOpenPathPageObserverInstalled() {
+  return window.__openpathPageResourceObserverInstalled === true;
+}
+
+function normalizeCandidateUrl(url) {
+  try {
+    const parsed = new URL(String(url));
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return String(url || '');
+  }
+}
+
+window.addEventListener('message', (event) => {
+  const data = event && event.data ? event.data : {};
+  if (data.source !== 'openpath-page-resource-candidate' || typeof data.url !== 'string') {
+    return;
+  }
+
+  const normalizedCandidateUrl = normalizeCandidateUrl(data.url);
+  const matchedProbe = probes.find(
+    (probe) => normalizeCandidateUrl(probe.url) === normalizedCandidateUrl
+  );
+  if (matchedProbe) {
+    completedCandidateEvents[matchedProbe.id] = true;
+  }
+
+  pageResourceCandidateEvents.push({
+    kind: typeof data.kind === 'string' ? data.kind : 'unknown',
+    url: data.url,
+    matchedProbeId: matchedProbe ? matchedProbe.id : null,
+    seenAt: new Date().toISOString()
+  });
+  if (pageResourceCandidateEvents.length > 100) {
+    pageResourceCandidateEvents.splice(0, pageResourceCandidateEvents.length - 100);
+  }
+});
 
 async function report(payload) {
   await fetch('/result', {
@@ -589,7 +688,13 @@ async function reportAttempt(attemptResult, completed) {
     await fetch('/attempt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ attempt: attemptResult, completedProbes: completed })
+      body: JSON.stringify({
+        attempt: attemptResult,
+        completedProbes: completed,
+        completedCandidateEvents,
+        pageResourceCandidateEvents,
+        pageObserverInstalled: isOpenPathPageObserverInstalled()
+      })
     });
   } catch {
     // The final /result payload still carries attempts if the page reaches it.
@@ -676,7 +781,8 @@ function loadStylesheet(url) {
 (async () => {
   const attempts = [];
   const completed = Object.fromEntries(probes.map((probe) => [probe.id, false]));
-  for (let attempt = 1; attempt <= 40; attempt += 1) {
+  const deadline = Date.now() + CANARY_TIMEOUT_MS;
+  for (let attempt = 1; Date.now() < deadline; attempt += 1) {
     const attemptResult = { attempt, probes: {} };
     for (const probe of probes) {
       if (completed[probe.id]) {
@@ -699,14 +805,28 @@ function loadStylesheet(url) {
     attempts.push(attemptResult);
     await reportAttempt(attemptResult, completed);
     if (Object.values(completed).every(Boolean)) {
-        await report({ success: true, attempts, probes });
+        await report({
+          success: true,
+          attempts,
+          probes,
+          completedCandidateEvents,
+          pageResourceCandidateEvents,
+          pageObserverInstalled: isOpenPathPageObserverInstalled()
+        });
         statusEl.textContent = 'success';
         return;
     }
     await sleep(2500);
   }
 
-  await report({ success: false, attempts, probes });
+  await report({
+    success: false,
+    attempts,
+    probes,
+    completedCandidateEvents,
+    pageResourceCandidateEvents,
+    pageObserverInstalled: isOpenPathPageObserverInstalled()
+  });
   statusEl.textContent = 'failed';
 })();
 </script>
@@ -729,6 +849,11 @@ async function main() {
   let resultPayload = null;
   const browserAttempts = [];
   let completedProbes = Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, false]));
+  let completedCandidateEvents = Object.fromEntries(
+    AUTO_ALLOW_PROBES.map((probe) => [probe.id, false])
+  );
+  let pageResourceCandidateEvents = [];
+  let pageObserverInstalled = false;
   let lastAttemptAt = null;
   let resolveResult;
   const resultPromise = new Promise((resolve) => {
@@ -772,6 +897,18 @@ async function main() {
           browserAttempts.push(payload.attempt ?? payload);
           if (payload.completedProbes && typeof payload.completedProbes === 'object') {
             completedProbes = payload.completedProbes;
+          }
+          if (
+            payload.completedCandidateEvents &&
+            typeof payload.completedCandidateEvents === 'object'
+          ) {
+            completedCandidateEvents = payload.completedCandidateEvents;
+          }
+          if (Array.isArray(payload.pageResourceCandidateEvents)) {
+            pageResourceCandidateEvents = payload.pageResourceCandidateEvents.slice(-100);
+          }
+          if (typeof payload.pageObserverInstalled === 'boolean') {
+            pageObserverInstalled = payload.pageObserverInstalled;
           }
         } catch {
           browserAttempts.push({
@@ -908,6 +1045,9 @@ async function main() {
       assetUrl,
       attempts: browserAttempts,
       completedProbes,
+      completedCandidateEvents,
+      pageResourceCandidateEvents,
+      pageObserverInstalled,
       lastAttemptAt,
     });
   });
@@ -920,6 +1060,9 @@ async function main() {
       assetUrl,
       attempts: browserAttempts,
       completedProbes,
+      completedCandidateEvents,
+      pageResourceCandidateEvents,
+      pageObserverInstalled,
       lastAttemptAt,
     });
   }, TIMEOUT_MS);
@@ -930,6 +1073,17 @@ async function main() {
     const postAttemptDiagnostics = await collectWindowsAutoAllowDiagnostics(
       result?.success ? 'post-success' : 'post-failure'
     );
+    const expectedHosts = AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost);
+    const postFailureObservation =
+      !result?.success && POST_FAILURE_OBSERVATION_MS > 0
+        ? {
+            localWhitelist: await waitForLocalWhitelistObservation(
+              expectedHosts,
+              POST_FAILURE_OBSERVATION_MS
+            ),
+            diagnostics: await collectWindowsAutoAllowDiagnostics('post-failure-observation'),
+          }
+        : null;
     const probeEvidence = [];
     for (const probe of AUTO_ALLOW_PROBES) {
       probeEvidence.push({
@@ -950,6 +1104,10 @@ async function main() {
       originHits,
       attempts: result?.attempts ?? browserAttempts,
       completedProbes: result?.completedProbes ?? completedProbes,
+      completedCandidateEvents: result?.completedCandidateEvents ?? completedCandidateEvents,
+      pageResourceCandidateEvents:
+        result?.pageResourceCandidateEvents ?? pageResourceCandidateEvents,
+      pageObserverInstalled: result?.pageObserverInstalled ?? pageObserverInstalled,
       lastAttemptAt: result?.lastAttemptAt ?? lastAttemptAt,
       whitelistPath: WHITELIST_PATH,
       firefoxExtensionWarmup,
@@ -957,6 +1115,7 @@ async function main() {
       diagnostics: {
         preflight: preflightDiagnostics,
         postAttempt: postAttemptDiagnostics,
+        ...(postFailureObservation ? { postFailureObservation } : {}),
       },
     });
 

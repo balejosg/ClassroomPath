@@ -80,6 +80,8 @@ export function buildWindowsAutoAllowCanarySummary({
   originHits,
   attempts,
   completedProbes,
+  completedCandidateEvents,
+  pageResourceCandidateEvents,
   lastAttemptAt,
   whitelistPath,
   firefoxExtensionWarmup,
@@ -107,6 +109,9 @@ export function buildWindowsAutoAllowCanarySummary({
     stylesheetHits: stylesheetEvidence?.hits ?? 0,
     attempts: result?.attempts ?? attempts,
     completedProbes: result?.completedProbes ?? completedProbes,
+    completedCandidateEvents: result?.completedCandidateEvents ?? completedCandidateEvents,
+    pageResourceCandidateEvents:
+      result?.pageResourceCandidateEvents ?? pageResourceCandidateEvents ?? [],
     lastAttemptAt: result?.lastAttemptAt ?? lastAttemptAt,
     probeEvidence,
     whitelistPath,
