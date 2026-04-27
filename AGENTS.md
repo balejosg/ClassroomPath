@@ -63,7 +63,7 @@ Repo-local fallback when the workspace wrapper is unavailable:
 
 - `npm run verify:incremental`
 - `npm run diagnostics:windows-ajax:direct -- --environment staging`
-- `npm run diagnostics:runner -- --suite windows-bootstrap-ajax --integration` only when workflow-shaped integration evidence is the goal
+- `npm run diagnostics:runner -- --suite windows-bootstrap-ajax` only when workflow-shaped integration evidence is the goal
 
 Use GitHub Actions runner workflows for integration/deployment time, not as the default development loop when the direct runner lane can answer the question sooner.
 
