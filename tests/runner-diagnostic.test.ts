@@ -14,6 +14,10 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
 const scriptPath = resolve(projectRoot, 'scripts/run-runner-diagnostic.mjs');
 const directScriptPath = resolve(projectRoot, 'scripts/run-windows-ajax-direct.mjs');
+const linuxStudentDirectScriptPath = resolve(
+  projectRoot,
+  'scripts/run-linux-student-diagnostic.mjs'
+);
 
 function runDiagnostic(args: string[]) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
@@ -37,6 +41,17 @@ function runDirectDiagnostic(args: string[]) {
   });
 }
 
+function runLinuxStudentDirectDiagnostic(args: string[]) {
+  return spawnSync(process.execPath, [linuxStudentDirectScriptPath, ...args], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      LINUX_STUDENT_DIRECT_DRY_RUN: '1',
+    },
+  });
+}
+
 describe('runner diagnostic wrapper', () => {
   test('package.json exposes the local diagnostics entrypoint', () => {
     const packageJson = readProjectJson<PackageDefinition>('package.json');
@@ -53,6 +68,15 @@ describe('runner diagnostic wrapper', () => {
     assert.equal(
       packageJson.scripts?.['diagnostics:windows-ajax:direct'],
       'node scripts/run-windows-ajax-direct.mjs'
+    );
+  });
+
+  test('package.json exposes the direct Linux student-policy diagnostic', () => {
+    const packageJson = readProjectJson<PackageDefinition>('package.json');
+
+    assert.equal(
+      packageJson.scripts?.['diagnostics:linux-student:direct'],
+      'node scripts/run-linux-student-diagnostic.mjs'
     );
   });
 
@@ -209,6 +233,31 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /production-windows-ajax-auto-allow-canary\.json/);
     assert.match(script, /failureBoundary/);
     assert.match(script, /diagnosticPhases/);
+  });
+
+  test('direct Linux student diagnostic runs OpenPath locally with an isolated artifact directory', () => {
+    const result = runLinuxStudentDirectDiagnostic([]);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /openpath_root=.*\/OpenPath/);
+    assert.match(result.stdout, /artifact_dir=.*\.opencode\/tmp\/linux-student-direct/);
+    assert.match(result.stdout, /OPENPATH_STUDENT_ARTIFACTS_DIR=/);
+    assert.match(result.stdout, /npm run test:student-policy:linux/);
+    assert.match(result.stdout, /scripts\/summarize-linux-student-policy-evidence\.mjs/);
+    assert.match(result.stdout, /linux-auto-allow-boundary\.json/);
+  });
+
+  test('direct Linux student diagnostic accepts explicit OpenPath root and artifact directory', () => {
+    const result = runLinuxStudentDirectDiagnostic([
+      '--openpath-root',
+      '/tmp/openpath-checkout',
+      '--artifact-dir',
+      '/tmp/linux-student-artifacts',
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /openpath_root=\/tmp\/openpath-checkout/);
+    assert.match(result.stdout, /artifact_dir=\/tmp\/linux-student-artifacts/);
   });
 
   test('direct Windows AJAX diagnostic can run Firefox with the local extension build', () => {

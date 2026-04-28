@@ -77,6 +77,7 @@
     "verify:full": "npm run verify:release",
     "diagnostics:runner": "node scripts/run-runner-diagnostic.mjs",
     "diagnostics:windows-ajax:direct": "node scripts/run-windows-ajax-direct.mjs",
+    "diagnostics:linux-student:direct": "node scripts/run-linux-student-diagnostic.mjs",
     "db:test:reset": "docker compose -p classroompath_test -f docker/docker-compose.test.yml down -v && docker compose -p classroompath_test -f docker/docker-compose.test.yml up -d postgres",
     "submodule:update": "git submodule update --remote --merge",
     "deploy:staging": "bash scripts/deploy-staging-local.sh",
