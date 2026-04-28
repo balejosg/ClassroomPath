@@ -116,7 +116,13 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
   test('keeps probe metadata and failure messages in one importable table', () => {
     assert.deepEqual(
       WINDOWS_AUTO_ALLOW_PROBES.map((probe) => probe.id),
-      ['ajax-fetch', 'image-subresource', 'script-subresource', 'stylesheet-subresource']
+      [
+        'ajax-fetch',
+        'image-subresource',
+        'script-subresource',
+        'stylesheet-subresource',
+        'font-subresource',
+      ]
     );
     assert.ok(
       WINDOWS_AUTO_ALLOW_PROBES.every(
@@ -161,6 +167,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     assert.equal(successfulSummary.assetHits, 1);
     assert.equal(successfulSummary.scriptHits, 1);
     assert.equal(successfulSummary.stylesheetHits, 1);
+    assert.equal(successfulSummary.fontHits, 1);
     assert.doesNotThrow(() => assertWindowsAutoAllowCanarySuccess(successfulSummary));
 
     const failedSummary = buildWindowsAutoAllowCanarySummary({
@@ -187,6 +194,33 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     assert.throws(
       () => assertWindowsAutoAllowCanarySuccess(failedSummary),
       /Auto-allow AJAX target was not written to whitelist/
+    );
+
+    const noTrafficSummary = buildWindowsAutoAllowCanarySummary({
+      result: { success: true },
+      probeEvidence: WINDOWS_AUTO_ALLOW_PROBES.map((probe) => ({
+        id: probe.id,
+        kind: probe.kind,
+        host: probe.host,
+        url: `http://${probe.host}:18088${probe.path}`,
+        hits: probe.id === 'font-subresource' ? 0 : 1,
+        expectedWhitelistHost: probe.expectedWhitelistHost,
+        whitelistContainsExpectedHost: true,
+      })),
+      originHits: 1,
+      attempts: [],
+      completedProbes: buildProbeMap(true),
+      completedCandidateEvents: buildProbeMap(true),
+      lastAttemptAt: '2026-04-27T10:00:00.000Z',
+      whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
+      firefoxExtensionWarmup: { success: true },
+      firefoxOutput: '',
+      diagnostics: { preflight: {}, postAttempt: {} },
+    });
+
+    assert.throws(
+      () => assertWindowsAutoAllowCanarySuccess(noTrafficSummary),
+      /Auto-allow font probe did not reach canary server/
     );
   });
 
@@ -1024,11 +1058,20 @@ describe('Production client update canary workflow contracts', () => {
       ajaxCanaryEvidenceText.includes('ajax-auto-allow-stylesheet.127.0.0.1.sslip.io'),
       'Windows AJAX canary must cover stylesheet subresources'
     );
+    assert.ok(
+      ajaxCanaryEvidenceText.includes('ajax-auto-allow-font.127.0.0.1.sslip.io'),
+      'Windows AJAX canary must cover CSS-discovered font subresources'
+    );
     assert.ok(ajaxCanaryScript.includes('Access-Control-Allow-Origin'));
     assert.ok(ajaxCanaryScript.includes('fetch('));
     assert.ok(ajaxCanaryScript.includes('new Image()'));
     assert.ok(ajaxCanaryScript.includes("document.createElement('script')"));
     assert.ok(ajaxCanaryScript.includes("document.createElement('link')"));
+    assert.ok(ajaxCanaryScript.includes('loadFont'));
+    assert.ok(ajaxCanaryScript.includes('@font-face'));
+    assert.ok(ajaxCanaryScript.includes('fontFamily'));
+    assert.ok(ajaxCanaryScript.includes('/probe-state?probe='));
+    assert.ok(ajaxCanaryScript.includes('font/woff2'));
     assert.ok(
       ajaxCanaryScript.includes('waitForFirefoxExtensionReady'),
       'Windows AJAX canary must warm the same Firefox profile before navigating'
@@ -1073,8 +1116,13 @@ describe('Production client update canary workflow contracts', () => {
       ajaxCanaryEvidenceModule.includes("id: 'ajax-fetch'") &&
         ajaxCanaryEvidenceModule.includes("id: 'image-subresource'") &&
         ajaxCanaryEvidenceModule.includes("id: 'script-subresource'") &&
-        ajaxCanaryEvidenceModule.includes("id: 'stylesheet-subresource'"),
+        ajaxCanaryEvidenceModule.includes("id: 'stylesheet-subresource'") &&
+        ajaxCanaryEvidenceModule.includes("id: 'font-subresource'"),
       'Windows AJAX canary should identify each probe in evidence artifacts'
+    );
+    assert.ok(
+      ajaxCanaryEvidenceModule.includes('Auto-allow font target was not written to whitelist'),
+      'Windows AJAX canary should expose the font whitelist failure boundary'
     );
     assert.ok(
       ajaxCanaryEvidenceModule.includes('expectedWhitelistHost'),

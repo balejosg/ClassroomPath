@@ -3,6 +3,7 @@ export const WINDOWS_AUTO_ALLOW_TARGET_HOST = 'ajax-auto-allow-target.127.0.0.1.
 export const WINDOWS_AUTO_ALLOW_ASSET_HOST = 'ajax-auto-allow-asset.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_SCRIPT_HOST = 'ajax-auto-allow-script.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_STYLESHEET_HOST = 'ajax-auto-allow-stylesheet.127.0.0.1.sslip.io';
+export const WINDOWS_AUTO_ALLOW_FONT_HOST = 'ajax-auto-allow-font.127.0.0.1.sslip.io';
 
 export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
   {
@@ -36,6 +37,14 @@ export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
     path: '/style.css',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_STYLESHEET_HOST,
     failureMessage: 'Auto-allow stylesheet target was not written to whitelist',
+  },
+  {
+    id: 'font-subresource',
+    kind: 'font',
+    host: WINDOWS_AUTO_ALLOW_FONT_HOST,
+    path: '/font.woff2',
+    expectedWhitelistHost: WINDOWS_AUTO_ALLOW_FONT_HOST,
+    failureMessage: 'Auto-allow font target was not written to whitelist',
   },
 ]);
 
@@ -425,6 +434,7 @@ export function buildWindowsAutoAllowCanarySummary({
   const imageEvidence = findProbeEvidence(probeEvidence, 'image-subresource');
   const scriptEvidence = findProbeEvidence(probeEvidence, 'script-subresource');
   const stylesheetEvidence = findProbeEvidence(probeEvidence, 'stylesheet-subresource');
+  const fontEvidence = findProbeEvidence(probeEvidence, 'font-subresource');
 
   const summary = {
     ...result,
@@ -433,13 +443,16 @@ export function buildWindowsAutoAllowCanarySummary({
     assetHost: WINDOWS_AUTO_ALLOW_ASSET_HOST,
     scriptHost: WINDOWS_AUTO_ALLOW_SCRIPT_HOST,
     stylesheetHost: WINDOWS_AUTO_ALLOW_STYLESHEET_HOST,
+    fontHost: WINDOWS_AUTO_ALLOW_FONT_HOST,
     targetUrl: ajaxEvidence?.url ?? result?.targetUrl,
     assetUrl: imageEvidence?.url ?? result?.assetUrl,
+    fontUrl: fontEvidence?.url ?? result?.fontUrl,
     originHits,
     targetHits: ajaxEvidence?.hits ?? 0,
     assetHits: imageEvidence?.hits ?? 0,
     scriptHits: scriptEvidence?.hits ?? 0,
     stylesheetHits: stylesheetEvidence?.hits ?? 0,
+    fontHits: fontEvidence?.hits ?? 0,
     attempts: result?.attempts ?? attempts,
     completedProbes: result?.completedProbes ?? completedProbes,
     completedCandidateEvents: result?.completedCandidateEvents ?? completedCandidateEvents,
@@ -467,6 +480,13 @@ export function assertWindowsAutoAllowCanarySuccess(summary, probes = WINDOWS_AU
     const evidence = summary.probeEvidence?.find((item) => item.id === probe.id);
     if (!evidence?.whitelistContainsExpectedHost) {
       throw new Error(probe.failureMessage);
+    }
+  }
+
+  for (const probe of probes) {
+    const evidence = summary.probeEvidence?.find((item) => item.id === probe.id);
+    if (Number(evidence?.hits ?? 0) <= 0) {
+      throw new Error(`Auto-allow ${probe.kind} probe did not reach canary server: ${probe.id}`);
     }
   }
 }

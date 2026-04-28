@@ -820,6 +820,10 @@ async function runProbeOnce(probe) {
     return await loadStylesheet(probe.url);
   }
 
+  if (probe.kind === 'font') {
+    return await loadFont(probe.url, probe.id);
+  }
+
   return { ok: false, error: 'unsupported probe kind: ' + probe.kind };
 }
 
@@ -872,6 +876,49 @@ function loadStylesheet(url) {
     link.onerror = () => resolve({ ok: false, error: 'stylesheet load failed' });
     link.href = url + '?attempt=' + Date.now();
     document.head.appendChild(link);
+  });
+}
+
+async function readProbeHits(probeId) {
+  const response = await fetch('/probe-state?probe=' + encodeURIComponent(probeId), {
+    cache: 'no-store'
+  });
+  if (!response.ok) return 0;
+  const payload = await response.json();
+  return Number(payload && payload.hits ? payload.hits : 0);
+}
+
+function loadFont(url, probeId) {
+  return new Promise((resolve) => {
+    const attemptUrl = url + '?attempt=' + Date.now();
+    const family = 'OpenPathAjaxAutoAllowFont' + Date.now();
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = 'font';
+    link.crossOrigin = 'anonymous';
+    link.href = attemptUrl;
+    document.head.appendChild(link);
+
+    const style = document.createElement('style');
+    style.textContent =
+      '@font-face { font-family: "' +
+      family +
+      '"; src: url("' +
+      attemptUrl +
+      '") format("woff2"); }';
+    document.head.appendChild(style);
+
+    const sample = document.createElement('span');
+    sample.textContent = 'font probe';
+    sample.style.fontFamily = '"' + family + '", sans-serif';
+    sample.style.position = 'absolute';
+    sample.style.left = '-9999px';
+    document.body.appendChild(sample);
+
+    setTimeout(async () => {
+      const hits = await readProbeHits(probeId).catch(() => 0);
+      resolve(hits > 0 ? { ok: true, hits } : { ok: false, hits, error: 'font load did not reach canary server' });
+    }, 1000);
   });
 }
 
@@ -1031,6 +1078,21 @@ async function main() {
       originHits += 1;
     }
 
+    if (
+      host === ORIGIN_HOST &&
+      req.method === 'GET' &&
+      String(req.url ?? '').startsWith('/probe-state')
+    ) {
+      const stateUrl = new URL(String(req.url ?? '/probe-state'), `http://${ORIGIN_HOST}:${PORT}`);
+      const probeId = stateUrl.searchParams.get('probe') ?? '';
+      res.writeHead(200, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'application/json',
+      });
+      res.end(JSON.stringify({ hits: probeHits[probeId] ?? 0, probe: probeId }));
+      return;
+    }
+
     if (matchedProbe?.id === 'ajax-fetch') {
       probeHits[matchedProbe.id] += 1;
       res.writeHead(200, {
@@ -1075,6 +1137,17 @@ async function main() {
         'Content-Type': 'text/css; charset=utf-8',
       });
       res.end('body { --openpath-ajax-auto-allow-style-probe: loaded; }');
+      return;
+    }
+
+    if (matchedProbe?.id === 'font-subresource') {
+      probeHits[matchedProbe.id] += 1;
+      res.writeHead(200, {
+        'Access-Control-Allow-Origin': `http://${ORIGIN_HOST}:${PORT}`,
+        'Cache-Control': 'no-store',
+        'Content-Type': 'font/woff2',
+      });
+      res.end(Buffer.from('d09GMgABAAAAAA==', 'base64'));
       return;
     }
 
