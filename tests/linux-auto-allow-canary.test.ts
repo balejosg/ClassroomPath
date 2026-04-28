@@ -74,6 +74,12 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux canary concurrency is scoped by ref so stale runs cannot block diagnostics', () => {
+    const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+
+    assert.ok(workflow.includes('group: linux-production-bootstrap-canary-${{ github.ref }}'));
+  });
+
   test('production bootstrap provisioning has a Linux-specific wrapper artifact', () => {
     const script = readProjectText('scripts/create-production-linux-bootstrap-canary.mjs');
 
