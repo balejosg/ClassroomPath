@@ -112,6 +112,11 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(actionText.includes('Set-DnsClientServerAddress'));
     assert.ok(actionText.includes('Clear-DnsClientCache'));
     assert.ok(actionText.includes('Test-NetConnection github.com -Port 443'));
+    assert.ok(
+      actionText.includes("Get-NetFirewallRule -DisplayName 'OpenPath-*'") &&
+        actionText.includes('Remove-NetFirewallRule'),
+      'Windows runner DNS restore must remove OpenPath firewall rules that can block artifact-service DNS after canaries'
+    );
 
     for (const [workflowPath, jobName] of [
       [

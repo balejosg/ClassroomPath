@@ -24,6 +24,9 @@ runs:
           throw 'At least one DNS server must be configured'
         }
 
+        Get-NetFirewallRule -DisplayName 'OpenPath-*' -ErrorAction SilentlyContinue |
+          Remove-NetFirewallRule -ErrorAction SilentlyContinue
+
         $activeAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue |
           Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' })
 
