@@ -81,6 +81,27 @@ async function readFileEvidence(path, expectedHosts = []) {
   }
 }
 
+async function readTextEvidence(path, options = {}) {
+  const maxChars = options.maxChars ?? 12000;
+  try {
+    const [fileStat, contents] = await Promise.all([stat(path), readFile(path, 'utf8')]);
+    return {
+      path,
+      present: true,
+      size: fileStat.size,
+      mtimeMs: fileStat.mtimeMs,
+      contents: contents.slice(-maxChars),
+      truncated: contents.length > maxChars,
+    };
+  } catch (error) {
+    return {
+      path,
+      present: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function collectCanaryGroupDiagnostics() {
   if (!CANARY_API_URL || !CANARY_GROUP_ID || !CANARY_ADMIN_TOKEN) {
     return { available: false, reason: 'missing diagnostics context' };
@@ -188,7 +209,18 @@ async function collectLinuxFailureDebugSnapshot() {
     'journalctl -u openpath-sse-listener.service -u openpath-update.service --no-pager -n 120';
   const resolvConfCommand = 'cat /etc/resolv.conf';
   const originGetentCommand = `getent hosts ${ORIGIN_HOST}`;
-  const [systemctl, journalctl, resolvConf, originGetent, whitelist] = await Promise.all([
+  const [
+    systemctl,
+    journalctl,
+    resolvConf,
+    originGetent,
+    whitelist,
+    apiUrlConfig,
+    firefoxNativeHostManifest,
+    rootFirefoxNativeHostManifest,
+    userNativeHostLog,
+    tmpNativeHostLog,
+  ] = await Promise.all([
     runDiagnosticCommand('systemctl', [
       'status',
       'openpath-sse-listener.service',
@@ -207,6 +239,11 @@ async function collectLinuxFailureDebugSnapshot() {
     runDiagnosticCommand('cat', ['/etc/resolv.conf']),
     runDiagnosticCommand('getent', ['hosts', `${ORIGIN_HOST}`]),
     readFileEvidence(WHITELIST_PATH, [ORIGIN_HOST]),
+    readTextEvidence('/etc/openpath/api-url.conf'),
+    readTextEvidence('/usr/lib/mozilla/native-messaging-hosts/whitelist_native_host.json'),
+    readTextEvidence('/root/.mozilla/native-messaging-hosts/whitelist_native_host.json'),
+    readTextEvidence(join(process.env.HOME ?? '', '.local/share/openpath/native-host.log')),
+    readTextEvidence('/tmp/openpath-native-host.log'),
   ]);
 
   return {
@@ -215,6 +252,17 @@ async function collectLinuxFailureDebugSnapshot() {
     resolvConf: { ...resolvConf, resolvConfCommand },
     getent: { originHost: originGetent, originGetentCommand },
     whitelist,
+    requestApiConfig: {
+      apiUrlConfig,
+    },
+    nativeHost: {
+      firefoxNativeHostManifest,
+      rootFirefoxNativeHostManifest,
+      logs: {
+        userNativeHostLog,
+        tmpNativeHostLog,
+      },
+    },
   };
 }
 
@@ -640,6 +688,7 @@ async function main() {
       browserNavigationAfterAttempts.openpathObserverInstalled === true ||
       browserNavigationBeforeAttempts.openpathObserverInstalled === true;
     const success = hasAllCompleted(completedProbesFromTraffic) && pageObserverInstalled;
+    const failureDebug = success ? null : await collectLinuxFailureDebugSnapshot();
     const summary = withLinuxAutoAllowDiagnostics({
       success,
       error: success ? null : 'Linux AJAX auto-allow probes did not complete before timeout',
@@ -665,6 +714,7 @@ async function main() {
         afterAttempts: browserNavigationAfterAttempts,
       },
       diagnostics: { preflight, postAttempt },
+      failureDebug,
       artifactWritten: true,
     });
 

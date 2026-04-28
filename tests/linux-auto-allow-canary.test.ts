@@ -343,6 +343,14 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       canaryScript,
       /journalctl -u openpath-sse-listener\.service -u openpath-update\.service/
     );
+    assert.match(canaryScript, /\/etc\/openpath\/api-url\.conf/);
+    assert.match(canaryScript, /openpath-native-host\.log/);
+    assert.match(canaryScript, /whitelist_native_host\.json/);
+    assert.match(
+      canaryScript,
+      /const failureDebug = success \? null : await collectLinuxFailureDebugSnapshot\(\);/
+    );
+    assert.match(canaryScript, /failureDebug,/);
     assert.match(canaryScript, /cat \/etc\/resolv\.conf/);
     assert.match(canaryScript, /getent hosts \$\{ORIGIN_HOST\}/);
   });
