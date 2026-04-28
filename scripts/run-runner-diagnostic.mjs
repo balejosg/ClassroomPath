@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
 
@@ -164,6 +164,9 @@ function runCommand(args, { capture = false, allowFailure = false } = {}) {
 function writeEvidenceFile(path, contents) {
   if (DRY_RUN) {
     console.log(`write ${path}`);
+    if (path.endsWith('diagnostic-summary.json')) {
+      console.log(contents);
+    }
     return;
   }
   writeFileSync(path, contents, 'utf8');
@@ -176,7 +179,28 @@ function captureCommandToFile(args, filePath) {
       ? `${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}`
       : '';
   writeEvidenceFile(filePath, contents);
-  return typeof result === 'object' ? result.status : 0;
+  return {
+    status: typeof result === 'object' ? result.status : 0,
+    contents,
+  };
+}
+
+function readJsonFile(path, fallback) {
+  if (DRY_RUN) return fallback;
+  if (!existsSync(path)) return fallback;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function getPrimaryJobIds(jobsJson) {
+  if (DRY_RUN) return ['<job-id>'];
+  return (jobsJson?.jobs ?? [])
+    .map((job) => job?.databaseId ?? job?.id)
+    .filter((id) => id !== undefined && id !== null)
+    .map(String);
 }
 
 function buildDispatchCommand({ suite, options }) {
@@ -279,16 +303,19 @@ function main() {
     ['gh', 'run', 'watch', resolvedRunId, '--repo', suite.repo, '--exit-status'],
     { allowFailure: true }
   );
+  const downloadResult = { status: 0 };
 
   if (options.downloadArtifacts) {
-    const downloadResult = runCommand(
+    const artifactDownloadResult = runCommand(
       ['gh', 'run', 'download', resolvedRunId, '--repo', suite.repo, '--dir', artifactDir],
       { allowFailure: true }
     );
-    if (typeof downloadResult === 'object' && downloadResult.status !== 0) {
+    downloadResult.status =
+      typeof artifactDownloadResult === 'object' ? artifactDownloadResult.status : 0;
+    if (typeof artifactDownloadResult === 'object' && artifactDownloadResult.status !== 0) {
       writeEvidenceFile(
         resolve(artifactDir, 'artifact-download-error.txt'),
-        `${downloadResult.stdout}${downloadResult.stderr}`
+        `${artifactDownloadResult.stdout}${artifactDownloadResult.stderr}`
       );
       console.error(
         `Artifact download failed; preserved error in ${resolve(artifactDir, 'artifact-download-error.txt')}`
@@ -296,7 +323,7 @@ function main() {
     }
   }
 
-  captureCommandToFile(
+  const runView = captureCommandToFile(
     [
       'gh',
       'run',
@@ -309,17 +336,54 @@ function main() {
     ],
     resolve(artifactDir, 'run.json')
   );
-  captureCommandToFile(
+  const jobsView = captureCommandToFile(
     ['gh', 'run', 'view', resolvedRunId, '--repo', suite.repo, '--json', 'jobs'],
     resolve(artifactDir, 'jobs.json')
   );
-  captureCommandToFile(
+  const artifactsView = captureCommandToFile(
     ['gh', 'api', `repos/${suite.repo}/actions/runs/${resolvedRunId}/artifacts`],
     resolve(artifactDir, 'artifact-index.json')
   );
-  captureCommandToFile(
+  const runLog = captureCommandToFile(
     ['gh', 'run', 'view', resolvedRunId, '--repo', suite.repo, '--log'],
     resolve(artifactDir, 'job.log')
+  );
+
+  const jobsJson = readJsonFile(resolve(artifactDir, 'jobs.json'), {
+    jobs: [{ databaseId: '<job-id>' }],
+  });
+  const jobLogStatuses = [];
+  for (const jobId of getPrimaryJobIds(jobsJson)) {
+    const jobLog = captureCommandToFile(
+      ['gh', 'api', `repos/${suite.repo}/actions/jobs/${jobId}/logs`],
+      resolve(artifactDir, `job-${jobId}.log`)
+    );
+    jobLogStatuses.push({ jobId, status: jobLog.status });
+  }
+
+  const logIncomplete =
+    runLog.status !== 0 ||
+    (watchResult && typeof watchResult === 'object' && watchResult.status !== 0) ||
+    jobLogStatuses.some((job) => job.status !== 0);
+  writeEvidenceFile(
+    resolve(artifactDir, 'diagnostic-summary.json'),
+    `${JSON.stringify(
+      {
+        runId: resolvedRunId,
+        suite: suite.workflow,
+        repo: suite.repo,
+        watch_status: typeof watchResult === 'object' ? watchResult.status : 0,
+        artifact_download_status: downloadResult.status,
+        run_view_status: runView.status,
+        jobs_view_status: jobsView.status,
+        artifact_index_status: artifactsView.status,
+        run_log_status: runLog.status,
+        job_log_statuses: jobLogStatuses,
+        log_incomplete: logIncomplete,
+      },
+      null,
+      2
+    )}\n`
   );
 
   console.log(`Runner diagnostic evidence: ${artifactDir}`);

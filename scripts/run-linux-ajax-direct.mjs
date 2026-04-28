@@ -10,6 +10,7 @@ import { getDeployTarget } from './deploy-targets.mjs';
 
 const DEFAULT_ENVIRONMENT = 'staging';
 const DRY_RUN = process.env.LINUX_AJAX_DIRECT_DRY_RUN === '1';
+const FAKE_SUDO_FAILURE = process.env.LINUX_AJAX_DIRECT_FAKE_SUDO_FAILURE === '1';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
@@ -99,13 +100,21 @@ function renderCommand(command, args) {
   return [command, ...args].map(shellQuote).join(' ');
 }
 
-function runCommand(
-  command,
-  args,
-  { cwd = projectRoot, env = process.env, allowFailure = false } = {}
-) {
+function runCommand(command, args, options = {}) {
+  const {
+    cwd = projectRoot,
+    env = process.env,
+    allowFailure = false,
+    logDir = '',
+    logName = '',
+    displayArgs = args,
+  } = options;
   if (DRY_RUN) {
-    console.log(renderCommand(command, args));
+    console.log(renderCommand(command, displayArgs));
+    if (FAKE_SUDO_FAILURE && command === 'sudo' && args[0] === '-n' && args[1] === 'true') {
+      if (!allowFailure) throw new Error('sudo -n true failed with exit code 1');
+      return 1;
+    }
     return 0;
   }
 
@@ -113,12 +122,30 @@ function runCommand(
     cwd,
     env,
     encoding: 'utf8',
-    stdio: 'inherit',
+    stdio: 'pipe',
   });
   if (result.error) throw result.error;
   const status = result.status ?? 1;
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (logDir && logName) {
+    writeFileSync(
+      resolve(logDir, `${logName}.log`),
+      [
+        `$ ${renderCommand(command, displayArgs)}`,
+        `exit_status=${status}`,
+        '',
+        '--- stdout ---',
+        result.stdout ?? '',
+        '',
+        '--- stderr ---',
+        result.stderr ?? '',
+      ].join('\n'),
+      'utf8'
+    );
+  }
   if (status !== 0 && !allowFailure) {
-    throw new Error(`${renderCommand(command, args)} failed with exit code ${status}`);
+    throw new Error(`${renderCommand(command, displayArgs)} failed with exit code ${status}`);
   }
   return status;
 }
@@ -188,6 +215,24 @@ function main() {
 
   if (!DRY_RUN) mkdirSync(artifactDir, { recursive: true });
 
+  runCommand('sudo', ['-n', 'true'], {
+    logDir: artifactDir,
+    logName: 'preflight-sudo',
+  });
+  runCommand('curl', ['-fsS', `${baseUrl}/cp/health`], {
+    logDir: artifactDir,
+    logName: 'preflight-health',
+  });
+  for (const binary of ['curl', 'firefox', 'geckodriver']) {
+    runCommand('bash', ['-lc', `command -v ${binary}`], {
+      logDir: artifactDir,
+      logName: `preflight-${binary}`,
+    });
+  }
+  if (!adminToken) {
+    throw new Error('CP_CLIENT_CANARY_ADMIN_TOKEN is required for direct Linux AJAX diagnostics.');
+  }
+
   runCommand(process.execPath, ['scripts/create-production-linux-bootstrap-canary.mjs'], {
     env: {
       ...process.env,
@@ -197,6 +242,8 @@ function main() {
       PRODUCTION_LINUX_BOOTSTRAP_CANARY_ARTIFACT_PATH: bootstrapArtifact,
       GITHUB_OUTPUT: bootstrapOutput,
     },
+    logDir: artifactDir,
+    logName: 'provision-linux-bootstrap-canary',
   });
 
   const bootstrap = readGithubOutput(bootstrapOutput);
@@ -204,6 +251,30 @@ function main() {
   const enrollmentToken = bootstrap.enrollment_token || '<enrollment-token>';
   const groupId = bootstrap.group_id || '<group-id>';
   const extensionId = bootstrap.extension_id || 'monitor-bloqueos@openpath';
+
+  runCommand(
+    'curl',
+    [
+      '-fsSL',
+      '-H',
+      `Authorization: Bearer ${enrollmentToken}`,
+      `${baseUrl}/api/enroll/${classroomId}`,
+      '-o',
+      installerPath,
+    ],
+    {
+      logDir: artifactDir,
+      logName: 'download-install-openpath',
+      displayArgs: [
+        '-fsSL',
+        '-H',
+        `Authorization: Bearer ${redactAuthorizationHeader(enrollmentToken)}`,
+        `${baseUrl}/api/enroll/${classroomId}`,
+        '-o',
+        installerPath,
+      ],
+    }
+  );
 
   runCommand(
     'sudo',
@@ -215,20 +286,21 @@ function main() {
       'openpath-update.service',
       'dnsmasq',
     ],
-    { allowFailure: true }
+    { allowFailure: true, logDir: artifactDir, logName: 'reset-stop-services' }
   );
-  runCommand('sudo', ['rm', '-rf', '/etc/openpath', '/var/lib/openpath', '/var/log/openpath.log']);
+  runCommand('sudo', ['rm', '-rf', '/etc/openpath', '/var/lib/openpath', '/var/log/openpath.log'], {
+    logDir: artifactDir,
+    logName: 'reset-remove-state',
+  });
 
-  runCommand('curl', [
-    '-fsSL',
-    '-H',
-    `Authorization: Bearer ${DRY_RUN ? redactAuthorizationHeader(enrollmentToken) : enrollmentToken}`,
-    `${baseUrl}/api/enroll/${classroomId}`,
-    '-o',
-    installerPath,
-  ]);
-  runCommand('chmod', ['+x', installerPath]);
-  runCommand('sudo', ['bash', installerPath]);
+  runCommand('chmod', ['+x', installerPath], {
+    logDir: artifactDir,
+    logName: 'chmod-install-openpath',
+  });
+  runCommand('sudo', ['bash', installerPath], {
+    logDir: artifactDir,
+    logName: 'run-install-openpath',
+  });
 
   const canaryStatus = runCommand(process.execPath, ['scripts/linux-ajax-auto-allow-canary.mjs'], {
     env: {
@@ -240,6 +312,8 @@ function main() {
       EXPECTED_EXTENSION_ID: extensionId,
     },
     allowFailure: true,
+    logDir: artifactDir,
+    logName: 'linux-ajax-auto-allow-canary',
   });
 
   runCommand(
@@ -257,6 +331,8 @@ function main() {
         GITHUB_OUTPUT: canaryOutput,
       },
       allowFailure: true,
+      logDir: artifactDir,
+      logName: 'summarize-linux-ajax-auto-allow-evidence',
     }
   );
 

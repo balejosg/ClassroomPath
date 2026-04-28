@@ -60,6 +60,7 @@ function runLinuxAjaxDirectDiagnostic(args: string[]) {
     env: {
       ...process.env,
       LINUX_AJAX_DIRECT_DRY_RUN: '1',
+      CP_CLIENT_CANARY_ADMIN_TOKEN: 'test-admin-token',
     },
   });
 }
@@ -168,6 +169,32 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stderr, /artifact-download-error\.txt/);
   });
 
+  test('runner diagnostic captures job-specific logs and writes a diagnostic summary', () => {
+    const result = spawnSync(
+      process.execPath,
+      [scriptPath, '--suite', 'linux-bootstrap-ajax', '--wait', '--download-artifacts'],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          RUNNER_DIAGNOSTIC_DRY_RUN: '1',
+          RUNNER_DIAGNOSTIC_FAKE_WATCH_FAILURE: '1',
+          RUNNER_DIAGNOSTIC_FAKE_ARTIFACT_DOWNLOAD_FAILURE: '1',
+        },
+      }
+    );
+
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stdout,
+      /gh api "?repos\/balejosg\/ClassroomPath\/actions\/jobs\/<job-id>\/logs"?/
+    );
+    assert.match(result.stdout, /write .*job-<job-id>\.log/);
+    assert.match(result.stdout, /write .*diagnostic-summary\.json/);
+    assert.match(result.stdout, /log_incomplete/);
+  });
+
   test('refuses production diagnostics without explicit confirmation', () => {
     const result = runDiagnostic([
       '--suite',
@@ -252,6 +279,59 @@ describe('runner diagnostic wrapper', () => {
     );
     assert.match(result.stdout, /scripts\/linux-ajax-auto-allow-canary\.mjs/);
     assert.match(result.stdout, /scripts\/summarize-linux-ajax-auto-allow-evidence\.mjs/);
+  });
+
+  test('direct Linux AJAX diagnostic preflights before provisioning remote canaries', () => {
+    const result = runLinuxAjaxDirectDiagnostic([
+      '--confirm-local-state-reset',
+      '--base-url',
+      'https://classroompath-staging.duckdns.org',
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const sudoPreflightIndex = result.stdout.indexOf('sudo -n true');
+    const healthIndex = result.stdout.indexOf(
+      'curl -fsS https://classroompath-staging.duckdns.org/cp/health'
+    );
+    const provisionIndex = result.stdout.indexOf(
+      'scripts/create-production-linux-bootstrap-canary.mjs'
+    );
+    const resetIndex = result.stdout.indexOf('sudo rm -rf /etc/openpath');
+    const installerIndex = result.stdout.indexOf('/api/enroll/<classroom-id>');
+
+    assert.ok(sudoPreflightIndex >= 0, 'sudo preflight should be visible');
+    assert.ok(healthIndex >= 0, 'staging health preflight should be visible');
+    assert.ok(
+      sudoPreflightIndex < provisionIndex,
+      'sudo preflight should happen before provisioning'
+    );
+    assert.ok(healthIndex < provisionIndex, 'health preflight should happen before provisioning');
+    assert.ok(installerIndex < resetIndex, 'installer should be downloaded before local reset');
+  });
+
+  test('direct Linux AJAX diagnostic fails before provisioning when sudo preflight fails', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        linuxAjaxDirectScriptPath,
+        '--confirm-local-state-reset',
+        '--base-url',
+        'https://classroompath-staging.duckdns.org',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          LINUX_AJAX_DIRECT_DRY_RUN: '1',
+          LINUX_AJAX_DIRECT_FAKE_SUDO_FAILURE: '1',
+        },
+      }
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /sudo -n true/);
+    assert.doesNotMatch(result.stdout, /scripts\/create-production-linux-bootstrap-canary\.mjs/);
   });
 
   test('direct Linux AJAX diagnostic refuses state reset without explicit confirmation', () => {
