@@ -120,6 +120,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
     assert.match(
       workflow,
+      /name: Cleanup Linux canary runtime[\s\S]*if: \$\{\{ always\(\) \}\}[\s\S]*timeout-minutes: 2[\s\S]*sudo systemctl stop openpath-sse-listener\.service openpath-update\.timer openpath-update\.service dnsmasq[\s\S]*pkill -TERM -f 'firefox|geckodriver|linux-ajax-auto-allow-canary\.mjs'/
+    );
+    assert.match(
+      workflow,
       /if \[ "\$UPLOAD_OUTCOME" = "failure" \]; then[\s\S]*failure_boundary_id=artifact-upload/
     );
   });
