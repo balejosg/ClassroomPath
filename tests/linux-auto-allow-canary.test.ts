@@ -374,4 +374,14 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(script.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
     assert.ok(script.includes('ajax-auto-allow-font.127.0.0.1.sslip.io'));
   });
+
+  test('Linux bootstrap provisioning seeds the request API host for extension auto-allow', () => {
+    const script = readProjectText('scripts/create-production-linux-bootstrap-canary.mjs');
+
+    assert.match(script, /const requestApiHost = new URL\(apiUrl\)\.hostname;/);
+    assert.match(
+      script,
+      /value: requestApiHost,[\s\S]*comment: 'Production Linux bootstrap canary request API seed rule'/
+    );
+  });
 });

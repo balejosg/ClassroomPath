@@ -13,6 +13,7 @@ const apiUrl = (process.env.PRODUCTION_LINUX_BOOTSTRAP_CANARY_URL ?? DEFAULT_API
   /\/$/,
   ''
 );
+const requestApiHost = new URL(apiUrl).hostname;
 const requestOrigin =
   process.env.PRODUCTION_LINUX_BOOTSTRAP_CANARY_REQUEST_ORIGIN ?? new URL(apiUrl).origin;
 const timeoutMs = Number.parseInt(
@@ -448,6 +449,19 @@ async function main() {
   );
 
   assert.ok(canaryRule.id, 'groups.createRule should return a rule id');
+
+  const { data: requestApiRule } = await postTrpc(
+    'groups.createRule',
+    {
+      groupId: group.id,
+      type: 'whitelist',
+      value: requestApiHost,
+      comment: 'Production Linux bootstrap canary request API seed rule',
+    },
+    cookieHeader
+  );
+
+  assert.ok(requestApiRule.id, 'groups.createRule should return a request API rule id');
 
   const { data: classroom } = await postTrpc(
     'classrooms.create',
