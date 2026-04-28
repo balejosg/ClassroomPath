@@ -139,6 +139,23 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux staging diagnostics can run when staging SSH is not reachable from GitHub', () => {
+    const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+
+    assert.match(
+      workflow,
+      /if \[ "\$TARGET_ENVIRONMENT" = "staging" \] && \[ "\$DIAGNOSTIC_MODE" = "true" \]; then[\s\S]*billing_mode="manual_only"/
+    );
+    assert.match(
+      workflow,
+      /FALLBACK_CLIENT_CANARY_ADMIN_TOKEN: \$\{\{ secrets\.CP_CLIENT_CANARY_ADMIN_TOKEN \}\}/
+    );
+    assert.match(
+      workflow,
+      /if \[ "\$TARGET_ENVIRONMENT" = "staging" \] && \[ "\$DIAGNOSTIC_MODE" = "true" \] && \[ -n "\$FALLBACK_CLIENT_CANARY_ADMIN_TOKEN" \]; then[\s\S]*client_canary_admin_token="\$FALLBACK_CLIENT_CANARY_ADMIN_TOKEN"/
+    );
+  });
+
   test('Linux canary preserves rich evidence artifacts on functional failure', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
 

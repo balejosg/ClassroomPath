@@ -132,15 +132,31 @@ jobs:
       - name: Read target billing mode
         id: read-billing-mode
         shell: bash
+        env:
+          TARGET_ENVIRONMENT: ${{ steps.inputs.outputs.target_environment }}
+          DIAGNOSTIC_MODE: ${{ steps.inputs.outputs.diagnostic_mode }}
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
+
+          set +e
           billing_mode="$(github_actions_remote_read_env_key \
             "$TARGET_SSH_KEY_PATH" \
             "${{ steps.resolve-production.outputs.port }}" \
             "${{ steps.resolve-production.outputs.user }}" \
             "${{ steps.resolve-production.outputs.ip }}" \
             CP_BILLING_MODE)"
+          read_status="$?"
+          set -e
+
+          if [ "$read_status" -ne 0 ]; then
+            if [ "$TARGET_ENVIRONMENT" = "staging" ] && [ "$DIAGNOSTIC_MODE" = "true" ]; then
+              echo "::warning::Could not read staging CP_BILLING_MODE over SSH; using manual_only for diagnostic-only canary."
+              billing_mode="manual_only"
+            else
+              exit "$read_status"
+            fi
+          fi
 
           if [ -z "$billing_mode" ]; then
             billing_mode="manual_only"
@@ -151,15 +167,32 @@ jobs:
       - name: Read target client canary admin token
         if: steps.read-billing-mode.outputs.billing_mode == 'manual_only'
         shell: bash
+        env:
+          TARGET_ENVIRONMENT: ${{ steps.inputs.outputs.target_environment }}
+          DIAGNOSTIC_MODE: ${{ steps.inputs.outputs.diagnostic_mode }}
+          FALLBACK_CLIENT_CANARY_ADMIN_TOKEN: ${{ secrets.CP_CLIENT_CANARY_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
+
+          set +e
           client_canary_admin_token="$(github_actions_remote_read_env_key \
             "$TARGET_SSH_KEY_PATH" \
             "${{ steps.resolve-production.outputs.port }}" \
             "${{ steps.resolve-production.outputs.user }}" \
             "${{ steps.resolve-production.outputs.ip }}" \
             CP_CLIENT_CANARY_ADMIN_TOKEN)"
+          read_status="$?"
+          set -e
+
+          if [ "$read_status" -ne 0 ]; then
+            if [ "$TARGET_ENVIRONMENT" = "staging" ] && [ "$DIAGNOSTIC_MODE" = "true" ] && [ -n "$FALLBACK_CLIENT_CANARY_ADMIN_TOKEN" ]; then
+              echo "::warning::Could not read staging CP_CLIENT_CANARY_ADMIN_TOKEN over SSH; using diagnostic fallback secret."
+              client_canary_admin_token="$FALLBACK_CLIENT_CANARY_ADMIN_TOKEN"
+            else
+              exit "$read_status"
+            fi
+          fi
 
           if [ -z "$client_canary_admin_token" ]; then
             echo "::error::CP_CLIENT_CANARY_ADMIN_TOKEN is missing for ${{ steps.inputs.outputs.target_environment }}"
