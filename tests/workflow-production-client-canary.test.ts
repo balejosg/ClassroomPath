@@ -721,6 +721,10 @@ describe('Production client update canary workflow contracts', () => {
     const installStepIndex = steps.findIndex((step) =>
       String(step.name ?? '').includes('Re-run Update-OpenPath.ps1')
     );
+    const setupNodeStepIndex = steps.findIndex((step) => step.name === 'Setup Node.js');
+    const dependencyStepIndex = steps.findIndex(
+      (step) => step.name === 'Install Windows AJAX canary dependencies'
+    );
     const ajaxStepIndex = steps.findIndex(
       (step) => step.name === 'Verify Windows AJAX auto-allow canary'
     );
@@ -732,6 +736,8 @@ describe('Production client update canary workflow contracts', () => {
     );
     const ajaxStep = ajaxStepIndex >= 0 ? steps[ajaxStepIndex] : undefined;
     const ajaxScript = String(ajaxStep?.run ?? '');
+    const dependencyStep = dependencyStepIndex >= 0 ? steps[dependencyStepIndex] : undefined;
+    const dependencyScript = String(dependencyStep?.run ?? '');
     const resetStep = steps.find((step) => step.name === 'Reset persistent Windows canary state');
     const ajaxCanaryScript = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
     const ajaxCanaryEvidenceModule = readProjectText(
@@ -766,6 +772,16 @@ describe('Production client update canary workflow contracts', () => {
       installStepIndex >= 0 && installStepIndex < ajaxStepIndex && ajaxStepIndex < uploadStepIndex,
       'AJAX proof should run after live Windows enrollment/Firefox install and before artifacts'
     );
+    assert.ok(
+      setupNodeStepIndex >= 0 &&
+        setupNodeStepIndex < dependencyStepIndex &&
+        dependencyStepIndex < ajaxStepIndex,
+      'Windows AJAX canary must install Selenium dependencies after Node setup and before loading the canary script'
+    );
+    assert.equal(dependencyStep?.shell, 'bash');
+    assert.ok(dependencyScript.includes('npm ci --ignore-scripts'));
+    assert.match(dependencyScript, /import\('selenium-webdriver'\)/);
+    assert.match(dependencyScript, /import\('selenium-webdriver\/firefox\.js'\)/);
     assert.ok(
       ajaxStepIndex < restoreDnsStepIndex && restoreDnsStepIndex < uploadStepIndex,
       'Windows bootstrap canary should restore runner DNS before uploading artifacts'

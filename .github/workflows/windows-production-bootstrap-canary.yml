@@ -96,6 +96,13 @@ jobs:
           enable-cache: false
           cache-dependency-path: package-lock.json
 
+      - name: Install Windows AJAX canary dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          node -e "Promise.all([import('selenium-webdriver'), import('selenium-webdriver/firefox.js')])"
+
       - name: Resolve diagnostic target
         shell: bash
         run: |
