@@ -20,6 +20,12 @@ on:
       canary_result:
         description: Production Windows bootstrap and AJAX auto-allow canary result.
         value: ${{ jobs.windows-production-bootstrap-canary.outputs.canary_result }}
+      failure_boundary_id:
+        description: Diagnostic failure boundary id for the Windows AJAX bootstrap canary.
+        value: ${{ jobs.windows-production-bootstrap-canary.outputs.failure_boundary_id }}
+      failure_boundary_message:
+        description: Diagnostic failure boundary message for the Windows AJAX bootstrap canary.
+        value: ${{ jobs.windows-production-bootstrap-canary.outputs.failure_boundary_message }}
   workflow_dispatch:
     inputs:
       target_environment:
@@ -57,6 +63,8 @@ jobs:
     timeout-minutes: 30
     outputs:
       canary_result: ${{ steps.result.outputs.canary_result }}
+      failure_boundary_id: ${{ steps.result.outputs.failure_boundary_id }}
+      failure_boundary_message: ${{ steps.result.outputs.failure_boundary_message }}
     env:
       TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'staging' }}
       PRODUCTION_BASE_URL: ${{ inputs.base_url }}
@@ -478,25 +486,26 @@ jobs:
           $ErrorActionPreference = 'Stop'
           node scripts/windows-ajax-auto-allow-canary.mjs
 
-      - name: Record canary result
-        id: result
+      - name: Summarize Windows AJAX auto-allow evidence
+        id: ajax-summary
         if: always()
         shell: bash
-        env:
-          JOB_STATUS: ${{ job.status }}
         run: |
           set -euo pipefail
-          result=success
-          if [ "$JOB_STATUS" != "success" ]; then
-            result=failure
-          fi
-          echo "canary_result=$result" >> "$GITHUB_OUTPUT"
+          node scripts/summarize-windows-ajax-auto-allow-evidence.mjs \
+            --artifact production-windows-ajax-auto-allow-canary.json
 
       - name: Verify production bootstrap canary evidence artifacts
-        if: steps.result.outputs.canary_result == 'success'
+        id: verify-artifacts
+        if: always()
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
+          if [ "${{ steps.ajax-summary.outputs.canary_result }}" != "success" ]; then
+            echo "Skipping artifact completeness check because the functional canary failed."
+            exit 0
+          fi
           for required_artifact in \
             production-windows-bootstrap-canary.json \
             production-windows-ajax-auto-allow-canary.json
@@ -513,7 +522,9 @@ jobs:
         uses: ./.github/actions/restore-windows-runner-dns
 
       - name: Upload production bootstrap canary artifacts
+        id: upload-artifacts
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: windows-production-bootstrap-canary
@@ -523,3 +534,51 @@ jobs:
             ${{ runner.temp }}/Update-OpenPath.log
             ${{ runner.temp }}/windows-production-bootstrap-firefox.log
           if-no-files-found: error
+
+      - name: Record canary result
+        id: result
+        if: always()
+        shell: bash
+        env:
+          FUNCTIONAL_RESULT: ${{ steps.ajax-summary.outputs.canary_result || 'failure' }}
+          FUNCTIONAL_BOUNDARY_ID: ${{ steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}
+          FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax-summary.outputs.failure_boundary_message || 'Windows AJAX evidence artifact was not written.' }}
+          VERIFY_ARTIFACTS_OUTCOME: ${{ steps.verify-artifacts.outcome }}
+          ARTIFACT_UPLOAD_OUTCOME: ${{ steps.upload-artifacts.outcome }}
+        run: |
+          set -euo pipefail
+
+          # ARTIFACT_UPLOAD_OUTCOME comes from steps.upload-artifacts.outcome.
+          result="$FUNCTIONAL_RESULT"
+          failure_boundary_id="$FUNCTIONAL_BOUNDARY_ID"
+          failure_boundary_message="$FUNCTIONAL_BOUNDARY_MESSAGE"
+
+          if [ "$VERIFY_ARTIFACTS_OUTCOME" != "success" ]; then
+            result=failure
+            failure_boundary_id=artifact-written
+            failure_boundary_message='Functional canary reported success but required evidence artifacts were missing or empty.'
+          elif [ "$FUNCTIONAL_RESULT" = "success" ] && [ "$ARTIFACT_UPLOAD_OUTCOME" != "success" ]; then
+            result=failure
+            failure_boundary_id=artifact-upload
+            failure_boundary_message='Functional canary evidence was produced but GitHub artifact upload failed.'
+          elif [ "$FUNCTIONAL_RESULT" = "success" ]; then
+            failure_boundary_id=none
+            failure_boundary_message='Windows AJAX auto-allow canary completed successfully.'
+          fi
+
+          echo "canary_result=$result" >> "$GITHUB_OUTPUT"
+          echo "failure_boundary_id=$failure_boundary_id" >> "$GITHUB_OUTPUT"
+          echo "failure_boundary_message=$failure_boundary_message" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Windows Bootstrap Canary Boundary"
+            echo ""
+            echo "- Result: \`$result\`"
+            echo "- Failure boundary: \`$failure_boundary_id\`"
+            echo "- Message: $failure_boundary_message"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$result" != "success" ]; then
+            echo "::error::$failure_boundary_message"
+            exit 1
+          fi

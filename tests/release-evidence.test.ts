@@ -26,6 +26,12 @@ type ReleaseEvidence = {
     windowsProductionBootstrapCanary: string;
     productionClientUpdateCanary: string;
   };
+  diagnostics: {
+    windowsProductionBootstrapFailureBoundary: {
+      id: string | null;
+      message: string | null;
+    };
+  };
   artifacts: {
     windowsProductionBootstrapCanary: string | null;
   };
@@ -267,6 +273,28 @@ describe('release evidence rendering', () => {
     assert.match(
       markdown,
       /Windows production bootstrap canary: `windows-production-bootstrap-canary`/
+    );
+  });
+
+  test('includes the production bootstrap failure boundary in release evidence', () => {
+    const { json, markdown } = generateEvidence({
+      STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
+      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'failure',
+      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT: 'failure',
+      WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'local-whitelist-apply',
+      WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE:
+        'Remote whitelist contains expected hosts but local Windows whitelist did not.',
+    });
+
+    assert.equal(json.jobs.windowsProductionBootstrapCanary, 'failure');
+    assert.deepEqual(json.diagnostics.windowsProductionBootstrapFailureBoundary, {
+      id: 'local-whitelist-apply',
+      message: 'Remote whitelist contains expected hosts but local Windows whitelist did not.',
+    });
+    assert.match(markdown, /Windows bootstrap failure boundary: `local-whitelist-apply`/);
+    assert.match(
+      markdown,
+      /Remote whitelist contains expected hosts but local Windows whitelist did not\./
     );
   });
 

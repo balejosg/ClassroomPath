@@ -716,6 +716,8 @@ jobs:
             "WINDOWS_STAGING_BOOTSTRAP_CANARY_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_windows_bootstrap_result }}",
             "WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "${{ needs.windows-production-bootstrap-canary.outputs.canary_result || needs.windows-production-bootstrap-canary.result }}",
             "WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "${{ needs.windows-production-bootstrap-canary.result }}",
+            "WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "${{ needs.windows-production-bootstrap-canary.outputs.failure_boundary_id }}",
+            "WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "${{ needs.windows-production-bootstrap-canary.outputs.failure_boundary_message }}",
             "DEPLOY_RESULT": "${{ needs.deploy-production.result }}",
             "PRODUCTION_SMOKE_RESULT": "${{ needs.smoke-test-production.result }}",
             "ROLLBACK_RESULT": "${{ needs.rollback-production.result }}",

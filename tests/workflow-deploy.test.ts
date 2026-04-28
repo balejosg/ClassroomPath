@@ -353,6 +353,14 @@ describe('Deploy workflow contracts', () => {
       deployWorkflowText,
       /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary\.result \}\}"/
     );
+    assert.match(
+      deployWorkflowText,
+      /"WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.failure_boundary_id \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.failure_boundary_message \}\}"/
+    );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(
       jobs['windows-staging-bootstrap-canary'],
@@ -408,6 +416,16 @@ describe('Deploy workflow contracts', () => {
       /needs\.windows-production-bootstrap-canary\.result == 'failure'/
     );
     assert.ok(windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs);
+    assert.equal(
+      windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.outputs?.failure_boundary_id
+        ?.value,
+      '${{ jobs.windows-production-bootstrap-canary.outputs.failure_boundary_id }}'
+    );
+    assert.equal(
+      windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.outputs?.failure_boundary_message
+        ?.value,
+      '${{ jobs.windows-production-bootstrap-canary.outputs.failure_boundary_message }}'
+    );
     assert.equal(
       windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs?.target_environment
         ?.required,

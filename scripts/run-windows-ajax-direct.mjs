@@ -61,6 +61,10 @@ const CANARY_SCRIPT_UPLOADS = [
     source: 'scripts/lib/windows-auto-allow-canary-evidence.mjs',
     destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\windows-auto-allow-canary-evidence.mjs`,
   },
+  {
+    source: 'scripts/summarize-windows-ajax-auto-allow-evidence.mjs',
+    destination: `${WINDOWS_WORKSPACE}\\scripts\\summarize-windows-ajax-auto-allow-evidence.mjs`,
+  },
 ];
 
 const SELENIUM_NODE_MODULES = [
@@ -888,6 +892,38 @@ function collectArtifacts(options, artifactDir) {
   writeFileSync(resolve(artifactDir, 'native-host.log.tail.txt'), nativeLogTail, 'utf8');
 }
 
+function summarizeAjaxArtifact(artifactDir) {
+  const artifactPath = resolve(artifactDir, 'production-windows-ajax-auto-allow-canary.json');
+  const markdownPath = resolve(artifactDir, 'windows-ajax-auto-allow-canary-summary.md');
+  const outputPath = resolve(artifactDir, 'windows-ajax-auto-allow-canary-summary.env');
+
+  // This enriches local direct-run evidence with failureBoundary and diagnosticPhases.
+  if (DRY_RUN) {
+    console.log(
+      `local: node scripts/summarize-windows-ajax-auto-allow-evidence.mjs --artifact ${artifactPath} --summary ${markdownPath}`
+    );
+    console.log('local-artifact-fields: failureBoundary diagnosticPhases');
+    return;
+  }
+
+  runCommand(
+    [
+      process.execPath,
+      'scripts/summarize-windows-ajax-auto-allow-evidence.mjs',
+      '--artifact',
+      artifactPath,
+      '--summary',
+      markdownPath,
+    ],
+    {
+      env: {
+        ...process.env,
+        GITHUB_OUTPUT: outputPath,
+      },
+    }
+  );
+}
+
 function main() {
   let options;
   try {
@@ -984,6 +1020,7 @@ function main() {
     if (!DRY_RUN) {
       try {
         collectArtifacts(options, artifactDir);
+        summarizeAjaxArtifact(artifactDir);
       } catch (artifactError) {
         if (!canaryError) {
           throw artifactError;
@@ -994,6 +1031,8 @@ function main() {
             : `Artifact collection failed after canary failure: ${String(artifactError)}`
         );
       }
+    } else {
+      summarizeAjaxArtifact(artifactDir);
     }
   }
 

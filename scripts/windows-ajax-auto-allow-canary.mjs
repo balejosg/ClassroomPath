@@ -1124,23 +1124,37 @@ async function main() {
   }
 
   if (!firefoxExtensionWarmup.ready) {
-    const summary = {
-      success: false,
-      error: `Timed out after ${FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS}ms waiting for Firefox extension ${EXPECTED_EXTENSION_ID} to be ready`,
-      originHost: ORIGIN_HOST,
-      targetHost: TARGET_HOST,
-      assetHost: ASSET_HOST,
-      scriptHost: SCRIPT_HOST,
-      stylesheetHost: STYLESHEET_HOST,
-      targetUrl,
-      assetUrl,
-      firefoxExtensionWarmup,
+    const summary = buildWindowsAutoAllowCanarySummary({
+      result: {
+        success: false,
+        error: `Timed out after ${FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS}ms waiting for Firefox extension ${EXPECTED_EXTENSION_ID} to be ready`,
+        targetUrl,
+        assetUrl,
+        pageObserverInstalled: false,
+      },
+      probeEvidence: AUTO_ALLOW_PROBES.map((probe) => ({
+        id: probe.id,
+        kind: probe.kind,
+        host: probe.host,
+        url: buildProbeUrl(probe),
+        hits: 0,
+        expectedWhitelistHost: probe.expectedWhitelistHost,
+        whitelistContainsExpectedHost: false,
+      })),
+      originHits,
+      attempts: browserAttempts,
+      completedProbes,
+      completedCandidateEvents,
+      pageResourceCandidateEvents,
+      lastAttemptAt,
       whitelistPath: WHITELIST_PATH,
+      firefoxExtensionWarmup,
+      firefoxOutput,
       diagnostics: {
         preflight: preflightDiagnostics,
         postFailure: await collectWindowsAutoAllowDiagnostics('post-firefox-warmup-failure'),
       },
-    };
+    });
 
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
     console.error(`WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`);

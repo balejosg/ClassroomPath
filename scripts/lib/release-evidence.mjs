@@ -187,6 +187,12 @@ export function buildReleaseEvidence(env = process.env) {
       smokeTestProduction: valueOrNull(env.PRODUCTION_SMOKE_RESULT),
       rollbackProduction: valueOrNull(env.ROLLBACK_RESULT),
     },
+    diagnostics: {
+      windowsProductionBootstrapFailureBoundary: {
+        id: valueOrNull(env.WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID),
+        message: valueOrNull(env.WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE),
+      },
+    },
     stagingVerification: {
       smokeResult: valueOrNull(env.STAGING_SMOKE_RESULT),
       smokeStatus: valueOrNull(env.STAGING_SMOKE_STATUS),
@@ -246,6 +252,11 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     `| Deploy production | ${evidence.jobs.deployProduction ?? 'n/a'} |`,
     `| Production smoke | ${evidence.jobs.smokeTestProduction ?? 'n/a'} |`,
     `| Rollback | ${evidence.jobs.rollbackProduction ?? 'n/a'} |`,
+    '',
+    '### Windows Bootstrap Diagnostic Boundary',
+    '',
+    `- Windows bootstrap failure boundary: \`${evidence.diagnostics.windowsProductionBootstrapFailureBoundary.id ?? 'n/a'}\``,
+    `- Boundary message: ${evidence.diagnostics.windowsProductionBootstrapFailureBoundary.message ?? 'n/a'}`,
     '',
     '### Staging Verification Evidence',
     '',

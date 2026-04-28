@@ -116,6 +116,7 @@ describe('runner diagnostic wrapper', () => {
     );
     assert.match(result.stdout, /scripts\/windows-ajax-auto-allow-canary\.mjs/);
     assert.match(result.stdout, /scripts\/lib\/windows-auto-allow-canary-evidence\.mjs/);
+    assert.match(result.stdout, /scripts\/summarize-windows-ajax-auto-allow-evidence\.mjs/);
     assert.match(
       result.stdout,
       /WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=https:\/\/classroompath-staging\.duckdns\.org/
@@ -199,6 +200,15 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN/);
     assert.match(script, /summary\.groupId/);
     assert.match(script, /billingContext\.adminToken/);
+  });
+
+  test('direct Windows AJAX diagnostic preserves boundary-enriched artifacts locally', () => {
+    const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+
+    assert.match(script, /summarize-windows-ajax-auto-allow-evidence\.mjs/);
+    assert.match(script, /production-windows-ajax-auto-allow-canary\.json/);
+    assert.match(script, /failureBoundary/);
+    assert.match(script, /diagnosticPhases/);
   });
 
   test('direct Windows AJAX diagnostic can run Firefox with the local extension build', () => {

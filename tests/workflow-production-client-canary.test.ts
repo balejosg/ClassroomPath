@@ -10,6 +10,107 @@ import {
 } from '../scripts/lib/windows-auto-allow-canary-evidence.mjs';
 
 const windowsRunnerDnsActionPath = '.github/actions/restore-windows-runner-dns/action.yml';
+const windowsAutoAllowExpectedHosts = WINDOWS_AUTO_ALLOW_PROBES.map(
+  (probe) => probe.expectedWhitelistHost
+);
+
+function buildContainsExpectedHosts(value: boolean) {
+  return Object.fromEntries(windowsAutoAllowExpectedHosts.map((host) => [host, value]));
+}
+
+function buildProbeEvidence({
+  hits = 1,
+  whitelistContainsExpectedHost = true,
+}: {
+  hits?: number;
+  whitelistContainsExpectedHost?: boolean;
+} = {}) {
+  return WINDOWS_AUTO_ALLOW_PROBES.map((probe) => ({
+    id: probe.id,
+    kind: probe.kind,
+    host: probe.host,
+    url: `http://${probe.host}:18088${probe.path}`,
+    hits,
+    expectedWhitelistHost: probe.expectedWhitelistHost,
+    whitelistContainsExpectedHost,
+  }));
+}
+
+function buildProbeMap(value: boolean) {
+  return Object.fromEntries(WINDOWS_AUTO_ALLOW_PROBES.map((probe) => [probe.id, value]));
+}
+
+function buildCandidateEvents() {
+  return WINDOWS_AUTO_ALLOW_PROBES.map((probe) => ({
+    kind: probe.kind,
+    url: `http://${probe.host}:18088${probe.path}`,
+    matchedProbeId: probe.id,
+    seenAt: '2026-04-27T10:00:00.000Z',
+  }));
+}
+
+function buildServerExpectedHostState(value: boolean) {
+  return Object.fromEntries(
+    windowsAutoAllowExpectedHosts.map((host) => [host, { whitelistRulePresent: value }])
+  );
+}
+
+function buildDiagnosticSummary(
+  overrides: {
+    success?: boolean;
+    firefoxReady?: boolean;
+    originHits?: number;
+    pageObserverInstalled?: boolean;
+    completedCandidateEvents?: Record<string, boolean>;
+    pageResourceCandidateEvents?: Array<Record<string, unknown>>;
+    remoteWhitelistContainsExpectedHosts?: boolean;
+    localWhitelistContainsExpectedHost?: boolean;
+    probeHits?: number;
+  } = {}
+) {
+  const remoteWhitelistContainsExpectedHosts =
+    overrides.remoteWhitelistContainsExpectedHosts ?? true;
+
+  return buildWindowsAutoAllowCanarySummary({
+    result: {
+      success: overrides.success ?? true,
+      pageObserverInstalled: overrides.pageObserverInstalled ?? true,
+    },
+    probeEvidence: buildProbeEvidence({
+      hits: overrides.probeHits ?? 1,
+      whitelistContainsExpectedHost: overrides.localWhitelistContainsExpectedHost ?? true,
+    }),
+    originHits: overrides.originHits ?? 1,
+    attempts: [{ ok: true }],
+    completedProbes: buildProbeMap(true),
+    completedCandidateEvents: overrides.completedCandidateEvents ?? buildProbeMap(true),
+    pageResourceCandidateEvents: overrides.pageResourceCandidateEvents ?? buildCandidateEvents(),
+    lastAttemptAt: '2026-04-27T10:00:00.000Z',
+    whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
+    firefoxExtensionWarmup: { ready: overrides.firefoxReady ?? true },
+    firefoxOutput: 'ready',
+    diagnostics: {
+      preflight: {},
+      postAttempt: {
+        remoteWhitelist: {
+          containsExpectedHosts: buildContainsExpectedHosts(remoteWhitelistContainsExpectedHosts),
+        },
+        whitelist: {
+          remoteWhitelist: {
+            containsExpectedHosts: buildContainsExpectedHosts(remoteWhitelistContainsExpectedHosts),
+          },
+        },
+        server: {
+          canaryGroup: {
+            body: {
+              expectedHostState: buildServerExpectedHostState(remoteWhitelistContainsExpectedHosts),
+            },
+          },
+        },
+      },
+    },
+  });
+}
 
 describe('Windows AJAX auto-allow canary evidence contracts', () => {
   test('keeps probe metadata and failure messages in one importable table', () => {
@@ -87,6 +188,101 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       () => assertWindowsAutoAllowCanarySuccess(failedSummary),
       /Auto-allow AJAX target was not written to whitelist/
     );
+  });
+
+  test('adds ordered diagnostic phases and failure boundaries to canary summaries', () => {
+    const cases = [
+      {
+        name: 'extension Firefox no lista',
+        expectedBoundary: 'firefox-extension-ready',
+        summary: buildDiagnosticSummary({ success: false, firefoxReady: false }),
+      },
+      {
+        name: 'origin no carga',
+        expectedBoundary: 'origin-page-load',
+        summary: buildDiagnosticSummary({ success: false, originHits: 0 }),
+      },
+      {
+        name: 'observer no instalado',
+        expectedBoundary: 'page-observer',
+        summary: buildDiagnosticSummary({ success: false, pageObserverInstalled: false }),
+      },
+      {
+        name: 'candidatos de página ausentes',
+        expectedBoundary: 'page-resource-candidates',
+        summary: buildDiagnosticSummary({
+          success: false,
+          completedCandidateEvents: buildProbeMap(false),
+          pageResourceCandidateEvents: [],
+        }),
+      },
+      {
+        name: 'reglas remotas ausentes',
+        expectedBoundary: 'remote-rule-creation',
+        summary: buildDiagnosticSummary({
+          success: false,
+          remoteWhitelistContainsExpectedHosts: false,
+          localWhitelistContainsExpectedHost: false,
+          probeHits: 0,
+        }),
+      },
+      {
+        name: 'remoto presente pero whitelist local ausente',
+        expectedBoundary: 'local-whitelist-apply',
+        summary: buildDiagnosticSummary({
+          success: false,
+          localWhitelistContainsExpectedHost: false,
+          probeHits: 0,
+        }),
+      },
+      {
+        name: 'whitelist local presente pero probes sin hits',
+        expectedBoundary: 'probe-traffic',
+        summary: buildDiagnosticSummary({
+          success: false,
+          probeHits: 0,
+        }),
+      },
+      {
+        name: 'success completo',
+        expectedBoundary: 'none',
+        summary: buildDiagnosticSummary(),
+      },
+    ];
+
+    for (const { name, expectedBoundary, summary } of cases) {
+      assert.equal(summary.failureBoundary?.id, expectedBoundary, name);
+      assert.ok(Array.isArray(summary.diagnosticPhases), `${name} should include phases`);
+      assert.deepEqual(
+        summary.diagnosticPhases.map((phase) => phase.id),
+        [
+          'firefox-extension-ready',
+          'origin-page-load',
+          'page-observer',
+          'page-resource-candidates',
+          'remote-rule-creation',
+          'local-whitelist-apply',
+          'probe-traffic',
+          'artifact-written',
+        ],
+        `${name} should keep the fixed phase order`
+      );
+
+      if (expectedBoundary === 'none') {
+        assert.ok(
+          summary.diagnosticPhases.every((phase) => phase.status === 'passed'),
+          `${name} should mark all phases as passed`
+        );
+      } else {
+        const failedPhase = summary.diagnosticPhases.find((phase) => phase.id === expectedBoundary);
+        assert.equal(failedPhase?.status, 'failed', name);
+      }
+      assert.ok(summary.failureBoundary?.message, `${name} should include a boundary message`);
+      assert.ok(
+        summary.failureBoundary?.recommendedNextAction,
+        `${name} should include an operator next action`
+      );
+    }
   });
 
   test('redacts machine tokens and remote whitelist URLs in evidence objects', () => {
@@ -758,6 +954,22 @@ describe('Production client update canary workflow contracts', () => {
       workflow.on.workflow_call.outputs?.canary_result?.value,
       '${{ jobs.windows-production-bootstrap-canary.outputs.canary_result }}'
     );
+    assert.equal(
+      workflow.on.workflow_call.outputs?.failure_boundary_id?.value,
+      '${{ jobs.windows-production-bootstrap-canary.outputs.failure_boundary_id }}'
+    );
+    assert.equal(
+      workflow.on.workflow_call.outputs?.failure_boundary_message?.value,
+      '${{ jobs.windows-production-bootstrap-canary.outputs.failure_boundary_message }}'
+    );
+    assert.equal(
+      job?.outputs?.failure_boundary_id,
+      '${{ steps.result.outputs.failure_boundary_id }}'
+    );
+    assert.equal(
+      job?.outputs?.failure_boundary_message,
+      '${{ steps.result.outputs.failure_boundary_message }}'
+    );
     assert.ok(!workflowText.includes('Skip bootstrap canary when production is manual-only'));
     assert.ok(workflowText.includes('Read target client canary admin token'));
     assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'));
@@ -932,16 +1144,34 @@ describe('Production client update canary workflow contracts', () => {
       ajaxCanaryEvidenceText.includes('Auto-allow stylesheet target was not written to whitelist')
     );
     assert.ok(ajaxCanaryScript.includes('production-windows-ajax-auto-allow-canary.json'));
+    const summaryStepIndex = steps.findIndex(
+      (step) => step.name === 'Summarize Windows AJAX auto-allow evidence'
+    );
+    const summaryStep = summaryStepIndex >= 0 ? steps[summaryStepIndex] : undefined;
+    const resultStepIndex = steps.findIndex((step) => step.name === 'Record canary result');
+    const resultStep = resultStepIndex >= 0 ? steps[resultStepIndex] : undefined;
     assert.ok(workflowText.includes('Record canary result'));
+    assert.ok(summaryStep, 'Windows bootstrap canary should summarize functional evidence');
+    assert.equal(summaryStep?.id, 'ajax-summary');
+    assert.equal(summaryStep?.if, 'always()');
+    assert.match(
+      String(summaryStep?.run ?? ''),
+      /scripts\/summarize-windows-ajax-auto-allow-evidence\.mjs/
+    );
+    assert.ok(
+      ajaxStepIndex < summaryStepIndex && summaryStepIndex < uploadStepIndex,
+      'AJAX evidence summary should run after the canary and before artifact upload'
+    );
     const restoreDnsStep = restoreDnsStepIndex >= 0 ? steps[restoreDnsStepIndex] : undefined;
     assert.equal(restoreDnsStep?.if, 'always()');
     assert.equal(restoreDnsStep?.['continue-on-error'], true);
     assert.equal(restoreDnsStep?.uses, './.github/actions/restore-windows-runner-dns');
     const uploadStep = uploadStepIndex >= 0 ? steps[uploadStepIndex] : undefined;
+    assert.equal(uploadStep?.id, 'upload-artifacts');
     assert.equal(
       uploadStep?.['continue-on-error'],
-      undefined,
-      'production bootstrap canary artifacts are release evidence and must not be best-effort'
+      true,
+      'artifact transport failures should be converted into an explicit artifact-upload boundary'
     );
     assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
     assert.match(String(uploadStep?.with?.path ?? ''), /production-windows-bootstrap-canary\.json/);
@@ -949,5 +1179,13 @@ describe('Production client update canary workflow contracts', () => {
       String(uploadStep?.with?.path ?? ''),
       /production-windows-ajax-auto-allow-canary\.json/
     );
+    assert.ok(
+      uploadStepIndex < resultStepIndex,
+      'final canary result should run after artifact upload so upload failures are visible'
+    );
+    assert.equal(resultStep?.id, 'result');
+    assert.equal(resultStep?.if, 'always()');
+    assert.match(String(resultStep?.run ?? ''), /failure_boundary_id=artifact-upload/);
+    assert.match(String(resultStep?.run ?? ''), /steps\.upload-artifacts\.outcome/);
   });
 });
