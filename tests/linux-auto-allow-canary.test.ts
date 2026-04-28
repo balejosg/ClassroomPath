@@ -2,23 +2,30 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { readProjectText } from './helpers/ops-contracts.ts';
+import {
+  LINUX_AUTO_ALLOW_PROBES,
+  buildLinuxAutoAllowProbeUrl,
+} from '../scripts/lib/linux-auto-allow-canary-evidence.mjs';
 
 describe('Linux AJAX auto-allow canary contracts', () => {
   test('declares the production Linux AJAX/subresource probe table and artifact path', () => {
-    const evidenceModule = readProjectText('scripts/lib/linux-auto-allow-canary-evidence.mjs');
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
 
-    for (const probeId of [
-      'ajax-fetch',
-      'image-subresource',
-      'script-subresource',
-      'stylesheet-subresource',
-      'font-subresource',
-    ]) {
-      assert.ok(evidenceModule.includes(`id: '${probeId}'`), `missing ${probeId}`);
-    }
+    assert.deepEqual(
+      LINUX_AUTO_ALLOW_PROBES.map((probe) => probe.id),
+      [
+        'ajax-fetch',
+        'image-subresource',
+        'script-subresource',
+        'stylesheet-subresource',
+        'font-subresource',
+      ]
+    );
+    assert.equal(
+      buildLinuxAutoAllowProbeUrl(LINUX_AUTO_ALLOW_PROBES[4], 18088),
+      'http://ajax-auto-allow-font.127.0.0.1.sslip.io:18088/font.woff2'
+    );
 
-    assert.ok(evidenceModule.includes('LINUX_AUTO_ALLOW_PROBES = Object.freeze'));
     assert.ok(canaryScript.includes('production-linux-ajax-auto-allow-canary.json'));
     assert.ok(canaryScript.includes('/cp/internal/client-canary/group/'));
     assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID'));
