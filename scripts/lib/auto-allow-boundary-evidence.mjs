@@ -117,7 +117,11 @@ export function hasProbeTrafficEvidence(summary, probes) {
 
 export function hasCandidateEvidence(summary, probes) {
   const completedCandidateEvents = summary?.completedCandidateEvents ?? {};
-  if (probes.every((probe) => completedCandidateEvents[probe.id] === true)) {
+  const probesExpectingPageCandidates = probes.filter(
+    (probe) => probe.expectsPageResourceCandidate !== false
+  );
+
+  if (probesExpectingPageCandidates.every((probe) => completedCandidateEvents[probe.id] === true)) {
     return true;
   }
 
@@ -127,7 +131,7 @@ export function hasCandidateEvidence(summary, probes) {
       .filter(Boolean)
   );
 
-  return probes.every((probe) => matchedProbeIds.has(probe.id));
+  return probesExpectingPageCandidates.every((probe) => matchedProbeIds.has(probe.id));
 }
 
 function extractDiagnosticContextFromComment(comment) {

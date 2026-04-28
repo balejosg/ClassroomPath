@@ -716,6 +716,10 @@ function buildPage(probes) {
     id: probe.id,
     kind: probe.kind,
     url: buildProbeUrl(probe),
+    stylesheetUrl:
+      probe.kind === 'stylesheet-font'
+        ? `http://${probe.stylesheetHost}:${PORT}${probe.stylesheetPath}`
+        : null,
   }));
 
   return `<!doctype html>
@@ -824,6 +828,10 @@ async function runProbeOnce(probe) {
     return await loadFont(probe.url, probe.id);
   }
 
+  if (probe.kind === 'stylesheet-font') {
+    return await loadStylesheetFont(probe.stylesheetUrl, probe.id);
+  }
+
   return { ok: false, error: 'unsupported probe kind: ' + probe.kind };
 }
 
@@ -876,6 +884,33 @@ function loadStylesheet(url) {
     link.onerror = () => resolve({ ok: false, error: 'stylesheet load failed' });
     link.href = url + '?attempt=' + Date.now();
     document.head.appendChild(link);
+  });
+}
+
+function loadStylesheetFont(url, probeId) {
+  return new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.onload = async () => {
+      setTimeout(async () => {
+        const hits = await readProbeHits(probeId).catch(() => 0);
+        resolve(
+          hits > 0
+            ? { ok: true, hits }
+            : { ok: false, hits, error: 'stylesheet font load did not reach canary server' }
+        );
+      }, 1000);
+    };
+    link.onerror = () => resolve({ ok: false, error: 'stylesheet font CSS load failed' });
+    link.href = url + '?attempt=' + Date.now();
+    document.head.appendChild(link);
+
+    const sample = document.createElement('span');
+    sample.textContent = 'stylesheet font probe';
+    sample.style.fontFamily = '"OpenPathAjaxAutoAllowStylesheetFont", sans-serif';
+    sample.style.position = 'absolute';
+    sample.style.left = '-9999px';
+    document.body.appendChild(sample);
   });
 }
 
@@ -1073,6 +1108,12 @@ async function main() {
     const matchedProbe = AUTO_ALLOW_PROBES.find(
       (probe) => host === probe.host && String(req.url ?? '').startsWith(probe.path)
     );
+    const matchedStylesheetFontProbe = AUTO_ALLOW_PROBES.find(
+      (probe) =>
+        probe.kind === 'stylesheet-font' &&
+        host === probe.stylesheetHost &&
+        String(req.url ?? '').startsWith(probe.stylesheetPath)
+    );
 
     if (host === ORIGIN_HOST) {
       originHits += 1;
@@ -1140,7 +1181,36 @@ async function main() {
       return;
     }
 
+    if (matchedStylesheetFontProbe) {
+      const fontUrl = buildProbeUrl(matchedStylesheetFontProbe);
+      res.writeHead(200, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'text/css; charset=utf-8',
+      });
+      res.end(
+        [
+          '@font-face {',
+          '  font-family: "OpenPathAjaxAutoAllowStylesheetFont";',
+          `  src: url("${fontUrl}") format("woff2");`,
+          '}',
+          'body { --openpath-ajax-auto-allow-stylesheet-font-probe: loaded; }',
+        ].join('\n')
+      );
+      return;
+    }
+
     if (matchedProbe?.id === 'font-subresource') {
+      probeHits[matchedProbe.id] += 1;
+      res.writeHead(200, {
+        'Access-Control-Allow-Origin': `http://${ORIGIN_HOST}:${PORT}`,
+        'Cache-Control': 'no-store',
+        'Content-Type': 'font/woff2',
+      });
+      res.end(Buffer.from('d09GMgABAAAAAA==', 'base64'));
+      return;
+    }
+
+    if (matchedProbe?.id === 'stylesheet-font-subresource') {
       probeHits[matchedProbe.id] += 1;
       res.writeHead(200, {
         'Access-Control-Allow-Origin': `http://${ORIGIN_HOST}:${PORT}`,

@@ -6,6 +6,7 @@ import {
   buildAutoAllowDiagnosticPhases,
   classifyAutoAllowFailureBoundary,
   enrichProbeEvidenceWithRemoteDiagnostics,
+  hasCandidateEvidence,
   hasRemoteRuleEvidence,
 } from '../scripts/lib/auto-allow-boundary-evidence.mjs';
 
@@ -141,6 +142,28 @@ describe('shared auto-allow boundary evidence model', () => {
     assert.equal(
       enriched[0]?.diagnosticContext,
       'correlation_id=corr-1; probe_id=font-subresource; request_type=font'
+    );
+  });
+
+  test('does not require DOM candidate events for webRequest-only probes', () => {
+    assert.equal(
+      hasCandidateEvidence(
+        {
+          completedCandidateEvents: {
+            'ajax-fetch': true,
+            'stylesheet-font-subresource': false,
+          },
+        },
+        [
+          { id: 'ajax-fetch', expectedWhitelistHost: 'ajax-auto-allow-target.127.0.0.1.sslip.io' },
+          {
+            id: 'stylesheet-font-subresource',
+            expectedWhitelistHost: 'ajax-auto-allow-stylesheet-font.127.0.0.1.sslip.io',
+            expectsPageResourceCandidate: false,
+          },
+        ]
+      ),
+      true
     );
   });
 });

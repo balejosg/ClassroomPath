@@ -58,6 +58,14 @@ const CANARY_SCRIPT_UPLOADS = [
     destination: `${WINDOWS_WORKSPACE}\\scripts\\windows-ajax-auto-allow-canary.mjs`,
   },
   {
+    source: 'scripts/lib/auto-allow-observation.mjs',
+    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\auto-allow-observation.mjs`,
+  },
+  {
+    source: 'scripts/lib/auto-allow-boundary-evidence.mjs',
+    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\auto-allow-boundary-evidence.mjs`,
+  },
+  {
     source: 'scripts/lib/windows-auto-allow-canary-evidence.mjs',
     destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\windows-auto-allow-canary-evidence.mjs`,
   },

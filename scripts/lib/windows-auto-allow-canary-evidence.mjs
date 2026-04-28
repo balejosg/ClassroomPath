@@ -16,6 +16,8 @@ export const WINDOWS_AUTO_ALLOW_ASSET_HOST = 'ajax-auto-allow-asset.127.0.0.1.ss
 export const WINDOWS_AUTO_ALLOW_SCRIPT_HOST = 'ajax-auto-allow-script.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_STYLESHEET_HOST = 'ajax-auto-allow-stylesheet.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_FONT_HOST = 'ajax-auto-allow-font.127.0.0.1.sslip.io';
+export const WINDOWS_AUTO_ALLOW_STYLESHEET_FONT_HOST =
+  'ajax-auto-allow-stylesheet-font.127.0.0.1.sslip.io';
 
 export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
   {
@@ -57,6 +59,17 @@ export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
     path: '/font.woff2',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_FONT_HOST,
     failureMessage: 'Auto-allow font target was not written to whitelist',
+  },
+  {
+    id: 'stylesheet-font-subresource',
+    kind: 'stylesheet-font',
+    host: WINDOWS_AUTO_ALLOW_STYLESHEET_FONT_HOST,
+    path: '/font-from-stylesheet.woff2',
+    stylesheetHost: WINDOWS_AUTO_ALLOW_STYLESHEET_HOST,
+    stylesheetPath: '/font-chain.css',
+    expectedWhitelistHost: WINDOWS_AUTO_ALLOW_STYLESHEET_FONT_HOST,
+    expectsPageResourceCandidate: false,
+    failureMessage: 'Auto-allow stylesheet-discovered font target was not written to whitelist',
   },
 ]);
 
@@ -309,6 +322,7 @@ export function buildWindowsAutoAllowCanarySummary({
   const scriptEvidence = findProbeEvidence(probeEvidence, 'script-subresource');
   const stylesheetEvidence = findProbeEvidence(probeEvidence, 'stylesheet-subresource');
   const fontEvidence = findProbeEvidence(probeEvidence, 'font-subresource');
+  const stylesheetFontEvidence = findProbeEvidence(probeEvidence, 'stylesheet-font-subresource');
 
   const summary = {
     ...result,
@@ -318,6 +332,7 @@ export function buildWindowsAutoAllowCanarySummary({
     scriptHost: WINDOWS_AUTO_ALLOW_SCRIPT_HOST,
     stylesheetHost: WINDOWS_AUTO_ALLOW_STYLESHEET_HOST,
     fontHost: WINDOWS_AUTO_ALLOW_FONT_HOST,
+    stylesheetFontHost: WINDOWS_AUTO_ALLOW_STYLESHEET_FONT_HOST,
     targetUrl: ajaxEvidence?.url ?? result?.targetUrl,
     assetUrl: imageEvidence?.url ?? result?.assetUrl,
     fontUrl: fontEvidence?.url ?? result?.fontUrl,
@@ -327,6 +342,7 @@ export function buildWindowsAutoAllowCanarySummary({
     scriptHits: scriptEvidence?.hits ?? 0,
     stylesheetHits: stylesheetEvidence?.hits ?? 0,
     fontHits: fontEvidence?.hits ?? 0,
+    stylesheetFontHits: stylesheetFontEvidence?.hits ?? 0,
     attempts: result?.attempts ?? attempts,
     completedProbes: result?.completedProbes ?? completedProbes,
     completedCandidateEvents: result?.completedCandidateEvents ?? completedCandidateEvents,

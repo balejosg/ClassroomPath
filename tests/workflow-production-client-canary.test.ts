@@ -122,6 +122,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
         'script-subresource',
         'stylesheet-subresource',
         'font-subresource',
+        'stylesheet-font-subresource',
       ]
     );
     assert.ok(
@@ -1117,8 +1118,13 @@ describe('Production client update canary workflow contracts', () => {
         ajaxCanaryEvidenceModule.includes("id: 'image-subresource'") &&
         ajaxCanaryEvidenceModule.includes("id: 'script-subresource'") &&
         ajaxCanaryEvidenceModule.includes("id: 'stylesheet-subresource'") &&
-        ajaxCanaryEvidenceModule.includes("id: 'font-subresource'"),
+        ajaxCanaryEvidenceModule.includes("id: 'font-subresource'") &&
+        ajaxCanaryEvidenceModule.includes("id: 'stylesheet-font-subresource'"),
       'Windows AJAX canary should identify each probe in evidence artifacts'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('loadStylesheetFont'),
+      'Windows AJAX canary should cover fonts discovered through a cross-origin stylesheet'
     );
     assert.ok(
       ajaxCanaryEvidenceModule.includes('Auto-allow font target was not written to whitelist'),
