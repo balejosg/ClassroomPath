@@ -21,6 +21,10 @@ import {
   redactSensitiveWindowsCanaryValue,
   redactWindowsCanaryObject,
 } from './lib/windows-auto-allow-canary-evidence.mjs';
+import {
+  evidenceContainsAllExpectedHosts,
+  waitForEvidenceObservation,
+} from './lib/auto-allow-observation.mjs';
 const PORT = Number.parseInt(process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18088', 10);
 const TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS ?? '90000',
@@ -155,55 +159,21 @@ async function readFileEvidence(path, expectedHosts = []) {
   }
 }
 
-function evidenceContainsAllExpectedHosts(evidence, expectedHosts = []) {
-  if (!evidence?.containsExpectedHosts) {
-    return false;
-  }
-
-  return expectedHosts.every((host) => evidence.containsExpectedHosts[host] === true);
-}
-
 async function waitForLocalWhitelistObservation(expectedHosts = [], timeoutMs = 0) {
-  const startedAt = Date.now();
-  let globalWhitelist = await readFileEvidence(WHITELIST_PATH, expectedHosts);
-  let nativeWhitelist = await readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts);
-  const containsAllExpectedHosts = () =>
-    evidenceContainsAllExpectedHosts(globalWhitelist, expectedHosts) ||
-    evidenceContainsAllExpectedHosts(nativeWhitelist, expectedHosts);
-
-  if (timeoutMs <= 0) {
-    return {
-      observed: containsAllExpectedHosts(),
-      timeoutMs,
-      elapsedMs: Date.now() - startedAt,
-      global: globalWhitelist,
-      native: nativeWhitelist,
-    };
-  }
-
-  const deadline = startedAt + timeoutMs;
-  while (Date.now() < deadline) {
-    if (containsAllExpectedHosts()) {
-      return {
-        observed: true,
-        timeoutMs,
-        elapsedMs: Date.now() - startedAt,
-        global: globalWhitelist,
-        native: nativeWhitelist,
-      };
-    }
-
-    await sleep(2000);
-    globalWhitelist = await readFileEvidence(WHITELIST_PATH, expectedHosts);
-    nativeWhitelist = await readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts);
-  }
-
-  return {
-    observed: containsAllExpectedHosts(),
+  const result = await waitForEvidenceObservation({
+    expectedHosts,
     timeoutMs,
-    elapsedMs: Date.now() - startedAt,
-    global: globalWhitelist,
-    native: nativeWhitelist,
+    collectors: {
+      global: () => readFileEvidence(WHITELIST_PATH, expectedHosts),
+      native: () => readFileEvidence(NATIVE_WHITELIST_PATH, expectedHosts),
+    },
+  });
+  return {
+    observed: result.observed,
+    timeoutMs: result.timeoutMs,
+    elapsedMs: result.elapsedMs,
+    global: result.evidence.global,
+    native: result.evidence.native,
   };
 }
 
@@ -333,39 +303,19 @@ function canaryGroupDiagnosticsContainsAllExpectedHosts(diagnostics, expectedHos
 }
 
 async function waitForRemoteRuleObservation(expectedHosts = [], timeoutMs = 0) {
-  const startedAt = Date.now();
-  let diagnostics = await collectCanaryGroupDiagnostics(expectedHosts);
-  const observed = () => canaryGroupDiagnosticsContainsAllExpectedHosts(diagnostics, expectedHosts);
-
-  if (timeoutMs <= 0) {
-    return {
-      observed: observed(),
-      timeoutMs,
-      elapsedMs: Date.now() - startedAt,
-      diagnostics,
-    };
-  }
-
-  const deadline = startedAt + timeoutMs;
-  while (Date.now() < deadline) {
-    if (observed()) {
-      return {
-        observed: true,
-        timeoutMs,
-        elapsedMs: Date.now() - startedAt,
-        diagnostics,
-      };
-    }
-
-    await sleep(2000);
-    diagnostics = await collectCanaryGroupDiagnostics(expectedHosts);
-  }
-
-  return {
-    observed: observed(),
+  const result = await waitForEvidenceObservation({
+    expectedHosts,
     timeoutMs,
-    elapsedMs: Date.now() - startedAt,
-    diagnostics,
+    collectors: {
+      diagnostics: () => collectCanaryGroupDiagnostics(expectedHosts),
+    },
+    matches: canaryGroupDiagnosticsContainsAllExpectedHosts,
+  });
+  return {
+    observed: result.observed,
+    timeoutMs: result.timeoutMs,
+    elapsedMs: result.elapsedMs,
+    diagnostics: result.evidence.diagnostics,
   };
 }
 
