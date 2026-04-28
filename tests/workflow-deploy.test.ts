@@ -524,6 +524,26 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       String(
+        findWorkflowStepByName(
+          linuxProductionBootstrapCanaryJob,
+          'Download and run live linux/install-openpath.sh enrollment script'
+        )?.run ?? ''
+      ),
+      /\$PRODUCTION_BASE_URL\/api\/enroll\/\$CLASSROOM_ID"/,
+      'Linux bootstrap canary must download the canonical Linux enrollment script URL'
+    );
+    assert.doesNotMatch(
+      String(
+        findWorkflowStepByName(
+          linuxProductionBootstrapCanaryJob,
+          'Download and run live linux/install-openpath.sh enrollment script'
+        )?.run ?? ''
+      ),
+      /\/linux\/install-openpath\.sh/,
+      'Linux bootstrap canary must not use a non-existent nested linux/install-openpath.sh route'
+    );
+    assert.match(
+      String(
         findWorkflowStepByName(linuxProductionBootstrapCanaryJob, 'Resolve target host')?.run ?? ''
       ),
       /github_actions_remote_install_ssh_key/,

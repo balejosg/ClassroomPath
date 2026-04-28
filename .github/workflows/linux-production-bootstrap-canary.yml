@@ -195,7 +195,7 @@ jobs:
           set -euo pipefail
           workspace="$RUNNER_TEMP/linux-production-bootstrap-canary"
           mkdir -p "$workspace"
-          linux_script_url="$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID/linux/install-openpath.sh"
+          linux_script_url="$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID"
           curl -fsSL -H "Authorization: Bearer $ENROLLMENT_TOKEN" "$linux_script_url" -o "$workspace/install-openpath.sh"
           chmod +x "$workspace/install-openpath.sh"
           sudo bash "$workspace/install-openpath.sh"

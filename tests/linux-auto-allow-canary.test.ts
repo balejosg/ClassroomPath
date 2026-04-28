@@ -48,6 +48,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       !script.includes('/api/agent/linux/latest.json'),
       'Linux provisioning should not preflight the agent manifest with an enrollment token before installation'
     );
+    assert.ok(
+      script.includes('linuxScriptUrl: `${apiUrl}/api/enroll/${classroom.id}`'),
+      'Linux provisioning should publish the canonical Linux enrollment URL'
+    );
     assert.ok(script.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
     assert.ok(script.includes('ajax-auto-allow-font.127.0.0.1.sslip.io'));
   });

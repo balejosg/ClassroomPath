@@ -495,7 +495,7 @@ async function main() {
     fontHost: LINUX_AJAX_AUTO_ALLOW_FONT_HOST,
     classroomId: classroom.id,
     enrollmentToken: ticketPayload.enrollmentToken,
-    linuxScriptUrl: `${apiUrl}/api/enroll/${classroom.id}/linux/install-openpath.sh`,
+    linuxScriptUrl: `${apiUrl}/api/enroll/${classroom.id}`,
     publicFirefoxXpiUrl: `${apiUrl}/api/extensions/firefox/openpath.xpi`,
     extensionId: 'monitor-bloqueos@openpath',
     extensionVersion: '',
