@@ -159,6 +159,16 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       /failure_boundary_id=linux-install-openpath[\s\S]*exit "\$install_status"/,
       'installer failures should be recorded as an installation boundary, not as missing artifacts'
     );
+    assert.doesNotMatch(
+      ajaxStep,
+      /node <<'NODE'/,
+      'AJAX step must avoid heredocs in nested failure branches because YAML indentation breaks Bash delimiters'
+    );
+    assert.match(
+      ajaxStep,
+      /FAILURE_MESSAGE='Linux enrollment script failed before the AJAX auto-allow canary could run\.' node -e/,
+      'installer failure artifact should be written without an indentation-sensitive heredoc'
+    );
     assert.match(
       ajaxStep,
       /sudo systemctl stop openpath-sse-listener\.service openpath-update\.timer openpath-update\.service dnsmasq[\s\S]*sudo systemctl reset-failed dnsmasq[\s\S]*sudo apt-get purge -y openpath-dnsmasq[\s\S]*\/etc\/systemd\/system\/dnsmasq\.service\.d\/openpath-override\.conf[\s\S]*\/etc\/dnsmasq\.d\/openpath\.conf[\s\S]*raw\.githubusercontent\.com/,

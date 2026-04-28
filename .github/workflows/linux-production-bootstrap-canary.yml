@@ -303,18 +303,7 @@ jobs:
             echo "canary_result=failure" >> "$GITHUB_OUTPUT"
             echo "failure_boundary_id=linux-install-openpath" >> "$GITHUB_OUTPUT"
             echo "failure_boundary_message=Linux enrollment script failed before the AJAX auto-allow canary could run." >> "$GITHUB_OUTPUT"
-            node <<'NODE'
-            const fs = require('node:fs');
-            fs.writeFileSync('production-linux-ajax-auto-allow-canary.json', JSON.stringify({
-              ok: false,
-              error: 'Linux enrollment script failed before the AJAX auto-allow canary could run.',
-              failureBoundary: {
-                id: 'linux-install-openpath',
-                message: 'Linux enrollment script failed before the AJAX auto-allow canary could run.',
-              },
-              diagnosticPhases: ['linux-install-openpath'],
-            }, null, 2));
-            NODE
+            FAILURE_MESSAGE='Linux enrollment script failed before the AJAX auto-allow canary could run.' node -e 'const fs = require("node:fs"); const message = process.env.FAILURE_MESSAGE; fs.writeFileSync("production-linux-ajax-auto-allow-canary.json", JSON.stringify({ ok: false, error: message, failureBoundary: { id: "linux-install-openpath", message }, diagnosticPhases: ["linux-install-openpath"] }, null, 2));'
             exit "$install_status"
           fi
 
