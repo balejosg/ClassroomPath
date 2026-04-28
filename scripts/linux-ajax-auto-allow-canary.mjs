@@ -11,6 +11,7 @@ import {
   LINUX_AUTO_ALLOW_ORIGIN_HOST as ORIGIN_HOST,
   LINUX_AUTO_ALLOW_PROBES as AUTO_ALLOW_PROBES,
   buildLinuxAutoAllowProbeUrl,
+  withLinuxAutoAllowDiagnostics,
 } from './lib/linux-auto-allow-canary-evidence.mjs';
 
 const PORT = Number.parseInt(process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18089', 10);
@@ -366,7 +367,7 @@ async function main() {
         postAttempt.whitelist.local.containsExpectedHosts?.[probe.expectedWhitelistHost] === true,
     }));
     const success = hasAllCompleted(state.completedProbes) && state.pageObserverInstalled;
-    const summary = {
+    const summary = withLinuxAutoAllowDiagnostics({
       success,
       error: success ? null : 'Linux AJAX auto-allow probes did not complete before timeout',
       originHost: ORIGIN_HOST,
@@ -381,11 +382,13 @@ async function main() {
       firefoxExtensionWarmup: { ready: true, expectedExtensionId: EXPECTED_EXTENSION_ID },
       diagnostics: { preflight, postAttempt },
       artifactWritten: true,
-    };
+    });
 
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
     console.error(`LINUX_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`);
     writeGithubOutput('linux_ajax_auto_allow_result', success ? 'success' : 'failure');
+    writeGithubOutput('failure_boundary_id', summary.failureBoundary?.id ?? 'unknown');
+    writeGithubOutput('failure_boundary_message', summary.failureBoundary?.message ?? '');
     if (!success) throw new LinuxAjaxAutoAllowFunctionalFailure(summary.error);
   } finally {
     await firefoxSession?.driver?.quit().catch(() => {});

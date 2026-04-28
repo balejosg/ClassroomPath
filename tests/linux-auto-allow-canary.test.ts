@@ -71,6 +71,18 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(summarizer.includes("writeGithubOutput('failure_boundary_message'"));
   });
 
+  test('Linux canary emits failure boundary outputs before exiting non-zero', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.ok(canaryScript.includes('withLinuxAutoAllowDiagnostics'));
+    assert.ok(canaryScript.includes("writeGithubOutput('failure_boundary_id'"));
+    assert.ok(canaryScript.includes("writeGithubOutput('failure_boundary_message'"));
+    assert.match(
+      canaryScript,
+      /const summary = withLinuxAutoAllowDiagnostics\(\{[\s\S]*writeGithubOutput\('linux_ajax_auto_allow_result'/
+    );
+  });
+
   test('Linux canary skips artifact upload for diagnostic or functional-failure runs', () => {
     const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
 
@@ -81,6 +93,25 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.match(
       workflow,
       /if \[ "\$UPLOAD_OUTCOME" = "failure" \]; then[\s\S]*failure_boundary_id=artifact-upload/
+    );
+  });
+
+  test('Linux canary workflow records boundary even when summary rendering stalls', () => {
+    const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+
+    assert.match(
+      workflow,
+      /name: Summarize Linux AJAX auto-allow evidence[\s\S]*timeout-minutes: 2[\s\S]*continue-on-error: true/
+    );
+    assert.ok(
+      workflow.includes(
+        "FUNCTIONAL_BOUNDARY_ID: ${{ steps.ajax.outputs.failure_boundary_id || steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}"
+      )
+    );
+    assert.ok(
+      workflow.includes(
+        "FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax.outputs.failure_boundary_message || steps.ajax-summary.outputs.failure_boundary_message || 'Linux AJAX evidence artifact was not written.' }}"
+      )
     );
   });
 

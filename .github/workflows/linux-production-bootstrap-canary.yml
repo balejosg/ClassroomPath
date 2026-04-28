@@ -215,6 +215,8 @@ jobs:
       - name: Summarize Linux AJAX auto-allow evidence
         id: ajax-summary
         if: always()
+        timeout-minutes: 2
+        continue-on-error: true
         shell: bash
         run: |
           node scripts/summarize-linux-ajax-auto-allow-evidence.mjs \
@@ -242,8 +244,8 @@ jobs:
         shell: bash
         env:
           FUNCTIONAL_RESULT: ${{ steps.ajax-summary.outputs.canary_result || steps.ajax.outcome }}
-          FUNCTIONAL_BOUNDARY_ID: ${{ steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}
-          FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax-summary.outputs.failure_boundary_message || 'Linux AJAX evidence artifact was not written.' }}
+          FUNCTIONAL_BOUNDARY_ID: ${{ steps.ajax.outputs.failure_boundary_id || steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}
+          FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax.outputs.failure_boundary_message || steps.ajax-summary.outputs.failure_boundary_message || 'Linux AJAX evidence artifact was not written.' }}
           UPLOAD_OUTCOME: ${{ steps.upload-artifacts.outcome }}
         run: |
           set -euo pipefail
