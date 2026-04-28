@@ -66,7 +66,10 @@ jobs:
         run: |
           set -euo pipefail
           target_environment="${{ inputs.target_environment || github.event.inputs.target_environment || 'staging' }}"
-          base_url="${{ inputs.base_url || github.event.inputs.base_url || 'https://classroompath-staging.duckdns.org' }}"
+          base_url="${{ inputs.base_url || github.event.inputs.base_url }}"
+          if [ -z "$base_url" ]; then
+            base_url="$(node scripts/deploy-targets.mjs get "$target_environment" publicUrl)"
+          fi
           diagnostic_mode="${{ inputs.diagnostic_mode || github.event.inputs.diagnostic_mode || 'false' }}"
           echo "target_environment=$target_environment" >> "$GITHUB_OUTPUT"
           echo "base_url=${base_url%/}" >> "$GITHUB_OUTPUT"
@@ -201,7 +204,7 @@ jobs:
         id: ajax
         shell: bash
         env:
-          LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: ${{ inputs.base_url }}
+          LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: ${{ steps.inputs.outputs.base_url }}
           LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: ${{ steps.provision.outputs.group_id }}
           LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: ${{ env.PRODUCTION_LINUX_BOOTSTRAP_CANARY_ADMIN_TOKEN || secrets.CP_CLIENT_CANARY_ADMIN_TOKEN }}
           EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}

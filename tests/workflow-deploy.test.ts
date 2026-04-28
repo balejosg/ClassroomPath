@@ -16,6 +16,7 @@ type WorkflowJob = {
   steps?: Array<{
     name?: string;
     if?: string;
+    env?: Record<string, unknown>;
     run?: string;
     with?: Record<string, unknown>;
   }>;
@@ -502,6 +503,24 @@ describe('Deploy workflow contracts', () => {
     const linuxProductionBootstrapCanaryJob = findWorkflowJob(
       linuxProductionBootstrapCanaryWorkflow,
       'linux-production-bootstrap-canary'
+    );
+    assert.match(
+      String(
+        findWorkflowStepByName(linuxProductionBootstrapCanaryJob, 'Resolve canary inputs')?.run ??
+          ''
+      ),
+      /node scripts\/deploy-targets\.mjs get "\$target_environment" publicUrl/,
+      'Linux bootstrap canary must derive the public URL from the target environment when the caller passes an empty base_url'
+    );
+    assert.match(
+      String(
+        findWorkflowStepByName(
+          linuxProductionBootstrapCanaryJob,
+          'Verify Linux AJAX auto-allow canary'
+        )?.env?.LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL ?? ''
+      ),
+      /steps\.inputs\.outputs\.base_url/,
+      'Linux AJAX verification must use the resolved canary base_url, not the raw workflow input'
     );
     assert.match(
       String(
