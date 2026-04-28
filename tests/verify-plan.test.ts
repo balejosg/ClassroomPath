@@ -31,10 +31,16 @@ describe('verify plan', () => {
   test('detects release automation scope for production canary and evidence helpers', () => {
     for (const stagedFile of [
       '.github/workflows/windows-production-bootstrap-canary.yml',
+      '.github/workflows/linux-production-bootstrap-canary.yml',
       'scripts/create-production-windows-bootstrap-canary.mjs',
+      'scripts/create-production-linux-bootstrap-canary.mjs',
       'scripts/windows-ajax-auto-allow-canary.mjs',
+      'scripts/linux-ajax-auto-allow-canary.mjs',
+      'scripts/summarize-linux-ajax-auto-allow-evidence.mjs',
       'scripts/lib/release-evidence.mjs',
+      'scripts/lib/linux-auto-allow-canary-evidence.mjs',
       'tests/release-evidence.test.ts',
+      'tests/linux-auto-allow-canary.test.ts',
       'tests/workflow-production-client-canary.test.ts',
     ]) {
       assert.equal(detectVerificationScope([stagedFile], 'commit'), 'release-automation');

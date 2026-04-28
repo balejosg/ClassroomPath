@@ -28,6 +28,13 @@ const SUITES = {
     includeEnvironment: true,
     baseUrlField: 'base_url',
   },
+  'linux-bootstrap-ajax': {
+    repo: 'balejosg/ClassroomPath',
+    workflow: 'linux-production-bootstrap-canary.yml',
+    fields: { diagnostic_mode: 'true' },
+    includeEnvironment: true,
+    baseUrlField: 'base_url',
+  },
   'production-client-update': {
     repo: 'balejosg/ClassroomPath',
     workflow: 'production-client-update-canary.yml',

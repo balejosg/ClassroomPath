@@ -1,0 +1,193 @@
+name: Linux Production Bootstrap Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Target environment.
+        required: true
+        default: staging
+      base_url:
+        description: Public base URL.
+        required: false
+        default: https://classroompath-staging.duckdns.org
+      diagnostic_mode:
+        description: Diagnostic-only run.
+        required: false
+        default: 'false'
+  workflow_call:
+    inputs:
+      target_environment:
+        required: true
+        type: string
+      base_url:
+        required: true
+        type: string
+      diagnostic_mode:
+        required: false
+        type: string
+        default: 'false'
+    outputs:
+      canary_result:
+        value: ${{ jobs.linux-production-bootstrap-canary.outputs.canary_result }}
+      failure_boundary_id:
+        value: ${{ jobs.linux-production-bootstrap-canary.outputs.failure_boundary_id }}
+      failure_boundary_message:
+        value: ${{ jobs.linux-production-bootstrap-canary.outputs.failure_boundary_message }}
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: linux-production-bootstrap-canary
+  cancel-in-progress: false
+
+jobs:
+  linux-production-bootstrap-canary:
+    name: Linux Production Bootstrap Canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      canary_result: ${{ steps.result.outputs.canary_result }}
+      failure_boundary_id: ${{ steps.result.outputs.failure_boundary_id }}
+      failure_boundary_message: ${{ steps.result.outputs.failure_boundary_message }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+
+      - name: Resolve canary inputs
+        id: inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_environment="${{ inputs.target_environment || github.event.inputs.target_environment || 'staging' }}"
+          base_url="${{ inputs.base_url || github.event.inputs.base_url || 'https://classroompath-staging.duckdns.org' }}"
+          diagnostic_mode="${{ inputs.diagnostic_mode || github.event.inputs.diagnostic_mode || 'false' }}"
+          echo "target_environment=$target_environment" >> "$GITHUB_OUTPUT"
+          echo "base_url=${base_url%/}" >> "$GITHUB_OUTPUT"
+          echo "diagnostic_mode=$diagnostic_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Install Linux Firefox canary dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          node -e "await import('selenium-webdriver'); await import('selenium-webdriver/firefox.js')"
+
+      - name: Read target client canary admin token
+        if: steps.inputs.outputs.target_environment == 'production'
+        shell: bash
+        env:
+          CP_CLIENT_CANARY_ADMIN_TOKEN: ${{ secrets.CP_CLIENT_CANARY_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CP_CLIENT_CANARY_ADMIN_TOKEN:-}" ]; then
+            echo "::error::CP_CLIENT_CANARY_ADMIN_TOKEN is missing"
+            exit 1
+          fi
+          echo "::add-mask::$CP_CLIENT_CANARY_ADMIN_TOKEN"
+          echo "PRODUCTION_LINUX_BOOTSTRAP_CANARY_ADMIN_TOKEN=$CP_CLIENT_CANARY_ADMIN_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Provision production enrollment canary
+        id: provision
+        shell: bash
+        env:
+          PRODUCTION_LINUX_BOOTSTRAP_CANARY_URL: ${{ steps.inputs.outputs.base_url }}
+          PRODUCTION_LINUX_BOOTSTRAP_CANARY_BILLING_MODE: manual_only
+          PRODUCTION_LINUX_BOOTSTRAP_CANARY_ADMIN_TOKEN: ${{ env.PRODUCTION_LINUX_BOOTSTRAP_CANARY_ADMIN_TOKEN || secrets.CP_CLIENT_CANARY_ADMIN_TOKEN }}
+        run: node scripts/create-production-linux-bootstrap-canary.mjs
+
+      - name: Reset Linux client state
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo systemctl stop openpath-sse-listener.service openpath-update.timer openpath-update.service dnsmasq || true
+          sudo rm -rf /etc/openpath /var/lib/openpath /var/log/openpath.log
+
+      - name: Download and run live linux/install-openpath.sh enrollment script
+        shell: bash
+        env:
+          CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
+          ENROLLMENT_TOKEN: ${{ steps.provision.outputs.enrollment_token }}
+          PRODUCTION_BASE_URL: ${{ steps.inputs.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          workspace="$RUNNER_TEMP/linux-production-bootstrap-canary"
+          mkdir -p "$workspace"
+          linux_script_url="$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID/linux/install-openpath.sh"
+          curl -fsSL -H "Authorization: Bearer $ENROLLMENT_TOKEN" "$linux_script_url" -o "$workspace/install-openpath.sh"
+          chmod +x "$workspace/install-openpath.sh"
+          sudo bash "$workspace/install-openpath.sh"
+
+      - name: Verify Linux AJAX auto-allow canary
+        id: ajax
+        shell: bash
+        env:
+          LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: ${{ inputs.base_url }}
+          LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: ${{ steps.provision.outputs.group_id }}
+          LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: ${{ env.PRODUCTION_LINUX_BOOTSTRAP_CANARY_ADMIN_TOKEN || secrets.CP_CLIENT_CANARY_ADMIN_TOKEN }}
+          EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
+        run: |
+          set -euo pipefail
+          node scripts/linux-ajax-auto-allow-canary.mjs
+
+      - name: Summarize Linux AJAX auto-allow evidence
+        id: ajax-summary
+        if: always()
+        shell: bash
+        run: |
+          node scripts/summarize-linux-ajax-auto-allow-evidence.mjs \
+            --artifact production-linux-ajax-auto-allow-canary.json \
+            --summary linux-ajax-auto-allow-canary-summary.md
+
+      - name: Upload production bootstrap canary artifacts
+        id: upload-artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          name: linux-production-bootstrap-canary
+          if-no-files-found: error
+          path: |
+            production-linux-bootstrap-canary.json
+            production-linux-ajax-auto-allow-canary.json
+            linux-ajax-auto-allow-canary-summary.md
+          retention-days: 14
+
+      - name: Record canary result
+        id: result
+        if: always()
+        shell: bash
+        env:
+          FUNCTIONAL_RESULT: ${{ steps.ajax-summary.outputs.canary_result || steps.ajax.outcome }}
+          FUNCTIONAL_BOUNDARY_ID: ${{ steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}
+          FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax-summary.outputs.failure_boundary_message || 'Linux AJAX evidence artifact was not written.' }}
+          UPLOAD_OUTCOME: ${{ steps.upload-artifacts.outcome }}
+        run: |
+          set -euo pipefail
+          canary_result="$FUNCTIONAL_RESULT"
+          failure_boundary_id="$FUNCTIONAL_BOUNDARY_ID"
+          failure_boundary_message="$FUNCTIONAL_BOUNDARY_MESSAGE"
+
+          if [ "$UPLOAD_OUTCOME" != "success" ]; then
+            canary_result="failure"
+            failure_boundary_id=artifact-upload
+            failure_boundary_message='Functional canary evidence was produced but GitHub artifact upload failed.'
+          elif [ "$canary_result" = "success" ]; then
+            failure_boundary_id=none
+            failure_boundary_message='Linux AJAX auto-allow canary completed successfully.'
+          fi
+
+          echo "canary_result=$canary_result" >> "$GITHUB_OUTPUT"
+          echo "failure_boundary_id=$failure_boundary_id" >> "$GITHUB_OUTPUT"
+          echo "failure_boundary_message=$failure_boundary_message" >> "$GITHUB_OUTPUT"
+
+          if [ "$canary_result" != "success" ]; then
+            echo "::error::$failure_boundary_message"
+            exit 1
+          fi

@@ -97,6 +97,23 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stdout, /gh run download/);
   });
 
+  test('dispatches the Linux bootstrap AJAX diagnostic against staging', () => {
+    const result = runDiagnostic([
+      '--suite',
+      'linux-bootstrap-ajax',
+      '--wait',
+      '--download-artifacts',
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /gh workflow run linux-production-bootstrap-canary\.yml/);
+    assert.match(result.stdout, /--repo balejosg\/ClassroomPath/);
+    assert.match(result.stdout, /-f target_environment=staging/);
+    assert.match(result.stdout, /-f diagnostic_mode=true/);
+    assert.match(result.stdout, /gh run watch/);
+    assert.match(result.stdout, /gh run download/);
+  });
+
   test('refuses production diagnostics without explicit confirmation', () => {
     const result = runDiagnostic([
       '--suite',

@@ -72,6 +72,10 @@ function deriveProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResu
   return valueOrNull(canaryResult) ?? 'pending-post-release';
 }
 
+function deriveLinuxProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResult }) {
+  return deriveProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResult });
+}
+
 function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
   if (smokeResult === 'success') {
     return 'released';
@@ -127,6 +131,11 @@ export function buildReleaseEvidence(env = process.env) {
     canaryResult: env.WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT,
     jobResult: env.WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT,
   });
+  const linuxProductionBootstrapCanary = deriveLinuxProductionBootstrapCanaryResult({
+    highRisk: windowsFirefoxHighRisk,
+    canaryResult: env.LINUX_PRODUCTION_BOOTSTRAP_CANARY_RESULT,
+    jobResult: env.LINUX_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT,
+  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -179,6 +188,7 @@ export function buildReleaseEvidence(env = process.env) {
         canaryResult: env.WINDOWS_FIREFOX_CANARY_RESULT,
       }),
       windowsProductionBootstrapCanary,
+      linuxProductionBootstrapCanary,
       productionClientUpdateCanary: derivePostReleaseCanaryResult({
         highRisk: windowsFirefoxHighRisk,
         canaryResult: env.PRODUCTION_CLIENT_UPDATE_CANARY_RESULT,
@@ -191,6 +201,10 @@ export function buildReleaseEvidence(env = process.env) {
       windowsProductionBootstrapFailureBoundary: {
         id: valueOrNull(env.WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID),
         message: valueOrNull(env.WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE),
+      },
+      linuxProductionBootstrapFailureBoundary: {
+        id: valueOrNull(env.LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID),
+        message: valueOrNull(env.LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE),
       },
     },
     stagingVerification: {
@@ -222,6 +236,8 @@ export function buildReleaseEvidence(env = process.env) {
         windowsProductionBootstrapCanary === 'success'
           ? 'windows-production-bootstrap-canary'
           : null,
+      linuxProductionBootstrapCanary:
+        linuxProductionBootstrapCanary === 'success' ? 'linux-production-bootstrap-canary' : null,
       releaseEvidence: valueOrNull(env.TAG_NAME)
         ? `release-evidence-${env.TAG_NAME}`
         : 'release-evidence',
@@ -248,6 +264,7 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     `| Verify staging release state | ${evidence.jobs.verifyStagingReleaseState ?? 'n/a'} |`,
     `| Windows/Firefox canary (advisory) | ${evidence.jobs.windowsFirefoxCanary ?? 'n/a'} |`,
     `| Windows production bootstrap canary | ${evidence.jobs.windowsProductionBootstrapCanary ?? 'n/a'} |`,
+    `| Linux production bootstrap canary | ${evidence.jobs.linuxProductionBootstrapCanary ?? 'n/a'} |`,
     `| Production client update canary (post-release) | ${evidence.jobs.productionClientUpdateCanary ?? 'n/a'} |`,
     `| Deploy production | ${evidence.jobs.deployProduction ?? 'n/a'} |`,
     `| Production smoke | ${evidence.jobs.smokeTestProduction ?? 'n/a'} |`,
@@ -257,6 +274,8 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     '',
     `- Windows bootstrap failure boundary: \`${evidence.diagnostics.windowsProductionBootstrapFailureBoundary.id ?? 'n/a'}\``,
     `- Boundary message: ${evidence.diagnostics.windowsProductionBootstrapFailureBoundary.message ?? 'n/a'}`,
+    `- Linux bootstrap failure boundary: \`${evidence.diagnostics.linuxProductionBootstrapFailureBoundary.id ?? 'n/a'}\``,
+    `- Linux boundary message: ${evidence.diagnostics.linuxProductionBootstrapFailureBoundary.message ?? 'n/a'}`,
     '',
     '### Staging Verification Evidence',
     '',
@@ -287,6 +306,7 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     `- Staging release state + verification: \`${evidence.artifacts.stagingReleaseState ?? 'n/a'}\``,
     `- Production smoke results: \`${evidence.artifacts.productionSmokeResults}\``,
     `- Windows production bootstrap canary: \`${evidence.artifacts.windowsProductionBootstrapCanary ?? 'n/a'}\``,
+    `- Linux production bootstrap canary: \`${evidence.artifacts.linuxProductionBootstrapCanary ?? 'n/a'}\``,
     `- Release evidence bundle: \`${evidence.artifacts.releaseEvidence ?? 'n/a'}\``,
     '',
     '### Trust Model',

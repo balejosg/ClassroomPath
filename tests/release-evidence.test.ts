@@ -298,6 +298,25 @@ describe('release evidence rendering', () => {
     );
   });
 
+  test('includes Linux production bootstrap canary artifact and failure boundary evidence', () => {
+    const { json, markdown } = generateEvidence({
+      STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
+      LINUX_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'failure',
+      LINUX_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT: 'failure',
+      LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'page-resource-candidates',
+      LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE:
+        'The Linux page did not emit resource-candidate events for every probe.',
+    });
+
+    assert.equal(json.jobs.linuxProductionBootstrapCanary, 'failure');
+    assert.deepEqual(json.diagnostics.linuxProductionBootstrapFailureBoundary, {
+      id: 'page-resource-candidates',
+      message: 'The Linux page did not emit resource-candidate events for every probe.',
+    });
+    assert.match(markdown, /\| Linux production bootstrap canary \| failure \|/);
+    assert.match(markdown, /Linux bootstrap failure boundary: `page-resource-candidates`/);
+  });
+
   test('does not trust a bootstrap canary success output when the reusable job failed later', () => {
     const { json, markdown } = generateEvidence({
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',

@@ -644,6 +644,16 @@ jobs:
       base_url: ${{ needs.resolve-release-images.outputs.production_public_url }}
     secrets: inherit
 
+  linux-production-bootstrap-canary:
+    name: Linux Production Bootstrap Canary
+    needs: [verify-staging-release-state, deploy-production]
+    if: needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk == 'true' && needs.deploy-production.result == 'success'
+    uses: ./.github/workflows/linux-production-bootstrap-canary.yml
+    with:
+      target_environment: production
+      base_url: ${{ needs.resolve-release-images.outputs.production_public_url }}
+    secrets: inherit
+
   release-evidence:
     name: Release Evidence
     runs-on: ubuntu-latest
@@ -656,6 +666,7 @@ jobs:
         deploy-production,
         smoke-test-production,
         windows-production-bootstrap-canary,
+        linux-production-bootstrap-canary,
         rollback-production,
       ]
     if: always() && startsWith(github.ref, 'refs/tags/v')
@@ -718,6 +729,10 @@ jobs:
             "WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "${{ needs.windows-production-bootstrap-canary.result }}",
             "WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "${{ needs.windows-production-bootstrap-canary.outputs.failure_boundary_id }}",
             "WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "${{ needs.windows-production-bootstrap-canary.outputs.failure_boundary_message }}",
+            "LINUX_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "${{ needs.linux-production-bootstrap-canary.outputs.canary_result || needs.linux-production-bootstrap-canary.result }}",
+            "LINUX_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "${{ needs.linux-production-bootstrap-canary.result }}",
+            "LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "${{ needs.linux-production-bootstrap-canary.outputs.failure_boundary_id }}",
+            "LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "${{ needs.linux-production-bootstrap-canary.outputs.failure_boundary_message }}",
             "DEPLOY_RESULT": "${{ needs.deploy-production.result }}",
             "PRODUCTION_SMOKE_RESULT": "${{ needs.smoke-test-production.result }}",
             "ROLLBACK_RESULT": "${{ needs.rollback-production.result }}",
@@ -749,9 +764,10 @@ jobs:
         deploy-production,
         smoke-test-production,
         windows-production-bootstrap-canary,
+        linux-production-bootstrap-canary,
         resolve-release-images,
       ]
-    if: always() && (needs.deploy-production.result == 'failure' || needs.smoke-test-production.result == 'failure' || needs.windows-production-bootstrap-canary.result == 'failure')
+    if: always() && (needs.deploy-production.result == 'failure' || needs.smoke-test-production.result == 'failure' || needs.windows-production-bootstrap-canary.result == 'failure' || needs.linux-production-bootstrap-canary.result == 'failure')
     permissions:
       contents: read
       packages: read

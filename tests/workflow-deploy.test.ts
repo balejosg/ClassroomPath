@@ -63,6 +63,9 @@ describe('Deploy workflow contracts', () => {
     const windowsProductionBootstrapCanaryWorkflow = readWorkflow(
       '.github/workflows/windows-production-bootstrap-canary.yml'
     );
+    const linuxProductionBootstrapCanaryWorkflow = readWorkflow(
+      '.github/workflows/linux-production-bootstrap-canary.yml'
+    );
     const concurrency = deployWorkflow.concurrency;
     const jobs = deployWorkflow.jobs ?? {};
 
@@ -361,6 +364,22 @@ describe('Deploy workflow contracts', () => {
       deployWorkflowText,
       /"WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.failure_boundary_message \}\}"/
     );
+    assert.match(
+      deployWorkflowText,
+      /"LINUX_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.linux-production-bootstrap-canary\.outputs\.canary_result \|\| needs\.linux-production-bootstrap-canary\.result \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"LINUX_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.linux-production-bootstrap-canary\.result \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "\$\{\{ needs\.linux-production-bootstrap-canary\.outputs\.failure_boundary_id \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "\$\{\{ needs\.linux-production-bootstrap-canary\.outputs\.failure_boundary_message \}\}"/
+    );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(
       jobs['windows-staging-bootstrap-canary'],
@@ -383,9 +402,25 @@ describe('Deploy workflow contracts', () => {
       String(jobs['windows-production-bootstrap-canary']?.if ?? ''),
       /staging_windows_firefox_high_risk == 'true'/
     );
+    assert.equal(
+      jobs['linux-production-bootstrap-canary']?.uses,
+      './.github/workflows/linux-production-bootstrap-canary.yml'
+    );
+    assert.equal(jobs['linux-production-bootstrap-canary']?.with?.target_environment, 'production');
+    assert.equal(
+      jobs['linux-production-bootstrap-canary']?.with?.base_url,
+      '${{ needs.resolve-release-images.outputs.production_public_url }}'
+    );
+    assert.match(
+      String(jobs['linux-production-bootstrap-canary']?.if ?? ''),
+      /staging_windows_firefox_high_risk == 'true'/
+    );
     const deployNeeds = normalizeNeeds(jobs['deploy-production']?.needs);
     const productionBootstrapNeeds = normalizeNeeds(
       jobs['windows-production-bootstrap-canary']?.needs
+    );
+    const linuxProductionBootstrapNeeds = normalizeNeeds(
+      jobs['linux-production-bootstrap-canary']?.needs
     );
     const releaseEvidenceNeeds = normalizeNeeds(jobs['release-evidence']?.needs);
     assert.ok(deployNeeds.includes('resolve-release-images'));
@@ -394,8 +429,11 @@ describe('Deploy workflow contracts', () => {
     assert.ok(!deployNeeds.includes('windows-staging-bootstrap-canary'));
     assert.ok(productionBootstrapNeeds.includes('verify-staging-release-state'));
     assert.ok(productionBootstrapNeeds.includes('deploy-production'));
+    assert.ok(linuxProductionBootstrapNeeds.includes('verify-staging-release-state'));
+    assert.ok(linuxProductionBootstrapNeeds.includes('deploy-production'));
     assert.ok(!releaseEvidenceNeeds.includes('windows-staging-bootstrap-canary'));
     assert.ok(releaseEvidenceNeeds.includes('windows-production-bootstrap-canary'));
+    assert.ok(releaseEvidenceNeeds.includes('linux-production-bootstrap-canary'));
     assert.match(String(jobs['deploy-production']?.if ?? ''), /^always\(\) && /);
     assert.match(
       String(jobs['deploy-production']?.if ?? ''),
@@ -411,9 +449,19 @@ describe('Deploy workflow contracts', () => {
       ),
       'rollback must observe post-deploy production bootstrap canary failures'
     );
+    assert.ok(
+      normalizeNeeds(jobs['rollback-production']?.needs).includes(
+        'linux-production-bootstrap-canary'
+      ),
+      'rollback must observe post-deploy Linux bootstrap canary failures'
+    );
     assert.match(
       String(jobs['rollback-production']?.if ?? ''),
       /needs\.windows-production-bootstrap-canary\.result == 'failure'/
+    );
+    assert.match(
+      String(jobs['rollback-production']?.if ?? ''),
+      /needs\.linux-production-bootstrap-canary\.result == 'failure'/
     );
     assert.ok(windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs);
     assert.equal(
@@ -425,6 +473,10 @@ describe('Deploy workflow contracts', () => {
       windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.outputs?.failure_boundary_message
         ?.value,
       '${{ jobs.windows-production-bootstrap-canary.outputs.failure_boundary_message }}'
+    );
+    assert.equal(
+      linuxProductionBootstrapCanaryWorkflow.on?.workflow_call?.outputs?.failure_boundary_id?.value,
+      '${{ jobs.linux-production-bootstrap-canary.outputs.failure_boundary_id }}'
     );
     assert.equal(
       windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs?.target_environment
