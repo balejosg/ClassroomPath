@@ -18,6 +18,7 @@ const linuxStudentDirectScriptPath = resolve(
   projectRoot,
   'scripts/run-linux-student-diagnostic.mjs'
 );
+const linuxAjaxDirectScriptPath = resolve(projectRoot, 'scripts/run-linux-ajax-direct.mjs');
 
 function runDiagnostic(args: string[]) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
@@ -52,6 +53,17 @@ function runLinuxStudentDirectDiagnostic(args: string[]) {
   });
 }
 
+function runLinuxAjaxDirectDiagnostic(args: string[]) {
+  return spawnSync(process.execPath, [linuxAjaxDirectScriptPath, ...args], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      LINUX_AJAX_DIRECT_DRY_RUN: '1',
+    },
+  });
+}
+
 describe('runner diagnostic wrapper', () => {
   test('package.json exposes the local diagnostics entrypoint', () => {
     const packageJson = readProjectJson<PackageDefinition>('package.json');
@@ -77,6 +89,15 @@ describe('runner diagnostic wrapper', () => {
     assert.equal(
       packageJson.scripts?.['diagnostics:linux-student:direct'],
       'node scripts/run-linux-student-diagnostic.mjs'
+    );
+  });
+
+  test('package.json exposes the direct Linux AJAX runner diagnostic', () => {
+    const packageJson = readProjectJson<PackageDefinition>('package.json');
+
+    assert.equal(
+      packageJson.scripts?.['diagnostics:linux-ajax:direct'],
+      'node scripts/run-linux-ajax-direct.mjs'
     );
   });
 
@@ -201,6 +222,51 @@ describe('runner diagnostic wrapper', () => {
 
   test('refuses direct production diagnostics without explicit confirmation', () => {
     const result = runDirectDiagnostic(['--environment', 'production']);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--confirm-production/);
+  });
+
+  test('direct Linux AJAX diagnostic is staging-first and preserves local evidence', () => {
+    const result = runLinuxAjaxDirectDiagnostic([
+      '--confirm-local-state-reset',
+      '--base-url',
+      'https://classroompath-staging.duckdns.org',
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /target_environment=staging/);
+    assert.match(
+      result.stdout,
+      /PRODUCTION_LINUX_BOOTSTRAP_CANARY_URL=https:\/\/classroompath-staging\.duckdns\.org/
+    );
+    assert.match(
+      result.stdout,
+      /PRODUCTION_LINUX_BOOTSTRAP_CANARY_ARTIFACT_PATH=.*production-linux-bootstrap-canary\.json/
+    );
+    assert.match(result.stdout, /curl -fsSL -H "Authorization: Bearer \[redacted\]"/);
+    assert.match(result.stdout, /sudo bash .*install-openpath\.sh/);
+    assert.match(
+      result.stdout,
+      /LINUX_AJAX_AUTO_ALLOW_CANARY_ARTIFACT=.*production-linux-ajax-auto-allow-canary\.json/
+    );
+    assert.match(result.stdout, /scripts\/linux-ajax-auto-allow-canary\.mjs/);
+    assert.match(result.stdout, /scripts\/summarize-linux-ajax-auto-allow-evidence\.mjs/);
+  });
+
+  test('direct Linux AJAX diagnostic refuses state reset without explicit confirmation', () => {
+    const result = runLinuxAjaxDirectDiagnostic([]);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--confirm-local-state-reset/);
+  });
+
+  test('direct Linux AJAX diagnostic refuses production without explicit confirmation', () => {
+    const result = runLinuxAjaxDirectDiagnostic([
+      '--environment',
+      'production',
+      '--confirm-local-state-reset',
+    ]);
 
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /--confirm-production/);

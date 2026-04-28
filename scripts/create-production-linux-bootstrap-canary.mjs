@@ -504,7 +504,10 @@ async function main() {
   const artifactSummary = sanitizeSummaryForArtifact(summary);
 
   writeFileSync(
-    resolve('production-linux-bootstrap-canary.json'),
+    resolve(
+      process.env.PRODUCTION_LINUX_BOOTSTRAP_CANARY_ARTIFACT_PATH ??
+        'production-linux-bootstrap-canary.json'
+    ),
     `${JSON.stringify(artifactSummary, null, 2)}\n`,
     'utf8'
   );

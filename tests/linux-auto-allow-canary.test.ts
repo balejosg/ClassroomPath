@@ -247,6 +247,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     const script = readProjectText('scripts/create-production-linux-bootstrap-canary.mjs');
 
     assert.ok(script.includes('production-linux-bootstrap-canary.json'));
+    assert.ok(script.includes('PRODUCTION_LINUX_BOOTSTRAP_CANARY_ARTIFACT_PATH'));
     assert.ok(script.includes('linux-production-bootstrap-canary'));
     assert.ok(script.includes('/cp/internal/client-canary/manual-request/'));
     assert.ok(
