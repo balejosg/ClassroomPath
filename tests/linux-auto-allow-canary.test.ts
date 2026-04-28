@@ -321,6 +321,13 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.match(canaryScript, /pageObserverState/);
   });
 
+  test('Linux canary listens for page resource candidate DOM events', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.match(canaryScript, /openpath-page-resource-candidate/);
+    assert.match(canaryScript, /window\.addEventListener\('openpath-page-resource-candidate'/);
+  });
+
   test('Linux canary waits for the enrollment seed before launching Firefox', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
 

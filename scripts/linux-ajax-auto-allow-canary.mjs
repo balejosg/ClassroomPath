@@ -290,6 +290,8 @@ function buildPage(probes) {
         startedAt: new Date().toISOString(),
         lastPhase: 'init',
         attempts: [],
+        completedCandidateEvents,
+        pageResourceCandidateEvents,
         errors: [],
       };
       window.addEventListener('error', (event) => {
@@ -307,14 +309,20 @@ function buildPage(probes) {
           message: String(event.reason?.message || event.reason || 'unknown'),
         });
       });
-      window.addEventListener('message', (event) => {
-        if (event.data?.source !== 'openpath-page-resource-candidate') return;
-        const matched = probes.find((probe) => event.data.url === probe.url || String(event.data.url || '').startsWith(probe.url + '?'));
+      function recordPageResourceCandidate(candidate) {
+        if (candidate?.source !== 'openpath-page-resource-candidate') return;
+        const matched = probes.find((probe) => candidate.url === probe.url || String(candidate.url || '').startsWith(probe.url + '?'));
         if (matched) completedCandidateEvents[matched.id] = true;
-        pageResourceCandidateEvents.push({ ...event.data, matchedProbeId: matched?.id ?? null, seenAt: new Date().toISOString() });
+        pageResourceCandidateEvents.push({ ...candidate, matchedProbeId: matched?.id ?? null, seenAt: new Date().toISOString() });
         if (pageResourceCandidateEvents.length > 100) {
           pageResourceCandidateEvents.splice(0, pageResourceCandidateEvents.length - 100);
         }
+      }
+      window.addEventListener('message', (event) => {
+        recordPageResourceCandidate(event.data);
+      });
+      window.addEventListener('openpath-page-resource-candidate', (event) => {
+        recordPageResourceCandidate(event.detail);
       });
 
       const timeout = (promise) => Promise.race([
@@ -598,6 +606,25 @@ async function main() {
       firefoxSession.driver
     );
     const postAttempt = await collectLinuxAutoAllowDiagnostics('post-attempt', expectedHosts);
+    const completedProbesFromTraffic = Object.fromEntries(
+      AUTO_ALLOW_PROBES.map((probe) => [probe.id, Number(state.probeHits[probe.id] ?? 0) > 0])
+    );
+    const browserCompletedCandidateEvents =
+      browserNavigationAfterAttempts.canaryState?.completedCandidateEvents ??
+      browserNavigationBeforeAttempts.canaryState?.completedCandidateEvents ??
+      {};
+    const browserPageResourceCandidateEvents =
+      browserNavigationAfterAttempts.canaryState?.pageResourceCandidateEvents ??
+      browserNavigationBeforeAttempts.canaryState?.pageResourceCandidateEvents ??
+      [];
+    const completedCandidateEvents = {
+      ...browserCompletedCandidateEvents,
+      ...state.completedCandidateEvents,
+    };
+    const pageResourceCandidateEvents =
+      state.pageResourceCandidateEvents.length > 0
+        ? state.pageResourceCandidateEvents
+        : browserPageResourceCandidateEvents;
     const probeEvidence = AUTO_ALLOW_PROBES.map((probe) => ({
       id: probe.id,
       kind: probe.kind,
@@ -608,7 +635,11 @@ async function main() {
       whitelistContainsExpectedHost:
         postAttempt.whitelist.local.containsExpectedHosts?.[probe.expectedWhitelistHost] === true,
     }));
-    const success = hasAllCompleted(state.completedProbes) && state.pageObserverInstalled;
+    const pageObserverInstalled =
+      state.pageObserverInstalled ||
+      browserNavigationAfterAttempts.openpathObserverInstalled === true ||
+      browserNavigationBeforeAttempts.openpathObserverInstalled === true;
+    const success = hasAllCompleted(completedProbesFromTraffic) && pageObserverInstalled;
     const summary = withLinuxAutoAllowDiagnostics({
       success,
       error: success ? null : 'Linux AJAX auto-allow probes did not complete before timeout',
@@ -618,13 +649,10 @@ async function main() {
       originHits: state.originPageHits,
       originPageHits: state.originPageHits,
       attemptHits: state.attemptHits,
-      completedProbes: state.completedProbes,
-      completedCandidateEvents: state.completedCandidateEvents,
-      pageResourceCandidateEvents: state.pageResourceCandidateEvents,
-      pageObserverInstalled:
-        state.pageObserverInstalled ||
-        browserNavigationAfterAttempts.openpathObserverInstalled === true ||
-        browserNavigationBeforeAttempts.openpathObserverInstalled === true,
+      completedProbes: completedProbesFromTraffic,
+      completedCandidateEvents,
+      pageResourceCandidateEvents,
+      pageObserverInstalled,
       pageObserverState:
         state.pageObserverState ||
         browserNavigationAfterAttempts.openpathObserverState ||
