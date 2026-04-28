@@ -3,6 +3,7 @@ import {
   buildAutoAllowDiagnosticPhase,
   buildAutoAllowDiagnosticPhases,
   classifyAutoAllowFailureBoundary,
+  enrichProbeEvidenceWithRemoteDiagnostics,
   hasCandidateEvidence,
   hasLocalWhitelistEvidence,
   hasProbeTrafficEvidence,
@@ -340,6 +341,11 @@ export function buildWindowsAutoAllowCanarySummary({
     firefoxOutput,
     diagnostics,
   };
+  summary.probeEvidence = enrichProbeEvidenceWithRemoteDiagnostics(
+    probeEvidence,
+    summary,
+    WINDOWS_AUTO_ALLOW_PROBES
+  );
 
   return withWindowsAutoAllowDiagnostics(summary);
 }

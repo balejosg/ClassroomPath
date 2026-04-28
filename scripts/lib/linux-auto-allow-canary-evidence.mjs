@@ -3,6 +3,7 @@ import {
   buildAutoAllowDiagnosticPhase,
   buildAutoAllowDiagnosticPhases,
   classifyAutoAllowFailureBoundary,
+  enrichProbeEvidenceWithRemoteDiagnostics,
   hasCandidateEvidence,
   hasDnsEvidence,
   hasLocalWhitelistEvidence,
@@ -207,12 +208,22 @@ export function classifyLinuxAutoAllowFailureBoundary(summary, probes = LINUX_AU
 }
 
 export function withLinuxAutoAllowDiagnostics(summary, probes = LINUX_AUTO_ALLOW_PROBES) {
-  const diagnosticPhases = buildLinuxAutoAllowDiagnosticPhases(summary, probes);
+  const enrichedSummary = Array.isArray(summary?.probeEvidence)
+    ? {
+        ...summary,
+        probeEvidence: enrichProbeEvidenceWithRemoteDiagnostics(
+          summary.probeEvidence,
+          summary,
+          probes
+        ),
+      }
+    : summary;
+  const diagnosticPhases = buildLinuxAutoAllowDiagnosticPhases(enrichedSummary, probes);
   return {
-    ...summary,
+    ...enrichedSummary,
     diagnosticPhases,
     failureBoundary: classifyLinuxAutoAllowFailureBoundary(
-      { ...summary, diagnosticPhases },
+      { ...enrichedSummary, diagnosticPhases },
       probes
     ),
   };

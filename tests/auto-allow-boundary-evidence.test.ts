@@ -5,6 +5,7 @@ import {
   buildAutoAllowArtifactFailureSummary,
   buildAutoAllowDiagnosticPhases,
   classifyAutoAllowFailureBoundary,
+  enrichProbeEvidenceWithRemoteDiagnostics,
   hasRemoteRuleEvidence,
 } from '../scripts/lib/auto-allow-boundary-evidence.mjs';
 
@@ -103,5 +104,43 @@ describe('shared auto-allow boundary evidence model', () => {
     assert.equal(summary.success, false);
     assert.equal(summary.failureBoundary.message, 'custom artifact failure');
     assert.equal(summary.diagnosticPhases[1].status, 'failed');
+  });
+
+  test('enriches probe evidence with remote rule diagnostic context', () => {
+    const summary = {
+      diagnostics: {
+        postSuccessObservation: {
+          remoteRules: {
+            diagnostics: {
+              body: {
+                rules: [
+                  {
+                    value: 'ajax-auto-allow-font.127.0.0.1.sslip.io',
+                    comment:
+                      'Auto-approved via Firefox extension - diagnostic (correlation_id=corr-1; probe_id=font-subresource; request_type=font)',
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const enriched = enrichProbeEvidenceWithRemoteDiagnostics(
+      [
+        {
+          id: 'font-subresource',
+          expectedWhitelistHost: 'ajax-auto-allow-font.127.0.0.1.sslip.io',
+        },
+      ],
+      summary,
+      probes
+    );
+
+    assert.equal(
+      enriched[0]?.diagnosticContext,
+      'correlation_id=corr-1; probe_id=font-subresource; request_type=font'
+    );
   });
 });

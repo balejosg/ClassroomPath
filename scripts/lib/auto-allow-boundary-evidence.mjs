@@ -130,6 +130,49 @@ export function hasCandidateEvidence(summary, probes) {
   return probes.every((probe) => matchedProbeIds.has(probe.id));
 }
 
+function extractDiagnosticContextFromComment(comment) {
+  if (typeof comment !== 'string') {
+    return '';
+  }
+  const match = /\bdiagnostic \(([^)]{1,500})\)/.exec(comment);
+  return match?.[1]?.trim() ?? '';
+}
+
+function collectRemoteRules(summary) {
+  const rules = [];
+  for (const diagnostics of collectDiagnosticSnapshots(summary)) {
+    if (Array.isArray(diagnostics.rules)) {
+      rules.push(...diagnostics.rules);
+    }
+    if (Array.isArray(diagnostics.body?.rules)) {
+      rules.push(...diagnostics.body.rules);
+    }
+    if (Array.isArray(diagnostics.server?.canaryGroup?.body?.rules)) {
+      rules.push(...diagnostics.server.canaryGroup.body.rules);
+    }
+  }
+  return rules;
+}
+
+export function enrichProbeEvidenceWithRemoteDiagnostics(probeEvidence, summary, probes) {
+  const contextByHost = new Map();
+  for (const rule of collectRemoteRules(summary)) {
+    const value = typeof rule?.value === 'string' ? rule.value.toLowerCase() : '';
+    const diagnosticContext = extractDiagnosticContextFromComment(rule?.comment);
+    if (value && diagnosticContext) {
+      contextByHost.set(value, diagnosticContext);
+    }
+  }
+
+  return probeEvidence.map((evidence) => {
+    const probe = probes.find((candidate) => candidate.id === evidence.id);
+    const expectedHost = probe?.expectedWhitelistHost ?? evidence.expectedWhitelistHost;
+    const diagnosticContext =
+      typeof expectedHost === 'string' ? contextByHost.get(expectedHost.toLowerCase()) : '';
+    return diagnosticContext ? { ...evidence, diagnosticContext } : evidence;
+  });
+}
+
 export function buildAutoAllowDiagnosticPhase({ id, status, evidence = {}, boundaries }) {
   const details = boundaries[id] ?? {};
   return {
