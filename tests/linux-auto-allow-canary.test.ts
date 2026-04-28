@@ -263,6 +263,26 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.match(canaryScript, /dns: \{[\s\S]*originHost/);
   });
 
+  test('Linux canary distinguishes browser page load from in-page probe attempts', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+    const evidenceHelper = readProjectText('scripts/lib/linux-auto-allow-canary-evidence.mjs');
+
+    assert.match(canaryScript, /originPageHits: 0/);
+    assert.match(canaryScript, /attemptHits: 0/);
+    assert.match(
+      canaryScript,
+      /if \(host === ORIGIN_HOST && req\.method === 'GET' && url\.pathname === '\/'\) \{[\s\S]*state\.originPageHits \+= 1/
+    );
+    assert.match(
+      canaryScript,
+      /if \(host === ORIGIN_HOST && req\.method === 'POST' && url\.pathname === '\/attempt'\) \{[\s\S]*state\.attemptHits \+= 1/
+    );
+    assert.match(canaryScript, /async function collectBrowserNavigationDiagnostics/);
+    assert.match(canaryScript, /browserNavigation/);
+    assert.match(canaryScript, /originHits: state\.originPageHits/);
+    assert.match(evidenceHelper, /originPageHits: Number\(summary\?\.originPageHits/);
+  });
+
   test('Linux canary waits for the enrollment seed before launching Firefox', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
 

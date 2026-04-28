@@ -159,6 +159,26 @@ async function collectOriginPreflight(originUrl) {
   };
 }
 
+async function collectBrowserNavigationDiagnostics(driver) {
+  try {
+    return {
+      ok: true,
+      ...(await driver.executeScript(`return {
+        href: window.location.href,
+        readyState: document.readyState,
+        title: document.title,
+        bodyTextPrefix: (document.body?.innerText || '').slice(0, 200),
+        openpathObserverInstalled: window.__openpathPageResourceObserverInstalled === true,
+      };`)),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function collectLinuxFailureDebugSnapshot() {
   const systemctlCommand =
     'systemctl status openpath-sse-listener.service openpath-update.service --no-pager';
@@ -383,7 +403,7 @@ function createCanaryServer({ state }) {
         body += chunk.toString();
       });
       req.on('end', () => {
-        state.originHits += 1;
+        state.attemptHits += 1;
         const attempt = JSON.parse(body || '{}');
         state.pageObserverInstalled ||= attempt.pageObserverInstalled === true;
         Object.assign(state.completedProbes, attempt.completedProbes ?? {});
@@ -394,6 +414,10 @@ function createCanaryServer({ state }) {
         res.end(JSON.stringify({ ok: true }));
       });
       return;
+    }
+
+    if (host === ORIGIN_HOST && req.method === 'GET' && url.pathname === '/') {
+      state.originPageHits += 1;
     }
 
     if (matchedProbe) {
@@ -480,7 +504,8 @@ async function main() {
     ...AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost),
   ];
   const state = {
-    originHits: 0,
+    originPageHits: 0,
+    attemptHits: 0,
     probeHits: Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, 0])),
     completedProbes: {},
     completedCandidateEvents: {},
@@ -504,12 +529,18 @@ async function main() {
   };
   try {
     firefoxSession = await launchFirefox(originUrl);
+    const browserNavigationBeforeAttempts = await collectBrowserNavigationDiagnostics(
+      firefoxSession.driver
+    );
     const deadline = Date.now() + TIMEOUT_MS;
     while (Date.now() < deadline) {
       if (hasAllCompleted(state.completedProbes) && state.pageObserverInstalled) break;
       await sleep(1000);
     }
 
+    const browserNavigationAfterAttempts = await collectBrowserNavigationDiagnostics(
+      firefoxSession.driver
+    );
     const postAttempt = await collectLinuxAutoAllowDiagnostics('post-attempt', expectedHosts);
     const probeEvidence = AUTO_ALLOW_PROBES.map((probe) => ({
       id: probe.id,
@@ -528,13 +559,19 @@ async function main() {
       originHost: ORIGIN_HOST,
       originUrl,
       expectedExtensionId: EXPECTED_EXTENSION_ID,
-      originHits: state.originHits,
+      originHits: state.originPageHits,
+      originPageHits: state.originPageHits,
+      attemptHits: state.attemptHits,
       completedProbes: state.completedProbes,
       completedCandidateEvents: state.completedCandidateEvents,
       pageResourceCandidateEvents: state.pageResourceCandidateEvents,
       pageObserverInstalled: state.pageObserverInstalled,
       probeEvidence,
       firefoxExtensionWarmup: { ready: true, expectedExtensionId: EXPECTED_EXTENSION_ID },
+      browserNavigation: {
+        beforeAttempts: browserNavigationBeforeAttempts,
+        afterAttempts: browserNavigationAfterAttempts,
+      },
       diagnostics: { preflight, postAttempt },
       artifactWritten: true,
     });

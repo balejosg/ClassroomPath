@@ -152,8 +152,13 @@ export function buildLinuxAutoAllowDiagnosticPhases(summary, probes = LINUX_AUTO
     },
     {
       id: 'origin-page-load',
-      passed: Number(summary?.originHits ?? 0) > 0,
-      evidence: { originHits: Number(summary?.originHits ?? 0) },
+      passed: Number(summary?.originPageHits ?? summary?.originHits ?? 0) > 0,
+      evidence: {
+        originHits: Number(summary?.originHits ?? 0),
+        originPageHits: Number(summary?.originPageHits ?? summary?.originHits ?? 0),
+        attemptHits: Number(summary?.attemptHits ?? 0),
+        browserNavigation: summary?.browserNavigation ?? null,
+      },
     },
     {
       id: 'page-observer',
