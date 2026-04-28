@@ -553,12 +553,11 @@ async function main() {
     bootstrapManifestVersion: manifest.version ?? '',
   };
   const artifactSummary = sanitizeSummaryForArtifact(summary);
+  const artifactPath =
+    process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT_PATH ||
+    resolve('production-windows-bootstrap-canary.json');
 
-  writeFileSync(
-    resolve('production-windows-bootstrap-canary.json'),
-    `${JSON.stringify(artifactSummary, null, 2)}\n`,
-    'utf8'
-  );
+  writeFileSync(artifactPath, `${JSON.stringify(artifactSummary, null, 2)}\n`, 'utf8');
 
   for (const [key, value] of Object.entries({
     api_url: summary.apiUrl,

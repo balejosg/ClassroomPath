@@ -534,11 +534,12 @@ function resolveBillingContext(options, env) {
 
 function provisionCanary({ options, baseUrl, artifactDir, billingContext, env }) {
   const outputPath = resolve(artifactDir, 'provision-outputs.env');
-  const localArtifactPath = resolve(projectRoot, 'production-windows-bootstrap-canary.json');
+  const canaryArtifactPath = resolve(artifactDir, 'production-windows-bootstrap-canary.json');
   const provisionEnv = {
     ...env,
     PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: baseUrl,
     PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_REQUEST_ORIGIN: new URL(baseUrl).origin,
+    PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT_PATH: canaryArtifactPath,
     PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: billingContext.billingMode,
     PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN: billingContext.adminToken,
     PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET: billingContext.stripeWebhookSecret,
@@ -569,12 +570,6 @@ function provisionCanary({ options, baseUrl, artifactDir, billingContext, env })
     Object.entries(outputs).map(([key, value]) => [camelFromSnake(key), value])
   );
 
-  if (existsSync(localArtifactPath)) {
-    copyFileSync(
-      localArtifactPath,
-      resolve(artifactDir, 'production-windows-bootstrap-canary.json')
-    );
-  }
   writeFileSync(
     resolve(artifactDir, 'provision-outputs.redacted.json'),
     `${JSON.stringify(redactProvisionOutputs(outputs), null, 2)}\n`,

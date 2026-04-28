@@ -252,6 +252,24 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /diagnosticPhases/);
   });
 
+  test('direct Windows AJAX diagnostic keeps bootstrap canary artifacts inside its evidence directory', () => {
+    const directScript = readProjectText('scripts/run-windows-ajax-direct.mjs');
+    const bootstrapScript = readProjectText(
+      'scripts/create-production-windows-bootstrap-canary.mjs'
+    );
+
+    assert.match(directScript, /PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT_PATH/);
+    assert.match(
+      directScript,
+      /resolve\(artifactDir, 'production-windows-bootstrap-canary\.json'\)/
+    );
+    assert.doesNotMatch(
+      directScript,
+      /resolve\(projectRoot, 'production-windows-bootstrap-canary\.json'\)/
+    );
+    assert.match(bootstrapScript, /PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT_PATH/);
+  });
+
   test('direct Linux student diagnostic runs OpenPath locally with an isolated artifact directory', () => {
     const result = runLinuxStudentDirectDiagnostic([]);
 
