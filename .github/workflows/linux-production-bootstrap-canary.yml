@@ -262,7 +262,7 @@ jobs:
 
       - name: Upload production bootstrap canary artifacts
         id: upload-artifacts
-        if: ${{ always() && steps.inputs.outputs.diagnostic_mode != 'true' }}
+        if: ${{ always() }}
         timeout-minutes: 2
         uses: actions/upload-artifact@v7
         continue-on-error: true

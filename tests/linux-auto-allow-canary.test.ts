@@ -108,7 +108,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
     assert.match(
       workflow,
-      /name: Upload production bootstrap canary artifacts[\s\S]*if: \${{ always\(\) && steps\.inputs\.outputs\.diagnostic_mode != 'true' }}/
+      /name: Upload production bootstrap canary artifacts[\s\S]*if: \$\{\{ always\(\) \}\}/
     );
     assert.match(
       workflow,
