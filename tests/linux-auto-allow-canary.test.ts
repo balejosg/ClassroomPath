@@ -99,12 +99,20 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
-  test('Linux canary skips artifact upload for diagnostic or functional-failure runs', () => {
+  test('Linux canary preserves artifacts and raw log on functional failure', () => {
     const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
 
     assert.match(
       workflow,
-      /name: Upload production bootstrap canary artifacts[\s\S]*if: \${{ always\(\) && steps\.inputs\.outputs\.diagnostic_mode != 'true' && steps\.ajax-summary\.outputs\.canary_result == 'success' }}/
+      /name: Verify Linux AJAX auto-allow canary[\s\S]*timeout --kill-after=30s 10m node scripts\/linux-ajax-auto-allow-canary\.mjs 2>&1 \| tee linux-ajax-auto-allow-canary\.log[\s\S]*ajax_status="\$\{PIPESTATUS\[0\]\}"/
+    );
+    assert.match(
+      workflow,
+      /name: Upload production bootstrap canary artifacts[\s\S]*if: \${{ always\(\) && steps\.inputs\.outputs\.diagnostic_mode != 'true' }}/
+    );
+    assert.match(
+      workflow,
+      /path: \|[\s\S]*production-linux-ajax-auto-allow-canary\.json[\s\S]*linux-ajax-auto-allow-canary\.log/
     );
     assert.match(
       workflow,
@@ -148,6 +156,36 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       ),
       'catch handler should not overwrite rich evidence for normal canary failures'
     );
+  });
+
+  test('Linux canary records pre-Firefox origin reachability and DNS evidence', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.match(canaryScript, /import dns from 'node:dns\/promises';/);
+    assert.match(canaryScript, /async function collectOriginPreflight/);
+    assert.match(canaryScript, /Host: `\$\{ORIGIN_HOST\}:\$\{PORT\}`/);
+    assert.match(canaryScript, /dns\s*\.\s*lookup\(ORIGIN_HOST/);
+    assert.match(canaryScript, /originPreflight/);
+    assert.match(canaryScript, /dns: \{[\s\S]*originHost/);
+  });
+
+  test('Linux canary waits for the enrollment seed before launching Firefox', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.match(canaryScript, /LINUX_AJAX_AUTO_ALLOW_ENROLLMENT_WAIT_MS/);
+    assert.match(canaryScript, /async function waitForEnrollmentSeed/);
+    assert.match(canaryScript, /expectedHosts = \[\s*ORIGIN_HOST,[\s\S]*\.\.\.AUTO_ALLOW_PROBES/);
+    assert.match(canaryScript, /collectLinuxFailureDebugSnapshot/);
+    assert.match(
+      canaryScript,
+      /systemctl status openpath-sse-listener\.service openpath-update\.service/
+    );
+    assert.match(
+      canaryScript,
+      /journalctl -u openpath-sse-listener\.service -u openpath-update\.service/
+    );
+    assert.match(canaryScript, /cat \/etc\/resolv\.conf/);
+    assert.match(canaryScript, /getent hosts \$\{ORIGIN_HOST\}/);
   });
 
   test('Linux canary concurrency is scoped by ref so stale runs cannot block diagnostics', () => {

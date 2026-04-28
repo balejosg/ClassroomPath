@@ -210,7 +210,11 @@ jobs:
           EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
         run: |
           set -euo pipefail
-          node scripts/linux-ajax-auto-allow-canary.mjs
+          set +e
+          timeout --kill-after=30s 10m node scripts/linux-ajax-auto-allow-canary.mjs 2>&1 | tee linux-ajax-auto-allow-canary.log
+          ajax_status="${PIPESTATUS[0]}"
+          set -e
+          exit "$ajax_status"
 
       - name: Summarize Linux AJAX auto-allow evidence
         id: ajax-summary
@@ -225,7 +229,7 @@ jobs:
 
       - name: Upload production bootstrap canary artifacts
         id: upload-artifacts
-        if: ${{ always() && steps.inputs.outputs.diagnostic_mode != 'true' && steps.ajax-summary.outputs.canary_result == 'success' }}
+        if: ${{ always() && steps.inputs.outputs.diagnostic_mode != 'true' }}
         timeout-minutes: 2
         uses: actions/upload-artifact@v7
         continue-on-error: true
@@ -235,6 +239,7 @@ jobs:
           path: |
             production-linux-bootstrap-canary.json
             production-linux-ajax-auto-allow-canary.json
+            linux-ajax-auto-allow-canary.log
             linux-ajax-auto-allow-canary-summary.md
           retention-days: 14
 

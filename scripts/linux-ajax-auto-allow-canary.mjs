@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 import { createServer } from 'node:http';
+import dns from 'node:dns/promises';
 import { appendFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import {
   LINUX_AUTO_ALLOW_ORIGIN_HOST as ORIGIN_HOST,
@@ -27,6 +30,10 @@ const PROBE_TIMEOUT_MS = Number.parseInt(
   process.env.LINUX_AJAX_AUTO_ALLOW_PROBE_TIMEOUT_MS ?? '5000',
   10
 );
+const ENROLLMENT_WAIT_MS = Number.parseInt(
+  process.env.LINUX_AJAX_AUTO_ALLOW_ENROLLMENT_WAIT_MS ?? '30000',
+  10
+);
 const ARTIFACT_PATH =
   process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_ARTIFACT ??
   'production-linux-ajax-auto-allow-canary.json';
@@ -35,6 +42,7 @@ const CANARY_GROUP_ID = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '';
 const CANARY_ADMIN_TOKEN = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN ?? '';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? '/var/lib/openpath/whitelist.txt';
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
+const execFileAsync = promisify(execFile);
 
 class LinuxAjaxAutoAllowFunctionalFailure extends Error {}
 
@@ -96,12 +104,135 @@ async function collectCanaryGroupDiagnostics() {
   }
 }
 
+async function runDiagnosticCommand(command, args = []) {
+  try {
+    const { stdout, stderr } = await execFileAsync(command, args, {
+      timeout: 10000,
+      maxBuffer: 1024 * 1024,
+    });
+    return {
+      ok: true,
+      command: [command, ...args].join(' '),
+      stdout,
+      stderr,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      command: [command, ...args].join(' '),
+      stdout: typeof error?.stdout === 'string' ? error.stdout : '',
+      stderr: typeof error?.stderr === 'string' ? error.stderr : '',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function collectOriginPreflight(originUrl) {
+  const [http, lookup] = await Promise.all([
+    fetch(originUrl, {
+      headers: { Host: `${ORIGIN_HOST}:${PORT}` },
+      signal: AbortSignal.timeout(5000),
+    })
+      .then(async (response) => ({
+        ok: response.ok,
+        status: response.status,
+        bodyPrefix: (await response.text()).slice(0, 120),
+      }))
+      .catch((error) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      })),
+    dns
+      .lookup(ORIGIN_HOST, { all: true })
+      .then((addresses) => ({ ok: true, addresses }))
+      .catch((error) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      })),
+  ]);
+
+  return {
+    originHost: ORIGIN_HOST,
+    originUrl,
+    http,
+    dns: { originHost: lookup },
+  };
+}
+
+async function collectLinuxFailureDebugSnapshot() {
+  const systemctlCommand =
+    'systemctl status openpath-sse-listener.service openpath-update.service --no-pager';
+  const journalctlCommand =
+    'journalctl -u openpath-sse-listener.service -u openpath-update.service --no-pager -n 120';
+  const resolvConfCommand = 'cat /etc/resolv.conf';
+  const originGetentCommand = `getent hosts ${ORIGIN_HOST}`;
+  const [systemctl, journalctl, resolvConf, originGetent, whitelist] = await Promise.all([
+    runDiagnosticCommand('systemctl', [
+      'status',
+      'openpath-sse-listener.service',
+      'openpath-update.service',
+      '--no-pager',
+    ]),
+    runDiagnosticCommand('journalctl', [
+      '-u',
+      'openpath-sse-listener.service',
+      '-u',
+      'openpath-update.service',
+      '--no-pager',
+      '-n',
+      '120',
+    ]),
+    runDiagnosticCommand('cat', ['/etc/resolv.conf']),
+    runDiagnosticCommand('getent', ['hosts', `${ORIGIN_HOST}`]),
+    readFileEvidence(WHITELIST_PATH, [ORIGIN_HOST]),
+  ]);
+
+  return {
+    systemctl: { ...systemctl, systemctlCommand },
+    journalctl: { ...journalctl, journalctlCommand },
+    resolvConf: { ...resolvConf, resolvConfCommand },
+    getent: { originHost: originGetent, originGetentCommand },
+    whitelist,
+  };
+}
+
+async function waitForEnrollmentSeed(timeoutMs = ENROLLMENT_WAIT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    const evidence = await readFileEvidence(WHITELIST_PATH, [ORIGIN_HOST]);
+    if (evidence.containsExpectedHosts?.[ORIGIN_HOST] === true) {
+      return { observed: true, timeoutMs, evidence };
+    }
+    await sleep(1000);
+  }
+
+  const debug = await collectLinuxFailureDebugSnapshot();
+  console.error(`LINUX_AJAX_ENROLLMENT_SEED_MISSING ${JSON.stringify(debug)}`);
+  return {
+    observed: false,
+    timeoutMs,
+    evidence: await readFileEvidence(WHITELIST_PATH, [ORIGIN_HOST]),
+    debug,
+  };
+}
+
 async function collectLinuxAutoAllowDiagnostics(label, expectedHosts = []) {
   const localWhitelist = await readFileEvidence(WHITELIST_PATH, expectedHosts);
   const dnsContains = {};
+  const dnsLookups = {};
 
   for (const host of expectedHosts) {
-    dnsContains[host] = true;
+    try {
+      const addresses = await dns.lookup(host, { all: true });
+      dnsContains[host] = addresses.length > 0;
+      dnsLookups[host] = { ok: true, addresses };
+    } catch (error) {
+      dnsContains[host] = false;
+      dnsLookups[host] = {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   return {
@@ -110,7 +241,9 @@ async function collectLinuxAutoAllowDiagnostics(label, expectedHosts = []) {
       local: localWhitelist,
     },
     dns: {
+      originHost: dnsLookups[ORIGIN_HOST] ?? null,
       containsExpectedHosts: dnsContains,
+      lookups: dnsLookups,
     },
     server: {
       canaryGroup: await collectCanaryGroupDiagnostics(),
@@ -342,7 +475,10 @@ function hasAllCompleted(map) {
 
 async function main() {
   const originUrl = `http://${ORIGIN_HOST}:${PORT}/`;
-  const expectedHosts = AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost);
+  const expectedHosts = [
+    ORIGIN_HOST,
+    ...AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost),
+  ];
   const state = {
     originHits: 0,
     probeHits: Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, 0])),
@@ -359,7 +495,13 @@ async function main() {
   });
 
   let firefoxSession = null;
-  const preflight = await collectLinuxAutoAllowDiagnostics('preflight', expectedHosts);
+  const enrollmentSeed = await waitForEnrollmentSeed();
+  const originPreflight = await collectOriginPreflight(originUrl);
+  const preflight = {
+    ...(await collectLinuxAutoAllowDiagnostics('preflight', expectedHosts)),
+    enrollmentSeed,
+    originPreflight,
+  };
   try {
     firefoxSession = await launchFirefox(originUrl);
     const deadline = Date.now() + TIMEOUT_MS;
