@@ -284,8 +284,8 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          sudo systemctl stop openpath-sse-listener.service openpath-update.timer openpath-update.service dnsmasq || true
-          pkill -TERM -f 'firefox|geckodriver|linux-ajax-auto-allow-canary.mjs' || true
+          timeout --kill-after=5s 20s sudo systemctl stop openpath-sse-listener.service openpath-update.timer openpath-update.service dnsmasq || true
+          timeout --kill-after=5s 20s pkill -TERM -f 'firefox|geckodriver|linux-ajax-auto-allow-canary.mjs' || true
 
       - name: Record canary result
         id: result

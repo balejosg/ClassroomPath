@@ -120,7 +120,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
     assert.match(
       workflow,
-      /name: Cleanup Linux canary runtime[\s\S]*if: \$\{\{ always\(\) \}\}[\s\S]*timeout-minutes: 2[\s\S]*sudo systemctl stop openpath-sse-listener\.service openpath-update\.timer openpath-update\.service dnsmasq[\s\S]*pkill -TERM -f 'firefox|geckodriver|linux-ajax-auto-allow-canary\.mjs'/
+      /name: Cleanup Linux canary runtime[\s\S]*if: \$\{\{ always\(\) \}\}[\s\S]*timeout-minutes: 2[\s\S]*timeout --kill-after=5s 20s sudo systemctl stop openpath-sse-listener\.service openpath-update\.timer openpath-update\.service dnsmasq[\s\S]*timeout --kill-after=5s 20s pkill -TERM -f 'firefox|geckodriver|linux-ajax-auto-allow-canary\.mjs'/
     );
     assert.match(
       workflow,
