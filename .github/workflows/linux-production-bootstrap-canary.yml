@@ -40,7 +40,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: linux-production-bootstrap-canary-${{ github.ref }}
+  group: linux-production-bootstrap-canary-${{ github.ref }}-${{ inputs.diagnostic_mode == 'true' && github.run_id || 'release' }}
   cancel-in-progress: false
 
 jobs:

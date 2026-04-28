@@ -51,6 +51,16 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux canary disables Firefox DNS cache between auto-allow retries', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.ok(canaryScript.includes("options.setPreference('network.trr.uri', '');"));
+    assert.ok(canaryScript.includes("options.setPreference('network.dnsCacheExpiration', 0);"));
+    assert.ok(
+      canaryScript.includes("options.setPreference('network.dnsCacheExpirationGracePeriod', 0);")
+    );
+  });
+
   test('summarizer enriches Linux AJAX evidence with failure boundary outputs', () => {
     const summarizer = readProjectText('scripts/summarize-linux-ajax-auto-allow-evidence.mjs');
 
@@ -74,10 +84,32 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux canary preserves rich evidence artifacts on functional failure', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.ok(
+      canaryScript.includes('class LinuxAjaxAutoAllowFunctionalFailure extends Error'),
+      'functional canary failures should be distinguishable from infrastructure errors'
+    );
+    assert.ok(
+      canaryScript.includes('throw new LinuxAjaxAutoAllowFunctionalFailure(summary.error);'),
+      'the already-written rich summary should drive the non-zero exit'
+    );
+    assert.ok(
+      /if \(!\(error instanceof LinuxAjaxAutoAllowFunctionalFailure\)\)[\s\S]*writeFile\(/.test(
+        canaryScript
+      ),
+      'catch handler should not overwrite rich evidence for normal canary failures'
+    );
+  });
+
   test('Linux canary concurrency is scoped by ref so stale runs cannot block diagnostics', () => {
     const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
 
-    assert.ok(workflow.includes('group: linux-production-bootstrap-canary-${{ github.ref }}'));
+    assert.ok(workflow.includes('group: linux-production-bootstrap-canary-${{ github.ref }}-'));
+    assert.ok(
+      workflow.includes("${{ inputs.diagnostic_mode == 'true' && github.run_id || 'release' }}")
+    );
   });
 
   test('production bootstrap provisioning has a Linux-specific wrapper artifact', () => {

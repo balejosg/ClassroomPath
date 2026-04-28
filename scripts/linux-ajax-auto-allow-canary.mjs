@@ -31,6 +31,8 @@ const CANARY_ADMIN_TOKEN = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN 
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? '/var/lib/openpath/whitelist.txt';
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
 
+class LinuxAjaxAutoAllowFunctionalFailure extends Error {}
+
 function writeGithubOutput(key, value) {
   if (!process.env.GITHUB_OUTPUT) return;
   appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${String(value)}\n`, 'utf8');
@@ -312,6 +314,9 @@ async function launchFirefox(originUrl) {
   options.addArguments('-headless');
   options.setPreference('network.dns.disablePrefetch', true);
   options.setPreference('network.trr.mode', 5);
+  options.setPreference('network.trr.uri', '');
+  options.setPreference('network.dnsCacheExpiration', 0);
+  options.setPreference('network.dnsCacheExpirationGracePeriod', 0);
   const driver = await new Builder().forBrowser('firefox').setFirefoxOptions(options).build();
   await driver.get(originUrl);
   return { driver, profileDir };
@@ -381,7 +386,7 @@ async function main() {
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
     console.error(`LINUX_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`);
     writeGithubOutput('linux_ajax_auto_allow_result', success ? 'success' : 'failure');
-    if (!success) throw new Error(summary.error);
+    if (!success) throw new LinuxAjaxAutoAllowFunctionalFailure(summary.error);
   } finally {
     await firefoxSession?.driver?.quit().catch(() => {});
     await rm(firefoxSession?.profileDir ?? '', { recursive: true, force: true }).catch(() => {});
@@ -391,11 +396,13 @@ async function main() {
 
 main().catch(async (error) => {
   const message = error instanceof Error ? error.message : String(error);
-  await writeFile(
-    ARTIFACT_PATH,
-    `${JSON.stringify({ success: false, error: message, artifactWritten: true }, null, 2)}\n`,
-    'utf8'
-  ).catch(() => {});
+  if (!(error instanceof LinuxAjaxAutoAllowFunctionalFailure)) {
+    await writeFile(
+      ARTIFACT_PATH,
+      `${JSON.stringify({ success: false, error: message, artifactWritten: true }, null, 2)}\n`,
+      'utf8'
+    ).catch(() => {});
+  }
   console.error(message);
   process.exit(1);
 });
