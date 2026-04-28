@@ -61,6 +61,19 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(summarizer.includes("writeGithubOutput('failure_boundary_message'"));
   });
 
+  test('Linux canary artifact upload is bounded so failures can publish logs', () => {
+    const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+
+    assert.match(
+      workflow,
+      /name: Upload production bootstrap canary artifacts[\s\S]*timeout-minutes: 2[\s\S]*uses: actions\/upload-artifact@v7/
+    );
+    assert.match(
+      workflow,
+      /name: Upload production bootstrap canary artifacts[\s\S]*continue-on-error: true/
+    );
+  });
+
   test('production bootstrap provisioning has a Linux-specific wrapper artifact', () => {
     const script = readProjectText('scripts/create-production-linux-bootstrap-canary.mjs');
 
