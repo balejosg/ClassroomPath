@@ -223,7 +223,7 @@ jobs:
 
       - name: Upload production bootstrap canary artifacts
         id: upload-artifacts
-        if: always()
+        if: ${{ always() && steps.inputs.outputs.diagnostic_mode != 'true' && steps.ajax-summary.outputs.canary_result == 'success' }}
         timeout-minutes: 2
         uses: actions/upload-artifact@v7
         continue-on-error: true
@@ -251,7 +251,7 @@ jobs:
           failure_boundary_id="$FUNCTIONAL_BOUNDARY_ID"
           failure_boundary_message="$FUNCTIONAL_BOUNDARY_MESSAGE"
 
-          if [ "$UPLOAD_OUTCOME" != "success" ]; then
+          if [ "$UPLOAD_OUTCOME" = "failure" ]; then
             canary_result="failure"
             failure_boundary_id=artifact-upload
             failure_boundary_message='Functional canary evidence was produced but GitHub artifact upload failed.'
