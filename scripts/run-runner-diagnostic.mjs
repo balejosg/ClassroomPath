@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
 
@@ -9,6 +9,9 @@ const DEFAULT_REF = 'main';
 const DEFAULT_ENVIRONMENT = 'staging';
 const DEFAULT_SUITE = 'windows-bootstrap-ajax';
 const DRY_RUN = process.env.RUNNER_DIAGNOSTIC_DRY_RUN === '1';
+const FAKE_WATCH_FAILURE = process.env.RUNNER_DIAGNOSTIC_FAKE_WATCH_FAILURE === '1';
+const FAKE_ARTIFACT_DOWNLOAD_FAILURE =
+  process.env.RUNNER_DIAGNOSTIC_FAKE_ARTIFACT_DOWNLOAD_FAILURE === '1';
 
 const SUITES = {
   'openpath-windows-e2e': {
@@ -119,23 +122,61 @@ function renderCommand(args) {
   return args.map((arg) => quoteArg(String(arg))).join(' ');
 }
 
-function runCommand(args, { capture = false } = {}) {
+function runCommand(args, { capture = false, allowFailure = false } = {}) {
   if (DRY_RUN) {
     console.log(renderCommand(args));
-    return '';
+    const shouldFail =
+      (FAKE_WATCH_FAILURE && args[0] === 'gh' && args[1] === 'run' && args[2] === 'watch') ||
+      (FAKE_ARTIFACT_DOWNLOAD_FAILURE &&
+        args[0] === 'gh' &&
+        args[1] === 'run' &&
+        args[2] === 'download');
+    if (shouldFail && allowFailure) {
+      return { status: 1, stdout: '', stderr: `${renderCommand(args)} failed with exit code 1\n` };
+    }
+    if (shouldFail && !allowFailure) {
+      throw new Error(`${renderCommand(args)} failed with exit code 1`);
+    }
+    return capture ? '<latest-run-id>' : '';
   }
 
   const result = spawnSync(args[0], args.slice(1), {
     cwd: process.cwd(),
     encoding: 'utf8',
-    stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit',
+    stdio: capture || allowFailure ? ['ignore', 'pipe', 'pipe'] : 'inherit',
   });
 
-  if (result.status !== 0) {
+  if (result.status !== 0 && !allowFailure) {
     throw new Error(`${renderCommand(args)} failed with exit code ${result.status ?? 'unknown'}`);
   }
 
+  if (allowFailure) {
+    return {
+      status: result.status ?? 1,
+      stdout: result.stdout ?? '',
+      stderr: result.stderr ?? '',
+    };
+  }
+
   return capture ? result.stdout.trim() : '';
+}
+
+function writeEvidenceFile(path, contents) {
+  if (DRY_RUN) {
+    console.log(`write ${path}`);
+    return;
+  }
+  writeFileSync(path, contents, 'utf8');
+}
+
+function captureCommandToFile(args, filePath) {
+  const result = runCommand(args, { allowFailure: true });
+  const contents =
+    typeof result === 'object'
+      ? `${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}`
+      : '';
+  writeEvidenceFile(filePath, contents);
+  return typeof result === 'object' ? result.status : 0;
 }
 
 function buildDispatchCommand({ suite, options }) {
@@ -229,23 +270,62 @@ function main() {
     throw new Error(`Could not resolve latest run id for ${suite.workflow}`);
   }
 
-  runCommand(['gh', 'run', 'watch', resolvedRunId, '--repo', suite.repo, '--exit-status']);
+  const artifactDir = resolve('.opencode/tmp/runner-diagnostics', String(resolvedRunId));
+  if (!DRY_RUN) {
+    mkdirSync(artifactDir, { recursive: true });
+  }
+
+  const watchResult = runCommand(
+    ['gh', 'run', 'watch', resolvedRunId, '--repo', suite.repo, '--exit-status'],
+    { allowFailure: true }
+  );
 
   if (options.downloadArtifacts) {
-    const artifactDir = resolve('.opencode/tmp/runner-diagnostics', String(resolvedRunId));
-    if (!DRY_RUN) {
-      mkdirSync(artifactDir, { recursive: true });
+    const downloadResult = runCommand(
+      ['gh', 'run', 'download', resolvedRunId, '--repo', suite.repo, '--dir', artifactDir],
+      { allowFailure: true }
+    );
+    if (typeof downloadResult === 'object' && downloadResult.status !== 0) {
+      writeEvidenceFile(
+        resolve(artifactDir, 'artifact-download-error.txt'),
+        `${downloadResult.stdout}${downloadResult.stderr}`
+      );
+      console.error(
+        `Artifact download failed; preserved error in ${resolve(artifactDir, 'artifact-download-error.txt')}`
+      );
     }
-    runCommand([
+  }
+
+  captureCommandToFile(
+    [
       'gh',
       'run',
-      'download',
+      'view',
       resolvedRunId,
       '--repo',
       suite.repo,
-      '--dir',
-      artifactDir,
-    ]);
+      '--json',
+      'databaseId,status,conclusion,event,headBranch,headSha,url,createdAt,updatedAt',
+    ],
+    resolve(artifactDir, 'run.json')
+  );
+  captureCommandToFile(
+    ['gh', 'run', 'view', resolvedRunId, '--repo', suite.repo, '--json', 'jobs'],
+    resolve(artifactDir, 'jobs.json')
+  );
+  captureCommandToFile(
+    ['gh', 'api', `repos/${suite.repo}/actions/runs/${resolvedRunId}/artifacts`],
+    resolve(artifactDir, 'artifact-index.json')
+  );
+  captureCommandToFile(
+    ['gh', 'run', 'view', resolvedRunId, '--repo', suite.repo, '--log'],
+    resolve(artifactDir, 'job.log')
+  );
+
+  console.log(`Runner diagnostic evidence: ${artifactDir}`);
+
+  if (typeof watchResult === 'object' && watchResult.status !== 0) {
+    process.exit(watchResult.status);
   }
 }
 

@@ -263,16 +263,85 @@ jobs:
             --summary linux-ajax-auto-allow-canary-summary.md
 
       - name: Prepare Linux canary artifact bundle
+        id: bundle
         if: ${{ always() }}
         timeout-minutes: 2
         continue-on-error: true
         shell: bash
         run: |
+          set -euo pipefail
           tar -czf linux-production-bootstrap-canary-evidence.tgz \
             production-linux-bootstrap-canary.json \
             production-linux-ajax-auto-allow-canary.json \
             linux-ajax-auto-allow-canary.log \
             linux-ajax-auto-allow-canary-summary.md
+          ls -lh linux-production-bootstrap-canary-evidence.tgz
+          tar -tzf linux-production-bootstrap-canary-evidence.tgz
+
+      - name: Emit Linux canary evidence summary
+        if: ${{ always() }}
+        timeout-minutes: 2
+        continue-on-error: true
+        shell: bash
+        env:
+          CANARY_RESULT: ${{ steps.ajax-summary.outputs.canary_result || steps.ajax.outcome }}
+          FAILURE_BOUNDARY_ID: ${{ steps.ajax.outputs.failure_boundary_id || steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}
+          FAILURE_BOUNDARY_MESSAGE: ${{ steps.ajax.outputs.failure_boundary_message || steps.ajax-summary.outputs.failure_boundary_message || 'Linux AJAX evidence artifact was not written.' }}
+          BUNDLE_STATUS: ${{ steps.bundle.outcome }}
+        run: |
+          set -euo pipefail
+          echo "Writing Linux canary evidence summary to $GITHUB_STEP_SUMMARY"
+          bundle_size="missing"
+          if [ -f linux-production-bootstrap-canary-evidence.tgz ]; then
+            bundle_size="$(wc -c < linux-production-bootstrap-canary-evidence.tgz | tr -d ' ') bytes"
+          fi
+
+          node <<'NODE' > linux-canary-evidence-summary.md
+          const fs = require('node:fs');
+          const summary = fs.existsSync('production-linux-ajax-auto-allow-canary.json')
+            ? JSON.parse(fs.readFileSync('production-linux-ajax-auto-allow-canary.json', 'utf8'))
+            : {};
+          const diagnostics = summary.diagnostics ?? {};
+          const preflight = diagnostics.preflight ?? {};
+          const postAttempt = diagnostics.postAttempt ?? {};
+          const lines = [
+            '## Linux Canary Evidence Summary',
+            '',
+            `- canary_result: ${process.env.CANARY_RESULT ?? 'unknown'}`,
+            `- failure_boundary_id: ${process.env.FAILURE_BOUNDARY_ID ?? 'unknown'}`,
+            `- failure_boundary_message: ${process.env.FAILURE_BOUNDARY_MESSAGE ?? ''}`,
+            '',
+            '### diagnosticPhases',
+            JSON.stringify(summary.diagnosticPhases ?? [], null, 2),
+            '',
+            '### originPreflight',
+            JSON.stringify(preflight.originPreflight ?? null, null, 2),
+            '',
+            '### whitelistSeed',
+            JSON.stringify(preflight.enrollmentSeed ?? null, null, 2),
+            '',
+            '### dns',
+            JSON.stringify({
+              preflight: preflight.dns ?? null,
+              postAttempt: postAttempt.dns ?? null,
+            }, null, 2),
+            '',
+            `- bundle_status: ${process.env.BUNDLE_STATUS ?? 'unknown'}`,
+            `- bundle_size: ${process.env.BUNDLE_SIZE ?? 'unknown'}`,
+          ];
+          console.log(lines.join('\n'));
+          NODE
+
+          BUNDLE_SIZE="$bundle_size" node <<'NODE' > linux-canary-evidence-summary.md.tmp
+          const fs = require('node:fs');
+          let text = fs.readFileSync('linux-canary-evidence-summary.md', 'utf8');
+          text = text.replace('- bundle_size: unknown', `- bundle_size: ${process.env.BUNDLE_SIZE}`);
+          process.stdout.write(text);
+          NODE
+          mv linux-canary-evidence-summary.md.tmp linux-canary-evidence-summary.md
+
+          cat linux-canary-evidence-summary.md
+          cat linux-canary-evidence-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload production bootstrap canary artifacts
         id: upload-artifacts
@@ -304,6 +373,7 @@ jobs:
           FUNCTIONAL_RESULT: ${{ steps.ajax-summary.outputs.canary_result || steps.ajax.outcome }}
           FUNCTIONAL_BOUNDARY_ID: ${{ steps.ajax.outputs.failure_boundary_id || steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}
           FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax.outputs.failure_boundary_message || steps.ajax-summary.outputs.failure_boundary_message || 'Linux AJAX evidence artifact was not written.' }}
+          BUNDLE_OUTCOME: ${{ steps.bundle.outcome }}
           UPLOAD_OUTCOME: ${{ steps.upload-artifacts.outcome }}
         run: |
           set -euo pipefail
@@ -311,7 +381,11 @@ jobs:
           failure_boundary_id="$FUNCTIONAL_BOUNDARY_ID"
           failure_boundary_message="$FUNCTIONAL_BOUNDARY_MESSAGE"
 
-          if [ "$UPLOAD_OUTCOME" = "failure" ]; then
+          if [ "$BUNDLE_OUTCOME" = "failure" ]; then
+            canary_result="failure"
+            failure_boundary_id=artifact-bundle
+            failure_boundary_message='Functional canary finished but the Linux evidence bundle could not be created.'
+          elif [ "$UPLOAD_OUTCOME" = "failure" ]; then
             canary_result="failure"
             failure_boundary_id=artifact-upload
             failure_boundary_message='Functional canary evidence was produced but GitHub artifact upload failed.'

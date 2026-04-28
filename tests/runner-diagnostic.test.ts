@@ -114,6 +114,39 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stdout, /gh run download/);
   });
 
+  test('collects runner evidence when watch and artifact download fail', () => {
+    const result = spawnSync(
+      process.execPath,
+      [scriptPath, '--suite', 'linux-bootstrap-ajax', '--wait', '--download-artifacts'],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          RUNNER_DIAGNOSTIC_DRY_RUN: '1',
+          RUNNER_DIAGNOSTIC_FAKE_WATCH_FAILURE: '1',
+          RUNNER_DIAGNOSTIC_FAKE_ARTIFACT_DOWNLOAD_FAILURE: '1',
+        },
+      }
+    );
+
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stdout,
+      /gh run view "?<latest-run-id>"? --repo balejosg\/ClassroomPath --json/
+    );
+    assert.match(
+      result.stdout,
+      /gh api "?repos\/balejosg\/ClassroomPath\/actions\/runs\/<latest-run-id>\/artifacts"?/
+    );
+    assert.match(
+      result.stdout,
+      /gh run view "?<latest-run-id>"? --repo balejosg\/ClassroomPath --log/
+    );
+    assert.match(result.stdout, /\.opencode\/tmp\/runner-diagnostics\/<latest-run-id>/);
+    assert.match(result.stderr, /artifact-download-error\.txt/);
+  });
+
   test('refuses production diagnostics without explicit confirmation', () => {
     const result = runDiagnostic([
       '--suite',

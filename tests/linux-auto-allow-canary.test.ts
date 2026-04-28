@@ -132,6 +132,23 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux canary workflow emits recoverable evidence summary in logs', () => {
+    const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+
+    assert.match(
+      workflow,
+      /name: Emit Linux canary evidence summary[\s\S]*GITHUB_STEP_SUMMARY[\s\S]*canary_result[\s\S]*failure_boundary_id[\s\S]*failure_boundary_message[\s\S]*diagnosticPhases[\s\S]*originPreflight[\s\S]*whitelistSeed[\s\S]*dns[\s\S]*bundle_status[\s\S]*bundle_size/
+    );
+    assert.match(
+      workflow,
+      /name: Prepare Linux canary artifact bundle[\s\S]*ls -lh linux-production-bootstrap-canary-evidence\.tgz[\s\S]*tar -tzf linux-production-bootstrap-canary-evidence\.tgz/
+    );
+    assert.match(
+      workflow,
+      /BUNDLE_OUTCOME: \$\{\{ steps\.bundle\.outcome \}\}[\s\S]*failure_boundary_id=artifact-bundle/
+    );
+  });
+
   test('Linux canary workflow records boundary even when summary rendering stalls', () => {
     const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
 
