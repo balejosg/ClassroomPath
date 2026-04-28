@@ -172,13 +172,17 @@ export function buildLinuxAutoAllowDiagnosticPhases(summary, probes = LINUX_AUTO
       passed: summary?.pageObserverInstalled === true || hasBrowserObservedPageObserver(summary),
       evidence: {
         pageObserverInstalled: summary?.pageObserverInstalled ?? null,
+        pageObserverState: summary?.pageObserverState ?? null,
         browserNavigation: summary?.browserNavigation ?? null,
       },
     },
     {
       id: 'page-resource-candidates',
       passed: hasCandidateEvidence(summary, probes),
-      evidence: { completedCandidateEvents: summary?.completedCandidateEvents ?? null },
+      evidence: {
+        completedCandidateEvents: summary?.completedCandidateEvents ?? null,
+        pageObserverState: summary?.pageObserverState ?? null,
+      },
     },
     {
       id: 'remote-rule-creation',

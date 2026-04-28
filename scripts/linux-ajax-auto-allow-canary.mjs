@@ -169,6 +169,7 @@ async function collectBrowserNavigationDiagnostics(driver) {
         title: document.title,
         bodyTextPrefix: (document.body?.innerText || '').slice(0, 200),
         openpathObserverInstalled: window.__openpathPageResourceObserverInstalled === true,
+        openpathObserverState: window.__openpathPageResourceObserverState ?? null,
         canaryState: window.__openpathLinuxAjaxCanaryState ?? null,
       };`)),
     };
@@ -407,6 +408,7 @@ function buildPage(probes) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             pageObserverInstalled: window.__openpathPageResourceObserverInstalled === true,
+            pageObserverState: window.__openpathPageResourceObserverState ?? null,
             completedProbes,
             completedCandidateEvents,
             pageResourceCandidateEvents,
@@ -458,6 +460,7 @@ function createCanaryServer({ state }) {
         state.attemptHits += 1;
         const attempt = JSON.parse(body || '{}');
         state.pageObserverInstalled ||= attempt.pageObserverInstalled === true;
+        if (attempt.pageObserverState) state.pageObserverState = attempt.pageObserverState;
         Object.assign(state.completedProbes, attempt.completedProbes ?? {});
         Object.assign(state.completedCandidateEvents, attempt.completedCandidateEvents ?? {});
         state.pageResourceCandidateEvents.push(...(attempt.pageResourceCandidateEvents ?? []));
@@ -563,6 +566,7 @@ async function main() {
     completedCandidateEvents: {},
     pageResourceCandidateEvents: [],
     pageObserverInstalled: false,
+    pageObserverState: null,
     lastAttemptAt: null,
   };
   const server = createCanaryServer({ state });
@@ -621,6 +625,11 @@ async function main() {
         state.pageObserverInstalled ||
         browserNavigationAfterAttempts.openpathObserverInstalled === true ||
         browserNavigationBeforeAttempts.openpathObserverInstalled === true,
+      pageObserverState:
+        state.pageObserverState ||
+        browserNavigationAfterAttempts.openpathObserverState ||
+        browserNavigationBeforeAttempts.openpathObserverState ||
+        null,
       probeEvidence,
       firefoxExtensionWarmup: { ready: true, expectedExtensionId: EXPECTED_EXTENSION_ID },
       browserNavigation: {
