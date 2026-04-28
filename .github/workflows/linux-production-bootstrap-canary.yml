@@ -262,6 +262,18 @@ jobs:
             --artifact production-linux-ajax-auto-allow-canary.json \
             --summary linux-ajax-auto-allow-canary-summary.md
 
+      - name: Prepare Linux canary artifact bundle
+        if: ${{ always() }}
+        timeout-minutes: 2
+        continue-on-error: true
+        shell: bash
+        run: |
+          tar -czf linux-production-bootstrap-canary-evidence.tgz \
+            production-linux-bootstrap-canary.json \
+            production-linux-ajax-auto-allow-canary.json \
+            linux-ajax-auto-allow-canary.log \
+            linux-ajax-auto-allow-canary-summary.md
+
       - name: Upload production bootstrap canary artifacts
         id: upload-artifacts
         if: ${{ always() }}
@@ -271,11 +283,8 @@ jobs:
         with:
           name: linux-production-bootstrap-canary
           if-no-files-found: error
-          path: |
-            production-linux-bootstrap-canary.json
-            production-linux-ajax-auto-allow-canary.json
-            linux-ajax-auto-allow-canary.log
-            linux-ajax-auto-allow-canary-summary.md
+          path: linux-production-bootstrap-canary-evidence.tgz
+          compression-level: 0
           retention-days: 14
 
       - name: Cleanup Linux canary runtime

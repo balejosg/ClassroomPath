@@ -116,7 +116,11 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
     assert.match(
       workflow,
-      /path: \|[\s\S]*production-linux-ajax-auto-allow-canary\.json[\s\S]*linux-ajax-auto-allow-canary\.log/
+      /name: Prepare Linux canary artifact bundle[\s\S]*tar -czf linux-production-bootstrap-canary-evidence\.tgz[\s\S]*production-linux-ajax-auto-allow-canary\.json[\s\S]*linux-ajax-auto-allow-canary\.log/
+    );
+    assert.match(
+      workflow,
+      /path: linux-production-bootstrap-canary-evidence\.tgz[\s\S]*compression-level: 0/
     );
     assert.match(
       workflow,
