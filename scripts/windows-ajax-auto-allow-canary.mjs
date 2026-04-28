@@ -38,6 +38,10 @@ const POST_FAILURE_OBSERVATION_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS ?? '0',
   10
 );
+const POST_SUCCESS_OBSERVATION_MS = Number.parseInt(
+  process.env.WINDOWS_AJAX_AUTO_ALLOW_POST_SUCCESS_OBSERVATION_MS ?? '90000',
+  10
+);
 const MAX_ATTEMPT_EVIDENCE = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_MAX_ATTEMPT_EVIDENCE ?? '60',
   10
@@ -317,6 +321,52 @@ async function collectCanaryGroupDiagnostics(expectedHosts = []) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function canaryGroupDiagnosticsContainsAllExpectedHosts(diagnostics, expectedHosts = []) {
+  const expectedHostState = diagnostics?.body?.expectedHostState;
+  if (!expectedHostState || typeof expectedHostState !== 'object') {
+    return false;
+  }
+
+  return expectedHosts.every((host) => expectedHostState[host]?.whitelistRulePresent === true);
+}
+
+async function waitForRemoteRuleObservation(expectedHosts = [], timeoutMs = 0) {
+  const startedAt = Date.now();
+  let diagnostics = await collectCanaryGroupDiagnostics(expectedHosts);
+  const observed = () => canaryGroupDiagnosticsContainsAllExpectedHosts(diagnostics, expectedHosts);
+
+  if (timeoutMs <= 0) {
+    return {
+      observed: observed(),
+      timeoutMs,
+      elapsedMs: Date.now() - startedAt,
+      diagnostics,
+    };
+  }
+
+  const deadline = startedAt + timeoutMs;
+  while (Date.now() < deadline) {
+    if (observed()) {
+      return {
+        observed: true,
+        timeoutMs,
+        elapsedMs: Date.now() - startedAt,
+        diagnostics,
+      };
+    }
+
+    await sleep(2000);
+    diagnostics = await collectCanaryGroupDiagnostics(expectedHosts);
+  }
+
+  return {
+    observed: observed(),
+    timeoutMs,
+    elapsedMs: Date.now() - startedAt,
+    diagnostics,
+  };
 }
 
 function runPowerShell(args, { input, timeoutMs = 10000 } = {}) {
@@ -1282,10 +1332,27 @@ async function main() {
   try {
     const result = await resultPromise;
     clearTimeout(timeout);
+    const expectedHosts = AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost);
+    let postSuccessObservation = null;
+    if (result?.success && POST_SUCCESS_OBSERVATION_MS > 0) {
+      const observationStartedAt = Date.now();
+      const remoteRules = await waitForRemoteRuleObservation(
+        expectedHosts,
+        POST_SUCCESS_OBSERVATION_MS
+      );
+      const remaining = Math.max(
+        0,
+        POST_SUCCESS_OBSERVATION_MS - (Date.now() - observationStartedAt)
+      );
+      const localWhitelist = await waitForLocalWhitelistObservation(expectedHosts, remaining);
+      postSuccessObservation = {
+        remoteRules,
+        localWhitelist,
+      };
+    }
     const postAttemptDiagnostics = await collectWindowsAutoAllowDiagnostics(
       result?.success ? 'post-success' : 'post-failure'
     );
-    const expectedHosts = AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost);
     const postFailureObservation =
       !result?.success && POST_FAILURE_OBSERVATION_MS > 0
         ? {
@@ -1326,6 +1393,7 @@ async function main() {
       firefoxOutput: firefoxOutput.slice(-4000),
       diagnostics: {
         preflight: preflightDiagnostics,
+        ...(postSuccessObservation ? { postSuccessObservation } : {}),
         postAttempt: postAttemptDiagnostics,
         ...(postFailureObservation ? { postFailureObservation } : {}),
       },

@@ -367,4 +367,13 @@ describe('runner diagnostic wrapper', () => {
     assert.match(canaryScript, /Firefox Developer Edition/);
     assert.match(canaryScript, /Firefox Nightly/);
   });
+
+  test('Windows AJAX canary waits for post-success rule propagation before asserting whitelist state', () => {
+    const script = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+
+    assert.match(script, /WINDOWS_AJAX_AUTO_ALLOW_POST_SUCCESS_OBSERVATION_MS/);
+    assert.match(script, /waitForRemoteRuleObservation/);
+    assert.match(script, /postSuccessObservation/);
+    assert.match(script, /waitForLocalWhitelistObservation\(expectedHosts, remaining/);
+  });
 });
