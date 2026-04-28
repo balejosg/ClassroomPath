@@ -1,3 +1,14 @@
+import {
+  buildAutoAllowArtifactFailureSummary,
+  buildAutoAllowDiagnosticPhase,
+  buildAutoAllowDiagnosticPhases,
+  classifyAutoAllowFailureBoundary,
+  hasCandidateEvidence,
+  hasLocalWhitelistEvidence,
+  hasProbeTrafficEvidence,
+  hasRemoteRuleEvidence,
+} from './auto-allow-boundary-evidence.mjs';
+
 export const WINDOWS_AUTO_ALLOW_ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_TARGET_HOST = 'ajax-auto-allow-target.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_ASSET_HOST = 'ajax-auto-allow-asset.127.0.0.1.sslip.io';
@@ -159,131 +170,13 @@ function findProbeEvidence(probeEvidence, id) {
   return probeEvidence.find((probe) => probe.id === id);
 }
 
-function allExpectedHostsPresent(containsExpectedHosts, expectedHosts) {
-  if (!containsExpectedHosts || typeof containsExpectedHosts !== 'object') {
-    return false;
-  }
-
-  return expectedHosts.every((host) => containsExpectedHosts[host] === true);
-}
-
-function allExpectedHostStatePresent(expectedHostState, expectedHosts) {
-  if (!expectedHostState || typeof expectedHostState !== 'object') {
-    return false;
-  }
-
-  return expectedHosts.every((host) => {
-    const state = expectedHostState[host];
-    if (typeof state === 'boolean') {
-      return state;
-    }
-    return (
-      state?.whitelistRulePresent === true ||
-      state?.rulePresent === true ||
-      state?.present === true ||
-      state?.inWhitelist === true
-    );
-  });
-}
-
-function collectDiagnosticSnapshots(summary) {
-  const diagnostics = summary?.diagnostics ?? {};
-  return [
-    diagnostics.postAttempt,
-    diagnostics.postSuccess,
-    diagnostics.postFailure,
-    diagnostics.postFailureObservation?.diagnostics,
-    diagnostics.preflight,
-  ].filter(Boolean);
-}
-
-function hasRemoteRuleEvidence(summary, expectedHosts) {
-  for (const diagnostics of collectDiagnosticSnapshots(summary)) {
-    if (
-      allExpectedHostsPresent(diagnostics.remoteWhitelist?.containsExpectedHosts, expectedHosts)
-    ) {
-      return true;
-    }
-    if (
-      allExpectedHostsPresent(
-        diagnostics.whitelist?.remoteWhitelist?.containsExpectedHosts,
-        expectedHosts
-      )
-    ) {
-      return true;
-    }
-    if (
-      allExpectedHostStatePresent(
-        diagnostics.server?.canaryGroup?.body?.expectedHostState,
-        expectedHosts
-      )
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function hasLocalWhitelistEvidence(summary, probes) {
-  const probeEvidence = Array.isArray(summary.probeEvidence) ? summary.probeEvidence : [];
-  if (
-    probes.every((probe) => {
-      const evidence = probeEvidence.find((item) => item.id === probe.id);
-      return evidence?.whitelistContainsExpectedHost === true;
-    })
-  ) {
-    return true;
-  }
-
-  const expectedHosts = probes.map((probe) => probe.expectedWhitelistHost);
-  for (const diagnostics of collectDiagnosticSnapshots(summary)) {
-    if (
-      allExpectedHostsPresent(
-        diagnostics.whitelist?.global?.containsExpectedHosts,
-        expectedHosts
-      ) ||
-      allExpectedHostsPresent(diagnostics.whitelist?.native?.containsExpectedHosts, expectedHosts)
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function hasProbeTrafficEvidence(summary, probes) {
-  const probeEvidence = Array.isArray(summary.probeEvidence) ? summary.probeEvidence : [];
-
-  return probes.every((probe) => {
-    const evidence = probeEvidence.find((item) => item.id === probe.id);
-    return Number(evidence?.hits ?? 0) > 0;
-  });
-}
-
-function hasCandidateEvidence(summary, probes) {
-  const completedCandidateEvents = summary?.completedCandidateEvents ?? {};
-  if (probes.every((probe) => completedCandidateEvents[probe.id] === true)) {
-    return true;
-  }
-
-  const matchedProbeIds = new Set(
-    (Array.isArray(summary?.pageResourceCandidateEvents) ? summary.pageResourceCandidateEvents : [])
-      .map((event) => event?.matchedProbeId)
-      .filter(Boolean)
-  );
-
-  return probes.every((probe) => matchedProbeIds.has(probe.id));
-}
-
 function phase(id, status, evidence = {}) {
-  const details = WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES[id];
-  return {
+  return buildAutoAllowDiagnosticPhase({
     id,
     status,
-    message: details.message,
     evidence,
-  };
+    boundaries: WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES,
+  });
 }
 
 export function buildWindowsAutoAllowDiagnosticPhases(summary, probes = WINDOWS_AUTO_ALLOW_PROBES) {
@@ -346,16 +239,9 @@ export function buildWindowsAutoAllowDiagnosticPhases(summary, probes = WINDOWS_
     },
   ];
 
-  let failed = false;
-  return checks.map((check) => {
-    if (failed) {
-      return phase(check.id, 'pending', check.evidence);
-    }
-    if (check.passed) {
-      return phase(check.id, 'passed', check.evidence);
-    }
-    failed = true;
-    return phase(check.id, 'failed', check.evidence);
+  return buildAutoAllowDiagnosticPhases({
+    checks,
+    boundaries: WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES,
   });
 }
 
@@ -365,16 +251,10 @@ export function classifyWindowsAutoAllowFailureBoundary(
 ) {
   const diagnosticPhases =
     summary?.diagnosticPhases ?? buildWindowsAutoAllowDiagnosticPhases(summary, probes);
-  const failedPhase = diagnosticPhases.find((candidate) => candidate.status === 'failed');
-  const boundaryId = failedPhase?.id ?? 'none';
-  const details = WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES[boundaryId];
-
-  return {
-    id: boundaryId,
-    label: details.label,
-    message: details.message,
-    recommendedNextAction: details.recommendedNextAction,
-  };
+  return classifyAutoAllowFailureBoundary({
+    diagnosticPhases,
+    boundaries: WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES,
+  });
 }
 
 export function withWindowsAutoAllowDiagnostics(summary, probes = WINDOWS_AUTO_ALLOW_PROBES) {
@@ -392,27 +272,20 @@ export function withWindowsAutoAllowDiagnostics(summary, probes = WINDOWS_AUTO_A
 }
 
 export function buildWindowsAutoAllowArtifactFailureSummary({ id, message, artifactPath, error }) {
-  const details =
-    WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES[id] ??
-    WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES['artifact-written'];
-  const failureBoundary = {
+  const summary = buildAutoAllowArtifactFailureSummary({
     id,
-    label: details.label,
-    message: message || details.message,
-    recommendedNextAction: details.recommendedNextAction,
-  };
+    message,
+    artifactPath,
+    error,
+    phaseIds: WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS,
+    boundaries: WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES,
+  });
 
   return {
-    success: false,
-    error: failureBoundary.message,
-    artifactPath,
-    artifactError: error,
+    ...summary,
     diagnosticPhases: WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS.map((phaseId) =>
-      phase(phaseId, phaseId === 'artifact-written' ? 'failed' : 'pending', {
-        artifactPath,
-      })
+      phase(phaseId, phaseId === 'artifact-written' ? 'failed' : 'pending', { artifactPath })
     ),
-    failureBoundary,
   };
 }
 

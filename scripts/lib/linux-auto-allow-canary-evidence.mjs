@@ -1,3 +1,15 @@
+import {
+  buildAutoAllowArtifactFailureSummary,
+  buildAutoAllowDiagnosticPhase,
+  buildAutoAllowDiagnosticPhases,
+  classifyAutoAllowFailureBoundary,
+  hasCandidateEvidence,
+  hasDnsEvidence,
+  hasLocalWhitelistEvidence,
+  hasProbeTrafficEvidence,
+  hasRemoteRuleEvidence,
+} from './auto-allow-boundary-evidence.mjs';
+
 export const LINUX_AUTO_ALLOW_ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
 export const LINUX_AUTO_ALLOW_TARGET_HOST = 'ajax-auto-allow-target.127.0.0.1.sslip.io';
 export const LINUX_AUTO_ALLOW_ASSET_HOST = 'ajax-auto-allow-asset.127.0.0.1.sslip.io';
@@ -120,107 +132,13 @@ export function buildLinuxAutoAllowProbeUrl(probe, port) {
   return `http://${probe.host}:${port}${probe.path}`;
 }
 
-function allExpectedHostsPresent(value, expectedHosts) {
-  if (!value || typeof value !== 'object') return false;
-  return expectedHosts.every((host) => value[host] === true);
-}
-
-function allExpectedHostStatePresent(value, expectedHosts) {
-  if (!value || typeof value !== 'object') return false;
-  return expectedHosts.every((host) => {
-    const state = value[host];
-    return (
-      state === true ||
-      state?.whitelistRulePresent === true ||
-      state?.rulePresent === true ||
-      state?.present === true ||
-      state?.inWhitelist === true
-    );
-  });
-}
-
-function collectDiagnosticSnapshots(summary) {
-  const diagnostics = summary?.diagnostics ?? {};
-  return [
-    diagnostics.postAttempt,
-    diagnostics.postSuccess,
-    diagnostics.postFailure,
-    diagnostics.preflight,
-  ].filter(Boolean);
-}
-
-function hasRemoteRuleEvidence(summary, expectedHosts) {
-  for (const diagnostics of collectDiagnosticSnapshots(summary)) {
-    if (allExpectedHostsPresent(diagnostics.remoteWhitelist?.containsExpectedHosts, expectedHosts))
-      return true;
-    if (
-      allExpectedHostsPresent(
-        diagnostics.whitelist?.remoteWhitelist?.containsExpectedHosts,
-        expectedHosts
-      )
-    )
-      return true;
-    if (
-      allExpectedHostStatePresent(
-        diagnostics.server?.canaryGroup?.body?.expectedHostState,
-        expectedHosts
-      )
-    )
-      return true;
-  }
-  return false;
-}
-
-function hasLocalWhitelistEvidence(summary, probes) {
-  const probeEvidence = Array.isArray(summary?.probeEvidence) ? summary.probeEvidence : [];
-  if (
-    probes.every(
-      (probe) =>
-        probeEvidence.find((item) => item.id === probe.id)?.whitelistContainsExpectedHost === true
-    )
-  ) {
-    return true;
-  }
-  const expectedHosts = probes.map((probe) => probe.expectedWhitelistHost);
-  for (const diagnostics of collectDiagnosticSnapshots(summary)) {
-    if (allExpectedHostsPresent(diagnostics.whitelist?.local?.containsExpectedHosts, expectedHosts))
-      return true;
-  }
-  return false;
-}
-
-function hasDnsEvidence(summary, expectedHosts) {
-  for (const diagnostics of collectDiagnosticSnapshots(summary)) {
-    if (allExpectedHostsPresent(diagnostics.dns?.containsExpectedHosts, expectedHosts)) return true;
-  }
-  return false;
-}
-
-function hasProbeTrafficEvidence(summary, probes) {
-  const probeEvidence = Array.isArray(summary?.probeEvidence) ? summary.probeEvidence : [];
-  return probes.every(
-    (probe) => Number(probeEvidence.find((item) => item.id === probe.id)?.hits ?? 0) > 0
-  );
-}
-
-function hasCandidateEvidence(summary, probes) {
-  const completedCandidateEvents = summary?.completedCandidateEvents ?? {};
-  if (probes.every((probe) => completedCandidateEvents[probe.id] === true)) return true;
-  const matchedProbeIds = new Set(
-    (Array.isArray(summary?.pageResourceCandidateEvents) ? summary.pageResourceCandidateEvents : [])
-      .map((event) => event?.matchedProbeId)
-      .filter(Boolean)
-  );
-  return probes.every((probe) => matchedProbeIds.has(probe.id));
-}
-
 function phase(id, status, evidence = {}) {
-  return {
+  return buildAutoAllowDiagnosticPhase({
     id,
     status,
-    message: LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES[id]?.message ?? `${id} failed`,
     evidence,
-  };
+    boundaries: LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES,
+  });
 }
 
 export function buildLinuxAutoAllowDiagnosticPhases(summary, probes = LINUX_AUTO_ALLOW_PROBES) {
@@ -273,24 +191,19 @@ export function buildLinuxAutoAllowDiagnosticPhases(summary, probes = LINUX_AUTO
     },
   ];
 
-  let failed = false;
-  return checks.map((check) => {
-    if (failed) return phase(check.id, 'pending', check.evidence);
-    if (check.passed) return phase(check.id, 'passed', check.evidence);
-    failed = true;
-    return phase(check.id, 'failed', check.evidence);
+  return buildAutoAllowDiagnosticPhases({
+    checks,
+    boundaries: LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES,
   });
 }
 
 export function classifyLinuxAutoAllowFailureBoundary(summary, probes = LINUX_AUTO_ALLOW_PROBES) {
   const diagnosticPhases =
     summary?.diagnosticPhases ?? buildLinuxAutoAllowDiagnosticPhases(summary, probes);
-  const failedPhase = diagnosticPhases.find((candidate) => candidate.status === 'failed');
-  const id = failedPhase?.id ?? 'none';
-  const details =
-    LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES[id] ??
-    LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES['artifact-written'];
-  return { id, message: details.message, recommendedNextAction: details.recommendedNextAction };
+  return classifyAutoAllowFailureBoundary({
+    diagnosticPhases,
+    boundaries: LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES,
+  });
 }
 
 export function withLinuxAutoAllowDiagnostics(summary, probes = LINUX_AUTO_ALLOW_PROBES) {
@@ -306,22 +219,12 @@ export function withLinuxAutoAllowDiagnostics(summary, probes = LINUX_AUTO_ALLOW
 }
 
 export function buildLinuxAutoAllowArtifactFailureSummary({ id, artifactPath, error, message }) {
-  const details =
-    LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES[id] ??
-    LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES['artifact-written'];
-  const failureBoundary = {
+  return buildAutoAllowArtifactFailureSummary({
     id,
-    message: message || details.message,
-    recommendedNextAction: details.recommendedNextAction,
-  };
-  return {
-    success: false,
-    error: failureBoundary.message,
+    message,
     artifactPath,
-    artifactError: error,
-    diagnosticPhases: LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS.map((phaseId) =>
-      phase(phaseId, phaseId === id ? 'failed' : 'pending', { artifactPath })
-    ),
-    failureBoundary,
-  };
+    error,
+    phaseIds: LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS,
+    boundaries: LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES,
+  });
 }
