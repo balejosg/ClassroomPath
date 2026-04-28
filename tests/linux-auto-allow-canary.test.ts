@@ -104,6 +104,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
 
     assert.match(
       workflow,
+      /name: Checkout\s+uses: actions\/checkout@v6\s+with:\s+persist-credentials: false/
+    );
+    assert.match(
+      workflow,
       /name: Verify Linux AJAX auto-allow canary[\s\S]*timeout --kill-after=30s 10m node scripts\/linux-ajax-auto-allow-canary\.mjs 2>&1 \| tee linux-ajax-auto-allow-canary\.log[\s\S]*ajax_status="\$\{PIPESTATUS\[0\]\}"/
     );
     assert.match(
