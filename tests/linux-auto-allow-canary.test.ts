@@ -5,6 +5,7 @@ import { readProjectText } from './helpers/ops-contracts.ts';
 import {
   LINUX_AUTO_ALLOW_PROBES,
   buildLinuxAutoAllowProbeUrl,
+  withLinuxAutoAllowDiagnostics,
 } from '../scripts/lib/linux-auto-allow-canary-evidence.mjs';
 
 describe('Linux AJAX auto-allow canary contracts', () => {
@@ -279,8 +280,37 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
     assert.match(canaryScript, /async function collectBrowserNavigationDiagnostics/);
     assert.match(canaryScript, /browserNavigation/);
+    assert.match(canaryScript, /__openpathLinuxAjaxCanaryState/);
+    assert.match(canaryScript, /window\.addEventListener\('error'/);
+    assert.match(canaryScript, /canaryState\.lastPhase = 'probe:' \+ probe\.id/);
     assert.match(canaryScript, /originHits: state\.originPageHits/);
     assert.match(evidenceHelper, /originPageHits: Number\(summary\?\.originPageHits/);
+  });
+
+  test('Linux canary accepts browser-observed page observer evidence', () => {
+    const summary = withLinuxAutoAllowDiagnostics({
+      success: false,
+      firefoxExtensionWarmup: { ready: true },
+      originHits: 1,
+      originPageHits: 1,
+      attemptHits: 0,
+      pageObserverInstalled: false,
+      browserNavigation: {
+        afterAttempts: {
+          ok: true,
+          openpathObserverInstalled: true,
+        },
+      },
+      completedCandidateEvents: {},
+      probeEvidence: [],
+      artifactWritten: true,
+    });
+
+    assert.equal(
+      summary.diagnosticPhases.find((phase) => phase.id === 'page-observer')?.status,
+      'passed'
+    );
+    assert.equal(summary.failureBoundary.id, 'page-resource-candidates');
   });
 
   test('Linux canary waits for the enrollment seed before launching Firefox', () => {

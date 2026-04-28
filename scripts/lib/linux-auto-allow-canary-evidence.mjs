@@ -142,6 +142,13 @@ function phase(id, status, evidence = {}) {
   });
 }
 
+function hasBrowserObservedPageObserver(summary) {
+  return (
+    summary?.browserNavigation?.beforeAttempts?.openpathObserverInstalled === true ||
+    summary?.browserNavigation?.afterAttempts?.openpathObserverInstalled === true
+  );
+}
+
 export function buildLinuxAutoAllowDiagnosticPhases(summary, probes = LINUX_AUTO_ALLOW_PROBES) {
   const expectedHosts = probes.map((probe) => probe.expectedWhitelistHost);
   const checks = [
@@ -162,8 +169,11 @@ export function buildLinuxAutoAllowDiagnosticPhases(summary, probes = LINUX_AUTO
     },
     {
       id: 'page-observer',
-      passed: summary?.pageObserverInstalled === true,
-      evidence: { pageObserverInstalled: summary?.pageObserverInstalled ?? null },
+      passed: summary?.pageObserverInstalled === true || hasBrowserObservedPageObserver(summary),
+      evidence: {
+        pageObserverInstalled: summary?.pageObserverInstalled ?? null,
+        browserNavigation: summary?.browserNavigation ?? null,
+      },
     },
     {
       id: 'page-resource-candidates',

@@ -169,6 +169,7 @@ async function collectBrowserNavigationDiagnostics(driver) {
         title: document.title,
         bodyTextPrefix: (document.body?.innerText || '').slice(0, 200),
         openpathObserverInstalled: window.__openpathPageResourceObserverInstalled === true,
+        canaryState: window.__openpathLinuxAjaxCanaryState ?? null,
       };`)),
     };
   } catch (error) {
@@ -284,6 +285,27 @@ function buildPage(probes) {
       const completedProbes = {};
       const completedCandidateEvents = {};
       const pageResourceCandidateEvents = [];
+      const canaryState = window.__openpathLinuxAjaxCanaryState = {
+        startedAt: new Date().toISOString(),
+        lastPhase: 'init',
+        attempts: [],
+        errors: [],
+      };
+      window.addEventListener('error', (event) => {
+        canaryState.errors.push({
+          type: 'error',
+          message: event.message,
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+        });
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        canaryState.errors.push({
+          type: 'unhandledrejection',
+          message: String(event.reason?.message || event.reason || 'unknown'),
+        });
+      });
       window.addEventListener('message', (event) => {
         if (event.data?.source !== 'openpath-page-resource-candidate') return;
         const matched = probes.find((probe) => event.data.url === probe.url || String(event.data.url || '').startsWith(probe.url + '?'));
@@ -322,6 +344,7 @@ function buildPage(probes) {
         document.head.appendChild(link);
       }));
       async function readProbeHits(probeId) {
+        canaryState.lastPhase = 'read-probe-hits:' + probeId;
         const response = await fetch('/probe-state?probe=' + encodeURIComponent(probeId), {
           cache: 'no-store',
         });
@@ -348,6 +371,7 @@ function buildPage(probes) {
         }, 1000);
       }));
       async function runProbeOnce(probe) {
+        canaryState.lastPhase = 'probe:' + probe.id;
         if (probe.kind === 'fetch') return timeout(fetch(bust(probe.url), { cache: 'no-store' }).then((response) => response.ok).catch(() => false));
         if (probe.kind === 'image') return loadImage(probe.url);
         if (probe.kind === 'script') return loadScript(probe.url);
@@ -356,10 +380,27 @@ function buildPage(probes) {
         return false;
       }
       async function runAttempt() {
+        const attempt = {
+          startedAt: new Date().toISOString(),
+          probeResults: {},
+        };
+        canaryState.attempts.push(attempt);
+        canaryState.lastPhase = 'attempt-start';
         const probeResults = {};
-        for (const probe of probes) {
-          probeResults[probe.id] = await timeout(runProbeOnce(probe));
-          if (probeResults[probe.id]) completedProbes[probe.id] = true;
+        try {
+          for (const probe of probes) {
+            probeResults[probe.id] = await timeout(runProbeOnce(probe));
+            attempt.probeResults[probe.id] = probeResults[probe.id];
+            if (probeResults[probe.id]) completedProbes[probe.id] = true;
+          }
+          canaryState.lastPhase = 'post-attempt';
+          attempt.completedAt = new Date().toISOString();
+        } catch (error) {
+          canaryState.errors.push({
+            type: 'attempt-error',
+            message: String(error?.message || error || 'unknown'),
+          });
+          attempt.error = String(error?.message || error || 'unknown');
         }
         await fetch('/attempt', {
           method: 'POST',
@@ -371,9 +412,20 @@ function buildPage(probes) {
             pageResourceCandidateEvents,
             probeResults,
           }),
-        }).catch(() => {});
+        }).catch((error) => {
+          canaryState.errors.push({
+            type: 'attempt-post-error',
+            message: String(error?.message || error || 'unknown'),
+          });
+        });
+        canaryState.lastPhase = 'attempt-finished';
       }
-      runAttempt();
+      runAttempt().catch((error) => {
+        canaryState.errors.push({
+          type: 'run-attempt-error',
+          message: String(error?.message || error || 'unknown'),
+        });
+      });
       setInterval(runAttempt, 3000);
     </script>
   </body>
@@ -565,7 +617,10 @@ async function main() {
       completedProbes: state.completedProbes,
       completedCandidateEvents: state.completedCandidateEvents,
       pageResourceCandidateEvents: state.pageResourceCandidateEvents,
-      pageObserverInstalled: state.pageObserverInstalled,
+      pageObserverInstalled:
+        state.pageObserverInstalled ||
+        browserNavigationAfterAttempts.openpathObserverInstalled === true ||
+        browserNavigationBeforeAttempts.openpathObserverInstalled === true,
       probeEvidence,
       firefoxExtensionWarmup: { ready: true, expectedExtensionId: EXPECTED_EXTENSION_ID },
       browserNavigation: {
