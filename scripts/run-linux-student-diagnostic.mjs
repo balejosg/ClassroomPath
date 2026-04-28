@@ -72,14 +72,15 @@ function runCommand(command, args, options = {}) {
   return result.status ?? 1;
 }
 
-function summarizeLinuxArtifact(artifactDir) {
+function summarizeLinuxArtifact(artifactDir, { testStatus = 1 } = {}) {
   const artifactPath = resolve(artifactDir, 'linux-auto-allow-boundary.json');
   const markdownPath = resolve(artifactDir, 'linux-student-policy-summary.md');
   const outputPath = resolve(artifactDir, 'linux-student-policy-summary.env');
+  const missingArtifactResult = testStatus === 0 ? 'success' : 'failure';
 
   if (DRY_RUN) {
     console.log(
-      `local: node scripts/summarize-linux-student-policy-evidence.mjs --artifact ${artifactPath} --summary ${markdownPath}`
+      `local: node scripts/summarize-linux-student-policy-evidence.mjs --artifact ${artifactPath} --summary ${markdownPath} --missing-artifact-result ${missingArtifactResult}`
     );
     console.log('local-artifact-fields: failureBoundary diagnosticPhases');
     return 0;
@@ -93,6 +94,8 @@ function summarizeLinuxArtifact(artifactDir) {
       artifactPath,
       '--summary',
       markdownPath,
+      '--missing-artifact-result',
+      missingArtifactResult,
     ],
     {
       cwd: projectRoot,
@@ -119,7 +122,7 @@ function main() {
   console.log('command=npm run test:student-policy:linux');
 
   if (DRY_RUN) {
-    summarizeLinuxArtifact(options.artifactDir);
+    summarizeLinuxArtifact(options.artifactDir, { testStatus: 0 });
     return;
   }
 
@@ -134,7 +137,7 @@ function main() {
       },
     });
   } finally {
-    summarizeLinuxArtifact(options.artifactDir);
+    summarizeLinuxArtifact(options.artifactDir, { testStatus });
   }
 
   if (testStatus !== 0) {

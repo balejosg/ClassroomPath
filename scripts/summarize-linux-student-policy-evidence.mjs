@@ -10,6 +10,7 @@ function parseArgs(argv) {
   const options = {
     artifactPath: DEFAULT_ARTIFACT_PATH,
     summaryPath: '',
+    missingArtifactResult: 'failure',
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -27,12 +28,15 @@ function parseArgs(argv) {
       options.artifactPath = next();
     } else if (arg === '--summary') {
       options.summaryPath = next();
+    } else if (arg === '--missing-artifact-result') {
+      options.missingArtifactResult = next();
     } else if (arg === '--help' || arg === '-h') {
       console.log(`Usage: node scripts/summarize-linux-student-policy-evidence.mjs [options]
 
 Options:
-  --artifact <path>  Linux auto-allow boundary JSON (default: ${DEFAULT_ARTIFACT_PATH})
-  --summary <path>   Optional markdown summary output path
+  --artifact <path>                 Linux auto-allow boundary JSON (default: ${DEFAULT_ARTIFACT_PATH})
+  --summary <path>                  Optional markdown summary output path
+  --missing-artifact-result <mode>  failure | success (default: failure)
 `);
       process.exit(0);
     } else {
@@ -51,6 +55,27 @@ function writeGithubOutput(key, value) {
   appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${String(value).replace(/\r?\n/g, ' ')}\n`);
 }
 
+function missingArtifactSuccess(artifactPath) {
+  return {
+    platform: 'linux',
+    success: true,
+    failureBoundary: {
+      id: 'none',
+      message: `Linux student policy direct run completed without a boundary artifact at ${artifactPath}.`,
+      recommendedNextAction: 'No follow-up required for this direct runner run.',
+    },
+    diagnosticPhases: [
+      {
+        id: 'artifact-written',
+        status: 'skipped',
+        message: 'No boundary artifact was produced because the direct run completed successfully.',
+      },
+    ],
+    probes: [],
+    diagnostics: {},
+  };
+}
+
 function artifactReadFailure(artifactPath, error) {
   return {
     platform: 'linux',
@@ -67,9 +92,15 @@ function artifactReadFailure(artifactPath, error) {
   };
 }
 
-export function readLinuxStudentArtifactSummary(artifactPath = DEFAULT_ARTIFACT_PATH) {
+export function readLinuxStudentArtifactSummary(
+  artifactPath = DEFAULT_ARTIFACT_PATH,
+  options = {}
+) {
   try {
     if (!existsSync(artifactPath)) {
+      if (options.missingArtifactResult === 'success') {
+        return missingArtifactSuccess(artifactPath);
+      }
       return artifactReadFailure(artifactPath, 'file does not exist');
     }
     return JSON.parse(readFileSync(artifactPath, 'utf8'));
@@ -111,7 +142,9 @@ export function renderLinuxStudentMarkdown(summary) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const summary = readLinuxStudentArtifactSummary(options.artifactPath);
+  const summary = readLinuxStudentArtifactSummary(options.artifactPath, {
+    missingArtifactResult: options.missingArtifactResult,
+  });
   const markdown = renderLinuxStudentMarkdown(summary);
 
   if (options.summaryPath) {

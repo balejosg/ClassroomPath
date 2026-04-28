@@ -77,3 +77,13 @@ test('Linux student evidence summary reports missing artifacts as artifact-writt
   assert.equal(summary.failureBoundary.id, 'artifact-written');
   assert.match(summary.failureBoundary.message, /does-not-exist-linux-auto-allow/);
 });
+
+test('Linux student evidence summary treats a missing artifact after exit 0 as direct-run success', () => {
+  const summary = readLinuxStudentArtifactSummary('/tmp/does-not-exist-linux-auto-allow.json', {
+    missingArtifactResult: 'success',
+  });
+
+  assert.equal(summary.success, true);
+  assert.equal(summary.failureBoundary.id, 'none');
+  assert.match(summary.failureBoundary.message, /completed without a boundary artifact/);
+});
