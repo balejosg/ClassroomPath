@@ -132,6 +132,44 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux bootstrap canary restores runner connectivity before the AJAX step exits', () => {
+    const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+    const downloadStep =
+      /name: Download live linux\/install-openpath\.sh enrollment script[\s\S]*?(?=\n      - name: Verify Linux AJAX auto-allow canary)/.exec(
+        workflow
+      )?.[0] ?? '';
+    const ajaxStep =
+      /name: Verify Linux AJAX auto-allow canary[\s\S]*?(?=\n      - name: Summarize Linux AJAX auto-allow evidence)/.exec(
+        workflow
+      )?.[0] ?? '';
+
+    assert.ok(downloadStep.includes('$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID"'));
+    assert.doesNotMatch(
+      downloadStep,
+      /sudo bash "\$workspace\/install-openpath\.sh"/,
+      'download step must not activate OpenPath before the AJAX step can restore runner DNS'
+    );
+    assert.match(
+      ajaxStep,
+      /trap restore_linux_bootstrap_canary_external_dns EXIT[\s\S]*sudo bash "\$workspace\/install-openpath\.sh" 2>&1 \| tee linux-install-openpath\.log[\s\S]*install_status="\$\{PIPESTATUS\[0\]\}"/,
+      'AJAX step must install OpenPath, preserve the installer log, and always restore runner DNS before exiting'
+    );
+    assert.match(
+      ajaxStep,
+      /failure_boundary_id=linux-install-openpath[\s\S]*exit "\$install_status"/,
+      'installer failures should be recorded as an installation boundary, not as missing artifacts'
+    );
+    assert.match(
+      ajaxStep,
+      /sudo systemctl stop openpath-sse-listener\.service openpath-update\.timer openpath-update\.service dnsmasq[\s\S]*sudo systemctl reset-failed dnsmasq[\s\S]*sudo apt-get purge -y openpath-dnsmasq[\s\S]*\/etc\/systemd\/system\/dnsmasq\.service\.d\/openpath-override\.conf[\s\S]*\/etc\/dnsmasq\.d\/openpath\.conf[\s\S]*raw\.githubusercontent\.com/,
+      'AJAX step restoration should remove OpenPath DNS state and verify external GitHub DNS'
+    );
+    assert.match(
+      workflow,
+      /name: Prepare Linux canary artifact bundle[\s\S]*linux-install-openpath\.log[\s\S]*linux-ajax-auto-allow-canary\.log/
+    );
+  });
+
   test('Linux canary workflow emits recoverable evidence summary in logs', () => {
     const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
 

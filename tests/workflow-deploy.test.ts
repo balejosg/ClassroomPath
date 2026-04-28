@@ -526,7 +526,7 @@ describe('Deploy workflow contracts', () => {
       String(
         findWorkflowStepByName(
           linuxProductionBootstrapCanaryJob,
-          'Download and run live linux/install-openpath.sh enrollment script'
+          'Download live linux/install-openpath.sh enrollment script'
         )?.run ?? ''
       ),
       /\$PRODUCTION_BASE_URL\/api\/enroll\/\$CLASSROOM_ID"/,
@@ -536,7 +536,7 @@ describe('Deploy workflow contracts', () => {
       String(
         findWorkflowStepByName(
           linuxProductionBootstrapCanaryJob,
-          'Download and run live linux/install-openpath.sh enrollment script'
+          'Download live linux/install-openpath.sh enrollment script'
         )?.run ?? ''
       ),
       /\/linux\/install-openpath\.sh/,

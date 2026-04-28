@@ -220,7 +220,7 @@ jobs:
           sudo systemctl stop openpath-sse-listener.service openpath-update.timer openpath-update.service dnsmasq || true
           sudo rm -rf /etc/openpath /var/lib/openpath /var/log/openpath.log
 
-      - name: Download and run live linux/install-openpath.sh enrollment script
+      - name: Download live linux/install-openpath.sh enrollment script
         shell: bash
         env:
           CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
@@ -233,7 +233,6 @@ jobs:
           linux_script_url="$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID"
           curl -fsSL -H "Authorization: Bearer $ENROLLMENT_TOKEN" "$linux_script_url" -o "$workspace/install-openpath.sh"
           chmod +x "$workspace/install-openpath.sh"
-          sudo bash "$workspace/install-openpath.sh"
 
       - name: Verify Linux AJAX auto-allow canary
         id: ajax
@@ -245,6 +244,80 @@ jobs:
           EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
         run: |
           set -euo pipefail
+
+          restore_linux_bootstrap_canary_external_dns() {
+            set +e
+            echo "Restoring Linux runner DNS/connectivity after OpenPath canary runtime"
+
+            timeout --kill-after=5s 20s sudo systemctl stop openpath-sse-listener.service openpath-update.timer openpath-update.service dnsmasq || true
+            timeout --kill-after=5s 20s sudo systemctl reset-failed dnsmasq || true
+
+            if [ -x /usr/local/lib/openpath/uninstall.sh ]; then
+              timeout --kill-after=5s 30s sudo /usr/local/lib/openpath/uninstall.sh --auto-yes || true
+            elif command -v openpath >/dev/null 2>&1; then
+              timeout --kill-after=5s 30s sudo openpath disable || true
+            fi
+
+            export DEBIAN_FRONTEND=noninteractive
+            timeout --kill-after=5s 30s sudo apt-get purge -y openpath-dnsmasq || true
+
+            sudo rm -f \
+              /etc/systemd/system/dnsmasq.service.d/openpath-override.conf \
+              /etc/systemd/system/dnsmasq.service.d/whitelist-override.conf \
+              /etc/dnsmasq.d/openpath.conf \
+              /etc/tmpfiles.d/openpath-dnsmasq.conf || true
+            sudo rmdir /etc/systemd/system/dnsmasq.service.d 2>/dev/null || true
+            sudo systemctl daemon-reload || true
+            sudo systemctl reset-failed dnsmasq || true
+
+            if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved; then
+              default_interface="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+              if [ -n "$default_interface" ]; then
+                sudo resolvectl dns "$default_interface" 1.1.1.1 8.8.8.8 || true
+              fi
+              sudo resolvectl flush-caches || true
+            else
+              printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf >/dev/null || true
+            fi
+
+            getent hosts raw.githubusercontent.com || getent hosts github.com || true
+          }
+
+          trap restore_linux_bootstrap_canary_external_dns EXIT
+
+          workspace="$RUNNER_TEMP/linux-production-bootstrap-canary"
+          : > linux-install-openpath.log
+          : > linux-ajax-auto-allow-canary.log
+          if [ ! -x "$workspace/install-openpath.sh" ]; then
+            echo "canary_result=failure" >> "$GITHUB_OUTPUT"
+            echo "failure_boundary_id=linux-install-openpath" >> "$GITHUB_OUTPUT"
+            echo "failure_boundary_message=Linux enrollment script was not downloaded before the AJAX canary." >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          set +e
+          sudo bash "$workspace/install-openpath.sh" 2>&1 | tee linux-install-openpath.log
+          install_status="${PIPESTATUS[0]}"
+          set -e
+          if [ "$install_status" -ne 0 ]; then
+            echo "canary_result=failure" >> "$GITHUB_OUTPUT"
+            echo "failure_boundary_id=linux-install-openpath" >> "$GITHUB_OUTPUT"
+            echo "failure_boundary_message=Linux enrollment script failed before the AJAX auto-allow canary could run." >> "$GITHUB_OUTPUT"
+            node <<'NODE'
+            const fs = require('node:fs');
+            fs.writeFileSync('production-linux-ajax-auto-allow-canary.json', JSON.stringify({
+              ok: false,
+              error: 'Linux enrollment script failed before the AJAX auto-allow canary could run.',
+              failureBoundary: {
+                id: 'linux-install-openpath',
+                message: 'Linux enrollment script failed before the AJAX auto-allow canary could run.',
+              },
+              diagnosticPhases: ['linux-install-openpath'],
+            }, null, 2));
+            NODE
+            exit "$install_status"
+          fi
+
           set +e
           timeout --kill-after=30s 10m node scripts/linux-ajax-auto-allow-canary.mjs 2>&1 | tee linux-ajax-auto-allow-canary.log
           ajax_status="${PIPESTATUS[0]}"
@@ -273,6 +346,7 @@ jobs:
           tar -czf linux-production-bootstrap-canary-evidence.tgz \
             production-linux-bootstrap-canary.json \
             production-linux-ajax-auto-allow-canary.json \
+            linux-install-openpath.log \
             linux-ajax-auto-allow-canary.log \
             linux-ajax-auto-allow-canary-summary.md
           ls -lh linux-production-bootstrap-canary-evidence.tgz
