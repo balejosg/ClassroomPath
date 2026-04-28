@@ -19,6 +19,10 @@ const TIMEOUT_MS = Number.parseInt(
   process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS ?? '90000',
   10
 );
+const PAGE_LOAD_TIMEOUT_MS = Number.parseInt(
+  process.env.LINUX_AJAX_AUTO_ALLOW_PAGE_LOAD_TIMEOUT_MS ?? '15000',
+  10
+);
 const PROBE_TIMEOUT_MS = Number.parseInt(
   process.env.LINUX_AJAX_AUTO_ALLOW_PROBE_TIMEOUT_MS ?? '5000',
   10
@@ -319,7 +323,16 @@ async function launchFirefox(originUrl) {
   options.setPreference('network.dnsCacheExpiration', 0);
   options.setPreference('network.dnsCacheExpirationGracePeriod', 0);
   const driver = await new Builder().forBrowser('firefox').setFirefoxOptions(options).build();
-  await driver.get(originUrl);
+  await driver.manage().setTimeouts({ pageLoad: PAGE_LOAD_TIMEOUT_MS, script: 10000 });
+  try {
+    await driver.get(originUrl);
+  } catch (error) {
+    console.error(
+      `Linux AJAX canary page load did not complete within ${PAGE_LOAD_TIMEOUT_MS}ms: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
   return { driver, profileDir };
 }
 

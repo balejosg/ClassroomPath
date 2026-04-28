@@ -61,6 +61,15 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux canary bounds Firefox page-load waits before probing', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_PAGE_LOAD_TIMEOUT_MS'));
+    assert.ok(canaryScript.includes('await driver.manage().setTimeouts'));
+    assert.ok(canaryScript.includes('pageLoad: PAGE_LOAD_TIMEOUT_MS'));
+    assert.ok(canaryScript.includes('Linux AJAX canary page load did not complete'));
+  });
+
   test('summarizer enriches Linux AJAX evidence with failure boundary outputs', () => {
     const summarizer = readProjectText('scripts/summarize-linux-ajax-auto-allow-evidence.mjs');
 
