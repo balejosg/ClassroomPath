@@ -484,23 +484,6 @@ async function main() {
   );
   maskGithubSecret(ticketPayload.enrollmentToken);
 
-  const authHeaders = {
-    Authorization: `Bearer ${ticketPayload.enrollmentToken}`,
-    Origin: requestOrigin,
-  };
-  const manifestResponse = await fetchWithRetry(`${apiUrl}/api/agent/linux/latest.json`, {
-    headers: authHeaders,
-  });
-
-  assert.equal(manifestResponse.status, 200, 'Linux manifest should be available');
-  const manifest = await manifestResponse.json();
-  assert.ok(manifest.version ?? manifest.agentVersion, 'Linux manifest should include a version');
-
-  const xpiResponse = await fetchWithRetry(`${apiUrl}/api/extensions/firefox/openpath.xpi`, {
-    headers: authHeaders,
-  });
-  assert.equal(xpiResponse.status, 200, 'Firefox release XPI should be downloadable');
-
   const summary = {
     apiUrl,
     requestOrigin,
@@ -515,8 +498,8 @@ async function main() {
     linuxScriptUrl: `${apiUrl}/api/enroll/${classroom.id}/linux/install-openpath.sh`,
     publicFirefoxXpiUrl: `${apiUrl}/api/extensions/firefox/openpath.xpi`,
     extensionId: 'monitor-bloqueos@openpath',
-    extensionVersion: manifest.firefoxExtensionVersion ?? manifest.version ?? '',
-    bootstrapManifestVersion: manifest.version ?? manifest.agentVersion ?? '',
+    extensionVersion: '',
+    bootstrapManifestVersion: '',
   };
   const artifactSummary = sanitizeSummaryForArtifact(summary);
 

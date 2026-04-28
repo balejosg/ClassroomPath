@@ -44,6 +44,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(script.includes('production-linux-bootstrap-canary.json'));
     assert.ok(script.includes('linux-production-bootstrap-canary'));
     assert.ok(script.includes('/cp/internal/client-canary/manual-request/'));
+    assert.ok(
+      !script.includes('/api/agent/linux/latest.json'),
+      'Linux provisioning should not preflight the agent manifest with an enrollment token before installation'
+    );
     assert.ok(script.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
     assert.ok(script.includes('ajax-auto-allow-font.127.0.0.1.sslip.io'));
   });
