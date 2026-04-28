@@ -188,7 +188,7 @@ describe('runner diagnostic wrapper', () => {
     assert.equal(result.status, 1);
     assert.match(
       result.stdout,
-      /gh api "?repos\/balejosg\/ClassroomPath\/actions\/jobs\/<job-id>\/logs"?/
+      /gh run view "?<latest-run-id>"? --repo balejosg\/ClassroomPath --job "?<job-id>"? --log/
     );
     assert.match(result.stdout, /write .*job-<job-id>\.log/);
     assert.match(result.stdout, /write .*diagnostic-summary\.json/);

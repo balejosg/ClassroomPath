@@ -355,7 +355,7 @@ function main() {
   const jobLogStatuses = [];
   for (const jobId of getPrimaryJobIds(jobsJson)) {
     const jobLog = captureCommandToFile(
-      ['gh', 'api', `repos/${suite.repo}/actions/jobs/${jobId}/logs`],
+      ['gh', 'run', 'view', resolvedRunId, '--repo', suite.repo, '--job', jobId, '--log'],
       resolve(artifactDir, `job-${jobId}.log`)
     );
     jobLogStatuses.push({ jobId, status: jobLog.status });
