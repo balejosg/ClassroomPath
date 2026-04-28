@@ -28,6 +28,29 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(canaryScript.includes('font/woff2'));
   });
 
+  test('Linux font probe is validated by server traffic instead of font decode success', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.ok(
+      canaryScript.includes("url.pathname === '/probe-state'"),
+      'Linux canary should expose per-probe hit counts to the browser page'
+    );
+    assert.ok(
+      canaryScript.includes('const hits = await readProbeHits(probe.id).catch(() => 0);'),
+      'Linux font probe should use server hit evidence like the Windows canary'
+    );
+    assert.ok(
+      /const loadFont = \(probe\) =>[\s\S]*resolve\(hits > 0\);[\s\S]*?\}\)\);/.test(canaryScript),
+      'Linux font success must not depend on Firefox accepting the synthetic woff2 payload'
+    );
+    assert.ok(
+      canaryScript.includes(
+        'pageResourceCandidateEvents.splice(0, pageResourceCandidateEvents.length - 100)'
+      ),
+      'Linux canary should cap candidate events so artifact upload cannot grow unbounded'
+    );
+  });
+
   test('summarizer enriches Linux AJAX evidence with failure boundary outputs', () => {
     const summarizer = readProjectText('scripts/summarize-linux-ajax-auto-allow-evidence.mjs');
 

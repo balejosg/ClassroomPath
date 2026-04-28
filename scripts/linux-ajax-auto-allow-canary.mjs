@@ -129,6 +129,9 @@ function buildPage(probes) {
         const matched = probes.find((probe) => event.data.url === probe.url || String(event.data.url || '').startsWith(probe.url + '?'));
         if (matched) completedCandidateEvents[matched.id] = true;
         pageResourceCandidateEvents.push({ ...event.data, matchedProbeId: matched?.id ?? null, seenAt: new Date().toISOString() });
+        if (pageResourceCandidateEvents.length > 100) {
+          pageResourceCandidateEvents.splice(0, pageResourceCandidateEvents.length - 100);
+        }
       });
 
       const timeout = (promise) => Promise.race([
@@ -158,7 +161,16 @@ function buildPage(probes) {
         link.href = bust(url);
         document.head.appendChild(link);
       }));
-      const loadFont = (url) => timeout(new Promise((resolve) => {
+      async function readProbeHits(probeId) {
+        const response = await fetch('/probe-state?probe=' + encodeURIComponent(probeId), {
+          cache: 'no-store',
+        });
+        if (!response.ok) return 0;
+        const payload = await response.json();
+        return Number(payload?.hits ?? 0);
+      }
+      const loadFont = (probe) => timeout(new Promise((resolve) => {
+        const url = probe.url;
         const style = document.createElement('style');
         const family = 'OpenPathLinuxCanary' + Date.now();
         style.textContent = '@font-face { font-family: "' + family + '"; src: url("' + bust(url) + '") format("woff2"); } body { fontFamily: "' + family + '"; }';
@@ -168,17 +180,19 @@ function buildPage(probes) {
         link.as = 'font';
         link.type = 'font/woff2';
         link.crossOrigin = 'anonymous';
-        link.onload = () => resolve(true);
-        link.onerror = () => resolve(false);
         link.href = bust(url);
         document.head.appendChild(link);
+        setTimeout(async () => {
+          const hits = await readProbeHits(probe.id).catch(() => 0);
+          resolve(hits > 0);
+        }, 1000);
       }));
       async function runProbeOnce(probe) {
         if (probe.kind === 'fetch') return timeout(fetch(bust(probe.url), { cache: 'no-store' }).then((response) => response.ok).catch(() => false));
         if (probe.kind === 'image') return loadImage(probe.url);
         if (probe.kind === 'script') return loadScript(probe.url);
         if (probe.kind === 'stylesheet') return loadStylesheet(probe.url);
-        if (probe.kind === 'font') return loadFont(probe.url);
+        if (probe.kind === 'font') return loadFont(probe);
         return false;
       }
       async function runAttempt() {
@@ -215,6 +229,13 @@ function createCanaryServer({ state }) {
     const matchedProbe = AUTO_ALLOW_PROBES.find(
       (probe) => host === probe.host && url.pathname === probe.path
     );
+
+    if (host === ORIGIN_HOST && req.method === 'GET' && url.pathname === '/probe-state') {
+      const probeId = url.searchParams.get('probe') ?? '';
+      res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ hits: Number(state.probeHits[probeId] ?? 0) }));
+      return;
+    }
 
     if (host === ORIGIN_HOST && req.method === 'POST' && url.pathname === '/attempt') {
       let body = '';
