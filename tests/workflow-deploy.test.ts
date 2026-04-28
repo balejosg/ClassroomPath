@@ -499,6 +499,27 @@ describe('Deploy workflow contracts', () => {
       /STAGING_DEPLOY_/,
       'manual bootstrap diagnostics should be able to resolve staging SSH/secrets without changing the production deploy caller'
     );
+    const linuxProductionBootstrapCanaryJob = findWorkflowJob(
+      linuxProductionBootstrapCanaryWorkflow,
+      'linux-production-bootstrap-canary'
+    );
+    assert.match(
+      String(
+        findWorkflowStepByName(linuxProductionBootstrapCanaryJob, 'Resolve target host')?.run ?? ''
+      ),
+      /github_actions_remote_install_ssh_key/,
+      'Linux bootstrap canary must resolve the remote target before reading production runtime env'
+    );
+    assert.match(
+      String(
+        findWorkflowStepByName(
+          linuxProductionBootstrapCanaryJob,
+          'Read target client canary admin token'
+        )?.run ?? ''
+      ),
+      /github_actions_remote_read_env_key/,
+      'Linux bootstrap canary must read CP_CLIENT_CANARY_ADMIN_TOKEN from the target runtime env'
+    );
     assert.match(
       deployWorkflowText,
       /CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:\s+\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_email_delivery_high_risk == 'true' && '0' \|\| '1' \}\}/
