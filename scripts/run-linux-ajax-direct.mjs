@@ -7,6 +7,10 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { getDeployTarget } from './deploy-targets.mjs';
+import {
+  buildRunnerDiagnosticPlan,
+  validateRunnerDiagnosticPlan,
+} from './lib/runner-diagnostic-execution.mjs';
 
 const DEFAULT_ENVIRONMENT = 'staging';
 const DRY_RUN = process.env.LINUX_AJAX_DIRECT_DRY_RUN === '1';
@@ -180,17 +184,6 @@ function main() {
     console.error(`Unsupported environment: ${options.environment}`);
     process.exit(1);
   }
-  if (options.environment === 'production' && !options.confirmProduction) {
-    console.error('Production Linux AJAX diagnostics require --confirm-production.');
-    process.exit(1);
-  }
-  if (!options.confirmLocalStateReset) {
-    console.error(
-      'Direct Linux AJAX diagnostics reset local OpenPath state; pass --confirm-local-state-reset.'
-    );
-    process.exit(1);
-  }
-
   const envLocal = loadEnvLocal();
   const baseUrl = (options.baseUrl || getDeployTarget(options.environment).publicUrl).replace(
     /\/$/,
@@ -199,12 +192,26 @@ function main() {
   const adminToken =
     process.env.CP_CLIENT_CANARY_ADMIN_TOKEN || envLocal.CP_CLIENT_CANARY_ADMIN_TOKEN || '';
   const artifactDir = options.artifactDir;
-  const bootstrapArtifact = resolve(artifactDir, 'production-linux-bootstrap-canary.json');
-  const bootstrapOutput = resolve(artifactDir, 'production-linux-bootstrap-canary.env');
-  const canaryArtifact = resolve(artifactDir, 'production-linux-ajax-auto-allow-canary.json');
-  const canarySummary = resolve(artifactDir, 'linux-ajax-auto-allow-canary-summary.md');
-  const canaryOutput = resolve(artifactDir, 'linux-ajax-auto-allow-canary-summary.env');
-  const installerPath = resolve(artifactDir, 'install-openpath.sh');
+  const plan = buildRunnerDiagnosticPlan({
+    platform: 'linux',
+    suite: 'ajax-auto-allow',
+    environment: options.environment,
+    baseUrl,
+    artifactDir,
+    confirmProduction: options.confirmProduction,
+    confirmLocalStateReset: options.confirmLocalStateReset,
+  });
+  const validationErrors = validateRunnerDiagnosticPlan(plan);
+  if (validationErrors.length > 0) {
+    console.error(validationErrors[0]);
+    process.exit(1);
+  }
+  const bootstrapArtifact = plan.artifacts.linuxBootstrapCanary;
+  const bootstrapOutput = plan.artifacts.linuxBootstrapOutput;
+  const canaryArtifact = plan.artifacts.linuxAjaxCanary;
+  const canarySummary = plan.artifacts.linuxAjaxSummary;
+  const canaryOutput = plan.artifacts.linuxAjaxSummaryOutput;
+  const installerPath = plan.artifacts.linuxInstaller;
 
   console.log(`target_environment=${options.environment}`);
   console.log(`base_url=${baseUrl}`);
@@ -302,7 +309,7 @@ function main() {
     logName: 'run-install-openpath',
   });
 
-  const canaryStatus = runCommand(process.execPath, ['scripts/linux-ajax-auto-allow-canary.mjs'], {
+  const canaryStatus = runCommand(process.execPath, [plan.canary.command], {
     env: {
       ...process.env,
       LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: baseUrl,

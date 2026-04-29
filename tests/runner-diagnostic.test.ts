@@ -478,6 +478,17 @@ describe('runner diagnostic wrapper', () => {
     );
   });
 
+  test('direct Windows AJAX diagnostic delegates plan facts to the shared execution module', () => {
+    const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+
+    assert.match(script, /buildRunnerDiagnosticPlan/);
+    assert.match(script, /validateRunnerDiagnosticPlan/);
+    assert.match(script, /plan\.openpathOverlays/);
+    assert.match(script, /plan\.canaryScriptUploads/);
+    assert.doesNotMatch(script, /const OPENPATH_OVERLAYS = \[/);
+    assert.doesNotMatch(script, /const CANARY_SCRIPT_UPLOADS = \[/);
+  });
+
   test('refuses direct production diagnostics without explicit confirmation', () => {
     const result = runDirectDiagnostic(['--environment', 'production']);
 
@@ -510,6 +521,15 @@ describe('runner diagnostic wrapper', () => {
     );
     assert.match(result.stdout, /scripts\/linux-ajax-auto-allow-canary\.mjs/);
     assert.match(result.stdout, /scripts\/summarize-linux-ajax-auto-allow-evidence\.mjs/);
+  });
+
+  test('direct Linux AJAX diagnostic delegates artifact and canary facts to the shared execution module', () => {
+    const script = readProjectText('scripts/run-linux-ajax-direct.mjs');
+
+    assert.match(script, /buildRunnerDiagnosticPlan/);
+    assert.match(script, /validateRunnerDiagnosticPlan/);
+    assert.match(script, /plan\.artifacts\.linuxAjaxCanary/);
+    assert.match(script, /plan\.canary\.command/);
   });
 
   test('direct Linux AJAX diagnostic preflights before provisioning remote canaries', () => {

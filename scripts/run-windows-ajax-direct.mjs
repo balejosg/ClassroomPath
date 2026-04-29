@@ -7,6 +7,11 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { getDeployTarget } from './deploy-targets.mjs';
+import {
+  buildRunnerDiagnosticPlan,
+  summarizeRunnerDiagnosticPlan,
+  validateRunnerDiagnosticPlan,
+} from './lib/runner-diagnostic-execution.mjs';
 
 const DEFAULT_ENVIRONMENT = 'staging';
 const DEFAULT_PROXMOX_HOST = 'whitelist-proxmox';
@@ -24,56 +29,6 @@ const DRY_RUN = process.env.WINDOWS_AJAX_DIRECT_DRY_RUN === '1';
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
 const projectRoot = resolve(scriptDir, '..');
-
-const OPENPATH_OVERLAYS = [
-  {
-    source: 'windows/scripts/Start-SSEListener.ps1',
-    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\scripts\\Start-SSEListener.ps1`,
-  },
-  {
-    source: 'windows/scripts/Update-OpenPath.ps1',
-    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\scripts\\Update-OpenPath.ps1`,
-  },
-  {
-    source: 'windows/lib/Update.Runtime.psm1',
-    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\Update.Runtime.psm1`,
-  },
-  {
-    source: 'windows/lib/internal/Common.Integrity.ps1',
-    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\Common.Integrity.ps1`,
-  },
-  {
-    source: 'windows/lib/internal/NativeHost.Actions.ps1',
-    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\NativeHost.Actions.ps1`,
-  },
-  {
-    source: 'windows/lib/internal/NativeHost.Actions.ps1',
-    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\browser-extension\\firefox\\native\\NativeHost.Actions.ps1`,
-  },
-];
-
-const CANARY_SCRIPT_UPLOADS = [
-  {
-    source: 'scripts/windows-ajax-auto-allow-canary.mjs',
-    destination: `${WINDOWS_WORKSPACE}\\scripts\\windows-ajax-auto-allow-canary.mjs`,
-  },
-  {
-    source: 'scripts/lib/auto-allow-observation.mjs',
-    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\auto-allow-observation.mjs`,
-  },
-  {
-    source: 'scripts/lib/auto-allow-boundary-evidence.mjs',
-    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\auto-allow-boundary-evidence.mjs`,
-  },
-  {
-    source: 'scripts/lib/windows-auto-allow-canary-evidence.mjs',
-    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\windows-auto-allow-canary-evidence.mjs`,
-  },
-  {
-    source: 'scripts/summarize-windows-ajax-auto-allow-evidence.mjs',
-    destination: `${WINDOWS_WORKSPACE}\\scripts\\summarize-windows-ajax-auto-allow-evidence.mjs`,
-  },
-];
 
 const SELENIUM_NODE_MODULES = [
   'selenium-webdriver',
@@ -231,15 +186,15 @@ function encodePowerShell(script) {
   return Buffer.from(script, 'utf16le').toString('base64');
 }
 
-function ensureFilesExist(options) {
-  for (const upload of OPENPATH_OVERLAYS) {
+function ensureFilesExist(options, plan) {
+  for (const upload of plan.openpathOverlays) {
     const sourcePath = resolve(options.openpathRoot, upload.source);
     if (!existsSync(sourcePath)) {
       throw new Error(`Required OpenPath overlay is missing: ${sourcePath}`);
     }
   }
 
-  for (const upload of CANARY_SCRIPT_UPLOADS) {
+  for (const upload of plan.canaryScriptUploads) {
     const sourcePath = resolve(projectRoot, upload.source);
     if (!existsSync(sourcePath)) {
       throw new Error(`Required canary helper is missing: ${sourcePath}`);
@@ -895,10 +850,10 @@ function collectArtifacts(options, artifactDir) {
   writeFileSync(resolve(artifactDir, 'native-host.log.tail.txt'), nativeLogTail, 'utf8');
 }
 
-function summarizeAjaxArtifact(artifactDir) {
-  const artifactPath = resolve(artifactDir, 'production-windows-ajax-auto-allow-canary.json');
-  const markdownPath = resolve(artifactDir, 'windows-ajax-auto-allow-canary-summary.md');
-  const outputPath = resolve(artifactDir, 'windows-ajax-auto-allow-canary-summary.env');
+function summarizeAjaxArtifact(plan) {
+  const artifactPath = plan.artifacts.windowsAjaxCanary;
+  const markdownPath = plan.artifacts.windowsAjaxSummary;
+  const outputPath = plan.artifacts.windowsAjaxSummaryOutput;
 
   // This enriches local direct-run evidence with failureBoundary and diagnosticPhases.
   if (DRY_RUN) {
@@ -947,11 +902,6 @@ function main() {
     process.exit(1);
   }
 
-  if (options.environment === 'production' && !options.confirmProduction) {
-    console.error('Direct production diagnostics require --confirm-production.');
-    process.exit(1);
-  }
-
   const env = { ...loadEnvLocal(), ...process.env };
   const deployTarget = getDeployTarget(options.environment);
   const baseUrl = (options.baseUrl || deployTarget.publicUrl).replace(/\/$/, '');
@@ -962,16 +912,30 @@ function main() {
       '.opencode/tmp/windows-ajax-direct',
       `${options.environment}-${new Date().toISOString().replace(/[:.]/g, '-')}`
     );
+  const plan = buildRunnerDiagnosticPlan({
+    platform: 'windows',
+    suite: 'ajax-auto-allow',
+    environment: options.environment,
+    baseUrl,
+    artifactDir,
+    openpathRoot: options.openpathRoot,
+    proxmoxHost: options.proxmoxHost,
+    vmid: options.vmid,
+    confirmProduction: options.confirmProduction,
+  });
+  const validationErrors = validateRunnerDiagnosticPlan(plan);
+  if (validationErrors.length > 0) {
+    console.error(validationErrors[0]);
+    process.exit(1);
+  }
 
-  ensureFilesExist(options);
+  ensureFilesExist(options, plan);
 
-  console.log(`target_environment=${options.environment}`);
-  console.log(`base_url=${baseUrl}`);
-  console.log(`artifact_dir=${artifactDir}`);
+  for (const line of summarizeRunnerDiagnosticPlan(plan)) {
+    if (line.startsWith('firefox_mode=')) continue;
+    console.log(line);
+  }
   console.log(`firefox_extension_source=${options.firefoxExtensionSource}`);
-  console.log(
-    `proxmox_guest_agent=ssh ${options.proxmoxHost} qm guest exec ${options.vmid} -- powershell.exe`
-  );
 
   if (!DRY_RUN) {
     mkdirSync(artifactDir, { recursive: true });
@@ -997,13 +961,13 @@ function main() {
   ensureSeleniumFirefoxCanarySupport(options);
   installWindowsClient(options, summary);
 
-  for (const upload of OPENPATH_OVERLAYS) {
+  for (const upload of plan.openpathOverlays) {
     writeGuestText(options, resolve(options.openpathRoot, upload.source), upload.destination);
   }
   refreshOpenPathIntegrity(options);
   runOpenPathUpdateAndSse(options);
 
-  for (const upload of CANARY_SCRIPT_UPLOADS) {
+  for (const upload of plan.canaryScriptUploads) {
     writeGuestText(options, resolve(projectRoot, upload.source), upload.destination);
   }
   console.log('guest-env: WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE=selenium');
@@ -1023,7 +987,7 @@ function main() {
     if (!DRY_RUN) {
       try {
         collectArtifacts(options, artifactDir);
-        summarizeAjaxArtifact(artifactDir);
+        summarizeAjaxArtifact(plan);
       } catch (artifactError) {
         if (!canaryError) {
           throw artifactError;
@@ -1035,7 +999,7 @@ function main() {
         );
       }
     } else {
-      summarizeAjaxArtifact(artifactDir);
+      summarizeAjaxArtifact(plan);
     }
   }
 
