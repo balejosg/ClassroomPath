@@ -236,6 +236,39 @@ export function buildAutoAllowDiagnosticPhases({ checks, boundaries }) {
   });
 }
 
+export function buildAutoAllowEvidenceModel({
+  phases,
+  summary,
+  probes,
+  boundaries,
+  enrichProbeEvidence,
+}) {
+  const modelSummary =
+    typeof enrichProbeEvidence === 'function' && Array.isArray(summary?.probeEvidence)
+      ? {
+          ...summary,
+          probeEvidence: enrichProbeEvidence(summary.probeEvidence, summary, probes),
+        }
+      : summary;
+
+  const checks = phases.map((spec) => ({
+    id: spec.id,
+    evidence:
+      typeof spec.evidence === 'function'
+        ? spec.evidence(modelSummary, probes)
+        : (spec.evidence ?? {}),
+    passed: spec.passed(modelSummary, probes),
+  }));
+  const diagnosticPhases = buildAutoAllowDiagnosticPhases({ checks, boundaries });
+  const failureBoundary = classifyAutoAllowFailureBoundary({ diagnosticPhases, boundaries });
+
+  return {
+    ...modelSummary,
+    diagnosticPhases,
+    failureBoundary,
+  };
+}
+
 export function classifyAutoAllowFailureBoundary({ diagnosticPhases, boundaries }) {
   const failedPhase = diagnosticPhases.find((candidate) => candidate.status === 'failed');
   const id = failedPhase?.id ?? 'none';

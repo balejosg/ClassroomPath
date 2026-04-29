@@ -92,7 +92,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-library',
     patterns: [
-      '^scripts/lib/(?:ajax-auto-allow-canary-harness|firefox-release-version|github-actions|github-actions-artifacts|linux-auto-allow-canary-evidence|openpath-ci-checks|promotion-eligibility|regression-plan|release-candidate|release-candidate-components|release-cli|release-evidence|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|verification-catalog|verification-report-contract|verify-report-consumer)\\.mjs$',
+      '^scripts/lib/(?:ajax-auto-allow-canary-harness|auto-allow-boundary-evidence|firefox-release-version|github-actions|github-actions-artifacts|linux-auto-allow-canary-evidence|openpath-ci-checks|promotion-eligibility|regression-plan|release-candidate|release-candidate-components|release-cli|release-evidence|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|verification-catalog|verification-report-contract|verify-report-consumer|windows-auto-allow-canary-evidence)\\.mjs$',
     ],
     capabilities: {
       ciRelevant: true,

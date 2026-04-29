@@ -1,7 +1,6 @@
 import {
   buildAutoAllowArtifactFailureSummary,
-  buildAutoAllowDiagnosticPhase,
-  buildAutoAllowDiagnosticPhases,
+  buildAutoAllowEvidenceModel,
   classifyAutoAllowFailureBoundary,
   enrichProbeEvidenceWithRemoteDiagnostics,
   hasCandidateEvidence,
@@ -133,15 +132,6 @@ export function buildLinuxAutoAllowProbeUrl(probe, port) {
   return `http://${probe.host}:${port}${probe.path}`;
 }
 
-function phase(id, status, evidence = {}) {
-  return buildAutoAllowDiagnosticPhase({
-    id,
-    status,
-    evidence,
-    boundaries: LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES,
-  });
-}
-
 function hasBrowserObservedPageObserver(summary) {
   return (
     summary?.browserNavigation?.beforeAttempts?.openpathObserverInstalled === true ||
@@ -149,72 +139,89 @@ function hasBrowserObservedPageObserver(summary) {
   );
 }
 
-export function buildLinuxAutoAllowDiagnosticPhases(summary, probes = LINUX_AUTO_ALLOW_PROBES) {
-  const expectedHosts = probes.map((probe) => probe.expectedWhitelistHost);
-  const checks = [
-    {
-      id: 'firefox-extension-ready',
-      passed: summary?.firefoxExtensionWarmup?.ready === true,
-      evidence: summary?.firefoxExtensionWarmup ?? null,
-    },
-    {
-      id: 'origin-page-load',
-      passed: Number(summary?.originPageHits ?? summary?.originHits ?? 0) > 0,
-      evidence: {
-        originHits: Number(summary?.originHits ?? 0),
-        originPageHits: Number(summary?.originPageHits ?? summary?.originHits ?? 0),
-        attemptHits: Number(summary?.attemptHits ?? 0),
-        browserNavigation: summary?.browserNavigation ?? null,
-      },
-    },
-    {
-      id: 'page-observer',
-      passed: summary?.pageObserverInstalled === true || hasBrowserObservedPageObserver(summary),
-      evidence: {
-        pageObserverInstalled: summary?.pageObserverInstalled ?? null,
-        pageObserverState: summary?.pageObserverState ?? null,
-        browserNavigation: summary?.browserNavigation ?? null,
-      },
-    },
-    {
-      id: 'page-resource-candidates',
-      passed: hasCandidateEvidence(summary, probes),
-      evidence: {
-        completedCandidateEvents: summary?.completedCandidateEvents ?? null,
-        pageObserverState: summary?.pageObserverState ?? null,
-      },
-    },
-    {
-      id: 'remote-rule-creation',
-      passed: hasRemoteRuleEvidence(summary, expectedHosts),
-      evidence: { expectedHosts },
-    },
-    {
-      id: 'local-whitelist-apply',
-      passed: hasLocalWhitelistEvidence(summary, probes),
-      evidence: { expectedHosts, probeEvidence: summary?.probeEvidence ?? [] },
-    },
-    {
-      id: 'dns-policy-apply',
-      passed: hasDnsEvidence(summary, expectedHosts),
-      evidence: { expectedHosts },
-    },
-    {
-      id: 'probe-traffic',
-      passed: hasProbeTrafficEvidence(summary, probes),
-      evidence: { probeEvidence: summary?.probeEvidence ?? [] },
-    },
-    {
-      id: 'artifact-written',
-      passed: summary?.artifactWritten !== false && summary?.artifact?.written !== false,
-      evidence: { artifactWritten: summary?.artifactWritten ?? true },
-    },
-  ];
+export const LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
+  {
+    id: 'firefox-extension-ready',
+    passed: (summary) => summary?.firefoxExtensionWarmup?.ready === true,
+    evidence: (summary) => summary?.firefoxExtensionWarmup ?? null,
+  },
+  {
+    id: 'origin-page-load',
+    passed: (summary) => Number(summary?.originPageHits ?? summary?.originHits ?? 0) > 0,
+    evidence: (summary) => ({
+      originHits: Number(summary?.originHits ?? 0),
+      originPageHits: Number(summary?.originPageHits ?? summary?.originHits ?? 0),
+      attemptHits: Number(summary?.attemptHits ?? 0),
+      browserNavigation: summary?.browserNavigation ?? null,
+    }),
+  },
+  {
+    id: 'page-observer',
+    passed: (summary) =>
+      summary?.pageObserverInstalled === true || hasBrowserObservedPageObserver(summary),
+    evidence: (summary) => ({
+      pageObserverInstalled: summary?.pageObserverInstalled ?? null,
+      pageObserverState: summary?.pageObserverState ?? null,
+      browserNavigation: summary?.browserNavigation ?? null,
+    }),
+  },
+  {
+    id: 'page-resource-candidates',
+    passed: (summary, probes) => hasCandidateEvidence(summary, probes),
+    evidence: (summary) => ({
+      completedCandidateEvents: summary?.completedCandidateEvents ?? null,
+      pageObserverState: summary?.pageObserverState ?? null,
+    }),
+  },
+  {
+    id: 'remote-rule-creation',
+    passed: (summary, probes) =>
+      hasRemoteRuleEvidence(
+        summary,
+        probes.map((probe) => probe.expectedWhitelistHost)
+      ),
+    evidence: (_summary, probes) => ({
+      expectedHosts: probes.map((probe) => probe.expectedWhitelistHost),
+    }),
+  },
+  {
+    id: 'local-whitelist-apply',
+    passed: (summary, probes) => hasLocalWhitelistEvidence(summary, probes),
+    evidence: (summary, probes) => ({
+      expectedHosts: probes.map((probe) => probe.expectedWhitelistHost),
+      probeEvidence: summary?.probeEvidence ?? [],
+    }),
+  },
+  {
+    id: 'dns-policy-apply',
+    passed: (summary, probes) =>
+      hasDnsEvidence(
+        summary,
+        probes.map((probe) => probe.expectedWhitelistHost)
+      ),
+    evidence: (_summary, probes) => ({
+      expectedHosts: probes.map((probe) => probe.expectedWhitelistHost),
+    }),
+  },
+  {
+    id: 'probe-traffic',
+    passed: (summary, probes) => hasProbeTrafficEvidence(summary, probes),
+    evidence: (summary) => ({ probeEvidence: summary?.probeEvidence ?? [] }),
+  },
+  {
+    id: 'artifact-written',
+    passed: (summary) => summary?.artifactWritten !== false && summary?.artifact?.written !== false,
+    evidence: (summary) => ({ artifactWritten: summary?.artifactWritten ?? true }),
+  },
+]);
 
-  return buildAutoAllowDiagnosticPhases({
-    checks,
+export function buildLinuxAutoAllowDiagnosticPhases(summary, probes = LINUX_AUTO_ALLOW_PROBES) {
+  return buildAutoAllowEvidenceModel({
+    phases: LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASES,
+    summary,
+    probes,
     boundaries: LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES,
-  });
+  }).diagnosticPhases;
 }
 
 export function classifyLinuxAutoAllowFailureBoundary(summary, probes = LINUX_AUTO_ALLOW_PROBES) {
@@ -227,25 +234,13 @@ export function classifyLinuxAutoAllowFailureBoundary(summary, probes = LINUX_AU
 }
 
 export function withLinuxAutoAllowDiagnostics(summary, probes = LINUX_AUTO_ALLOW_PROBES) {
-  const enrichedSummary = Array.isArray(summary?.probeEvidence)
-    ? {
-        ...summary,
-        probeEvidence: enrichProbeEvidenceWithRemoteDiagnostics(
-          summary.probeEvidence,
-          summary,
-          probes
-        ),
-      }
-    : summary;
-  const diagnosticPhases = buildLinuxAutoAllowDiagnosticPhases(enrichedSummary, probes);
-  return {
-    ...enrichedSummary,
-    diagnosticPhases,
-    failureBoundary: classifyLinuxAutoAllowFailureBoundary(
-      { ...enrichedSummary, diagnosticPhases },
-      probes
-    ),
-  };
+  return buildAutoAllowEvidenceModel({
+    phases: LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASES,
+    summary,
+    probes,
+    boundaries: LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES,
+    enrichProbeEvidence: enrichProbeEvidenceWithRemoteDiagnostics,
+  });
 }
 
 export function buildLinuxAutoAllowArtifactFailureSummary({ id, artifactPath, error, message }) {

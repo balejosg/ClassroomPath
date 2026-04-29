@@ -1,7 +1,7 @@
 import {
   buildAutoAllowArtifactFailureSummary,
   buildAutoAllowDiagnosticPhase,
-  buildAutoAllowDiagnosticPhases,
+  buildAutoAllowEvidenceModel,
   classifyAutoAllowFailureBoundary,
   enrichProbeEvidenceWithRemoteDiagnostics,
   hasCandidateEvidence,
@@ -193,70 +193,77 @@ function phase(id, status, evidence = {}) {
   });
 }
 
-export function buildWindowsAutoAllowDiagnosticPhases(summary, probes = WINDOWS_AUTO_ALLOW_PROBES) {
-  const expectedHosts = probes.map((probe) => probe.expectedWhitelistHost);
-  const checks = [
-    {
-      id: 'firefox-extension-ready',
-      passed: summary?.firefoxExtensionWarmup?.ready === true,
-      evidence: summary?.firefoxExtensionWarmup ?? null,
-    },
-    {
-      id: 'origin-page-load',
-      passed: Number(summary?.originHits ?? 0) > 0,
-      evidence: { originHits: Number(summary?.originHits ?? 0) },
-    },
-    {
-      id: 'page-observer',
-      passed: summary?.pageObserverInstalled === true,
-      evidence: { pageObserverInstalled: summary?.pageObserverInstalled ?? null },
-    },
-    {
-      id: 'page-resource-candidates',
-      passed: hasCandidateEvidence(summary, probes),
-      evidence: {
-        completedCandidateEvents: summary?.completedCandidateEvents ?? null,
-        candidateEventsCount: Array.isArray(summary?.pageResourceCandidateEvents)
-          ? summary.pageResourceCandidateEvents.length
-          : 0,
-      },
-    },
-    {
-      id: 'remote-rule-creation',
-      passed: hasRemoteRuleEvidence(summary, expectedHosts),
-      evidence: { expectedHosts },
-    },
-    {
-      id: 'local-whitelist-apply',
-      passed: hasLocalWhitelistEvidence(summary, probes),
-      evidence: {
-        expectedHosts,
-        probeEvidence: summary?.probeEvidence ?? [],
-      },
-    },
-    {
-      id: 'probe-traffic',
-      passed: hasProbeTrafficEvidence(summary, probes),
-      evidence: {
-        probeEvidence: (summary?.probeEvidence ?? []).map((item) => ({
-          id: item.id,
-          hits: item.hits ?? 0,
-        })),
-      },
-    },
-    {
-      id: 'artifact-written',
-      passed: summary?.artifactWritten !== false && summary?.artifact?.written !== false,
-      evidence: {
-        artifactWritten: summary?.artifactWritten ?? summary?.artifact?.written ?? true,
-      },
-    },
-  ];
+export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
+  {
+    id: 'firefox-extension-ready',
+    passed: (summary) => summary?.firefoxExtensionWarmup?.ready === true,
+    evidence: (summary) => summary?.firefoxExtensionWarmup ?? null,
+  },
+  {
+    id: 'origin-page-load',
+    passed: (summary) => Number(summary?.originHits ?? 0) > 0,
+    evidence: (summary) => ({ originHits: Number(summary?.originHits ?? 0) }),
+  },
+  {
+    id: 'page-observer',
+    passed: (summary) => summary?.pageObserverInstalled === true,
+    evidence: (summary) => ({ pageObserverInstalled: summary?.pageObserverInstalled ?? null }),
+  },
+  {
+    id: 'page-resource-candidates',
+    passed: (summary, probes) => hasCandidateEvidence(summary, probes),
+    evidence: (summary) => ({
+      completedCandidateEvents: summary?.completedCandidateEvents ?? null,
+      candidateEventsCount: Array.isArray(summary?.pageResourceCandidateEvents)
+        ? summary.pageResourceCandidateEvents.length
+        : 0,
+    }),
+  },
+  {
+    id: 'remote-rule-creation',
+    passed: (summary, probes) =>
+      hasRemoteRuleEvidence(
+        summary,
+        probes.map((probe) => probe.expectedWhitelistHost)
+      ),
+    evidence: (_summary, probes) => ({
+      expectedHosts: probes.map((probe) => probe.expectedWhitelistHost),
+    }),
+  },
+  {
+    id: 'local-whitelist-apply',
+    passed: (summary, probes) => hasLocalWhitelistEvidence(summary, probes),
+    evidence: (summary, probes) => ({
+      expectedHosts: probes.map((probe) => probe.expectedWhitelistHost),
+      probeEvidence: summary?.probeEvidence ?? [],
+    }),
+  },
+  {
+    id: 'probe-traffic',
+    passed: (summary, probes) => hasProbeTrafficEvidence(summary, probes),
+    evidence: (summary) => ({
+      probeEvidence: (summary?.probeEvidence ?? []).map((item) => ({
+        id: item.id,
+        hits: item.hits ?? 0,
+      })),
+    }),
+  },
+  {
+    id: 'artifact-written',
+    passed: (summary) => summary?.artifactWritten !== false && summary?.artifact?.written !== false,
+    evidence: (summary) => ({
+      artifactWritten: summary?.artifactWritten ?? summary?.artifact?.written ?? true,
+    }),
+  },
+]);
 
-  return buildAutoAllowDiagnosticPhases({
-    checks,
+export function buildWindowsAutoAllowDiagnosticPhases(summary, probes = WINDOWS_AUTO_ALLOW_PROBES) {
+  return buildAutoAllowEvidenceModel({
+    phases: WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES,
+    summary,
+    probes,
     boundaries: WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES,
-  });
+  }).diagnosticPhases;
 }
 
 export function classifyWindowsAutoAllowFailureBoundary(
@@ -272,17 +279,12 @@ export function classifyWindowsAutoAllowFailureBoundary(
 }
 
 export function withWindowsAutoAllowDiagnostics(summary, probes = WINDOWS_AUTO_ALLOW_PROBES) {
-  const diagnosticPhases = buildWindowsAutoAllowDiagnosticPhases(summary, probes);
-  const failureBoundary = classifyWindowsAutoAllowFailureBoundary(
-    { ...summary, diagnosticPhases },
-    probes
-  );
-
-  return {
-    ...summary,
-    diagnosticPhases,
-    failureBoundary,
-  };
+  return buildAutoAllowEvidenceModel({
+    phases: WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES,
+    summary,
+    probes,
+    boundaries: WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES,
+  });
 }
 
 export function buildWindowsAutoAllowArtifactFailureSummary({ id, message, artifactPath, error }) {
