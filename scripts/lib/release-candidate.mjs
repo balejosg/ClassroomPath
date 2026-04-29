@@ -13,6 +13,7 @@ import {
   copyArtifactContents,
   downloadArtifactById as downloadArtifactZipById,
   downloadRunArtifact,
+  viewGitHubRunJobs,
   listGitHubArtifacts,
   listGitHubWorkflowRuns,
   readArtifactTextFile,
@@ -26,6 +27,7 @@ import {
   selectLatestReleaseCandidateRun,
 } from './release-images.mjs';
 import { buildCanonicalReleaseManifest, serializeReleaseManifest } from './release-manifest.mjs';
+import { classifyReleaseWaitBlocker, formatReleaseWaitBlocker } from './release-wait-summary.mjs';
 
 export function buildReleaseCandidateManifestOutputs({ repository, runId, manifest }) {
   return buildCanonicalReleaseManifest({ repository, runId: String(runId), manifest });
@@ -77,6 +79,8 @@ export function formatReleaseCandidateWaitProgress({
   targetSha,
   lastState = 'missing',
   latestRun = null,
+  latestRunJobs = [],
+  upstreamSha = '',
 }) {
   const details = [
     `sha=${targetSha}`,
@@ -89,7 +93,20 @@ export function formatReleaseCandidateWaitProgress({
     details.push(`run_url=${runUrl}`);
   }
 
-  return `Waiting for release candidate manifest (${details.join('; ')})`;
+  const blocker = classifyReleaseWaitBlocker({
+    currentStep: '',
+    workflow: 'release-candidate-images.yml',
+    runUrl,
+    upstreamSha,
+    latestRunStatus: latestRun?.status ?? '',
+    latestRunJobs,
+  });
+
+  const blockerText = formatReleaseWaitBlocker(blocker);
+
+  return [`Waiting for release candidate manifest (${details.join('; ')})`, blockerText]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export function formatFirefoxReleaseAssetsTimeoutError({
@@ -297,6 +314,7 @@ export function waitForReleaseCandidateManifest({
   timeoutSeconds = 900,
   intervalSeconds = 10,
   outputFile,
+  upstreamSha = '',
   cwd,
 } = {}) {
   const targetSha = String(sha ?? '').trim();
@@ -364,6 +382,16 @@ export function waitForReleaseCandidateManifest({
         cwd,
       });
       const { state, run } = resolveLatestReleaseCandidateState(payload, { sha: targetSha });
+      let latestRunJobs = [];
+
+      if (run && normalizeWorkflowRunId(run)) {
+        latestRunJobs =
+          viewGitHubRunJobs({
+            repo,
+            runId: normalizeWorkflowRunId(run),
+            cwd,
+          })?.jobs ?? [];
+      }
 
       if (state === 'failed' && run) {
         throw new Error(formatReleaseCandidateRunFailure({ targetSha, run }));
@@ -371,16 +399,18 @@ export function waitForReleaseCandidateManifest({
 
       return {
         status: 'pending',
-        context: { lastState: state, latestRun: run },
+        context: { lastState: state, latestRun: run, latestRunJobs },
       };
     },
-    onPending({ lastState = 'missing', latestRun = null } = {}) {
+    onPending({ lastState = 'missing', latestRun = null, latestRunJobs = [] } = {}) {
       console.error(
         formatReleaseCandidateWaitProgress({
           repository: repo,
           targetSha,
           lastState,
           latestRun,
+          latestRunJobs,
+          upstreamSha,
         })
       );
     },

@@ -30,6 +30,7 @@ prepare_staging_local_release_context() {
     fi
 
     LOCAL_SHA=$(git rev-parse HEAD)
+    UPSTREAM_OPENPATH_SHA=$(git rev-parse HEAD:upstream/openpath 2>/dev/null || echo "")
 
     REMOTE_SHA="unknown"
     if git remote get-url origin >/dev/null 2>&1; then
@@ -60,7 +61,7 @@ prepare_staging_local_release_context() {
     if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
         require_cmd gh
         STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
-        node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest \
+        UPSTREAM_OPENPATH_SHA="$UPSTREAM_OPENPATH_SHA" node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest \
             --sha "$REMOTE_SHA" \
             --timeout-seconds "$STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS" \
             --interval-seconds "$STAGING_RELEASE_POLL_SECONDS" \

@@ -65,6 +65,7 @@ export function runReleaseCandidateCli(argv = process.argv.slice(2)) {
       timeoutSeconds: options.timeoutSeconds ?? 900,
       intervalSeconds: options.intervalSeconds ?? 10,
       outputFile: options.outputFile,
+      upstreamSha: process.env.UPSTREAM_OPENPATH_SHA,
       cwd: projectRoot,
     });
 

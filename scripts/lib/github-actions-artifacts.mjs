@@ -45,6 +45,10 @@ export function buildDownloadArtifactZipArgs({ repo, artifactId }) {
   return ['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`];
 }
 
+export function buildViewGitHubRunJobsArgs({ repo, runId }) {
+  return ['run', 'view', String(runId), '--repo', repo, '--json', 'jobs'];
+}
+
 export function sleep(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
@@ -70,6 +74,12 @@ export function listGitHubWorkflowRuns({ repo, workflow, sha, cwd, limit = 30 })
   const output = runGitHubCli(args, { cwd }).trim();
 
   return JSON.parse(output || '[]');
+}
+
+export function viewGitHubRunJobs({ repo, runId, cwd }) {
+  const output = runGitHubCli(buildViewGitHubRunJobsArgs({ repo, runId }), { cwd }).trim();
+
+  return JSON.parse(output || '{"jobs":[]}');
 }
 
 export function listGitHubArtifacts({ repo, artifactName, cwd, perPage = 100 }) {

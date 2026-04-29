@@ -79,6 +79,7 @@ describe('Deployment staging and promotion contracts', () => {
       releaseHelperContent.includes('STAGING_RELEASE_RUN_ID') &&
         releaseHelperContent.includes('STAGING_RELEASE_REPOSITORY')
     );
+    assert.ok(releaseHelperContent.includes('git rev-parse HEAD:upstream/openpath'));
     assert.ok(
       localContent.includes(
         'STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS="${STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS:-${STAGING_RELEASE_WAIT_TIMEOUT_SECONDS:-3600}}"'

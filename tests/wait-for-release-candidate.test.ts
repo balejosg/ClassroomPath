@@ -19,6 +19,7 @@ import {
   GITHUB_CLI_MAX_BUFFER_BYTES,
   buildDownloadArtifactZipArgs,
   buildListGitHubArtifactsArgs,
+  buildViewGitHubRunJobsArgs,
 } from '../scripts/lib/github-actions-artifacts.mjs';
 
 describe('wait-for-release-candidate helpers', () => {
@@ -73,6 +74,18 @@ describe('wait-for-release-candidate helpers', () => {
       }),
       ['api', 'repos/balejosg/ClassroomPath/actions/artifacts/123/zip']
     );
+  });
+
+  test('builds the GitHub CLI command for workflow job inspection', () => {
+    assert.deepEqual(buildViewGitHubRunJobsArgs({ repo: 'balejosg/ClassroomPath', runId: 987 }), [
+      'run',
+      'view',
+      '987',
+      '--repo',
+      'balejosg/ClassroomPath',
+      '--json',
+      'jobs',
+    ]);
   });
 
   test('formats release candidate failures with normalized run ids and timestamps', () => {
@@ -136,6 +149,40 @@ describe('wait-for-release-candidate helpers', () => {
     assert.match(message, /status=in_progress/);
     assert.match(message, /updated_at=2026-03-27T11:00:00Z/);
     assert.match(message, /https:\/\/github\.com\/balejosg\/ClassroomPath\/actions\/runs\/987/);
+  });
+
+  test('formats release candidate wait progress with the active OpenPath blocker summary', () => {
+    const message = formatReleaseCandidateWaitProgress({
+      repository: 'balejosg/ClassroomPath',
+      targetSha: 'abc123',
+      lastState: 'pending',
+      latestRun: {
+        databaseId: 987,
+        status: 'in_progress',
+        updatedAt: '2026-03-27T11:00:00Z',
+      },
+      latestRunJobs: [
+        {
+          databaseId: 654,
+          name: 'derive-release-image-refs',
+          status: 'in_progress',
+          createdAt: '2026-03-27T10:58:00Z',
+          startedAt: '2026-03-27T11:00:30Z',
+          steps: [
+            {
+              name: 'Wait for OpenPath prerelease APT publish',
+              status: 'in_progress',
+              conclusion: null,
+            },
+          ],
+        },
+      ],
+      upstreamSha: 'openpathsha',
+    });
+
+    assert.match(message, /Waiting for release candidate manifest/);
+    assert.match(message, /Waiting on OpenPath prerelease APT for openpathsha/);
+    assert.match(message, /Queue: 150s/);
   });
 
   test('builds the full manifest contract for output files and stdout', () => {

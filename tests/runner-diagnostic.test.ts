@@ -15,6 +15,10 @@ import {
   writeEvidenceFile,
 } from '../scripts/lib/github-actions-diagnostic-client.mjs';
 import { summarizeRunTiming } from '../scripts/lib/github-actions-run-timing.mjs';
+import {
+  classifyReleaseWaitBlocker,
+  formatReleaseWaitBlocker,
+} from '../scripts/lib/release-wait-summary.mjs';
 
 type PackageDefinition = {
   scripts?: Record<string, string>;
@@ -119,6 +123,30 @@ describe('runner diagnostic wrapper', () => {
       summary.skippedJobs.map((job) => job.name),
       ['Hosted Windows Advisory']
     );
+  });
+
+  test('classifies OpenPath prerelease APT wait blockers', () => {
+    const blocker = classifyReleaseWaitBlocker({
+      currentStep: 'Wait for OpenPath prerelease APT publish',
+      workflow: 'release-candidate-images.yml',
+      runUrl: 'https://github.com/balejosg/ClassroomPath/actions/runs/25098843070',
+      upstreamSha: 'e88ccd5e7931de41d2d789e81b9b98f32ba2a164',
+    });
+
+    assert.equal(blocker.kind, 'openpath-prerelease-apt');
+    assert.equal(blocker.upstreamSha, 'e88ccd5e7931de41d2d789e81b9b98f32ba2a164');
+  });
+
+  test('formats release wait blockers with next actions', () => {
+    const text = formatReleaseWaitBlocker({
+      kind: 'openpath-prerelease-apt',
+      runUrl: 'https://github.com/balejosg/ClassroomPath/actions/runs/25098843070',
+      upstreamSha: 'e88ccd5e7931de41d2d789e81b9b98f32ba2a164',
+    });
+
+    assert.match(text, /Waiting on OpenPath prerelease APT/);
+    assert.match(text, /e88ccd5e7931de41d2d789e81b9b98f32ba2a164/);
+    assert.match(text, /25098843070/);
   });
 
   test('run timing summary dry-run prints the GitHub run view command', () => {
