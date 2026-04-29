@@ -6,6 +6,11 @@ import { describe, test } from 'node:test';
 
 import { readProjectText, runProjectCommand } from './helpers/ops-contracts.ts';
 import {
+  buildAjaxAutoAllowCanaryPage,
+  waitForAjaxAutoAllowPageObserver,
+} from '../scripts/lib/ajax-auto-allow-canary-harness.mjs';
+import { collectCanaryGroupDiagnostics } from '../scripts/lib/canary-group-diagnostics.mjs';
+import {
   LINUX_AUTO_ALLOW_PROBES,
   buildLinuxAutoAllowProbeUrl,
   withLinuxAutoAllowDiagnostics,
@@ -92,6 +97,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
   test('declares the production Linux AJAX/subresource probe table and artifact path', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
     const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
+    const diagnosticsHelper = readProjectText('scripts/lib/canary-group-diagnostics.mjs');
 
     assert.deepEqual(
       LINUX_AUTO_ALLOW_PROBES.map((probe) => probe.id),
@@ -109,7 +115,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
 
     assert.ok(canaryScript.includes('production-linux-ajax-auto-allow-canary.json'));
-    assert.ok(canaryScript.includes('/cp/internal/client-canary/group/'));
+    assert.ok(diagnosticsHelper.includes('/cp/internal/client-canary/group/'));
     assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID'));
     assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN'));
     assert.ok(canaryScript.includes('__openpathPageResourceObserverInstalled'));
@@ -118,24 +124,29 @@ describe('Linux AJAX auto-allow canary contracts', () => {
   });
 
   test('Linux font probe is validated by server traffic instead of font decode success', () => {
-    const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
+    const page = buildAjaxAutoAllowCanaryPage({
+      platform: 'Linux',
+      probes: LINUX_AUTO_ALLOW_PROBES,
+      originHost: 'ajax-auto-allow-origin.127.0.0.1.sslip.io',
+      port: 18088,
+      timeoutMs: 5000,
+      probeTimeoutMs: 1000,
+    });
 
     assert.ok(
-      sharedHarness.includes("url.pathname === '/probe-state'"),
+      page.includes("fetch('/probe-state?probe=' + encodeURIComponent(probeId)"),
       'Linux canary should expose per-probe hit counts to the browser page'
     );
     assert.ok(
-      sharedHarness.includes('const hits = await readProbeHits(probeId).catch(() => 0);'),
+      page.includes('const hits = await readProbeHits(probeId).catch(() => 0);'),
       'Linux font probe should use server hit evidence like the Windows canary'
     );
     assert.ok(
-      /function loadFont\(url, probeId\)[\s\S]*hits > 0 \? \{ ok: true, hits \}/.test(
-        sharedHarness
-      ),
+      page.includes('hits > 0 ? { ok: true, hits }'),
       'Linux font success must not depend on Firefox accepting the synthetic woff2 payload'
     );
     assert.ok(
-      sharedHarness.includes(
+      page.includes(
         'pageResourceCandidateEvents.splice(0, pageResourceCandidateEvents.length - 100)'
       ),
       'Linux canary should cap candidate events so artifact upload cannot grow unbounded'
@@ -275,18 +286,33 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(canaryScript.includes('Linux AJAX canary page load did not complete'));
   });
 
-  test('Linux canary waits for managed Firefox content-script injection before counting probes', () => {
-    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
-    const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
+  test('Linux canary waits for managed Firefox content-script injection before counting probes', async () => {
+    let diagnosticsCalls = 0;
+    const visited: string[] = [];
+    const driver = {
+      get: async (url: string) => {
+        visited.push(url);
+      },
+    };
 
-    assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_PAGE_OBSERVER_WAIT_MS'));
-    assert.match(canaryScript, /async function waitForPageObserver\(driver, originUrl\)/);
-    assert.match(sharedHarness, /lastDiagnostics\.openpathObserverInstalled === true/);
-    assert.match(sharedHarness, /await driver\.get\(originUrl\)/);
-    assert.match(
-      canaryScript,
-      /const browserNavigationBeforeAttempts = await waitForPageObserver\(\s*firefoxSession\.driver,\s*originUrl\s*\)/
-    );
+    const diagnostics = await waitForAjaxAutoAllowPageObserver({
+      driver,
+      originUrl: 'http://ajax-auto-allow-origin.127.0.0.1.sslip.io:18088/',
+      timeoutMs: 100,
+      reloadEveryMs: 1,
+      pollMs: 1,
+      collectBrowserNavigationDiagnostics: async () => {
+        diagnosticsCalls += 1;
+        return {
+          ok: true,
+          openpathObserverInstalled: diagnosticsCalls >= 3,
+          openpathObserverState: { patched: diagnosticsCalls >= 3 },
+        };
+      },
+    });
+
+    assert.equal(diagnostics.openpathObserverInstalled, true);
+    assert.deepEqual(visited, ['http://ajax-auto-allow-origin.127.0.0.1.sslip.io:18088/']);
   });
 
   test('summarizer enriches Linux AJAX evidence with failure boundary outputs', () => {
@@ -322,13 +348,39 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
-  test('Linux canary retries protected diagnostics when the server returns a rate limit', () => {
-    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+  test('Linux canary retries protected diagnostics when the server returns a rate limit', async () => {
+    const requests: string[] = [];
+    const sleeps: number[] = [];
+    const responses = [
+      { status: 429, body: { error: { data: { retryAfterMs: 25 } } } },
+      { status: 200, body: { ok: true } },
+    ];
 
-    assert.match(canaryScript, /for \(let attempt = 1; attempt <= 3; attempt \+= 1\)/);
-    assert.match(canaryScript, /response\.status !== 429/);
-    assert.match(canaryScript, /retryAfterMs/);
-    assert.match(canaryScript, /await sleep\(Number\.isFinite\(retryAfterMs\)/);
+    const diagnostics = await collectCanaryGroupDiagnostics({
+      apiUrl: 'https://classroompath.example/',
+      groupId: 'group-linux',
+      adminToken: 'protected-admin-token',
+      fetchImpl: async (url: string) => {
+        requests.push(url);
+        const response = responses.shift();
+        return {
+          status: response?.status ?? 500,
+          json: async () => response?.body ?? null,
+        };
+      },
+      sleep: async (ms: number) => {
+        sleeps.push(ms);
+      },
+    });
+
+    assert.equal(diagnostics.available, true);
+    assert.equal(diagnostics.status, 200);
+    assert.equal(diagnostics.attempt, 2);
+    assert.deepEqual(sleeps, [25]);
+    assert.deepEqual(requests, [
+      'https://classroompath.example/cp/internal/client-canary/group/group-linux/diagnostics',
+      'https://classroompath.example/cp/internal/client-canary/group/group-linux/diagnostics',
+    ]);
   });
 
   test('Linux canary preserves artifacts and raw log on functional failure', () => {

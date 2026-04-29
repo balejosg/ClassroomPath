@@ -23,6 +23,7 @@ import {
   hasAllAjaxAutoAllowProbesCompleted,
   waitForAjaxAutoAllowPageObserver,
 } from './lib/ajax-auto-allow-canary-harness.mjs';
+import { collectCanaryGroupDiagnostics as collectCanaryGroupDiagnosticsFromApi } from './lib/canary-group-diagnostics.mjs';
 
 const PORT = Number.parseInt(process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18089', 10);
 const TIMEOUT_MS = Number.parseInt(
@@ -114,44 +115,12 @@ async function readTextEvidence(path, options = {}) {
 }
 
 async function collectCanaryGroupDiagnostics() {
-  if (!CANARY_API_URL || !CANARY_GROUP_ID || !CANARY_ADMIN_TOKEN) {
-    return { available: false, reason: 'missing diagnostics context' };
-  }
-
-  const url = `${CANARY_API_URL}/cp/internal/client-canary/group/${encodeURIComponent(CANARY_GROUP_ID)}/diagnostics`;
-  let lastResult = null;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    try {
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${CANARY_ADMIN_TOKEN}` },
-      });
-      const body = await response.json().catch(() => null);
-      lastResult = {
-        available: true,
-        status: response.status,
-        body,
-        attempt,
-      };
-      if (response.status !== 429 || attempt === 3) {
-        return lastResult;
-      }
-
-      const retryAfterMs = Number(body?.error?.data?.retryAfterMs ?? 0);
-      await sleep(Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? retryAfterMs : 5000);
-    } catch (error) {
-      lastResult = {
-        available: false,
-        attempt,
-        error: error instanceof Error ? error.message : String(error),
-      };
-      if (attempt === 3) {
-        return lastResult;
-      }
-      await sleep(1000 * attempt);
-    }
-  }
-
-  return lastResult ?? { available: false, reason: 'diagnostics request did not run' };
+  return collectCanaryGroupDiagnosticsFromApi({
+    apiUrl: CANARY_API_URL,
+    groupId: CANARY_GROUP_ID,
+    adminToken: CANARY_ADMIN_TOKEN,
+    sleep,
+  });
 }
 
 async function runDiagnosticCommand(command, args = []) {

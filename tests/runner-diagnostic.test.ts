@@ -194,6 +194,7 @@ describe('runner diagnostic wrapper', () => {
       dryRun: true,
       fakeArtifactDownloadFailure: true,
       emit: (line) => commands.push(line),
+      error: (line) => commands.push(line),
     });
 
     assert.equal(result.status, 1);
@@ -275,62 +276,76 @@ describe('runner diagnostic wrapper', () => {
   });
 
   test('collects runner evidence when watch and artifact download fail', () => {
-    const result = spawnSync(
-      process.execPath,
-      [scriptPath, '--suite', 'linux-bootstrap-ajax', '--wait', '--download-artifacts'],
-      {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          RUNNER_DIAGNOSTIC_DRY_RUN: '1',
-          RUNNER_DIAGNOSTIC_FAKE_WATCH_FAILURE: '1',
-          RUNNER_DIAGNOSTIC_FAKE_ARTIFACT_DOWNLOAD_FAILURE: '1',
-        },
-      }
-    );
+    const commands: string[] = [];
+    const errors: string[] = [];
+    const watch = waitForRun({
+      repo: 'balejosg/ClassroomPath',
+      runId: '<latest-run-id>',
+      dryRun: true,
+      fakeWatchFailure: true,
+      emit: (line) => commands.push(line),
+    });
+    const artifactDownload = downloadArtifacts({
+      repo: 'balejosg/ClassroomPath',
+      runId: '<latest-run-id>',
+      evidenceDir: '.opencode/tmp/runner-diagnostics/<latest-run-id>',
+      dryRun: true,
+      fakeArtifactDownloadFailure: true,
+      emit: (line) => commands.push(line),
+      error: (line) => errors.push(line),
+    });
+    const summary = collectRunEvidence({
+      repo: 'balejosg/ClassroomPath',
+      runId: '<latest-run-id>',
+      evidenceDir: '.opencode/tmp/runner-diagnostics/<latest-run-id>',
+      suite: 'linux-production-bootstrap-canary.yml',
+      watchStatus: watch.status,
+      artifactDownloadStatus: artifactDownload.status,
+      dryRun: true,
+      emit: (line) => commands.push(line),
+    });
 
-    assert.equal(result.status, 1);
+    assert.equal(watch.status, 1);
+    assert.equal(artifactDownload.status, 1);
+    assert.equal(summary.artifact_download_status, 1);
+    assert.equal(summary.log_incomplete, true);
     assert.match(
-      result.stdout,
+      commands.join('\n'),
       /gh run view "?<latest-run-id>"? --repo balejosg\/ClassroomPath --json/
     );
     assert.match(
-      result.stdout,
+      commands.join('\n'),
       /gh api "?repos\/balejosg\/ClassroomPath\/actions\/runs\/<latest-run-id>\/artifacts"?/
     );
     assert.match(
-      result.stdout,
+      commands.join('\n'),
       /gh run view "?<latest-run-id>"? --repo balejosg\/ClassroomPath --log/
     );
-    assert.match(result.stdout, /\.opencode\/tmp\/runner-diagnostics\/<latest-run-id>/);
-    assert.match(result.stderr, /artifact-download-error\.txt/);
+    assert.match(commands.join('\n'), /\.opencode\/tmp\/runner-diagnostics\/<latest-run-id>/);
+    assert.match(errors.join('\n'), /artifact-download-error\.txt/);
   });
 
   test('runner diagnostic captures job-specific logs and writes a diagnostic summary', () => {
-    const result = spawnSync(
-      process.execPath,
-      [scriptPath, '--suite', 'linux-bootstrap-ajax', '--wait', '--download-artifacts'],
-      {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          RUNNER_DIAGNOSTIC_DRY_RUN: '1',
-          RUNNER_DIAGNOSTIC_FAKE_WATCH_FAILURE: '1',
-          RUNNER_DIAGNOSTIC_FAKE_ARTIFACT_DOWNLOAD_FAILURE: '1',
-        },
-      }
-    );
+    const commands: string[] = [];
+    const summary = collectRunEvidence({
+      repo: 'balejosg/ClassroomPath',
+      runId: '<latest-run-id>',
+      evidenceDir: '.opencode/tmp/runner-diagnostics/<latest-run-id>',
+      suite: 'linux-production-bootstrap-canary.yml',
+      watchStatus: 1,
+      artifactDownloadStatus: 1,
+      dryRun: true,
+      emit: (line) => commands.push(line),
+    });
 
-    assert.equal(result.status, 1);
+    assert.equal(summary.log_incomplete, true);
+    assert.deepEqual(summary.job_log_statuses, [{ jobId: '<job-id>', status: 0 }]);
     assert.match(
-      result.stdout,
+      commands.join('\n'),
       /gh run view "?<latest-run-id>"? --repo balejosg\/ClassroomPath --job "?<job-id>"? --log/
     );
-    assert.match(result.stdout, /write .*job-<job-id>\.log/);
-    assert.match(result.stdout, /write .*diagnostic-summary\.json/);
-    assert.match(result.stdout, /log_incomplete/);
+    assert.match(commands.join('\n'), /write .*job-<job-id>\.log/);
+    assert.match(commands.join('\n'), /write .*diagnostic-summary\.json/);
   });
 
   test('refuses production diagnostics without explicit confirmation', () => {
