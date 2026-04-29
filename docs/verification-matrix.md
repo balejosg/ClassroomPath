@@ -121,10 +121,11 @@ The current speed plan is:
 2. run at most one destructive Windows job per VM at a time;
 3. add Windows capacity only with a separate VM, dedicated labels, cleanup
    policy, and enough RAM to preserve target-platform fidelity;
-4. use OpenPath's GitHub-hosted Windows Pester lane as advisory capacity
-   measurement only;
-5. promote any hosted Windows lane only after repeated green samples prove it
-   does not reduce release confidence;
+4. trust OpenPath's required GitHub-hosted Windows Pester lane for short
+   upstream unit coverage, but treat it as complementary capacity evidence
+   rather than ClassroomPath release proof;
+5. keep ClassroomPath Windows release gates on the pinned self-hosted runner
+   even when upstream hosted Windows samples stay green;
 6. treat runner smoke as health evidence, not functional AJAX, bootstrap, or
    release evidence;
 7. spend optimization effort on the current constraint: Windows queue pressure
@@ -192,6 +193,43 @@ The shared workspace wrapper selects the maintained first pass. During developme
   forced checks; low-risk deploys record `skipped-low-risk` and keep the
   registration/release gates on reserved test recipients that do not consume
   Resend quota.
+
+## Release Timing Update - 2026-04-29
+
+Change:
+
+- Production release evidence now prints the active wait blocker, and
+  release-candidate image builds keep stable per-platform GitHub Actions buildx
+  cache scopes while the OpenPath API builder excludes `windows/`, `runtime/`,
+  `firefox-extension/`, and `VERSION` from the expensive TypeScript builder
+  stage.
+
+Before:
+
+- Deploy run `25086257302`: `Deploy to Production` queue `102s`, execution
+  `109s`; `Linux Production Bootstrap Canary` queue `221s`, execution `284s`;
+  `Windows Production Bootstrap Canary` queue `214s`, execution `229s`;
+  `Release Evidence` queue `507s`, execution `6s`.
+
+After:
+
+- Deploy run `25099916175`: `Deploy to Production` queue `112s`, execution
+  `153s`; `Linux Production Bootstrap Canary` queue `274s`, execution `291s`;
+  `Windows Production Bootstrap Canary` queue `269s`, execution `230s`;
+  `Release Evidence` queue `568s`, execution `7s`.
+- Latest `measure-release-candidate-timings.mjs` samples still show queue and
+  runner availability dominating more often than image-family execution:
+  repeated gate candidate `migrations arm64` across `2` samples with max family
+  duration `75s`, while longer `gateway arm64` (`236s`) and `openpathApi
+arm64` (`151s`) samples did not repeat enough to justify another cache-policy
+  change yet.
+
+Policy:
+
+- Inspect queue versus execution plus release-candidate timing before changing
+  release gates again.
+- Treat upstream hosted Windows Pester as complementary OpenPath capacity
+  evidence, not as a replacement for ClassroomPath self-hosted Windows canaries.
 
 ## Risk To Proof Mapping
 
