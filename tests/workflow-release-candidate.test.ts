@@ -135,8 +135,22 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(reusableWorkflowText.includes('publish_duration_seconds:'));
     assert.ok(reusableWorkflowText.includes('family_duration_seconds:'));
     assert.ok(
+      reusableWorkflowText.includes('amd64_cache_scope:') &&
+        reusableWorkflowText.includes('arm64_cache_scope:') &&
+        reusableWorkflowText.includes('cache-scope: ${{ inputs.amd64_cache_scope }}') &&
+        reusableWorkflowText.includes('cache-scope: ${{ inputs.arm64_cache_scope }}'),
+      'release candidate reusable workflow should pass stable per-platform cache scopes'
+    );
+    assert.ok(
       buildImageActionText.includes('actions/download-artifact@v7') &&
         buildImageActionText.includes('docker/build-push-action@v7')
+    );
+    assert.ok(
+      buildImageActionText.includes('cache-from: type=gha,scope=${{ inputs.cache-scope }}') &&
+        buildImageActionText.includes(
+          'cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope }}'
+        ),
+      'release candidate image action should use GitHub Actions buildx cache'
     );
     assert.ok(
       publishManifestActionText.includes('docker buildx imagetools create') &&

@@ -27,13 +27,9 @@ RUN --mount=type=cache,target=/root/.npm set -eux; \
     sleep $((attempt * 5)); \
   done
 
-# Copy source
+# Copy source needed for the TypeScript build.
 COPY shared/ ./shared/
 COPY api/ ./api/
-COPY windows/ ./windows/
-COPY runtime/ ./runtime/
-COPY firefox-extension/ ./firefox-extension/
-COPY VERSION ./VERSION
 
 # Build everything
 RUN npm run build -w @openpath/shared
@@ -65,10 +61,13 @@ COPY --from=builder /app/api/package.json ./api/package.json
 COPY --from=builder /app/shared/package.json ./shared/package.json
 COPY --from=builder /app/api/dist ./api/dist
 COPY --from=builder /app/shared/dist ./shared/dist
-COPY --from=builder /app/windows ./windows
-COPY --from=builder /app/runtime ./runtime
-COPY --from=builder /app/firefox-extension ./firefox-extension
-COPY --from=builder /app/VERSION ./VERSION
+
+# Keep delivery-only assets out of the expensive builder stage so release-candidate
+# API builds can reuse the compile cache when only bootstrap/runtime artifacts change.
+COPY windows/ ./windows/
+COPY runtime/ ./runtime/
+COPY firefox-extension/ ./firefox-extension/
+COPY VERSION ./VERSION
 
 RUN mkdir -p /app/data && chown -R node:node /app
 

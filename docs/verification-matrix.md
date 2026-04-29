@@ -174,6 +174,12 @@ The shared workspace wrapper selects the maintained first pass. During developme
   `STAGING_RELEASE_WAIT_TIMEOUT_SECONDS` override remains supported.
 - `Release Candidate Images` cancels obsolete push-triggered runs on the same
   ref so a stale RC cannot block the newest SHA from publishing.
+- Release-candidate image builds keep stable per-platform GitHub Actions buildx
+  cache scopes, and the OpenPath API image now leaves `windows/`,
+  `runtime/`, `firefox-extension/`, and `VERSION` out of the expensive
+  TypeScript builder stage so bootstrap-only asset churn can reuse the cached
+  install/build layers while preserving the final runtime payload and required
+  `linux/arm64` production image support.
 - Release evidence records the Windows production bootstrap canary result and
   expects the `windows-production-bootstrap-canary` artifact alongside smoke,
   image, staging, and release-evidence bundles.

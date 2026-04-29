@@ -155,6 +155,10 @@ void describe('Docker Compose Configuration', () => {
 
   void test('OpenPath API runtime image preserves Windows bootstrap assets and cwd', () => {
     const content = readFileSync(apiDockerfilePath, 'utf-8');
+    const [builderStage, runtimeStage] = content.split('# Final production image');
+
+    assert.ok(builderStage, 'Dockerfile.api should include a builder stage');
+    assert.ok(runtimeStage, 'Dockerfile.api should include a final runtime stage');
 
     assert.ok(
       content.includes('COPY package-lock.json ./'),
@@ -177,31 +181,41 @@ void describe('Docker Compose Configuration', () => {
       'Dockerfile.api should cache npm downloads across image builds'
     );
     assert.ok(
-      content.includes('COPY windows/ ./windows/'),
-      'Builder image should copy Windows agent sources into the build context'
+      builderStage.includes('COPY shared/ ./shared/'),
+      'Builder image should copy shared sources into the TypeScript build context'
     );
     assert.ok(
-      content.includes('COPY runtime/ ./runtime/') || content.includes('COPY runtime ./runtime'),
-      'Builder image should copy shared runtime assets into the build context'
+      builderStage.includes('COPY api/ ./api/'),
+      'Builder image should copy API sources into the TypeScript build context'
     );
     assert.ok(
-      content.includes('COPY firefox-extension/ ./firefox-extension/'),
-      'Builder image should copy Firefox/Chromium browser extension assets into the build context'
+      !builderStage.includes('COPY windows/ ./windows/'),
+      'Builder image should keep Windows bootstrap assets out of the expensive build cache'
     );
     assert.ok(
-      content.includes('COPY VERSION ./VERSION'),
-      'Builder image should copy VERSION so runtime can report the server version'
+      !builderStage.includes('COPY runtime/ ./runtime/') &&
+        !builderStage.includes('COPY runtime ./runtime'),
+      'Builder image should keep shared runtime assets out of the expensive build cache'
     );
     assert.ok(
-      content.includes('COPY --from=builder /app/windows ./windows'),
-      'Runtime image should include the Windows bootstrap scripts'
+      !builderStage.includes('COPY firefox-extension/ ./firefox-extension/'),
+      'Builder image should keep browser extension assets out of the expensive build cache'
     );
     assert.ok(
-      content.includes('COPY --from=builder /app/runtime ./runtime'),
+      !builderStage.includes('COPY VERSION ./VERSION'),
+      'Builder image should keep VERSION out of the expensive build cache'
+    );
+    assert.ok(
+      runtimeStage.includes('COPY windows/ ./windows/'),
+      'Runtime image should include the Windows bootstrap scripts directly from the build context'
+    );
+    assert.ok(
+      runtimeStage.includes('COPY runtime/ ./runtime/') ||
+        runtimeStage.includes('COPY runtime ./runtime'),
       'Runtime image should include shared runtime assets for Windows bootstrap'
     );
     assert.ok(
-      content.includes('COPY --from=builder /app/firefox-extension ./firefox-extension'),
+      runtimeStage.includes('COPY firefox-extension/ ./firefox-extension/'),
       'Runtime image should include browser extension assets for Windows bootstrap and Chromium rollout'
     );
     assert.ok(
@@ -209,7 +223,7 @@ void describe('Docker Compose Configuration', () => {
       'Runtime image should restore the full shared package metadata after installing from the dependency-only manifest'
     );
     assert.ok(
-      content.includes('COPY --from=builder /app/VERSION ./VERSION'),
+      runtimeStage.includes('COPY VERSION ./VERSION'),
       'Runtime image should include VERSION for readServerVersion()'
     );
     assert.ok(
