@@ -26,6 +26,10 @@ const PAGE_LOAD_TIMEOUT_MS = Number.parseInt(
   process.env.LINUX_AJAX_AUTO_ALLOW_PAGE_LOAD_TIMEOUT_MS ?? '15000',
   10
 );
+const PAGE_OBSERVER_WAIT_MS = Number.parseInt(
+  process.env.LINUX_AJAX_AUTO_ALLOW_PAGE_OBSERVER_WAIT_MS ?? '30000',
+  10
+);
 const PROBE_TIMEOUT_MS = Number.parseInt(
   process.env.LINUX_AJAX_AUTO_ALLOW_PROBE_TIMEOUT_MS ?? '5000',
   10
@@ -628,6 +632,35 @@ async function launchFirefox(originUrl) {
   return { driver, profileDir };
 }
 
+async function waitForPageObserver(driver, originUrl) {
+  const deadline = Date.now() + PAGE_OBSERVER_WAIT_MS;
+  let lastDiagnostics = await collectBrowserNavigationDiagnostics(driver);
+  let lastReloadAt = 0;
+
+  while (Date.now() < deadline) {
+    if (lastDiagnostics.openpathObserverInstalled === true) {
+      return lastDiagnostics;
+    }
+
+    const now = Date.now();
+    if (now - lastReloadAt >= 5000) {
+      lastReloadAt = now;
+      await driver.get(originUrl).catch((error) => {
+        console.error(
+          `Linux AJAX canary observer reload did not complete: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      });
+    } else {
+      await sleep(1000);
+    }
+    lastDiagnostics = await collectBrowserNavigationDiagnostics(driver);
+  }
+
+  return lastDiagnostics;
+}
+
 function hasAllCompleted(map) {
   return AUTO_ALLOW_PROBES.every((probe) => map[probe.id] === true);
 }
@@ -665,8 +698,9 @@ async function main() {
   };
   try {
     firefoxSession = await launchFirefox(originUrl);
-    const browserNavigationBeforeAttempts = await collectBrowserNavigationDiagnostics(
-      firefoxSession.driver
+    const browserNavigationBeforeAttempts = await waitForPageObserver(
+      firefoxSession.driver,
+      originUrl
     );
     const deadline = Date.now() + TIMEOUT_MS;
     while (Date.now() < deadline) {

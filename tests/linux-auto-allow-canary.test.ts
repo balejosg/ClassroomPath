@@ -93,6 +93,19 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(canaryScript.includes('Linux AJAX canary page load did not complete'));
   });
 
+  test('Linux canary waits for managed Firefox content-script injection before counting probes', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_PAGE_OBSERVER_WAIT_MS'));
+    assert.match(canaryScript, /async function waitForPageObserver\(driver, originUrl\)/);
+    assert.match(canaryScript, /lastDiagnostics\.openpathObserverInstalled === true/);
+    assert.match(canaryScript, /await driver\.get\(originUrl\)/);
+    assert.match(
+      canaryScript,
+      /const browserNavigationBeforeAttempts = await waitForPageObserver\(\s*firefoxSession\.driver,\s*originUrl\s*\)/
+    );
+  });
+
   test('summarizer enriches Linux AJAX evidence with failure boundary outputs', () => {
     const summarizer = readProjectText('scripts/summarize-linux-ajax-auto-allow-evidence.mjs');
 
