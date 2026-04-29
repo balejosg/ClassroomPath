@@ -32,6 +32,7 @@ MANUAL_TEST_REPORT.md
 .cache/
 .turbo/
 .worktrees/
+docs/plans/*
 
 # Test artifacts
 playwright-report/
