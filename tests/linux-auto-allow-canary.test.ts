@@ -69,6 +69,21 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux workflow runs the AJAX canary on the HTTP port allowed by the firewall', () => {
+    const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+    const ajaxStep =
+      /name: Verify Linux AJAX auto-allow canary[\s\S]*?(?=\n      - name: Summarize Linux AJAX auto-allow evidence)/.exec(
+        workflow
+      )?.[0] ?? '';
+
+    assert.match(ajaxStep, /sudo sysctl -w net\.ipv4\.ip_unprivileged_port_start=0/);
+    assert.match(ajaxStep, /LINUX_AJAX_AUTO_ALLOW_CANARY_PORT=80/);
+    assert.match(
+      ajaxStep,
+      /timeout --kill-after=30s 10m node scripts\/linux-ajax-auto-allow-canary\.mjs/
+    );
+  });
+
   test('Linux canary bounds Firefox page-load waits before probing', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
 

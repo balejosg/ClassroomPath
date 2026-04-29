@@ -64,6 +64,37 @@ describe('shared auto-allow boundary evidence model', () => {
     );
   });
 
+  test('detects remote rule evidence from canary group rule lists', () => {
+    assert.equal(
+      hasRemoteRuleEvidence(
+        {
+          diagnostics: {
+            postAttempt: {
+              server: {
+                canaryGroup: {
+                  body: {
+                    rules: [
+                      {
+                        type: 'whitelist',
+                        value: 'ajax-auto-allow-target.127.0.0.1.sslip.io',
+                      },
+                      {
+                        type: 'whitelist',
+                        value: 'ajax-auto-allow-font.127.0.0.1.sslip.io',
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+        probes.map((probe) => probe.expectedWhitelistHost)
+      ),
+      true
+    );
+  });
+
   test('builds phases and classifies the first failed boundary', () => {
     const phases = buildAutoAllowDiagnosticPhases({
       summary: { artifactWritten: true },

@@ -25,6 +25,20 @@ export function allExpectedHostStatePresent(value, expectedHosts) {
   });
 }
 
+export function allExpectedRuleValuesPresent(rules, expectedHosts) {
+  if (!Array.isArray(rules)) {
+    return false;
+  }
+
+  const values = new Set(
+    rules
+      .map((rule) => (typeof rule?.value === 'string' ? rule.value.toLowerCase() : ''))
+      .filter(Boolean)
+  );
+
+  return expectedHosts.every((host) => values.has(String(host).toLowerCase()));
+}
+
 export function collectDiagnosticSnapshots(summary) {
   const diagnostics = summary?.diagnostics ?? {};
   return [
@@ -63,6 +77,12 @@ export function hasRemoteRuleEvidence(summary, expectedHosts) {
       return true;
     }
     if (allExpectedHostStatePresent(diagnostics.body?.expectedHostState, expectedHosts)) {
+      return true;
+    }
+    if (allExpectedRuleValuesPresent(diagnostics.server?.canaryGroup?.body?.rules, expectedHosts)) {
+      return true;
+    }
+    if (allExpectedRuleValuesPresent(diagnostics.body?.rules, expectedHosts)) {
       return true;
     }
   }
