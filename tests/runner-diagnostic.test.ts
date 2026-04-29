@@ -5,6 +5,12 @@ import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { readProjectJson, readProjectText } from './helpers/ops-contracts.ts';
+import {
+  collectRunEvidence,
+  dispatchWorkflow,
+  downloadArtifacts,
+  waitForRun,
+} from '../scripts/lib/github-actions-diagnostic-client.mjs';
 
 type PackageDefinition = {
   scripts?: Record<string, string>;
@@ -66,6 +72,82 @@ function runLinuxAjaxDirectDiagnostic(args: string[]) {
 }
 
 describe('runner diagnostic wrapper', () => {
+  test('client dry-run dispatch renders expected workflow command', () => {
+    const commands: string[] = [];
+    dispatchWorkflow({
+      repo: 'balejosg/ClassroomPath',
+      workflow: 'linux-production-bootstrap-canary.yml',
+      ref: 'main',
+      fields: {
+        target_environment: 'staging',
+        diagnostic_mode: 'true',
+      },
+      dryRun: true,
+      emit: (line) => commands.push(line),
+    });
+
+    assert.equal(
+      commands[0],
+      'gh workflow run linux-production-bootstrap-canary.yml --repo balejosg/ClassroomPath --ref main -f target_environment=staging -f diagnostic_mode=true'
+    );
+  });
+
+  test('client watch failure still collects metadata, artifacts, logs, and summary', () => {
+    const commands: string[] = [];
+    const watch = waitForRun({
+      repo: 'balejosg/ClassroomPath',
+      runId: '<latest-run-id>',
+      dryRun: true,
+      fakeWatchFailure: true,
+      emit: (line) => commands.push(line),
+    });
+    const summary = collectRunEvidence({
+      repo: 'balejosg/ClassroomPath',
+      runId: '<latest-run-id>',
+      evidenceDir: '.opencode/tmp/runner-diagnostics/<latest-run-id>',
+      suite: 'linux-production-bootstrap-canary.yml',
+      watchStatus: watch.status,
+      artifactDownloadStatus: 0,
+      dryRun: true,
+      emit: (line) => commands.push(line),
+    });
+
+    assert.equal(watch.status, 1);
+    assert.equal(summary.log_incomplete, true);
+    assert.match(
+      commands.join('\n'),
+      /gh run view "?<latest-run-id>"? --repo balejosg\/ClassroomPath --json/
+    );
+    assert.match(
+      commands.join('\n'),
+      /gh api "?repos\/balejosg\/ClassroomPath\/actions\/runs\/<latest-run-id>\/artifacts"?/
+    );
+    assert.match(
+      commands.join('\n'),
+      /gh run view "?<latest-run-id>"? --repo balejosg\/ClassroomPath --job "?<job-id>"? --log/
+    );
+    assert.match(commands.join('\n'), /write .*diagnostic-summary\.json/);
+  });
+
+  test('client artifact download failure writes artifact-download-error.txt', () => {
+    const commands: string[] = [];
+    const result = downloadArtifacts({
+      repo: 'balejosg/ClassroomPath',
+      runId: '<latest-run-id>',
+      evidenceDir: '.opencode/tmp/runner-diagnostics/<latest-run-id>',
+      dryRun: true,
+      fakeArtifactDownloadFailure: true,
+      emit: (line) => commands.push(line),
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(
+      commands.join('\n'),
+      /gh run download "?<latest-run-id>"? --repo balejosg\/ClassroomPath/
+    );
+    assert.match(commands.join('\n'), /write .*artifact-download-error\.txt/);
+  });
+
   test('package.json exposes the local diagnostics entrypoint', () => {
     const packageJson = readProjectJson<PackageDefinition>('package.json');
 

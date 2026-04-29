@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import {
+  collectRunEvidence,
+  dispatchWorkflow,
+  downloadArtifacts,
+  findLatestRun,
+  waitForRun,
+} from './lib/github-actions-diagnostic-client.mjs';
 
 const DEFAULT_REF = 'main';
 const DEFAULT_ENVIRONMENT = 'staging';
@@ -114,106 +119,7 @@ function parseArgs(argv) {
   return options;
 }
 
-function quoteArg(arg) {
-  return /^[A-Za-z0-9_./:@=-]+$/.test(arg) ? arg : JSON.stringify(arg);
-}
-
-function renderCommand(args) {
-  return args.map((arg) => quoteArg(String(arg))).join(' ');
-}
-
-function runCommand(args, { capture = false, allowFailure = false } = {}) {
-  if (DRY_RUN) {
-    console.log(renderCommand(args));
-    const shouldFail =
-      (FAKE_WATCH_FAILURE && args[0] === 'gh' && args[1] === 'run' && args[2] === 'watch') ||
-      (FAKE_ARTIFACT_DOWNLOAD_FAILURE &&
-        args[0] === 'gh' &&
-        args[1] === 'run' &&
-        args[2] === 'download');
-    if (shouldFail && allowFailure) {
-      return { status: 1, stdout: '', stderr: `${renderCommand(args)} failed with exit code 1\n` };
-    }
-    if (shouldFail && !allowFailure) {
-      throw new Error(`${renderCommand(args)} failed with exit code 1`);
-    }
-    return capture ? '<latest-run-id>' : '';
-  }
-
-  const result = spawnSync(args[0], args.slice(1), {
-    cwd: process.cwd(),
-    encoding: 'utf8',
-    stdio: capture || allowFailure ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-  });
-
-  if (result.status !== 0 && !allowFailure) {
-    throw new Error(`${renderCommand(args)} failed with exit code ${result.status ?? 'unknown'}`);
-  }
-
-  if (allowFailure) {
-    return {
-      status: result.status ?? 1,
-      stdout: result.stdout ?? '',
-      stderr: result.stderr ?? '',
-    };
-  }
-
-  return capture ? result.stdout.trim() : '';
-}
-
-function writeEvidenceFile(path, contents) {
-  if (DRY_RUN) {
-    console.log(`write ${path}`);
-    if (path.endsWith('diagnostic-summary.json')) {
-      console.log(contents);
-    }
-    return;
-  }
-  writeFileSync(path, contents, 'utf8');
-}
-
-function captureCommandToFile(args, filePath) {
-  const result = runCommand(args, { allowFailure: true });
-  const contents =
-    typeof result === 'object'
-      ? `${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}`
-      : '';
-  writeEvidenceFile(filePath, contents);
-  return {
-    status: typeof result === 'object' ? result.status : 0,
-    contents,
-  };
-}
-
-function readJsonFile(path, fallback) {
-  if (DRY_RUN) return fallback;
-  if (!existsSync(path)) return fallback;
-  try {
-    return JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    return fallback;
-  }
-}
-
-function getPrimaryJobIds(jobsJson) {
-  if (DRY_RUN) return ['<job-id>'];
-  return (jobsJson?.jobs ?? [])
-    .map((job) => job?.databaseId ?? job?.id)
-    .filter((id) => id !== undefined && id !== null)
-    .map(String);
-}
-
-function buildDispatchCommand({ suite, options }) {
-  const args = [
-    'gh',
-    'workflow',
-    'run',
-    suite.workflow,
-    '--repo',
-    suite.repo,
-    '--ref',
-    options.ref,
-  ];
+function buildWorkflowFields({ suite, options }) {
   const fields = { ...suite.fields };
 
   if (suite.includeEnvironment) {
@@ -224,31 +130,7 @@ function buildDispatchCommand({ suite, options }) {
     fields[suite.baseUrlField] = options.baseUrl;
   }
 
-  for (const [key, value] of Object.entries(fields)) {
-    args.push('-f', `${key}=${value}`);
-  }
-
-  return args;
-}
-
-function buildRunListCommand({ suite, options }) {
-  return [
-    'gh',
-    'run',
-    'list',
-    '--repo',
-    suite.repo,
-    '--workflow',
-    suite.workflow,
-    '--branch',
-    options.ref,
-    '--limit',
-    '1',
-    '--json',
-    'databaseId',
-    '--jq',
-    '.[0].databaseId',
-  ];
+  return fields;
 }
 
 function main() {
@@ -278,7 +160,13 @@ function main() {
     process.exit(1);
   }
 
-  runCommand(buildDispatchCommand({ suite, options }));
+  dispatchWorkflow({
+    repo: suite.repo,
+    workflow: suite.workflow,
+    ref: options.ref,
+    fields: buildWorkflowFields({ suite, options }),
+    dryRun: DRY_RUN,
+  });
 
   if (!options.wait) {
     return;
@@ -288,103 +176,45 @@ function main() {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
   }
 
-  const runId = runCommand(buildRunListCommand({ suite, options }), { capture: true });
+  const runId = findLatestRun({
+    repo: suite.repo,
+    workflow: suite.workflow,
+    ref: options.ref,
+    dryRun: DRY_RUN,
+  });
   const resolvedRunId = DRY_RUN ? '<latest-run-id>' : runId;
   if (!resolvedRunId) {
     throw new Error(`Could not resolve latest run id for ${suite.workflow}`);
   }
 
   const artifactDir = resolve('.opencode/tmp/runner-diagnostics', String(resolvedRunId));
-  if (!DRY_RUN) {
-    mkdirSync(artifactDir, { recursive: true });
-  }
-
-  const watchResult = runCommand(
-    ['gh', 'run', 'watch', resolvedRunId, '--repo', suite.repo, '--exit-status'],
-    { allowFailure: true }
-  );
+  const watchResult = waitForRun({
+    repo: suite.repo,
+    runId: resolvedRunId,
+    dryRun: DRY_RUN,
+    fakeWatchFailure: FAKE_WATCH_FAILURE,
+  });
   const downloadResult = { status: 0 };
 
   if (options.downloadArtifacts) {
-    const artifactDownloadResult = runCommand(
-      ['gh', 'run', 'download', resolvedRunId, '--repo', suite.repo, '--dir', artifactDir],
-      { allowFailure: true }
-    );
-    downloadResult.status =
-      typeof artifactDownloadResult === 'object' ? artifactDownloadResult.status : 0;
-    if (typeof artifactDownloadResult === 'object' && artifactDownloadResult.status !== 0) {
-      writeEvidenceFile(
-        resolve(artifactDir, 'artifact-download-error.txt'),
-        `${artifactDownloadResult.stdout}${artifactDownloadResult.stderr}`
-      );
-      console.error(
-        `Artifact download failed; preserved error in ${resolve(artifactDir, 'artifact-download-error.txt')}`
-      );
-    }
+    downloadResult.status = downloadArtifacts({
+      repo: suite.repo,
+      runId: resolvedRunId,
+      evidenceDir: artifactDir,
+      dryRun: DRY_RUN,
+      fakeArtifactDownloadFailure: FAKE_ARTIFACT_DOWNLOAD_FAILURE,
+    }).status;
   }
 
-  const runView = captureCommandToFile(
-    [
-      'gh',
-      'run',
-      'view',
-      resolvedRunId,
-      '--repo',
-      suite.repo,
-      '--json',
-      'databaseId,status,conclusion,event,headBranch,headSha,url,createdAt,updatedAt',
-    ],
-    resolve(artifactDir, 'run.json')
-  );
-  const jobsView = captureCommandToFile(
-    ['gh', 'run', 'view', resolvedRunId, '--repo', suite.repo, '--json', 'jobs'],
-    resolve(artifactDir, 'jobs.json')
-  );
-  const artifactsView = captureCommandToFile(
-    ['gh', 'api', `repos/${suite.repo}/actions/runs/${resolvedRunId}/artifacts`],
-    resolve(artifactDir, 'artifact-index.json')
-  );
-  const runLog = captureCommandToFile(
-    ['gh', 'run', 'view', resolvedRunId, '--repo', suite.repo, '--log'],
-    resolve(artifactDir, 'job.log')
-  );
-
-  const jobsJson = readJsonFile(resolve(artifactDir, 'jobs.json'), {
-    jobs: [{ databaseId: '<job-id>' }],
+  collectRunEvidence({
+    repo: suite.repo,
+    runId: resolvedRunId,
+    evidenceDir: artifactDir,
+    suite: suite.workflow,
+    watchStatus: typeof watchResult === 'object' ? watchResult.status : 0,
+    artifactDownloadStatus: downloadResult.status,
+    dryRun: DRY_RUN,
   });
-  const jobLogStatuses = [];
-  for (const jobId of getPrimaryJobIds(jobsJson)) {
-    const jobLog = captureCommandToFile(
-      ['gh', 'run', 'view', resolvedRunId, '--repo', suite.repo, '--job', jobId, '--log'],
-      resolve(artifactDir, `job-${jobId}.log`)
-    );
-    jobLogStatuses.push({ jobId, status: jobLog.status });
-  }
-
-  const logIncomplete =
-    runLog.status !== 0 ||
-    (watchResult && typeof watchResult === 'object' && watchResult.status !== 0) ||
-    jobLogStatuses.some((job) => job.status !== 0);
-  writeEvidenceFile(
-    resolve(artifactDir, 'diagnostic-summary.json'),
-    `${JSON.stringify(
-      {
-        runId: resolvedRunId,
-        suite: suite.workflow,
-        repo: suite.repo,
-        watch_status: typeof watchResult === 'object' ? watchResult.status : 0,
-        artifact_download_status: downloadResult.status,
-        run_view_status: runView.status,
-        jobs_view_status: jobsView.status,
-        artifact_index_status: artifactsView.status,
-        run_log_status: runLog.status,
-        job_log_statuses: jobLogStatuses,
-        log_incomplete: logIncomplete,
-      },
-      null,
-      2
-    )}\n`
-  );
 
   console.log(`Runner diagnostic evidence: ${artifactDir}`);
 

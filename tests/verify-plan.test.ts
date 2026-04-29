@@ -38,6 +38,7 @@ describe('verify plan', () => {
       'scripts/linux-ajax-auto-allow-canary.mjs',
       'scripts/summarize-linux-ajax-auto-allow-evidence.mjs',
       'scripts/lib/auto-allow-boundary-evidence.mjs',
+      'scripts/lib/github-actions-diagnostic-client.mjs',
       'scripts/lib/release-evidence.mjs',
       'scripts/lib/linux-auto-allow-canary-evidence.mjs',
       'scripts/lib/windows-auto-allow-canary-evidence.mjs',
