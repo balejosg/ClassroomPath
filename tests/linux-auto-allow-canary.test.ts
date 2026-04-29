@@ -115,6 +115,26 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux canary runs probe attempts in parallel so diagnostics are not delayed by serial timeouts', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.match(canaryScript, /const results = await Promise\.all\(/);
+    assert.match(canaryScript, /probes\.map\(async \(probe\) => \(\{/);
+    assert.doesNotMatch(
+      canaryScript,
+      /for \(const probe of probes\) \{[\s\S]*await timeout\(runProbeOnce\(probe\)\)/
+    );
+  });
+
+  test('Linux canary retries protected diagnostics when the server returns a rate limit', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.match(canaryScript, /for \(let attempt = 1; attempt <= 3; attempt \+= 1\)/);
+    assert.match(canaryScript, /response\.status !== 429/);
+    assert.match(canaryScript, /retryAfterMs/);
+    assert.match(canaryScript, /await sleep\(Number\.isFinite\(retryAfterMs\)/);
+  });
+
   test('Linux canary preserves artifacts and raw log on functional failure', () => {
     const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
 

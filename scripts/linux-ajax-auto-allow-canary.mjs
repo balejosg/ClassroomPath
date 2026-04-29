@@ -107,22 +107,40 @@ async function collectCanaryGroupDiagnostics() {
     return { available: false, reason: 'missing diagnostics context' };
   }
 
-  try {
-    const response = await fetch(
-      `${CANARY_API_URL}/cp/internal/client-canary/group/${encodeURIComponent(CANARY_GROUP_ID)}/diagnostics`,
-      { headers: { Authorization: `Bearer ${CANARY_ADMIN_TOKEN}` } }
-    );
-    return {
-      available: true,
-      status: response.status,
-      body: await response.json().catch(() => null),
-    };
-  } catch (error) {
-    return {
-      available: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+  const url = `${CANARY_API_URL}/cp/internal/client-canary/group/${encodeURIComponent(CANARY_GROUP_ID)}/diagnostics`;
+  let lastResult = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${CANARY_ADMIN_TOKEN}` },
+      });
+      const body = await response.json().catch(() => null);
+      lastResult = {
+        available: true,
+        status: response.status,
+        body,
+        attempt,
+      };
+      if (response.status !== 429 || attempt === 3) {
+        return lastResult;
+      }
+
+      const retryAfterMs = Number(body?.error?.data?.retryAfterMs ?? 0);
+      await sleep(Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? retryAfterMs : 5000);
+    } catch (error) {
+      lastResult = {
+        available: false,
+        attempt,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      if (attempt === 3) {
+        return lastResult;
+      }
+      await sleep(1000 * attempt);
+    }
   }
+
+  return lastResult ?? { available: false, reason: 'diagnostics request did not run' };
 }
 
 async function runDiagnosticCommand(command, args = []) {
@@ -445,10 +463,16 @@ function buildPage(probes) {
         canaryState.lastPhase = 'attempt-start';
         const probeResults = {};
         try {
-          for (const probe of probes) {
-            probeResults[probe.id] = await timeout(runProbeOnce(probe));
-            attempt.probeResults[probe.id] = probeResults[probe.id];
-            if (probeResults[probe.id]) completedProbes[probe.id] = true;
+          const results = await Promise.all(
+            probes.map(async (probe) => ({
+              id: probe.id,
+              ok: await timeout(runProbeOnce(probe)),
+            }))
+          );
+          for (const result of results) {
+            probeResults[result.id] = result.ok;
+            attempt.probeResults[result.id] = result.ok;
+            if (result.ok) completedProbes[result.id] = true;
           }
           canaryState.lastPhase = 'post-attempt';
           attempt.completedAt = new Date().toISOString();
