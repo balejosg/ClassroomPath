@@ -242,7 +242,8 @@ describe('Workflow core contracts', () => {
       workflowText.includes('gh api repos/${{ github.repository }}/actions/runners') &&
         workflowText.includes('classroompath-windows-103') &&
         workflowText.includes('Resource not accessible by integration') &&
-        workflowText.includes('runner_online=unknown'),
+        workflowText.includes('runner_online=unknown') &&
+        workflowText.includes('runner-health-unavailable'),
       'watchdog must inspect runner registration when permitted and degrade when GITHUB_TOKEN lacks runner-admin access'
     );
     assert.deepEqual(smokeJob?.needs, ['inspect-runner-registration']);

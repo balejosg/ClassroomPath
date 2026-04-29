@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +12,7 @@ import {
   dispatchWorkflow,
   downloadArtifacts,
   waitForRun,
+  writeEvidenceFile,
 } from '../scripts/lib/github-actions-diagnostic-client.mjs';
 import { summarizeRunTiming } from '../scripts/lib/github-actions-run-timing.mjs';
 
@@ -203,6 +206,19 @@ describe('runner diagnostic wrapper', () => {
       /gh run download "?<latest-run-id>"? --repo balejosg\/ClassroomPath/
     );
     assert.match(commands.join('\n'), /write .*artifact-download-error\.txt/);
+  });
+
+  test('evidence writer creates nested diagnostic directories', () => {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'runner-diagnostic-'));
+    try {
+      const evidencePath = resolve(tempDir, 'missing', 'nested', 'artifact-download-error.txt');
+
+      writeEvidenceFile(evidencePath, 'artifact download failed\n');
+
+      assert.equal(readFileSync(evidencePath, 'utf8'), 'artifact download failed\n');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   test('package.json exposes the local diagnostics entrypoint', () => {

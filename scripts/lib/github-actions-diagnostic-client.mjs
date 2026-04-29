@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { summarizeRunTiming } from './github-actions-run-timing.mjs';
 
 export function quoteArg(arg) {
@@ -56,6 +56,7 @@ export function writeEvidenceFile(path, contents, { dryRun = false, emit = conso
     }
     return;
   }
+  mkdirSync(dirname(resolve(path)), { recursive: true });
   writeFileSync(path, contents, 'utf8');
 }
 
