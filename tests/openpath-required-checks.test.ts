@@ -7,6 +7,7 @@ import {
   evaluateRequiredChecks,
   resolveOpenPathRequiredChecks,
   OPENPATH_CI_JOB_NAMES,
+  OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
 } from '../scripts/lib/openpath-ci-checks.mjs';
 import { fetchCheckRuns, parseWaitOptions } from '../scripts/openpath-required-checks.mjs';
 
@@ -393,13 +394,18 @@ describe('resolveOpenPathRequiredChecks', () => {
     ]);
   });
 
-  it('adds build and release scripts only for release infrastructure changes', () => {
+  it('adds prerelease APT publication only for release infrastructure changes', () => {
     const result = resolveOpenPathRequiredChecks({
-      changedFiles: ['package-lock.json', 'VERSION', '.github/workflows/release.yml'],
+      changedFiles: [
+        'package-lock.json',
+        'VERSION',
+        '.github/workflows/release.yml',
+        'scripts/require-release-quality-gate.mjs',
+      ],
     });
 
     assert.equal(result.highRisk, true);
-    assert.deepEqual(result.requiredChecks, ['CI Success', 'Build and Release Scripts']);
+    assert.deepEqual(result.requiredChecks, ['CI Success', OPENPATH_PRERELEASE_APT_REQUIRED_CHECK]);
   });
 
   it('does not require release-script checks for Debian package and E2E workflow changes', () => {
@@ -491,7 +497,7 @@ describe('fetchCheckRuns', () => {
       return buildFetchResponse({
         check_runs: [
           {
-            name: 'Build and Release Scripts',
+            name: OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
             status: 'completed',
             conclusion: 'success',
             completed_at: '2026-04-27T18:40:00Z',
@@ -508,7 +514,7 @@ describe('fetchCheckRuns', () => {
       });
 
       assert.equal(checkRuns.length, 101);
-      assert.equal(checkRuns.at(-1)?.name, 'Build and Release Scripts');
+      assert.equal(checkRuns.at(-1)?.name, OPENPATH_PRERELEASE_APT_REQUIRED_CHECK);
       assert.equal(new URL(requestedUrls[0]).searchParams.get('per_page'), '100');
       assert.equal(new URL(requestedUrls[1]).searchParams.get('page'), '2');
     } finally {

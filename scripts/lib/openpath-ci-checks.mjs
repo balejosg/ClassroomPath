@@ -7,6 +7,9 @@ export const OPENPATH_CI_JOB_NAMES = [
 
 export const OPENPATH_BASE_REQUIRED_CHECKS = ['CI Success'];
 
+export const OPENPATH_PRERELEASE_APT_REQUIRED_CHECK =
+  'Publish Prerelease to APT Repository / Publish to APT Repository (unstable)';
+
 export const OPENPATH_HIGH_RISK_REQUIRED_CHECKS = [
   {
     check: 'E2E Summary',
@@ -33,7 +36,7 @@ export const OPENPATH_HIGH_RISK_REQUIRED_CHECKS = [
     ],
   },
   {
-    check: 'Build and Release Scripts',
+    check: OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
     patterns: [
       /^package(?:-lock)?\.json$/,
       /^VERSION$/,
