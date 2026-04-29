@@ -76,6 +76,7 @@
     "verify:release": "VERIFY_MODE=release bash scripts/verify-full.sh",
     "verify:full": "npm run verify:release",
     "diagnostics:runner": "node scripts/run-runner-diagnostic.mjs",
+    "diagnostics:run-timing": "node scripts/run-github-run-timing-summary.mjs",
     "diagnostics:windows-ajax:direct": "node scripts/run-windows-ajax-direct.mjs",
     "diagnostics:linux-student:direct": "node scripts/run-linux-student-diagnostic.mjs",
     "diagnostics:linux-ajax:direct": "node scripts/run-linux-ajax-direct.mjs",

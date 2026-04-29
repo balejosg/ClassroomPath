@@ -11,6 +11,7 @@ import {
   downloadArtifacts,
   waitForRun,
 } from '../scripts/lib/github-actions-diagnostic-client.mjs';
+import { summarizeRunTiming } from '../scripts/lib/github-actions-run-timing.mjs';
 
 type PackageDefinition = {
   scripts?: Record<string, string>;
@@ -25,6 +26,7 @@ const linuxStudentDirectScriptPath = resolve(
   'scripts/run-linux-student-diagnostic.mjs'
 );
 const linuxAjaxDirectScriptPath = resolve(projectRoot, 'scripts/run-linux-ajax-direct.mjs');
+const runTimingScriptPath = resolve(projectRoot, 'scripts/run-github-run-timing-summary.mjs');
 
 function runDiagnostic(args: string[]) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
@@ -71,7 +73,61 @@ function runLinuxAjaxDirectDiagnostic(args: string[]) {
   });
 }
 
+function runTimingSummary(args: string[]) {
+  return spawnSync(process.execPath, [runTimingScriptPath, ...args], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      RUN_TIMING_DRY_RUN: '1',
+    },
+  });
+}
+
 describe('runner diagnostic wrapper', () => {
+  test('summarizes GitHub Actions queue, execution, and skipped job timing', () => {
+    const summary = summarizeRunTiming({
+      run: {
+        databaseId: 25083630863,
+        status: 'completed',
+        conclusion: 'success',
+      },
+      jobs: [
+        {
+          name: 'Windows Student Policy',
+          conclusion: 'success',
+          createdAt: '2026-04-29T10:00:00Z',
+          startedAt: '2026-04-29T10:02:30Z',
+          completedAt: '2026-04-29T10:11:19Z',
+        },
+        {
+          name: 'Hosted Windows Advisory',
+          conclusion: 'skipped',
+          createdAt: '2026-04-29T10:00:00Z',
+          startedAt: null,
+          completedAt: '2026-04-29T10:00:01Z',
+        },
+      ],
+    });
+
+    assert.equal(summary.jobs[0].queueSeconds, 150);
+    assert.equal(summary.jobs[0].executionSeconds, 529);
+    assert.deepEqual(
+      summary.skippedJobs.map((job) => job.name),
+      ['Hosted Windows Advisory']
+    );
+  });
+
+  test('run timing summary dry-run prints the GitHub run view command', () => {
+    const result = runTimingSummary(['--repo', 'balejosg/Openpath', '--run-id', '25083630863']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(
+      result.stdout,
+      /gh run view 25083630863 --repo balejosg\/Openpath --json databaseId,status,conclusion,createdAt,updatedAt,jobs/
+    );
+  });
+
   test('client dry-run dispatch renders expected workflow command', () => {
     const commands: string[] = [];
     dispatchWorkflow({
