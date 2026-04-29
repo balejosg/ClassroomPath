@@ -91,6 +91,7 @@ function createLinuxCanaryRuntimeHarness(
 describe('Linux AJAX auto-allow canary contracts', () => {
   test('declares the production Linux AJAX/subresource probe table and artifact path', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+    const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
 
     assert.deepEqual(
       LINUX_AUTO_ALLOW_PROBES.map((probe) => probe.id),
@@ -112,27 +113,29 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID'));
     assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN'));
     assert.ok(canaryScript.includes('__openpathPageResourceObserverInstalled'));
-    assert.ok(canaryScript.includes('openpath-page-resource-candidate'));
-    assert.ok(canaryScript.includes('font/woff2'));
+    assert.ok(sharedHarness.includes('openpath-page-resource-candidate'));
+    assert.ok(sharedHarness.includes('font/woff2'));
   });
 
   test('Linux font probe is validated by server traffic instead of font decode success', () => {
-    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+    const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
 
     assert.ok(
-      canaryScript.includes("url.pathname === '/probe-state'"),
+      sharedHarness.includes("url.pathname === '/probe-state'"),
       'Linux canary should expose per-probe hit counts to the browser page'
     );
     assert.ok(
-      canaryScript.includes('const hits = await readProbeHits(probe.id).catch(() => 0);'),
+      sharedHarness.includes('const hits = await readProbeHits(probeId).catch(() => 0);'),
       'Linux font probe should use server hit evidence like the Windows canary'
     );
     assert.ok(
-      /const loadFont = \(probe\) =>[\s\S]*resolve\(hits > 0\);[\s\S]*?\}\)\);/.test(canaryScript),
+      /function loadFont\(url, probeId\)[\s\S]*hits > 0 \? \{ ok: true, hits \}/.test(
+        sharedHarness
+      ),
       'Linux font success must not depend on Firefox accepting the synthetic woff2 payload'
     );
     assert.ok(
-      canaryScript.includes(
+      sharedHarness.includes(
         'pageResourceCandidateEvents.splice(0, pageResourceCandidateEvents.length - 100)'
       ),
       'Linux canary should cap candidate events so artifact upload cannot grow unbounded'
@@ -274,11 +277,12 @@ describe('Linux AJAX auto-allow canary contracts', () => {
 
   test('Linux canary waits for managed Firefox content-script injection before counting probes', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+    const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
 
     assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_PAGE_OBSERVER_WAIT_MS'));
     assert.match(canaryScript, /async function waitForPageObserver\(driver, originUrl\)/);
-    assert.match(canaryScript, /lastDiagnostics\.openpathObserverInstalled === true/);
-    assert.match(canaryScript, /await driver\.get\(originUrl\)/);
+    assert.match(sharedHarness, /lastDiagnostics\.openpathObserverInstalled === true/);
+    assert.match(sharedHarness, /await driver\.get\(originUrl\)/);
     assert.match(
       canaryScript,
       /const browserNavigationBeforeAttempts = await waitForPageObserver\(\s*firefoxSession\.driver,\s*originUrl\s*\)/
@@ -308,12 +312,12 @@ describe('Linux AJAX auto-allow canary contracts', () => {
   });
 
   test('Linux canary runs probe attempts in parallel so diagnostics are not delayed by serial timeouts', () => {
-    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+    const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
 
-    assert.match(canaryScript, /const results = await Promise\.all\(/);
-    assert.match(canaryScript, /probes\.map\(async \(probe\) => \(\{/);
+    assert.match(sharedHarness, /const results = await Promise\.all\(/);
+    assert.match(sharedHarness, /probes\.map\(async \(probe\) => \{/);
     assert.doesNotMatch(
-      canaryScript,
+      sharedHarness,
       /for \(const probe of probes\) \{[\s\S]*await timeout\(runProbeOnce\(probe\)\)/
     );
   });
@@ -500,23 +504,18 @@ describe('Linux AJAX auto-allow canary contracts', () => {
 
   test('Linux canary distinguishes browser page load from in-page probe attempts', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+    const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
     const evidenceHelper = readProjectText('scripts/lib/linux-auto-allow-canary-evidence.mjs');
 
-    assert.match(canaryScript, /originPageHits: 0/);
-    assert.match(canaryScript, /attemptHits: 0/);
-    assert.match(
-      canaryScript,
-      /if \(host === ORIGIN_HOST && req\.method === 'GET' && url\.pathname === '\/'\) \{[\s\S]*state\.originPageHits \+= 1/
-    );
-    assert.match(
-      canaryScript,
-      /if \(host === ORIGIN_HOST && req\.method === 'POST' && url\.pathname === '\/attempt'\) \{[\s\S]*state\.attemptHits \+= 1/
-    );
+    assert.match(sharedHarness, /originPageHits: 0/);
+    assert.match(sharedHarness, /attemptHits: 0/);
+    assert.match(sharedHarness, /if \(host === originHost\) \{[\s\S]*state\.originPageHits \+= 1/);
+    assert.match(sharedHarness, /function mergeAttemptState[\s\S]*state\.attemptHits \+= 1/);
     assert.match(canaryScript, /async function collectBrowserNavigationDiagnostics/);
     assert.match(canaryScript, /browserNavigation/);
     assert.match(canaryScript, /__openpathLinuxAjaxCanaryState/);
-    assert.match(canaryScript, /window\.addEventListener\('error'/);
-    assert.match(canaryScript, /canaryState\.lastPhase = 'probe:' \+ probe\.id/);
+    assert.match(sharedHarness, /window\.addEventListener\('error'/);
+    assert.match(sharedHarness, /canaryState\.lastPhase = 'read-probe-hits:' \+ probeId/);
     assert.match(canaryScript, /originHits: state\.originPageHits/);
     assert.match(evidenceHelper, /originPageHits: Number\(summary\?\.originPageHits/);
   });
@@ -556,10 +555,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
   });
 
   test('Linux canary listens for page resource candidate DOM events', () => {
-    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+    const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
 
-    assert.match(canaryScript, /openpath-page-resource-candidate/);
-    assert.match(canaryScript, /window\.addEventListener\('openpath-page-resource-candidate'/);
+    assert.match(sharedHarness, /openpath-page-resource-candidate/);
+    assert.match(sharedHarness, /window\.addEventListener\('openpath-page-resource-candidate'/);
   });
 
   test('Linux canary waits for the enrollment seed before launching Firefox', () => {

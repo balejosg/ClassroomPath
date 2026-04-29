@@ -92,7 +92,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-library',
     patterns: [
-      '^scripts/lib/(?:firefox-release-version|github-actions|github-actions-artifacts|linux-auto-allow-canary-evidence|openpath-ci-checks|promotion-eligibility|regression-plan|release-candidate|release-candidate-components|release-cli|release-evidence|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|verification-catalog|verification-report-contract|verify-report-consumer)\\.mjs$',
+      '^scripts/lib/(?:ajax-auto-allow-canary-harness|firefox-release-version|github-actions|github-actions-artifacts|linux-auto-allow-canary-evidence|openpath-ci-checks|promotion-eligibility|regression-plan|release-candidate|release-candidate-components|release-cli|release-evidence|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|verification-catalog|verification-report-contract|verify-report-consumer)\\.mjs$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -114,7 +114,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-contract-test',
     patterns: [
-      '^tests/(?:ci-cache-measurement|ci-routing-measurement|deploy-intent|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-assets-cache|firefox-release-version|github-actions-artifacts|linux-auto-allow-canary|openpath-required-checks|promotion-eligibility|release-candidate-components|release-candidate-timings|release-cli|release-evidence|release-images|release-manifest-platforms|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow(?:-core|-deploy|-production-client-canary|-release-candidate|-config)?)\\.test\\.ts$',
+      '^tests/(?:ajax-auto-allow-canary-harness|ci-cache-measurement|ci-routing-measurement|deploy-intent|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-assets-cache|firefox-release-version|github-actions-artifacts|linux-auto-allow-canary|openpath-required-checks|promotion-eligibility|release-candidate-components|release-candidate-timings|release-cli|release-evidence|release-images|release-manifest-platforms|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|workflow(?:-core|-deploy|-production-client-canary|-release-candidate|-config)?)\\.test\\.ts$',
     ],
     capabilities: {
       ciRelevant: true,

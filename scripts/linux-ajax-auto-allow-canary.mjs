@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { createServer } from 'node:http';
 import dns from 'node:dns/promises';
 import { appendFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
@@ -13,9 +12,17 @@ import { promisify } from 'node:util';
 import {
   LINUX_AUTO_ALLOW_ORIGIN_HOST as ORIGIN_HOST,
   LINUX_AUTO_ALLOW_PROBES as AUTO_ALLOW_PROBES,
-  buildLinuxAutoAllowProbeUrl,
   withLinuxAutoAllowDiagnostics,
 } from './lib/linux-auto-allow-canary-evidence.mjs';
+import {
+  buildAjaxAutoAllowCanaryPage,
+  buildAjaxAutoAllowProbeUrl,
+  buildCompletedProbesFromHits,
+  createAjaxAutoAllowCanaryServer,
+  createAjaxAutoAllowCanaryState,
+  hasAllAjaxAutoAllowProbesCompleted,
+  waitForAjaxAutoAllowPageObserver,
+} from './lib/ajax-auto-allow-canary-harness.mjs';
 
 const PORT = Number.parseInt(process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18089', 10);
 const TIMEOUT_MS = Number.parseInt(
@@ -60,7 +67,7 @@ function sleep(ms) {
 }
 
 function buildProbeUrl(probe) {
-  return buildLinuxAutoAllowProbeUrl(probe, PORT);
+  return buildAjaxAutoAllowProbeUrl(probe, PORT);
 }
 
 async function readFileEvidence(path, expectedHosts = []) {
@@ -343,267 +350,25 @@ async function collectLinuxAutoAllowDiagnostics(label, expectedHosts = []) {
   };
 }
 
-function buildPage(probes) {
-  const probePayload = JSON.stringify(
-    probes.map((probe) => ({ ...probe, url: buildProbeUrl(probe) }))
-  );
-  return `<!doctype html>
-<html lang="en">
-  <head><meta charset="utf-8"><title>Linux AJAX Auto-Allow Canary</title></head>
-  <body>
-    <script>
-      const probes = ${probePayload};
-      const completedProbes = {};
-      const completedCandidateEvents = {};
-      const pageResourceCandidateEvents = [];
-      const canaryState = window.__openpathLinuxAjaxCanaryState = {
-        startedAt: new Date().toISOString(),
-        lastPhase: 'init',
-        attempts: [],
-        completedCandidateEvents,
-        pageResourceCandidateEvents,
-        errors: [],
-      };
-      window.addEventListener('error', (event) => {
-        canaryState.errors.push({
-          type: 'error',
-          message: event.message,
-          filename: event.filename,
-          lineno: event.lineno,
-          colno: event.colno,
-        });
-      });
-      window.addEventListener('unhandledrejection', (event) => {
-        canaryState.errors.push({
-          type: 'unhandledrejection',
-          message: String(event.reason?.message || event.reason || 'unknown'),
-        });
-      });
-      function recordPageResourceCandidate(candidate) {
-        if (candidate?.source !== 'openpath-page-resource-candidate') return;
-        const matched = probes.find((probe) => candidate.url === probe.url || String(candidate.url || '').startsWith(probe.url + '?'));
-        if (matched) completedCandidateEvents[matched.id] = true;
-        pageResourceCandidateEvents.push({ ...candidate, matchedProbeId: matched?.id ?? null, seenAt: new Date().toISOString() });
-        if (pageResourceCandidateEvents.length > 100) {
-          pageResourceCandidateEvents.splice(0, pageResourceCandidateEvents.length - 100);
-        }
-      }
-      window.addEventListener('message', (event) => {
-        recordPageResourceCandidate(event.data);
-      });
-      window.addEventListener('openpath-page-resource-candidate', (event) => {
-        recordPageResourceCandidate(event.detail);
-      });
-
-      const timeout = (promise) => Promise.race([
-        promise,
-        new Promise((resolve) => setTimeout(() => resolve(false), ${PROBE_TIMEOUT_MS}))
-      ]);
-      const bust = (url) => url + (url.includes('?') ? '&' : '?') + 'cache=' + Date.now();
-      const loadImage = (url) => timeout(new Promise((resolve) => {
-        const image = new Image();
-        image.onload = () => resolve(true);
-        image.onerror = () => resolve(false);
-        image.src = bust(url);
-      }));
-      const loadScript = (url) => timeout(new Promise((resolve) => {
-        const script = document.createElement('script');
-        script.async = true;
-        script.onload = () => resolve(true);
-        script.onerror = () => resolve(false);
-        script.src = bust(url);
-        document.body.appendChild(script);
-      }));
-      const loadStylesheet = (url) => timeout(new Promise((resolve) => {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.onload = () => resolve(true);
-        link.onerror = () => resolve(false);
-        link.href = bust(url);
-        document.head.appendChild(link);
-      }));
-      async function readProbeHits(probeId) {
-        canaryState.lastPhase = 'read-probe-hits:' + probeId;
-        const response = await fetch('/probe-state?probe=' + encodeURIComponent(probeId), {
-          cache: 'no-store',
-        });
-        if (!response.ok) return 0;
-        const payload = await response.json();
-        return Number(payload?.hits ?? 0);
-      }
-      const loadFont = (probe) => timeout(new Promise((resolve) => {
-        const url = probe.url;
-        const style = document.createElement('style');
-        const family = 'OpenPathLinuxCanary' + Date.now();
-        style.textContent = '@font-face { font-family: "' + family + '"; src: url("' + bust(url) + '") format("woff2"); } body { fontFamily: "' + family + '"; }';
-        document.head.appendChild(style);
-        const link = document.createElement('link');
-        link.rel = 'preload';
-        link.as = 'font';
-        link.type = 'font/woff2';
-        link.crossOrigin = 'anonymous';
-        link.href = bust(url);
-        document.head.appendChild(link);
-        setTimeout(async () => {
-          const hits = await readProbeHits(probe.id).catch(() => 0);
-          resolve(hits > 0);
-        }, 1000);
-      }));
-      async function runProbeOnce(probe) {
-        canaryState.lastPhase = 'probe:' + probe.id;
-        if (probe.kind === 'fetch') return timeout(fetch(bust(probe.url), { cache: 'no-store' }).then((response) => response.ok).catch(() => false));
-        if (probe.kind === 'image') return loadImage(probe.url);
-        if (probe.kind === 'script') return loadScript(probe.url);
-        if (probe.kind === 'stylesheet') return loadStylesheet(probe.url);
-        if (probe.kind === 'font') return loadFont(probe);
-        return false;
-      }
-      async function runAttempt() {
-        const attempt = {
-          startedAt: new Date().toISOString(),
-          probeResults: {},
-        };
-        canaryState.attempts.push(attempt);
-        canaryState.lastPhase = 'attempt-start';
-        const probeResults = {};
-        try {
-          const results = await Promise.all(
-            probes.map(async (probe) => ({
-              id: probe.id,
-              ok: await timeout(runProbeOnce(probe)),
-            }))
-          );
-          for (const result of results) {
-            probeResults[result.id] = result.ok;
-            attempt.probeResults[result.id] = result.ok;
-            if (result.ok) completedProbes[result.id] = true;
-          }
-          canaryState.lastPhase = 'post-attempt';
-          attempt.completedAt = new Date().toISOString();
-        } catch (error) {
-          canaryState.errors.push({
-            type: 'attempt-error',
-            message: String(error?.message || error || 'unknown'),
-          });
-          attempt.error = String(error?.message || error || 'unknown');
-        }
-        await fetch('/attempt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            pageObserverInstalled: window.__openpathPageResourceObserverInstalled === true,
-            pageObserverState: window.__openpathPageResourceObserverState ?? null,
-            completedProbes,
-            completedCandidateEvents,
-            pageResourceCandidateEvents,
-            probeResults,
-          }),
-        }).catch((error) => {
-          canaryState.errors.push({
-            type: 'attempt-post-error',
-            message: String(error?.message || error || 'unknown'),
-          });
-        });
-        canaryState.lastPhase = 'attempt-finished';
-      }
-      runAttempt().catch((error) => {
-        canaryState.errors.push({
-          type: 'run-attempt-error',
-          message: String(error?.message || error || 'unknown'),
-        });
-      });
-      setInterval(runAttempt, 3000);
-    </script>
-  </body>
-</html>`;
-}
-
 function createCanaryServer({ state }) {
-  return createServer((req, res) => {
-    const host = String(req.headers.host ?? '')
-      .split(':')[0]
-      ?.toLowerCase();
-    const url = new URL(req.url ?? '/', `http://${host}:${PORT}`);
-    const matchedProbe = AUTO_ALLOW_PROBES.find(
-      (probe) => host === probe.host && url.pathname === probe.path
-    );
-
-    if (host === ORIGIN_HOST && req.method === 'GET' && url.pathname === '/probe-state') {
-      const probeId = url.searchParams.get('probe') ?? '';
-      res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ hits: Number(state.probeHits[probeId] ?? 0) }));
-      return;
-    }
-
-    if (host === ORIGIN_HOST && req.method === 'POST' && url.pathname === '/attempt') {
-      let body = '';
-      req.on('data', (chunk) => {
-        body += chunk.toString();
-      });
-      req.on('end', () => {
-        state.attemptHits += 1;
-        const attempt = JSON.parse(body || '{}');
-        state.pageObserverInstalled ||= attempt.pageObserverInstalled === true;
-        if (attempt.pageObserverState) state.pageObserverState = attempt.pageObserverState;
-        Object.assign(state.completedProbes, attempt.completedProbes ?? {});
-        Object.assign(state.completedCandidateEvents, attempt.completedCandidateEvents ?? {});
-        state.pageResourceCandidateEvents.push(...(attempt.pageResourceCandidateEvents ?? []));
-        state.lastAttemptAt = new Date().toISOString();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
-      });
-      return;
-    }
-
-    if (host === ORIGIN_HOST && req.method === 'GET' && url.pathname === '/') {
-      state.originPageHits += 1;
-    }
-
-    if (matchedProbe) {
-      state.probeHits[matchedProbe.id] += 1;
-      const headers = { 'Cache-Control': 'no-store' };
-      if (matchedProbe.kind === 'fetch') {
-        res.writeHead(200, {
-          ...headers,
-          'Access-Control-Allow-Origin': `http://${ORIGIN_HOST}:${PORT}`,
-          'Content-Type': 'application/json',
-        });
-        res.end(JSON.stringify({ ok: true }));
-        return;
-      }
-      if (matchedProbe.kind === 'image') {
-        res.writeHead(200, { ...headers, 'Content-Type': 'image/png' });
-        res.end(
-          Buffer.from(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
-            'base64'
-          )
-        );
-        return;
-      }
-      if (matchedProbe.kind === 'script') {
-        res.writeHead(200, { ...headers, 'Content-Type': 'application/javascript; charset=utf-8' });
-        res.end('window.__openpathLinuxAjaxAutoAllowScriptProbe = true;');
-        return;
-      }
-      if (matchedProbe.kind === 'stylesheet') {
-        res.writeHead(200, { ...headers, 'Content-Type': 'text/css; charset=utf-8' });
-        res.end('body { --openpath-linux-ajax-auto-allow-style-probe: loaded; }');
-        return;
-      }
-      if (matchedProbe.kind === 'font') {
-        res.writeHead(200, {
-          ...headers,
-          'Access-Control-Allow-Origin': `http://${ORIGIN_HOST}:${PORT}`,
-          'Content-Type': 'font/woff2',
-        });
-        res.end(Buffer.from('d09GMgABAAAAAA==', 'base64'));
-        return;
-      }
-    }
-
-    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(buildPage(AUTO_ALLOW_PROBES));
+  return createAjaxAutoAllowCanaryServer({
+    platform: 'Linux',
+    probes: AUTO_ALLOW_PROBES,
+    originHost: ORIGIN_HOST,
+    port: PORT,
+    state,
+    scriptGlobalName: '__openpathLinuxAjaxAutoAllowScriptProbe',
+    stylesheetCss: 'body { --openpath-linux-ajax-auto-allow-style-probe: loaded; }',
+    buildPage: () =>
+      buildAjaxAutoAllowCanaryPage({
+        platform: 'Linux',
+        probes: AUTO_ALLOW_PROBES,
+        originHost: ORIGIN_HOST,
+        port: PORT,
+        timeoutMs: TIMEOUT_MS,
+        probeTimeoutMs: PROBE_TIMEOUT_MS,
+        stateGlobalName: '__openpathLinuxAjaxCanaryState',
+      }),
   });
 }
 
@@ -633,36 +398,19 @@ async function launchFirefox(originUrl) {
 }
 
 async function waitForPageObserver(driver, originUrl) {
-  const deadline = Date.now() + PAGE_OBSERVER_WAIT_MS;
-  let lastDiagnostics = await collectBrowserNavigationDiagnostics(driver);
-  let lastReloadAt = 0;
-
-  while (Date.now() < deadline) {
-    if (lastDiagnostics.openpathObserverInstalled === true) {
-      return lastDiagnostics;
-    }
-
-    const now = Date.now();
-    if (now - lastReloadAt >= 5000) {
-      lastReloadAt = now;
-      await driver.get(originUrl).catch((error) => {
-        console.error(
-          `Linux AJAX canary observer reload did not complete: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-      });
-    } else {
-      await sleep(1000);
-    }
-    lastDiagnostics = await collectBrowserNavigationDiagnostics(driver);
-  }
-
-  return lastDiagnostics;
-}
-
-function hasAllCompleted(map) {
-  return AUTO_ALLOW_PROBES.every((probe) => map[probe.id] === true);
+  return waitForAjaxAutoAllowPageObserver({
+    driver,
+    originUrl,
+    timeoutMs: PAGE_OBSERVER_WAIT_MS,
+    collectBrowserNavigationDiagnostics,
+    onReloadError: (error) => {
+      console.error(
+        `Linux AJAX canary observer reload did not complete: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    },
+  });
 }
 
 async function main() {
@@ -671,17 +419,7 @@ async function main() {
     ORIGIN_HOST,
     ...AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost),
   ];
-  const state = {
-    originPageHits: 0,
-    attemptHits: 0,
-    probeHits: Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, 0])),
-    completedProbes: {},
-    completedCandidateEvents: {},
-    pageResourceCandidateEvents: [],
-    pageObserverInstalled: false,
-    pageObserverState: null,
-    lastAttemptAt: null,
-  };
+  const state = createAjaxAutoAllowCanaryState(AUTO_ALLOW_PROBES);
   const server = createCanaryServer({ state });
   await new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -704,7 +442,12 @@ async function main() {
     );
     const deadline = Date.now() + TIMEOUT_MS;
     while (Date.now() < deadline) {
-      if (hasAllCompleted(state.completedProbes) && state.pageObserverInstalled) break;
+      if (
+        hasAllAjaxAutoAllowProbesCompleted(AUTO_ALLOW_PROBES, state.completedProbes) &&
+        state.pageObserverInstalled
+      ) {
+        break;
+      }
       await sleep(1000);
     }
 
@@ -712,8 +455,9 @@ async function main() {
       firefoxSession.driver
     );
     const postAttempt = await collectLinuxAutoAllowDiagnostics('post-attempt', expectedHosts);
-    const completedProbesFromTraffic = Object.fromEntries(
-      AUTO_ALLOW_PROBES.map((probe) => [probe.id, Number(state.probeHits[probe.id] ?? 0) > 0])
+    const completedProbesFromTraffic = buildCompletedProbesFromHits(
+      AUTO_ALLOW_PROBES,
+      state.probeHits
     );
     const browserCompletedCandidateEvents =
       browserNavigationAfterAttempts.canaryState?.completedCandidateEvents ??
@@ -745,7 +489,9 @@ async function main() {
       state.pageObserverInstalled ||
       browserNavigationAfterAttempts.openpathObserverInstalled === true ||
       browserNavigationBeforeAttempts.openpathObserverInstalled === true;
-    const success = hasAllCompleted(completedProbesFromTraffic) && pageObserverInstalled;
+    const success =
+      hasAllAjaxAutoAllowProbesCompleted(AUTO_ALLOW_PROBES, completedProbesFromTraffic) &&
+      pageObserverInstalled;
     const failureDebug = success ? null : await collectLinuxFailureDebugSnapshot();
     const summary = withLinuxAutoAllowDiagnostics({
       success,
