@@ -348,6 +348,40 @@ describe('runner diagnostic wrapper', () => {
     assert.match(commands.join('\n'), /write .*diagnostic-summary\.json/);
   });
 
+  test('runner diagnostic summary separates queue, execution, runner metadata, and skipped jobs', () => {
+    const commands: string[] = [];
+    const summary = collectRunEvidence({
+      repo: 'balejosg/ClassroomPath',
+      runId: '<latest-run-id>',
+      evidenceDir: '.opencode/tmp/runner-diagnostics/<latest-run-id>',
+      suite: 'self-hosted-windows-runner-smoke.yml',
+      dryRun: true,
+      emit: (line) => commands.push(line),
+    });
+
+    assert.equal(summary.queue_seconds, 150);
+    assert.equal(summary.execution_seconds, 529);
+    assert.equal(summary.runner_name, 'classroompath-windows-103');
+    assert.equal(summary.runner_group_name, 'Default');
+    assert.deepEqual(summary.labels, ['self-hosted', 'Windows', 'X64', 'proxmox', 'classroompath']);
+    assert.deepEqual(summary.skipped_jobs, ['Hosted Windows Advisory']);
+  });
+
+  test('runner diagnostic dry-run can inspect runner state before dispatch', () => {
+    const result = runDiagnostic(['--suite', 'runner-smoke', '--check-runner-state', '--wait']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(
+      result.stdout,
+      /gh api repos\/balejosg\/ClassroomPath\/actions\/runners --paginate/
+    );
+    assert.match(result.stdout, /write .*runner-state\.json/);
+    assert.match(
+      result.stdout,
+      /gh workflow run self-hosted-windows-runner-smoke\.yml --repo balejosg\/ClassroomPath/
+    );
+  });
+
   test('refuses production diagnostics without explicit confirmation', () => {
     const result = runDiagnostic([
       '--suite',

@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: ClassroomPath verification and release flow
-> Last verified: 2026-04-27
+> Last verified: 2026-04-29
 > Source of truth: `docs/verification-matrix.md`
 
 This matrix maps the current verification lanes to the evidence they provide.
@@ -118,11 +118,16 @@ The current speed plan is:
 
 1. keep production and staging Windows canaries on the pinned self-hosted
    ClassroomPath Windows runner;
-2. use OpenPath's GitHub-hosted Windows Pester lane as advisory capacity
+2. run at most one destructive Windows job per VM at a time;
+3. add Windows capacity only with a separate VM, dedicated labels, cleanup
+   policy, and enough RAM to preserve target-platform fidelity;
+4. use OpenPath's GitHub-hosted Windows Pester lane as advisory capacity
    measurement only;
-3. promote any hosted Windows lane only after repeated green samples prove it
+5. promote any hosted Windows lane only after repeated green samples prove it
    does not reduce release confidence;
-4. spend optimization effort on the current constraint: Windows queue pressure
+6. treat runner smoke as health evidence, not functional AJAX, bootstrap, or
+   release evidence;
+7. spend optimization effort on the current constraint: Windows queue pressure
    and the longest target-platform jobs, not the already-fast pre-commit hook.
 
 ## Latest Submodule Update Evidence

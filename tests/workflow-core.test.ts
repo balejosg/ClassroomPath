@@ -289,6 +289,16 @@ describe('Workflow core contracts', () => {
         workflowText.includes('git status --short'),
       'watchdog smoke must tolerate persistent runner workspace ownership drift'
     );
+    assert.ok(
+      workflowText.includes('runner-state.json') &&
+        workflowText.includes('actions/upload-artifact@v7'),
+      'watchdog smoke must write and upload runner state evidence'
+    );
+    assert.doesNotMatch(
+      workflowText,
+      /ajax|bootstrap|auto-allow/i,
+      'runner smoke must stay health-only and not claim product functional evidence'
+    );
   });
 
   test('OpenPath sync workflow automates checked handoff without depending on OpenPath callbacks', () => {

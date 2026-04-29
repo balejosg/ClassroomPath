@@ -7,12 +7,14 @@ import {
   dispatchWorkflow,
   downloadArtifacts,
   findLatestRun,
+  inspectRunnerState,
   waitForRun,
 } from './lib/github-actions-diagnostic-client.mjs';
 
 const DEFAULT_REF = 'main';
 const DEFAULT_ENVIRONMENT = 'staging';
 const DEFAULT_SUITE = 'windows-bootstrap-ajax';
+const DEFAULT_RUNNER_NAME = 'classroompath-windows-103';
 const DRY_RUN = process.env.RUNNER_DIAGNOSTIC_DRY_RUN === '1';
 const FAKE_WATCH_FAILURE = process.env.RUNNER_DIAGNOSTIC_FAKE_WATCH_FAILURE === '1';
 const FAKE_ARTIFACT_DOWNLOAD_FAILURE =
@@ -67,6 +69,9 @@ Options:
   --ref <ref>                 Git ref to dispatch (default: ${DEFAULT_REF})
   --wait                      Wait for the dispatched run to finish
   --download-artifacts        Download artifacts after waiting
+  --check-runner-state        Inspect self-hosted runner state before dispatch
+  --runner-name <name>        Runner name for --check-runner-state (default: ${DEFAULT_RUNNER_NAME})
+  --force-dispatch            Dispatch even when checked runner is busy
   --confirm-production        Required when --environment production
 `);
 }
@@ -79,6 +84,9 @@ function parseArgs(argv) {
     baseUrl: '',
     wait: false,
     downloadArtifacts: false,
+    checkRunnerState: false,
+    runnerName: DEFAULT_RUNNER_NAME,
+    forceDispatch: false,
     confirmProduction: false,
   };
 
@@ -106,6 +114,12 @@ function parseArgs(argv) {
     } else if (arg === '--download-artifacts') {
       options.downloadArtifacts = true;
       options.wait = true;
+    } else if (arg === '--check-runner-state') {
+      options.checkRunnerState = true;
+    } else if (arg === '--runner-name') {
+      options.runnerName = next();
+    } else if (arg === '--force-dispatch') {
+      options.forceDispatch = true;
     } else if (arg === '--confirm-production') {
       options.confirmProduction = true;
     } else if (arg === '--help' || arg === '-h') {
@@ -160,6 +174,32 @@ function main() {
     process.exit(1);
   }
 
+  const artifactDir = resolve(
+    '.opencode/tmp/runner-diagnostics',
+    DRY_RUN ? '<latest-run-id>' : `${options.suite}-${Date.now()}`
+  );
+
+  if (options.checkRunnerState) {
+    const state = inspectRunnerState({
+      repo: suite.repo,
+      runnerName: options.runnerName,
+      evidenceDir: artifactDir,
+      dryRun: DRY_RUN,
+    });
+
+    if (state.status !== 'online') {
+      console.error(`Runner is not online: ${options.runnerName} (${state.status})`);
+      process.exit(1);
+    }
+
+    if (state.busy && !options.forceDispatch) {
+      console.error(
+        `Runner is busy: ${options.runnerName}. Re-run with --force-dispatch to queue anyway.`
+      );
+      process.exit(1);
+    }
+  }
+
   dispatchWorkflow({
     repo: suite.repo,
     workflow: suite.workflow,
@@ -187,7 +227,7 @@ function main() {
     throw new Error(`Could not resolve latest run id for ${suite.workflow}`);
   }
 
-  const artifactDir = resolve('.opencode/tmp/runner-diagnostics', String(resolvedRunId));
+  const resolvedArtifactDir = resolve('.opencode/tmp/runner-diagnostics', String(resolvedRunId));
   const watchResult = waitForRun({
     repo: suite.repo,
     runId: resolvedRunId,
@@ -200,7 +240,7 @@ function main() {
     downloadResult.status = downloadArtifacts({
       repo: suite.repo,
       runId: resolvedRunId,
-      evidenceDir: artifactDir,
+      evidenceDir: resolvedArtifactDir,
       dryRun: DRY_RUN,
       fakeArtifactDownloadFailure: FAKE_ARTIFACT_DOWNLOAD_FAILURE,
     }).status;
@@ -209,14 +249,14 @@ function main() {
   collectRunEvidence({
     repo: suite.repo,
     runId: resolvedRunId,
-    evidenceDir: artifactDir,
+    evidenceDir: resolvedArtifactDir,
     suite: suite.workflow,
     watchStatus: typeof watchResult === 'object' ? watchResult.status : 0,
     artifactDownloadStatus: downloadResult.status,
     dryRun: DRY_RUN,
   });
 
-  console.log(`Runner diagnostic evidence: ${artifactDir}`);
+  console.log(`Runner diagnostic evidence: ${resolvedArtifactDir}`);
 
   if (typeof watchResult === 'object' && watchResult.status !== 0) {
     process.exit(watchResult.status);

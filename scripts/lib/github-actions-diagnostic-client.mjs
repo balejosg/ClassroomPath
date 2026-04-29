@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { summarizeRunTiming } from './github-actions-run-timing.mjs';
 
 export function quoteArg(arg) {
   return /^[A-Za-z0-9_./:@=-]+$/.test(arg) ? arg : JSON.stringify(arg);
@@ -87,6 +88,41 @@ function getPrimaryJobIds(jobsJson, { dryRun = false } = {}) {
     .map((job) => job?.databaseId ?? job?.id)
     .filter((id) => id !== undefined && id !== null)
     .map(String);
+}
+
+function buildDryRunJobsFallback() {
+  return {
+    jobs: [
+      {
+        databaseId: '<job-id>',
+        name: 'Windows Student Policy',
+        conclusion: 'success',
+        createdAt: '2026-04-29T10:00:00Z',
+        startedAt: '2026-04-29T10:02:30Z',
+        completedAt: '2026-04-29T10:11:19Z',
+        runner_name: 'classroompath-windows-103',
+        runner_group_name: 'Default',
+        labels: ['self-hosted', 'Windows', 'X64', 'proxmox', 'classroompath'],
+      },
+      {
+        databaseId: '<skipped-job-id>',
+        name: 'Hosted Windows Advisory',
+        conclusion: 'skipped',
+        createdAt: '2026-04-29T10:00:00Z',
+        startedAt: null,
+        completedAt: '2026-04-29T10:00:01Z',
+      },
+    ],
+  };
+}
+
+function collectRunnerMetadata(jobs = []) {
+  const runnerJob = jobs.find((job) => job?.runner_name || job?.runnerName);
+  return {
+    runner_name: runnerJob?.runner_name ?? runnerJob?.runnerName ?? null,
+    runner_group_name: runnerJob?.runner_group_name ?? runnerJob?.runnerGroupName ?? null,
+    labels: Array.isArray(runnerJob?.labels) ? runnerJob.labels : [],
+  };
 }
 
 export function dispatchWorkflow({ repo, workflow, ref, fields = {}, dryRun = false, emit }) {
@@ -206,13 +242,9 @@ export function collectRunEvidence({
     commandOptions
   );
 
-  const jobsJson = readJsonFile(
-    resolve(evidenceDir, 'jobs.json'),
-    {
-      jobs: [{ databaseId: '<job-id>' }],
-    },
-    { dryRun }
-  );
+  const jobsJson = readJsonFile(resolve(evidenceDir, 'jobs.json'), buildDryRunJobsFallback(), {
+    dryRun,
+  });
   const jobLogStatuses = [];
   for (const jobId of getPrimaryJobIds(jobsJson, { dryRun })) {
     const jobLog = captureCommandToFile(
@@ -225,10 +257,21 @@ export function collectRunEvidence({
 
   const logIncomplete =
     runLog.status !== 0 || watchStatus !== 0 || jobLogStatuses.some((job) => job.status !== 0);
+  const timing = summarizeRunTiming({
+    run: readJsonFile(resolve(evidenceDir, 'run.json'), {}, { dryRun }),
+    jobs: jobsJson?.jobs ?? [],
+  });
+  const runnerMetadata = collectRunnerMetadata(jobsJson?.jobs ?? []);
   const summary = {
     runId,
     suite,
     repo,
+    queue_seconds: timing.totals.queueSeconds,
+    execution_seconds: timing.totals.executionSeconds,
+    runner_name: runnerMetadata.runner_name,
+    runner_group_name: runnerMetadata.runner_group_name,
+    labels: runnerMetadata.labels,
+    skipped_jobs: timing.skippedJobs.map((job) => job.name),
     watch_status: watchStatus,
     artifact_download_status: artifactDownloadStatus,
     run_view_status: runView.status,
@@ -246,4 +289,44 @@ export function collectRunEvidence({
   );
 
   return summary;
+}
+
+export function inspectRunnerState({ repo, runnerName, evidenceDir, dryRun = false, emit } = {}) {
+  if (!dryRun) {
+    mkdirSync(evidenceDir, { recursive: true });
+  }
+
+  const statePath = resolve(evidenceDir, 'runner-state.json');
+  const result = runGithubCommand(['gh', 'api', `repos/${repo}/actions/runners`, '--paginate'], {
+    capture: true,
+    dryRun,
+    emit,
+  });
+  const runners = dryRun
+    ? [
+        {
+          name: runnerName,
+          status: 'online',
+          busy: false,
+          labels: [
+            { name: 'self-hosted' },
+            { name: 'Windows' },
+            { name: 'X64' },
+            { name: 'proxmox' },
+            { name: 'classroompath' },
+          ],
+        },
+      ]
+    : (JSON.parse(result || '{"runners":[]}').runners ?? []);
+  const runner = runners.find((candidate) => candidate.name === runnerName) ?? null;
+  const state = {
+    runner_name: runnerName,
+    found: Boolean(runner),
+    status: runner?.status ?? 'missing',
+    busy: Boolean(runner?.busy),
+    labels: (runner?.labels ?? []).map((label) => (typeof label === 'string' ? label : label.name)),
+  };
+
+  writeEvidenceFile(statePath, `${JSON.stringify(state, null, 2)}\n`, { dryRun, emit });
+  return state;
 }

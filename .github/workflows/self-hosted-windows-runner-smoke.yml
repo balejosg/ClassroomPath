@@ -53,6 +53,18 @@ jobs:
           status="$(jq -r '.status' <<<"$runner_json")"
           busy="$(jq -r '.busy' <<<"$runner_json")"
           echo "Runner $RUNNER_NAME status=$status busy=$busy"
+          jq -n \
+            --arg runner_name "$RUNNER_NAME" \
+            --arg status "$status" \
+            --argjson busy "$busy" \
+            --arg checked_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              runner_name: $runner_name,
+              status: $status,
+              busy: $busy,
+              checked_at: $checked_at,
+              evidence_type: "runner-health"
+            }' > runner-state.json
 
           if [ "$status" != "online" ]; then
             echo "runner_online=false" >> "$GITHUB_OUTPUT"
@@ -65,6 +77,14 @@ jobs:
           fi
 
           echo "runner_online=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload runner state evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-runner-state
+          path: runner-state.json
+          if-no-files-found: warn
 
   smoke:
     name: Windows runner smoke
