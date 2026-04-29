@@ -1,12 +1,92 @@
 import assert from 'node:assert/strict';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { describe, test } from 'node:test';
 
-import { readProjectText } from './helpers/ops-contracts.ts';
+import { readProjectText, runProjectCommand } from './helpers/ops-contracts.ts';
 import {
   LINUX_AUTO_ALLOW_PROBES,
   buildLinuxAutoAllowProbeUrl,
   withLinuxAutoAllowDiagnostics,
 } from '../scripts/lib/linux-auto-allow-canary-evidence.mjs';
+
+const runtimeScriptPath = 'scripts/run-linux-bootstrap-ajax-canary-runtime.sh';
+
+function createLinuxCanaryRuntimeHarness(
+  options: {
+    installer?: 'missing' | 'success' | 'failure';
+    nodeCanaryExitCode?: number;
+  } = {}
+) {
+  const tempDir = mkdtempSync(join(tmpdir(), 'linux-bootstrap-ajax-runtime-'));
+  const binDir = join(tempDir, 'bin');
+  const runnerTemp = join(tempDir, 'runner-temp');
+  const workspace = join(runnerTemp, 'linux-production-bootstrap-canary');
+  const outputPath = join(tempDir, 'github-output');
+  const callsPath = join(tempDir, 'calls.log');
+  const nodeCallsPath = join(tempDir, 'node-calls.log');
+  mkdirSync(binDir, { recursive: true });
+  mkdirSync(workspace, { recursive: true });
+
+  const shim = (name: string, body: string) => {
+    const path = join(binDir, name);
+    writeFileSync(path, `#!/usr/bin/env bash\nset -euo pipefail\n${body}\n`);
+    chmodSync(path, 0o755);
+  };
+
+  shim(
+    'sudo',
+    `echo "sudo $*" >> "${callsPath}"; if [ "$1" = "bash" ]; then shift; exec bash "$@"; fi; exit 0`
+  );
+  shim(
+    'sysctl',
+    `echo "sysctl $*" >> "${callsPath}"; if [ "$1" = "-n" ]; then echo 1024; exit 0; fi; exit 0`
+  );
+  shim('systemctl', `echo "systemctl $*" >> "${callsPath}"; exit 0`);
+  shim('apt-get', `echo "apt-get $*" >> "${callsPath}"; exit 0`);
+  shim('resolvectl', `echo "resolvectl $*" >> "${callsPath}"; exit 0`);
+  shim('ip', `echo "ip $*" >> "${callsPath}"; echo "default via 192.0.2.1 dev eth0"; exit 0`);
+  shim('getent', `echo "getent $*" >> "${callsPath}"; exit 0`);
+  shim('rmdir', `echo "rmdir $*" >> "${callsPath}"; exit 0`);
+  shim(
+    'timeout',
+    `echo "timeout $*" >> "${callsPath}"; while [ "$#" -gt 0 ]; do case "$1" in --kill-after=*) shift ;; [0-9]*s|[0-9]*m) shift; break ;; *) break ;; esac; done; exec "$@"`
+  );
+  shim('tee', `cat > "$1"`);
+  shim(
+    'node',
+    `echo "node $*" >> "${nodeCallsPath}"; if [ "$1" = "-e" ]; then exec /usr/bin/node "$@"; fi; echo '{"ok":false,"failureBoundary":{"id":"node-rich","message":"rich artifact"}}' > production-linux-ajax-auto-allow-canary.json; exit ${options.nodeCanaryExitCode ?? 0}`
+  );
+
+  if (options.installer !== 'missing') {
+    const installerPath = join(workspace, 'install-openpath.sh');
+    writeFileSync(
+      installerPath,
+      `#!/usr/bin/env bash\necho installer-ran\nexit ${options.installer === 'failure' ? 27 : 0}\n`
+    );
+    chmodSync(installerPath, 0o755);
+  }
+
+  return {
+    tempDir,
+    outputPath,
+    callsPath,
+    nodeCallsPath,
+    installerPath: join(workspace, 'install-openpath.sh'),
+    env: {
+      PATH: `${binDir}:${process.env.PATH ?? ''}`,
+      RUNNER_TEMP: runnerTemp,
+      GITHUB_OUTPUT: outputPath,
+      LINUX_BOOTSTRAP_CANARY_ARTIFACT_DIR: tempDir,
+      LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: 'https://classroompath.example',
+      LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: 'group-linux',
+      LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: 'protected-admin-token',
+      EXPECTED_EXTENSION_ID: 'expected-extension',
+    },
+    cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
+  };
+}
 
 describe('Linux AJAX auto-allow canary contracts', () => {
   test('declares the production Linux AJAX/subresource probe table and artifact path', () => {
@@ -76,12 +156,111 @@ describe('Linux AJAX auto-allow canary contracts', () => {
         workflow
       )?.[0] ?? '';
 
-    assert.match(ajaxStep, /sudo sysctl -w net\.ipv4\.ip_unprivileged_port_start=0/);
-    assert.match(ajaxStep, /LINUX_AJAX_AUTO_ALLOW_CANARY_PORT=80/);
-    assert.match(
-      ajaxStep,
-      /timeout --kill-after=30s 10m node scripts\/linux-ajax-auto-allow-canary\.mjs/
-    );
+    assert.match(ajaxStep, new RegExp(`bash ${runtimeScriptPath}`));
+    assert.match(ajaxStep, /LINUX_BOOTSTRAP_CANARY_INSTALLER_PATH:/);
+    assert.doesNotMatch(ajaxStep, /restore_linux_bootstrap_canary_external_dns\(\)/);
+    assert.doesNotMatch(ajaxStep, /node scripts\/linux-ajax-auto-allow-canary\.mjs/);
+  });
+
+  test('Linux bootstrap runtime dry-run succeeds, restores DNS, and writes outputs', () => {
+    const harness = createLinuxCanaryRuntimeHarness({ installer: 'success' });
+    try {
+      const result = runProjectCommand('bash', [runtimeScriptPath], { env: harness.env });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(readFileSync(harness.outputPath, 'utf8'), /canary_result=success/);
+      assert.match(
+        readFileSync(harness.nodeCallsPath, 'utf8'),
+        /node scripts\/linux-ajax-auto-allow-canary\.mjs/
+      );
+      assert.match(
+        readFileSync(harness.callsPath, 'utf8'),
+        /sysctl -w net\.ipv4\.ip_unprivileged_port_start=0/
+      );
+      assert.match(
+        readFileSync(harness.callsPath, 'utf8'),
+        /sysctl -w net\.ipv4\.ip_unprivileged_port_start=1024/
+      );
+      assert.match(
+        readFileSync(harness.callsPath, 'utf8'),
+        /getent hosts raw\.githubusercontent\.com/
+      );
+      assert.match(
+        readFileSync(join(harness.tempDir, 'linux-install-openpath.log'), 'utf8'),
+        /installer-ran/
+      );
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test('Linux bootstrap runtime records install boundary when installer is missing', () => {
+    const harness = createLinuxCanaryRuntimeHarness({ installer: 'missing' });
+    try {
+      const result = runProjectCommand('bash', [runtimeScriptPath], { env: harness.env });
+
+      assert.equal(result.status, 1);
+      assert.match(readFileSync(harness.outputPath, 'utf8'), /canary_result=failure/);
+      assert.match(
+        readFileSync(harness.outputPath, 'utf8'),
+        /failure_boundary_id=linux-install-openpath/
+      );
+      assert.match(
+        readFileSync(join(harness.tempDir, 'production-linux-ajax-auto-allow-canary.json'), 'utf8'),
+        /Linux enrollment script was not downloaded/
+      );
+      assert.match(
+        readFileSync(harness.callsPath, 'utf8'),
+        /getent hosts raw\.githubusercontent\.com/
+      );
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test('Linux bootstrap runtime preserves installer log and status on install failure', () => {
+    const harness = createLinuxCanaryRuntimeHarness({ installer: 'failure' });
+    try {
+      const result = runProjectCommand('bash', [runtimeScriptPath], { env: harness.env });
+
+      assert.equal(result.status, 27);
+      assert.match(
+        readFileSync(harness.outputPath, 'utf8'),
+        /failure_boundary_id=linux-install-openpath/
+      );
+      assert.match(
+        readFileSync(join(harness.tempDir, 'linux-install-openpath.log'), 'utf8'),
+        /installer-ran/
+      );
+      assert.match(
+        readFileSync(join(harness.tempDir, 'production-linux-ajax-auto-allow-canary.json'), 'utf8'),
+        /Linux enrollment script failed before the AJAX auto-allow canary could run/
+      );
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test('Linux bootstrap runtime does not overwrite rich Node artifact on functional failure', () => {
+    const harness = createLinuxCanaryRuntimeHarness({
+      installer: 'success',
+      nodeCanaryExitCode: 19,
+    });
+    try {
+      const result = runProjectCommand('bash', [runtimeScriptPath], { env: harness.env });
+
+      assert.equal(result.status, 19);
+      assert.match(
+        readFileSync(join(harness.tempDir, 'production-linux-ajax-auto-allow-canary.json'), 'utf8'),
+        /node-rich/
+      );
+      assert.doesNotMatch(
+        readFileSync(join(harness.tempDir, 'production-linux-ajax-auto-allow-canary.json'), 'utf8'),
+        /linux-install-openpath/
+      );
+    } finally {
+      harness.cleanup();
+    }
   });
 
   test('Linux canary bounds Firefox page-load waits before probing', () => {
@@ -150,14 +329,15 @@ describe('Linux AJAX auto-allow canary contracts', () => {
 
   test('Linux canary preserves artifacts and raw log on functional failure', () => {
     const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+    const runtimeScript = readProjectText(runtimeScriptPath);
 
     assert.match(
       workflow,
       /name: Checkout\s+uses: actions\/checkout@v6\s+with:\s+persist-credentials: false/
     );
     assert.match(
-      workflow,
-      /name: Verify Linux AJAX auto-allow canary[\s\S]*timeout --kill-after=30s 10m node scripts\/linux-ajax-auto-allow-canary\.mjs 2>&1 \| tee linux-ajax-auto-allow-canary\.log[\s\S]*ajax_status="\$\{PIPESTATUS\[0\]\}"/
+      runtimeScript,
+      /timeout --kill-after=30s 10m node scripts\/linux-ajax-auto-allow-canary\.mjs 2>&1 \| tee linux-ajax-auto-allow-canary\.log[\s\S]*ajax_status="\$\{PIPESTATUS\[0\]\}"/
     );
     assert.match(
       workflow,
@@ -183,6 +363,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
 
   test('Linux bootstrap canary restores runner connectivity before the AJAX step exits', () => {
     const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+    const runtimeScript = readProjectText(runtimeScriptPath);
     const downloadStep =
       /name: Download live linux\/install-openpath\.sh enrollment script[\s\S]*?(?=\n      - name: Verify Linux AJAX auto-allow canary)/.exec(
         workflow
@@ -200,26 +381,31 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
     assert.match(
       ajaxStep,
-      /trap restore_linux_bootstrap_canary_external_dns EXIT[\s\S]*sudo bash "\$workspace\/install-openpath\.sh" 2>&1 \| tee linux-install-openpath\.log[\s\S]*install_status="\$\{PIPESTATUS\[0\]\}"/,
-      'AJAX step must install OpenPath, preserve the installer log, and always restore runner DNS before exiting'
+      new RegExp(`bash ${runtimeScriptPath}`),
+      'AJAX step should delegate runtime behavior to the repo script'
     );
     assert.match(
-      ajaxStep,
-      /failure_boundary_id=linux-install-openpath[\s\S]*exit "\$install_status"/,
+      runtimeScript,
+      /trap restore_linux_bootstrap_canary_external_dns EXIT[\s\S]*sudo bash "\$installer_path" 2>&1 \| tee linux-install-openpath\.log[\s\S]*install_status="\$\{PIPESTATUS\[0\]\}"/,
+      'runtime script must install OpenPath, preserve the installer log, and always restore runner DNS before exiting'
+    );
+    assert.match(
+      runtimeScript,
+      /write_github_output failure_boundary_id linux-install-openpath[\s\S]*exit "\$install_status"/,
       'installer failures should be recorded as an installation boundary, not as missing artifacts'
     );
     assert.doesNotMatch(
-      ajaxStep,
+      runtimeScript,
       /node <<'NODE'/,
       'AJAX step must avoid heredocs in nested failure branches because YAML indentation breaks Bash delimiters'
     );
     assert.match(
-      ajaxStep,
-      /FAILURE_MESSAGE='Linux enrollment script failed before the AJAX auto-allow canary could run\.' node -e/,
+      runtimeScript,
+      /FAILURE_MESSAGE="\$message" node -e/,
       'installer failure artifact should be written without an indentation-sensitive heredoc'
     );
     assert.match(
-      ajaxStep,
+      runtimeScript,
       /sudo systemctl stop openpath-sse-listener\.service openpath-update\.timer openpath-update\.service dnsmasq[\s\S]*sudo systemctl reset-failed dnsmasq[\s\S]*sudo apt-get purge -y openpath-dnsmasq[\s\S]*\/etc\/systemd\/system\/dnsmasq\.service\.d\/openpath-override\.conf[\s\S]*\/etc\/dnsmasq\.d\/openpath\.conf[\s\S]*raw\.githubusercontent\.com/,
       'AJAX step restoration should remove OpenPath DNS state and verify external GitHub DNS'
     );
