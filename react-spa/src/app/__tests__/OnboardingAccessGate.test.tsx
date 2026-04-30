@@ -86,8 +86,11 @@ function renderGate(overrides?: Partial<React.ComponentProps<typeof OnboardingAc
     isLoading: false,
     loadingTimedOut: false,
     isError: false,
+    isAcceptingPendingInvitation: false,
     onRetry: () => undefined,
     onLogoutToLogin: () => undefined,
+    onAcceptPendingInvitation: () => undefined,
+    onDismissPendingInvitation: () => undefined,
     onStatusChange: () => undefined,
     onCancelWaitingSuccess: () => undefined,
     onOrgCreated: () => undefined,
@@ -198,6 +201,44 @@ describe('OnboardingAccessGate', () => {
     expect(onCancelWaitingSuccess).toHaveBeenCalledTimes(1);
     expect(onLogoutToLogin).toHaveBeenCalledTimes(2);
     expect(onOrgCreated).toHaveBeenCalledWith({ user: { id: 'user-1' } });
+  });
+
+  it('shows a migration confirmation instead of the waiting room when there is a pending transfer invitation', () => {
+    const onAcceptPendingInvitation = vi.fn();
+    const onDismissPendingInvitation = vi.fn();
+
+    renderGate({
+      status: createStatus({
+        hasMembership: true,
+        isWaiting: true,
+        organization: {
+          id: 'org-current',
+          name: 'Colegio Actual',
+          role: 'teacher',
+        },
+        pendingInvitation: {
+          organizationId: 'org-next',
+          organizationName: 'Colegio Nuevo',
+          role: 'teacher',
+          requiresMigration: true,
+        },
+      }),
+      onAcceptPendingInvitation,
+      onDismissPendingInvitation,
+      authenticatedContent: <div>Authenticated Shell</div>,
+    });
+
+    expect(screen.getByText('Tienes una invitación pendiente')).toBeInTheDocument();
+    expect(screen.getByText('Organización actual: Colegio Actual')).toBeInTheDocument();
+    expect(screen.getByText('Nueva organización: Colegio Nuevo')).toBeInTheDocument();
+    expect(screen.queryByText('Waiting View')).not.toBeInTheDocument();
+    expect(screen.queryByText('Authenticated Shell')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar de organización' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Seguir con mi organización actual' }));
+
+    expect(onAcceptPendingInvitation).toHaveBeenCalledTimes(1);
+    expect(onDismissPendingInvitation).toHaveBeenCalledTimes(1);
   });
 
   it('renders the authenticated shell when membership exists', () => {

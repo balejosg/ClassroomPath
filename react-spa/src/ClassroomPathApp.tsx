@@ -58,8 +58,11 @@ function AppContent() {
       isLoading={boot.isLoading}
       loadingTimedOut={boot.loadingTimedOut}
       isError={boot.isError}
+      isAcceptingPendingInvitation={boot.isAcceptingPendingInvitation}
       onRetry={boot.onRetryOnboardingStatus}
       onLogoutToLogin={boot.onLogoutToLogin}
+      onAcceptPendingInvitation={boot.onAcceptPendingInvitation}
+      onDismissPendingInvitation={boot.onDismissPendingInvitation}
       onStatusChange={boot.onStatusChange}
       onCancelWaitingSuccess={boot.onCancelWaitingSuccess}
       onOrgCreated={boot.onOrgCreated}

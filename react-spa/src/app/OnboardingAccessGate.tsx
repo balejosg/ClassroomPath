@@ -14,8 +14,11 @@ type OnboardingAccessGateProps = {
   isLoading: boolean;
   loadingTimedOut: boolean;
   isError: boolean;
+  isAcceptingPendingInvitation: boolean;
   onRetry: () => void;
   onLogoutToLogin: () => void;
+  onAcceptPendingInvitation: () => void;
+  onDismissPendingInvitation: () => void;
   onStatusChange: () => void;
   onCancelWaitingSuccess: () => void;
   onOrgCreated: (result: CreateOrganizationSuccessDto) => void;
@@ -28,6 +31,48 @@ function InlineLoader({ label }: { label: string }) {
       <div className="text-center">
         <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600" />
         <p className="font-medium text-gray-600">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+function PendingInvitationTransferCard(props: {
+  currentOrganizationName?: string;
+  invitedOrganizationName: string;
+  isBusy: boolean;
+  onAccept: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+      <div className="w-full max-w-md rounded-xl border border-amber-200 bg-white p-8 shadow-sm">
+        <h2 className="text-2xl font-bold text-slate-900">Tienes una invitación pendiente</h2>
+        <p className="mt-3 text-sm text-slate-600">
+          Ya formas parte de otra organización. Si aceptas esta invitación, ClassroomPath te moverá
+          a la nueva organización.
+        </p>
+        <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <p>Organización actual: {props.currentOrganizationName ?? 'Sin organización actual'}</p>
+          <p>Nueva organización: {props.invitedOrganizationName}</p>
+        </div>
+        <div className="mt-6 flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={props.onAccept}
+            disabled={props.isBusy}
+            className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {props.isBusy ? 'Aceptando invitación...' : 'Cambiar de organización'}
+          </button>
+          <button
+            type="button"
+            onClick={props.onDismiss}
+            disabled={props.isBusy}
+            className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Seguir con mi organización actual
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -93,6 +138,22 @@ export function OnboardingAccessGate(props: OnboardingAccessGateProps) {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (props.isAcceptingPendingInvitation) {
+    return <InlineLoader label="Aceptando invitación..." />;
+  }
+
+  if (props.status?.pendingInvitation?.requiresMigration) {
+    return (
+      <PendingInvitationTransferCard
+        currentOrganizationName={props.status.organization?.name}
+        invitedOrganizationName={props.status.pendingInvitation.organizationName}
+        isBusy={props.isAcceptingPendingInvitation}
+        onAccept={props.onAcceptPendingInvitation}
+        onDismiss={props.onDismissPendingInvitation}
+      />
     );
   }
 

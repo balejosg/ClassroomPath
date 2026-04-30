@@ -14,6 +14,7 @@ import {
 } from '@classroompath/contracts/onboarding-policy';
 import type { OnboardingStatusDto } from '@classroompath/presenters/onboarding';
 import { getOrganizationBillingStatus, isPlatformAdminEmail } from './billing.service.js';
+import { getActiveInvitationByEmail } from './invitations.service.js';
 
 export type OnboardingStatus = OnboardingStatusDto;
 
@@ -27,7 +28,26 @@ export function getOnboardingPolicy(): OnboardingPolicy {
 
 export async function getOnboardingStatus(userId: string): Promise<OnboardingStatusDto> {
   const policy = getOnboardingPolicy();
+  const status = await db
+    .select()
+    .from(schema.cpUserStatus)
+    .where(eq(schema.cpUserStatus.userId, userId))
+    .limit(1);
+
+  const [user] = await openpathDb
+    .select({ email: openpathSchema.users.email })
+    .from(openpathSchema.users)
+    .where(eq(openpathSchema.users.id, userId))
+    .limit(1);
+
   const membership = await getSingleMembershipOrThrow(userId);
+  const pendingInvitation = user
+    ? await getActiveInvitationByEmail({
+        email: user.email,
+        targetOrganizationId: status[0]?.targetOrganizationId ?? null,
+      })
+    : null;
+
   if (membership) {
     const [organization] = await db
       .select({
@@ -48,28 +68,33 @@ export async function getOnboardingStatus(userId: string): Promise<OnboardingSta
         name: organization?.name ?? membership.organizationId,
         role: membership.role,
       },
+      pendingInvitation:
+        pendingInvitation && pendingInvitation.organizationId !== membership.organizationId
+          ? {
+              organizationId: pendingInvitation.organizationId,
+              organizationName: pendingInvitation.organizationName,
+              role: pendingInvitation.role,
+              requiresMigration: true,
+            }
+          : null,
       platformAdmin: false,
       billing,
       policy,
     };
   }
 
-  const [user] = await openpathDb
-    .select({ email: openpathSchema.users.email })
-    .from(openpathSchema.users)
-    .where(eq(openpathSchema.users.id, userId))
-    .limit(1);
-
-  const status = await db
-    .select()
-    .from(schema.cpUserStatus)
-    .where(eq(schema.cpUserStatus.userId, userId))
-    .limit(1);
-
   return {
     hasMembership: false,
     isWaiting: status.length > 0 && status[0].status === 'waiting',
     organization: null,
+    pendingInvitation: pendingInvitation
+      ? {
+          organizationId: pendingInvitation.organizationId,
+          organizationName: pendingInvitation.organizationName,
+          role: pendingInvitation.role,
+          requiresMigration: false,
+        }
+      : null,
     platformAdmin: user ? isPlatformAdminEmail(user.email) : false,
     billing: null,
     policy,

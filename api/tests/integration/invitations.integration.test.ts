@@ -354,6 +354,134 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
     assert.strictEqual(remainingInvitations.length, 0);
   });
 
+  test('auth.acceptPendingInvitation lets an authenticated existing user join from login without the email token', async () => {
+    const orgId = `org-invite-pending-${Date.now()}`;
+    const adminUserId = `u-admin-invite-pending-${Date.now()}`;
+    const existingUserId = `u-existing-pending-${Date.now()}`;
+    const adminEmail = uniqueEmail('admin-invite-pending');
+    const existingEmail = uniqueEmail('existing-pending');
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: adminUserId,
+        email: adminEmail,
+        name: 'Admin Pending Invite',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: existingUserId,
+        email: existingEmail,
+        name: 'Existing Pending User',
+        passwordHash: 'hashed-existing',
+        isActive: true,
+        emailVerified: true,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values([
+      {
+        id: `role-${adminUserId}`,
+        userId: adminUserId,
+        role: 'admin',
+        groupIds: [],
+        createdBy: adminUserId,
+      },
+      {
+        id: `role-${existingUserId}`,
+        userId: existingUserId,
+        role: 'teacher',
+        groupIds: [],
+        createdBy: adminUserId,
+      },
+    ]);
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: 'Pending Invite Org',
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${adminUserId}`,
+      userId: adminUserId,
+      organizationId: orgId,
+      role: 'admin',
+      invitedBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpUserStatus).values({
+      userId: existingUserId,
+      status: 'waiting',
+      targetOrganizationId: orgId,
+    });
+
+    await db.insert(cpSchema.cpInvitations).values({
+      id: `inv-pending-${Date.now()}`,
+      organizationId: orgId,
+      email: existingEmail,
+      name: 'Existing Pending User',
+      role: 'teacher',
+      tokenHash: hashInvitationToken(`pending-${Date.now().toString(36)}`),
+      invitedBy: adminUserId,
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+    });
+
+    const existingUserToken = signToken({
+      userId: existingUserId,
+      email: existingEmail,
+      name: 'Existing Pending User',
+      roles: [{ role: 'teacher', groupIds: [] }],
+    });
+
+    const acceptResponse = await trpcMutate(
+      integration.baseUrl,
+      'auth.acceptPendingInvitation',
+      {
+        termsAccepted: true,
+        termsVersion: '2026-03-09',
+      },
+      bearerAuth(existingUserToken)
+    );
+    assertStatus(acceptResponse, 200);
+
+    const { data: accepted } = (await parseTRPC(acceptResponse)) as {
+      data: { user?: { id: string; email: string; name: string } };
+    };
+    assert.strictEqual(accepted.user?.id, existingUserId);
+    assert.strictEqual(accepted.user?.email, existingEmail);
+
+    const memberships = await db
+      .select()
+      .from(cpSchema.cpMemberships)
+      .where(eq(cpSchema.cpMemberships.userId, existingUserId));
+    assert.strictEqual(memberships.length, 1);
+    assert.strictEqual(memberships[0].organizationId, orgId);
+    assert.strictEqual(memberships[0].role, 'teacher');
+
+    const remainingInvitations = await db
+      .select()
+      .from(cpSchema.cpInvitations)
+      .where(eq(cpSchema.cpInvitations.email, existingEmail));
+    assert.strictEqual(remainingInvitations.length, 0);
+
+    const waitingStatus = await db
+      .select()
+      .from(cpSchema.cpUserStatus)
+      .where(eq(cpSchema.cpUserStatus.userId, existingUserId));
+    assert.strictEqual(waitingStatus.length, 0);
+  });
+
   test('auth.generateResetToken only issues recovery tokens for users inside the admin tenant', async () => {
     const orgId = `org-reset-${Date.now()}`;
     const adminUserId = `u-admin-reset-${Date.now()}`;

@@ -51,6 +51,8 @@ export async function acceptOrganizationInvitation(params: {
           .where(eq(schema.cpMemberships.id, currentMembership.id));
       }
 
+      await tx.delete(schema.cpUserStatus).where(eq(schema.cpUserStatus.userId, params.userId));
+
       await tx.insert(schema.cpMemberships).values({
         id: generateId('mem'),
         userId: params.userId,

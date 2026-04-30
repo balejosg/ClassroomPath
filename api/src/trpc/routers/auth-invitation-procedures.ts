@@ -1,18 +1,18 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
-import { publicProcedure } from '../trpc.js';
+import { protectedProcedure, publicProcedure } from '../trpc.js';
 import { callOpenPathTrpc } from '../../lib/openpath/trpc-client.js';
 import { loginOpenPathUser, registerOpenPathUser } from '../../lib/openpath/auth-client.js';
-import { getOpenPathMeProfile } from '../../lib/openpath-auth-client.js';
 import { synchronizeOpenPathRole } from '../../lib/openpath-roles.js';
 import { storeSessionFromPayload } from '../../lib/session-cookies.js';
 import {
   acceptOrganizationInvitation,
+  getActiveInvitationByEmail,
   getInvitationByToken,
 } from '../../services/invitations.service.js';
 import { recordTermsAcceptance } from '../../services/legal-consent.service.js';
-import { assertCurrentTermsVersion } from './auth-payloads.js';
+import { assertCurrentTermsVersion, normalizeEmailAddress } from './auth-payloads.js';
 import { resolveRegistrationEmailVerification } from './auth-verification-flow.js';
 
 const clientModeInput = z.enum(['web', 'app']).optional();
@@ -29,34 +29,29 @@ async function getInvitationOrThrow(token: string) {
   return invitation;
 }
 
-async function getAuthenticatedInvitationUser(params: {
-  ctx: {
-    user: { sub: string; email: string; name: string } | null;
-    token: string | null;
-    req: unknown;
-  };
+function getAuthenticatedInvitationUser(params: {
+  user: { sub: string; email: string; name: string } | null;
   invitation: Awaited<ReturnType<typeof getInvitationOrThrow>>;
 }) {
-  if (!params.ctx.user || !params.ctx.token) {
+  if (!params.user) {
     throw new TRPCError({
       code: 'UNAUTHORIZED',
       message: 'Inicia sesión con la cuenta invitada para aceptar esta invitación.',
     });
   }
 
-  if (params.ctx.user.email.trim().toLowerCase() !== params.invitation.email) {
+  if (normalizeEmailAddress(params.user.email) !== params.invitation.email) {
     throw new TRPCError({
       code: 'FORBIDDEN',
       message: 'Debes iniciar sesión con el correo invitado para aceptar esta invitación.',
     });
   }
 
-  const profile = await getOpenPathMeProfile({
-    req: params.ctx.req as Parameters<typeof getOpenPathMeProfile>[0]['req'],
-    token: params.ctx.token,
-  });
-
-  return profile.user;
+  return {
+    id: params.user.sub,
+    email: normalizeEmailAddress(params.user.email),
+    name: params.user.name,
+  };
 }
 
 function toAcceptedInvitationUser(user: { id: string; email: string; name: string }) {
@@ -67,6 +62,32 @@ function toAcceptedInvitationUser(user: { id: string; email: string; name: strin
       name: user.name,
     },
   };
+}
+
+async function acceptInvitationForExistingUser(params: {
+  invitation: Awaited<ReturnType<typeof getInvitationOrThrow>>;
+  termsVersion: string;
+  user: { id: string; email: string; name: string };
+}) {
+  await recordTermsAcceptance({
+    userId: params.user.id,
+    termsVersion: params.termsVersion,
+  });
+
+  await acceptOrganizationInvitation({
+    invitationId: params.invitation.id,
+    organizationId: params.invitation.organizationId,
+    userId: params.user.id,
+    invitedBy: params.invitation.invitedBy,
+    role: params.invitation.role,
+  });
+
+  await synchronizeOpenPathRole({
+    userId: params.user.id,
+    actedBy: params.invitation.invitedBy,
+  });
+
+  return toAcceptedInvitationUser(params.user);
 }
 
 export const authInvitationProcedures = {
@@ -94,34 +115,16 @@ export const authInvitationProcedures = {
       assertCurrentTermsVersion(input.termsVersion);
 
       if (invitation.hasExistingAccount) {
-        const existingUser = await getAuthenticatedInvitationUser({
-          ctx: {
-            user: ctx.user,
-            token: ctx.token,
-            req: ctx.req,
-          },
+        const existingUser = getAuthenticatedInvitationUser({
+          user: ctx.user,
           invitation,
         });
 
-        await recordTermsAcceptance({
-          userId: existingUser.id,
+        return acceptInvitationForExistingUser({
+          invitation,
           termsVersion: input.termsVersion,
+          user: existingUser,
         });
-
-        await acceptOrganizationInvitation({
-          invitationId: invitation.id,
-          organizationId: invitation.organizationId,
-          userId: existingUser.id,
-          invitedBy: invitation.invitedBy,
-          role: invitation.role,
-        });
-
-        await synchronizeOpenPathRole({
-          userId: existingUser.id,
-          actedBy: invitation.invitedBy,
-        });
-
-        return toAcceptedInvitationUser(existingUser);
       }
 
       if (!input.password) {
@@ -186,6 +189,39 @@ export const authInvitationProcedures = {
       });
       return storeSessionFromPayload(ctx.res, sessionPayload, {
         clientMode: input.clientMode ?? 'web',
+      });
+    }),
+
+  acceptPendingInvitation: protectedProcedure
+    .input(
+      z.object({
+        termsAccepted: z.literal(true),
+        termsVersion: z.string().min(1).max(50),
+        clientMode: clientModeInput,
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      assertCurrentTermsVersion(input.termsVersion);
+
+      const email = normalizeEmailAddress(ctx.user.email);
+      const invitation = await getActiveInvitationByEmail({ email });
+
+      if (!invitation) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'No tienes ninguna invitación pendiente.',
+        });
+      }
+
+      const existingUser = getAuthenticatedInvitationUser({
+        user: ctx.user,
+        invitation,
+      });
+
+      return acceptInvitationForExistingUser({
+        invitation,
+        termsVersion: input.termsVersion,
+        user: existingUser,
       });
     }),
 };

@@ -5,6 +5,7 @@ import type {
   OnboardingStatusDto,
 } from '@classroompath/presenters/onboarding';
 
+import { CURRENT_TERMS_VERSION } from '../constants/legal';
 import { cpTrpc } from '../lib/cp-trpc';
 import { useOnboardingStatus, useRefreshSession } from '../lib/hooks';
 import { setReportErrorSink } from '../lib/reportError';
@@ -67,6 +68,7 @@ export type ClassroomPathBoot = {
   isLoading: boolean;
   loadingTimedOut: boolean;
   isError: boolean;
+  isAcceptingPendingInvitation: boolean;
   onAuthenticated: () => void;
   onSetAuthView: (view: AuthView) => void;
   onRetryOnboardingStatus: () => void;
@@ -74,6 +76,8 @@ export type ClassroomPathBoot = {
   onBillingLogout: () => Promise<void>;
   onBillingSuccessComplete: () => void;
   onBillingCancelBack: () => void;
+  onAcceptPendingInvitation: () => void;
+  onDismissPendingInvitation: () => void;
   onStatusChange: () => void;
   onCancelWaitingSuccess: () => void;
   onOrgCreated: (result: CreateOrganizationSuccessDto) => void;
@@ -96,15 +100,23 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
   const [isAuth, setIsAuth] = useState(hasSessionMarker());
   const [openPathReady, setOpenPathReady] = useState(false);
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  const [isAcceptingPendingInvitation, setIsAcceptingPendingInvitation] = useState(false);
+  const [dismissedPendingInvitationKey, setDismissedPendingInvitationKey] = useState<string | null>(
+    null
+  );
   const hasSyncedProfileRef = useRef(false);
   const hasAttemptedSessionRefreshRef = useRef(false);
   const isRefreshingSessionRef = useRef(false);
+  const autoAcceptedInvitationKeyRef = useRef<string | null>(null);
 
   const query = useOnboardingStatus({
     enabled: isAuth,
   }) as OnboardingStatusQuery;
   const refreshMutation = useRefreshSession();
   const { data: status, isLoading, refetch, isError, error } = query;
+  const pendingInvitationKey = status?.pendingInvitation
+    ? `${status.pendingInvitation.organizationId}:${String(status.pendingInvitation.requiresMigration)}`
+    : null;
 
   const navigateToAuthView = useCallback(
     (view: AuthView, replace = false) => {
@@ -146,6 +158,31 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
 
   const onStatusChange = useCallback(() => refetch(), [refetch]);
   const onCancelWaitingSuccess = useCallback(() => refetch(), [refetch]);
+
+  const acceptPendingInvitation = useCallback(async () => {
+    setIsAcceptingPendingInvitation(true);
+
+    try {
+      const payload = await cpTrpc.auth.acceptPendingInvitation.mutate({
+        termsAccepted: true,
+        termsVersion: CURRENT_TERMS_VERSION,
+        clientMode: getSessionClientMode(),
+      });
+      persistSession({ user: extractSessionUser(payload) });
+      setLoadingTimedOut(false);
+      refetch();
+    } finally {
+      setIsAcceptingPendingInvitation(false);
+    }
+  }, [refetch]);
+
+  const onAcceptPendingInvitation = useCallback(() => {
+    void acceptPendingInvitation();
+  }, [acceptPendingInvitation]);
+
+  const onDismissPendingInvitation = useCallback(() => {
+    setDismissedPendingInvitationKey(pendingInvitationKey);
+  }, [pendingInvitationKey]);
 
   const onOrgCreated = useCallback(
     (result: CreateOrganizationSuccessDto) => {
@@ -217,6 +254,12 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
   }, [currentSearch, isAuth, navigate, pathname, shouldShowLogin]);
 
   useEffect(() => {
+    if (dismissedPendingInvitationKey && dismissedPendingInvitationKey !== pendingInvitationKey) {
+      setDismissedPendingInvitationKey(null);
+    }
+  }, [dismissedPendingInvitationKey, pendingInvitationKey]);
+
+  useEffect(() => {
     if (!shouldScheduleLoadingTimeout({ isAuth, isLoading })) {
       setLoadingTimedOut(false);
       return;
@@ -262,6 +305,28 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
       // Registration is opportunistic; the in-view push control reports actionable errors.
     });
   }, [isAuth]);
+
+  useEffect(() => {
+    if (!isAuth || !status?.pendingInvitation || status.pendingInvitation.requiresMigration) {
+      return;
+    }
+
+    if (
+      autoAcceptedInvitationKeyRef.current === pendingInvitationKey ||
+      isAcceptingPendingInvitation
+    ) {
+      return;
+    }
+
+    autoAcceptedInvitationKeyRef.current = pendingInvitationKey;
+    void acceptPendingInvitation();
+  }, [
+    acceptPendingInvitation,
+    isAcceptingPendingInvitation,
+    isAuth,
+    pendingInvitationKey,
+    status?.pendingInvitation,
+  ]);
 
   useEffect(() => {
     if (!isAuth) {
@@ -315,6 +380,7 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
     isLoading,
     loadingTimedOut,
     isError,
+    isAcceptingPendingInvitation,
     onAuthenticated,
     onSetAuthView: navigateToAuthView,
     onRetryOnboardingStatus,
@@ -322,6 +388,8 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
     onBillingLogout,
     onBillingSuccessComplete,
     onBillingCancelBack,
+    onAcceptPendingInvitation,
+    onDismissPendingInvitation,
     onStatusChange,
     onCancelWaitingSuccess,
     onOrgCreated,

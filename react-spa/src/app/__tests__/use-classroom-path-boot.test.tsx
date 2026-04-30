@@ -10,6 +10,7 @@ const mockUseRefreshSession = vi.fn();
 const mockLogoutMutate = vi.fn();
 const mockAuthMeQuery = vi.fn();
 const mockRefreshMutate = vi.fn();
+const mockAcceptPendingInvitationMutate = vi.fn();
 const mockClearRequestsApiUrl = vi.fn();
 const mockClearSession = vi.fn();
 const mockHasSessionMarker = vi.fn();
@@ -52,6 +53,9 @@ vi.mock('../../lib/cp-trpc', () => ({
       logout: { mutate: (...args: unknown[]) => mockLogoutMutate(...args) },
       me: { query: (...args: unknown[]) => mockAuthMeQuery(...args) },
       refresh: { mutate: (...args: unknown[]) => mockRefreshMutate(...args) },
+      acceptPendingInvitation: {
+        mutate: (...args: unknown[]) => mockAcceptPendingInvitationMutate(...args),
+      },
     },
   },
 }));
@@ -158,6 +162,7 @@ describe('useClassroomPathBoot', () => {
     mockUseRefreshSession.mockReturnValue({
       mutateAsync: vi.fn().mockRejectedValue(new Error('No refresh session')),
     });
+    mockAcceptPendingInvitationMutate.mockResolvedValue({ user: { id: 'accepted-user' } });
     mockAuthMeQuery.mockResolvedValue({ user: { id: 'persisted-user' } });
     mockLogoutMutate.mockResolvedValue(undefined);
     mockRegisterClassroomPathServiceWorker.mockResolvedValue(null);
@@ -266,6 +271,45 @@ describe('useClassroomPathBoot', () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe('/');
       expect(refetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('auto-accepts a pending invitation after login when no organization transfer is required', async () => {
+    const refetch = vi.fn();
+    mockUseOnboardingStatus.mockReturnValue(
+      makeOnboardingQuery({
+        data: {
+          hasMembership: false,
+          isWaiting: true,
+          organization: null,
+          platformAdmin: false,
+          billing: null,
+          policy: {
+            allowOrgDirectory: false,
+            allowSelfServiceOrgs: false,
+            billingMode: 'stripe',
+          },
+          pendingInvitation: {
+            organizationId: 'org-invite',
+            organizationName: 'Colegio Demo',
+            role: 'teacher',
+            requiresMigration: false,
+          },
+        },
+        refetch,
+      })
+    );
+
+    renderBootProbe('/');
+
+    await waitFor(() => {
+      expect(mockAcceptPendingInvitationMutate).toHaveBeenCalledWith({
+        termsAccepted: true,
+        termsVersion: '2026-03-09',
+        clientMode: 'web',
+      });
+      expect(mockPersistSession).toHaveBeenCalledWith({ user: { id: 'accepted-user' } });
+      expect(refetch).toHaveBeenCalledTimes(1);
     });
   });
 });

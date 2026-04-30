@@ -1,4 +1,4 @@
-import { and, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
@@ -35,6 +35,97 @@ export async function listOrganizationInvitations(
   return rows.map((row) => toInvitationSummary(row));
 }
 
+async function getActiveInvitationRow(params: {
+  email: string;
+  targetOrganizationId?: string | null;
+}) {
+  const normalizedEmail = params.email.trim().toLowerCase();
+
+  const queryRow = async (targetOrganizationId?: string | null) => {
+    const filters = [
+      eq(schema.cpInvitations.email, normalizedEmail),
+      gt(schema.cpInvitations.expiresAt, new Date()),
+    ];
+
+    if (targetOrganizationId) {
+      filters.push(eq(schema.cpInvitations.organizationId, targetOrganizationId));
+    }
+
+    const [invitation] = await db
+      .select({
+        id: schema.cpInvitations.id,
+        organizationId: schema.cpInvitations.organizationId,
+        organizationName: schema.cpOrganizations.name,
+        email: schema.cpInvitations.email,
+        name: schema.cpInvitations.name,
+        role: schema.cpInvitations.role,
+        invitedBy: schema.cpInvitations.invitedBy,
+        createdAt: schema.cpInvitations.createdAt,
+        expiresAt: schema.cpInvitations.expiresAt,
+      })
+      .from(schema.cpInvitations)
+      .innerJoin(
+        schema.cpOrganizations,
+        eq(schema.cpOrganizations.id, schema.cpInvitations.organizationId)
+      )
+      .where(and(...filters))
+      .orderBy(desc(schema.cpInvitations.createdAt), desc(schema.cpInvitations.expiresAt))
+      .limit(1);
+
+    return invitation ?? null;
+  };
+
+  if (params.targetOrganizationId) {
+    const targetedInvitation = await queryRow(params.targetOrganizationId);
+    if (targetedInvitation) {
+      return targetedInvitation;
+    }
+  }
+
+  return queryRow();
+}
+
+export async function getActiveInvitationByEmail(params: {
+  email: string;
+  targetOrganizationId?: string | null;
+}): Promise<OrganizationInvitationDetails | null> {
+  const invitation = await getActiveInvitationRow(params);
+
+  if (!invitation) {
+    return null;
+  }
+
+  const existingUser = await findExistingOpenPathUserByEmail(invitation.email);
+  const [currentMembership] = existingUser
+    ? await db
+        .select({
+          organizationName: schema.cpOrganizations.name,
+        })
+        .from(schema.cpMemberships)
+        .innerJoin(
+          schema.cpOrganizations,
+          eq(schema.cpOrganizations.id, schema.cpMemberships.organizationId)
+        )
+        .where(eq(schema.cpMemberships.userId, existingUser.id))
+        .limit(1)
+    : [];
+
+  return {
+    id: invitation.id,
+    organizationId: invitation.organizationId,
+    organizationName: invitation.organizationName,
+    email: invitation.email,
+    name: invitation.name,
+    role: invitation.role === 'admin' ? 'admin' : 'teacher',
+    invitedBy: invitation.invitedBy,
+    hasExistingAccount: existingUser !== null,
+    currentOrganizationName: currentMembership?.organizationName ?? null,
+    createdAt: toIsoStringOrNull(invitation.createdAt),
+    expiresAt: invitation.expiresAt.toISOString(),
+    status: 'Pending',
+  };
+}
+
 export async function getInvitationByToken(
   token: string
 ): Promise<OrganizationInvitationDetails | null> {
@@ -68,33 +159,8 @@ export async function getInvitationByToken(
     return null;
   }
 
-  const existingUser = await findExistingOpenPathUserByEmail(invitation.email);
-  const [currentMembership] = existingUser
-    ? await db
-        .select({
-          organizationName: schema.cpOrganizations.name,
-        })
-        .from(schema.cpMemberships)
-        .innerJoin(
-          schema.cpOrganizations,
-          eq(schema.cpOrganizations.id, schema.cpMemberships.organizationId)
-        )
-        .where(eq(schema.cpMemberships.userId, existingUser.id))
-        .limit(1)
-    : [];
-
-  return {
-    id: invitation.id,
-    organizationId: invitation.organizationId,
-    organizationName: invitation.organizationName,
+  return getActiveInvitationByEmail({
     email: invitation.email,
-    name: invitation.name,
-    role: invitation.role === 'admin' ? 'admin' : 'teacher',
-    invitedBy: invitation.invitedBy,
-    hasExistingAccount: existingUser !== null,
-    currentOrganizationName: currentMembership?.organizationName ?? null,
-    createdAt: toIsoStringOrNull(invitation.createdAt),
-    expiresAt: invitation.expiresAt.toISOString(),
-    status: 'Pending',
-  };
+    targetOrganizationId: invitation.organizationId,
+  });
 }

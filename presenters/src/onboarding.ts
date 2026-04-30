@@ -9,6 +9,13 @@ export interface OnboardingOrganizationDto extends OrganizationSummaryDto {
   role: string;
 }
 
+export interface PendingInvitationDto {
+  organizationId: string;
+  organizationName: string;
+  role: 'admin' | 'teacher';
+  requiresMigration: boolean;
+}
+
 export interface OnboardingRoleInfo {
   role: string;
   groupIds: string[];
@@ -25,6 +32,7 @@ export interface OnboardingStatusDto {
   hasMembership: boolean;
   isWaiting: boolean;
   organization: OnboardingOrganizationDto | null;
+  pendingInvitation?: PendingInvitationDto | null;
   platformAdmin: boolean;
   billing: {
     hasActiveEntitlement: boolean;
