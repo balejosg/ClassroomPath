@@ -30,6 +30,8 @@ import {
   selectLatestReleaseCandidateRun,
 } from './release-images.mjs';
 import { buildCanonicalReleaseManifest, serializeReleaseManifest } from './release-manifest.mjs';
+import { OPENPATH_PRERELEASE_APT_REQUIRED_CHECK } from './openpath-ci-checks.mjs';
+import { formatOpenPathPrereleaseRecoveryDecision } from './openpath-prerelease-recovery.mjs';
 import { classifyReleaseWaitBlocker, formatReleaseWaitBlocker } from './release-wait-summary.mjs';
 
 export function buildReleaseCandidateManifestOutputs({ repository, runId, manifest }) {
@@ -149,6 +151,7 @@ export function formatReleaseCandidateWaitProgress({
   lastState = 'missing',
   latestRun = null,
   latestRunJobs = [],
+  openPathRecoveryDecision = null,
   upstreamSha = '',
 }) {
   const details = [
@@ -173,7 +176,20 @@ export function formatReleaseCandidateWaitProgress({
 
   const blockerText = formatReleaseWaitBlocker(blocker);
 
-  return [`Waiting for release candidate manifest (${details.join('; ')})`, blockerText]
+  let recoveryText = '';
+  if (openPathRecoveryDecision?.state === 'waiting') {
+    recoveryText = 'Active blocker: OpenPath prerelease APT pending.';
+  } else if (openPathRecoveryDecision?.state === 'rerun_available') {
+    recoveryText = 'Active blocker: OpenPath prerelease APT failed and rerun is available.';
+  } else if (openPathRecoveryDecision?.state === 'failed') {
+    recoveryText = 'Active blocker: ClassroomPath RC failed after upstream was green.';
+  }
+
+  return [
+    `Waiting for release candidate manifest (${details.join('; ')})`,
+    blockerText,
+    recoveryText,
+  ]
     .filter(Boolean)
     .join('\n');
 }
@@ -217,17 +233,13 @@ export function selectLatestArtifact(payload, { artifactName } = {}) {
 
 export function shouldRerunReleaseCandidateAfterOpenPathAptFailure({
   alreadyReran = false,
-  failureSummary = '',
-  openPathRequiredChecksOk = false,
+  recoveryDecision = null,
 } = {}) {
-  const failedWhileWaitingForOpenPathApt = String(failureSummary).includes(
-    'Wait for OpenPath prerelease APT'
-  );
-
-  if (!alreadyReran && failedWhileWaitingForOpenPathApt && openPathRequiredChecksOk) {
+  if (!alreadyReran && recoveryDecision?.state === 'rerun_available') {
     return {
       shouldRerun: true,
-      reason: 'OpenPath prerelease APT wait failed, but OpenPath required checks are now green',
+      reason:
+        'OpenPath prerelease APT wait failed, but the OpenPath recovery path is rerun-available',
     };
   }
 
@@ -235,14 +247,59 @@ export function shouldRerunReleaseCandidateAfterOpenPathAptFailure({
     shouldRerun: false,
     reason: alreadyReran
       ? 'Release-candidate workflow has already been rerun once'
-      : 'Release-candidate failure is not an OpenPath prerelease APT recovery case',
+      : `OpenPath prerelease recovery state is ${recoveryDecision?.state ?? 'unknown'}`,
   };
 }
 
-function verifyOpenPathRequiredChecksAfterAptWait({ upstreamSha, cwd }) {
+function resolveOpenPathPrereleaseRecoveryAfterAptWait({ upstreamSha, cwd }) {
   const sha = String(upstreamSha ?? '').trim();
   if (!sha) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(
+      execFileSync('node', ['scripts/openpath-required-checks.mjs', 'recovery'], {
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          OPENPATH_SHA: sha,
+          OPENPATH_REQUIRED_CHECKS: OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
+        },
+      }).trim() || 'null'
+    );
+  } catch {
+    return null;
+  }
+}
+
+function buildReleaseCandidateFailureContext({ failureMessage, recoveryDecision, rerunReason }) {
+  return [
+    failureMessage,
+    recoveryDecision ? formatOpenPathPrereleaseRecoveryDecision(recoveryDecision) : '',
+    rerunReason,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function verifyOpenPathRequiredChecksAfterAptWait({ upstreamSha, cwd }) {
+  const recoveryDecision = resolveOpenPathPrereleaseRecoveryAfterAptWait({ upstreamSha, cwd });
+
+  if (!recoveryDecision) {
     return false;
+  }
+
+  return recoveryDecision.state === 'ready' || recoveryDecision.state === 'rerun_available';
+}
+
+function resolveReleaseCandidateOpenPathRecovery({ upstreamSha, cwd }) {
+  const recoveryDecision = resolveOpenPathPrereleaseRecoveryAfterAptWait({ upstreamSha, cwd });
+
+  if (recoveryDecision) {
+    return recoveryDecision;
   }
 
   try {
@@ -255,9 +312,9 @@ function verifyOpenPathRequiredChecksAfterAptWait({ upstreamSha, cwd }) {
         OPENPATH_SHA: sha,
       },
     });
-    return true;
+    return { state: 'ready' };
   } catch {
-    return false;
+    return { state: 'failed' };
   }
 }
 
@@ -520,27 +577,43 @@ export function waitForReleaseCandidateManifest({
           latestRunJobs,
           failureLog,
         });
-        const openPathRequiredChecksOk = verifyOpenPathRequiredChecksAfterAptWait({
+        const recoveryDecision = resolveReleaseCandidateOpenPathRecovery({
           upstreamSha,
           cwd,
         });
         const rerunDecision = shouldRerunReleaseCandidateAfterOpenPathAptFailure({
           alreadyReran: alreadyReranAfterOpenPathAptFailure,
-          failureSummary: failureMessage,
-          openPathRequiredChecksOk,
+          recoveryDecision,
         });
 
         if (rerunDecision.shouldRerun && runId) {
-          console.error(`${failureMessage}\n${rerunDecision.reason}; rerunning failed jobs once.`);
+          console.error(
+            `${buildReleaseCandidateFailureContext({
+              failureMessage,
+              recoveryDecision,
+              rerunReason: rerunDecision.reason,
+            })}; rerunning failed jobs once.`
+          );
           rerunGitHubRunFailedJobs({ repo, runId, cwd });
           alreadyReranAfterOpenPathAptFailure = true;
           return {
             status: 'pending',
-            context: { lastState: 'rerun_requested', latestRun: run, latestRunJobs },
+            context: {
+              lastState: 'rerun_requested',
+              latestRun: run,
+              latestRunJobs,
+              openPathRecoveryDecision: recoveryDecision,
+            },
           };
         }
 
-        throw new Error(failureMessage);
+        throw new Error(
+          buildReleaseCandidateFailureContext({
+            failureMessage,
+            recoveryDecision,
+            rerunReason: rerunDecision.reason,
+          })
+        );
       }
 
       return {
@@ -548,7 +621,12 @@ export function waitForReleaseCandidateManifest({
         context: { lastState: state, latestRun: run, latestRunJobs },
       };
     },
-    onPending({ lastState = 'missing', latestRun = null, latestRunJobs = [] } = {}) {
+    onPending({
+      lastState = 'missing',
+      latestRun = null,
+      latestRunJobs = [],
+      openPathRecoveryDecision = null,
+    } = {}) {
       console.error(
         formatReleaseCandidateWaitProgress({
           repository: repo,
@@ -556,12 +634,24 @@ export function waitForReleaseCandidateManifest({
           lastState,
           latestRun,
           latestRunJobs,
+          openPathRecoveryDecision,
           upstreamSha,
         })
       );
     },
-    formatTimeoutError({ lastState = 'missing', latestRun = null }) {
-      return `Timed out waiting for a successful release candidate manifest for SHA ${targetSha} (last_state=${lastState}; latest_run=${formatWorkflowRunContext(latestRun)})`;
+    formatTimeoutError({
+      lastState = 'missing',
+      latestRun = null,
+      openPathRecoveryDecision = null,
+    }) {
+      return [
+        `Timed out waiting for a successful release candidate manifest for SHA ${targetSha} (last_state=${lastState}; latest_run=${formatWorkflowRunContext(latestRun)})`,
+        openPathRecoveryDecision
+          ? formatOpenPathPrereleaseRecoveryDecision(openPathRecoveryDecision)
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
     },
   });
 }

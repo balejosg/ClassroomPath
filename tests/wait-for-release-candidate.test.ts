@@ -224,9 +224,9 @@ describe('wait-for-release-candidate helpers', () => {
   test('allows one automatic release-candidate rerun after OpenPath APT wait failure is later green', () => {
     const decision = shouldRerunReleaseCandidateAfterOpenPathAptFailure({
       alreadyReran: false,
-      failureSummary:
-        'Step: Wait for OpenPath prerelease APT publish. Waiting on OpenPath prerelease APT.',
-      openPathRequiredChecksOk: true,
+      recoveryDecision: {
+        state: 'rerun_available',
+      },
     });
 
     assert.equal(decision.shouldRerun, true);
@@ -236,11 +236,31 @@ describe('wait-for-release-candidate helpers', () => {
   test('does not loop automatic release-candidate reruns', () => {
     const decision = shouldRerunReleaseCandidateAfterOpenPathAptFailure({
       alreadyReran: true,
-      failureSummary: 'Step: Wait for OpenPath prerelease APT publish.',
-      openPathRequiredChecksOk: true,
+      recoveryDecision: {
+        state: 'rerun_available',
+      },
     });
 
     assert.equal(decision.shouldRerun, false);
+  });
+
+  test('formats release candidate wait progress with a rerun-available blocker summary', () => {
+    const message = formatReleaseCandidateWaitProgress({
+      repository: 'balejosg/ClassroomPath',
+      targetSha: 'abc123',
+      lastState: 'failed',
+      latestRun: {
+        databaseId: 987,
+        status: 'completed',
+        conclusion: 'failure',
+        updatedAt: '2026-03-27T11:00:00Z',
+      },
+      openPathRecoveryDecision: {
+        state: 'rerun_available',
+      },
+    });
+
+    assert.match(message, /OpenPath prerelease APT failed and rerun is available/);
   });
 
   test('builds the full manifest contract for output files and stdout', () => {

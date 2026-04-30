@@ -2,13 +2,21 @@
 
 import {
   OPENPATH_CI_JOB_NAMES,
+  OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
   classifyRequiredCheckWaitState,
   evaluateRequiredChecks,
   parseRunIdFromUrl,
   resolveOpenPathRequiredChecks,
+  selectLatestCheckRuns,
 } from './lib/openpath-ci-checks.mjs';
 import { buildGitHubApiHeaders, isDirectExecution } from './lib/github-actions.mjs';
+import { rerunGitHubRunFailedJobs } from './lib/github-actions-artifacts.mjs';
 import { gitOutput } from './lib/git-process.mjs';
+import {
+  classifyOpenPathPrereleaseRecovery,
+  formatOpenPathPrereleaseRecoveryDecision,
+  resolveOpenPathPrereleaseRecoveryChecks,
+} from './lib/openpath-prerelease-recovery.mjs';
 
 const DEFAULT_REQUIRED_CHECKS = ['CI Success'];
 
@@ -25,6 +33,7 @@ Environment variables:
   OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS   Wait mode timeout. Default: 600.
   OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS  Wait mode polling interval. Default: 10.
   OPENPATH_REQUIRED_CHECKS_FAIL_FAST         Wait mode terminal failure behavior. Default: true.
+  OPENPATH_PRERELEASE_RECOVERY_MODE          Advisory by default. Set to rerun-failed-once to rerun one failed prerelease APT job.
   GITHUB_TOKEN or GH_TOKEN  Token used to query the GitHub API.
 `);
 }
@@ -38,6 +47,20 @@ export function parseRequiredChecks(rawValue) {
 }
 
 export { evaluateRequiredChecks } from './lib/openpath-ci-checks.mjs';
+
+export function parseRecoveryMode(env = process.env) {
+  const rawValue = env.OPENPATH_PRERELEASE_RECOVERY_MODE?.trim();
+
+  if (!rawValue) {
+    return 'advisory';
+  }
+
+  if (rawValue === 'advisory' || rawValue === 'rerun-failed-once') {
+    return rawValue;
+  }
+
+  throw new Error('OPENPATH_PRERELEASE_RECOVERY_MODE must be advisory or rerun-failed-once');
+}
 
 function parsePositiveIntegerEnv(env, name, defaultValue) {
   const rawValue = env[name]?.trim();
@@ -182,6 +205,35 @@ async function fetchWorkflowRunJobs({ repo, runId, token }) {
   return payload.jobs ?? [];
 }
 
+async function buildWorkflowJobsByRunId({ repo, checkRuns, requiredChecks, token }) {
+  const latestByName = selectLatestCheckRuns(checkRuns);
+  const runIds = new Set();
+
+  if (requiredChecks.includes('CI Success')) {
+    const ciRunId = selectLatestOpenPathCiRunId(checkRuns);
+    if (ciRunId) {
+      runIds.add(ciRunId);
+    }
+  }
+
+  for (const checkName of requiredChecks) {
+    const checkRun = latestByName.get(checkName);
+    const runId = parseRunIdFromUrl(checkRun?.details_url ?? checkRun?.html_url ?? '');
+
+    if (runId) {
+      runIds.add(runId);
+    }
+  }
+
+  const jobsByRunId = Object.fromEntries(
+    await Promise.all(
+      [...runIds].map(async (runId) => [runId, await fetchWorkflowRunJobs({ repo, runId, token })])
+    )
+  );
+
+  return jobsByRunId;
+}
+
 function printFailureSummary({ repo, sha, result }) {
   console.error(`OpenPath required checks failed for ${repo}@${sha}`);
 
@@ -228,21 +280,38 @@ function resolveExecutionContext() {
 
 async function evaluateOpenPathRequiredChecks({ repo, sha, token, requiredChecks }) {
   const checkRuns = await fetchCheckRuns({ repo, sha, token });
-  let workflowJobs = [];
-  const requiresCiSuccess = requiredChecks.includes('CI Success');
-
-  if (requiresCiSuccess) {
-    const runId = selectLatestOpenPathCiRunId(checkRuns);
-    if (runId) {
-      workflowJobs = await fetchWorkflowRunJobs({ repo, runId, token });
-    }
-  }
-
+  const workflowJobsByRunId = await buildWorkflowJobsByRunId({
+    repo,
+    checkRuns,
+    requiredChecks: requiredChecks.includes(OPENPATH_PRERELEASE_APT_REQUIRED_CHECK)
+      ? resolveOpenPathPrereleaseRecoveryChecks(requiredChecks)
+      : requiredChecks,
+    token,
+  });
+  const workflowJobs = Object.values(workflowJobsByRunId).flatMap((jobs) => jobs ?? []);
   const result = evaluateRequiredChecks({ checkRuns, requiredChecks, workflowJobs });
+  const recoveryDecision = requiredChecks.includes(OPENPATH_PRERELEASE_APT_REQUIRED_CHECK)
+    ? classifyOpenPathPrereleaseRecovery({
+        openPathSha: sha,
+        requiredChecks,
+        checkRuns,
+        workflowRuns: Object.keys(workflowJobsByRunId).map((runId) => ({
+          id: runId,
+          headSha: sha,
+        })),
+        workflowJobsByRunId,
+        alreadyReran: false,
+        allowRerun: false,
+        repo,
+      })
+    : null;
+
   return {
     checkRuns,
     workflowJobs,
+    workflowJobsByRunId,
     result,
+    recoveryDecision,
   };
 }
 
@@ -280,27 +349,91 @@ async function waitForRequiredChecks(context, options) {
   const timeoutMilliseconds = options.timeoutSeconds * 1000;
   const intervalMilliseconds = options.intervalSeconds * 1000;
   let attempt = 1;
+  let alreadyReranPrerelease = false;
 
   while (true) {
-    const { checkRuns, workflowJobs, result } = await evaluateOpenPathRequiredChecks(context);
+    const { checkRuns, workflowJobs, result, workflowJobsByRunId } =
+      await evaluateOpenPathRequiredChecks(context);
     const waitState = classifyRequiredCheckWaitState({
       checkRuns,
       requiredChecks: context.requiredChecks,
       workflowJobs,
     });
+    const recoveryDecision = context.requiredChecks.includes(OPENPATH_PRERELEASE_APT_REQUIRED_CHECK)
+      ? classifyOpenPathPrereleaseRecovery({
+          openPathSha: context.sha,
+          requiredChecks: context.requiredChecks,
+          checkRuns,
+          workflowRuns: Object.keys(workflowJobsByRunId).map((runId) => ({
+            id: runId,
+            headSha: context.sha,
+          })),
+          workflowJobsByRunId,
+          alreadyReran: alreadyReranPrerelease,
+          allowRerun: parseRecoveryMode() === 'rerun-failed-once',
+          repo: context.repo,
+        })
+      : null;
     const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
 
-    if (waitState.kind === 'passed') {
+    if (recoveryDecision?.state === 'ready' || waitState.kind === 'passed') {
       printSuccessSummary(context);
       return true;
+    }
+
+    if (recoveryDecision?.state === 'rerun_requested' && recoveryDecision.runId) {
+      console.error(
+        `${formatOpenPathPrereleaseRecoveryDecision(recoveryDecision)}; rerunning failed jobs once.`
+      );
+      rerunGitHubRunFailedJobs({
+        repo: context.repo,
+        runId: recoveryDecision.runId,
+        cwd: process.cwd(),
+      });
+      alreadyReranPrerelease = true;
+      attempt += 1;
+      const remainingMilliseconds = Math.max(0, timeoutMilliseconds - (Date.now() - startedAt));
+      await sleep(Math.min(intervalMilliseconds, remainingMilliseconds));
+      continue;
+    }
+
+    if (recoveryDecision?.state === 'rerun_available' || recoveryDecision?.state === 'failed') {
+      printFailureSummary({ repo: context.repo, sha: context.sha, result });
+      console.error(formatOpenPathPrereleaseRecoveryDecision(recoveryDecision));
+      return false;
+    }
+
+    if (recoveryDecision?.state === 'waiting') {
+      if (Date.now() - startedAt >= timeoutMilliseconds) {
+        printFailureSummary({ repo: context.repo, sha: context.sha, result });
+        console.error(
+          `Timed out after ${elapsedSeconds}s waiting for OpenPath required checks for ${context.repo}@${context.sha}: ${formatOpenPathPrereleaseRecoveryDecision(
+            recoveryDecision
+          )}`
+        );
+        return false;
+      }
+
+      console.log(
+        `Waiting for OpenPath required checks for ${context.repo}@${context.sha} (attempt ${attempt}, elapsed ${elapsedSeconds}s): ${formatOpenPathPrereleaseRecoveryDecision(
+          recoveryDecision
+        )}`
+      );
+
+      attempt += 1;
+      const remainingMilliseconds = Math.max(0, timeoutMilliseconds - (Date.now() - startedAt));
+      await sleep(Math.min(intervalMilliseconds, remainingMilliseconds));
+      continue;
     }
 
     if (waitState.kind === 'terminal_failure' && options.failFast) {
       printFailureSummary({ repo: context.repo, sha: context.sha, result });
       console.error(
-        `OpenPath required checks reached terminal failure after ${elapsedSeconds}s: ${summarizeWaitState(
-          waitState
-        )}`
+        recoveryDecision?.state === 'blocked'
+          ? `${formatOpenPathPrereleaseRecoveryDecision(recoveryDecision)} after ${elapsedSeconds}s`
+          : `OpenPath required checks reached terminal failure after ${elapsedSeconds}s: ${summarizeWaitState(
+              waitState
+            )}`
       );
       return false;
     }
@@ -308,17 +441,21 @@ async function waitForRequiredChecks(context, options) {
     if (Date.now() - startedAt >= timeoutMilliseconds) {
       printFailureSummary({ repo: context.repo, sha: context.sha, result });
       console.error(
-        `Timed out after ${elapsedSeconds}s waiting for OpenPath required checks for ${context.repo}@${context.sha}: ${summarizeWaitState(
-          waitState
-        )}`
+        `Timed out after ${elapsedSeconds}s waiting for OpenPath required checks for ${context.repo}@${context.sha}: ${
+          recoveryDecision?.state === 'waiting'
+            ? formatOpenPathPrereleaseRecoveryDecision(recoveryDecision)
+            : summarizeWaitState(waitState)
+        }`
       );
       return false;
     }
 
     console.log(
-      `Waiting for OpenPath required checks for ${context.repo}@${context.sha} (attempt ${attempt}, elapsed ${elapsedSeconds}s): ${summarizeWaitState(
-        waitState
-      )}`
+      `Waiting for OpenPath required checks for ${context.repo}@${context.sha} (attempt ${attempt}, elapsed ${elapsedSeconds}s): ${
+        recoveryDecision?.state === 'waiting' || recoveryDecision?.state === 'rerun_requested'
+          ? formatOpenPathPrereleaseRecoveryDecision(recoveryDecision)
+          : summarizeWaitState(waitState)
+      }`
     );
 
     attempt += 1;
@@ -334,11 +471,38 @@ async function main() {
   }
 
   const command = process.argv[2] ?? 'check';
-  if (command !== 'check' && command !== 'wait') {
+  if (command !== 'check' && command !== 'wait' && command !== 'recovery') {
     throw new Error(`Unknown command: ${command}`);
   }
 
   const context = resolveExecutionContext();
+
+  if (command === 'recovery') {
+    const recoveryContext = {
+      ...context,
+      requiredChecks: resolveOpenPathPrereleaseRecoveryChecks([
+        ...context.requiredChecks,
+        OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
+      ]),
+    };
+    const { checkRuns, workflowJobsByRunId } =
+      await evaluateOpenPathRequiredChecks(recoveryContext);
+    const decision = classifyOpenPathPrereleaseRecovery({
+      openPathSha: recoveryContext.sha,
+      requiredChecks: recoveryContext.requiredChecks,
+      checkRuns,
+      workflowRuns: Object.keys(workflowJobsByRunId).map((runId) => ({
+        id: runId,
+        headSha: recoveryContext.sha,
+      })),
+      workflowJobsByRunId,
+      alreadyReran: false,
+      allowRerun: parseRecoveryMode() === 'rerun-failed-once',
+      repo: recoveryContext.repo,
+    });
+    console.log(JSON.stringify(decision));
+    return;
+  }
 
   if (command === 'wait') {
     const ok = await waitForRequiredChecks(context, parseWaitOptions());
@@ -348,10 +512,13 @@ async function main() {
     return;
   }
 
-  const { result } = await evaluateOpenPathRequiredChecks(context);
+  const { result, recoveryDecision } = await evaluateOpenPathRequiredChecks(context);
 
   if (!result.ok) {
     printFailureSummary({ repo: context.repo, sha: context.sha, result });
+    if (recoveryDecision && recoveryDecision.state !== 'waiting') {
+      console.error(formatOpenPathPrereleaseRecoveryDecision(recoveryDecision));
+    }
     process.exitCode = 1;
     return;
   }
