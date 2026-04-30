@@ -19,6 +19,8 @@ describe('verify plan', () => {
     const stagedFiles = [
       '.github/workflows/firefox-release-assets.yml',
       'scripts/openpath-required-checks.mjs',
+      'scripts/prepromotion-runner-rehearsal.mjs',
+      'scripts/lib/prepromotion-runner-rehearsal.mjs',
       'scripts/resolve-openpath-linux-agent-version.mjs',
       'scripts/lib/github-actions.mjs',
       'tests/workflow-core.test.ts',
@@ -44,6 +46,7 @@ describe('verify plan', () => {
       'scripts/lib/windows-auto-allow-canary-evidence.mjs',
       'tests/release-evidence.test.ts',
       'tests/linux-auto-allow-canary.test.ts',
+      'tests/prepromotion-runner-rehearsal.test.ts',
       'tests/workflow-production-client-canary.test.ts',
     ]) {
       assert.equal(detectVerificationScope([stagedFile], 'commit'), 'release-automation');

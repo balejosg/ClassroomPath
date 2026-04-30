@@ -293,6 +293,7 @@ test('release-state CLI lists canonical snapshot fields for shell consumers', ()
     'STAGING_EMAIL_DELIVERY_HIGH_RISK',
     'STAGING_EMAIL_PREFLIGHT_RESULT',
     'STAGING_EMAIL_PREFLIGHT_PROVIDER',
+    'STAGING_WINDOWS_FIREFOX_HIGH_RISK',
     'STAGING_FIREFOX_RELEASE_ARTIFACTS',
     'STAGING_WINDOWS_BOOTSTRAP_RESULT',
     'STAGING_FIREFOX_POLICY_RESULT',
@@ -330,6 +331,7 @@ test('canonical shell release-state helper serializes snapshots through the type
         'STAGING_EMAIL_DELIVERY_HIGH_RISK=false',
         'STAGING_EMAIL_PREFLIGHT_RESULT=skipped-low-risk',
         'STAGING_EMAIL_PREFLIGHT_PROVIDER=skipped',
+        'STAGING_WINDOWS_FIREFOX_HIGH_RISK=true',
         'STAGING_SMOKE_RESULT=success',
         'STAGING_SMOKE_STATUS=PASS',
         'STAGING_RELEASE_GATE_RESULT=success',
@@ -348,6 +350,7 @@ test('canonical shell release-state helper serializes snapshots through the type
   const snapshot = readReleaseStateSnapshot(snapshotPath);
   assert.equal(snapshot.STAGING_VERIFIED_APP_SHA, 'abc123');
   assert.equal(snapshot.STAGING_EMAIL_PREFLIGHT_RESULT, 'skipped-low-risk');
+  assert.equal(snapshot.STAGING_WINDOWS_FIREFOX_HIGH_RISK, 'true');
   assert.equal(snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION, '4.1.19');
   assert.equal(snapshot.STAGING_FIREFOX_XPI_SHA256, 'xpi123');
 });
@@ -371,6 +374,7 @@ test('bash release-state helpers preserve shell-only staging verification values
         'STAGING_EMAIL_DELIVERY_HIGH_RISK=false',
         'STAGING_EMAIL_PREFLIGHT_RESULT=skipped-low-risk',
         'STAGING_EMAIL_PREFLIGHT_PROVIDER=skipped',
+        'STAGING_WINDOWS_FIREFOX_HIGH_RISK=false',
         'STAGING_FIREFOX_RELEASE_ARTIFACTS=present',
         'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
         'STAGING_FIREFOX_POLICY_RESULT=success',
@@ -388,6 +392,7 @@ test('bash release-state helpers preserve shell-only staging verification values
   assert.equal(snapshot.STAGING_SMOKE_RESULT, 'success');
   assert.equal(snapshot.STAGING_RELEASE_GATE_RESULT, 'success');
   assert.equal(snapshot.STAGING_EMAIL_PREFLIGHT_RESULT, 'skipped-low-risk');
+  assert.equal(snapshot.STAGING_WINDOWS_FIREFOX_HIGH_RISK, 'false');
   assert.equal(snapshot.STAGING_VERIFIED_AT, '2026-04-11T10:00:00Z');
   assert.equal(snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT, 'success');
   assert.equal(snapshot.STAGING_FIREFOX_EXTENSION_ID, 'openpath@example');

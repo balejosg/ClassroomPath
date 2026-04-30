@@ -58,6 +58,7 @@ describe('staging gates helper', () => {
     assert.deepEqual(runHelper('staging_gate_state_fields release-gate').split('\n'), [
       'STAGING_RELEASE_GATE_RESULT',
       'STAGING_VERIFIED_AT',
+      'STAGING_WINDOWS_FIREFOX_HIGH_RISK',
       'STAGING_FIREFOX_RELEASE_ARTIFACTS',
       'STAGING_FIREFOX_EXTENSION_ID',
       'STAGING_FIREFOX_RELEASE_VERSION',

@@ -267,6 +267,15 @@ describe('runner diagnostic wrapper', () => {
     );
   });
 
+  test('package.json exposes the prepromotion Windows AJAX rehearsal', () => {
+    const packageJson = readProjectJson<PackageDefinition>('package.json');
+
+    assert.equal(
+      packageJson.scripts?.['verify:prepromotion-windows-ajax'],
+      'node scripts/prepromotion-runner-rehearsal.mjs run'
+    );
+  });
+
   test('package.json exposes the direct Linux student-policy diagnostic', () => {
     const packageJson = readProjectJson<PackageDefinition>('package.json');
 
