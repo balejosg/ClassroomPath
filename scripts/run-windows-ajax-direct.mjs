@@ -354,6 +354,7 @@ try {
 function readGuestText(options, sourcePath, maxChars = 200000) {
   const script = `
 $ErrorActionPreference = 'Stop'
+$WarningPreference = 'SilentlyContinue'
 $path = ${psSingleQuote(sourcePath)}
 if (-not (Test-Path -LiteralPath $path)) { exit 0 }
 $content = Get-Content -LiteralPath $path -Raw
@@ -364,6 +365,22 @@ if ($content.Length -gt ${maxChars}) {
 }
 `;
   return runGuestPowerShell(options, script, { timeoutSeconds: 120 });
+}
+
+function readGuestFileUtf8(options, sourcePath) {
+  const script = `
+$ErrorActionPreference = 'Stop'
+$WarningPreference = 'SilentlyContinue'
+$path = ${psSingleQuote(sourcePath)}
+if (-not (Test-Path -LiteralPath $path)) { exit 0 }
+[Convert]::ToBase64String([System.IO.File]::ReadAllBytes($path))
+`;
+  const output = runGuestPowerShell(options, script, { timeoutSeconds: 120 }).trim();
+  if (!output) {
+    return '';
+  }
+
+  return Buffer.from(output.replace(/\s+/g, ''), 'base64').toString('utf8');
 }
 
 function buildDnsBootstrapScript(baseUrl) {
@@ -823,7 +840,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 function collectArtifacts(options, artifactDir) {
-  const ajaxArtifact = readGuestText(
+  const ajaxArtifact = readGuestFileUtf8(
     options,
     `${WINDOWS_WORKSPACE}\\production-windows-ajax-auto-allow-canary.json`
   );

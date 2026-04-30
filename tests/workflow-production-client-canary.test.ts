@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 import { readProjectText, readProjectWorkflow } from './helpers/ops-contracts.ts';
 import {
+  REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
   WINDOWS_AUTO_ALLOW_PROBES,
   assertWindowsAutoAllowCanarySuccess,
   buildWindowsAutoAllowCanarySummary,
@@ -135,6 +136,13 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
         (probe) => probe.failureMessage === 'Auto-allow AJAX target was not written to whitelist'
       )
     );
+    assert.deepEqual(REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS, [
+      'emoji.redditmedia.com',
+      'external-preview.redd.it',
+      'i.redd.it',
+      'styles.redditmedia.com',
+      'www.redditstatic.com',
+    ]);
   });
 
   test('classifies canary summary from probe evidence without live side effects', () => {
@@ -332,6 +340,66 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
         whitelistUrl: 'https://classroompath.eu/w/[redacted]/whitelist.txt',
         native: { raw: 'machineToken="[redacted]"' },
       }
+    );
+  });
+
+  test('preserves reddit page and server diagnostics in the same summary', () => {
+    const summary = buildWindowsAutoAllowCanarySummary({
+      result: {
+        success: true,
+        redditDiagnostics: {
+          probes: {
+            'reddit-emoji-image': { ok: false, error: 'image load failed' },
+          },
+          completedRedditDiagnosticEvents: {
+            'reddit-emoji-image': true,
+          },
+        },
+      },
+      probeEvidence: buildProbeEvidence(),
+      originHits: 1,
+      attempts: [],
+      completedProbes: buildProbeMap(true),
+      completedCandidateEvents: buildProbeMap(true),
+      completedRedditDiagnosticEvents: { 'reddit-emoji-image': true },
+      pageResourceCandidateEvents: buildCandidateEvents(),
+      redditDiagnostics: {
+        whitelist: {
+          global: {
+            containsExpectedHosts: {
+              'emoji.redditmedia.com': true,
+            },
+          },
+        },
+        server: {
+          canaryGroup: {
+            body: {
+              expectedHostState: {
+                'emoji.redditmedia.com': { whitelistRulePresent: true },
+              },
+            },
+          },
+        },
+      },
+      lastAttemptAt: '2026-04-27T10:00:00.000Z',
+      whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
+      firefoxExtensionWarmup: { ready: true },
+      firefoxOutput: 'ready',
+      diagnostics: { preflight: {}, postAttempt: {} },
+    });
+
+    assert.equal(
+      summary.redditDiagnostics.page.completedRedditDiagnosticEvents['reddit-emoji-image'],
+      true
+    );
+    assert.equal(
+      summary.redditDiagnostics.whitelist.global.containsExpectedHosts['emoji.redditmedia.com'],
+      true
+    );
+    assert.equal(
+      summary.redditDiagnostics.server.canaryGroup.body.expectedHostState['emoji.redditmedia.com']
+        .whitelistRulePresent,
+      true
     );
   });
 });
@@ -1137,6 +1205,12 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(
       ajaxCanaryScript.includes('collectWindowsAutoAllowDiagnostics'),
       'Windows AJAX canary should collect native-host diagnostics on success and failure'
+    );
+    assert.ok(
+      ajaxCanaryScript.includes('redditDiagnostics') &&
+        ajaxCanaryScript.includes('REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES') &&
+        ajaxCanaryScript.includes('collectRedditDiagnostics'),
+      'Windows AJAX canary should preserve real reddit host diagnostics when synthetic probes pass'
     );
     assert.ok(
       ajaxCanaryScript.includes('redactSensitiveWindowsCanaryValue'),

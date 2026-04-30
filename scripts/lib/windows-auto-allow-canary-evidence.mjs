@@ -19,6 +19,47 @@ export const WINDOWS_AUTO_ALLOW_FONT_HOST = 'ajax-auto-allow-font.127.0.0.1.ssli
 export const WINDOWS_AUTO_ALLOW_STYLESHEET_FONT_HOST =
   'ajax-auto-allow-stylesheet-font.127.0.0.1.sslip.io';
 
+export const REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS = Object.freeze([
+  'emoji.redditmedia.com',
+  'external-preview.redd.it',
+  'i.redd.it',
+  'styles.redditmedia.com',
+  'www.redditstatic.com',
+]);
+
+export const REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES = Object.freeze([
+  {
+    id: 'reddit-emoji-image',
+    kind: 'image',
+    host: 'emoji.redditmedia.com',
+    url: 'https://emoji.redditmedia.com/favicon.ico',
+  },
+  {
+    id: 'reddit-external-preview-image',
+    kind: 'image',
+    host: 'external-preview.redd.it',
+    url: 'https://external-preview.redd.it/reddit-preview-diagnostic.png',
+  },
+  {
+    id: 'reddit-i-image',
+    kind: 'image',
+    host: 'i.redd.it',
+    url: 'https://i.redd.it/reddit-image-diagnostic.png',
+  },
+  {
+    id: 'reddit-stylesheet',
+    kind: 'stylesheet',
+    host: 'styles.redditmedia.com',
+    url: 'https://styles.redditmedia.com/reddit-style-diagnostic.css',
+  },
+  {
+    id: 'reddit-static-script',
+    kind: 'script',
+    host: 'www.redditstatic.com',
+    url: 'https://www.redditstatic.com/reddit-static-diagnostic.js',
+  },
+]);
+
 export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
   {
     id: 'ajax-fetch',
@@ -312,7 +353,9 @@ export function buildWindowsAutoAllowCanarySummary({
   attempts,
   completedProbes,
   completedCandidateEvents,
+  completedRedditDiagnosticEvents,
   pageResourceCandidateEvents,
+  redditDiagnostics,
   lastAttemptAt,
   whitelistPath,
   firefoxExtensionWarmup,
@@ -325,6 +368,12 @@ export function buildWindowsAutoAllowCanarySummary({
   const stylesheetEvidence = findProbeEvidence(probeEvidence, 'stylesheet-subresource');
   const fontEvidence = findProbeEvidence(probeEvidence, 'font-subresource');
   const stylesheetFontEvidence = findProbeEvidence(probeEvidence, 'stylesheet-font-subresource');
+  const mergedRedditDiagnostics = redditDiagnostics
+    ? {
+        ...redditDiagnostics,
+        page: result?.redditDiagnostics ?? redditDiagnostics.page ?? null,
+      }
+    : (result?.redditDiagnostics ?? null);
 
   const summary = {
     ...result,
@@ -348,8 +397,11 @@ export function buildWindowsAutoAllowCanarySummary({
     attempts: result?.attempts ?? attempts,
     completedProbes: result?.completedProbes ?? completedProbes,
     completedCandidateEvents: result?.completedCandidateEvents ?? completedCandidateEvents,
+    completedRedditDiagnosticEvents:
+      result?.completedRedditDiagnosticEvents ?? completedRedditDiagnosticEvents,
     pageResourceCandidateEvents:
       result?.pageResourceCandidateEvents ?? pageResourceCandidateEvents ?? [],
+    redditDiagnostics: mergedRedditDiagnostics,
     lastAttemptAt: result?.lastAttemptAt ?? lastAttemptAt,
     probeEvidence,
     whitelistPath,

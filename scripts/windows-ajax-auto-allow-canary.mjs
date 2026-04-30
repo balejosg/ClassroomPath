@@ -9,6 +9,8 @@ import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 import {
+  REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
+  REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
   WINDOWS_AUTO_ALLOW_ASSET_HOST as ASSET_HOST,
   WINDOWS_AUTO_ALLOW_ORIGIN_HOST as ORIGIN_HOST,
   WINDOWS_AUTO_ALLOW_PROBES as AUTO_ALLOW_PROBES,
@@ -531,6 +533,32 @@ async function collectWindowsAutoAllowDiagnostics(phase) {
   });
 }
 
+async function collectRedditDiagnostics(phase, pageEvidence = {}) {
+  const [globalWhitelist, nativeWhitelist, remoteWhitelist, canaryGroup] = await Promise.all([
+    readFileEvidence(WHITELIST_PATH, REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS),
+    readFileEvidence(NATIVE_WHITELIST_PATH, REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS),
+    collectRemoteWhitelistEvidence(REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS),
+    collectCanaryGroupDiagnostics(REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS),
+  ]);
+
+  return redactWindowsCanaryObject({
+    phase,
+    collectedAt: new Date().toISOString(),
+    hosts: REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
+    probes: REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
+    page: pageEvidence,
+    whitelist: {
+      global: globalWhitelist,
+      native: nativeWhitelist,
+      remoteWhitelist,
+    },
+    remoteWhitelist,
+    server: {
+      canaryGroup,
+    },
+  });
+}
+
 function waitForProcessExit(processHandle, timeoutMs = 10000) {
   return new Promise((resolve) => {
     if (processHandle.exitCode !== null || processHandle.signalCode !== null) {
@@ -721,6 +749,12 @@ function buildPage(probes) {
         ? `http://${probe.stylesheetHost}:${PORT}${probe.stylesheetPath}`
         : null,
   }));
+  const redditDiagnosticProbes = REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES.map((probe) => ({
+    id: probe.id,
+    kind: probe.kind,
+    host: probe.host,
+    url: probe.url,
+  }));
 
   return `<!doctype html>
 <html>
@@ -730,11 +764,16 @@ function buildPage(probes) {
 <script>
 const statusEl = document.getElementById('status');
 const probes = ${JSON.stringify(browserProbes)};
+const redditDiagnosticProbes = ${JSON.stringify(redditDiagnosticProbes)};
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PROBE_TIMEOUT_MS = 4000;
+const REDDIT_DIAGNOSTIC_TIMEOUT_MS = 1500;
 const CANARY_TIMEOUT_MS = ${TIMEOUT_MS};
 const pageResourceCandidateEvents = [];
 const completedCandidateEvents = Object.fromEntries(probes.map((probe) => [probe.id, false]));
+const completedRedditDiagnosticEvents = Object.fromEntries(
+  redditDiagnosticProbes.map((probe) => [probe.id, false])
+);
 
 function isOpenPathPageObserverInstalled() {
   return window.__openpathPageResourceObserverInstalled === true;
@@ -761,14 +800,21 @@ window.addEventListener('message', (event) => {
   const matchedProbe = probes.find(
     (probe) => normalizeCandidateUrl(probe.url) === normalizedCandidateUrl
   );
+  const matchedRedditProbe = redditDiagnosticProbes.find(
+    (probe) => normalizeCandidateUrl(probe.url) === normalizedCandidateUrl
+  );
   if (matchedProbe) {
     completedCandidateEvents[matchedProbe.id] = true;
+  }
+  if (matchedRedditProbe) {
+    completedRedditDiagnosticEvents[matchedRedditProbe.id] = true;
   }
 
   pageResourceCandidateEvents.push({
     kind: typeof data.kind === 'string' ? data.kind : 'unknown',
     url: data.url,
     matchedProbeId: matchedProbe ? matchedProbe.id : null,
+    matchedRedditProbeId: matchedRedditProbe ? matchedRedditProbe.id : null,
     seenAt: new Date().toISOString()
   });
   if (pageResourceCandidateEvents.length > 100) {
@@ -793,6 +839,7 @@ async function reportAttempt(attemptResult, completed) {
         attempt: attemptResult,
         completedProbes: completed,
         completedCandidateEvents,
+        completedRedditDiagnosticEvents,
         pageResourceCandidateEvents,
         pageObserverInstalled: isOpenPathPageObserverInstalled()
       })
@@ -804,6 +851,18 @@ async function reportAttempt(attemptResult, completed) {
 
 async function runProbe(probe) {
   return await withTimeout(runProbeOnce(probe), PROBE_TIMEOUT_MS, probe.id);
+}
+
+async function runRedditDiagnosticProbes() {
+  const results = {};
+  for (const probe of redditDiagnosticProbes) {
+    results[probe.id] = await withTimeout(
+      runProbeOnce(probe),
+      REDDIT_DIAGNOSTIC_TIMEOUT_MS,
+      probe.id
+    );
+  }
+  return results;
 }
 
 async function runProbeOnce(probe) {
@@ -960,9 +1019,18 @@ function loadFont(url, probeId) {
 (async () => {
   const attempts = [];
   const completed = Object.fromEntries(probes.map((probe) => [probe.id, false]));
+  let redditDiagnostics = { probes: {}, completedRedditDiagnosticEvents };
   const deadline = Date.now() + CANARY_TIMEOUT_MS;
   for (let attempt = 1; Date.now() < deadline; attempt += 1) {
     const attemptResult = { attempt, probes: {} };
+    if (attempt === 1) {
+      statusEl.textContent = 'reddit diagnostics';
+      redditDiagnostics = {
+        probes: await runRedditDiagnosticProbes(),
+        completedRedditDiagnosticEvents,
+        pageResourceCandidateEvents
+      };
+    }
     for (const probe of probes) {
       if (completed[probe.id]) {
         attemptResult.probes[probe.id] = { ok: true, skipped: true };
@@ -988,7 +1056,9 @@ function loadFont(url, probeId) {
           success: true,
           attempts,
           probes,
+          redditDiagnostics,
           completedCandidateEvents,
+          completedRedditDiagnosticEvents,
           pageResourceCandidateEvents,
           pageObserverInstalled: isOpenPathPageObserverInstalled()
         });
@@ -1002,7 +1072,9 @@ function loadFont(url, probeId) {
     success: false,
     attempts,
     probes,
+    redditDiagnostics,
     completedCandidateEvents,
+    completedRedditDiagnosticEvents,
     pageResourceCandidateEvents,
     pageObserverInstalled: isOpenPathPageObserverInstalled()
   });
@@ -1030,6 +1102,9 @@ async function main() {
   let completedProbes = Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, false]));
   let completedCandidateEvents = Object.fromEntries(
     AUTO_ALLOW_PROBES.map((probe) => [probe.id, false])
+  );
+  let completedRedditDiagnosticEvents = Object.fromEntries(
+    REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES.map((probe) => [probe.id, false])
   );
   let pageResourceCandidateEvents = [];
   let pageObserverInstalled = false;
@@ -1082,6 +1157,12 @@ async function main() {
             typeof payload.completedCandidateEvents === 'object'
           ) {
             completedCandidateEvents = payload.completedCandidateEvents;
+          }
+          if (
+            payload.completedRedditDiagnosticEvents &&
+            typeof payload.completedRedditDiagnosticEvents === 'object'
+          ) {
+            completedRedditDiagnosticEvents = payload.completedRedditDiagnosticEvents;
           }
           if (Array.isArray(payload.pageResourceCandidateEvents)) {
             pageResourceCandidateEvents = payload.pageResourceCandidateEvents.slice(-100);
@@ -1288,6 +1369,7 @@ async function main() {
       attempts: browserAttempts,
       completedProbes,
       completedCandidateEvents,
+      completedRedditDiagnosticEvents,
       pageResourceCandidateEvents,
       lastAttemptAt,
       whitelistPath: WHITELIST_PATH,
@@ -1327,6 +1409,7 @@ async function main() {
         attempts: browserAttempts,
         completedProbes,
         completedCandidateEvents,
+        completedRedditDiagnosticEvents,
         pageResourceCandidateEvents,
         pageObserverInstalled,
         lastAttemptAt,
@@ -1343,6 +1426,7 @@ async function main() {
       attempts: browserAttempts,
       completedProbes,
       completedCandidateEvents,
+      completedRedditDiagnosticEvents,
       pageResourceCandidateEvents,
       pageObserverInstalled,
       lastAttemptAt,
@@ -1372,6 +1456,15 @@ async function main() {
     }
     const postAttemptDiagnostics = await collectWindowsAutoAllowDiagnostics(
       result?.success ? 'post-success' : 'post-failure'
+    );
+    const redditDiagnostics = await collectRedditDiagnostics(
+      result?.success ? 'post-success' : 'post-failure',
+      result?.redditDiagnostics ?? {
+        completedRedditDiagnosticEvents:
+          result?.completedRedditDiagnosticEvents ?? completedRedditDiagnosticEvents,
+        pageResourceCandidateEvents:
+          result?.pageResourceCandidateEvents ?? pageResourceCandidateEvents,
+      }
     );
     const postFailureObservation =
       !result?.success && POST_FAILURE_OBSERVATION_MS > 0
@@ -1404,8 +1497,11 @@ async function main() {
       attempts: result?.attempts ?? browserAttempts,
       completedProbes: result?.completedProbes ?? completedProbes,
       completedCandidateEvents: result?.completedCandidateEvents ?? completedCandidateEvents,
+      completedRedditDiagnosticEvents:
+        result?.completedRedditDiagnosticEvents ?? completedRedditDiagnosticEvents,
       pageResourceCandidateEvents:
         result?.pageResourceCandidateEvents ?? pageResourceCandidateEvents,
+      redditDiagnostics,
       pageObserverInstalled: result?.pageObserverInstalled ?? pageObserverInstalled,
       lastAttemptAt: result?.lastAttemptAt ?? lastAttemptAt,
       whitelistPath: WHITELIST_PATH,

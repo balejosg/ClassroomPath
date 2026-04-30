@@ -489,6 +489,15 @@ describe('runner diagnostic wrapper', () => {
     assert.doesNotMatch(script, /const CANARY_SCRIPT_UPLOADS = \[/);
   });
 
+  test('direct Windows AJAX diagnostic collects JSON artifacts as bytes', () => {
+    const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+
+    assert.match(script, /function readGuestFileUtf8/);
+    assert.match(script, /\[Convert\]::ToBase64String\(\[System\.IO\.File\]::ReadAllBytes/);
+    assert.match(script, /readGuestFileUtf8\(\s*options,\s*`\$\{WINDOWS_WORKSPACE\}/);
+    assert.match(script, /\$WarningPreference = 'SilentlyContinue'/);
+  });
+
   test('refuses direct production diagnostics without explicit confirmation', () => {
     const result = runDirectDiagnostic(['--environment', 'production']);
 
