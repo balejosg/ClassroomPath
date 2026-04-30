@@ -1,5 +1,9 @@
 import { isUnauthorizedOnboardingError } from './classroom-path-app-state';
-import { isBillingCancelPath, isBillingSuccessPath } from './classroom-path-auth-routing';
+import {
+  getAuthViewFromPathname,
+  isBillingCancelPath,
+  isBillingSuccessPath,
+} from './classroom-path-auth-routing';
 
 export type ClassroomPathBootScreen =
   | 'preparing'
@@ -15,6 +19,7 @@ export function getClassroomPathBootScreen(args: {
 }): ClassroomPathBootScreen {
   if (!args.openPathReady) return 'preparing';
   if (!args.isAuth) return 'auth';
+  if (getAuthViewFromPathname(args.pathname) === 'accept-invitation') return 'auth';
   if (isBillingSuccessPath(args.pathname)) return 'billing-success';
   if (isBillingCancelPath(args.pathname)) return 'billing-cancel';
   return 'onboarding-gate';

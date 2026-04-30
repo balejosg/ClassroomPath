@@ -3,6 +3,7 @@ import { and, eq, gt } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import {
+  findExistingOpenPathUserByEmail,
   hashInvitationToken,
   OrganizationInvitationDetails,
   OrganizationInvitationSummary,
@@ -67,6 +68,21 @@ export async function getInvitationByToken(
     return null;
   }
 
+  const existingUser = await findExistingOpenPathUserByEmail(invitation.email);
+  const [currentMembership] = existingUser
+    ? await db
+        .select({
+          organizationName: schema.cpOrganizations.name,
+        })
+        .from(schema.cpMemberships)
+        .innerJoin(
+          schema.cpOrganizations,
+          eq(schema.cpOrganizations.id, schema.cpMemberships.organizationId)
+        )
+        .where(eq(schema.cpMemberships.userId, existingUser.id))
+        .limit(1)
+    : [];
+
   return {
     id: invitation.id,
     organizationId: invitation.organizationId,
@@ -75,6 +91,8 @@ export async function getInvitationByToken(
     name: invitation.name,
     role: invitation.role === 'admin' ? 'admin' : 'teacher',
     invitedBy: invitation.invitedBy,
+    hasExistingAccount: existingUser !== null,
+    currentOrganizationName: currentMembership?.organizationName ?? null,
     createdAt: toIsoStringOrNull(invitation.createdAt),
     expiresAt: invitation.expiresAt.toISOString(),
     status: 'Pending',

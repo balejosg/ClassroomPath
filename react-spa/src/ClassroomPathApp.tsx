@@ -35,6 +35,7 @@ function AppContent() {
     return (
       <AuthEntryView
         authView={boot.effectiveAuthView}
+        isAuthenticated={boot.isAuth}
         onAuthenticated={boot.onAuthenticated}
         onSetAuthView={boot.onSetAuthView}
       />

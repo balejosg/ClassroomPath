@@ -10,6 +10,7 @@ import type { AuthView } from './classroom-path-auth-routing';
 
 type AuthEntryViewProps = {
   authView: AuthView;
+  isAuthenticated?: boolean;
   onAuthenticated: () => void;
   onSetAuthView: (view: AuthView) => void;
 };
@@ -28,6 +29,7 @@ export function AuthEntryView(props: AuthEntryViewProps) {
     case 'accept-invitation':
       return (
         <AcceptInvitation
+          isAuthenticated={props.isAuthenticated === true}
           onLoginClick={() => props.onSetAuthView('login')}
           onSuccess={props.onAuthenticated}
         />

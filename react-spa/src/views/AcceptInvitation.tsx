@@ -9,11 +9,16 @@ import { AuthSplitLayout } from './auth/AuthSplitLayout';
 import { getPasswordSetupError, persistAuthSession } from './auth-helpers';
 
 interface AcceptInvitationProps {
+  isAuthenticated?: boolean;
   onLoginClick: () => void;
   onSuccess: () => void;
 }
 
-export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationProps) {
+export function AcceptInvitation({
+  isAuthenticated = false,
+  onLoginClick,
+  onSuccess,
+}: AcceptInvitationProps) {
   const token = useMemo(() => {
     if (typeof window === 'undefined') return '';
     return new URLSearchParams(window.location.search).get('token') ?? '';
@@ -65,6 +70,23 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo activar la invitación');
+    }
+  };
+
+  const handleExistingAccountSubmit = async () => {
+    setError('');
+
+    try {
+      const result = await acceptMutation.mutateAsync({
+        token,
+        termsAccepted: true,
+        termsVersion: CURRENT_TERMS_VERSION,
+        clientMode: getSessionClientMode(),
+      });
+      persistAuthSession(result);
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo aceptar la invitación');
     }
   };
 
@@ -146,69 +168,104 @@ export function AcceptInvitation({ onLoginClick, onSuccess }: AcceptInvitationPr
           </div>
         ) : null}
 
-        <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Contraseña</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              data-testid="accept-invitation-password"
-              disabled={isBusy}
-              className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Crea una contraseña segura"
-            />
-            <PasswordStrength password={password} />
-          </div>
+        {invitation.hasExistingAccount ? (
+          <div className="space-y-5">
+            <p className="text-sm text-slate-600">
+              Ya tienes una cuenta. Inicia sesión para revisar y aceptar esta invitación.
+            </p>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Confirmar contraseña
-            </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              data-testid="accept-invitation-confirm-password"
-              disabled={isBusy}
-              className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Repite tu contraseña"
-            />
-          </div>
-
-          <label className="flex items-start gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={termsAccepted}
-              onChange={(event) => setTermsAccepted(event.target.checked)}
-              data-testid="accept-invitation-terms"
-              disabled={isBusy}
-              className="mt-1 h-4 w-4 rounded border-slate-300"
-            />
-            <span>
-              Acepto los{' '}
-              <a href="/terms.html" target="_blank" className="text-blue-600 hover:underline">
-                términos de servicio
-              </a>
-            </span>
-          </label>
-
-          <button
-            type="submit"
-            data-testid="accept-invitation-submit"
-            disabled={isBusy}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
-          >
-            {acceptMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Activando acceso...
-              </>
+            {isAuthenticated ? (
+              <button
+                type="button"
+                data-testid="accept-existing-invitation-submit"
+                onClick={() => void handleExistingAccountSubmit()}
+                disabled={isBusy}
+                className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {acceptMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Aceptando invitación...
+                  </>
+                ) : (
+                  'Aceptar invitación'
+                )}
+              </button>
             ) : (
-              'Activar acceso'
+              <button
+                type="button"
+                onClick={onLoginClick}
+                className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Inicia sesión para continuar
+              </button>
             )}
-          </button>
-        </form>
+          </div>
+        ) : (
+          <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Contraseña</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                data-testid="accept-invitation-password"
+                disabled={isBusy}
+                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Crea una contraseña segura"
+              />
+              <PasswordStrength password={password} />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Confirmar contraseña
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                data-testid="accept-invitation-confirm-password"
+                disabled={isBusy}
+                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Repite tu contraseña"
+              />
+            </div>
+
+            <label className="flex items-start gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(event) => setTermsAccepted(event.target.checked)}
+                data-testid="accept-invitation-terms"
+                disabled={isBusy}
+                className="mt-1 h-4 w-4 rounded border-slate-300"
+              />
+              <span>
+                Acepto los{' '}
+                <a href="/terms.html" target="_blank" className="text-blue-600 hover:underline">
+                  términos de servicio
+                </a>
+              </span>
+            </label>
+
+            <button
+              type="submit"
+              data-testid="accept-invitation-submit"
+              disabled={isBusy}
+              className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {acceptMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Activando acceso...
+                </>
+              ) : (
+                'Activar acceso'
+              )}
+            </button>
+          </form>
+        )}
 
         <div className="mt-6 pt-6 border-t border-slate-100 text-center text-sm">
           <span className="text-slate-500">¿Ya tienes cuenta? </span>

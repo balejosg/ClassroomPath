@@ -43,6 +43,7 @@ describe('AcceptInvitation', () => {
         email: 'teacher@example.com',
         name: 'Teacher Demo',
         role: 'teacher',
+        hasExistingAccount: false,
         invitedBy: 'admin-1',
         createdAt: '2026-03-09T09:00:00.000Z',
         expiresAt: '2026-03-12T09:00:00.000Z',
@@ -155,6 +156,72 @@ describe('AcceptInvitation', () => {
     fireEvent.click(screen.getByTestId('accept-invitation-submit'));
 
     expect(await screen.findByText('La invitación ya fue usada')).toBeInTheDocument();
+  });
+
+  it('asks an existing user to log in before they can accept the invitation', () => {
+    const onLoginClick = vi.fn();
+    invitationQueryState = {
+      ...invitationQueryState,
+      data: {
+        ...invitationQueryState.data,
+        hasExistingAccount: true,
+      },
+    };
+
+    render(<AcceptInvitation onLoginClick={onLoginClick} onSuccess={vi.fn()} />);
+
+    expect(
+      screen.getByText(
+        'Ya tienes una cuenta. Inicia sesión para revisar y aceptar esta invitación.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('accept-invitation-password')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inicia sesión para continuar' }));
+
+    expect(onLoginClick).toHaveBeenCalledTimes(1);
+    expect(mockAcceptInvitationMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('lets an authenticated existing user accept the invitation explicitly', async () => {
+    const onSuccess = vi.fn();
+    invitationQueryState = {
+      ...invitationQueryState,
+      data: {
+        ...invitationQueryState.data,
+        hasExistingAccount: true,
+      },
+    };
+
+    mockAcceptInvitationMutateAsync.mockResolvedValue({
+      user: {
+        id: 'user-1',
+        email: 'teacher@example.com',
+      },
+    });
+
+    render(
+      <AcceptInvitation onLoginClick={vi.fn()} onSuccess={onSuccess} isAuthenticated={true} />
+    );
+
+    fireEvent.click(screen.getByTestId('accept-existing-invitation-submit'));
+
+    await waitFor(() => {
+      expect(mockAcceptInvitationMutateAsync).toHaveBeenCalledWith({
+        token: 'invite-token',
+        termsAccepted: true,
+        termsVersion: '2026-03-09',
+        clientMode: 'web',
+      });
+    });
+
+    expect(mockPersistSession).toHaveBeenCalledWith({
+      user: {
+        id: 'user-1',
+        email: 'teacher@example.com',
+      },
+    });
+    expect(onSuccess).toHaveBeenCalledTimes(1);
   });
 
   it('disables the form while the acceptance mutation is pending', () => {

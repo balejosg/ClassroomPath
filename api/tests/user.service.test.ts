@@ -182,6 +182,43 @@ describe('user.service', { concurrency: 1 }, () => {
     assert.strictEqual(upstreamInvitee, undefined);
   });
 
+  it('creates an invitation for an email that already belongs to an existing OpenPath account', async () => {
+    process.env.RESEND_API_KEY = 'test-key';
+    process.env.RESEND_FROM_EMAIL = 'noreply@classroompath.test';
+
+    const adminUserId = nextId('admin');
+    const existingUserId = nextId('existing');
+    const organizationId = await seedOrganization('Existing Invite Org', adminUserId);
+    const invitedEmail = `existing-${RUN_ID}@example.com`;
+
+    await seedMembership({ organizationId, userId: adminUserId, role: 'admin' });
+    await seedUser({
+      userId: adminUserId,
+      email: `${adminUserId}@example.com`,
+      name: 'Admin Creator',
+    });
+    await seedUser({
+      userId: existingUserId,
+      email: invitedEmail,
+      name: 'Existing Teacher',
+    });
+
+    const created = await createOrganizationUser({
+      organizationId,
+      actedBy: adminUserId,
+      email: invitedEmail,
+      name: 'Existing Teacher',
+      role: 'teacher',
+    });
+
+    const invitations = await listOrganizationInvitations(organizationId);
+
+    assert.strictEqual(created.email, invitedEmail);
+    assert.strictEqual(created.emailSent, true);
+    assert.strictEqual(invitations.length, 1);
+    assert.strictEqual(invitations[0]?.email, invitedEmail);
+  });
+
   it('updates, reassigns, revokes, and deletes organization users', async () => {
     const adminUserId = nextId('admin');
     const targetUserId = nextId('user');

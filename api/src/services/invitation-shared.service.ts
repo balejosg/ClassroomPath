@@ -1,5 +1,5 @@
-import { TRPCError } from '@trpc/server';
 import { createHash, randomBytes } from 'node:crypto';
+import { TRPCError } from '@trpc/server';
 import { eq } from 'drizzle-orm';
 
 import { config } from '../config.js';
@@ -25,6 +25,8 @@ export interface OrganizationInvitationSummary {
 export interface OrganizationInvitationDetails extends OrganizationInvitationSummary {
   organizationName: string;
   invitedBy: string;
+  hasExistingAccount: boolean;
+  currentOrganizationName: string | null;
 }
 
 export function createInvitationToken(): string {
@@ -68,20 +70,22 @@ export function toInvitationSummary(row: {
   };
 }
 
-export async function assertEmailCanBeInvited(email: string): Promise<void> {
-  const existingUser = await openpathDb
-    .select({ id: openpathSchema.users.id })
+export async function findExistingOpenPathUserByEmail(email: string): Promise<{
+  id: string;
+  email: string;
+  name: string;
+} | null> {
+  const [existingUser] = await openpathDb
+    .select({
+      id: openpathSchema.users.id,
+      email: openpathSchema.users.email,
+      name: openpathSchema.users.name,
+    })
     .from(openpathSchema.users)
     .where(eq(openpathSchema.users.email, email))
     .limit(1);
 
-  if (existingUser.length > 0) {
-    throw new TRPCError({
-      code: 'CONFLICT',
-      message:
-        'El correo ya pertenece a una cuenta existente. Usa aprobación pendiente o recuperación de acceso.',
-    });
-  }
+  return existingUser ?? null;
 }
 
 export async function getOrganizationOrThrow(organizationId: string) {

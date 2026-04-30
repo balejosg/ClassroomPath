@@ -210,6 +210,150 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
     );
   });
 
+  test('auth.acceptInvitation lets an existing authenticated user accept a tenant invitation explicitly', async () => {
+    const orgId = `org-invite-existing-${Date.now()}`;
+    const previousOrgId = `org-previous-existing-${Date.now()}`;
+    const adminUserId = `u-admin-invite-existing-${Date.now()}`;
+    const existingUserId = `u-existing-invite-${Date.now()}`;
+    const adminEmail = uniqueEmail('admin-invite-existing');
+    const existingEmail = uniqueEmail('existing-invite');
+    const token = `invite-existing-${Date.now().toString(36)}`;
+
+    await openpathDb.insert(openpathSchema.users).values([
+      {
+        id: adminUserId,
+        email: adminEmail,
+        name: 'Admin Existing Invite',
+        passwordHash: 'hashed',
+        isActive: true,
+        emailVerified: true,
+      },
+      {
+        id: existingUserId,
+        email: existingEmail,
+        name: 'Existing Invitee',
+        passwordHash: 'hashed-existing',
+        isActive: true,
+        emailVerified: true,
+      },
+    ]);
+
+    await openpathDb.insert(openpathSchema.roles).values([
+      {
+        id: `role-${adminUserId}`,
+        userId: adminUserId,
+        role: 'admin',
+        groupIds: [],
+        createdBy: adminUserId,
+      },
+      {
+        id: `role-${existingUserId}`,
+        userId: existingUserId,
+        role: 'teacher',
+        groupIds: [],
+        createdBy: adminUserId,
+      },
+    ]);
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgId,
+      name: 'Existing Invite Org',
+      createdBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: previousOrgId,
+      name: 'Current Org',
+      createdBy: existingUserId,
+    });
+
+    await db.insert(cpSchema.cpMemberships).values([
+      {
+        id: `mem-${adminUserId}`,
+        userId: adminUserId,
+        organizationId: orgId,
+        role: 'admin',
+        invitedBy: adminUserId,
+      },
+      {
+        id: `mem-${existingUserId}`,
+        userId: existingUserId,
+        organizationId: previousOrgId,
+        role: 'teacher',
+        invitedBy: existingUserId,
+      },
+    ]);
+
+    await db.insert(cpSchema.cpOrganizationEntitlements).values({
+      organizationId: orgId,
+      source: 'manual_admin',
+      status: 'active',
+      productKind: 'annual',
+      classroomLimit: 100,
+      grantedBy: adminUserId,
+    });
+
+    await db.insert(cpSchema.cpInvitations).values({
+      id: `inv-existing-${Date.now()}`,
+      organizationId: orgId,
+      email: existingEmail,
+      name: 'Existing Invitee',
+      role: 'teacher',
+      tokenHash: hashInvitationToken(token),
+      invitedBy: adminUserId,
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+    });
+
+    const previewResponse = await trpcQuery(integration.baseUrl, 'auth.getInvitation', { token });
+    assertStatus(previewResponse, 200);
+
+    const { data: preview } = (await parseTRPC(previewResponse)) as {
+      data: { email: string; hasExistingAccount: boolean; currentOrganizationName: string | null };
+    };
+    assert.strictEqual(preview.email, existingEmail);
+    assert.strictEqual(preview.hasExistingAccount, true);
+    assert.strictEqual(preview.currentOrganizationName, 'Current Org');
+
+    const existingUserToken = signToken({
+      userId: existingUserId,
+      email: existingEmail,
+      name: 'Existing Invitee',
+      roles: [{ role: 'teacher', groupIds: [] }],
+    });
+
+    const acceptResponse = await trpcMutate(
+      integration.baseUrl,
+      'auth.acceptInvitation',
+      {
+        token,
+        termsAccepted: true,
+        termsVersion: '2026-03-09',
+      },
+      bearerAuth(existingUserToken)
+    );
+    assertStatus(acceptResponse, 200);
+
+    const { data: accepted } = (await parseTRPC(acceptResponse)) as {
+      data: { user?: { id: string; email: string; name: string } };
+    };
+    assert.strictEqual(accepted.user?.id, existingUserId);
+    assert.strictEqual(accepted.user?.email, existingEmail);
+
+    const memberships = await db
+      .select()
+      .from(cpSchema.cpMemberships)
+      .where(eq(cpSchema.cpMemberships.userId, existingUserId));
+    assert.strictEqual(memberships.length, 1);
+    assert.strictEqual(memberships[0].organizationId, orgId);
+    assert.strictEqual(memberships[0].role, 'teacher');
+
+    const remainingInvitations = await db
+      .select()
+      .from(cpSchema.cpInvitations)
+      .where(eq(cpSchema.cpInvitations.email, existingEmail));
+    assert.strictEqual(remainingInvitations.length, 0);
+  });
+
   test('auth.generateResetToken only issues recovery tokens for users inside the admin tenant', async () => {
     const orgId = `org-reset-${Date.now()}`;
     const adminUserId = `u-admin-reset-${Date.now()}`;

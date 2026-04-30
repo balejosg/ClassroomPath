@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { publicProcedure } from '../trpc.js';
 import { callOpenPathTrpc } from '../../lib/openpath/trpc-client.js';
 import { loginOpenPathUser, registerOpenPathUser } from '../../lib/openpath/auth-client.js';
+import { getOpenPathMeProfile } from '../../lib/openpath-auth-client.js';
 import { synchronizeOpenPathRole } from '../../lib/openpath-roles.js';
 import { storeSessionFromPayload } from '../../lib/session-cookies.js';
 import {
@@ -28,6 +29,46 @@ async function getInvitationOrThrow(token: string) {
   return invitation;
 }
 
+async function getAuthenticatedInvitationUser(params: {
+  ctx: {
+    user: { sub: string; email: string; name: string } | null;
+    token: string | null;
+    req: unknown;
+  };
+  invitation: Awaited<ReturnType<typeof getInvitationOrThrow>>;
+}) {
+  if (!params.ctx.user || !params.ctx.token) {
+    throw new TRPCError({
+      code: 'UNAUTHORIZED',
+      message: 'Inicia sesión con la cuenta invitada para aceptar esta invitación.',
+    });
+  }
+
+  if (params.ctx.user.email.trim().toLowerCase() !== params.invitation.email) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Debes iniciar sesión con el correo invitado para aceptar esta invitación.',
+    });
+  }
+
+  const profile = await getOpenPathMeProfile({
+    req: params.ctx.req as Parameters<typeof getOpenPathMeProfile>[0]['req'],
+    token: params.ctx.token,
+  });
+
+  return profile.user;
+}
+
+function toAcceptedInvitationUser(user: { id: string; email: string; name: string }) {
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+    },
+  };
+}
+
 export const authInvitationProcedures = {
   getInvitation: publicProcedure
     .input(
@@ -41,7 +82,7 @@ export const authInvitationProcedures = {
     .input(
       z.object({
         token: z.string().min(1),
-        password: z.string().min(8),
+        password: z.string().min(8).optional(),
         termsAccepted: z.literal(true),
         termsVersion: z.string().min(1).max(50),
         clientMode: clientModeInput,
@@ -51,6 +92,44 @@ export const authInvitationProcedures = {
       const invitation = await getInvitationOrThrow(input.token);
 
       assertCurrentTermsVersion(input.termsVersion);
+
+      if (invitation.hasExistingAccount) {
+        const existingUser = await getAuthenticatedInvitationUser({
+          ctx: {
+            user: ctx.user,
+            token: ctx.token,
+            req: ctx.req,
+          },
+          invitation,
+        });
+
+        await recordTermsAcceptance({
+          userId: existingUser.id,
+          termsVersion: input.termsVersion,
+        });
+
+        await acceptOrganizationInvitation({
+          invitationId: invitation.id,
+          organizationId: invitation.organizationId,
+          userId: existingUser.id,
+          invitedBy: invitation.invitedBy,
+          role: invitation.role,
+        });
+
+        await synchronizeOpenPathRole({
+          userId: existingUser.id,
+          actedBy: invitation.invitedBy,
+        });
+
+        return toAcceptedInvitationUser(existingUser);
+      }
+
+      if (!input.password) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Debes crear una contraseña para activar esta invitación.',
+        });
+      }
 
       const registration = await registerOpenPathUser({
         req: ctx.req,

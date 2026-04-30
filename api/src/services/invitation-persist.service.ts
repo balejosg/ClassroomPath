@@ -5,7 +5,6 @@ import * as schema from '../db/schema.js';
 import { generateId } from '../lib/id.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
 import {
-  assertEmailCanBeInvited,
   buildInvitationExpiresAt,
   buildInvitationUrl,
   createInvitationToken,
@@ -24,8 +23,6 @@ export async function createPendingOrganizationInvitationRecord(params: {
   const normalizedEmail = params.email.trim().toLowerCase();
   const trimmedName = params.name.trim();
   const invitationId = generateId('inv');
-
-  await assertEmailCanBeInvited(normalizedEmail);
 
   const token = createInvitationToken();
   const tokenHash = hashInvitationToken(token);
