@@ -19,13 +19,36 @@ export async function acceptOrganizationInvitation(params: {
   try {
     await db.transaction(async (tx) => {
       const existingMemberships = await tx
-        .select({ organizationId: schema.cpMemberships.organizationId })
+        .select({
+          id: schema.cpMemberships.id,
+          organizationId: schema.cpMemberships.organizationId,
+        })
         .from(schema.cpMemberships)
         .where(eq(schema.cpMemberships.userId, params.userId))
         .limit(2);
 
-      if (existingMemberships.length > 0) {
+      if (existingMemberships.length > 1) {
         throwMembershipConflict(existingMemberships.length);
+      }
+
+      const currentMembership = existingMemberships[0] ?? null;
+
+      if (currentMembership?.organizationId === params.organizationId) {
+        await tx
+          .delete(schema.cpInvitations)
+          .where(
+            and(
+              eq(schema.cpInvitations.id, params.invitationId),
+              eq(schema.cpInvitations.organizationId, params.organizationId)
+            )
+          );
+        return;
+      }
+
+      if (currentMembership) {
+        await tx
+          .delete(schema.cpMemberships)
+          .where(eq(schema.cpMemberships.id, currentMembership.id));
       }
 
       await tx.insert(schema.cpMemberships).values({

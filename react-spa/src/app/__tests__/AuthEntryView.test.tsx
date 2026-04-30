@@ -70,6 +70,7 @@ describe('AuthEntryView', () => {
     render(
       <AuthEntryView
         authView="login"
+        isAuthenticated={false}
         onAuthenticated={onAuthenticated}
         onSetAuthView={onSetAuthView}
       />
@@ -92,6 +93,7 @@ describe('AuthEntryView', () => {
     const { rerender } = render(
       <AuthEntryView
         authView="register"
+        isAuthenticated={false}
         onAuthenticated={() => undefined}
         onSetAuthView={onSetAuthView}
       />
@@ -102,6 +104,7 @@ describe('AuthEntryView', () => {
     rerender(
       <AuthEntryView
         authView="reset-password"
+        isAuthenticated={false}
         onAuthenticated={() => undefined}
         onSetAuthView={onSetAuthView}
       />
@@ -120,6 +123,7 @@ describe('AuthEntryView', () => {
     render(
       <AuthEntryView
         authView="accept-invitation"
+        isAuthenticated={true}
         onAuthenticated={onAuthenticated}
         onSetAuthView={onSetAuthView}
       />
@@ -138,6 +142,7 @@ describe('AuthEntryView', () => {
     const { rerender } = render(
       <AuthEntryView
         authView="landing"
+        isAuthenticated={false}
         onAuthenticated={() => undefined}
         onSetAuthView={onSetAuthView}
       />
@@ -148,6 +153,7 @@ describe('AuthEntryView', () => {
     rerender(
       <AuthEntryView
         authView="pricing"
+        isAuthenticated={false}
         onAuthenticated={() => undefined}
         onSetAuthView={onSetAuthView}
       />

@@ -27,6 +27,7 @@ const roleIds = new Set<string>();
 const groupIds = new Set<string>();
 const originalResendApiKey = process.env.RESEND_API_KEY;
 const originalResendFromEmail = process.env.RESEND_FROM_EMAIL;
+const originalFakeEmailDelivery = process.env.CP_FAKE_EMAIL_DELIVERY;
 
 function nextId(prefix: string): string {
   counter += 1;
@@ -130,6 +131,12 @@ after(async () => {
   } else {
     process.env.RESEND_FROM_EMAIL = originalResendFromEmail;
   }
+
+  if (originalFakeEmailDelivery === undefined) {
+    delete process.env.CP_FAKE_EMAIL_DELIVERY;
+  } else {
+    process.env.CP_FAKE_EMAIL_DELIVERY = originalFakeEmailDelivery;
+  }
 });
 
 describe('user.service', { concurrency: 1 }, () => {
@@ -183,13 +190,12 @@ describe('user.service', { concurrency: 1 }, () => {
   });
 
   it('creates an invitation for an email that already belongs to an existing OpenPath account', async () => {
-    process.env.RESEND_API_KEY = 'test-key';
-    process.env.RESEND_FROM_EMAIL = 'noreply@classroompath.test';
+    process.env.CP_FAKE_EMAIL_DELIVERY = '1';
 
     const adminUserId = nextId('admin');
     const existingUserId = nextId('existing');
     const organizationId = await seedOrganization('Existing Invite Org', adminUserId);
-    const invitedEmail = `existing-${RUN_ID}@example.com`;
+    const invitedEmail = `existing-${RUN_ID}@test.local`;
 
     await seedMembership({ organizationId, userId: adminUserId, role: 'admin' });
     await seedUser({

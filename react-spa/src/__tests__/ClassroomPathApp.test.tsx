@@ -101,13 +101,16 @@ vi.mock('../views/ResetPassword', () => ({
 
 vi.mock('../views/AcceptInvitation', () => ({
   AcceptInvitation: ({
+    isAuthenticated,
     onLoginClick,
     onSuccess,
   }: {
+    isAuthenticated?: boolean;
     onLoginClick: () => void;
     onSuccess: () => void;
   }) => (
     <div>
+      <div>Invitation auth {String(isAuthenticated === true)}</div>
       <button onClick={onLoginClick}>Invitation to login</button>
       <button onClick={onSuccess}>Invitation success</button>
     </div>
@@ -244,6 +247,7 @@ describe('ClassroomPathApp', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Invitation success' })).toBeInTheDocument();
+      expect(screen.getByText('Invitation auth false')).toBeInTheDocument();
     });
 
     mockUseOnboardingStatus.mockReturnValue(
@@ -256,6 +260,38 @@ describe('ClassroomPathApp', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Onboarding View')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps the invitation view visible for authenticated users on accept-invitation paths', async () => {
+    mockHasSessionMarker.mockReturnValue(true);
+    mockUseOnboardingStatus.mockReturnValue(
+      makeOnboardingQuery({
+        data: {
+          hasMembership: true,
+          isWaiting: false,
+          organization: { id: 'org-1', name: 'Current Org', role: 'teacher' },
+          platformAdmin: false,
+          billing: {
+            hasActiveEntitlement: true,
+            source: 'manual_admin',
+            status: 'active',
+            productKind: 'annual',
+            classroomLimit: 10,
+            currentPeriodEnd: null,
+            graceEndsAt: null,
+            cancelAtPeriodEnd: false,
+            expiresAt: null,
+          },
+        },
+      })
+    );
+    window.history.pushState({}, '', '/accept-invitation?token=invite-token');
+
+    render(<ClassroomPathApp />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Invitation auth true')).toBeInTheDocument();
     });
   });
 

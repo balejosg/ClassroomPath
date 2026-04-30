@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Loader2, Mail } from 'lucide-react';
+import type { ClassroomPathRouterOutputs } from '@classroompath/trpc-contract';
 
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { getSessionClientMode } from '../lib/session-client-mode';
@@ -8,11 +9,18 @@ import { CURRENT_TERMS_VERSION } from '../constants/legal';
 import { AuthSplitLayout } from './auth/AuthSplitLayout';
 import { getPasswordSetupError, persistAuthSession } from './auth-helpers';
 
+function buildInvitationLoginPath(token: string): string {
+  const next = `/accept-invitation?token=${encodeURIComponent(token)}`;
+  return `/login?next=${encodeURIComponent(next)}`;
+}
+
 interface AcceptInvitationProps {
   isAuthenticated?: boolean;
   onLoginClick: () => void;
   onSuccess: () => void;
 }
+
+type InvitationDetails = ClassroomPathRouterOutputs['auth']['getInvitation'];
 
 export function AcceptInvitation({
   isAuthenticated = false,
@@ -38,8 +46,11 @@ export function AcceptInvitation({
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState('');
 
-  const invitation = invitationQuery.data;
+  const invitation: InvitationDetails | undefined = invitationQuery.data;
   const isBusy = invitationQuery.isLoading || acceptMutation.isPending;
+  const isExistingAccountFlow = invitation?.hasExistingAccount === true;
+  const isOrganizationTransfer =
+    isExistingAccountFlow && Boolean(invitation?.currentOrganizationName?.trim().length);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -145,7 +156,9 @@ export function AcceptInvitation({
     <AuthSplitLayout heroTitle="Activa tu acceso">
       <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-slate-200">
         <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold text-slate-900">Completa tu registro</h2>
+          <h2 className="text-2xl font-bold text-slate-900">
+            {isExistingAccountFlow ? 'Acepta tu invitación' : 'Completa tu registro'}
+          </h2>
         </div>
 
         <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -174,6 +187,16 @@ export function AcceptInvitation({
               Ya tienes una cuenta. Inicia sesión para revisar y aceptar esta invitación.
             </p>
 
+            {isOrganizationTransfer ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-semibold">
+                  Aceptar esta invitación te cambiará de organización en ClassroomPath.
+                </p>
+                <p className="mt-2">Organización actual: {invitation.currentOrganizationName}</p>
+                <p>Nueva organización: {invitation.organizationName}</p>
+              </div>
+            ) : null}
+
             {isAuthenticated ? (
               <button
                 type="button"
@@ -187,18 +210,20 @@ export function AcceptInvitation({
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Aceptando invitación...
                   </>
+                ) : isOrganizationTransfer ? (
+                  'Aceptar cambio de organización'
                 ) : (
                   'Aceptar invitación'
                 )}
               </button>
             ) : (
-              <button
-                type="button"
+              <a
+                href={buildInvitationLoginPath(token)}
                 onClick={onLoginClick}
-                className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                className="block w-full rounded-lg bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-700"
               >
                 Inicia sesión para continuar
-              </button>
+              </a>
             )}
           </div>
         ) : (

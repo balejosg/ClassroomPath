@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ClassroomPathRouterOutputs } from '@classroompath/trpc-contract';
 
 import { AcceptInvitation } from '../AcceptInvitation';
 
@@ -7,7 +8,29 @@ const mockAcceptInvitationMutateAsync = vi.fn();
 const mockPersistSession = vi.fn();
 const acceptMutationState = { isPending: false };
 
-let invitationQueryState: any;
+type InvitationDetails = ClassroomPathRouterOutputs['auth']['getInvitation'];
+type InvitationQueryState = {
+  data: InvitationDetails | undefined;
+  isLoading: boolean;
+  isError: boolean;
+};
+
+let invitationQueryState: InvitationQueryState;
+
+const baseInvitation: InvitationDetails = {
+  id: 'inv-1',
+  organizationId: 'org-1',
+  organizationName: 'Colegio Demo',
+  email: 'teacher@example.com',
+  name: 'Teacher Demo',
+  role: 'teacher',
+  hasExistingAccount: false,
+  currentOrganizationName: null,
+  invitedBy: 'admin-1',
+  createdAt: '2026-03-09T09:00:00.000Z',
+  expiresAt: '2026-03-12T09:00:00.000Z',
+  status: 'Pending',
+};
 
 vi.mock('../../lib/dual-trpc-provider', () => ({
   cpTrpcReact: {
@@ -36,19 +59,7 @@ describe('AcceptInvitation', () => {
     window.history.pushState({}, '', '/accept-invitation?token=invite-token');
 
     invitationQueryState = {
-      data: {
-        id: 'inv-1',
-        organizationId: 'org-1',
-        organizationName: 'Colegio Demo',
-        email: 'teacher@example.com',
-        name: 'Teacher Demo',
-        role: 'teacher',
-        hasExistingAccount: false,
-        invitedBy: 'admin-1',
-        createdAt: '2026-03-09T09:00:00.000Z',
-        expiresAt: '2026-03-12T09:00:00.000Z',
-        status: 'Pending',
-      },
+      data: baseInvitation,
       isLoading: false,
       isError: false,
     };
@@ -163,7 +174,7 @@ describe('AcceptInvitation', () => {
     invitationQueryState = {
       ...invitationQueryState,
       data: {
-        ...invitationQueryState.data,
+        ...baseInvitation,
         hasExistingAccount: true,
       },
     };
@@ -177,7 +188,7 @@ describe('AcceptInvitation', () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId('accept-invitation-password')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Inicia sesión para continuar' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Inicia sesión para continuar' }));
 
     expect(onLoginClick).toHaveBeenCalledTimes(1);
     expect(mockAcceptInvitationMutateAsync).not.toHaveBeenCalled();
@@ -188,7 +199,7 @@ describe('AcceptInvitation', () => {
     invitationQueryState = {
       ...invitationQueryState,
       data: {
-        ...invitationQueryState.data,
+        ...baseInvitation,
         hasExistingAccount: true,
       },
     };
@@ -222,6 +233,28 @@ describe('AcceptInvitation', () => {
       },
     });
     expect(onSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns before transferring the user from their current organization', async () => {
+    invitationQueryState = {
+      ...invitationQueryState,
+      data: {
+        ...baseInvitation,
+        hasExistingAccount: true,
+        currentOrganizationName: 'Colegio Actual',
+      },
+    };
+
+    render(<AcceptInvitation onLoginClick={vi.fn()} onSuccess={vi.fn()} isAuthenticated={true} />);
+
+    expect(
+      screen.getByText('Aceptar esta invitación te cambiará de organización en ClassroomPath.')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Organización actual: Colegio Actual')).toBeInTheDocument();
+    expect(screen.getByText('Nueva organización: Colegio Demo')).toBeInTheDocument();
+    expect(screen.getByTestId('accept-existing-invitation-submit')).toHaveTextContent(
+      'Aceptar cambio de organización'
+    );
   });
 
   it('disables the form while the acceptance mutation is pending', () => {
