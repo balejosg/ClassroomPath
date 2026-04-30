@@ -29,6 +29,7 @@ Thumbs.db
 # Local-only artifacts
 MANUAL_TEST_REPORT.md
 .env.local
+.opencode/
 .cache/
 .turbo/
 .worktrees/
