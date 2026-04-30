@@ -46,6 +46,8 @@ fi
 cd "$PROJECT_ROOT"
 bash scripts/require-main-branch.sh git ClassroomPath
 
+WORKSPACE_GUARD="$SCRIPT_DIR/../../scripts/parallel_session_guard.py"
+
 if ! git diff --quiet --ignore-submodules=dirty || ! git diff --cached --quiet --ignore-submodules=dirty; then
   die "Working tree must be clean before creating a production tag" 1
 fi
@@ -56,6 +58,30 @@ current_sha="$(git rev-parse HEAD)"
 main_sha="$(git rev-parse origin/main)"
 if [ "$current_sha" != "$main_sha" ]; then
   die "HEAD must match origin/main before creating a production tag" 1
+fi
+
+if [ -f "$WORKSPACE_GUARD" ]; then
+  fence_json="$(python3 "$WORKSPACE_GUARD" release-status)"
+  case "$fence_json" in
+    \{*)
+      ;;
+    *)
+      die "Release fence must be staged before production tagging" 1
+      ;;
+  esac
+  if ! printf '%s' "$fence_json" | python3 -c '
+import json
+import sys
+payload = json.load(sys.stdin)
+if payload.get("state") != "staged":
+    raise SystemExit(1)
+'; then
+    die "Release fence must be staged before production tagging" 1
+  fi
+  fence_sha="$(printf '%s' "$fence_json" | python3 -c 'import json, sys; print(json.load(sys.stdin).get("classroompath_sha", ""))')"
+  if [ "$fence_sha" != "$main_sha" ]; then
+    die "Release fence SHA $fence_sha does not match origin/main $main_sha" 1
+  fi
 fi
 
 if git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
@@ -87,6 +113,10 @@ node scripts/promotion-evidence-cli.mjs write-tag-message \
 
 git tag -a "$TAG_NAME" "$main_sha" -F "$tag_message_file"
 log_success "Created production tag $TAG_NAME at $main_sha"
+
+if [ -f "$WORKSPACE_GUARD" ]; then
+  python3 "$WORKSPACE_GUARD" release-mark-tagged --tag "$TAG_NAME"
+fi
 
 if [ "$PUSH_MODE" = "--local-only" ]; then
   log_info "Skipping push because --local-only was requested"

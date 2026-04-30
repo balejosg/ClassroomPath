@@ -456,6 +456,24 @@ describe('Deployment staging and promotion contracts', () => {
         ),
       'OpenPath required checks should pass before promotion-ready can be reported'
     );
+    const stagingReleaseHelper = readFileSync(stagingLocalReleaseHelperPath, 'utf8');
+    assert.ok(
+      stagingReleaseHelper.includes('Promotion-eligible staging requires a clean worktree') &&
+        stagingReleaseHelper.includes('release-mark-staged') &&
+        stagingReleaseHelper.includes('--classroompath-sha "$REMOTE_SHA"'),
+      'promotion-eligible staging should reject local dirt and mark the active release fence staged'
+    );
+    const tagScript = readFileSync(
+      resolve(projectRoot, 'scripts/tag-production-release.sh'),
+      'utf8'
+    );
+    assert.ok(
+      tagScript.includes('release-status') &&
+        tagScript.includes('Release fence must be staged before production tagging') &&
+        tagScript.includes('release-mark-tagged') &&
+        tagScript.includes('--tag "$TAG_NAME"'),
+      'production tagging should require a staged release fence and mark it tagged after tag creation'
+    );
     assert.ok(
       existsSync(resolve(projectRoot, 'scripts/lib/github-token.sh')),
       'local deployment scripts should share the GitHub token fallback helper'

@@ -5,7 +5,22 @@ prepare_staging_local_release_context() {
 
     cd "$SCRIPT_DIR/.."
 
+    local effective_staging_deployment_mode="$STAGING_DEPLOYMENT_MODE"
+    if [ -z "$effective_staging_deployment_mode" ]; then
+        if [ "$STAGING_IMAGE_MODE" = "release-candidate" ]; then
+            effective_staging_deployment_mode="promotion-eligible"
+        else
+            effective_staging_deployment_mode="debug"
+        fi
+    fi
+
     if ! git diff --quiet || ! git diff --cached --quiet; then
+        if [ "$effective_staging_deployment_mode" = "promotion-eligible" ]; then
+            log_error "Promotion-eligible staging requires a clean worktree"
+            log_error "Commit/push release changes or use STAGING_DEPLOYMENT_MODE=debug for non-promotion diagnostics"
+            exit 1
+        fi
+
         log_warn "Uncommitted changes detected"
         log_warn "Staging will deploy origin/main, not local changes"
 
@@ -112,6 +127,11 @@ prepare_staging_local_release_context() {
         if [ -n "$STAGING_RELEASE_RUN_ID" ]; then
             log_info "Release candidate workflow run: $STAGING_RELEASE_RUN_ID"
         fi
+    fi
+
+    local workspace_guard="$SCRIPT_DIR/../../scripts/parallel_session_guard.py"
+    if [ "$STAGING_DEPLOYMENT_MODE" = "promotion-eligible" ] && [ -f "$workspace_guard" ]; then
+        python3 "$workspace_guard" release-mark-staged --classroompath-sha "$REMOTE_SHA"
     fi
 
     log_success "Git state checked"
