@@ -48,6 +48,10 @@ describe('staging gates helper', () => {
       runHelper('staging_gate_results_file windows-bootstrap-gate'),
       '/tmp/windows-bootstrap-gate-results.txt'
     );
+    assert.equal(
+      runHelper('staging_gate_results_file linux-bootstrap-gate'),
+      '/tmp/linux-bootstrap-gate.env'
+    );
   });
 
   test('publishes the gate-owned state fields for evidence persistence', () => {
@@ -69,6 +73,12 @@ describe('staging gates helper', () => {
       'STAGING_WINDOWS_BOOTSTRAP_RESULT',
       'STAGING_FIREFOX_POLICY_RESULT',
     ]);
+    assert.deepEqual(runHelper('staging_gate_state_fields linux-bootstrap-gate').split('\n'), [
+      'STAGING_LINUX_BOOTSTRAP_RESULT',
+      'STAGING_LINUX_BOOTSTRAP_RUN_ID',
+      'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID',
+      'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE',
+    ]);
   });
 
   test('shared runner sources the helper and delegates gate orchestration to it', () => {
@@ -82,8 +92,9 @@ describe('staging gates helper', () => {
     assert.ok(
       content.includes('run_staging_smoke_gate') &&
         content.includes('run_staging_release_gate') &&
-        content.includes('run_staging_windows_bootstrap_gate'),
-      'run-staging-verification.sh should delegate smoke, release-gate, and windows bootstrap execution to the helper'
+        content.includes('run_staging_windows_bootstrap_gate') &&
+        content.includes('run_staging_linux_bootstrap_gate'),
+      'run-staging-verification.sh should delegate smoke, release-gate, windows bootstrap, and linux bootstrap execution to the helper'
     );
     assert.ok(
       !content.includes('run_smoke_checks()') && !content.includes('run_release_gate_checks()'),

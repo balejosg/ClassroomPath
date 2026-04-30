@@ -1,4 +1,5 @@
 name: Linux Production Bootstrap Canary
+run-name: Linux Production Bootstrap Canary ${{ inputs.target_environment || github.event.inputs.target_environment || 'staging' }} ${{ inputs.gate_id || github.event.inputs.gate_id || '' }}
 
 on:
   workflow_dispatch:
@@ -15,6 +16,10 @@ on:
         description: Diagnostic-only run.
         required: false
         default: 'false'
+      gate_id:
+        description: Optional caller correlation id for promotion gates.
+        required: false
+        default: ''
   workflow_call:
     inputs:
       target_environment:
@@ -27,6 +32,10 @@ on:
         required: false
         type: string
         default: 'false'
+      gate_id:
+        required: false
+        type: string
+        default: ''
     outputs:
       canary_result:
         value: ${{ jobs.linux-production-bootstrap-canary.outputs.canary_result }}
@@ -73,9 +82,11 @@ jobs:
             base_url="$(node scripts/deploy-targets.mjs get "$target_environment" publicUrl)"
           fi
           diagnostic_mode="${{ inputs.diagnostic_mode || github.event.inputs.diagnostic_mode || 'false' }}"
+          gate_id="${{ inputs.gate_id || github.event.inputs.gate_id || '' }}"
           echo "target_environment=$target_environment" >> "$GITHUB_OUTPUT"
           echo "base_url=${base_url%/}" >> "$GITHUB_OUTPUT"
           echo "diagnostic_mode=$diagnostic_mode" >> "$GITHUB_OUTPUT"
+          echo "gate_id=$gate_id" >> "$GITHUB_OUTPUT"
 
       - name: Install Linux Firefox canary dependencies
         shell: bash

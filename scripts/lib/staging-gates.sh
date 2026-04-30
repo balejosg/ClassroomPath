@@ -29,6 +29,10 @@ reset_staging_verification_env() {
   STAGING_FIREFOX_RELEASE_VERSION=""
   STAGING_FIREFOX_METADATA_SHA256=""
   STAGING_FIREFOX_XPI_SHA256=""
+  STAGING_LINUX_BOOTSTRAP_RESULT=""
+  STAGING_LINUX_BOOTSTRAP_RUN_ID=""
+  STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=""
+  STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE=""
 }
 
 staging_gate_npm_script() {
@@ -59,6 +63,9 @@ staging_gate_results_file() {
       ;;
     windows-bootstrap-gate)
       printf '/tmp/windows-bootstrap-gate-results.txt\n'
+      ;;
+    linux-bootstrap-gate)
+      printf '/tmp/linux-bootstrap-gate.env\n'
       ;;
     *)
       echo "Unknown staging gate results file: ${1:-}" >&2
@@ -93,11 +100,51 @@ STAGING_WINDOWS_BOOTSTRAP_RESULT
 STAGING_FIREFOX_POLICY_RESULT
 EOF
       ;;
+    linux-bootstrap-gate)
+      cat <<'EOF'
+STAGING_LINUX_BOOTSTRAP_RESULT
+STAGING_LINUX_BOOTSTRAP_RUN_ID
+STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID
+STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE
+EOF
+      ;;
     *)
       echo "Unknown staging gate state fields: ${1:-}" >&2
       return 1
       ;;
   esac
+}
+
+run_staging_linux_bootstrap_gate() {
+  local canonical_staging_url="$1"
+  local output_file=""
+
+  output_file="$(staging_gate_results_file linux-bootstrap-gate)"
+  STAGING_LINUX_BOOTSTRAP_RESULT="skipped-low-risk"
+  STAGING_LINUX_BOOTSTRAP_RUN_ID=""
+  STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID="skipped-low-risk"
+  STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE="Linux bootstrap gate skipped for low-risk staging deploy."
+
+  if [ "${STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE:-0}" != "1" ]; then
+    echo "Skipping Linux bootstrap gate because high-risk live browser evidence is not required" >&2
+    return 0
+  fi
+
+  echo "Running Linux bootstrap gate against staging..." >&2
+  if ! CANONICAL_STAGING_URL="$canonical_staging_url" \
+    STAGING_LINUX_BOOTSTRAP_GATE_OUTPUT="$output_file" \
+    node "$STAGING_GATES_SCRIPT_DIR/run-staging-linux-bootstrap-gate.mjs"; then
+    if [ -f "$output_file" ]; then
+      # shellcheck disable=SC1090
+      . "$output_file"
+    fi
+    echo "Linux bootstrap gate FAILED (${STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID:-unknown})" >&2
+    return 1
+  fi
+
+  # shellcheck disable=SC1090
+  . "$output_file"
+  echo "Linux bootstrap gate passed" >&2
 }
 
 resolve_target_address() {

@@ -208,6 +208,10 @@ jobs:
       staging_firefox_release_version: ${{ steps.compare.outputs.staging_firefox_release_version }}
       staging_firefox_metadata_sha256: ${{ steps.compare.outputs.staging_firefox_metadata_sha256 }}
       staging_firefox_xpi_sha256: ${{ steps.compare.outputs.staging_firefox_xpi_sha256 }}
+      staging_linux_bootstrap_result: ${{ steps.compare.outputs.staging_linux_bootstrap_result }}
+      staging_linux_bootstrap_run_id: ${{ steps.compare.outputs.staging_linux_bootstrap_run_id }}
+      staging_linux_bootstrap_failure_boundary_id: ${{ steps.compare.outputs.staging_linux_bootstrap_failure_boundary_id }}
+      staging_linux_bootstrap_failure_boundary_message: ${{ steps.compare.outputs.staging_linux_bootstrap_failure_boundary_message }}
       staging_verified_at: ${{ steps.compare.outputs.staging_verified_at }}
 
     steps:
@@ -722,6 +726,10 @@ jobs:
             "STAGING_FIREFOX_RELEASE_VERSION": "${{ needs.verify-staging-release-state.outputs.staging_firefox_release_version }}",
             "STAGING_FIREFOX_METADATA_SHA256": "${{ needs.verify-staging-release-state.outputs.staging_firefox_metadata_sha256 }}",
             "STAGING_FIREFOX_XPI_SHA256": "${{ needs.verify-staging-release-state.outputs.staging_firefox_xpi_sha256 }}",
+            "STAGING_LINUX_BOOTSTRAP_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_linux_bootstrap_result }}",
+            "STAGING_LINUX_BOOTSTRAP_RUN_ID": "${{ needs.verify-staging-release-state.outputs.staging_linux_bootstrap_run_id }}",
+            "STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID": "${{ needs.verify-staging-release-state.outputs.staging_linux_bootstrap_failure_boundary_id }}",
+            "STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "${{ needs.verify-staging-release-state.outputs.staging_linux_bootstrap_failure_boundary_message }}",
             "STAGING_VERIFIED_AT": "${{ needs.verify-staging-release-state.outputs.staging_verified_at }}",
             "WINDOWS_FIREFOX_CANARY_RESULT": "${{ needs.windows-firefox-canary.outputs.canary_result || needs.windows-firefox-canary.result }}",
             "WINDOWS_STAGING_BOOTSTRAP_CANARY_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_windows_bootstrap_result }}",

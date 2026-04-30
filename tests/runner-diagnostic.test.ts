@@ -328,6 +328,28 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stdout, /gh run download/);
   });
 
+  test('dispatches the Linux bootstrap prepromotion gate against staging', () => {
+    const result = spawnSync(process.execPath, ['scripts/run-staging-linux-bootstrap-gate.mjs'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        STAGING_LINUX_BOOTSTRAP_GATE_DRY_RUN: '1',
+        STAGING_LINUX_BOOTSTRAP_GATE_ID: 'gate-123',
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /gh workflow run linux-production-bootstrap-canary\.yml/);
+    assert.match(result.stdout, /--repo balejosg\/ClassroomPath/);
+    assert.match(result.stdout, /-f target_environment=staging/);
+    assert.match(result.stdout, /-f diagnostic_mode=false/);
+    assert.match(result.stdout, /-f gate_id=gate-123/);
+    assert.match(result.stdout, /gh run list/);
+    assert.match(result.stdout, /displayTitle/);
+    assert.match(result.stdout, /STAGING_LINUX_BOOTSTRAP_RESULT=success/);
+  });
+
   test('collects runner evidence when watch and artifact download fail', () => {
     const commands: string[] = [];
     const errors: string[] = [];

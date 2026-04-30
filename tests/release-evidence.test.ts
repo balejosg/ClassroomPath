@@ -299,6 +299,9 @@ describe('release evidence rendering', () => {
       PROMOTION_DEPLOYMENT_MODE: 'promotion-eligible',
       STAGING_WINDOWS_BOOTSTRAP_RESULT: 'success',
       STAGING_FIREFOX_POLICY_RESULT: 'success',
+      STAGING_LINUX_BOOTSTRAP_RESULT: 'success',
+      STAGING_LINUX_BOOTSTRAP_RUN_ID: '123456',
+      STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'none',
       WINDOWS_FIREFOX_CANARY_RESULT: 'success',
       WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'success',
       PRODUCTION_CLIENT_UPDATE_CANARY_RESULT: 'success',
@@ -311,10 +314,13 @@ describe('release evidence rendering', () => {
     assert.equal(json.stagingVerification.windowsFirefoxHighRisk, 'true');
     assert.equal(json.stagingVerification.windowsBootstrapResult, 'success');
     assert.equal(json.stagingVerification.firefoxPolicyResult, 'success');
+    assert.equal(json.stagingVerification.linuxBootstrapResult, 'success');
+    assert.equal(json.stagingVerification.linuxBootstrapRunId, '123456');
     assert.match(markdown, /\| Windows\/Firefox canary \(advisory\) \| success \|/);
     assert.match(markdown, /\| Windows production bootstrap canary \| success \|/);
     assert.match(markdown, /\| Production client update canary \(post-release\) \| live-tested \|/);
     assert.match(markdown, /Windows\/Firefox high risk: `true`/);
+    assert.match(markdown, /Linux bootstrap result: `success`/);
   });
 
   test('keeps a failed advisory canary visible without changing release outcome', () => {

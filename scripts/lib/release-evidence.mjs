@@ -218,6 +218,12 @@ export function buildReleaseEvidence(env = process.env) {
       windowsFirefoxHighRisk: windowsFirefoxHighRisk ? 'true' : 'false',
       windowsBootstrapResult: valueOrNull(env.STAGING_WINDOWS_BOOTSTRAP_RESULT),
       firefoxPolicyResult: valueOrNull(env.STAGING_FIREFOX_POLICY_RESULT),
+      linuxBootstrapResult: valueOrNull(env.STAGING_LINUX_BOOTSTRAP_RESULT),
+      linuxBootstrapRunId: valueOrNull(env.STAGING_LINUX_BOOTSTRAP_RUN_ID),
+      linuxBootstrapFailureBoundaryId: valueOrNull(env.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID),
+      linuxBootstrapFailureBoundaryMessage: valueOrNull(
+        env.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE
+      ),
       verifiedAt: valueOrNull(env.STAGING_VERIFIED_AT),
     },
     immutableImages: {
@@ -318,6 +324,9 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     `- Windows/Firefox high risk: \`${evidence.stagingVerification.windowsFirefoxHighRisk ?? 'n/a'}\``,
     `- Windows bootstrap result: \`${evidence.stagingVerification.windowsBootstrapResult ?? 'n/a'}\``,
     `- Firefox policy result: \`${evidence.stagingVerification.firefoxPolicyResult ?? 'n/a'}\``,
+    `- Linux bootstrap result: \`${evidence.stagingVerification.linuxBootstrapResult ?? 'n/a'}\``,
+    `- Linux bootstrap run: \`${evidence.stagingVerification.linuxBootstrapRunId ?? 'n/a'}\``,
+    `- Linux bootstrap boundary: \`${evidence.stagingVerification.linuxBootstrapFailureBoundaryId ?? 'n/a'}\``,
     `- Verified at: \`${evidence.stagingVerification.verifiedAt ?? 'n/a'}\``,
     '',
     '### Canonical Targets',

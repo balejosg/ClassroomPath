@@ -56,6 +56,10 @@ export const RELEASE_STATE_SNAPSHOT_DEFINITIONS = {
     'STAGING_FIREFOX_RELEASE_VERSION',
     'STAGING_FIREFOX_METADATA_SHA256',
     'STAGING_FIREFOX_XPI_SHA256',
+    'STAGING_LINUX_BOOTSTRAP_RESULT',
+    'STAGING_LINUX_BOOTSTRAP_RUN_ID',
+    'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID',
+    'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE',
   ],
   'staging-verification-run': [
     'SMOKE_TARGET_URL',
@@ -78,6 +82,10 @@ export const RELEASE_STATE_SNAPSHOT_DEFINITIONS = {
     'STAGING_FIREFOX_RELEASE_VERSION',
     'STAGING_FIREFOX_METADATA_SHA256',
     'STAGING_FIREFOX_XPI_SHA256',
+    'STAGING_LINUX_BOOTSTRAP_RESULT',
+    'STAGING_LINUX_BOOTSTRAP_RUN_ID',
+    'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID',
+    'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE',
   ],
 };
 
@@ -450,6 +458,12 @@ export function validateHighRiskStagingVerification(snapshot) {
     );
   }
 
+  if ((snapshot.STAGING_LINUX_BOOTSTRAP_RESULT ?? '') !== 'success') {
+    errors.push(
+      `::error::Linux bootstrap evidence is missing or failed (STAGING_LINUX_BOOTSTRAP_RESULT=${snapshot.STAGING_LINUX_BOOTSTRAP_RESULT ?? 'unset'}; boundary=${snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID ?? 'unset'})`
+    );
+  }
+
   for (const fieldName of [
     'STAGING_FIREFOX_EXTENSION_ID',
     'STAGING_FIREFOX_RELEASE_VERSION',
@@ -479,6 +493,12 @@ export function buildStagingReleaseEvidenceOutputs(snapshot) {
     staging_firefox_release_version: snapshot.STAGING_FIREFOX_RELEASE_VERSION ?? 'unknown',
     staging_firefox_metadata_sha256: snapshot.STAGING_FIREFOX_METADATA_SHA256 ?? 'unknown',
     staging_firefox_xpi_sha256: snapshot.STAGING_FIREFOX_XPI_SHA256 ?? 'unknown',
+    staging_linux_bootstrap_result: snapshot.STAGING_LINUX_BOOTSTRAP_RESULT ?? 'unknown',
+    staging_linux_bootstrap_run_id: snapshot.STAGING_LINUX_BOOTSTRAP_RUN_ID ?? 'unknown',
+    staging_linux_bootstrap_failure_boundary_id:
+      snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID ?? 'unknown',
+    staging_linux_bootstrap_failure_boundary_message:
+      snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE ?? 'unknown',
     staging_verified_at: snapshot.STAGING_VERIFIED_AT ?? 'unknown',
   };
 }
