@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
 
 import { openpathDb, whitelistRules } from '../db/openpath.js';
 import {
@@ -83,4 +84,47 @@ export async function updateGroupRule(params: {
     rule: serializeWhitelistRule(updated),
     valueChanged,
   };
+}
+
+export async function revokeAutoApprovalRule(params: {
+  id: string;
+  groupId: string;
+  resolvedBy: string;
+}): Promise<{ revoked: boolean; blockedRuleId: string | null }> {
+  const [existing] = await openpathDb
+    .select()
+    .from(whitelistRules)
+    .where(eq(whitelistRules.id, params.id))
+    .limit(1);
+
+  if (!existing || existing.groupId !== params.groupId) {
+    throw new Error('Rule not found');
+  }
+
+  if (existing.type !== 'whitelist' || existing.source !== 'auto_extension') {
+    throw new Error('Only automatic whitelist approvals can be revoked this way');
+  }
+
+  return openpathDb.transaction(async (tx) => {
+    const deleteResult = await tx.delete(whitelistRules).where(eq(whitelistRules.id, params.id));
+    const inserted = await tx
+      .insert(whitelistRules)
+      .values({
+        id: nanoid(),
+        groupId: params.groupId,
+        type: 'blocked_subdomain',
+        value: existing.value,
+        source: 'manual',
+        comment: `Revoked automatic approval by ${params.resolvedBy}`,
+      })
+      .onConflictDoNothing({
+        target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
+      })
+      .returning();
+
+    return {
+      blockedRuleId: inserted[0]?.id ?? null,
+      revoked: (deleteResult.rowCount ?? 0) > 0,
+    };
+  });
 }

@@ -4,6 +4,7 @@ import { openpathDb, whitelistRules } from '../db/openpath.js';
 import {
   serializeWhitelistRule,
   type SerializedWhitelistRule,
+  type WhitelistRuleSource,
   type WhitelistRuleType,
 } from './group-rule-serialization.service.js';
 
@@ -12,12 +13,20 @@ type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
 export async function loadGroupRules(params: {
   groupId: string;
   type?: WhitelistRuleType;
+  source?: WhitelistRuleSource;
 }): Promise<OpenPathWhitelistRule[]> {
-  const whereConditions = params.type
-    ? and(eq(whitelistRules.groupId, params.groupId), eq(whitelistRules.type, params.type))
-    : eq(whitelistRules.groupId, params.groupId);
+  const conditions = [eq(whitelistRules.groupId, params.groupId)];
+  if (params.type) {
+    conditions.push(eq(whitelistRules.type, params.type));
+  }
+  if (params.source) {
+    conditions.push(eq(whitelistRules.source, params.source));
+  }
 
-  return openpathDb.select().from(whitelistRules).where(whereConditions);
+  return openpathDb
+    .select()
+    .from(whitelistRules)
+    .where(and(...conditions));
 }
 
 export async function listGroupRules(params: {
@@ -31,6 +40,7 @@ export async function listGroupRules(params: {
 export async function listPaginatedGroupRules(params: {
   groupId: string;
   type?: WhitelistRuleType;
+  source?: WhitelistRuleSource;
   limit: number;
   offset: number;
   search?: string;

@@ -22,6 +22,7 @@ export async function createOrReuseGroupRule(input: {
       groupId: input.groupId,
       type: input.type,
       value: input.value,
+      source: 'manual',
       comment: input.comment,
     })
     .onConflictDoNothing({
@@ -74,6 +75,7 @@ export async function bulkCreateGroupRules(params: {
         groupId: params.groupId,
         type: params.type,
         value,
+        source: 'manual',
       }))
     )
     .onConflictDoNothing({

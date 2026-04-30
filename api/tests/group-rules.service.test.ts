@@ -10,6 +10,7 @@ import {
   listGroupedGroupRules,
   listGroupRules,
   listPaginatedGroupRules,
+  revokeAutoApprovalRule,
   updateGroupRule,
 } from '../src/services/group-rules.service.js';
 
@@ -41,6 +42,7 @@ async function seedRule(params: {
   type: 'whitelist' | 'blocked_subdomain' | 'blocked_path';
   value: string;
   comment?: string | null;
+  source?: 'manual' | 'auto_extension';
 }): Promise<string> {
   const ruleId = nextId('rule');
   await openpathDb.insert(whitelistRules).values({
@@ -49,6 +51,7 @@ async function seedRule(params: {
     type: params.type,
     value: params.value,
     comment: params.comment ?? null,
+    source: params.source ?? 'manual',
   });
   return ruleId;
 }
@@ -93,10 +96,41 @@ describe('group-rules.service', () => {
 
     const allRules = await listGroupRules({ groupId });
     const whitelistOnly = await listGroupRules({ groupId, type: 'whitelist' });
+    const manualOnly = await listGroupRules({ groupId, source: 'manual' });
 
     assert.strictEqual(allRules.length, 2);
     assert.strictEqual(whitelistOnly.length, 1);
     assert.strictEqual(whitelistOnly[0]?.type, 'whitelist');
+    assert.strictEqual(manualOnly.length, 2);
+    assert.strictEqual(
+      allRules.every((rule) => rule.source === 'manual'),
+      true
+    );
+  });
+
+  it('filters rules by automatic approval source', async () => {
+    const groupId = await seedGroup('List Auto Approval Rules Group');
+    await seedRule({ groupId, type: 'whitelist', value: 'manual.test' });
+    await seedRule({
+      groupId,
+      type: 'whitelist',
+      value: 'auto.test',
+      source: 'auto_extension',
+    });
+
+    const automaticRules = await listGroupRules({ groupId, source: 'auto_extension' });
+    const paginatedAutomaticRules = await listPaginatedGroupRules({
+      groupId,
+      source: 'auto_extension',
+      limit: 10,
+      offset: 0,
+    });
+
+    assert.strictEqual(automaticRules.length, 1);
+    assert.strictEqual(automaticRules[0]?.value, 'auto.test');
+    assert.strictEqual(automaticRules[0]?.source, 'auto_extension');
+    assert.strictEqual(paginatedAutomaticRules.total, 1);
+    assert.strictEqual(paginatedAutomaticRules.rules[0]?.value, 'auto.test');
   });
 
   it('filters paginated rules by search across value and comment', async () => {
@@ -170,6 +204,58 @@ describe('group-rules.service', () => {
 
     assert.strictEqual(deleted, true);
     assert.strictEqual(remainingRules.length, 0);
+  });
+
+  it('revokes an automatic approval by replacing it with an explicit block', async () => {
+    const groupId = await seedGroup('Revoke Auto Approval Group');
+    const ruleId = await seedRule({
+      groupId,
+      type: 'whitelist',
+      value: 'cdn.example.com',
+      source: 'auto_extension',
+    });
+
+    const result = await revokeAutoApprovalRule({
+      id: ruleId,
+      groupId,
+      resolvedBy: 'teacher@example.com',
+    });
+    const rules = await listGroupRules({ groupId });
+
+    assert.deepStrictEqual(result.revoked, true);
+    assert.strictEqual(
+      rules.some((rule) => rule.id === ruleId),
+      false
+    );
+    assert.strictEqual(
+      rules.some(
+        (rule) =>
+          rule.type === 'blocked_subdomain' &&
+          rule.value === 'cdn.example.com' &&
+          rule.source === 'manual' &&
+          rule.comment === 'Revoked automatic approval by teacher@example.com'
+      ),
+      true
+    );
+  });
+
+  it('rejects revocation of non-automatic rules', async () => {
+    const groupId = await seedGroup('Reject Manual Revoke Group');
+    const ruleId = await seedRule({
+      groupId,
+      type: 'whitelist',
+      value: 'manual.example.com',
+    });
+
+    await assert.rejects(
+      () =>
+        revokeAutoApprovalRule({
+          id: ruleId,
+          groupId,
+          resolvedBy: 'teacher@example.com',
+        }),
+      { message: 'Only automatic whitelist approvals can be revoked this way' }
+    );
   });
 
   it('updates a rule value and comment while reporting whether the value changed', async () => {

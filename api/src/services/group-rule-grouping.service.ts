@@ -2,12 +2,14 @@ import { getRootDomain } from '../utils/domain.js';
 import { loadGroupRules } from './group-rule-query.service.js';
 import {
   serializeWhitelistRule,
+  type WhitelistRuleSource,
   type WhitelistRuleType,
 } from './group-rule-serialization.service.js';
 
 export async function listGroupedGroupRules(params: {
   groupId: string;
   type?: WhitelistRuleType;
+  source?: WhitelistRuleSource;
   limit: number;
   offset: number;
   search?: string;
