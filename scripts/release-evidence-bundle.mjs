@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from 'node:fs';
+
 import { resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+
+import { runReleaseEvidenceBundle } from './lib/release-evidence-bundle.mjs';
 
 const DEFAULT_REPO = 'balejosg/ClassroomPath';
 const DEFAULT_PRODUCTION_URL = 'https://classroompath.eu';
@@ -9,26 +10,40 @@ const DEFAULT_PRODUCTION_URL = 'https://classroompath.eu';
 function usage() {
   return `Usage: npm run release:evidence-bundle -- --deploy-run <id> [options]
 
-Collects a compact post-release evidence bundle for incident handoffs.
+Collects a verifiable release evidence bundle from local release-evidence.json plus downloaded canary artifacts.
+
+Run this from a directory that already contains release-evidence.json.
 
 Required:
   --deploy-run <id>          GitHub Actions Deploy run id.
 
 Options:
-  --canary-run <id>          GitHub Actions Windows bootstrap canary run id.
+  --tag <vX.Y.Z>             Release tag to stamp into the generated bundle.
+  --canary-run <id>          Backwards-compatible alias for --windows-canary-run.
+  --windows-canary-run <id>  GitHub Actions Windows bootstrap canary run id.
+  --linux-canary-run <id>    GitHub Actions Linux bootstrap canary run id.
   --repo <owner/repo>        GitHub repository. Default: ${DEFAULT_REPO}
   --production-url <url>     Production base URL. Default: ${DEFAULT_PRODUCTION_URL}
   --output-dir <path>        Output directory. Default: release-evidence-bundle-<deploy-run>
   --help                    Show this help.
 
 Generated files include:
-  deploy-run.json
-  deploy-artifacts.tsv
-  windows-bootstrap-canary-run.json
-  windows-bootstrap-canary-artifacts.tsv
+  release-evidence.json
+  release-evidence.md
+  artifact-integrity.json
+  canary-evidence/windows-production-bootstrap.json
+  canary-evidence/linux-production-bootstrap.json
   production-health.json
-  bundle-summary.md
 `;
+}
+
+function readValue(argv, index, flag) {
+  const value = argv[index];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${flag} requires a value`);
+  }
+
+  return value;
 }
 
 function parseArgs(argv) {
@@ -37,7 +52,9 @@ function parseArgs(argv) {
     productionUrl: DEFAULT_PRODUCTION_URL,
     outputDir: null,
     deployRun: null,
-    canaryRun: null,
+    tag: null,
+    windowsCanaryRun: null,
+    linuxCanaryRun: null,
     help: false,
   };
 
@@ -60,8 +77,15 @@ function parseArgs(argv) {
       case '--deploy-run':
         args.deployRun = readValue(argv, ++index, arg);
         break;
+      case '--tag':
+        args.tag = readValue(argv, ++index, arg);
+        break;
       case '--canary-run':
-        args.canaryRun = readValue(argv, ++index, arg);
+      case '--windows-canary-run':
+        args.windowsCanaryRun = readValue(argv, ++index, arg);
+        break;
+      case '--linux-canary-run':
+        args.linuxCanaryRun = readValue(argv, ++index, arg);
         break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
@@ -73,79 +97,7 @@ function parseArgs(argv) {
   }
 
   args.outputDir ??= `release-evidence-bundle-${args.deployRun ?? 'help'}`;
-
   return args;
-}
-
-function readValue(argv, index, flag) {
-  const value = argv[index];
-  if (!value || value.startsWith('--')) {
-    throw new Error(`${flag} requires a value`);
-  }
-  return value;
-}
-
-function run(command, args) {
-  const result = spawnSync(command, args, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(' ')} failed:\n${result.stderr || result.stdout}`);
-  }
-
-  return result.stdout;
-}
-
-function ghRunView(repo, runId) {
-  return run('gh', [
-    'run',
-    'view',
-    runId,
-    '--repo',
-    repo,
-    '--json',
-    'status,conclusion,headSha,createdAt,updatedAt,url,workflowName,jobs',
-  ]);
-}
-
-function ghArtifacts(repo, runId) {
-  return run('gh', [
-    'api',
-    `repos/${repo}/actions/runs/${runId}/artifacts`,
-    '--jq',
-    '.artifacts[] | [.name,.expired,.size_in_bytes,.created_at] | @tsv',
-  ]);
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url);
-  const body = await response.text();
-
-  if (!response.ok) {
-    throw new Error(`${url} returned HTTP ${response.status}: ${body}`);
-  }
-
-  return JSON.parse(body);
-}
-
-async function collectProductionHealth(productionUrl) {
-  const [health, ready] = await Promise.all([
-    fetchJson(`${productionUrl}/cp/health`),
-    fetchJson(`${productionUrl}/cp/ready`),
-  ]);
-
-  return {
-    checkedAt: new Date().toISOString(),
-    productionUrl,
-    health,
-    ready,
-  };
-}
-
-function writeJson(path, value) {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
 async function main() {
@@ -157,44 +109,15 @@ async function main() {
   }
 
   const outputDir = resolve(args.outputDir);
-  mkdirSync(outputDir, { recursive: true });
-
-  const deployRun = JSON.parse(ghRunView(args.repo, args.deployRun));
-  writeJson(resolve(outputDir, 'deploy-run.json'), deployRun);
-  writeFileSync(
-    resolve(outputDir, 'deploy-artifacts.tsv'),
-    ghArtifacts(args.repo, args.deployRun),
-    'utf8'
-  );
-
-  let canaryRun = null;
-  if (args.canaryRun) {
-    canaryRun = JSON.parse(ghRunView(args.repo, args.canaryRun));
-    writeJson(resolve(outputDir, 'windows-bootstrap-canary-run.json'), canaryRun);
-    writeFileSync(
-      resolve(outputDir, 'windows-bootstrap-canary-artifacts.tsv'),
-      ghArtifacts(args.repo, args.canaryRun),
-      'utf8'
-    );
-  }
-
-  const productionHealth = await collectProductionHealth(args.productionUrl);
-  writeJson(resolve(outputDir, 'production-health.json'), productionHealth);
-
-  const summary = [
-    '# Release Evidence Bundle',
-    '',
-    `- Repository: \`${args.repo}\``,
-    `- Deploy run: ${deployRun.url ?? args.deployRun}`,
-    `- Deploy conclusion: \`${deployRun.conclusion ?? deployRun.status ?? 'unknown'}\``,
-    `- Deploy SHA: \`${deployRun.headSha ?? 'unknown'}\``,
-    `- Windows bootstrap canary run: ${canaryRun?.url ?? args.canaryRun ?? 'n/a'}`,
-    `- Windows bootstrap canary conclusion: \`${canaryRun?.conclusion ?? 'n/a'}\``,
-    `- Production health: \`${productionHealth.health?.status ?? 'unknown'}\``,
-    `- Production ready: \`${productionHealth.ready?.ready ?? 'unknown'}\``,
-    '',
-  ].join('\n');
-  writeFileSync(resolve(outputDir, 'bundle-summary.md'), summary, 'utf8');
+  await runReleaseEvidenceBundle({
+    repo: args.repo,
+    deployRun: args.deployRun,
+    tag: args.tag,
+    outputDir,
+    productionUrl: args.productionUrl,
+    windowsCanaryRun: args.windowsCanaryRun,
+    linuxCanaryRun: args.linuxCanaryRun,
+  });
 
   process.stdout.write(`Wrote release evidence bundle to ${outputDir}\n`);
 }

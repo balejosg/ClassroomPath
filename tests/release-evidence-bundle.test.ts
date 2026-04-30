@@ -233,7 +233,7 @@ describe('release evidence bundle module', () => {
           verifyStagingReleaseState: 'success',
           windowsFirefoxCanary: 'success',
           windowsProductionBootstrapCanary: 'success',
-          linuxProductionBootstrapCanary: 'not_applicable',
+          linuxProductionBootstrapCanary: 'failure',
           productionClientUpdateCanary: 'live-tested',
           deployProduction: 'success',
           smokeTestProduction: 'success',
@@ -252,6 +252,36 @@ describe('release evidence bundle module', () => {
 
     assert.equal(integrity.windowsProductionBootstrapCanary.status, 'missing');
     assert.equal(integrity.linuxProductionBootstrapCanary.status, 'missing');
+  });
+
+  test('does not require a canary artifact before a high-risk post-release canary has produced evidence', () => {
+    const integrity = verifyArtifactIntegrity({
+      releaseEvidence: buildReleaseEvidenceInput({
+        jobs: {
+          verifyOpenPathUpstream: 'success',
+          resolveReleaseImages: 'success',
+          verifyStagingReleaseState: 'success',
+          windowsFirefoxCanary: 'success',
+          windowsProductionBootstrapCanary: 'pending-post-release',
+          linuxProductionBootstrapCanary: 'pending-post-release',
+          productionClientUpdateCanary: 'pending-post-release',
+          deployProduction: 'success',
+          smokeTestProduction: 'success',
+          rollbackProduction: 'skipped',
+        },
+      }),
+      windowsProductionBootstrapCanary: {
+        listed: false,
+        artifactDir: null,
+      },
+      linuxProductionBootstrapCanary: {
+        listed: false,
+        artifactDir: null,
+      },
+    });
+
+    assert.equal(integrity.windowsProductionBootstrapCanary.status, 'not_applicable');
+    assert.equal(integrity.linuxProductionBootstrapCanary.status, 'not_applicable');
   });
 
   test('writes partial bundle outputs before failing when a successful canary is missing its JSON artifact', async () => {

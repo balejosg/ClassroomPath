@@ -7,6 +7,7 @@ describe('auth-invitation-procedures', () => {
   it('exposes the invitation acceptance procedures through the split router module', () => {
     assert.deepStrictEqual(Object.keys(authInvitationProcedures).sort(), [
       'acceptInvitation',
+      'acceptPendingInvitation',
       'getInvitation',
     ]);
   });

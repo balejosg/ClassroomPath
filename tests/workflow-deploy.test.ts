@@ -381,6 +381,22 @@ describe('Deploy workflow contracts', () => {
       deployWorkflowText,
       /"LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "\$\{\{ needs\.linux-production-bootstrap-canary\.outputs\.failure_boundary_message \}\}"/
     );
+    assert.ok(deployWorkflowText.includes('Generate release evidence bundle'));
+    assert.ok(deployWorkflowText.includes('Record release evidence bundle follow-up command'));
+    assert.match(
+      deployWorkflowText,
+      /node scripts\/release-evidence-bundle\.mjs \\\n+\s+--deploy-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--tag "\$\{\{ github\.ref_name \}\}" \\\n+\s+--windows-canary-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--linux-canary-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--production-url "\$\{\{ steps\.production-target\.outputs\.public_url \}\}" \\\n+\s+--output-dir release-evidence-bundle/
+    );
+    const uploadReleaseEvidenceStep = findWorkflowStepByName(
+      jobs['release-evidence'],
+      'Upload release evidence'
+    );
+    assert.equal(uploadReleaseEvidenceStep?.with?.['if-no-files-found'], 'ignore');
+    assert.match(
+      String(uploadReleaseEvidenceStep?.with?.path ?? ''),
+      /release-evidence-bundle\/\*\*/,
+      'release evidence upload should preserve the full best-effort bundle when present'
+    );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(
       jobs['windows-staging-bootstrap-canary'],

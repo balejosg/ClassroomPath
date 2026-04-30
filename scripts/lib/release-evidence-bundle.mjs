@@ -137,11 +137,15 @@ function verifySingleArtifact({ highRisk, result, listed, artifactDir, downloadE
     return { status: 'not_applicable' };
   }
 
+  if (!REQUIRED_EVIDENCE_RESULTS.has(String(result ?? ''))) {
+    return { status: 'not_applicable' };
+  }
+
   if (downloadError) {
     return { status: 'failed_to_download' };
   }
 
-  if (!artifactDir) {
+  if (!listed || !artifactDir) {
     return { status: 'missing' };
   }
 

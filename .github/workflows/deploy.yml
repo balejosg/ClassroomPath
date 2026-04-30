@@ -747,13 +747,42 @@ jobs:
           RELEASE_EVIDENCE_INPUT_PATH=release-evidence-input.json node scripts/write-release-evidence.mjs
           cat release-evidence.md >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Generate release evidence bundle
+        id: bundle
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/release-evidence-bundle.mjs \
+            --deploy-run "${{ github.run_id }}" \
+            --tag "${{ github.ref_name }}" \
+            --windows-canary-run "${{ github.run_id }}" \
+            --linux-canary-run "${{ github.run_id }}" \
+            --production-url "${{ steps.production-target.outputs.public_url }}" \
+            --output-dir release-evidence-bundle
+
+      - name: Record release evidence bundle follow-up command
+        if: always() && steps.bundle.outcome != 'success'
+        run: |
+          {
+            echo "## Release Evidence Bundle Follow-up"
+            echo ""
+            echo "Current-run artifact download was unavailable or incomplete during this workflow."
+            echo "Re-run after the deploy completes from a local shell in the artifact directory that contains \`release-evidence.json\`:"
+            echo ""
+            echo '\`npm run release:evidence-bundle -- --deploy-run "${{ github.run_id }}" --tag "${{ github.ref_name }}" --windows-canary-run "${{ github.run_id }}" --linux-canary-run "${{ github.run_id }}" --production-url "${{ steps.production-target.outputs.public_url }}" --output-dir release-evidence-bundle\`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload release evidence
         uses: actions/upload-artifact@v7
         with:
           name: release-evidence-${{ github.ref_name }}
+          if-no-files-found: ignore
           path: |
             release-evidence.json
             release-evidence.md
+            release-evidence-bundle/**
           retention-days: 14
 
   rollback-production:

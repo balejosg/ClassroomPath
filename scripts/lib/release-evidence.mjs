@@ -76,6 +76,10 @@ function deriveLinuxProductionBootstrapCanaryResult({ highRisk, canaryResult, jo
   return deriveProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResult });
 }
 
+function includesArtifactEvidence(result) {
+  return result === 'success' || result === 'failure' || result === 'failed';
+}
+
 function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
   if (smokeResult === 'success') {
     return 'released';
@@ -232,20 +236,44 @@ export function buildReleaseEvidence(env = process.env) {
         ? `staging-release-state-${env.TAG_NAME}`
         : null,
       productionSmokeResults: 'smoke-test-results-production',
-      windowsProductionBootstrapCanary:
-        windowsProductionBootstrapCanary === 'success'
-          ? 'windows-production-bootstrap-canary'
-          : null,
-      linuxProductionBootstrapCanary:
-        linuxProductionBootstrapCanary === 'success' ? 'linux-production-bootstrap-canary' : null,
+      windowsProductionBootstrapCanary: includesArtifactEvidence(windowsProductionBootstrapCanary)
+        ? 'windows-production-bootstrap-canary'
+        : null,
+      linuxProductionBootstrapCanary: includesArtifactEvidence(linuxProductionBootstrapCanary)
+        ? 'linux-production-bootstrap-canary'
+        : null,
       releaseEvidence: valueOrNull(env.TAG_NAME)
         ? `release-evidence-${env.TAG_NAME}`
         : 'release-evidence',
     },
+    artifactIntegrity: env.artifactIntegrity ?? null,
+    canaries: env.canaries ?? null,
+    production: env.production ?? null,
   };
 }
 
 export function renderReleaseEvidenceMarkdown(evidence) {
+  const windowsArtifactIntegrity =
+    evidence.artifactIntegrity?.windowsProductionBootstrapCanary?.status ?? 'n/a';
+  const linuxArtifactIntegrity =
+    evidence.artifactIntegrity?.linuxProductionBootstrapCanary?.status ?? 'n/a';
+  const windowsFailureBoundary =
+    evidence.canaries?.windows?.failureBoundary?.id ??
+    evidence.diagnostics.windowsProductionBootstrapFailureBoundary.id ??
+    'n/a';
+  const windowsFailureBoundaryMessage =
+    evidence.canaries?.windows?.failureBoundary?.message ??
+    evidence.diagnostics.windowsProductionBootstrapFailureBoundary.message ??
+    'n/a';
+  const linuxFailureBoundary =
+    evidence.canaries?.linux?.failureBoundary?.id ??
+    evidence.diagnostics.linuxProductionBootstrapFailureBoundary.id ??
+    'n/a';
+  const linuxFailureBoundaryMessage =
+    evidence.canaries?.linux?.failureBoundary?.message ??
+    evidence.diagnostics.linuxProductionBootstrapFailureBoundary.message ??
+    'n/a';
+
   return [
     '## Release Evidence',
     '',
@@ -270,12 +298,17 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     `| Production smoke | ${evidence.jobs.smokeTestProduction ?? 'n/a'} |`,
     `| Rollback | ${evidence.jobs.rollbackProduction ?? 'n/a'} |`,
     '',
+    '### Artifact Integrity',
+    '',
+    `- Windows canary artifact integrity: \`${windowsArtifactIntegrity}\``,
+    `- Linux canary artifact integrity: \`${linuxArtifactIntegrity}\``,
+    '',
     '### Windows Bootstrap Diagnostic Boundary',
     '',
-    `- Windows bootstrap failure boundary: \`${evidence.diagnostics.windowsProductionBootstrapFailureBoundary.id ?? 'n/a'}\``,
-    `- Boundary message: ${evidence.diagnostics.windowsProductionBootstrapFailureBoundary.message ?? 'n/a'}`,
-    `- Linux bootstrap failure boundary: \`${evidence.diagnostics.linuxProductionBootstrapFailureBoundary.id ?? 'n/a'}\``,
-    `- Linux boundary message: ${evidence.diagnostics.linuxProductionBootstrapFailureBoundary.message ?? 'n/a'}`,
+    `- Windows bootstrap failure boundary: \`${windowsFailureBoundary}\``,
+    `- Boundary message: ${windowsFailureBoundaryMessage}`,
+    `- Linux bootstrap failure boundary: \`${linuxFailureBoundary}\``,
+    `- Linux boundary message: ${linuxFailureBoundaryMessage}`,
     '',
     '### Staging Verification Evidence',
     '',
@@ -308,6 +341,11 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     `- Windows production bootstrap canary: \`${evidence.artifacts.windowsProductionBootstrapCanary ?? 'n/a'}\``,
     `- Linux production bootstrap canary: \`${evidence.artifacts.linuxProductionBootstrapCanary ?? 'n/a'}\``,
     `- Release evidence bundle: \`${evidence.artifacts.releaseEvidence ?? 'n/a'}\``,
+    '',
+    '### Production Health Evidence',
+    '',
+    `- Production health status: \`${evidence.production?.health?.status ?? 'n/a'}\``,
+    `- Production ready: \`${evidence.production?.ready?.ready ?? 'n/a'}\``,
     '',
     '### Trust Model',
     '',

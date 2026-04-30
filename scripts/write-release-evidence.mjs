@@ -7,7 +7,7 @@ const evidenceInput = evidenceInputPath
   ? JSON.parse(readFileSync(evidenceInputPath, 'utf8'))
   : process.env;
 
-const evidence = buildReleaseEvidence(evidenceInput);
+const evidence = evidenceInput?.release ? evidenceInput : buildReleaseEvidence(evidenceInput);
 const markdown = renderReleaseEvidenceMarkdown(evidence);
 
 writeFileSync('release-evidence.json', `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');

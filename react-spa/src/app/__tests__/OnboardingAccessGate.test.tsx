@@ -115,8 +115,11 @@ describe('OnboardingAccessGate', () => {
         isLoading
         loadingTimedOut
         isError={false}
+        isAcceptingPendingInvitation={false}
         onRetry={onRetry}
         onLogoutToLogin={onLogoutToLogin}
+        onAcceptPendingInvitation={() => undefined}
+        onDismissPendingInvitation={() => undefined}
         onStatusChange={() => undefined}
         onCancelWaitingSuccess={() => undefined}
         onOrgCreated={() => undefined}
@@ -133,8 +136,11 @@ describe('OnboardingAccessGate', () => {
         isLoading={false}
         loadingTimedOut={false}
         isError
+        isAcceptingPendingInvitation={false}
         onRetry={onRetry}
         onLogoutToLogin={onLogoutToLogin}
+        onAcceptPendingInvitation={() => undefined}
+        onDismissPendingInvitation={() => undefined}
         onStatusChange={() => undefined}
         onCancelWaitingSuccess={() => undefined}
         onOrgCreated={() => undefined}
@@ -183,8 +189,11 @@ describe('OnboardingAccessGate', () => {
         isLoading={false}
         loadingTimedOut={false}
         isError={false}
+        isAcceptingPendingInvitation={false}
         onRetry={() => undefined}
         onLogoutToLogin={onLogoutToLogin}
+        onAcceptPendingInvitation={() => undefined}
+        onDismissPendingInvitation={() => undefined}
         onStatusChange={onStatusChange}
         onCancelWaitingSuccess={onCancelWaitingSuccess}
         onOrgCreated={onOrgCreated}
@@ -286,8 +295,11 @@ describe('OnboardingAccessGate', () => {
         isLoading={false}
         loadingTimedOut={false}
         isError={false}
+        isAcceptingPendingInvitation={false}
         onRetry={() => undefined}
         onLogoutToLogin={() => undefined}
+        onAcceptPendingInvitation={() => undefined}
+        onDismissPendingInvitation={() => undefined}
         onStatusChange={() => undefined}
         onCancelWaitingSuccess={() => undefined}
         onOrgCreated={() => undefined}

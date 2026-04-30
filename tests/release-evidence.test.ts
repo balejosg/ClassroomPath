@@ -34,6 +34,15 @@ type ReleaseEvidence = {
   };
   artifacts: {
     windowsProductionBootstrapCanary: string | null;
+    linuxProductionBootstrapCanary?: string | null;
+  };
+  artifactIntegrity?: {
+    windowsProductionBootstrapCanary?: {
+      status: string;
+    };
+    linuxProductionBootstrapCanary?: {
+      status: string;
+    };
   };
   stagingVerification: {
     windowsFirefoxHighRisk: string;
@@ -124,7 +133,12 @@ describe('release evidence rendering', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Usage: npm run release:evidence-bundle --/);
     assert.match(result.stdout, /--deploy-run <id>/);
+    assert.match(result.stdout, /--tag <vX\.Y\.Z>/);
     assert.match(result.stdout, /--canary-run <id>/);
+    assert.match(result.stdout, /--windows-canary-run <id>/);
+    assert.match(result.stdout, /--linux-canary-run <id>/);
+    assert.match(result.stdout, /artifact-integrity\.json/);
+    assert.match(result.stdout, /canary-evidence\/windows-production-bootstrap\.json/);
     assert.match(result.stdout, /production-health\.json/);
   });
 
@@ -167,6 +181,115 @@ describe('release evidence rendering', () => {
     assert.equal(json.jobs.windowsProductionBootstrapCanary, 'success');
     assert.match(markdown, /Outcome: `released`/);
     assert.match(markdown, /Promotion eligibility: `eligible`/);
+  });
+
+  test('renders bundle artifact integrity and failure boundaries when provided by the bundle module', () => {
+    const { json, markdown } = generateEvidenceFromInputFile({
+      generatedAt: '2026-04-30T10:00:00.000Z',
+      workflowRunUrl: 'https://github.com/balejosg/ClassroomPath/actions/runs/123456789',
+      release: {
+        outcome: 'released',
+        tagName: 'v1.2.99',
+        classroomPathSha: 'cp-sha',
+        openPathSha: 'op-sha',
+      },
+      promotionEligibility: {
+        status: 'eligible',
+        deploymentMode: 'promotion-eligible',
+      },
+      jobs: {
+        verifyOpenPathUpstream: 'success',
+        resolveReleaseImages: 'success',
+        verifyStagingReleaseState: 'success',
+        windowsFirefoxCanary: 'success',
+        windowsProductionBootstrapCanary: 'success',
+        linuxProductionBootstrapCanary: 'failure',
+        productionClientUpdateCanary: 'live-tested',
+        deployProduction: 'success',
+        smokeTestProduction: 'success',
+        rollbackProduction: 'skipped',
+      },
+      diagnostics: {
+        windowsProductionBootstrapFailureBoundary: {
+          id: 'none',
+          message: 'Windows AJAX auto-allow canary completed successfully.',
+        },
+        linuxProductionBootstrapFailureBoundary: {
+          id: 'page-resource-candidates',
+          message: 'The Linux page did not emit resource-candidate events for every probe.',
+        },
+      },
+      stagingVerification: {
+        smokeResult: 'success',
+        smokeStatus: 'PASS',
+        releaseGateResult: 'success',
+        windowsFirefoxHighRisk: 'true',
+        windowsBootstrapResult: 'success',
+        firefoxPolicyResult: 'success',
+        verifiedAt: '2026-04-30T09:59:00.000Z',
+      },
+      targets: {
+        staging: { publicUrl: 'https://classroompath-staging.duckdns.org' },
+        production: { publicUrl: 'https://classroompath.eu' },
+      },
+      immutableImages: {
+        gateway: 'gateway@sha256:1',
+        migrations: 'migrations@sha256:1',
+        openPathApi: 'openpath-api@sha256:1',
+        spa: 'spa@sha256:1',
+        verifier: 'verifier@sha256:1',
+      },
+      artifacts: {
+        releaseImageMetadata: 'release-image-metadata-v1.2.99',
+        stagingReleaseState: 'staging-release-state-v1.2.99',
+        productionSmokeResults: 'smoke-test-results-production',
+        windowsProductionBootstrapCanary: 'windows-production-bootstrap-canary',
+        linuxProductionBootstrapCanary: 'linux-production-bootstrap-canary',
+        releaseEvidence: 'release-evidence-v1.2.99',
+      },
+      artifactIntegrity: {
+        windowsProductionBootstrapCanary: {
+          status: 'ok',
+        },
+        linuxProductionBootstrapCanary: {
+          status: 'missing',
+        },
+      },
+      canaries: {
+        windows: {
+          failureBoundary: {
+            id: 'none',
+            message: 'Windows AJAX auto-allow canary completed successfully.',
+          },
+          diagnosticPhases: [{ id: 'artifact-written', status: 'passed' }],
+          redditHosts: {
+            'emoji.redditmedia.com': {
+              globalWhitelist: true,
+              nativeWhitelist: true,
+              pageEvent: true,
+            },
+          },
+        },
+        linux: {
+          failureBoundary: {
+            id: 'page-resource-candidates',
+            message: 'The Linux page did not emit resource-candidate events for every probe.',
+          },
+          diagnosticPhases: [{ id: 'page-resource-candidates', status: 'failed' }],
+        },
+      },
+      production: {
+        health: { status: 'ok' },
+        ready: { ready: true },
+      },
+    });
+
+    assert.equal(json.artifactIntegrity?.windowsProductionBootstrapCanary?.status, 'ok');
+    assert.equal(json.artifactIntegrity?.linuxProductionBootstrapCanary?.status, 'missing');
+    assert.match(markdown, /Windows canary artifact integrity: `ok`/);
+    assert.match(markdown, /Linux canary artifact integrity: `missing`/);
+    assert.match(markdown, /Windows bootstrap failure boundary: `none`/);
+    assert.match(markdown, /Linux bootstrap failure boundary: `page-resource-candidates`/);
   });
 
   test('renders advisory canary success for high-risk promotions', () => {
@@ -291,7 +414,15 @@ describe('release evidence rendering', () => {
       id: 'local-whitelist-apply',
       message: 'Remote whitelist contains expected hosts but local Windows whitelist did not.',
     });
+    assert.equal(
+      json.artifacts.windowsProductionBootstrapCanary,
+      'windows-production-bootstrap-canary'
+    );
     assert.match(markdown, /Windows bootstrap failure boundary: `local-whitelist-apply`/);
+    assert.match(
+      markdown,
+      /Windows production bootstrap canary: `windows-production-bootstrap-canary`/
+    );
     assert.match(
       markdown,
       /Remote whitelist contains expected hosts but local Windows whitelist did not\./
@@ -313,8 +444,16 @@ describe('release evidence rendering', () => {
       id: 'page-resource-candidates',
       message: 'The Linux page did not emit resource-candidate events for every probe.',
     });
+    assert.equal(
+      json.artifacts.linuxProductionBootstrapCanary,
+      'linux-production-bootstrap-canary'
+    );
     assert.match(markdown, /\| Linux production bootstrap canary \| failure \|/);
     assert.match(markdown, /Linux bootstrap failure boundary: `page-resource-candidates`/);
+    assert.match(
+      markdown,
+      /Linux production bootstrap canary: `linux-production-bootstrap-canary`/
+    );
   });
 
   test('does not trust a bootstrap canary success output when the reusable job failed later', () => {
@@ -325,9 +464,15 @@ describe('release evidence rendering', () => {
     });
 
     assert.equal(json.jobs.windowsProductionBootstrapCanary, 'failure');
-    assert.equal(json.artifacts.windowsProductionBootstrapCanary, null);
+    assert.equal(
+      json.artifacts.windowsProductionBootstrapCanary,
+      'windows-production-bootstrap-canary'
+    );
     assert.match(markdown, /\| Windows production bootstrap canary \| failure \|/);
-    assert.match(markdown, /Windows production bootstrap canary: `n\/a`/);
+    assert.match(
+      markdown,
+      /Windows production bootstrap canary: `windows-production-bootstrap-canary`/
+    );
   });
 
   test('normalizes explicit post-release client evidence states', () => {
