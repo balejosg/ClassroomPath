@@ -8,10 +8,12 @@ import { test, expect, type Page } from './fixtures/base-test';
 import { mockWaitingOnboardingFlow } from './fixtures/onboarding-policy';
 import { OrganizationPage, WaitingPage } from './fixtures/page-objects';
 import {
+  clearAuth,
   createTestUser,
   expectWaitingPage,
   loginAsAdmin,
   loginAsPendingUser,
+  loginUser,
   registerUser,
   waitForPostAuthScreen,
   waitForNetworkIdle,
@@ -181,6 +183,34 @@ test.describe('Admin Approval Flow', () => {
       await waitForNetworkIdle(userPage).catch(() => {});
       await waitForPostAuthScreen(userPage);
 
+      await expect(userPage.getByText(/Esperando invitación|Waiting for invitation/i)).toHaveCount(
+        0
+      );
+    } finally {
+      await userContext.close();
+    }
+  });
+
+  test('allows an approved waiting user to enter on the next login without clicking verify now @waiting @admin', async ({
+    page,
+    browser,
+  }) => {
+    const { user, userContext, userPage } = await createPendingUserContext(browser, 3);
+
+    try {
+      await openAdminPendingUsersPanel(page);
+      const row = pendingUserRow(page, user.email);
+      await expect(row).toBeVisible({ timeout: 10000 });
+
+      await row.getByRole('combobox').selectOption('teacher');
+      await row.getByRole('button', { name: /Aprobar|Approve/i }).click();
+      await waitForNetworkIdle(page).catch(() => {});
+
+      await clearAuth(userPage);
+      await loginUser(userPage, user.email, user.password);
+      await waitForPostAuthScreen(userPage);
+
+      await expect(userPage.getByTestId('waiting-check-now')).toHaveCount(0);
       await expect(userPage.getByText(/Esperando invitación|Waiting for invitation/i)).toHaveCount(
         0
       );
