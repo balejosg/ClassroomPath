@@ -7,6 +7,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/github-token.sh
+source "$SCRIPT_DIR/lib/github-token.sh"
 
 require_cmd git
 require_cmd bash
@@ -73,6 +75,7 @@ cleanup() {
 trap cleanup EXIT
 
 log_info "Verifying staging promotion eligibility before tagging $TAG_NAME..."
+ensure_github_token_env
 PROMOTION_EVIDENCE_DIR="$promotion_evidence_dir" bash scripts/verify-production-promotion-ready.sh
 
 node scripts/promotion-evidence-cli.mjs write-tag-message \

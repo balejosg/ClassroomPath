@@ -20,6 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/github-token.sh
+source "$SCRIPT_DIR/lib/github-token.sh"
 # shellcheck source=lib/release-manifest.sh
 source "$SCRIPT_DIR/lib/release-manifest.sh"
 # shellcheck source=lib/staging-deploy-local-release.sh
@@ -100,6 +102,7 @@ require_cmd git
 require_cmd ssh
 require_cmd npm
 require_cmd node
+ensure_github_token_env
 
 CANONICAL_STAGING_URL="$(node "$SCRIPT_DIR/deploy-targets.mjs" get staging publicUrl)"
 STAGING_SMOKE_URL="${STAGING_SMOKE_URL:-$CANONICAL_STAGING_URL}"

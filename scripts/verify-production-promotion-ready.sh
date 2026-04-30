@@ -7,6 +7,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/github-token.sh
+source "$SCRIPT_DIR/lib/github-token.sh"
 # shellcheck source=lib/release-manifest.sh
 source "$SCRIPT_DIR/lib/release-manifest.sh"
 # shellcheck source=lib/deploy-container-platform.sh
@@ -63,9 +65,7 @@ verify_openpath_required_checks() {
   local openpath_base_sha=""
   local previous_tag=""
 
-  if [ -z "${GITHUB_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ]; then
-    die "GITHUB_TOKEN or GH_TOKEN must be set before verifying OpenPath promotion checks" 1
-  fi
+  ensure_github_token_env
 
   openpath_sha="$(git rev-parse "$TARGET_SHA:upstream/openpath")"
 
@@ -91,6 +91,7 @@ verify_openpath_required_checks() {
 }
 
 verify_openpath_required_checks
+ensure_github_token_env
 
 release_manifest_file="$(mktemp)"
 current_state_file="$(mktemp)"

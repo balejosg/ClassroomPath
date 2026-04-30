@@ -11,6 +11,7 @@ import {
   formatFirefoxReleaseAssetsTimeoutError,
   formatReleaseCandidateRunFailure,
   formatReleaseCandidateWaitProgress,
+  shouldRerunReleaseCandidateAfterOpenPathAptFailure,
   resolveLatestSuccessfulReleaseCandidateManifest,
   resolveWorkflowRunId,
   selectLatestArtifact,
@@ -183,6 +184,63 @@ describe('wait-for-release-candidate helpers', () => {
     assert.match(message, /Waiting for release candidate manifest/);
     assert.match(message, /Waiting on OpenPath prerelease APT for openpathsha/);
     assert.match(message, /Queue: 150s/);
+  });
+
+  test('formats AMO throttle failures with job, step, delay, and rerun command', () => {
+    const message = formatReleaseCandidateRunFailure({
+      targetSha: 'abc123',
+      repository: 'balejosg/ClassroomPath',
+      run: {
+        databaseId: 987,
+        status: 'completed',
+        conclusion: 'failure',
+        updatedAt: '2026-03-27T11:00:00Z',
+      },
+      latestRunJobs: [
+        {
+          name: 'build-openpath-firefox-assets-release-candidate',
+          status: 'completed',
+          conclusion: 'failure',
+          steps: [
+            {
+              name: 'Sign Firefox release bundle',
+              status: 'completed',
+              conclusion: 'failure',
+              number: 7,
+              completedAt: '2026-03-27T10:59:00Z',
+            },
+          ],
+        },
+      ],
+      failureLog: 'Request was throttled. Expected available in 1502 seconds.',
+    });
+
+    assert.match(message, /job=build-openpath-firefox-assets-release-candidate/);
+    assert.match(message, /step=Sign Firefox release bundle/);
+    assert.match(message, /amo_throttle_delay_seconds=1502/);
+    assert.match(message, /gh run rerun 987 --repo balejosg\/ClassroomPath --failed/);
+  });
+
+  test('allows one automatic release-candidate rerun after OpenPath APT wait failure is later green', () => {
+    const decision = shouldRerunReleaseCandidateAfterOpenPathAptFailure({
+      alreadyReran: false,
+      failureSummary:
+        'Step: Wait for OpenPath prerelease APT publish. Waiting on OpenPath prerelease APT.',
+      openPathRequiredChecksOk: true,
+    });
+
+    assert.equal(decision.shouldRerun, true);
+    assert.match(decision.reason, /OpenPath prerelease APT/);
+  });
+
+  test('does not loop automatic release-candidate reruns', () => {
+    const decision = shouldRerunReleaseCandidateAfterOpenPathAptFailure({
+      alreadyReran: true,
+      failureSummary: 'Step: Wait for OpenPath prerelease APT publish.',
+      openPathRequiredChecksOk: true,
+    });
+
+    assert.equal(decision.shouldRerun, false);
   });
 
   test('builds the full manifest contract for output files and stdout', () => {

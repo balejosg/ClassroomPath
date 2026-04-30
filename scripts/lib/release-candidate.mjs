@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 
 import {
@@ -13,7 +14,9 @@ import {
   copyArtifactContents,
   downloadArtifactById as downloadArtifactZipById,
   downloadRunArtifact,
+  rerunGitHubRunFailedJobs,
   viewGitHubRunJobs,
+  viewGitHubRunFailedLog,
   listGitHubArtifacts,
   listGitHubWorkflowRuns,
   readArtifactTextFile,
@@ -70,8 +73,74 @@ export function formatWorkflowRunUrl({ repository, run }) {
   return `https://github.com/${repo}/actions/runs/${runId}`;
 }
 
-export function formatReleaseCandidateRunFailure({ targetSha, run }) {
-  return `Release candidate workflow run for SHA ${targetSha} failed (${formatWorkflowRunContext(run)})`;
+function findFailedStep(jobs = []) {
+  for (const job of jobs ?? []) {
+    for (const step of job?.steps ?? []) {
+      if (step?.conclusion === 'failure') {
+        return {
+          jobName: String(job.name ?? '').trim(),
+          stepName: String(step.name ?? '').trim(),
+        };
+      }
+    }
+  }
+
+  const failedJob = (jobs ?? []).find((job) => job?.conclusion === 'failure');
+  if (!failedJob) {
+    return null;
+  }
+
+  return {
+    jobName: String(failedJob.name ?? '').trim(),
+    stepName: '',
+  };
+}
+
+function parseAmoThrottleDelaySeconds(output = '') {
+  const match = /Expected available in\s+(\d+)\s+seconds?/i.exec(String(output));
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+function summarizeReleaseCandidateFailure({
+  repository,
+  run,
+  latestRunJobs = [],
+  failureLog = '',
+}) {
+  const details = [];
+  const failedStep = findFailedStep(latestRunJobs);
+  const throttleDelaySeconds = parseAmoThrottleDelaySeconds(failureLog);
+  const runId = normalizeWorkflowRunId(run);
+
+  if (failedStep?.jobName) {
+    details.push(`job=${failedStep.jobName}`);
+  }
+
+  if (failedStep?.stepName) {
+    details.push(`step=${failedStep.stepName}`);
+  }
+
+  if (throttleDelaySeconds !== null) {
+    details.push(`amo_throttle_delay_seconds=${throttleDelaySeconds}`);
+  }
+
+  if (repository && runId) {
+    details.push(`rerun_command="gh run rerun ${runId} --repo ${repository} --failed"`);
+  }
+
+  return details.length > 0 ? `; ${details.join('; ')}` : '';
+}
+
+export function formatReleaseCandidateRunFailure({
+  targetSha,
+  run,
+  repository = '',
+  latestRunJobs = [],
+  failureLog = '',
+}) {
+  return `Release candidate workflow run for SHA ${targetSha} failed (${formatWorkflowRunContext(
+    run
+  )}${summarizeReleaseCandidateFailure({ repository, run, latestRunJobs, failureLog })})`;
 }
 
 export function formatReleaseCandidateWaitProgress({
@@ -144,6 +213,52 @@ export function selectLatestArtifact(payload, { artifactName } = {}) {
   }
 
   return selected;
+}
+
+export function shouldRerunReleaseCandidateAfterOpenPathAptFailure({
+  alreadyReran = false,
+  failureSummary = '',
+  openPathRequiredChecksOk = false,
+} = {}) {
+  const failedWhileWaitingForOpenPathApt = String(failureSummary).includes(
+    'Wait for OpenPath prerelease APT'
+  );
+
+  if (!alreadyReran && failedWhileWaitingForOpenPathApt && openPathRequiredChecksOk) {
+    return {
+      shouldRerun: true,
+      reason: 'OpenPath prerelease APT wait failed, but OpenPath required checks are now green',
+    };
+  }
+
+  return {
+    shouldRerun: false,
+    reason: alreadyReran
+      ? 'Release-candidate workflow has already been rerun once'
+      : 'Release-candidate failure is not an OpenPath prerelease APT recovery case',
+  };
+}
+
+function verifyOpenPathRequiredChecksAfterAptWait({ upstreamSha, cwd }) {
+  const sha = String(upstreamSha ?? '').trim();
+  if (!sha) {
+    return false;
+  }
+
+  try {
+    execFileSync('node', ['scripts/openpath-required-checks.mjs'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        OPENPATH_SHA: sha,
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function selectLatestWorkflowRun(payload) {
@@ -324,6 +439,8 @@ export function waitForReleaseCandidateManifest({
 
   const repo = detectRepositorySlug({ repository, cwd });
   const artifactName = `release-candidate-images-${targetSha}`;
+  let alreadyReranAfterOpenPathAptFailure = false;
+
   return waitForArtifactResolution({
     timeoutSeconds,
     intervalSeconds,
@@ -394,7 +511,36 @@ export function waitForReleaseCandidateManifest({
       }
 
       if (state === 'failed' && run) {
-        throw new Error(formatReleaseCandidateRunFailure({ targetSha, run }));
+        const runId = normalizeWorkflowRunId(run);
+        const failureLog = runId ? viewGitHubRunFailedLog({ repo, runId, cwd }) : '';
+        const failureMessage = formatReleaseCandidateRunFailure({
+          targetSha,
+          repository: repo,
+          run,
+          latestRunJobs,
+          failureLog,
+        });
+        const openPathRequiredChecksOk = verifyOpenPathRequiredChecksAfterAptWait({
+          upstreamSha,
+          cwd,
+        });
+        const rerunDecision = shouldRerunReleaseCandidateAfterOpenPathAptFailure({
+          alreadyReran: alreadyReranAfterOpenPathAptFailure,
+          failureSummary: failureMessage,
+          openPathRequiredChecksOk,
+        });
+
+        if (rerunDecision.shouldRerun && runId) {
+          console.error(`${failureMessage}\n${rerunDecision.reason}; rerunning failed jobs once.`);
+          rerunGitHubRunFailedJobs({ repo, runId, cwd });
+          alreadyReranAfterOpenPathAptFailure = true;
+          return {
+            status: 'pending',
+            context: { lastState: 'rerun_requested', latestRun: run, latestRunJobs },
+          };
+        }
+
+        throw new Error(failureMessage);
       }
 
       return {

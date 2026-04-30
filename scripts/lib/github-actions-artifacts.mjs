@@ -49,6 +49,14 @@ export function buildViewGitHubRunJobsArgs({ repo, runId }) {
   return ['run', 'view', String(runId), '--repo', repo, '--json', 'jobs'];
 }
 
+export function buildViewGitHubRunFailedLogArgs({ repo, runId }) {
+  return ['run', 'view', String(runId), '--repo', repo, '--log-failed'];
+}
+
+export function buildRerunGitHubRunArgs({ repo, runId }) {
+  return ['run', 'rerun', String(runId), '--repo', repo, '--failed'];
+}
+
 export function sleep(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
@@ -80,6 +88,18 @@ export function viewGitHubRunJobs({ repo, runId, cwd }) {
   const output = runGitHubCli(buildViewGitHubRunJobsArgs({ repo, runId }), { cwd }).trim();
 
   return JSON.parse(output || '{"jobs":[]}');
+}
+
+export function viewGitHubRunFailedLog({ repo, runId, cwd }) {
+  try {
+    return runGitHubCli(buildViewGitHubRunFailedLogArgs({ repo, runId }), { cwd }).trim();
+  } catch {
+    return '';
+  }
+}
+
+export function rerunGitHubRunFailedJobs({ repo, runId, cwd }) {
+  runGitHubCli(buildRerunGitHubRunArgs({ repo, runId }), { cwd, stdio: 'inherit' });
 }
 
 export function listGitHubArtifacts({ repo, artifactName, cwd, perPage = 100 }) {

@@ -1,6 +1,8 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
-import { existsSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -454,5 +456,76 @@ describe('Deployment staging and promotion contracts', () => {
         ),
       'OpenPath required checks should pass before promotion-ready can be reported'
     );
+    assert.ok(
+      existsSync(resolve(projectRoot, 'scripts/lib/github-token.sh')),
+      'local deployment scripts should share the GitHub token fallback helper'
+    );
+    for (const [scriptName, scriptContent] of [
+      ['verify-production-promotion-ready.sh', promotionReadyScript],
+      [
+        'tag-production-release.sh',
+        readFileSync(resolve(projectRoot, 'scripts/tag-production-release.sh'), 'utf8'),
+      ],
+      [
+        'deploy-staging-local.sh',
+        readFileSync(resolve(projectRoot, 'scripts/deploy-staging-local.sh'), 'utf8'),
+      ],
+    ] as const) {
+      assert.ok(
+        scriptContent.includes('source "$SCRIPT_DIR/lib/github-token.sh"'),
+        `${scriptName} should source the shared GitHub token fallback helper`
+      );
+      assert.ok(
+        scriptContent.includes('ensure_github_token_env'),
+        `${scriptName} should populate GH_TOKEN from gh auth token when needed`
+      );
+    }
+  });
+
+  test('GitHub token helper falls back to gh auth token when env tokens are absent', () => {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'classroompath-gh-token-'));
+    const fakeBinDir = resolve(tempDir, 'bin');
+
+    try {
+      writeFileSync(resolve(tempDir, 'script.sh'), '');
+      writeFileSync(resolve(tempDir, 'output.env'), '');
+      writeFileSync(resolve(tempDir, 'err.log'), '');
+      writeFileSync(resolve(tempDir, 'stdout.log'), '');
+      writeFileSync(resolve(tempDir, 'status'), '');
+      writeFileSync(resolve(tempDir, 'token'), 'fallback-token\n');
+      writeFileSync(
+        resolve(tempDir, 'common.sh'),
+        readFileSync(resolve(projectRoot, 'scripts/lib/common.sh'), 'utf8')
+      );
+      writeFileSync(
+        resolve(tempDir, 'github-token.sh'),
+        readFileSync(resolve(projectRoot, 'scripts/lib/github-token.sh'), 'utf8')
+      );
+      execFileSync('mkdir', ['-p', fakeBinDir]);
+      writeFileSync(
+        resolve(fakeBinDir, 'gh'),
+        `#!/usr/bin/env bash\nif [ "$1 $2" = "auth token" ]; then cat "${resolve(
+          tempDir,
+          'token'
+        )}"; exit 0; fi\nexit 2\n`
+      );
+      chmodSync(resolve(fakeBinDir, 'gh'), 0o755);
+
+      const output = execFileSync(
+        'bash',
+        [
+          '-c',
+          `set -euo pipefail; source "${resolve(tempDir, 'common.sh')}"; source "${resolve(
+            tempDir,
+            'github-token.sh'
+          )}"; unset GH_TOKEN GITHUB_TOKEN; PATH="${fakeBinDir}:$PATH"; ensure_github_token_env; printf '%s' "$GH_TOKEN"`,
+        ],
+        { encoding: 'utf8' }
+      );
+
+      assert.equal(output, 'fallback-token');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
