@@ -15,6 +15,10 @@ import {
   withLinuxAutoAllowDiagnostics,
 } from './lib/linux-auto-allow-canary-evidence.mjs';
 import {
+  REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
+  REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
+} from './lib/windows-auto-allow-canary-evidence.mjs';
+import {
   buildAjaxAutoAllowCanaryPage,
   buildAjaxAutoAllowProbeUrl,
   buildCompletedProbesFromHits,
@@ -319,6 +323,27 @@ async function collectLinuxAutoAllowDiagnostics(label, expectedHosts = []) {
   };
 }
 
+async function collectRedditDiagnostics(phase, pageEvidence = {}) {
+  const [localWhitelist, canaryGroup] = await Promise.all([
+    readFileEvidence(WHITELIST_PATH, REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS),
+    collectCanaryGroupDiagnostics(),
+  ]);
+
+  return {
+    phase,
+    collectedAt: new Date().toISOString(),
+    hosts: REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
+    probes: REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
+    page: pageEvidence,
+    whitelist: {
+      local: localWhitelist,
+    },
+    server: {
+      canaryGroup,
+    },
+  };
+}
+
 function createCanaryServer({ state }) {
   return createAjaxAutoAllowCanaryServer({
     platform: 'Linux',
@@ -444,6 +469,10 @@ async function main() {
       state.pageResourceCandidateEvents.length > 0
         ? state.pageResourceCandidateEvents
         : browserPageResourceCandidateEvents;
+    const completedRedditDiagnosticEvents =
+      browserNavigationAfterAttempts.canaryState?.completedRedditDiagnosticEvents ??
+      browserNavigationBeforeAttempts.canaryState?.completedRedditDiagnosticEvents ??
+      {};
     const probeEvidence = AUTO_ALLOW_PROBES.map((probe) => ({
       id: probe.id,
       kind: probe.kind,
@@ -462,6 +491,13 @@ async function main() {
       hasAllAjaxAutoAllowProbesCompleted(AUTO_ALLOW_PROBES, completedProbesFromTraffic) &&
       pageObserverInstalled;
     const failureDebug = success ? null : await collectLinuxFailureDebugSnapshot();
+    const redditDiagnostics = await collectRedditDiagnostics(
+      success ? 'post-success' : 'post-failure',
+      {
+        completedRedditDiagnosticEvents,
+        pageResourceCandidateEvents,
+      }
+    );
     const summary = withLinuxAutoAllowDiagnostics({
       success,
       error: success ? null : 'Linux AJAX auto-allow probes did not complete before timeout',
@@ -486,6 +522,7 @@ async function main() {
         beforeAttempts: browserNavigationBeforeAttempts,
         afterAttempts: browserNavigationAfterAttempts,
       },
+      redditDiagnostics,
       diagnostics: { preflight, postAttempt },
       failureDebug,
       artifactWritten: true,

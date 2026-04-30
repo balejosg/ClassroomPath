@@ -118,6 +118,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(diagnosticsHelper.includes('/cp/internal/client-canary/group/'));
     assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID'));
     assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN'));
+    assert.ok(canaryScript.includes('REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS'));
+    assert.ok(canaryScript.includes('REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES'));
+    assert.ok(canaryScript.includes('redditDiagnostics'));
+    assert.ok(canaryScript.includes('completedRedditDiagnosticEvents'));
     assert.ok(canaryScript.includes('__openpathPageResourceObserverInstalled'));
     assert.ok(sharedHarness.includes('openpath-page-resource-candidate'));
     assert.ok(sharedHarness.includes('font/woff2'));
