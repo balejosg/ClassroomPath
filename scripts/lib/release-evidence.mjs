@@ -279,6 +279,8 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     evidence.canaries?.linux?.failureBoundary?.message ??
     evidence.diagnostics.linuxProductionBootstrapFailureBoundary.message ??
     'n/a';
+  const windowsCanaryTargetUrl = evidence.canaries?.windows?.targetUrl ?? 'n/a';
+  const linuxCanaryTargetUrl = evidence.canaries?.linux?.targetUrl ?? 'n/a';
 
   return [
     '## Release Evidence',
@@ -313,8 +315,10 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     '',
     `- Windows bootstrap failure boundary: \`${windowsFailureBoundary}\``,
     `- Boundary message: ${windowsFailureBoundaryMessage}`,
+    `- Windows target URL: ${windowsCanaryTargetUrl}`,
     `- Linux bootstrap failure boundary: \`${linuxFailureBoundary}\``,
     `- Linux boundary message: ${linuxFailureBoundaryMessage}`,
+    `- Linux target URL: ${linuxCanaryTargetUrl}`,
     '',
     '### Staging Verification Evidence',
     '',

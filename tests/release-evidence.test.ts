@@ -11,6 +11,10 @@ const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
 const scriptPath = resolve(projectRoot, 'scripts/write-release-evidence.mjs');
 const evidenceBundleScriptPath = resolve(projectRoot, 'scripts/release-evidence-bundle.mjs');
+const promotionDryValidateScriptPath = resolve(
+  projectRoot,
+  'scripts/production-promotion-dry-validate.mjs'
+);
 const evidenceHelperPath = resolve(projectRoot, 'scripts/lib/release-evidence.mjs');
 
 type ReleaseEvidence = {
@@ -127,6 +131,10 @@ describe('release evidence rendering', () => {
       packageJson.scripts?.['release:evidence-bundle'],
       'node scripts/release-evidence-bundle.mjs'
     );
+    assert.equal(
+      packageJson.scripts?.['verify:production-promotion-dry'],
+      'node scripts/production-promotion-dry-validate.mjs'
+    );
 
     const result = runProjectCommand(process.execPath, [evidenceBundleScriptPath, '--help']);
 
@@ -140,6 +148,16 @@ describe('release evidence rendering', () => {
     assert.match(result.stdout, /artifact-integrity\.json/);
     assert.match(result.stdout, /canary-evidence\/windows-production-bootstrap\.json/);
     assert.match(result.stdout, /production-health\.json/);
+
+    const dryResult = runProjectCommand(process.execPath, [
+      promotionDryValidateScriptPath,
+      '--help',
+    ]);
+
+    assert.equal(dryResult.status, 0, dryResult.stderr);
+    assert.match(dryResult.stdout, /verify:production-promotion-dry/);
+    assert.match(dryResult.stdout, /--release-evidence <path>/);
+    assert.match(dryResult.stdout, /without deploying, tagging, or reading production/);
   });
 
   test('release evidence rendering is delegated to the typed helper module', () => {

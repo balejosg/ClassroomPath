@@ -13,6 +13,20 @@ const LINUX_ARTIFACT_NAME = 'linux-production-bootstrap-canary';
 const WINDOWS_ARTIFACT_JSON = 'production-windows-ajax-auto-allow-canary.json';
 const LINUX_ARTIFACT_JSON = 'production-linux-ajax-auto-allow-canary.json';
 const REQUIRED_EVIDENCE_RESULTS = new Set(['success', 'live-tested', 'failure', 'failed']);
+const REQUIRED_IMAGE_FIELDS = ['gateway', 'migrations', 'openPathApi', 'spa', 'verifier'];
+const REQUIRED_STAGING_FIELDS = [
+  'smokeResult',
+  'smokeStatus',
+  'releaseGateResult',
+  'windowsFirefoxHighRisk',
+  'verifiedAt',
+];
+const REQUIRED_ARTIFACT_FIELDS = [
+  'releaseImageMetadata',
+  'stagingReleaseState',
+  'productionSmokeResults',
+  'releaseEvidence',
+];
 const ARTIFACT_STATUS_LABELS = {
   windowsProductionBootstrapCanary: WINDOWS_ARTIFACT_NAME,
   linuxProductionBootstrapCanary: LINUX_ARTIFACT_NAME,
@@ -57,6 +71,12 @@ function assertArtifactFileExists(artifactDir, fileName) {
   return artifactPath;
 }
 
+function requireNonEmpty(value, fieldName) {
+  if (!valueOrNull(value)) {
+    throw new Error(`${fieldName} missing`);
+  }
+}
+
 function normalizeFailureBoundary(boundary) {
   return {
     id: valueOrNull(boundary?.id),
@@ -66,6 +86,33 @@ function normalizeFailureBoundary(boundary) {
 
 function normalizeDiagnosticPhases(phases) {
   return Array.isArray(phases) ? phases : [];
+}
+
+function assertCanaryBoundaryContract({ artifact, platform, artifactPath }) {
+  const failureBoundary = normalizeFailureBoundary(artifact?.failureBoundary);
+  const diagnosticPhases = normalizeDiagnosticPhases(artifact?.diagnosticPhases);
+
+  requireNonEmpty(failureBoundary.id, `${platform}.failureBoundary.id`);
+  requireNonEmpty(failureBoundary.message, `${platform}.failureBoundary.message`);
+
+  if (diagnosticPhases.length === 0) {
+    throw new Error(`${platform}.diagnosticPhases missing`);
+  }
+
+  for (const [index, phase] of diagnosticPhases.entries()) {
+    requireNonEmpty(phase?.id, `${platform}.diagnosticPhases[${index}].id`);
+    requireNonEmpty(phase?.status, `${platform}.diagnosticPhases[${index}].status`);
+  }
+
+  if (!diagnosticPhases.some((phase) => phase?.id === 'artifact-written')) {
+    throw new Error(`${platform}.diagnosticPhases artifact-written missing`);
+  }
+
+  return {
+    failureBoundary,
+    diagnosticPhases,
+    artifactPath,
+  };
 }
 
 function buildFallbackWindowsRedditHosts() {
@@ -91,13 +138,18 @@ function getRedditPageEventByHost(pageDiagnostics, host) {
 }
 
 export function parseWindowsBootstrapCanaryArtifact(artifactDir) {
-  const artifact = readJsonFile(assertArtifactFileExists(artifactDir, WINDOWS_ARTIFACT_JSON));
+  const artifactPath = assertArtifactFileExists(artifactDir, WINDOWS_ARTIFACT_JSON);
+  const artifact = readJsonFile(artifactPath);
+  const boundaryContract = assertCanaryBoundaryContract({
+    artifact,
+    platform: 'windows',
+    artifactPath,
+  });
   const whitelist = artifact?.redditDiagnostics?.whitelist ?? {};
   const pageDiagnostics = artifact?.redditDiagnostics?.page ?? {};
 
   return {
-    failureBoundary: normalizeFailureBoundary(artifact?.failureBoundary),
-    diagnosticPhases: normalizeDiagnosticPhases(artifact?.diagnosticPhases),
+    ...boundaryContract,
     redditHosts: Object.fromEntries(
       REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS.map((host) => [
         host,
@@ -112,13 +164,18 @@ export function parseWindowsBootstrapCanaryArtifact(artifactDir) {
 }
 
 export function parseLinuxBootstrapCanaryArtifact(artifactDir) {
-  const artifact = readJsonFile(assertArtifactFileExists(artifactDir, LINUX_ARTIFACT_JSON));
+  const artifactPath = assertArtifactFileExists(artifactDir, LINUX_ARTIFACT_JSON);
+  const artifact = readJsonFile(artifactPath);
+  const boundaryContract = assertCanaryBoundaryContract({
+    artifact,
+    platform: 'linux',
+    artifactPath,
+  });
   const whitelist = artifact?.redditDiagnostics?.whitelist ?? {};
   const pageDiagnostics = artifact?.redditDiagnostics?.page ?? {};
 
   return {
-    failureBoundary: normalizeFailureBoundary(artifact?.failureBoundary),
-    diagnosticPhases: normalizeDiagnosticPhases(artifact?.diagnosticPhases),
+    ...boundaryContract,
     redditHosts: Object.fromEntries(
       REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS.map((host) => [
         host,
@@ -152,8 +209,12 @@ function verifySingleArtifact({ highRisk, result, listed, artifactDir, downloadE
   try {
     parser(artifactDir);
     return { status: 'ok' };
-  } catch {
-    return { status: 'missing' };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      status: message.startsWith('Missing required artifact file') ? 'missing' : 'invalid',
+      message,
+    };
   }
 }
 
@@ -192,8 +253,57 @@ function buildCanaryEvidenceFallback({ failureBoundary, diagnosticPhases, reddit
   };
 }
 
+function withReleaseTargetMetadata(canary, { targetUrl, targetSha, targetTag }) {
+  return {
+    ...canary,
+    targetUrl: valueOrNull(targetUrl),
+    targetSha: valueOrNull(targetSha),
+    targetTag: valueOrNull(targetTag),
+  };
+}
+
+export function validateReleaseEvidenceChecklist(releaseEvidence) {
+  const failures = [];
+
+  for (const [fieldName, value] of [
+    ['release.classroomPathSha', releaseEvidence?.release?.classroomPathSha],
+    ['release.openPathSha', releaseEvidence?.release?.openPathSha],
+    ['release.tagName', releaseEvidence?.release?.tagName],
+    ['targets.staging.publicUrl', releaseEvidence?.targets?.staging?.publicUrl],
+    ['targets.production.publicUrl', releaseEvidence?.targets?.production?.publicUrl],
+  ]) {
+    if (!valueOrNull(value)) {
+      failures.push(`${fieldName} missing`);
+    }
+  }
+
+  for (const fieldName of REQUIRED_IMAGE_FIELDS) {
+    if (!valueOrNull(releaseEvidence?.immutableImages?.[fieldName])) {
+      failures.push(`immutableImages.${fieldName} missing`);
+    }
+  }
+
+  for (const fieldName of REQUIRED_STAGING_FIELDS) {
+    if (!valueOrNull(releaseEvidence?.stagingVerification?.[fieldName])) {
+      failures.push(`stagingVerification.${fieldName} missing`);
+    }
+  }
+
+  for (const fieldName of REQUIRED_ARTIFACT_FIELDS) {
+    if (!valueOrNull(releaseEvidence?.artifacts?.[fieldName])) {
+      failures.push(`artifacts.${fieldName} missing`);
+    }
+  }
+
+  return {
+    ok: failures.length === 0,
+    failures,
+  };
+}
+
 function assertBundleCompleteness(bundle) {
   const failures = [];
+  failures.push(...validateReleaseEvidenceChecklist(bundle).failures);
 
   if (bundle.production?.health?.status === undefined) {
     failures.push('production.health.status missing');
@@ -207,6 +317,34 @@ function assertBundleCompleteness(bundle) {
       failures.push(
         `${ARTIFACT_STATUS_LABELS[artifactName] ?? artifactName} ${integrity?.status ?? 'unknown'}`
       );
+    }
+  }
+
+  for (const [platform, canary] of Object.entries(bundle.canaries ?? {})) {
+    if (!valueOrNull(canary?.failureBoundary?.id)) {
+      failures.push(`${platform}.failureBoundary.id missing`);
+    }
+    if (!valueOrNull(canary?.failureBoundary?.message)) {
+      failures.push(`${platform}.failureBoundary.message missing`);
+    }
+    if (!Array.isArray(canary?.diagnosticPhases) || canary.diagnosticPhases.length === 0) {
+      failures.push(`${platform}.diagnosticPhases missing`);
+    }
+    if (!valueOrNull(canary?.targetUrl)) {
+      failures.push(`${platform}.targetUrl missing`);
+    }
+    if (!valueOrNull(canary?.targetSha)) {
+      failures.push(`${platform}.targetSha missing`);
+    }
+    if (!valueOrNull(canary?.targetTag)) {
+      failures.push(`${platform}.targetTag missing`);
+    }
+    const integrityName = `${platform}ProductionBootstrapCanary`;
+    if (
+      bundle.artifactIntegrity?.[integrityName]?.status === 'ok' &&
+      !valueOrNull(canary?.artifactPath)
+    ) {
+      failures.push(`${platform}.artifactPath missing`);
     }
   }
 
@@ -247,8 +385,16 @@ export function buildReleaseEvidenceBundle({
     ...releaseEvidence,
     artifactIntegrity,
     canaries: {
-      windows: windowsCanary,
-      linux: linuxCanary,
+      windows: withReleaseTargetMetadata(windowsCanary, {
+        targetUrl: releaseEvidence?.targets?.production?.publicUrl,
+        targetSha: releaseEvidence?.release?.classroomPathSha,
+        targetTag: releaseEvidence?.release?.tagName,
+      }),
+      linux: withReleaseTargetMetadata(linuxCanary, {
+        targetUrl: releaseEvidence?.targets?.production?.publicUrl,
+        targetSha: releaseEvidence?.release?.classroomPathSha,
+        targetTag: releaseEvidence?.release?.tagName,
+      }),
     },
     production: {
       health: productionHealth?.health ?? null,
@@ -268,11 +414,11 @@ export function buildReleaseEvidenceBundle({
     writeJsonFile(resolve(outputDir, 'production-health.json'), productionHealth ?? {});
     writeJsonFile(
       resolve(outputDir, 'canary-evidence/windows-production-bootstrap.json'),
-      windowsCanary
+      bundle.canaries.windows
     );
     writeJsonFile(
       resolve(outputDir, 'canary-evidence/linux-production-bootstrap.json'),
-      linuxCanary
+      bundle.canaries.linux
     );
   }
 

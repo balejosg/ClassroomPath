@@ -10,6 +10,7 @@ import {
   parseLinuxBootstrapCanaryArtifact,
   parseWindowsBootstrapCanaryArtifact,
   runReleaseEvidenceBundle,
+  validateReleaseEvidenceChecklist,
   verifyArtifactIntegrity,
 } from '../scripts/lib/release-evidence-bundle.mjs';
 
@@ -254,6 +255,55 @@ describe('release evidence bundle module', () => {
     assert.equal(integrity.linuxProductionBootstrapCanary.status, 'missing');
   });
 
+  test('marks malformed canary evidence invalid before release bundle publication', () => {
+    const windowsArtifactDir = createTempDir('classroompath-release-evidence-invalid-');
+
+    writeJson(resolve(windowsArtifactDir, 'production-windows-ajax-auto-allow-canary.json'), {
+      success: false,
+      failureBoundary: {
+        id: 'provisioning',
+      },
+      diagnosticPhases: [{ id: 'provisioning', status: 'failed' }],
+    });
+
+    const integrity = verifyArtifactIntegrity({
+      releaseEvidence: buildReleaseEvidenceInput(),
+      windowsProductionBootstrapCanary: {
+        listed: true,
+        artifactDir: windowsArtifactDir,
+      },
+    });
+
+    assert.equal(integrity.windowsProductionBootstrapCanary.status, 'invalid');
+    assert.match(integrity.windowsProductionBootstrapCanary.message, /failureBoundary\.message/);
+  });
+
+  test('validates release evidence checklist fields used by production promotion dry runs', () => {
+    const complete = validateReleaseEvidenceChecklist(buildReleaseEvidenceInput());
+    assert.equal(complete.ok, true);
+
+    const missing = validateReleaseEvidenceChecklist(
+      buildReleaseEvidenceInput({
+        release: {
+          outcome: 'released',
+          tagName: 'v1.2.99',
+          classroomPathSha: '',
+          openPathSha: 'op-sha',
+        },
+        stagingVerification: {
+          smokeResult: 'success',
+          smokeStatus: 'PASS',
+          releaseGateResult: 'success',
+          windowsFirefoxHighRisk: 'true',
+        },
+      })
+    );
+
+    assert.equal(missing.ok, false);
+    assert.ok(missing.failures.includes('release.classroomPathSha missing'));
+    assert.ok(missing.failures.includes('stagingVerification.verifiedAt missing'));
+  });
+
   test('does not require a canary artifact before a high-risk post-release canary has produced evidence', () => {
     const integrity = verifyArtifactIntegrity({
       releaseEvidence: buildReleaseEvidenceInput({
@@ -366,6 +416,13 @@ exit 1
 
     assert.equal(bundle.artifactIntegrity.windowsProductionBootstrapCanary.status, 'missing');
     assert.equal(bundle.artifactIntegrity.linuxProductionBootstrapCanary.status, 'ok');
+    assert.equal(bundle.canaries.linux.targetSha, 'cp-sha');
+    assert.equal(bundle.canaries.linux.targetTag, 'v1.2.99');
+    assert.equal(bundle.canaries.linux.targetUrl, 'https://classroompath.eu');
+    assert.match(
+      bundle.canaries.linux.artifactPath,
+      /production-linux-ajax-auto-allow-canary\.json/
+    );
     assert.equal(
       JSON.parse(readFileSync(resolve(bundleOutputDir, 'artifact-integrity.json'), 'utf8'))
         .windowsProductionBootstrapCanary.status,

@@ -206,6 +206,10 @@ describe('Deployment foundation contracts', () => {
       'bash scripts/verify-production-promotion-ready.sh'
     );
     assert.equal(
+      packageJson.scripts?.['verify:production-promotion-dry'],
+      'node scripts/production-promotion-dry-validate.mjs'
+    );
+    assert.equal(
       packageJson.scripts?.['release:production'],
       'bash scripts/tag-production-release.sh'
     );
