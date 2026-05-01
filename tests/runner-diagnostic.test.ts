@@ -343,11 +343,11 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stdout, /gh workflow run linux-production-bootstrap-canary\.yml/);
     assert.match(result.stdout, /--repo balejosg\/ClassroomPath/);
     assert.match(result.stdout, /-f target_environment=staging/);
-    assert.match(result.stdout, /-f diagnostic_mode=false/);
+    assert.match(result.stdout, /-f diagnostic_mode=true/);
     assert.match(result.stdout, /-f gate_id=gate-123/);
     assert.match(result.stdout, /gh run list/);
     assert.match(result.stdout, /displayTitle/);
-    assert.match(result.stdout, /STAGING_LINUX_BOOTSTRAP_RESULT=success/);
+    assert.match(result.stdout, /STAGING_LINUX_BOOTSTRAP_RESULT='success'/);
   });
 
   test('collects runner evidence when watch and artifact download fail', () => {

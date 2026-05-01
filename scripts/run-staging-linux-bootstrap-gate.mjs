@@ -184,7 +184,7 @@ function main() {
     fields: {
       target_environment: 'staging',
       base_url: baseUrl,
-      diagnostic_mode: 'false',
+      diagnostic_mode: 'true',
       gate_id: gateId,
     },
     dryRun: DRY_RUN,
