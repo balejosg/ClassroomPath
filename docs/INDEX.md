@@ -43,6 +43,7 @@ Rules:
 ## Operations
 
 - Shared workspace hypothesis-validation wrapper: `../scripts/validate-hypothesis.sh` from the workspace root
+- CI/CD signal inventory: [`docs/ci-cd-signal-inventory.md`](ci-cd-signal-inventory.md)
 - Direct Windows runner diagnostic: [`scripts/run-windows-ajax-direct.mjs`](../scripts/run-windows-ajax-direct.mjs)
 - Deploy staging (local SSH workflow after push): [`docs/runbooks/deploy-staging.md`](runbooks/deploy-staging.md)
 - Deploy production (tag-only promotion): [`docs/runbooks/deploy-production.md`](runbooks/deploy-production.md)

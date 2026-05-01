@@ -1,7 +1,9 @@
 # CI/CD Signal Inventory
 
 > Status: maintained
+> Applies to: ClassroomPath CI/CD workflow signal classification
 > Last verified: 2026-05-01
+> Source of truth: `docs/ci-cd-signal-inventory.md`
 > Owner: ClassroomPath release automation
 
 This inventory classifies scheduled and operator-triggered workflow signals so CI cost reductions do not weaken release evidence.

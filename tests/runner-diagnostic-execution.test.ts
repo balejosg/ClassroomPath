@@ -29,6 +29,14 @@ describe('runner diagnostic execution plan', () => {
     );
     assert.ok(
       plan.canaryScriptUploads.some(
+        (upload) =>
+          upload.source === 'scripts/lib/windows-ajax-auto-allow-runtime.mjs' &&
+          upload.destination ===
+            'C:\\Windows\\Temp\\openpath-ajax-direct\\scripts\\lib\\windows-ajax-auto-allow-runtime.mjs'
+      )
+    );
+    assert.ok(
+      plan.canaryScriptUploads.some(
         (upload) => upload.source === 'scripts/lib/auto-allow-boundary-evidence.mjs'
       )
     );

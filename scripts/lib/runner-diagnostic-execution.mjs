@@ -38,6 +38,10 @@ export const WINDOWS_CANARY_SCRIPT_UPLOADS = [
     destination: `${WINDOWS_WORKSPACE}\\scripts\\windows-ajax-auto-allow-canary.mjs`,
   },
   {
+    source: 'scripts/lib/windows-ajax-auto-allow-runtime.mjs',
+    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\windows-ajax-auto-allow-runtime.mjs`,
+  },
+  {
     source: 'scripts/lib/auto-allow-observation.mjs',
     destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\auto-allow-observation.mjs`,
   },

@@ -551,6 +551,7 @@ describe('runner diagnostic wrapper', () => {
       /C:\\OpenPath\\browser-extension\\firefox\\native\\NativeHost\.Actions\.ps1/
     );
     assert.match(result.stdout, /scripts\/windows-ajax-auto-allow-canary\.mjs/);
+    assert.match(result.stdout, /scripts\/lib\/windows-ajax-auto-allow-runtime\.mjs/);
     assert.match(result.stdout, /scripts\/lib\/auto-allow-observation\.mjs/);
     assert.match(result.stdout, /scripts\/lib\/auto-allow-boundary-evidence\.mjs/);
     assert.match(result.stdout, /scripts\/lib\/windows-auto-allow-canary-evidence\.mjs/);
