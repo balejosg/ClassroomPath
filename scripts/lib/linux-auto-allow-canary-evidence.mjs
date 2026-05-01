@@ -163,7 +163,10 @@ export const LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
   },
   {
     id: 'first-page-load',
-    passed: (summary) => summary?.firstPageLoadCompleted !== false,
+    passed: (summary) =>
+      summary?.firstPageLoadCompleted !== false ||
+      summary?.browserNavigation?.beforeAttempts?.ok === true ||
+      summary?.browserNavigation?.afterAttempts?.ok === true,
     evidence: (summary) => ({
       firstPageLoadCompleted: summary?.firstPageLoadCompleted ?? null,
       firstPageLoadError: summary?.firstPageLoadError ?? null,

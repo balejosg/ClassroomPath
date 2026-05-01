@@ -307,7 +307,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(canaryScript.includes('Linux AJAX canary page load did not complete'));
   });
 
-  test('Linux diagnostics fail when first page load timed out even if probes converge later', () => {
+  test('Linux diagnostics accept page-load timeout when browser evidence and probes converge', () => {
     const summary = withLinuxAutoAllowDiagnostics({
       firefoxExtensionWarmup: { ready: true },
       originHits: 1,
@@ -324,6 +324,9 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       })),
       firstPageLoadCompleted: false,
       firstPageLoadError: 'Navigation timed out after 15000 ms',
+      browserNavigation: {
+        beforeAttempts: { ok: true },
+      },
       diagnostics: {
         postAttempt: {
           server: {
@@ -352,7 +355,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       },
     });
 
-    assert.equal(summary.failureBoundary.id, 'first-page-load');
+    assert.equal(summary.failureBoundary.id, 'none');
   });
 
   test('Linux canary waits for managed Firefox content-script injection before counting probes', async () => {

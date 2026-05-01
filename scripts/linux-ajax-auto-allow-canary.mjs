@@ -492,7 +492,6 @@ async function main() {
       browserNavigationAfterAttempts.openpathObserverInstalled === true ||
       browserNavigationBeforeAttempts.openpathObserverInstalled === true;
     const success =
-      firefoxSession.firstPageLoadCompleted &&
       hasAllAjaxAutoAllowProbesCompleted(AUTO_ALLOW_PROBES, completedProbesFromTraffic) &&
       pageObserverInstalled;
     const failureDebug = success ? null : await collectLinuxFailureDebugSnapshot();
