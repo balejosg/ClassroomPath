@@ -13,7 +13,30 @@ write_github_output() {
 write_install_failure_artifact() {
   local message="$1"
 
-  FAILURE_MESSAGE="$message" node -e 'const fs = require("node:fs"); const message = process.env.FAILURE_MESSAGE; fs.writeFileSync("production-linux-ajax-auto-allow-canary.json", JSON.stringify({ ok: false, error: message, failureBoundary: { id: "linux-install-openpath", message }, diagnosticPhases: ["linux-install-openpath"] }, null, 2));'
+  FAILURE_MESSAGE="$message" node -e 'const fs = require("node:fs"); const message = process.env.FAILURE_MESSAGE; fs.writeFileSync("production-linux-ajax-auto-allow-canary.json", JSON.stringify({ success: false, boundarySource: "infrastructure", error: message, failureBoundary: { id: "linux-install-openpath", message }, diagnosticPhases: [{ id: "linux-install-openpath", status: "failed", message, evidence: { artifactWritten: true } }], artifactWritten: true }, null, 2));'
+}
+
+pin_linux_bootstrap_canary_api_host() {
+  local api_url="${LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL:-}"
+  if [ -z "$api_url" ]; then
+    return 0
+  fi
+
+  local api_host
+  api_host="$(API_URL="$api_url" node -e 'const value = process.env.API_URL; try { process.stdout.write(new URL(value).hostname); } catch { process.exit(0); }')"
+  if [ -z "$api_host" ]; then
+    return 0
+  fi
+
+  local api_ip
+  api_ip="$(getent ahostsv4 "$api_host" | awk '{print $1; exit}')"
+  if [ -z "$api_ip" ]; then
+    echo "Could not pre-resolve $api_host before Linux bootstrap; continuing without /etc/hosts pin"
+    return 0
+  fi
+
+  echo "Pinning $api_host to $api_ip for Linux bootstrap registration"
+  printf '%s %s\n' "$api_ip" "$api_host" | sudo tee -a /etc/hosts >/dev/null
 }
 
 restore_linux_bootstrap_canary_external_dns() {
@@ -67,6 +90,7 @@ main() {
 
   original_unprivileged_port_start="$(sysctl -n net.ipv4.ip_unprivileged_port_start 2>/dev/null || true)"
   sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+  pin_linux_bootstrap_canary_api_host
 
   local installer_path="${LINUX_BOOTSTRAP_CANARY_INSTALLER_PATH:-${RUNNER_TEMP:-}/linux-production-bootstrap-canary/install-openpath.sh}"
   : > linux-install-openpath.log

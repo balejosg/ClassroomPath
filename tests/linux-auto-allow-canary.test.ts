@@ -52,7 +52,10 @@ function createLinuxCanaryRuntimeHarness(
   shim('apt-get', `echo "apt-get $*" >> "${callsPath}"; exit 0`);
   shim('resolvectl', `echo "resolvectl $*" >> "${callsPath}"; exit 0`);
   shim('ip', `echo "ip $*" >> "${callsPath}"; echo "default via 192.0.2.1 dev eth0"; exit 0`);
-  shim('getent', `echo "getent $*" >> "${callsPath}"; exit 0`);
+  shim(
+    'getent',
+    `echo "getent $*" >> "${callsPath}"; if [ "$1" = "ahostsv4" ]; then echo "203.0.113.7 STREAM $2"; fi; exit 0`
+  );
   shim('rmdir', `echo "rmdir $*" >> "${callsPath}"; exit 0`);
   shim(
     'timeout',
@@ -201,6 +204,11 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       );
       assert.match(
         readFileSync(harness.callsPath, 'utf8'),
+        /getent ahostsv4 classroompath\.example/
+      );
+      assert.match(readFileSync(harness.callsPath, 'utf8'), /sudo tee -a \/etc\/hosts/);
+      assert.match(
+        readFileSync(harness.callsPath, 'utf8'),
         /getent hosts raw\.githubusercontent\.com/
       );
       assert.match(
@@ -253,6 +261,15 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       assert.match(
         readFileSync(join(harness.tempDir, 'production-linux-ajax-auto-allow-canary.json'), 'utf8'),
         /Linux enrollment script failed before the AJAX auto-allow canary could run/
+      );
+      assert.equal(
+        JSON.parse(
+          readFileSync(
+            join(harness.tempDir, 'production-linux-ajax-auto-allow-canary.json'),
+            'utf8'
+          )
+        ).boundarySource,
+        'infrastructure'
       );
     } finally {
       harness.cleanup();
@@ -536,6 +553,11 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       runtimeScript,
       /FAILURE_MESSAGE="\$message" node -e/,
       'installer failure artifact should be written without an indentation-sensitive heredoc'
+    );
+    assert.match(
+      runtimeScript,
+      /pin_linux_bootstrap_canary_api_host[\s\S]*getent ahostsv4 "\$api_host"[\s\S]*sudo tee -a \/etc\/hosts[\s\S]*pin_linux_bootstrap_canary_api_host/,
+      'runtime should pin the ClassroomPath API host before OpenPath changes runner DNS'
     );
     assert.match(
       runtimeScript,
