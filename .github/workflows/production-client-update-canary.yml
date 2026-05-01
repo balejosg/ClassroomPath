@@ -29,6 +29,7 @@ on:
 permissions:
   contents: read
   issues: write
+  actions: read
 
 concurrency:
   group: production-client-update-canary-${{ github.run_id }}
@@ -38,9 +39,35 @@ concurrency:
 # live-tested, skipped-by-billing-mode, advisory-only, failed
 
 jobs:
+  ci-signal-policy:
+    name: CI signal policy guard
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.duplicate.outputs.should_skip }}
+      reason: ${{ steps.duplicate.outputs.reason }}
+      matching_run_url: ${{ steps.duplicate.outputs.matching_run_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Evaluate scheduled duplicate policy
+        id: duplicate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_SIGNAL_CLASS: post-release health
+          CI_DUPLICATE_POLICY: same workflow + same SHA + success within 60m
+          CI_DUPLICATE_FRESHNESS_WINDOW: 60m
+          CI_WORKFLOW_NAME: Production Client Update Canary
+        run: node scripts/ci-signal-policy.mjs duplicate-suppression
+
   production-enrollment-download-canary:
     name: Production Enrollment Download Canary
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [ci-signal-policy]
+    if: >-
+      needs.ci-signal-policy.outputs.should_skip != 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -235,7 +262,9 @@ jobs:
 
   windows-client-self-update-canary:
     name: Windows Client Self-Update Canary
+    needs: [ci-signal-policy]
     if: >-
+      needs.ci-signal-policy.outputs.should_skip != 'true' &&
       github.event_name != 'schedule' &&
       github.event.inputs.target_platform != 'download' &&
       ((github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'linux') ||
@@ -582,7 +611,9 @@ jobs:
 
   linux-client-self-update-canary:
     name: Linux Client Self-Update Canary
+    needs: [ci-signal-policy]
     if: >-
+      needs.ci-signal-policy.outputs.should_skip != 'true' &&
       github.event_name != 'schedule' &&
       github.event.inputs.target_platform != 'download' &&
       ((github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'windows') ||

@@ -21,6 +21,7 @@ export type WorkflowJob = {
     if?: string;
     run?: string;
     uses?: string;
+    env?: Record<string, string>;
     with?: Record<string, unknown>;
     'continue-on-error'?: boolean;
     'working-directory'?: string;
@@ -28,6 +29,7 @@ export type WorkflowJob = {
 };
 
 export type WorkflowDefinition = {
+  permissions?: Record<string, string>;
   concurrency?: string | { group?: string; 'cancel-in-progress'?: boolean };
   on?: {
     push?: {

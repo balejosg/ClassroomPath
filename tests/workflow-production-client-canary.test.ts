@@ -114,6 +114,62 @@ function buildDiagnosticSummary(
 }
 
 describe('Windows AJAX auto-allow canary evidence contracts', () => {
+  test('production client canary declares signal class and safe duplicate suppression', () => {
+    const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
+    const workflowText = readProjectText('.github/workflows/production-client-update-canary.yml');
+    const guardJob = workflow.jobs?.['ci-signal-policy'];
+    const downloadJob = workflow.jobs?.['production-enrollment-download-canary'];
+    const windowsJob = workflow.jobs?.['windows-client-self-update-canary'];
+    const linuxJob = workflow.jobs?.['linux-client-self-update-canary'];
+    const duplicateStep = guardJob?.steps?.find(
+      (step) => step.name === 'Evaluate scheduled duplicate policy'
+    );
+
+    assert.equal(workflow.on?.schedule?.[0]?.cron, '*/15 * * * *');
+    assert.equal(workflow.permissions?.actions, 'read');
+    assert.equal(guardJob?.['runs-on'], 'ubuntu-latest');
+    assert.equal(guardJob?.outputs?.should_skip, '${{ steps.duplicate.outputs.should_skip }}');
+    assert.match(String(duplicateStep?.run ?? ''), /ci-signal-policy\.mjs duplicate-suppression/);
+    assert.equal(duplicateStep?.env?.CI_SIGNAL_CLASS, 'post-release health');
+    assert.equal(duplicateStep?.env?.CI_DUPLICATE_FRESHNESS_WINDOW, '60m');
+    assert.equal(duplicateStep?.env?.CI_WORKFLOW_NAME, 'Production Client Update Canary');
+    assert.match(
+      String(downloadJob?.if ?? ''),
+      /needs\.ci-signal-policy\.outputs\.should_skip != 'true'/
+    );
+    assert.match(
+      String(windowsJob?.if ?? ''),
+      /github\.event_name != 'schedule'[\s\S]*workflow_run/
+    );
+    assert.match(String(linuxJob?.if ?? ''), /github\.event_name != 'schedule'[\s\S]*workflow_run/);
+    assert.ok(
+      workflowText.includes('CI_DUPLICATE_POLICY: same workflow + same SHA + success within 60m'),
+      'workflow summary should expose the duplicate-run policy'
+    );
+  });
+
+  test('ci/cd signal inventory classifies schedules and duplicate-run policy', () => {
+    const inventory = readProjectText('docs/ci-cd-signal-inventory.md');
+
+    for (const token of [
+      '`production-client-update-canary.yml`',
+      '`sync-openpath.yml`',
+      '`self-hosted-windows-runner-smoke.yml`',
+      '`cleanup-staging.yml`',
+      '`security.yml`',
+      'blocking release gate',
+      'post-release health',
+      'advisory drift detection',
+      'maintenance',
+      'same workflow already passed on the same SHA within 60 minutes',
+      'Post-deploy `workflow_run` and manual dispatch are never suppressed',
+      'Do not suppress by SHA; environment drift can change without a commit',
+      'Tag production deploys are non-cancelable',
+    ]) {
+      assert.ok(inventory.includes(token), `inventory should include ${token}`);
+    }
+  });
+
   test('keeps probe metadata and failure messages in one importable table', () => {
     assert.deepEqual(
       WINDOWS_AUTO_ALLOW_PROBES.map((probe) => probe.id),
