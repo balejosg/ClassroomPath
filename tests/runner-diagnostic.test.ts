@@ -671,7 +671,7 @@ describe('runner diagnostic wrapper', () => {
 
   test('direct Windows AJAX diagnostic captures late local sync after canary failure', () => {
     const directScript = readProjectText('scripts/run-windows-ajax-direct.mjs');
-    const canaryScript = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+    const canaryScript = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
 
     assert.match(directScript, /WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS/);
     assert.match(directScript, /DEFAULT_POST_FAILURE_OBSERVATION_MS = '60000'/);
@@ -689,7 +689,7 @@ describe('runner diagnostic wrapper', () => {
   });
 
   test('Windows AJAX canary reports observed page-resource candidate messages', () => {
-    const script = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+    const script = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
 
     assert.match(script, /pageResourceCandidateEvents/);
     assert.match(script, /openpath-page-resource-candidate/);
@@ -699,7 +699,7 @@ describe('runner diagnostic wrapper', () => {
   });
 
   test('Windows AJAX canary keeps probing until the configured timeout deadline', () => {
-    const script = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+    const script = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
 
     assert.match(script, /CANARY_TIMEOUT_MS/);
     assert.match(script, /Date\.now\(\) < deadline/);
@@ -818,7 +818,7 @@ describe('runner diagnostic wrapper', () => {
   });
 
   test('Windows AJAX canary supports Selenium-installed local Firefox addons', () => {
-    const script = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+    const script = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
 
     assert.match(script, /WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE/);
     assert.match(script, /WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH/);
@@ -828,7 +828,7 @@ describe('runner diagnostic wrapper', () => {
   });
 
   test('Windows AJAX canary supports Selenium with enterprise-managed Firefox addons', () => {
-    const script = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+    const script = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
 
     assert.match(script, /USE_LOCAL_FIREFOX_ADDON/);
     assert.match(script, /launchFirefoxWithSelenium/);
@@ -840,7 +840,7 @@ describe('runner diagnostic wrapper', () => {
   });
 
   test('Windows AJAX local addon mode suspends managed Firefox policy during Selenium', () => {
-    const script = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+    const script = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
 
     assert.match(script, /suspendFirefoxEnterprisePolicy/);
     assert.match(script, /restoreFirefoxEnterprisePolicy/);
@@ -850,7 +850,7 @@ describe('runner diagnostic wrapper', () => {
 
   test('direct Windows AJAX local extension mode uses an unsigned-addon Firefox channel', () => {
     const directScript = readProjectText('scripts/run-windows-ajax-direct.mjs');
-    const canaryScript = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+    const canaryScript = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
 
     assert.match(directScript, /firefox-dev/);
     assert.match(directScript, /Firefox Developer Edition/);
@@ -859,7 +859,7 @@ describe('runner diagnostic wrapper', () => {
   });
 
   test('Windows AJAX canary waits for post-success rule propagation before asserting whitelist state', () => {
-    const script = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+    const script = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
 
     assert.match(script, /WINDOWS_AJAX_AUTO_ALLOW_POST_SUCCESS_OBSERVATION_MS/);
     assert.match(script, /waitForRemoteRuleObservation/);

@@ -1,0 +1,114 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, test } from 'node:test';
+
+import {
+  createWindowsAjaxAutoAllowRuntimeConfig,
+  runWindowsAjaxAutoAllowCanaryRuntime,
+} from '../scripts/lib/windows-ajax-auto-allow-runtime.mjs';
+
+describe('Windows AJAX auto-allow runtime module', () => {
+  test('normalizes environment config without running the CLI adapter', () => {
+    const config = createWindowsAjaxAutoAllowRuntimeConfig({
+      WINDOWS_AJAX_AUTO_ALLOW_CANARY_PORT: '19091',
+      WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS: '12345',
+      WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT: 'custom-artifact.json',
+      WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: 'selenium',
+      WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH: 'C:\\addon\\openpath.xpi',
+      OPENPATH_ROOT: 'D:\\OpenPath',
+    });
+
+    assert.equal(config.port, 19091);
+    assert.equal(config.timeoutMs, 12345);
+    assert.equal(config.artifactPath, 'custom-artifact.json');
+    assert.equal(config.firefoxMode, 'selenium');
+    assert.equal(config.localAddonPath, 'C:\\addon\\openpath.xpi');
+    assert.equal(config.useLocalFirefoxAddon, true);
+    assert.equal(config.openPathRoot, 'D:\\OpenPath');
+    assert.equal(config.whitelistPath, 'D:\\OpenPath\\data\\whitelist.txt');
+  });
+
+  test('writes failure artifact and restores managed policy/profile resources on warmup timeout', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'windows-ajax-runtime-'));
+    const artifactPath = join(tempDir, 'artifact.json');
+    const cleanupEvents: string[] = [];
+
+    try {
+      const config = createWindowsAjaxAutoAllowRuntimeConfig({
+        WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT: artifactPath,
+        WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS: '10',
+        WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_WARMUP_TIMEOUT_MS: '5',
+        WINDOWS_AJAX_AUTO_ALLOW_POST_SUCCESS_OBSERVATION_MS: '0',
+      });
+
+      await assert.rejects(
+        () =>
+          runWindowsAjaxAutoAllowCanaryRuntime(config, {
+            browser: {
+              findFirefox: () => 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
+              waitForFirefoxExtensionReady: async () => ({
+                ready: false,
+                registryAddonPresent: false,
+                profileExtensionPresent: false,
+              }),
+              launchFirefoxWithSelenium: async () => {
+                throw new Error('selenium should not run');
+              },
+              spawnFirefox: () => {
+                throw new Error('firefox should not launch after failed warmup');
+              },
+            },
+            diagnostics: {
+              collectWindows: async (phase) => ({ phase }),
+              collectReddit: async (phase) => ({ phase }),
+            },
+            filesystem: {
+              makeProfileDir: async () => join(tempDir, 'profile'),
+              removeProfileDir: async () => cleanupEvents.push('profile'),
+              writeArtifact: async (path, contents) => {
+                await import('node:fs/promises').then((fs) => fs.writeFile(path, contents, 'utf8'));
+              },
+              readWhitelistContainsHost: async () => false,
+            },
+            server: {
+              createProbeServer: async () => ({
+                state: {
+                  originHits: 0,
+                  probeHits: {},
+                  browserAttempts: [],
+                  completedProbes: {},
+                  completedCandidateEvents: {},
+                  completedRedditDiagnosticEvents: {},
+                  pageResourceCandidateEvents: [],
+                  pageObserverInstalled: false,
+                  lastAttemptAt: null,
+                },
+                result: new Promise(() => {}),
+                close: () => cleanupEvents.push('server'),
+              }),
+            },
+            policy: {
+              suspendFirefoxEnterprisePolicy: async () => ({ suspended: false }),
+              restoreFirefoxEnterprisePolicy: async () => cleanupEvents.push('policy'),
+            },
+            output: {
+              error: () => {},
+              log: () => {},
+              githubOutput: () => {},
+            },
+          }),
+        /Timed out after 5ms waiting for Firefox extension/
+      );
+
+      const artifact = JSON.parse(await readFile(artifactPath, 'utf8'));
+      assert.equal(artifact.success, false);
+      assert.equal(artifact.diagnostics.preflight.phase, 'preflight');
+      assert.equal(artifact.diagnostics.postFailure.phase, 'post-firefox-warmup-failure');
+      assert.deepEqual(cleanupEvents, ['server', 'profile', 'policy']);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});

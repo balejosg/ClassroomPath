@@ -1043,7 +1043,7 @@ describe('Production client update canary workflow contracts', () => {
     const dependencyStep = dependencyStepIndex >= 0 ? steps[dependencyStepIndex] : undefined;
     const dependencyScript = String(dependencyStep?.run ?? '');
     const resetStep = steps.find((step) => step.name === 'Reset persistent Windows canary state');
-    const ajaxCanaryScript = readProjectText('scripts/windows-ajax-auto-allow-canary.mjs');
+    const ajaxCanaryScript = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
     const ajaxCanaryEvidenceModule = readProjectText(
       'scripts/lib/windows-auto-allow-canary-evidence.mjs'
     );
