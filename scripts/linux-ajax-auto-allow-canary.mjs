@@ -379,16 +379,20 @@ async function launchFirefox(originUrl) {
   options.setPreference('network.dnsCacheExpirationGracePeriod', 0);
   const driver = await new Builder().forBrowser('firefox').setFirefoxOptions(options).build();
   await driver.manage().setTimeouts({ pageLoad: PAGE_LOAD_TIMEOUT_MS, script: 10000 });
+  let firstPageLoadCompleted = true;
+  let firstPageLoadError = null;
   try {
     await driver.get(originUrl);
   } catch (error) {
+    firstPageLoadCompleted = false;
+    firstPageLoadError = error instanceof Error ? error.message : String(error);
     console.error(
       `Linux AJAX canary page load did not complete within ${PAGE_LOAD_TIMEOUT_MS}ms: ${
-        error instanceof Error ? error.message : String(error)
+        firstPageLoadError
       }`
     );
   }
-  return { driver, profileDir };
+  return { driver, firstPageLoadCompleted, firstPageLoadError, profileDir };
 }
 
 async function waitForPageObserver(driver, originUrl) {
@@ -488,6 +492,7 @@ async function main() {
       browserNavigationAfterAttempts.openpathObserverInstalled === true ||
       browserNavigationBeforeAttempts.openpathObserverInstalled === true;
     const success =
+      firefoxSession.firstPageLoadCompleted &&
       hasAllAjaxAutoAllowProbesCompleted(AUTO_ALLOW_PROBES, completedProbesFromTraffic) &&
       pageObserverInstalled;
     const failureDebug = success ? null : await collectLinuxFailureDebugSnapshot();
@@ -506,6 +511,8 @@ async function main() {
       expectedExtensionId: EXPECTED_EXTENSION_ID,
       originHits: state.originPageHits,
       originPageHits: state.originPageHits,
+      firstPageLoadCompleted: firefoxSession.firstPageLoadCompleted,
+      firstPageLoadError: firefoxSession.firstPageLoadError,
       attemptHits: state.attemptHits,
       completedProbes: completedProbesFromTraffic,
       completedCandidateEvents,

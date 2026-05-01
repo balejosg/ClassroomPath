@@ -63,6 +63,7 @@ export const LINUX_AUTO_ALLOW_PROBES = Object.freeze([
 export const LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS = Object.freeze([
   'firefox-extension-ready',
   'origin-page-load',
+  'first-page-load',
   'page-observer',
   'page-resource-candidates',
   'remote-rule-creation',
@@ -82,6 +83,11 @@ export const LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
     message: 'The allowed origin page did not reach the local Linux canary server.',
     recommendedNextAction:
       'Inspect Linux runner DNS, Firefox launch, and local canary server reachability.',
+  },
+  'first-page-load': {
+    message: 'Firefox did not complete the first Linux AJAX canary page load before probing.',
+    recommendedNextAction:
+      'Inspect whether auto-allow is applied before the first resource wave is released.',
   },
   'page-observer': {
     message: 'The Firefox page-resource observer was not installed in the origin page.',
@@ -152,6 +158,15 @@ export const LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
       originHits: Number(summary?.originHits ?? 0),
       originPageHits: Number(summary?.originPageHits ?? summary?.originHits ?? 0),
       attemptHits: Number(summary?.attemptHits ?? 0),
+      browserNavigation: summary?.browserNavigation ?? null,
+    }),
+  },
+  {
+    id: 'first-page-load',
+    passed: (summary) => summary?.firstPageLoadCompleted !== false,
+    evidence: (summary) => ({
+      firstPageLoadCompleted: summary?.firstPageLoadCompleted ?? null,
+      firstPageLoadError: summary?.firstPageLoadError ?? null,
       browserNavigation: summary?.browserNavigation ?? null,
     }),
   },

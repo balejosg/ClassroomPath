@@ -290,6 +290,54 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(canaryScript.includes('Linux AJAX canary page load did not complete'));
   });
 
+  test('Linux diagnostics fail when first page load timed out even if probes converge later', () => {
+    const summary = withLinuxAutoAllowDiagnostics({
+      firefoxExtensionWarmup: { ready: true },
+      originHits: 1,
+      originPageHits: 1,
+      pageObserverInstalled: true,
+      completedCandidateEvents: Object.fromEntries(
+        LINUX_AUTO_ALLOW_PROBES.map((probe) => [probe.id, true])
+      ),
+      probeEvidence: LINUX_AUTO_ALLOW_PROBES.map((probe) => ({
+        id: probe.id,
+        expectedWhitelistHost: probe.expectedWhitelistHost,
+        hits: 1,
+        whitelistContainsExpectedHost: true,
+      })),
+      firstPageLoadCompleted: false,
+      firstPageLoadError: 'Navigation timed out after 15000 ms',
+      diagnostics: {
+        postAttempt: {
+          server: {
+            canaryGroup: {
+              body: {
+                rules: LINUX_AUTO_ALLOW_PROBES.map((probe) => ({
+                  type: 'whitelist',
+                  value: probe.expectedWhitelistHost,
+                })),
+              },
+            },
+          },
+          whitelist: {
+            local: {
+              containsExpectedHosts: Object.fromEntries(
+                LINUX_AUTO_ALLOW_PROBES.map((probe) => [probe.expectedWhitelistHost, true])
+              ),
+            },
+          },
+          dns: {
+            containsExpectedHosts: Object.fromEntries(
+              LINUX_AUTO_ALLOW_PROBES.map((probe) => [probe.expectedWhitelistHost, true])
+            ),
+          },
+        },
+      },
+    });
+
+    assert.equal(summary.failureBoundary.id, 'first-page-load');
+  });
+
   test('Linux canary waits for managed Firefox content-script injection before counting probes', async () => {
     let diagnosticsCalls = 0;
     const visited: string[] = [];
