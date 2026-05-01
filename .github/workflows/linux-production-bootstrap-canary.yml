@@ -95,6 +95,33 @@ jobs:
           npm ci --ignore-scripts
           node -e "await import('selenium-webdriver'); await import('selenium-webdriver/firefox.js')"
 
+      - name: Initialize Linux canary evidence files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > production-linux-bootstrap-canary.json <<'JSON'
+          {
+            "success": false,
+            "failureBoundary": {
+              "id": "canary-not-started",
+              "message": "Linux bootstrap canary did not reach the provisioning step."
+            }
+          }
+          JSON
+          cat > production-linux-ajax-auto-allow-canary.json <<'JSON'
+          {
+            "success": false,
+            "failureBoundary": {
+              "id": "canary-not-started",
+              "message": "Linux AJAX auto-allow canary did not start."
+            },
+            "diagnosticPhases": []
+          }
+          JSON
+          : > linux-install-openpath.log
+          : > linux-ajax-auto-allow-canary.log
+          : > linux-ajax-auto-allow-canary-summary.md
+
       - name: Resolve target host
         id: resolve-production
         shell: bash
@@ -167,6 +194,17 @@ jobs:
               echo "::warning::Could not read staging CP_BILLING_MODE over SSH; using manual_only for diagnostic-only canary."
               billing_mode="manual_only"
             else
+              node <<'NODE' > production-linux-ajax-auto-allow-canary.json
+              const payload = {
+                success: false,
+                failureBoundary: {
+                  id: 'remote-env-read',
+                  message: 'Could not read CP_BILLING_MODE from the target host over SSH.',
+                },
+                diagnosticPhases: ['remote-env-read'],
+              };
+              console.log(JSON.stringify(payload, null, 2));
+              NODE
               exit "$read_status"
             fi
           fi
@@ -203,12 +241,34 @@ jobs:
               echo "::warning::Could not read staging CP_CLIENT_CANARY_ADMIN_TOKEN over SSH; using diagnostic fallback secret."
               client_canary_admin_token="$FALLBACK_CLIENT_CANARY_ADMIN_TOKEN"
             else
+              node <<'NODE' > production-linux-ajax-auto-allow-canary.json
+              const payload = {
+                success: false,
+                failureBoundary: {
+                  id: 'remote-env-read',
+                  message: 'Could not read CP_CLIENT_CANARY_ADMIN_TOKEN from the target host over SSH.',
+                },
+                diagnosticPhases: ['remote-env-read'],
+              };
+              console.log(JSON.stringify(payload, null, 2));
+              NODE
               exit "$read_status"
             fi
           fi
 
           if [ -z "$client_canary_admin_token" ]; then
             echo "::error::CP_CLIENT_CANARY_ADMIN_TOKEN is missing for ${{ steps.inputs.outputs.target_environment }}"
+            node <<'NODE' > production-linux-ajax-auto-allow-canary.json
+            const payload = {
+              success: false,
+              failureBoundary: {
+                id: 'remote-env-read',
+                message: 'CP_CLIENT_CANARY_ADMIN_TOKEN is empty on the target host.',
+              },
+              diagnosticPhases: ['remote-env-read'],
+            };
+            console.log(JSON.stringify(payload, null, 2));
+            NODE
             exit 1
           fi
 

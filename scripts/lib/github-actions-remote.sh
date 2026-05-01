@@ -60,15 +60,32 @@ github_actions_remote_install_ssh_key() {
   chmod 600 "$key_path"
 }
 
-github_actions_remote_ssh() {
+github_actions_remote_classify_ssh_error() {
+  local stderr_text="$1"
+
+  if printf '%s' "$stderr_text" | grep -Eiq 'Connection timed out|Operation timed out|No route to host|Network is unreachable'; then
+    printf 'ssh-timeout'
+  elif printf '%s' "$stderr_text" | grep -Eiq 'Permission denied|Authentication failed|publickey'; then
+    printf 'ssh-auth'
+  elif printf '%s' "$stderr_text" | grep -Eiq 'Could not resolve hostname|Name or service not known|Temporary failure in name resolution'; then
+    printf 'ssh-dns'
+  elif printf '%s' "$stderr_text" | grep -Eiq 'Connection refused'; then
+    printf 'ssh-refused'
+  else
+    printf 'ssh-unknown'
+  fi
+}
+
+github_actions_remote_ssh_once() {
   local key_path="$1"
   local port="$2"
   local user="$3"
   local ip="$4"
+  local connect_timeout="${GITHUB_ACTIONS_REMOTE_SSH_CONNECT_TIMEOUT:-20}"
   shift 4
 
   ssh \
-    -o ConnectTimeout=10 \
+    -o ConnectTimeout="$connect_timeout" \
     -o BatchMode=yes \
     -o IdentitiesOnly=yes \
     -o StrictHostKeyChecking=accept-new \
@@ -76,6 +93,58 @@ github_actions_remote_ssh() {
     -p "$port" \
     "$user@$ip" \
     "$@"
+}
+
+github_actions_remote_ssh() {
+  local key_path="$1"
+  local port="$2"
+  local user="$3"
+  local ip="$4"
+  shift 4
+
+  local attempts="${GITHUB_ACTIONS_REMOTE_SSH_ATTEMPTS:-3}"
+  local delay_seconds="${GITHUB_ACTIONS_REMOTE_SSH_RETRY_DELAY_SECONDS:-5}"
+  local attempt=1
+  local status=0
+  local stderr_file=""
+  local stderr_text=""
+  local classification=""
+
+  stderr_file="$(mktemp)"
+
+  while [ "$attempt" -le "$attempts" ]; do
+    if github_actions_remote_ssh_once "$key_path" "$port" "$user" "$ip" "$@" 2>"$stderr_file"; then
+      rm -f "$stderr_file"
+      return 0
+    else
+      status="$?"
+    fi
+
+    stderr_text="$(cat "$stderr_file")"
+    classification="$(github_actions_remote_classify_ssh_error "$stderr_text")"
+    printf '::warning::SSH attempt %s/%s to %s@%s:%s failed (%s): %s\n' \
+      "$attempt" \
+      "$attempts" \
+      "$user" \
+      "$ip" \
+      "$port" \
+      "$classification" \
+      "$stderr_text" >&2
+
+    if [ "$attempt" -lt "$attempts" ]; then
+      sleep "$delay_seconds"
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  printf '::error::SSH to %s@%s:%s failed after %s attempts (%s)\n' \
+    "$user" \
+    "$ip" \
+    "$port" \
+    "$attempts" \
+    "$classification" >&2
+  rm -f "$stderr_file"
+  return "$status"
 }
 
 github_actions_remote_read_env_key() {

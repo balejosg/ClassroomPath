@@ -457,6 +457,21 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
     assert.match(
       workflow,
+      /name: Initialize Linux canary evidence files[\s\S]*production-linux-bootstrap-canary\.json[\s\S]*production-linux-ajax-auto-allow-canary\.json[\s\S]*linux-install-openpath\.log[\s\S]*linux-ajax-auto-allow-canary\.log/,
+      'workflow should create placeholder artifacts before remote SSH reads can fail'
+    );
+    assert.match(
+      workflow,
+      /Could not read CP_BILLING_MODE from the target host over SSH\./,
+      'billing-mode SSH failures should be preserved in the canary JSON artifact'
+    );
+    assert.match(
+      workflow,
+      /Could not read CP_CLIENT_CANARY_ADMIN_TOKEN from the target host over SSH\./,
+      'admin-token SSH failures should be preserved in the canary JSON artifact'
+    );
+    assert.match(
+      workflow,
       /path: linux-production-bootstrap-canary-evidence\.tgz[\s\S]*compression-level: 0/
     );
     assert.match(

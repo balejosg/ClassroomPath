@@ -17,6 +17,12 @@ describe('github-actions remote helper', () => {
       /\(\) \{/
     );
     assert.match(extractShellFunction(helper, 'github_actions_remote_install_ssh_key'), /\(\) \{/);
+    assert.match(
+      extractShellFunction(helper, 'github_actions_remote_classify_ssh_error'),
+      /\(\) \{/
+    );
+    assert.match(extractShellFunction(helper, 'github_actions_remote_ssh_once'), /\(\) \{/);
+    assert.match(extractShellFunction(helper, 'github_actions_remote_ssh'), /\(\) \{/);
     assert.match(extractShellFunction(helper, 'github_actions_remote_read_env_key'), /\(\) \{/);
     assert.match(extractShellFunction(helper, 'github_actions_remote_read_file'), /\(\) \{/);
     assert.match(extractShellFunction(helper, 'github_actions_remote_file_size'), /\(\) \{/);
@@ -36,5 +42,47 @@ describe('github-actions remote helper', () => {
     assert.equal(result.status, 0);
     assert.match(result.stdout, /ip=127\.0\.0\.1/);
     assert.match(result.stdout, /user=deploy/);
+  });
+
+  test('classifies common SSH failures for actionable canary diagnostics', () => {
+    const result = runProjectCommand('bash', [
+      '-lc',
+      [
+        'source scripts/lib/github-actions-remote.sh',
+        'github_actions_remote_classify_ssh_error "ssh: connect to host 192.0.2.10 port 22: Connection timed out"',
+        'printf "\\n"',
+        'github_actions_remote_classify_ssh_error "deploy@host: Permission denied (publickey)."',
+        'printf "\\n"',
+        'github_actions_remote_classify_ssh_error "ssh: Could not resolve hostname staging"',
+      ].join('; '),
+    ]);
+
+    assert.equal(result.status, 0);
+    assert.deepEqual(result.stdout.trim().split('\n'), ['ssh-timeout', 'ssh-auth', 'ssh-dns']);
+  });
+
+  test('retries SSH attempts before surfacing the classified failure', () => {
+    const result = runProjectCommand('bash', [
+      '-lc',
+      [
+        'source scripts/lib/github-actions-remote.sh',
+        'github_actions_remote_ssh_once() { echo "ssh: connect to host $4 port $2: Connection timed out" >&2; return 255; }',
+        'GITHUB_ACTIONS_REMOTE_SSH_ATTEMPTS=2 GITHUB_ACTIONS_REMOTE_SSH_RETRY_DELAY_SECONDS=0 github_actions_remote_ssh /tmp/key 22 deploy 192.0.2.10 true',
+      ].join('; '),
+    ]);
+
+    assert.equal(result.status, 255);
+    assert.match(
+      result.stderr,
+      /SSH attempt 1\/2 to deploy@192\.0\.2\.10:22 failed \(ssh-timeout\)/
+    );
+    assert.match(
+      result.stderr,
+      /SSH attempt 2\/2 to deploy@192\.0\.2\.10:22 failed \(ssh-timeout\)/
+    );
+    assert.match(
+      result.stderr,
+      /SSH to deploy@192\.0\.2\.10:22 failed after 2 attempts \(ssh-timeout\)/
+    );
   });
 });
