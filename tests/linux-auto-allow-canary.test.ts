@@ -15,6 +15,7 @@ import {
   buildLinuxAutoAllowProbeUrl,
   withLinuxAutoAllowDiagnostics,
 } from '../scripts/lib/linux-auto-allow-canary-evidence.mjs';
+import { evaluateLinuxAjaxBrowserPageOutcome } from '../scripts/linux-ajax-canary-result.mjs';
 
 const runtimeScriptPath = 'scripts/run-linux-bootstrap-ajax-canary-runtime.sh';
 
@@ -356,6 +357,42 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     });
 
     assert.equal(summary.failureBoundary.id, 'none');
+  });
+
+  test('Linux AJAX canary rejects eventual server hits when browser page probes timed out', () => {
+    const outcome = evaluateLinuxAjaxBrowserPageOutcome({
+      firstPageLoadCompleted: false,
+      firstPageLoadError: 'Navigation timed out after 15000 ms',
+      browserNavigation: {
+        afterAttempts: {
+          ok: true,
+          canaryState: {
+            attempts: [
+              {
+                probes: Object.fromEntries(
+                  LINUX_AUTO_ALLOW_PROBES.map((probe) => [
+                    probe.id,
+                    { ok: false, error: `${probe.id} timed out after 5000ms` },
+                  ])
+                ),
+              },
+            ],
+          },
+        },
+      },
+      expectedProbeIds: LINUX_AUTO_ALLOW_PROBES.map((probe) => probe.id),
+    });
+
+    assert.equal(outcome.success, false);
+    assert.equal(outcome.firstPageLoadCompleted, false);
+    assert.deepEqual(
+      outcome.failedProbeIds,
+      LINUX_AUTO_ALLOW_PROBES.map((probe) => probe.id)
+    );
+    assert.deepEqual(
+      outcome.timedOutProbeIds,
+      LINUX_AUTO_ALLOW_PROBES.map((probe) => probe.id)
+    );
   });
 
   test('Linux canary waits for managed Firefox content-script injection before counting probes', async () => {

@@ -28,6 +28,7 @@ import {
   waitForAjaxAutoAllowPageObserver,
 } from './lib/ajax-auto-allow-canary-harness.mjs';
 import { collectCanaryGroupDiagnostics as collectCanaryGroupDiagnosticsFromApi } from './lib/canary-group-diagnostics.mjs';
+import { evaluateLinuxAjaxBrowserPageOutcome } from './linux-ajax-canary-result.mjs';
 
 const PORT = Number.parseInt(process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18089', 10);
 const TIMEOUT_MS = Number.parseInt(
@@ -491,9 +492,19 @@ async function main() {
       state.pageObserverInstalled ||
       browserNavigationAfterAttempts.openpathObserverInstalled === true ||
       browserNavigationBeforeAttempts.openpathObserverInstalled === true;
+    const browserPageOutcome = evaluateLinuxAjaxBrowserPageOutcome({
+      firstPageLoadCompleted: firefoxSession.firstPageLoadCompleted,
+      firstPageLoadError: firefoxSession.firstPageLoadError,
+      browserNavigation: {
+        beforeAttempts: browserNavigationBeforeAttempts,
+        afterAttempts: browserNavigationAfterAttempts,
+      },
+      expectedProbeIds: AUTO_ALLOW_PROBES.map((probe) => probe.id),
+    });
     const success =
       hasAllAjaxAutoAllowProbesCompleted(AUTO_ALLOW_PROBES, completedProbesFromTraffic) &&
-      pageObserverInstalled;
+      pageObserverInstalled &&
+      browserPageOutcome.success;
     const failureDebug = success ? null : await collectLinuxFailureDebugSnapshot();
     const redditDiagnostics = await collectRedditDiagnostics(
       success ? 'post-success' : 'post-failure',
@@ -528,6 +539,7 @@ async function main() {
         beforeAttempts: browserNavigationBeforeAttempts,
         afterAttempts: browserNavigationAfterAttempts,
       },
+      browserPageOutcome,
       redditDiagnostics,
       diagnostics: { preflight, postAttempt },
       failureDebug,
