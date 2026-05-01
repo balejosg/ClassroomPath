@@ -476,6 +476,11 @@ describe('Deployment runtime contracts', () => {
         )
     );
     assert.ok(
+      !readFileSync(stagingLocalVerifyHelperPath, 'utf-8').includes(
+        'STAGING_FIREFOX_XPI_SHA256 "${STAGING_FIREFOX_XPI_SHA256:-}")\n$(remote_assignment STAGING_LINUX_BOOTSTRAP_RESULT'
+      )
+    );
+    assert.ok(
       rollbackRemote.includes('DEPLOYMENT_STATE_HELPER_PATH') &&
         rollbackRemote.includes('deployment_state_activate_previous_release') &&
         rollbackRemote.includes('deployment_state_load_context') &&
