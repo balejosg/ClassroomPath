@@ -602,13 +602,66 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(JSON.parse(readFileSync(artifactPath, 'utf8')), {
       success: false,
+      boundarySource: 'infrastructure',
       failureBoundary: {
         id: 'remote-env-read',
         message: 'Could not read CP_BILLING_MODE from the target host over SSH.',
       },
-      diagnosticPhases: ['remote-env-read'],
+      diagnosticPhases: [
+        {
+          id: 'remote-env-read',
+          status: 'failed',
+          message: 'Could not read CP_BILLING_MODE from the target host over SSH.',
+          evidence: {
+            artifactWritten: true,
+          },
+        },
+      ],
       artifactWritten: true,
     });
+  });
+
+  test('Linux bootstrap canary summarizer preserves infrastructure boundaries', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'linux-bootstrap-canary-summary-'));
+    const artifactPath = join(tempDir, 'production-linux-ajax-auto-allow-canary.json');
+    const summaryPath = join(tempDir, 'linux-ajax-auto-allow-canary-summary.md');
+    writeFileSync(
+      artifactPath,
+      `${JSON.stringify({
+        success: false,
+        boundarySource: 'infrastructure',
+        failureBoundary: {
+          id: 'remote-env-read',
+          message: 'Could not read CP_BILLING_MODE from the target host over SSH.',
+        },
+        diagnosticPhases: [
+          {
+            id: 'remote-env-read',
+            status: 'failed',
+            message: 'Could not read CP_BILLING_MODE from the target host over SSH.',
+            evidence: { artifactWritten: true },
+          },
+        ],
+        artifactWritten: true,
+      })}\n`
+    );
+
+    const result = runProjectCommand(
+      'node',
+      [
+        'scripts/summarize-linux-ajax-auto-allow-evidence.mjs',
+        '--artifact',
+        artifactPath,
+        '--summary',
+        summaryPath,
+      ],
+      {}
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Failure boundary: `remote-env-read`/);
+    assert.doesNotMatch(result.stdout, /firefox-extension-ready/);
+    assert.match(readFileSync(summaryPath, 'utf8'), /remote-env-read \| failed/);
   });
 
   test('Linux staging diagnostics can run when staging SSH is not reachable from GitHub', () => {

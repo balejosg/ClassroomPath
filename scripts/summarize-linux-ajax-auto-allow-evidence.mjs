@@ -49,6 +49,8 @@ function writeGithubOutput(key, value) {
 function renderPhaseEvidence(phase) {
   if (!phase?.evidence || typeof phase.evidence !== 'object') return '';
   if ('originHits' in phase.evidence) return `originHits=${phase.evidence.originHits}`;
+  if ('artifactWritten' in phase.evidence)
+    return `artifactWritten=${phase.evidence.artifactWritten}`;
   if ('completedCandidateEvents' in phase.evidence) {
     return `completedCandidates=${Object.keys(phase.evidence.completedCandidateEvents ?? {}).length}`;
   }
@@ -83,6 +85,9 @@ function renderMarkdown(summary) {
 async function readAndEnrichArtifact(artifactPath) {
   try {
     const artifact = JSON.parse(await readFile(artifactPath, 'utf8'));
+    if (artifact?.boundarySource === 'infrastructure') {
+      return artifact;
+    }
     return withLinuxAutoAllowDiagnostics(artifact);
   } catch (error) {
     return buildLinuxAutoAllowArtifactFailureSummary({

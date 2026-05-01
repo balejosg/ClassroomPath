@@ -16,11 +16,21 @@ if (!message) {
 
 const payload = {
   success: false,
+  boundarySource: 'infrastructure',
   failureBoundary: {
     id: boundaryId,
     message,
   },
-  diagnosticPhases: [boundaryId],
+  diagnosticPhases: [
+    {
+      id: boundaryId,
+      status: 'failed',
+      message,
+      evidence: {
+        artifactWritten: true,
+      },
+    },
+  ],
   artifactWritten: true,
 };
 
