@@ -173,24 +173,41 @@ export function downloadArtifacts({
   evidenceDir,
   dryRun = false,
   fakeArtifactDownloadFailure = false,
+  attempts = 3,
+  retryDelayMs = 10_000,
   emit,
   error = console.error,
 }) {
-  const result = runGithubCommand(
-    ['gh', 'run', 'download', runId, '--repo', repo, '--dir', evidenceDir],
-    {
-      allowFailure: true,
-      dryRun,
-      emit,
-      shouldFail: (args) =>
-        fakeArtifactDownloadFailure &&
-        args[0] === 'gh' &&
-        args[1] === 'run' &&
-        args[2] === 'download',
+  let result = { status: 1, stdout: '', stderr: '' };
+  const maxAttempts = Math.max(1, attempts);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    result = runGithubCommand(
+      ['gh', 'run', 'download', runId, '--repo', repo, '--dir', evidenceDir],
+      {
+        allowFailure: true,
+        dryRun,
+        emit,
+        shouldFail: (args) =>
+          fakeArtifactDownloadFailure &&
+          args[0] === 'gh' &&
+          args[1] === 'run' &&
+          args[2] === 'download',
+      }
+    );
+
+    const status = typeof result === 'object' ? result.status : 0;
+    if (status === 0) {
+      return { status };
     }
-  );
+
+    if (!dryRun && attempt < maxAttempts) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, retryDelayMs);
+    }
+  }
+
   const status = typeof result === 'object' ? result.status : 0;
-  if (typeof result === 'object' && status !== 0) {
+  if (typeof result === 'object') {
     const errorPath = resolve(evidenceDir, 'artifact-download-error.txt');
     writeEvidenceFile(errorPath, `${result.stdout}${result.stderr}`, { dryRun, emit });
     error(`Artifact download failed; preserved error in ${errorPath}`);
