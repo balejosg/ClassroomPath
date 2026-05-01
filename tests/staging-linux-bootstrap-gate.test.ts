@@ -95,8 +95,8 @@ test('staging Linux bootstrap gate polls until GitHub exposes the correlated run
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(readFileSync(join(tempDir, 'gh-state.count'), 'utf8').trim(), '2');
-  assert.match(readFileSync(outputPath, 'utf8'), /STAGING_LINUX_BOOTSTRAP_RUN_ID=987654/);
-  assert.match(readFileSync(outputPath, 'utf8'), /STAGING_LINUX_BOOTSTRAP_RESULT=success/);
+  assert.match(readFileSync(outputPath, 'utf8'), /STAGING_LINUX_BOOTSTRAP_RUN_ID='987654'/);
+  assert.match(readFileSync(outputPath, 'utf8'), /STAGING_LINUX_BOOTSTRAP_RESULT='success'/);
 });
 
 test('staging Linux bootstrap gate records a failure if the correlated run is never indexed', () => {
@@ -116,9 +116,36 @@ test('staging Linux bootstrap gate records a failure if the correlated run is ne
   });
 
   assert.notEqual(result.status, 0);
-  assert.match(readFileSync(outputPath, 'utf8'), /STAGING_LINUX_BOOTSTRAP_RESULT=failure/);
+  assert.match(readFileSync(outputPath, 'utf8'), /STAGING_LINUX_BOOTSTRAP_RESULT='failure'/);
   assert.match(
     readFileSync(outputPath, 'utf8'),
-    /STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=workflow-run-resolution/
+    /STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID='workflow-run-resolution'/
   );
+});
+
+test('staging Linux bootstrap gate writes shell-safe output values', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'staging-linux-bootstrap-gate-'));
+  const binDir = join(tempDir, 'bin');
+  const artifactDir = resolve(projectRoot, '.opencode/tmp/staging-linux-bootstrap-gate/987654');
+  const outputPath = join(tempDir, 'linux-bootstrap-gate.env');
+  writeFakeGh(binDir);
+
+  const result = runProjectCommand('node', ['scripts/run-staging-linux-bootstrap-gate.mjs'], {
+    env: {
+      PATH: `${binDir}${delimiter}${process.env.PATH ?? ''}`,
+      FAKE_GH_STATE: join(tempDir, 'gh-state'),
+      FAKE_GH_ARTIFACT: artifactDir,
+      STAGING_LINUX_BOOTSTRAP_GATE_ID: 'test-gate',
+      STAGING_LINUX_BOOTSTRAP_GATE_OUTPUT: outputPath,
+      STAGING_LINUX_BOOTSTRAP_GATE_RUN_RESOLVE_TIMEOUT_MS: '1000',
+      STAGING_LINUX_BOOTSTRAP_GATE_RUN_RESOLVE_POLL_MS: '1',
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const output = readFileSync(outputPath, 'utf8');
+  assert.match(output, /STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE='ok'/);
+
+  const sourceResult = runProjectCommand('bash', ['-n', outputPath]);
+  assert.equal(sourceResult.status, 0, sourceResult.stderr);
 });

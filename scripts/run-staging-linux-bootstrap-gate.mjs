@@ -32,8 +32,12 @@ const runResolvePollMs = Number(
 );
 
 function writeOutput(fields) {
+  const shellQuote = (value) =>
+    `'${String(value ?? '')
+      .replaceAll('\n', ' ')
+      .replaceAll("'", "'\\''")}'`;
   const text = `${Object.entries(fields)
-    .map(([key, value]) => `${key}=${String(value ?? '').replaceAll('\n', ' ')}`)
+    .map(([key, value]) => `${key}=${shellQuote(value)}`)
     .join('\n')}\n`;
   if (DRY_RUN) {
     process.stdout.write(text);
