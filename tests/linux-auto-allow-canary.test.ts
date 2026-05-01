@@ -472,6 +472,16 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
     assert.match(
       workflow,
+      /FAILURE_BOUNDARY_MESSAGE='Could not read CP_BILLING_MODE from the target host over SSH\.'[\s\S]*node scripts\/write-linux-bootstrap-canary-failure\.mjs remote-env-read/,
+      'billing-mode SSH failures should be written without indentation-sensitive heredocs'
+    );
+    assert.match(
+      workflow,
+      /FAILURE_BOUNDARY_MESSAGE='Could not read CP_CLIENT_CANARY_ADMIN_TOKEN from the target host over SSH\.'[\s\S]*node scripts\/write-linux-bootstrap-canary-failure\.mjs remote-env-read/,
+      'admin-token SSH failures should be written without indentation-sensitive heredocs'
+    );
+    assert.match(
+      workflow,
       /path: linux-production-bootstrap-canary-evidence\.tgz[\s\S]*compression-level: 0/
     );
     assert.match(
@@ -572,6 +582,33 @@ describe('Linux AJAX auto-allow canary contracts', () => {
         "FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax.outputs.failure_boundary_message || steps.ajax-summary.outputs.failure_boundary_message || 'Linux AJAX evidence artifact was not written.' }}"
       )
     );
+  });
+
+  test('Linux bootstrap canary failure helper writes a boundary artifact', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'linux-bootstrap-canary-failure-'));
+    const artifactPath = join(tempDir, 'production-linux-ajax-auto-allow-canary.json');
+
+    const result = runProjectCommand(
+      'node',
+      ['scripts/write-linux-bootstrap-canary-failure.mjs', 'remote-env-read'],
+      {
+        env: {
+          LINUX_AJAX_AUTO_ALLOW_CANARY_ARTIFACT: artifactPath,
+          FAILURE_BOUNDARY_MESSAGE: 'Could not read CP_BILLING_MODE from the target host over SSH.',
+        },
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(artifactPath, 'utf8')), {
+      success: false,
+      failureBoundary: {
+        id: 'remote-env-read',
+        message: 'Could not read CP_BILLING_MODE from the target host over SSH.',
+      },
+      diagnosticPhases: ['remote-env-read'],
+      artifactWritten: true,
+    });
   });
 
   test('Linux staging diagnostics can run when staging SSH is not reachable from GitHub', () => {

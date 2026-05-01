@@ -194,17 +194,8 @@ jobs:
               echo "::warning::Could not read staging CP_BILLING_MODE over SSH; using manual_only for diagnostic-only canary."
               billing_mode="manual_only"
             else
-              node <<'NODE' > production-linux-ajax-auto-allow-canary.json
-              const payload = {
-                success: false,
-                failureBoundary: {
-                  id: 'remote-env-read',
-                  message: 'Could not read CP_BILLING_MODE from the target host over SSH.',
-                },
-                diagnosticPhases: ['remote-env-read'],
-              };
-              console.log(JSON.stringify(payload, null, 2));
-              NODE
+              FAILURE_BOUNDARY_MESSAGE='Could not read CP_BILLING_MODE from the target host over SSH.' \
+                node scripts/write-linux-bootstrap-canary-failure.mjs remote-env-read
               exit "$read_status"
             fi
           fi
@@ -241,34 +232,16 @@ jobs:
               echo "::warning::Could not read staging CP_CLIENT_CANARY_ADMIN_TOKEN over SSH; using diagnostic fallback secret."
               client_canary_admin_token="$FALLBACK_CLIENT_CANARY_ADMIN_TOKEN"
             else
-              node <<'NODE' > production-linux-ajax-auto-allow-canary.json
-              const payload = {
-                success: false,
-                failureBoundary: {
-                  id: 'remote-env-read',
-                  message: 'Could not read CP_CLIENT_CANARY_ADMIN_TOKEN from the target host over SSH.',
-                },
-                diagnosticPhases: ['remote-env-read'],
-              };
-              console.log(JSON.stringify(payload, null, 2));
-              NODE
+              FAILURE_BOUNDARY_MESSAGE='Could not read CP_CLIENT_CANARY_ADMIN_TOKEN from the target host over SSH.' \
+                node scripts/write-linux-bootstrap-canary-failure.mjs remote-env-read
               exit "$read_status"
             fi
           fi
 
           if [ -z "$client_canary_admin_token" ]; then
             echo "::error::CP_CLIENT_CANARY_ADMIN_TOKEN is missing for ${{ steps.inputs.outputs.target_environment }}"
-            node <<'NODE' > production-linux-ajax-auto-allow-canary.json
-            const payload = {
-              success: false,
-              failureBoundary: {
-                id: 'remote-env-read',
-                message: 'CP_CLIENT_CANARY_ADMIN_TOKEN is empty on the target host.',
-              },
-              diagnosticPhases: ['remote-env-read'],
-            };
-            console.log(JSON.stringify(payload, null, 2));
-            NODE
+            FAILURE_BOUNDARY_MESSAGE='CP_CLIENT_CANARY_ADMIN_TOKEN is empty on the target host.' \
+              node scripts/write-linux-bootstrap-canary-failure.mjs remote-env-read
             exit 1
           fi
 
