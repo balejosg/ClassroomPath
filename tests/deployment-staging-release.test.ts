@@ -158,13 +158,13 @@ describe('Deployment staging and promotion contracts', () => {
     assert.ok(
       persistHelperContent.includes('staging-verification.env') &&
         persistHelperContent.includes(
-          'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=$STAGING_FIREFOX_RELEASE_ARTIFACTS'
+          'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=${STAGING_FIREFOX_RELEASE_ARTIFACTS:-}'
         ) &&
         persistHelperContent.includes(
-          'STAGING_WINDOWS_BOOTSTRAP_RESULT=$STAGING_WINDOWS_BOOTSTRAP_RESULT'
+          'STAGING_WINDOWS_BOOTSTRAP_RESULT=${STAGING_WINDOWS_BOOTSTRAP_RESULT:-}'
         ) &&
         persistHelperContent.includes(
-          'STAGING_FIREFOX_POLICY_RESULT=$STAGING_FIREFOX_POLICY_RESULT'
+          'STAGING_FIREFOX_POLICY_RESULT=${STAGING_FIREFOX_POLICY_RESULT:-}'
         )
     );
     assert.ok(
