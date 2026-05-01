@@ -502,6 +502,11 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
     assert.match(
       workflow,
+      /if ! node scripts\/create-production-linux-bootstrap-canary\.mjs; then[\s\S]*FAILURE_BOUNDARY_MESSAGE='Linux bootstrap canary provisioning failed before the client install step\.'[\s\S]*node scripts\/write-linux-bootstrap-canary-failure\.mjs provisioning/,
+      'provisioning failures should be preserved as infrastructure boundaries'
+    );
+    assert.match(
+      workflow,
       /path: linux-production-bootstrap-canary-evidence\.tgz[\s\S]*compression-level: 0/
     );
     assert.match(
@@ -838,6 +843,8 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(script.includes('PRODUCTION_LINUX_BOOTSTRAP_CANARY_ARTIFACT_PATH'));
     assert.ok(script.includes('linux-production-bootstrap-canary'));
     assert.ok(script.includes('/cp/internal/client-canary/manual-request/'));
+    assert.match(script, /async function fetchWithRetry\(input, init = \{\}, attempts = 6\)/);
+    assert.match(script, /Fetch attempt \$\{attempt\}\/\$\{attempts\} failed/);
     assert.ok(
       !script.includes('/api/agent/linux/latest.json'),
       'Linux provisioning should not preflight the agent manifest with an enrollment token before installation'

@@ -205,7 +205,14 @@ async function fetchWithTimeout(input, init = {}) {
   }
 }
 
-async function fetchWithRetry(input, init = {}, attempts = 3) {
+function describeFetchError(error) {
+  const cause = error?.cause;
+  const code = cause?.code ?? error?.code ?? '';
+  const message = error instanceof Error ? error.message : String(error);
+  return code ? `${message} (${code})` : message;
+}
+
+async function fetchWithRetry(input, init = {}, attempts = 6) {
   let lastError;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -216,7 +223,10 @@ async function fetchWithRetry(input, init = {}, attempts = 3) {
       if (attempt === attempts) {
         break;
       }
-      await sleep(500 * attempt);
+      process.stderr.write(
+        `Fetch attempt ${attempt}/${attempts} failed for ${input}: ${describeFetchError(error)}\n`
+      );
+      await sleep(1_000 * attempt);
     }
   }
 

@@ -255,7 +255,13 @@ jobs:
           PRODUCTION_LINUX_BOOTSTRAP_CANARY_URL: ${{ steps.inputs.outputs.base_url }}
           PRODUCTION_LINUX_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
           PRODUCTION_LINUX_BOOTSTRAP_CANARY_ADMIN_TOKEN: ${{ env.PRODUCTION_LINUX_BOOTSTRAP_CANARY_ADMIN_TOKEN || secrets.CP_CLIENT_CANARY_ADMIN_TOKEN }}
-        run: node scripts/create-production-linux-bootstrap-canary.mjs
+        run: |
+          set -euo pipefail
+          if ! node scripts/create-production-linux-bootstrap-canary.mjs; then
+            FAILURE_BOUNDARY_MESSAGE='Linux bootstrap canary provisioning failed before the client install step.' \
+              node scripts/write-linux-bootstrap-canary-failure.mjs provisioning
+            exit 1
+          fi
 
       - name: Reset Linux client state
         shell: bash
