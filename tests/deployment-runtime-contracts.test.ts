@@ -462,14 +462,17 @@ describe('Deployment runtime contracts', () => {
           'release_state_helper_supports_staging_verification_contract "$RELEASE_STATE_HELPER_PATH"'
         ) &&
         persistVerification.includes('STAGING_VERIFICATION_RUNNER_PATH') &&
-        persistVerification.includes('persist-evidence')
+        persistVerification.includes('persist-evidence') &&
+        persistVerification.includes('STAGING_SMOKE_RESULT=${STAGING_SMOKE_RESULT:-}') &&
+        persistVerification.includes('STAGING_SMOKE_STATUS=${STAGING_SMOKE_STATUS:-}') &&
+        persistVerification.includes('STAGING_RELEASE_GATE_RESULT=${STAGING_RELEASE_GATE_RESULT:-}')
     );
     assert.ok(
       readFileSync(stagingLocalVerifyHelperPath, 'utf-8').includes(
-        'remote_assignment STAGING_SMOKE_RESULT "$STAGING_SMOKE_RESULT"'
+        'remote_assignment STAGING_SMOKE_RESULT "${STAGING_SMOKE_RESULT:-}"'
       ) &&
         readFileSync(stagingLocalVerifyHelperPath, 'utf-8').includes(
-          'remote_assignment STAGING_RELEASE_GATE_RESULT "$STAGING_RELEASE_GATE_RESULT"'
+          'remote_assignment STAGING_RELEASE_GATE_RESULT "${STAGING_RELEASE_GATE_RESULT:-}"'
         )
     );
     assert.ok(
