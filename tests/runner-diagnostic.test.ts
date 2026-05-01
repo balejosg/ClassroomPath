@@ -14,7 +14,10 @@ import {
   waitForRun,
   writeEvidenceFile,
 } from '../scripts/lib/github-actions-diagnostic-client.mjs';
-import { summarizeRunTiming } from '../scripts/lib/github-actions-run-timing.mjs';
+import {
+  formatRunTimingMarkdown,
+  summarizeRunTiming,
+} from '../scripts/lib/github-actions-run-timing.mjs';
 import {
   classifyReleaseWaitBlocker,
   formatReleaseWaitBlocker,
@@ -123,6 +126,55 @@ describe('runner diagnostic wrapper', () => {
       summary.skippedJobs.map((job) => job.name),
       ['Hosted Windows Advisory']
     );
+    assert.deepEqual(summary.criticalPath.terminalJob, {
+      name: 'Windows Student Policy',
+      conclusion: 'success',
+      queueSeconds: 150,
+      executionSeconds: 529,
+    });
+  });
+
+  test('formats critical path timing so deploy wait blockers are visible', () => {
+    const summary = summarizeRunTiming({
+      run: {
+        databaseId: 25214295571,
+        status: 'completed',
+        conclusion: 'success',
+        createdAt: '2026-05-01T12:29:40Z',
+      },
+      jobs: [
+        {
+          name: 'Deploy to Production',
+          conclusion: 'success',
+          startedAt: '2026-05-01T12:31:41Z',
+          completedAt: '2026-05-01T12:32:37Z',
+        },
+        {
+          name: 'Linux Production Bootstrap Canary',
+          conclusion: 'success',
+          startedAt: '2026-05-01T12:32:41Z',
+          completedAt: '2026-05-01T12:37:36Z',
+        },
+        {
+          name: 'Release Evidence',
+          conclusion: 'success',
+          startedAt: '2026-05-01T12:37:45Z',
+          completedAt: '2026-05-01T12:37:55Z',
+        },
+      ],
+    });
+
+    assert.equal(summary.criticalPath.terminalJob?.name, 'Release Evidence');
+    assert.equal(summary.criticalPath.longestQueueJob?.name, 'Release Evidence');
+    assert.equal(
+      summary.criticalPath.longestExecutionJob?.name,
+      'Linux Production Bootstrap Canary'
+    );
+
+    const markdown = formatRunTimingMarkdown(summary);
+    assert.match(markdown, /### Critical Path/);
+    assert.match(markdown, /Terminal job: Release Evidence \(queue 485s, execution 10s\)/);
+    assert.match(markdown, /Longest execution: Linux Production Bootstrap Canary/);
   });
 
   test('classifies OpenPath prerelease APT wait blockers', () => {

@@ -231,6 +231,34 @@ Policy:
 - Treat upstream hosted Windows Pester as complementary OpenPath capacity
   evidence, not as a replacement for ClassroomPath self-hosted Windows canaries.
 
+## Pipeline Speed Baseline - 2026-05-01
+
+Current evidence:
+
+- Deploy run `25214295571` for ClassroomPath
+  `658378aa7fcf6aed9f6189d66f9af0cadbcc91aa` succeeded in `8m15s`
+  wall-clock. The timing summary separated queue from execution: `Deploy to
+Production` queue `121s`, execution `56s`; `Smoke Test Production` queue
+  `179s`, execution `43s`; `Linux Production Bootstrap Canary` queue `181s`,
+  execution `295s`; `Windows Production Bootstrap Canary` queue `179s`,
+  execution `200s`; `Release Evidence` queue `485s`, execution `10s`.
+- The critical path ended at `Release Evidence`. The largest execution segment
+  was the Linux bootstrap canary, while the largest wait segment was queue time
+  before `Release Evidence`.
+- Latest `measure-release-candidate-timings.mjs latest --repo
+balejosg/ClassroomPath --limit 3` samples repeated `migrations arm64` as the
+  gate candidate across runs `25213451900`, `25213221158`, and `25212890496`,
+  with family durations `57s`, `55s`, and `68s`.
+
+Decision:
+
+- Keep release wait and canary observability informational first. The repeated
+  RC gate is short enough that the next speed work should stay focused on
+  queue/runner availability before changing cache policy.
+- Do not change `.github/actions/build-release-candidate-image/action.yml` from
+  this sample alone. The plan requires repeated timing and a material cache
+  surface before altering release-candidate cache behavior.
+
 ## Risk To Proof Mapping
 
 | Risk                                          | Primary proof                                                                                                                                                     | Where it runs                                     | Notes                                                               |
