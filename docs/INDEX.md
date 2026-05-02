@@ -46,6 +46,7 @@ Rules:
 - CI/CD signal inventory: [`docs/ci-cd-signal-inventory.md`](ci-cd-signal-inventory.md)
 - Direct Windows runner diagnostic: [`scripts/run-windows-ajax-direct.mjs`](../scripts/run-windows-ajax-direct.mjs)
 - Deploy staging (local SSH workflow after push): [`docs/runbooks/deploy-staging.md`](runbooks/deploy-staging.md)
+- Staging QA fixtures: [`docs/runbooks/staging-qa-fixtures.md`](runbooks/staging-qa-fixtures.md)
 - Deploy production (tag-only promotion): [`docs/runbooks/deploy-production.md`](runbooks/deploy-production.md)
 - Configure Stripe billing: [`docs/runbooks/configure-stripe-billing.md`](runbooks/configure-stripe-billing.md)
 - Canonical deploy targets: [`config/deploy-targets.json`](../config/deploy-targets.json)

@@ -1,0 +1,52 @@
+# Staging QA Fixtures
+
+> Applies to: manual browser QA in `https://classroompath-staging.duckdns.org`
+> Source of truth: `config/staging-qa-fixtures.json`
+
+Use deterministic ClassroomPath-hosted fixture pages for student browser checks. External education
+sites can redirect, challenge, or change independently of ClassroomPath, so they are not suitable as
+the first QA signal.
+
+## Fixture Contract
+
+Each staging QA group must provide:
+
+- one allowed page that renders in Firefox within 10 seconds
+- one allowed page with a same-origin AJAX request
+- one non-allowed URL for request-access
+- one blocked subdomain rule
+- one blocked path rule
+
+The maintained manifest is:
+
+```bash
+config/staging-qa-fixtures.json
+```
+
+The controlled pages are served by the ClassroomPath gateway:
+
+- `/cp/qa-fixtures/basic`
+- `/cp/qa-fixtures/ajax`
+- `/cp/qa-fixtures/ajax.json`
+
+## Validate Before Manual QA
+
+Run the fixture validator before enrolling or resetting the visible student VM:
+
+```bash
+node scripts/validate-staging-qa-fixtures.mjs
+```
+
+The validator fails when an allowed/request-access URL does not resolve, redirects to another host,
+returns an unsuitable HTTP status, or when the controlled pages do not render in Firefox. It does not
+replace the final visible `student-linux` pass; it only removes fragile-domain noise before that pass.
+
+## Student VM Pass
+
+After the manifest validates:
+
+1. Roll back Proxmox `104` / `student-linux` to `student-linux-desktop-clean`.
+2. Enroll it against staging.
+3. In visible Firefox, test the allowed, allowed-AJAX, request-access, blocked-subdomain, and
+   blocked-path entries for each active group in `config/staging-qa-fixtures.json`.
+4. Leave the VM rolled back to the clean snapshot and powered off when QA is complete.

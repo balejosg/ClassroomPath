@@ -1,0 +1,31 @@
+{
+  "environment": "staging",
+  "baseUrl": "https://classroompath-staging.duckdns.org",
+  "classroomId": "class_stage_20260502_informatica",
+  "fixtures": [
+    {
+      "group": "Mates",
+      "allowed": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/basic",
+      "allowedAjax": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/ajax",
+      "requestAccess": "https://example.com/",
+      "blockedSubdomain": "chat.classroompath-staging.duckdns.org",
+      "blockedPath": "classroompath-staging.duckdns.org/cp/qa-fixtures/blocked-path"
+    },
+    {
+      "group": "Lengua",
+      "allowed": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/basic",
+      "allowedAjax": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/ajax",
+      "requestAccess": "https://example.org/",
+      "blockedSubdomain": "video.classroompath-staging.duckdns.org",
+      "blockedPath": "classroompath-staging.duckdns.org/cp/qa-fixtures/blocked-path"
+    },
+    {
+      "group": "Ciencias",
+      "allowed": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/basic",
+      "allowedAjax": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/ajax",
+      "requestAccess": "https://example.net/",
+      "blockedSubdomain": "chat.classroompath-staging.duckdns.org",
+      "blockedPath": "classroompath-staging.duckdns.org/cp/qa-fixtures/blocked-path"
+    }
+  ]
+}

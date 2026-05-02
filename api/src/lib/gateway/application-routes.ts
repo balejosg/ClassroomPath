@@ -46,6 +46,49 @@ export function registerGatewayApplicationRoutes(
     '/cp/internal/client-canary/group/:groupId/diagnostics',
     options.clientCanaryGroupDiagnosticsHandler
   );
+  app.get('/cp/qa-fixtures/basic', (_req, res) => {
+    res.type('html').send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>ClassroomPath QA Basic Fixture</title>
+  </head>
+  <body>
+    <main data-qa-fixture="basic">
+      <h1>ClassroomPath QA Basic Fixture</h1>
+      <p>This deterministic page is served by the ClassroomPath gateway.</p>
+    </main>
+  </body>
+</html>`);
+  });
+  app.get('/cp/qa-fixtures/ajax', (_req, res) => {
+    res.type('html').send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>ClassroomPath QA AJAX Fixture</title>
+  </head>
+  <body>
+    <main data-qa-fixture="ajax">
+      <h1>ClassroomPath QA AJAX Fixture</h1>
+      <output id="qa-ajax-result">pending</output>
+    </main>
+    <script>
+      fetch('/cp/qa-fixtures/ajax.json')
+        .then((response) => response.json())
+        .then((payload) => {
+          document.getElementById('qa-ajax-result').textContent = payload.status;
+        })
+        .catch(() => {
+          document.getElementById('qa-ajax-result').textContent = 'error';
+        });
+    </script>
+  </body>
+</html>`);
+  });
+  app.get('/cp/qa-fixtures/ajax.json', (_req, res) => {
+    res.json({ status: 'loaded' });
+  });
   app.use('/cp/trpc', options.trpcMiddleware);
 
   app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {

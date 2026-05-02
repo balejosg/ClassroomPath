@@ -142,4 +142,15 @@ await describe('application-routes', { concurrency: false }, async () => {
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { status: 'canary-diagnostics' });
   });
+
+  test('serves deterministic staging QA fixture pages before the tRPC handler', async () => {
+    const basic = await fetch(`${baseUrl}/cp/qa-fixtures/basic`);
+    assert.equal(basic.status, 200);
+    assert.equal(basic.headers.get('content-type')?.includes('text/html'), true);
+    assert.match(await basic.text(), /data-qa-fixture="basic"/);
+
+    const ajax = await fetch(`${baseUrl}/cp/qa-fixtures/ajax.json`);
+    assert.equal(ajax.status, 200);
+    assert.deepEqual(await ajax.json(), { status: 'loaded' });
+  });
 });
