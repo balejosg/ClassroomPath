@@ -2,8 +2,7 @@
 
 import dns from 'node:dns/promises';
 import { appendFileSync } from 'node:fs';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import process from 'node:process';
 import { execFile } from 'node:child_process';
@@ -43,6 +42,10 @@ const PAGE_OBSERVER_WAIT_MS = Number.parseInt(
   process.env.LINUX_AJAX_AUTO_ALLOW_PAGE_OBSERVER_WAIT_MS ?? '30000',
   10
 );
+const FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS = Number.parseInt(
+  process.env.LINUX_AJAX_AUTO_ALLOW_FIREFOX_WARMUP_TIMEOUT_MS ?? '15000',
+  10
+);
 const PROBE_TIMEOUT_MS = Number.parseInt(
   process.env.LINUX_AJAX_AUTO_ALLOW_PROBE_TIMEOUT_MS ?? '5000',
   10
@@ -74,6 +77,96 @@ function sleep(ms) {
 
 function buildProbeUrl(probe) {
   return buildAjaxAutoAllowProbeUrl(probe, PORT);
+}
+
+function extractFirefoxExtensionUuid(prefsContent, extensionId) {
+  const match = /user_pref\("extensions\.webextensions\.uuids",\s*"(.+)"\);/.exec(prefsContent);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  try {
+    const rawJson = match[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    const mapping = JSON.parse(rawJson);
+    const extensionUuid = mapping?.[extensionId];
+    return typeof extensionUuid === 'string' && extensionUuid !== '' ? extensionUuid : null;
+  } catch {
+    return null;
+  }
+}
+
+async function waitForFirefoxExtensionUuid({
+  profileDir,
+  extensionId,
+  timeoutMs = FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS,
+  pollMs = 100,
+}) {
+  const prefsPath = join(profileDir, 'prefs.js');
+  const deadline = Date.now() + timeoutMs;
+  let lastPrefsContent = '';
+
+  while (Date.now() < deadline) {
+    try {
+      lastPrefsContent = await readFile(prefsPath, 'utf8');
+      const extensionUuid = extractFirefoxExtensionUuid(lastPrefsContent, extensionId);
+      if (extensionUuid) {
+        return extensionUuid;
+      }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    await sleep(pollMs);
+  }
+
+  const profileSummary = lastPrefsContent.includes('extensions.webextensions.uuids')
+    ? 'extensions.webextensions.uuids present without expected extension'
+    : 'extensions.webextensions.uuids missing';
+  throw new Error(
+    `Could not resolve Firefox extension UUID for ${extensionId} in ${prefsPath}: ${profileSummary}`
+  );
+}
+
+async function waitForFirefoxExtensionRuntimeReady({
+  driver,
+  profileDir,
+  extensionId = EXPECTED_EXTENSION_ID,
+  timeoutMs = FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS,
+}) {
+  const extensionUuid = await waitForFirefoxExtensionUuid({ profileDir, extensionId, timeoutMs });
+  const popupUrl = `moz-extension://${extensionUuid}/popup/popup.html`;
+  let popupLoadError = null;
+
+  try {
+    await driver.get(popupUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes('Navigation timed out')) {
+      throw error;
+    }
+    popupLoadError = message;
+  }
+
+  await driver.wait(async () => {
+    try {
+      return await driver.executeScript(
+        `return typeof globalThis.browser?.runtime?.sendMessage === 'function';`
+      );
+    } catch {
+      return false;
+    }
+  }, timeoutMs);
+
+  return {
+    ready: true,
+    expectedExtensionId: extensionId,
+    extensionUuid,
+    profileDir,
+    popupUrl,
+    popupLoadError,
+  };
 }
 
 async function readFileEvidence(path, expectedHosts = []) {
@@ -370,7 +463,6 @@ function createCanaryServer({ state }) {
 async function launchFirefox(originUrl) {
   const { Builder } = await import('selenium-webdriver');
   const firefox = await import('selenium-webdriver/firefox.js');
-  const profileDir = await mkdtemp(join(tmpdir(), 'linux-ajax-auto-allow-firefox-'));
   const options = new firefox.Options();
   options.addArguments('-headless');
   options.setPreference('network.dns.disablePrefetch', true);
@@ -380,6 +472,24 @@ async function launchFirefox(originUrl) {
   options.setPreference('network.dnsCacheExpirationGracePeriod', 0);
   const driver = await new Builder().forBrowser('firefox').setFirefoxOptions(options).build();
   await driver.manage().setTimeouts({ pageLoad: PAGE_LOAD_TIMEOUT_MS, script: 10000 });
+  const profileDir = driver.getCapabilities().get('moz:profile');
+  if (typeof profileDir !== 'string' || profileDir === '') {
+    throw new Error('Firefox did not expose a moz:profile path for extension warmup');
+  }
+  const firefoxExtensionWarmup = await waitForFirefoxExtensionRuntimeReady({
+    driver,
+    profileDir,
+  }).catch((error) => ({
+    ready: false,
+    expectedExtensionId: EXPECTED_EXTENSION_ID,
+    profileDir,
+    error: error instanceof Error ? error.message : String(error),
+  }));
+  if (!firefoxExtensionWarmup.ready) {
+    console.error(
+      `Linux AJAX canary Firefox extension warmup failed: ${firefoxExtensionWarmup.error}`
+    );
+  }
   let firstPageLoadCompleted = true;
   let firstPageLoadError = null;
   try {
@@ -393,7 +503,7 @@ async function launchFirefox(originUrl) {
       }`
     );
   }
-  return { driver, firstPageLoadCompleted, firstPageLoadError, profileDir };
+  return { driver, firstPageLoadCompleted, firstPageLoadError, profileDir, firefoxExtensionWarmup };
 }
 
 async function waitForPageObserver(driver, originUrl) {
@@ -534,7 +644,7 @@ async function main() {
         browserNavigationBeforeAttempts.openpathObserverState ||
         null,
       probeEvidence,
-      firefoxExtensionWarmup: { ready: true, expectedExtensionId: EXPECTED_EXTENSION_ID },
+      firefoxExtensionWarmup: firefoxSession.firefoxExtensionWarmup,
       browserNavigation: {
         beforeAttempts: browserNavigationBeforeAttempts,
         afterAttempts: browserNavigationAfterAttempts,

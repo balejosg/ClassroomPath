@@ -171,6 +171,19 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux canary performs real Firefox extension warmup before origin navigation', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.match(canaryScript, /async function waitForFirefoxExtensionRuntimeReady/);
+    assert.match(canaryScript, /extensions\\.webextensions\\.uuids/);
+    assert.match(canaryScript, /moz-extension:\/\/\$\{extensionUuid\}\/popup\/popup\.html/);
+    assert.match(
+      canaryScript,
+      /firefoxExtensionWarmup = await waitForFirefoxExtensionRuntimeReady/
+    );
+    assert.doesNotMatch(canaryScript, /firefoxExtensionWarmup:\s*\{\s*ready:\s*true/);
+  });
+
   test('Linux workflow runs the AJAX canary on the HTTP port allowed by the firewall', () => {
     const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
     const ajaxStep =
