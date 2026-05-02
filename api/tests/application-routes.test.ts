@@ -152,5 +152,10 @@ await describe('application-routes', { concurrency: false }, async () => {
     const ajax = await fetch(`${baseUrl}/cp/qa-fixtures/ajax.json`);
     assert.equal(ajax.status, 200);
     assert.deepEqual(await ajax.json(), { status: 'loaded' });
+
+    const ajaxScript = await fetch(`${baseUrl}/cp/qa-fixtures/ajax.js`);
+    assert.equal(ajaxScript.status, 200);
+    assert.equal(ajaxScript.headers.get('content-type')?.includes('application/javascript'), true);
+    assert.match(await ajaxScript.text(), /ajax\.json/);
   });
 });

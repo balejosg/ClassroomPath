@@ -27,7 +27,22 @@ The controlled pages are served by the ClassroomPath gateway:
 
 - `/cp/qa-fixtures/basic`
 - `/cp/qa-fixtures/ajax`
+- `/cp/qa-fixtures/ajax.js`
 - `/cp/qa-fixtures/ajax.json`
+
+## Apply To Staging Data
+
+Generate the deterministic SQL from the manifest and apply it to the staging PostgreSQL database:
+
+```bash
+node scripts/apply-staging-qa-fixtures.mjs > /tmp/staging-qa-fixtures.sql
+ssh root@192.168.1.150 \
+  "pct exec 113 -- docker exec -i classroompath-postgres-staging psql -U classroompath -d classroompath_staging" \
+  < /tmp/staging-qa-fixtures.sql
+```
+
+The script refuses non-staging manifests and only targets the maintained staging QA classroom/group
+set.
 
 ## Validate Before Manual QA
 

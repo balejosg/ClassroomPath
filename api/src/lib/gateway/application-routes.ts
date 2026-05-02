@@ -73,7 +73,12 @@ export function registerGatewayApplicationRoutes(
       <h1>ClassroomPath QA AJAX Fixture</h1>
       <output id="qa-ajax-result">pending</output>
     </main>
-    <script>
+    <script src="/cp/qa-fixtures/ajax.js"></script>
+  </body>
+</html>`);
+  });
+  app.get('/cp/qa-fixtures/ajax.js', (_req, res) => {
+    res.type('application/javascript').send(`
       fetch('/cp/qa-fixtures/ajax.json')
         .then((response) => response.json())
         .then((payload) => {
@@ -82,9 +87,7 @@ export function registerGatewayApplicationRoutes(
         .catch(() => {
           document.getElementById('qa-ajax-result').textContent = 'error';
         });
-    </script>
-  </body>
-</html>`);
+`);
   });
   app.get('/cp/qa-fixtures/ajax.json', (_req, res) => {
     res.json({ status: 'loaded' });
