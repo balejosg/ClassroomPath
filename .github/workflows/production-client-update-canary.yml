@@ -57,7 +57,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CI_SIGNAL_CLASS: post-release health
-          CI_DUPLICATE_POLICY: same workflow + same SHA + success within 60m
+          CI_DUPLICATE_POLICY: same workflow success or deploy evidence + same SHA within 60m
           CI_DUPLICATE_FRESHNESS_WINDOW: 60m
           CI_WORKFLOW_NAME: Production Client Update Canary
         run: node scripts/ci-signal-policy.mjs duplicate-suppression

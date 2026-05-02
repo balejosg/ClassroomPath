@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  findFreshDeployEvidenceRun,
   findFreshSameShaSuccess,
   parseFreshnessWindow,
   resolveDuplicateSuppression,
@@ -107,5 +108,73 @@ describe('CI signal policy', () => {
       }).shouldSkip,
       true
     );
+  });
+
+  test('suppresses scheduled canary when same-SHA deploy evidence is active', () => {
+    const now = new Date('2026-05-01T12:00:00.000Z');
+    const deployRuns = [
+      {
+        databaseId: 10,
+        workflowName: 'Deploy',
+        event: 'push',
+        headBranch: 'v1.2.99',
+        headSha: 'abc',
+        status: 'in_progress',
+        conclusion: '',
+        updatedAt: '2026-05-01T11:59:00.000Z',
+        url: 'https://github.example/deploy/10',
+      },
+    ];
+
+    assert.equal(
+      findFreshDeployEvidenceRun({
+        runs: deployRuns,
+        sha: 'abc',
+        currentRunId: 6,
+        now,
+        freshnessMs: parseFreshnessWindow('60m'),
+      })?.databaseId,
+      10
+    );
+
+    const result = resolveDuplicateSuppression({
+      eventName: 'schedule',
+      runs: [],
+      deployRuns,
+      sha: 'abc',
+      currentRunId: 6,
+      now,
+      freshnessWindow: '60m',
+    });
+
+    assert.equal(result.shouldSkip, true);
+    assert.equal(result.run?.databaseId, 10);
+    assert.match(result.reason, /deploy evidence run 10 is already covering abc/);
+  });
+
+  test('does not suppress workflow-run post-deploy evidence', () => {
+    const result = resolveDuplicateSuppression({
+      eventName: 'workflow_run',
+      runs: [],
+      deployRuns: [
+        {
+          databaseId: 10,
+          workflowName: 'Deploy',
+          event: 'push',
+          headBranch: 'v1.2.99',
+          headSha: 'abc',
+          status: 'completed',
+          conclusion: 'success',
+          updatedAt: '2026-05-01T11:59:00.000Z',
+        },
+      ],
+      sha: 'abc',
+      currentRunId: 6,
+      now: new Date('2026-05-01T12:00:00.000Z'),
+      freshnessWindow: '60m',
+    });
+
+    assert.equal(result.shouldSkip, false);
+    assert.match(result.reason, /workflow_run is not eligible/);
   });
 });

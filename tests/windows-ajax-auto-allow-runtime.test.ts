@@ -34,6 +34,7 @@ describe('Windows AJAX auto-allow runtime module', () => {
     const tempDir = await mkdtemp(join(tmpdir(), 'windows-ajax-runtime-'));
     const artifactPath = join(tempDir, 'artifact.json');
     const cleanupEvents: string[] = [];
+    const progressLines: string[] = [];
 
     try {
       const config = createWindowsAjaxAutoAllowRuntimeConfig({
@@ -94,7 +95,9 @@ describe('Windows AJAX auto-allow runtime module', () => {
               restoreFirefoxEnterprisePolicy: async () => cleanupEvents.push('policy'),
             },
             output: {
-              error: () => {},
+              error: (line: string) => {
+                if (line.startsWith('CANARY_PROGRESS ')) progressLines.push(line);
+              },
               log: () => {},
               githubOutput: () => {},
             },
@@ -107,6 +110,17 @@ describe('Windows AJAX auto-allow runtime module', () => {
       assert.equal(artifact.diagnostics.preflight.phase, 'preflight');
       assert.equal(artifact.diagnostics.postFailure.phase, 'post-firefox-warmup-failure');
       assert.deepEqual(cleanupEvents, ['server', 'profile', 'policy']);
+      assert.deepEqual(
+        progressLines.map((line) => {
+          const payload = JSON.parse(line.slice('CANARY_PROGRESS '.length));
+          return [payload.canary, payload.phase, payload.status, payload.boundaryId ?? null];
+        }),
+        [
+          ['windows-ajax', 'bootstrap', 'started', null],
+          ['windows-ajax', 'bootstrap', 'passed', 'none'],
+          ['windows-ajax', 'firefox-extension-ready', 'failed', 'firefox-extension-ready'],
+        ]
+      );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

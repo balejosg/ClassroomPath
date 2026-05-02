@@ -143,7 +143,9 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     );
     assert.match(String(linuxJob?.if ?? ''), /github\.event_name != 'schedule'[\s\S]*workflow_run/);
     assert.ok(
-      workflowText.includes('CI_DUPLICATE_POLICY: same workflow + same SHA + success within 60m'),
+      workflowText.includes(
+        'CI_DUPLICATE_POLICY: same workflow success or deploy evidence + same SHA within 60m'
+      ),
       'workflow summary should expose the duplicate-run policy'
     );
   });

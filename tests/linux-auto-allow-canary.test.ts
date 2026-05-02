@@ -482,6 +482,11 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
 
     assert.ok(canaryScript.includes('withLinuxAutoAllowDiagnostics'));
+    assert.ok(canaryScript.includes("from './lib/canary-progress.mjs'"));
+    assert.ok(canaryScript.includes("createCanaryProgressReporter({ canary: 'linux-ajax'"));
+    assert.ok(canaryScript.includes("progress('bootstrap', 'started'"));
+    assert.ok(canaryScript.includes("progress('firefox-extension-ready', 'passed'"));
+    assert.ok(canaryScript.includes("progress('artifact-written', success ? 'passed' : 'failed'"));
     assert.ok(canaryScript.includes("writeGithubOutput('failure_boundary_id'"));
     assert.ok(canaryScript.includes("writeGithubOutput('failure_boundary_message'"));
     assert.match(

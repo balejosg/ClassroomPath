@@ -28,6 +28,7 @@ import {
   waitForAjaxAutoAllowPageObserver,
 } from './lib/ajax-auto-allow-canary-harness.mjs';
 import { collectCanaryGroupDiagnostics as collectCanaryGroupDiagnosticsFromApi } from './lib/canary-group-diagnostics.mjs';
+import { createCanaryProgressReporter } from './lib/canary-progress.mjs';
 import { evaluateLinuxAjaxBrowserPageOutcome } from './linux-ajax-canary-result.mjs';
 
 const PORT = Number.parseInt(process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18089', 10);
@@ -78,6 +79,8 @@ const FIREFOX_EXTENSION_PATH_CANDIDATES = [
 const execFileAsync = promisify(execFile);
 
 class LinuxAjaxAutoAllowFunctionalFailure extends Error {}
+
+const progress = createCanaryProgressReporter({ canary: 'linux-ajax' });
 
 function writeGithubOutput(key, value) {
   if (!process.env.GITHUB_OUTPUT) return;
@@ -603,6 +606,7 @@ async function waitForPageObserver(driver, originUrl) {
 }
 
 async function main() {
+  progress('bootstrap', 'started', { message: 'Starting Linux AJAX auto-allow canary' });
   const originUrl = `http://${ORIGIN_HOST}:${PORT}/`;
   const expectedHosts = [
     ORIGIN_HOST,
@@ -614,6 +618,7 @@ async function main() {
     server.once('error', reject);
     server.listen(PORT, '0.0.0.0', resolve);
   });
+  progress('bootstrap', 'passed', { boundaryId: 'none' });
 
   let firefoxSession = null;
   const enrollmentSeed = await waitForEnrollmentSeed();
@@ -625,6 +630,14 @@ async function main() {
   };
   try {
     firefoxSession = await launchFirefox(originUrl);
+    if (firefoxSession.firefoxExtensionWarmup?.ready === true) {
+      progress('firefox-extension-ready', 'passed', { boundaryId: 'none' });
+    } else {
+      progress('firefox-extension-ready', 'failed', {
+        boundaryId: 'firefox-extension-ready',
+        message: firefoxSession.firefoxExtensionWarmup?.error ?? 'Firefox extension warmup failed',
+      });
+    }
     const browserNavigationBeforeAttempts = await waitForPageObserver(
       firefoxSession.driver,
       originUrl
@@ -748,6 +761,10 @@ async function main() {
     });
 
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+    progress('artifact-written', success ? 'passed' : 'failed', {
+      boundaryId: summary.failureBoundary?.id ?? 'unknown',
+      message: summary.failureBoundary?.message ?? '',
+    });
     console.error(`LINUX_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`);
     writeGithubOutput('linux_ajax_auto_allow_result', success ? 'success' : 'failure');
     writeGithubOutput('failure_boundary_id', summary.failureBoundary?.id ?? 'unknown');

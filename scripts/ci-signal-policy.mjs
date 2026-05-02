@@ -43,9 +43,40 @@ export function findFreshSameShaSuccess({
   });
 }
 
+export function findFreshDeployEvidenceRun({
+  runs,
+  sha,
+  currentRunId,
+  now = new Date(),
+  freshnessMs,
+}) {
+  const cutoffMs = now.getTime() - freshnessMs;
+
+  return runs.find((run) => {
+    const runId = String(run.databaseId ?? run.id ?? '');
+    const updatedAt = Date.parse(String(run.updatedAt ?? run.createdAt ?? ''));
+    const status = String(run.status ?? '');
+    const conclusion = String(run.conclusion ?? '');
+    const headBranch = String(run.headBranch ?? '');
+    const workflowName = String(run.workflowName ?? run.name ?? '');
+
+    return (
+      runId !== String(currentRunId ?? '') &&
+      workflowName === 'Deploy' &&
+      run.event === 'push' &&
+      headBranch.startsWith('v') &&
+      run.headSha === sha &&
+      (status === 'in_progress' || (status === 'completed' && conclusion === 'success')) &&
+      Number.isFinite(updatedAt) &&
+      updatedAt >= cutoffMs
+    );
+  });
+}
+
 export function resolveDuplicateSuppression({
   eventName,
   runs,
+  deployRuns = [],
   sha,
   currentRunId,
   now = new Date(),
@@ -59,6 +90,24 @@ export function resolveDuplicateSuppression({
   }
 
   const freshnessMs = parseFreshnessWindow(freshnessWindow);
+  const matchingDeployRun = findFreshDeployEvidenceRun({
+    runs: deployRuns,
+    sha,
+    currentRunId,
+    now,
+    freshnessMs,
+  });
+
+  if (matchingDeployRun) {
+    return {
+      shouldSkip: true,
+      reason: `deploy evidence run ${
+        matchingDeployRun.databaseId ?? matchingDeployRun.id
+      } is already covering ${sha}`,
+      run: matchingDeployRun,
+    };
+  }
+
   const matchingRun = findFreshSameShaSuccess({
     runs,
     sha,
@@ -81,25 +130,18 @@ export function resolveDuplicateSuppression({
   };
 }
 
-function ghRunList({ workflowName, limit }) {
-  const stdout = execFileSync(
-    'gh',
-    [
-      'run',
-      'list',
-      '--workflow',
-      workflowName,
-      '--event',
-      'schedule',
-      '--branch',
-      'main',
-      '--limit',
-      String(limit),
-      '--json',
-      'databaseId,status,conclusion,headSha,event,updatedAt,url,name',
-    ],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+function ghRunList({ workflowName, limit, event = null, branch = null }) {
+  const args = ['run', 'list', '--workflow', workflowName];
+  if (event) args.push('--event', event);
+  if (branch) args.push('--branch', branch);
+  args.push(
+    '--limit',
+    String(limit),
+    '--json',
+    'databaseId,status,conclusion,headSha,headBranch,event,updatedAt,url,name,workflowName'
   );
+
+  const stdout = execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
   return JSON.parse(stdout);
 }
@@ -142,8 +184,14 @@ function runDuplicateSuppressionCli() {
   const limit = Number(process.env.CI_DUPLICATE_RUN_LIST_LIMIT ?? '20');
 
   let runs = [];
+  let deployRuns = [];
   try {
-    runs = eventName === 'schedule' ? ghRunList({ workflowName, limit }) : [];
+    runs =
+      eventName === 'schedule'
+        ? ghRunList({ workflowName, limit, event: 'schedule', branch: 'main' })
+        : [];
+    deployRuns =
+      eventName === 'schedule' ? ghRunList({ workflowName: 'Deploy', limit, event: 'push' }) : [];
   } catch (error) {
     const reason = `could not inspect prior scheduled runs: ${error.message}`;
     writeOutput('should_skip', 'false');
@@ -159,6 +207,7 @@ function runDuplicateSuppressionCli() {
   const result = resolveDuplicateSuppression({
     eventName,
     runs,
+    deployRuns,
     sha,
     currentRunId,
     freshnessWindow,

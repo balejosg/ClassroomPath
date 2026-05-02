@@ -25,6 +25,7 @@ import {
   evidenceContainsAllExpectedHosts,
   waitForEvidenceObservation,
 } from './auto-allow-observation.mjs';
+import { createCanaryProgressReporter } from './canary-progress.mjs';
 const PORT = Number.parseInt(process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18088', 10);
 const TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS ?? '90000',
@@ -140,10 +141,16 @@ export function createWindowsAjaxAutoAllowRuntimeConfig(env = process.env) {
 }
 
 async function runInjectedRuntime(config, adapters) {
+  const progress = createCanaryProgressReporter({
+    canary: 'windows-ajax',
+    output: (line) => adapters.output.error?.(line),
+  });
+  progress('bootstrap', 'started', { message: 'Starting Windows AJAX auto-allow canary' });
   const firefoxPath = adapters.browser.findFirefox(config);
   const targetUrl = buildWindowsAutoAllowProbeUrl(config.probes[0], config.port);
   const assetUrl = buildWindowsAutoAllowProbeUrl(config.probes[1], config.port);
   const server = await adapters.server.createProbeServer(config);
+  progress('bootstrap', 'passed', { boundaryId: 'none' });
   const state = server.state;
   let managedPolicySuspension = null;
   let profileDir = null;
@@ -169,6 +176,10 @@ async function runInjectedRuntime(config, adapters) {
       : await adapters.browser.waitForFirefoxExtensionReady({ firefoxPath, profileDir, config });
 
     if (!firefoxExtensionWarmup.ready) {
+      progress('firefox-extension-ready', 'failed', {
+        boundaryId: 'firefox-extension-ready',
+        message: 'Firefox extension warmup failed',
+      });
       const summary = buildWindowsAutoAllowCanarySummary({
         result: {
           success: false,
@@ -213,6 +224,8 @@ async function runInjectedRuntime(config, adapters) {
       adapters.output.githubOutput?.('windows_ajax_auto_allow_result', 'failure');
       throw new Error(`Windows AJAX auto-allow canary failed: ${JSON.stringify(summary)}`);
     }
+
+    progress('firefox-extension-ready', 'passed', { boundaryId: 'none' });
 
     throw new Error('Injected Windows AJAX runtime success path is not implemented');
   } finally {
@@ -1238,6 +1251,8 @@ async function readWhitelistContainsHost(host) {
 }
 
 async function main() {
+  const progress = createCanaryProgressReporter({ canary: 'windows-ajax' });
+  progress('bootstrap', 'started', { message: 'Starting Windows AJAX auto-allow canary' });
   const firefoxPath = findFirefox();
   const targetUrl = buildProbeUrl(AUTO_ALLOW_PROBES[0]);
   const assetUrl = buildProbeUrl(AUTO_ALLOW_PROBES[1]);
@@ -1460,6 +1475,7 @@ async function main() {
     server.once('error', reject);
     server.listen(PORT, '0.0.0.0', resolve);
   });
+  progress('bootstrap', 'passed', { boundaryId: 'none' });
 
   const preflightDiagnostics = await collectWindowsAutoAllowDiagnostics('preflight');
   const profileDir = await mkdtemp(join(tmpdir(), 'windows-ajax-auto-allow-firefox-'));
@@ -1495,6 +1511,10 @@ async function main() {
   }
 
   if (!firefoxExtensionWarmup.ready) {
+    progress('firefox-extension-ready', 'failed', {
+      boundaryId: 'firefox-extension-ready',
+      message: 'Firefox extension warmup failed',
+    });
     const summary = buildWindowsAutoAllowCanarySummary({
       result: {
         success: false,
@@ -1536,6 +1556,8 @@ async function main() {
     await restoreFirefoxEnterprisePolicy(managedPolicySuspension).catch(() => {});
     throw new Error(`Windows AJAX auto-allow canary failed: ${JSON.stringify(summary)}`);
   }
+
+  progress('firefox-extension-ready', 'passed', { boundaryId: 'none' });
 
   if (!USE_SELENIUM_FIREFOX) {
     firefox = spawn(firefoxPath, ['-headless', '-no-remote', '-profile', profileDir, originUrl], {
@@ -1663,6 +1685,10 @@ async function main() {
     });
 
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+    progress('artifact-written', summary.success ? 'passed' : 'failed', {
+      boundaryId: summary.failureBoundary?.id ?? 'unknown',
+      message: summary.failureBoundary?.message ?? '',
+    });
     const summaryLine = `WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`;
     if (summary.success) {
       console.log(summaryLine);

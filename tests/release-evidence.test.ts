@@ -300,10 +300,34 @@ describe('release evidence rendering', () => {
         health: { status: 'ok' },
         ready: { ready: true },
       },
+      timings: {
+        jobs: {
+          deployProduction: { durationMs: 88000 },
+          smokeTestProduction: { durationMs: 49000 },
+          windowsProductionBootstrapCanary: { durationMs: 195000 },
+          linuxProductionBootstrapCanary: { durationMs: 321000 },
+          releaseEvidence: { durationMs: 10000 },
+        },
+      },
     });
 
     assert.equal(json.artifactIntegrity?.windowsProductionBootstrapCanary?.status, 'ok');
     assert.equal(json.artifactIntegrity?.linuxProductionBootstrapCanary?.status, 'missing');
+    assert.ok(
+      markdown.indexOf('## Release Dashboard') < markdown.indexOf('## Release Evidence'),
+      'dashboard should be the first release-evidence section'
+    );
+    assert.match(markdown, /\| Tag \| `v1\.2\.99` \|/);
+    assert.match(markdown, /\| ClassroomPath SHA \| `cp-sha` \|/);
+    assert.match(markdown, /\| OpenPath SHA \| `op-sha` \|/);
+    assert.match(
+      markdown,
+      /\| Linux production bootstrap canary \| failure \| page-resource-candidates \| 5m21s \| linux-production-bootstrap-canary \|/
+    );
+    assert.match(
+      markdown,
+      /\| Windows production bootstrap canary \| success \| none \| 3m15s \| windows-production-bootstrap-canary \|/
+    );
     assert.match(markdown, /Windows canary artifact integrity: `ok`/);
     assert.match(markdown, /Linux canary artifact integrity: `missing`/);
     assert.match(markdown, /Windows bootstrap failure boundary: `none`/);

@@ -80,6 +80,103 @@ function includesArtifactEvidence(result) {
   return result === 'success' || result === 'failure' || result === 'failed';
 }
 
+function markdownCell(value) {
+  return String(value ?? 'n/a')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\|/g, '\\|');
+}
+
+function formatDuration(value) {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+
+  const durationMs = Number(value?.durationMs ?? value?.elapsedMs ?? value);
+  if (!Number.isFinite(durationMs) || durationMs < 0) {
+    return 'n/a';
+  }
+
+  const totalSeconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m${String(seconds).padStart(2, '0')}s` : `${seconds}s`;
+}
+
+function renderDashboardStatusRow({
+  label,
+  result,
+  boundary = 'n/a',
+  duration = 'n/a',
+  evidence = 'n/a',
+}) {
+  return `| ${markdownCell(label)} | ${markdownCell(result)} | ${markdownCell(boundary)} | ${markdownCell(formatDuration(duration))} | ${markdownCell(evidence)} |`;
+}
+
+function renderReleaseDashboardMarkdown({
+  evidence,
+  windowsFailureBoundary,
+  linuxFailureBoundary,
+}) {
+  const timings = evidence.timings?.jobs ?? {};
+
+  return [
+    '## Release Dashboard',
+    '',
+    '| Field | Value |',
+    '| --- | --- |',
+    `| Tag | \`${markdownCell(evidence.release.tagName ?? 'n/a')}\` |`,
+    `| Outcome | \`${markdownCell(evidence.release.outcome ?? 'n/a')}\` |`,
+    `| ClassroomPath SHA | \`${markdownCell(evidence.release.classroomPathSha ?? 'n/a')}\` |`,
+    `| OpenPath SHA | \`${markdownCell(evidence.release.openPathSha ?? 'n/a')}\` |`,
+    `| Promotion eligibility | \`${markdownCell(evidence.promotionEligibility.status ?? 'n/a')}\` |`,
+    evidence.workflowRunUrl
+      ? `| Workflow run | ${markdownCell(evidence.workflowRunUrl)} |`
+      : '| Workflow run | n/a |',
+    '',
+    '| Signal | Result | Boundary | Duration | Evidence |',
+    '| --- | --- | --- | --- | --- |',
+    renderDashboardStatusRow({
+      label: 'Staging evidence',
+      result: evidence.jobs.verifyStagingReleaseState ?? 'n/a',
+      duration: timings.verifyStagingReleaseState,
+      evidence: evidence.artifacts.stagingReleaseState ?? 'n/a',
+    }),
+    renderDashboardStatusRow({
+      label: 'Deploy production',
+      result: evidence.jobs.deployProduction ?? 'n/a',
+      duration: timings.deployProduction,
+      evidence: evidence.workflowRunUrl ?? 'n/a',
+    }),
+    renderDashboardStatusRow({
+      label: 'Production smoke',
+      result: evidence.jobs.smokeTestProduction ?? 'n/a',
+      duration: timings.smokeTestProduction,
+      evidence: evidence.artifacts.productionSmokeResults ?? 'n/a',
+    }),
+    renderDashboardStatusRow({
+      label: 'Windows production bootstrap canary',
+      result: evidence.jobs.windowsProductionBootstrapCanary ?? 'n/a',
+      boundary: windowsFailureBoundary,
+      duration: timings.windowsProductionBootstrapCanary,
+      evidence: evidence.artifacts.windowsProductionBootstrapCanary ?? 'n/a',
+    }),
+    renderDashboardStatusRow({
+      label: 'Linux production bootstrap canary',
+      result: evidence.jobs.linuxProductionBootstrapCanary ?? 'n/a',
+      boundary: linuxFailureBoundary,
+      duration: timings.linuxProductionBootstrapCanary,
+      evidence: evidence.artifacts.linuxProductionBootstrapCanary ?? 'n/a',
+    }),
+    renderDashboardStatusRow({
+      label: 'Release evidence',
+      result: evidence.artifacts.releaseEvidence ? 'published' : 'n/a',
+      duration: timings.releaseEvidence,
+      evidence: evidence.artifacts.releaseEvidence ?? 'n/a',
+    }),
+    '',
+  ];
+}
+
 function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
   if (smokeResult === 'success') {
     return 'released';
@@ -255,6 +352,7 @@ export function buildReleaseEvidence(env = process.env) {
     artifactIntegrity: env.artifactIntegrity ?? null,
     canaries: env.canaries ?? null,
     production: env.production ?? null,
+    timings: env.timings ?? null,
   };
 }
 
@@ -283,6 +381,11 @@ export function renderReleaseEvidenceMarkdown(evidence) {
   const linuxCanaryTargetUrl = evidence.canaries?.linux?.targetUrl ?? 'n/a';
 
   return [
+    ...renderReleaseDashboardMarkdown({
+      evidence,
+      windowsFailureBoundary,
+      linuxFailureBoundary,
+    }),
     '## Release Evidence',
     '',
     `- Outcome: \`${evidence.release.outcome}\``,
