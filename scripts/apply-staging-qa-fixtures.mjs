@@ -39,6 +39,10 @@ for (const [groupSlug, fixture] of groupFixtures) {
     { type: 'whitelist', value: hostFromUrl(fixture.allowed) },
     { type: 'whitelist', value: hostFromUrl(fixture.allowedAjax) },
     {
+      type: 'whitelist',
+      value: hostFromHostPath(requireString(fixture.blockedPath, `${fixture.group}.blockedPath`)),
+    },
+    {
       type: 'blocked_subdomain',
       value: normalizeHostname(
         requireString(fixture.blockedSubdomain, `${fixture.group}.blockedSubdomain`)
@@ -150,6 +154,10 @@ function normalizeHostPath(value) {
     throw new Error(`Expected host/path rule, got ${value}`);
   }
   return `${normalizeHostname(trimmed.slice(0, slash))}${trimmed.slice(slash)}`;
+}
+
+function hostFromHostPath(value) {
+  return normalizeHostname(normalizeHostPath(value).split('/')[0] ?? '');
 }
 
 function dedupeRules(rules) {

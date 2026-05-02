@@ -30,6 +30,9 @@ The controlled pages are served by the ClassroomPath gateway:
 - `/cp/qa-fixtures/ajax.js`
 - `/cp/qa-fixtures/ajax.json`
 
+Blocked-path fixtures use `example.com/openpath-blocked-path` because the OpenPath Linux client
+protects the ClassroomPath control-plane host from path-level block rules.
+
 ## Apply To Staging Data
 
 Generate the deterministic SQL from the manifest and apply it to the staging PostgreSQL database:
