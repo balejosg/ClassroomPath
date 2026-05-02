@@ -391,6 +391,18 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.equal(summary.failureBoundary.id, 'none');
   });
 
+  test('Linux canary exits successfully when declarative diagnostics converge', () => {
+    const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
+
+    assert.match(canaryScript, /const preliminarySummary = withLinuxAutoAllowDiagnostics/);
+    assert.match(
+      canaryScript,
+      /const success = preliminarySummary\.failureBoundary\?\.id === 'none';/
+    );
+    assert.match(canaryScript, /error: success \? null : LINUX_AJAX_AUTO_ALLOW_FAILURE_MESSAGE/);
+    assert.match(canaryScript, /if \(!success\) throw new LinuxAjaxAutoAllowFunctionalFailure/);
+  });
+
   test('Linux AJAX canary rejects eventual server hits when browser page probes timed out', () => {
     const outcome = evaluateLinuxAjaxBrowserPageOutcome({
       firstPageLoadCompleted: false,

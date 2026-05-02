@@ -63,6 +63,8 @@ const CANARY_GROUP_ID = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '';
 const CANARY_ADMIN_TOKEN = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN ?? '';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? '/var/lib/openpath/whitelist.txt';
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
+const LINUX_AJAX_AUTO_ALLOW_FAILURE_MESSAGE =
+  'Linux AJAX auto-allow probes did not complete before timeout';
 const FIREFOX_EXTENSION_URL_CANDIDATES = [
   process.env.LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_URL ?? '',
   CANARY_API_URL ? `${CANARY_API_URL}/api/extensions/firefox/openpath.xpi` : '',
@@ -689,21 +691,11 @@ async function main() {
       },
       expectedProbeIds: AUTO_ALLOW_PROBES.map((probe) => probe.id),
     });
-    const success =
+    const preliminarySuccess =
       hasAllAjaxAutoAllowProbesCompleted(AUTO_ALLOW_PROBES, completedProbesFromTraffic) &&
       pageObserverInstalled &&
       browserPageOutcome.success;
-    const failureDebug = success ? null : await collectLinuxFailureDebugSnapshot();
-    const redditDiagnostics = await collectRedditDiagnostics(
-      success ? 'post-success' : 'post-failure',
-      {
-        completedRedditDiagnosticEvents,
-        pageResourceCandidateEvents,
-      }
-    );
-    const summary = withLinuxAutoAllowDiagnostics({
-      success,
-      error: success ? null : 'Linux AJAX auto-allow probes did not complete before timeout',
+    const baseSummary = {
       originHost: ORIGIN_HOST,
       originUrl,
       expectedExtensionId: EXPECTED_EXTENSION_ID,
@@ -728,10 +720,31 @@ async function main() {
         afterAttempts: browserNavigationAfterAttempts,
       },
       browserPageOutcome,
-      redditDiagnostics,
       diagnostics: { preflight, postAttempt },
-      failureDebug,
       artifactWritten: true,
+    };
+    const preliminarySummary = withLinuxAutoAllowDiagnostics({
+      ...baseSummary,
+      success: preliminarySuccess,
+      error: preliminarySuccess ? null : LINUX_AJAX_AUTO_ALLOW_FAILURE_MESSAGE,
+      redditDiagnostics: null,
+      failureDebug: null,
+    });
+    const success = preliminarySummary.failureBoundary?.id === 'none';
+    const failureDebug = success ? null : await collectLinuxFailureDebugSnapshot();
+    const redditDiagnostics = await collectRedditDiagnostics(
+      success ? 'post-success' : 'post-failure',
+      {
+        completedRedditDiagnosticEvents,
+        pageResourceCandidateEvents,
+      }
+    );
+    const summary = withLinuxAutoAllowDiagnostics({
+      ...baseSummary,
+      success,
+      error: success ? null : LINUX_AJAX_AUTO_ALLOW_FAILURE_MESSAGE,
+      redditDiagnostics,
+      failureDebug,
     });
 
     await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
