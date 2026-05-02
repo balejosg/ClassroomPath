@@ -62,6 +62,11 @@ const CANARY_GROUP_ID = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '';
 const CANARY_ADMIN_TOKEN = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN ?? '';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? '/var/lib/openpath/whitelist.txt';
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
+const FIREFOX_EXTENSION_PATH_CANDIDATES = [
+  process.env.LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_PATH ?? '',
+  '/usr/share/openpath/firefox-release/openpath-firefox-extension.xpi',
+  '/usr/share/openpath/firefox-extension/openpath-firefox-extension.xpi',
+].filter(Boolean);
 const execFileAsync = promisify(execFile);
 
 class LinuxAjaxAutoAllowFunctionalFailure extends Error {}
@@ -167,6 +172,23 @@ async function waitForFirefoxExtensionRuntimeReady({
     popupUrl,
     popupLoadError,
   };
+}
+
+async function resolveFirefoxCanaryExtensionPath() {
+  for (const candidate of FIREFOX_EXTENSION_PATH_CANDIDATES) {
+    try {
+      const candidateStat = await stat(candidate);
+      if (candidateStat.isFile()) {
+        return candidate;
+      }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  return null;
 }
 
 async function readFileEvidence(path, expectedHosts = []) {
@@ -463,8 +485,12 @@ function createCanaryServer({ state }) {
 async function launchFirefox(originUrl) {
   const { Builder } = await import('selenium-webdriver');
   const firefox = await import('selenium-webdriver/firefox.js');
+  const seleniumExtensionPath = await resolveFirefoxCanaryExtensionPath();
   const options = new firefox.Options();
   options.addArguments('-headless');
+  if (seleniumExtensionPath !== null) {
+    options.addExtensions(seleniumExtensionPath);
+  }
   options.setPreference('network.dns.disablePrefetch', true);
   options.setPreference('network.trr.mode', 5);
   options.setPreference('network.trr.uri', '');
@@ -484,8 +510,10 @@ async function launchFirefox(originUrl) {
     ready: false,
     expectedExtensionId: EXPECTED_EXTENSION_ID,
     profileDir,
+    seleniumExtensionPath,
     error: error instanceof Error ? error.message : String(error),
   }));
+  firefoxExtensionWarmup.seleniumExtensionPath = seleniumExtensionPath;
   if (!firefoxExtensionWarmup.ready) {
     console.error(
       `Linux AJAX canary Firefox extension warmup failed: ${firefoxExtensionWarmup.error}`

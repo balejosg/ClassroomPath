@@ -175,6 +175,12 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
 
     assert.match(canaryScript, /async function waitForFirefoxExtensionRuntimeReady/);
+    assert.match(canaryScript, /async function resolveFirefoxCanaryExtensionPath/);
+    assert.match(
+      canaryScript,
+      /\/usr\/share\/openpath\/firefox-release\/openpath-firefox-extension\.xpi/
+    );
+    assert.match(canaryScript, /options\.addExtensions\(seleniumExtensionPath\);/);
     assert.match(canaryScript, /extensions\\.webextensions\\.uuids/);
     assert.match(canaryScript, /moz-extension:\/\/\$\{extensionUuid\}\/popup\/popup\.html/);
     assert.match(canaryScript, /const capabilities = await driver\.getCapabilities\(\);/);
