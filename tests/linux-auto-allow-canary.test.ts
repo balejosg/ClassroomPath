@@ -177,6 +177,8 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.match(canaryScript, /async function waitForFirefoxExtensionRuntimeReady/);
     assert.match(canaryScript, /extensions\\.webextensions\\.uuids/);
     assert.match(canaryScript, /moz-extension:\/\/\$\{extensionUuid\}\/popup\/popup\.html/);
+    assert.match(canaryScript, /const capabilities = await driver\.getCapabilities\(\);/);
+    assert.match(canaryScript, /const profileDir = capabilities\.get\('moz:profile'\);/);
     assert.match(
       canaryScript,
       /firefoxExtensionWarmup = await waitForFirefoxExtensionRuntimeReady/

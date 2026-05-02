@@ -472,7 +472,8 @@ async function launchFirefox(originUrl) {
   options.setPreference('network.dnsCacheExpirationGracePeriod', 0);
   const driver = await new Builder().forBrowser('firefox').setFirefoxOptions(options).build();
   await driver.manage().setTimeouts({ pageLoad: PAGE_LOAD_TIMEOUT_MS, script: 10000 });
-  const profileDir = driver.getCapabilities().get('moz:profile');
+  const capabilities = await driver.getCapabilities();
+  const profileDir = capabilities.get('moz:profile');
   if (typeof profileDir !== 'string' || profileDir === '') {
     throw new Error('Firefox did not expose a moz:profile path for extension warmup');
   }
