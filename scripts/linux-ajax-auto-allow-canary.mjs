@@ -63,6 +63,10 @@ const CANARY_GROUP_ID = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '';
 const CANARY_ADMIN_TOKEN = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN ?? '';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? '/var/lib/openpath/whitelist.txt';
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
+const FIREFOX_EXTENSION_URL_CANDIDATES = [
+  process.env.LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_URL ?? '',
+  CANARY_API_URL ? `${CANARY_API_URL}/api/extensions/firefox/openpath.xpi` : '',
+].filter(Boolean);
 const FIREFOX_EXTENSION_PATH_CANDIDATES = [
   process.env.LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_PATH ?? '',
   '/usr/share/openpath/firefox-release/openpath-firefox-extension.xpi',
@@ -177,6 +181,10 @@ async function waitForFirefoxExtensionRuntimeReady({
 }
 
 async function resolveFirefoxCanaryExtensionPath() {
+  for (const extensionUrl of FIREFOX_EXTENSION_URL_CANDIDATES) {
+    return await materializeFirefoxCanaryExtensionDownload(extensionUrl);
+  }
+
   for (const candidate of FIREFOX_EXTENSION_PATH_CANDIDATES) {
     try {
       const candidateStat = await stat(candidate);
@@ -194,6 +202,25 @@ async function resolveFirefoxCanaryExtensionPath() {
   }
 
   return null;
+}
+
+async function materializeFirefoxCanaryExtensionDownload(extensionUrl) {
+  const archiveDir = await mkdtemp(join(tmpdir(), 'openpath-firefox-canary-extension-'));
+  const archivePath = join(archiveDir, 'openpath-firefox-extension.xpi');
+  const response = await fetch(extensionUrl, { signal: AbortSignal.timeout(10000) });
+  if (!response.ok) {
+    throw new Error(
+      `Could not download signed Firefox extension from ${extensionUrl}: HTTP ${response.status}`
+    );
+  }
+
+  const extensionBytes = Buffer.from(await response.arrayBuffer());
+  if (extensionBytes.byteLength === 0) {
+    throw new Error(`Downloaded signed Firefox extension is empty: ${extensionUrl}`);
+  }
+
+  await writeFile(archivePath, extensionBytes);
+  return archivePath;
 }
 
 async function materializeFirefoxCanaryExtensionArchive(extensionDir) {

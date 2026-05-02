@@ -291,6 +291,7 @@ jobs:
           LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: ${{ steps.inputs.outputs.base_url }}
           LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: ${{ steps.provision.outputs.group_id }}
           LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: ${{ env.PRODUCTION_LINUX_BOOTSTRAP_CANARY_ADMIN_TOKEN || secrets.CP_CLIENT_CANARY_ADMIN_TOKEN }}
+          LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_URL: ${{ steps.provision.outputs.public_firefox_xpi_url }}
           EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
           LINUX_BOOTSTRAP_CANARY_INSTALLER_PATH: ${{ runner.temp }}/linux-production-bootstrap-canary/install-openpath.sh
         run: |

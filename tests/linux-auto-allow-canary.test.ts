@@ -176,6 +176,9 @@ describe('Linux AJAX auto-allow canary contracts', () => {
 
     assert.match(canaryScript, /async function waitForFirefoxExtensionRuntimeReady/);
     assert.match(canaryScript, /async function resolveFirefoxCanaryExtensionPath/);
+    assert.match(canaryScript, /LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_URL/);
+    assert.match(canaryScript, /async function materializeFirefoxCanaryExtensionDownload/);
+    assert.match(canaryScript, /\/api\/extensions\/firefox\/openpath\.xpi/);
     assert.match(
       canaryScript,
       /\/usr\/share\/openpath\/firefox-release\/openpath-firefox-extension\.xpi/
@@ -205,6 +208,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
 
     assert.match(ajaxStep, new RegExp(`bash ${runtimeScriptPath}`));
     assert.match(ajaxStep, /LINUX_BOOTSTRAP_CANARY_INSTALLER_PATH:/);
+    assert.match(
+      ajaxStep,
+      /LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_URL: \$\{\{ steps\.provision\.outputs\.public_firefox_xpi_url \}\}/
+    );
     assert.doesNotMatch(ajaxStep, /restore_linux_bootstrap_canary_external_dns\(\)/);
     assert.doesNotMatch(ajaxStep, /node scripts\/linux-ajax-auto-allow-canary\.mjs/);
   });
