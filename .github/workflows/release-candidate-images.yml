@@ -66,6 +66,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           OPENPATH_SHA: ${{ steps.openpath.outputs.sha }}
           OPENPATH_REQUIRED_CHECKS: Publish Prerelease to APT Repository / Publish to APT Repository (unstable)
+          OPENPATH_PRERELEASE_RECOVERY_MODE: rerun-failed-once
         run: |
           set -euo pipefail
           OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS=2400 \

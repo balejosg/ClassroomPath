@@ -210,6 +210,10 @@ describe('Release candidate workflow contracts', () => {
       waitForOpenPathAptPublishEnv['OPENPATH_REQUIRED_CHECKS'],
       'Publish Prerelease to APT Repository / Publish to APT Repository (unstable)'
     );
+    assert.equal(
+      waitForOpenPathAptPublishEnv['OPENPATH_PRERELEASE_RECOVERY_MODE'],
+      'rerun-failed-once'
+    );
     assert.ok(
       waitForOpenPathAptPublishRun.includes('node scripts/openpath-required-checks.mjs wait')
     );

@@ -322,6 +322,11 @@ describe('Workflow core contracts', () => {
       /OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS=2400[\s\S]*node scripts\/openpath-required-checks\.mjs wait/,
       'sync must wait for the same upstream quality gate before updating the submodule'
     );
+    assert.doesNotMatch(
+      String(verifyStep.run ?? ''),
+      /OPENPATH_PRERELEASE_RECOVERY_MODE=rerun-failed-once/,
+      'scheduled sync should not rerun upstream prerelease jobs; RC owns that recovery path'
+    );
     assert.match(
       String(directPushStep.if ?? ''),
       /steps\.mode\.outputs\.mode == 'direct-main'/,
