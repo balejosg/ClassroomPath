@@ -2,7 +2,8 @@
 
 import dns from 'node:dns/promises';
 import { appendFileSync } from 'node:fs';
-import { readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { execFile } from 'node:child_process';
@@ -66,6 +67,7 @@ const FIREFOX_EXTENSION_PATH_CANDIDATES = [
   process.env.LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_PATH ?? '',
   '/usr/share/openpath/firefox-release/openpath-firefox-extension.xpi',
   '/usr/share/openpath/firefox-extension/openpath-firefox-extension.xpi',
+  '/usr/share/openpath/firefox-extension',
 ].filter(Boolean);
 const execFileAsync = promisify(execFile);
 
@@ -181,6 +183,9 @@ async function resolveFirefoxCanaryExtensionPath() {
       if (candidateStat.isFile()) {
         return candidate;
       }
+      if (candidateStat.isDirectory()) {
+        return await materializeFirefoxCanaryExtensionArchive(candidate);
+      }
     } catch (error) {
       if (error?.code !== 'ENOENT') {
         throw error;
@@ -189,6 +194,23 @@ async function resolveFirefoxCanaryExtensionPath() {
   }
 
   return null;
+}
+
+async function materializeFirefoxCanaryExtensionArchive(extensionDir) {
+  const manifestPath = join(extensionDir, 'manifest.json');
+  const manifestStat = await stat(manifestPath);
+  if (!manifestStat.isFile()) {
+    throw new Error(`Firefox extension directory is missing manifest.json: ${extensionDir}`);
+  }
+
+  const archiveDir = await mkdtemp(join(tmpdir(), 'openpath-firefox-canary-extension-'));
+  const archivePath = join(archiveDir, 'openpath-firefox-extension.xpi');
+  await execFileAsync('zip', ['-qr', archivePath, '.'], {
+    cwd: extensionDir,
+    timeout: 10000,
+    maxBuffer: 1024 * 1024,
+  });
+  return archivePath;
 }
 
 async function readFileEvidence(path, expectedHosts = []) {

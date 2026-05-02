@@ -180,6 +180,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       canaryScript,
       /\/usr\/share\/openpath\/firefox-release\/openpath-firefox-extension\.xpi/
     );
+    assert.match(canaryScript, /\/usr\/share\/openpath\/firefox-extension['"]/);
+    assert.match(canaryScript, /async function materializeFirefoxCanaryExtensionArchive/);
+    assert.match(canaryScript, /candidateStat\.isDirectory\(\)/);
+    assert.match(canaryScript, /manifest\.json/);
     assert.match(canaryScript, /options\.addExtensions\(seleniumExtensionPath\);/);
     assert.match(canaryScript, /extensions\\.webextensions\\.uuids/);
     assert.match(canaryScript, /moz-extension:\/\/\$\{extensionUuid\}\/popup\/popup\.html/);
