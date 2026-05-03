@@ -134,6 +134,83 @@ export function parseRunIdFromUrl(value) {
   return match ? match[1] : null;
 }
 
+function formatRequiredCheckStatus({ checkName, checkRun, evaluation }) {
+  const missingChecks = evaluation?.missing ?? [];
+
+  if (!checkRun) {
+    return missingChecks.includes(checkName) ? 'missing' : 'success';
+  }
+
+  if (checkRun.status === 'completed') {
+    return checkRun.conclusion ?? 'unknown';
+  }
+
+  return 'pending';
+}
+
+function formatRunSuffix(checkRun) {
+  const runId = parseRunIdFromUrl(checkRun?.details_url ?? checkRun?.html_url ?? '');
+  return runId ? ` (run ${runId})` : '';
+}
+
+function formatRunHint({ repo, checkRun }) {
+  const runId = parseRunIdFromUrl(checkRun?.details_url ?? checkRun?.html_url ?? '');
+  return runId ? `  gh run view ${runId} --repo ${repo}` : '';
+}
+
+export function formatOpenPathRequiredChecksReport({
+  repo,
+  sha,
+  requiredChecks,
+  checkRuns,
+  evaluation,
+  requiredCheckResolution,
+} = {}) {
+  const latestByName = selectLatestCheckRuns(checkRuns ?? []);
+  const lines = [
+    `OpenPath required checks for ${repo}@${String(sha ?? '').slice(0, 8)}`,
+    'Required checks:',
+  ];
+  const runHints = [];
+  const missingHints = [];
+
+  for (const checkName of requiredChecks ?? []) {
+    const checkRun = latestByName.get(checkName);
+    const status = formatRequiredCheckStatus({ checkName, checkRun, evaluation });
+    lines.push(`  - ${checkName}: ${status}${formatRunSuffix(checkRun)}`);
+
+    if (status !== 'success') {
+      const runHint = formatRunHint({ repo, checkRun });
+      if (runHint) {
+        runHints.push(runHint);
+      } else {
+        missingHints.push(`  ${checkName}`);
+      }
+    }
+  }
+
+  const matchedFiles = requiredCheckResolution?.matchedFiles ?? [];
+  if (matchedFiles.length > 0) {
+    lines.push('', `Risk basis: ${matchedFiles.join(', ')}`);
+  }
+
+  if (runHints.length > 0 || missingHints.length > 0) {
+    lines.push('', 'Next action:');
+    if (missingHints.length > 0) {
+      lines.push(
+        '  Missing checks have no run yet. Wait for OpenPath workflows or dispatch the required workflow.'
+      );
+      lines.push(...missingHints);
+    }
+    if (runHints.length > 0) {
+      lines.push('  Wait for pending checks, or inspect:');
+      lines.push(...runHints);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 export function selectLatestWorkflowJobsByName(workflowJobs) {
   const latestByName = new Map();
 

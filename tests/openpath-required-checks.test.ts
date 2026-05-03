@@ -9,7 +9,11 @@ import {
   OPENPATH_CI_JOB_NAMES,
   OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
 } from '../scripts/lib/openpath-ci-checks.mjs';
-import { fetchCheckRuns, parseWaitOptions } from '../scripts/openpath-required-checks.mjs';
+import {
+  fetchCheckRuns,
+  parseWaitOptions,
+  runOpenPathRequiredChecksCommand,
+} from '../scripts/openpath-required-checks.mjs';
 
 function buildCompletedWorkflowJob(name: string, overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -39,6 +43,162 @@ function buildFetchResponse(payload: unknown) {
     json: async () => payload,
   } as Response;
 }
+
+function checkRun({
+  name,
+  status,
+  conclusion,
+  runId,
+  completedAt,
+}: {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  runId: string;
+  completedAt?: string;
+}) {
+  return {
+    name,
+    status,
+    conclusion,
+    completed_at: completedAt ?? null,
+    started_at: '2026-04-27T18:00:00Z',
+    details_url: `https://github.com/balejosg/openpath/actions/runs/${runId}/job/1`,
+    html_url: `https://github.com/balejosg/openpath/actions/runs/${runId}`,
+  };
+}
+
+async function runOpenPathRequiredChecks(
+  command: 'check' | 'report',
+  {
+    checkRuns,
+  }: {
+    checkRuns: unknown[];
+  }
+) {
+  const originalFetch = globalThis.fetch;
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalExitCode = process.exitCode;
+  const originalEnv = {
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+    GH_TOKEN: process.env.GH_TOKEN,
+    OPENPATH_SHA: process.env.OPENPATH_SHA,
+    OPENPATH_REPO: process.env.OPENPATH_REPO,
+    OPENPATH_REQUIRED_CHECKS: process.env.OPENPATH_REQUIRED_CHECKS,
+    OPENPATH_BASE_SHA: process.env.OPENPATH_BASE_SHA,
+  };
+  let stdout = '';
+  let stderr = '';
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.includes('/actions/runs/')) {
+      return buildFetchResponse({ jobs: [] });
+    }
+
+    return buildFetchResponse({ check_runs: checkRuns });
+  }) as typeof fetch;
+  console.log = (...args: unknown[]) => {
+    stdout += `${args.join(' ')}\n`;
+  };
+  console.error = (...args: unknown[]) => {
+    stderr += `${args.join(' ')}\n`;
+  };
+  process.exitCode = undefined;
+  process.env.GITHUB_TOKEN = 'test-token';
+  process.env.OPENPATH_SHA = '4d35dc2900000000000000000000000000000000';
+  process.env.OPENPATH_REPO = 'balejosg/openpath';
+  process.env.OPENPATH_REQUIRED_CHECKS = 'CI Success,Installer Contracts Success';
+  delete process.env.OPENPATH_BASE_SHA;
+
+  try {
+    await runOpenPathRequiredChecksCommand([
+      process.execPath,
+      'scripts/openpath-required-checks.mjs',
+      command,
+    ]);
+
+    return {
+      status: process.exitCode ?? 0,
+      stdout,
+      stderr,
+    };
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.log = originalLog;
+    console.error = originalError;
+    process.exitCode = originalExitCode;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+describe('openpath-required-checks CLI report output', () => {
+  it('report mode prints missing and pending required checks with run hints', async () => {
+    const result = await runOpenPathRequiredChecks('report', {
+      checkRuns: [
+        checkRun({
+          name: 'CI Success',
+          status: 'completed',
+          conclusion: 'success',
+          runId: '101',
+          completedAt: '2026-04-27T18:01:00Z',
+        }),
+        checkRun({
+          name: 'Installer Contracts Success',
+          status: 'queued',
+          conclusion: null,
+          runId: '102',
+        }),
+      ],
+    });
+
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /OpenPath required checks for balejosg\/openpath@4d35dc29/);
+    assert.match(result.stdout, /CI Success: success \(run 101\)/);
+    assert.match(result.stdout, /Installer Contracts Success: pending \(run 102\)/);
+    assert.match(result.stdout, /gh run view 102 --repo balejosg\/openpath/);
+  });
+
+  it('normal verification prints the same report before failing non-zero', async () => {
+    const result = await runOpenPathRequiredChecks('check', {
+      checkRuns: [
+        checkRun({
+          name: 'CI Success',
+          status: 'completed',
+          conclusion: 'success',
+          runId: '101',
+          completedAt: '2026-04-27T18:01:00Z',
+        }),
+        checkRun({
+          name: 'Installer Contracts Success',
+          status: 'completed',
+          conclusion: 'failure',
+          runId: '102',
+          completedAt: '2026-04-27T18:02:00Z',
+        }),
+      ],
+    });
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /OpenPath required checks for balejosg\/openpath@4d35dc29/);
+    assert.match(result.stderr, /CI Success: success \(run 101\)/);
+    assert.match(result.stderr, /Installer Contracts Success: failure \(run 102\)/);
+    assert.match(result.stderr, /gh run view 102 --repo balejosg\/openpath/);
+    assert.match(
+      result.stderr,
+      /OpenPath required checks failed for balejosg\/openpath@4d35dc2900000000000000000000000000000000/
+    );
+  });
+});
 
 describe('evaluateRequiredChecks', () => {
   it('accepts the latest success for every required check', () => {

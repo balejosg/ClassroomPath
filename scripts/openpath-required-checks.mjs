@@ -5,6 +5,7 @@ import {
   OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
   classifyRequiredCheckWaitState,
   evaluateRequiredChecks,
+  formatOpenPathRequiredChecksReport,
   parseRunIdFromUrl,
   resolveOpenPathRequiredChecks,
   selectLatestCheckRuns,
@@ -21,9 +22,10 @@ import {
 const DEFAULT_REQUIRED_CHECKS = ['CI Success'];
 
 function usage() {
-  console.log(`Usage: node scripts/openpath-required-checks.mjs [wait]
+  console.log(`Usage: node scripts/openpath-required-checks.mjs [check|wait|report|recovery]
 
 Verifies that the target OpenPath commit has the required GitHub check-runs in success state.
+Report mode prints current required-check state and exits 0 unless the GitHub API fails.
 
 Environment variables:
   OPENPATH_SHA              Commit SHA to verify. Defaults to the local upstream/openpath submodule SHA.
@@ -234,7 +236,34 @@ async function buildWorkflowJobsByRunId({ repo, checkRuns, requiredChecks, token
   return jobsByRunId;
 }
 
-function printFailureSummary({ repo, sha, result }) {
+function printRequiredChecksReport({ context, evaluation }) {
+  const report = formatOpenPathRequiredChecksReport({
+    repo: context.repo,
+    sha: context.sha,
+    requiredChecks: context.requiredChecks,
+    checkRuns: evaluation.checkRuns,
+    evaluation: evaluation.result,
+    requiredCheckResolution: context.requiredCheckResolution,
+  });
+  console.log(report);
+}
+
+function printFailureSummary({ context, result, evaluation }) {
+  if (evaluation) {
+    console.error(
+      formatOpenPathRequiredChecksReport({
+        repo: context.repo,
+        sha: context.sha,
+        requiredChecks: context.requiredChecks,
+        checkRuns: evaluation.checkRuns,
+        evaluation: evaluation.result,
+        requiredCheckResolution: context.requiredCheckResolution,
+      })
+    );
+    console.error('');
+  }
+
+  const { repo, sha } = context;
   console.error(`OpenPath required checks failed for ${repo}@${sha}`);
 
   if (result.missing.length > 0) {
@@ -352,8 +381,8 @@ async function waitForRequiredChecks(context, options) {
   let alreadyReranPrerelease = false;
 
   while (true) {
-    const { checkRuns, workflowJobs, result, workflowJobsByRunId } =
-      await evaluateOpenPathRequiredChecks(context);
+    const evaluation = await evaluateOpenPathRequiredChecks(context);
+    const { checkRuns, workflowJobs, result, workflowJobsByRunId } = evaluation;
     const waitState = classifyRequiredCheckWaitState({
       checkRuns,
       requiredChecks: context.requiredChecks,
@@ -398,14 +427,14 @@ async function waitForRequiredChecks(context, options) {
     }
 
     if (recoveryDecision?.state === 'rerun_available' || recoveryDecision?.state === 'failed') {
-      printFailureSummary({ repo: context.repo, sha: context.sha, result });
+      printFailureSummary({ context, result, evaluation });
       console.error(formatOpenPathPrereleaseRecoveryDecision(recoveryDecision));
       return false;
     }
 
     if (recoveryDecision?.state === 'waiting') {
       if (Date.now() - startedAt >= timeoutMilliseconds) {
-        printFailureSummary({ repo: context.repo, sha: context.sha, result });
+        printFailureSummary({ context, result, evaluation });
         console.error(
           `Timed out after ${elapsedSeconds}s waiting for OpenPath required checks for ${context.repo}@${context.sha}: ${formatOpenPathPrereleaseRecoveryDecision(
             recoveryDecision
@@ -427,7 +456,7 @@ async function waitForRequiredChecks(context, options) {
     }
 
     if (waitState.kind === 'terminal_failure' && options.failFast) {
-      printFailureSummary({ repo: context.repo, sha: context.sha, result });
+      printFailureSummary({ context, result, evaluation });
       console.error(
         recoveryDecision?.state === 'blocked'
           ? `${formatOpenPathPrereleaseRecoveryDecision(recoveryDecision)} after ${elapsedSeconds}s`
@@ -439,7 +468,7 @@ async function waitForRequiredChecks(context, options) {
     }
 
     if (Date.now() - startedAt >= timeoutMilliseconds) {
-      printFailureSummary({ repo: context.repo, sha: context.sha, result });
+      printFailureSummary({ context, result, evaluation });
       console.error(
         `Timed out after ${elapsedSeconds}s waiting for OpenPath required checks for ${context.repo}@${context.sha}: ${
           recoveryDecision?.state === 'waiting'
@@ -464,14 +493,14 @@ async function waitForRequiredChecks(context, options) {
   }
 }
 
-async function main() {
-  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+export async function runOpenPathRequiredChecksCommand(argv = process.argv) {
+  if (argv.includes('--help') || argv.includes('-h')) {
     usage();
     return;
   }
 
-  const command = process.argv[2] ?? 'check';
-  if (command !== 'check' && command !== 'wait' && command !== 'recovery') {
+  const command = argv[2] ?? 'check';
+  if (command !== 'check' && command !== 'wait' && command !== 'report' && command !== 'recovery') {
     throw new Error(`Unknown command: ${command}`);
   }
 
@@ -504,6 +533,12 @@ async function main() {
     return;
   }
 
+  if (command === 'report') {
+    const evaluation = await evaluateOpenPathRequiredChecks(context);
+    printRequiredChecksReport({ context, evaluation });
+    return;
+  }
+
   if (command === 'wait') {
     const ok = await waitForRequiredChecks(context, parseWaitOptions());
     if (!ok) {
@@ -512,10 +547,11 @@ async function main() {
     return;
   }
 
-  const { result, recoveryDecision } = await evaluateOpenPathRequiredChecks(context);
+  const evaluation = await evaluateOpenPathRequiredChecks(context);
+  const { result, recoveryDecision } = evaluation;
 
   if (!result.ok) {
-    printFailureSummary({ repo: context.repo, sha: context.sha, result });
+    printFailureSummary({ context, result, evaluation });
     if (recoveryDecision && recoveryDecision.state !== 'waiting') {
       console.error(formatOpenPathPrereleaseRecoveryDecision(recoveryDecision));
     }
@@ -527,5 +563,5 @@ async function main() {
 }
 
 if (isDirectExecution(import.meta.url, process.argv[1])) {
-  await main();
+  await runOpenPathRequiredChecksCommand();
 }

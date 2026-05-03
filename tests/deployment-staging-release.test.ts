@@ -472,6 +472,9 @@ describe('Deployment staging and promotion contracts', () => {
       promotionReadyScript.includes('git rev-parse "$TARGET_SHA:upstream/openpath"') &&
         promotionReadyScript.includes('OPENPATH_SHA="$openpath_sha"') &&
         promotionReadyScript.includes('OPENPATH_BASE_SHA="$openpath_base_sha"') &&
+        promotionReadyScript.includes(
+          'node "$SCRIPT_DIR/openpath-required-checks.mjs" report || true'
+        ) &&
         promotionReadyScript.includes('node "$SCRIPT_DIR/openpath-required-checks.mjs"'),
       'promotion readiness should verify required OpenPath checks for the exact staged submodule SHA'
     );
