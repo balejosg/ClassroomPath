@@ -56,6 +56,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+        with:
+          enable-cache: false
+          cache-dependency-path: package-lock.json
+
       - name: Assert destructive Windows runner is available
         shell: bash
         env:

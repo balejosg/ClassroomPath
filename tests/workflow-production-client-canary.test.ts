@@ -610,6 +610,9 @@ describe('Production client update canary workflow contracts', () => {
 
     const firefoxWorkflow = readProjectWorkflow('.github/workflows/windows-firefox-canary.yml');
     const firefoxSteps = firefoxWorkflow.jobs?.['windows-firefox-canary']?.steps ?? [];
+    const firefoxSetupNodeStepIndex = firefoxSteps.findIndex(
+      (step) => step.name === 'Setup Node.js'
+    );
     const firefoxGuardStepIndex = firefoxSteps.findIndex(
       (step) => step.name === 'Assert destructive Windows runner is available'
     );
@@ -617,6 +620,12 @@ describe('Production client update canary workflow contracts', () => {
       (step) => step.name === 'Run Firefox policy canary'
     );
     assert.equal(firefoxWorkflow.permissions?.actions, 'read');
+    assert.ok(
+      firefoxSetupNodeStepIndex >= 0 &&
+        firefoxGuardStepIndex >= 0 &&
+        firefoxSetupNodeStepIndex < firefoxGuardStepIndex,
+      'Windows Firefox canary must install Node before running the JavaScript runner guard'
+    );
     assert.ok(
       firefoxGuardStepIndex >= 0 &&
         firefoxPolicyStepIndex >= 0 &&
