@@ -27,6 +27,51 @@ export function createAjaxAutoAllowCanaryState(probes) {
   };
 }
 
+export function isTransientBrowserContextError(error) {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /Browsing context has been discarded|Failed to decode response from marionette/i.test(
+    message
+  );
+}
+
+export async function openUrlWithTransientBrowserRetry({
+  url,
+  maxAttempts = 2,
+  createSession,
+  closeSession = async () => {},
+  onTransientError = () => {},
+}) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const session = await createSession();
+    try {
+      await session.get(url);
+      return { attempt, opened: true, session };
+    } catch (error) {
+      lastError = error;
+      if (!isTransientBrowserContextError(error) || attempt === maxAttempts) {
+        return {
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+          opened: false,
+          session,
+        };
+      }
+
+      onTransientError(error, { attempt, maxAttempts });
+      await closeSession(session).catch(() => {});
+    }
+  }
+
+  return {
+    attempt: maxAttempts,
+    error: lastError instanceof Error ? lastError.message : String(lastError),
+    opened: false,
+    session: null,
+  };
+}
+
 export function buildCompletedProbesFromHits(probes, probeHits) {
   return Object.fromEntries(
     probes.map((probe) => [probe.id, Number(probeHits?.[probe.id] ?? 0) > 0])

@@ -6,6 +6,7 @@ import {
   buildCompletedProbesFromHits,
   createAjaxAutoAllowCanaryServer,
   createAjaxAutoAllowCanaryState,
+  openUrlWithTransientBrowserRetry,
   waitForAjaxAutoAllowPageObserver,
 } from '../scripts/lib/ajax-auto-allow-canary-harness.mjs';
 
@@ -110,5 +111,43 @@ describe('shared AJAX auto-allow canary harness', () => {
 
     assert.equal(diagnostics.openpathObserverInstalled, true);
     assert.equal(calls.length, 2);
+  });
+
+  test('browser open retries a discarded Marionette context with a fresh session', async () => {
+    const events: string[] = [];
+    let launches = 0;
+
+    const result = await openUrlWithTransientBrowserRetry({
+      url: 'http://ajax-origin.127.0.0.1.sslip.io:18088/',
+      maxAttempts: 2,
+      createSession: async () => {
+        launches += 1;
+        const id = launches;
+        return {
+          id,
+          async get(url: string) {
+            events.push(`get:${id}:${url}`);
+            if (id === 1) {
+              throw new Error('Browsing context has been discarded');
+            }
+          },
+          async quit() {
+            events.push(`quit:${id}`);
+          },
+        };
+      },
+      closeSession: async (session) => {
+        await session.quit();
+      },
+    });
+
+    assert.equal(result.opened, true);
+    assert.equal(result.attempt, 2);
+    assert.equal(result.session.id, 2);
+    assert.deepEqual(events, [
+      'get:1:http://ajax-origin.127.0.0.1.sslip.io:18088/',
+      'quit:1',
+      'get:2:http://ajax-origin.127.0.0.1.sslip.io:18088/',
+    ]);
   });
 });

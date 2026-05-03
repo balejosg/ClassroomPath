@@ -25,6 +25,7 @@ import {
   createAjaxAutoAllowCanaryServer,
   createAjaxAutoAllowCanaryState,
   hasAllAjaxAutoAllowProbesCompleted,
+  openUrlWithTransientBrowserRetry,
   waitForAjaxAutoAllowPageObserver,
 } from './lib/ajax-auto-allow-canary-harness.mjs';
 import { collectCanaryGroupDiagnostics as collectCanaryGroupDiagnosticsFromApi } from './lib/canary-group-diagnostics.mjs';
@@ -536,7 +537,7 @@ function createCanaryServer({ state }) {
   });
 }
 
-async function launchFirefox(originUrl) {
+async function createFirefoxSession() {
   const { Builder } = await import('selenium-webdriver');
   const firefox = await import('selenium-webdriver/firefox.js');
   const seleniumExtensionPath = await resolveFirefoxCanaryExtensionPath();
@@ -573,20 +574,49 @@ async function launchFirefox(originUrl) {
       `Linux AJAX canary Firefox extension warmup failed: ${firefoxExtensionWarmup.error}`
     );
   }
-  let firstPageLoadCompleted = true;
-  let firstPageLoadError = null;
-  try {
-    await driver.get(originUrl);
-  } catch (error) {
-    firstPageLoadCompleted = false;
-    firstPageLoadError = error instanceof Error ? error.message : String(error);
+  return { driver, profileDir, firefoxExtensionWarmup };
+}
+
+async function launchFirefox(originUrl) {
+  const opened = await openUrlWithTransientBrowserRetry({
+    url: originUrl,
+    maxAttempts: 3,
+    createSession: createFirefoxSession,
+    closeSession: async (session) => {
+      await session.driver.quit();
+    },
+    onTransientError: (error, { attempt, maxAttempts }) => {
+      console.error(
+        `Linux AJAX canary discarded Firefox browsing context on page load attempt ${attempt}/${maxAttempts}; retrying with a fresh browser session: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    },
+  });
+
+  const session = opened.session;
+  if (!session) {
+    throw new Error(opened.error ?? 'Firefox did not create a Selenium session');
+  }
+
+  const firstPageLoadCompleted = opened.opened === true;
+  const firstPageLoadError = opened.opened ? null : opened.error;
+  if (!firstPageLoadCompleted) {
     console.error(
       `Linux AJAX canary page load did not complete within ${PAGE_LOAD_TIMEOUT_MS}ms: ${
         firstPageLoadError
       }`
     );
   }
-  return { driver, firstPageLoadCompleted, firstPageLoadError, profileDir, firefoxExtensionWarmup };
+
+  return {
+    driver: session.driver,
+    firstPageLoadCompleted,
+    firstPageLoadError,
+    profileDir: session.profileDir,
+    firefoxExtensionWarmup: session.firefoxExtensionWarmup,
+    firstPageLoadAttempt: opened.attempt,
+  };
 }
 
 async function waitForPageObserver(driver, originUrl) {

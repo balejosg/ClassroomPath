@@ -337,6 +337,8 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.ok(canaryScript.includes('LINUX_AJAX_AUTO_ALLOW_PAGE_LOAD_TIMEOUT_MS'));
     assert.ok(canaryScript.includes('await driver.manage().setTimeouts'));
     assert.ok(canaryScript.includes('pageLoad: PAGE_LOAD_TIMEOUT_MS'));
+    assert.ok(canaryScript.includes('openUrlWithTransientBrowserRetry'));
+    assert.ok(canaryScript.includes('maxAttempts: 3'));
     assert.ok(canaryScript.includes('Linux AJAX canary page load did not complete'));
   });
 
