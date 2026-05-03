@@ -37,6 +37,14 @@ describe('runner diagnostic execution plan', () => {
     );
     assert.ok(
       plan.canaryScriptUploads.some(
+        (upload) =>
+          upload.source === 'scripts/lib/canary-progress.mjs' &&
+          upload.destination ===
+            'C:\\Windows\\Temp\\openpath-ajax-direct\\scripts\\lib\\canary-progress.mjs'
+      )
+    );
+    assert.ok(
+      plan.canaryScriptUploads.some(
         (upload) => upload.source === 'scripts/lib/auto-allow-boundary-evidence.mjs'
       )
     );
