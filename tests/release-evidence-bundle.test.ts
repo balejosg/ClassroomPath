@@ -13,6 +13,7 @@ import {
   validateReleaseEvidenceChecklist,
   verifyArtifactIntegrity,
 } from '../scripts/lib/release-evidence-bundle.mjs';
+import { buildDeployBrief, renderDeployBriefMarkdown } from '../scripts/lib/deploy-brief.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
@@ -507,5 +508,110 @@ exit 1
       process.env.TEST_LINUX_ARTIFACT_DIR = originalLinuxArtifactDir;
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe('deploy brief module', () => {
+  test('formats a passing release into less than 120 Markdown lines', () => {
+    const brief = buildDeployBrief({
+      releaseEvidence: buildReleaseEvidenceInput(),
+      sourceArtifacts: ['release-evidence.json'],
+    });
+    const markdown = renderDeployBriefMarkdown(brief);
+
+    assert.equal(brief.status, 'pass');
+    assert.equal(brief.promotionEligibility, 'eligible');
+    assert.equal(brief.failureBoundary.id, 'none');
+    assert.equal(brief.nextCommand, 'No action required');
+    assert.ok(markdown.split('\n').length < 120);
+    assert.match(markdown, /^# Deploy Brief/);
+    assert.match(markdown, /Status: pass/);
+    assert.match(markdown, /\| Gate \| Result \| Boundary \| Evidence \|/);
+  });
+
+  test('formats a failed Windows canary with boundary and next action', () => {
+    const brief = buildDeployBrief({
+      releaseEvidence: buildReleaseEvidenceInput({
+        jobs: {
+          verifyOpenPathUpstream: 'success',
+          resolveReleaseImages: 'success',
+          verifyStagingReleaseState: 'success',
+          windowsFirefoxCanary: 'success',
+          windowsProductionBootstrapCanary: 'failure',
+          linuxProductionBootstrapCanary: 'success',
+          productionClientUpdateCanary: 'live-tested',
+          deployProduction: 'success',
+          smokeTestProduction: 'success',
+          rollbackProduction: 'skipped',
+        },
+        diagnostics: {
+          windowsProductionBootstrapFailureBoundary: {
+            id: 'native-host-state-sync',
+            message: 'Native host did not receive the production whitelist update.',
+          },
+          linuxProductionBootstrapFailureBoundary: {
+            id: 'none',
+            message: 'Linux AJAX auto-allow canary completed successfully.',
+          },
+        },
+      }),
+      sourceArtifacts: ['release-evidence.json'],
+    });
+
+    assert.equal(brief.status, 'fail');
+    assert.equal(brief.failureBoundary.id, 'native-host-state-sync');
+    assert.equal(
+      brief.failureBoundary.message,
+      'Native host did not receive the production whitelist update.'
+    );
+    assert.equal(brief.failureBoundary.safeToRetry, 'after-cleanup');
+    assert.match(brief.nextCommand, /gh run rerun 123 --failed/);
+  });
+
+  test('formats missing artifact as unknown with no crash', () => {
+    const brief = buildDeployBrief({
+      releaseEvidence: null,
+      sourceArtifacts: [{ path: 'missing-release-evidence.json', status: 'missing' }],
+    });
+    const markdown = renderDeployBriefMarkdown(brief);
+
+    assert.equal(brief.status, 'unknown');
+    assert.equal(brief.failureBoundary.id, 'unknown');
+    assert.equal(brief.failureBoundary.safeToRetry, 'unknown');
+    assert.match(markdown, /Status: unknown/);
+    assert.match(markdown, /missing-release-evidence\.json/);
+  });
+
+  test('preserves advisory versus post-release canary distinction', () => {
+    const brief = buildDeployBrief({
+      releaseEvidence: buildReleaseEvidenceInput({
+        jobs: {
+          verifyOpenPathUpstream: 'success',
+          resolveReleaseImages: 'success',
+          verifyStagingReleaseState: 'success',
+          windowsFirefoxCanary: 'failure',
+          windowsProductionBootstrapCanary: 'pending-post-release',
+          linuxProductionBootstrapCanary: 'skipped',
+          productionClientUpdateCanary: 'advisory-only',
+          deployProduction: 'success',
+          smokeTestProduction: 'success',
+          rollbackProduction: 'skipped',
+        },
+      }),
+      sourceArtifacts: ['release-evidence.json'],
+    });
+
+    const advisoryGate = brief.gates.find((gate) => gate.id === 'windows-firefox-canary');
+    const postReleaseGate = brief.gates.find(
+      (gate) => gate.id === 'windows-production-bootstrap-canary'
+    );
+    const clientUpdateGate = brief.gates.find(
+      (gate) => gate.id === 'production-client-update-canary'
+    );
+
+    assert.equal(brief.status, 'partial');
+    assert.equal(advisoryGate?.category, 'advisory');
+    assert.equal(postReleaseGate?.category, 'post-release-required');
+    assert.equal(clientUpdateGate?.category, 'post-release-advisory');
   });
 });

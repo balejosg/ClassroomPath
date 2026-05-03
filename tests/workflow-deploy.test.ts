@@ -383,6 +383,15 @@ describe('Deploy workflow contracts', () => {
     );
     assert.ok(deployWorkflowText.includes('Generate release evidence bundle'));
     assert.ok(deployWorkflowText.includes('Record release evidence bundle follow-up command'));
+    assert.ok(deployWorkflowText.includes('Generate deploy brief'));
+    assert.match(
+      deployWorkflowText,
+      /npm run ops:deploy-brief -- \\\n+\s+--release-evidence "\$release_evidence_path" \\\n+\s+--output-dir deploy-brief/
+    );
+    assert.match(
+      deployWorkflowText,
+      /cat deploy-brief\/deploy-brief\.md >> "\$GITHUB_STEP_SUMMARY"/
+    );
     assert.ok(deployWorkflowText.includes('Generate release timing summary'));
     assert.ok(deployWorkflowText.includes('scripts/run-github-run-timing-summary.mjs'));
     assert.match(
@@ -407,6 +416,11 @@ describe('Deploy workflow contracts', () => {
       String(uploadReleaseEvidenceStep?.with?.path ?? ''),
       /release-timing-summary\/\*\*/,
       'release evidence upload should preserve the automatic run timing summary'
+    );
+    assert.match(
+      String(uploadReleaseEvidenceStep?.with?.path ?? ''),
+      /deploy-brief\/\*\*/,
+      'release evidence upload should preserve the compact deploy brief'
     );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(

@@ -62,6 +62,7 @@
     "verify:promotion-ready": "bash scripts/verify-production-promotion-ready.sh",
     "verify:production-promotion-dry": "node scripts/production-promotion-dry-validate.mjs",
     "verify:production-host": "bash scripts/verify-production-host-readiness.sh",
+    "ops:deploy-brief": "node scripts/deploy-brief.mjs",
     "release:evidence-bundle": "node scripts/release-evidence-bundle.mjs",
     "release:production": "bash scripts/tag-production-release.sh",
     "verify:static": "bash scripts/run-turbo.sh verify:static",

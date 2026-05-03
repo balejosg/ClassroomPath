@@ -11,6 +11,7 @@ const testDir = dirname(currentFilePath);
 const projectRoot = resolve(testDir, '..');
 const scriptPath = resolve(projectRoot, 'scripts/write-release-evidence.mjs');
 const evidenceBundleScriptPath = resolve(projectRoot, 'scripts/release-evidence-bundle.mjs');
+const deployBriefScriptPath = resolve(projectRoot, 'scripts/deploy-brief.mjs');
 const promotionDryValidateScriptPath = resolve(
   projectRoot,
   'scripts/production-promotion-dry-validate.mjs'
@@ -131,6 +132,7 @@ describe('release evidence rendering', () => {
       packageJson.scripts?.['release:evidence-bundle'],
       'node scripts/release-evidence-bundle.mjs'
     );
+    assert.equal(packageJson.scripts?.['ops:deploy-brief'], 'node scripts/deploy-brief.mjs');
     assert.equal(
       packageJson.scripts?.['verify:production-promotion-dry'],
       'node scripts/production-promotion-dry-validate.mjs'
@@ -158,6 +160,17 @@ describe('release evidence rendering', () => {
     assert.match(dryResult.stdout, /verify:production-promotion-dry/);
     assert.match(dryResult.stdout, /--release-evidence <path>/);
     assert.match(dryResult.stdout, /without deploying, tagging, or reading production/);
+
+    const deployBriefResult = runProjectCommand(process.execPath, [
+      deployBriefScriptPath,
+      '--help',
+    ]);
+
+    assert.equal(deployBriefResult.status, 0, deployBriefResult.stderr);
+    assert.match(deployBriefResult.stdout, /ops:deploy-brief/);
+    assert.match(deployBriefResult.stdout, /--run <github-run-id>/);
+    assert.match(deployBriefResult.stdout, /--release-evidence <path>/);
+    assert.match(deployBriefResult.stdout, /deploy-brief\.json/);
   });
 
   test('release evidence rendering is delegated to the typed helper module', () => {
