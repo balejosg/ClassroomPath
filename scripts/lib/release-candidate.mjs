@@ -156,6 +156,7 @@ export function formatReleaseCandidateWaitProgress({
 }) {
   const details = [
     `sha=${targetSha}`,
+    `openpath_sha=${upstreamSha || 'unknown'}`,
     `last_state=${lastState}`,
     `latest_run=${formatWorkflowRunContext(latestRun)}`,
   ];
@@ -178,11 +179,21 @@ export function formatReleaseCandidateWaitProgress({
 
   let recoveryText = '';
   if (openPathRecoveryDecision?.state === 'waiting') {
-    recoveryText = 'Active blocker: OpenPath prerelease APT pending.';
+    recoveryText = `Active blocker: OpenPath prerelease APT pending. ${formatOpenPathPrereleaseRecoveryDecision(
+      openPathRecoveryDecision
+    )}`;
   } else if (openPathRecoveryDecision?.state === 'rerun_available') {
-    recoveryText = 'Active blocker: OpenPath prerelease APT failed and rerun is available.';
+    recoveryText = `Active blocker: OpenPath prerelease APT failed and rerun is available. ${formatOpenPathPrereleaseRecoveryDecision(
+      openPathRecoveryDecision
+    )}`;
   } else if (openPathRecoveryDecision?.state === 'failed') {
-    recoveryText = 'Active blocker: ClassroomPath RC failed after upstream was green.';
+    recoveryText = `Active blocker: ClassroomPath RC failed after upstream was green. ${formatOpenPathPrereleaseRecoveryDecision(
+      openPathRecoveryDecision
+    )}`;
+  } else if (openPathRecoveryDecision?.state === 'blocked') {
+    recoveryText = `Active blocker: OpenPath required checks failed. ${formatOpenPathPrereleaseRecoveryDecision(
+      openPathRecoveryDecision
+    )}`;
   }
 
   return [
@@ -191,7 +202,7 @@ export function formatReleaseCandidateWaitProgress({
     recoveryText,
   ]
     .filter(Boolean)
-    .join('\n');
+    .join(' ');
 }
 
 export function formatFirefoxReleaseAssetsTimeoutError({
@@ -238,13 +249,23 @@ export function shouldRerunReleaseCandidateAfterOpenPathAptFailure({
   if (!alreadyReran && recoveryDecision?.state === 'rerun_available') {
     return {
       shouldRerun: true,
+      shouldWait: false,
       reason:
         'OpenPath prerelease APT wait failed, but the OpenPath recovery path is rerun-available',
     };
   }
 
+  if (recoveryDecision?.state === 'waiting') {
+    return {
+      shouldRerun: false,
+      shouldWait: true,
+      reason: 'OpenPath prerelease evidence is still pending',
+    };
+  }
+
   return {
     shouldRerun: false,
+    shouldWait: false,
     reason: alreadyReran
       ? 'Release-candidate workflow has already been rerun once'
       : `OpenPath prerelease recovery state is ${recoveryDecision?.state ?? 'unknown'}`,
@@ -309,7 +330,7 @@ function resolveReleaseCandidateOpenPathRecovery({ upstreamSha, cwd }) {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        OPENPATH_SHA: sha,
+        OPENPATH_SHA: upstreamSha,
       },
     });
     return { state: 'ready' };
@@ -600,6 +621,18 @@ export function waitForReleaseCandidateManifest({
             status: 'pending',
             context: {
               lastState: 'rerun_requested',
+              latestRun: run,
+              latestRunJobs,
+              openPathRecoveryDecision: recoveryDecision,
+            },
+          };
+        }
+
+        if (rerunDecision.shouldWait) {
+          return {
+            status: 'pending',
+            context: {
+              lastState: 'failed',
               latestRun: run,
               latestRunJobs,
               openPathRecoveryDecision: recoveryDecision,

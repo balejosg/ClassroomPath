@@ -148,6 +148,12 @@ export function classifyOpenPathPrereleaseRecovery({
   return {
     state,
     openPathSha: String(openPathSha ?? '').trim(),
+    workflowName:
+      String(
+        workflowRun?.name ?? aptCheckRun?.name ?? OPENPATH_PRERELEASE_APT_REQUIRED_CHECK
+      ).trim() || OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
+    workflowStatus: String(workflowRun?.status ?? aptCheckRun?.status ?? '').trim(),
+    workflowConclusion: String(workflowRun?.conclusion ?? aptCheckRun?.conclusion ?? '').trim(),
     requiredChecks: normalizedRequiredChecks,
     pendingChecks: fullWaitState.pending,
     blockingChecks: supportingWaitState.terminalFailures.map((failure) => failure.name),
@@ -164,6 +170,18 @@ export function formatOpenPathPrereleaseRecoveryDecision(decision = {}) {
 
   if (decision.runUrl) {
     details.push(`run_url=${decision.runUrl}`);
+  }
+
+  if (decision.workflowName) {
+    details.push(`workflow=${decision.workflowName}`);
+  }
+
+  if (decision.workflowStatus) {
+    details.push(`workflow_status=${decision.workflowStatus}`);
+  }
+
+  if (decision.workflowConclusion) {
+    details.push(`workflow_conclusion=${decision.workflowConclusion}`);
   }
 
   if (decision.failedJob) {

@@ -49,6 +49,7 @@ export function summarizeRunTiming({ run = {}, jobs = [] } = {}) {
   const latestCompletedJob = selectLatestCompletedJob(executedJobs);
   const longestQueueJob = selectLongestJobBy(executedJobs, 'queueSeconds');
   const longestExecutionJob = selectLongestJobBy(executedJobs, 'executionSeconds');
+  const runCompletedAt = run.updatedAt ?? run.updated_at ?? latestCompletedJob?.completedAt ?? null;
 
   return {
     run: {
@@ -64,6 +65,10 @@ export function summarizeRunTiming({ run = {}, jobs = [] } = {}) {
     totals: {
       executedJobs: executedJobs.length,
       skippedJobs: skippedJobs.length,
+      wallSeconds: secondsBetween(
+        parseGitHubTimestamp(runCreatedAt),
+        parseGitHubTimestamp(runCompletedAt)
+      ),
       queueSeconds: executedJobs.reduce((total, job) => total + (job.queueSeconds ?? 0), 0),
       executionSeconds: executedJobs.reduce((total, job) => total + (job.executionSeconds ?? 0), 0),
     },
@@ -71,6 +76,7 @@ export function summarizeRunTiming({ run = {}, jobs = [] } = {}) {
       terminalJob: latestCompletedJob ? summarizeCriticalJob(latestCompletedJob) : null,
       longestQueueJob: longestQueueJob ? summarizeCriticalJob(longestQueueJob) : null,
       longestExecutionJob: longestExecutionJob ? summarizeCriticalJob(longestExecutionJob) : null,
+      jobs: summarizeCriticalPathJobs(executedJobs),
     },
   };
 }
@@ -97,6 +103,16 @@ function summarizeCriticalJob(job) {
   };
 }
 
+function summarizeCriticalPathJobs(jobs) {
+  return [...jobs]
+    .filter((job) => job.completedAt)
+    .sort(
+      (left, right) =>
+        parseGitHubTimestamp(left.completedAt) - parseGitHubTimestamp(right.completedAt)
+    )
+    .map(summarizeCriticalJob);
+}
+
 function formatSeconds(value) {
   return value === null || value === undefined ? 'n/a' : String(value);
 }
@@ -105,7 +121,7 @@ export function formatRunTimingMarkdown(summary) {
   const lines = [
     '## Run Timing Summary',
     '',
-    `Executed jobs: ${summary.totals.executedJobs}. Skipped jobs: ${summary.totals.skippedJobs}. Total queue seconds: ${summary.totals.queueSeconds}. Total execution seconds: ${summary.totals.executionSeconds}.`,
+    `Executed jobs: ${summary.totals.executedJobs}. Skipped jobs: ${summary.totals.skippedJobs}. Total wall seconds: ${formatSeconds(summary.totals.wallSeconds)}. Total queue seconds: ${summary.totals.queueSeconds}. Total execution seconds: ${summary.totals.executionSeconds}.`,
     '',
     ...formatCriticalPathLines(summary.criticalPath),
     '',
@@ -142,6 +158,10 @@ function formatCriticalPathLines(criticalPath = {}) {
 
   if (criticalPath.longestExecutionJob) {
     lines.push(`Longest execution: ${formatJobTimingLabel(criticalPath.longestExecutionJob)}.`);
+  }
+
+  if (criticalPath.jobs?.length > 0) {
+    lines.push(`Critical path jobs: ${criticalPath.jobs.map((job) => job.name).join(' -> ')}.`);
   }
 
   if (lines.length === 1) {

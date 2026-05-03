@@ -1,5 +1,7 @@
 // @ts-check
 
+import { readFileSync } from 'node:fs';
+
 function valueOrNull(value) {
   if (value === undefined || value === null) {
     return null;
@@ -102,6 +104,96 @@ function formatDuration(value) {
   return minutes > 0 ? `${minutes}m${String(seconds).padStart(2, '0')}s` : `${seconds}s`;
 }
 
+function formatDurationSeconds(seconds) {
+  const numericSeconds = Number(seconds);
+  if (!Number.isFinite(numericSeconds) || numericSeconds < 0) {
+    return 'n/a';
+  }
+
+  return formatDuration({ durationMs: numericSeconds * 1000 });
+}
+
+function timingJobLabel(job) {
+  return job?.name ? String(job.name) : 'n/a';
+}
+
+function renderReleaseTimingMarkdown(timings = null) {
+  if (!timings) {
+    return [];
+  }
+
+  const criticalPath = timings.criticalPath ?? {};
+  const criticalPathJobs = (criticalPath.jobs ?? []).map((job) => timingJobLabel(job));
+
+  return [
+    '### Release Timing',
+    '',
+    `- Total wall time: \`${formatDurationSeconds(timings.totalWallSeconds)}\``,
+    `- Terminal job: \`${timingJobLabel(criticalPath.terminalJob)}\``,
+    `- Longest queue wait: \`${timingJobLabel(criticalPath.longestQueueJob)}\``,
+    `- Longest execution: \`${timingJobLabel(criticalPath.longestExecutionJob)}\``,
+    `- Critical path jobs: \`${criticalPathJobs.length > 0 ? criticalPathJobs.join(' -> ') : 'n/a'}\``,
+    '',
+  ];
+}
+
+const RELEASE_TIMING_JOB_KEYS = new Map([
+  ['Verify OpenPath Upstream Checks', 'verifyOpenPathUpstream'],
+  ['Verify OpenPath Upstream', 'verifyOpenPathUpstream'],
+  ['Resolve Release Images', 'resolveReleaseImages'],
+  ['Verify Staging Release State', 'verifyStagingReleaseState'],
+  ['Windows Firefox Canary', 'windowsFirefoxCanary'],
+  ['Deploy to Production', 'deployProduction'],
+  ['Smoke Test Production', 'smokeTestProduction'],
+  ['Windows Production Bootstrap Canary', 'windowsProductionBootstrapCanary'],
+  ['Linux Production Bootstrap Canary', 'linuxProductionBootstrapCanary'],
+  ['Release Evidence', 'releaseEvidence'],
+]);
+
+function timingJobDuration(job = {}) {
+  if (job.executionSeconds === null || job.executionSeconds === undefined) {
+    return null;
+  }
+
+  return { durationMs: Number(job.executionSeconds) * 1000 };
+}
+
+function buildReleaseTimingEvidence(summary = {}) {
+  const jobs = {};
+
+  for (const job of summary.jobs ?? []) {
+    const key = RELEASE_TIMING_JOB_KEYS.get(String(job.name ?? ''));
+    const duration = timingJobDuration(job);
+
+    if (key && duration) {
+      jobs[key] = duration;
+    }
+  }
+
+  return {
+    totalWallSeconds: summary.totals?.wallSeconds ?? null,
+    criticalPath: summary.criticalPath ?? null,
+    jobs,
+  };
+}
+
+function readReleaseTimingEvidence(env) {
+  if (env.timings) {
+    return env.timings;
+  }
+
+  const timingSummaryPath = valueOrNull(env.RUN_TIMING_SUMMARY_PATH);
+  if (!timingSummaryPath) {
+    return null;
+  }
+
+  try {
+    return buildReleaseTimingEvidence(JSON.parse(readFileSync(timingSummaryPath, 'utf8')));
+  } catch {
+    return null;
+  }
+}
+
 function renderDashboardStatusRow({
   label,
   result,
@@ -174,6 +266,7 @@ function renderReleaseDashboardMarkdown({
       evidence: evidence.artifacts.releaseEvidence ?? 'n/a',
     }),
     '',
+    ...renderReleaseTimingMarkdown(evidence.timings),
   ];
 }
 
@@ -352,7 +445,7 @@ export function buildReleaseEvidence(env = process.env) {
     artifactIntegrity: env.artifactIntegrity ?? null,
     canaries: env.canaries ?? null,
     production: env.production ?? null,
-    timings: env.timings ?? null,
+    timings: readReleaseTimingEvidence(env),
   };
 }
 

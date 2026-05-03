@@ -383,6 +383,12 @@ describe('Deploy workflow contracts', () => {
     );
     assert.ok(deployWorkflowText.includes('Generate release evidence bundle'));
     assert.ok(deployWorkflowText.includes('Record release evidence bundle follow-up command'));
+    assert.ok(deployWorkflowText.includes('Generate release timing summary'));
+    assert.ok(deployWorkflowText.includes('scripts/run-github-run-timing-summary.mjs'));
+    assert.match(
+      deployWorkflowText,
+      /"RUN_TIMING_SUMMARY_PATH": "release-timing-summary\/run-timing-summary\.json"/
+    );
     assert.match(
       deployWorkflowText,
       /node scripts\/release-evidence-bundle\.mjs \\\n+\s+--deploy-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--tag "\$\{\{ github\.ref_name \}\}" \\\n+\s+--windows-canary-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--linux-canary-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--production-url "\$\{\{ steps\.production-target\.outputs\.public_url \}\}" \\\n+\s+--output-dir release-evidence-bundle/
@@ -396,6 +402,11 @@ describe('Deploy workflow contracts', () => {
       String(uploadReleaseEvidenceStep?.with?.path ?? ''),
       /release-evidence-bundle\/\*\*/,
       'release evidence upload should preserve the full best-effort bundle when present'
+    );
+    assert.match(
+      String(uploadReleaseEvidenceStep?.with?.path ?? ''),
+      /release-timing-summary\/\*\*/,
+      'release evidence upload should preserve the automatic run timing summary'
     );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(

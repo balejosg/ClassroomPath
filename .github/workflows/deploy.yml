@@ -690,6 +690,19 @@ jobs:
         id: production-target
         run: node scripts/deploy-targets.mjs outputs production >> "$GITHUB_OUTPUT"
 
+      - name: Generate release timing summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-timing-summary
+          node scripts/run-github-run-timing-summary.mjs \
+            --repo "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --artifact-dir release-timing-summary \
+            > release-timing-summary/run-timing-summary.md
+          cat release-timing-summary/run-timing-summary.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Generate release evidence
         run: |
           cat > release-evidence-input.json <<'EOF'
@@ -708,6 +721,7 @@ jobs:
             "PRODUCTION_GATEWAY_HEALTH_URL": "${{ steps.production-target.outputs.gateway_health_url }}",
             "PRODUCTION_READY_URL": "${{ steps.production-target.outputs.ready_url }}",
             "PRODUCTION_API_CONFIG_URL": "${{ steps.production-target.outputs.api_config_url }}",
+            "RUN_TIMING_SUMMARY_PATH": "release-timing-summary/run-timing-summary.json",
             "VERIFY_OPENPATH_RESULT": "${{ needs.verify-openpath-upstream.result }}",
             "RESOLVE_IMAGES_RESULT": "${{ needs.resolve-release-images.result }}",
             "VERIFY_STAGING_RESULT": "${{ needs.verify-staging-release-state.result }}",
@@ -791,6 +805,7 @@ jobs:
             release-evidence.json
             release-evidence.md
             release-evidence-bundle/**
+            release-timing-summary/**
           retention-days: 14
 
   rollback-production:

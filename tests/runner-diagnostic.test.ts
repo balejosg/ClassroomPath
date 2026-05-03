@@ -170,9 +170,19 @@ describe('runner diagnostic wrapper', () => {
       summary.criticalPath.longestExecutionJob?.name,
       'Linux Production Bootstrap Canary'
     );
+    assert.equal(summary.totals.wallSeconds, 495);
+    assert.deepEqual(
+      summary.criticalPath.jobs.map((job) => job.name),
+      ['Deploy to Production', 'Linux Production Bootstrap Canary', 'Release Evidence']
+    );
 
     const markdown = formatRunTimingMarkdown(summary);
     assert.match(markdown, /### Critical Path/);
+    assert.match(markdown, /Total wall seconds: 495/);
+    assert.match(
+      markdown,
+      /Critical path jobs: Deploy to Production -> Linux Production Bootstrap Canary -> Release Evidence/
+    );
     assert.match(markdown, /Terminal job: Release Evidence \(queue 485s, execution 10s\)/);
     assert.match(markdown, /Longest execution: Linux Production Bootstrap Canary/);
   });

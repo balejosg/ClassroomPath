@@ -186,6 +186,53 @@ describe('wait-for-release-candidate helpers', () => {
     assert.match(message, /Queue: 150s/);
   });
 
+  test('formats release candidate wait progress as one actionable blocker line', () => {
+    const message = formatReleaseCandidateWaitProgress({
+      repository: 'balejosg/ClassroomPath',
+      targetSha: 'classroompathsha',
+      lastState: 'failed',
+      latestRun: {
+        databaseId: 987,
+        status: 'completed',
+        conclusion: 'failure',
+        updatedAt: '2026-03-27T11:00:00Z',
+      },
+      latestRunJobs: [
+        {
+          databaseId: 654,
+          name: 'derive-release-image-refs',
+          status: 'completed',
+          conclusion: 'failure',
+          steps: [
+            {
+              name: 'Wait for OpenPath prerelease APT publish',
+              status: 'completed',
+              conclusion: 'failure',
+            },
+          ],
+        },
+      ],
+      openPathRecoveryDecision: {
+        state: 'rerun_available',
+        openPathSha: 'openpathsha',
+        workflowName: 'Prerelease Deb/APT',
+        workflowConclusion: 'failure',
+        failedJob: 'publish prerelease APT',
+        failedStep: 'Upload APT package',
+        rerunCommand: 'gh run rerun 123 --repo balejosg/openpath --failed',
+      },
+      upstreamSha: 'openpathsha',
+    });
+
+    assert.doesNotMatch(message, /\n/);
+    assert.match(message, /sha=classroompathsha/);
+    assert.match(message, /openpath_sha=openpathsha/);
+    assert.match(message, /workflow=Prerelease Deb\/APT/);
+    assert.match(message, /workflow_conclusion=failure/);
+    assert.match(message, /failed_job=publish prerelease APT/);
+    assert.match(message, /gh run rerun 123 --repo balejosg\/openpath --failed/);
+  });
+
   test('formats AMO throttle failures with job, step, delay, and rerun command', () => {
     const message = formatReleaseCandidateRunFailure({
       targetSha: 'abc123',
@@ -242,6 +289,18 @@ describe('wait-for-release-candidate helpers', () => {
     });
 
     assert.equal(decision.shouldRerun, false);
+  });
+
+  test('keeps waiting after a failed release-candidate run while OpenPath evidence is pending', () => {
+    const decision = shouldRerunReleaseCandidateAfterOpenPathAptFailure({
+      alreadyReran: false,
+      recoveryDecision: {
+        state: 'waiting',
+      },
+    });
+
+    assert.equal(decision.shouldRerun, false);
+    assert.equal(decision.shouldWait, true);
   });
 
   test('formats release candidate wait progress with a rerun-available blocker summary', () => {

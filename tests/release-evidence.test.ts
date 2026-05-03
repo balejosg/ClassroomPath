@@ -301,6 +301,29 @@ describe('release evidence rendering', () => {
         ready: { ready: true },
       },
       timings: {
+        totalWallSeconds: 505,
+        criticalPath: {
+          terminalJob: {
+            name: 'Release Evidence',
+            queueSeconds: 495,
+            executionSeconds: 10,
+          },
+          longestQueueJob: {
+            name: 'Release Evidence',
+            queueSeconds: 495,
+            executionSeconds: 10,
+          },
+          longestExecutionJob: {
+            name: 'Linux Production Bootstrap Canary',
+            queueSeconds: 4,
+            executionSeconds: 321,
+          },
+          jobs: [
+            { name: 'Deploy to Production' },
+            { name: 'Linux Production Bootstrap Canary' },
+            { name: 'Release Evidence' },
+          ],
+        },
         jobs: {
           deployProduction: { durationMs: 88000 },
           smokeTestProduction: { durationMs: 49000 },
@@ -327,6 +350,15 @@ describe('release evidence rendering', () => {
     assert.match(
       markdown,
       /\| Windows production bootstrap canary \| success \| none \| 3m15s \| windows-production-bootstrap-canary \|/
+    );
+    assert.match(markdown, /### Release Timing/);
+    assert.match(markdown, /Total wall time: `8m25s`/);
+    assert.match(markdown, /Terminal job: `Release Evidence`/);
+    assert.match(markdown, /Longest queue wait: `Release Evidence`/);
+    assert.match(markdown, /Longest execution: `Linux Production Bootstrap Canary`/);
+    assert.match(
+      markdown,
+      /Critical path jobs: `Deploy to Production -> Linux Production Bootstrap Canary -> Release Evidence`/
     );
     assert.match(markdown, /Windows canary artifact integrity: `ok`/);
     assert.match(markdown, /Linux canary artifact integrity: `missing`/);
