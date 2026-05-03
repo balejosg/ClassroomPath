@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { readProjectText, readProjectWorkflow } from './helpers/ops-contracts.ts';
 import {
@@ -11,6 +14,9 @@ import {
 } from '../scripts/lib/windows-auto-allow-canary-evidence.mjs';
 
 const windowsRunnerDnsActionPath = '.github/actions/restore-windows-runner-dns/action.yml';
+const currentFilePath = fileURLToPath(import.meta.url);
+const testDir = dirname(currentFilePath);
+const projectRoot = resolve(testDir, '..');
 const windowsAutoAllowExpectedHosts = WINDOWS_AUTO_ALLOW_PROBES.map(
   (probe) => probe.expectedWhitelistHost
 );
@@ -167,9 +173,57 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       'Post-deploy `workflow_run` and manual dispatch are never suppressed',
       'Do not suppress by SHA; environment drift can change without a commit',
       'Tag production deploys are non-cancelable',
+      'Blocks release?',
     ]) {
       assert.ok(inventory.includes(token), `inventory should include ${token}`);
     }
+  });
+
+  test('ci/cd signal inventory covers scheduled and post-deploy workflows', () => {
+    const inventory = readProjectText('docs/ci-cd-signal-inventory.md');
+    const workflowDir = resolve(projectRoot, '.github/workflows');
+    const signalWorkflows = readdirSync(workflowDir)
+      .filter((entry) => /\.ya?ml$/.test(entry))
+      .filter((entry) => {
+        const text = readProjectText(`.github/workflows/${entry}`);
+        return (
+          text.includes('schedule:') ||
+          text.includes('workflow_run:') ||
+          text.includes('advisory') ||
+          entry.includes('cleanup') ||
+          entry.includes('security')
+        );
+      })
+      .sort();
+
+    for (const workflow of signalWorkflows) {
+      const rowPattern = new RegExp(
+        `\\| \`${workflow.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\`\\s+\\|[^\\n]+\\|[^\\n]+\\|[^\\n]+\\|[^\\n]+\\|[^\\n]+\\|[^\\n]+\\|[^\\n]+\\|`
+      );
+      assert.match(inventory, rowPattern, `${workflow} must declare its CI signal policy`);
+    }
+  });
+
+  test('successful scheduled download canary uses short retention without weakening failures', () => {
+    const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
+    const downloadJob = workflow.jobs?.['production-enrollment-download-canary'];
+    const routineUploadStep = downloadJob?.steps?.find(
+      (step) => step.name === 'Upload routine production enrollment download canary artifact'
+    );
+    const diagnosticUploadStep = downloadJob?.steps?.find(
+      (step) => step.name === 'Upload diagnostic production enrollment download canary artifact'
+    );
+
+    assert.match(String(routineUploadStep?.if ?? ''), /github\.event_name == 'schedule'/);
+    assert.match(String(routineUploadStep?.if ?? ''), /success\(\)/);
+    assert.equal(routineUploadStep?.with?.['retention-days'], 7);
+    assert.equal(routineUploadStep?.with?.overwrite, true);
+
+    assert.match(String(diagnosticUploadStep?.if ?? ''), /always\(\)/);
+    assert.match(String(diagnosticUploadStep?.if ?? ''), /github\.event_name != 'schedule'/);
+    assert.match(String(diagnosticUploadStep?.if ?? ''), /!success\(\)/);
+    assert.equal(diagnosticUploadStep?.with?.['retention-days'], 14);
+    assert.equal(diagnosticUploadStep?.with?.overwrite, true);
   });
 
   test('keeps probe metadata and failure messages in one importable table', () => {

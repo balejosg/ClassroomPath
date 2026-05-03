@@ -73,6 +73,33 @@ describe('CI signal policy', () => {
     );
   });
 
+  test('does not suppress scheduled evidence for a different target environment', () => {
+    const runs = [
+      {
+        databaseId: 5,
+        event: 'schedule',
+        headSha: 'abc',
+        status: 'completed',
+        conclusion: 'success',
+        updatedAt: '2026-05-01T11:45:00.000Z',
+        targetEnvironment: 'staging',
+      },
+    ];
+
+    const result = resolveDuplicateSuppression({
+      eventName: 'schedule',
+      runs,
+      sha: 'abc',
+      currentRunId: 6,
+      now: new Date('2026-05-01T12:00:00.000Z'),
+      freshnessWindow: '60m',
+      targetEnvironment: 'production',
+    });
+
+    assert.equal(result.shouldSkip, false);
+    assert.match(result.reason, /no fresh scheduled success/);
+  });
+
   test('suppresses only scheduled duplicate advisory evidence', () => {
     const runs = [
       {
@@ -108,6 +135,31 @@ describe('CI signal policy', () => {
       }).shouldSkip,
       true
     );
+  });
+
+  test('manual dispatch never suppresses scheduled evidence', () => {
+    const result = resolveDuplicateSuppression({
+      eventName: 'workflow_dispatch',
+      runs: [
+        {
+          databaseId: 5,
+          event: 'schedule',
+          headSha: 'abc',
+          status: 'completed',
+          conclusion: 'success',
+          updatedAt: '2026-05-01T11:45:00.000Z',
+          targetEnvironment: 'production',
+        },
+      ],
+      sha: 'abc',
+      currentRunId: 6,
+      now: new Date('2026-05-01T12:00:00.000Z'),
+      freshnessWindow: '60m',
+      targetEnvironment: 'production',
+    });
+
+    assert.equal(result.shouldSkip, false);
+    assert.match(result.reason, /workflow_dispatch is not eligible/);
   });
 
   test('suppresses scheduled canary when same-SHA deploy evidence is active', () => {

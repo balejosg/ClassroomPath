@@ -22,6 +22,7 @@ export function findFreshSameShaSuccess({
   runs,
   sha,
   currentRunId,
+  targetEnvironment = null,
   now = new Date(),
   freshnessMs,
 }) {
@@ -35,6 +36,9 @@ export function findFreshSameShaSuccess({
       runId !== String(currentRunId ?? '') &&
       run.event === 'schedule' &&
       run.headSha === sha &&
+      (!targetEnvironment ||
+        !run.targetEnvironment ||
+        String(run.targetEnvironment) === String(targetEnvironment)) &&
       run.status === 'completed' &&
       run.conclusion === 'success' &&
       Number.isFinite(updatedAt) &&
@@ -47,6 +51,7 @@ export function findFreshDeployEvidenceRun({
   runs,
   sha,
   currentRunId,
+  targetEnvironment = null,
   now = new Date(),
   freshnessMs,
 }) {
@@ -66,6 +71,9 @@ export function findFreshDeployEvidenceRun({
       run.event === 'push' &&
       headBranch.startsWith('v') &&
       run.headSha === sha &&
+      (!targetEnvironment ||
+        !run.targetEnvironment ||
+        String(run.targetEnvironment) === String(targetEnvironment)) &&
       (status === 'in_progress' || (status === 'completed' && conclusion === 'success')) &&
       Number.isFinite(updatedAt) &&
       updatedAt >= cutoffMs
@@ -79,6 +87,7 @@ export function resolveDuplicateSuppression({
   deployRuns = [],
   sha,
   currentRunId,
+  targetEnvironment = null,
   now = new Date(),
   freshnessWindow,
 }) {
@@ -94,6 +103,7 @@ export function resolveDuplicateSuppression({
     runs: deployRuns,
     sha,
     currentRunId,
+    targetEnvironment,
     now,
     freshnessMs,
   });
@@ -112,6 +122,7 @@ export function resolveDuplicateSuppression({
     runs,
     sha,
     currentRunId,
+    targetEnvironment,
     now,
     freshnessMs,
   });
@@ -154,7 +165,14 @@ function writeOutput(name, value) {
   appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 }
 
-function writeSummary({ signalClass, duplicatePolicy, result }) {
+function writeSummary({
+  signalClass,
+  duplicatePolicy,
+  targetEnvironment,
+  releaseEvidenceAffected,
+  nextAction,
+  result,
+}) {
   if (!process.env.GITHUB_STEP_SUMMARY) {
     return;
   }
@@ -165,9 +183,12 @@ function writeSummary({ signalClass, duplicatePolicy, result }) {
       '### CI signal policy',
       '',
       `- Signal class: ${signalClass}`,
+      `- Target environment: ${targetEnvironment}`,
       `- Duplicate policy: ${duplicatePolicy}`,
       `- Decision: ${result.shouldSkip ? 'skip duplicate same-SHA scheduled run' : 'run evidence lane'}`,
       `- Reason: ${result.reason}`,
+      `- Release evidence affected: ${releaseEvidenceAffected}`,
+      `- Next action: ${nextAction}`,
       '',
     ].join('\n')
   );
@@ -177,6 +198,11 @@ function runDuplicateSuppressionCli() {
   const signalClass = process.env.CI_SIGNAL_CLASS ?? 'advisory';
   const duplicatePolicy = process.env.CI_DUPLICATE_POLICY ?? 'none';
   const workflowName = process.env.CI_WORKFLOW_NAME ?? process.env.GITHUB_WORKFLOW;
+  const targetEnvironment = process.env.CI_TARGET_ENVIRONMENT ?? 'unknown';
+  const releaseEvidenceAffected = process.env.CI_RELEASE_EVIDENCE_AFFECTED ?? 'no';
+  const nextAction =
+    process.env.CI_NEXT_ACTION ??
+    'Review this run only if the evidence lane executes or the policy lookup fails.';
   const freshnessWindow = process.env.CI_DUPLICATE_FRESHNESS_WINDOW ?? '60m';
   const eventName = process.env.GITHUB_EVENT_NAME ?? '';
   const sha = process.env.GITHUB_SHA ?? '';
@@ -199,6 +225,9 @@ function runDuplicateSuppressionCli() {
     writeSummary({
       signalClass,
       duplicatePolicy,
+      targetEnvironment,
+      releaseEvidenceAffected,
+      nextAction,
       result: { shouldSkip: false, reason },
     });
     return;
@@ -206,17 +235,25 @@ function runDuplicateSuppressionCli() {
 
   const result = resolveDuplicateSuppression({
     eventName,
-    runs,
-    deployRuns,
+    runs: runs.map((run) => ({ ...run, targetEnvironment })),
+    deployRuns: deployRuns.map((run) => ({ ...run, targetEnvironment: 'production' })),
     sha,
     currentRunId,
+    targetEnvironment,
     freshnessWindow,
   });
 
   writeOutput('should_skip', result.shouldSkip ? 'true' : 'false');
   writeOutput('reason', result.reason);
   writeOutput('matching_run_url', result.run?.url ?? '');
-  writeSummary({ signalClass, duplicatePolicy, result });
+  writeSummary({
+    signalClass,
+    duplicatePolicy,
+    targetEnvironment,
+    releaseEvidenceAffected,
+    nextAction,
+    result,
+  });
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {

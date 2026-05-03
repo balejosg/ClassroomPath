@@ -57,6 +57,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CI_SIGNAL_CLASS: post-release health
+          CI_TARGET_ENVIRONMENT: production
+          CI_RELEASE_EVIDENCE_AFFECTED: no, unless this is a post-deploy workflow_run
+          CI_NEXT_ACTION: Scheduled duplicates may skip; manual dispatch and post-deploy evidence must run.
           CI_DUPLICATE_POLICY: same workflow success or deploy evidence + same SHA within 60m
           CI_DUPLICATE_FRESHNESS_WINDOW: 60m
           CI_WORKFLOW_NAME: Production Client Update Canary
@@ -219,8 +222,22 @@ jobs:
           node scripts/production-enrollment-download-canary.mjs
           test -f production-enrollment-download-canary.json
 
-      - name: Upload production enrollment download canary artifact
-        if: always()
+      - name: Upload routine production enrollment download canary artifact
+        if: ${{ github.event_name == 'schedule' && success() }}
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-enrollment-download-canary
+          path: |
+            production-enrollment-download-canary.json
+            production-windows-bootstrap-canary.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+      - name: Upload diagnostic production enrollment download canary artifact
+        if: ${{ always() && (github.event_name != 'schedule' || !success()) }}
         continue-on-error: true
         timeout-minutes: 10
         uses: actions/upload-artifact@v7
