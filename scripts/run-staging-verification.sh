@@ -28,6 +28,11 @@ persist_staging_verification_evidence() {
   load_release_state_env "$state_dir/current-images.env"
   openpath_sha="$(git -C "$app_dir/upstream/openpath" rev-parse HEAD)"
 
+  STAGING_VERIFICATION_STATE="success" \
+  STAGING_EXPECTED_APP_SHA="${APP_SHA:-}" \
+  STAGING_EXPECTED_OPENPATH_SHA="${openpath_sha:-}" \
+  STAGING_EXPECTED_IMAGE_SOURCE="${IMAGE_SOURCE:-}" \
+  STAGING_VERIFICATION_STARTED_AT="${STAGING_VERIFICATION_STARTED_AT:-}" \
   STAGING_VERIFIED_BY="deploy-staging-local.sh" \
   STAGING_VERIFIED_APP_SHA="${APP_SHA:-}" \
   STAGING_VERIFIED_OPENPATH_SHA="${openpath_sha:-}" \
@@ -40,6 +45,20 @@ persist_staging_verification_evidence() {
   STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION="${OPENPATH_LINUX_AGENT_VERSION:-}" \
   STAGING_VERIFIED_SPA_IMAGE="${CLASSROOMPATH_SPA_IMAGE:-}" \
     write_staging_verification_state "$state_dir/staging-verification.env"
+}
+
+run_invalidate_subcommand() {
+  if [ "$#" -ne 4 ]; then
+    echo "Usage: run-staging-verification.sh invalidate <state-file> <app-sha> <openpath-sha> <image-source>" >&2
+    exit 2
+  fi
+
+  local state_file="$1"
+  local app_sha="$2"
+  local openpath_sha="$3"
+  local image_source="$4"
+
+  write_staging_verification_pending_state "$state_file" "$app_sha" "$openpath_sha" "$image_source"
 }
 
 run_smoke_subcommand() {
@@ -163,11 +182,14 @@ main() {
     collect)
       run_collect_subcommand "$@"
       ;;
+    invalidate)
+      run_invalidate_subcommand "$@"
+      ;;
     persist-evidence)
       persist_staging_verification_evidence "$@"
       ;;
     *)
-      echo "Usage: run-staging-verification.sh <smoke|release-gate|collect|persist-evidence> ..." >&2
+      echo "Usage: run-staging-verification.sh <smoke|release-gate|collect|invalidate|persist-evidence> ..." >&2
       exit 2
       ;;
   esac

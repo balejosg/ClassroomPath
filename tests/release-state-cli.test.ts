@@ -273,6 +273,76 @@ test('release-state CLI rejects high-risk promotion without Linux staging bootst
   assert.match(result.stderr, /firefox-extension-ready/);
 });
 
+test('verify-promotion-ready rejects pending staging verification for target SHA', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-pending-'));
+  const currentStatePath = join(tempDir, 'staging-release-state.env');
+  const verificationStatePath = join(tempDir, 'staging-verification.env');
+
+  writeFileSync(
+    currentStatePath,
+    [
+      'APP_SHA=abc123',
+      'IMAGE_SOURCE=release-candidate',
+      'CLASSROOMPATH_GATEWAY_IMAGE=ghcr.io/balejosg/classroompath-gateway:abc123',
+      'CLASSROOMPATH_MIGRATIONS_IMAGE=ghcr.io/balejosg/classroompath-migrations:abc123',
+      'OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
+      'OPENPATH_VERSION=4.1.19',
+      'OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+      'CLASSROOMPATH_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
+      '',
+    ].join('\n'),
+    'utf-8'
+  );
+
+  writeFileSync(
+    verificationStatePath,
+    [
+      'STAGING_VERIFICATION_STATE=pending',
+      'STAGING_EXPECTED_APP_SHA=abc123',
+      'STAGING_EXPECTED_OPENPATH_SHA=openpathsha',
+      'STAGING_EXPECTED_IMAGE_SOURCE=release-candidate',
+      'STAGING_VERIFICATION_STARTED_AT=2026-04-11T06:00:00Z',
+      'STAGING_VERIFIED_APP_SHA=',
+      'STAGING_SMOKE_RESULT=pending',
+      'STAGING_RELEASE_GATE_RESULT=pending',
+      '',
+    ].join('\n'),
+    'utf-8'
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      'verify-promotion-ready',
+      '--current',
+      currentStatePath,
+      '--verification',
+      verificationStatePath,
+    ],
+    {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+      env: {
+        ...process.env,
+        EXPECTED_APP_SHA: 'abc123',
+        EXPECTED_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+        EXPECTED_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+        EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+        EXPECTED_OPENPATH_VERSION: '4.1.19',
+        EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+        EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
+      },
+    }
+  );
+
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stderr,
+    /Staging verification for abc123 is pending or failed; expected successful evidence for abc123/
+  );
+});
+
 test('promotion evidence CLI embeds and extracts staging evidence from annotated tag messages', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'promotion-evidence-cli-'));
   const currentStatePath = join(tempDir, 'current-images.env');
@@ -453,6 +523,36 @@ test('canonical shell release-state helper serializes snapshots through the type
   assert.equal(snapshot.STAGING_WINDOWS_FIREFOX_HIGH_RISK, 'true');
   assert.equal(snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION, '4.1.19');
   assert.equal(snapshot.STAGING_FIREFOX_XPI_SHA256, 'xpi123');
+});
+
+test('canonical shell release-state helper serializes pending staging verification intent', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-shell-pending-'));
+  const snapshotPath = join(tempDir, 'staging-verification.env');
+
+  runCommand(
+    'bash',
+    [
+      '-lc',
+      [
+        'source scripts/lib/common.sh',
+        'source scripts/lib/release-state.sh',
+        `write_staging_verification_pending_state ${snapshotPath} abc123 openpathsha release-candidate`,
+      ].join('; '),
+    ],
+    { ...process.env }
+  );
+
+  const snapshot = readReleaseStateSnapshot(snapshotPath);
+  assert.equal(snapshot.STAGING_VERIFICATION_STATE, 'pending');
+  assert.equal(snapshot.STAGING_EXPECTED_APP_SHA, 'abc123');
+  assert.equal(snapshot.STAGING_EXPECTED_OPENPATH_SHA, 'openpathsha');
+  assert.equal(snapshot.STAGING_EXPECTED_IMAGE_SOURCE, 'release-candidate');
+  assert.match(snapshot.STAGING_VERIFICATION_STARTED_AT ?? '', /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(snapshot.STAGING_VERIFIED_APP_SHA, '');
+  assert.equal(snapshot.STAGING_SMOKE_RESULT, 'pending');
+  assert.equal(snapshot.STAGING_RELEASE_GATE_RESULT, 'pending');
+  assert.equal(snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT, 'pending');
+  assert.equal(snapshot.STAGING_LINUX_BOOTSTRAP_RESULT, 'pending');
 });
 
 test('bash release-state helpers preserve shell-only staging verification values when delegating to the typed CLI', () => {

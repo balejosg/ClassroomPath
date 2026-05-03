@@ -220,6 +220,32 @@ describe('Deployment staging and promotion contracts', () => {
     );
   });
 
+  test('promotion-eligible staging deploy invalidates stale verification evidence before remote deploy', () => {
+    const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const releaseHelperContent = readFileSync(stagingLocalReleaseHelperPath, 'utf-8');
+    const runnerContent = readFileSync(stagingVerificationRunnerPath, 'utf-8');
+
+    assert.ok(
+      releaseHelperContent.includes('invalidate_staging_verification_evidence_for_release()') &&
+        releaseHelperContent.includes('"$STAGING_VERIFICATION_RUNNER_PATH" invalidate') &&
+        releaseHelperContent.includes('STAGING_RELEASE_SHA') &&
+        releaseHelperContent.includes('UPSTREAM_OPENPATH_SHA') &&
+        releaseHelperContent.includes('STAGING_IMAGE_SOURCE'),
+      'staging local release helper should write pending evidence for the target release'
+    );
+    assert.ok(
+      runnerContent.includes('run_invalidate_subcommand()') &&
+        runnerContent.includes('write_staging_verification_pending_state'),
+      'shared staging verification runner should expose a reusable invalidate subcommand'
+    );
+    assert.ok(
+      localContent.includes('invalidate_staging_verification_evidence_for_release') &&
+        localContent.indexOf('invalidate_staging_verification_evidence_for_release') <
+          localContent.indexOf('run_staging_local_remote_deploy'),
+      'stale staging verification evidence should be invalidated before the remote deploy starts'
+    );
+  });
+
   test('staging deploy delegates health polling and smoke execution to dedicated helpers', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
     const verifyHelperContent = readFileSync(stagingLocalVerifyHelperPath, 'utf-8');

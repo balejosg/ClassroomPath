@@ -185,6 +185,7 @@ SSH_CMD=(
     "${STAGING_USER}@${STAGING_HOST}"
 )
 
+invalidate_staging_verification_evidence_for_release
 run_staging_local_remote_deploy
 
 # =============================================================================

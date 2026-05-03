@@ -136,3 +136,26 @@ prepare_staging_local_release_context() {
 
     log_success "Git state checked"
 }
+
+invalidate_staging_verification_evidence_for_release() {
+    if [ "${STAGING_DEPLOYMENT_MODE:-}" != "promotion-eligible" ]; then
+        return 0
+    fi
+
+    if [ -z "${STAGING_RELEASE_SHA:-}" ] || [ "${STAGING_RELEASE_SHA:-}" = "unknown" ]; then
+        log_error "Promotion-eligible staging requires a resolved release SHA before invalidating staging verification evidence"
+        exit 1
+    fi
+
+    local pending_state_file=""
+    pending_state_file="$(mktemp)"
+
+    bash "$STAGING_VERIFICATION_RUNNER_PATH" invalidate "$pending_state_file" \
+        "$STAGING_RELEASE_SHA" \
+        "$UPSTREAM_OPENPATH_SHA" \
+        "$STAGING_IMAGE_SOURCE"
+
+    log_info "Invalidating stale staging verification evidence for $STAGING_RELEASE_SHA..."
+    "${SSH_CMD[@]}" "$(remote_assignment STATE_DIR "$STATE_DIR")bash -c 'mkdir -p \"\$STATE_DIR\" && cat > \"\$STATE_DIR/staging-verification.env\"'" < "$pending_state_file"
+    rm -f "$pending_state_file"
+}

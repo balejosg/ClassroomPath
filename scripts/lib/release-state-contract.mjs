@@ -29,6 +29,11 @@ export const RELEASE_STATE_SNAPSHOT_DEFINITIONS = {
     'ROLLBACK_RESULT',
   ],
   'staging-verification': [
+    'STAGING_VERIFICATION_STATE',
+    'STAGING_EXPECTED_APP_SHA',
+    'STAGING_EXPECTED_OPENPATH_SHA',
+    'STAGING_EXPECTED_IMAGE_SOURCE',
+    'STAGING_VERIFICATION_STARTED_AT',
     'STAGING_VERIFIED_AT',
     'STAGING_VERIFIED_BY',
     'STAGING_VERIFIED_APP_SHA',
@@ -368,6 +373,30 @@ export function validateCurrentReleaseState(snapshot, expected) {
 
 export function validateStagingVerification(snapshot, expected) {
   const errors = [];
+  const freshnessErrors = [];
+  const expectedAppSha = String(expected.EXPECTED_APP_SHA ?? '');
+  const verificationState = snapshot.STAGING_VERIFICATION_STATE ?? '';
+  const verificationIntentSha =
+    snapshot.STAGING_EXPECTED_APP_SHA || snapshot.STAGING_VERIFIED_APP_SHA || 'unknown';
+
+  if (verificationState && verificationState !== 'success') {
+    freshnessErrors.push(
+      `::error::Staging verification for ${verificationIntentSha} is pending or failed; expected successful evidence for ${expectedAppSha}.`
+    );
+  }
+
+  if (
+    snapshot.STAGING_EXPECTED_APP_SHA &&
+    String(snapshot.STAGING_EXPECTED_APP_SHA) !== expectedAppSha
+  ) {
+    freshnessErrors.push(
+      `::error::Staging verification intent mismatch. expected successful evidence for ${expectedAppSha} but current evidence was started for ${snapshot.STAGING_EXPECTED_APP_SHA}.`
+    );
+  }
+
+  if (freshnessErrors.length > 0) {
+    return freshnessErrors;
+  }
 
   if ((snapshot.STAGING_SMOKE_RESULT ?? '') !== 'success') {
     errors.push(
