@@ -59,6 +59,7 @@ fi
 cd "$PROJECT_ROOT"
 git fetch origin main --quiet
 TARGET_SHA="${TARGET_SHA:-$(git rev-parse origin/main)}"
+openpath_changed_files_file="$(mktemp)"
 
 verify_openpath_required_checks() {
   local openpath_sha=""
@@ -82,6 +83,9 @@ verify_openpath_required_checks() {
     if ! git -C upstream/openpath cat-file -e "$openpath_base_sha^{commit}" >/dev/null 2>&1; then
       git -C upstream/openpath fetch --no-tags origin "$openpath_base_sha" --quiet
     fi
+    git -C upstream/openpath diff --name-only "$openpath_base_sha" "$openpath_sha" > "$openpath_changed_files_file"
+  else
+    : > "$openpath_changed_files_file"
   fi
 
   log_info "Verifying required OpenPath checks for staged submodule SHA $openpath_sha..."
@@ -104,7 +108,7 @@ risk_output_file="$(mktemp)"
 report_json_file="${PROMOTION_REPORT_JSON_PATH:-$(mktemp)}"
 
 cleanup() {
-  rm -f "$release_manifest_file" "$current_state_file" "$verification_state_file" "$production_state_file" "$risk_output_file"
+  rm -f "$release_manifest_file" "$current_state_file" "$verification_state_file" "$production_state_file" "$risk_output_file" "$openpath_changed_files_file"
   if [ -z "${PROMOTION_REPORT_JSON_PATH:-}" ]; then
     rm -f "$report_json_file"
   fi
@@ -194,6 +198,11 @@ verify_production_container_platform_ready "$(node "$SCRIPT_DIR/deploy-targets.m
 
 "${SSH_CMD[@]}" "cat /opt/classroompath/release-state/current-images.env" > "$current_state_file"
 "${SSH_CMD[@]}" "cat /opt/classroompath/release-state/staging-verification.env" > "$verification_state_file"
+
+node "$SCRIPT_DIR/prepromotion-runner-rehearsal.mjs" plan \
+  --staging-verification "$verification_state_file" \
+  --changed-files "$openpath_changed_files_file" \
+  --target-sha "$TARGET_SHA"
 
 if "${PRODUCTION_SSH_CMD[@]}" "test -f /opt/classroompath/release-state/current-images.env" >/dev/null 2>&1; then
   "${PRODUCTION_SSH_CMD[@]}" "cat /opt/classroompath/release-state/current-images.env" > "$production_state_file" || true

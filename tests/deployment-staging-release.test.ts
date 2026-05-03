@@ -485,6 +485,12 @@ describe('Deployment staging and promotion contracts', () => {
         ),
       'OpenPath required checks should pass before promotion-ready can be reported'
     );
+    assert.ok(
+      promotionReadyScript.includes('prepromotion-runner-rehearsal.mjs" plan') &&
+        promotionReadyScript.includes('--changed-files "$openpath_changed_files_file"') &&
+        promotionReadyScript.includes('--target-sha "$TARGET_SHA"'),
+      'promotion readiness should print the selective prepromotion runner rehearsal plan'
+    );
     const stagingReleaseHelper = readFileSync(stagingLocalReleaseHelperPath, 'utf8');
     assert.ok(
       stagingReleaseHelper.includes('Promotion-eligible staging requires a clean worktree') &&

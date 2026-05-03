@@ -266,6 +266,62 @@ describe('prepromotion runner rehearsal', () => {
     assert.match(result.stdout, /npm run diagnostics:windows-ajax:direct -- --environment staging/);
   });
 
+  test('CLI selective plan prints path-aware recommendations without staging evidence', () => {
+    const tempDir = createTempDir('classroompath-prepromotion-selective-plan-');
+    const changedFilesPath = resolve(tempDir, 'changed-files.txt');
+    writeText(changedFilesPath, 'linux/lib/runtime-cli-system.sh\n');
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        cliPath,
+        'plan',
+        '--staging-verification',
+        resolve(tempDir, 'missing-staging-verification.env'),
+        '--changed-files',
+        changedFilesPath,
+        '--target-sha',
+        'abc1234',
+      ],
+      { cwd: projectRoot, encoding: 'utf8' }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Prepromotion runner rehearsal plan for abc1234/);
+    assert.match(result.stdout, /linux\/lib\/runtime-cli-system\.sh -> linux-bootstrap/);
+    assert.match(
+      result.stdout,
+      /scripts\/validate-hypothesis\.sh classroompath linux-ajax-gh --integration/
+    );
+    assert.match(result.stdout, /Required before promotion: yes/);
+  });
+
+  test('CLI selective plan does not require rehearsal for ClassroomPath docs-only changes', () => {
+    const tempDir = createTempDir('classroompath-prepromotion-selective-noop-');
+    const changedFilesPath = resolve(tempDir, 'changed-files.txt');
+    writeText(changedFilesPath, 'docs/runbooks/deploy-production.md\n');
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        cliPath,
+        'plan',
+        '--staging-verification',
+        resolve(tempDir, 'missing-staging-verification.env'),
+        '--changed-files',
+        changedFilesPath,
+        '--target-sha',
+        'abc1234',
+      ],
+      { cwd: projectRoot, encoding: 'utf8' }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Recommended lanes:\n  - \(none\)/);
+    assert.match(result.stdout, /Required before promotion: no/);
+    assert.match(result.stdout, /Reason: no OpenPath platform-sensitive files changed/);
+  });
+
   test('CLI plan shell-quotes paths in the direct runner command', () => {
     const tempDir = createTempDir('classroompath prepromotion cli quote ');
     const stagingVerificationPath = resolve(tempDir, 'staging-verification.env');

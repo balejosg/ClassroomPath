@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
 
@@ -11,6 +11,30 @@ import {
 } from './lib/prepromotion-runner-rehearsal.mjs';
 
 const DEFAULT_ENVIRONMENT = 'staging';
+const LINUX_REHEARSAL_LANE = {
+  id: 'classroompath-linux-ajax-gh',
+  command: 'scripts/validate-hypothesis.sh classroompath linux-ajax-gh --integration',
+};
+const WINDOWS_REHEARSAL_LANE = {
+  id: 'classroompath-windows-ajax-direct',
+  command: 'scripts/validate-hypothesis.sh classroompath windows-ajax-direct',
+};
+const REHEARSAL_RISK_RULES = [
+  { pattern: /^linux\//, surface: 'linux-bootstrap', lane: LINUX_REHEARSAL_LANE },
+  { pattern: /^windows\//, surface: 'windows-native-host', lane: WINDOWS_REHEARSAL_LANE },
+  { pattern: /^firefox-extension\//, surface: 'firefox-extension', lane: WINDOWS_REHEARSAL_LANE },
+  { pattern: /^tests\/e2e\//, surface: 'browser-e2e', lane: WINDOWS_REHEARSAL_LANE },
+  {
+    pattern: /^scripts\/run-windows-runner-direct\.mjs$/,
+    surface: 'windows-runner-direct',
+    lane: WINDOWS_REHEARSAL_LANE,
+  },
+  {
+    pattern: /^package(?:-lock)?\.json$/,
+    surface: 'node-dependencies',
+    lane: WINDOWS_REHEARSAL_LANE,
+  },
+];
 
 function printUsage() {
   console.error(`Usage:
@@ -20,6 +44,8 @@ Options:
   --staging-verification <path>  Required staging-verification.env evidence
   --artifact-dir <path>          Evidence directory for the direct runner artifact
   --artifact-path <path>         Existing direct runner artifact path for verify/plan
+  --changed-files <path>         Newline-delimited OpenPath changed files for selective plan
+  --target-sha <sha>             ClassroomPath target SHA for selective plan output
   --environment <name>           staging | production (default: ${DEFAULT_ENVIRONMENT})
   --base-url <url>               Public ClassroomPath URL override
   --openpath-root <path>         Local OpenPath checkout for the direct runner
@@ -40,6 +66,8 @@ function parseArgs(argv) {
     stagingVerification: '',
     artifactDir: '',
     artifactPath: '',
+    changedFiles: '',
+    targetSha: 'HEAD',
     environment: DEFAULT_ENVIRONMENT,
     baseUrl: '',
     openpathRoot: '',
@@ -56,6 +84,12 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg === '--artifact-path') {
       options.artifactPath = resolve(nextArg(rest, index, arg));
+      index += 1;
+    } else if (arg === '--changed-files') {
+      options.changedFiles = resolve(nextArg(rest, index, arg));
+      index += 1;
+    } else if (arg === '--target-sha') {
+      options.targetSha = nextArg(rest, index, arg);
       index += 1;
     } else if (arg === '--environment') {
       options.environment = nextArg(rest, index, arg);
@@ -123,6 +157,64 @@ function buildDirectRunnerCommand(options) {
   return command;
 }
 
+function readChangedFiles(path) {
+  return readFileSync(path, 'utf8')
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function planPrepromotionRunnerRehearsal({ changedFiles, targetSha = 'HEAD' }) {
+  const riskSurfaces = [];
+  const lanesById = new Map();
+
+  for (const file of changedFiles) {
+    for (const rule of REHEARSAL_RISK_RULES) {
+      if (!rule.pattern.test(file)) continue;
+      riskSurfaces.push({ file, surface: rule.surface });
+      lanesById.set(rule.lane.id, rule.lane);
+      break;
+    }
+  }
+
+  const lanes = [...lanesById.values()];
+  const required = lanes.length > 0;
+  return {
+    targetSha,
+    required,
+    riskSurfaces,
+    lanes,
+    reason: required
+      ? 'OpenPath platform-sensitive files changed'
+      : 'no OpenPath platform-sensitive files changed',
+  };
+}
+
+function printSelectivePlan(plan) {
+  console.log(`Prepromotion runner rehearsal plan for ${plan.targetSha}`);
+  console.log('OpenPath changed risk surfaces:');
+  if (plan.riskSurfaces.length === 0) {
+    console.log('  - (none)');
+  } else {
+    for (const surface of plan.riskSurfaces) {
+      console.log(`  - ${surface.file} -> ${surface.surface}`);
+    }
+  }
+
+  console.log('Recommended lanes:');
+  if (plan.lanes.length === 0) {
+    console.log('  - (none)');
+  } else {
+    for (const lane of plan.lanes) {
+      console.log(`  - ${lane.command}`);
+    }
+  }
+  console.log(`Required before promotion: ${plan.required ? 'yes' : 'no'}`);
+  if (!plan.required) {
+    console.log(`Reason: ${plan.reason}`);
+  }
+}
+
 function printResult(result) {
   console.log(`state=${result.state}`);
   console.log(`reason=${result.reason}`);
@@ -163,6 +255,16 @@ function main() {
   if (options.environment === 'production' && !options.confirmProduction) {
     console.error('Production prepromotion rehearsal requires --confirm-production.');
     process.exit(1);
+  }
+
+  if (options.command === 'plan' && options.changedFiles) {
+    printSelectivePlan(
+      planPrepromotionRunnerRehearsal({
+        changedFiles: readChangedFiles(options.changedFiles),
+        targetSha: options.targetSha,
+      })
+    );
+    process.exit(0);
   }
 
   const result = loadRequirement(options);
