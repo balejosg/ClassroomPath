@@ -293,6 +293,12 @@ jobs:
           }
 
           Clear-DnsClientCache -ErrorAction SilentlyContinue
+          $runnerDnsServers = @(Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.ServerAddresses } |
+            ForEach-Object { $_.ServerAddresses } |
+            Sort-Object -Unique)
+          $runnerDnsServersJson = ConvertTo-Json -Compress -InputObject @($runnerDnsServers)
+          "RUNNER_DNS_BEFORE_RESET=$runnerDnsServersJson" >> $env:GITHUB_ENV
 
           $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
           if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
@@ -310,6 +316,22 @@ jobs:
         with:
           enable-cache: false
           cache-dependency-path: package-lock.json
+
+      - name: Assert destructive Windows runner is available
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/assert-destructive-runner-available.mjs
+
+      - name: Record Windows runner health before reset
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/write-runner-health-evidence.mjs \
+            --artifact production-windows-runner-health.json \
+            --phase pre-reset \
+            --dns-servers-json "${RUNNER_DNS_BEFORE_RESET:-[]}" \
+            --target-url "$PRODUCTION_BASE_URL"
 
       - name: Reset persistent Windows canary state
         shell: pwsh
@@ -356,6 +378,21 @@ jobs:
 
       - name: Restore Windows runner DNS after reset
         uses: ./.github/actions/restore-windows-runner-dns
+
+      - name: Record Windows runner health after reset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runnerDnsServers = @(Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.ServerAddresses } |
+            ForEach-Object { $_.ServerAddresses } |
+            Sort-Object -Unique)
+          $runnerDnsServersJson = ConvertTo-Json -Compress -InputObject @($runnerDnsServers)
+          node scripts/write-runner-health-evidence.mjs `
+            --artifact production-windows-runner-health.json `
+            --phase post-reset `
+            --dns-servers-json "$runnerDnsServersJson" `
+            --target-url "$env:PRODUCTION_BASE_URL"
 
       - name: Resolve production host
         id: resolve-production
@@ -538,6 +575,25 @@ jobs:
           }
 
           Write-Host "Windows client self-update restored $installedVersion via manifest version $env:EXPECTED_AGENT_VERSION"
+          $openPathStatus = @{
+            previousVersion = $installedVersion
+            currentVersion = [string]$updatedConfig.version
+            lastAgentUpdateAt = [string]$updatedConfig.lastAgentUpdateAt
+            scheduledTasks = @(Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName })
+            services = @(Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name):$($_.Status)" })
+          }
+          $openPathStatusJson = ConvertTo-Json -Compress -Depth 6 -InputObject $openPathStatus
+          "OPENPATH_STATUS_JSON=$openPathStatusJson" >> $env:GITHUB_ENV
+
+      - name: Record Windows runner health after OpenPath update
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/write-runner-health-evidence.mjs \
+            --artifact production-windows-runner-health.json \
+            --phase post-install \
+            --openpath-status-json "${OPENPATH_STATUS_JSON:-{}}" \
+            --target-url "$PRODUCTION_BASE_URL"
 
       - name: Write Windows client canary evidence
         if: always()
@@ -564,7 +620,8 @@ jobs:
 
           foreach ($requiredPath in @(
             'production-windows-bootstrap-canary.json',
-            'production-client-canary-evidence-windows.json'
+            'production-client-canary-evidence-windows.json',
+            'production-windows-runner-health.json'
           )) {
             if (-not (Test-Path $requiredPath)) {
               throw "Required Windows canary artifact was not created: $requiredPath"
@@ -585,6 +642,7 @@ jobs:
           Compress-Archive -Path @(
             'production-windows-bootstrap-canary.json',
             'production-client-canary-evidence-windows.json',
+            'production-windows-runner-health.json',
             $logPath
           ) -DestinationPath $archivePath -Force
 
@@ -597,6 +655,28 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/restore-windows-runner-dns
 
+      - name: Record Windows runner health before artifact upload
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $runnerDnsServers = @(Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.ServerAddresses } |
+            ForEach-Object { $_.ServerAddresses } |
+            Sort-Object -Unique)
+          $runnerDnsServersJson = ConvertTo-Json -Compress -InputObject @($runnerDnsServers)
+          $artifactProbe = Test-NetConnection pipelines.actions.githubusercontent.com -Port 443 -WarningAction SilentlyContinue
+          $artifactReachable = ($artifactProbe.NameResolutionSucceeded -and $artifactProbe.TcpTestSucceeded).ToString().ToLowerInvariant()
+          node scripts/write-runner-health-evidence.mjs `
+            --artifact production-windows-runner-health.json `
+            --phase pre-upload `
+            --dns-servers-json "$runnerDnsServersJson" `
+            --artifact-endpoint-reachable "$artifactReachable" `
+            --failure-boundary-id "windows-client-self-update" `
+            --failure-boundary-message "Windows client self-update canary reached artifact upload." `
+            --target-url "$env:PRODUCTION_BASE_URL"
+
       - name: Upload Windows self-update artifacts
         if: always()
         continue-on-error: true
@@ -604,7 +684,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: production-windows-client-self-update-canary
-          path: production-windows-client-self-update-canary.zip
+          path: |
+            production-windows-client-self-update-canary.zip
+            production-windows-runner-health.json
           if-no-files-found: error
           retention-days: 14
           overwrite: true

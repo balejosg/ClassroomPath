@@ -131,6 +131,16 @@ The current speed plan is:
 7. spend optimization effort on the current constraint: Windows queue pressure
    and the longest target-platform jobs, not the already-fast pre-commit hook.
 
+Destructive Windows jobs must prove the runner contract before mutating state:
+restore DNS before checkout, fail early if another destructive Windows runner
+job is active, record runner health before reset, reset OpenPath/browser/DNS
+state, record health after reset and after OpenPath install/update, restore DNS
+before artifact upload, probe `pipelines.actions.githubusercontent.com`, and
+upload `production-windows-runner-health.json` with the functional evidence.
+That health artifact is intentionally parseable: runner name/OS, target URL,
+target SHA/tag when available, DNS snapshots, artifact endpoint reachability,
+OpenPath status summary, and the current failure boundary.
+
 ## Latest Submodule Update Evidence
 
 The latest OpenPath runner artifact fix was propagated through ClassroomPath in
@@ -272,6 +282,12 @@ Decision:
 | Unsafe production migration                   | migration risk classification + backup reference requirement                                                                                                      | GitHub Actions + production host                  | destructive migrations need stronger proof                          |
 | Production image mismatch or drift            | tag-only workflow + immutable release manifest                                                                                                                    | GitHub Actions                                    | production reconciles to the tagged commit only                     |
 | Production stack unavailable after deploy     | production smoke and readiness checks                                                                                                                             | GitHub Actions against production                 | rollback remains available if smoke fails                           |
+
+Use direct Windows diagnostics first when the question is packaging, runner
+state, Firefox policy, native-host behavior, or AJAX auto-allow behavior. Use
+`workflow_dispatch` only when the question needs workflow-shaped integration
+evidence, and use staging/production release workflows only after local or
+direct runner evidence has narrowed the failure boundary.
 
 ## Reading Results
 

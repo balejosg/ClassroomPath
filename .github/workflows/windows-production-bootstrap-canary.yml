@@ -51,6 +51,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: windows-production-bootstrap-canary
@@ -89,6 +90,12 @@ jobs:
           }
 
           Clear-DnsClientCache -ErrorAction SilentlyContinue
+          $runnerDnsServers = @(Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.ServerAddresses } |
+            ForEach-Object { $_.ServerAddresses } |
+            Sort-Object -Unique)
+          $runnerDnsServersJson = ConvertTo-Json -Compress -InputObject @($runnerDnsServers)
+          "RUNNER_DNS_BEFORE_RESET=$runnerDnsServersJson" >> $env:GITHUB_ENV
 
           $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
           if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
@@ -133,6 +140,22 @@ jobs:
           if [ "$RUNNER_DIAGNOSTIC_MODE" = "true" ]; then
             echo "Diagnostic-only runner canary; this run is not production release evidence."
           fi
+
+      - name: Assert destructive Windows runner is available
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/assert-destructive-runner-available.mjs
+
+      - name: Record Windows runner health before reset
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/write-runner-health-evidence.mjs \
+            --artifact production-windows-runner-health.json \
+            --phase pre-reset \
+            --dns-servers-json "${RUNNER_DNS_BEFORE_RESET:-[]}" \
+            --target-url "$PRODUCTION_BASE_URL"
 
       - name: Reset persistent Windows canary state
         shell: pwsh
@@ -179,6 +202,21 @@ jobs:
 
       - name: Restore Windows runner DNS after reset
         uses: ./.github/actions/restore-windows-runner-dns
+
+      - name: Record Windows runner health after reset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runnerDnsServers = @(Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.ServerAddresses } |
+            ForEach-Object { $_.ServerAddresses } |
+            Sort-Object -Unique)
+          $runnerDnsServersJson = ConvertTo-Json -Compress -InputObject @($runnerDnsServers)
+          node scripts/write-runner-health-evidence.mjs `
+            --artifact production-windows-runner-health.json `
+            --phase post-reset `
+            --dns-servers-json "$runnerDnsServersJson" `
+            --target-url "$env:PRODUCTION_BASE_URL"
 
       - name: Resolve target host
         id: resolve-production
@@ -476,6 +514,27 @@ jobs:
             throw "Firefox installed version $($registryAddon.version) instead of $env:EXPECTED_EXTENSION_VERSION"
           }
 
+          $openPathStatus = @{
+            configVersion = $browserPolicySpec.version
+            firefoxPolicyPath = $policiesPath
+            extensionId = $env:EXPECTED_EXTENSION_ID
+            extensionInstalled = [bool]$extensionInstalled
+            scheduledTasks = @(Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName })
+            services = @(Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name):$($_.Status)" })
+          }
+          $openPathStatusJson = ConvertTo-Json -Compress -Depth 6 -InputObject $openPathStatus
+          "OPENPATH_STATUS_JSON=$openPathStatusJson" >> $env:GITHUB_ENV
+
+      - name: Record Windows runner health after OpenPath update
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/write-runner-health-evidence.mjs \
+            --artifact production-windows-runner-health.json \
+            --phase post-install \
+            --openpath-status-json "${OPENPATH_STATUS_JSON:-{}}" \
+            --target-url "$PRODUCTION_BASE_URL"
+
       - name: Verify Windows AJAX auto-allow canary
         shell: pwsh
         env:
@@ -521,6 +580,31 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/restore-windows-runner-dns
 
+      - name: Record Windows runner health before artifact upload
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        env:
+          FAILURE_BOUNDARY_ID: ${{ steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}
+          FAILURE_BOUNDARY_MESSAGE: ${{ steps.ajax-summary.outputs.failure_boundary_message || 'Windows AJAX evidence artifact was not written.' }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $runnerDnsServers = @(Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.ServerAddresses } |
+            ForEach-Object { $_.ServerAddresses } |
+            Sort-Object -Unique)
+          $runnerDnsServersJson = ConvertTo-Json -Compress -InputObject @($runnerDnsServers)
+          $artifactProbe = Test-NetConnection pipelines.actions.githubusercontent.com -Port 443 -WarningAction SilentlyContinue
+          $artifactReachable = ($artifactProbe.NameResolutionSucceeded -and $artifactProbe.TcpTestSucceeded).ToString().ToLowerInvariant()
+          node scripts/write-runner-health-evidence.mjs `
+            --artifact production-windows-runner-health.json `
+            --phase pre-upload `
+            --dns-servers-json "$runnerDnsServersJson" `
+            --artifact-endpoint-reachable "$artifactReachable" `
+            --failure-boundary-id "$env:FAILURE_BOUNDARY_ID" `
+            --failure-boundary-message "$env:FAILURE_BOUNDARY_MESSAGE" `
+            --target-url "$env:PRODUCTION_BASE_URL"
+
       - name: Upload production bootstrap canary artifacts
         id: upload-artifacts
         if: always()
@@ -531,6 +615,7 @@ jobs:
           path: |
             production-windows-bootstrap-canary.json
             production-windows-ajax-auto-allow-canary.json
+            production-windows-runner-health.json
             ${{ runner.temp }}/Update-OpenPath.log
             ${{ runner.temp }}/windows-production-bootstrap-firefox.log
           if-no-files-found: error

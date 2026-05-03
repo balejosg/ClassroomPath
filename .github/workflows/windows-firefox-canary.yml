@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   windows-firefox-canary:
@@ -54,6 +55,12 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Assert destructive Windows runner is available
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/assert-destructive-runner-available.mjs
 
       - name: Resolve staging host
         id: resolve

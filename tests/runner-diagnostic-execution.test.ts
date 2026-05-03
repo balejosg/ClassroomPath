@@ -41,6 +41,16 @@ describe('runner diagnostic execution plan', () => {
       )
     );
     assert.ok(
+      plan.canaryScriptUploads.some(
+        (upload) => upload.source === 'scripts/lib/windows-auto-allow-canary-evidence.mjs'
+      )
+    );
+    assert.ok(
+      plan.canaryScriptUploads.some(
+        (upload) => upload.source === 'scripts/summarize-windows-ajax-auto-allow-evidence.mjs'
+      )
+    );
+    assert.ok(
       plan.openpathOverlays.some((upload) => upload.source === 'windows/lib/Update.Runtime.psm1')
     );
     assert.ok(

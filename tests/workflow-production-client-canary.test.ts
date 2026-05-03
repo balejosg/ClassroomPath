@@ -499,6 +499,22 @@ describe('Production client update canary workflow contracts', () => {
       const artifactDnsStep = steps.find((step) =>
         String(step.name ?? '').includes('Restore Windows runner DNS before artifact upload')
       );
+      const guardStepIndex = steps.findIndex(
+        (step) => step.name === 'Assert destructive Windows runner is available'
+      );
+      const resetStepIndex = steps.findIndex(
+        (step) => step.name === 'Reset persistent Windows canary state'
+      );
+      const guardStep = guardStepIndex >= 0 ? steps[guardStepIndex] : undefined;
+      const healthBeforeResetStep = steps.find(
+        (step) => step.name === 'Record Windows runner health before reset'
+      );
+      const healthAfterResetStep = steps.find(
+        (step) => step.name === 'Record Windows runner health after reset'
+      );
+      const healthBeforeUploadStep = steps.find(
+        (step) => step.name === 'Record Windows runner health before artifact upload'
+      );
 
       assert.ok(
         preCheckoutDnsStepIndex >= 0 &&
@@ -517,7 +533,42 @@ describe('Production client update canary workflow contracts', () => {
       assert.equal(artifactDnsStep?.uses, './.github/actions/restore-windows-runner-dns');
       assert.equal(artifactDnsStep?.if, 'always()');
       assert.equal(artifactDnsStep?.['continue-on-error'], true);
+      assert.ok(
+        guardStepIndex >= 0 && resetStepIndex >= 0 && guardStepIndex < resetStepIndex,
+        `${workflowPath} must fail before mutating runner state when another destructive Windows job is active`
+      );
+      assert.equal(guardStep?.env?.GITHUB_TOKEN, '${{ github.token }}');
+      assert.match(String(guardStep?.run ?? ''), /assert-destructive-runner-available\.mjs/);
+      assert.match(
+        String(healthBeforeResetStep?.run ?? ''),
+        /write-runner-health-evidence\.mjs[\s\S]*--phase pre-reset/
+      );
+      assert.match(
+        String(healthAfterResetStep?.run ?? ''),
+        /write-runner-health-evidence\.mjs[\s\S]*--phase post-reset/
+      );
+      assert.match(
+        String(healthBeforeUploadStep?.run ?? ''),
+        /pipelines\.actions\.githubusercontent\.com[\s\S]*--phase pre-upload/
+      );
+      assert.equal(healthBeforeUploadStep?.['continue-on-error'], true);
     }
+
+    const firefoxWorkflow = readProjectWorkflow('.github/workflows/windows-firefox-canary.yml');
+    const firefoxSteps = firefoxWorkflow.jobs?.['windows-firefox-canary']?.steps ?? [];
+    const firefoxGuardStepIndex = firefoxSteps.findIndex(
+      (step) => step.name === 'Assert destructive Windows runner is available'
+    );
+    const firefoxPolicyStepIndex = firefoxSteps.findIndex(
+      (step) => step.name === 'Run Firefox policy canary'
+    );
+    assert.equal(firefoxWorkflow.permissions?.actions, 'read');
+    assert.ok(
+      firefoxGuardStepIndex >= 0 &&
+        firefoxPolicyStepIndex >= 0 &&
+        firefoxGuardStepIndex < firefoxPolicyStepIndex,
+      'Windows Firefox canary must guard the shared destructive runner before mutating browser policy'
+    );
   });
 
   test('scheduled production enrollment download canary checks live scripts without consuming client runners', () => {
@@ -756,7 +807,18 @@ describe('Production client update canary workflow contracts', () => {
         `${jobName} artifact transport failures must not mask functional canary results`
       );
       assert.equal(uploadStep?.['timeout-minutes'], 10);
-      assert.equal(uploadStep?.with?.path, archiveFile);
+      if (platform === 'Windows') {
+        assert.match(
+          String(uploadStep?.with?.path ?? ''),
+          /production-windows-client-self-update-canary\.zip/
+        );
+        assert.match(
+          String(uploadStep?.with?.path ?? ''),
+          /production-windows-runner-health\.json/
+        );
+      } else {
+        assert.equal(uploadStep?.with?.path, archiveFile);
+      }
       assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
       assert.equal(uploadStep?.with?.['retention-days'], 14);
       assert.equal(uploadStep?.with?.overwrite, true);
@@ -1365,6 +1427,7 @@ describe('Production client update canary workflow contracts', () => {
       String(uploadStep?.with?.path ?? ''),
       /production-windows-ajax-auto-allow-canary\.json/
     );
+    assert.match(String(uploadStep?.with?.path ?? ''), /production-windows-runner-health\.json/);
     assert.ok(
       uploadStepIndex < resultStepIndex,
       'final canary result should run after artifact upload so upload failures are visible'
