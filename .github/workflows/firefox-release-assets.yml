@@ -110,13 +110,12 @@ jobs:
             --payload-hash "$FIREFOX_RELEASE_PAYLOAD_HASH" \
             --output-dir upstream/openpath/firefox-extension >> "$GITHUB_OUTPUT"
 
-      - name: Derive unique Firefox release version
+      - name: Derive stable Firefox release version
         if: steps.mode.outputs.build_required == 'true' && steps.cache.outputs.resolved != 'true'
         run: |
           version="$(node scripts/firefox-release-version.mjs \
             --manifest upstream/openpath/firefox-extension/manifest.json \
-            --run-id "$GITHUB_RUN_ID" \
-            --run-attempt "$GITHUB_RUN_ATTEMPT")"
+            --source-revision upstream/openpath)"
           echo "OPENPATH_FIREFOX_RELEASE_VERSION=$version" >> "$GITHUB_ENV"
           echo "Signing Firefox release as version $version"
 
@@ -126,7 +125,8 @@ jobs:
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
-          WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '14400'
+          WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '0'
+          WEB_EXT_SIGN_RECOVERY_TIMEOUT_SECONDS: '14400'
         run: |
           npm run sign:firefox-release --workspace=@openpath/firefox-extension -- \
             --version "$OPENPATH_FIREFOX_RELEASE_VERSION"

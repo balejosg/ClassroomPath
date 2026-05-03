@@ -7,6 +7,7 @@ import { describe, it } from 'node:test';
 import {
   deriveFirefoxReleaseVersion,
   deriveFirefoxReleaseVersionFromManifest,
+  deriveFirefoxReleaseVersionFromSourceRevision,
   normalizeRunIdSuffix,
   validateFirefoxReleaseVersion,
 } from '../scripts/lib/firefox-release-version.mjs';
@@ -43,5 +44,30 @@ describe('firefox release version helper', () => {
     });
 
     assert.equal(version, '2.5.9.51525403');
+  });
+
+  it('derives a stable AMO-safe version from the OpenPath commit timestamp', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'cp-firefox-release-version-'));
+    const manifestPath = join(tempDir, 'manifest.json');
+    writeFileSync(manifestPath, JSON.stringify({ version: '2.5.9' }), 'utf8');
+
+    const version = deriveFirefoxReleaseVersionFromSourceRevision({
+      manifestPath,
+      sourceRevision: '/repo/upstream/openpath',
+      execFileSyncImpl: (command, args) => {
+        assert.equal(command, 'git');
+        assert.deepEqual(args, [
+          '-C',
+          '/repo/upstream/openpath',
+          'show',
+          '-s',
+          '--format=%ct',
+          'HEAD',
+        ]);
+        return '1777766400\n';
+      },
+    });
+
+    assert.equal(version, '2.5.9.777766400');
   });
 });

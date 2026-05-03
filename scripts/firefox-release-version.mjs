@@ -2,6 +2,7 @@
 
 import {
   deriveFirefoxReleaseVersionFromManifest,
+  deriveFirefoxReleaseVersionFromSourceRevision,
   normalizeRunIdSuffix,
   validateFirefoxReleaseVersion,
   deriveFirefoxReleaseVersion,
@@ -9,16 +10,20 @@ import {
 import { isDirectExecution } from './lib/github-actions.mjs';
 
 function usage() {
-  console.log(`Usage: node scripts/firefox-release-version.mjs --manifest <path> --run-id <id> --run-attempt <attempt>
+  console.log(`Usage:
+  node scripts/firefox-release-version.mjs --manifest <path> --source-revision <repo>
+  node scripts/firefox-release-version.mjs --manifest <path> --run-id <id> --run-attempt <attempt>
 
-Derives a Firefox/AMO-safe release version by appending a CI-specific numeric segment
-to the base extension version from manifest.json.
+Derives a Firefox/AMO-safe release version by appending a stable numeric segment
+to the base extension version from manifest.json. Prefer --source-revision so
+retries for the same OpenPath commit reuse the same AMO version.
 `);
 }
 
 function parseArgs(argv) {
   const args = {
     manifest: '',
+    sourceRevision: '',
     runId: '',
     runAttempt: '',
   };
@@ -30,6 +35,10 @@ function parseArgs(argv) {
     switch (token) {
       case '--manifest':
         args.manifest = value ?? '';
+        index += 1;
+        break;
+      case '--source-revision':
+        args.sourceRevision = value ?? '';
         index += 1;
         break;
       case '--run-id':
@@ -56,21 +65,27 @@ function parseArgs(argv) {
 export {
   deriveFirefoxReleaseVersion,
   deriveFirefoxReleaseVersionFromManifest,
+  deriveFirefoxReleaseVersionFromSourceRevision,
   normalizeRunIdSuffix,
   validateFirefoxReleaseVersion,
 } from './lib/firefox-release-version.mjs';
 
 function main() {
   const args = parseArgs(process.argv);
-  if (!args.manifest || !args.runId || !args.runAttempt) {
-    throw new Error('--manifest, --run-id, and --run-attempt are required');
+  if (!args.manifest) {
+    throw new Error('--manifest is required');
   }
 
-  const version = deriveFirefoxReleaseVersionFromManifest({
-    manifestPath: args.manifest,
-    runId: args.runId,
-    runAttempt: args.runAttempt,
-  });
+  const version = args.sourceRevision
+    ? deriveFirefoxReleaseVersionFromSourceRevision({
+        manifestPath: args.manifest,
+        sourceRevision: args.sourceRevision,
+      })
+    : deriveFirefoxReleaseVersionFromManifest({
+        manifestPath: args.manifest,
+        runId: args.runId,
+        runAttempt: args.runAttempt,
+      });
 
   process.stdout.write(version);
 }

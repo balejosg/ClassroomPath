@@ -564,8 +564,9 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(assetJobRun.includes('OPENPATH_FIREFOX_RELEASE_VERSION='));
     assert.ok(assetJobRun.includes('node scripts/firefox-release-version.mjs'));
     assert.ok(assetJobRun.includes('--manifest upstream/openpath/firefox-extension/manifest.json'));
-    assert.ok(assetJobRun.includes('--run-id "$GITHUB_RUN_ID"'));
-    assert.ok(assetJobRun.includes('--run-attempt "$GITHUB_RUN_ATTEMPT"'));
+    assert.ok(assetJobRun.includes('--source-revision upstream/openpath'));
+    assert.ok(!assetJobRun.includes('--run-id "$GITHUB_RUN_ID"'));
+    assert.ok(!assetJobRun.includes('--run-attempt "$GITHUB_RUN_ATTEMPT"'));
     assert.ok(!assetJobRun.includes('run_id_component="$((10#$run_id_suffix))"'));
     assert.ok(
       firefoxVersionCli.includes("from './lib/firefox-release-version.mjs'") &&
@@ -578,6 +579,8 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(workflowText.includes("steps.cache.outputs.resolved != 'true'"));
     assert.ok(workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
     assert.ok(workflowText.includes('WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}'));
+    assert.ok(workflowText.includes("WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '0'"));
+    assert.ok(workflowText.includes("WEB_EXT_SIGN_RECOVERY_TIMEOUT_SECONDS: '14400'"));
     assert.ok(
       workflowText.includes('artifact_name="openpath-firefox-release-assets-${OPENPATH_SHA}"')
     );

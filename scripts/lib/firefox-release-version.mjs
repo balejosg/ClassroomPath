@@ -1,5 +1,8 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+const firefoxReleaseVersionSegmentModulo = 1_000_000_000n;
 
 export function normalizeRunIdSuffix(runId, suffixLength = 7) {
   const normalizedRunId = String(runId ?? '').trim();
@@ -33,25 +36,69 @@ export function validateFirefoxReleaseVersion(version) {
   return normalizedVersion;
 }
 
-export function deriveFirefoxReleaseVersion({ baseVersion, runId, runAttempt }) {
-  const normalizedBaseVersion = validateFirefoxReleaseVersion(baseVersion);
-  const normalizedAttempt = String(runAttempt ?? '').trim();
+export function normalizeCiBuildSegment(value) {
+  const normalizedValue = String(value ?? '').trim();
 
-  if (!/^\d+$/.test(normalizedAttempt)) {
-    throw new Error(`run-attempt must be numeric, got ${JSON.stringify(runAttempt)}`);
+  if (!/^\d+$/.test(normalizedValue)) {
+    throw new Error(`ci-build-segment must be numeric, got ${JSON.stringify(value)}`);
   }
 
-  const runIdComponent = normalizeRunIdSuffix(runId);
-  const ciBuildSegment = `${runIdComponent}${normalizedAttempt.padStart(2, '0')}`;
-
-  return validateFirefoxReleaseVersion(`${normalizedBaseVersion}.${ciBuildSegment}`);
+  return (BigInt(normalizedValue) % firefoxReleaseVersionSegmentModulo).toString();
 }
 
-export function deriveFirefoxReleaseVersionFromManifest({ manifestPath, runId, runAttempt }) {
+export function deriveFirefoxReleaseVersion({ baseVersion, ciBuildSegment, runId, runAttempt }) {
+  const normalizedBaseVersion = validateFirefoxReleaseVersion(baseVersion);
+  let normalizedCiBuildSegment = '';
+
+  if (ciBuildSegment === undefined) {
+    const normalizedAttempt = String(runAttempt ?? '').trim();
+
+    if (!/^\d+$/.test(normalizedAttempt)) {
+      throw new Error(`run-attempt must be numeric, got ${JSON.stringify(runAttempt)}`);
+    }
+
+    normalizedCiBuildSegment = `${normalizeRunIdSuffix(runId)}${normalizedAttempt.padStart(
+      2,
+      '0'
+    )}`;
+  } else {
+    normalizedCiBuildSegment = normalizeCiBuildSegment(ciBuildSegment);
+  }
+
+  if (!/^\d+$/.test(normalizedCiBuildSegment)) {
+    throw new Error(`ci-build-segment must be numeric, got ${JSON.stringify(ciBuildSegment)}`);
+  }
+  return validateFirefoxReleaseVersion(`${normalizedBaseVersion}.${normalizedCiBuildSegment}`);
+}
+
+export function deriveFirefoxReleaseVersionFromManifest({
+  manifestPath,
+  ciBuildSegment,
+  runId,
+  runAttempt,
+}) {
   const manifest = JSON.parse(readFileSync(resolve(manifestPath), 'utf8'));
   return deriveFirefoxReleaseVersion({
     baseVersion: String(manifest.version ?? '').trim(),
+    ciBuildSegment,
     runId,
     runAttempt,
+  });
+}
+
+export function deriveFirefoxReleaseVersionFromSourceRevision({
+  manifestPath,
+  sourceRevision,
+  execFileSyncImpl = execFileSync,
+}) {
+  const commitTimestamp = String(
+    execFileSyncImpl('git', ['-C', sourceRevision, 'show', '-s', '--format=%ct', 'HEAD'], {
+      encoding: 'utf8',
+    })
+  ).trim();
+
+  return deriveFirefoxReleaseVersionFromManifest({
+    manifestPath,
+    ciBuildSegment: commitTimestamp,
   });
 }
