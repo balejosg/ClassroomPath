@@ -150,4 +150,24 @@ describe('shared AJAX auto-allow canary harness', () => {
       'get:2:http://ajax-origin.127.0.0.1.sslip.io:18088/',
     ]);
   });
+
+  test('browser open can use a custom opener for wrapped Selenium sessions', async () => {
+    const events: string[] = [];
+    const driver = {
+      async get(url: string) {
+        events.push(`driver-get:${url}`);
+      },
+    };
+
+    const result = await openUrlWithTransientBrowserRetry({
+      url: 'http://ajax-origin.127.0.0.1.sslip.io:18088/',
+      createSession: async () => ({ driver }),
+      openSessionUrl: async (session, url) => {
+        await session.driver.get(url);
+      },
+    });
+
+    assert.equal(result.opened, true);
+    assert.deepEqual(events, ['driver-get:http://ajax-origin.127.0.0.1.sslip.io:18088/']);
+  });
 });

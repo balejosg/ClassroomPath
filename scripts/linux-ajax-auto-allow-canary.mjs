@@ -582,6 +582,9 @@ async function launchFirefox(originUrl) {
     url: originUrl,
     maxAttempts: 3,
     createSession: createFirefoxSession,
+    openSessionUrl: async (session, url) => {
+      await session.driver.get(url);
+    },
     closeSession: async (session) => {
       await session.driver.quit();
     },

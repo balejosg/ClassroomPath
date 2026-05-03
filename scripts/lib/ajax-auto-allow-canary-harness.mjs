@@ -38,6 +38,9 @@ export async function openUrlWithTransientBrowserRetry({
   url,
   maxAttempts = 2,
   createSession,
+  openSessionUrl = async (session, targetUrl) => {
+    await session.get(targetUrl);
+  },
   closeSession = async () => {},
   onTransientError = () => {},
 }) {
@@ -46,7 +49,7 @@ export async function openUrlWithTransientBrowserRetry({
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const session = await createSession();
     try {
-      await session.get(url);
+      await openSessionUrl(session, url);
       return { attempt, opened: true, session };
     } catch (error) {
       lastError = error;
