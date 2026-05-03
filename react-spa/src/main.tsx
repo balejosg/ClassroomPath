@@ -16,7 +16,7 @@ const app = (
   </React.StrictMode>
 );
 
-if (rootElement.hasChildNodes()) {
+if (rootElement.hasChildNodes() && rootElement.dataset.classroompathPublicSsr !== 'true') {
   hydrateRoot(rootElement, app);
 } else {
   createRoot(rootElement).render(app);

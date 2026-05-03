@@ -75,7 +75,10 @@ test('renders SSR HTML with metadata for supported public routes', async () => {
   });
 
   assert.ok(html);
-  assert.match(html, /<div id="root"><main><h1>Pricing<\/h1><\/main><\/div>/);
+  assert.match(
+    html,
+    /<div id="root" data-classroompath-public-ssr="true"><main><h1>Pricing<\/h1><\/main><\/div>/
+  );
   assert.match(html, /<title>Pricing SSR<\/title>/);
   assert.match(html, /<link rel="canonical" href="https:\/\/classroompath\.test\/pricing" \/>/);
   assert.match(html, /<meta property="og:title" content="Pricing SSR" \/>/);

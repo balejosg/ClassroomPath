@@ -839,6 +839,27 @@ if ($LASTEXITCODE -ne 0) {
   runGuestPowerShell(options, script, { timeoutSeconds: 900 });
 }
 
+function cleanupWindowsAjaxBrowserProcesses(options) {
+  const script = `
+$ErrorActionPreference = 'Continue'
+$processes = Get-CimInstance Win32_Process -Filter "Name = 'geckodriver.exe' OR Name = 'firefox.exe'" -ErrorAction SilentlyContinue |
+  Where-Object {
+    ($_.CommandLine -like '*openpath-ajax-auto-allow-firefox-*') -or
+    ($_.CommandLine -like '*openpath-ajax-direct*') -or
+    ($_.CommandLine -like '*--websocket-port=*')
+  }
+foreach ($process in @($processes)) {
+  try {
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
+    Write-Host "Stopped diagnostic browser process $($process.Name) pid=$($process.ProcessId)"
+  } catch {
+    Write-Warning "Failed to stop diagnostic browser process $($process.Name) pid=$($process.ProcessId): $_"
+  }
+}
+`;
+  runGuestPowerShell(options, script, { timeoutSeconds: 120 });
+}
+
 function collectArtifacts(options, artifactDir) {
   const ajaxArtifact = readGuestFileUtf8(
     options,
@@ -1001,6 +1022,12 @@ function main() {
   } catch (error) {
     canaryError = error;
   } finally {
+    try {
+      cleanupWindowsAjaxBrowserProcesses(options);
+    } catch (cleanupError) {
+      const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+      console.error(`Windows AJAX diagnostic browser cleanup failed: ${message}`);
+    }
     if (!DRY_RUN) {
       try {
         collectArtifacts(options, artifactDir);

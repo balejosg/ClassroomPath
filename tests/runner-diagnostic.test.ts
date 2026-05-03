@@ -787,6 +787,16 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /diagnosticPhases/);
   });
 
+  test('direct Windows AJAX diagnostic cleans up browser driver processes after canary execution', () => {
+    const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+
+    assert.match(script, /function cleanupWindowsAjaxBrowserProcesses/);
+    assert.match(script, /Name = 'geckodriver\.exe' OR Name = 'firefox\.exe'/);
+    assert.match(script, /openpath-ajax-auto-allow-firefox-/);
+    assert.match(script, /openpath-ajax-direct/);
+    assert.match(script, /cleanupWindowsAjaxBrowserProcesses\(options\)/);
+  });
+
   test('direct Windows AJAX diagnostic keeps bootstrap canary artifacts inside its evidence directory', () => {
     const directScript = readProjectText('scripts/run-windows-ajax-direct.mjs');
     const bootstrapScript = readProjectText(

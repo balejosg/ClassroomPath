@@ -49,7 +49,10 @@ function injectHeadMetadata(indexHtml: string, page: RenderedPublicPage, origin:
 }
 
 function injectAppHtml(indexHtml: string, appHtml: string): string {
-  return indexHtml.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`);
+  return indexHtml.replace(
+    '<div id="root"></div>',
+    `<div id="root" data-classroompath-public-ssr="true">${appHtml}</div>`
+  );
 }
 
 export function createPublicSpaRenderer(reactSpaPath: string): PublicSpaRenderer {

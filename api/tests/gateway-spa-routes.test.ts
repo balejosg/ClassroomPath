@@ -99,6 +99,7 @@ test('SSR renders landing and preserves client asset references', async () => {
 
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type') ?? '', /text\/html/);
+  assert.match(html, /<div id="root" data-classroompath-public-ssr="true">/);
   assert.match(html, /<main data-path="\/">SSR \/<\/main>/);
   assert.match(html, /<title>Landing SSR<\/title>/);
   assert.match(html, /<meta name="description" content="Description for \//);
