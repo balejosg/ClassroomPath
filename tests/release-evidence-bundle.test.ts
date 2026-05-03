@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -333,6 +333,66 @@ describe('release evidence bundle module', () => {
 
     assert.equal(integrity.windowsProductionBootstrapCanary.status, 'not_applicable');
     assert.equal(integrity.linuxProductionBootstrapCanary.status, 'not_applicable');
+  });
+
+  test('collects Linux canary evidence artifact when the functional canary failed', () => {
+    const linuxArtifactDir = createTempDir('classroompath-release-evidence-linux-failure-');
+    const outputDir = createTempDir('classroompath-release-evidence-linux-failure-output-');
+
+    writeJson(resolve(linuxArtifactDir, 'production-linux-ajax-auto-allow-canary.json'), {
+      success: false,
+      failureBoundary: {
+        id: 'linux-install-openpath',
+        message: 'Linux install-openpath failed before AJAX auto-allow verification.',
+      },
+      diagnosticPhases: [
+        { id: 'linux-install-openpath', status: 'failed' },
+        { id: 'artifact-written', status: 'passed' },
+      ],
+    });
+
+    const bundle = buildReleaseEvidenceBundle({
+      releaseEvidence: buildReleaseEvidenceInput({
+        jobs: {
+          verifyOpenPathUpstream: 'success',
+          resolveReleaseImages: 'success',
+          verifyStagingReleaseState: 'success',
+          windowsFirefoxCanary: 'success',
+          windowsProductionBootstrapCanary: 'success',
+          linuxProductionBootstrapCanary: 'failure',
+          productionClientUpdateCanary: 'live-tested',
+          deployProduction: 'success',
+          smokeTestProduction: 'success',
+          rollbackProduction: 'skipped',
+        },
+        diagnostics: {
+          windowsProductionBootstrapFailureBoundary: {
+            id: 'none',
+            message: 'Windows AJAX auto-allow canary completed successfully.',
+          },
+          linuxProductionBootstrapFailureBoundary: {
+            id: 'linux-install-openpath',
+            message: 'Linux install-openpath failed before AJAX auto-allow verification.',
+          },
+        },
+      }),
+      productionHealth: {
+        checkedAt: '2026-04-30T10:05:00.000Z',
+        productionUrl: 'https://classroompath.eu',
+        health: { status: 'ok' },
+        ready: { ready: true },
+      },
+      outputDir,
+      linuxProductionBootstrapCanary: {
+        listed: true,
+        artifactDir: linuxArtifactDir,
+      },
+    });
+
+    assert.equal(bundle.jobs.linuxProductionBootstrapCanary, 'failure');
+    assert.equal(bundle.artifactIntegrity.linuxProductionBootstrapCanary.status, 'ok');
+    assert.equal(bundle.canaries.linux.failureBoundary.id, 'linux-install-openpath');
+    assert.ok(existsSync(resolve(outputDir, 'canary-evidence/linux-production-bootstrap.json')));
   });
 
   test('writes partial bundle outputs before failing when a successful canary is missing its JSON artifact', async () => {

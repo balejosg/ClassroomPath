@@ -702,6 +702,25 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux canary preserves evidence artifacts on functional failure', () => {
+    const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+
+    assert.match(workflow, /name: Initialize Linux canary evidence files/);
+    assert.match(
+      workflow,
+      /name: Prepare Linux canary artifact bundle[\s\S]*if: \$\{\{ always\(\) \}\}/
+    );
+    assert.match(
+      workflow,
+      /name: Upload production bootstrap canary artifacts[\s\S]*if: \$\{\{ always\(\) \}\}/
+    );
+    assert.match(workflow, /failure_boundary_id=artifact-upload/);
+    assert.match(
+      workflow,
+      /name: Upload production bootstrap canary artifacts[\s\S]*retention-days: 14/
+    );
+  });
+
   test('Linux bootstrap canary failure helper writes a boundary artifact', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'linux-bootstrap-canary-failure-'));
     const artifactPath = join(tempDir, 'production-linux-ajax-auto-allow-canary.json');

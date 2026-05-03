@@ -1485,6 +1485,7 @@ describe('Production client update canary workflow contracts', () => {
       'artifact transport failures should be converted into an explicit artifact-upload boundary'
     );
     assert.equal(uploadStep?.with?.['if-no-files-found'], 'error');
+    assert.equal(uploadStep?.with?.['retention-days'], 14);
     assert.match(String(uploadStep?.with?.path ?? ''), /production-windows-bootstrap-canary\.json/);
     assert.match(
       String(uploadStep?.with?.path ?? ''),
@@ -1499,5 +1500,30 @@ describe('Production client update canary workflow contracts', () => {
     assert.equal(resultStep?.if, 'always()');
     assert.match(String(resultStep?.run ?? ''), /failure_boundary_id=artifact-upload/);
     assert.match(String(resultStep?.run ?? ''), /steps\.upload-artifacts\.outcome/);
+  });
+
+  test('Windows canary uploads diagnostic artifacts even after functional failure', () => {
+    const workflow = readProjectText('.github/workflows/windows-production-bootstrap-canary.yml');
+
+    assert.match(workflow, /name: Initialize Windows canary evidence files/);
+    assert.match(
+      workflow,
+      /name: Initialize Windows canary evidence files[\s\S]*production-windows-bootstrap-canary\.json[\s\S]*production-windows-ajax-auto-allow-canary\.json[\s\S]*production-windows-runner-health\.json/
+    );
+    assert.match(
+      workflow,
+      /name: Upload production bootstrap canary artifacts[\s\S]*if: always\(\)/
+    );
+    assert.match(workflow, /production-windows-bootstrap-canary\.json/);
+    assert.match(workflow, /production-windows-ajax-auto-allow-canary\.json/);
+    assert.match(workflow, /production-windows-runner-health\.json/);
+    assert.match(
+      workflow,
+      /if \[ "\$ARTIFACT_UPLOAD_OUTCOME" != "success" \]; then[\s\S]*failure_boundary_id=artifact-upload/
+    );
+    assert.match(
+      workflow,
+      /name: Upload production bootstrap canary artifacts[\s\S]*retention-days: 14/
+    );
   });
 });

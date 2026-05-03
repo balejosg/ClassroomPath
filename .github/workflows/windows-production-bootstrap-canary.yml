@@ -141,6 +141,44 @@ jobs:
             echo "Diagnostic-only runner canary; this run is not production release evidence."
           fi
 
+      - name: Initialize Windows canary evidence files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > production-windows-bootstrap-canary.json <<'JSON'
+          {
+            "success": false,
+            "failureBoundary": {
+              "id": "canary-not-started",
+              "message": "Windows bootstrap canary did not reach the provisioning step."
+            }
+          }
+          JSON
+          cat > production-windows-ajax-auto-allow-canary.json <<'JSON'
+          {
+            "success": false,
+            "failureBoundary": {
+              "id": "canary-not-started",
+              "message": "Windows AJAX auto-allow canary did not start."
+            },
+            "diagnosticPhases": [
+              {
+                "id": "artifact-written",
+                "status": "failed"
+              }
+            ]
+          }
+          JSON
+          cat > production-windows-runner-health.json <<'JSON'
+          {
+            "phase": "canary-not-started",
+            "failureBoundary": {
+              "id": "canary-not-started",
+              "message": "Windows runner health evidence was initialized before risky canary steps."
+            }
+          }
+          JSON
+
       - name: Assert destructive Windows runner is available
         shell: bash
         env:
@@ -619,6 +657,7 @@ jobs:
             ${{ runner.temp }}/Update-OpenPath.log
             ${{ runner.temp }}/windows-production-bootstrap-firefox.log
           if-no-files-found: error
+          retention-days: 14
 
       - name: Record canary result
         id: result
@@ -638,14 +677,14 @@ jobs:
           failure_boundary_id="$FUNCTIONAL_BOUNDARY_ID"
           failure_boundary_message="$FUNCTIONAL_BOUNDARY_MESSAGE"
 
-          if [ "$VERIFY_ARTIFACTS_OUTCOME" != "success" ]; then
-            result=failure
-            failure_boundary_id=artifact-written
-            failure_boundary_message='Functional canary reported success but required evidence artifacts were missing or empty.'
-          elif [ "$FUNCTIONAL_RESULT" = "success" ] && [ "$ARTIFACT_UPLOAD_OUTCOME" != "success" ]; then
+          if [ "$ARTIFACT_UPLOAD_OUTCOME" != "success" ]; then
             result=failure
             failure_boundary_id=artifact-upload
             failure_boundary_message='Functional canary evidence was produced but GitHub artifact upload failed.'
+          elif [ "$VERIFY_ARTIFACTS_OUTCOME" != "success" ]; then
+            result=failure
+            failure_boundary_id=artifact-written
+            failure_boundary_message='Functional canary reported success but required evidence artifacts were missing or empty.'
           elif [ "$FUNCTIONAL_RESULT" = "success" ]; then
             failure_boundary_id=none
             failure_boundary_message='Windows AJAX auto-allow canary completed successfully.'
