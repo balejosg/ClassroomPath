@@ -106,7 +106,7 @@ main() {
   fi
 
   set +e
-  sudo bash "$installer_path" 2>&1 | tee linux-install-openpath.log
+  sudo env OPENPATH_ALLOW_DEFERRED_FIREFOX_REGISTRATION=1 bash "$installer_path" 2>&1 | tee linux-install-openpath.log
   local install_status="${PIPESTATUS[0]}"
   set -e
 

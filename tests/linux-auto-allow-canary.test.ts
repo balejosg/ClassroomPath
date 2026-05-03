@@ -43,7 +43,7 @@ function createLinuxCanaryRuntimeHarness(
 
   shim(
     'sudo',
-    `echo "sudo $*" >> "${callsPath}"; if [ "$1" = "bash" ]; then shift; exec bash "$@"; fi; exit 0`
+    `echo "sudo $*" >> "${callsPath}"; if [ "$1" = "env" ]; then shift; while [ "$#" -gt 0 ] && [[ "$1" == *=* ]]; do shift; done; fi; if [ "$1" = "bash" ]; then shift; exec bash "$@"; fi; exit 0`
   );
   shim(
     'sysctl',
@@ -630,7 +630,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
     assert.match(
       runtimeScript,
-      /trap restore_linux_bootstrap_canary_external_dns EXIT[\s\S]*sudo bash "\$installer_path" 2>&1 \| tee linux-install-openpath\.log[\s\S]*install_status="\$\{PIPESTATUS\[0\]\}"/,
+      /trap restore_linux_bootstrap_canary_external_dns EXIT[\s\S]*sudo env OPENPATH_ALLOW_DEFERRED_FIREFOX_REGISTRATION=1 bash "\$installer_path" 2>&1 \| tee linux-install-openpath\.log[\s\S]*install_status="\$\{PIPESTATUS\[0\]\}"/,
       'runtime script must install OpenPath, preserve the installer log, and always restore runner DNS before exiting'
     );
     assert.match(
