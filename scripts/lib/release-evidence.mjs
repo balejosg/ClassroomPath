@@ -88,6 +88,41 @@ function markdownCell(value) {
     .replace(/\|/g, '\\|');
 }
 
+function summaryCell(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return 'unknown';
+  }
+
+  return raw
+    .replace(/https?:\/\/([^/\s:@]+):([^@\s/]+)@/gi, 'https://[redacted]@')
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[redacted]')
+    .replace(/\b(token|secret|password|key)=([^\s&|]+)/gi, '$1=[redacted]')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\|/g, '\\|');
+}
+
+function canarySummaryRow(label, canary = {}) {
+  return `| ${summaryCell(label)} | ${summaryCell(canary.result)} | ${summaryCell(canary.boundaryId)} | ${summaryCell(canary.message)} |`;
+}
+
+function summaryValue(value) {
+  return value === 'n/a' ? undefined : value;
+}
+
+export function renderCanaryBoundarySummary({ linux = {}, windows = {} } = {}) {
+  return [
+    '## Release Canary Boundary',
+    '',
+    '| Canary | Result | Boundary | Message |',
+    '| --- | --- | --- | --- |',
+    canarySummaryRow('Linux bootstrap/AJAX', linux),
+    canarySummaryRow('Windows bootstrap/AJAX', windows),
+    '',
+  ].join('\n');
+}
+
 function formatDuration(value) {
   if (typeof value === 'string' && value.trim()) {
     return value.trim();
@@ -478,6 +513,18 @@ export function renderReleaseEvidenceMarkdown(evidence) {
       evidence,
       windowsFailureBoundary,
       linuxFailureBoundary,
+    }),
+    renderCanaryBoundarySummary({
+      linux: {
+        result: evidence.jobs.linuxProductionBootstrapCanary,
+        boundaryId: summaryValue(linuxFailureBoundary),
+        message: summaryValue(linuxFailureBoundaryMessage),
+      },
+      windows: {
+        result: evidence.jobs.windowsProductionBootstrapCanary,
+        boundaryId: summaryValue(windowsFailureBoundary),
+        message: summaryValue(windowsFailureBoundaryMessage),
+      },
     }),
     '## Release Evidence',
     '',

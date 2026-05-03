@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runProjectCommand } from './helpers/ops-contracts.ts';
+import { renderCanaryBoundarySummary } from '../scripts/lib/release-evidence.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
@@ -122,6 +123,40 @@ function generateEvidenceFromInputFile(input: Record<string, string | undefined>
 }
 
 describe('release evidence rendering', () => {
+  test('release evidence renders compact canary failure boundary summary', () => {
+    const summary = renderCanaryBoundarySummary({
+      linux: {
+        result: 'failure',
+        boundaryId: 'linux-install-openpath',
+        message: 'Linux enrollment script failed before AJAX canary.',
+      },
+      windows: {
+        result: 'success',
+        boundaryId: 'none',
+        message: 'Windows AJAX auto-allow canary completed successfully.',
+      },
+    });
+
+    assert.match(summary, /## Release Canary Boundary/);
+    assert.match(summary, /Linux bootstrap\/AJAX/);
+    assert.match(summary, /linux-install-openpath/);
+    assert.match(summary, /Windows AJAX auto-allow canary completed successfully\./);
+    assert.doesNotMatch(summary, /Bearer|token|secret/i);
+  });
+
+  test('release evidence boundary summary renders unknowns and redacts credentials', () => {
+    const summary = renderCanaryBoundarySummary({
+      linux: {
+        message: 'failed with Bearer abc123 and token=secret-value\nsecond line',
+      },
+    });
+
+    assert.match(summary, /\| Linux bootstrap\/AJAX \| unknown \| unknown \|/);
+    assert.match(summary, /Bearer \[redacted\]/);
+    assert.match(summary, /token=\[redacted\]/);
+    assert.doesNotMatch(summary, /abc123|secret-value|second line\n/);
+  });
+
   test('release evidence bundle CLI is exposed for incident handoffs', () => {
     const packageJson = JSON.parse(readFileSync(resolve(projectRoot, 'package.json'), 'utf8')) as {
       scripts?: Record<string, string>;
@@ -353,6 +388,10 @@ describe('release evidence rendering', () => {
       markdown.indexOf('## Release Dashboard') < markdown.indexOf('## Release Evidence'),
       'dashboard should be the first release-evidence section'
     );
+    assert.ok(
+      markdown.indexOf('## Release Canary Boundary') < markdown.indexOf('## Release Evidence'),
+      'canary boundary summary should be visible before the full release evidence details'
+    );
     assert.match(markdown, /\| Tag \| `v1\.2\.99` \|/);
     assert.match(markdown, /\| ClassroomPath SHA \| `cp-sha` \|/);
     assert.match(markdown, /\| OpenPath SHA \| `op-sha` \|/);
@@ -375,6 +414,14 @@ describe('release evidence rendering', () => {
     );
     assert.match(markdown, /Windows canary artifact integrity: `ok`/);
     assert.match(markdown, /Linux canary artifact integrity: `missing`/);
+    assert.match(
+      markdown,
+      /\| Linux bootstrap\/AJAX \| failure \| page-resource-candidates \| The Linux page did not emit resource-candidate events for every probe\. \|/
+    );
+    assert.match(
+      markdown,
+      /\| Windows bootstrap\/AJAX \| success \| none \| Windows AJAX auto-allow canary completed successfully\. \|/
+    );
     assert.match(markdown, /Windows bootstrap failure boundary: `none`/);
     assert.match(markdown, /Linux bootstrap failure boundary: `page-resource-candidates`/);
   });

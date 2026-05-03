@@ -81,6 +81,59 @@ describe('staging gates helper', () => {
     ]);
   });
 
+  test('prints compact staging canary failure boundary blocks', () => {
+    const result = spawnSync(
+      'bash',
+      [
+        '-lc',
+        [
+          'source scripts/lib/staging-gates.sh',
+          "print_staging_canary_failure_boundary linux-bootstrap failure linux-install-openpath 'Linux enrollment script failed before AJAX canary.' 123456",
+        ].join('; '),
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /Staging canary failure boundary:/);
+    assert.match(result.stderr, /canary: linux-bootstrap/);
+    assert.match(result.stderr, /result: failure/);
+    assert.match(result.stderr, /boundary: linux-install-openpath/);
+    assert.match(result.stderr, /message: Linux enrollment script failed before AJAX canary\./);
+    assert.match(result.stderr, /run: 123456/);
+  });
+
+  test('staging canary failure boundary blocks are one-line and redact credentials', () => {
+    const result = spawnSync(
+      'bash',
+      [
+        '-lc',
+        [
+          'source scripts/lib/staging-gates.sh',
+          "print_staging_canary_failure_boundary '' failure '' 'failed with Bearer abc123 and token=secret-value\nsecond line' ''",
+        ].join('; '),
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /canary: unknown/);
+    assert.match(result.stderr, /boundary: unknown/);
+    assert.match(
+      result.stderr,
+      /message: failed with Bearer \[redacted\] and token=\[redacted\] second line/
+    );
+    assert.match(result.stderr, /run: unknown/);
+    assert.doesNotMatch(result.stderr, /abc123|secret-value/);
+    assert.doesNotMatch(result.stderr, /message: .*\nsecond line/);
+  });
+
   test('shared runner sources the helper and delegates gate orchestration to it', () => {
     const content = readFileSync(runnerPath, 'utf8');
 

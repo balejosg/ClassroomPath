@@ -381,6 +381,13 @@ describe('Deploy workflow contracts', () => {
       deployWorkflowText,
       /"LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "\$\{\{ needs\.linux-production-bootstrap-canary\.outputs\.failure_boundary_message \}\}"/
     );
+    assert.match(
+      String(
+        findWorkflowStepByName(jobs['release-evidence'], 'Generate release evidence')?.run ?? ''
+      ),
+      /cat release-evidence\.md >> "\$GITHUB_STEP_SUMMARY"/,
+      'release evidence markdown, including the compact canary boundary summary, must be appended to the job summary'
+    );
     assert.ok(deployWorkflowText.includes('Generate release evidence bundle'));
     assert.ok(deployWorkflowText.includes('Record release evidence bundle follow-up command'));
     assert.ok(deployWorkflowText.includes('Generate deploy brief'));

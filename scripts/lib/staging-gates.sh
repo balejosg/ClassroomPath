@@ -115,6 +115,45 @@ EOF
   esac
 }
 
+staging_canary_boundary_value() {
+  local value="${1:-}"
+
+  if [ -z "$value" ]; then
+    printf 'unknown\n'
+    return 0
+  fi
+
+  printf '%s' "$value" \
+    | tr '\r\n' '  ' \
+    | sed -E \
+      -e 's#https?://([^/[:space:]@]+):([^@[:space:]/]+)@#https://[redacted]@#gI' \
+      -e 's#\b(Bearer[[:space:]]+)[A-Za-z0-9._~+/=-]+#\1[redacted]#gI' \
+      -e 's#\b(token|secret|password|key)=([^[:space:]&|]+)#\1=[redacted]#gI' \
+      -e 's#[[:space:]]+# #g'
+  printf '\n'
+}
+
+print_staging_canary_failure_boundary() {
+  local canary=""
+  local result=""
+  local boundary=""
+  local message=""
+  local run_id=""
+
+  canary="$(staging_canary_boundary_value "${1:-}")"
+  result="$(staging_canary_boundary_value "${2:-}")"
+  boundary="$(staging_canary_boundary_value "${3:-}")"
+  message="$(staging_canary_boundary_value "${4:-}")"
+  run_id="$(staging_canary_boundary_value "${5:-}")"
+
+  echo "Staging canary failure boundary:" >&2
+  echo "  canary: $canary" >&2
+  echo "  result: $result" >&2
+  echo "  boundary: $boundary" >&2
+  echo "  message: $message" >&2
+  echo "  run: $run_id" >&2
+}
+
 run_staging_linux_bootstrap_gate() {
   local canonical_staging_url="$1"
   local output_file=""
@@ -138,6 +177,12 @@ run_staging_linux_bootstrap_gate() {
       # shellcheck disable=SC1090
       . "$output_file"
     fi
+    print_staging_canary_failure_boundary \
+      "linux-bootstrap" \
+      "${STAGING_LINUX_BOOTSTRAP_RESULT:-failure}" \
+      "${STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID:-unknown}" \
+      "${STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE:-unknown}" \
+      "${STAGING_LINUX_BOOTSTRAP_RUN_ID:-unknown}"
     echo "Linux bootstrap gate FAILED (${STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID:-unknown})" >&2
     return 1
   fi
