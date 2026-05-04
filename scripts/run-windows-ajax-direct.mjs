@@ -25,6 +25,12 @@ const LOCAL_FIREFOX_XPI_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\openpath-firefox-ext
 const SELENIUM_NODE_MODULES_ZIP_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\selenium-node-modules.zip`;
 const BINARY_UPLOAD_CHUNK_CHARS = 700000;
 const DRY_RUN = process.env.WINDOWS_AJAX_DIRECT_DRY_RUN === '1';
+const WINDOWS_AJAX_RUNTIME_SCRIPT_UPLOADS = [
+  {
+    source: 'scripts/lib/ajax-auto-allow-canary-harness.mjs',
+    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\ajax-auto-allow-canary-harness.mjs`,
+  },
+];
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
@@ -176,6 +182,19 @@ function shellQuote(value) {
 
 function renderCommand(args) {
   return args.map((arg) => shellQuote(arg)).join(' ');
+}
+
+function withWindowsAjaxRuntimeUploads(plan) {
+  const existingSources = new Set(plan.canaryScriptUploads.map((upload) => upload.source));
+  return {
+    ...plan,
+    canaryScriptUploads: [
+      ...plan.canaryScriptUploads,
+      ...WINDOWS_AJAX_RUNTIME_SCRIPT_UPLOADS.filter(
+        (upload) => !existingSources.has(upload.source)
+      ),
+    ],
+  };
 }
 
 function psSingleQuote(value) {
@@ -950,17 +969,19 @@ function main() {
       '.opencode/tmp/windows-ajax-direct',
       `${options.environment}-${new Date().toISOString().replace(/[:.]/g, '-')}`
     );
-  const plan = buildRunnerDiagnosticPlan({
-    platform: 'windows',
-    suite: 'ajax-auto-allow',
-    environment: options.environment,
-    baseUrl,
-    artifactDir,
-    openpathRoot: options.openpathRoot,
-    proxmoxHost: options.proxmoxHost,
-    vmid: options.vmid,
-    confirmProduction: options.confirmProduction,
-  });
+  const plan = withWindowsAjaxRuntimeUploads(
+    buildRunnerDiagnosticPlan({
+      platform: 'windows',
+      suite: 'ajax-auto-allow',
+      environment: options.environment,
+      baseUrl,
+      artifactDir,
+      openpathRoot: options.openpathRoot,
+      proxmoxHost: options.proxmoxHost,
+      vmid: options.vmid,
+      confirmProduction: options.confirmProduction,
+    })
+  );
   const validationErrors = validateRunnerDiagnosticPlan(plan);
   if (validationErrors.length > 0) {
     console.error(validationErrors[0]);

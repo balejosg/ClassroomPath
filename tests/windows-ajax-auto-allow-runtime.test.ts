@@ -125,4 +125,18 @@ describe('Windows AJAX auto-allow runtime module', () => {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  test('delegates page and probe server behavior to the shared AJAX canary harness', async () => {
+    const runtimeSource = await readFile(
+      new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),
+      'utf8'
+    );
+
+    assert.match(runtimeSource, /createAjaxAutoAllowCanaryServer/);
+    assert.match(runtimeSource, /createAjaxAutoAllowCanaryState/);
+    assert.match(runtimeSource, /buildAjaxAutoAllowCanaryPage/);
+    assert.match(runtimeSource, /redditDiagnosticProbes/);
+    assert.doesNotMatch(runtimeSource, /function buildPage\(/);
+    assert.doesNotMatch(runtimeSource, /createServer\(\(req, res\) =>/);
+  });
 });

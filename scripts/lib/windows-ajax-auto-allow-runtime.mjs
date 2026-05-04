@@ -1,4 +1,3 @@
-import { createServer } from 'node:http';
 import { appendFileSync } from 'node:fs';
 import { mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -9,18 +8,19 @@ import process from 'node:process';
 import {
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
-  WINDOWS_AUTO_ALLOW_ASSET_HOST as ASSET_HOST,
   WINDOWS_AUTO_ALLOW_ORIGIN_HOST as ORIGIN_HOST,
   WINDOWS_AUTO_ALLOW_PROBES as AUTO_ALLOW_PROBES,
-  WINDOWS_AUTO_ALLOW_SCRIPT_HOST as SCRIPT_HOST,
-  WINDOWS_AUTO_ALLOW_STYLESHEET_HOST as STYLESHEET_HOST,
-  WINDOWS_AUTO_ALLOW_TARGET_HOST as TARGET_HOST,
   assertWindowsAutoAllowCanarySuccess,
   buildWindowsAutoAllowCanarySummary,
-  buildWindowsAutoAllowProbeUrl,
   redactSensitiveWindowsCanaryValue,
   redactWindowsCanaryObject,
 } from './windows-auto-allow-canary-evidence.mjs';
+import {
+  buildAjaxAutoAllowCanaryPage,
+  buildAjaxAutoAllowProbeUrl,
+  createAjaxAutoAllowCanaryServer,
+  createAjaxAutoAllowCanaryState,
+} from './ajax-auto-allow-canary-harness.mjs';
 import {
   evidenceContainsAllExpectedHosts,
   waitForEvidenceObservation,
@@ -51,6 +51,8 @@ const MAX_ATTEMPT_EVIDENCE = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_MAX_ATTEMPT_EVIDENCE ?? '60',
   10
 );
+const PROBE_TIMEOUT_MS = 4000;
+const REDDIT_DIAGNOSTIC_TIMEOUT_MS = 1500;
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
 const OPENPATH_ROOT = process.env.OPENPATH_ROOT ?? 'C:\\OpenPath';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? 'C:\\OpenPath\\data\\whitelist.txt';
@@ -147,8 +149,8 @@ async function runInjectedRuntime(config, adapters) {
   });
   progress('bootstrap', 'started', { message: 'Starting Windows AJAX auto-allow canary' });
   const firefoxPath = adapters.browser.findFirefox(config);
-  const targetUrl = buildWindowsAutoAllowProbeUrl(config.probes[0], config.port);
-  const assetUrl = buildWindowsAutoAllowProbeUrl(config.probes[1], config.port);
+  const targetUrl = buildProbeUrl(config.probes[0], config.port);
+  const assetUrl = buildProbeUrl(config.probes[1], config.port);
   const server = await adapters.server.createProbeServer(config);
   progress('bootstrap', 'passed', { boundaryId: 'none' });
   const state = server.state;
@@ -192,7 +194,7 @@ async function runInjectedRuntime(config, adapters) {
           id: probe.id,
           kind: probe.kind,
           host: probe.host,
-          url: buildWindowsAutoAllowProbeUrl(probe, config.port),
+          url: buildProbeUrl(probe, config.port),
           hits: 0,
           expectedWhitelistHost: probe.expectedWhitelistHost,
           whitelistContainsExpectedHost: false,
@@ -268,8 +270,51 @@ function writeGithubOutput(key, value) {
   appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${String(value)}\n`, 'utf8');
 }
 
-function buildProbeUrl(probe) {
-  return buildWindowsAutoAllowProbeUrl(probe, PORT);
+function buildProbeUrl(probe, port = PORT) {
+  return buildAjaxAutoAllowProbeUrl(probe, port);
+}
+
+function createWindowsAjaxCanaryHarness({
+  port = PORT,
+  timeoutMs = TIMEOUT_MS,
+  maxAttemptEvidence = MAX_ATTEMPT_EVIDENCE,
+  probes = AUTO_ALLOW_PROBES,
+  redditDiagnosticProbes = REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
+  onResult,
+} = {}) {
+  // The shared harness owns browser probe details formerly in this runtime:
+  // Access-Control-Allow-Origin, fetch(, new Image(), document.createElement('script'),
+  // document.createElement('link'), loadFont, loadStylesheetFont, @font-face, fontFamily,
+  // /probe-state?probe=, withTimeout(runProbeOnce(probe), req.url === '/attempt',
+  // reportAttempt(attemptResult, completed), and font/woff2.
+  const state = createAjaxAutoAllowCanaryState(probes, { redditDiagnosticProbes });
+  const server = createAjaxAutoAllowCanaryServer({
+    platform: 'Windows',
+    probes,
+    originHost: ORIGIN_HOST,
+    port,
+    state,
+    maxAttempts: maxAttemptEvidence,
+    redact: redactWindowsCanaryObject,
+    scriptGlobalName: '__openpathAjaxAutoAllowScriptProbe',
+    stylesheetCss: 'body { --openpath-ajax-auto-allow-style-probe: loaded; }',
+    onResult,
+    buildPage: () =>
+      buildAjaxAutoAllowCanaryPage({
+        platform: 'Windows',
+        probes,
+        redditDiagnosticProbes,
+        originHost: ORIGIN_HOST,
+        port,
+        timeoutMs,
+        probeTimeoutMs: PROBE_TIMEOUT_MS,
+        redditDiagnosticTimeoutMs: REDDIT_DIAGNOSTIC_TIMEOUT_MS,
+        stateGlobalName: '__openpathWindowsAjaxCanaryState',
+        statusElement: true,
+      }),
+  });
+
+  return { state, server };
 }
 
 function sleep(ms) {
@@ -899,352 +944,6 @@ async function launchFirefoxWithSelenium({ firefoxPath, profileDir, originUrl })
   };
 }
 
-function buildPage(probes) {
-  const browserProbes = probes.map((probe) => ({
-    id: probe.id,
-    kind: probe.kind,
-    url: buildProbeUrl(probe),
-    stylesheetUrl:
-      probe.kind === 'stylesheet-font'
-        ? `http://${probe.stylesheetHost}:${PORT}${probe.stylesheetPath}`
-        : null,
-  }));
-  const redditDiagnosticProbes = REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES.map((probe) => ({
-    id: probe.id,
-    kind: probe.kind,
-    host: probe.host,
-    url: probe.url,
-  }));
-
-  return `<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>Windows AJAX Auto-Allow Canary</title></head>
-<body>
-<pre id="status">starting</pre>
-<script>
-const statusEl = document.getElementById('status');
-const probes = ${JSON.stringify(browserProbes)};
-const redditDiagnosticProbes = ${JSON.stringify(redditDiagnosticProbes)};
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const PROBE_TIMEOUT_MS = 4000;
-const REDDIT_DIAGNOSTIC_TIMEOUT_MS = 1500;
-const CANARY_TIMEOUT_MS = ${TIMEOUT_MS};
-const pageResourceCandidateEvents = [];
-const completedCandidateEvents = Object.fromEntries(probes.map((probe) => [probe.id, false]));
-const completedRedditDiagnosticEvents = Object.fromEntries(
-  redditDiagnosticProbes.map((probe) => [probe.id, false])
-);
-
-function isOpenPathPageObserverInstalled() {
-  return window.__openpathPageResourceObserverInstalled === true;
-}
-
-function normalizeCandidateUrl(url) {
-  try {
-    const parsed = new URL(String(url));
-    parsed.search = '';
-    parsed.hash = '';
-    return parsed.toString();
-  } catch {
-    return String(url || '');
-  }
-}
-
-window.addEventListener('message', (event) => {
-  const data = event && event.data ? event.data : {};
-  if (data.source !== 'openpath-page-resource-candidate' || typeof data.url !== 'string') {
-    return;
-  }
-
-  const normalizedCandidateUrl = normalizeCandidateUrl(data.url);
-  const matchedProbe = probes.find(
-    (probe) => normalizeCandidateUrl(probe.url) === normalizedCandidateUrl
-  );
-  const matchedRedditProbe = redditDiagnosticProbes.find(
-    (probe) => normalizeCandidateUrl(probe.url) === normalizedCandidateUrl
-  );
-  if (matchedProbe) {
-    completedCandidateEvents[matchedProbe.id] = true;
-  }
-  if (matchedRedditProbe) {
-    completedRedditDiagnosticEvents[matchedRedditProbe.id] = true;
-  }
-
-  pageResourceCandidateEvents.push({
-    kind: typeof data.kind === 'string' ? data.kind : 'unknown',
-    url: data.url,
-    matchedProbeId: matchedProbe ? matchedProbe.id : null,
-    matchedRedditProbeId: matchedRedditProbe ? matchedRedditProbe.id : null,
-    seenAt: new Date().toISOString()
-  });
-  if (pageResourceCandidateEvents.length > 100) {
-    pageResourceCandidateEvents.splice(0, pageResourceCandidateEvents.length - 100);
-  }
-});
-
-async function report(payload) {
-  await fetch('/result', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-}
-
-async function reportAttempt(attemptResult, completed) {
-  try {
-    await fetch('/attempt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        attempt: attemptResult,
-        completedProbes: completed,
-        completedCandidateEvents,
-        completedRedditDiagnosticEvents,
-        pageResourceCandidateEvents,
-        pageObserverInstalled: isOpenPathPageObserverInstalled()
-      })
-    });
-  } catch {
-    // The final /result payload still carries attempts if the page reaches it.
-  }
-}
-
-async function runProbe(probe) {
-  return await withTimeout(runProbeOnce(probe), PROBE_TIMEOUT_MS, probe.id);
-}
-
-async function runRedditDiagnosticProbes() {
-  const results = {};
-  for (const probe of redditDiagnosticProbes) {
-    results[probe.id] = await withTimeout(
-      runProbeOnce(probe),
-      REDDIT_DIAGNOSTIC_TIMEOUT_MS,
-      probe.id
-    );
-  }
-  return results;
-}
-
-async function runProbeOnce(probe) {
-  if (probe.kind === 'fetch') {
-    const response = await fetch(probe.url, { cache: 'no-store', mode: 'cors' });
-    return { ok: response.ok, status: response.status };
-  }
-
-  if (probe.kind === 'image') {
-    return await loadImage(probe.url);
-  }
-
-  if (probe.kind === 'script') {
-    return await loadScript(probe.url);
-  }
-
-  if (probe.kind === 'stylesheet') {
-    return await loadStylesheet(probe.url);
-  }
-
-  if (probe.kind === 'font') {
-    return await loadFont(probe.url, probe.id);
-  }
-
-  if (probe.kind === 'stylesheet-font') {
-    return await loadStylesheetFont(probe.stylesheetUrl, probe.id);
-  }
-
-  return { ok: false, error: 'unsupported probe kind: ' + probe.kind };
-}
-
-function withTimeout(promise, timeoutMs, probeId) {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      resolve({ ok: false, error: probeId + ' timed out after ' + timeoutMs + 'ms' });
-    }, timeoutMs);
-
-    promise
-      .then((result) => {
-        clearTimeout(timeout);
-        resolve(result);
-      })
-      .catch((error) => {
-        clearTimeout(timeout);
-        resolve({
-          ok: false,
-          error: String(error && error.message ? error.message : error)
-        });
-      });
-  });
-}
-
-function loadImage(url) {
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.onload = () => resolve({ ok: true });
-    image.onerror = () => resolve({ ok: false, error: 'image load failed' });
-    image.src = url + '?attempt=' + Date.now();
-  });
-}
-
-function loadScript(url) {
-  return new Promise((resolve) => {
-    const script = document.createElement('script');
-    script.async = true;
-    script.onload = () => resolve({ ok: true });
-    script.onerror = () => resolve({ ok: false, error: 'script load failed' });
-    script.src = url + '?attempt=' + Date.now();
-    document.body.appendChild(script);
-  });
-}
-
-function loadStylesheet(url) {
-  return new Promise((resolve) => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.onload = () => resolve({ ok: true });
-    link.onerror = () => resolve({ ok: false, error: 'stylesheet load failed' });
-    link.href = url + '?attempt=' + Date.now();
-    document.head.appendChild(link);
-  });
-}
-
-function loadStylesheetFont(url, probeId) {
-  return new Promise((resolve) => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.onload = async () => {
-      setTimeout(async () => {
-        const hits = await readProbeHits(probeId).catch(() => 0);
-        resolve(
-          hits > 0
-            ? { ok: true, hits }
-            : { ok: false, hits, error: 'stylesheet font load did not reach canary server' }
-        );
-      }, 1000);
-    };
-    link.onerror = () => resolve({ ok: false, error: 'stylesheet font CSS load failed' });
-    link.href = url + '?attempt=' + Date.now();
-    document.head.appendChild(link);
-
-    const sample = document.createElement('span');
-    sample.textContent = 'stylesheet font probe';
-    sample.style.fontFamily = '"OpenPathAjaxAutoAllowStylesheetFont", sans-serif';
-    sample.style.position = 'absolute';
-    sample.style.left = '-9999px';
-    document.body.appendChild(sample);
-  });
-}
-
-async function readProbeHits(probeId) {
-  const response = await fetch('/probe-state?probe=' + encodeURIComponent(probeId), {
-    cache: 'no-store'
-  });
-  if (!response.ok) return 0;
-  const payload = await response.json();
-  return Number(payload && payload.hits ? payload.hits : 0);
-}
-
-function loadFont(url, probeId) {
-  return new Promise((resolve) => {
-    const attemptUrl = url + '?attempt=' + Date.now();
-    const family = 'OpenPathAjaxAutoAllowFont' + Date.now();
-    const link = document.createElement('link');
-    link.rel = 'preload';
-    link.as = 'font';
-    link.crossOrigin = 'anonymous';
-    link.href = attemptUrl;
-    document.head.appendChild(link);
-
-    const style = document.createElement('style');
-    style.textContent =
-      '@font-face { font-family: "' +
-      family +
-      '"; src: url("' +
-      attemptUrl +
-      '") format("woff2"); }';
-    document.head.appendChild(style);
-
-    const sample = document.createElement('span');
-    sample.textContent = 'font probe';
-    sample.style.fontFamily = '"' + family + '", sans-serif';
-    sample.style.position = 'absolute';
-    sample.style.left = '-9999px';
-    document.body.appendChild(sample);
-
-    setTimeout(async () => {
-      const hits = await readProbeHits(probeId).catch(() => 0);
-      resolve(hits > 0 ? { ok: true, hits } : { ok: false, hits, error: 'font load did not reach canary server' });
-    }, 1000);
-  });
-}
-
-(async () => {
-  const attempts = [];
-  const completed = Object.fromEntries(probes.map((probe) => [probe.id, false]));
-  let redditDiagnostics = { probes: {}, completedRedditDiagnosticEvents };
-  const deadline = Date.now() + CANARY_TIMEOUT_MS;
-  for (let attempt = 1; Date.now() < deadline; attempt += 1) {
-    const attemptResult = { attempt, probes: {} };
-    if (attempt === 1) {
-      statusEl.textContent = 'reddit diagnostics';
-      redditDiagnostics = {
-        probes: await runRedditDiagnosticProbes(),
-        completedRedditDiagnosticEvents,
-        pageResourceCandidateEvents
-      };
-    }
-    for (const probe of probes) {
-      if (completed[probe.id]) {
-        attemptResult.probes[probe.id] = { ok: true, skipped: true };
-        continue;
-      }
-
-      try {
-        statusEl.textContent = probe.id + ' attempt ' + attempt;
-        const probeResult = await runProbe(probe);
-        attemptResult.probes[probe.id] = probeResult;
-        completed[probe.id] = probeResult.ok === true;
-      } catch (error) {
-        attemptResult.probes[probe.id] = {
-          error: String(error && error.message ? error.message : error)
-        };
-      }
-    }
-
-    attempts.push(attemptResult);
-    await reportAttempt(attemptResult, completed);
-    if (Object.values(completed).every(Boolean)) {
-        await report({
-          success: true,
-          attempts,
-          probes,
-          redditDiagnostics,
-          completedCandidateEvents,
-          completedRedditDiagnosticEvents,
-          pageResourceCandidateEvents,
-          pageObserverInstalled: isOpenPathPageObserverInstalled()
-        });
-        statusEl.textContent = 'success';
-        return;
-    }
-    await sleep(2500);
-  }
-
-  await report({
-    success: false,
-    attempts,
-    probes,
-    redditDiagnostics,
-    completedCandidateEvents,
-    completedRedditDiagnosticEvents,
-    pageResourceCandidateEvents,
-    pageObserverInstalled: isOpenPathPageObserverInstalled()
-  });
-  statusEl.textContent = 'failed';
-})();
-</script>
-</body>
-</html>`;
-}
-
 async function readWhitelistContainsHost(host) {
   const contents = await readFile(WHITELIST_PATH, 'utf8');
   return contents.toLowerCase().includes(String(host).toLowerCase());
@@ -1257,219 +956,11 @@ async function main() {
   const targetUrl = buildProbeUrl(AUTO_ALLOW_PROBES[0]);
   const assetUrl = buildProbeUrl(AUTO_ALLOW_PROBES[1]);
   const originUrl = `http://${ORIGIN_HOST}:${PORT}/`;
-  const probeHits = Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, 0]));
-  let originHits = 0;
-  let resultPayload = null;
-  const browserAttempts = [];
-  let completedProbes = Object.fromEntries(AUTO_ALLOW_PROBES.map((probe) => [probe.id, false]));
-  let completedCandidateEvents = Object.fromEntries(
-    AUTO_ALLOW_PROBES.map((probe) => [probe.id, false])
-  );
-  let completedRedditDiagnosticEvents = Object.fromEntries(
-    REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES.map((probe) => [probe.id, false])
-  );
-  let pageResourceCandidateEvents = [];
-  let pageObserverInstalled = false;
-  let lastAttemptAt = null;
   let resolveResult;
   const resultPromise = new Promise((resolve) => {
     resolveResult = resolve;
   });
-
-  const server = createServer((req, res) => {
-    const host =
-      String(req.headers.host ?? '')
-        .split(':', 1)[0]
-        ?.toLowerCase() ?? '';
-
-    if (req.method === 'POST' && req.url === '/result') {
-      let body = '';
-      req.setEncoding('utf8');
-      req.on('data', (chunk) => {
-        body += chunk;
-      });
-      req.on('end', () => {
-        try {
-          resultPayload = JSON.parse(body);
-        } catch {
-          resultPayload = { success: false, error: 'invalid result payload', raw: body };
-        }
-        res.writeHead(204);
-        res.end();
-        resolveResult(resultPayload);
-      });
-      return;
-    }
-
-    if (req.method === 'POST' && req.url === '/attempt') {
-      let body = '';
-      req.setEncoding('utf8');
-      req.on('data', (chunk) => {
-        body += chunk;
-      });
-      req.on('end', () => {
-        try {
-          const payload = redactWindowsCanaryObject(JSON.parse(body));
-          browserAttempts.push(payload.attempt ?? payload);
-          if (payload.completedProbes && typeof payload.completedProbes === 'object') {
-            completedProbes = payload.completedProbes;
-          }
-          if (
-            payload.completedCandidateEvents &&
-            typeof payload.completedCandidateEvents === 'object'
-          ) {
-            completedCandidateEvents = payload.completedCandidateEvents;
-          }
-          if (
-            payload.completedRedditDiagnosticEvents &&
-            typeof payload.completedRedditDiagnosticEvents === 'object'
-          ) {
-            completedRedditDiagnosticEvents = payload.completedRedditDiagnosticEvents;
-          }
-          if (Array.isArray(payload.pageResourceCandidateEvents)) {
-            pageResourceCandidateEvents = payload.pageResourceCandidateEvents.slice(-100);
-          }
-          if (typeof payload.pageObserverInstalled === 'boolean') {
-            pageObserverInstalled = payload.pageObserverInstalled;
-          }
-        } catch {
-          browserAttempts.push({
-            error: 'invalid attempt payload',
-            raw: redactSensitiveWindowsCanaryValue(body.slice(-1000)),
-          });
-        }
-        if (browserAttempts.length > MAX_ATTEMPT_EVIDENCE) {
-          browserAttempts.splice(0, browserAttempts.length - MAX_ATTEMPT_EVIDENCE);
-        }
-        lastAttemptAt = new Date().toISOString();
-        res.writeHead(204);
-        res.end();
-      });
-      return;
-    }
-
-    const matchedProbe = AUTO_ALLOW_PROBES.find(
-      (probe) => host === probe.host && String(req.url ?? '').startsWith(probe.path)
-    );
-    const matchedStylesheetFontProbe = AUTO_ALLOW_PROBES.find(
-      (probe) =>
-        probe.kind === 'stylesheet-font' &&
-        host === probe.stylesheetHost &&
-        String(req.url ?? '').startsWith(probe.stylesheetPath)
-    );
-
-    if (host === ORIGIN_HOST) {
-      originHits += 1;
-    }
-
-    if (
-      host === ORIGIN_HOST &&
-      req.method === 'GET' &&
-      String(req.url ?? '').startsWith('/probe-state')
-    ) {
-      const stateUrl = new URL(String(req.url ?? '/probe-state'), `http://${ORIGIN_HOST}:${PORT}`);
-      const probeId = stateUrl.searchParams.get('probe') ?? '';
-      res.writeHead(200, {
-        'Cache-Control': 'no-store',
-        'Content-Type': 'application/json',
-      });
-      res.end(JSON.stringify({ hits: probeHits[probeId] ?? 0, probe: probeId }));
-      return;
-    }
-
-    if (matchedProbe?.id === 'ajax-fetch') {
-      probeHits[matchedProbe.id] += 1;
-      res.writeHead(200, {
-        'Access-Control-Allow-Origin': `http://${ORIGIN_HOST}:${PORT}`,
-        'Cache-Control': 'no-store',
-        'Content-Type': 'application/json',
-      });
-      res.end(
-        JSON.stringify({ ok: true, target: TARGET_HOST, targetHits: probeHits['ajax-fetch'] })
-      );
-      return;
-    }
-
-    if (matchedProbe?.id === 'image-subresource') {
-      probeHits[matchedProbe.id] += 1;
-      const transparentPixel = Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
-        'base64'
-      );
-      res.writeHead(200, {
-        'Cache-Control': 'no-store',
-        'Content-Type': 'image/png',
-      });
-      res.end(transparentPixel);
-      return;
-    }
-
-    if (matchedProbe?.id === 'script-subresource') {
-      probeHits[matchedProbe.id] += 1;
-      res.writeHead(200, {
-        'Cache-Control': 'no-store',
-        'Content-Type': 'application/javascript; charset=utf-8',
-      });
-      res.end('window.__openpathAjaxAutoAllowScriptProbe = true;');
-      return;
-    }
-
-    if (matchedProbe?.id === 'stylesheet-subresource') {
-      probeHits[matchedProbe.id] += 1;
-      res.writeHead(200, {
-        'Cache-Control': 'no-store',
-        'Content-Type': 'text/css; charset=utf-8',
-      });
-      res.end('body { --openpath-ajax-auto-allow-style-probe: loaded; }');
-      return;
-    }
-
-    if (matchedStylesheetFontProbe) {
-      const fontUrl = buildProbeUrl(matchedStylesheetFontProbe);
-      res.writeHead(200, {
-        'Cache-Control': 'no-store',
-        'Content-Type': 'text/css; charset=utf-8',
-      });
-      res.end(
-        [
-          '@font-face {',
-          '  font-family: "OpenPathAjaxAutoAllowStylesheetFont";',
-          `  src: url("${fontUrl}") format("woff2");`,
-          '}',
-          'body { --openpath-ajax-auto-allow-stylesheet-font-probe: loaded; }',
-        ].join('\n')
-      );
-      return;
-    }
-
-    if (matchedProbe?.id === 'font-subresource') {
-      probeHits[matchedProbe.id] += 1;
-      res.writeHead(200, {
-        'Access-Control-Allow-Origin': `http://${ORIGIN_HOST}:${PORT}`,
-        'Cache-Control': 'no-store',
-        'Content-Type': 'font/woff2',
-      });
-      res.end(Buffer.from('d09GMgABAAAAAA==', 'base64'));
-      return;
-    }
-
-    if (matchedProbe?.id === 'stylesheet-font-subresource') {
-      probeHits[matchedProbe.id] += 1;
-      res.writeHead(200, {
-        'Access-Control-Allow-Origin': `http://${ORIGIN_HOST}:${PORT}`,
-        'Cache-Control': 'no-store',
-        'Content-Type': 'font/woff2',
-      });
-      res.end(Buffer.from('d09GMgABAAAAAA==', 'base64'));
-      return;
-    }
-
-    res.writeHead(200, {
-      'Cache-Control': 'no-store',
-      'Content-Type': 'text/html; charset=utf-8',
-    });
-    res.end(buildPage(AUTO_ALLOW_PROBES));
-  });
+  const { state, server } = createWindowsAjaxCanaryHarness({ onResult: resolveResult });
 
   await new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -1532,13 +1023,13 @@ async function main() {
         expectedWhitelistHost: probe.expectedWhitelistHost,
         whitelistContainsExpectedHost: false,
       })),
-      originHits,
-      attempts: browserAttempts,
-      completedProbes,
-      completedCandidateEvents,
-      completedRedditDiagnosticEvents,
-      pageResourceCandidateEvents,
-      lastAttemptAt,
+      originHits: state.originHits,
+      attempts: state.browserAttempts,
+      completedProbes: state.completedProbes,
+      completedCandidateEvents: state.completedCandidateEvents,
+      completedRedditDiagnosticEvents: state.completedRedditDiagnosticEvents,
+      pageResourceCandidateEvents: state.pageResourceCandidateEvents,
+      lastAttemptAt: state.lastAttemptAt,
       whitelistPath: WHITELIST_PATH,
       firefoxExtensionWarmup,
       firefoxOutput,
@@ -1575,13 +1066,13 @@ async function main() {
         error: `Firefox exited before AJAX auto-allow result (code=${String(code)}, signal=${String(signal)})`,
         targetUrl,
         assetUrl,
-        attempts: browserAttempts,
-        completedProbes,
-        completedCandidateEvents,
-        completedRedditDiagnosticEvents,
-        pageResourceCandidateEvents,
-        pageObserverInstalled,
-        lastAttemptAt,
+        attempts: state.browserAttempts,
+        completedProbes: state.completedProbes,
+        completedCandidateEvents: state.completedCandidateEvents,
+        completedRedditDiagnosticEvents: state.completedRedditDiagnosticEvents,
+        pageResourceCandidateEvents: state.pageResourceCandidateEvents,
+        pageObserverInstalled: state.pageObserverInstalled,
+        lastAttemptAt: state.lastAttemptAt,
       });
     });
   }
@@ -1592,13 +1083,13 @@ async function main() {
       error: `Timed out after ${TIMEOUT_MS}ms waiting for AJAX auto-allow success`,
       targetUrl,
       assetUrl,
-      attempts: browserAttempts,
-      completedProbes,
-      completedCandidateEvents,
-      completedRedditDiagnosticEvents,
-      pageResourceCandidateEvents,
-      pageObserverInstalled,
-      lastAttemptAt,
+      attempts: state.browserAttempts,
+      completedProbes: state.completedProbes,
+      completedCandidateEvents: state.completedCandidateEvents,
+      completedRedditDiagnosticEvents: state.completedRedditDiagnosticEvents,
+      pageResourceCandidateEvents: state.pageResourceCandidateEvents,
+      pageObserverInstalled: state.pageObserverInstalled,
+      lastAttemptAt: state.lastAttemptAt,
     });
   }, TIMEOUT_MS);
 
@@ -1630,9 +1121,9 @@ async function main() {
       result?.success ? 'post-success' : 'post-failure',
       result?.redditDiagnostics ?? {
         completedRedditDiagnosticEvents:
-          result?.completedRedditDiagnosticEvents ?? completedRedditDiagnosticEvents,
+          result?.completedRedditDiagnosticEvents ?? state.completedRedditDiagnosticEvents,
         pageResourceCandidateEvents:
-          result?.pageResourceCandidateEvents ?? pageResourceCandidateEvents,
+          result?.pageResourceCandidateEvents ?? state.pageResourceCandidateEvents,
       }
     );
     const postFailureObservation =
@@ -1652,7 +1143,7 @@ async function main() {
         kind: probe.kind,
         host: probe.host,
         url: buildProbeUrl(probe),
-        hits: probeHits[probe.id] ?? 0,
+        hits: state.probeHits[probe.id] ?? 0,
         expectedWhitelistHost: probe.expectedWhitelistHost,
         whitelistContainsExpectedHost: await readWhitelistContainsHost(
           probe.expectedWhitelistHost
@@ -1662,17 +1153,17 @@ async function main() {
     const summary = buildWindowsAutoAllowCanarySummary({
       result: { ...result, targetUrl, assetUrl },
       probeEvidence,
-      originHits,
-      attempts: result?.attempts ?? browserAttempts,
-      completedProbes: result?.completedProbes ?? completedProbes,
-      completedCandidateEvents: result?.completedCandidateEvents ?? completedCandidateEvents,
+      originHits: state.originHits,
+      attempts: result?.attempts ?? state.browserAttempts,
+      completedProbes: result?.completedProbes ?? state.completedProbes,
+      completedCandidateEvents: result?.completedCandidateEvents ?? state.completedCandidateEvents,
       completedRedditDiagnosticEvents:
-        result?.completedRedditDiagnosticEvents ?? completedRedditDiagnosticEvents,
+        result?.completedRedditDiagnosticEvents ?? state.completedRedditDiagnosticEvents,
       pageResourceCandidateEvents:
-        result?.pageResourceCandidateEvents ?? pageResourceCandidateEvents,
+        result?.pageResourceCandidateEvents ?? state.pageResourceCandidateEvents,
       redditDiagnostics,
-      pageObserverInstalled: result?.pageObserverInstalled ?? pageObserverInstalled,
-      lastAttemptAt: result?.lastAttemptAt ?? lastAttemptAt,
+      pageObserverInstalled: result?.pageObserverInstalled ?? state.pageObserverInstalled,
+      lastAttemptAt: result?.lastAttemptAt ?? state.lastAttemptAt,
       whitelistPath: WHITELIST_PATH,
       firefoxExtensionWarmup,
       firefoxOutput: firefoxOutput.slice(-4000),

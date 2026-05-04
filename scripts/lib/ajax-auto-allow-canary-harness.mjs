@@ -10,7 +10,7 @@ export function buildAjaxAutoAllowProbeUrl(probe, port) {
   return `http://${probe.host}:${port}${probe.path}`;
 }
 
-export function createAjaxAutoAllowCanaryState(probes) {
+export function createAjaxAutoAllowCanaryState(probes, { redditDiagnosticProbes = [] } = {}) {
   return {
     originHits: 0,
     originPageHits: 0,
@@ -18,6 +18,9 @@ export function createAjaxAutoAllowCanaryState(probes) {
     probeHits: Object.fromEntries(probes.map((probe) => [probe.id, 0])),
     completedProbes: {},
     completedCandidateEvents: {},
+    completedRedditDiagnosticEvents: Object.fromEntries(
+      redditDiagnosticProbes.map((probe) => [probe.id, false])
+    ),
     pageResourceCandidateEvents: [],
     pageObserverInstalled: false,
     pageObserverState: null,
@@ -96,13 +99,26 @@ function browserProbe(probe, port) {
   };
 }
 
+function browserDiagnosticProbe(probe, port) {
+  return {
+    ...probe,
+    url: probe.url ?? buildAjaxAutoAllowProbeUrl(probe, port),
+    stylesheetUrl:
+      probe.kind === 'stylesheet-font'
+        ? (probe.stylesheetUrl ?? `http://${probe.stylesheetHost}:${port}${probe.stylesheetPath}`)
+        : null,
+  };
+}
+
 export function buildAjaxAutoAllowCanaryPage({
   platform,
   probes,
+  redditDiagnosticProbes = [],
   originHost,
   port,
   timeoutMs,
   probeTimeoutMs,
+  redditDiagnosticTimeoutMs = 1500,
   stateGlobalName = '__openpathAjaxAutoAllowCanaryState',
   statusElement = false,
 }) {
@@ -112,6 +128,9 @@ export function buildAjaxAutoAllowCanaryPage({
     ? "const statusEl = document.getElementById('status');"
     : "const statusEl = { textContent: '' };";
   const browserProbes = probes.map((probe) => browserProbe(probe, port));
+  const browserRedditDiagnosticProbes = redditDiagnosticProbes.map((probe) =>
+    browserDiagnosticProbe(probe, port)
+  );
 
   return `<!doctype html>
 <html lang="en">
@@ -121,16 +140,22 @@ ${statusMarkup}
 <script>
 ${statusInit}
 const probes = ${JSON.stringify(browserProbes)};
+const redditDiagnosticProbes = ${JSON.stringify(browserRedditDiagnosticProbes)};
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PROBE_TIMEOUT_MS = ${probeTimeoutMs};
+const REDDIT_DIAGNOSTIC_TIMEOUT_MS = ${redditDiagnosticTimeoutMs};
 const CANARY_TIMEOUT_MS = ${timeoutMs};
 const pageResourceCandidateEvents = [];
 const completedCandidateEvents = Object.fromEntries(probes.map((probe) => [probe.id, false]));
+const completedRedditDiagnosticEvents = Object.fromEntries(
+  redditDiagnosticProbes.map((probe) => [probe.id, false])
+);
 const canaryState = window.${stateGlobalName} = {
   startedAt: new Date().toISOString(),
   lastPhase: 'init',
   attempts: [],
   completedCandidateEvents,
+  completedRedditDiagnosticEvents,
   pageResourceCandidateEvents,
   errors: [],
 };
@@ -156,10 +181,15 @@ function recordPageResourceCandidate(candidate) {
   const matchedProbe = probes.find(
     (probe) => normalizeCandidateUrl(probe.url) === normalizedCandidateUrl
   );
+  const matchedRedditProbe = redditDiagnosticProbes.find(
+    (probe) => normalizeCandidateUrl(probe.url) === normalizedCandidateUrl
+  );
   if (matchedProbe) completedCandidateEvents[matchedProbe.id] = true;
+  if (matchedRedditProbe) completedRedditDiagnosticEvents[matchedRedditProbe.id] = true;
   pageResourceCandidateEvents.push({
     ...candidate,
     matchedProbeId: matchedProbe ? matchedProbe.id : null,
+    matchedRedditProbeId: matchedRedditProbe ? matchedRedditProbe.id : null,
     seenAt: new Date().toISOString(),
   });
   if (pageResourceCandidateEvents.length > 100) {
@@ -203,6 +233,7 @@ async function reportAttempt(attemptResult, completed) {
       attempt: attemptResult,
       completedProbes: completed,
       completedCandidateEvents,
+      completedRedditDiagnosticEvents,
       pageResourceCandidateEvents,
       pageObserverInstalled: isOpenPathPageObserverInstalled(),
       pageObserverState: window.__openpathPageResourceObserverState ?? null,
@@ -337,14 +368,38 @@ async function runProbeOnce(probe) {
   return { ok: false, error: 'unsupported probe kind: ' + probe.kind };
 }
 
+async function runRedditDiagnosticProbes() {
+  const results = {};
+  for (const probe of redditDiagnosticProbes) {
+    results[probe.id] = await withTimeout(
+      runProbeOnce(probe),
+      REDDIT_DIAGNOSTIC_TIMEOUT_MS,
+      probe.id
+    );
+  }
+  return results;
+}
+
 (async () => {
   const attempts = [];
   const completed = Object.fromEntries(probes.map((probe) => [probe.id, false]));
+  let redditDiagnostics =
+    redditDiagnosticProbes.length > 0
+      ? { probes: {}, completedRedditDiagnosticEvents, pageResourceCandidateEvents }
+      : null;
   const deadline = Date.now() + CANARY_TIMEOUT_MS;
   for (let attempt = 1; Date.now() < deadline; attempt += 1) {
     canaryState.lastPhase = 'attempt-start';
     const attemptResult = { attempt, startedAt: new Date().toISOString(), probes: {} };
     canaryState.attempts.push(attemptResult);
+    if (attempt === 1 && redditDiagnosticProbes.length > 0) {
+      statusEl.textContent = 'reddit diagnostics';
+      redditDiagnostics = {
+        probes: await runRedditDiagnosticProbes(),
+        completedRedditDiagnosticEvents,
+        pageResourceCandidateEvents,
+      };
+    }
     const results = await Promise.all(
       probes.map(async (probe) => {
         if (completed[probe.id]) return { id: probe.id, result: { ok: true, skipped: true } };
@@ -367,7 +422,9 @@ async function runProbeOnce(probe) {
         probes,
         completedProbes: completed,
         completedCandidateEvents,
+        completedRedditDiagnosticEvents,
         pageResourceCandidateEvents,
+        ...(redditDiagnostics ? { redditDiagnostics } : {}),
         pageObserverInstalled: isOpenPathPageObserverInstalled(),
         pageObserverState: window.__openpathPageResourceObserverState ?? null,
       });
@@ -382,7 +439,9 @@ async function runProbeOnce(probe) {
     probes,
     completedProbes: completed,
     completedCandidateEvents,
+    completedRedditDiagnosticEvents,
     pageResourceCandidateEvents,
+    ...(redditDiagnostics ? { redditDiagnostics } : {}),
     pageObserverInstalled: isOpenPathPageObserverInstalled(),
     pageObserverState: window.__openpathPageResourceObserverState ?? null,
   });
@@ -417,6 +476,12 @@ function mergeAttemptState(state, payload, { redact = (value) => value, maxAttem
     typeof safePayload.completedCandidateEvents === 'object'
   ) {
     state.completedCandidateEvents = safePayload.completedCandidateEvents;
+  }
+  if (
+    safePayload.completedRedditDiagnosticEvents &&
+    typeof safePayload.completedRedditDiagnosticEvents === 'object'
+  ) {
+    state.completedRedditDiagnosticEvents = safePayload.completedRedditDiagnosticEvents;
   }
   if (Array.isArray(safePayload.pageResourceCandidateEvents)) {
     state.pageResourceCandidateEvents.push(...safePayload.pageResourceCandidateEvents);
@@ -471,8 +536,9 @@ export function createAjaxAutoAllowCanaryServer({
     }
 
     if (host === originHost && req.method === 'POST' && url.pathname === '/attempt') {
+      const body = await readRequestBody(req);
       try {
-        mergeAttemptState(state, JSON.parse((await readRequestBody(req)) || '{}'), {
+        mergeAttemptState(state, JSON.parse(body || '{}'), {
           redact,
           maxAttempts,
         });
@@ -480,6 +546,7 @@ export function createAjaxAutoAllowCanaryServer({
         state.browserAttempts.push({
           error: 'invalid attempt payload',
           message: error instanceof Error ? error.message : String(error),
+          raw: redact(body.slice(-1000)),
         });
       }
       res.writeHead(204);
@@ -488,8 +555,9 @@ export function createAjaxAutoAllowCanaryServer({
     }
 
     if (host === originHost && req.method === 'POST' && url.pathname === '/result') {
+      const body = await readRequestBody(req);
       try {
-        state.resultPayload = redact(JSON.parse((await readRequestBody(req)) || '{}'));
+        state.resultPayload = redact(JSON.parse(body || '{}'));
       } catch {
         state.resultPayload = { success: false, error: 'invalid result payload' };
       }

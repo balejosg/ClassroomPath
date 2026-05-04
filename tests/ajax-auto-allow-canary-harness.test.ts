@@ -37,6 +37,15 @@ const probes = Object.freeze([
   },
 ]);
 
+const redditDiagnosticProbes = Object.freeze([
+  {
+    id: 'reddit-static-script',
+    kind: 'script',
+    host: 'www.redditstatic.com',
+    url: 'https://www.redditstatic.com/reddit-static-diagnostic.js',
+  },
+]);
+
 describe('shared AJAX auto-allow canary harness', () => {
   test('page generation includes all probe kinds and observer event capture', () => {
     const page = buildAjaxAutoAllowCanaryPage({
@@ -56,6 +65,27 @@ describe('shared AJAX auto-allow canary harness', () => {
     assert.match(page, /font\/woff2/);
     assert.match(page, /\/attempt/);
     assert.match(page, /\/probe-state\?probe=/);
+  });
+
+  test('page generation can include Reddit-style diagnostic probes', () => {
+    const page = buildAjaxAutoAllowCanaryPage({
+      platform: 'Windows',
+      probes,
+      redditDiagnosticProbes,
+      originHost: 'ajax-origin.127.0.0.1.sslip.io',
+      port: 18088,
+      timeoutMs: 90000,
+      probeTimeoutMs: 4000,
+      redditDiagnosticTimeoutMs: 1500,
+      stateGlobalName: '__openpathWindowsAjaxCanaryState',
+      statusElement: true,
+    });
+
+    assert.match(page, /redditDiagnosticProbes/);
+    assert.match(page, /completedRedditDiagnosticEvents/);
+    assert.match(page, /matchedRedditProbeId/);
+    assert.match(page, /runRedditDiagnosticProbes/);
+    assert.match(page, /redditDiagnostics/);
   });
 
   test('probe completion is derived from server traffic hits', async () => {
@@ -83,6 +113,58 @@ describe('shared AJAX auto-allow canary harness', () => {
         'font-subresource': true,
         'stylesheet-font-subresource': false,
       });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('server merges redacted attempt diagnostics and caps attempt evidence', async () => {
+    const state = createAjaxAutoAllowCanaryState(probes, { redditDiagnosticProbes });
+    let resultPayload: unknown = null;
+    const server = createAjaxAutoAllowCanaryServer({
+      platform: 'test',
+      probes,
+      originHost: 'ajax-origin.127.0.0.1.sslip.io',
+      port: 18092,
+      state,
+      buildPage: () => '<!doctype html><p>ok</p>',
+      maxAttempts: 1,
+      redact: (value) => JSON.parse(JSON.stringify(value).replace(/secret-token/g, '[redacted]')),
+      onResult: (payload) => {
+        resultPayload = payload;
+      },
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(18092, '127.0.0.1', resolve);
+    });
+    try {
+      await fetch('http://ajax-origin.127.0.0.1.sslip.io:18092/attempt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          attempt: { attempt: 1, token: 'secret-token' },
+          completedRedditDiagnosticEvents: { 'reddit-static-script': true },
+        }),
+      });
+      await fetch('http://ajax-origin.127.0.0.1.sslip.io:18092/attempt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attempt: { attempt: 2 } }),
+      });
+      await fetch('http://ajax-origin.127.0.0.1.sslip.io:18092/result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: true, token: 'secret-token' }),
+      });
+
+      assert.deepEqual(state.completedRedditDiagnosticEvents, {
+        'reddit-static-script': true,
+      });
+      assert.equal(state.browserAttempts.length, 1);
+      assert.deepEqual(state.browserAttempts[0], { attempt: 2 });
+      assert.deepEqual(resultPayload, { success: true, token: '[redacted]' });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

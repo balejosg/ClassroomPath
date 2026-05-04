@@ -31,6 +31,7 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
 const scriptPath = resolve(projectRoot, 'scripts/run-runner-diagnostic.mjs');
 const directScriptPath = resolve(projectRoot, 'scripts/run-windows-ajax-direct.mjs');
+const preparedOpenPathRoot = resolve(projectRoot, 'upstream/openpath');
 const linuxStudentDirectScriptPath = resolve(
   projectRoot,
   'scripts/run-linux-student-diagnostic.mjs'
@@ -50,7 +51,11 @@ function runDiagnostic(args: string[]) {
 }
 
 function runDirectDiagnostic(args: string[]) {
-  return spawnSync(process.execPath, [directScriptPath, ...args], {
+  const resolvedArgs = args.includes('--openpath-root')
+    ? args
+    : ['--openpath-root', preparedOpenPathRoot, ...args];
+
+  return spawnSync(process.execPath, [directScriptPath, ...resolvedArgs], {
     cwd: projectRoot,
     encoding: 'utf8',
     env: {
@@ -562,6 +567,7 @@ describe('runner diagnostic wrapper', () => {
     );
     assert.match(result.stdout, /scripts\/windows-ajax-auto-allow-canary\.mjs/);
     assert.match(result.stdout, /scripts\/lib\/windows-ajax-auto-allow-runtime\.mjs/);
+    assert.match(result.stdout, /scripts\/lib\/ajax-auto-allow-canary-harness\.mjs/);
     assert.match(result.stdout, /scripts\/lib\/auto-allow-observation\.mjs/);
     assert.match(result.stdout, /scripts\/lib\/auto-allow-boundary-evidence\.mjs/);
     assert.match(result.stdout, /scripts\/lib\/windows-auto-allow-canary-evidence\.mjs/);
@@ -753,12 +759,14 @@ describe('runner diagnostic wrapper', () => {
 
   test('Windows AJAX canary reports observed page-resource candidate messages', () => {
     const script = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
+    const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
 
-    assert.match(script, /pageResourceCandidateEvents/);
-    assert.match(script, /openpath-page-resource-candidate/);
-    assert.match(script, /completedCandidateEvents/);
-    assert.match(script, /pageObserverInstalled/);
-    assert.match(script, /__openpathPageResourceObserverInstalled/);
+    assert.match(script, /createAjaxAutoAllowCanaryServer/);
+    assert.match(sharedHarness, /pageResourceCandidateEvents/);
+    assert.match(sharedHarness, /openpath-page-resource-candidate/);
+    assert.match(sharedHarness, /completedCandidateEvents/);
+    assert.match(sharedHarness, /pageObserverInstalled/);
+    assert.match(sharedHarness, /__openpathPageResourceObserverInstalled/);
   });
 
   test('Windows AJAX canary keeps probing until the configured timeout deadline', () => {
