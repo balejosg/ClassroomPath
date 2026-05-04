@@ -219,7 +219,8 @@ describe('Deployment runtime contracts', () => {
       stagingLocalRelease.includes('STAGING_DEPLOY_PAYLOAD_B64=') &&
         stagingLocalRelease.includes('STAGING_DEPLOY_PAYLOAD_B64="${DEPLOY_PAYLOAD_B64:-}"') &&
         stagingLocalRuntime.includes('remote_assignment STAGING_DEPLOY_PAYLOAD_B64') &&
-        stagingLocalRuntime.includes('remote_assignment STAGING_CONTAINER_PLATFORM')
+        stagingLocalRuntime.includes('remote_assignment STAGING_CONTAINER_PLATFORM') &&
+        stagingLocalRuntime.includes('remote_assignment STAGING_PUBLIC_URL')
     );
     assert.ok(
       stagingRemote.includes('decode_deploy_payload_base64 "$STAGING_DEPLOY_PAYLOAD_B64"') &&
@@ -232,6 +233,8 @@ describe('Deployment runtime contracts', () => {
         stagingRemote.includes(
           'release_manifest_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" manifest_base64)"'
         ) &&
+        stagingRemote.includes('upsert_env_file_var "$APP_DIR/config/.env" PUBLIC_URL') &&
+        stagingRemote.includes('upsert_env_file_var "$APP_DIR/config/.env" CORS_ORIGINS') &&
         stagingRemote.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
         stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"') &&
         stagingRemote.includes('ensure_staging_release_candidate_runtime_env || return 1') &&

@@ -76,10 +76,10 @@ Key boundary:
 
 Machine-readable source of truth: [`config/deploy-targets.json`](config/deploy-targets.json)
 
-| Environment    | URL                                       | Deploy Trigger           |
-| -------------- | ----------------------------------------- | ------------------------ |
-| **Production** | https://classroompath.eu                  | Git tag `v*`             |
-| **Staging**    | https://classroompath-staging.duckdns.org | `npm run deploy:staging` |
+| Environment    | URL                       | Deploy Trigger           |
+| -------------- | ------------------------- | ------------------------ |
+| **Production** | https://classroompath.eu  | Git tag `v*`             |
+| **Staging**    | http://192.168.1.114:3000 | `npm run deploy:staging` |
 
 ![ClassroomPath dashboard overview](docs/evaluation/assets/dashboard-overview.png)
 

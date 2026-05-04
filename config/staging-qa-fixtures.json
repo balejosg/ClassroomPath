@@ -1,30 +1,30 @@
 {
   "environment": "staging",
-  "baseUrl": "https://classroompath-staging.duckdns.org",
+  "baseUrl": "http://192.168.1.114:3000",
   "classroomId": "class_stage_20260502_informatica",
   "fixtures": [
     {
       "group": "Mates",
-      "allowed": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/basic",
-      "allowedAjax": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/ajax",
+      "allowed": "http://192.168.1.114:3000/cp/qa-fixtures/basic",
+      "allowedAjax": "http://192.168.1.114:3000/cp/qa-fixtures/ajax",
       "requestAccess": "https://example.net/",
-      "blockedSubdomain": "chat.classroompath-staging.duckdns.org",
+      "blockedSubdomain": "chat.staging-blocked.test",
       "blockedPath": "example.com/openpath-blocked-path"
     },
     {
       "group": "Lengua",
-      "allowed": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/basic",
-      "allowedAjax": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/ajax",
+      "allowed": "http://192.168.1.114:3000/cp/qa-fixtures/basic",
+      "allowedAjax": "http://192.168.1.114:3000/cp/qa-fixtures/ajax",
       "requestAccess": "https://example.net/",
-      "blockedSubdomain": "video.classroompath-staging.duckdns.org",
+      "blockedSubdomain": "video.staging-blocked.test",
       "blockedPath": "example.com/openpath-blocked-path"
     },
     {
       "group": "Ciencias",
-      "allowed": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/basic",
-      "allowedAjax": "https://classroompath-staging.duckdns.org/cp/qa-fixtures/ajax",
+      "allowed": "http://192.168.1.114:3000/cp/qa-fixtures/basic",
+      "allowedAjax": "http://192.168.1.114:3000/cp/qa-fixtures/ajax",
       "requestAccess": "https://example.net/",
-      "blockedSubdomain": "chat.classroompath-staging.duckdns.org",
+      "blockedSubdomain": "chat.staging-blocked.test",
       "blockedPath": "example.com/openpath-blocked-path"
     }
   ]

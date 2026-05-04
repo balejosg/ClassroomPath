@@ -99,13 +99,13 @@ disabling or discussing endpoint client ARM64 work.
 
 Use exact URLs before debugging or deploying anything.
 
-| Check          | Staging                                               | Production                                          |
-| -------------- | ----------------------------------------------------- | --------------------------------------------------- |
-| Public URL     | `https://classroompath-staging.duckdns.org`           | `https://classroompath.eu`                          |
-| Gateway health | `https://classroompath-staging.duckdns.org/cp/health` | `https://classroompath.eu/cp/health`                |
-| Trigger        | `npm run deploy:staging`                              | tag `v*`                                            |
-| Runtime host   | CT 114 (`classroompath-app-staging`)                  | Oracle host (`/opt/classroompath/app`)              |
-| Database       | CT 113 PostgreSQL (`classroompath_staging`)           | PostgreSQL on the production host (`classroompath`) |
+| Check          | Staging                                     | Production                                          |
+| -------------- | ------------------------------------------- | --------------------------------------------------- |
+| Public URL     | `http://192.168.1.114:3000`                 | `https://classroompath.eu`                          |
+| Gateway health | `http://192.168.1.114:3000/cp/health`       | `https://classroompath.eu/cp/health`                |
+| Trigger        | `npm run deploy:staging`                    | tag `v*`                                            |
+| Runtime host   | CT 114 (`classroompath-app-staging`)        | Oracle host (`/opt/classroompath/app`)              |
+| Database       | CT 113 PostgreSQL (`classroompath_staging`) | PostgreSQL on the production host (`classroompath`) |
 
 Debugging rule:
 
@@ -137,7 +137,7 @@ Useful staging commands:
 ```bash
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-gateway --tail 50"
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-api --tail 50"
-curl -v https://classroompath-staging.duckdns.org/cp/health
+curl -v http://192.168.1.114:3000/cp/health
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "cat /opt/classroompath/release-state/staging-verification.env"
 ```
 

@@ -51,9 +51,9 @@ describe('release gate client', () => {
     assert.ok(address && typeof address === 'object');
 
     const client = createReleaseGateClient({
-      baseUrl: `http://classroompath-staging.duckdns.org:${address.port}`,
-      expectedOrigin: 'https://classroompath-staging.duckdns.org',
-      requestOrigin: 'https://classroompath-staging.duckdns.org',
+      baseUrl: `http://staging-lan.test:${address.port}`,
+      expectedOrigin: 'http://192.168.1.114:3000',
+      requestOrigin: 'http://192.168.1.114:3000',
       resolvedAddress: '127.0.0.1',
       timeoutMs: 2_000,
     });
@@ -65,14 +65,11 @@ describe('release gate client', () => {
     }>('auth.register', { email: 'teacher@example.com' });
 
     assert.deepEqual(payload.body, { email: 'teacher@example.com' });
-    assert.equal(payload.origin, 'https://classroompath-staging.duckdns.org');
+    assert.equal(payload.origin, 'http://192.168.1.114:3000');
     assert.equal(payload.url, '/cp/trpc/auth.register');
   });
 
   it('extracts verification tokens from public URLs', () => {
-    assert.equal(
-      getVerificationToken('https://classroompath-staging.duckdns.org/login?token=abc123'),
-      'abc123'
-    );
+    assert.equal(getVerificationToken('http://192.168.1.114:3000/login?token=abc123'), 'abc123');
   });
 });

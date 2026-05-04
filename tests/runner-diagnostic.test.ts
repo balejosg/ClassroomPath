@@ -553,7 +553,7 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stdout, /target_environment=staging/);
     assert.match(
       result.stdout,
-      /PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=https:\/\/classroompath-staging\.duckdns\.org/
+      /PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=http:\/\/192\.168\.1\.114:3000/
     );
     assert.match(result.stdout, /ssh whitelist-proxmox qm guest exec 103 -- powershell\.exe/);
     assert.match(result.stdout, /--pass-stdin 1/);
@@ -574,7 +574,7 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stdout, /scripts\/summarize-windows-ajax-auto-allow-evidence\.mjs/);
     assert.match(
       result.stdout,
-      /WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=https:\/\/classroompath-staging\.duckdns\.org/
+      /WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=http:\/\/192\.168\.1\.114:3000/
     );
   });
 
@@ -609,14 +609,14 @@ describe('runner diagnostic wrapper', () => {
     const result = runLinuxAjaxDirectDiagnostic([
       '--confirm-local-state-reset',
       '--base-url',
-      'https://classroompath-staging.duckdns.org',
+      'http://192.168.1.114:3000',
     ]);
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /target_environment=staging/);
     assert.match(
       result.stdout,
-      /PRODUCTION_LINUX_BOOTSTRAP_CANARY_URL=https:\/\/classroompath-staging\.duckdns\.org/
+      /PRODUCTION_LINUX_BOOTSTRAP_CANARY_URL=http:\/\/192\.168\.1\.114:3000/
     );
     assert.match(
       result.stdout,
@@ -645,14 +645,12 @@ describe('runner diagnostic wrapper', () => {
     const result = runLinuxAjaxDirectDiagnostic([
       '--confirm-local-state-reset',
       '--base-url',
-      'https://classroompath-staging.duckdns.org',
+      'http://192.168.1.114:3000',
     ]);
 
     assert.equal(result.status, 0, result.stderr);
     const sudoPreflightIndex = result.stdout.indexOf('sudo -n true');
-    const healthIndex = result.stdout.indexOf(
-      'curl -fsS https://classroompath-staging.duckdns.org/cp/health'
-    );
+    const healthIndex = result.stdout.indexOf('curl -fsS http://192.168.1.114:3000/cp/health');
     const provisionIndex = result.stdout.indexOf(
       'scripts/create-production-linux-bootstrap-canary.mjs'
     );
@@ -676,7 +674,7 @@ describe('runner diagnostic wrapper', () => {
         linuxAjaxDirectScriptPath,
         '--confirm-local-state-reset',
         '--base-url',
-        'https://classroompath-staging.duckdns.org',
+        'http://192.168.1.114:3000',
       ],
       {
         cwd: projectRoot,

@@ -28,10 +28,10 @@ is an explicit recovery/debug exception and should not become the default path.
 
 ## Canonical Targets
 
-- public URL: `https://classroompath-staging.duckdns.org`
-- gateway health: `https://classroompath-staging.duckdns.org/cp/health`
-- gateway readiness: `https://classroompath-staging.duckdns.org/cp/ready`
-- upstream health passthrough: `https://classroompath-staging.duckdns.org/health`
+- public URL: `http://192.168.1.114:3000`
+- gateway health: `http://192.168.1.114:3000/cp/health`
+- gateway readiness: `http://192.168.1.114:3000/cp/ready`
+- upstream health passthrough: `http://192.168.1.114:3000/health`
 
 Machine-readable source of truth: [`config/deploy-targets.json`](../../config/deploy-targets.json)
 
@@ -85,8 +85,8 @@ ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroomp
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-api --tail 50"
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "cat /opt/classroompath/release-state/staging-deploy-context.env"
 ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "cat /opt/classroompath/release-state/staging-verification.env"
-curl -sS https://classroompath-staging.duckdns.org/cp/ready
-curl -sS https://classroompath-staging.duckdns.org/api/config
+curl -sS http://192.168.1.114:3000/cp/ready
+curl -sS http://192.168.1.114:3000/api/config
 ```
 
 If the script reports `PASS_WITH_FALLBACK`, the smoke lane used direct-IP or relaxed-CORS fallback.

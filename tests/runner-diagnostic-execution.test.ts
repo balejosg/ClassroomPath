@@ -14,7 +14,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'windows',
       suite: 'ajax-auto-allow',
       environment: 'staging',
-      baseUrl: 'https://classroompath-staging.duckdns.org',
+      baseUrl: 'http://192.168.1.114:3000',
       artifactDir: '/tmp/windows-direct',
       openpathRoot: '/repo/OpenPath',
     });
@@ -107,7 +107,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'linux',
       suite: 'ajax-auto-allow',
       environment: 'staging',
-      baseUrl: 'https://classroompath-staging.duckdns.org',
+      baseUrl: 'http://192.168.1.114:3000',
       artifactDir: '/tmp/linux-direct',
     });
 

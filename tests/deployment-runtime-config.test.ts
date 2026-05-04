@@ -315,7 +315,7 @@ void describe('Environment Configuration', () => {
 
     assert.strictEqual(
       targets.staging?.publicUrl,
-      'https://classroompath-staging.duckdns.org',
+      'http://192.168.1.114:3000',
       'Staging public URL should stay centralized in deploy-targets.json'
     );
     assert.strictEqual(

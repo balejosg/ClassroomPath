@@ -41,12 +41,12 @@ test('resolvedFetch can connect via explicit IP while preserving the canonical h
     'server should expose a concrete listen address'
   );
 
-  const targetUrl = `http://classroompath-staging.duckdns.org:${address.port}/cp/health`;
+  const targetUrl = `http://staging-lan.test:${address.port}/cp/health`;
   const response = await resolvedFetch(
     targetUrl,
     {
       headers: {
-        Origin: 'https://classroompath-staging.duckdns.org',
+        Origin: 'http://192.168.1.114:3000',
       },
     },
     {
@@ -59,8 +59,8 @@ test('resolvedFetch can connect via explicit IP while preserving the canonical h
   assert.equal(response.headers.get('content-type'), 'application/json');
 
   const payload = (await response.json()) as { host?: string; origin?: string; url?: string };
-  assert.equal(payload.host, `classroompath-staging.duckdns.org:${address.port}`);
-  assert.equal(payload.origin, 'https://classroompath-staging.duckdns.org');
+  assert.equal(payload.host, `staging-lan.test:${address.port}`);
+  assert.equal(payload.origin, 'http://192.168.1.114:3000');
   assert.equal(payload.url, '/cp/health');
 });
 
@@ -82,11 +82,11 @@ test('resolvedFetch preserves 204 responses without constructing an invalid body
   );
 
   const response = await resolvedFetch(
-    `http://classroompath-staging.duckdns.org:${address.port}/cp/trpc/example`,
+    `http://staging-lan.test:${address.port}/cp/trpc/example`,
     {
       method: 'OPTIONS',
       headers: {
-        Origin: 'https://classroompath-staging.duckdns.org',
+        Origin: 'http://192.168.1.114:3000',
       },
     },
     {

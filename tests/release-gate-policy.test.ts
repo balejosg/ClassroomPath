@@ -8,14 +8,14 @@ describe('release-gate policy', () => {
     assert.doesNotThrow(() =>
       assertVerificationDeliveryPolicy({
         context: 'auth.register',
-        expectedOrigin: 'https://classroompath-staging.duckdns.org',
+        expectedOrigin: 'https://staging.classroompath.test',
         expectedTermsVersion: '2026-03-09',
         payload: {
           email: 'teacher@example.com',
           verificationRequired: true,
           emailSent: true,
           verificationUrl:
-            'https://classroompath-staging.duckdns.org/login?email=teacher%40example.com&token=abc123',
+            'https://staging.classroompath.test/login?email=teacher%40example.com&token=abc123',
           termsVersion: '2026-03-09',
         },
       })
@@ -27,13 +27,13 @@ describe('release-gate policy', () => {
       () =>
         assertVerificationDeliveryPolicy({
           context: 'auth.register',
-          expectedOrigin: 'https://classroompath-staging.duckdns.org',
+          expectedOrigin: 'https://staging.classroompath.test',
           payload: {
             email: 'teacher@example.com',
             verificationRequired: true,
             emailSent: false,
             verificationUrl:
-              'https://classroompath-staging.duckdns.org/login?email=teacher%40example.com&token=abc123',
+              'https://staging.classroompath.test/login?email=teacher%40example.com&token=abc123',
           },
         }),
       /emailSent/
@@ -45,7 +45,7 @@ describe('release-gate policy', () => {
       () =>
         assertVerificationDeliveryPolicy({
           context: 'auth.register',
-          expectedOrigin: 'https://classroompath-staging.duckdns.org',
+          expectedOrigin: 'https://staging.classroompath.test',
           payload: {
             verificationRequired: true,
             emailSent: true,
@@ -59,7 +59,7 @@ describe('release-gate policy', () => {
       () =>
         assertVerificationDeliveryPolicy({
           context: 'auth.register',
-          expectedOrigin: 'https://classroompath-staging.duckdns.org',
+          expectedOrigin: 'https://staging.classroompath.test',
           payload: {
             verificationRequired: true,
             emailSent: true,
@@ -75,13 +75,13 @@ describe('release-gate policy', () => {
       () =>
         assertVerificationDeliveryPolicy({
           context: 'auth.register',
-          expectedOrigin: 'https://classroompath-staging.duckdns.org',
+          expectedOrigin: 'https://staging.classroompath.test',
           expectedTermsVersion: '2026-03-09',
           payload: {
             emailSent: true,
             verificationRequired: false,
             verificationUrl:
-              'https://classroompath-staging.duckdns.org/login?email=teacher%40example.com&token=abc123',
+              'https://staging.classroompath.test/login?email=teacher%40example.com&token=abc123',
             termsVersion: '2026-03-09',
           },
         }),
@@ -92,13 +92,13 @@ describe('release-gate policy', () => {
       () =>
         assertVerificationDeliveryPolicy({
           context: 'auth.register',
-          expectedOrigin: 'https://classroompath-staging.duckdns.org',
+          expectedOrigin: 'https://staging.classroompath.test',
           expectedTermsVersion: '2026-03-09',
           payload: {
             emailSent: true,
             verificationRequired: true,
             verificationUrl:
-              'https://classroompath-staging.duckdns.org/login?email=teacher%40example.com&token=abc123',
+              'https://staging.classroompath.test/login?email=teacher%40example.com&token=abc123',
             termsVersion: '2026-03-01',
           },
         }),

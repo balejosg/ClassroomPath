@@ -79,7 +79,7 @@ function buildReleaseEvidenceInput(overrides: Record<string, unknown> = {}) {
     },
     targets: {
       staging: {
-        publicUrl: 'https://classroompath-staging.duckdns.org',
+        publicUrl: 'http://192.168.1.114:3000',
       },
       production: {
         publicUrl: 'http://127.0.0.1:0',
@@ -454,7 +454,7 @@ exit 1
     const bundle = buildReleaseEvidenceBundle({
       releaseEvidence: buildReleaseEvidenceInput({
         targets: {
-          staging: { publicUrl: 'https://classroompath-staging.duckdns.org' },
+          staging: { publicUrl: 'http://192.168.1.114:3000' },
           production: { publicUrl: 'https://classroompath.eu' },
         },
       }),

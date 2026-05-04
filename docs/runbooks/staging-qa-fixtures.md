@@ -1,6 +1,6 @@
 # Staging QA Fixtures
 
-> Applies to: manual browser QA in `https://classroompath-staging.duckdns.org`
+> Applies to: manual browser QA in `http://192.168.1.114:3000`
 > Source of truth: `config/staging-qa-fixtures.json`
 
 Use deterministic ClassroomPath-hosted fixture pages for student browser checks. External education

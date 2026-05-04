@@ -321,7 +321,7 @@ run_staging_smoke_gate() {
     echo >&2
     echo "Common issues:" >&2
     echo "  - NPM reverse proxy not routing correctly" >&2
-    echo "  - CORS_ORIGINS missing staging domain" >&2
+    echo "  - CORS_ORIGINS missing staging public origin" >&2
     echo "  - Container started but not fully ready" >&2
     echo >&2
     echo "Debug commands:" >&2

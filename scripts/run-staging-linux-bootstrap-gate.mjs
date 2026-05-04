@@ -10,6 +10,7 @@ import {
   downloadArtifacts,
   waitForRun,
 } from './lib/github-actions-diagnostic-client.mjs';
+import { getDeployTarget } from './deploy-targets.mjs';
 
 const DRY_RUN = process.env.STAGING_LINUX_BOOTSTRAP_GATE_DRY_RUN === '1';
 const repo = process.env.STAGING_LINUX_BOOTSTRAP_GATE_REPO ?? 'balejosg/ClassroomPath';
@@ -21,7 +22,7 @@ const gateId =
 const baseUrl =
   process.env.STAGING_LINUX_BOOTSTRAP_GATE_BASE_URL ??
   process.env.CANONICAL_STAGING_URL ??
-  'https://classroompath-staging.duckdns.org';
+  getDeployTarget('staging').publicUrl;
 const outputPath =
   process.env.STAGING_LINUX_BOOTSTRAP_GATE_OUTPUT ?? '/tmp/linux-bootstrap-gate.env';
 const runResolveTimeoutMs = Number(

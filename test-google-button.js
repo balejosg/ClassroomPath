@@ -8,7 +8,7 @@ async function testGoogleButton() {
 
   try {
     console.log('1. Navegando a staging...');
-    await page.goto('https://classroompath-staging.duckdns.org/', {
+    await page.goto('http://192.168.1.114:3000/', {
       waitUntil: 'networkidle',
     });
 
