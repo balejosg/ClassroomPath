@@ -2,12 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 
-import {
-  parseLinuxBootstrapCanaryArtifact,
-  parseWindowsBootstrapCanaryArtifact,
-  validateReleaseEvidenceChecklist,
-  verifyArtifactIntegrity,
-} from './lib/release-evidence-bundle.mjs';
+import { collectProductionPromotionDryRunFailures } from './lib/release-evidence-contract.mjs';
 
 function usage() {
   return `Usage: npm run verify:production-promotion-dry -- --release-evidence <path> [options]
@@ -84,12 +79,6 @@ function parseArgs(argv) {
   return args;
 }
 
-function assertEqual({ actual, expected, label, failures }) {
-  if (expected && actual !== expected) {
-    failures.push(`${label} expected ${expected} but found ${actual ?? 'missing'}`);
-  }
-}
-
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -98,54 +87,19 @@ function main() {
   }
 
   const releaseEvidence = JSON.parse(readFileSync(args.releaseEvidencePath, 'utf8'));
-  const failures = [...validateReleaseEvidenceChecklist(releaseEvidence).failures];
-
-  assertEqual({
-    actual: releaseEvidence?.release?.classroomPathSha,
-    expected: args.expectedClassroomSha,
-    label: 'release.classroomPathSha',
-    failures,
-  });
-  assertEqual({
-    actual: releaseEvidence?.release?.openPathSha,
-    expected: args.expectedOpenPathSha,
-    label: 'release.openPathSha',
-    failures,
-  });
-  assertEqual({
-    actual: releaseEvidence?.release?.tagName,
-    expected: args.tag,
-    label: 'release.tagName',
-    failures,
-  });
-
-  const integrity = verifyArtifactIntegrity({
+  const validation = collectProductionPromotionDryRunFailures({
     releaseEvidence,
-    windowsProductionBootstrapCanary: {
-      listed: Boolean(args.windowsCanaryDir),
-      artifactDir: args.windowsCanaryDir,
-    },
-    linuxProductionBootstrapCanary: {
-      listed: Boolean(args.linuxCanaryDir),
-      artifactDir: args.linuxCanaryDir,
-    },
+    expectedClassroomSha: args.expectedClassroomSha,
+    expectedOpenPathSha: args.expectedOpenPathSha,
+    tag: args.tag,
+    windowsCanaryDir: args.windowsCanaryDir,
+    linuxCanaryDir: args.linuxCanaryDir,
   });
 
-  for (const [name, result] of Object.entries(integrity)) {
-    if (result.status !== 'ok' && result.status !== 'not_applicable') {
-      failures.push(`${name} ${result.status}${result.message ? `: ${result.message}` : ''}`);
-    }
-  }
-
-  if (args.windowsCanaryDir) {
-    parseWindowsBootstrapCanaryArtifact(args.windowsCanaryDir);
-  }
-  if (args.linuxCanaryDir) {
-    parseLinuxBootstrapCanaryArtifact(args.linuxCanaryDir);
-  }
-
-  if (failures.length > 0) {
-    throw new Error(`Production promotion dry validation failed: ${failures.join('; ')}`);
+  if (!validation.ok) {
+    throw new Error(
+      `Production promotion dry validation failed: ${validation.failures.join('; ')}`
+    );
   }
 
   process.stdout.write('Production promotion dry validation passed.\n');

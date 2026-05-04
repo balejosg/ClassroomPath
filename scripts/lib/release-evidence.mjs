@@ -2,22 +2,12 @@
 
 import { readFileSync } from 'node:fs';
 
-function valueOrNull(value) {
-  if (value === undefined || value === null) {
-    return null;
-  }
-
-  const trimmed = String(value).trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function isTrueFlag(value) {
-  return (
-    String(value ?? '')
-      .trim()
-      .toLowerCase() === 'true'
-  );
-}
+import {
+  LINUX_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
+  WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
+  isTrueFlag,
+  valueOrNull,
+} from './release-evidence-contract.mjs';
 
 function deriveAdvisoryCanaryResult({ highRisk, canaryResult }) {
   if (!highRisk) {
@@ -468,10 +458,10 @@ export function buildReleaseEvidence(env = process.env) {
         : null,
       productionSmokeResults: 'smoke-test-results-production',
       windowsProductionBootstrapCanary: includesArtifactEvidence(windowsProductionBootstrapCanary)
-        ? 'windows-production-bootstrap-canary'
+        ? WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT
         : null,
       linuxProductionBootstrapCanary: includesArtifactEvidence(linuxProductionBootstrapCanary)
-        ? 'linux-production-bootstrap-canary'
+        ? LINUX_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT
         : null,
       releaseEvidence: valueOrNull(env.TAG_NAME)
         ? `release-evidence-${env.TAG_NAME}`

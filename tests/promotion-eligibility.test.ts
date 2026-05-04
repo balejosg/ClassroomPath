@@ -47,6 +47,11 @@ const verificationState = {
   STAGING_FIREFOX_RELEASE_VERSION: '4.1.19',
   STAGING_FIREFOX_METADATA_SHA256: 'meta123',
   STAGING_FIREFOX_XPI_SHA256: 'xpi123',
+  STAGING_LINUX_BOOTSTRAP_RESULT: 'success',
+  STAGING_LINUX_BOOTSTRAP_RUN_ID: '123456789',
+  STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'none',
+  STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE:
+    'Linux AJAX auto-allow canary completed successfully.',
 };
 
 describe('promotion eligibility', () => {

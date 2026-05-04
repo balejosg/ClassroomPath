@@ -6,6 +6,12 @@ import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runProjectCommand } from './helpers/ops-contracts.ts';
 import { renderCanaryBoundarySummary } from '../scripts/lib/release-evidence.mjs';
+import {
+  RELEASE_EVIDENCE_CANARY_ARTIFACTS,
+  collectProductionPromotionDryRunFailures,
+  validateReleaseEvidenceChecklist,
+  verifyArtifactIntegrity,
+} from '../scripts/lib/release-evidence-contract.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
@@ -121,6 +127,114 @@ function generateEvidenceFromInputFile(input: Record<string, string | undefined>
     rmSync(outputDir, { recursive: true, force: true });
   }
 }
+
+function buildContractEvidence() {
+  return {
+    release: {
+      outcome: 'released',
+      tagName: 'v1.2.99',
+      classroomPathSha: 'cp-sha',
+      openPathSha: 'op-sha',
+    },
+    jobs: {
+      windowsProductionBootstrapCanary: 'success',
+      linuxProductionBootstrapCanary: 'success',
+    },
+    stagingVerification: {
+      smokeResult: 'success',
+      smokeStatus: 'PASS',
+      releaseGateResult: 'success',
+      windowsFirefoxHighRisk: 'true',
+      verifiedAt: '2026-04-30T09:59:00.000Z',
+    },
+    targets: {
+      staging: {
+        publicUrl: 'https://classroompath-staging.duckdns.org',
+      },
+      production: {
+        publicUrl: 'https://classroompath.eu',
+      },
+    },
+    immutableImages: {
+      gateway: 'gateway@sha256:1',
+      migrations: 'migrations@sha256:1',
+      openPathApi: 'openpath-api@sha256:1',
+      spa: 'spa@sha256:1',
+      verifier: 'verifier@sha256:1',
+    },
+    artifacts: {
+      releaseImageMetadata: 'release-image-metadata-v1.2.99',
+      stagingReleaseState: 'staging-release-state-v1.2.99',
+      productionSmokeResults: 'smoke-test-results-production',
+      windowsProductionBootstrapCanary: RELEASE_EVIDENCE_CANARY_ARTIFACTS.windows.artifactName,
+      linuxProductionBootstrapCanary: RELEASE_EVIDENCE_CANARY_ARTIFACTS.linux.artifactName,
+      releaseEvidence: 'release-evidence-v1.2.99',
+    },
+  };
+}
+
+describe('release evidence contract', () => {
+  test('centralizes checklist fields and canary artifact names', () => {
+    const complete = validateReleaseEvidenceChecklist(buildContractEvidence());
+    assert.equal(complete.ok, true);
+    assert.equal(
+      RELEASE_EVIDENCE_CANARY_ARTIFACTS.windows.artifactName,
+      'windows-production-bootstrap-canary'
+    );
+    assert.equal(
+      RELEASE_EVIDENCE_CANARY_ARTIFACTS.linux.artifactName,
+      'linux-production-bootstrap-canary'
+    );
+
+    const missing = buildContractEvidence();
+    missing.release.classroomPathSha = '';
+    missing.artifacts.releaseEvidence = '';
+
+    const result = validateReleaseEvidenceChecklist(missing);
+    assert.equal(result.ok, false);
+    assert.ok(result.failures.includes('release.classroomPathSha missing'));
+    assert.ok(result.failures.includes('artifacts.releaseEvidence missing'));
+  });
+
+  test('keeps canary artifact applicability tied to high-risk release evidence', () => {
+    const lowRisk = buildContractEvidence();
+    lowRisk.stagingVerification.windowsFirefoxHighRisk = 'false';
+
+    const lowRiskIntegrity = verifyArtifactIntegrity({ releaseEvidence: lowRisk });
+    assert.equal(lowRiskIntegrity.windowsProductionBootstrapCanary.status, 'not_applicable');
+    assert.equal(lowRiskIntegrity.linuxProductionBootstrapCanary.status, 'not_applicable');
+
+    const pending = buildContractEvidence();
+    pending.jobs.windowsProductionBootstrapCanary = 'pending-post-release';
+    pending.jobs.linuxProductionBootstrapCanary = 'pending-post-release';
+
+    const pendingIntegrity = verifyArtifactIntegrity({ releaseEvidence: pending });
+    assert.equal(pendingIntegrity.windowsProductionBootstrapCanary.status, 'not_applicable');
+    assert.equal(pendingIntegrity.linuxProductionBootstrapCanary.status, 'not_applicable');
+
+    const missing = verifyArtifactIntegrity({ releaseEvidence: buildContractEvidence() });
+    assert.equal(missing.windowsProductionBootstrapCanary.status, 'missing');
+    assert.equal(missing.linuxProductionBootstrapCanary.status, 'missing');
+  });
+
+  test('collects production promotion dry-run comparisons through the contract', () => {
+    const validation = collectProductionPromotionDryRunFailures({
+      releaseEvidence: buildContractEvidence(),
+      expectedClassroomSha: 'other-cp-sha',
+      expectedOpenPathSha: 'op-sha',
+      tag: 'v1.2.99',
+    });
+
+    assert.equal(validation.ok, false);
+    assert.ok(
+      validation.failures.includes(
+        'release.classroomPathSha expected other-cp-sha but found cp-sha'
+      )
+    );
+    assert.ok(validation.failures.includes('windowsProductionBootstrapCanary missing'));
+    assert.ok(validation.failures.includes('linuxProductionBootstrapCanary missing'));
+  });
+});
 
 describe('release evidence rendering', () => {
   test('release evidence renders compact canary failure boundary summary', () => {
