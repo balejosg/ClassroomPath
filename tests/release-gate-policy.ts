@@ -37,10 +37,13 @@ export function assertVerificationDeliveryPolicy(options: VerificationDeliveryPo
   );
 
   const parsedUrl = new URL(verificationUrl);
+  const expectedOrigin = new URL(options.expectedOrigin);
+  const allowsHttpLanOrigin =
+    expectedOrigin.protocol === 'http:' && !LOCAL_HOSTNAMES.has(expectedOrigin.hostname);
   assert.equal(
-    parsedUrl.protocol,
-    'https:',
-    `${options.context} must return a public verification URL over HTTPS`
+    parsedUrl.protocol === 'https:' || (allowsHttpLanOrigin && parsedUrl.protocol === 'http:'),
+    true,
+    `${options.context} must return a public verification URL over HTTPS unless the expected origin is HTTP LAN staging`
   );
   assert.equal(
     LOCAL_HOSTNAMES.has(parsedUrl.hostname),

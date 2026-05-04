@@ -35,6 +35,10 @@ is an explicit recovery/debug exception and should not become the default path.
 
 Machine-readable source of truth: [`config/deploy-targets.json`](../../config/deploy-targets.json)
 
+Staging intentionally uses the LAN HTTP origin because it is a Proxmox VM reached from the operator
+network. The release gate accepts HTTP verification links only when the expected origin is this
+non-localhost LAN staging origin; production promotion keeps the HTTPS-only public-origin contract.
+
 ## Standard Flow
 
 ```bash
@@ -90,4 +94,5 @@ curl -sS http://192.168.1.114:3000/api/config
 ```
 
 If the script reports `PASS_WITH_FALLBACK`, the smoke lane used direct-IP or relaxed-CORS fallback.
-Treat that as staging evidence, but rerun a strict public-domain check before tagging production when possible.
+For LAN staging that is expected. Treat it as staging evidence, but do not infer production HTTPS
+parity from that result alone.

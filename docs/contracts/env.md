@@ -33,6 +33,11 @@ Dockerized stack.
 - `JWT_REFRESH_EXPIRY`: refresh token lifetime; ClassroomPath defaults to `30d` for installed app sessions
 - `CORS_ORIGINS`: comma-separated browser origins; deployed environments must include the `PUBLIC_URL` origin
 
+Staging uses the LAN HTTP origin from `config/deploy-targets.json`
+(`http://192.168.1.114:3000`). Production remains HTTPS-only. Release-gate verification allows HTTP
+verification URLs only when the expected origin is non-localhost LAN staging; every public production
+origin must continue to use HTTPS.
+
 ### Gateway And Routing
 
 - `CP_PORT`: gateway listen port, defaults to `3001`

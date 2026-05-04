@@ -22,6 +22,34 @@ describe('release-gate policy', () => {
     );
   });
 
+  it('accepts HTTP verification URLs only for the expected LAN staging origin', () => {
+    assert.doesNotThrow(() =>
+      assertVerificationDeliveryPolicy({
+        context: 'auth.register',
+        expectedOrigin: 'http://192.168.1.114:3000',
+        payload: {
+          verificationRequired: true,
+          emailSent: true,
+          verificationUrl: 'http://192.168.1.114:3000/login?token=abc123',
+        },
+      })
+    );
+
+    assert.throws(
+      () =>
+        assertVerificationDeliveryPolicy({
+          context: 'auth.register',
+          expectedOrigin: 'https://staging.classroompath.test',
+          payload: {
+            verificationRequired: true,
+            emailSent: true,
+            verificationUrl: 'http://staging.classroompath.test/login?token=abc123',
+          },
+        }),
+      /HTTPS/
+    );
+  });
+
   it('rejects delivery when email delivery was not confirmed', () => {
     assert.throws(
       () =>
