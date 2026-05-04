@@ -13,6 +13,7 @@ import {
   useOnboardingStatus,
   useWaitForInvitation,
 } from '../lib/hooks';
+import { CLASSROOMPATH_BRAND_ASSETS } from '../brand-assets';
 import { OnboardingAlert } from './onboarding/OnboardingAlerts';
 import { OnboardingFeatureStrip } from './onboarding/OnboardingFeatureStrip';
 import { OnboardingBillingCard, OnboardingInvitationCard } from './onboarding/OnboardingCards';
@@ -139,6 +140,14 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
         <p className="text-center text-gray-600 mb-10">
           Elige cómo quieres comenzar a gestionar tus salas
         </p>
+
+        <img
+          src={CLASSROOMPATH_BRAND_ASSETS.onboardingGovernance}
+          alt=""
+          aria-hidden="true"
+          data-testid="onboarding-governance-illustration"
+          className="mx-auto mb-10 aspect-[8/5] w-full max-w-3xl rounded-lg object-cover shadow-sm"
+        />
 
         <OnboardingFeatureStrip />
 

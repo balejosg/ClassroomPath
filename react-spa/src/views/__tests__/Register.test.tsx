@@ -75,6 +75,10 @@ describe('Register View', () => {
   it('should render the registration form', () => {
     render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
+    expect(screen.getByRole('img', { name: 'ClassroomPath' })).toHaveAttribute(
+      'src',
+      '/brand/classroompath-logo-horizontal.svg'
+    );
     expect(screen.getByText('Crear Cuenta')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /continuar con google/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('correo@ejemplo.com')).toBeInTheDocument();

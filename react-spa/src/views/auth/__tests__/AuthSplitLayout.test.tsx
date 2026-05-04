@@ -11,6 +11,10 @@ describe('AuthSplitLayout', () => {
       </AuthSplitLayout>
     );
 
+    expect(screen.getByRole('img', { name: 'ClassroomPath' })).toHaveAttribute(
+      'src',
+      '/brand/classroompath-logo-horizontal.svg'
+    );
     expect(screen.getByRole('heading', { name: 'Acceso seguro' })).toBeInTheDocument();
     expect(screen.getByText('Contenido de prueba')).toBeInTheDocument();
   });

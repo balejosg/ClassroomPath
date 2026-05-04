@@ -5,6 +5,7 @@ import {
   createOnboardingPolicy,
   shouldShowOnboardingAccessPolicyNotice,
 } from '@classroompath/contracts/onboarding-policy';
+import { CLASSROOMPATH_BRAND_ASSETS } from '../brand-assets';
 import { useOnboardingStatus, useCancelWaiting } from '../lib/hooks';
 
 interface Props {
@@ -41,9 +42,13 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <Card className="w-full max-w-md p-10 text-center shadow-lg">
         <div className="mb-8">
-          <div className="mx-auto w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-6">
-            <RefreshCw className={`text-blue-600 ${isFetching ? 'animate-spin' : ''}`} size={40} />
-          </div>
+          <img
+            src={CLASSROOMPATH_BRAND_ASSETS.waitingRoom}
+            alt=""
+            aria-hidden="true"
+            data-testid="waiting-room-illustration"
+            className="mx-auto mb-6 aspect-[4/3] w-full max-w-xs rounded-lg object-cover"
+          />
           <h1 className="text-2xl font-bold mb-3 text-gray-900">Esperando invitación</h1>
           <p className="text-gray-600 leading-relaxed">
             Un administrador de tu institución debe agregarte a la organización. Te redirigiremos

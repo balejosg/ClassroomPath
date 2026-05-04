@@ -52,6 +52,10 @@ describe('Waiting View', () => {
     render(<Waiting onStatusChange={mockOnStatusChange} onCancelSuccess={mockOnCancelSuccess} />);
 
     expect(screen.getByText('Esperando invitación')).toBeInTheDocument();
+    expect(screen.getByTestId('waiting-room-illustration')).toHaveAttribute(
+      'src',
+      '/brand/classroompath-waiting-room.png'
+    );
     expect(
       screen.getByText(/Un administrador de tu institución debe agregarte/)
     ).toBeInTheDocument();

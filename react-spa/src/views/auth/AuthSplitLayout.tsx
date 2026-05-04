@@ -1,4 +1,4 @@
-import { ShieldCheck } from 'lucide-react';
+import { CLASSROOMPATH_BRAND_ASSETS } from '../../brand-assets';
 
 interface AuthSplitLayoutProps {
   heroTitle: string;
@@ -17,10 +17,18 @@ export function AuthSplitLayout({ heroTitle, children }: AuthSplitLayoutProps) {
           }}
         />
 
-        <div className="relative z-10">
-          <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg shadow-blue-900/50">
-            <ShieldCheck size={32} className="text-white" />
-          </div>
+        <div className="relative z-10 max-w-xl">
+          <img
+            src={CLASSROOMPATH_BRAND_ASSETS.logoHorizontal}
+            alt="ClassroomPath"
+            className="mb-10 h-12 w-auto rounded-md bg-white/95 px-3 py-2 shadow-sm"
+          />
+          <img
+            src={CLASSROOMPATH_BRAND_ASSETS.authHero}
+            alt=""
+            aria-hidden="true"
+            className="mb-10 aspect-[4/3] w-full max-w-lg rounded-lg object-cover shadow-2xl shadow-slate-950/40"
+          />
           <h1 className="text-4xl font-bold text-white leading-tight">{heroTitle}</h1>
         </div>
       </div>

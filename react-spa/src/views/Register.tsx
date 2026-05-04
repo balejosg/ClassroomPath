@@ -7,6 +7,7 @@ import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { reportError } from '../lib/reportError';
 import { getSessionClientMode } from '../lib/session-client-mode';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
+import { CLASSROOMPATH_BRAND_ASSETS } from '../brand-assets';
 import {
   getPasswordSetupError,
   getVerificationDeliveryMessage,
@@ -118,6 +119,11 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <Card className="w-full max-w-md p-8">
+          <img
+            src={CLASSROOMPATH_BRAND_ASSETS.logoHorizontal}
+            alt="ClassroomPath"
+            className="mx-auto mb-6 h-12 w-auto"
+          />
           <h1 className="text-2xl font-bold mb-4 text-center">Revisa tu correo</h1>
           <p className="text-sm text-gray-600 text-center leading-relaxed">
             {getVerificationDeliveryMessage(registrationState)}
@@ -147,6 +153,11 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <Card className="w-full max-w-md p-8">
+        <img
+          src={CLASSROOMPATH_BRAND_ASSETS.logoHorizontal}
+          alt="ClassroomPath"
+          className="mx-auto mb-6 h-12 w-auto"
+        />
         <h1 className="text-2xl font-bold mb-6 text-center">Crear Cuenta</h1>
 
         {error && (

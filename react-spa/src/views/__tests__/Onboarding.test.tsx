@@ -77,6 +77,10 @@ describe('Onboarding View', () => {
     render(<Onboarding onOrgCreated={mockOnOrgCreated} onWaitClick={mockOnWaitClick} />);
 
     expect(screen.getByText(/¡Bienvenido a ClassroomPath!/i)).toBeInTheDocument();
+    expect(screen.getByTestId('onboarding-governance-illustration')).toHaveAttribute(
+      'src',
+      '/brand/classroompath-onboarding-governance.png'
+    );
     expect(screen.getByText('Contratar cuota anual')).toBeInTheDocument();
     expect(screen.getByText('Empezar piloto')).toBeInTheDocument();
     expect(screen.getByText('Soy un centro público')).toBeInTheDocument();
