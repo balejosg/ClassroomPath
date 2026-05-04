@@ -87,6 +87,21 @@ function isVerifierRuntimeTestFile(filePath) {
   );
 }
 
+function isOpenPathFirefoxReleaseRuntimePath(filePath) {
+  const relativePath = filePath.replace(/^firefox-extension\//, '');
+
+  return (
+    relativePath === 'manifest.json' ||
+    relativePath === 'package.json' ||
+    relativePath === 'tsconfig.json' ||
+    relativePath === 'tsconfig.build.json' ||
+    /^src\//.test(relativePath) ||
+    /^blocked\//.test(relativePath) ||
+    /^popup\//.test(relativePath) ||
+    /^icons\//.test(relativePath)
+  );
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -209,8 +224,10 @@ function applyOpenPathPathClassification(flags, filePath) {
   }
 
   if (/^firefox-extension\//.test(filePath)) {
-    flags.openpathFirefoxAssetsChanged = true;
-    flags.verifierChanged = true;
+    if (isOpenPathFirefoxReleaseRuntimePath(filePath)) {
+      flags.openpathFirefoxAssetsChanged = true;
+      flags.verifierChanged = true;
+    }
     return true;
   }
 
@@ -319,7 +336,6 @@ export function classifyReleaseCandidateComponents({
         flags.openpathApiChanged = true;
         break;
       case file === '.github/workflows/firefox-release-assets.yml':
-        flags.openpathFirefoxAssetsChanged = true;
         break;
       case file === 'upstream/openpath':
       case /^upstream\/openpath\//.test(file): {
