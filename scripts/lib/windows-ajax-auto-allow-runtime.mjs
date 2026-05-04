@@ -928,7 +928,15 @@ async function launchFirefoxWithSelenium({ firefoxPath, profileDir, originUrl })
   const activeProfileDir = capabilities.get('moz:profile') || profileDir;
   const extensionEvidence = await readProfileExtensionEvidence(String(activeProfileDir));
 
-  await driver.get(originUrl);
+  let initialNavigation = { success: true, error: null };
+  try {
+    await driver.get(originUrl);
+  } catch (error) {
+    initialNavigation = {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 
   return {
     driver,
@@ -940,6 +948,7 @@ async function launchFirefoxWithSelenium({ firefoxPath, profileDir, originUrl })
       geckodriverPath: GECKODRIVER_PATH || null,
       profileDir: activeProfileDir,
       timeoutMs: FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS,
+      initialNavigation,
     },
   };
 }

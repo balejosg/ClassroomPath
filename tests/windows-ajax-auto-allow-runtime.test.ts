@@ -139,4 +139,15 @@ describe('Windows AJAX auto-allow runtime module', () => {
     assert.doesNotMatch(runtimeSource, /function buildPage\(/);
     assert.doesNotMatch(runtimeSource, /createServer\(\(req, res\) =>/);
   });
+
+  test('does not abort artifact collection on initial Selenium navigation timeout', async () => {
+    const runtimeSource = await readFile(
+      new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),
+      'utf8'
+    );
+
+    assert.match(runtimeSource, /let initialNavigation = \{ success: true, error: null \};/);
+    assert.match(runtimeSource, /try \{\s+await driver\.get\(originUrl\);\s+\} catch \(error\)/);
+    assert.match(runtimeSource, /initialNavigation,/);
+  });
 });
