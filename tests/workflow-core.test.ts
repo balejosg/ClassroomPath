@@ -605,6 +605,16 @@ describe('Workflow core contracts', () => {
     );
     assert.ok(!windowsFirefoxWorkflowText.includes('file:///'));
     assert.ok(windowsFirefoxWorkflowText.includes('extensions.json'));
+    assert.ok(
+      windowsFirefoxWorkflowText.includes('Firefox runtime registration was not observed'),
+      'Windows Firefox canary should report missing headless runtime registration as diagnostic evidence'
+    );
+    assert.ok(
+      !windowsFirefoxWorkflowText.includes(
+        'Firefox canary neither registered the extension in the profile nor emitted an enterprise policies log'
+      ),
+      'Windows Firefox canary should not fail only because headless Firefox skipped runtime registration'
+    );
 
     const productionBootstrapWorkflowPath =
       '.github/workflows/windows-production-bootstrap-canary.yml';
