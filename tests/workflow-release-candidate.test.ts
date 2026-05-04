@@ -579,8 +579,12 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(workflowText.includes("steps.cache.outputs.resolved != 'true'"));
     assert.ok(workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
     assert.ok(workflowText.includes('WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}'));
-    assert.ok(workflowText.includes("WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '0'"));
-    assert.ok(workflowText.includes("WEB_EXT_SIGN_RECOVERY_TIMEOUT_SECONDS: '14400'"));
+    assert.ok(workflowText.includes("WEB_EXT_SIGN_TOTAL_TIMEOUT_SECONDS: '1800'"));
+    assert.ok(workflowText.includes("WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '1200'"));
+    assert.ok(workflowText.includes("WEB_EXT_SIGN_PROCESS_TIMEOUT_BUFFER_SECONDS: '120'"));
+    assert.ok(workflowText.includes("WEB_EXT_SIGN_RECOVERY_TIMEOUT_SECONDS: '1800'"));
+    assert.ok(!workflowText.includes("WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '0'"));
+    assert.ok(!workflowText.includes("WEB_EXT_SIGN_RECOVERY_TIMEOUT_SECONDS: '14400'"));
     assert.ok(
       workflowText.includes('artifact_name="openpath-firefox-release-assets-${OPENPATH_SHA}"')
     );
