@@ -487,7 +487,14 @@ export function validateHighRiskStagingVerification(snapshot) {
     );
   }
 
-  if ((snapshot.STAGING_LINUX_BOOTSTRAP_RESULT ?? '') !== 'success') {
+  const linuxBootstrapResult = snapshot.STAGING_LINUX_BOOTSTRAP_RESULT ?? '';
+  const linuxBootstrapBoundary = snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID ?? '';
+  const linuxBootstrapAcceptable =
+    linuxBootstrapResult === 'success' ||
+    (linuxBootstrapResult === 'skipped-lan-staging' &&
+      linuxBootstrapBoundary === 'skipped-lan-staging');
+
+  if (!linuxBootstrapAcceptable) {
     errors.push(
       `::error::Linux bootstrap evidence is missing or failed (STAGING_LINUX_BOOTSTRAP_RESULT=${snapshot.STAGING_LINUX_BOOTSTRAP_RESULT ?? 'unset'}; boundary=${snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID ?? 'unset'})`
     );

@@ -273,6 +273,91 @@ test('release-state CLI rejects high-risk promotion without Linux staging bootst
   assert.match(result.stderr, /firefox-extension-ready/);
 });
 
+test('release-state CLI accepts LAN staging Linux bootstrap skip for high-risk promotion', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-lan-linux-skip-'));
+  const currentStatePath = join(tempDir, 'staging-release-state.env');
+  const verificationStatePath = join(tempDir, 'staging-verification.env');
+
+  writeFileSync(
+    currentStatePath,
+    [
+      'APP_SHA=abc123',
+      'IMAGE_SOURCE=release-candidate',
+      'CLASSROOMPATH_GATEWAY_IMAGE=ghcr.io/balejosg/classroompath-gateway:abc123',
+      'CLASSROOMPATH_MIGRATIONS_IMAGE=ghcr.io/balejosg/classroompath-migrations:abc123',
+      'OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
+      'OPENPATH_VERSION=4.1.19',
+      'OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+      'CLASSROOMPATH_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
+      '',
+    ].join('\n'),
+    'utf-8'
+  );
+
+  writeFileSync(
+    verificationStatePath,
+    [
+      'STAGING_VERIFIED_AT=2026-04-11T06:00:00Z',
+      'STAGING_VERIFIED_BY=github-actions',
+      'STAGING_VERIFIED_APP_SHA=abc123',
+      'STAGING_VERIFIED_OPENPATH_SHA=openpathsha',
+      'STAGING_VERIFIED_IMAGE_SOURCE=release-candidate',
+      'STAGING_VERIFIED_GATEWAY_IMAGE=ghcr.io/balejosg/classroompath-gateway:abc123',
+      'STAGING_VERIFIED_MIGRATIONS_IMAGE=ghcr.io/balejosg/classroompath-migrations:abc123',
+      'STAGING_VERIFIED_OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
+      'STAGING_VERIFIED_OPENPATH_VERSION=4.1.19',
+      'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+      'STAGING_VERIFIED_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
+      'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present',
+      'STAGING_SMOKE_RESULT=success',
+      'STAGING_SMOKE_STATUS=PASS',
+      'STAGING_RELEASE_GATE_RESULT=success',
+      'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
+      'STAGING_FIREFOX_POLICY_RESULT=success',
+      'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
+      'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
+      'STAGING_FIREFOX_METADATA_SHA256=meta123',
+      'STAGING_FIREFOX_XPI_SHA256=xpi123',
+      'STAGING_LINUX_BOOTSTRAP_RESULT=skipped-lan-staging',
+      'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=skipped-lan-staging',
+      '',
+    ].join('\n'),
+    'utf-8'
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      'verify-staging',
+      '--current',
+      currentStatePath,
+      '--verification',
+      verificationStatePath,
+      '--deployment-mode',
+      'promotion-eligible',
+      '--high-risk',
+      'true',
+    ],
+    {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+      env: {
+        ...process.env,
+        EXPECTED_APP_SHA: 'abc123',
+        EXPECTED_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+        EXPECTED_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+        EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+        EXPECTED_OPENPATH_VERSION: '4.1.19',
+        EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+        EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
+      },
+    }
+  );
+
+  assert.equal(result.status, 0);
+});
+
 test('verify-promotion-ready rejects pending staging verification for target SHA', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-pending-'));
   const currentStatePath = join(tempDir, 'staging-release-state.env');
