@@ -212,6 +212,9 @@ jobs:
       staging_linux_bootstrap_run_id: ${{ steps.compare.outputs.staging_linux_bootstrap_run_id }}
       staging_linux_bootstrap_failure_boundary_id: ${{ steps.compare.outputs.staging_linux_bootstrap_failure_boundary_id }}
       staging_linux_bootstrap_failure_boundary_message: ${{ steps.compare.outputs.staging_linux_bootstrap_failure_boundary_message }}
+      staging_windows_self_update_result: ${{ steps.compare.outputs.staging_windows_self_update_result }}
+      staging_linux_self_update_result: ${{ steps.compare.outputs.staging_linux_self_update_result }}
+      staging_prepromotion_rehearsal_result: ${{ steps.compare.outputs.staging_prepromotion_rehearsal_result }}
       staging_verified_at: ${{ steps.compare.outputs.staging_verified_at }}
 
     steps:
@@ -638,26 +641,6 @@ jobs:
           echo "  curl -i ${{ needs.resolve-release-images.outputs.production_ready_url }}"
           echo "  docker logs classroompath-api --tail 50"
 
-  windows-production-bootstrap-canary:
-    name: Windows Production Bootstrap Canary
-    needs: [verify-staging-release-state, deploy-production]
-    if: needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk == 'true' && needs.deploy-production.result == 'success'
-    uses: ./.github/workflows/windows-production-bootstrap-canary.yml
-    with:
-      target_environment: production
-      base_url: ${{ needs.resolve-release-images.outputs.production_public_url }}
-    secrets: inherit
-
-  linux-production-bootstrap-canary:
-    name: Linux Production Bootstrap Canary
-    needs: [verify-staging-release-state, deploy-production]
-    if: needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk == 'true' && needs.deploy-production.result == 'success'
-    uses: ./.github/workflows/linux-production-bootstrap-canary.yml
-    with:
-      target_environment: production
-      base_url: ${{ needs.resolve-release-images.outputs.production_public_url }}
-    secrets: inherit
-
   release-evidence:
     name: Release Evidence
     runs-on: ubuntu-latest
@@ -669,8 +652,6 @@ jobs:
         windows-firefox-canary,
         deploy-production,
         smoke-test-production,
-        windows-production-bootstrap-canary,
-        linux-production-bootstrap-canary,
         rollback-production,
       ]
     if: always() && startsWith(github.ref, 'refs/tags/v')
@@ -744,17 +725,20 @@ jobs:
             "STAGING_LINUX_BOOTSTRAP_RUN_ID": "${{ needs.verify-staging-release-state.outputs.staging_linux_bootstrap_run_id }}",
             "STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID": "${{ needs.verify-staging-release-state.outputs.staging_linux_bootstrap_failure_boundary_id }}",
             "STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "${{ needs.verify-staging-release-state.outputs.staging_linux_bootstrap_failure_boundary_message }}",
+            "STAGING_WINDOWS_SELF_UPDATE_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_windows_self_update_result }}",
+            "STAGING_LINUX_SELF_UPDATE_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_linux_self_update_result }}",
+            "STAGING_PREPROMOTION_REHEARSAL_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_prepromotion_rehearsal_result }}",
             "STAGING_VERIFIED_AT": "${{ needs.verify-staging-release-state.outputs.staging_verified_at }}",
             "WINDOWS_FIREFOX_CANARY_RESULT": "${{ needs.windows-firefox-canary.outputs.canary_result || needs.windows-firefox-canary.result }}",
             "WINDOWS_STAGING_BOOTSTRAP_CANARY_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_windows_bootstrap_result }}",
-            "WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "${{ needs.windows-production-bootstrap-canary.outputs.canary_result || needs.windows-production-bootstrap-canary.result }}",
-            "WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "${{ needs.windows-production-bootstrap-canary.result }}",
-            "WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "${{ needs.windows-production-bootstrap-canary.outputs.failure_boundary_id }}",
-            "WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "${{ needs.windows-production-bootstrap-canary.outputs.failure_boundary_message }}",
-            "LINUX_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "${{ needs.linux-production-bootstrap-canary.outputs.canary_result || needs.linux-production-bootstrap-canary.result }}",
-            "LINUX_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "${{ needs.linux-production-bootstrap-canary.result }}",
-            "LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "${{ needs.linux-production-bootstrap-canary.outputs.failure_boundary_id }}",
-            "LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "${{ needs.linux-production-bootstrap-canary.outputs.failure_boundary_message }}",
+            "WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "not_run_preproduction_authoritative",
+            "WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "skipped",
+            "WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "preproduction-installed-client-evidence",
+            "WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "Functional installed-client evidence is gated before production promotion.",
+            "LINUX_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "not_run_preproduction_authoritative",
+            "LINUX_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "skipped",
+            "LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "preproduction-installed-client-evidence",
+            "LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "Functional installed-client evidence is gated before production promotion.",
             "DEPLOY_RESULT": "${{ needs.deploy-production.result }}",
             "PRODUCTION_SMOKE_RESULT": "${{ needs.smoke-test-production.result }}",
             "ROLLBACK_RESULT": "${{ needs.rollback-production.result }}",
@@ -779,8 +763,6 @@ jobs:
           node scripts/release-evidence-bundle.mjs \
             --deploy-run "${{ github.run_id }}" \
             --tag "${{ github.ref_name }}" \
-            --windows-canary-run "${{ github.run_id }}" \
-            --linux-canary-run "${{ github.run_id }}" \
             --production-url "${{ steps.production-target.outputs.public_url }}" \
             --output-dir release-evidence-bundle
 
@@ -793,7 +775,7 @@ jobs:
             echo "Current-run artifact download was unavailable or incomplete during this workflow."
             echo "Re-run after the deploy completes from a local shell in the artifact directory that contains \`release-evidence.json\`:"
             echo ""
-            echo '\`npm run release:evidence-bundle -- --deploy-run "${{ github.run_id }}" --tag "${{ github.ref_name }}" --windows-canary-run "${{ github.run_id }}" --linux-canary-run "${{ github.run_id }}" --production-url "${{ steps.production-target.outputs.public_url }}" --output-dir release-evidence-bundle\`'
+            echo '\`npm run release:evidence-bundle -- --deploy-run "${{ github.run_id }}" --tag "${{ github.ref_name }}" --production-url "${{ steps.production-target.outputs.public_url }}" --output-dir release-evidence-bundle\`'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate deploy brief
@@ -826,15 +808,8 @@ jobs:
   rollback-production:
     name: Roll Back Production
     runs-on: ubuntu-latest
-    needs:
-      [
-        deploy-production,
-        smoke-test-production,
-        windows-production-bootstrap-canary,
-        linux-production-bootstrap-canary,
-        resolve-release-images,
-      ]
-    if: always() && (needs.deploy-production.result == 'failure' || needs.smoke-test-production.result == 'failure' || needs.windows-production-bootstrap-canary.result == 'failure' || needs.linux-production-bootstrap-canary.result == 'failure')
+    needs: [deploy-production, smoke-test-production, resolve-release-images]
+    if: always() && (needs.deploy-production.result == 'failure' || needs.smoke-test-production.result == 'failure')
     permissions:
       contents: read
       packages: read

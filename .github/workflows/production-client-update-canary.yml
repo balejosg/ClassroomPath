@@ -3,11 +3,6 @@ name: Production Client Update Canary
 on:
   schedule:
     - cron: '*/15 * * * *'
-  workflow_run:
-    workflows:
-      - Deploy
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       production_base_url:
@@ -58,8 +53,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CI_SIGNAL_CLASS: post-release health
           CI_TARGET_ENVIRONMENT: production
-          CI_RELEASE_EVIDENCE_AFFECTED: no, unless this is a post-deploy workflow_run
-          CI_NEXT_ACTION: Scheduled duplicates may skip; manual dispatch and post-deploy evidence must run.
+          CI_RELEASE_EVIDENCE_AFFECTED: no; production release evidence uses preproduction installed-client gates.
+          CI_NEXT_ACTION: Scheduled duplicates may skip; manual dispatch remains available for diagnostics.
           CI_DUPLICATE_POLICY: same workflow success or deploy evidence + same SHA within 60m
           CI_DUPLICATE_FRESHNESS_WINDOW: 60m
           CI_WORKFLOW_NAME: Production Client Update Canary
@@ -282,10 +277,9 @@ jobs:
     needs: [ci-signal-policy]
     if: >-
       needs.ci-signal-policy.outputs.should_skip != 'true' &&
-      github.event_name != 'schedule' &&
+      github.event_name == 'workflow_dispatch' &&
       github.event.inputs.target_platform != 'download' &&
-      ((github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'linux') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
+      github.event.inputs.target_platform != 'linux'
     runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     timeout-minutes: 35
     env:
@@ -325,7 +319,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Setup Node.js
@@ -713,10 +707,9 @@ jobs:
     needs: [ci-signal-policy]
     if: >-
       needs.ci-signal-policy.outputs.should_skip != 'true' &&
-      github.event_name != 'schedule' &&
+      github.event_name == 'workflow_dispatch' &&
       github.event.inputs.target_platform != 'download' &&
-      ((github.event_name == 'workflow_dispatch' && github.event.inputs.target_platform != 'windows') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
+      github.event.inputs.target_platform != 'windows'
     runs-on: [self-hosted, Linux, X64, proxmox, classroompath]
     timeout-minutes: 35
     env:
@@ -726,7 +719,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Setup Node.js
