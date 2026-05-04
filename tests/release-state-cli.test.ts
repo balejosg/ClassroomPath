@@ -43,6 +43,88 @@ function runCommand(
   return result.stdout;
 }
 
+function writePromotionEligibleCurrentState(path: string) {
+  writeFileSync(
+    path,
+    [
+      'APP_SHA=abc123',
+      'IMAGE_SOURCE=release-candidate',
+      'CLASSROOMPATH_GATEWAY_IMAGE=ghcr.io/balejosg/classroompath-gateway:abc123',
+      'CLASSROOMPATH_MIGRATIONS_IMAGE=ghcr.io/balejosg/classroompath-migrations:abc123',
+      'OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
+      'OPENPATH_VERSION=4.1.19',
+      'OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+      'CLASSROOMPATH_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
+      '',
+    ].join('\n'),
+    'utf-8'
+  );
+}
+
+function writeHighRiskVerificationState(path: string, overrides: string[] = []) {
+  writeFileSync(
+    path,
+    [
+      'STAGING_VERIFIED_AT=2026-04-11T06:00:00Z',
+      'STAGING_VERIFIED_BY=github-actions',
+      'STAGING_VERIFIED_APP_SHA=abc123',
+      'STAGING_VERIFIED_OPENPATH_SHA=openpathsha',
+      'STAGING_VERIFIED_IMAGE_SOURCE=release-candidate',
+      'STAGING_VERIFIED_GATEWAY_IMAGE=ghcr.io/balejosg/classroompath-gateway:abc123',
+      'STAGING_VERIFIED_MIGRATIONS_IMAGE=ghcr.io/balejosg/classroompath-migrations:abc123',
+      'STAGING_VERIFIED_OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
+      'STAGING_VERIFIED_OPENPATH_VERSION=4.1.19',
+      'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+      'STAGING_VERIFIED_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
+      'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present',
+      'STAGING_SMOKE_RESULT=success',
+      'STAGING_SMOKE_STATUS=PASS',
+      'STAGING_RELEASE_GATE_RESULT=success',
+      'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
+      'STAGING_FIREFOX_POLICY_RESULT=success',
+      'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
+      'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
+      'STAGING_FIREFOX_METADATA_SHA256=meta123',
+      'STAGING_FIREFOX_XPI_SHA256=xpi123',
+      ...overrides,
+      '',
+    ].join('\n'),
+    'utf-8'
+  );
+}
+
+function runVerifyStaging(currentStatePath: string, verificationStatePath: string) {
+  return spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      'verify-staging',
+      '--current',
+      currentStatePath,
+      '--verification',
+      verificationStatePath,
+      '--deployment-mode',
+      'promotion-eligible',
+      '--high-risk',
+      'true',
+    ],
+    {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+      env: {
+        ...process.env,
+        EXPECTED_APP_SHA: 'abc123',
+        EXPECTED_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+        EXPECTED_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+        EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+        EXPECTED_OPENPATH_VERSION: '4.1.19',
+        EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+        EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
+      },
+    }
+  );
+}
+
 test('release-state CLI writes shell-compatible snapshots through the typed contract', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-write-'));
   const snapshotPath = join(tempDir, 'current-images.env');
@@ -129,6 +211,9 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
       'STAGING_LINUX_BOOTSTRAP_RUN_ID=123456',
       'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=none',
       'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE=Linux AJAX auto-allow canary completed successfully.',
+      'STAGING_WINDOWS_SELF_UPDATE_RESULT=success',
+      'STAGING_LINUX_SELF_UPDATE_RESULT=success',
+      'STAGING_PREPROMOTION_REHEARSAL_RESULT=success',
       '',
     ].join('\n'),
     'utf-8'
@@ -180,6 +265,9 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
   assert.equal(outputs.staging_email_preflight_mode, 'required');
   assert.equal(outputs.staging_firefox_release_version, '4.1.19');
   assert.equal(outputs.staging_linux_bootstrap_result, 'success');
+  assert.equal(outputs.staging_windows_self_update_result, 'success');
+  assert.equal(outputs.staging_linux_self_update_result, 'success');
+  assert.equal(outputs.staging_prepromotion_rehearsal_result, 'success');
   assert.equal(outputs.staging_verified_at, '2026-04-11T06:00:00Z');
   assert.equal(report.eligible, true);
   assert.equal(report.deploymentMode, 'promotion-eligible');
@@ -278,84 +366,50 @@ test('release-state CLI accepts LAN staging Linux bootstrap skip for high-risk p
   const currentStatePath = join(tempDir, 'staging-release-state.env');
   const verificationStatePath = join(tempDir, 'staging-verification.env');
 
-  writeFileSync(
-    currentStatePath,
-    [
-      'APP_SHA=abc123',
-      'IMAGE_SOURCE=release-candidate',
-      'CLASSROOMPATH_GATEWAY_IMAGE=ghcr.io/balejosg/classroompath-gateway:abc123',
-      'CLASSROOMPATH_MIGRATIONS_IMAGE=ghcr.io/balejosg/classroompath-migrations:abc123',
-      'OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
-      'OPENPATH_VERSION=4.1.19',
-      'OPENPATH_LINUX_AGENT_VERSION=4.1.19',
-      'CLASSROOMPATH_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
-      '',
-    ].join('\n'),
-    'utf-8'
-  );
+  writePromotionEligibleCurrentState(currentStatePath);
+  writeHighRiskVerificationState(verificationStatePath, [
+    'STAGING_LINUX_BOOTSTRAP_RESULT=skipped-lan-staging',
+    'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=skipped-lan-staging',
+  ]);
 
-  writeFileSync(
-    verificationStatePath,
-    [
-      'STAGING_VERIFIED_AT=2026-04-11T06:00:00Z',
-      'STAGING_VERIFIED_BY=github-actions',
-      'STAGING_VERIFIED_APP_SHA=abc123',
-      'STAGING_VERIFIED_OPENPATH_SHA=openpathsha',
-      'STAGING_VERIFIED_IMAGE_SOURCE=release-candidate',
-      'STAGING_VERIFIED_GATEWAY_IMAGE=ghcr.io/balejosg/classroompath-gateway:abc123',
-      'STAGING_VERIFIED_MIGRATIONS_IMAGE=ghcr.io/balejosg/classroompath-migrations:abc123',
-      'STAGING_VERIFIED_OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
-      'STAGING_VERIFIED_OPENPATH_VERSION=4.1.19',
-      'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION=4.1.19',
-      'STAGING_VERIFIED_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
-      'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present',
-      'STAGING_SMOKE_RESULT=success',
-      'STAGING_SMOKE_STATUS=PASS',
-      'STAGING_RELEASE_GATE_RESULT=success',
-      'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
-      'STAGING_FIREFOX_POLICY_RESULT=success',
-      'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
-      'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
-      'STAGING_FIREFOX_METADATA_SHA256=meta123',
-      'STAGING_FIREFOX_XPI_SHA256=xpi123',
-      'STAGING_LINUX_BOOTSTRAP_RESULT=skipped-lan-staging',
-      'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=skipped-lan-staging',
-      '',
-    ].join('\n'),
-    'utf-8'
-  );
+  const result = runVerifyStaging(currentStatePath, verificationStatePath);
 
-  const result = spawnSync(
-    process.execPath,
-    [
-      cliPath,
-      'verify-staging',
-      '--current',
-      currentStatePath,
-      '--verification',
-      verificationStatePath,
-      '--deployment-mode',
-      'promotion-eligible',
-      '--high-risk',
-      'true',
-    ],
-    {
-      cwd: projectRoot,
-      encoding: 'utf-8',
-      env: {
-        ...process.env,
-        EXPECTED_APP_SHA: 'abc123',
-        EXPECTED_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
-        EXPECTED_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
-        EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
-        EXPECTED_OPENPATH_VERSION: '4.1.19',
-        EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
-        EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
-      },
-    }
-  );
+  assert.equal(result.status, 0, result.stderr);
+});
 
-  assert.equal(result.status, 0);
+test('release-state CLI rejects LAN Linux skip when the boundary is missing', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-lan-linux-missing-boundary-'));
+  const currentStatePath = join(tempDir, 'staging-release-state.env');
+  const verificationStatePath = join(tempDir, 'staging-verification.env');
+
+  writePromotionEligibleCurrentState(currentStatePath);
+  writeHighRiskVerificationState(verificationStatePath, [
+    'STAGING_LINUX_BOOTSTRAP_RESULT=skipped-lan-staging',
+  ]);
+
+  const result = runVerifyStaging(currentStatePath, verificationStatePath);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Linux bootstrap evidence is missing or failed/);
+  assert.match(result.stderr, /boundary=unset/);
+});
+
+test('release-state CLI rejects LAN Linux skip when the boundary changes', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-lan-linux-wrong-boundary-'));
+  const currentStatePath = join(tempDir, 'staging-release-state.env');
+  const verificationStatePath = join(tempDir, 'staging-verification.env');
+
+  writePromotionEligibleCurrentState(currentStatePath);
+  writeHighRiskVerificationState(verificationStatePath, [
+    'STAGING_LINUX_BOOTSTRAP_RESULT=skipped-lan-staging',
+    'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=firefox-extension-ready',
+  ]);
+
+  const result = runVerifyStaging(currentStatePath, verificationStatePath);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Linux bootstrap evidence is missing or failed/);
+  assert.match(result.stderr, /firefox-extension-ready/);
 });
 
 test('verify-promotion-ready rejects pending staging verification for target SHA', () => {
@@ -552,6 +606,9 @@ test('release-state CLI lists canonical snapshot fields for shell consumers', ()
     'STAGING_LINUX_BOOTSTRAP_RUN_ID',
     'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID',
     'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE',
+    'STAGING_WINDOWS_SELF_UPDATE_RESULT',
+    'STAGING_LINUX_SELF_UPDATE_RESULT',
+    'STAGING_PREPROMOTION_REHEARSAL_RESULT',
   ]);
 });
 

@@ -29,9 +29,56 @@ test('release risk policy keeps canary-triggering client and extension paths in 
     ]);
   }
 
+  assert.deepEqual(RELEASE_RISK_POLICY_DEFINITIONS[0].preproductionEvidence, [
+    'windows-installed-client',
+    'firefox-policy-ajax',
+    'linux-bootstrap-ajax',
+    'windows-self-update',
+    'linux-self-update',
+  ]);
+  assert.deepEqual(RELEASE_RISK_POLICY_DEFINITIONS[1].preproductionEvidence, [
+    'windows-installed-client',
+    'firefox-policy-ajax',
+    'windows-self-update',
+  ]);
+  assert.deepEqual(RELEASE_RISK_POLICY_DEFINITIONS[2].preproductionEvidence, [
+    'linux-bootstrap-ajax',
+    'linux-self-update',
+  ]);
+
   for (const definition of RELEASE_RISK_POLICY_DEFINITIONS.slice(6)) {
     assert.deepEqual(definition.canaries, ['email-delivery-preflight']);
   }
+});
+
+test('release risk policy maps platform changes to required preproduction evidence', () => {
+  const gitlinkChange = evaluateReleaseRiskPaths(['upstream/openpath']);
+  const windowsChange = evaluateReleaseRiskPaths(['upstream/openpath/windows/OpenPathAgent.psm1']);
+  const linuxChange = evaluateReleaseRiskPaths(['upstream/openpath/linux/install-openpath.sh']);
+  const firefoxChange = evaluateReleaseRiskPaths([
+    'upstream/openpath/firefox-extension/manifest.json',
+  ]);
+
+  assert.deepEqual(gitlinkChange.requiredPreproductionEvidence, [
+    'windows-installed-client',
+    'firefox-policy-ajax',
+    'linux-bootstrap-ajax',
+    'windows-self-update',
+    'linux-self-update',
+  ]);
+  assert.deepEqual(windowsChange.requiredPreproductionEvidence, [
+    'windows-installed-client',
+    'firefox-policy-ajax',
+    'windows-self-update',
+  ]);
+  assert.deepEqual(linuxChange.requiredPreproductionEvidence, [
+    'linux-bootstrap-ajax',
+    'linux-self-update',
+  ]);
+  assert.deepEqual(firefoxChange.requiredPreproductionEvidence, [
+    'windows-installed-client',
+    'firefox-policy-ajax',
+  ]);
 });
 
 test('release risk policy evaluates high-risk client promotions declaratively', () => {

@@ -31,18 +31,26 @@ function writeJson(filePath: string, value: unknown) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-function writeStagingVerification(filePath: string, highRisk: 'true' | 'false') {
+function writeStagingVerification(
+  filePath: string,
+  highRisk: 'true' | 'false',
+  overrides: Record<string, string> = {}
+) {
+  const fields = {
+    STAGING_VERIFIED_AT: '2026-04-30T10:00:00Z',
+    STAGING_SMOKE_RESULT: 'success',
+    STAGING_RELEASE_GATE_RESULT: 'success',
+    STAGING_WINDOWS_FIREFOX_HIGH_RISK: highRisk,
+    STAGING_WINDOWS_BOOTSTRAP_RESULT: 'success',
+    STAGING_FIREFOX_POLICY_RESULT: 'success',
+    STAGING_LINUX_BOOTSTRAP_RESULT: 'success',
+    ...overrides,
+  };
   writeText(
     filePath,
-    [
-      'STAGING_VERIFIED_AT=2026-04-30T10:00:00Z',
-      'STAGING_SMOKE_RESULT=success',
-      'STAGING_RELEASE_GATE_RESULT=success',
-      `STAGING_WINDOWS_FIREFOX_HIGH_RISK=${highRisk}`,
-      'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
-      'STAGING_FIREFOX_POLICY_RESULT=success',
-      '',
-    ].join('\n')
+    `${Object.entries(fields)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n')}\n`
   );
 }
 
@@ -121,7 +129,7 @@ describe('prepromotion runner rehearsal', () => {
     assert.equal(result.missingHosts.length, 0);
   });
 
-  test('returns required when staging evidence says risk is true and no artifact exists', () => {
+  test('returns passed when current high-risk staging evidence is present and no artifact exists', () => {
     const tempDir = createTempDir('classroompath-prepromotion-required-');
     const stagingVerificationPath = resolve(tempDir, 'staging-verification.env');
     writeStagingVerification(stagingVerificationPath, 'true');
@@ -131,8 +139,60 @@ describe('prepromotion runner rehearsal', () => {
       stagingVerification: readStagingVerificationEnv(stagingVerificationPath),
     });
 
-    assert.equal(result.state, 'required');
-    assert.match(result.reason, /rehearsal artifact is missing/i);
+    assert.equal(result.state, 'passed');
+    assert.match(result.reason, /preproduction runner evidence passed/i);
+  });
+
+  test('accepts LAN staging Linux bootstrap skip with the matching boundary', () => {
+    const tempDir = createTempDir('classroompath-prepromotion-linux-lan-skip-');
+    const stagingVerificationPath = resolve(tempDir, 'staging-verification.env');
+    writeStagingVerification(stagingVerificationPath, 'true', {
+      STAGING_LINUX_BOOTSTRAP_RESULT: 'skipped-lan-staging',
+      STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'skipped-lan-staging',
+    });
+
+    const result = classifyPrepromotionRequirement({
+      artifactPath: resolve(tempDir, 'production-windows-ajax-auto-allow-canary.json'),
+      stagingVerification: readStagingVerificationEnv(stagingVerificationPath),
+    });
+
+    assert.equal(result.state, 'passed');
+    assert.match(result.reason, /preproduction runner evidence passed/i);
+  });
+
+  test('rejects LAN staging Linux bootstrap skip without the matching boundary', () => {
+    const tempDir = createTempDir('classroompath-prepromotion-linux-lan-boundary-');
+    const stagingVerificationPath = resolve(tempDir, 'staging-verification.env');
+    writeStagingVerification(stagingVerificationPath, 'true', {
+      STAGING_LINUX_BOOTSTRAP_RESULT: 'skipped-lan-staging',
+      STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'different-boundary',
+    });
+
+    const result = classifyPrepromotionRequirement({
+      artifactPath: resolve(tempDir, 'production-windows-ajax-auto-allow-canary.json'),
+      stagingVerification: readStagingVerificationEnv(stagingVerificationPath),
+    });
+
+    assert.equal(result.state, 'failed');
+    assert.match(result.reason, /STAGING_LINUX_BOOTSTRAP_RESULT=skipped-lan-staging/);
+    assert.match(result.reason, /STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=different-boundary/);
+  });
+
+  test('does not require self-update or persisted prepromotion results yet', () => {
+    const tempDir = createTempDir('classroompath-prepromotion-optional-future-fields-');
+    const stagingVerificationPath = resolve(tempDir, 'staging-verification.env');
+    writeStagingVerification(stagingVerificationPath, 'true', {
+      STAGING_WINDOWS_SELF_UPDATE_RESULT: 'failed',
+      STAGING_LINUX_SELF_UPDATE_RESULT: 'missing',
+      STAGING_PREPROMOTION_REHEARSAL_RESULT: '',
+    });
+
+    const result = classifyPrepromotionRequirement({
+      artifactPath: resolve(tempDir, 'production-windows-ajax-auto-allow-canary.json'),
+      stagingVerification: readStagingVerificationEnv(stagingVerificationPath),
+    });
+
+    assert.equal(result.state, 'passed');
   });
 
   test('returns passed when the artifact proves failureBoundary none and every expected host', () => {
@@ -262,8 +322,8 @@ describe('prepromotion runner rehearsal', () => {
     );
 
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /state=required/);
-    assert.match(result.stdout, /npm run diagnostics:windows-ajax:direct -- --environment staging/);
+    assert.match(result.stdout, /state=passed/);
+    assert.doesNotMatch(result.stdout, /npm run diagnostics:windows-ajax:direct/);
   });
 
   test('CLI selective plan prints path-aware recommendations without staging evidence', () => {
@@ -322,7 +382,7 @@ describe('prepromotion runner rehearsal', () => {
     assert.match(result.stdout, /Reason: no OpenPath platform-sensitive files changed/);
   });
 
-  test('CLI plan shell-quotes paths in the direct runner command', () => {
+  test('CLI plan preserves artifact paths with spaces in the result summary', () => {
     const tempDir = createTempDir('classroompath prepromotion cli quote ');
     const stagingVerificationPath = resolve(tempDir, 'staging-verification.env');
     writeStagingVerification(stagingVerificationPath, 'true');
@@ -341,10 +401,10 @@ describe('prepromotion runner rehearsal', () => {
     );
 
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /--artifact-dir '\/tmp\/classroompath prepromotion cli quote/);
+    assert.match(result.stdout, /artifact_path=\/tmp\/classroompath prepromotion cli quote/);
   });
 
-  test('CLI verify exits non-zero when a required rehearsal artifact is missing', () => {
+  test('CLI verify passes from current staging evidence without requiring its own artifact', () => {
     const tempDir = createTempDir('classroompath-prepromotion-cli-verify-');
     const stagingVerificationPath = resolve(tempDir, 'staging-verification.env');
     writeStagingVerification(stagingVerificationPath, 'true');
@@ -362,7 +422,7 @@ describe('prepromotion runner rehearsal', () => {
       { cwd: projectRoot, encoding: 'utf8' }
     );
 
-    assert.notEqual(result.status, 0);
-    assert.match(result.stdout, /state=required/);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /state=passed/);
   });
 });

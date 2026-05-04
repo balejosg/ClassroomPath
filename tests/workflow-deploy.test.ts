@@ -265,12 +265,16 @@ describe('Deploy workflow contracts', () => {
 
     const productionClientCanaryJobs = productionClientUpdateCanaryWorkflow.jobs ?? {};
     const postReleaseLinuxCanaryJob = productionClientCanaryJobs['linux-client-self-update-canary'];
-    assert.ok(productionClientUpdateCanaryWorkflow.on?.workflow_run?.workflows?.includes('Deploy'));
+    assert.equal(
+      productionClientUpdateCanaryWorkflow.on?.workflow_run,
+      undefined,
+      'production self-update canaries must not rerun automatically after deploy'
+    );
     assert.ok(
       String(postReleaseLinuxCanaryJob?.if ?? '').includes(
-        "github.event.workflow_run.conclusion == 'success'"
+        "github.event_name == 'workflow_dispatch'"
       ),
-      'post-release Linux canary should run only after a completed successful Deploy workflow'
+      'Linux self-update canary should remain available as an explicit manual diagnostic'
     );
     assert.ok(
       postReleaseLinuxCanaryJob?.steps?.some((step) =>
@@ -385,35 +389,29 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       deployWorkflowText,
-      /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-production-bootstrap-canary\.result \}\}"/
+      /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "not_run_preproduction_authoritative"/
+    );
+    assert.match(deployWorkflowText, /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "skipped"/);
+    assert.match(
+      deployWorkflowText,
+      /"WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "preproduction-installed-client-evidence"/
     );
     assert.match(
       deployWorkflowText,
-      /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary\.result \}\}"/
+      /Functional installed-client evidence is gated before production promotion/
     );
     assert.match(
       deployWorkflowText,
-      /"WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.failure_boundary_id \}\}"/
+      /"LINUX_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "not_run_preproduction_authoritative"/
+    );
+    assert.match(deployWorkflowText, /"LINUX_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "skipped"/);
+    assert.match(
+      deployWorkflowText,
+      /"LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "preproduction-installed-client-evidence"/
     );
     assert.match(
       deployWorkflowText,
-      /"WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.failure_boundary_message \}\}"/
-    );
-    assert.match(
-      deployWorkflowText,
-      /"LINUX_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.linux-production-bootstrap-canary\.outputs\.canary_result \|\| needs\.linux-production-bootstrap-canary\.result \}\}"/
-    );
-    assert.match(
-      deployWorkflowText,
-      /"LINUX_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.linux-production-bootstrap-canary\.result \}\}"/
-    );
-    assert.match(
-      deployWorkflowText,
-      /"LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "\$\{\{ needs\.linux-production-bootstrap-canary\.outputs\.failure_boundary_id \}\}"/
-    );
-    assert.match(
-      deployWorkflowText,
-      /"LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "\$\{\{ needs\.linux-production-bootstrap-canary\.outputs\.failure_boundary_message \}\}"/
+      /Functional installed-client evidence is gated before production promotion/
     );
     assert.match(
       String(
@@ -441,7 +439,7 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       deployWorkflowText,
-      /node scripts\/release-evidence-bundle\.mjs \\\n+\s+--deploy-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--tag "\$\{\{ github\.ref_name \}\}" \\\n+\s+--windows-canary-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--linux-canary-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--production-url "\$\{\{ steps\.production-target\.outputs\.public_url \}\}" \\\n+\s+--output-dir release-evidence-bundle/
+      /node scripts\/release-evidence-bundle\.mjs \\\n+\s+--deploy-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--tag "\$\{\{ github\.ref_name \}\}" \\\n+\s+--production-url "\$\{\{ steps\.production-target\.outputs\.public_url \}\}" \\\n+\s+--output-dir release-evidence-bundle/
     );
     const uploadReleaseEvidenceStep = findWorkflowStepByName(
       jobs['release-evidence'],
@@ -470,53 +468,24 @@ describe('Deploy workflow contracts', () => {
       'production deploy must not duplicate the live Windows bootstrap gate already embedded in staging evidence'
     );
     assert.equal(
-      jobs['windows-production-bootstrap-canary']?.uses,
-      './.github/workflows/windows-production-bootstrap-canary.yml'
+      jobs['windows-production-bootstrap-canary'],
+      undefined,
+      'production deploy must not repeat full Windows installed-client bootstrap canaries after deploy'
     );
     assert.equal(
-      jobs['windows-production-bootstrap-canary']?.with?.target_environment,
-      'production'
-    );
-    assert.equal(
-      jobs['windows-production-bootstrap-canary']?.with?.base_url,
-      '${{ needs.resolve-release-images.outputs.production_public_url }}'
-    );
-    assert.match(
-      String(jobs['windows-production-bootstrap-canary']?.if ?? ''),
-      /staging_windows_firefox_high_risk == 'true'/
-    );
-    assert.equal(
-      jobs['linux-production-bootstrap-canary']?.uses,
-      './.github/workflows/linux-production-bootstrap-canary.yml'
-    );
-    assert.equal(jobs['linux-production-bootstrap-canary']?.with?.target_environment, 'production');
-    assert.equal(
-      jobs['linux-production-bootstrap-canary']?.with?.base_url,
-      '${{ needs.resolve-release-images.outputs.production_public_url }}'
-    );
-    assert.match(
-      String(jobs['linux-production-bootstrap-canary']?.if ?? ''),
-      /staging_windows_firefox_high_risk == 'true'/
+      jobs['linux-production-bootstrap-canary'],
+      undefined,
+      'production deploy must not repeat full Linux installed-client bootstrap canaries after deploy'
     );
     const deployNeeds = normalizeNeeds(jobs['deploy-production']?.needs);
-    const productionBootstrapNeeds = normalizeNeeds(
-      jobs['windows-production-bootstrap-canary']?.needs
-    );
-    const linuxProductionBootstrapNeeds = normalizeNeeds(
-      jobs['linux-production-bootstrap-canary']?.needs
-    );
     const releaseEvidenceNeeds = normalizeNeeds(jobs['release-evidence']?.needs);
     assert.ok(deployNeeds.includes('resolve-release-images'));
     assert.ok(deployNeeds.includes('verify-staging-release-state'));
     assert.ok(deployNeeds.includes('windows-firefox-canary'));
     assert.ok(!deployNeeds.includes('windows-staging-bootstrap-canary'));
-    assert.ok(productionBootstrapNeeds.includes('verify-staging-release-state'));
-    assert.ok(productionBootstrapNeeds.includes('deploy-production'));
-    assert.ok(linuxProductionBootstrapNeeds.includes('verify-staging-release-state'));
-    assert.ok(linuxProductionBootstrapNeeds.includes('deploy-production'));
     assert.ok(!releaseEvidenceNeeds.includes('windows-staging-bootstrap-canary'));
-    assert.ok(releaseEvidenceNeeds.includes('windows-production-bootstrap-canary'));
-    assert.ok(releaseEvidenceNeeds.includes('linux-production-bootstrap-canary'));
+    assert.ok(!releaseEvidenceNeeds.includes('windows-production-bootstrap-canary'));
+    assert.ok(!releaseEvidenceNeeds.includes('linux-production-bootstrap-canary'));
     assert.match(String(jobs['deploy-production']?.if ?? ''), /^always\(\) && /);
     assert.match(
       String(jobs['deploy-production']?.if ?? ''),
@@ -527,24 +496,20 @@ describe('Deploy workflow contracts', () => {
       /windows-staging-bootstrap-canary/
     );
     assert.ok(
-      normalizeNeeds(jobs['rollback-production']?.needs).includes(
+      !normalizeNeeds(jobs['rollback-production']?.needs).includes(
         'windows-production-bootstrap-canary'
       ),
-      'rollback must observe post-deploy production bootstrap canary failures'
+      'rollback should only observe deploy and production smoke failures on the release path'
     );
     assert.ok(
-      normalizeNeeds(jobs['rollback-production']?.needs).includes(
+      !normalizeNeeds(jobs['rollback-production']?.needs).includes(
         'linux-production-bootstrap-canary'
       ),
-      'rollback must observe post-deploy Linux bootstrap canary failures'
+      'rollback should not wait on full Linux installed-client canaries after production deploy'
     );
-    assert.match(
+    assert.doesNotMatch(
       String(jobs['rollback-production']?.if ?? ''),
-      /needs\.windows-production-bootstrap-canary\.result == 'failure'/
-    );
-    assert.match(
-      String(jobs['rollback-production']?.if ?? ''),
-      /needs\.linux-production-bootstrap-canary\.result == 'failure'/
+      /production-bootstrap-canary/
     );
     assert.ok(windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs);
     assert.equal(

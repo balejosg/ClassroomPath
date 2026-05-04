@@ -143,11 +143,11 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       String(downloadJob?.if ?? ''),
       /needs\.ci-signal-policy\.outputs\.should_skip != 'true'/
     );
-    assert.match(
-      String(windowsJob?.if ?? ''),
-      /github\.event_name != 'schedule'[\s\S]*workflow_run/
-    );
-    assert.match(String(linuxJob?.if ?? ''), /github\.event_name != 'schedule'[\s\S]*workflow_run/);
+    assert.equal(workflow.on?.workflow_run, undefined);
+    assert.match(String(windowsJob?.if ?? ''), /github\.event_name == 'workflow_dispatch'/);
+    assert.match(String(linuxJob?.if ?? ''), /github\.event_name == 'workflow_dispatch'/);
+    assert.doesNotMatch(String(windowsJob?.if ?? ''), /workflow_run/);
+    assert.doesNotMatch(String(linuxJob?.if ?? ''), /workflow_run/);
     assert.ok(
       workflowText.includes(
         'CI_DUPLICATE_POLICY: same workflow success or deploy evidence + same SHA within 60m'
@@ -170,7 +170,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       'advisory drift detection',
       'maintenance',
       'same workflow already passed on the same SHA within 60 minutes',
-      'Post-deploy `workflow_run` and manual dispatch are never suppressed',
+      'Manual dispatch is never suppressed',
       'Do not suppress by SHA; environment drift can change without a commit',
       'Tag production deploys are non-cancelable',
       'Blocks release?',
@@ -649,7 +649,7 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.equal(downloadJob?.['runs-on'], 'ubuntu-latest');
     assert.ok(
-      String(existingWindowsJob?.if ?? '').includes("github.event_name != 'schedule'"),
+      String(existingWindowsJob?.if ?? '').includes("github.event_name == 'workflow_dispatch'"),
       'scheduled download checks must not consume the persistent Windows runner'
     );
     assert.ok(
@@ -659,7 +659,7 @@ describe('Production client update canary workflow contracts', () => {
       'manual download-only canary runs must not consume the persistent Windows runner'
     );
     assert.ok(
-      String(existingLinuxJob?.if ?? '').includes("github.event_name != 'schedule'"),
+      String(existingLinuxJob?.if ?? '').includes("github.event_name == 'workflow_dispatch'"),
       'scheduled download checks must not run the full Linux install canary'
     );
     assert.ok(
@@ -691,7 +691,7 @@ describe('Production client update canary workflow contracts', () => {
     );
   });
 
-  test('post-release production client update canary stays decoupled from deploy completion', () => {
+  test('production client update canary remains scheduled/manual and decoupled from deploy completion', () => {
     const workflowText = readProjectText('.github/workflows/production-client-update-canary.yml');
     const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
     const jobs = workflow.jobs ?? {};
@@ -699,8 +699,7 @@ describe('Production client update canary workflow contracts', () => {
     const linuxJob = jobs['linux-client-self-update-canary'];
     const workflowDispatchInputs = workflow.on?.workflow_dispatch?.inputs ?? {};
 
-    assert.ok(workflow.on?.workflow_run?.workflows?.includes('Deploy'));
-    assert.ok(workflow.on?.workflow_run?.types?.includes('completed'));
+    assert.equal(workflow.on?.workflow_run, undefined);
     assert.ok(workflowText.includes('workflow_dispatch:'));
     assert.equal(workflowDispatchInputs.target_platform?.default, 'both');
     assert.deepEqual(workflowDispatchInputs.target_platform?.options, [
@@ -710,6 +709,10 @@ describe('Production client update canary workflow contracts', () => {
       'windows',
     ]);
     assert.ok(!workflowText.includes('workflow_call:'));
+    assert.match(String(windowsJob?.if ?? ''), /github\.event_name == 'workflow_dispatch'/);
+    assert.match(String(linuxJob?.if ?? ''), /github\.event_name == 'workflow_dispatch'/);
+    assert.doesNotMatch(String(windowsJob?.if ?? ''), /workflow_run/);
+    assert.doesNotMatch(String(linuxJob?.if ?? ''), /workflow_run/);
     assert.deepEqual(windowsJob?.['runs-on'], [
       'self-hosted',
       'Windows',
@@ -769,12 +772,8 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(workflowText.includes('/usr/local/lib/openpath/uninstall.sh --auto-yes'));
     assert.ok(workflowText.includes('sudo apt-get purge -y openpath-dnsmasq'));
     assert.ok(workflowText.includes('scripts/linux-firefox-block-page-canary.mjs'));
-    assert.ok(
-      String(windowsJob?.if ?? '').includes("github.event.workflow_run.conclusion == 'success'")
-    );
-    assert.ok(
-      String(linuxJob?.if ?? '').includes("github.event.workflow_run.conclusion == 'success'")
-    );
+    assert.ok(String(windowsJob?.if ?? '').includes("github.event_name == 'workflow_dispatch'"));
+    assert.ok(String(linuxJob?.if ?? '').includes("github.event_name == 'workflow_dispatch'"));
     assert.ok(
       String(windowsJob?.if ?? '').includes("github.event.inputs.target_platform != 'linux'"),
       'Manual Linux-only production canary runs must not wait for the Windows runner'

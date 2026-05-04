@@ -75,6 +75,10 @@ function buildReleaseEvidenceInput(overrides: Record<string, unknown> = {}) {
       windowsFirefoxHighRisk: 'true',
       windowsBootstrapResult: 'success',
       firefoxPolicyResult: 'success',
+      linuxBootstrapResult: 'success',
+      windowsSelfUpdateResult: 'success',
+      linuxSelfUpdateResult: 'success',
+      prepromotionRehearsalResult: 'success',
       verifiedAt: '2026-04-30T09:59:00.000Z',
     },
     targets: {
@@ -335,6 +339,120 @@ describe('release evidence bundle module', () => {
     assert.equal(integrity.linuxProductionBootstrapCanary.status, 'not_applicable');
   });
 
+  test('builds a complete bundle without production canary run IDs when preproduction evidence is authoritative', async () => {
+    const workspace = createTempDir('classroompath-release-evidence-preproduction-authority-');
+    const outputDir = resolve(workspace, 'bundle-output');
+
+    writeJson(
+      resolve(workspace, 'release-evidence.json'),
+      buildReleaseEvidenceInput({
+        jobs: {
+          verifyOpenPathUpstream: 'success',
+          resolveReleaseImages: 'success',
+          verifyStagingReleaseState: 'success',
+          windowsFirefoxCanary: 'success',
+          windowsProductionBootstrapCanary: 'not_run_preproduction_authoritative',
+          linuxProductionBootstrapCanary: 'not_run_preproduction_authoritative',
+          productionClientUpdateCanary: 'advisory-only',
+          deployProduction: 'success',
+          smokeTestProduction: 'success',
+          rollbackProduction: 'skipped',
+        },
+        diagnostics: {
+          windowsProductionBootstrapFailureBoundary: {
+            id: 'preproduction-installed-client-evidence',
+            message: 'Functional installed-client evidence is gated before production promotion.',
+          },
+          linuxProductionBootstrapFailureBoundary: {
+            id: 'preproduction-installed-client-evidence',
+            message: 'Functional installed-client evidence is gated before production promotion.',
+          },
+        },
+        artifacts: {
+          releaseImageMetadata: 'release-image-metadata-v1.2.99',
+          stagingReleaseState: 'staging-release-state-v1.2.99',
+          productionSmokeResults: 'smoke-test-results-production',
+          releaseEvidence: 'release-evidence-v1.2.99',
+        },
+      })
+    );
+
+    const originalCwd = process.cwd();
+    const originalFetch = globalThis.fetch;
+
+    try {
+      process.chdir(workspace);
+      globalThis.fetch = (async (input: string | URL | Request) => {
+        const url =
+          typeof input === 'string' || input instanceof URL ? String(input) : String(input.url);
+
+        if (url.endsWith('/cp/health')) {
+          return {
+            ok: true,
+            text: async () => '{"status":"ok"}',
+          } as Response;
+        }
+
+        if (url.endsWith('/cp/ready')) {
+          return {
+            ok: true,
+            text: async () => '{"ready":true}',
+          } as Response;
+        }
+
+        return {
+          ok: false,
+          text: async () => '{"error":"not-found"}',
+        } as Response;
+      }) as typeof fetch;
+
+      const bundle = await runReleaseEvidenceBundle({
+        repo: 'balejosg/ClassroomPath',
+        deployRun: '123',
+        tag: 'v1.2.99',
+        outputDir,
+        productionUrl: 'https://classroompath.eu',
+        windowsCanaryRun: null,
+        linuxCanaryRun: null,
+      });
+
+      assert.equal(
+        bundle.artifactIntegrity.windowsProductionBootstrapCanary.status,
+        'not_applicable'
+      );
+      assert.equal(
+        bundle.artifactIntegrity.linuxProductionBootstrapCanary.status,
+        'not_applicable'
+      );
+      assert.equal(
+        bundle.canaries.windows.failureBoundary.id,
+        'preproduction-installed-client-evidence'
+      );
+      assert.equal(
+        bundle.canaries.linux.failureBoundary.id,
+        'preproduction-installed-client-evidence'
+      );
+      assert.deepEqual(
+        bundle.canaries.windows.diagnosticPhases.map((phase: { id: string; status: string }) => [
+          phase.id,
+          phase.status,
+        ]),
+        [
+          ['preproduction-installed-client-evidence', 'not_applicable'],
+          ['artifact-written', 'passed'],
+        ]
+      );
+      assert.equal(
+        JSON.parse(readFileSync(resolve(outputDir, 'artifact-integrity.json'), 'utf8'))
+          .windowsProductionBootstrapCanary.status,
+        'not_applicable'
+      );
+    } finally {
+      process.chdir(originalCwd);
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test('collects Linux canary evidence artifact when the functional canary failed', () => {
     const linuxArtifactDir = createTempDir('classroompath-release-evidence-linux-failure-');
     const outputDir = createTempDir('classroompath-release-evidence-linux-failure-output-');
@@ -589,40 +707,34 @@ describe('deploy brief module', () => {
     assert.match(markdown, /\| Gate \| Result \| Boundary \| Evidence \|/);
   });
 
-  test('formats a failed Windows canary with boundary and next action', () => {
+  test('formats failed preproduction installed-client evidence with boundary and next action', () => {
     const brief = buildDeployBrief({
       releaseEvidence: buildReleaseEvidenceInput({
         jobs: {
           verifyOpenPathUpstream: 'success',
           resolveReleaseImages: 'success',
-          verifyStagingReleaseState: 'success',
+          verifyStagingReleaseState: 'failure',
           windowsFirefoxCanary: 'success',
-          windowsProductionBootstrapCanary: 'failure',
-          linuxProductionBootstrapCanary: 'success',
+          windowsProductionBootstrapCanary: 'not_run_preproduction_authoritative',
+          linuxProductionBootstrapCanary: 'not_run_preproduction_authoritative',
           productionClientUpdateCanary: 'live-tested',
           deployProduction: 'success',
           smokeTestProduction: 'success',
           rollbackProduction: 'skipped',
         },
-        diagnostics: {
-          windowsProductionBootstrapFailureBoundary: {
-            id: 'native-host-state-sync',
-            message: 'Native host did not receive the production whitelist update.',
-          },
-          linuxProductionBootstrapFailureBoundary: {
-            id: 'none',
-            message: 'Linux AJAX auto-allow canary completed successfully.',
-          },
+        stagingVerification: {
+          windowsFirefoxHighRisk: 'true',
+          prepromotionRehearsalResult: 'failed',
         },
       }),
       sourceArtifacts: ['release-evidence.json'],
     });
 
     assert.equal(brief.status, 'fail');
-    assert.equal(brief.failureBoundary.id, 'native-host-state-sync');
+    assert.equal(brief.failureBoundary.id, 'preproduction-installed-client-evidence');
     assert.equal(
       brief.failureBoundary.message,
-      'Native host did not receive the production whitelist update.'
+      'Preproduction installed-client evidence failed before production promotion.'
     );
     assert.equal(brief.failureBoundary.safeToRetry, 'after-cleanup');
     assert.match(brief.nextCommand, /gh run rerun 123 --failed/);
@@ -671,7 +783,7 @@ describe('deploy brief module', () => {
 
     assert.equal(brief.status, 'partial');
     assert.equal(advisoryGate?.category, 'advisory');
-    assert.equal(postReleaseGate?.category, 'post-release-required');
+    assert.equal(postReleaseGate?.category, 'post-release-advisory');
     assert.equal(clientUpdateGate?.category, 'post-release-advisory');
   });
 });

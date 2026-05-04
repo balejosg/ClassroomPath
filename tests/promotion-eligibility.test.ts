@@ -52,6 +52,9 @@ const verificationState = {
   STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'none',
   STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE:
     'Linux AJAX auto-allow canary completed successfully.',
+  STAGING_WINDOWS_SELF_UPDATE_RESULT: 'success',
+  STAGING_LINUX_SELF_UPDATE_RESULT: 'success',
+  STAGING_PREPROMOTION_REHEARSAL_RESULT: 'success',
 };
 
 describe('promotion eligibility', () => {
@@ -116,5 +119,61 @@ describe('promotion eligibility', () => {
     assert.equal(report.eligible, false);
     assert.equal(report.checks.windowsFirefox.status, 'fail');
     assert.match(report.errors.join('\n'), /Windows bootstrap evidence is missing or failed/);
+  });
+
+  test('accepts LAN staging Linux bootstrap skip for high-risk promotions', () => {
+    const report = evaluatePromotionEligibility({
+      deploymentMode: 'promotion-eligible',
+      imageSource: 'release-candidate',
+      currentState,
+      verificationState: {
+        ...verificationState,
+        STAGING_LINUX_BOOTSTRAP_RESULT: 'skipped-lan-staging',
+        STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'skipped-lan-staging',
+      },
+      expectedRuntime,
+      highRisk: true,
+    });
+
+    assert.equal(report.eligible, true);
+    assert.equal(report.checks.windowsFirefox.status, 'pass');
+  });
+
+  test('rejects LAN staging Linux bootstrap skip when the boundary does not match', () => {
+    const report = evaluatePromotionEligibility({
+      deploymentMode: 'promotion-eligible',
+      imageSource: 'release-candidate',
+      currentState,
+      verificationState: {
+        ...verificationState,
+        STAGING_LINUX_BOOTSTRAP_RESULT: 'skipped-lan-staging',
+        STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'firefox-extension-ready',
+      },
+      expectedRuntime,
+      highRisk: true,
+    });
+
+    assert.equal(report.eligible, false);
+    assert.equal(report.checks.windowsFirefox.status, 'fail');
+    assert.match(report.errors.join('\n'), /Linux bootstrap evidence is missing or failed/);
+  });
+
+  test('does not hard-gate self-update and prepromotion rehearsal evidence yet', () => {
+    const report = evaluatePromotionEligibility({
+      deploymentMode: 'promotion-eligible',
+      imageSource: 'release-candidate',
+      currentState,
+      verificationState: {
+        ...verificationState,
+        STAGING_WINDOWS_SELF_UPDATE_RESULT: undefined,
+        STAGING_LINUX_SELF_UPDATE_RESULT: undefined,
+        STAGING_PREPROMOTION_REHEARSAL_RESULT: undefined,
+      },
+      expectedRuntime,
+      highRisk: true,
+    });
+
+    assert.equal(report.eligible, true);
+    assert.deepEqual(report.errors, []);
   });
 });
