@@ -96,3 +96,10 @@ curl -sS http://192.168.1.114:3000/api/config
 If the script reports `PASS_WITH_FALLBACK`, the smoke lane used direct-IP or relaxed-CORS fallback.
 For LAN staging that is expected. Treat it as staging evidence, but do not infer production HTTPS
 parity from that result alone.
+
+The GitHub-hosted Linux bootstrap canary is skipped for LAN staging targets and records
+`STAGING_LINUX_BOOTSTRAP_RESULT=skipped-lan-staging`. GitHub-hosted runners cannot route to
+`192.168.1.114`, so this skip is the expected result after removing the public DuckDNS staging
+ingress. When Linux bootstrap evidence is required for a release-risk decision, run a LAN-reachable
+direct runner or a production-target canary instead of treating the hosted staging skip as target
+platform evidence.

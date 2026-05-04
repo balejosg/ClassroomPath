@@ -134,6 +134,45 @@ describe('staging gates helper', () => {
     assert.doesNotMatch(result.stderr, /message: .*\nsecond line/);
   });
 
+  test('detects private LAN staging targets for hosted-gate routing', () => {
+    assert.equal(
+      runHelper('staging_gate_target_is_private_lan http://192.168.1.114:3000 && printf private'),
+      'private'
+    );
+    assert.equal(
+      runHelper(
+        'if staging_gate_target_is_private_lan https://classroompath.eu; then printf private; else printf public; fi'
+      ),
+      'public'
+    );
+  });
+
+  test('skips hosted Linux bootstrap gate for LAN staging targets', () => {
+    const result = spawnSync(
+      'bash',
+      [
+        '-lc',
+        [
+          'source scripts/lib/staging-gates.sh',
+          'STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE=1',
+          'run_staging_linux_bootstrap_gate http://192.168.1.114:3000',
+          'printf "%s|%s|%s" "$STAGING_LINUX_BOOTSTRAP_RESULT" "$STAGING_LINUX_BOOTSTRAP_RUN_ID" "$STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID"',
+        ].join('; '),
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(
+      result.stderr,
+      /Skipping Linux bootstrap gate because LAN staging is not reachable from GitHub-hosted runners/
+    );
+    assert.equal(result.stdout, 'skipped-lan-staging||skipped-lan-staging');
+  });
+
   test('shared runner sources the helper and delegates gate orchestration to it', () => {
     const content = readFileSync(runnerPath, 'utf8');
 

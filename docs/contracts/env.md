@@ -36,7 +36,9 @@ Dockerized stack.
 Staging uses the LAN HTTP origin from `config/deploy-targets.json`
 (`http://192.168.1.114:3000`). Production remains HTTPS-only. Release-gate verification allows HTTP
 verification URLs only when the expected origin is non-localhost LAN staging; every public production
-origin must continue to use HTTPS.
+origin must continue to use HTTPS. Hosted verifiers can only hit `PUBLIC_URL` when that origin is
+publicly routable; LAN staging verification records an explicit skip for GitHub-hosted Linux
+bootstrap evidence.
 
 ### Gateway And Routing
 

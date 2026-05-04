@@ -154,6 +154,32 @@ print_staging_canary_failure_boundary() {
   echo "  run: $run_id" >&2
 }
 
+staging_gate_target_is_private_lan() {
+  local target_url="${1:-}"
+
+  node - "$target_url" <<'NODE'
+const value = process.argv[2] ?? '';
+let host = '';
+
+try {
+  host = new URL(value).hostname.toLowerCase();
+} catch {
+  process.exit(1);
+}
+
+const privateHost =
+  host === 'localhost' ||
+  host.endsWith('.local') ||
+  /^127\./.test(host) ||
+  /^10\./.test(host) ||
+  /^192\.168\./.test(host) ||
+  /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
+  host === '::1';
+
+process.exit(privateHost ? 0 : 1);
+NODE
+}
+
 run_staging_linux_bootstrap_gate() {
   local canonical_staging_url="$1"
   local output_file=""
@@ -166,6 +192,15 @@ run_staging_linux_bootstrap_gate() {
 
   if [ "${STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE:-0}" != "1" ]; then
     echo "Skipping Linux bootstrap gate because high-risk live browser evidence is not required" >&2
+    return 0
+  fi
+
+  if staging_gate_target_is_private_lan "$canonical_staging_url"; then
+    STAGING_LINUX_BOOTSTRAP_RESULT="skipped-lan-staging"
+    STAGING_LINUX_BOOTSTRAP_RUN_ID=""
+    STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID="skipped-lan-staging"
+    STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE="Linux bootstrap GitHub-hosted gate skipped because LAN staging is not reachable from GitHub-hosted runners."
+    echo "Skipping Linux bootstrap gate because LAN staging is not reachable from GitHub-hosted runners" >&2
     return 0
   fi
 
