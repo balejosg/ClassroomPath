@@ -33,6 +33,18 @@ describe('release candidate component classification', () => {
     assert.equal(flags.verifierChanged, true);
   });
 
+  test('keeps OpenPath Firefox signing tooling changes out of Firefox release assets', () => {
+    const flags = classifyOpenPathChangedPaths([
+      'firefox-extension/sign-firefox-release.mjs',
+      'firefox-extension/tests/firefox-release.test.ts',
+      'tests/repo-config/workflow-contracts.test.mjs',
+    ]);
+
+    assert.equal(flags.openpathApiChanged, false);
+    assert.equal(flags.openpathFirefoxAssetsChanged, false);
+    assert.equal(flags.verifierChanged, false);
+  });
+
   test('maps release-candidate image workflow plumbing changes to every server image family', () => {
     assert.deepEqual(
       classifyReleaseCandidateComponents({
@@ -154,7 +166,7 @@ describe('release candidate component classification', () => {
     );
   });
 
-  test('keeps firefox asset workflow changes scoped to the Firefox assets family', () => {
+  test('keeps firefox asset workflow changes out of release image rebuilds', () => {
     const flags = classifyReleaseCandidateComponents({
       changedFiles: ['.github/workflows/firefox-release-assets.yml'],
       openpathChangedFiles: [],
@@ -163,7 +175,7 @@ describe('release candidate component classification', () => {
     assert.equal(flags.gatewayChanged, false);
     assert.equal(flags.migrationsChanged, false);
     assert.equal(flags.openpathApiChanged, false);
-    assert.equal(flags.openpathFirefoxAssetsChanged, true);
+    assert.equal(flags.openpathFirefoxAssetsChanged, false);
     assert.equal(flags.spaChanged, false);
     assert.equal(flags.verifierChanged, false);
   });
