@@ -5,6 +5,13 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
       'OpenPath submodule promotions can change client and extension delivery contracts.',
     patterns: ['^upstream/openpath$'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
+    preproductionEvidence: [
+      'windows-installed-client',
+      'firefox-policy-ajax',
+      'linux-bootstrap-ajax',
+      'windows-self-update',
+      'linux-self-update',
+    ],
   },
   {
     id: 'openpath-windows-runtime',
@@ -12,6 +19,11 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
       'Windows client runtime changes must exercise bootstrap and installed-client update paths.',
     patterns: ['^upstream/openpath/windows/'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
+    preproductionEvidence: [
+      'windows-installed-client',
+      'firefox-policy-ajax',
+      'windows-self-update',
+    ],
   },
   {
     id: 'openpath-linux-runtime',
@@ -19,6 +31,7 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
       'Linux client runtime changes must exercise the installed-client self-update path.',
     patterns: ['^upstream/openpath/linux/'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
+    preproductionEvidence: ['linux-bootstrap-ajax', 'linux-self-update'],
   },
   {
     id: 'openpath-firefox-extension',
@@ -26,6 +39,7 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
       'Firefox extension delivery changes must keep Windows policy/bootstrap evidence and prod canaries.',
     patterns: ['^upstream/openpath/firefox-extension/'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
+    preproductionEvidence: ['windows-installed-client', 'firefox-policy-ajax'],
   },
   {
     id: 'openpath-api-bootstrap',
@@ -36,6 +50,11 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
       '^upstream/openpath/api/tests/token-delivery\\.test\\.ts$',
     ],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
+    preproductionEvidence: [
+      'windows-installed-client',
+      'firefox-policy-ajax',
+      'linux-bootstrap-ajax',
+    ],
   },
   {
     id: 'classroompath-api-image',
@@ -43,6 +62,11 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
       'ClassroomPath API image changes can alter the OpenPath API runtime shipped to clients.',
     patterns: ['^docker/Dockerfile\\.api$'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
+    preproductionEvidence: [
+      'windows-installed-client',
+      'firefox-policy-ajax',
+      'linux-bootstrap-ajax',
+    ],
   },
   {
     id: 'classroompath-email-delivery-runtime',
@@ -95,16 +119,21 @@ export function evaluateReleaseRiskPaths(
   definitions = RELEASE_RISK_POLICY_DEFINITIONS
 ) {
   const matchedRules = new Map();
+  const requiredPreproductionEvidence = new Set();
 
   for (const changedFile of changedFiles) {
     for (const rule of matchReleaseRiskRules(changedFile, definitions)) {
       matchedRules.set(rule.id, rule);
+      for (const evidence of rule.preproductionEvidence ?? []) {
+        requiredPreproductionEvidence.add(evidence);
+      }
     }
   }
 
   return {
     highRisk: matchedRules.size > 0,
     matchedRules: [...matchedRules.values()],
+    requiredPreproductionEvidence: [...requiredPreproductionEvidence],
   };
 }
 

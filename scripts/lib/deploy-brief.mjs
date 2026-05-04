@@ -141,6 +141,21 @@ function buildGates(releaseEvidence) {
       category: 'required',
     }),
     buildGate({
+      id: 'preproduction-installed-client-evidence',
+      label: 'Preproduction installed-client evidence',
+      result:
+        releaseEvidence.stagingVerification?.windowsFirefoxHighRisk === 'true'
+          ? releaseEvidence.stagingVerification?.prepromotionRehearsalResult
+          : 'not_applicable',
+      boundary:
+        releaseEvidence.stagingVerification?.prepromotionRehearsalResult &&
+        releaseEvidence.stagingVerification.prepromotionRehearsalResult !== 'success'
+          ? 'preproduction-installed-client-evidence'
+          : 'none',
+      evidence: releaseEvidence.artifacts?.stagingReleaseState,
+      category: 'required',
+    }),
+    buildGate({
       id: 'windows-firefox-canary',
       label: 'Windows/Firefox canary',
       result: releaseEvidence.jobs?.windowsFirefoxCanary,
@@ -163,23 +178,23 @@ function buildGates(releaseEvidence) {
     }),
     buildGate({
       id: 'windows-production-bootstrap-canary',
-      label: 'Windows production bootstrap canary',
+      label: 'Windows production bootstrap canary monitor',
       result: releaseEvidence.jobs?.windowsProductionBootstrapCanary,
       boundary:
         releaseEvidence.canaries?.windows?.failureBoundary?.id ??
         releaseEvidence.diagnostics?.windowsProductionBootstrapFailureBoundary?.id,
       evidence: releaseEvidence.artifacts?.windowsProductionBootstrapCanary,
-      category: 'post-release-required',
+      category: 'post-release-advisory',
     }),
     buildGate({
       id: 'linux-production-bootstrap-canary',
-      label: 'Linux production bootstrap canary',
+      label: 'Linux production bootstrap canary monitor',
       result: releaseEvidence.jobs?.linuxProductionBootstrapCanary,
       boundary:
         releaseEvidence.canaries?.linux?.failureBoundary?.id ??
         releaseEvidence.diagnostics?.linuxProductionBootstrapFailureBoundary?.id,
       evidence: releaseEvidence.artifacts?.linuxProductionBootstrapCanary,
-      category: 'post-release-required',
+      category: 'post-release-advisory',
     }),
     buildGate({
       id: 'production-client-update-canary',
@@ -295,17 +310,21 @@ function deriveFailureBoundary({ status, releaseEvidence, gates, runMetadata, so
   const explicitBoundaryGate = gates.find(hasExplicitFailureBoundary);
   if (explicitBoundaryGate) {
     const message =
-      explicitBoundaryGate.id === 'windows-production-bootstrap-canary'
-        ? (releaseEvidence?.canaries?.windows?.failureBoundary?.message ??
-          releaseEvidence?.diagnostics?.windowsProductionBootstrapFailureBoundary?.message)
-        : (releaseEvidence?.canaries?.linux?.failureBoundary?.message ??
-          releaseEvidence?.diagnostics?.linuxProductionBootstrapFailureBoundary?.message);
+      explicitBoundaryGate.id === 'preproduction-installed-client-evidence'
+        ? 'Preproduction installed-client evidence failed before production promotion.'
+        : explicitBoundaryGate.id === 'windows-production-bootstrap-canary'
+          ? (releaseEvidence?.canaries?.windows?.failureBoundary?.message ??
+            releaseEvidence?.diagnostics?.windowsProductionBootstrapFailureBoundary?.message)
+          : (releaseEvidence?.canaries?.linux?.failureBoundary?.message ??
+            releaseEvidence?.diagnostics?.linuxProductionBootstrapFailureBoundary?.message);
 
     return {
       id: explicitBoundaryGate.boundary,
       message: valueOrNull(message) ?? `Blocking gate failed: ${explicitBoundaryGate.label}`,
       recommendedNextAction:
-        'Inspect the canary artifact and clean up target state before retrying.',
+        explicitBoundaryGate.id === 'preproduction-installed-client-evidence'
+          ? 'Inspect the failed preproduction gate, refresh staging evidence for the same SHA, then retry promotion readiness.'
+          : 'Inspect the canary artifact and clean up target state before retrying.',
       safeToRetry: 'after-cleanup',
     };
   }

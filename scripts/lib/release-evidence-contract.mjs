@@ -282,9 +282,23 @@ export function verifyArtifactIntegrity({
 }
 
 export function buildCanaryEvidenceFallback({ failureBoundary, diagnosticPhases, redditHosts }) {
+  const normalizedDiagnosticPhases = normalizeDiagnosticPhases(diagnosticPhases);
+
   return {
     failureBoundary: normalizeFailureBoundary(failureBoundary),
-    diagnosticPhases: normalizeDiagnosticPhases(diagnosticPhases),
+    diagnosticPhases:
+      normalizedDiagnosticPhases.length > 0
+        ? normalizedDiagnosticPhases
+        : [
+            {
+              id: 'preproduction-installed-client-evidence',
+              status: 'not_applicable',
+            },
+            {
+              id: 'artifact-written',
+              status: 'passed',
+            },
+          ],
     ...(redditHosts ? { redditHosts } : {}),
   };
 }

@@ -184,10 +184,18 @@ function loadReleaseEvidenceFromCwd() {
 }
 
 function selectArtifactRunId(preferredRunId, deployRunId) {
-  return preferredRunId ?? deployRunId;
+  return preferredRunId ?? null;
 }
 
 function resolveArtifactEvidence({ repo, runId, artifactName, outputDir }) {
+  if (!runId) {
+    return {
+      listed: false,
+      artifactDir: null,
+      downloadError: false,
+    };
+  }
+
   const listedArtifacts = listRunArtifacts({ repo, runId });
   const listed = listedArtifacts.some((artifact) => artifact?.name === artifactName);
   if (!listed) {

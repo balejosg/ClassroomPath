@@ -100,6 +100,14 @@ export function verifyWindowsAjaxArtifact({ artifactPath, expectedHosts = EXPECT
   };
 }
 
+function linuxBootstrapEvidencePassed(stagingVerification) {
+  const result = stagingVerification?.STAGING_LINUX_BOOTSTRAP_RESULT;
+  const boundary = stagingVerification?.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID;
+  return (
+    result === 'success' || (result === 'skipped-lan-staging' && boundary === 'skipped-lan-staging')
+  );
+}
+
 export function classifyPrepromotionRequirement({ stagingVerification, artifactPath }) {
   const highRisk = stagingVerification?.STAGING_WINDOWS_FIREFOX_HIGH_RISK;
 
@@ -130,5 +138,32 @@ export function classifyPrepromotionRequirement({ stagingVerification, artifactP
     };
   }
 
-  return verifyWindowsAjaxArtifact({ artifactPath });
+  const failures = [];
+  for (const fieldName of ['STAGING_WINDOWS_BOOTSTRAP_RESULT', 'STAGING_FIREFOX_POLICY_RESULT']) {
+    if (stagingVerification?.[fieldName] !== 'success') {
+      failures.push(`${fieldName}=${stagingVerification?.[fieldName] ?? 'unset'}`);
+    }
+  }
+
+  if (!linuxBootstrapEvidencePassed(stagingVerification)) {
+    failures.push(
+      `STAGING_LINUX_BOOTSTRAP_RESULT=${stagingVerification?.STAGING_LINUX_BOOTSTRAP_RESULT ?? 'unset'}; STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=${stagingVerification?.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID ?? 'unset'}`
+    );
+  }
+
+  if (failures.length > 0) {
+    return {
+      state: 'failed',
+      reason: `Preproduction runner evidence is missing or failed: ${failures.join(', ')}.`,
+      artifactPath,
+      missingHosts: [],
+    };
+  }
+
+  return {
+    state: 'passed',
+    reason: 'Preproduction runner evidence passed for required staging lanes.',
+    artifactPath,
+    missingHosts: [],
+  };
 }

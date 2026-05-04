@@ -65,6 +65,9 @@ export const RELEASE_STATE_SNAPSHOT_DEFINITIONS = {
     'STAGING_LINUX_BOOTSTRAP_RUN_ID',
     'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID',
     'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE',
+    'STAGING_WINDOWS_SELF_UPDATE_RESULT',
+    'STAGING_LINUX_SELF_UPDATE_RESULT',
+    'STAGING_PREPROMOTION_REHEARSAL_RESULT',
   ],
   'staging-verification-run': [
     'SMOKE_TARGET_URL',
@@ -91,6 +94,9 @@ export const RELEASE_STATE_SNAPSHOT_DEFINITIONS = {
     'STAGING_LINUX_BOOTSTRAP_RUN_ID',
     'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID',
     'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE',
+    'STAGING_WINDOWS_SELF_UPDATE_RESULT',
+    'STAGING_LINUX_SELF_UPDATE_RESULT',
+    'STAGING_PREPROMOTION_REHEARSAL_RESULT',
   ],
 };
 
@@ -535,6 +541,10 @@ export function buildStagingReleaseEvidenceOutputs(snapshot) {
       snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID ?? 'unknown',
     staging_linux_bootstrap_failure_boundary_message:
       snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE ?? 'unknown',
+    staging_windows_self_update_result: snapshot.STAGING_WINDOWS_SELF_UPDATE_RESULT ?? 'unknown',
+    staging_linux_self_update_result: snapshot.STAGING_LINUX_SELF_UPDATE_RESULT ?? 'unknown',
+    staging_prepromotion_rehearsal_result:
+      snapshot.STAGING_PREPROMOTION_REHEARSAL_RESULT ?? 'unknown',
     staging_verified_at: snapshot.STAGING_VERIFIED_AT ?? 'unknown',
   };
 }

@@ -439,6 +439,9 @@ export function buildReleaseEvidence(env = process.env) {
       linuxBootstrapFailureBoundaryMessage: valueOrNull(
         env.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE
       ),
+      windowsSelfUpdateResult: valueOrNull(env.STAGING_WINDOWS_SELF_UPDATE_RESULT),
+      linuxSelfUpdateResult: valueOrNull(env.STAGING_LINUX_SELF_UPDATE_RESULT),
+      prepromotionRehearsalResult: valueOrNull(env.STAGING_PREPROMOTION_REHEARSAL_RESULT),
       verifiedAt: valueOrNull(env.STAGING_VERIFIED_AT),
     },
     immutableImages: {
@@ -564,6 +567,9 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     `- Linux bootstrap result: \`${evidence.stagingVerification.linuxBootstrapResult ?? 'n/a'}\``,
     `- Linux bootstrap run: \`${evidence.stagingVerification.linuxBootstrapRunId ?? 'n/a'}\``,
     `- Linux bootstrap boundary: \`${evidence.stagingVerification.linuxBootstrapFailureBoundaryId ?? 'n/a'}\``,
+    `- Windows self-update result: \`${evidence.stagingVerification.windowsSelfUpdateResult ?? 'n/a'}\``,
+    `- Linux self-update result: \`${evidence.stagingVerification.linuxSelfUpdateResult ?? 'n/a'}\``,
+    `- Preproduction installed-client evidence: \`${evidence.stagingVerification.prepromotionRehearsalResult ?? 'n/a'}\``,
     `- Verified at: \`${evidence.stagingVerification.verifiedAt ?? 'n/a'}\``,
     '',
     '### Canonical Targets',
@@ -597,7 +603,8 @@ export function renderReleaseEvidenceMarkdown(evidence) {
     '',
     '- Local pre-commit is a fast format/secrets guard; `verify:incremental`, `verify:commit`, and release gates provide progressively stronger developer-side evidence.',
     '- Staging records smoke + release-gate evidence for the exact promoted SHA and image digests.',
-    '- The Windows/Firefox canary is advisory evidence before deployment; the production client update canary records explicit post-release states on GitHub-hosted Windows and Linux runners.',
+    '- Preproduction installed-client evidence is the functional authority for client bootstrap, browser policy/AJAX, and self-update before production promotion.',
+    '- The production client update canary is scheduled/manual post-release monitoring and is not part of the automatic production release path.',
     '- GitHub Actions reuses that staging evidence instead of rerunning the same gate during production promotion.',
     '- Canonical public URLs come from `config/deploy-targets.json`.',
     '',
