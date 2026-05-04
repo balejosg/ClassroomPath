@@ -199,7 +199,7 @@ verify_production_container_platform_ready "$(node "$SCRIPT_DIR/deploy-targets.m
 "${SSH_CMD[@]}" "cat /opt/classroompath/release-state/current-images.env" > "$current_state_file"
 "${SSH_CMD[@]}" "cat /opt/classroompath/release-state/staging-verification.env" > "$verification_state_file"
 
-node "$SCRIPT_DIR/prepromotion-runner-rehearsal.mjs" plan \
+node "$SCRIPT_DIR/prepromotion-runner-rehearsal.mjs" verify \
   --staging-verification "$verification_state_file" \
   --changed-files "$openpath_changed_files_file" \
   --target-sha "$TARGET_SHA"
