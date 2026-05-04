@@ -17,7 +17,7 @@ Source files:
 
 Production is deployed on the Oracle host behind `https://classroompath.eu`.
 
-This is the canonical promotion path. Do not replace it with ad-hoc SSH deploys.
+This is the canonical deployment path. Do not replace it with ad-hoc SSH deploys.
 
 ## Canonical Facts
 
@@ -27,6 +27,7 @@ This is the canonical promotion path. Do not replace it with ad-hoc SSH deploys.
 - upstream config passthrough: `https://classroompath.eu/api/config`
 - trigger: git tag `v*` only
 - workflow: `.github/workflows/deploy.yml`
+- manual promotion button: `Promote Current Staging Candidate`
 - production app path: `/opt/classroompath/app`
 - production compose dir: `/opt/classroompath/app/docker`
 - production env file: `/opt/classroompath/app/config/.env`
@@ -38,8 +39,10 @@ Machine-readable public targets: [`config/deploy-targets.json`](../../config/dep
 ## Rules
 
 - do not deploy production from a normal local shell flow
-- do not use `workflow_dispatch` as the canonical release path
-- staging must be validated first from a developer machine with `npm run deploy:staging`
+- `workflow_dispatch` may create the production tag only through `Promote Current Staging Candidate`
+- the production deployment itself remains tag-only through `.github/workflows/deploy.yml`
+- staging must be validated first by `npm run deploy:staging` or by the `Nightly Staging Candidate`
+  workflow
 - Production server images support linux/arm64 because the production host remains ARM64.
 - ARM64 client artifacts are not required for the Windows/Linux endpoint clients.
 - before changing `DEPLOY_HOST`, validate the candidate host with `npm run verify:production-host -- <candidate-host>`
@@ -75,6 +78,32 @@ production tag until both `npm run verify:production-host -- <candidate-host>` a
 
 ## Promotion Steps
 
+### Automatic Nightly Path
+
+1. Let the `Nightly Staging Candidate` workflow stage the current `main` release-candidate.
+
+2. Perform any manual QA against the staging URL as it exists now.
+
+3. Run the `Promote Current Staging Candidate` workflow.
+
+The manual workflow reads `/opt/classroompath/release-state/current-images.env` and
+`/opt/classroompath/release-state/staging-verification.env` from staging, resolves the
+release-candidate manifest for the live `APP_SHA`, reuses `verify-production-promotion-ready.sh`,
+creates the next patch tag, and pushes it. `Deploy` then performs the production rollout from that
+tag.
+
+Latest-only invariant:
+
+- `current-images.env.APP_SHA` must equal `staging-verification.env.STAGING_VERIFIED_APP_SHA`
+- `STAGING_VERIFICATION_STATE` must be `success`
+- `IMAGE_SOURCE` and `STAGING_VERIFIED_IMAGE_SOURCE` must be `release-candidate`
+- the release-candidate manifest for the current staging SHA must still exist
+
+If a later nightly overwrote staging, the previous candidate is no longer promotable and the manual
+workflow fails before creating a tag.
+
+### Local Operator Path
+
 1. Land the desired release commit on `main`.
 
 ```bash
@@ -105,6 +134,12 @@ Deploy workflow can validate the same evidence even when the runner cannot
 reach staging over SSH. This is a fallback for runner connectivity, not a bypass:
 the workflow still compares the embedded evidence against the approved release
 candidate manifest and the promoted commit SHA.
+
+To use the same latest-only behavior from a local shell, run:
+
+```bash
+npm run promote:current-staging
+```
 
 5. Monitor the workflow and inspect the release evidence.
 

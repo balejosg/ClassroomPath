@@ -14,7 +14,8 @@ Source files:
 - `scripts/persist-staging-verification-remote.sh`
 - `config/deploy-targets.json`
 
-Staging deploys are executed locally via SSH and always deploy `origin/main`.
+Staging deploys are executed locally or by the `Nightly Staging Candidate` workflow via SSH and
+always deploy `origin/main`.
 
 Normal mode uses release-candidate images and their matching migrations image. `STAGING_IMAGE_MODE=source-build`
 is an explicit recovery/debug exception and should not become the default path.
@@ -48,6 +49,25 @@ git push origin main
 npm run deploy:staging
 ```
 
+## Nightly Staging Candidate
+
+The scheduled `Nightly Staging Candidate` workflow runs on the LAN-reachable self-hosted Linux
+runner. It checks out `main`, waits for the matching `release-candidate-images-<sha>` manifest, and
+runs `npm run deploy:staging:assume-yes`.
+
+Staging is latest-only: the only promotable candidate is the release currently running on staging.
+Older nightly runs are implicit history. Once a later nightly deploys staging, the previous staging
+candidate becomes superseded and cannot be promoted from historical artifacts.
+
+Nightly states:
+
+- `failed`: staging was not updated successfully
+- `staged`: staging now runs this candidate and its verification evidence is current
+- `superseded-by-next-nightly`: a later staging deploy replaced this candidate
+- `promoted`: the current staging candidate was promoted by creating a production tag
+
+Manual QA must always inspect what the staging URL shows now, not an older workflow artifact.
+
 ## What The Script Does
 
 1. Loads `.env.local`
@@ -73,8 +93,9 @@ previous release state. This does not imply automatic database rollback.
 
 ## Promotion Gate
 
-`npm run deploy:staging` already runs staging verification and records reusable release-gate
-evidence. Production promotion should consume that evidence instead of rebuilding the same proof.
+`npm run deploy:staging` and the nightly workflow already run staging verification and record
+reusable release-gate evidence. Production promotion should consume the live staging evidence
+instead of rebuilding the same proof.
 
 Optional diagnostic rerun without redeploying:
 

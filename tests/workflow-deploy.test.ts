@@ -39,6 +39,40 @@ function normalizeNeeds(needs: WorkflowJob['needs']): string[] {
 }
 
 describe('Deploy workflow contracts', () => {
+  test('nightly staging candidate workflow deploys current main without production side effects', () => {
+    const workflow = readWorkflow('.github/workflows/nightly-staging-candidate.yml');
+    const workflowText = readText('.github/workflows/nightly-staging-candidate.yml');
+    const job = findWorkflowJob(workflow, 'deploy-current-main-to-staging');
+
+    assert.ok(workflow.on?.schedule?.[0]?.cron);
+    assert.deepEqual(workflow.on?.workflow_dispatch, {});
+    assert.deepEqual(job['runs-on'], ['self-hosted', 'Linux', 'X64', 'proxmox', 'classroompath']);
+    assert.equal(workflow.permissions?.contents, 'read');
+    assert.ok(workflowText.includes('ref: main'));
+    assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-manifest'));
+    assert.ok(workflowText.includes('npm run deploy:staging:assume-yes'));
+    assert.ok(workflowText.includes('release-candidate-images.env'));
+    assert.ok(workflowText.includes('GITHUB_STEP_SUMMARY'));
+    assert.ok(!workflowText.includes('git tag'));
+    assert.ok(!workflowText.includes('promote:production'));
+  });
+
+  test('manual current staging promotion workflow creates a tag and leaves deploy to deploy.yml', () => {
+    const workflow = readWorkflow('.github/workflows/promote-current-staging-candidate.yml');
+    const workflowText = readText('.github/workflows/promote-current-staging-candidate.yml');
+    const job = findWorkflowJob(workflow, 'tag-current-staging-candidate');
+
+    assert.deepEqual(workflow.on?.workflow_dispatch, {});
+    assert.deepEqual(job['runs-on'], ['self-hosted', 'Linux', 'X64', 'proxmox', 'classroompath']);
+    assert.equal(workflow.permissions?.contents, 'write');
+    assert.ok(workflowText.includes('scripts/promote-current-staging-candidate.sh'));
+    assert.ok(workflowText.includes('STAGING_SSH_KEY'));
+    assert.ok(workflowText.includes('DEPLOY_SSH_KEY'));
+    assert.ok(!workflowText.includes('docker build'));
+    assert.ok(!workflowText.includes('npm run deploy'));
+    assert.ok(!workflowText.includes('deploy-production-remote.sh'));
+  });
+
   test('deploy and smoke workflows reuse shared transport, verifier, and concurrency helpers', () => {
     const deployWorkflow = readWorkflow('.github/workflows/deploy.yml');
     const deployWorkflowText = readText('.github/workflows/deploy.yml');

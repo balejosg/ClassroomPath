@@ -1,0 +1,65 @@
+name: Promote Current Staging Candidate
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+  contents: write
+  packages: read
+
+concurrency:
+  group: promote-current-staging-candidate
+  cancel-in-progress: false
+
+jobs:
+  tag-current-staging-candidate:
+    name: Tag current staging candidate
+    runs-on: [self-hosted, Linux, X64, proxmox, classroompath]
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Configure git identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Prepare SSH keys
+        shell: bash
+        env:
+          STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_SSH_KEY }}
+          DEPLOY_SSH_KEY_SECRET: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_SSH_KEY_SECRET"
+          test -n "$DEPLOY_SSH_KEY_SECRET"
+          install -m 700 -d "$RUNNER_TEMP/classroompath-ssh"
+          printf '%s\n' "$STAGING_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/staging"
+          printf '%s\n' "$DEPLOY_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/production"
+          chmod 600 "$RUNNER_TEMP/classroompath-ssh/staging" "$RUNNER_TEMP/classroompath-ssh/production"
+          echo "STAGING_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/staging" >> "$GITHUB_ENV"
+          echo "DEPLOY_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/production" >> "$GITHUB_ENV"
+
+      - name: Promote current staging candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash scripts/promote-current-staging-candidate.sh

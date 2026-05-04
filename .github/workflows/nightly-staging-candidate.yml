@@ -1,0 +1,94 @@
+name: Nightly Staging Candidate
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+
+concurrency:
+  group: nightly-staging-candidate
+  cancel-in-progress: false
+
+jobs:
+  deploy-current-main-to-staging:
+    name: Deploy current main to staging
+    runs-on: [self-hosted, Linux, X64, proxmox, classroompath]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Prepare staging SSH key
+        shell: bash
+        env:
+          STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_SSH_KEY_SECRET"
+          install -m 700 -d "$RUNNER_TEMP/classroompath-ssh"
+          printf '%s\n' "$STAGING_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/staging"
+          chmod 600 "$RUNNER_TEMP/classroompath-ssh/staging"
+          echo "STAGING_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/staging" >> "$GITHUB_ENV"
+
+      - name: Resolve release-candidate manifest
+        id: release-candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          target_sha="$(git rev-parse HEAD)"
+          node scripts/wait-for-release-candidate.mjs resolve-manifest \
+            --sha "$target_sha" \
+            --repo "${{ github.repository }}" \
+            --timeout-seconds 3600 \
+            --interval-seconds 15 \
+            --output-file release-candidate-images.env >> "$GITHUB_OUTPUT"
+          echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy staging
+        id: deploy-staging
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STAGING_GHCR_USERNAME: ${{ github.actor }}
+          STAGING_GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          npm run deploy:staging:assume-yes
+          status="$?"
+          set -e
+
+          staging_url="$(node scripts/deploy-targets.mjs get staging publicUrl)"
+          {
+            echo "## Nightly Staging Candidate"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| SHA | \`${{ steps.release-candidate.outputs.sha }}\` |"
+            echo "| Release-candidate run | \`${{ steps.release-candidate.outputs.run_id }}\` |"
+            echo "| Staging URL | $staging_url |"
+            if [ "$status" -eq 0 ]; then
+              echo "| State | success |"
+            else
+              echo "| State | failed |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$status"

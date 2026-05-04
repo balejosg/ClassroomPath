@@ -535,6 +535,35 @@ describe('Deployment staging and promotion contracts', () => {
     }
   });
 
+  test('latest-only promotion helper tags only the live verified staging SHA', () => {
+    const helper = readFileSync(
+      resolve(projectRoot, 'scripts/promote-current-staging-candidate.sh'),
+      'utf-8'
+    );
+    const packageJson = readFileSync(resolve(projectRoot, 'package.json'), 'utf-8');
+
+    assert.ok(packageJson.includes('"promote:current-staging"'));
+    assert.ok(helper.includes('cat /opt/classroompath/release-state/current-images.env'));
+    assert.ok(helper.includes('cat /opt/classroompath/release-state/staging-verification.env'));
+    assert.ok(helper.includes('target_sha="$(read_env_value "$current_state_file" APP_SHA)"'));
+    assert.ok(helper.includes('if [ "$target_sha" != "$verified_sha" ]; then'));
+    assert.ok(helper.includes('STAGING_VERIFICATION_STATE=${verification_state:-unset}'));
+    assert.ok(helper.includes('IMAGE_SOURCE=${current_image_source:-unset}'));
+    assert.ok(helper.includes('STAGING_VERIFIED_IMAGE_SOURCE=${verified_image_source:-unset}'));
+    assert.ok(
+      helper.includes('node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest') &&
+        helper.includes('--sha "$target_sha"')
+    );
+    assert.ok(
+      helper.includes(
+        'TARGET_SHA="$target_sha" PROMOTION_EVIDENCE_DIR="$promotion_evidence_dir"'
+      ) && helper.includes('bash "$SCRIPT_DIR/verify-production-promotion-ready.sh"')
+    );
+    assert.ok(helper.includes('promotion-evidence-cli.mjs'));
+    assert.ok(helper.includes('git tag -a "$next_tag" "$target_sha" -F "$tag_message_file"'));
+    assert.ok(helper.includes('git push origin "$next_tag"'));
+  });
+
   test('GitHub token helper falls back to gh auth token when env tokens are absent', () => {
     const tempDir = mkdtempSync(resolve(tmpdir(), 'classroompath-gh-token-'));
     const fakeBinDir = resolve(tempDir, 'bin');
