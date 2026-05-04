@@ -125,8 +125,10 @@ jobs:
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
-          WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '0'
-          WEB_EXT_SIGN_RECOVERY_TIMEOUT_SECONDS: '14400'
+          WEB_EXT_SIGN_TOTAL_TIMEOUT_SECONDS: '1800'
+          WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '1200'
+          WEB_EXT_SIGN_PROCESS_TIMEOUT_BUFFER_SECONDS: '120'
+          WEB_EXT_SIGN_RECOVERY_TIMEOUT_SECONDS: '1800'
         run: |
           npm run sign:firefox-release --workspace=@openpath/firefox-extension -- \
             --version "$OPENPATH_FIREFOX_RELEASE_VERSION"
