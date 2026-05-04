@@ -713,10 +713,13 @@ describe('runner diagnostic wrapper', () => {
   test('direct Windows AJAX diagnostic pins DNS before downloading enrollment scripts', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
 
+    assert.match(script, /import \{ isIP \} from 'node:net'/);
     assert.match(script, /Set-DnsClientServerAddress/);
     assert.match(script, /1\.1\.1\.1/);
     assert.match(script, /8\.8\.8\.8/);
+    assert.match(script, /isIP\(hostname\) === 0/);
     assert.match(script, /Resolve-DnsName/);
+    assert.match(script, /Skipping DNS lookup for literal IP target/);
   });
 
   test('direct Windows AJAX diagnostic refreshes integrity after overlaying local OpenPath files', () => {

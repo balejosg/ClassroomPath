@@ -2,6 +2,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -404,13 +405,17 @@ if (-not (Test-Path -LiteralPath $path)) { exit 0 }
 
 function buildDnsBootstrapScript(baseUrl) {
   const hostname = new URL(baseUrl).hostname;
+  const dnsProbe =
+    isIP(hostname) === 0
+      ? `Resolve-DnsName -Name ${psSingleQuote(hostname)} -ErrorAction Stop | Out-Null`
+      : `Write-Host ${psSingleQuote(`Skipping DNS lookup for literal IP target ${hostname}`)}`;
   return `
 $dnsServers = @('1.1.1.1', '8.8.8.8')
 $networkAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' })
 foreach ($adapter in $networkAdapters) {
   Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
 }
-Resolve-DnsName -Name ${psSingleQuote(hostname)} -ErrorAction Stop | Out-Null
+${dnsProbe}
 `;
 }
 
