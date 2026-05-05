@@ -24,6 +24,7 @@ export type WorkflowJob = {
     env?: Record<string, string>;
     with?: Record<string, unknown>;
     'continue-on-error'?: boolean;
+    shell?: string;
     'working-directory'?: string;
   }>;
 };
@@ -45,7 +46,17 @@ export type WorkflowDefinition = {
       types?: string[];
     };
     workflow_call?: Record<string, unknown>;
-    workflow_dispatch?: Record<string, never>;
+    workflow_dispatch?: {
+      inputs?: Record<
+        string,
+        {
+          description?: string;
+          required?: boolean;
+          default?: boolean | string;
+          type?: string;
+        }
+      >;
+    };
   };
   jobs?: Record<string, WorkflowJob>;
 };

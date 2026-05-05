@@ -19,6 +19,20 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      - name: Reset OpenPath submodule checkout
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          case "${GITHUB_WORKSPACE:-}" in
+            ""|"/")
+              echo "Refusing to reset OpenPath submodule checkout with unsafe GITHUB_WORKSPACE: ${GITHUB_WORKSPACE:-<empty>}" >&2
+              exit 1
+              ;;
+          esac
+          rm -rf "$GITHUB_WORKSPACE/upstream/openpath"
+          rm -rf "$GITHUB_WORKSPACE/.git/modules/upstream/openpath"
+
       - name: Checkout main
         uses: actions/checkout@v6
         with:

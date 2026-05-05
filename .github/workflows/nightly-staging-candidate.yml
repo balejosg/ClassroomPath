@@ -3,7 +3,13 @@ name: Nightly Staging Candidate
 on:
   schedule:
     - cron: '17 2 * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Resolve the staging candidate without deploying staging
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -21,6 +27,20 @@ jobs:
     timeout-minutes: 90
 
     steps:
+      - name: Reset OpenPath submodule checkout
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          case "${GITHUB_WORKSPACE:-}" in
+            ""|"/")
+              echo "Refusing to reset OpenPath submodule checkout with unsafe GITHUB_WORKSPACE: ${GITHUB_WORKSPACE:-<empty>}" >&2
+              exit 1
+              ;;
+          esac
+          rm -rf "$GITHUB_WORKSPACE/upstream/openpath"
+          rm -rf "$GITHUB_WORKSPACE/.git/modules/upstream/openpath"
+
       - name: Checkout main
         uses: actions/checkout@v6
         with:
@@ -35,6 +55,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Prepare staging SSH key
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
         shell: bash
         env:
           STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_SSH_KEY }}
@@ -62,7 +83,25 @@ jobs:
             --output-file release-candidate-images.env >> "$GITHUB_OUTPUT"
           echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
 
+      - name: Report dry run
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging_url="$(node scripts/deploy-targets.mjs get staging publicUrl)"
+          {
+            echo "## Nightly Staging Candidate Dry Run"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| SHA | \`${{ steps.release-candidate.outputs.sha }}\` |"
+            echo "| Release-candidate run | \`${{ steps.release-candidate.outputs.run_id }}\` |"
+            echo "| Staging URL | $staging_url |"
+            echo "| State | dry-run |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Deploy staging
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
         id: deploy-staging
         shell: bash
         env:

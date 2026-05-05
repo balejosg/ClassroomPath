@@ -19,6 +19,7 @@ type WorkflowJob = {
     env?: Record<string, unknown>;
     run?: string;
     with?: Record<string, unknown>;
+    shell?: string;
   }>;
 };
 
@@ -38,6 +39,68 @@ function normalizeNeeds(needs: WorkflowJob['needs']): string[] {
   return Array.isArray(needs) ? needs : [needs];
 }
 
+function assertOpenPathSubmoduleResetBeforeRecursiveCheckout(
+  workflowRelativePath: string,
+  jobName: string
+): void {
+  const workflow = readWorkflow(workflowRelativePath);
+  const job = findWorkflowJob(workflow, jobName);
+  const steps = job.steps ?? [];
+  const resetStepIndex = steps.findIndex(
+    (step) => step.name === 'Reset OpenPath submodule checkout'
+  );
+  const checkoutStepIndex = steps.findIndex((step) => step.name === 'Checkout main');
+
+  assert.ok(resetStepIndex >= 0, `${workflowRelativePath} must reset stale submodule state`);
+  assert.ok(checkoutStepIndex >= 0, `${workflowRelativePath} must checkout main`);
+  assert.ok(
+    resetStepIndex < checkoutStepIndex,
+    `${workflowRelativePath} must reset stale submodule state before checkout`
+  );
+
+  const resetStep = steps[resetStepIndex];
+  const checkoutStep = steps[checkoutStepIndex];
+  const resetScript = String(resetStep?.run ?? '');
+
+  assert.equal(resetStep?.shell, 'bash');
+  assert.equal(resetStep?.['working-directory'], '${{ runner.temp }}');
+  assert.match(resetScript, /GITHUB_WORKSPACE:-/);
+  assert.match(resetScript, /""\|"\/"/);
+  assert.match(resetScript, /\$GITHUB_WORKSPACE\/upstream\/openpath/);
+  assert.match(resetScript, /\$GITHUB_WORKSPACE\/\.git\/modules\/upstream\/openpath/);
+  assert.equal(checkoutStep?.uses, 'actions/checkout@v6');
+  assert.equal(checkoutStep?.with?.submodules, 'recursive');
+}
+
+function assertNightlyDryRunContract(workflow: WorkflowDefinition, workflowText: string): void {
+  const job = findWorkflowJob(workflow, 'deploy-current-main-to-staging');
+  const dryRunInput = workflow.on?.workflow_dispatch?.inputs?.dry_run;
+  const prepareSshStep = findWorkflowStepByName(job, 'Prepare staging SSH key');
+  const dryRunStep = findWorkflowStepByName(job, 'Report dry run');
+  const deployStep = findWorkflowStepByName(job, 'Deploy staging');
+
+  assert.equal(dryRunInput?.type, 'boolean');
+  assert.equal(dryRunInput?.default, false);
+  assert.equal(dryRunInput?.required, false);
+  assert.equal(
+    prepareSshStep.if,
+    "${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}"
+  );
+  assert.equal(
+    deployStep.if,
+    "${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}"
+  );
+  assert.equal(
+    dryRunStep.if,
+    "${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}"
+  );
+  assert.equal(dryRunStep.shell, 'bash');
+  assert.match(String(dryRunStep.run ?? ''), /Nightly Staging Candidate Dry Run/);
+  assert.match(String(dryRunStep.run ?? ''), /State \| dry-run/);
+  assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-manifest'));
+  assert.ok(workflowText.includes('npm run deploy:staging:assume-yes'));
+}
+
 describe('Deploy workflow contracts', () => {
   test('nightly staging candidate workflow deploys current main without production side effects', () => {
     const workflow = readWorkflow('.github/workflows/nightly-staging-candidate.yml');
@@ -45,7 +108,7 @@ describe('Deploy workflow contracts', () => {
     const job = findWorkflowJob(workflow, 'deploy-current-main-to-staging');
 
     assert.ok(workflow.on?.schedule?.[0]?.cron);
-    assert.deepEqual(workflow.on?.workflow_dispatch, {});
+    assert.ok(workflow.on?.workflow_dispatch?.inputs?.dry_run);
     assert.deepEqual(job['runs-on'], ['self-hosted', 'Linux', 'X64', 'proxmox', 'classroompath']);
     assert.equal(workflow.permissions?.contents, 'read');
     assert.ok(workflowText.includes('ref: main'));
@@ -55,6 +118,11 @@ describe('Deploy workflow contracts', () => {
     assert.ok(workflowText.includes('GITHUB_STEP_SUMMARY'));
     assert.ok(!workflowText.includes('git tag'));
     assert.ok(!workflowText.includes('promote:production'));
+    assertOpenPathSubmoduleResetBeforeRecursiveCheckout(
+      '.github/workflows/nightly-staging-candidate.yml',
+      'deploy-current-main-to-staging'
+    );
+    assertNightlyDryRunContract(workflow, workflowText);
   });
 
   test('manual current staging promotion workflow creates a tag and leaves deploy to deploy.yml', () => {
@@ -71,6 +139,10 @@ describe('Deploy workflow contracts', () => {
     assert.ok(!workflowText.includes('docker build'));
     assert.ok(!workflowText.includes('npm run deploy'));
     assert.ok(!workflowText.includes('deploy-production-remote.sh'));
+    assertOpenPathSubmoduleResetBeforeRecursiveCheckout(
+      '.github/workflows/promote-current-staging-candidate.yml',
+      'tag-current-staging-candidate'
+    );
   });
 
   test('deploy and smoke workflows reuse shared transport, verifier, and concurrency helpers', () => {
