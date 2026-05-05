@@ -126,7 +126,7 @@ function assertNightlyStagingCandidateGate(
   assert.equal(prepareSshStep.shell, 'bash');
   assert.match(String(prepareSshStep.run ?? ''), /STAGING_SSH_KEY=/);
   assert.match(String(prepareSshStep.run ?? ''), /DEPLOY_SSH_KEY=/);
-  assert.equal(prepareSshStep.env?.STAGING_SSH_KEY_SECRET, '${{ secrets.STAGING_SSH_KEY }}');
+  assert.equal(prepareSshStep.env?.STAGING_SSH_KEY_SECRET, '${{ secrets.STAGING_DEPLOY_SSH_KEY }}');
   assert.equal(prepareSshStep.env?.DEPLOY_SSH_KEY_SECRET, '${{ secrets.DEPLOY_SSH_KEY }}');
   assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-manifest'));
   assert.match(String(deployStep.run ?? ''), /npm run deploy:staging:assume-yes/);
