@@ -74,6 +74,10 @@ void describe('openpath-proxy-policy', () => {
       rewriteOpenPathProxyUrl('/api/agent/windows/file?path=agents/windows/OpenPath Setup.exe'),
       '/api/agent/windows/files/agents/windows/OpenPath%20Setup.exe'
     );
+    assert.strictEqual(
+      rewriteOpenPathProxyUrl('/api/agent/windows/bootstrap/bundle.zip'),
+      '/api/agent/windows/bootstrap/bundle.zip'
+    );
   });
 
   test('returns null for non-/trpc URLs', () => {
