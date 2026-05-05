@@ -160,5 +160,15 @@ if [ "$PUSH_MODE" = "--local-only" ]; then
   exit 0
 fi
 
-git push origin "$next_tag"
+if [ -n "${PROMOTION_TAG_PUSH_TOKEN:-}" ]; then
+  require_cmd base64
+  log_info "Pushing production tag $next_tag with promotion GitHub App token"
+  promotion_remote_path="$(git config --get remote.origin.url | sed -E 's#^git@github.com:##; s#^https://github.com/##; s#\.git$##')"
+  promotion_tag_push_header="$(printf 'x-access-token:%s' "$PROMOTION_TAG_PUSH_TOKEN" | base64 | tr -d '\n')"
+  git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $promotion_tag_push_header" \
+    push "https://github.com/$promotion_remote_path.git" \
+    "refs/tags/$next_tag"
+else
+  git push origin "$next_tag"
+fi
 log_success "Pushed production tag $next_tag to origin"

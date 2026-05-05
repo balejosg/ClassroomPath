@@ -41,6 +41,10 @@ describe('Deployment staging and promotion contracts', () => {
     projectRoot,
     '.github/workflows/promote-current-staging-candidate.yml'
   );
+  const promoteCurrentStagingPreflightPath = resolve(
+    projectRoot,
+    'scripts/preflight-current-staging-promotion.sh'
+  );
   const promotionReadyScriptPath = resolve(
     projectRoot,
     'scripts/verify-production-promotion-ready.sh'
@@ -556,9 +560,25 @@ describe('Deployment staging and promotion contracts', () => {
     );
     const packageJson = readFileSync(resolve(projectRoot, 'package.json'), 'utf-8');
     const workflow = readFileSync(promoteCurrentStagingWorkflowPath, 'utf-8');
+    const preflight = readFileSync(promoteCurrentStagingPreflightPath, 'utf-8');
 
     assert.ok(packageJson.includes('"promote:current-staging"'));
+    assert.ok(existsSync(promoteCurrentStagingPreflightPath));
+    assert.ok(workflow.includes('contents: read'));
+    assert.ok(workflow.includes('actions/create-github-app-token@v3'));
+    assert.ok(workflow.includes('client-id: ${{ vars.CLASSROOMPATH_PROMOTION_APP_CLIENT_ID }}'));
+    assert.ok(
+      workflow.includes('private-key: ${{ secrets.CLASSROOMPATH_PROMOTION_APP_PRIVATE_KEY }}')
+    );
+    assert.ok(workflow.includes('permission-contents: write'));
+    assert.ok(workflow.includes('permission-workflows: write'));
+    assert.ok(workflow.includes('persist-credentials: false'));
     assert.ok(workflow.includes('STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}'));
+    assert.ok(workflow.includes('DEPLOY_SSH_KEY_SECRET: ${{ secrets.DEPLOY_SSH_KEY }}'));
+    assert.ok(workflow.includes('bash scripts/preflight-current-staging-promotion.sh'));
+    assert.ok(
+      workflow.includes('PROMOTION_TAG_PUSH_TOKEN: ${{ steps.promotion-app-token.outputs.token }}')
+    );
     assert.ok(helper.includes('cat /opt/classroompath/release-state/current-images.env'));
     assert.ok(helper.includes('cat /opt/classroompath/release-state/staging-verification.env'));
     assert.ok(helper.includes('target_sha="$(read_env_value "$current_state_file" APP_SHA)"'));
@@ -577,7 +597,16 @@ describe('Deployment staging and promotion contracts', () => {
     );
     assert.ok(helper.includes('promotion-evidence-cli.mjs'));
     assert.ok(helper.includes('git tag -a "$next_tag" "$target_sha" -F "$tag_message_file"'));
+    assert.ok(helper.includes('PROMOTION_TAG_PUSH_TOKEN'));
+    assert.ok(helper.includes('"refs/tags/$next_tag"'));
     assert.ok(helper.includes('git push origin "$next_tag"'));
+    assert.ok(preflight.includes('cat /opt/classroompath/release-state/current-images.env'));
+    assert.ok(preflight.includes('cat /opt/classroompath/release-state/staging-verification.env'));
+    assert.ok(preflight.includes('"${PRODUCTION_SSH_CMD[@]}" "true"'));
+    assert.ok(preflight.includes('if [ "$target_sha" != "$verified_sha" ]; then'));
+    assert.ok(preflight.includes('STAGING_VERIFICATION_STATE=${verification_state:-unset}'));
+    assert.ok(preflight.includes('IMAGE_SOURCE=${current_image_source:-unset}'));
+    assert.ok(preflight.includes('STAGING_VERIFIED_IMAGE_SOURCE=${verified_image_source:-unset}'));
   });
 
   test('GitHub token helper falls back to gh auth token when env tokens are absent', () => {

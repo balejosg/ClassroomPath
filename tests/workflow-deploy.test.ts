@@ -183,10 +183,14 @@ describe('Deploy workflow contracts', () => {
 
     assert.deepEqual(workflow.on?.workflow_dispatch, {});
     assert.deepEqual(job['runs-on'], ['self-hosted', 'Linux', 'X64', 'proxmox', 'classroompath']);
-    assert.equal(workflow.permissions?.contents, 'write');
+    assert.equal(workflow.permissions?.contents, 'read');
     assert.ok(workflowText.includes('scripts/promote-current-staging-candidate.sh'));
+    assert.ok(workflowText.includes('actions/create-github-app-token@v3'));
+    assert.ok(workflowText.includes('permission-workflows: write'));
+    assert.ok(workflowText.includes('PROMOTION_TAG_PUSH_TOKEN'));
     assert.ok(workflowText.includes('STAGING_SSH_KEY'));
     assert.ok(workflowText.includes('DEPLOY_SSH_KEY'));
+    assert.ok(workflowText.includes('scripts/preflight-current-staging-promotion.sh'));
     assert.ok(!workflowText.includes('docker build'));
     assert.ok(!workflowText.includes('npm run deploy'));
     assert.ok(!workflowText.includes('deploy-production-remote.sh'));

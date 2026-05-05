@@ -5,7 +5,7 @@ on:
 
 permissions:
   actions: read
-  contents: write
+  contents: read
   packages: read
 
 concurrency:
@@ -39,9 +39,39 @@ jobs:
           ref: main
           fetch-depth: 0
           submodules: recursive
+          persist-credentials: false
+
+      - name: Create promotion GitHub App token
+        id: promotion-app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CLASSROOMPATH_PROMOTION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CLASSROOMPATH_PROMOTION_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-workflows: write
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
+
+      - name: Prepare SSH keys
+        shell: bash
+        env:
+          STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KEY_SECRET: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_SSH_KEY_SECRET"
+          test -n "$DEPLOY_SSH_KEY_SECRET"
+          install -m 700 -d "$RUNNER_TEMP/classroompath-ssh"
+          printf '%s\n' "$STAGING_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/staging"
+          printf '%s\n' "$DEPLOY_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/production"
+          chmod 600 "$RUNNER_TEMP/classroompath-ssh/staging" "$RUNNER_TEMP/classroompath-ssh/production"
+          echo "STAGING_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/staging" >> "$GITHUB_ENV"
+          echo "DEPLOY_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/production" >> "$GITHUB_ENV"
+
+      - name: Preflight current staging promotion
+        shell: bash
+        run: bash scripts/preflight-current-staging-promotion.sh
 
       - name: Ensure GitHub CLI
         shell: bash
@@ -87,27 +117,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Prepare SSH keys
-        shell: bash
-        env:
-          STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
-          DEPLOY_SSH_KEY_SECRET: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          test -n "$STAGING_SSH_KEY_SECRET"
-          test -n "$DEPLOY_SSH_KEY_SECRET"
-          install -m 700 -d "$RUNNER_TEMP/classroompath-ssh"
-          printf '%s\n' "$STAGING_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/staging"
-          printf '%s\n' "$DEPLOY_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/production"
-          chmod 600 "$RUNNER_TEMP/classroompath-ssh/staging" "$RUNNER_TEMP/classroompath-ssh/production"
-          echo "STAGING_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/staging" >> "$GITHUB_ENV"
-          echo "DEPLOY_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/production" >> "$GITHUB_ENV"
-
       - name: Promote current staging candidate
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTION_TAG_PUSH_TOKEN: ${{ steps.promotion-app-token.outputs.token }}
         run: |
           set -euo pipefail
           bash scripts/promote-current-staging-candidate.sh
