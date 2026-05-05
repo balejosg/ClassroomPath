@@ -5,6 +5,7 @@ import {
   classifyPackageJsonChange,
   classifyOpenPathChangedPaths,
   classifyReleaseCandidateComponents,
+  isManifestOnlyReleaseCandidateChange,
   PACKAGE_JSON_CHANGE_KIND,
 } from '../scripts/lib/release-candidate-components.mjs';
 
@@ -46,21 +47,53 @@ describe('release candidate component classification', () => {
   });
 
   test('maps release-candidate image workflow plumbing changes to every server image family', () => {
-    assert.deepEqual(
-      classifyReleaseCandidateComponents({
-        changedFiles: [
-          '.github/workflows/reusable-release-candidate-image-family.yml',
-          '.github/actions/publish-release-candidate-manifest/action.yml',
-        ],
-      }),
-      {
-        gatewayChanged: true,
-        migrationsChanged: true,
-        openpathApiChanged: true,
-        spaChanged: true,
-        verifierChanged: true,
-      }
-    );
+    const flags = classifyReleaseCandidateComponents({
+      changedFiles: [
+        '.github/workflows/reusable-release-candidate-image-family.yml',
+        '.github/actions/publish-release-candidate-manifest/action.yml',
+      ],
+    });
+
+    assert.deepEqual(flags, {
+      gatewayChanged: true,
+      migrationsChanged: true,
+      openpathApiChanged: true,
+      spaChanged: true,
+      verifierChanged: true,
+    });
+    assert.equal(flags.openpathFirefoxAssetsChanged, false);
+  });
+
+  test('keeps release-candidate workflow detector-only changes from forcing Firefox signing', () => {
+    const flags = classifyReleaseCandidateComponents({
+      changedFiles: [
+        '.github/workflows/release-candidate-images.yml',
+        'tests/workflow-release-candidate.test.ts',
+      ],
+      openpathChangedFiles: [],
+    });
+
+    assert.equal(flags.gatewayChanged, true);
+    assert.equal(flags.migrationsChanged, true);
+    assert.equal(flags.openpathApiChanged, true);
+    assert.equal(flags.openpathFirefoxAssetsChanged, false);
+    assert.equal(flags.spaChanged, true);
+    assert.equal(flags.verifierChanged, true);
+    assert.equal(isManifestOnlyReleaseCandidateChange(flags), false);
+  });
+
+  test('preserves Firefox asset detection when release-candidate plumbing changes with OpenPath Firefox runtime', () => {
+    const flags = classifyReleaseCandidateComponents({
+      changedFiles: ['.github/workflows/release-candidate-images.yml', 'upstream/openpath'],
+      openpathChangedFiles: ['firefox-extension/src/background.ts'],
+    });
+
+    assert.equal(flags.gatewayChanged, true);
+    assert.equal(flags.migrationsChanged, true);
+    assert.equal(flags.openpathApiChanged, true);
+    assert.equal(flags.openpathFirefoxAssetsChanged, true);
+    assert.equal(flags.spaChanged, true);
+    assert.equal(flags.verifierChanged, true);
   });
 
   test('keeps manifest publish action changes out of image rebuilds', () => {

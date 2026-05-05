@@ -49,6 +49,14 @@ function markAllChanged(flags) {
   flags.verifierChanged = true;
 }
 
+function markReleaseCandidateServerImagesChanged(flags) {
+  flags.gatewayChanged = true;
+  flags.migrationsChanged = true;
+  flags.openpathApiChanged = true;
+  flags.spaChanged = true;
+  flags.verifierChanged = true;
+}
+
 function markClassroomPathRuntimeChanged(flags) {
   flags.gatewayChanged = true;
   flags.migrationsChanged = true;
@@ -289,8 +297,8 @@ export function classifyReleaseCandidateComponents({
         break;
       case file === 'scripts/detect-release-candidate-components.sh':
       case file === 'scripts/lib/release-candidate-components.mjs':
-        markAllChanged(flags);
-        return flags;
+        markReleaseCandidateServerImagesChanged(flags);
+        break;
       case /^scripts\//.test(file):
         markClassroomPathOpsChanged(flags);
         break;
@@ -299,8 +307,8 @@ export function classifyReleaseCandidateComponents({
       case /^\.github\/actions\/build-release-candidate-image\//.test(file):
       case file === '.github/workflows/release-candidate-images.yml':
       case file === '.github/workflows/reusable-release-candidate-image-family.yml':
-        markAllChanged(flags);
-        return flags;
+        markReleaseCandidateServerImagesChanged(flags);
+        break;
       case /^api\/drizzle\//.test(file):
       case file === 'api/drizzle.config.ts':
       case /^api\/src\/db\//.test(file):
