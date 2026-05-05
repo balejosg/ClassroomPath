@@ -72,6 +72,43 @@ function assertOpenPathSubmoduleResetBeforeRecursiveCheckout(
   assert.equal(checkoutStep?.with?.submodules, 'recursive');
 }
 
+function assertGitHubCliAvailableBeforeInstallAndResolve(
+  workflowRelativePath: string,
+  jobName: string,
+  resolveStepName: string
+): void {
+  const workflow = readWorkflow(workflowRelativePath);
+  const job = findWorkflowJob(workflow, jobName);
+  const steps = job.steps ?? [];
+  const setupNodeStepIndex = steps.findIndex((step) => step.name === 'Setup Node.js');
+  const ghStepIndex = steps.findIndex((step) => step.name === 'Ensure GitHub CLI');
+  const installStepIndex = steps.findIndex((step) => step.name === 'Install dependencies');
+  const resolveStepIndex = steps.findIndex((step) => step.name === resolveStepName);
+
+  assert.ok(setupNodeStepIndex >= 0, `${workflowRelativePath} must set up Node.js`);
+  assert.ok(ghStepIndex >= 0, `${workflowRelativePath} must ensure GitHub CLI exists`);
+  assert.ok(installStepIndex >= 0, `${workflowRelativePath} must install dependencies`);
+  assert.ok(resolveStepIndex >= 0, `${workflowRelativePath} must define ${resolveStepName}`);
+  assert.ok(
+    setupNodeStepIndex < ghStepIndex && ghStepIndex < installStepIndex,
+    `${workflowRelativePath} must provision GitHub CLI before dependency install`
+  );
+  assert.ok(
+    ghStepIndex < resolveStepIndex,
+    `${workflowRelativePath} must provision GitHub CLI before ${resolveStepName}`
+  );
+
+  const ghStep = steps[ghStepIndex];
+  const ghScript = String(ghStep?.run ?? '');
+
+  assert.equal(ghStep?.shell, 'bash');
+  assert.equal(ghStep?.env?.GH_CLI_VERSION, '2.83.0');
+  assert.match(ghScript, /command -v gh/);
+  assert.match(ghScript, /gh_\$\{GH_CLI_VERSION\}_linux_\$\{gh_arch\}\.tar\.gz/);
+  assert.match(ghScript, /GITHUB_PATH/);
+  assert.match(ghScript, /gh --version/);
+}
+
 function assertNightlyDryRunContract(workflow: WorkflowDefinition, workflowText: string): void {
   const job = findWorkflowJob(workflow, 'deploy-current-main-to-staging');
   const dryRunInput = workflow.on?.workflow_dispatch?.inputs?.dry_run;
@@ -122,6 +159,11 @@ describe('Deploy workflow contracts', () => {
       '.github/workflows/nightly-staging-candidate.yml',
       'deploy-current-main-to-staging'
     );
+    assertGitHubCliAvailableBeforeInstallAndResolve(
+      '.github/workflows/nightly-staging-candidate.yml',
+      'deploy-current-main-to-staging',
+      'Resolve release-candidate manifest'
+    );
     assertNightlyDryRunContract(workflow, workflowText);
   });
 
@@ -142,6 +184,11 @@ describe('Deploy workflow contracts', () => {
     assertOpenPathSubmoduleResetBeforeRecursiveCheckout(
       '.github/workflows/promote-current-staging-candidate.yml',
       'tag-current-staging-candidate'
+    );
+    assertGitHubCliAvailableBeforeInstallAndResolve(
+      '.github/workflows/promote-current-staging-candidate.yml',
+      'tag-current-staging-candidate',
+      'Promote current staging candidate'
     );
   });
 

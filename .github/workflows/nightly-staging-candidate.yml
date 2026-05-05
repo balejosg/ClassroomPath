@@ -51,6 +51,40 @@ jobs:
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
 
+      - name: Ensure GitHub CLI
+        shell: bash
+        env:
+          GH_CLI_VERSION: 2.83.0
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            gh --version
+            exit 0
+          fi
+
+          case "$(uname -m)" in
+            x86_64|amd64)
+              gh_arch="amd64"
+              ;;
+            aarch64|arm64)
+              gh_arch="arm64"
+              ;;
+            *)
+              echo "Unsupported GitHub CLI architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+
+          gh_dir="$RUNNER_TEMP/gh-cli"
+          rm -rf "$gh_dir"
+          mkdir -p "$gh_dir"
+          curl -fsSL \
+            "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${gh_arch}.tar.gz" \
+            -o "$gh_dir/gh.tar.gz"
+          tar -xzf "$gh_dir/gh.tar.gz" -C "$gh_dir" --strip-components=1
+          echo "$gh_dir/bin" >> "$GITHUB_PATH"
+          "$gh_dir/bin/gh" --version
+
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
