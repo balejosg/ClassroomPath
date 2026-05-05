@@ -498,6 +498,16 @@ describe('Deployment staging and promotion contracts', () => {
         stagingReleaseHelper.includes('--classroompath-sha "$REMOTE_SHA"'),
       'promotion-eligible staging should reject local dirt and mark the active release fence staged'
     );
+    assert.ok(
+      stagingReleaseHelper.includes(
+        'local requested_staging_deployment_mode="$effective_staging_deployment_mode"'
+      ) &&
+        stagingReleaseHelper.includes(
+          'if [ "$requested_staging_deployment_mode" = "debug" ]; then'
+        ) &&
+        stagingReleaseHelper.includes('STAGING_DEPLOYMENT_MODE="debug"'),
+      'debug staging should preserve the requested no-fence deployment mode after rendering release candidate plans'
+    );
     const tagScript = readFileSync(
       resolve(projectRoot, 'scripts/tag-production-release.sh'),
       'utf8'

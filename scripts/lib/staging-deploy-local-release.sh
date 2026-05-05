@@ -59,6 +59,8 @@ prepare_staging_local_release_context() {
         log_info "Remote: $REMOTE_SHA"
     fi
 
+    local requested_staging_deployment_mode="$effective_staging_deployment_mode"
+
     STAGING_IMAGE_SOURCE="$STAGING_IMAGE_MODE"
     STAGING_DEPLOYMENT_MODE=""
     STAGING_USE_RELEASE_CANDIDATE=0
@@ -101,6 +103,10 @@ prepare_staging_local_release_context() {
     set -a
     . "$STAGING_RELEASE_PLAN_ENV_FILE"
     set +a
+
+    if [ "$requested_staging_deployment_mode" = "debug" ]; then
+        STAGING_DEPLOYMENT_MODE="debug"
+    fi
 
     STAGING_DEPLOY_PAYLOAD_ENV_FILE="$(mktemp)"
     node "$SCRIPT_DIR/lib/deploy-payload.mjs" render-env \
