@@ -203,6 +203,9 @@ describe('Release candidate workflow contracts', () => {
       )?.env ?? {};
     const deriveStepNames =
       jobs['derive-release-image-refs']?.steps?.map((step) => step.name ?? '') ?? [];
+    const deriveFetchDiffBaseStep = jobs['derive-release-image-refs']?.steps?.find(
+      (step) => step.name === 'Fetch release candidate diff base'
+    );
     const deriveCheckout = jobs['derive-release-image-refs']?.steps?.find(
       (step) => step.name === 'Checkout'
     );
@@ -223,6 +226,22 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(waitForOpenPathAptPublishRun.includes('OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS'));
     assert.ok(!waitForOpenPathAptPublishRun.includes('for attempt in $(seq 1 60)'));
     assert.ok(!waitForOpenPathAptPublishRun.includes('sleep 10'));
+    assert.equal(deriveFetchDiffBaseStep?.shell, 'bash');
+    assert.equal(deriveFetchDiffBaseStep?.env?.BASE_SHA, '${{ github.event.before }}');
+    assert.equal(deriveFetchDiffBaseStep?.env?.HEAD_SHA, '${{ github.sha }}');
+    assert.ok(
+      String(deriveFetchDiffBaseStep?.run ?? '').includes(
+        'bash scripts/fetch-release-candidate-diff-base.sh "$BASE_SHA" "$HEAD_SHA"'
+      )
+    );
+    assert.ok(
+      deriveStepNames.indexOf('Checkout') <
+        deriveStepNames.indexOf('Fetch release candidate diff base')
+    );
+    assert.ok(
+      deriveStepNames.indexOf('Fetch release candidate diff base') <
+        deriveStepNames.indexOf('Verify OpenPath Linux agent APT installability')
+    );
     assert.ok(
       deriveStepNames.indexOf('Wait for OpenPath prerelease APT publish') <
         deriveStepNames.indexOf('Resolve OpenPath Linux agent version')
