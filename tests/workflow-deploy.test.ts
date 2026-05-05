@@ -109,33 +109,39 @@ function assertGitHubCliAvailableBeforeInstallAndResolve(
   assert.match(ghScript, /gh --version/);
 }
 
-function assertNightlyDryRunContract(workflow: WorkflowDefinition, workflowText: string): void {
+function assertNightlyStagingCandidateGate(
+  workflow: WorkflowDefinition,
+  workflowText: string
+): void {
   const job = findWorkflowJob(workflow, 'deploy-current-main-to-staging');
-  const dryRunInput = workflow.on?.workflow_dispatch?.inputs?.dry_run;
-  const prepareSshStep = findWorkflowStepByName(job, 'Prepare staging SSH key');
-  const dryRunStep = findWorkflowStepByName(job, 'Report dry run');
+  const workflowDispatchInputs = workflow.on?.workflow_dispatch?.inputs ?? {};
+  const prepareSshStep = findWorkflowStepByName(job, 'Prepare SSH keys');
   const deployStep = findWorkflowStepByName(job, 'Deploy staging');
+  const promotionReadyStep = findWorkflowStepByName(job, 'Verify production promotion readiness');
 
-  assert.equal(dryRunInput?.type, 'boolean');
-  assert.equal(dryRunInput?.default, false);
-  assert.equal(dryRunInput?.required, false);
-  assert.equal(
-    prepareSshStep.if,
-    "${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}"
-  );
-  assert.equal(
-    deployStep.if,
-    "${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}"
-  );
-  assert.equal(
-    dryRunStep.if,
-    "${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}"
-  );
-  assert.equal(dryRunStep.shell, 'bash');
-  assert.match(String(dryRunStep.run ?? ''), /Nightly Staging Candidate Dry Run/);
-  assert.match(String(dryRunStep.run ?? ''), /State \| dry-run/);
+  assert.ok(!('dry_run' in workflowDispatchInputs));
+  assert.equal(prepareSshStep.if, undefined);
+  assert.equal(deployStep.if, undefined);
+  assert.equal(promotionReadyStep.if, undefined);
+  assert.equal(prepareSshStep.shell, 'bash');
+  assert.match(String(prepareSshStep.run ?? ''), /STAGING_SSH_KEY=/);
+  assert.match(String(prepareSshStep.run ?? ''), /DEPLOY_SSH_KEY=/);
+  assert.equal(prepareSshStep.env?.STAGING_SSH_KEY_SECRET, '${{ secrets.STAGING_SSH_KEY }}');
+  assert.equal(prepareSshStep.env?.DEPLOY_SSH_KEY_SECRET, '${{ secrets.DEPLOY_SSH_KEY }}');
   assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-manifest'));
-  assert.ok(workflowText.includes('npm run deploy:staging:assume-yes'));
+  assert.match(String(deployStep.run ?? ''), /npm run deploy:staging:assume-yes/);
+  assert.match(String(promotionReadyStep.run ?? ''), /npm run verify:promotion-ready/);
+  assert.equal(promotionReadyStep.env?.GH_TOKEN, '${{ secrets.GITHUB_TOKEN }}');
+  assert.equal(promotionReadyStep.env?.GITHUB_TOKEN, '${{ secrets.GITHUB_TOKEN }}');
+  assert.match(String(promotionReadyStep.env?.PROMOTION_REPORT_JSON_PATH ?? ''), /runner\.temp/);
+  assert.match(String(promotionReadyStep.env?.PROMOTION_EVIDENCE_DIR ?? ''), /runner\.temp/);
+  assert.ok(
+    workflowText.indexOf('npm run deploy:staging:assume-yes') <
+      workflowText.indexOf('npm run verify:promotion-ready')
+  );
+  assert.ok(!workflowText.includes('Nightly Staging Candidate Dry Run'));
+  assert.ok(!workflowText.includes('State | dry-run'));
+  assert.ok(!workflowText.includes('inputs.dry_run'));
 }
 
 describe('Deploy workflow contracts', () => {
@@ -145,16 +151,19 @@ describe('Deploy workflow contracts', () => {
     const job = findWorkflowJob(workflow, 'deploy-current-main-to-staging');
 
     assert.ok(workflow.on?.schedule?.[0]?.cron);
-    assert.ok(workflow.on?.workflow_dispatch?.inputs?.dry_run);
+    assert.deepEqual(workflow.on?.workflow_dispatch, {});
     assert.deepEqual(job['runs-on'], ['self-hosted', 'Linux', 'X64', 'proxmox', 'classroompath']);
     assert.equal(workflow.permissions?.contents, 'read');
     assert.ok(workflowText.includes('ref: main'));
     assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-manifest'));
     assert.ok(workflowText.includes('npm run deploy:staging:assume-yes'));
+    assert.ok(workflowText.includes('npm run verify:promotion-ready'));
     assert.ok(workflowText.includes('release-candidate-images.env'));
     assert.ok(workflowText.includes('GITHUB_STEP_SUMMARY'));
     assert.ok(!workflowText.includes('git tag'));
     assert.ok(!workflowText.includes('promote:production'));
+    assert.ok(!workflowText.includes('deploy:production'));
+    assert.ok(!workflowText.includes('deploy-production-remote.sh'));
     assertOpenPathSubmoduleResetBeforeRecursiveCheckout(
       '.github/workflows/nightly-staging-candidate.yml',
       'deploy-current-main-to-staging'
@@ -164,7 +173,7 @@ describe('Deploy workflow contracts', () => {
       'deploy-current-main-to-staging',
       'Resolve release-candidate manifest'
     );
-    assertNightlyDryRunContract(workflow, workflowText);
+    assertNightlyStagingCandidateGate(workflow, workflowText);
   });
 
   test('manual current staging promotion workflow creates a tag and leaves deploy to deploy.yml', () => {

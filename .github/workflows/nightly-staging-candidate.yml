@@ -3,13 +3,7 @@ name: Nightly Staging Candidate
 on:
   schedule:
     - cron: '17 2 * * *'
-  workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Resolve the staging candidate without deploying staging
-        required: false
-        default: false
-        type: boolean
+  workflow_dispatch: {}
 
 permissions:
   actions: read
@@ -88,18 +82,21 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Prepare staging SSH key
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+      - name: Prepare SSH keys
         shell: bash
         env:
           STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_SSH_KEY }}
+          DEPLOY_SSH_KEY_SECRET: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
           test -n "$STAGING_SSH_KEY_SECRET"
+          test -n "$DEPLOY_SSH_KEY_SECRET"
           install -m 700 -d "$RUNNER_TEMP/classroompath-ssh"
           printf '%s\n' "$STAGING_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/staging"
-          chmod 600 "$RUNNER_TEMP/classroompath-ssh/staging"
+          printf '%s\n' "$DEPLOY_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/production"
+          chmod 600 "$RUNNER_TEMP/classroompath-ssh/staging" "$RUNNER_TEMP/classroompath-ssh/production"
           echo "STAGING_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/staging" >> "$GITHUB_ENV"
+          echo "DEPLOY_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/production" >> "$GITHUB_ENV"
 
       - name: Resolve release-candidate manifest
         id: release-candidate
@@ -117,25 +114,7 @@ jobs:
             --output-file release-candidate-images.env >> "$GITHUB_OUTPUT"
           echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Report dry run
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          staging_url="$(node scripts/deploy-targets.mjs get staging publicUrl)"
-          {
-            echo "## Nightly Staging Candidate Dry Run"
-            echo
-            echo "| Field | Value |"
-            echo "| --- | --- |"
-            echo "| SHA | \`${{ steps.release-candidate.outputs.sha }}\` |"
-            echo "| Release-candidate run | \`${{ steps.release-candidate.outputs.run_id }}\` |"
-            echo "| Staging URL | $staging_url |"
-            echo "| State | dry-run |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Deploy staging
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
         id: deploy-staging
         shell: bash
         env:
@@ -148,6 +127,40 @@ jobs:
           status="$?"
           set -e
 
+          if [ "$status" -ne 0 ]; then
+            staging_url="$(node scripts/deploy-targets.mjs get staging publicUrl)"
+            {
+              echo "## Nightly Staging Candidate"
+              echo
+              echo "| Field | Value |"
+              echo "| --- | --- |"
+              echo "| SHA | \`${{ steps.release-candidate.outputs.sha }}\` |"
+              echo "| Release-candidate run | \`${{ steps.release-candidate.outputs.run_id }}\` |"
+              echo "| Staging URL | $staging_url |"
+              echo "| Staging deploy state | failed |"
+              echo "| Promotion-ready preflight state | skipped |"
+              echo
+              echo "Staging deployment failed, so production promotion readiness was not checked."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit "$status"
+          fi
+
+      - name: Verify production promotion readiness
+        id: promotion-ready
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTION_REPORT_JSON_PATH: ${{ runner.temp }}/promotion-ready/report.json
+          PROMOTION_EVIDENCE_DIR: ${{ runner.temp }}/promotion-ready/evidence
+        run: |
+          mkdir -p "$(dirname "$PROMOTION_REPORT_JSON_PATH")" "$PROMOTION_EVIDENCE_DIR"
+
+          set +e
+          npm run verify:promotion-ready
+          status="$?"
+          set -e
+
           staging_url="$(node scripts/deploy-targets.mjs get staging publicUrl)"
           {
             echo "## Nightly Staging Candidate"
@@ -157,10 +170,15 @@ jobs:
             echo "| SHA | \`${{ steps.release-candidate.outputs.sha }}\` |"
             echo "| Release-candidate run | \`${{ steps.release-candidate.outputs.run_id }}\` |"
             echo "| Staging URL | $staging_url |"
+            echo "| Staging deploy state | success |"
             if [ "$status" -eq 0 ]; then
-              echo "| State | success |"
+              echo "| Promotion-ready preflight state | success |"
+              echo
+              echo "Staging is live and the current candidate passed production promotion-readiness preflight."
             else
-              echo "| State | failed |"
+              echo "| Promotion-ready preflight state | blocked |"
+              echo
+              echo "Staging deployment succeeded, but production promotion is blocked by the promotion-readiness preflight."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
