@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 
-import { validateFirefoxReleaseAssetCache } from '../scripts/resolve-firefox-release-assets-cache.mjs';
+import {
+  resolveFirefoxReleaseAssetCache,
+  validateFirefoxReleaseAssetCache,
+} from '../scripts/resolve-firefox-release-assets-cache.mjs';
 
 const tempDirectories: string[] = [];
 
@@ -81,5 +84,65 @@ describe('Firefox release asset cache validation', () => {
       () => validateFirefoxReleaseAssetCache({ artifactDir, expectedPayloadHash: 'payload-sha' }),
       /metadata must include extensionId and version/
     );
+  });
+
+  test('resolves from the fallback repository when the primary repository misses', () => {
+    const artifactDir = createTempDir('cp-firefox-assets-cache-');
+    const outputDir = createTempDir('cp-firefox-assets-output-');
+    const lookups: string[] = [];
+    const downloads: string[] = [];
+
+    writeValidFirefoxReleaseCache(artifactDir, 'payload-sha');
+
+    const result = resolveFirefoxReleaseAssetCache({
+      repo: 'balejosg/ClassroomPath',
+      fallbackRepo: 'balejosg/OpenPath',
+      artifactName: 'openpath-firefox-release-assets-payload-sha',
+      payloadHash: 'payload-sha',
+      outputDir,
+      findArtifact: ({ repo }: { repo: string }) => {
+        lookups.push(repo);
+        return repo === 'balejosg/OpenPath' ? { id: 123 } : null;
+      },
+      downloadArtifact: ({ repo }: { repo: string }) => {
+        downloads.push(repo);
+        return { artifactDir };
+      },
+      cleanupArtifact: () => {},
+      copyContents: ({ artifactDir, outputDir }: { artifactDir: string; outputDir: string }) => {
+        cpSync(artifactDir, outputDir, { recursive: true, force: true });
+      },
+    });
+
+    assert.deepEqual(lookups, ['balejosg/ClassroomPath', 'balejosg/OpenPath']);
+    assert.deepEqual(downloads, ['balejosg/OpenPath']);
+    assert.deepEqual(result, {
+      resolved: true,
+      artifactId: 123,
+      artifactName: 'openpath-firefox-release-assets-payload-sha',
+      sourceRepo: 'balejosg/OpenPath',
+      cacheMissReason: '',
+      extensionId: 'monitor-bloqueos@openpath',
+      version: '2.0.0.123',
+    });
+  });
+
+  test('reports a cache miss reason when neither repository has the payload artifact', () => {
+    const outputDir = createTempDir('cp-firefox-assets-output-');
+
+    const result = resolveFirefoxReleaseAssetCache({
+      repo: 'balejosg/ClassroomPath',
+      fallbackRepo: 'balejosg/OpenPath',
+      artifactName: 'openpath-firefox-release-assets-payload-sha',
+      payloadHash: 'payload-sha',
+      outputDir,
+      findArtifact: () => null,
+    });
+
+    assert.deepEqual(result, {
+      resolved: false,
+      artifactName: 'openpath-firefox-release-assets-payload-sha',
+      cacheMissReason: 'artifact_not_found_in_balejosg/ClassroomPath,balejosg/OpenPath',
+    });
   });
 });

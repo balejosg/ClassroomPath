@@ -102,13 +102,45 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FIREFOX_RELEASE_PAYLOAD_HASH: ${{ steps.payload.outputs.payload_hash }}
+          FIREFOX_RELEASE_ASSETS_FALLBACK_REPO: balejosg/OpenPath
         run: |
           set -euo pipefail
           node scripts/resolve-firefox-release-assets-cache.mjs \
             --repo "$GITHUB_REPOSITORY" \
+            --fallback-repo "$FIREFOX_RELEASE_ASSETS_FALLBACK_REPO" \
             --artifact-name "openpath-firefox-release-assets-${FIREFOX_RELEASE_PAYLOAD_HASH}" \
             --payload-hash "$FIREFOX_RELEASE_PAYLOAD_HASH" \
             --output-dir upstream/openpath/firefox-extension >> "$GITHUB_OUTPUT"
+
+      - name: Report Firefox release asset cache decision
+        if: steps.mode.outputs.build_required == 'true'
+        env:
+          PAYLOAD_HASH: ${{ steps.payload.outputs.payload_hash }}
+          ARTIFACT_NAME: openpath-firefox-release-assets-${{ steps.payload.outputs.payload_hash }}
+          SOURCE_REPO: ${{ steps.cache.outputs.source_repo }}
+          RESOLVED: ${{ steps.cache.outputs.resolved }}
+          CACHE_MISS_REASON: ${{ steps.cache.outputs.cache_miss_reason }}
+        run: |
+          set -euo pipefail
+
+          source_repo="${SOURCE_REPO:-none}"
+          cache_miss_reason="${CACHE_MISS_REASON:-none}"
+          amo_signing_required='false'
+          if [ "$RESOLVED" != "true" ]; then
+            amo_signing_required='true'
+            echo "::notice title=AMO signing required::AMO signing required because signed artifact cache miss: payload_hash=$PAYLOAD_HASH artifact_name=$ARTIFACT_NAME cache_miss_reason=$cache_miss_reason"
+          fi
+
+          echo "::notice title=Firefox release asset cache::payload_hash=$PAYLOAD_HASH artifact_name=$ARTIFACT_NAME source_repo=$source_repo resolved=$RESOLVED cache_miss_reason=$cache_miss_reason amo_signing_required=$amo_signing_required"
+          {
+            echo "### Firefox release asset cache"
+            echo "- payload_hash: $PAYLOAD_HASH"
+            echo "- artifact_name: $ARTIFACT_NAME"
+            echo "- source_repo: $source_repo"
+            echo "- resolved: $RESOLVED"
+            echo "- cache_miss_reason: $cache_miss_reason"
+            echo "- amo_signing_required: $amo_signing_required"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Derive stable Firefox release version
         if: steps.mode.outputs.build_required == 'true' && steps.cache.outputs.resolved != 'true'
@@ -181,7 +213,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload reusable Firefox release assets
-        if: steps.mode.outputs.build_required == 'true' && steps.cache.outputs.resolved != 'true'
+        if: steps.mode.outputs.build_required == 'true' && (steps.cache.outputs.resolved != 'true' || steps.cache.outputs.source_repo != github.repository)
         uses: actions/upload-artifact@v7
         with:
           name: openpath-firefox-release-assets-${{ steps.payload.outputs.payload_hash }}

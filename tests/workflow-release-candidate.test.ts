@@ -579,6 +579,15 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(assetJobRun.includes('release:payload-hash --workspace=@openpath/firefox-extension'));
     assert.ok(assetJobRun.includes('FIREFOX_RELEASE_PAYLOAD_HASH='));
     assert.ok(assetJobRun.includes('node scripts/resolve-firefox-release-assets-cache.mjs'));
+    assert.ok(assetJobRun.includes('--fallback-repo "$FIREFOX_RELEASE_ASSETS_FALLBACK_REPO"'));
+    assert.ok(workflowText.includes('FIREFOX_RELEASE_ASSETS_FALLBACK_REPO: balejosg/OpenPath'));
+    assert.ok(workflowText.includes('Report Firefox release asset cache decision'));
+    assert.ok(workflowText.includes('- payload_hash: $PAYLOAD_HASH'));
+    assert.ok(workflowText.includes('- artifact_name: $ARTIFACT_NAME'));
+    assert.ok(workflowText.includes('- source_repo: $source_repo'));
+    assert.ok(workflowText.includes('- resolved: $RESOLVED'));
+    assert.ok(workflowText.includes('- cache_miss_reason: $cache_miss_reason'));
+    assert.ok(workflowText.includes('AMO signing required because signed artifact cache miss'));
     assert.ok(assetJobRun.includes('payload-hash.txt'));
     assert.ok(assetJobRun.includes('OPENPATH_FIREFOX_RELEASE_VERSION='));
     assert.ok(assetJobRun.includes('node scripts/firefox-release-version.mjs'));
@@ -609,6 +618,11 @@ describe('Release candidate workflow contracts', () => {
     );
     assert.ok(
       workflowText.includes('openpath-firefox-release-assets-${FIREFOX_RELEASE_PAYLOAD_HASH}')
+    );
+    assert.ok(
+      workflowText.includes(
+        "steps.cache.outputs.resolved != 'true' || steps.cache.outputs.source_repo != github.repository"
+      )
     );
     assert.ok(existsSync(resolve(projectRoot, 'scripts/firefox-release-version.mjs')));
     assert.ok(existsSync(resolve(projectRoot, 'scripts/resolve-firefox-release-assets-cache.mjs')));

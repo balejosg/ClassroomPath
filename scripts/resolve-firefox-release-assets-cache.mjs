@@ -75,6 +75,7 @@ export function validateFirefoxReleaseAssetCache({ artifactDir, expectedPayloadH
 function parseArgs(argv) {
   const parsed = {
     repo: '',
+    fallbackRepo: '',
     artifactName: '',
     payloadHash: '',
     outputDir: '',
@@ -87,6 +88,10 @@ function parseArgs(argv) {
     switch (arg) {
       case '--repo':
         parsed.repo = next;
+        index += 1;
+        break;
+      case '--fallback-repo':
+        parsed.fallbackRepo = next;
         index += 1;
         break;
       case '--artifact-name':
@@ -104,7 +109,7 @@ function parseArgs(argv) {
       case '--help':
       case '-h':
         console.log(`Usage:
-  node scripts/resolve-firefox-release-assets-cache.mjs --repo owner/repo --artifact-name name --payload-hash sha256 --output-dir path
+  node scripts/resolve-firefox-release-assets-cache.mjs --repo owner/repo [--fallback-repo owner/repo] --artifact-name name --payload-hash sha256 --output-dir path
 `);
         process.exit(0);
         break;
@@ -123,8 +128,19 @@ function findReusableArtifact({ repo, artifactName }) {
   })[0];
 }
 
-export function resolveFirefoxReleaseAssetCache({ repo, artifactName, payloadHash, outputDir }) {
+export function resolveFirefoxReleaseAssetCache({
+  repo,
+  fallbackRepo,
+  artifactName,
+  payloadHash,
+  outputDir,
+  findArtifact = findReusableArtifact,
+  downloadArtifact = downloadArtifactById,
+  cleanupArtifact = cleanupTemporaryArtifactDir,
+  copyContents = copyArtifactContents,
+} = {}) {
   const normalizedRepo = String(repo ?? '').trim();
+  const normalizedFallbackRepo = String(fallbackRepo ?? '').trim();
   const normalizedArtifactName = String(artifactName ?? '').trim();
   const normalizedOutputDir = String(outputDir ?? '').trim();
 
@@ -132,12 +148,31 @@ export function resolveFirefoxReleaseAssetCache({ repo, artifactName, payloadHas
     fail('--repo, --artifact-name, --payload-hash, and --output-dir are required');
   }
 
-  const artifact = findReusableArtifact({
-    repo: normalizedRepo,
-    artifactName: normalizedArtifactName,
-  });
+  const repositories = [
+    ...new Set([normalizedRepo, normalizedFallbackRepo].filter((entry) => entry.length > 0)),
+  ];
+  let artifact = null;
+  let sourceRepo = '';
+  for (const candidateRepo of repositories) {
+    artifact = findArtifact({
+      repo: candidateRepo,
+      artifactName: normalizedArtifactName,
+    });
+    if (artifact) {
+      sourceRepo = candidateRepo;
+      break;
+    }
+  }
+
   if (!artifact) {
-    return { resolved: false };
+    return {
+      resolved: false,
+      artifactName: normalizedArtifactName,
+      cacheMissReason:
+        repositories.length > 1
+          ? `artifact_not_found_in_${repositories.join(',')}`
+          : `artifact_not_found_in_${normalizedRepo}`,
+    };
   }
 
   const artifactId = artifact.id ?? artifact.databaseId;
@@ -145,8 +180,8 @@ export function resolveFirefoxReleaseAssetCache({ repo, artifactName, payloadHas
     fail(`Reusable Firefox release asset ${normalizedArtifactName} has no artifact id`);
   }
 
-  const { artifactDir } = downloadArtifactById({
-    repo: normalizedRepo,
+  const { artifactDir } = downloadArtifact({
+    repo: sourceRepo,
     artifactId,
     tempPrefix: 'classroompath-firefox-assets-cache-',
   });
@@ -156,16 +191,18 @@ export function resolveFirefoxReleaseAssetCache({ repo, artifactName, payloadHas
       artifactDir,
       expectedPayloadHash: payloadHash,
     });
-    copyArtifactContents({ artifactDir, outputDir: normalizedOutputDir });
+    copyContents({ artifactDir, outputDir: normalizedOutputDir });
 
     return {
       resolved: true,
       artifactId,
       artifactName: normalizedArtifactName,
+      sourceRepo,
+      cacheMissReason: '',
       ...metadata,
     };
   } finally {
-    cleanupTemporaryArtifactDir(artifactDir);
+    cleanupArtifact(artifactDir);
   }
 }
 
@@ -173,6 +210,7 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const result = resolveFirefoxReleaseAssetCache({
     repo: args.repo,
+    fallbackRepo: args.fallbackRepo,
     artifactName: args.artifactName,
     payloadHash: args.payloadHash,
     outputDir: args.outputDir,
@@ -180,8 +218,11 @@ function main() {
 
   writeOutputs({
     resolved: result.resolved ? 'true' : 'false',
+    payload_hash: args.payloadHash,
     artifact_id: result.artifactId ?? '',
     artifact_name: result.artifactName ?? '',
+    source_repo: result.sourceRepo ?? '',
+    cache_miss_reason: result.cacheMissReason ?? '',
     extension_id: result.extensionId ?? '',
     version: result.version ?? '',
   });
