@@ -77,6 +77,7 @@ prepare_staging_local_release_context() {
 
     if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
         require_cmd gh
+        warn_if_other_release_candidate_run_in_progress "$REMOTE_SHA"
         STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
         UPSTREAM_OPENPATH_SHA="$UPSTREAM_OPENPATH_SHA" node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest \
             --sha "$REMOTE_SHA" \
@@ -141,6 +142,58 @@ prepare_staging_local_release_context() {
     fi
 
     log_success "Git state checked"
+}
+
+warn_if_other_release_candidate_run_in_progress() {
+    local target_sha="$1"
+    local runs_json=""
+    local warning_lines=""
+
+    if [ -z "$target_sha" ] || [ "$target_sha" = "unknown" ]; then
+        return 0
+    fi
+
+    if ! runs_json="$(gh run list \
+        --workflow release-candidate-images.yml \
+        --status in_progress \
+        --limit 20 \
+        --json databaseId,headSha,url 2>/dev/null)"; then
+        return 0
+    fi
+
+    warning_lines="$(
+        RUNS_JSON="$runs_json" TARGET_SHA="$target_sha" node <<'NODE'
+const targetSha = String(process.env.TARGET_SHA ?? '').trim();
+let runs = [];
+
+try {
+  runs = JSON.parse(process.env.RUNS_JSON || '[]');
+} catch {
+  process.exit(0);
+}
+
+for (const run of Array.isArray(runs) ? runs : []) {
+  const runId = String(run.databaseId ?? '').trim();
+  const headSha = String(run.headSha ?? '').trim();
+  const url = String(run.url ?? '').trim();
+
+  if (!runId || !headSha || headSha === targetSha) {
+    continue;
+  }
+
+  console.log(`Old release-candidate workflow still in progress: run_id=${runId} sha=${headSha} url=${url || 'unknown'}`);
+  console.log(`Manual cleanup command: gh run cancel ${runId}`);
+}
+NODE
+    )"
+
+    if [ -z "$warning_lines" ]; then
+        return 0
+    fi
+
+    while IFS= read -r warning_line; do
+        [ -n "$warning_line" ] && log_warn "$warning_line"
+    done <<< "$warning_lines"
 }
 
 invalidate_staging_verification_evidence_for_release() {

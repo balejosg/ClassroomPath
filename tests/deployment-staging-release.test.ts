@@ -76,6 +76,20 @@ describe('Deployment staging and promotion contracts', () => {
           'node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest'
         )
     );
+    assert.ok(
+      releaseHelperContent.includes('warn_if_other_release_candidate_run_in_progress "$REMOTE_SHA"')
+    );
+    assert.ok(
+      releaseHelperContent.includes('--workflow release-candidate-images.yml') &&
+        releaseHelperContent.includes('--status in_progress') &&
+        releaseHelperContent.includes('--json databaseId,headSha,url')
+    );
+    assert.ok(
+      releaseHelperContent.includes(
+        'Old release-candidate workflow still in progress: run_id=${runId} sha=${headSha} url=${url ||'
+      )
+    );
+    assert.ok(releaseHelperContent.includes('Manual cleanup command: gh run cancel ${runId}'));
     assert.ok(remoteContent.includes('deploy_with_release_candidates'));
     assert.ok(remoteContent.includes('docker compose pull gateway api spa'));
     assert.ok(localContent.includes('Allowed value: release-candidate'));
@@ -118,6 +132,64 @@ describe('Deployment staging and promotion contracts', () => {
     );
     assert.ok(!localContent.includes('Falling back to source build for staging'));
     assert.ok(!localContent.includes('source-build|'));
+  });
+
+  test('staging deploy warns about other in-progress release-candidate runs without cancelling them', () => {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'classroompath-gh-'));
+    const fakeGhPath = resolve(tempDir, 'gh');
+
+    writeFileSync(
+      fakeGhPath,
+      `#!/bin/sh
+case "$*" in
+  *"run list"*)
+    printf '%s\\n' '[{"databaseId":12345,"headSha":"other-sha","url":"https://github.com/balejosg/ClassroomPath/actions/runs/12345"},{"databaseId":67890,"headSha":"target-sha","url":"https://github.com/balejosg/ClassroomPath/actions/runs/67890"}]'
+    exit 0
+    ;;
+  *"run cancel"*)
+    echo "cancel should not be called" >&2
+    exit 99
+    ;;
+esac
+echo "unexpected gh invocation: $*" >&2
+exit 2
+`
+    );
+    chmodSync(fakeGhPath, 0o755);
+
+    try {
+      const output = execFileSync(
+        'bash',
+        [
+          '-c',
+          `
+set -euo pipefail
+source "$1"
+log_warn() { echo "WARN:$*"; }
+warn_if_other_release_candidate_run_in_progress target-sha
+`,
+          'bash',
+          stagingLocalReleaseHelperPath,
+        ],
+        {
+          cwd: projectRoot,
+          encoding: 'utf-8',
+          env: {
+            ...process.env,
+            PATH: `${tempDir}:${process.env.PATH ?? ''}`,
+          },
+        }
+      );
+
+      assert.match(
+        output,
+        /WARN:Old release-candidate workflow still in progress: run_id=12345 sha=other-sha url=https:\/\/github\.com\/balejosg\/ClassroomPath\/actions\/runs\/12345/
+      );
+      assert.match(output, /WARN:Manual cleanup command: gh run cancel 12345/);
+      assert.doesNotMatch(output, /67890/);
+    } finally {
+      rmSync(tempDir, { force: true, recursive: true });
+    }
   });
 
   test('staging deploy records reusable smoke, release-gate, and Windows/Firefox evidence', () => {

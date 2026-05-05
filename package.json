@@ -66,6 +66,7 @@
     "ops:deploy-brief": "node scripts/deploy-brief.mjs",
     "ops:failure-brief": "node scripts/failure-brief.mjs",
     "release:evidence-bundle": "node scripts/release-evidence-bundle.mjs",
+    "release:status": "node scripts/release-status.mjs",
     "release:production": "bash scripts/tag-production-release.sh",
     "verify:static": "bash scripts/run-turbo.sh verify:static",
     "security:secrets": "secretlint '**/*.{js,ts,tsx,json,yml,yaml,env,env.*}'",

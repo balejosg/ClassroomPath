@@ -49,14 +49,26 @@ function jobName(job) {
   return valueOrNull(job?.name) ?? 'n/a';
 }
 
+function durationSecondsFromJob(job, metric) {
+  const seconds = Number(job?.[metric]);
+  return Number.isFinite(seconds) && seconds >= 0 ? durationLabelFromSeconds(seconds) : null;
+}
+
+function jobNameWithDuration(job, metric) {
+  const name = jobName(job);
+  const duration = durationSecondsFromJob(job, metric);
+
+  return duration ? `${name} (${duration})` : name;
+}
+
 function buildTiming(timings) {
   const criticalPath = timings?.criticalPath ?? {};
   const criticalPathJobs = Array.isArray(criticalPath.jobs) ? criticalPath.jobs : [];
 
   return {
-    totalWallTime: durationLabelFromSeconds(timings?.totalWallSeconds),
-    longestQueueWait: jobName(criticalPath.longestQueueJob),
-    longestExecution: jobName(criticalPath.longestExecutionJob),
+    stagingToProductionDuration: durationLabelFromSeconds(timings?.totalWallSeconds),
+    topQueueBlocker: jobNameWithDuration(criticalPath.longestQueueJob, 'queueSeconds'),
+    topExecutionBlocker: jobNameWithDuration(criticalPath.longestExecutionJob, 'executionSeconds'),
     criticalPath:
       criticalPathJobs.length > 0
         ? criticalPathJobs.map((job) => jobName(job)).join(' -> ')
@@ -455,10 +467,10 @@ export function renderDeployBriefMarkdown(brief) {
     `- Recommended next action: ${brief.failureBoundary.recommendedNextAction}`,
     `- Safe to retry: ${brief.failureBoundary.safeToRetry}`,
     '',
-    '## Timing',
-    `- Total wall time: ${brief.timing.totalWallTime}`,
-    `- Longest queue wait: ${brief.timing.longestQueueWait}`,
-    `- Longest execution: ${brief.timing.longestExecution}`,
+    '## Bottleneck Summary',
+    `- Staging-to-production duration: ${brief.timing.stagingToProductionDuration}`,
+    `- Top queue blocker: ${brief.timing.topQueueBlocker}`,
+    `- Top execution blocker: ${brief.timing.topExecutionBlocker}`,
     `- Critical path: ${brief.timing.criticalPath}`,
     '',
     '## Next Command',

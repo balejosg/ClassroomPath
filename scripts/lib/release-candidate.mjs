@@ -153,6 +153,8 @@ export function formatReleaseCandidateWaitProgress({
   latestRunJobs = [],
   openPathRecoveryDecision = null,
   upstreamSha = '',
+  waitStartedAtMs = null,
+  nowMs = Date.now(),
 }) {
   const details = [
     `sha=${targetSha}`,
@@ -173,6 +175,8 @@ export function formatReleaseCandidateWaitProgress({
     upstreamSha,
     latestRunStatus: latestRun?.status ?? '',
     latestRunJobs,
+    waitStartedAtMs,
+    nowMs,
   });
 
   const blockerText = formatReleaseWaitBlocker(blocker);
@@ -518,6 +522,7 @@ export function waitForReleaseCandidateManifest({
   const repo = detectRepositorySlug({ repository, cwd });
   const artifactName = `release-candidate-images-${targetSha}`;
   let alreadyReranAfterOpenPathAptFailure = false;
+  const waitStartedAtMs = Date.now();
 
   return waitForArtifactResolution({
     timeoutSeconds,
@@ -669,6 +674,7 @@ export function waitForReleaseCandidateManifest({
           latestRunJobs,
           openPathRecoveryDecision,
           upstreamSha,
+          waitStartedAtMs,
         })
       );
     },

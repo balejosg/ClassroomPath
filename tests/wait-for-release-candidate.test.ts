@@ -183,7 +183,56 @@ describe('wait-for-release-candidate helpers', () => {
 
     assert.match(message, /Waiting for release candidate manifest/);
     assert.match(message, /Waiting on OpenPath prerelease APT for openpathsha/);
+    assert.match(message, /Workflow: release-candidate-images\.yml/);
+    assert.match(message, /Step: Wait for OpenPath prerelease APT publish/);
     assert.match(message, /Queue: 150s/);
+  });
+
+  test('formats active release candidate waits with real elapsed time instead of zero execution', () => {
+    const message = formatReleaseCandidateWaitProgress({
+      repository: 'balejosg/ClassroomPath',
+      targetSha: 'abc123',
+      lastState: 'pending',
+      latestRun: {
+        databaseId: 987,
+        status: 'in_progress',
+        updatedAt: '2026-03-27T11:07:00Z',
+      },
+      latestRunJobs: [
+        {
+          databaseId: 654,
+          name: 'derive-release-image-refs',
+          status: 'in_progress',
+          createdAt: '2026-03-27T10:58:00Z',
+          startedAt: '2026-03-27T11:00:00Z',
+          completedAt: '2026-03-27T11:00:00Z',
+          steps: [
+            {
+              name: 'Wait for OpenPath prerelease APT publish',
+              status: 'in_progress',
+              conclusion: null,
+            },
+          ],
+        },
+      ],
+      upstreamSha: 'openpathsha',
+      waitStartedAtMs: Date.parse('2026-03-27T11:02:00Z'),
+      nowMs: Date.parse('2026-03-27T11:07:00Z'),
+    });
+
+    assert.match(message, /run_id=987/);
+    assert.match(message, /updated_at=2026-03-27T11:07:00Z/);
+    assert.match(message, /Workflow: release-candidate-images\.yml/);
+    assert.match(message, /Job: derive-release-image-refs/);
+    assert.match(message, /Step: Wait for OpenPath prerelease APT publish/);
+    assert.match(message, /Wait elapsed: 5m/);
+    assert.match(message, /Execution so far: 7m/);
+    assert.doesNotMatch(message, /Execution: 0s/);
+    assert.match(
+      message,
+      /Run: https:\/\/github\.com\/balejosg\/ClassroomPath\/actions\/runs\/987/
+    );
+    assert.match(message, /Next: wait unless run fails; do not retry staging yet/);
   });
 
   test('formats release candidate wait progress as one actionable blocker line', () => {

@@ -1,5 +1,38 @@
 import { summarizeJobTiming } from './github-actions-run-timing.mjs';
 
+function parseTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function elapsedSecondsSince(value, nowMs) {
+  const timestamp = parseTimestamp(value);
+  if (timestamp === null || !Number.isFinite(nowMs)) {
+    return null;
+  }
+
+  return Math.max(0, Math.round((nowMs - timestamp) / 1000));
+}
+
+function formatDurationSeconds(seconds) {
+  if (!Number.isFinite(seconds)) {
+    return '';
+  }
+
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`;
+}
+
 function firstActiveStepName(job = {}) {
   if (!job) {
     return '';
@@ -18,19 +51,33 @@ function firstActiveJob(jobs = []) {
   return jobs.find((job) => job?.status === 'in_progress') ?? null;
 }
 
-function formatTimingSummary(job) {
+function formatTimingSummary(job, { nowMs = Date.now(), waitStartedAtMs = null } = {}) {
   if (!job) {
     return '';
   }
 
   const timing = summarizeJobTiming(job);
   const parts = [];
+  const waitElapsed = Number.isFinite(waitStartedAtMs)
+    ? Math.max(0, Math.round((nowMs - waitStartedAtMs) / 1000))
+    : null;
+
+  if (waitElapsed !== null) {
+    parts.push(`Wait elapsed: ${formatDurationSeconds(waitElapsed)}.`);
+  }
 
   if (timing.queueSeconds !== null) {
     parts.push(`Queue: ${timing.queueSeconds}s.`);
   }
 
-  if (timing.executionSeconds !== null) {
+  const activeExecutionSeconds =
+    job?.status === 'in_progress'
+      ? elapsedSecondsSince(job?.startedAt ?? job?.started_at, nowMs)
+      : null;
+
+  if (activeExecutionSeconds !== null) {
+    parts.push(`Execution so far: ${formatDurationSeconds(activeExecutionSeconds)}.`);
+  } else if (timing.executionSeconds !== null) {
     parts.push(`Execution: ${timing.executionSeconds}s.`);
   }
 
@@ -45,11 +92,14 @@ export function classifyReleaseWaitBlocker({
   latestRunStatus = '',
   activeJobName = '',
   latestRunJobs = [],
+  waitStartedAtMs = null,
+  nowMs = Date.now(),
 } = {}) {
   const normalizedWorkflow = String(workflow).trim();
   const activeJob = firstActiveJob(latestRunJobs);
   const normalizedStep = String(currentStep || firstActiveStepName(activeJob)).trim();
   const resolvedActiveJobName = String(activeJobName || (activeJob?.name ?? '')).trim();
+  const timingSummary = formatTimingSummary(activeJob, { nowMs, waitStartedAtMs });
 
   if (normalizedStep.includes('Wait for OpenPath prerelease APT')) {
     return {
@@ -60,7 +110,7 @@ export function classifyReleaseWaitBlocker({
       upstreamSha,
       latestRunStatus,
       activeJobName: resolvedActiveJobName,
-      timingSummary: formatTimingSummary(activeJob),
+      timingSummary,
     };
   }
 
@@ -73,7 +123,7 @@ export function classifyReleaseWaitBlocker({
       upstreamSha,
       latestRunStatus,
       activeJobName: resolvedActiveJobName,
-      timingSummary: formatTimingSummary(activeJob),
+      timingSummary,
     };
   }
 
@@ -85,7 +135,7 @@ export function classifyReleaseWaitBlocker({
     upstreamSha,
     latestRunStatus,
     activeJobName: resolvedActiveJobName,
-    timingSummary: formatTimingSummary(activeJob),
+    timingSummary,
   };
 }
 
@@ -94,6 +144,12 @@ export function formatReleaseWaitBlocker(blocker = {}) {
 
   if (blocker.kind === 'openpath-prerelease-apt') {
     parts.push(`Waiting on OpenPath prerelease APT for ${blocker.upstreamSha || 'unknown SHA'}.`);
+    if (blocker.workflow) {
+      parts.push(`Workflow: ${blocker.workflow}.`);
+    }
+    if (blocker.currentStep) {
+      parts.push(`Step: ${blocker.currentStep}.`);
+    }
     if (blocker.activeJobName) {
       parts.push(`Job: ${blocker.activeJobName}.`);
     }
@@ -112,6 +168,9 @@ export function formatReleaseWaitBlocker(blocker = {}) {
 
   if (blocker.kind === 'classroompath-release-candidate') {
     parts.push('Waiting on ClassroomPath release-candidate manifest.');
+    if (blocker.workflow) {
+      parts.push(`Workflow: ${blocker.workflow}.`);
+    }
     if (blocker.currentStep) {
       parts.push(`Step: ${blocker.currentStep}.`);
     }
@@ -132,6 +191,9 @@ export function formatReleaseWaitBlocker(blocker = {}) {
   }
 
   parts.push('Waiting on release prerequisite.');
+  if (blocker.workflow) {
+    parts.push(`Workflow: ${blocker.workflow}.`);
+  }
   if (blocker.currentStep) {
     parts.push(`Step: ${blocker.currentStep}.`);
   }

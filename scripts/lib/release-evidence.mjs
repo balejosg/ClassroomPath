@@ -142,6 +142,16 @@ function timingJobLabel(job) {
   return job?.name ? String(job.name) : 'n/a';
 }
 
+function timingJobMetricSeconds(job, metric) {
+  const seconds = Number(job?.[metric]);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+}
+
+function timingJobDurationLabel(job, metric) {
+  const seconds = timingJobMetricSeconds(job, metric);
+  return seconds === null ? 'n/a' : formatDurationSeconds(seconds);
+}
+
 function renderReleaseTimingMarkdown(timings = null) {
   if (!timings) {
     return [];
@@ -153,11 +163,10 @@ function renderReleaseTimingMarkdown(timings = null) {
   return [
     '### Release Timing',
     '',
-    `- Total wall time: \`${formatDurationSeconds(timings.totalWallSeconds)}\``,
-    `- Terminal job: \`${timingJobLabel(criticalPath.terminalJob)}\``,
-    `- Longest queue wait: \`${timingJobLabel(criticalPath.longestQueueJob)}\``,
-    `- Longest execution: \`${timingJobLabel(criticalPath.longestExecutionJob)}\``,
-    `- Critical path jobs: \`${criticalPathJobs.length > 0 ? criticalPathJobs.join(' -> ') : 'n/a'}\``,
+    `- Staging-to-production duration: \`${formatDurationSeconds(timings.totalWallSeconds)}\``,
+    `- Top queue blocker: \`${timingJobLabel(criticalPath.longestQueueJob)}\` (\`${timingJobDurationLabel(criticalPath.longestQueueJob, 'queueSeconds')}\`)`,
+    `- Top execution blocker: \`${timingJobLabel(criticalPath.longestExecutionJob)}\` (\`${timingJobDurationLabel(criticalPath.longestExecutionJob, 'executionSeconds')}\`)`,
+    `- Critical path: \`${criticalPathJobs.length > 0 ? criticalPathJobs.join(' -> ') : 'n/a'}\``,
     '',
   ];
 }

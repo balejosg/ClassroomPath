@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runProjectCommand } from './helpers/ops-contracts.ts';
+import { buildDeployBrief, renderDeployBriefMarkdown } from '../scripts/lib/deploy-brief.mjs';
 import { renderCanaryBoundarySummary } from '../scripts/lib/release-evidence.mjs';
 import {
   RELEASE_EVIDENCE_CANARY_ARTIFACTS,
@@ -518,13 +519,15 @@ describe('release evidence rendering', () => {
       /\| Windows production bootstrap canary \| success \| none \| 3m15s \| windows-production-bootstrap-canary \|/
     );
     assert.match(markdown, /### Release Timing/);
-    assert.match(markdown, /Total wall time: `8m25s`/);
-    assert.match(markdown, /Terminal job: `Release Evidence`/);
-    assert.match(markdown, /Longest queue wait: `Release Evidence`/);
-    assert.match(markdown, /Longest execution: `Linux Production Bootstrap Canary`/);
+    assert.match(markdown, /Staging-to-production duration: `8m25s`/);
+    assert.match(markdown, /Top queue blocker: `Release Evidence` \(`8m15s`\)/);
     assert.match(
       markdown,
-      /Critical path jobs: `Deploy to Production -> Linux Production Bootstrap Canary -> Release Evidence`/
+      /Top execution blocker: `Linux Production Bootstrap Canary` \(`5m21s`\)/
+    );
+    assert.match(
+      markdown,
+      /Critical path: `Deploy to Production -> Linux Production Bootstrap Canary -> Release Evidence`/
     );
     assert.match(markdown, /Windows canary artifact integrity: `ok`/);
     assert.match(markdown, /Linux canary artifact integrity: `missing`/);
@@ -538,6 +541,65 @@ describe('release evidence rendering', () => {
     );
     assert.match(markdown, /Windows bootstrap failure boundary: `none`/);
     assert.match(markdown, /Linux bootstrap failure boundary: `page-resource-candidates`/);
+  });
+
+  test('deploy brief renders compact bottleneck and critical path timing', () => {
+    const brief = buildDeployBrief({
+      releaseEvidence: {
+        release: {
+          tagName: 'v1.2.99',
+          classroomPathSha: 'cp-sha',
+          openPathSha: 'op-sha',
+        },
+        promotionEligibility: {
+          status: 'eligible',
+        },
+        jobs: {
+          verifyOpenPathUpstream: 'success',
+          resolveReleaseImages: 'success',
+          verifyStagingReleaseState: 'success',
+          deployProduction: 'success',
+          smokeTestProduction: 'success',
+        },
+        artifacts: {
+          releaseImageMetadata: 'release-image-metadata-v1.2.99',
+          stagingReleaseState: 'staging-release-state-v1.2.99',
+          productionSmokeResults: 'smoke-test-results-production',
+          releaseEvidence: 'release-evidence-v1.2.99',
+        },
+        timings: {
+          totalWallSeconds: 505,
+          criticalPath: {
+            longestQueueJob: {
+              name: 'Release Evidence',
+              queueSeconds: 495,
+              executionSeconds: 10,
+            },
+            longestExecutionJob: {
+              name: 'Linux Production Bootstrap Canary',
+              queueSeconds: 4,
+              executionSeconds: 321,
+            },
+            jobs: [
+              { name: 'Deploy to Production' },
+              { name: 'Linux Production Bootstrap Canary' },
+              { name: 'Release Evidence' },
+            ],
+          },
+        },
+      },
+    });
+
+    const markdown = renderDeployBriefMarkdown(brief);
+
+    assert.match(markdown, /## Bottleneck Summary/);
+    assert.match(markdown, /Staging-to-production duration: 8m25s/);
+    assert.match(markdown, /Top queue blocker: Release Evidence \(8m15s\)/);
+    assert.match(markdown, /Top execution blocker: Linux Production Bootstrap Canary \(5m21s\)/);
+    assert.match(
+      markdown,
+      /Critical path: Deploy to Production -> Linux Production Bootstrap Canary -> Release Evidence/
+    );
   });
 
   test('renders advisory canary success for high-risk promotions', () => {
