@@ -37,6 +37,10 @@ describe('Deployment staging and promotion contracts', () => {
     'scripts/wait-for-release-candidate.mjs'
   );
   const deployWorkflowPath = resolve(projectRoot, '.github/workflows/deploy.yml');
+  const promoteCurrentStagingWorkflowPath = resolve(
+    projectRoot,
+    '.github/workflows/promote-current-staging-candidate.yml'
+  );
   const promotionReadyScriptPath = resolve(
     projectRoot,
     'scripts/verify-production-promotion-ready.sh'
@@ -551,8 +555,10 @@ describe('Deployment staging and promotion contracts', () => {
       'utf-8'
     );
     const packageJson = readFileSync(resolve(projectRoot, 'package.json'), 'utf-8');
+    const workflow = readFileSync(promoteCurrentStagingWorkflowPath, 'utf-8');
 
     assert.ok(packageJson.includes('"promote:current-staging"'));
+    assert.ok(workflow.includes('STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}'));
     assert.ok(helper.includes('cat /opt/classroompath/release-state/current-images.env'));
     assert.ok(helper.includes('cat /opt/classroompath/release-state/staging-verification.env'));
     assert.ok(helper.includes('target_sha="$(read_env_value "$current_state_file" APP_SHA)"'));

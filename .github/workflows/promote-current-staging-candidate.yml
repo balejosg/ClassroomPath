@@ -90,7 +90,7 @@ jobs:
       - name: Prepare SSH keys
         shell: bash
         env:
-          STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
           DEPLOY_SSH_KEY_SECRET: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
