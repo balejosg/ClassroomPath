@@ -60,6 +60,12 @@ export function validateFirefoxReleaseAssetCache({ artifactDir, expectedPayloadH
   if (!metadata.extensionId || !metadata.version) {
     fail('Firefox release asset metadata must include extensionId and version');
   }
+  if (metadata.signatureSource !== 'amo') {
+    fail('Firefox release asset metadata must include signatureSource=amo');
+  }
+  if (metadata.signatureState !== 'signed') {
+    fail('Firefox release asset metadata must include signatureState=signed');
+  }
 
   requireFile(
     join(resolvedArtifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi'),
@@ -69,6 +75,8 @@ export function validateFirefoxReleaseAssetCache({ artifactDir, expectedPayloadH
   return {
     extensionId: String(metadata.extensionId),
     version: String(metadata.version),
+    signatureSource: String(metadata.signatureSource),
+    signatureState: String(metadata.signatureState),
   };
 }
 
@@ -225,6 +233,8 @@ function main() {
     cache_miss_reason: result.cacheMissReason ?? '',
     extension_id: result.extensionId ?? '',
     version: result.version ?? '',
+    signature_source: result.signatureSource ?? '',
+    signature_state: result.signatureState ?? '',
   });
 }
 

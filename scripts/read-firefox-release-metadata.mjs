@@ -21,6 +21,8 @@ export function parseFirefoxReleaseMetadata(content) {
   return {
     extensionId: normalizeNonEmptyString(parsed?.extensionId),
     version: normalizeNonEmptyString(parsed?.version),
+    signatureSource: normalizeNonEmptyString(parsed?.signatureSource),
+    signatureState: normalizeNonEmptyString(parsed?.signatureState),
   };
 }
 
@@ -38,12 +40,17 @@ export function getFirefoxReleaseMetadataField(content, field) {
 export function getFirefoxReleaseMetadataFieldFromCliArgs(argv, content) {
   if (argv[0] !== '--field' || !argv[1]) {
     throw new Error(
-      'Usage:\n  node scripts/read-firefox-release-metadata.mjs --field <extensionId|version> < metadata.json'
+      'Usage:\n  node scripts/read-firefox-release-metadata.mjs --field <extensionId|version|signatureSource|signatureState> < metadata.json'
     );
   }
 
   const field = argv[1];
-  if (field !== 'extensionId' && field !== 'version') {
+  if (
+    field !== 'extensionId' &&
+    field !== 'version' &&
+    field !== 'signatureSource' &&
+    field !== 'signatureState'
+  ) {
     throw new Error(`Unsupported Firefox release metadata field: ${field}`);
   }
 
@@ -63,7 +70,7 @@ async function readStdin() {
 function printUsage() {
   console.error('Usage:');
   console.error(
-    '  node scripts/read-firefox-release-metadata.mjs --field <extensionId|version> < metadata.json'
+    '  node scripts/read-firefox-release-metadata.mjs --field <extensionId|version|signatureSource|signatureState> < metadata.json'
   );
 }
 

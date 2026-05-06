@@ -27,6 +27,8 @@ reset_staging_verification_env() {
   STAGING_FIREFOX_POLICY_RESULT=""
   STAGING_FIREFOX_EXTENSION_ID=""
   STAGING_FIREFOX_RELEASE_VERSION=""
+  STAGING_FIREFOX_SIGNATURE_SOURCE=""
+  STAGING_FIREFOX_SIGNATURE_STATE=""
   STAGING_FIREFOX_METADATA_SHA256=""
   STAGING_FIREFOX_XPI_SHA256=""
   STAGING_LINUX_BOOTSTRAP_RESULT=""
@@ -93,6 +95,8 @@ STAGING_WINDOWS_FIREFOX_HIGH_RISK
 STAGING_FIREFOX_RELEASE_ARTIFACTS
 STAGING_FIREFOX_EXTENSION_ID
 STAGING_FIREFOX_RELEASE_VERSION
+STAGING_FIREFOX_SIGNATURE_SOURCE
+STAGING_FIREFOX_SIGNATURE_STATE
 STAGING_FIREFOX_METADATA_SHA256
 STAGING_FIREFOX_XPI_SHA256
 EOF
@@ -450,6 +454,8 @@ run_staging_release_gate() {
   staging_firefox_metadata_json="$("${ssh_cmd[@]}" "docker exec classroompath-api cat /openpath-firefox-release/metadata.json")"
   STAGING_FIREFOX_EXTENSION_ID="$(printf '%s' "$staging_firefox_metadata_json" | node "$STAGING_GATES_SCRIPT_DIR/read-firefox-release-metadata.mjs" --field extensionId)"
   STAGING_FIREFOX_RELEASE_VERSION="$(printf '%s' "$staging_firefox_metadata_json" | node "$STAGING_GATES_SCRIPT_DIR/read-firefox-release-metadata.mjs" --field version)"
+  STAGING_FIREFOX_SIGNATURE_SOURCE="$(printf '%s' "$staging_firefox_metadata_json" | node "$STAGING_GATES_SCRIPT_DIR/read-firefox-release-metadata.mjs" --field signatureSource)"
+  STAGING_FIREFOX_SIGNATURE_STATE="$(printf '%s' "$staging_firefox_metadata_json" | node "$STAGING_GATES_SCRIPT_DIR/read-firefox-release-metadata.mjs" --field signatureState)"
   STAGING_FIREFOX_METADATA_SHA256="$("${ssh_cmd[@]}" "docker exec classroompath-api sha256sum /openpath-firefox-release/metadata.json | awk '{print \$1}'")"
   STAGING_FIREFOX_XPI_SHA256="$("${ssh_cmd[@]}" "docker exec classroompath-api sha256sum /openpath-firefox-release/openpath-firefox-extension.xpi | awk '{print \$1}'")"
 

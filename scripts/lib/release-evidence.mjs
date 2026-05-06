@@ -9,6 +9,382 @@ import {
   valueOrNull,
 } from './release-evidence-contract.mjs';
 
+export const STAGING_DEPLOYMENT_MODES = /** @type {const} */ (['promotion-eligible', 'debug']);
+
+/**
+ * @typedef {'promotion-eligible' | 'debug'} StagingDeploymentMode
+ */
+
+/**
+ * @param {string} deploymentMode
+ * @returns {deploymentMode is StagingDeploymentMode}
+ */
+export function isStagingDeploymentMode(deploymentMode) {
+  return STAGING_DEPLOYMENT_MODES.includes(/** @type {StagingDeploymentMode} */ (deploymentMode));
+}
+
+/**
+ * @param {'release-candidate' | 'source-build'} imageSource
+ * @returns {StagingDeploymentMode}
+ */
+export function deriveStagingDeploymentMode(imageSource) {
+  return imageSource === 'release-candidate' ? 'promotion-eligible' : 'debug';
+}
+
+export function validateCurrentReleaseState(snapshot, expected) {
+  const errors = [];
+
+  if ((snapshot.IMAGE_SOURCE ?? '') !== 'release-candidate') {
+    errors.push(
+      `::error::Staging is not running release candidate images (IMAGE_SOURCE=${snapshot.IMAGE_SOURCE ?? 'unset'})`
+    );
+  }
+
+  const comparisons = [
+    ['Staging APP_SHA', expected.EXPECTED_APP_SHA, snapshot.APP_SHA],
+    ['Gateway image', expected.EXPECTED_GATEWAY_IMAGE, snapshot.CLASSROOMPATH_GATEWAY_IMAGE],
+    [
+      'Migrations image',
+      expected.EXPECTED_MIGRATIONS_IMAGE,
+      snapshot.CLASSROOMPATH_MIGRATIONS_IMAGE,
+    ],
+    [
+      'OpenPath Firefox assets image',
+      expected.EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE,
+      snapshot.OPENPATH_FIREFOX_ASSETS_IMAGE,
+    ],
+    ['OpenPath API image', expected.EXPECTED_OPENPATH_API_IMAGE, snapshot.OPENPATH_API_IMAGE],
+    ['OpenPath version', expected.EXPECTED_OPENPATH_VERSION, snapshot.OPENPATH_VERSION],
+    ['SPA image', expected.EXPECTED_SPA_IMAGE, snapshot.CLASSROOMPATH_SPA_IMAGE],
+    [
+      'OpenPath Linux agent version',
+      expected.EXPECTED_OPENPATH_LINUX_AGENT_VERSION,
+      snapshot.OPENPATH_LINUX_AGENT_VERSION,
+    ],
+  ];
+
+  for (const [label, expectedValue, actualValue] of comparisons) {
+    if (String(expectedValue ?? '') !== String(actualValue ?? '')) {
+      errors.push(`::error::${label} mismatch. expected=${expectedValue} actual=${actualValue}`);
+    }
+  }
+
+  return errors;
+}
+
+export function validateStagingVerification(snapshot, expected) {
+  const errors = [];
+  const freshnessErrors = [];
+  const expectedAppSha = String(expected.EXPECTED_APP_SHA ?? '');
+  const verificationState = snapshot.STAGING_VERIFICATION_STATE ?? '';
+  const verificationIntentSha =
+    snapshot.STAGING_EXPECTED_APP_SHA || snapshot.STAGING_VERIFIED_APP_SHA || 'unknown';
+
+  if (verificationState && verificationState !== 'success') {
+    freshnessErrors.push(
+      `::error::Staging verification for ${verificationIntentSha} is pending or failed; expected successful evidence for ${expectedAppSha}.`
+    );
+  }
+
+  if (
+    snapshot.STAGING_EXPECTED_APP_SHA &&
+    String(snapshot.STAGING_EXPECTED_APP_SHA) !== expectedAppSha
+  ) {
+    freshnessErrors.push(
+      `::error::Staging verification intent mismatch. expected successful evidence for ${expectedAppSha} but current evidence was started for ${snapshot.STAGING_EXPECTED_APP_SHA}.`
+    );
+  }
+
+  if (freshnessErrors.length > 0) {
+    return freshnessErrors;
+  }
+
+  if ((snapshot.STAGING_SMOKE_RESULT ?? '') !== 'success') {
+    errors.push(
+      `::error::Staging smoke evidence is missing or failed (STAGING_SMOKE_RESULT=${snapshot.STAGING_SMOKE_RESULT ?? 'unset'})`
+    );
+  }
+
+  if ((snapshot.STAGING_RELEASE_GATE_RESULT ?? '') !== 'success') {
+    errors.push(
+      `::error::Staging release-gate evidence is missing or failed (STAGING_RELEASE_GATE_RESULT=${snapshot.STAGING_RELEASE_GATE_RESULT ?? 'unset'})`
+    );
+  }
+
+  if ((snapshot.STAGING_VERIFIED_IMAGE_SOURCE ?? '') !== 'release-candidate') {
+    errors.push(
+      `::error::Staging verification evidence does not point to release candidate images (STAGING_VERIFIED_IMAGE_SOURCE=${snapshot.STAGING_VERIFIED_IMAGE_SOURCE ?? 'unset'})`
+    );
+  }
+
+  const comparisons = [
+    ['Staging verification SHA', expected.EXPECTED_APP_SHA, snapshot.STAGING_VERIFIED_APP_SHA],
+    [
+      'Verified gateway image',
+      expected.EXPECTED_GATEWAY_IMAGE,
+      snapshot.STAGING_VERIFIED_GATEWAY_IMAGE,
+    ],
+    [
+      'Verified migrations image',
+      expected.EXPECTED_MIGRATIONS_IMAGE,
+      snapshot.STAGING_VERIFIED_MIGRATIONS_IMAGE,
+    ],
+    [
+      'Verified OpenPath Firefox assets image',
+      expected.EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE,
+      snapshot.STAGING_VERIFIED_OPENPATH_FIREFOX_ASSETS_IMAGE,
+    ],
+    [
+      'Verified OpenPath API image',
+      expected.EXPECTED_OPENPATH_API_IMAGE,
+      snapshot.STAGING_VERIFIED_OPENPATH_API_IMAGE,
+    ],
+    [
+      'Verified OpenPath version',
+      expected.EXPECTED_OPENPATH_VERSION,
+      snapshot.STAGING_VERIFIED_OPENPATH_VERSION,
+    ],
+    ['Verified SPA image', expected.EXPECTED_SPA_IMAGE, snapshot.STAGING_VERIFIED_SPA_IMAGE],
+    [
+      'Verified OpenPath Linux agent version',
+      expected.EXPECTED_OPENPATH_LINUX_AGENT_VERSION,
+      snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION,
+    ],
+  ];
+
+  for (const [label, expectedValue, actualValue] of comparisons) {
+    if (String(expectedValue ?? '') !== String(actualValue ?? '')) {
+      errors.push(`::error::${label} mismatch. expected=${expectedValue} actual=${actualValue}`);
+    }
+  }
+
+  return errors;
+}
+
+export function validateSignedFirefoxReleaseStagingVerification(snapshot) {
+  const errors = [];
+
+  if ((snapshot.STAGING_FIREFOX_POLICY_RESULT ?? '') !== 'success') {
+    errors.push(
+      `::error::Firefox policy evidence is missing or failed (STAGING_FIREFOX_POLICY_RESULT=${snapshot.STAGING_FIREFOX_POLICY_RESULT ?? 'unset'})`
+    );
+  }
+
+  if ((snapshot.STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS ?? '') !== 'present') {
+    errors.push(
+      '::error::Firefox release artifacts were not marked present in staging verification evidence'
+    );
+  }
+
+  for (const fieldName of [
+    'STAGING_FIREFOX_EXTENSION_ID',
+    'STAGING_FIREFOX_RELEASE_VERSION',
+    'STAGING_FIREFOX_METADATA_SHA256',
+    'STAGING_FIREFOX_XPI_SHA256',
+    'STAGING_FIREFOX_SIGNATURE_SOURCE',
+    'STAGING_FIREFOX_SIGNATURE_STATE',
+  ]) {
+    if (!snapshot[fieldName]) {
+      errors.push(`::error::${fieldName} is missing from release-state evidence`);
+    }
+  }
+
+  if (
+    snapshot.STAGING_FIREFOX_SIGNATURE_SOURCE &&
+    snapshot.STAGING_FIREFOX_SIGNATURE_SOURCE !== 'amo'
+  ) {
+    errors.push(
+      `::error::STAGING_FIREFOX_SIGNATURE_SOURCE must be amo (actual=${snapshot.STAGING_FIREFOX_SIGNATURE_SOURCE})`
+    );
+  }
+
+  if (
+    snapshot.STAGING_FIREFOX_SIGNATURE_STATE &&
+    snapshot.STAGING_FIREFOX_SIGNATURE_STATE !== 'signed'
+  ) {
+    errors.push(
+      `::error::STAGING_FIREFOX_SIGNATURE_STATE must be signed (actual=${snapshot.STAGING_FIREFOX_SIGNATURE_STATE})`
+    );
+  }
+
+  return errors;
+}
+
+export function validateHighRiskStagingVerification(snapshot) {
+  const errors = [];
+
+  if ((snapshot.STAGING_SMOKE_STATUS ?? '') === 'PASS_WITH_FALLBACK') {
+    errors.push(
+      '::error::PASS_WITH_FALLBACK is not sufficient production evidence for Windows/Firefox delivery changes'
+    );
+  }
+
+  if ((snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT ?? '') !== 'success') {
+    errors.push(
+      `::error::Windows bootstrap evidence is missing or failed (STAGING_WINDOWS_BOOTSTRAP_RESULT=${snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT ?? 'unset'})`
+    );
+  }
+
+  const linuxBootstrapResult = snapshot.STAGING_LINUX_BOOTSTRAP_RESULT ?? '';
+  const linuxBootstrapBoundary = snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID ?? '';
+  const linuxBootstrapAcceptable =
+    linuxBootstrapResult === 'success' ||
+    (linuxBootstrapResult === 'skipped-lan-staging' &&
+      linuxBootstrapBoundary === 'skipped-lan-staging');
+
+  if (!linuxBootstrapAcceptable) {
+    errors.push(
+      `::error::Linux bootstrap evidence is missing or failed (STAGING_LINUX_BOOTSTRAP_RESULT=${snapshot.STAGING_LINUX_BOOTSTRAP_RESULT ?? 'unset'}; boundary=${snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID ?? 'unset'})`
+    );
+  }
+
+  return errors;
+}
+
+export function buildStagingReleaseEvidenceOutputs(snapshot) {
+  return {
+    staging_smoke_result: snapshot.STAGING_SMOKE_RESULT ?? 'unknown',
+    staging_smoke_status: snapshot.STAGING_SMOKE_STATUS ?? 'unknown',
+    staging_release_gate_result: snapshot.STAGING_RELEASE_GATE_RESULT ?? 'unknown',
+    staging_email_preflight_mode: snapshot.STAGING_EMAIL_PREFLIGHT_MODE ?? 'unknown',
+    staging_email_delivery_high_risk: snapshot.STAGING_EMAIL_DELIVERY_HIGH_RISK ?? 'unknown',
+    staging_email_preflight_result: snapshot.STAGING_EMAIL_PREFLIGHT_RESULT ?? 'unknown',
+    staging_email_preflight_provider: snapshot.STAGING_EMAIL_PREFLIGHT_PROVIDER ?? 'unknown',
+    staging_windows_bootstrap_result: snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT ?? 'unknown',
+    staging_firefox_policy_result: snapshot.STAGING_FIREFOX_POLICY_RESULT ?? 'unknown',
+    staging_firefox_extension_id: snapshot.STAGING_FIREFOX_EXTENSION_ID ?? 'unknown',
+    staging_firefox_release_version: snapshot.STAGING_FIREFOX_RELEASE_VERSION ?? 'unknown',
+    staging_firefox_signature_source: snapshot.STAGING_FIREFOX_SIGNATURE_SOURCE ?? 'unknown',
+    staging_firefox_signature_state: snapshot.STAGING_FIREFOX_SIGNATURE_STATE ?? 'unknown',
+    staging_firefox_metadata_sha256: snapshot.STAGING_FIREFOX_METADATA_SHA256 ?? 'unknown',
+    staging_firefox_xpi_sha256: snapshot.STAGING_FIREFOX_XPI_SHA256 ?? 'unknown',
+    staging_linux_bootstrap_result: snapshot.STAGING_LINUX_BOOTSTRAP_RESULT ?? 'unknown',
+    staging_linux_bootstrap_run_id: snapshot.STAGING_LINUX_BOOTSTRAP_RUN_ID ?? 'unknown',
+    staging_linux_bootstrap_failure_boundary_id:
+      snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID ?? 'unknown',
+    staging_linux_bootstrap_failure_boundary_message:
+      snapshot.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE ?? 'unknown',
+    staging_windows_self_update_result: snapshot.STAGING_WINDOWS_SELF_UPDATE_RESULT ?? 'unknown',
+    staging_linux_self_update_result: snapshot.STAGING_LINUX_SELF_UPDATE_RESULT ?? 'unknown',
+    staging_prepromotion_rehearsal_result:
+      snapshot.STAGING_PREPROMOTION_REHEARSAL_RESULT ?? 'unknown',
+    staging_verified_at: snapshot.STAGING_VERIFIED_AT ?? 'unknown',
+  };
+}
+
+/**
+ * @param {{
+ *   status: 'pass' | 'fail' | 'not_applicable';
+ *   errors: string[];
+ * }} params
+ */
+function buildCheck(params) {
+  return {
+    status: params.status,
+    errors: [...params.errors],
+  };
+}
+
+/**
+ * @param {{
+ *   deploymentMode: StagingDeploymentMode;
+ *   imageSource: 'release-candidate' | 'source-build';
+ *   currentState: Record<string, string | undefined>;
+ *   verificationState: Record<string, string | undefined>;
+ *   expectedRuntime: Record<string, string | undefined>;
+ *   highRisk: boolean;
+ * }} params
+ */
+export function evaluatePromotionEligibility({
+  deploymentMode,
+  imageSource,
+  currentState,
+  verificationState,
+  expectedRuntime,
+  highRisk,
+}) {
+  /** @type {string[]} */
+  const deploymentModeErrors = [];
+
+  if (deploymentMode !== 'promotion-eligible') {
+    deploymentModeErrors.push(
+      '::error::Staging deploy is not promotion-eligible. Use release-candidate promotion mode before tagging production.'
+    );
+  }
+
+  if (imageSource !== 'release-candidate') {
+    deploymentModeErrors.push(
+      `::error::Promotion requires immutable release-candidate images (imageSource=${imageSource})`
+    );
+  }
+
+  const runtimeErrors = validateCurrentReleaseState(currentState, expectedRuntime);
+  const verificationErrors = validateStagingVerification(verificationState, expectedRuntime);
+  const signedFirefoxReleaseErrors =
+    validateSignedFirefoxReleaseStagingVerification(verificationState);
+  const windowsFirefoxErrors = highRisk
+    ? validateHighRiskStagingVerification(verificationState)
+    : [];
+
+  const checks = {
+    deploymentMode: buildCheck({
+      status: deploymentModeErrors.length === 0 ? 'pass' : 'fail',
+      errors: deploymentModeErrors,
+    }),
+    currentRuntime: buildCheck({
+      status: runtimeErrors.length === 0 ? 'pass' : 'fail',
+      errors: runtimeErrors,
+    }),
+    stagingVerification: buildCheck({
+      status: verificationErrors.length === 0 ? 'pass' : 'fail',
+      errors: verificationErrors,
+    }),
+    signedFirefoxRelease: buildCheck({
+      status: signedFirefoxReleaseErrors.length === 0 ? 'pass' : 'fail',
+      errors: signedFirefoxReleaseErrors,
+    }),
+    windowsFirefox: highRisk
+      ? buildCheck({
+          status: windowsFirefoxErrors.length === 0 ? 'pass' : 'fail',
+          errors: windowsFirefoxErrors,
+        })
+      : buildCheck({
+          status: 'not_applicable',
+          errors: [],
+        }),
+  };
+
+  const errors = [
+    ...checks.deploymentMode.errors,
+    ...checks.currentRuntime.errors,
+    ...checks.stagingVerification.errors,
+    ...checks.signedFirefoxRelease.errors,
+    ...checks.windowsFirefox.errors,
+  ];
+
+  return {
+    version: 1,
+    eligible: errors.length === 0,
+    deploymentMode,
+    imageSource,
+    highRisk,
+    checks,
+    errors,
+    outputs: buildStagingReleaseEvidenceOutputs(verificationState),
+  };
+}
+
+/**
+ * @param {ReturnType<typeof evaluatePromotionEligibility>} report
+ */
+export function buildPromotionEligibilityOutputs(report) {
+  return {
+    promotion_eligible: report.eligible ? 'true' : 'false',
+    promotion_deployment_mode: report.deploymentMode,
+    ...report.outputs,
+  };
+}
+
 function deriveAdvisoryCanaryResult({ highRisk, canaryResult }) {
   if (!highRisk) {
     return 'not_applicable';

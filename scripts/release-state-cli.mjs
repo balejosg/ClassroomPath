@@ -11,7 +11,7 @@ import {
 import {
   buildPromotionEligibilityOutputs,
   evaluatePromotionEligibility,
-} from './lib/promotion-eligibility.mjs';
+} from './lib/release-evidence.mjs';
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;

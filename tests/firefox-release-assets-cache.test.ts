@@ -22,7 +22,12 @@ function writeValidFirefoxReleaseCache(artifactDir: string, payloadHash: string)
   writeFileSync(join(artifactDir, 'payload-hash.txt'), `${payloadHash}\n`);
   writeFileSync(
     join(artifactDir, 'build', 'firefox-release', 'metadata.json'),
-    `${JSON.stringify({ extensionId: 'monitor-bloqueos@openpath', version: '2.0.0.123' })}\n`
+    `${JSON.stringify({
+      extensionId: 'monitor-bloqueos@openpath',
+      version: '2.0.0.123',
+      signatureSource: 'amo',
+      signatureState: 'signed',
+    })}\n`
   );
   writeFileSync(
     join(artifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi'),
@@ -50,7 +55,29 @@ describe('Firefox release asset cache validation', () => {
       {
         extensionId: 'monitor-bloqueos@openpath',
         version: '2.0.0.123',
+        signatureSource: 'amo',
+        signatureState: 'signed',
       }
+    );
+  });
+
+  test('rejects cached assets without AMO signature metadata', () => {
+    const artifactDir = createTempDir('cp-firefox-assets-cache-');
+
+    mkdirSync(join(artifactDir, 'build', 'firefox-release'), { recursive: true });
+    writeFileSync(join(artifactDir, 'payload-hash.txt'), 'payload-sha\n');
+    writeFileSync(
+      join(artifactDir, 'build', 'firefox-release', 'metadata.json'),
+      `${JSON.stringify({ extensionId: 'monitor-bloqueos@openpath', version: '2.0.0.123' })}\n`
+    );
+    writeFileSync(
+      join(artifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi'),
+      'signed-xpi'
+    );
+
+    assert.throws(
+      () => validateFirefoxReleaseAssetCache({ artifactDir, expectedPayloadHash: 'payload-sha' }),
+      /signatureSource/
     );
   });
 
@@ -124,6 +151,8 @@ describe('Firefox release asset cache validation', () => {
       cacheMissReason: '',
       extensionId: 'monitor-bloqueos@openpath',
       version: '2.0.0.123',
+      signatureSource: 'amo',
+      signatureState: 'signed',
     });
   });
 

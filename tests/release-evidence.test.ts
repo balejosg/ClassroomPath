@@ -238,6 +238,13 @@ describe('release evidence contract', () => {
 });
 
 describe('release evidence rendering', () => {
+  test('release evidence module owns the promotion readiness interface', async () => {
+    const releaseEvidence = await import('../scripts/lib/release-evidence.mjs');
+
+    assert.equal(typeof releaseEvidence.evaluatePromotionEligibility, 'function');
+    assert.equal(typeof releaseEvidence.buildPromotionEligibilityOutputs, 'function');
+  });
+
   test('release evidence renders compact canary failure boundary summary', () => {
     const summary = renderCanaryBoundarySummary({
       linux: {

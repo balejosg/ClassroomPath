@@ -102,6 +102,8 @@ STAGING_WINDOWS_BOOTSTRAP_RESULT
 STAGING_FIREFOX_POLICY_RESULT
 STAGING_FIREFOX_EXTENSION_ID
 STAGING_FIREFOX_RELEASE_VERSION
+STAGING_FIREFOX_SIGNATURE_SOURCE
+STAGING_FIREFOX_SIGNATURE_STATE
 STAGING_FIREFOX_METADATA_SHA256
 STAGING_FIREFOX_XPI_SHA256
 EOF
@@ -122,6 +124,8 @@ STAGING_WINDOWS_BOOTSTRAP_RESULT
 STAGING_FIREFOX_POLICY_RESULT
 STAGING_FIREFOX_EXTENSION_ID
 STAGING_FIREFOX_RELEASE_VERSION
+STAGING_FIREFOX_SIGNATURE_SOURCE
+STAGING_FIREFOX_SIGNATURE_STATE
 STAGING_FIREFOX_METADATA_SHA256
 STAGING_FIREFOX_XPI_SHA256
 EOF
@@ -227,6 +231,8 @@ write_staging_verification_pending_state() {
   STAGING_FIREFOX_POLICY_RESULT="pending" \
   STAGING_FIREFOX_EXTENSION_ID="" \
   STAGING_FIREFOX_RELEASE_VERSION="" \
+  STAGING_FIREFOX_SIGNATURE_SOURCE="" \
+  STAGING_FIREFOX_SIGNATURE_STATE="" \
   STAGING_FIREFOX_METADATA_SHA256="" \
   STAGING_FIREFOX_XPI_SHA256="" \
   STAGING_LINUX_BOOTSTRAP_RESULT="pending" \
@@ -358,8 +364,20 @@ verify_high_risk_staging_release_evidence() {
   release_state_require_nonempty \
     STAGING_FIREFOX_EXTENSION_ID \
     STAGING_FIREFOX_RELEASE_VERSION \
+    STAGING_FIREFOX_SIGNATURE_SOURCE \
+    STAGING_FIREFOX_SIGNATURE_STATE \
     STAGING_FIREFOX_METADATA_SHA256 \
     STAGING_FIREFOX_XPI_SHA256
+
+  if [ "${STAGING_FIREFOX_SIGNATURE_SOURCE:-}" != "amo" ]; then
+    echo "::error::STAGING_FIREFOX_SIGNATURE_SOURCE must be amo (actual=${STAGING_FIREFOX_SIGNATURE_SOURCE:-unset})"
+    return 1
+  fi
+
+  if [ "${STAGING_FIREFOX_SIGNATURE_STATE:-}" != "signed" ]; then
+    echo "::error::STAGING_FIREFOX_SIGNATURE_STATE must be signed (actual=${STAGING_FIREFOX_SIGNATURE_STATE:-unset})"
+    return 1
+  fi
 }
 
 emit_staging_release_evidence_outputs() {
@@ -377,6 +395,8 @@ emit_staging_release_evidence_outputs() {
     printf 'staging_firefox_policy_result=%s\n' "${STAGING_FIREFOX_POLICY_RESULT:-unknown}"
     printf 'staging_firefox_extension_id=%s\n' "${STAGING_FIREFOX_EXTENSION_ID:-unknown}"
     printf 'staging_firefox_release_version=%s\n' "${STAGING_FIREFOX_RELEASE_VERSION:-unknown}"
+    printf 'staging_firefox_signature_source=%s\n' "${STAGING_FIREFOX_SIGNATURE_SOURCE:-unknown}"
+    printf 'staging_firefox_signature_state=%s\n' "${STAGING_FIREFOX_SIGNATURE_STATE:-unknown}"
     printf 'staging_firefox_metadata_sha256=%s\n' "${STAGING_FIREFOX_METADATA_SHA256:-unknown}"
     printf 'staging_firefox_xpi_sha256=%s\n' "${STAGING_FIREFOX_XPI_SHA256:-unknown}"
     printf 'staging_verified_at=%s\n' "${STAGING_VERIFIED_AT:-unknown}"

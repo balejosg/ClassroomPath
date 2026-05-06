@@ -47,6 +47,8 @@ const verificationState = {
   STAGING_FIREFOX_RELEASE_VERSION: '4.1.19',
   STAGING_FIREFOX_METADATA_SHA256: 'meta123',
   STAGING_FIREFOX_XPI_SHA256: 'xpi123',
+  STAGING_FIREFOX_SIGNATURE_SOURCE: 'amo',
+  STAGING_FIREFOX_SIGNATURE_STATE: 'signed',
   STAGING_LINUX_BOOTSTRAP_RESULT: 'success',
   STAGING_LINUX_BOOTSTRAP_RUN_ID: '123456789',
   STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'none',
@@ -119,6 +121,25 @@ describe('promotion eligibility', () => {
     assert.equal(report.eligible, false);
     assert.equal(report.checks.windowsFirefox.status, 'fail');
     assert.match(report.errors.join('\n'), /Windows bootstrap evidence is missing or failed/);
+  });
+
+  test('requires signed Firefox release evidence for low-risk production promotions', () => {
+    const report = evaluatePromotionEligibility({
+      deploymentMode: 'promotion-eligible',
+      imageSource: 'release-candidate',
+      currentState,
+      verificationState: {
+        ...verificationState,
+        STAGING_FIREFOX_SIGNATURE_STATE: undefined,
+      },
+      expectedRuntime,
+      highRisk: false,
+    });
+
+    assert.equal(report.eligible, false);
+    assert.equal(report.checks.signedFirefoxRelease.status, 'fail');
+    assert.equal(report.checks.windowsFirefox.status, 'not_applicable');
+    assert.match(report.errors.join('\n'), /STAGING_FIREFOX_SIGNATURE_STATE/);
   });
 
   test('accepts LAN staging Linux bootstrap skip for high-risk promotions', () => {

@@ -84,6 +84,8 @@ function writeHighRiskVerificationState(path: string, overrides: string[] = []) 
       'STAGING_FIREFOX_POLICY_RESULT=success',
       'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
       'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
+      'STAGING_FIREFOX_SIGNATURE_SOURCE=amo',
+      'STAGING_FIREFOX_SIGNATURE_STATE=signed',
       'STAGING_FIREFOX_METADATA_SHA256=meta123',
       'STAGING_FIREFOX_XPI_SHA256=xpi123',
       ...overrides,
@@ -205,6 +207,8 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
       'STAGING_FIREFOX_POLICY_RESULT=success',
       'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
       'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
+      'STAGING_FIREFOX_SIGNATURE_SOURCE=amo',
+      'STAGING_FIREFOX_SIGNATURE_STATE=signed',
       'STAGING_FIREFOX_METADATA_SHA256=meta123',
       'STAGING_FIREFOX_XPI_SHA256=xpi123',
       'STAGING_LINUX_BOOTSTRAP_RESULT=success',
@@ -254,6 +258,7 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
     eligible: boolean;
     deploymentMode: string;
     checks: {
+      signedFirefoxRelease: { status: string };
       windowsFirefox: { status: string };
     };
   };
@@ -264,6 +269,8 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
   assert.equal(outputs.staging_email_preflight_result, 'success');
   assert.equal(outputs.staging_email_preflight_mode, 'required');
   assert.equal(outputs.staging_firefox_release_version, '4.1.19');
+  assert.equal(outputs.staging_firefox_signature_source, 'amo');
+  assert.equal(outputs.staging_firefox_signature_state, 'signed');
   assert.equal(outputs.staging_linux_bootstrap_result, 'success');
   assert.equal(outputs.staging_windows_self_update_result, 'success');
   assert.equal(outputs.staging_linux_self_update_result, 'success');
@@ -271,7 +278,54 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
   assert.equal(outputs.staging_verified_at, '2026-04-11T06:00:00Z');
   assert.equal(report.eligible, true);
   assert.equal(report.deploymentMode, 'promotion-eligible');
+  assert.equal(report.checks.signedFirefoxRelease.status, 'pass');
   assert.equal(report.checks.windowsFirefox.status, 'pass');
+});
+
+test('verify-promotion-ready rejects staging evidence without signed Firefox release metadata', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-firefox-signature-'));
+  const currentStatePath = join(tempDir, 'staging-release-state.env');
+  const verificationStatePath = join(tempDir, 'staging-verification.env');
+
+  writePromotionEligibleCurrentState(currentStatePath);
+  writeHighRiskVerificationState(verificationStatePath, [
+    'STAGING_FIREFOX_SIGNATURE_STATE=',
+    'STAGING_LINUX_BOOTSTRAP_RESULT=success',
+    'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=none',
+  ]);
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      'verify-promotion-ready',
+      '--current',
+      currentStatePath,
+      '--verification',
+      verificationStatePath,
+      '--deployment-mode',
+      'promotion-eligible',
+      '--high-risk',
+      'false',
+    ],
+    {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+      env: {
+        ...process.env,
+        EXPECTED_APP_SHA: 'abc123',
+        EXPECTED_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+        EXPECTED_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+        EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+        EXPECTED_OPENPATH_VERSION: '4.1.19',
+        EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+        EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
+      },
+    }
+  );
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /STAGING_FIREFOX_SIGNATURE_STATE is missing/);
 });
 
 test('release-state CLI rejects high-risk promotion without Linux staging bootstrap evidence', () => {
@@ -317,6 +371,8 @@ test('release-state CLI rejects high-risk promotion without Linux staging bootst
       'STAGING_FIREFOX_POLICY_RESULT=success',
       'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
       'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
+      'STAGING_FIREFOX_SIGNATURE_SOURCE=amo',
+      'STAGING_FIREFOX_SIGNATURE_STATE=signed',
       'STAGING_FIREFOX_METADATA_SHA256=meta123',
       'STAGING_FIREFOX_XPI_SHA256=xpi123',
       'STAGING_LINUX_BOOTSTRAP_RESULT=failure',
@@ -600,6 +656,8 @@ test('release-state CLI lists canonical snapshot fields for shell consumers', ()
     'STAGING_FIREFOX_POLICY_RESULT',
     'STAGING_FIREFOX_EXTENSION_ID',
     'STAGING_FIREFOX_RELEASE_VERSION',
+    'STAGING_FIREFOX_SIGNATURE_SOURCE',
+    'STAGING_FIREFOX_SIGNATURE_STATE',
     'STAGING_FIREFOX_METADATA_SHA256',
     'STAGING_FIREFOX_XPI_SHA256',
     'STAGING_LINUX_BOOTSTRAP_RESULT',
@@ -647,6 +705,8 @@ test('canonical shell release-state helper serializes snapshots through the type
         'STAGING_FIREFOX_POLICY_RESULT=success',
         'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
         'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
+        'STAGING_FIREFOX_SIGNATURE_SOURCE=amo',
+        'STAGING_FIREFOX_SIGNATURE_STATE=signed',
         'STAGING_FIREFOX_METADATA_SHA256=meta123',
         'STAGING_FIREFOX_XPI_SHA256=xpi123',
         'STAGING_LINUX_BOOTSTRAP_RESULT=skipped-low-risk',
@@ -664,6 +724,8 @@ test('canonical shell release-state helper serializes snapshots through the type
   assert.equal(snapshot.STAGING_EMAIL_PREFLIGHT_RESULT, 'skipped-low-risk');
   assert.equal(snapshot.STAGING_WINDOWS_FIREFOX_HIGH_RISK, 'true');
   assert.equal(snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION, '4.1.19');
+  assert.equal(snapshot.STAGING_FIREFOX_SIGNATURE_SOURCE, 'amo');
+  assert.equal(snapshot.STAGING_FIREFOX_SIGNATURE_STATE, 'signed');
   assert.equal(snapshot.STAGING_FIREFOX_XPI_SHA256, 'xpi123');
 });
 
@@ -722,6 +784,8 @@ test('bash release-state helpers preserve shell-only staging verification values
         'STAGING_FIREFOX_POLICY_RESULT=success',
         'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
         'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
+        'STAGING_FIREFOX_SIGNATURE_SOURCE=amo',
+        'STAGING_FIREFOX_SIGNATURE_STATE=signed',
         'STAGING_FIREFOX_METADATA_SHA256=meta123',
         'STAGING_FIREFOX_XPI_SHA256=xpi123',
         'STAGING_LINUX_BOOTSTRAP_RESULT=skipped-low-risk',
@@ -742,4 +806,6 @@ test('bash release-state helpers preserve shell-only staging verification values
   assert.equal(snapshot.STAGING_VERIFIED_AT, '2026-04-11T10:00:00Z');
   assert.equal(snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT, 'success');
   assert.equal(snapshot.STAGING_FIREFOX_EXTENSION_ID, 'openpath@example');
+  assert.equal(snapshot.STAGING_FIREFOX_SIGNATURE_SOURCE, 'amo');
+  assert.equal(snapshot.STAGING_FIREFOX_SIGNATURE_STATE, 'signed');
 });

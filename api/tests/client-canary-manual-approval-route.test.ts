@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import type { Server } from 'node:http';
 import { afterEach, describe, test } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   clientCanaryGroupDiagnosticsHandler,
@@ -11,6 +14,8 @@ import { getAvailablePort } from './test-utils.js';
 
 let server: Server | undefined;
 const originalToken = process.env.CP_CLIENT_CANARY_ADMIN_TOKEN;
+const currentFilePath = fileURLToPath(import.meta.url);
+const apiRoot = resolve(dirname(currentFilePath), '..');
 
 async function startServer() {
   const app = express();
@@ -74,6 +79,16 @@ describe('client canary manual approval route', () => {
 
     assert.equal(response.status, 403);
     assert.deepEqual(await response.json(), { error: 'forbidden' });
+  });
+
+  test('reads the canary token through the runtime environment policy', () => {
+    const routeSource = readFileSync(
+      resolve(apiRoot, 'src/lib/client-canary-manual-approval-route.ts'),
+      'utf8'
+    );
+
+    assert.ok(routeSource.includes('config.clientCanaryAdminToken'));
+    assert.ok(!routeSource.includes('process.env.CP_CLIENT_CANARY_ADMIN_TOKEN'));
   });
 
   test('rejects mismatched tokens before reading manual billing requests', async () => {

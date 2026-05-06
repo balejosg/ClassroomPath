@@ -1,3 +1,4 @@
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const WINDOWS_WORKSPACE = 'C:\\Windows\\Temp\\openpath-ajax-direct';
@@ -157,6 +158,72 @@ export function validateRunnerDiagnosticPlan(plan) {
   return errors;
 }
 
+export function loadRunnerDiagnosticEnvLocal(projectRoot, fileName = '.env.local') {
+  const envPath = resolve(projectRoot, fileName);
+  if (!existsSync(envPath)) {
+    return {};
+  }
+
+  const env = {};
+  for (const rawLine of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#') || !line.includes('=')) {
+      continue;
+    }
+
+    const [key, ...valueParts] = line.split('=');
+    let value = valueParts.join('=').trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    env[key.trim()] = value;
+  }
+
+  return env;
+}
+
+export function readRunnerDiagnosticKeyValueFile(path) {
+  if (!existsSync(path)) {
+    return {};
+  }
+
+  const values = {};
+  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+    if (!line || !line.includes('=')) {
+      continue;
+    }
+
+    const [key, ...valueParts] = line.split('=');
+    values[key] = valueParts.join('=');
+  }
+  return values;
+}
+
+export function resolveRunnerDiagnosticBaseUrl({ baseUrl, environment, getDeployTarget }) {
+  const rawBaseUrl = baseUrl || getDeployTarget(environment).publicUrl;
+  return rawBaseUrl.replace(/\/$/, '');
+}
+
+export function resolveRunnerDiagnosticArtifactDir({
+  projectRoot,
+  artifactDir,
+  defaultSubdir,
+  environment,
+  includeEnvironmentInDefault = false,
+  now = new Date(),
+}) {
+  if (artifactDir) {
+    return resolve(projectRoot, artifactDir);
+  }
+
+  const timestamp = now.toISOString().replace(/[:.]/g, '-');
+  const leaf = includeEnvironmentInDefault ? `${environment}-${timestamp}` : timestamp;
+  return resolve(projectRoot, '.opencode/tmp', defaultSubdir, leaf);
+}
+
 export function summarizeRunnerDiagnosticPlan(plan) {
   const lines = [
     `target_environment=${plan.environment}`,
@@ -170,4 +237,33 @@ export function summarizeRunnerDiagnosticPlan(plan) {
     );
   }
   return lines;
+}
+
+export function summarizeRunnerDiagnosticEnvironmentVariables(plan) {
+  return Object.entries(plan.environmentVariables ?? {}).map(([key, value]) => `${key}=${value}`);
+}
+
+export function initializeRunnerDiagnosticRuntime(
+  plan,
+  {
+    dryRun,
+    emit = console.log,
+    validationErrors = validateRunnerDiagnosticPlan(plan),
+    summaryLines = summarizeRunnerDiagnosticPlan(plan),
+    summaryLineFilter = () => true,
+  } = {}
+) {
+  if (validationErrors.length > 0) {
+    throw new Error(validationErrors[0]);
+  }
+
+  for (const line of summaryLines) {
+    if (summaryLineFilter(line)) {
+      emit(line);
+    }
+  }
+
+  if (!dryRun) {
+    mkdirSync(plan.artifactDir, { recursive: true });
+  }
 }

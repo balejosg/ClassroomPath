@@ -250,6 +250,8 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(
       persistHelperContent.includes('STAGING_FIREFOX_EXTENSION_ID=') &&
         persistHelperContent.includes('STAGING_FIREFOX_RELEASE_VERSION=') &&
+        persistHelperContent.includes('STAGING_FIREFOX_SIGNATURE_SOURCE=') &&
+        persistHelperContent.includes('STAGING_FIREFOX_SIGNATURE_STATE=') &&
         persistHelperContent.includes('STAGING_FIREFOX_METADATA_SHA256=') &&
         persistHelperContent.includes('STAGING_FIREFOX_XPI_SHA256=')
     );

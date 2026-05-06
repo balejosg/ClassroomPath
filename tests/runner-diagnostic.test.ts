@@ -641,6 +641,19 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /plan\.canary\.command/);
   });
 
+  test('direct AJAX diagnostics delegate shared runtime lifecycle to the execution module', () => {
+    const windowsScript = readProjectText('scripts/run-windows-ajax-direct.mjs');
+    const linuxScript = readProjectText('scripts/run-linux-ajax-direct.mjs');
+
+    for (const script of [windowsScript, linuxScript]) {
+      assert.match(script, /loadRunnerDiagnosticEnvLocal/);
+      assert.match(script, /resolveRunnerDiagnosticBaseUrl/);
+      assert.match(script, /resolveRunnerDiagnosticArtifactDir/);
+      assert.match(script, /initializeRunnerDiagnosticRuntime/);
+      assert.doesNotMatch(script, /function loadEnvLocal/);
+    }
+  });
+
   test('direct Linux AJAX diagnostic preflights before provisioning remote canaries', () => {
     const result = runLinuxAjaxDirectDiagnostic([
       '--confirm-local-state-reset',

@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { restoreTrackedEnv, setEnv, snapshotTrackedEnv } from './helpers/env.js';
 
 const ORIGINAL_ENV = snapshotTrackedEnv();
+const currentFilePath = fileURLToPath(import.meta.url);
+const apiDir = dirname(dirname(currentFilePath));
 
 afterEach(() => {
   restoreTrackedEnv(ORIGINAL_ENV);
@@ -187,5 +192,41 @@ describe('runtime config contract', () => {
     process.env.RESEND_FROM_EMAIL = 'noreply@classroompath.test';
 
     assert.equal(configModule.resolveRuntimeConfig().emailDeliveryMode, 'resend');
+  });
+
+  it('routes public email config getters through narrow runtime policy resolvers', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    process.env.PUBLIC_URL = 'https://classroompath.test';
+    process.env.RESEND_API_KEY = 're_test_123';
+    process.env.RESEND_FROM_EMAIL = 'noreply@classroompath.test';
+
+    const tag = `runtime-config-email-getters-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const configModule = await import(`../src/config.ts?${tag}`);
+    const configSource = readFileSync(resolve(apiDir, 'src/config.ts'), 'utf8');
+
+    assert.ok(configSource.includes('resolveResendApiKey(process.env)'));
+    assert.ok(configSource.includes('resolveResendFromEmail(process.env)'));
+    assert.ok(!configSource.includes('trimToNull(process.env.RESEND_API_KEY)'));
+    assert.ok(!configSource.includes('trimToNull(process.env.RESEND_FROM_EMAIL)'));
+    assert.equal(configModule.config.resendApiKey, 're_test_123');
+    assert.equal(configModule.config.resendFromEmail, 'noreply@classroompath.test');
+  });
+
+  it('reads the client canary token without validating unrelated email preflight policy', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    process.env.PUBLIC_URL = 'https://classroompath.test';
+    process.env.CP_CLIENT_CANARY_ADMIN_TOKEN = 'expected-token';
+    process.env.CP_EMAIL_PREFLIGHT_MODE = 'bogus';
+
+    const tag = `runtime-config-canary-token-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const configModule = await import(`../src/config.ts?${tag}`);
+
+    assert.equal(configModule.config.clientCanaryAdminToken, 'expected-token');
+    assert.throws(
+      () => configModule.assertRuntimeSecretsConfigured(),
+      /CP_EMAIL_PREFLIGHT_MODE must be one of: required, skip/
+    );
   });
 });

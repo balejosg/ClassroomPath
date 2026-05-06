@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,13 @@ import { fileURLToPath } from 'node:url';
 import { getDeployTarget } from './deploy-targets.mjs';
 import {
   buildRunnerDiagnosticPlan,
+  initializeRunnerDiagnosticRuntime,
+  loadRunnerDiagnosticEnvLocal,
+  readRunnerDiagnosticKeyValueFile,
+  resolveRunnerDiagnosticArtifactDir,
+  resolveRunnerDiagnosticBaseUrl,
+  summarizeRunnerDiagnosticEnvironmentVariables,
+  summarizeRunnerDiagnosticPlan,
   validateRunnerDiagnosticPlan,
 } from './lib/runner-diagnostic-execution.mjs';
 
@@ -18,14 +25,6 @@ const FAKE_SUDO_FAILURE = process.env.LINUX_AJAX_DIRECT_FAKE_SUDO_FAILURE === '1
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
-
-function defaultArtifactDir() {
-  return resolve(
-    projectRoot,
-    '.opencode/tmp/linux-ajax-direct',
-    new Date().toISOString().replace(/[:.]/g, '-')
-  );
-}
 
 function printUsage() {
   console.error(`Usage:
@@ -44,7 +43,7 @@ function parseArgs(argv) {
   const options = {
     environment: DEFAULT_ENVIRONMENT,
     baseUrl: '',
-    artifactDir: defaultArtifactDir(),
+    artifactDir: '',
     confirmProduction: false,
     confirmLocalStateReset: false,
   };
@@ -72,27 +71,6 @@ function parseArgs(argv) {
   }
 
   return options;
-}
-
-function loadEnvLocal() {
-  const envPath = resolve(projectRoot, '.env.local');
-  if (!existsSync(envPath)) return {};
-
-  const env = {};
-  for (const rawLine of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#') || !line.includes('=')) continue;
-    const [key, ...valueParts] = line.split('=');
-    let value = valueParts.join('=').trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    env[key.trim()] = value;
-  }
-  return env;
 }
 
 function shellQuote(value) {
@@ -154,18 +132,6 @@ function runCommand(command, args, options = {}) {
   return status;
 }
 
-function readGithubOutput(path) {
-  if (!existsSync(path)) return {};
-
-  const values = {};
-  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    if (!line || !line.includes('=')) continue;
-    const [key, ...valueParts] = line.split('=');
-    values[key] = valueParts.join('=');
-  }
-  return values;
-}
-
 function redactAuthorizationHeader(value) {
   return value ? '[redacted]' : '';
 }
@@ -184,14 +150,20 @@ function main() {
     console.error(`Unsupported environment: ${options.environment}`);
     process.exit(1);
   }
-  const envLocal = loadEnvLocal();
-  const baseUrl = (options.baseUrl || getDeployTarget(options.environment).publicUrl).replace(
-    /\/$/,
-    ''
-  );
+  const envLocal = loadRunnerDiagnosticEnvLocal(projectRoot);
+  const baseUrl = resolveRunnerDiagnosticBaseUrl({
+    baseUrl: options.baseUrl,
+    environment: options.environment,
+    getDeployTarget,
+  });
   const adminToken =
     process.env.CP_CLIENT_CANARY_ADMIN_TOKEN || envLocal.CP_CLIENT_CANARY_ADMIN_TOKEN || '';
-  const artifactDir = options.artifactDir;
+  const artifactDir = resolveRunnerDiagnosticArtifactDir({
+    projectRoot,
+    artifactDir: options.artifactDir,
+    defaultSubdir: 'linux-ajax-direct',
+    environment: options.environment,
+  });
   const plan = buildRunnerDiagnosticPlan({
     platform: 'linux',
     suite: 'ajax-auto-allow',
@@ -202,10 +174,6 @@ function main() {
     confirmLocalStateReset: options.confirmLocalStateReset,
   });
   const validationErrors = validateRunnerDiagnosticPlan(plan);
-  if (validationErrors.length > 0) {
-    console.error(validationErrors[0]);
-    process.exit(1);
-  }
   const bootstrapArtifact = plan.artifacts.linuxBootstrapCanary;
   const bootstrapOutput = plan.artifacts.linuxBootstrapOutput;
   const canaryArtifact = plan.artifacts.linuxAjaxCanary;
@@ -213,14 +181,14 @@ function main() {
   const canaryOutput = plan.artifacts.linuxAjaxSummaryOutput;
   const installerPath = plan.artifacts.linuxInstaller;
 
-  console.log(`target_environment=${options.environment}`);
-  console.log(`base_url=${baseUrl}`);
-  console.log(`artifact_dir=${artifactDir}`);
-  console.log(`PRODUCTION_LINUX_BOOTSTRAP_CANARY_URL=${baseUrl}`);
-  console.log(`PRODUCTION_LINUX_BOOTSTRAP_CANARY_ARTIFACT_PATH=${bootstrapArtifact}`);
-  console.log(`LINUX_AJAX_AUTO_ALLOW_CANARY_ARTIFACT=${canaryArtifact}`);
-
-  if (!DRY_RUN) mkdirSync(artifactDir, { recursive: true });
+  initializeRunnerDiagnosticRuntime(plan, {
+    dryRun: DRY_RUN,
+    validationErrors,
+    summaryLines: [
+      ...summarizeRunnerDiagnosticPlan(plan),
+      ...summarizeRunnerDiagnosticEnvironmentVariables(plan),
+    ],
+  });
 
   runCommand('sudo', ['-n', 'true'], {
     logDir: artifactDir,
@@ -253,7 +221,7 @@ function main() {
     logName: 'provision-linux-bootstrap-canary',
   });
 
-  const bootstrap = readGithubOutput(bootstrapOutput);
+  const bootstrap = readRunnerDiagnosticKeyValueFile(bootstrapOutput);
   const classroomId = bootstrap.classroom_id || '<classroom-id>';
   const enrollmentToken = bootstrap.enrollment_token || '<enrollment-token>';
   const groupId = bootstrap.group_id || '<group-id>';

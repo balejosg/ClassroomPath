@@ -10,6 +10,11 @@ import { fileURLToPath } from 'node:url';
 import { getDeployTarget } from './deploy-targets.mjs';
 import {
   buildRunnerDiagnosticPlan,
+  initializeRunnerDiagnosticRuntime,
+  loadRunnerDiagnosticEnvLocal,
+  readRunnerDiagnosticKeyValueFile,
+  resolveRunnerDiagnosticArtifactDir,
+  resolveRunnerDiagnosticBaseUrl,
   summarizeRunnerDiagnosticPlan,
   validateRunnerDiagnosticPlan,
 } from './lib/runner-diagnostic-execution.mjs';
@@ -139,33 +144,6 @@ function parseArgs(argv) {
   }
 
   return options;
-}
-
-function loadEnvLocal() {
-  const envPath = resolve(projectRoot, '.env.local');
-  if (!existsSync(envPath)) {
-    return {};
-  }
-
-  const env = {};
-  for (const rawLine of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#') || !line.includes('=')) {
-      continue;
-    }
-
-    const [key, ...valueParts] = line.split('=');
-    let value = valueParts.join('=').trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    env[key.trim()] = value;
-  }
-
-  return env;
 }
 
 function expandTilde(value) {
@@ -419,19 +397,6 @@ ${dnsProbe}
 `;
 }
 
-function parseKeyValueFile(path) {
-  const values = {};
-  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    if (!line.includes('=')) {
-      continue;
-    }
-
-    const [key, ...valueParts] = line.split('=');
-    values[key] = valueParts.join('=');
-  }
-  return values;
-}
-
 function camelFromSnake(value) {
   return value.replace(/_([a-z])/g, (_, character) => character.toUpperCase());
 }
@@ -569,7 +534,7 @@ function provisionCanary({ options, baseUrl, artifactDir, billingContext, env })
     env: provisionEnv,
   });
 
-  const outputs = parseKeyValueFile(outputPath);
+  const outputs = readRunnerDiagnosticKeyValueFile(outputPath);
   const summary = Object.fromEntries(
     Object.entries(outputs).map(([key, value]) => [camelFromSnake(key), value])
   );
@@ -964,16 +929,19 @@ function main() {
     process.exit(1);
   }
 
-  const env = { ...loadEnvLocal(), ...process.env };
-  const deployTarget = getDeployTarget(options.environment);
-  const baseUrl = (options.baseUrl || deployTarget.publicUrl).replace(/\/$/, '');
-  const artifactDir =
-    options.artifactDir ||
-    resolve(
-      projectRoot,
-      '.opencode/tmp/windows-ajax-direct',
-      `${options.environment}-${new Date().toISOString().replace(/[:.]/g, '-')}`
-    );
+  const env = { ...loadRunnerDiagnosticEnvLocal(projectRoot), ...process.env };
+  const baseUrl = resolveRunnerDiagnosticBaseUrl({
+    baseUrl: options.baseUrl,
+    environment: options.environment,
+    getDeployTarget,
+  });
+  const artifactDir = resolveRunnerDiagnosticArtifactDir({
+    projectRoot,
+    artifactDir: options.artifactDir,
+    defaultSubdir: 'windows-ajax-direct',
+    environment: options.environment,
+    includeEnvironmentInDefault: true,
+  });
   const plan = withWindowsAjaxRuntimeUploads(
     buildRunnerDiagnosticPlan({
       platform: 'windows',
@@ -988,22 +956,17 @@ function main() {
     })
   );
   const validationErrors = validateRunnerDiagnosticPlan(plan);
-  if (validationErrors.length > 0) {
-    console.error(validationErrors[0]);
-    process.exit(1);
-  }
+
+  initializeRunnerDiagnosticRuntime(plan, {
+    dryRun: DRY_RUN,
+    validationErrors,
+    summaryLines: summarizeRunnerDiagnosticPlan(plan),
+    summaryLineFilter: (line) => !line.startsWith('firefox_mode='),
+  });
+  console.log(`firefox_extension_source=${options.firefoxExtensionSource}`);
 
   ensureFilesExist(options, plan);
 
-  for (const line of summarizeRunnerDiagnosticPlan(plan)) {
-    if (line.startsWith('firefox_mode=')) continue;
-    console.log(line);
-  }
-  console.log(`firefox_extension_source=${options.firefoxExtensionSource}`);
-
-  if (!DRY_RUN) {
-    mkdirSync(artifactDir, { recursive: true });
-  }
   const localFirefoxExtension = buildLocalFirefoxExtension(options, artifactDir);
   const seleniumNodeModulesBundle = buildSeleniumNodeModulesBundle(options, artifactDir);
 

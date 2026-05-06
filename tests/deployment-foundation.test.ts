@@ -52,6 +52,10 @@ const stagingLocalReleaseHelperPath = resolve(
   projectRoot,
   'scripts/lib/staging-deploy-local-release.sh'
 );
+const stagingLocalRuntimeHelperPath = resolve(
+  projectRoot,
+  'scripts/lib/staging-deploy-local-runtime.sh'
+);
 const turboConfigPath = resolve(projectRoot, 'turbo.json');
 const turboRunnerScriptPath = resolve(projectRoot, 'scripts/run-turbo.sh');
 
@@ -142,6 +146,7 @@ describe('Deployment foundation contracts', () => {
   test('billing env sync stays mode-aware in staging and production runtime flows', () => {
     const productionRuntime = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
     const syncScript = readFileSync(syncBillingEnvScriptPath, 'utf-8');
+    const stagingLocalRuntime = readFileSync(stagingLocalRuntimeHelperPath, 'utf-8');
 
     assert.ok(existsSync(syncBillingEnvScriptPath));
     assert.ok(
@@ -159,6 +164,10 @@ describe('Deployment foundation contracts', () => {
         syncScript.includes('manual_only') &&
         syncScript.includes('when CP_BILLING_MODE=stripe')
     );
+    assert.ok(syncScript.includes('runtime-environment-policy.mjs'));
+    assert.ok(syncScript.includes('billing-required-env-names'));
+    assert.ok(stagingLocalRuntime.includes('runtime-environment-policy.mjs'));
+    assert.ok(stagingLocalRuntime.includes('staging-email-preflight'));
   });
 
   test('production compose defaults and runbook commands pin the canonical compose project name', () => {

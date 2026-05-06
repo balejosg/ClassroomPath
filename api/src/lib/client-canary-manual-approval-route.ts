@@ -5,6 +5,7 @@ import { desc, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { openpathDb, requests, whitelistGroups, whitelistRules } from '../db/openpath.js';
 import { approveManualBillingRequest } from '../services/billing.service.js';
+import { config } from '../config.js';
 
 const CANARY_MARKER = '[client-canary]';
 
@@ -102,7 +103,7 @@ function expectedHostState(
 
 export const clientCanaryManualBillingApprovalHandler: RequestHandler = async (req, res, next) => {
   try {
-    const configuredToken = trimToNull(process.env.CP_CLIENT_CANARY_ADMIN_TOKEN);
+    const configuredToken = config.clientCanaryAdminToken;
     const presentedToken = extractPresentedToken(
       req.get('authorization'),
       req.get('x-classroompath-canary-token')
@@ -162,7 +163,7 @@ export const clientCanaryManualBillingApprovalHandler: RequestHandler = async (r
 
 export const clientCanaryGroupDiagnosticsHandler: RequestHandler = async (req, res, next) => {
   try {
-    const configuredToken = trimToNull(process.env.CP_CLIENT_CANARY_ADMIN_TOKEN);
+    const configuredToken = config.clientCanaryAdminToken;
     const presentedToken = extractPresentedToken(
       req.get('authorization'),
       req.get('x-classroompath-canary-token')

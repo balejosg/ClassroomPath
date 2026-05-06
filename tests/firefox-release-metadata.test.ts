@@ -14,11 +14,15 @@ describe('Firefox release metadata helper', () => {
         JSON.stringify({
           extensionId: 'monitor-bloqueos@openpath',
           version: '2.0.0.3001',
+          signatureSource: 'amo',
+          signatureState: 'signed',
         })
       ),
       {
         extensionId: 'monitor-bloqueos@openpath',
         version: '2.0.0.3001',
+        signatureSource: 'amo',
+        signatureState: 'signed',
       }
     );
   });
@@ -27,6 +31,8 @@ describe('Firefox release metadata helper', () => {
     const metadataJson = JSON.stringify({
       extensionId: 'monitor-bloqueos@openpath',
       version: '2.0.0.3001',
+      signatureSource: 'amo',
+      signatureState: 'signed',
     });
 
     assert.equal(
@@ -34,6 +40,8 @@ describe('Firefox release metadata helper', () => {
       'monitor-bloqueos@openpath'
     );
     assert.equal(getFirefoxReleaseMetadataField(metadataJson, 'version'), '2.0.0.3001');
+    assert.equal(getFirefoxReleaseMetadataField(metadataJson, 'signatureSource'), 'amo');
+    assert.equal(getFirefoxReleaseMetadataField(metadataJson, 'signatureState'), 'signed');
   });
 
   test('rejects missing required fields with a precise error', () => {
@@ -55,6 +63,8 @@ describe('Firefox release metadata helper', () => {
       JSON.stringify({
         extensionId: 'monitor-bloqueos@openpath',
         version: '2.0.0.3001',
+        signatureSource: 'amo',
+        signatureState: 'signed',
       })
     );
 
@@ -64,7 +74,7 @@ describe('Firefox release metadata helper', () => {
   test('cli helper rejects missing field arguments with usage text', () => {
     assert.throws(
       () => getFirefoxReleaseMetadataFieldFromCliArgs([], '{}'),
-      /Usage:\n  node scripts\/read-firefox-release-metadata\.mjs --field <extensionId\|version> < metadata\.json/
+      /Usage:\n  node scripts\/read-firefox-release-metadata\.mjs --field <extensionId\|version\|signatureSource\|signatureState> < metadata\.json/
     );
   });
 });

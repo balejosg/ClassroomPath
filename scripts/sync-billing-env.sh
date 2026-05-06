@@ -7,33 +7,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 ENV_FILE="${1:-$SCRIPT_DIR/../config/.env}"
+RUNTIME_ENV_POLICY_SCRIPT="$SCRIPT_DIR/lib/runtime-environment-policy.mjs"
+CP_BILLING_MODE="${CP_BILLING_MODE:-manual_only}"
 
-stripe_vars=(
-  STRIPE_SECRET_KEY
-  STRIPE_WEBHOOK_SECRET
-  STRIPE_ANNUAL_PRICE_1_10
-  STRIPE_ANNUAL_PRICE_11_25
-  STRIPE_ANNUAL_PRICE_26_50
-  STRIPE_ANNUAL_PRICE_51_100
-  STRIPE_ONBOARDING_PRICE_1_25
-  STRIPE_ONBOARDING_PRICE_26_100
-  STRIPE_PILOT_PRICE
-)
+runtime_policy_names() {
+  node "$RUNTIME_ENV_POLICY_SCRIPT" "$1"
+}
 
-required_vars=(
-  CP_BILLING_MODE
-  CP_PLATFORM_ADMIN_EMAILS
-)
-
-optional_billing_vars=(
-  CP_CLIENT_CANARY_ADMIN_TOKEN
-)
-
-push_vars=(
-  VAPID_PUBLIC_KEY
-  VAPID_PRIVATE_KEY
-  VAPID_CONTACT
-)
+readarray -t stripe_vars < <(runtime_policy_names stripe-required-env-names)
+readarray -t required_vars < <(runtime_policy_names billing-required-env-names)
+readarray -t optional_billing_vars < <(runtime_policy_names optional-billing-env-names)
+readarray -t push_vars < <(runtime_policy_names push-env-names)
 
 upsert_env_var() {
   local path="$1"
@@ -74,8 +58,6 @@ remove_env_var() {
   awk -v key="$key" 'index($0, key "=") != 1 { print }' "$path" > "$tmp_file"
   mv "$tmp_file" "$path"
 }
-
-CP_BILLING_MODE="${CP_BILLING_MODE:-manual_only}"
 
 for name in "${required_vars[@]}"; do
   if [ -z "${!name:-}" ]; then

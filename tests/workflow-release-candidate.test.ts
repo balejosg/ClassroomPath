@@ -589,6 +589,10 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(workflowText.includes('- cache_miss_reason: $cache_miss_reason'));
     assert.ok(workflowText.includes('AMO signing required because signed artifact cache miss'));
     assert.ok(assetJobRun.includes('payload-hash.txt'));
+    assert.ok(
+      assetJobRun.includes('node firefox-extension/verify-firefox-release-artifacts.mjs') &&
+        assetJobRun.includes('--payload-hash "$FIREFOX_RELEASE_PAYLOAD_HASH"')
+    );
     assert.ok(assetJobRun.includes('OPENPATH_FIREFOX_RELEASE_VERSION='));
     assert.ok(assetJobRun.includes('node scripts/firefox-release-version.mjs'));
     assert.ok(assetJobRun.includes('--manifest upstream/openpath/firefox-extension/manifest.json'));
