@@ -557,7 +557,22 @@ describe('Workflow core contracts', () => {
     assert.ok(checkoutStep, 'cleanup workflow should check out scripts before resolving SSH host');
     assert.ok(cleanupScript.includes('docker system prune -af'));
     assert.ok(cleanupScript.includes('docker builder prune -af'));
+    assert.ok(cleanupScript.includes('ConnectTimeout='));
+    assert.ok(cleanupScript.includes('ssh_reachable='));
+    assert.ok(cleanupScript.includes('failure_boundary='));
+    assert.ok(cleanupScript.includes('staging-ssh-unreachable'));
+    assert.ok(cleanupScript.includes('disk-critical'));
     assert.ok(cleanupScript.includes('GITHUB_STEP_SUMMARY'));
+    assert.match(cleanupScript, /\| sshReachable \|/);
+    assert.match(cleanupScript, /\| diskBefore \|/);
+    assert.match(cleanupScript, /\| diskAfter \|/);
+    assert.match(cleanupScript, /\| cleanupRan \|/);
+    assert.match(cleanupScript, /\| failureBoundary \|/);
+    assert.match(
+      cleanupScript,
+      /if \[ "\$ssh_reachable" = "true" \]; then[\s\S]*docker system prune -af/,
+      'Docker cleanup must only run after SSH reachability is established'
+    );
     assert.ok(cleanupScript.includes('::warning::'));
     assert.ok(cleanupScript.includes('::error::'));
     assert.ok(cleanupScript.includes('exit 1'));

@@ -81,6 +81,8 @@ jobs:
 
           staging_result="${{ needs.smoke-test-staging.result }}"
           production_result="${{ needs.smoke-test-production.result }}"
+          staging_boundary="${{ needs.smoke-test-staging.outputs.failure_boundary_id }}"
+          production_boundary="${{ needs.smoke-test-production.outputs.failure_boundary_id }}"
 
           if [ "$staging_result" = "success" ]; then
             echo "✅ Staging: PASSED"
@@ -97,3 +99,8 @@ jobs:
           else
             echo "❌ Production: FAILED"
           fi
+
+          echo ""
+          echo "Failure boundaries:"
+          echo "- Staging failureBoundary: ${staging_boundary:-n/a}"
+          echo "- Production failureBoundary: ${production_boundary:-n/a}"

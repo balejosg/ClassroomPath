@@ -29,6 +29,13 @@ on:
         required: false
         type: string
         default: ''
+    outputs:
+      failure_boundary_id:
+        description: Smoke failure boundary identifier.
+        value: ${{ jobs.smoke.outputs.failure_boundary_id }}
+      failure_boundary_message:
+        description: Smoke failure boundary diagnostic message.
+        value: ${{ jobs.smoke.outputs.failure_boundary_message }}
 
 permissions:
   issues: write
@@ -39,6 +46,10 @@ jobs:
   smoke:
     name: ${{ inputs.environment_name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      failure_boundary_id: ${{ steps.failure-boundary.outputs.failure_boundary_id }}
+      failure_boundary_message: ${{ steps.failure-boundary.outputs.failure_boundary_message }}
 
     steps:
       - name: Checkout
@@ -59,9 +70,32 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Wait for readiness
+        id: readiness
         env:
           READY_URL: ${{ steps.target.outputs.ready_url }}
-        run: bash scripts/wait-for-ready.sh "$READY_URL"
+        run: |
+          if bash scripts/wait-for-ready.sh "$READY_URL"; then
+            exit 0
+          fi
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          fs.writeFileSync(
+            'smoke-failure-boundary.json',
+            `${JSON.stringify(
+              {
+                success: false,
+                failureBoundary: {
+                  id: 'readiness-timeout',
+                  message: 'The target readiness endpoint did not become ready before smoke tests.',
+                },
+              },
+              null,
+              2
+            )}\n`
+          );
+          NODE
+          exit 1
 
       - name: Run smoke tests
         id: smoke
@@ -73,12 +107,50 @@ jobs:
           bash scripts/run-smoke-in-verifier.sh
           echo "exit_code=0" >> "$GITHUB_OUTPUT"
 
+      - name: Publish smoke failure boundary
+        id: failure-boundary
+        if: always()
+        run: |
+          boundary_env="$(mktemp)"
+          node <<'NODE' > "$boundary_env"
+          const fs = require('node:fs');
+          const fallback = {
+            success: false,
+            failureBoundary: {
+              id: 'smoke-test-failed',
+              message: 'Smoke workflow failed before a specific boundary artifact was written.',
+            },
+          };
+          const artifact = fs.existsSync('smoke-failure-boundary.json')
+            ? JSON.parse(fs.readFileSync('smoke-failure-boundary.json', 'utf8'))
+            : fallback;
+          const boundary = artifact.failureBoundary ?? fallback.failureBoundary;
+          fs.writeFileSync(
+            'smoke-failure-boundary.json',
+            `${JSON.stringify({ ...artifact, failureBoundary: boundary }, null, 2)}\n`
+          );
+          console.log(`failure_boundary_id=${boundary.id ?? 'unknown'}`);
+          console.log(`failure_boundary_message=${boundary.message ?? ''}`);
+          NODE
+          cat "$boundary_env" >> "$GITHUB_OUTPUT"
+          failure_boundary_id="$(sed -n 's/^failure_boundary_id=//p' "$boundary_env" | head -n 1)"
+          failure_boundary_message="$(sed -n 's/^failure_boundary_message=//p' "$boundary_env" | head -n 1)"
+
+          {
+            echo "### Smoke failure boundary"
+            echo ""
+            echo "- failureBoundary: \`$failure_boundary_id\`"
+            echo "- message: $failure_boundary_message"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload smoke test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: smoke-test-${{ inputs.environment_name }}-${{ github.run_id }}
-          path: smoke-results.txt
+          path: |
+            smoke-results.txt
+            smoke-failure-boundary.json
           retention-days: 7
 
       - name: Create issue on failure

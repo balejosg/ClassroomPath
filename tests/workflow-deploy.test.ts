@@ -213,7 +213,11 @@ describe('Deploy workflow contracts', () => {
     const deployProductionJob = findWorkflowJob(deployWorkflow, 'deploy-production');
     const resolveReleaseImagesJob = findWorkflowJob(deployWorkflow, 'resolve-release-images');
     const smokeWorkflowText = readText('.github/workflows/smoke-tests.yml');
+    const smokeWorkflow = readWorkflow('.github/workflows/smoke-tests.yml');
     const reusableSmokeWorkflowText = readText('.github/workflows/reusable-smoke-test.yml');
+    const reusableSmokeWorkflow = readWorkflow('.github/workflows/reusable-smoke-test.yml');
+    const reusableSmokeJob = findWorkflowJob(reusableSmokeWorkflow, 'smoke');
+    const runSmokeInVerifierScript = readText('scripts/run-smoke-in-verifier.sh');
     const cleanupWorkflow = readText('.github/workflows/cleanup-staging.yml');
     const canaryWorkflow = readText('.github/workflows/windows-firefox-canary.yml');
     const canaryReusableWorkflow = readWorkflow('.github/workflows/windows-firefox-canary.yml');
@@ -238,10 +242,49 @@ describe('Deploy workflow contracts', () => {
 
     assert.ok(smokeWorkflowText.includes('./.github/workflows/reusable-smoke-test.yml'));
     assert.ok(smokeWorkflowText.includes('resolve-latest-verifier-image.mjs'));
+    assert.ok(smokeWorkflowText.includes('needs.smoke-test-staging.outputs.failure_boundary_id'));
+    assert.ok(
+      smokeWorkflowText.includes('needs.smoke-test-production.outputs.failure_boundary_id')
+    );
+    assert.match(smokeWorkflowText, /Staging failureBoundary/);
+    assert.match(smokeWorkflowText, /Production failureBoundary/);
+    assert.equal(
+      smokeWorkflow.on?.workflow_call,
+      undefined,
+      'top-level smoke workflow should remain manually/schedule triggered'
+    );
     assert.ok(reusableSmokeWorkflowText.includes('run-smoke-in-verifier.sh'));
     assert.ok(reusableSmokeWorkflowText.includes('verifier_image:'));
     assert.ok(reusableSmokeWorkflowText.includes('wait-for-ready.sh'));
     assert.ok(!reusableSmokeWorkflowText.includes('npm ci'));
+    assert.equal(
+      reusableSmokeJob['timeout-minutes'],
+      15,
+      'reusable smoke job must be bounded so smoke cannot run for roughly an hour without new evidence'
+    );
+    assert.equal(
+      reusableSmokeWorkflow.on?.workflow_call?.outputs?.['failure_boundary_id']?.value,
+      '${{ jobs.smoke.outputs.failure_boundary_id }}'
+    );
+    assert.equal(
+      reusableSmokeWorkflow.on?.workflow_call?.outputs?.['failure_boundary_message']?.value,
+      '${{ jobs.smoke.outputs.failure_boundary_message }}'
+    );
+    assert.equal(
+      reusableSmokeJob.outputs?.failure_boundary_id,
+      '${{ steps.failure-boundary.outputs.failure_boundary_id }}'
+    );
+    assert.equal(
+      reusableSmokeJob.outputs?.failure_boundary_message,
+      '${{ steps.failure-boundary.outputs.failure_boundary_message }}'
+    );
+    assert.match(reusableSmokeWorkflowText, /readiness-timeout/);
+    assert.match(reusableSmokeWorkflowText, /smoke-failure-boundary\.json/);
+    assert.match(reusableSmokeWorkflowText, /failureBoundary: \\`\$failure_boundary_id\\`/);
+    assert.match(reusableSmokeWorkflowText, /smoke-results\.txt\n\s+smoke-failure-boundary\.json/);
+    assert.match(runSmokeInVerifierScript, /verifier-image-pull/);
+    assert.match(runSmokeInVerifierScript, /smoke-test-failed/);
+    assert.match(runSmokeInVerifierScript, /PIPESTATUS\[0\]/);
     assert.ok(deployWorkflowText.includes('source scripts/lib/github-actions-remote.sh'));
     assert.ok(
       String(findWorkflowStepByName(verifyStagingJob, 'Resolve staging host').run ?? '').includes(

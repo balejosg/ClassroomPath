@@ -59,14 +59,29 @@ jobs:
           ssh_opts=(
             -i "$key_file"
             -o BatchMode=yes
+            -o ConnectTimeout=10
             -o StrictHostKeyChecking=no
             -o UserKnownHostsFile=/dev/null
             -p "${STAGING_DEPLOY_PORT:-22}"
           )
 
-          ssh "${ssh_opts[@]}" "${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_IP}" \
-            "STAGING_DISK_WARNING_THRESHOLD='${STAGING_DISK_WARNING_THRESHOLD}' STAGING_DISK_CRITICAL_THRESHOLD='${STAGING_DISK_CRITICAL_THRESHOLD}' bash -s" \
-            >"$output_file" <<'REMOTE_SCRIPT'
+          ssh_reachable="false"
+          disk_before=""
+          disk_after=""
+          cleanup_ran="false"
+          failure_boundary="none"
+
+          if ssh "${ssh_opts[@]}" "${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_IP}" true >/dev/null 2>&1; then
+            ssh_reachable="true"
+          else
+            failure_boundary="staging-ssh-unreachable"
+            echo "::error::Unable to reach staging host over SSH"
+          fi
+
+          if [ "$ssh_reachable" = "true" ]; then
+            ssh "${ssh_opts[@]}" "${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_IP}" \
+              "STAGING_DISK_WARNING_THRESHOLD='${STAGING_DISK_WARNING_THRESHOLD}' STAGING_DISK_CRITICAL_THRESHOLD='${STAGING_DISK_CRITICAL_THRESHOLD}' bash -s" \
+              >"$output_file" <<'REMOTE_SCRIPT'
           set -euo pipefail
 
           warning_threshold="${STAGING_DISK_WARNING_THRESHOLD:-80}"
@@ -96,11 +111,22 @@ jobs:
           docker system df || true
           REMOTE_SCRIPT
 
-          cat "$output_file"
+            cat "$output_file"
 
-          disk_before="$(awk -F= '/^DISK_BEFORE=/{print $2}' "$output_file" | tail -1)"
-          disk_after="$(awk -F= '/^DISK_AFTER=/{print $2}' "$output_file" | tail -1)"
-          cleanup_ran="$(awk -F= '/^CLEANUP_RAN=/{print $2}' "$output_file" | tail -1)"
+            disk_before="$(awk -F= '/^DISK_BEFORE=/{print $2}' "$output_file" | tail -1)"
+            disk_after="$(awk -F= '/^DISK_AFTER=/{print $2}' "$output_file" | tail -1)"
+            cleanup_ran="$(awk -F= '/^CLEANUP_RAN=/{print $2}' "$output_file" | tail -1)"
+
+            if [ -z "${disk_after:-}" ]; then
+              failure_boundary="disk-metrics-unavailable"
+              echo "::error::Unable to determine staging disk usage after cleanup"
+            elif [ "$disk_after" -ge "$STAGING_DISK_CRITICAL_THRESHOLD" ]; then
+              failure_boundary="disk-critical"
+              echo "::error::Staging disk usage remains above critical threshold (${disk_after}% >= ${STAGING_DISK_CRITICAL_THRESHOLD}%)"
+            elif [ "$disk_after" -ge "$STAGING_DISK_WARNING_THRESHOLD" ]; then
+              echo "::warning::Staging disk usage remains at ${disk_after}% after Docker cleanup"
+            fi
+          fi
 
           {
             echo "### Staging disk maintenance"
@@ -108,23 +134,15 @@ jobs:
             echo "| Metric | Value |"
             echo "| --- | --- |"
             echo "| Host | ${STAGING_DEPLOY_IP} |"
-            echo "| Disk before | ${disk_before:-unknown}% |"
-            echo "| Disk after | ${disk_after:-unknown}% |"
-            echo "| Cleanup ran | ${cleanup_ran:-unknown} |"
+            echo "| sshReachable | ${ssh_reachable} |"
+            echo "| diskBefore | ${disk_before:-unknown}% |"
+            echo "| diskAfter | ${disk_after:-unknown}% |"
+            echo "| cleanupRan | ${cleanup_ran:-false} |"
+            echo "| failureBoundary | ${failure_boundary} |"
             echo "| Warning threshold | ${STAGING_DISK_WARNING_THRESHOLD}% |"
             echo "| Critical threshold | ${STAGING_DISK_CRITICAL_THRESHOLD}% |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ -z "${disk_after:-}" ]; then
-            echo "::error::Unable to determine staging disk usage after cleanup"
-            exit 1
-          fi
-
-          if [ "$disk_after" -ge "$STAGING_DISK_WARNING_THRESHOLD" ]; then
-            echo "::warning::Staging disk usage remains at ${disk_after}% after Docker cleanup"
-          fi
-
-          if [ "$disk_after" -ge "$STAGING_DISK_CRITICAL_THRESHOLD" ]; then
-            echo "::error::Staging disk usage remains above critical threshold (${disk_after}% >= ${STAGING_DISK_CRITICAL_THRESHOLD}%)"
+          if [ "$failure_boundary" != "none" ]; then
             exit 1
           fi
