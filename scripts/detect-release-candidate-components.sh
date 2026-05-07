@@ -9,6 +9,7 @@ mark_all_changed() {
   gateway_changed=true
   migrations_changed=true
   openpath_api_changed=true
+  openpath_linux_agent_required=true
   spa_changed=true
   verifier_changed=true
 }
@@ -18,6 +19,7 @@ migrations_changed=false
 openpath_api_changed=false
 spa_changed=false
 verifier_changed=false
+openpath_linux_agent_required=false
 
 if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] || [ -z "$HEAD_SHA" ]; then
   mark_all_changed
@@ -96,6 +98,7 @@ echo "gateway_changed=$gateway_changed" >> "$GITHUB_OUTPUT"
 echo "migrations_changed=$migrations_changed" >> "$GITHUB_OUTPUT"
 echo "openpath_firefox_assets_changed=${openpath_firefox_assets_changed:-false}" >> "$GITHUB_OUTPUT"
 echo "openpath_api_changed=$openpath_api_changed" >> "$GITHUB_OUTPUT"
+echo "openpath_linux_agent_required=${openpath_linux_agent_required:-false}" >> "$GITHUB_OUTPUT"
 echo "spa_changed=$spa_changed" >> "$GITHUB_OUTPUT"
 echo "verifier_changed=$verifier_changed" >> "$GITHUB_OUTPUT"
 echo "manifest_only=${manifest_only:-false}" >> "$GITHUB_OUTPUT"

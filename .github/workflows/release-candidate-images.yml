@@ -20,6 +20,9 @@ jobs:
   derive-release-image-refs:
     name: Derive Release Image Refs
     runs-on: ubuntu-latest
+    needs:
+      - detect-release-candidate-components
+      - resolve-previous-release-candidate-manifest
     outputs:
       repository_owner: ${{ steps.image-refs.outputs.repository_owner }}
       gateway_repo: ${{ steps.image-refs.outputs.gateway_repo }}
@@ -63,7 +66,23 @@ jobs:
 
       - name: Resolve OpenPath Linux agent version
         id: linux-agent
+        env:
+          OPENPATH_LINUX_AGENT_REQUIRED: ${{ needs.detect-release-candidate-components.outputs.openpath_linux_agent_required }}
+          PREVIOUS_OPENPATH_VERSION: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_version }}
+          PREVIOUS_OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_version }}
+          PREVIOUS_OPENPATH_LINUX_AGENT_APT_SUITE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_apt_suite }}
         run: |
+          set -euo pipefail
+          if [ "$OPENPATH_LINUX_AGENT_REQUIRED" != 'true' ]; then
+            echo "OpenPath Linux agent promotion contract not required; reusing previous metadata when available."
+            {
+              echo "openpath_version=$PREVIOUS_OPENPATH_VERSION"
+              echo "version=$PREVIOUS_OPENPATH_LINUX_AGENT_VERSION"
+              echo "apt_suite=$PREVIOUS_OPENPATH_LINUX_AGENT_APT_SUITE"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           node scripts/resolve-openpath-linux-agent-version.mjs \
             --openpath-dir upstream/openpath >> "$GITHUB_OUTPUT"
 
@@ -99,6 +118,11 @@ jobs:
           OPENPATH_PRERELEASE_RECOVERY_MODE: rerun-failed-once
         run: |
           set -euo pipefail
+          if [ "${{ needs.detect-release-candidate-components.outputs.openpath_linux_agent_required }}" != 'true' ]; then
+            echo "OpenPath Linux agent promotion contract not required; skipping prerelease APT wait."
+            exit 0
+          fi
+
           before_sha="${{ github.event.before }}"
           if [ -n "$before_sha" ] \
             && [ "$before_sha" != "0000000000000000000000000000000000000000" ] \
@@ -118,6 +142,11 @@ jobs:
           OPENPATH_LINUX_AGENT_APT_SUITE: ${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite }}
         run: |
           set -euo pipefail
+          if [ "${{ needs.detect-release-candidate-components.outputs.openpath_linux_agent_required }}" != 'true' ]; then
+            echo "OpenPath Linux agent promotion contract not required; skipping installability probe."
+            exit 0
+          fi
+
           before_sha="${{ github.event.before }}"
           if [ -n "$before_sha" ] \
             && [ "$before_sha" != "0000000000000000000000000000000000000000" ] \
@@ -133,13 +162,15 @@ jobs:
   resolve-previous-release-candidate-manifest:
     name: Resolve Previous Release Candidate Manifest
     runs-on: ubuntu-latest
-    needs: derive-release-image-refs
     outputs:
       available: ${{ steps.export.outputs.available }}
       gateway_image: ${{ steps.export.outputs.gateway_image }}
       migrations_image: ${{ steps.export.outputs.migrations_image }}
       openpath_firefox_assets_image: ${{ steps.export.outputs.openpath_firefox_assets_image }}
       openpath_api_image: ${{ steps.export.outputs.openpath_api_image }}
+      openpath_version: ${{ steps.export.outputs.openpath_version }}
+      openpath_linux_agent_version: ${{ steps.export.outputs.linux_agent_version }}
+      openpath_linux_agent_apt_suite: ${{ steps.export.outputs.linux_agent_apt_suite }}
       spa_image: ${{ steps.export.outputs.spa_image }}
       verifier_image: ${{ steps.export.outputs.verifier_image }}
 
@@ -180,6 +211,7 @@ jobs:
       migrations_changed: ${{ steps.detect.outputs.migrations_changed }}
       openpath_firefox_assets_changed: ${{ steps.detect.outputs.openpath_firefox_assets_changed }}
       openpath_api_changed: ${{ steps.detect.outputs.openpath_api_changed }}
+      openpath_linux_agent_required: ${{ steps.detect.outputs.openpath_linux_agent_required }}
       spa_changed: ${{ steps.detect.outputs.spa_changed }}
       verifier_changed: ${{ steps.detect.outputs.verifier_changed }}
       manifest_only: ${{ steps.detect.outputs.manifest_only }}
@@ -390,9 +422,9 @@ jobs:
           CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.build-migrations-release-candidate.outputs.image }}
           OPENPATH_FIREFOX_ASSETS_IMAGE=${{ needs.build-openpath-firefox-assets-release-candidate.outputs.image }}
           OPENPATH_API_IMAGE=${{ needs.build-openpath-api-release-candidate.outputs.image }}
-          OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version }}
-          OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version }}
-          OPENPATH_LINUX_AGENT_APT_SUITE=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite }}
+          OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_version }}
+          OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_version }}
+          OPENPATH_LINUX_AGENT_APT_SUITE=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_apt_suite }}
           CLASSROOMPATH_SPA_IMAGE=${{ needs.build-spa-release-candidate.outputs.image }}
           CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.build-verifier-release-candidate.outputs.image }}
           EOF
@@ -579,9 +611,9 @@ jobs:
           CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}
           OPENPATH_FIREFOX_ASSETS_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_firefox_assets_image }}
           OPENPATH_API_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}
-          OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version }}
-          OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version }}
-          OPENPATH_LINUX_AGENT_APT_SUITE=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite }}
+          OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_version }}
+          OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_version }}
+          OPENPATH_LINUX_AGENT_APT_SUITE=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_apt_suite }}
           CLASSROOMPATH_SPA_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}
           CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}
           EOF

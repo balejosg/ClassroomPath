@@ -15,6 +15,11 @@ function createEmptyFlags() {
     writable: true,
     enumerable: false,
   });
+  Object.defineProperty(flags, 'openpathLinuxAgentRequired', {
+    value: false,
+    writable: true,
+    enumerable: false,
+  });
   return flags;
 }
 
@@ -45,6 +50,7 @@ function markAllChanged(flags) {
   flags.migrationsChanged = true;
   flags.openpathApiChanged = true;
   flags.openpathFirefoxAssetsChanged = true;
+  flags.openpathLinuxAgentRequired = true;
   flags.spaChanged = true;
   flags.verifierChanged = true;
 }
@@ -128,6 +134,16 @@ function isOpenPathFirefoxReleasePackagingPath(filePath) {
   );
 }
 
+function isOpenPathLinuxAgentPromotionPath(filePath) {
+  return (
+    /^linux\//.test(filePath) ||
+    /^runtime\//.test(filePath) ||
+    filePath === 'runtime/browser-policy-spec.json' ||
+    filePath === 'package.json' ||
+    filePath === 'package-lock.json'
+  );
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -203,6 +219,10 @@ export function classifyPackageJsonChange(beforeText, afterText) {
 }
 
 function applyOpenPathPathClassification(flags, filePath) {
+  if (isOpenPathLinuxAgentPromotionPath(filePath)) {
+    flags.openpathLinuxAgentRequired = true;
+  }
+
   if (isOpenPathFirefoxReleasePackagingPath(filePath)) {
     flags.openpathFirefoxAssetsChanged = true;
     flags.verifierChanged = true;
@@ -468,6 +488,7 @@ function runCli() {
       `migrations_changed=${flags.migrationsChanged}`,
       `openpath_firefox_assets_changed=${flags.openpathFirefoxAssetsChanged}`,
       `openpath_api_changed=${flags.openpathApiChanged}`,
+      `openpath_linux_agent_required=${flags.openpathLinuxAgentRequired}`,
       `spa_changed=${flags.spaChanged}`,
       `verifier_changed=${flags.verifierChanged}`,
       `manifest_only=${isManifestOnlyReleaseCandidateChange(flags)}`,

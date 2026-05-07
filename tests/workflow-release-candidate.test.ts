@@ -218,6 +218,10 @@ describe('Release candidate workflow contracts', () => {
       jobs['derive-release-image-refs']?.steps?.find(
         (step) => step.name === 'Resolve OpenPath Linux agent version'
       )?.run ?? '';
+    const deriveLinuxAgentVersionEnv =
+      jobs['derive-release-image-refs']?.steps?.find(
+        (step) => step.name === 'Resolve OpenPath Linux agent version'
+      )?.env ?? {};
     const verifyOpenPathPrereleaseAptJob = jobs['verify-openpath-prerelease-apt'];
     const verifyInstallabilityStep = verifyOpenPathPrereleaseAptJob?.steps?.find(
       (step) => step.name === 'Verify OpenPath Linux agent APT installability'
@@ -246,8 +250,26 @@ describe('Release candidate workflow contracts', () => {
       waitForOpenPathAptPublishEnv['OPENPATH_PRERELEASE_RECOVERY_MODE'],
       'rerun-failed-once'
     );
+    assert.deepEqual(
+      normalizeNeeds(jobs['derive-release-image-refs']?.needs).sort(),
+      ['detect-release-candidate-components', 'resolve-previous-release-candidate-manifest'].sort()
+    );
+    assert.equal(
+      deriveLinuxAgentVersionEnv['OPENPATH_LINUX_AGENT_REQUIRED'],
+      '${{ needs.detect-release-candidate-components.outputs.openpath_linux_agent_required }}'
+    );
+    assert.ok(
+      deriveLinuxAgentVersionRun.includes('OpenPath Linux agent promotion contract not required')
+    );
+    assert.ok(deriveLinuxAgentVersionRun.includes('PREVIOUS_OPENPATH_LINUX_AGENT_VERSION'));
     assert.ok(
       waitForOpenPathAptPublishRun.includes('node scripts/openpath-required-checks.mjs wait')
+    );
+    assert.ok(waitForOpenPathAptPublishRun.includes('openpath_linux_agent_required'));
+    assert.ok(
+      waitForOpenPathAptPublishRun.includes(
+        'OpenPath Linux agent promotion contract not required; skipping prerelease APT wait.'
+      )
     );
     assert.ok(
       waitForOpenPathAptPublishRun.includes('OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS=2400')
@@ -393,6 +415,10 @@ describe('Release candidate workflow contracts', () => {
     assert.equal(
       jobs['detect-release-candidate-components']?.outputs?.openpath_firefox_assets_changed,
       '${{ steps.detect.outputs.openpath_firefox_assets_changed }}'
+    );
+    assert.equal(
+      jobs['detect-release-candidate-components']?.outputs?.openpath_linux_agent_required,
+      '${{ steps.detect.outputs.openpath_linux_agent_required }}'
     );
     assert.deepEqual(
       openpathFirefoxAssetsNeeds.sort(),
@@ -564,6 +590,10 @@ describe('Release candidate workflow contracts', () => {
       workflowText,
       /OPENPATH_API_IMAGE=\$\{\{\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.openpath_api_image\s*\}\}/
     );
+    assert.match(
+      workflowText,
+      /OPENPATH_LINUX_AGENT_VERSION=\$\{\{\s*needs\.derive-release-image-refs\.outputs\.openpath_linux_agent_version\s*\|\|\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.openpath_linux_agent_version\s*\}\}/
+    );
     assert.ok(workflowText.includes('"manifestOnly": true'));
     assert.ok(workflowText.includes('### Manifest-Only Fast Path'));
     assert.ok(workflowText.includes('release-candidate-images-${{ github.sha }}'));
@@ -617,7 +647,7 @@ describe('Release candidate workflow contracts', () => {
     );
     assert.match(
       workflowText,
-      /OPENPATH_LINUX_AGENT_APT_SUITE=\$\{\{\s*needs\.derive-release-image-refs\.outputs\.openpath_linux_agent_apt_suite\s*\}\}/
+      /OPENPATH_LINUX_AGENT_APT_SUITE=\$\{\{\s*needs\.derive-release-image-refs\.outputs\.openpath_linux_agent_apt_suite\s*\|\|\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.openpath_linux_agent_apt_suite\s*\}\}/
     );
     assert.ok(workflowText.includes('release-candidate-timings-${{ github.sha }}'));
     assert.ok(workflowText.includes('release-candidate-timings.json'));

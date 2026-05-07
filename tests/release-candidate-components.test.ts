@@ -11,16 +11,16 @@ import {
 
 describe('release candidate component classification', () => {
   test('maps OpenPath linux-agent contract changes to openpath-api and verifier only', () => {
-    assert.deepEqual(
-      classifyOpenPathChangedPaths(['linux/scripts/runtime/openpath-self-update.sh']),
-      {
-        gatewayChanged: false,
-        migrationsChanged: false,
-        openpathApiChanged: true,
-        spaChanged: false,
-        verifierChanged: true,
-      }
-    );
+    const flags = classifyOpenPathChangedPaths(['linux/scripts/runtime/openpath-self-update.sh']);
+
+    assert.deepEqual(flags, {
+      gatewayChanged: false,
+      migrationsChanged: false,
+      openpathApiChanged: true,
+      spaChanged: false,
+      verifierChanged: true,
+    });
+    assert.equal(flags.openpathLinuxAgentRequired, true);
   });
 
   test('maps OpenPath Firefox extension changes to the Firefox assets family without rebuilding OpenPath API', () => {
@@ -31,6 +31,7 @@ describe('release candidate component classification', () => {
 
     assert.equal(flags.openpathApiChanged, false);
     assert.equal(flags.openpathFirefoxAssetsChanged, true);
+    assert.equal(flags.openpathLinuxAgentRequired, false);
     assert.equal(flags.verifierChanged, true);
   });
 
@@ -43,6 +44,7 @@ describe('release candidate component classification', () => {
 
     assert.equal(flags.openpathApiChanged, false);
     assert.equal(flags.openpathFirefoxAssetsChanged, true);
+    assert.equal(flags.openpathLinuxAgentRequired, false);
     assert.equal(flags.verifierChanged, true);
   });
 
@@ -130,13 +132,16 @@ describe('release candidate component classification', () => {
   });
 
   test('falls back to rebuilding every image family for unknown OpenPath paths', () => {
-    assert.deepEqual(classifyOpenPathChangedPaths(['docs/ADR.md']), {
+    const flags = classifyOpenPathChangedPaths(['docs/ADR.md']);
+
+    assert.deepEqual(flags, {
       gatewayChanged: false,
       migrationsChanged: false,
       openpathApiChanged: false,
       spaChanged: false,
       verifierChanged: false,
     });
+    assert.equal(flags.openpathLinuxAgentRequired, false);
   });
 
   test('maps OpenPath test-only changes to the verifier family without rebuilding product images', () => {
@@ -156,31 +161,34 @@ describe('release candidate component classification', () => {
   });
 
   test('keeps OpenPath CI and repo-level test changes out of release image rebuilds', () => {
-    assert.deepEqual(
-      classifyOpenPathChangedPaths([
-        '.github/workflows/prerelease-deb.yml',
-        '.github/workflows/release-scripts.yml',
-        'tests/install.bats',
-        'tests/repo-config/workflow-contracts.test.mjs',
-      ]),
-      {
-        gatewayChanged: false,
-        migrationsChanged: false,
-        openpathApiChanged: false,
-        spaChanged: false,
-        verifierChanged: false,
-      }
-    );
+    const flags = classifyOpenPathChangedPaths([
+      '.github/workflows/prerelease-deb.yml',
+      '.github/workflows/release-scripts.yml',
+      'tests/install.bats',
+      'tests/repo-config/workflow-contracts.test.mjs',
+    ]);
+
+    assert.deepEqual(flags, {
+      gatewayChanged: false,
+      migrationsChanged: false,
+      openpathApiChanged: false,
+      spaChanged: false,
+      verifierChanged: false,
+    });
+    assert.equal(flags.openpathLinuxAgentRequired, false);
   });
 
   test('still falls back to rebuilding every image family for ambiguous OpenPath paths', () => {
-    assert.deepEqual(classifyOpenPathChangedPaths(['misc/custom-generator.ts']), {
+    const flags = classifyOpenPathChangedPaths(['misc/custom-generator.ts']);
+
+    assert.deepEqual(flags, {
       gatewayChanged: true,
       migrationsChanged: true,
       openpathApiChanged: true,
       spaChanged: true,
       verifierChanged: true,
     });
+    assert.equal(flags.openpathLinuxAgentRequired, true);
   });
 
   test('classifies top-level ClassroomPath changes without broadening unrelated image families', () => {
