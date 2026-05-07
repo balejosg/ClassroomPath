@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   collectLatestReleaseCandidateTimings,
+  enrichReleaseCandidateTimingEvidence,
   summarizeReleaseCandidateTimings,
 } from '../scripts/measure-release-candidate-timings.mjs';
 
@@ -48,16 +49,24 @@ test('summarizeReleaseCandidateTimings identifies the repeated release-candidate
       gateFamily: 'verifier',
       gatePlatform: 'arm64',
       familyDurationSeconds: 348,
+      platformQueueSeconds: 0,
+      platformExecutionSeconds: 329,
       platformDurationSeconds: 329,
       buildRequired: true,
+      buildMode: 'fresh',
+      cacheScope: '',
     },
     {
       sha: 'second-sha',
       gateFamily: 'verifier',
       gatePlatform: 'arm64',
       familyDurationSeconds: 327,
+      platformQueueSeconds: 0,
+      platformExecutionSeconds: 310,
       platformDurationSeconds: 310,
       buildRequired: true,
+      buildMode: 'fresh',
+      cacheScope: '',
     },
   ]);
   assert.deepEqual(summary.gateCandidate, {
@@ -65,7 +74,11 @@ test('summarizeReleaseCandidateTimings identifies the repeated release-candidate
     platform: 'arm64',
     samples: 2,
     maxFamilyDurationSeconds: 348,
+    maxPlatformQueueSeconds: 0,
+    maxPlatformExecutionSeconds: 329,
     maxPlatformDurationSeconds: 329,
+    buildMode: 'fresh',
+    cacheScope: '',
   });
   assert.equal(summary.recommendation.action, 'evaluate-runner-or-cache');
   assert.match(summary.recommendation.reason, /verifier arm64/);
@@ -111,6 +124,122 @@ test('summarizeReleaseCandidateTimings preserves source run metadata on samples'
 
   assert.equal(summary.samples[0]?.runId, 12345);
   assert.equal(summary.samples[0]?.runUrl, 'https://github.com/owner/repo/actions/runs/12345');
+});
+
+test('enrichReleaseCandidateTimingEvidence records per-platform queue, execution, cache, and build mode evidence', () => {
+  const enriched = enrichReleaseCandidateTimingEvidence(
+    {
+      sha: 'timing-sha',
+      families: {
+        verifier: {
+          displayName: 'Verifier',
+          buildRequired: true,
+          amd64CacheScope: 'release-candidate-verifier-amd64',
+          arm64CacheScope: 'release-candidate-verifier-arm64',
+          amd64DurationSeconds: 85,
+          arm64DurationSeconds: 329,
+          publishDurationSeconds: 19,
+          familyDurationSeconds: 348,
+        },
+      },
+    },
+    [
+      {
+        name: 'Build Verifier (amd64)',
+        created_at: '2026-05-07T10:00:00Z',
+        started_at: '2026-05-07T10:00:12Z',
+        completed_at: '2026-05-07T10:01:37Z',
+      },
+      {
+        name: 'Build Verifier (arm64)',
+        created_at: '2026-05-07T10:00:00Z',
+        started_at: '2026-05-07T10:02:10Z',
+        completed_at: '2026-05-07T10:07:39Z',
+      },
+    ]
+  );
+
+  assert.deepEqual(enriched.families.verifier.platforms, {
+    amd64: {
+      platform: 'amd64',
+      buildRequired: true,
+      buildMode: 'fresh',
+      cacheScope: 'release-candidate-verifier-amd64',
+      queueSeconds: 12,
+      executionSeconds: 85,
+    },
+    arm64: {
+      platform: 'arm64',
+      buildRequired: true,
+      buildMode: 'fresh',
+      cacheScope: 'release-candidate-verifier-arm64',
+      queueSeconds: 130,
+      executionSeconds: 329,
+    },
+  });
+});
+
+test('summarizeReleaseCandidateTimings uses enriched platform execution evidence when present', () => {
+  const summary = summarizeReleaseCandidateTimings([
+    {
+      sha: 'first-sha',
+      families: {
+        verifier: {
+          buildRequired: true,
+          familyDurationSeconds: 348,
+          platforms: {
+            amd64: {
+              platform: 'amd64',
+              executionSeconds: 85,
+              queueSeconds: 4,
+              cacheScope: 'release-candidate-verifier-amd64',
+              buildMode: 'fresh',
+            },
+            arm64: {
+              platform: 'arm64',
+              executionSeconds: 329,
+              queueSeconds: 120,
+              cacheScope: 'release-candidate-verifier-arm64',
+              buildMode: 'fresh',
+            },
+          },
+        },
+      },
+    },
+    {
+      sha: 'second-sha',
+      families: {
+        verifier: {
+          buildRequired: true,
+          familyDurationSeconds: 327,
+          platforms: {
+            amd64: {
+              platform: 'amd64',
+              executionSeconds: 88,
+              queueSeconds: 5,
+              cacheScope: 'release-candidate-verifier-amd64',
+              buildMode: 'fresh',
+            },
+            arm64: {
+              platform: 'arm64',
+              executionSeconds: 310,
+              queueSeconds: 90,
+              cacheScope: 'release-candidate-verifier-arm64',
+              buildMode: 'fresh',
+            },
+          },
+        },
+      },
+    },
+  ]);
+
+  assert.equal(summary.samples[0]?.gatePlatform, 'arm64');
+  assert.equal(summary.samples[0]?.platformExecutionSeconds, 329);
+  assert.equal(summary.samples[0]?.platformQueueSeconds, 120);
+  assert.equal(summary.samples[0]?.cacheScope, 'release-candidate-verifier-arm64');
+  assert.equal(summary.samples[0]?.buildMode, 'fresh');
+  assert.equal(summary.gateCandidate?.maxPlatformQueueSeconds, 120);
+  assert.match(summary.recommendation.reason, /cache scope release-candidate-verifier-arm64/);
 });
 
 test('collectLatestReleaseCandidateTimings downloads successful timing artifacts in run order', () => {

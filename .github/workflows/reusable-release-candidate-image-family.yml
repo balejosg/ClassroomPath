@@ -86,6 +86,30 @@ on:
       arm64_duration_seconds:
         description: Elapsed seconds for the arm64 build job.
         value: ${{ jobs.build-arm64.outputs.duration_seconds }}
+      amd64_execution_seconds:
+        description: Execution seconds for the amd64 build job.
+        value: ${{ inputs.build_required && jobs.build-amd64.outputs.execution_seconds || 0 }}
+      arm64_execution_seconds:
+        description: Execution seconds for the arm64 build job.
+        value: ${{ inputs.build_required && jobs.build-arm64.outputs.execution_seconds || 0 }}
+      amd64_queue_seconds:
+        description: Queue seconds for the amd64 build job when available.
+        value: ${{ inputs.build_required && jobs.build-amd64.outputs.queue_seconds || 0 }}
+      arm64_queue_seconds:
+        description: Queue seconds for the arm64 build job when available.
+        value: ${{ inputs.build_required && jobs.build-arm64.outputs.queue_seconds || 0 }}
+      amd64_cache_scope:
+        description: Cache scope used for the amd64 build job.
+        value: ${{ inputs.amd64_cache_scope }}
+      arm64_cache_scope:
+        description: Cache scope used for the arm64 build job.
+        value: ${{ inputs.arm64_cache_scope }}
+      amd64_build_mode:
+        description: Whether the amd64 image was built fresh or reused.
+        value: ${{ inputs.build_required && jobs.build-amd64.outputs.build_mode || 'reused' }}
+      arm64_build_mode:
+        description: Whether the arm64 image was built fresh or reused.
+        value: ${{ inputs.build_required && jobs.build-arm64.outputs.build_mode || 'reused' }}
       publish_duration_seconds:
         description: Elapsed seconds for the manifest publish job.
         value: ${{ jobs.publish-manifest.outputs.publish_duration_seconds }}
@@ -106,6 +130,9 @@ jobs:
     outputs:
       image_digest: ${{ steps.build-image.outputs.digest }}
       duration_seconds: ${{ steps.record-duration.outputs.seconds }}
+      execution_seconds: ${{ steps.record-duration.outputs.seconds }}
+      queue_seconds: 0
+      build_mode: fresh
 
     steps:
       - name: Record amd64 build start
@@ -156,6 +183,9 @@ jobs:
     outputs:
       image_digest: ${{ steps.build-image.outputs.digest }}
       duration_seconds: ${{ steps.record-duration.outputs.seconds }}
+      execution_seconds: ${{ steps.record-duration.outputs.seconds }}
+      queue_seconds: 0
+      build_mode: fresh
 
     steps:
       - name: Record arm64 build start

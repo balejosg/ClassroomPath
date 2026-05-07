@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 import {
@@ -19,20 +20,65 @@ function normalizeSeconds(value) {
   return Number.isFinite(numberValue) && numberValue > 0 ? Math.round(numberValue) : 0;
 }
 
-function summarizeFamily(familyName, familyTiming = {}) {
-  const amd64DurationSeconds = normalizeSeconds(familyTiming.amd64DurationSeconds);
-  const arm64DurationSeconds = normalizeSeconds(familyTiming.arm64DurationSeconds);
-  const platform =
-    arm64DurationSeconds >= amd64DurationSeconds
-      ? { name: 'arm64', durationSeconds: arm64DurationSeconds }
-      : { name: 'amd64', durationSeconds: amd64DurationSeconds };
+function normalizeBoolean(value) {
+  return value === true || value === 'true';
+}
+
+function normalizeBuildMode(value, buildRequired) {
+  if (value === 'fresh' || value === 'reused') {
+    return value;
+  }
+
+  return normalizeBoolean(buildRequired) ? 'fresh' : 'reused';
+}
+
+function normalizePlatformTiming(familyTiming, platform) {
+  const upperPlatform = platform === 'arm64' ? 'arm64' : 'amd64';
+  const platforms = familyTiming?.platforms ?? {};
+  const platformTiming = platforms[upperPlatform] ?? {};
+  const legacyPrefix = upperPlatform === 'arm64' ? 'arm64' : 'amd64';
+  const buildRequired = normalizeBoolean(
+    platformTiming.buildRequired ?? familyTiming?.buildRequired
+  );
+  const executionSeconds = normalizeSeconds(
+    platformTiming.executionSeconds ??
+      familyTiming?.[`${legacyPrefix}ExecutionSeconds`] ??
+      familyTiming?.[`${legacyPrefix}DurationSeconds`]
+  );
 
   return {
-    buildRequired: Boolean(familyTiming.buildRequired),
+    platform: upperPlatform,
+    buildRequired,
+    buildMode: normalizeBuildMode(
+      platformTiming.buildMode ?? familyTiming?.[`${legacyPrefix}BuildMode`],
+      buildRequired
+    ),
+    cacheScope: String(
+      platformTiming.cacheScope ?? familyTiming?.[`${legacyPrefix}CacheScope`] ?? ''
+    ),
+    queueSeconds: normalizeSeconds(
+      platformTiming.queueSeconds ?? familyTiming?.[`${legacyPrefix}QueueSeconds`]
+    ),
+    executionSeconds,
+  };
+}
+
+function summarizeFamily(familyName, familyTiming = {}) {
+  const amd64Timing = normalizePlatformTiming(familyTiming, 'amd64');
+  const arm64Timing = normalizePlatformTiming(familyTiming, 'arm64');
+  const platform =
+    arm64Timing.executionSeconds >= amd64Timing.executionSeconds ? arm64Timing : amd64Timing;
+
+  return {
+    buildRequired: normalizeBoolean(familyTiming.buildRequired),
+    buildMode: platform.buildMode,
+    cacheScope: platform.cacheScope,
     family: familyName,
     familyDurationSeconds: normalizeSeconds(familyTiming.familyDurationSeconds),
-    platform: platform.name,
-    platformDurationSeconds: platform.durationSeconds,
+    platform: platform.platform,
+    platformQueueSeconds: platform.queueSeconds,
+    platformExecutionSeconds: platform.executionSeconds,
+    platformDurationSeconds: platform.executionSeconds,
   };
 }
 
@@ -48,7 +94,11 @@ function summarizeTimingSample(timing) {
       family: '',
       familyDurationSeconds: 0,
       platform: '',
+      platformQueueSeconds: 0,
+      platformExecutionSeconds: 0,
       platformDurationSeconds: 0,
+      cacheScope: '',
+      buildMode: '',
     }
   );
 
@@ -57,8 +107,12 @@ function summarizeTimingSample(timing) {
     gateFamily: gateFamily.family,
     gatePlatform: gateFamily.platform,
     familyDurationSeconds: gateFamily.familyDurationSeconds,
+    platformQueueSeconds: gateFamily.platformQueueSeconds,
+    platformExecutionSeconds: gateFamily.platformExecutionSeconds,
     platformDurationSeconds: gateFamily.platformDurationSeconds,
     buildRequired: gateFamily.buildRequired,
+    buildMode: gateFamily.buildMode,
+    cacheScope: gateFamily.cacheScope,
   };
 
   if (timing?.runId) {
@@ -86,7 +140,11 @@ function selectGateCandidate(samples) {
       platform: sample.gatePlatform,
       samples: 0,
       maxFamilyDurationSeconds: 0,
+      maxPlatformQueueSeconds: 0,
+      maxPlatformExecutionSeconds: 0,
       maxPlatformDurationSeconds: 0,
+      cacheScope: sample.cacheScope,
+      buildMode: sample.buildMode,
     };
 
     current.samples += 1;
@@ -98,6 +156,16 @@ function selectGateCandidate(samples) {
       current.maxPlatformDurationSeconds,
       sample.platformDurationSeconds
     );
+    current.maxPlatformQueueSeconds = Math.max(
+      current.maxPlatformQueueSeconds,
+      sample.platformQueueSeconds
+    );
+    current.maxPlatformExecutionSeconds = Math.max(
+      current.maxPlatformExecutionSeconds,
+      sample.platformExecutionSeconds
+    );
+    current.cacheScope ||= sample.cacheScope;
+    current.buildMode ||= sample.buildMode;
     candidates.set(key, current);
   }
 
@@ -127,7 +195,7 @@ function buildRecommendation(gateCandidate) {
 
   return {
     action: 'evaluate-runner-or-cache',
-    reason: `${gateCandidate.family} ${gateCandidate.platform} was the repeated release-candidate gate across ${gateCandidate.samples} samples; compare registry cache evidence and runner cost before changing policy.`,
+    reason: `${gateCandidate.family} ${gateCandidate.platform} was the repeated release-candidate gate across ${gateCandidate.samples} samples; compare queue ${gateCandidate.maxPlatformQueueSeconds}s, execution ${gateCandidate.maxPlatformExecutionSeconds}s, cache scope ${gateCandidate.cacheScope || 'unknown'}, and runner cost before changing policy.`,
   };
 }
 
@@ -259,8 +327,146 @@ export function collectLatestReleaseCandidateTimings({
   return timings;
 }
 
+function parseTimestampSeconds(value) {
+  const timestamp = Date.parse(value ?? '');
+  return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : 0;
+}
+
+function elapsedTimestampSeconds(start, end) {
+  const startSeconds = parseTimestampSeconds(start);
+  const endSeconds = parseTimestampSeconds(end);
+  return endSeconds > startSeconds ? endSeconds - startSeconds : 0;
+}
+
+function findWorkflowJob(workflowJobs, displayName, platform) {
+  const expectedName = `Build ${displayName} (${platform})`;
+  return asArray(workflowJobs).find((job) => job?.name === expectedName);
+}
+
+function enrichPlatformTiming({ familyTiming, displayName, platform, workflowJobs }) {
+  const buildRequired = normalizeBoolean(familyTiming.buildRequired);
+  const prefix = platform === 'arm64' ? 'arm64' : 'amd64';
+  const workflowJob = buildRequired ? findWorkflowJob(workflowJobs, displayName, platform) : null;
+  const workflowQueueSeconds = elapsedTimestampSeconds(
+    workflowJob?.created_at,
+    workflowJob?.started_at
+  );
+  const workflowExecutionSeconds = elapsedTimestampSeconds(
+    workflowJob?.started_at,
+    workflowJob?.completed_at
+  );
+  const executionSeconds = buildRequired
+    ? normalizeSeconds(
+        workflowExecutionSeconds ||
+          familyTiming[`${prefix}ExecutionSeconds`] ||
+          familyTiming[`${prefix}DurationSeconds`]
+      )
+    : 0;
+
+  return {
+    platform,
+    buildRequired,
+    buildMode: normalizeBuildMode(familyTiming[`${prefix}BuildMode`], buildRequired),
+    cacheScope: String(familyTiming[`${prefix}CacheScope`] ?? ''),
+    queueSeconds: buildRequired
+      ? normalizeSeconds(workflowQueueSeconds || familyTiming[`${prefix}QueueSeconds`])
+      : 0,
+    executionSeconds,
+  };
+}
+
+export function enrichReleaseCandidateTimingEvidence(timing, workflowJobs = []) {
+  const families = Object.fromEntries(
+    Object.entries(timing?.families ?? {}).map(([familyName, familyTiming]) => {
+      const displayName = String(familyTiming?.displayName ?? familyName);
+      const amd64 = enrichPlatformTiming({
+        familyTiming,
+        displayName,
+        platform: 'amd64',
+        workflowJobs,
+      });
+      const arm64 = enrichPlatformTiming({
+        familyTiming,
+        displayName,
+        platform: 'arm64',
+        workflowJobs,
+      });
+
+      return [
+        familyName,
+        {
+          ...familyTiming,
+          amd64QueueSeconds: amd64.queueSeconds,
+          arm64QueueSeconds: arm64.queueSeconds,
+          amd64ExecutionSeconds: amd64.executionSeconds,
+          arm64ExecutionSeconds: arm64.executionSeconds,
+          amd64BuildMode: amd64.buildMode,
+          arm64BuildMode: arm64.buildMode,
+          platforms: {
+            amd64,
+            arm64,
+          },
+        },
+      ];
+    })
+  );
+
+  return {
+    ...timing,
+    families,
+  };
+}
+
+function fetchGitHubRunJobs({ repo, runId, cwd = process.cwd(), gh = 'gh' }) {
+  const result = spawnSync(gh, ['api', `/repos/${repo}/actions/runs/${runId}/jobs?per_page=100`], {
+    cwd,
+    encoding: 'utf8',
+  });
+
+  if (result.status !== 0) {
+    throw new Error(result.stderr.trim() || `gh api failed with status ${result.status}`);
+  }
+
+  return asArray(JSON.parse(result.stdout).jobs);
+}
+
+function parseEnrichOptions(argv) {
+  const [inputPath, ...optionArgs] = argv;
+  if (!inputPath || inputPath.startsWith('--')) {
+    throw new Error('enrich mode requires an input timing JSON path');
+  }
+
+  const options = parseNamedOptions(optionArgs);
+  const repo = options.repo ?? process.env.GITHUB_REPOSITORY;
+  const runId = options['run-id'] ?? process.env.GITHUB_RUN_ID;
+
+  if (!repo) {
+    throw new Error('enrich mode requires --repo or GITHUB_REPOSITORY');
+  }
+
+  if (!runId) {
+    throw new Error('enrich mode requires --run-id or GITHUB_RUN_ID');
+  }
+
+  return {
+    inputPath,
+    outputPath: options.output ?? inputPath,
+    repo,
+    runId,
+    cwd: process.cwd(),
+  };
+}
+
 function readTimingFiles(paths) {
   return paths.map((path) => JSON.parse(readFileSync(path, 'utf8')));
+}
+
+function enrichTimingFile(options) {
+  const timing = JSON.parse(readFileSync(options.inputPath, 'utf8'));
+  const workflowJobs = fetchGitHubRunJobs(options);
+  const enriched = enrichReleaseCandidateTimingEvidence(timing, workflowJobs);
+  writeFileSync(options.outputPath, `${JSON.stringify(enriched, null, 2)}\n`);
+  return enriched;
 }
 
 function main(argv = process.argv.slice(2)) {
@@ -269,10 +475,18 @@ function main(argv = process.argv.slice(2)) {
       [
         'Usage:',
         '  node scripts/measure-release-candidate-timings.mjs <timings.json...>',
+        '  node scripts/measure-release-candidate-timings.mjs enrich <timings.json> --repo owner/repo --run-id 123 [--output timings.json]',
         '  node scripts/measure-release-candidate-timings.mjs latest --repo owner/repo [--limit 3] [--workflow release-candidate-images.yml]',
       ].join('\n')
     );
     return argv.length === 0 ? 1 : 0;
+  }
+
+  if (argv[0] === 'enrich') {
+    process.stdout.write(
+      `${JSON.stringify(enrichTimingFile(parseEnrichOptions(argv.slice(1))), null, 2)}\n`
+    );
+    return 0;
   }
 
   const timings =

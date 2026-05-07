@@ -379,56 +379,116 @@ jobs:
 
       - name: Persist release candidate timing summary
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           cat > release-candidate-timings.json <<EOF
           {
             "sha": "${{ github.sha }}",
             "families": {
               "gateway": {
+                "displayName": "Gateway",
                 "buildRequired": ${{ needs.build-gateway-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.amd64_duration_seconds || 0 }},
                 "arm64DurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "amd64ExecutionSeconds": ${{ needs.build-gateway-release-candidate.outputs.amd64_execution_seconds || 0 }},
+                "arm64ExecutionSeconds": ${{ needs.build-gateway-release-candidate.outputs.arm64_execution_seconds || 0 }},
+                "amd64QueueSeconds": ${{ needs.build-gateway-release-candidate.outputs.amd64_queue_seconds || 0 }},
+                "arm64QueueSeconds": ${{ needs.build-gateway-release-candidate.outputs.arm64_queue_seconds || 0 }},
+                "amd64CacheScope": "${{ needs.build-gateway-release-candidate.outputs.amd64_cache_scope }}",
+                "arm64CacheScope": "${{ needs.build-gateway-release-candidate.outputs.arm64_cache_scope }}",
+                "amd64BuildMode": "${{ needs.build-gateway-release-candidate.outputs.amd64_build_mode }}",
+                "arm64BuildMode": "${{ needs.build-gateway-release-candidate.outputs.arm64_build_mode }}",
                 "publishDurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-gateway-release-candidate.outputs.family_duration_seconds || 0 }}
               },
               "migrations": {
+                "displayName": "Migrations",
                 "buildRequired": ${{ needs.build-migrations-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.amd64_duration_seconds || 0 }},
                 "arm64DurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "amd64ExecutionSeconds": ${{ needs.build-migrations-release-candidate.outputs.amd64_execution_seconds || 0 }},
+                "arm64ExecutionSeconds": ${{ needs.build-migrations-release-candidate.outputs.arm64_execution_seconds || 0 }},
+                "amd64QueueSeconds": ${{ needs.build-migrations-release-candidate.outputs.amd64_queue_seconds || 0 }},
+                "arm64QueueSeconds": ${{ needs.build-migrations-release-candidate.outputs.arm64_queue_seconds || 0 }},
+                "amd64CacheScope": "${{ needs.build-migrations-release-candidate.outputs.amd64_cache_scope }}",
+                "arm64CacheScope": "${{ needs.build-migrations-release-candidate.outputs.arm64_cache_scope }}",
+                "amd64BuildMode": "${{ needs.build-migrations-release-candidate.outputs.amd64_build_mode }}",
+                "arm64BuildMode": "${{ needs.build-migrations-release-candidate.outputs.arm64_build_mode }}",
                 "publishDurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-migrations-release-candidate.outputs.family_duration_seconds || 0 }}
               },
               "openpathFirefoxAssets": {
+                "displayName": "OpenPath Firefox Assets",
                 "buildRequired": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_duration_seconds || 0 }},
                 "arm64DurationSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "amd64ExecutionSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_execution_seconds || 0 }},
+                "arm64ExecutionSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_execution_seconds || 0 }},
+                "amd64QueueSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_queue_seconds || 0 }},
+                "arm64QueueSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_queue_seconds || 0 }},
+                "amd64CacheScope": "${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_cache_scope }}",
+                "arm64CacheScope": "${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_cache_scope }}",
+                "amd64BuildMode": "${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_build_mode }}",
+                "arm64BuildMode": "${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_build_mode }}",
                 "publishDurationSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.family_duration_seconds || 0 }}
               },
               "openpathApi": {
+                "displayName": "OpenPath API",
                 "buildRequired": ${{ needs.build-openpath-api-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }},
                 "arm64DurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "amd64ExecutionSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.amd64_execution_seconds || 0 }},
+                "arm64ExecutionSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.arm64_execution_seconds || 0 }},
+                "amd64QueueSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.amd64_queue_seconds || 0 }},
+                "arm64QueueSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.arm64_queue_seconds || 0 }},
+                "amd64CacheScope": "${{ needs.build-openpath-api-release-candidate.outputs.amd64_cache_scope }}",
+                "arm64CacheScope": "${{ needs.build-openpath-api-release-candidate.outputs.arm64_cache_scope }}",
+                "amd64BuildMode": "${{ needs.build-openpath-api-release-candidate.outputs.amd64_build_mode }}",
+                "arm64BuildMode": "${{ needs.build-openpath-api-release-candidate.outputs.arm64_build_mode }}",
                 "publishDurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }}
               },
               "spa": {
+                "displayName": "SPA",
                 "buildRequired": ${{ needs.build-spa-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-spa-release-candidate.outputs.amd64_duration_seconds || 0 }},
                 "arm64DurationSeconds": ${{ needs.build-spa-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "amd64ExecutionSeconds": ${{ needs.build-spa-release-candidate.outputs.amd64_execution_seconds || 0 }},
+                "arm64ExecutionSeconds": ${{ needs.build-spa-release-candidate.outputs.arm64_execution_seconds || 0 }},
+                "amd64QueueSeconds": ${{ needs.build-spa-release-candidate.outputs.amd64_queue_seconds || 0 }},
+                "arm64QueueSeconds": ${{ needs.build-spa-release-candidate.outputs.arm64_queue_seconds || 0 }},
+                "amd64CacheScope": "${{ needs.build-spa-release-candidate.outputs.amd64_cache_scope }}",
+                "arm64CacheScope": "${{ needs.build-spa-release-candidate.outputs.arm64_cache_scope }}",
+                "amd64BuildMode": "${{ needs.build-spa-release-candidate.outputs.amd64_build_mode }}",
+                "arm64BuildMode": "${{ needs.build-spa-release-candidate.outputs.arm64_build_mode }}",
                 "publishDurationSeconds": ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }}
               },
               "verifier": {
+                "displayName": "Verifier",
                 "buildRequired": ${{ needs.build-verifier-release-candidate.outputs.build_required }},
                 "amd64DurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.amd64_duration_seconds || 0 }},
                 "arm64DurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.arm64_duration_seconds || 0 }},
+                "amd64ExecutionSeconds": ${{ needs.build-verifier-release-candidate.outputs.amd64_execution_seconds || 0 }},
+                "arm64ExecutionSeconds": ${{ needs.build-verifier-release-candidate.outputs.arm64_execution_seconds || 0 }},
+                "amd64QueueSeconds": ${{ needs.build-verifier-release-candidate.outputs.amd64_queue_seconds || 0 }},
+                "arm64QueueSeconds": ${{ needs.build-verifier-release-candidate.outputs.arm64_queue_seconds || 0 }},
+                "amd64CacheScope": "${{ needs.build-verifier-release-candidate.outputs.amd64_cache_scope }}",
+                "arm64CacheScope": "${{ needs.build-verifier-release-candidate.outputs.arm64_cache_scope }}",
+                "amd64BuildMode": "${{ needs.build-verifier-release-candidate.outputs.amd64_build_mode }}",
+                "arm64BuildMode": "${{ needs.build-verifier-release-candidate.outputs.arm64_build_mode }}",
                 "publishDurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }},
                 "familyDurationSeconds": ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }}
               }
             }
           }
           EOF
+          node scripts/measure-release-candidate-timings.mjs enrich release-candidate-timings.json \
+            --repo "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --output release-candidate-timings.json
 
       - name: Summarize release candidate timings
         shell: bash
@@ -436,14 +496,14 @@ jobs:
           {
             echo '## Release Candidate Timings'
             echo
-            echo '| Family | Build Required | amd64 (s) | arm64 (s) | Publish (s) | Critical Path (s) |'
-            echo '| --- | --- | ---: | ---: | ---: | ---: |'
-            echo "| Gateway | ${{ needs.build-gateway-release-candidate.outputs.build_required }} | ${{ needs.build-gateway-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.family_duration_seconds || 0 }} |"
-            echo "| Migrations | ${{ needs.build-migrations-release-candidate.outputs.build_required }} | ${{ needs.build-migrations-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.family_duration_seconds || 0 }} |"
-            echo "| OpenPath Firefox Assets | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.family_duration_seconds || 0 }} |"
-            echo "| OpenPath API | ${{ needs.build-openpath-api-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }} |"
-            echo "| SPA | ${{ needs.build-spa-release-candidate.outputs.build_required }} | ${{ needs.build-spa-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }} |"
-            echo "| Verifier | ${{ needs.build-verifier-release-candidate.outputs.build_required }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.arm64_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo '| Family | Build Required | amd64 Mode | amd64 Queue (s) | amd64 Exec (s) | amd64 Cache | arm64 Mode | arm64 Queue (s) | arm64 Exec (s) | arm64 Cache | Publish (s) | Critical Path (s) |'
+            echo '| --- | --- | --- | ---: | ---: | --- | --- | ---: | ---: | --- | ---: | ---: |'
+            echo "| Gateway | ${{ needs.build-gateway-release-candidate.outputs.build_required }} | ${{ needs.build-gateway-release-candidate.outputs.amd64_build_mode }} | ${{ needs.build-gateway-release-candidate.outputs.amd64_queue_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.amd64_execution_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.amd64_cache_scope }} | ${{ needs.build-gateway-release-candidate.outputs.arm64_build_mode }} | ${{ needs.build-gateway-release-candidate.outputs.arm64_queue_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.arm64_execution_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.arm64_cache_scope }} | ${{ needs.build-gateway-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-gateway-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| Migrations | ${{ needs.build-migrations-release-candidate.outputs.build_required }} | ${{ needs.build-migrations-release-candidate.outputs.amd64_build_mode }} | ${{ needs.build-migrations-release-candidate.outputs.amd64_queue_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.amd64_execution_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.amd64_cache_scope }} | ${{ needs.build-migrations-release-candidate.outputs.arm64_build_mode }} | ${{ needs.build-migrations-release-candidate.outputs.arm64_queue_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.arm64_execution_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.arm64_cache_scope }} | ${{ needs.build-migrations-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-migrations-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| OpenPath Firefox Assets | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_build_mode }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_queue_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_execution_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.amd64_cache_scope }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_build_mode }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_queue_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_execution_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.arm64_cache_scope }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| OpenPath API | ${{ needs.build-openpath-api-release-candidate.outputs.build_required }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_build_mode }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_queue_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_execution_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.amd64_cache_scope }} | ${{ needs.build-openpath-api-release-candidate.outputs.arm64_build_mode }} | ${{ needs.build-openpath-api-release-candidate.outputs.arm64_queue_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.arm64_execution_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.arm64_cache_scope }} | ${{ needs.build-openpath-api-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-openpath-api-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| SPA | ${{ needs.build-spa-release-candidate.outputs.build_required }} | ${{ needs.build-spa-release-candidate.outputs.amd64_build_mode }} | ${{ needs.build-spa-release-candidate.outputs.amd64_queue_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.amd64_execution_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.amd64_cache_scope }} | ${{ needs.build-spa-release-candidate.outputs.arm64_build_mode }} | ${{ needs.build-spa-release-candidate.outputs.arm64_queue_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.arm64_execution_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.arm64_cache_scope }} | ${{ needs.build-spa-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-spa-release-candidate.outputs.family_duration_seconds || 0 }} |"
+            echo "| Verifier | ${{ needs.build-verifier-release-candidate.outputs.build_required }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_build_mode }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_queue_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_execution_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.amd64_cache_scope }} | ${{ needs.build-verifier-release-candidate.outputs.arm64_build_mode }} | ${{ needs.build-verifier-release-candidate.outputs.arm64_queue_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.arm64_execution_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.arm64_cache_scope }} | ${{ needs.build-verifier-release-candidate.outputs.publish_duration_seconds || 0 }} | ${{ needs.build-verifier-release-candidate.outputs.family_duration_seconds || 0 }} |"
             echo
             echo '### Gate Candidate'
             echo
@@ -503,46 +563,130 @@ jobs:
             "manifestOnly": true,
             "families": {
               "gateway": {
+                "displayName": "Gateway",
                 "buildRequired": false,
+                "buildMode": "reused",
                 "amd64DurationSeconds": 0,
                 "arm64DurationSeconds": 0,
+                "amd64ExecutionSeconds": 0,
+                "arm64ExecutionSeconds": 0,
+                "amd64QueueSeconds": 0,
+                "arm64QueueSeconds": 0,
+                "amd64CacheScope": "release-candidate-gateway-amd64",
+                "arm64CacheScope": "release-candidate-gateway-arm64",
+                "amd64BuildMode": "reused",
+                "arm64BuildMode": "reused",
                 "publishDurationSeconds": 0,
-                "familyDurationSeconds": 0
+                "familyDurationSeconds": 0,
+                "platforms": {
+                  "amd64": { "platform": "amd64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-gateway-amd64", "queueSeconds": 0, "executionSeconds": 0 },
+                  "arm64": { "platform": "arm64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-gateway-arm64", "queueSeconds": 0, "executionSeconds": 0 }
+                }
               },
               "migrations": {
+                "displayName": "Migrations",
                 "buildRequired": false,
+                "buildMode": "reused",
                 "amd64DurationSeconds": 0,
                 "arm64DurationSeconds": 0,
+                "amd64ExecutionSeconds": 0,
+                "arm64ExecutionSeconds": 0,
+                "amd64QueueSeconds": 0,
+                "arm64QueueSeconds": 0,
+                "amd64CacheScope": "release-candidate-migrations-amd64",
+                "arm64CacheScope": "release-candidate-migrations-arm64",
+                "amd64BuildMode": "reused",
+                "arm64BuildMode": "reused",
                 "publishDurationSeconds": 0,
-                "familyDurationSeconds": 0
+                "familyDurationSeconds": 0,
+                "platforms": {
+                  "amd64": { "platform": "amd64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-migrations-amd64", "queueSeconds": 0, "executionSeconds": 0 },
+                  "arm64": { "platform": "arm64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-migrations-arm64", "queueSeconds": 0, "executionSeconds": 0 }
+                }
               },
               "openpathFirefoxAssets": {
+                "displayName": "OpenPath Firefox Assets",
                 "buildRequired": false,
+                "buildMode": "reused",
                 "amd64DurationSeconds": 0,
                 "arm64DurationSeconds": 0,
+                "amd64ExecutionSeconds": 0,
+                "arm64ExecutionSeconds": 0,
+                "amd64QueueSeconds": 0,
+                "arm64QueueSeconds": 0,
+                "amd64CacheScope": "release-candidate-openpath-firefox-assets-amd64",
+                "arm64CacheScope": "release-candidate-openpath-firefox-assets-arm64",
+                "amd64BuildMode": "reused",
+                "arm64BuildMode": "reused",
                 "publishDurationSeconds": 0,
-                "familyDurationSeconds": 0
+                "familyDurationSeconds": 0,
+                "platforms": {
+                  "amd64": { "platform": "amd64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-openpath-firefox-assets-amd64", "queueSeconds": 0, "executionSeconds": 0 },
+                  "arm64": { "platform": "arm64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-openpath-firefox-assets-arm64", "queueSeconds": 0, "executionSeconds": 0 }
+                }
               },
               "openpathApi": {
+                "displayName": "OpenPath API",
                 "buildRequired": false,
+                "buildMode": "reused",
                 "amd64DurationSeconds": 0,
                 "arm64DurationSeconds": 0,
+                "amd64ExecutionSeconds": 0,
+                "arm64ExecutionSeconds": 0,
+                "amd64QueueSeconds": 0,
+                "arm64QueueSeconds": 0,
+                "amd64CacheScope": "release-candidate-openpath-api-amd64",
+                "arm64CacheScope": "release-candidate-openpath-api-arm64",
+                "amd64BuildMode": "reused",
+                "arm64BuildMode": "reused",
                 "publishDurationSeconds": 0,
-                "familyDurationSeconds": 0
+                "familyDurationSeconds": 0,
+                "platforms": {
+                  "amd64": { "platform": "amd64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-openpath-api-amd64", "queueSeconds": 0, "executionSeconds": 0 },
+                  "arm64": { "platform": "arm64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-openpath-api-arm64", "queueSeconds": 0, "executionSeconds": 0 }
+                }
               },
               "spa": {
+                "displayName": "SPA",
                 "buildRequired": false,
+                "buildMode": "reused",
                 "amd64DurationSeconds": 0,
                 "arm64DurationSeconds": 0,
+                "amd64ExecutionSeconds": 0,
+                "arm64ExecutionSeconds": 0,
+                "amd64QueueSeconds": 0,
+                "arm64QueueSeconds": 0,
+                "amd64CacheScope": "release-candidate-spa-amd64",
+                "arm64CacheScope": "release-candidate-spa-arm64",
+                "amd64BuildMode": "reused",
+                "arm64BuildMode": "reused",
                 "publishDurationSeconds": 0,
-                "familyDurationSeconds": 0
+                "familyDurationSeconds": 0,
+                "platforms": {
+                  "amd64": { "platform": "amd64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-spa-amd64", "queueSeconds": 0, "executionSeconds": 0 },
+                  "arm64": { "platform": "arm64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-spa-arm64", "queueSeconds": 0, "executionSeconds": 0 }
+                }
               },
               "verifier": {
+                "displayName": "Verifier",
                 "buildRequired": false,
+                "buildMode": "reused",
                 "amd64DurationSeconds": 0,
                 "arm64DurationSeconds": 0,
+                "amd64ExecutionSeconds": 0,
+                "arm64ExecutionSeconds": 0,
+                "amd64QueueSeconds": 0,
+                "arm64QueueSeconds": 0,
+                "amd64CacheScope": "release-candidate-verifier-amd64",
+                "arm64CacheScope": "release-candidate-verifier-arm64",
+                "amd64BuildMode": "reused",
+                "arm64BuildMode": "reused",
                 "publishDurationSeconds": 0,
-                "familyDurationSeconds": 0
+                "familyDurationSeconds": 0,
+                "platforms": {
+                  "amd64": { "platform": "amd64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-verifier-amd64", "queueSeconds": 0, "executionSeconds": 0 },
+                  "arm64": { "platform": "arm64", "buildRequired": false, "buildMode": "reused", "cacheScope": "release-candidate-verifier-arm64", "queueSeconds": 0, "executionSeconds": 0 }
+                }
               }
             }
           }

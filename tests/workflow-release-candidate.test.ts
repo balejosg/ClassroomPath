@@ -152,11 +152,17 @@ describe('Release candidate workflow contracts', () => {
     );
     assert.ok(reusableWorkflowText.includes('amd64_duration_seconds:'));
     assert.ok(reusableWorkflowText.includes('arm64_duration_seconds:'));
+    assert.ok(reusableWorkflowText.includes('amd64_queue_seconds:'));
+    assert.ok(reusableWorkflowText.includes('arm64_queue_seconds:'));
+    assert.ok(reusableWorkflowText.includes('amd64_execution_seconds:'));
+    assert.ok(reusableWorkflowText.includes('arm64_execution_seconds:'));
     assert.ok(reusableWorkflowText.includes('build-arm64:'));
     assert.ok(reusableWorkflowText.includes('ubuntu-24.04-arm'));
     assert.ok(reusableWorkflowText.includes('linux/arm64'));
     assert.ok(reusableWorkflowText.includes('publish_duration_seconds:'));
     assert.ok(reusableWorkflowText.includes('family_duration_seconds:'));
+    assert.ok(reusableWorkflowText.includes('amd64_build_mode:'));
+    assert.ok(reusableWorkflowText.includes('arm64_build_mode:'));
     assert.ok(
       reusableWorkflowText.includes('amd64_cache_scope:') &&
         reusableWorkflowText.includes('arm64_cache_scope:') &&
@@ -575,6 +581,17 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(checkoutIndex < summarizeIndex);
     assert.ok(workflowText.includes('arm64DurationSeconds'));
     assert.ok(workflowText.includes('familyDurationSeconds'));
+    assert.ok(workflowText.includes('amd64CacheScope'));
+    assert.ok(workflowText.includes('arm64CacheScope'));
+    assert.ok(workflowText.includes('amd64QueueSeconds'));
+    assert.ok(workflowText.includes('arm64QueueSeconds'));
+    assert.ok(workflowText.includes('amd64ExecutionSeconds'));
+    assert.ok(workflowText.includes('arm64ExecutionSeconds'));
+    assert.ok(workflowText.includes('amd64BuildMode'));
+    assert.ok(workflowText.includes('arm64BuildMode'));
+    assert.ok(workflowText.includes('buildMode'));
+    assert.ok(workflowText.includes('queueSeconds'));
+    assert.ok(workflowText.includes('executionSeconds'));
     assert.doesNotMatch(
       workflowText,
       /needs\.build-gateway-release-candidate\.outputs\.gateway_image/
