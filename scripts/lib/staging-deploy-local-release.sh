@@ -105,6 +105,10 @@ prepare_staging_local_release_context() {
     . "$STAGING_RELEASE_PLAN_ENV_FILE"
     set +a
 
+    if [ -n "$STAGING_RELEASE_MANIFEST_FILE" ]; then
+        export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"
+    fi
+
     if [ "$requested_staging_deployment_mode" = "debug" ]; then
         STAGING_DEPLOYMENT_MODE="debug"
     fi
