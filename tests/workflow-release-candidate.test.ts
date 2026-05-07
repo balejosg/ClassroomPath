@@ -81,6 +81,28 @@ describe('Release candidate workflow contracts', () => {
       spaChanged: true,
       verifierChanged: true,
     });
+    assert.equal(flags.openpathFirefoxAssetsChanged, true);
+  });
+
+  test('release candidate detector rebuilds Firefox assets for OpenPath release packaging changes', async () => {
+    const { classifyReleaseCandidateComponents, isManifestOnlyReleaseCandidateChange } =
+      await import('../scripts/lib/release-candidate-components.mjs');
+
+    for (const changedFile of [
+      '.github/workflows/firefox-release-assets.yml',
+      'firefox-extension/sign-firefox-release.mjs',
+      'firefox-extension/build-firefox-release.mjs',
+      'firefox-extension/verify-firefox-release-artifacts.mjs',
+    ]) {
+      const flags = classifyReleaseCandidateComponents({
+        changedFiles: ['upstream/openpath'],
+        openpathChangedFiles: [changedFile],
+      });
+
+      assert.equal(flags.openpathFirefoxAssetsChanged, true, changedFile);
+      assert.equal(flags.verifierChanged, true, changedFile);
+      assert.equal(isManifestOnlyReleaseCandidateChange(flags), false, changedFile);
+    }
   });
 
   test('release candidate detector changes rebuild every image family', async () => {
@@ -103,6 +125,7 @@ describe('Release candidate workflow contracts', () => {
         spaChanged: true,
         verifierChanged: true,
       });
+      assert.equal(flags.openpathFirefoxAssetsChanged, true);
     }
   });
 

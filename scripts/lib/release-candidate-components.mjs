@@ -53,6 +53,7 @@ function markReleaseCandidateServerImagesChanged(flags) {
   flags.gatewayChanged = true;
   flags.migrationsChanged = true;
   flags.openpathApiChanged = true;
+  flags.openpathFirefoxAssetsChanged = true;
   flags.spaChanged = true;
   flags.verifierChanged = true;
 }
@@ -107,6 +108,15 @@ function isOpenPathFirefoxReleaseRuntimePath(filePath) {
     /^blocked\//.test(relativePath) ||
     /^popup\//.test(relativePath) ||
     /^icons\//.test(relativePath)
+  );
+}
+
+function isOpenPathFirefoxReleasePackagingPath(filePath) {
+  return (
+    filePath === '.github/workflows/firefox-release-assets.yml' ||
+    filePath === 'firefox-extension/build-firefox-release.mjs' ||
+    filePath === 'firefox-extension/sign-firefox-release.mjs' ||
+    filePath === 'firefox-extension/verify-firefox-release-artifacts.mjs'
   );
 }
 
@@ -185,6 +195,12 @@ export function classifyPackageJsonChange(beforeText, afterText) {
 }
 
 function applyOpenPathPathClassification(flags, filePath) {
+  if (isOpenPathFirefoxReleasePackagingPath(filePath)) {
+    flags.openpathFirefoxAssetsChanged = true;
+    flags.verifierChanged = true;
+    return true;
+  }
+
   if (
     /^docs\//.test(filePath) ||
     /^\.opencode\//.test(filePath) ||
