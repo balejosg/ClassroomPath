@@ -130,15 +130,35 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     const duplicateStep = guardJob?.steps?.find(
       (step) => step.name === 'Evaluate scheduled duplicate policy'
     );
+    const uploadPolicyEvidenceStep = guardJob?.steps?.find(
+      (step) => step.name === 'Upload CI signal policy evidence'
+    );
 
     assert.equal(workflow.on?.schedule?.[0]?.cron, '*/15 * * * *');
     assert.equal(workflow.permissions?.actions, 'read');
     assert.equal(guardJob?.['runs-on'], 'ubuntu-latest');
     assert.equal(guardJob?.outputs?.should_skip, '${{ steps.duplicate.outputs.should_skip }}');
+    assert.equal(
+      guardJob?.outputs?.last_live_tested_at,
+      '${{ steps.duplicate.outputs.last_live_tested_at }}'
+    );
+    assert.equal(
+      guardJob?.outputs?.evidence_state,
+      '${{ steps.duplicate.outputs.evidence_state }}'
+    );
+    assert.equal(guardJob?.outputs?.evidenceLevel, '${{ steps.duplicate.outputs.evidenceLevel }}');
     assert.match(String(duplicateStep?.run ?? ''), /ci-signal-policy\.mjs duplicate-suppression/);
     assert.equal(duplicateStep?.env?.CI_SIGNAL_CLASS, 'post-release health');
     assert.equal(duplicateStep?.env?.CI_DUPLICATE_FRESHNESS_WINDOW, '60m');
     assert.equal(duplicateStep?.env?.CI_WORKFLOW_NAME, 'Production Client Update Canary');
+    assert.equal(
+      duplicateStep?.env?.CI_SIGNAL_POLICY_EVIDENCE_PATH,
+      'ci-signal-policy-evidence.json'
+    );
+    assert.equal(uploadPolicyEvidenceStep?.uses, 'actions/upload-artifact@v7');
+    assert.equal(uploadPolicyEvidenceStep?.with?.name, 'ci-signal-policy-evidence');
+    assert.equal(uploadPolicyEvidenceStep?.with?.path, 'ci-signal-policy-evidence.json');
+    assert.equal(uploadPolicyEvidenceStep?.with?.['if-no-files-found'], 'error');
     assert.match(
       String(downloadJob?.if ?? ''),
       /needs\.ci-signal-policy\.outputs\.should_skip != 'true'/
@@ -154,6 +174,10 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       ),
       'workflow summary should expose the duplicate-run policy'
     );
+    assert.ok(workflowText.includes('skipped-duplicate'));
+    assert.ok(workflowText.includes('manual-dispatch-required'));
+    assert.ok(workflowText.includes('ci-signal-policy-evidence.json'));
+    assert.ok(workflowText.includes('name: ci-signal-policy-evidence'));
   });
 
   test('ci/cd signal inventory classifies schedules and duplicate-run policy', () => {

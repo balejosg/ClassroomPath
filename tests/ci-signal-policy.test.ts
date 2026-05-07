@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  buildCiSignalPolicyEvidence,
   findFreshDeployEvidenceRun,
   findFreshSameShaSuccess,
   parseFreshnessWindow,
@@ -160,6 +161,79 @@ describe('CI signal policy', () => {
 
     assert.equal(result.shouldSkip, false);
     assert.match(result.reason, /workflow_dispatch is not eligible/);
+  });
+
+  test('builds explicit skipped duplicate evidence without claiming fresh live proof', () => {
+    const result = resolveDuplicateSuppression({
+      eventName: 'schedule',
+      runs: [
+        {
+          databaseId: 5,
+          event: 'schedule',
+          headSha: 'abc',
+          status: 'completed',
+          conclusion: 'success',
+          updatedAt: '2026-05-01T11:45:00.000Z',
+          url: 'https://github.example/runs/5',
+          targetEnvironment: 'production',
+        },
+      ],
+      sha: 'abc',
+      currentRunId: 6,
+      now: new Date('2026-05-01T12:00:00.000Z'),
+      freshnessWindow: '60m',
+      targetEnvironment: 'production',
+    });
+
+    const evidence = buildCiSignalPolicyEvidence({
+      eventName: 'schedule',
+      sha: 'abc',
+      currentRunId: 6,
+      targetEnvironment: 'production',
+      result,
+    });
+
+    assert.equal(evidence.evidenceState, 'skipped-duplicate');
+    assert.equal(evidence.evidenceLevel, 'skipped');
+    assert.equal(evidence.matching_run_url, 'https://github.example/runs/5');
+    assert.equal(evidence.last_live_tested_at, '2026-05-01T11:45:00.000Z');
+  });
+
+  test('builds manual dispatch policy evidence without duplicate suppression', () => {
+    const result = resolveDuplicateSuppression({
+      eventName: 'workflow_dispatch',
+      runs: [
+        {
+          databaseId: 5,
+          event: 'schedule',
+          headSha: 'abc',
+          status: 'completed',
+          conclusion: 'success',
+          updatedAt: '2026-05-01T11:45:00.000Z',
+          url: 'https://github.example/runs/5',
+          targetEnvironment: 'production',
+        },
+      ],
+      sha: 'abc',
+      currentRunId: 6,
+      now: new Date('2026-05-01T12:00:00.000Z'),
+      freshnessWindow: '60m',
+      targetEnvironment: 'production',
+    });
+
+    const evidence = buildCiSignalPolicyEvidence({
+      eventName: 'workflow_dispatch',
+      sha: 'abc',
+      currentRunId: 6,
+      targetEnvironment: 'production',
+      result,
+    });
+
+    assert.equal(result.shouldSkip, false);
+    assert.equal(evidence.evidenceState, 'manual-dispatch-required');
+    assert.equal(evidence.evidenceLevel, 'live');
+    assert.equal(evidence.matching_run_url, '');
+    assert.equal(evidence.last_live_tested_at, '');
   });
 
   test('suppresses scheduled canary when same-SHA deploy evidence is active', () => {

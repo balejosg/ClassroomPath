@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: false
 
 # Evidence states emitted by this workflow:
-# live-tested, skipped-by-billing-mode, advisory-only, failed
+# live-tested, skipped-duplicate, manual-dispatch-required, skipped-by-billing-mode, advisory-only, failed
 
 jobs:
   ci-signal-policy:
@@ -41,6 +41,9 @@ jobs:
       should_skip: ${{ steps.duplicate.outputs.should_skip }}
       reason: ${{ steps.duplicate.outputs.reason }}
       matching_run_url: ${{ steps.duplicate.outputs.matching_run_url }}
+      last_live_tested_at: ${{ steps.duplicate.outputs.last_live_tested_at }}
+      evidence_state: ${{ steps.duplicate.outputs.evidence_state }}
+      evidenceLevel: ${{ steps.duplicate.outputs.evidenceLevel }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -58,7 +61,15 @@ jobs:
           CI_DUPLICATE_POLICY: same workflow success or deploy evidence + same SHA within 60m
           CI_DUPLICATE_FRESHNESS_WINDOW: 60m
           CI_WORKFLOW_NAME: Production Client Update Canary
+          CI_SIGNAL_POLICY_EVIDENCE_PATH: ci-signal-policy-evidence.json
         run: node scripts/ci-signal-policy.mjs duplicate-suppression
+
+      - name: Upload CI signal policy evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-signal-policy-evidence
+          path: ci-signal-policy-evidence.json
+          if-no-files-found: error
 
   production-enrollment-download-canary:
     name: Production Enrollment Download Canary

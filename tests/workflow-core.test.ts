@@ -311,7 +311,7 @@ describe('Workflow core contracts', () => {
     const directPushStep = findWorkflowStepByName(syncJob, 'Commit and push direct sync');
     const pullRequestStep = findWorkflowStepByName(syncJob, 'Open Pull Request');
 
-    assert.equal(workflow.on?.schedule?.[0]?.cron, '*/5 * * * *');
+    assert.equal(workflow.on?.schedule?.[0]?.cron, '*/15 * * * *');
     assert.match(
       String(resolveModeStep.run ?? ''),
       /github\.event_name[\s\S]*mode="direct-main"/,
