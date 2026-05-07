@@ -56,6 +56,31 @@ describe('GoogleLoginButton', () => {
     expect(screen.queryByRole('button', { name: /reintentar google/i })).not.toBeInTheDocument();
   });
 
+  it('keeps the rendered Google button visible across parent re-renders', async () => {
+    mockRenderButton.mockImplementation((element: HTMLElement) => {
+      element.appendChild(document.createElement('iframe'));
+    });
+
+    const { rerender } = render(<GoogleLoginButton onSuccess={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(mockInitialize).toHaveBeenCalledTimes(1);
+      expect(mockRenderButton).toHaveBeenCalledTimes(1);
+    });
+
+    for (let renderCount = 0; renderCount < 10; renderCount += 1) {
+      rerender(<GoogleLoginButton onSuccess={vi.fn()} />);
+    }
+
+    await waitFor(() => {
+      expect(screen.getByTestId('google-signin-btn')).not.toHaveClass('opacity-0');
+    });
+
+    expect(mockInitialize).toHaveBeenCalledTimes(1);
+    expect(mockRenderButton).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('google-signin-btn').childElementCount).toBeGreaterThan(0);
+  });
+
   it('retries rendering when Google does not paint the button on the first attempt', async () => {
     mockRenderButton
       .mockImplementationOnce(() => {})

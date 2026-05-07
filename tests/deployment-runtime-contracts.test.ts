@@ -139,6 +139,7 @@ describe('Deployment runtime contracts', () => {
     assert.ok(!verifierDockerfile.includes('chown -R node:node /app'));
     assert.ok(verifierDockerfile.includes('npm ci'));
     assert.ok(verifierDockerfile.includes('--mount=type=cache,target=/root/.npm'));
+    assert.ok(verifierDockerfile.includes('npx playwright install --with-deps chromium'));
     assert.ok(verifierDockerignore.includes('scripts/**'));
     assert.ok(verifierDockerignore.includes('tests/**'));
     assert.ok(verifierDockerignore.includes('!tests/smoke.test.ts'));

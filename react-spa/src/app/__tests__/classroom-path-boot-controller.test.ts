@@ -55,6 +55,49 @@ describe('classroom-path-boot-controller', () => {
     });
   });
 
+  it('preserves state identity for boot reset events that do not change state', () => {
+    const state = createClassroomPathBootControllerState(false);
+
+    expect(reduceClassroomPathBootControllerState(state, { type: 'loading-timeout-cleared' })).toBe(
+      state
+    );
+    expect(reduceClassroomPathBootControllerState(state, { type: 'profile-sync-reset' })).toBe(
+      state
+    );
+    expect(reduceClassroomPathBootControllerState(state, { type: 'session-refresh-reset' })).toBe(
+      state
+    );
+  });
+
+  it('returns new boot state when reset events clear active flags', () => {
+    const timedOut = reduceClassroomPathBootControllerState(
+      createClassroomPathBootControllerState(false),
+      {
+        type: 'loading-timeout-fired',
+      }
+    );
+    const profileSynced = reduceClassroomPathBootControllerState(
+      createClassroomPathBootControllerState(true),
+      { type: 'profile-sync-started' }
+    );
+    const sessionRefreshAttempted = reduceClassroomPathBootControllerState(
+      createClassroomPathBootControllerState(true),
+      { type: 'session-refresh-started' }
+    );
+
+    expect(
+      reduceClassroomPathBootControllerState(timedOut, { type: 'loading-timeout-cleared' })
+    ).not.toBe(timedOut);
+    expect(
+      reduceClassroomPathBootControllerState(profileSynced, { type: 'profile-sync-reset' })
+    ).not.toBe(profileSynced);
+    expect(
+      reduceClassroomPathBootControllerState(sessionRefreshAttempted, {
+        type: 'session-refresh-reset',
+      })
+    ).not.toBe(sessionRefreshAttempted);
+  });
+
   it('derives pending invitation and refresh decisions from controller state', () => {
     const status = {
       hasMembership: false,

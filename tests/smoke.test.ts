@@ -23,6 +23,8 @@ const SMOKE_REQUIRE_PUSH = process.env.SMOKE_REQUIRE_PUSH === '1';
 const SMOKE_TEST_RETRIES = parseInt(process.env.SMOKE_TEST_RETRIES || '2', 10);
 const SMOKE_TEST_RETRY_DELAY_MS = parseInt(process.env.SMOKE_TEST_RETRY_DELAY_MS || '1000', 10);
 const SMOKE_TEST_RESOLVED_ADDRESS = process.env.SMOKE_TEST_RESOLVED_ADDRESS;
+const SMOKE_BROWSER_TIMEOUT = parseInt(process.env.SMOKE_BROWSER_TIMEOUT || '15000', 10);
+const GOOGLE_SDK_SRC = 'https://accounts.google.com/gsi/client';
 
 function isIpAddress(hostname: string): boolean {
   const normalized = hostname.replace(/^\[/, '').replace(/\]$/, '');
@@ -230,6 +232,148 @@ function parseTrpcEnvelope<T>(payload: unknown): {
     };
   }
   return {};
+}
+
+function getLoginSmokeUrl(): string {
+  if (!SMOKE_TEST_URL) {
+    throw new Error('SMOKE_TEST_URL is required');
+  }
+
+  return new URL('/login', SMOKE_TEST_URL).toString();
+}
+
+function getSmokeBrowserLaunchArgs(): string[] {
+  const args = ['--no-sandbox'];
+
+  if (SMOKE_TEST_URL && SMOKE_TEST_RESOLVED_ADDRESS) {
+    const hostname = new URL(SMOKE_TEST_URL).hostname;
+    args.push(`--host-resolver-rules=MAP ${hostname} ${SMOKE_TEST_RESOLVED_ADDRESS}`);
+  }
+
+  return args;
+}
+
+function getMockGoogleSdkScript(): string {
+  return `
+    window.google = {
+      accounts: {
+        id: {
+          initialize() {},
+          renderButton(element, options) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = 'Sign in with Google';
+            button.setAttribute('aria-label', 'Sign in with Google');
+            button.style.display = 'block';
+            button.style.width = (options && options.width ? options.width : '300') + 'px';
+            button.style.height = '40px';
+            element.appendChild(button);
+          },
+          prompt() {}
+        }
+      }
+    };
+  `;
+}
+
+async function verifyLoginGoogleControlInBrowser(): Promise<void> {
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch({
+    args: getSmokeBrowserLaunchArgs(),
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.route(GOOGLE_SDK_SRC, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/javascript',
+        body: getMockGoogleSdkScript(),
+      });
+    });
+
+    await page.goto(getLoginSmokeUrl(), {
+      waitUntil: 'domcontentloaded',
+      timeout: SMOKE_BROWSER_TIMEOUT,
+    });
+
+    await page.waitForFunction(
+      () => {
+        const isVisible = (element: Element | null): boolean => {
+          if (!(element instanceof HTMLElement)) return false;
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            Number(style.opacity || '1') > 0 &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        };
+        const googleButton = document.querySelector('[data-testid="google-signin-btn"]');
+        const retryButton = Array.from(document.querySelectorAll('button')).find((button) =>
+          /reintentar google/i.test(button.textContent ?? '')
+        );
+
+        return (
+          (googleButton &&
+            googleButton.childElementCount > 0 &&
+            !googleButton.classList.contains('opacity-0') &&
+            isVisible(googleButton)) ||
+          isVisible(retryButton ?? null)
+        );
+      },
+      undefined,
+      { timeout: SMOKE_BROWSER_TIMEOUT }
+    );
+
+    const loginGoogleState = await page.evaluate(() => {
+      const isVisible = (element: Element | null): boolean => {
+        if (!(element instanceof HTMLElement)) return false;
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return (
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          Number(style.opacity || '1') > 0 &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      };
+      const googleButton = document.querySelector('[data-testid="google-signin-btn"]');
+      const retryButton = Array.from(document.querySelectorAll('button')).find((button) =>
+        /reintentar google/i.test(button.textContent ?? '')
+      );
+
+      return {
+        googleVisible: Boolean(
+          googleButton &&
+          googleButton.childElementCount > 0 &&
+          !googleButton.classList.contains('opacity-0') &&
+          isVisible(googleButton)
+        ),
+        retryVisible: isVisible(retryButton ?? null),
+        hiddenRenderedGoogleButton: Boolean(
+          googleButton &&
+          googleButton.childElementCount > 0 &&
+          googleButton.classList.contains('opacity-0')
+        ),
+      };
+    });
+
+    assert.ok(
+      loginGoogleState.googleVisible || loginGoogleState.retryVisible,
+      '/login should show a visible Google button or a visible retry fallback'
+    );
+    assert.strictEqual(
+      loginGoogleState.hiddenRenderedGoogleButton,
+      false,
+      '/login must not leave a rendered Google button hidden behind opacity-0'
+    );
+  } finally {
+    await browser.close();
+  }
 }
 
 void describe('Smoke Tests - Live Deployment Verification', () => {
@@ -467,6 +611,10 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
 
       const contentType = response.headers.get('content-type');
       assert.ok(contentType?.includes('text/html'), 'Client-side route should return HTML');
+    });
+
+    void test('login renders a visible Google control in a browser', async () => {
+      await verifyLoginGoogleControlInBrowser();
     });
   });
 

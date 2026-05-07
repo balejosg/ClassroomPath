@@ -16,6 +16,12 @@ interface ConfigResponse {
   googleClientId?: string;
 }
 
+type ActiveGoogleButtonRender = {
+  clientId: string;
+  element: HTMLDivElement;
+  text: GoogleButtonText;
+};
+
 const GOOGLE_SDK_SRC = 'https://accounts.google.com/gsi/client';
 const GOOGLE_SDK_TIMEOUT_MS = 10_000;
 const GOOGLE_SDK_POLL_MS = 100;
@@ -82,6 +88,17 @@ function hasRenderedGoogleButton(element: HTMLDivElement | null): boolean {
   return Boolean(element && element.childElementCount > 0);
 }
 
+function isSameRenderTarget(
+  current: ActiveGoogleButtonRender | null,
+  next: ActiveGoogleButtonRender
+): boolean {
+  return (
+    current?.clientId === next.clientId &&
+    current.text === next.text &&
+    current.element === next.element
+  );
+}
+
 export default function GoogleLoginButton({
   onSuccess,
   disabled = false,
@@ -89,11 +106,15 @@ export default function GoogleLoginButton({
 }: GoogleLoginButtonProps) {
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const renderTimerIdsRef = useRef<number[]>([]);
+  const activeRenderRef = useRef<ActiveGoogleButtonRender | null>(null);
+  const onSuccessRef = useRef(onSuccess);
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
   const [buttonRendered, setButtonRendered] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  onSuccessRef.current = onSuccess;
 
   const clearRenderTimers = useCallback(() => {
     for (const timerId of renderTimerIdsRef.current) {
@@ -109,6 +130,10 @@ export default function GoogleLoginButton({
     setSdkReady(false);
     setButtonRendered(false);
     setError(null);
+    activeRenderRef.current = null;
+    if (googleButtonRef.current) {
+      googleButtonRef.current.innerHTML = '';
+    }
     clearRenderTimers();
 
     void Promise.all([ensureGoogleSdk(controller.signal), fetchGoogleClientId(controller.signal)])
@@ -139,18 +164,34 @@ export default function GoogleLoginButton({
   }, [clearRenderTimers, reloadKey]);
 
   const renderGoogleButton = useCallback(
-    (attempt = 0) => {
+    (attempt = 0, forceRender = false) => {
       const buttonElement = googleButtonRef.current;
       if (!buttonElement || !googleClientId || !window.google?.accounts.id) {
         return;
       }
 
+      const nextRender: ActiveGoogleButtonRender = {
+        clientId: googleClientId,
+        element: buttonElement,
+        text,
+      };
+
+      if (!forceRender && isSameRenderTarget(activeRenderRef.current, nextRender)) {
+        if (hasRenderedGoogleButton(buttonElement)) {
+          setButtonRendered(true);
+          setError(null);
+        }
+        return;
+      }
+
       try {
         buttonElement.innerHTML = '';
+        activeRenderRef.current = nextRender;
+        setButtonRendered(false);
         window.google.accounts.id.initialize({
           client_id: googleClientId,
           callback: (response: GoogleCredentialResponse) => {
-            onSuccess(response.credential);
+            onSuccessRef.current(response.credential);
           },
           auto_select: false,
           cancel_on_tap_outside: true,
@@ -172,11 +213,12 @@ export default function GoogleLoginButton({
           }
 
           if (attempt + 1 < GOOGLE_RENDER_MAX_ATTEMPTS) {
-            renderGoogleButton(attempt + 1);
+            renderGoogleButton(attempt + 1, true);
             return;
           }
 
           setButtonRendered(false);
+          activeRenderRef.current = null;
           setError('No se pudo mostrar Google. Pulsa reintentar.');
           reportError('Google login button did not render after retries', null, {
             action: 'google-button-render',
@@ -188,6 +230,7 @@ export default function GoogleLoginButton({
         renderTimerIdsRef.current.push(timerId);
       } catch (renderError: unknown) {
         setButtonRendered(false);
+        activeRenderRef.current = null;
         setError('No se pudo mostrar Google. Pulsa reintentar.');
         reportError('Failed to render Google login button', renderError, {
           action: 'google-button-render',
@@ -196,7 +239,7 @@ export default function GoogleLoginButton({
         });
       }
     },
-    [googleClientId, onSuccess, text]
+    [googleClientId, text]
   );
 
   useEffect(() => {
@@ -206,8 +249,11 @@ export default function GoogleLoginButton({
       return;
     }
 
+    if (hasRenderedGoogleButton(googleButtonRef.current)) {
+      setButtonRendered(true);
+    }
+
     if (!disabled) {
-      setButtonRendered(false);
       renderGoogleButton(0);
     }
 
@@ -217,6 +263,12 @@ export default function GoogleLoginButton({
   }, [clearRenderTimers, disabled, googleClientId, renderGoogleButton, sdkReady]);
 
   const handleRetry = () => {
+    activeRenderRef.current = null;
+    if (googleButtonRef.current) {
+      googleButtonRef.current.innerHTML = '';
+    }
+    setButtonRendered(false);
+    setError(null);
     setReloadKey((current) => current + 1);
   };
 

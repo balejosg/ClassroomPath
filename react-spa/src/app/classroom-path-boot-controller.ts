@@ -75,6 +75,9 @@ export function reduceClassroomPathBootControllerState(
     case 'openpath-ready':
       return { ...state, openPathReady: true };
     case 'loading-timeout-cleared':
+      if (!state.loadingTimedOut) {
+        return state;
+      }
       return { ...state, loadingTimedOut: false };
     case 'loading-timeout-fired':
       return { ...state, loadingTimedOut: true };
@@ -89,10 +92,16 @@ export function reduceClassroomPathBootControllerState(
     case 'auto-accept-pending-invitation':
       return { ...state, autoAcceptedInvitationKey: event.pendingInvitationKey };
     case 'profile-sync-reset':
+      if (!state.hasSyncedProfile) {
+        return state;
+      }
       return { ...state, hasSyncedProfile: false };
     case 'profile-sync-started':
       return { ...state, hasSyncedProfile: true };
     case 'session-refresh-reset':
+      if (!state.hasAttemptedSessionRefresh) {
+        return state;
+      }
       return { ...state, hasAttemptedSessionRefresh: false };
     case 'session-refresh-started':
       return {
