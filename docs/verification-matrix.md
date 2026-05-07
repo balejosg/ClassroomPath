@@ -97,8 +97,42 @@ gh run list --repo balejosg/ClassroomPath --branch main --limit 10 \
 gh run view <run-id> --repo balejosg/ClassroomPath \
   --json name,headSha,status,conclusion,createdAt,updatedAt,jobs
 
+gh run view <run-id> --repo balejosg/ClassroomPath --json name,jobs > jobs.json
+node scripts/measure-ci-cache.mjs --jobs-json jobs.json --format markdown
+
 gh api repos/balejosg/ClassroomPath/actions/runs/<run-id>/artifacts \
   --jq '.artifacts[] | [.name,.expired,.size_in_bytes,.created_at] | @tsv'
+```
+
+## CI Timing Observability Decision - 2026-05-07
+
+ClassroomPath CI now emits a best-effort `classroompath-ci-timing-measurement`
+artifact from the `CI Success` job. The workflow captures raw GitHub Actions job
+metadata and a short summary without installing project dependencies in the
+summary job.
+
+Use `scripts/measure-ci-cache.mjs` after the run to render the full
+observability report from `jobs.json`: discovered `npm ci` steps, successful
+per-step timings from GitHub Actions job JSON, turbo/build-backed jobs and
+steps, and cache recommendations.
+
+Policy decision:
+
+- Measure first. Do not change cache policy from local estimates or a single CI
+  run.
+- Do not add Playwright browser cache from this CI timing wave. The current CI
+  workflow does not install Playwright browsers directly, and any future
+  Playwright cache proposal must include repeated job logs showing a material,
+  stable browser download bottleneck.
+- Do not add Turbo cache or consolidate `npm ci` lanes until repeated samples
+  show the same bottleneck and the change preserves lane-level diagnostic
+  value.
+- If same-run GitHub job metadata is unavailable, CI may upload a placeholder
+  report. Generate the real report after completion:
+
+```bash
+gh run view <run-id> --repo balejosg/ClassroomPath --json name,jobs > jobs.json
+node scripts/measure-ci-cache.mjs --jobs-json jobs.json --format markdown
 ```
 
 For OpenPath runner timing after a submodule update, use the maintained

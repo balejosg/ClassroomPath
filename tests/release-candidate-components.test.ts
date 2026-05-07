@@ -201,7 +201,12 @@ describe('release candidate component classification', () => {
 
   test('keeps firefox asset workflow changes out of release image rebuilds', () => {
     const flags = classifyReleaseCandidateComponents({
-      changedFiles: ['.github/workflows/firefox-release-assets.yml'],
+      changedFiles: [
+        '.github/workflows/firefox-release-assets.yml',
+        'scripts/firefox-release-evidence.mjs',
+        'scripts/resolve-firefox-release-assets-cache.mjs',
+        'tests/firefox-release-assets-cache.test.ts',
+      ],
       openpathChangedFiles: [],
     });
 

@@ -8,6 +8,10 @@ import {
   resolveFirefoxReleaseAssetCache,
   validateFirefoxReleaseAssetCache,
 } from '../scripts/resolve-firefox-release-assets-cache.mjs';
+import {
+  classifyFirefoxReleaseAssetEvidence,
+  formatFirefoxReleaseAssetEvidenceSummary,
+} from '../scripts/firefox-release-evidence.mjs';
 
 const tempDirectories: string[] = [];
 
@@ -149,6 +153,9 @@ describe('Firefox release asset cache validation', () => {
       artifactName: 'openpath-firefox-release-assets-payload-sha',
       sourceRepo: 'balejosg/OpenPath',
       cacheMissReason: '',
+      releaseState: 'cache-hit',
+      artifactSource: 'cache',
+      amoFileStatus: '',
       extensionId: 'monitor-bloqueos@openpath',
       version: '2.0.0.123',
       signatureSource: 'amo',
@@ -173,5 +180,97 @@ describe('Firefox release asset cache validation', () => {
       artifactName: 'openpath-firefox-release-assets-payload-sha',
       cacheMissReason: 'artifact_not_found_in_balejosg/ClassroomPath,balejosg/OpenPath',
     });
+  });
+});
+
+describe('Firefox release asset evidence classification', () => {
+  test('classifies a valid cache hit as actionable cache reuse evidence', () => {
+    assert.deepEqual(
+      classifyFirefoxReleaseAssetEvidence({
+        cacheResolved: true,
+        cacheSourceRepo: 'balejosg/OpenPath',
+        cacheMissReason: '',
+        signExitCode: '',
+        signOutput: '',
+        signedArtifactsPresent: true,
+      }),
+      {
+        releaseState: 'cache-hit',
+        artifactSource: 'cache',
+        amoFileStatus: '',
+        signedArtifactsPresent: true,
+        amoSigningRequired: false,
+        cacheSourceRepo: 'balejosg/OpenPath',
+        cacheMissReason: '',
+      }
+    );
+  });
+
+  test('classifies fresh signing separately from cache reuse', () => {
+    assert.deepEqual(
+      classifyFirefoxReleaseAssetEvidence({
+        cacheResolved: false,
+        cacheSourceRepo: '',
+        cacheMissReason: 'artifact_not_found',
+        signExitCode: '0',
+        signOutput:
+          '[sign:firefox-release] AMO version status addonId=openpath versionId=6249209 fileStatus=unreviewed',
+        signedArtifactsPresent: true,
+      }),
+      {
+        releaseState: 'fresh-signing',
+        artifactSource: 'signed',
+        amoFileStatus: 'unreviewed',
+        signedArtifactsPresent: true,
+        amoSigningRequired: true,
+        cacheSourceRepo: '',
+        cacheMissReason: 'artifact_not_found',
+      }
+    );
+  });
+
+  test('makes AMO manual review diagnosable without treating it as success', () => {
+    const evidence = classifyFirefoxReleaseAssetEvidence({
+      cacheResolved: false,
+      cacheSourceRepo: '',
+      cacheMissReason: 'artifact_not_found',
+      signExitCode: '1',
+      signOutput:
+        '[sign:firefox-release] AMO version status addonId=openpath versionId=6249209 fileStatus=unreviewed\nApproval: timeout exceeded. When approved the signed XPI file can be downloaded from https://addons.mozilla.org/en-US/developers/addon/openpath/versions/6249209',
+      signedArtifactsPresent: false,
+    });
+
+    assert.equal(evidence.releaseState, 'manual-review-required');
+    assert.equal(evidence.artifactSource, 'manual-review-required');
+    assert.equal(evidence.amoFileStatus, 'unreviewed');
+    assert.equal(evidence.signedArtifactsPresent, false);
+    assert.match(formatFirefoxReleaseAssetEvidenceSummary(evidence), /manual-review-required/);
+  });
+
+  test('classifies signing timeouts separately from hard failures', () => {
+    assert.equal(
+      classifyFirefoxReleaseAssetEvidence({
+        cacheResolved: false,
+        cacheSourceRepo: '',
+        cacheMissReason: 'artifact_not_found',
+        signExitCode: '124',
+        signOutput:
+          '[sign:firefox-release] AMO signing exhausted the total timeout before web-ext sign could finish',
+        signedArtifactsPresent: false,
+      }).releaseState,
+      'timeout'
+    );
+
+    assert.equal(
+      classifyFirefoxReleaseAssetEvidence({
+        cacheResolved: false,
+        cacheSourceRepo: '',
+        cacheMissReason: 'artifact_not_found',
+        signExitCode: '1',
+        signOutput: 'web-ext sign failed with status 1',
+        signedArtifactsPresent: false,
+      }).releaseState,
+      'hard-failure'
+    );
   });
 });

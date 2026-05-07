@@ -346,8 +346,30 @@ describe('Workflow core contracts', () => {
     const verifyStep = findWorkflowStepByName(syncJob, 'Verify OpenPath upstream checks');
     const directPushStep = findWorkflowStepByName(syncJob, 'Commit and push direct sync');
     const pullRequestStep = findWorkflowStepByName(syncJob, 'Open Pull Request');
+    const hygieneStep = findWorkflowStepByName(syncJob, 'Report stale scheduled workflow runs');
+    const uploadHygieneEvidenceStep = findWorkflowStepByName(
+      syncJob,
+      'Upload CI workflow hygiene report'
+    );
 
     assert.equal(workflow.on?.schedule?.[0]?.cron, '*/15 * * * *');
+    assert.equal(workflow.permissions?.actions, 'read');
+    assert.match(String(hygieneStep.run ?? ''), /ci-workflow-hygiene\.mjs report-stale-runs/);
+    assert.equal(hygieneStep.env?.CI_WORKFLOW_HYGIENE_MODE, 'dry-run');
+    assert.equal(hygieneStep.env?.CI_WORKFLOW_HYGIENE_STALE_AFTER, '90m');
+    assert.equal(
+      hygieneStep.env?.CI_WORKFLOW_HYGIENE_WORKFLOWS,
+      'Production Client Update Canary,Sync OpenPath'
+    );
+    assert.equal(
+      hygieneStep.env?.CI_WORKFLOW_HYGIENE_EVIDENCE_PATH,
+      'ci-workflow-hygiene-report.json'
+    );
+    assert.doesNotMatch(String(hygieneStep.run ?? ''), /--cancel/);
+    assert.equal(uploadHygieneEvidenceStep.uses, 'actions/upload-artifact@v7');
+    assert.equal(uploadHygieneEvidenceStep.with?.name, 'ci-workflow-hygiene-report');
+    assert.equal(uploadHygieneEvidenceStep.with?.path, 'ci-workflow-hygiene-report.json');
+    assert.equal(uploadHygieneEvidenceStep.with?.['if-no-files-found'], 'error');
     assert.match(
       String(resolveModeStep.run ?? ''),
       /github\.event_name[\s\S]*mode="direct-main"/,

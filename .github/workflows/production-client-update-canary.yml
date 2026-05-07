@@ -64,11 +64,27 @@ jobs:
           CI_SIGNAL_POLICY_EVIDENCE_PATH: ci-signal-policy-evidence.json
         run: node scripts/ci-signal-policy.mjs duplicate-suppression
 
+      - name: Report stale scheduled workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_WORKFLOW_HYGIENE_MODE: dry-run
+          CI_WORKFLOW_HYGIENE_STALE_AFTER: 90m
+          CI_WORKFLOW_HYGIENE_WORKFLOWS: Production Client Update Canary,Sync OpenPath
+          CI_WORKFLOW_HYGIENE_EVIDENCE_PATH: ci-workflow-hygiene-report.json
+        run: node scripts/ci-workflow-hygiene.mjs report-stale-runs
+
       - name: Upload CI signal policy evidence
         uses: actions/upload-artifact@v7
         with:
           name: ci-signal-policy-evidence
           path: ci-signal-policy-evidence.json
+          if-no-files-found: error
+
+      - name: Upload CI workflow hygiene report
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-workflow-hygiene-report
+          path: ci-workflow-hygiene-report.json
           if-no-files-found: error
 
   production-enrollment-download-canary:

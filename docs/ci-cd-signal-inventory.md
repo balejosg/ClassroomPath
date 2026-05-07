@@ -32,4 +32,5 @@ Presentation policy:
 - Blocking gates fail loudly and publish release evidence.
 - Advisory workflows must state `advisory` in their summary or issue context and avoid production-promotion wording.
 - Maintenance workflows must name the owner, next action, and whether production release evidence is affected.
+- Scheduled workflow hygiene is report-only by default. Cancelling stale queued or in-progress runs requires an explicit opt-in and remains limited to non-release-blocking scheduled maintenance-safe workflows.
 - Required failure artifacts stay under `always()` when diagnosis depends on them.

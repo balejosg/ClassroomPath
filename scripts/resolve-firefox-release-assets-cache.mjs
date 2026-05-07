@@ -207,6 +207,9 @@ export function resolveFirefoxReleaseAssetCache({
       artifactName: normalizedArtifactName,
       sourceRepo,
       cacheMissReason: '',
+      releaseState: 'cache-hit',
+      artifactSource: 'cache',
+      amoFileStatus: '',
       ...metadata,
     };
   } finally {
@@ -231,6 +234,9 @@ function main() {
     artifact_name: result.artifactName ?? '',
     source_repo: result.sourceRepo ?? '',
     cache_miss_reason: result.cacheMissReason ?? '',
+    release_state: result.releaseState ?? '',
+    artifact_source: result.artifactSource ?? '',
+    amo_file_status: result.amoFileStatus ?? '',
     extension_id: result.extensionId ?? '',
     version: result.version ?? '',
     signature_source: result.signatureSource ?? '',

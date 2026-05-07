@@ -7,6 +7,7 @@ on:
     branches: [main]
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -199,6 +200,70 @@ jobs:
     if: always()
 
     steps:
+      - name: Capture CI timing metadata
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          report_dir="$RUNNER_TEMP/classroompath-ci-timing"
+          jobs_json="$report_dir/jobs.json"
+          report_md="$report_dir/ci-timing-measurement.md"
+          mkdir -p "$report_dir"
+
+          if gh run view "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json name,jobs \
+            > "$jobs_json"; then
+            {
+              echo "# ClassroomPath CI Timing Metadata for run $GITHUB_RUN_ID"
+              echo
+              echo "Raw GitHub job metadata was captured in \`jobs.json\`."
+              echo
+              echo "Render the full cache/timing report after the run completes:"
+              echo
+              echo "\`\`\`bash"
+              echo "gh run view $GITHUB_RUN_ID --repo $GITHUB_REPOSITORY --json name,jobs > jobs.json"
+              echo "node scripts/measure-ci-cache.mjs --jobs-json jobs.json --format markdown"
+              echo "\`\`\`"
+              echo
+              echo "Policy: do not add Playwright cache, Turbo cache, or new cache policy from this same-run metadata. Collect repeated CI samples first."
+              echo
+              if command -v jq >/dev/null 2>&1; then
+                echo "## Job timestamp snapshot"
+                echo
+                jq -r '.jobs[]? | "- \(.name): \(.conclusion // "unknown") (\(.startedAt // "n/a") -> \(.completedAt // "n/a"))"' "$jobs_json"
+              fi
+            } > "$report_md"
+          else
+            {
+              echo "# ClassroomPath CI Timing Metadata for run $GITHUB_RUN_ID"
+              echo
+              echo "GitHub job metadata was not available during this run, so CI produced a safe placeholder instead of failing the workflow."
+              echo
+              echo "Generate the measurement after the run completes:"
+              echo
+              echo "\`\`\`bash"
+              echo "gh run view $GITHUB_RUN_ID --repo $GITHUB_REPOSITORY --json name,jobs > jobs.json"
+              echo "node scripts/measure-ci-cache.mjs --jobs-json jobs.json --format markdown"
+              echo "\`\`\`"
+              echo
+              echo "Policy: do not add Playwright cache, Turbo cache, or new cache policy from this placeholder. Collect repeated CI samples first."
+            } > "$report_md"
+          fi
+
+          cat "$report_md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload CI timing metadata artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: classroompath-ci-timing-measurement
+          path: ${{ runner.temp }}/classroompath-ci-timing/
+          if-no-files-found: warn
+
       - name: Check all jobs
         run: |
           echo "CI relevant: ${{ needs.detect-relevant-changes.outputs.ci_relevant }}"

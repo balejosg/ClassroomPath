@@ -218,21 +218,21 @@ describe('Release candidate workflow contracts', () => {
       jobs['derive-release-image-refs']?.steps?.find(
         (step) => step.name === 'Resolve OpenPath Linux agent version'
       )?.run ?? '';
-    const verifyInstallabilityStep = jobs['derive-release-image-refs']?.steps?.find(
+    const verifyOpenPathPrereleaseAptJob = jobs['verify-openpath-prerelease-apt'];
+    const verifyInstallabilityStep = verifyOpenPathPrereleaseAptJob?.steps?.find(
       (step) => step.name === 'Verify OpenPath Linux agent APT installability'
     );
     const verifyInstallabilityRun = verifyInstallabilityStep?.run ?? '';
-    const waitForOpenPathAptPublishRun =
-      jobs['derive-release-image-refs']?.steps?.find(
-        (step) => step.name === 'Wait for OpenPath prerelease APT publish'
-      )?.run ?? '';
-    const waitForOpenPathAptPublishEnv =
-      jobs['derive-release-image-refs']?.steps?.find(
-        (step) => step.name === 'Wait for OpenPath prerelease APT publish'
-      )?.env ?? {};
+    const waitForOpenPathAptPublishStep = verifyOpenPathPrereleaseAptJob?.steps?.find(
+      (step) => step.name === 'Wait for OpenPath prerelease APT publish'
+    );
+    const waitForOpenPathAptPublishRun = waitForOpenPathAptPublishStep?.run ?? '';
+    const waitForOpenPathAptPublishEnv = waitForOpenPathAptPublishStep?.env ?? {};
     const deriveStepNames =
       jobs['derive-release-image-refs']?.steps?.map((step) => step.name ?? '') ?? [];
-    const deriveFetchDiffBaseStep = jobs['derive-release-image-refs']?.steps?.find(
+    const aptStepNames =
+      verifyOpenPathPrereleaseAptJob?.steps?.map((step) => step.name ?? '') ?? [];
+    const aptFetchDiffBaseStep = verifyOpenPathPrereleaseAptJob?.steps?.find(
       (step) => step.name === 'Fetch release candidate diff base'
     );
     const deriveCheckout = jobs['derive-release-image-refs']?.steps?.find(
@@ -255,29 +255,28 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(waitForOpenPathAptPublishRun.includes('OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS'));
     assert.ok(!waitForOpenPathAptPublishRun.includes('for attempt in $(seq 1 60)'));
     assert.ok(!waitForOpenPathAptPublishRun.includes('sleep 10'));
-    assert.equal(deriveFetchDiffBaseStep?.shell, 'bash');
-    assert.equal(deriveFetchDiffBaseStep?.env?.BASE_SHA, '${{ github.event.before }}');
-    assert.equal(deriveFetchDiffBaseStep?.env?.HEAD_SHA, '${{ github.sha }}');
+    assert.equal(aptFetchDiffBaseStep?.shell, 'bash');
+    assert.equal(aptFetchDiffBaseStep?.env?.BASE_SHA, '${{ github.event.before }}');
+    assert.equal(aptFetchDiffBaseStep?.env?.HEAD_SHA, '${{ github.sha }}');
     assert.ok(
-      String(deriveFetchDiffBaseStep?.run ?? '').includes(
+      String(aptFetchDiffBaseStep?.run ?? '').includes(
         'bash scripts/fetch-release-candidate-diff-base.sh "$BASE_SHA" "$HEAD_SHA"'
       )
     );
     assert.ok(
-      deriveStepNames.indexOf('Checkout') <
-        deriveStepNames.indexOf('Fetch release candidate diff base')
+      aptStepNames.indexOf('Checkout') < aptStepNames.indexOf('Fetch release candidate diff base')
     );
     assert.ok(
-      deriveStepNames.indexOf('Fetch release candidate diff base') <
-        deriveStepNames.indexOf('Verify OpenPath Linux agent APT installability')
+      aptStepNames.indexOf('Fetch release candidate diff base') <
+        aptStepNames.indexOf('Wait for OpenPath prerelease APT publish')
     );
     assert.ok(
-      deriveStepNames.indexOf('Wait for OpenPath prerelease APT publish') <
+      aptStepNames.indexOf('Wait for OpenPath prerelease APT publish') <
+        aptStepNames.indexOf('Verify OpenPath Linux agent APT installability')
+    );
+    assert.ok(
+      deriveStepNames.indexOf('Resolve OpenPath SHA') <
         deriveStepNames.indexOf('Resolve OpenPath Linux agent version')
-    );
-    assert.ok(
-      deriveStepNames.indexOf('Resolve OpenPath Linux agent version') <
-        deriveStepNames.indexOf('Verify OpenPath Linux agent APT installability')
     );
     assert.ok(
       deriveLinuxAgentVersionRun.includes('node scripts/resolve-openpath-linux-agent-version.mjs')
@@ -333,7 +332,9 @@ describe('Release candidate workflow contracts', () => {
         'build-verifier-release-candidate',
         'detect-release-candidate-components',
         'derive-release-image-refs',
+        'resolve-openpath-firefox-release-assets',
         'resolve-previous-release-candidate-manifest',
+        'verify-openpath-prerelease-apt',
       ].sort()
     );
 
@@ -460,6 +461,56 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(!workflowText.includes('WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}'));
   });
 
+  test('release candidate workflow gates manifest publication, not image builds, on OpenPath prerelease APT', () => {
+    const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
+    const jobs = workflow.jobs ?? {};
+    const aptJob = jobs['verify-openpath-prerelease-apt'];
+
+    assert.ok(aptJob, 'workflow must isolate OpenPath prerelease APT verification in its own job');
+    assert.deepEqual(
+      normalizeNeeds(aptJob?.needs).sort(),
+      ['derive-release-image-refs', 'detect-release-candidate-components'].sort()
+    );
+
+    const aptJobRun = (aptJob?.steps ?? []).map((step) => step.run ?? '').join('\n');
+    assert.ok(
+      aptJobRun.includes('git diff --quiet "$before_sha" "${{ github.sha }}" -- upstream/openpath')
+    );
+    assert.ok(aptJobRun.includes('OpenPath submodule unchanged; skipping prerelease APT wait.'));
+    assert.ok(aptJobRun.includes('node scripts/openpath-required-checks.mjs wait'));
+    assert.ok(
+      aptJobRun.includes(
+        'node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script'
+      )
+    );
+
+    for (const jobName of [
+      'build-gateway-release-candidate',
+      'build-migrations-release-candidate',
+      'resolve-openpath-firefox-release-assets',
+      'build-openpath-firefox-assets-release-candidate',
+      'build-openpath-api-release-candidate',
+      'build-spa-release-candidate',
+      'build-verifier-release-candidate',
+    ]) {
+      assert.ok(
+        !normalizeNeeds(jobs[jobName]?.needs).includes('verify-openpath-prerelease-apt'),
+        `${jobName} should not wait on OpenPath prerelease APT`
+      );
+    }
+
+    assert.ok(
+      normalizeNeeds(jobs['publish-release-candidate-manifest']?.needs).includes(
+        'verify-openpath-prerelease-apt'
+      )
+    );
+    assert.ok(
+      normalizeNeeds(jobs['publish-manifest-only-release-candidate']?.needs).includes(
+        'verify-openpath-prerelease-apt'
+      )
+    );
+  });
+
   test('release candidate workflow publishes manifest-only changes without image-family jobs', () => {
     const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
     const jobs = workflow.jobs ?? {};
@@ -480,6 +531,7 @@ describe('Release candidate workflow contracts', () => {
         'derive-release-image-refs',
         'detect-release-candidate-components',
         'resolve-previous-release-candidate-manifest',
+        'verify-openpath-prerelease-apt',
       ].sort()
     );
     assert.ok(String(fastManifestJob?.if ?? '').includes(manifestOnlyIf));
@@ -571,6 +623,22 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(workflowText.includes('release-candidate-timings.json'));
     assert.ok(workflowText.includes('## Release Candidate Timings'));
     assert.ok(workflowText.includes('### Gate Candidate'));
+    assert.ok(workflowText.includes('### Firefox Release Asset Evidence'));
+    assert.ok(
+      workflowText.includes(
+        '"firefoxReleaseState": "${{ needs.resolve-openpath-firefox-release-assets.outputs.release-state }}"'
+      )
+    );
+    assert.ok(
+      workflowText.includes(
+        '"firefoxArtifactSource": "${{ needs.resolve-openpath-firefox-release-assets.outputs.artifact-source }}"'
+      )
+    );
+    assert.ok(
+      workflowText.includes(
+        '"firefoxAmoFileStatus": "${{ needs.resolve-openpath-firefox-release-assets.outputs.amo-file-status }}"'
+      )
+    );
     assert.ok(
       workflowText.includes(
         'node scripts/measure-release-candidate-timings.mjs release-candidate-timings.json'
@@ -611,8 +679,32 @@ describe('Release candidate workflow contracts', () => {
     assert.equal(workflow.on?.push, undefined);
     assert.ok(workflowText.includes('workflow_dispatch:'));
     assert.ok(workflow.on?.workflow_call);
+    assert.equal(
+      workflow.on?.workflow_call?.outputs?.['release-state']?.value,
+      '${{ jobs.prepare-firefox-release-assets.outputs.release-state }}'
+    );
+    assert.equal(
+      workflow.on?.workflow_call?.outputs?.['artifact-source']?.value,
+      '${{ jobs.prepare-firefox-release-assets.outputs.artifact-source }}'
+    );
+    assert.equal(
+      workflow.on?.workflow_call?.outputs?.['amo-file-status']?.value,
+      '${{ jobs.prepare-firefox-release-assets.outputs.amo-file-status }}'
+    );
     assert.ok(assetJob);
     assert.equal(assetJob?.['runs-on'], 'ubuntu-latest');
+    assert.equal(
+      assetJob?.outputs?.['release-state'],
+      '${{ steps.evidence.outputs.release-state || steps.skipped-evidence.outputs.release-state }}'
+    );
+    assert.equal(
+      assetJob?.outputs?.['artifact-source'],
+      '${{ steps.evidence.outputs.artifact-source || steps.skipped-evidence.outputs.artifact-source }}'
+    );
+    assert.equal(
+      assetJob?.outputs?.['amo-file-status'],
+      '${{ steps.evidence.outputs.amo-file-status || steps.skipped-evidence.outputs.amo-file-status }}'
+    );
     assert.ok((assetJob?.steps ?? []).some((step) => step.uses === './.github/actions/setup-node'));
     assert.ok(assetJobRun.includes('npm ci'));
     assert.ok(assetJobRun.includes('npm run build --workspace=@openpath/firefox-extension'));
@@ -622,6 +714,13 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(assetJobRun.includes('--fallback-repo "$FIREFOX_RELEASE_ASSETS_FALLBACK_REPO"'));
     assert.ok(workflowText.includes('FIREFOX_RELEASE_ASSETS_FALLBACK_REPO: balejosg/OpenPath'));
     assert.ok(workflowText.includes('Report Firefox release asset cache decision'));
+    assert.ok(workflowText.includes('Classify Firefox release asset evidence'));
+    assert.ok(workflowText.includes('Report Firefox release asset evidence'));
+    assert.ok(workflowText.includes('Require signed Firefox release artifacts'));
+    assert.ok(workflowText.includes('steps.evidence.outputs.release-state'));
+    assert.ok(workflowText.includes('manual-review-required'));
+    assert.ok(workflowText.includes('amo_file_status'));
+    assert.ok(workflowText.includes('artifact_source'));
     assert.ok(workflowText.includes('- payload_hash: $PAYLOAD_HASH'));
     assert.ok(workflowText.includes('- artifact_name: $ARTIFACT_NAME'));
     assert.ok(workflowText.includes('- source_repo: $source_repo'));
@@ -669,6 +768,7 @@ describe('Release candidate workflow contracts', () => {
       )
     );
     assert.ok(existsSync(resolve(projectRoot, 'scripts/firefox-release-version.mjs')));
+    assert.ok(existsSync(resolve(projectRoot, 'scripts/firefox-release-evidence.mjs')));
     assert.ok(existsSync(resolve(projectRoot, 'scripts/resolve-firefox-release-assets-cache.mjs')));
     assert.ok(existsSync(resolve(projectRoot, 'scripts/lib/openpath-ci-checks.mjs')));
     assert.ok(

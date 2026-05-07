@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -149,6 +149,22 @@ function parseCompletedSecondsFromRecord(record) {
   );
 }
 
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds)) {
+    return 'n/a';
+  }
+
+  const wholeSeconds = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(wholeSeconds / 60);
+  const remainder = wholeSeconds % 60;
+
+  if (minutes === 0) {
+    return `${remainder}s`;
+  }
+
+  return `${minutes}m ${String(remainder).padStart(2, '0')}s`;
+}
+
 function collectTimingSamples(jobSamples, relevantJobNames) {
   const relevantNames = new Set(relevantJobNames);
   const samples = [];
@@ -226,7 +242,7 @@ function buildPlaywrightRecommendation(playwright) {
     return {
       action: 'do-not-add-cache',
       reason:
-        'Audited CI workflow set does not install Playwright browsers or run Playwright directly; smoke tests use the verifier image path.',
+        'Do not add Playwright browser cache: audited CI workflow set does not install Playwright browsers or run Playwright directly; smoke tests use the verifier image path.',
     };
   }
 
@@ -234,14 +250,14 @@ function buildPlaywrightRecommendation(playwright) {
     return {
       action: 'measure-more',
       reason:
-        'Playwright is invoked without an observed browser-install step; collect runner logs before adding browser cache.',
+        'Do not add Playwright browser cache yet: Playwright is invoked without an observed browser-install step; collect runner logs first.',
     };
   }
 
   return {
     action: 'measure-more',
     reason:
-      'Playwright browser installs are present; compare repeated download time and cache-hit stability before changing cache policy.',
+      'Do not add Playwright browser cache from a single run: browser installs are present, so compare repeated download time and cache-hit stability before changing cache policy.',
   };
 }
 
@@ -301,6 +317,7 @@ export function buildCiCacheMeasurement({ packageJson, workflows, jobSamples = [
     jobSamples,
     commands.turboBackedCommands.map((command) => command.jobName)
   );
+  const turboStepTimingSamples = collectStepTimingSamples(jobSamples, commands.turboBackedCommands);
   const playwright = {
     browserDownloadCommands: commands.browserDownloadCommands,
     directTestCommands: commands.directTestCommands,
@@ -308,6 +325,7 @@ export function buildCiCacheMeasurement({ packageJson, workflows, jobSamples = [
   const turbo = {
     turboBackedCommands: commands.turboBackedCommands,
     timingSamples: turboTimingSamples,
+    stepTimingSamples: turboStepTimingSamples,
   };
 
   return {
@@ -330,6 +348,86 @@ export function buildCiCacheMeasurement({ packageJson, workflows, jobSamples = [
   };
 }
 
+function renderCommand(command) {
+  const workingDirectory = command.workingDirectory ? `, cwd: ${command.workingDirectory}` : '';
+  const scriptName = command.scriptName ? `, script: ${command.scriptName}` : '';
+
+  return `${command.jobName} / ${command.stepName}${workingDirectory}${scriptName}`;
+}
+
+function renderStepSamples(samples) {
+  if (samples.length === 0) {
+    return '- No successful step timing samples were supplied.';
+  }
+
+  return samples
+    .map(
+      (sample) =>
+        `- ${sample.jobName} / ${sample.stepName}: ${formatDuration(sample.durationSeconds)}`
+    )
+    .join('\n');
+}
+
+function renderJobSamples(samples) {
+  if (samples.length === 0) {
+    return '- No successful job timing samples were supplied.';
+  }
+
+  return samples
+    .map((sample) => `- ${sample.jobName}: ${formatDuration(sample.durationSeconds)}`)
+    .join('\n');
+}
+
+export function formatCiCacheMeasurementMarkdown(measurement, options = {}) {
+  const runId = options.runId ? ` for run ${options.runId}` : '';
+  const source = options.source ? `\n\nSource: ${options.source}` : '';
+  const dependencyCommands =
+    measurement.dependencyInstalls.commands.length === 0
+      ? '- No `npm ci` steps found.'
+      : measurement.dependencyInstalls.commands
+          .map((command) => `- ${renderCommand(command)}`)
+          .join('\n');
+  const turboCommands =
+    measurement.turbo.turboBackedCommands.length === 0
+      ? '- No turbo/build-backed workflow steps found.'
+      : measurement.turbo.turboBackedCommands
+          .map((command) => `- ${renderCommand(command)}`)
+          .join('\n');
+
+  return `# ClassroomPath CI Timing Measurement${runId}${source}
+
+## npm ci steps
+
+${dependencyCommands}
+
+### Observed npm ci timing
+
+${renderStepSamples(measurement.dependencyInstalls.timingSamples)}
+
+Recommendation: ${measurement.dependencyInstalls.recommendation.action} - ${measurement.dependencyInstalls.recommendation.reason}
+
+## Turbo/build jobs
+
+${turboCommands}
+
+### Observed turbo/build step timing
+
+${renderStepSamples(measurement.turbo.stepTimingSamples)}
+
+### Observed turbo/build job timing
+
+${renderJobSamples(measurement.turbo.timingSamples)}
+
+Recommendation: ${measurement.turbo.recommendation.action} - ${measurement.turbo.recommendation.reason}
+
+## Playwright cache decision
+
+Recommendation: ${measurement.playwright.recommendation.action} - ${measurement.playwright.recommendation.reason}
+
+Policy: this report is observability only. Do not add Playwright cache, Turbo cache, or new cache policy from this artifact unless repeated CI samples show a material, stable bottleneck.
+`;
+}
+
 function readJsonFile(path) {
   return JSON.parse(readFileSync(resolve(path), 'utf8'));
 }
@@ -344,6 +442,10 @@ function readWorkflowFiles(paths) {
 function parseArgs(argv) {
   const workflowPaths = [];
   let jobsJsonPath = null;
+  let outputPath = null;
+  let format = 'json';
+  let runId = null;
+  let source = null;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -352,24 +454,48 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === '--output') {
+      outputPath = argv[index + 1] ?? null;
+      index += 1;
+      continue;
+    }
+    if (arg === '--format') {
+      format = argv[index + 1] ?? format;
+      index += 1;
+      continue;
+    }
+    if (arg === '--run-id') {
+      runId = argv[index + 1] ?? null;
+      index += 1;
+      continue;
+    }
+    if (arg === '--source') {
+      source = argv[index + 1] ?? null;
+      index += 1;
+      continue;
+    }
 
     workflowPaths.push(arg);
   }
 
   return {
+    format,
     jobsJsonPath,
+    outputPath,
+    runId,
+    source,
     workflowPaths: workflowPaths.length > 0 ? workflowPaths : DEFAULT_WORKFLOWS,
   };
 }
 
-function normalizeJobsJson(rawJobsJson) {
+export function normalizeJobsJson(rawJobsJson) {
   if (Array.isArray(rawJobsJson)) {
     return rawJobsJson;
   }
 
   return [
     {
-      workflowName: rawJobsJson.workflowName,
+      workflowName: rawJobsJson.workflowName ?? rawJobsJson.name,
       jobs: rawJobsJson.jobs,
     },
   ];
@@ -382,8 +508,20 @@ function main(argv = process.argv.slice(2)) {
     workflows: readWorkflowFiles(args.workflowPaths),
     jobSamples: args.jobsJsonPath ? normalizeJobsJson(readJsonFile(args.jobsJsonPath)) : [],
   });
+  const output =
+    args.format === 'markdown'
+      ? formatCiCacheMeasurementMarkdown(measurement, {
+          runId: args.runId,
+          source: args.source,
+        })
+      : `${JSON.stringify(measurement, null, 2)}\n`;
 
-  process.stdout.write(`${JSON.stringify(measurement, null, 2)}\n`);
+  if (args.outputPath) {
+    writeFileSync(resolve(args.outputPath), output);
+    return;
+  }
+
+  process.stdout.write(output);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

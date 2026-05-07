@@ -85,6 +85,15 @@ function isProductionCanaryHarnessFile(filePath) {
   );
 }
 
+function isFirefoxReleaseAssetWorkflowFile(filePath) {
+  return (
+    filePath === '.github/workflows/firefox-release-assets.yml' ||
+    filePath === 'scripts/firefox-release-evidence.mjs' ||
+    filePath === 'scripts/resolve-firefox-release-assets-cache.mjs' ||
+    filePath === 'tests/firefox-release-assets-cache.test.ts'
+  );
+}
+
 function isVerifierRuntimeTestFile(filePath) {
   return (
     filePath === 'tests/smoke.test.ts' ||
@@ -301,6 +310,7 @@ export function classifyReleaseCandidateComponents({
     switch (true) {
       case isReleaseMeasurementOnlyFile(file):
       case isProductionCanaryHarnessFile(file):
+      case isFirefoxReleaseAssetWorkflowFile(file):
         break;
       case file === 'package.json':
         if (packageJsonChangeKind !== PACKAGE_JSON_CHANGE_KIND.OPERATIONAL_SCRIPTS_ONLY) {
@@ -357,8 +367,6 @@ export function classifyReleaseCandidateComponents({
         break;
       case file === 'docker/Dockerfile.api':
         flags.openpathApiChanged = true;
-        break;
-      case file === '.github/workflows/firefox-release-assets.yml':
         break;
       case file === 'upstream/openpath':
       case /^upstream\/openpath\//.test(file): {

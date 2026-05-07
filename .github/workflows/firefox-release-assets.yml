@@ -12,6 +12,22 @@ on:
         description: Optional artifact name override for downstream consumers.
         required: false
         type: string
+    outputs:
+      release-state:
+        description: Actionable Firefox release asset state.
+        value: ${{ jobs.prepare-firefox-release-assets.outputs.release-state }}
+      artifact-source:
+        description: Source of the Firefox release artifacts.
+        value: ${{ jobs.prepare-firefox-release-assets.outputs.artifact-source }}
+      amo-file-status:
+        description: Last observed AMO file.status when available.
+        value: ${{ jobs.prepare-firefox-release-assets.outputs.amo-file-status }}
+      signed-artifacts-present:
+        description: Whether signed Firefox release artifacts are present.
+        value: ${{ jobs.prepare-firefox-release-assets.outputs.signed-artifacts-present }}
+      amo-signing-required:
+        description: Whether AMO signing was required after cache resolution.
+        value: ${{ jobs.prepare-firefox-release-assets.outputs.amo-signing-required }}
   workflow_dispatch:
     inputs:
       build_required:
@@ -36,6 +52,12 @@ jobs:
   prepare-firefox-release-assets:
     name: Prepare Firefox Release Assets
     runs-on: ubuntu-latest
+    outputs:
+      release-state: ${{ steps.evidence.outputs.release-state || steps.skipped-evidence.outputs.release-state }}
+      artifact-source: ${{ steps.evidence.outputs.artifact-source || steps.skipped-evidence.outputs.artifact-source }}
+      amo-file-status: ${{ steps.evidence.outputs.amo-file-status || steps.skipped-evidence.outputs.amo-file-status }}
+      signed-artifacts-present: ${{ steps.evidence.outputs.signed-artifacts-present || steps.skipped-evidence.outputs.signed-artifacts-present }}
+      amo-signing-required: ${{ steps.evidence.outputs.amo-signing-required || steps.skipped-evidence.outputs.amo-signing-required }}
 
     steps:
       - name: Decide whether to prepare Firefox release assets
@@ -56,6 +78,18 @@ jobs:
           fi
 
           echo "build_required=$build_required" >> "$GITHUB_OUTPUT"
+
+      - name: Record skipped Firefox release asset evidence
+        id: skipped-evidence
+        if: steps.mode.outputs.build_required != 'true'
+        run: |
+          {
+            echo "release-state=skipped"
+            echo "artifact-source=skipped"
+            echo "amo-file-status="
+            echo "signed-artifacts-present=false"
+            echo "amo-signing-required=false"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout with submodules
         if: steps.mode.outputs.build_required == 'true'
@@ -152,6 +186,7 @@ jobs:
           echo "Signing Firefox release as version $version"
 
       - name: Sign Firefox release bundle
+        id: sign
         if: steps.mode.outputs.build_required == 'true' && steps.cache.outputs.resolved != 'true'
         working-directory: upstream/openpath
         env:
@@ -161,14 +196,115 @@ jobs:
           WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '1200'
           WEB_EXT_SIGN_PROCESS_TIMEOUT_BUFFER_SECONDS: '120'
           WEB_EXT_SIGN_RECOVERY_TIMEOUT_SECONDS: '1800'
+        shell: bash
         run: |
+          set +e
           npm run sign:firefox-release --workspace=@openpath/firefox-extension -- \
-            --version "$OPENPATH_FIREFOX_RELEASE_VERSION"
+            --version "$OPENPATH_FIREFOX_RELEASE_VERSION" 2>&1 | tee "$RUNNER_TEMP/firefox-release-sign.log"
+          status="${PIPESTATUS[0]}"
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Record Firefox release payload hash
         if: steps.mode.outputs.build_required == 'true' && steps.cache.outputs.resolved != 'true'
         working-directory: upstream/openpath
         run: printf '%s\n' "$FIREFOX_RELEASE_PAYLOAD_HASH" > firefox-extension/payload-hash.txt
+
+      - name: Classify Firefox release asset evidence
+        id: evidence
+        if: steps.mode.outputs.build_required == 'true'
+        env:
+          CACHE_RESOLVED: ${{ steps.cache.outputs.resolved }}
+          CACHE_SOURCE_REPO: ${{ steps.cache.outputs.source_repo }}
+          CACHE_MISS_REASON: ${{ steps.cache.outputs.cache_miss_reason }}
+          SIGN_EXIT_CODE: ${{ steps.sign.outputs.exit_code }}
+        run: |
+          node scripts/firefox-release-evidence.mjs \
+            --cache-resolved "$CACHE_RESOLVED" \
+            --cache-source-repo "${CACHE_SOURCE_REPO:-}" \
+            --cache-miss-reason "${CACHE_MISS_REASON:-}" \
+            --sign-exit-code "${SIGN_EXIT_CODE:-}" \
+            --sign-output-path "$RUNNER_TEMP/firefox-release-sign.log" \
+            --release-dir upstream/openpath/firefox-extension/build/firefox-release >> "$GITHUB_OUTPUT"
+
+      - name: Report Firefox release asset evidence
+        if: steps.mode.outputs.build_required == 'true'
+        env:
+          RELEASE_STATE: ${{ steps.evidence.outputs.release-state }}
+          ARTIFACT_SOURCE: ${{ steps.evidence.outputs.artifact-source }}
+          AMO_FILE_STATUS: ${{ steps.evidence.outputs.amo-file-status }}
+          SIGNED_ARTIFACTS_PRESENT: ${{ steps.evidence.outputs.signed-artifacts-present }}
+          AMO_SIGNING_REQUIRED: ${{ steps.evidence.outputs.amo-signing-required }}
+          CACHE_SOURCE_REPO: ${{ steps.evidence.outputs.cache-source-repo }}
+          CACHE_MISS_REASON: ${{ steps.evidence.outputs.cache-miss-reason }}
+        run: |
+          set -euo pipefail
+
+          release_state="${RELEASE_STATE:-unknown}"
+          artifact_source="${ARTIFACT_SOURCE:-unknown}"
+          amo_file_status="${AMO_FILE_STATUS:-unknown}"
+          signed_artifacts_present="${SIGNED_ARTIFACTS_PRESENT:-false}"
+          amo_signing_required="${AMO_SIGNING_REQUIRED:-false}"
+          cache_source_repo="${CACHE_SOURCE_REPO:-none}"
+          cache_miss_reason="${CACHE_MISS_REASON:-none}"
+
+          case "$release_state" in
+            cache-hit|fresh-signing|skipped)
+              echo "::notice title=Firefox release asset evidence::release_state=$release_state artifact_source=$artifact_source amo_file_status=$amo_file_status signed_artifacts_present=$signed_artifacts_present amo_signing_required=$amo_signing_required"
+              ;;
+            manual-review-required)
+              echo "::error title=AMO manual review required::Firefox release signing requires AMO review before signed artifacts are available. amo_file_status=$amo_file_status"
+              ;;
+            timeout)
+              echo "::error title=AMO signing timeout::Firefox release signing timed out before signed artifacts were available. amo_file_status=$amo_file_status"
+              ;;
+            *)
+              echo "::error title=Firefox release signing failed::Firefox release asset state is $release_state. amo_file_status=$amo_file_status"
+              ;;
+          esac
+
+          {
+            echo "### Firefox release asset evidence"
+            echo "- release_state: $release_state"
+            echo "- artifact_source: $artifact_source"
+            echo "- amo_file_status: $amo_file_status"
+            echo "- signed_artifacts_present: $signed_artifacts_present"
+            echo "- amo_signing_required: $amo_signing_required"
+            echo "- cache_source_repo: $cache_source_repo"
+            echo "- cache_miss_reason: $cache_miss_reason"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require signed Firefox release artifacts
+        if: steps.mode.outputs.build_required == 'true'
+        env:
+          RELEASE_STATE: ${{ steps.evidence.outputs.release-state }}
+          SIGNED_ARTIFACTS_PRESENT: ${{ steps.evidence.outputs.signed-artifacts-present }}
+          AMO_FILE_STATUS: ${{ steps.evidence.outputs.amo-file-status }}
+        run: |
+          set -euo pipefail
+
+          case "${RELEASE_STATE:-}" in
+            cache-hit|fresh-signing)
+              ;;
+            manual-review-required)
+              echo "::error title=AMO manual review required::Signed Firefox release artifacts are required, but AMO has not made them available yet. amo_file_status=${AMO_FILE_STATUS:-unknown}"
+              exit 1
+              ;;
+            timeout)
+              echo "::error title=AMO signing timeout::Signed Firefox release artifacts are required, but signing timed out. amo_file_status=${AMO_FILE_STATUS:-unknown}"
+              exit 1
+              ;;
+            *)
+              echo "::error title=Firefox release artifacts unavailable::Signed Firefox release artifacts are required; release_state=${RELEASE_STATE:-unknown} amo_file_status=${AMO_FILE_STATUS:-unknown}"
+              exit 1
+              ;;
+          esac
+
+          if [ "${SIGNED_ARTIFACTS_PRESENT:-false}" != "true" ]; then
+            echo "::error title=Missing signed Firefox release artifacts::release_state=${RELEASE_STATE:-unknown} amo_file_status=${AMO_FILE_STATUS:-unknown}"
+            exit 1
+          fi
 
       - name: Verify Firefox release artifacts
         if: steps.mode.outputs.build_required == 'true'

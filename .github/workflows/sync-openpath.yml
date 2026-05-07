@@ -17,6 +17,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: read
 
 concurrency:
   group: sync-openpath
@@ -37,6 +38,22 @@ jobs:
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
+
+      - name: Report stale scheduled workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_WORKFLOW_HYGIENE_MODE: dry-run
+          CI_WORKFLOW_HYGIENE_STALE_AFTER: 90m
+          CI_WORKFLOW_HYGIENE_WORKFLOWS: Production Client Update Canary,Sync OpenPath
+          CI_WORKFLOW_HYGIENE_EVIDENCE_PATH: ci-workflow-hygiene-report.json
+        run: node scripts/ci-workflow-hygiene.mjs report-stale-runs
+
+      - name: Upload CI workflow hygiene report
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-workflow-hygiene-report
+          path: ci-workflow-hygiene-report.json
+          if-no-files-found: error
 
       - name: Check sync lock
         id: lock

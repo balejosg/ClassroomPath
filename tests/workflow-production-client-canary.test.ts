@@ -130,8 +130,14 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     const duplicateStep = guardJob?.steps?.find(
       (step) => step.name === 'Evaluate scheduled duplicate policy'
     );
+    const hygieneStep = guardJob?.steps?.find(
+      (step) => step.name === 'Report stale scheduled workflow runs'
+    );
     const uploadPolicyEvidenceStep = guardJob?.steps?.find(
       (step) => step.name === 'Upload CI signal policy evidence'
+    );
+    const uploadHygieneEvidenceStep = guardJob?.steps?.find(
+      (step) => step.name === 'Upload CI workflow hygiene report'
     );
 
     assert.equal(workflow.on?.schedule?.[0]?.cron, '*/15 * * * *');
@@ -155,10 +161,26 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       duplicateStep?.env?.CI_SIGNAL_POLICY_EVIDENCE_PATH,
       'ci-signal-policy-evidence.json'
     );
+    assert.match(String(hygieneStep?.run ?? ''), /ci-workflow-hygiene\.mjs report-stale-runs/);
+    assert.equal(hygieneStep?.env?.CI_WORKFLOW_HYGIENE_MODE, 'dry-run');
+    assert.equal(hygieneStep?.env?.CI_WORKFLOW_HYGIENE_STALE_AFTER, '90m');
+    assert.equal(
+      hygieneStep?.env?.CI_WORKFLOW_HYGIENE_WORKFLOWS,
+      'Production Client Update Canary,Sync OpenPath'
+    );
+    assert.equal(
+      hygieneStep?.env?.CI_WORKFLOW_HYGIENE_EVIDENCE_PATH,
+      'ci-workflow-hygiene-report.json'
+    );
+    assert.doesNotMatch(String(hygieneStep?.run ?? ''), /--cancel/);
     assert.equal(uploadPolicyEvidenceStep?.uses, 'actions/upload-artifact@v7');
     assert.equal(uploadPolicyEvidenceStep?.with?.name, 'ci-signal-policy-evidence');
     assert.equal(uploadPolicyEvidenceStep?.with?.path, 'ci-signal-policy-evidence.json');
     assert.equal(uploadPolicyEvidenceStep?.with?.['if-no-files-found'], 'error');
+    assert.equal(uploadHygieneEvidenceStep?.uses, 'actions/upload-artifact@v7');
+    assert.equal(uploadHygieneEvidenceStep?.with?.name, 'ci-workflow-hygiene-report');
+    assert.equal(uploadHygieneEvidenceStep?.with?.path, 'ci-workflow-hygiene-report.json');
+    assert.equal(uploadHygieneEvidenceStep?.with?.['if-no-files-found'], 'error');
     assert.match(
       String(downloadJob?.if ?? ''),
       /needs\.ci-signal-policy\.outputs\.should_skip != 'true'/
@@ -178,6 +200,8 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     assert.ok(workflowText.includes('manual-dispatch-required'));
     assert.ok(workflowText.includes('ci-signal-policy-evidence.json'));
     assert.ok(workflowText.includes('name: ci-signal-policy-evidence'));
+    assert.ok(workflowText.includes('ci-workflow-hygiene-report.json'));
+    assert.ok(workflowText.includes('name: ci-workflow-hygiene-report'));
   });
 
   test('ci/cd signal inventory classifies schedules and duplicate-run policy', () => {
