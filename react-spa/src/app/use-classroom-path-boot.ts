@@ -1,16 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type {
   CreateOrganizationSuccessDto,
   OnboardingStatusDto,
 } from '@classroompath/presenters/onboarding';
 
-import { CURRENT_TERMS_VERSION } from '../constants/legal';
 import { cpTrpc } from '../lib/cp-trpc';
 import { useOnboardingStatus, useRefreshSession } from '../lib/hooks';
 import { setReportErrorSink } from '../lib/reportError';
 import { createReportErrorSink } from '../lib/reportErrorSink';
-import { getSessionClientMode } from '../lib/session-client-mode';
 import { setUnauthorizedResponseHandler } from '../openpath/public-auth';
 import { registerClassroomPathServiceWorker } from '../pwa/register-service-worker';
 import {
@@ -20,10 +18,7 @@ import {
   persistSession,
   setRequestsApiUrl,
 } from '../lib/auth-storage';
-import {
-  shouldScheduleLoadingTimeout,
-  shouldSyncAuthenticatedProfile,
-} from './classroom-path-app-state';
+import { shouldScheduleLoadingTimeout } from './classroom-path-app-state';
 import {
   getAuthViewFromPathname,
   getLoginPathForRedirect,
@@ -36,20 +31,28 @@ import {
 } from './classroom-path-auth-routing';
 import {
   getClassroomPathBootScreen,
-  shouldAttemptOnboardingSessionRefresh,
   shouldRedirectToLogin,
   type ClassroomPathBootScreen,
 } from './classroom-path-boot-state';
-
-const TEACHER_GROUPS_FEATURE_KEY = 'openpath_teacher_groups_enabled';
-
-function extractSessionUser(payload: unknown): unknown | undefined {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return undefined;
-  }
-
-  return (payload as { user?: unknown }).user;
-}
+import {
+  acceptPendingInvitation as acceptPendingInvitationWithController,
+  activateOpenPathBridge,
+  completeBillingReturn,
+  createClassroomPathBootControllerState,
+  getPendingInvitationKey,
+  installReportErrorSink,
+  installUnauthorizedRefreshHandler,
+  logoutForBilling,
+  markPlaywrightTestMode,
+  persistCreatedOrganization,
+  reduceClassroomPathBootControllerState,
+  refreshOnboardingSession,
+  shouldAutoAcceptPendingInvitation,
+  shouldResetDismissedPendingInvitation,
+  shouldRunAuthenticatedProfileSync,
+  shouldRunOnboardingSessionRefresh,
+  syncAuthenticatedProfile,
+} from './classroom-path-boot-controller';
 
 type OnboardingStatusQuery = {
   data?: OnboardingStatusDto;
@@ -89,34 +92,38 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
   const pathname = normalizePathname(location.pathname);
   const currentSearch = location.search;
   const authView = getAuthViewFromPathname(pathname);
+  const hasSession = hasSessionMarker();
   const shouldShowLogin =
-    !hasSessionMarker() &&
+    !hasSession &&
     shouldRouteUnauthenticatedToLogin({
       pathname,
       isStandalone: isStandaloneDisplayMode(),
     });
   const effectiveAuthView = shouldShowLogin ? 'login' : authView;
 
-  const [isAuth, setIsAuth] = useState(hasSessionMarker());
-  const [openPathReady, setOpenPathReady] = useState(false);
-  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
-  const [isAcceptingPendingInvitation, setIsAcceptingPendingInvitation] = useState(false);
-  const [dismissedPendingInvitationKey, setDismissedPendingInvitationKey] = useState<string | null>(
-    null
+  const [controllerState, dispatch] = useReducer(
+    reduceClassroomPathBootControllerState,
+    hasSession,
+    createClassroomPathBootControllerState
   );
-  const hasSyncedProfileRef = useRef(false);
-  const hasAttemptedSessionRefreshRef = useRef(false);
-  const isRefreshingSessionRef = useRef(false);
-  const autoAcceptedInvitationKeyRef = useRef<string | null>(null);
+  const {
+    isAuth,
+    openPathReady,
+    loadingTimedOut,
+    isAcceptingPendingInvitation,
+    dismissedPendingInvitationKey,
+    hasSyncedProfile,
+    hasAttemptedSessionRefresh,
+    isRefreshingSession,
+    autoAcceptedInvitationKey,
+  } = controllerState;
 
   const query = useOnboardingStatus({
     enabled: isAuth,
   }) as OnboardingStatusQuery;
   const refreshMutation = useRefreshSession();
   const { data: status, isLoading, refetch, isError, error } = query;
-  const pendingInvitationKey = status?.pendingInvitation
-    ? `${status.pendingInvitation.organizationId}:${String(status.pendingInvitation.requiresMigration)}`
-    : null;
+  const pendingInvitationKey = getPendingInvitationKey(status);
 
   const navigateToAuthView = useCallback(
     (view: AuthView, replace = false) => {
@@ -127,52 +134,51 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
 
   const onLogoutToLogin = useCallback(() => {
     clearSession();
-    setIsAuth(false);
+    dispatch({ type: 'session-cleared' });
     navigateToAuthView('login', true);
   }, [navigateToAuthView]);
 
   const onBillingLogout = useCallback(async () => {
-    try {
-      await cpTrpc.auth.logout.mutate(undefined);
-    } catch {
-      // Best-effort logout: local cleanup must still happen.
-    } finally {
-      onLogoutToLogin();
-    }
+    await logoutForBilling({
+      logout: cpTrpc.auth.logout.mutate,
+      onLogoutToLogin,
+    });
   }, [onLogoutToLogin]);
 
   const onRetryOnboardingStatus = useCallback(() => {
-    setLoadingTimedOut(false);
+    dispatch({ type: 'loading-timeout-cleared' });
     refetch();
   }, [refetch]);
 
   const onBillingSuccessComplete = useCallback(() => {
-    navigate('/', { replace: true });
-    refetch();
+    completeBillingReturn({
+      navigateHome: () => navigate('/', { replace: true }),
+      refetch,
+    });
   }, [navigate, refetch]);
 
   const onBillingCancelBack = useCallback(() => {
-    navigate('/', { replace: true });
-    refetch();
+    completeBillingReturn({
+      navigateHome: () => navigate('/', { replace: true }),
+      refetch,
+    });
   }, [navigate, refetch]);
 
   const onStatusChange = useCallback(() => refetch(), [refetch]);
   const onCancelWaitingSuccess = useCallback(() => refetch(), [refetch]);
 
   const acceptPendingInvitation = useCallback(async () => {
-    setIsAcceptingPendingInvitation(true);
+    dispatch({ type: 'accept-pending-invitation-start' });
 
     try {
-      const payload = await cpTrpc.auth.acceptPendingInvitation.mutate({
-        termsAccepted: true,
-        termsVersion: CURRENT_TERMS_VERSION,
-        clientMode: getSessionClientMode(),
+      await acceptPendingInvitationWithController({
+        acceptPendingInvitation: cpTrpc.auth.acceptPendingInvitation.mutate,
+        persistSession,
+        refetch,
       });
-      persistSession({ user: extractSessionUser(payload) });
-      setLoadingTimedOut(false);
-      refetch();
+      dispatch({ type: 'loading-timeout-cleared' });
     } finally {
-      setIsAcceptingPendingInvitation(false);
+      dispatch({ type: 'accept-pending-invitation-finish' });
     }
   }, [refetch]);
 
@@ -181,70 +187,55 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
   }, [acceptPendingInvitation]);
 
   const onDismissPendingInvitation = useCallback(() => {
-    setDismissedPendingInvitationKey(pendingInvitationKey);
+    dispatch({ type: 'dismiss-pending-invitation', pendingInvitationKey });
   }, [pendingInvitationKey]);
 
   const onOrgCreated = useCallback(
     (result: CreateOrganizationSuccessDto) => {
-      persistSession({ user: result.user });
-      refetch();
+      persistCreatedOrganization({
+        result,
+        persistSession,
+        refetch,
+      });
     },
     [refetch]
   );
 
   const onAuthenticated = useCallback(() => {
-    setIsAuth(true);
+    dispatch({ type: 'authenticated' });
     navigate(getSafeInternalNextPath(location.search) ?? '/', { replace: true });
   }, [location.search, navigate]);
 
   useEffect(() => {
-    setReportErrorSink(createReportErrorSink());
-
-    return () => {
-      setReportErrorSink(null);
-    };
-  }, []);
-
-  useEffect(() => {
-    setUnauthorizedResponseHandler(async () => {
-      try {
-        const payload = await cpTrpc.auth.refresh.mutate({
-          clientMode: getSessionClientMode(),
-        });
-        persistSession({ user: extractSessionUser(payload) });
-        return 'retry';
-      } catch {
-        return false;
-      }
+    return installReportErrorSink({
+      createReportErrorSink,
+      setReportErrorSink,
     });
-
-    return () => setUnauthorizedResponseHandler(null);
   }, []);
 
   useEffect(() => {
-    setRequestsApiUrl('/cp');
-    setOpenPathReady(true);
-
-    try {
-      window.localStorage.setItem(TEACHER_GROUPS_FEATURE_KEY, '1');
-    } catch {
-      // best-effort
-    }
-
-    return () => {
-      clearRequestsApiUrl();
-      try {
-        window.localStorage.removeItem(TEACHER_GROUPS_FEATURE_KEY);
-      } catch {
-        // best-effort
-      }
-    };
+    return installUnauthorizedRefreshHandler({
+      refresh: cpTrpc.auth.refresh.mutate,
+      persistSession,
+      setUnauthorizedResponseHandler,
+    });
   }, []);
 
   useEffect(() => {
-    if (window.location.search.includes('test=true') || window.name === 'playwright-test') {
-      (window as Window & { isPlaywrightTest?: boolean }).isPlaywrightTest = true;
-    }
+    return activateOpenPathBridge({
+      setRequestsApiUrl,
+      clearRequestsApiUrl,
+      storage: window.localStorage,
+      onReady: () => dispatch({ type: 'openpath-ready' }),
+    });
+  }, []);
+
+  useEffect(() => {
+    markPlaywrightTestMode({
+      search: window.location.search,
+      name: window.name,
+      windowRef: window,
+    });
   }, []);
 
   useEffect(() => {
@@ -254,49 +245,43 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
   }, [currentSearch, isAuth, navigate, pathname, shouldShowLogin]);
 
   useEffect(() => {
-    if (dismissedPendingInvitationKey && dismissedPendingInvitationKey !== pendingInvitationKey) {
-      setDismissedPendingInvitationKey(null);
+    if (
+      shouldResetDismissedPendingInvitation({
+        dismissedPendingInvitationKey,
+        pendingInvitationKey,
+      })
+    ) {
+      dispatch({ type: 'clear-dismissed-pending-invitation' });
     }
   }, [dismissedPendingInvitationKey, pendingInvitationKey]);
 
   useEffect(() => {
     if (!shouldScheduleLoadingTimeout({ isAuth, isLoading })) {
-      setLoadingTimedOut(false);
+      dispatch({ type: 'loading-timeout-cleared' });
       return;
     }
 
-    const timeoutId = window.setTimeout(() => setLoadingTimedOut(true), 15000);
+    const timeoutId = window.setTimeout(() => dispatch({ type: 'loading-timeout-fired' }), 15000);
     return () => window.clearTimeout(timeoutId);
   }, [isAuth, isLoading]);
 
   useEffect(() => {
     if (!isAuth) {
-      hasSyncedProfileRef.current = false;
+      dispatch({ type: 'profile-sync-reset' });
       return;
     }
 
-    if (
-      !shouldSyncAuthenticatedProfile({
-        isAuth,
-        hasMembership: status?.hasMembership,
-        isWaiting: status?.isWaiting,
-        hasSyncedProfile: hasSyncedProfileRef.current,
-      })
-    ) {
+    if (!shouldRunAuthenticatedProfileSync({ isAuth, status, hasSyncedProfile })) {
       return;
     }
 
-    hasSyncedProfileRef.current = true;
+    dispatch({ type: 'profile-sync-started' });
 
-    void (async () => {
-      try {
-        const me = await cpTrpc.auth.me.query();
-        persistSession({ user: me.user });
-      } catch {
-        // best-effort
-      }
-    })();
-  }, [isAuth, status?.hasMembership, status?.isWaiting]);
+    void syncAuthenticatedProfile({
+      getAuthenticatedProfile: cpTrpc.auth.me.query,
+      persistSession,
+    });
+  }, [hasSyncedProfile, isAuth, status]);
 
   useEffect(() => {
     if (!isAuth) return;
@@ -307,69 +292,79 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
   }, [isAuth]);
 
   useEffect(() => {
-    if (!isAuth || !status?.pendingInvitation || status.pendingInvitation.requiresMigration) {
-      return;
-    }
-
     if (
-      autoAcceptedInvitationKeyRef.current === pendingInvitationKey ||
-      isAcceptingPendingInvitation
-    ) {
-      return;
-    }
-
-    autoAcceptedInvitationKeyRef.current = pendingInvitationKey;
-    void acceptPendingInvitation();
-  }, [
-    acceptPendingInvitation,
-    isAcceptingPendingInvitation,
-    isAuth,
-    pendingInvitationKey,
-    status?.pendingInvitation,
-  ]);
-
-  useEffect(() => {
-    if (!isAuth) {
-      hasAttemptedSessionRefreshRef.current = false;
-      return;
-    }
-
-    if (!isError || !error) {
-      hasAttemptedSessionRefreshRef.current = false;
-      return;
-    }
-
-    if (
-      !shouldAttemptOnboardingSessionRefresh({
+      !shouldAutoAcceptPendingInvitation({
         isAuth,
-        isError,
-        error,
-        hasAttemptedSessionRefresh: hasAttemptedSessionRefreshRef.current,
-        isRefreshingSession: isRefreshingSessionRef.current,
+        status,
+        pendingInvitationKey,
+        autoAcceptedInvitationKey,
+        isAcceptingPendingInvitation,
       })
     ) {
       return;
     }
 
-    hasAttemptedSessionRefreshRef.current = true;
-    isRefreshingSessionRef.current = true;
+    dispatch({ type: 'auto-accept-pending-invitation', pendingInvitationKey });
+    void acceptPendingInvitation();
+  }, [
+    autoAcceptedInvitationKey,
+    acceptPendingInvitation,
+    isAcceptingPendingInvitation,
+    isAuth,
+    pendingInvitationKey,
+    status,
+  ]);
+
+  useEffect(() => {
+    if (!isAuth) {
+      dispatch({ type: 'session-refresh-reset' });
+      return;
+    }
+
+    if (!isError || !error) {
+      dispatch({ type: 'session-refresh-reset' });
+      return;
+    }
+
+    if (
+      !shouldRunOnboardingSessionRefresh({
+        isAuth,
+        isError,
+        error,
+        hasAttemptedSessionRefresh,
+        isRefreshingSession,
+      })
+    ) {
+      return;
+    }
+
+    dispatch({ type: 'session-refresh-started' });
 
     void (async () => {
-      try {
-        const payload = await refreshMutation.mutateAsync({
-          clientMode: getSessionClientMode(),
-        });
-        persistSession({ user: extractSessionUser(payload) });
-        setIsAuth(true);
-        setLoadingTimedOut(false);
-        refetch();
-      } catch {
+      const result = await refreshOnboardingSession({
+        refreshSession: refreshMutation.mutateAsync,
+        persistSession,
+        refetch,
+      });
+
+      if (result === 'refetched') {
+        dispatch({ type: 'session-refresh-succeeded' });
+      } else {
         onLogoutToLogin();
-      } finally {
-        isRefreshingSessionRef.current = false;
       }
+
+      dispatch({ type: 'session-refresh-finished' });
     })();
-  }, [error, isAuth, isError, onLogoutToLogin, refetch, refreshMutation]);
+  }, [
+    error,
+    hasAttemptedSessionRefresh,
+    isAuth,
+    isError,
+    isRefreshingSession,
+    onLogoutToLogin,
+    refetch,
+    refreshMutation,
+  ]);
 
   return {
     screen: getClassroomPathBootScreen({ openPathReady, isAuth, pathname }),
