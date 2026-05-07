@@ -7,7 +7,7 @@ import {
   validateHighRiskStagingVerification as validateHighRiskStagingVerificationFromReleaseEvidence,
   validateSignedFirefoxReleaseStagingVerification as validateSignedFirefoxReleaseStagingVerificationFromReleaseEvidence,
   validateStagingVerification as validateStagingVerificationFromReleaseEvidence,
-} from './release-evidence.mjs';
+} from './release-evidence-snapshot.mjs';
 
 export const RELEASE_STATE_SNAPSHOT_DEFINITIONS = {
   'current-runtime': [

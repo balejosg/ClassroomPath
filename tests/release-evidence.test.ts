@@ -8,6 +8,12 @@ import { runProjectCommand } from './helpers/ops-contracts.ts';
 import { buildDeployBrief, renderDeployBriefMarkdown } from '../scripts/lib/deploy-brief.mjs';
 import { renderCanaryBoundarySummary } from '../scripts/lib/release-evidence.mjs';
 import {
+  createReleaseEvidenceSnapshot,
+  projectReleaseEvidenceSnapshotToWorkflowOutputs,
+  serializeReleaseEvidenceSnapshot,
+  validateReleaseEvidenceSnapshot,
+} from '../scripts/lib/release-evidence-snapshot.mjs';
+import {
   RELEASE_EVIDENCE_CANARY_ARTIFACTS,
   collectProductionPromotionDryRunFailures,
   validateReleaseEvidenceChecklist,
@@ -25,6 +31,10 @@ const promotionDryValidateScriptPath = resolve(
   'scripts/production-promotion-dry-validate.mjs'
 );
 const evidenceHelperPath = resolve(projectRoot, 'scripts/lib/release-evidence.mjs');
+const evidenceSnapshotHelperPath = resolve(
+  projectRoot,
+  'scripts/lib/release-evidence-snapshot.mjs'
+);
 
 type ReleaseEvidence = {
   release: {
@@ -245,6 +255,42 @@ describe('release evidence rendering', () => {
     assert.equal(typeof releaseEvidence.buildPromotionEligibilityOutputs, 'function');
   });
 
+  test('release evidence snapshot module creates validates serializes and projects evidence', () => {
+    const snapshot = createReleaseEvidenceSnapshot({
+      GITHUB_REPOSITORY: 'balejosg/ClassroomPath',
+      GITHUB_RUN_ID: '123456789',
+      GITHUB_SERVER_URL: 'https://github.com',
+      TAG_NAME: 'v1.2.99',
+      APP_SHA: 'cp-sha',
+      OPENPATH_SHA: 'op-sha',
+      VERIFY_STAGING_RESULT: 'success',
+      STAGING_SMOKE_RESULT: 'success',
+      STAGING_RELEASE_GATE_RESULT: 'success',
+      STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
+      DEPLOY_RESULT: 'success',
+      PRODUCTION_SMOKE_RESULT: 'success',
+      ROLLBACK_RESULT: 'skipped',
+      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'success',
+      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT: 'success',
+    });
+
+    assert.equal(snapshot.release.outcome, 'released');
+    assert.equal(snapshot.jobs.windowsProductionBootstrapCanary, 'success');
+    assert.equal(validateReleaseEvidenceSnapshot(snapshot).ok, true);
+
+    const serialized = serializeReleaseEvidenceSnapshot(snapshot);
+    assert.equal(JSON.parse(serialized).release.classroomPathSha, 'cp-sha');
+
+    assert.deepEqual(projectReleaseEvidenceSnapshotToWorkflowOutputs(snapshot), {
+      release_outcome: 'released',
+      release_tag_name: 'v1.2.99',
+      release_classroompath_sha: 'cp-sha',
+      release_openpath_sha: 'op-sha',
+      release_promotion_eligibility: 'eligible',
+      release_promotion_deployment_mode: 'promotion-eligible',
+    });
+  });
+
   test('release evidence renders compact canary failure boundary summary', () => {
     const summary = renderCanaryBoundarySummary({
       linux: {
@@ -333,10 +379,16 @@ describe('release evidence rendering', () => {
   test('release evidence rendering is delegated to the typed helper module', () => {
     const wrapper = readFileSync(scriptPath, 'utf8');
     const helper = readFileSync(evidenceHelperPath, 'utf8');
+    const snapshotHelper = readFileSync(evidenceSnapshotHelperPath, 'utf8');
 
     assert.match(wrapper, /from '\.\/lib\/release-evidence\.mjs'/);
+    assert.match(helper, /from '\.\/release-evidence-snapshot\.mjs'/);
     assert.match(helper, /export function buildReleaseEvidence/);
     assert.match(helper, /export function renderReleaseEvidenceMarkdown/);
+    assert.match(snapshotHelper, /export function createReleaseEvidenceSnapshot/);
+    assert.match(snapshotHelper, /export function serializeReleaseEvidenceSnapshot/);
+    assert.match(snapshotHelper, /export function validateReleaseEvidenceSnapshot/);
+    assert.match(snapshotHelper, /export function projectReleaseEvidenceSnapshotToWorkflowOutputs/);
   });
 
   test('release evidence wrapper accepts a single JSON input artifact', () => {
