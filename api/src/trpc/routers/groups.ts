@@ -2,19 +2,14 @@ import { z } from 'zod';
 import { GroupVisibility as GroupVisibilitySchema } from '../../openpath/shared.js';
 
 import { router, teacherOrAdminProcedure, tenantMemberProcedure } from '../trpc.js';
-import { publishWhitelistGroupChanged } from '../../db/openpath.js';
-import { assertCanUseGroup, assertCanViewGroup } from '../../lib/tenant-access.js';
+import { assertCanViewGroup } from '../../lib/tenant-access.js';
 import { cloneGroupIntoOrganization } from '../../services/group-copy.service.js';
 import {
-  bulkCreateGroupRules,
-  createOrReuseGroupRule,
-  deleteGroupRule,
   listGroupedGroupRules,
   listGroupRules,
   listPaginatedGroupRules,
-  revokeAutoApprovalRule,
-  updateGroupRule,
 } from '../../services/group-rules.service.js';
+import { tenantGroupRules } from '../../services/tenant-group-rules.service.js';
 import {
   getOrganizationGroupById,
   getOrganizationGroupByName,
@@ -86,24 +81,9 @@ const ListRulesGroupedSchema = z.object({
   search: z.string().optional(),
 });
 
-type AddRuleInput = z.infer<typeof AddRuleSchema>;
-
 const GROUP_PERMISSION_OPTS = {
   notAllowedMessage: 'Insufficient permissions for this group',
 } as const;
-
-async function createWhitelistRuleForGroup(
-  ctx: { organizationId?: string; userRole?: string; user: { sub: string } },
-  input: AddRuleInput
-) {
-  await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-  const result = await createOrReuseGroupRule(input);
-  if (result.created) {
-    await publishWhitelistGroupChanged(input.groupId);
-  }
-
-  return result;
-}
 
 export const groupsRouter = router({
   list: teacherOrAdminProcedure.query(async ({ ctx }) => {
@@ -240,36 +220,23 @@ export const groupsRouter = router({
     }),
 
   addRule: tenantMemberProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
-    return createWhitelistRuleForGroup(ctx, input);
+    return tenantGroupRules.createRule(ctx, input);
   }),
 
   createRule: tenantMemberProcedure.input(AddRuleSchema).mutation(async ({ ctx, input }) => {
-    return createWhitelistRuleForGroup(ctx, input);
+    return tenantGroupRules.createRule(ctx, input);
   }),
 
   bulkCreateRules: tenantMemberProcedure
     .input(BulkCreateRulesSchema)
     .mutation(async ({ ctx, input }) => {
-      await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-
-      const insertedCount = await bulkCreateGroupRules(input);
-      if (insertedCount > 0) {
-        await publishWhitelistGroupChanged(input.groupId);
-      }
-
-      return { count: insertedCount };
+      return tenantGroupRules.bulkCreateRules(ctx, input);
     }),
 
   deleteRule: tenantMemberProcedure
     .input(z.object({ id: z.string(), groupId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-      const deleted = await deleteGroupRule(input);
-      if (deleted) {
-        await publishWhitelistGroupChanged(input.groupId);
-      }
-
-      return { success: true };
+      return tenantGroupRules.deleteRule(ctx, input);
     }),
 
   updateRule: tenantMemberProcedure
@@ -282,28 +249,13 @@ export const groupsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-      const { rule, valueChanged } = await updateGroupRule(input);
-      if (valueChanged) {
-        await publishWhitelistGroupChanged(input.groupId);
-      }
-
-      return rule;
+      return tenantGroupRules.updateRule(ctx, input);
     }),
 
   revokeAutoApproval: tenantMemberProcedure
     .input(z.object({ id: z.string().min(1), groupId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      await assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-      const result = await revokeAutoApprovalRule({
-        id: input.id,
-        groupId: input.groupId,
-        resolvedBy: ctx.user.name,
-      });
-      if (result.revoked) {
-        await publishWhitelistGroupChanged(input.groupId);
-      }
-      return result;
+      return tenantGroupRules.revokeAutoApproval(ctx, input);
     }),
 
   systemStatus: teacherOrAdminProcedure.query(async ({ ctx }) => {
