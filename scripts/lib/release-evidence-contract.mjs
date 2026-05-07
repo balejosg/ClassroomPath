@@ -218,19 +218,30 @@ export function parseLinuxBootstrapCanaryArtifact(artifactDir) {
   };
 }
 
-function normalizeArtifactIntegrityStatus(status) {
+export function normalizeArtifactIntegrityStatus(status) {
   const normalized = valueOrNull(status) ?? 'unknown';
   return RELEASE_EVIDENCE_ACCEPTED_ARTIFACT_INTEGRITY_STATUSES.has(normalized)
     ? normalized
     : 'invalid';
 }
 
-function verifySingleArtifact({ highRisk, result, listed, artifactDir, downloadError, parser }) {
+export function shouldRequireCanaryArtifact({ highRisk, result }) {
+  return highRisk && RELEASE_EVIDENCE_REQUIRED_RESULTS.has(String(result ?? ''));
+}
+
+export function evaluateCanaryArtifactIntegrity({
+  highRisk,
+  result,
+  listed,
+  artifactDir,
+  downloadError,
+  parser,
+}) {
   if (!highRisk) {
     return { status: 'not_applicable' };
   }
 
-  if (!RELEASE_EVIDENCE_REQUIRED_RESULTS.has(String(result ?? ''))) {
+  if (!shouldRequireCanaryArtifact({ highRisk, result })) {
     return { status: 'not_applicable' };
   }
 
@@ -262,7 +273,7 @@ export function verifyArtifactIntegrity({
   const highRisk = isTrueFlag(releaseEvidence?.stagingVerification?.windowsFirefoxHighRisk);
 
   return {
-    windowsProductionBootstrapCanary: verifySingleArtifact({
+    windowsProductionBootstrapCanary: evaluateCanaryArtifactIntegrity({
       highRisk,
       result: valueOrNull(releaseEvidence?.jobs?.windowsProductionBootstrapCanary),
       listed: windowsProductionBootstrapCanary.listed === true,
@@ -270,7 +281,7 @@ export function verifyArtifactIntegrity({
       downloadError: windowsProductionBootstrapCanary.downloadError === true,
       parser: parseWindowsBootstrapCanaryArtifact,
     }),
-    linuxProductionBootstrapCanary: verifySingleArtifact({
+    linuxProductionBootstrapCanary: evaluateCanaryArtifactIntegrity({
       highRisk,
       result: valueOrNull(releaseEvidence?.jobs?.linuxProductionBootstrapCanary),
       listed: linuxProductionBootstrapCanary.listed === true,

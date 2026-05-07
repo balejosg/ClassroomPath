@@ -9,7 +9,6 @@ process.env.NODE_ENV = 'test';
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { eq } from 'drizzle-orm';
-import jwt from 'jsonwebtoken';
 import { OAuth2Client, type LoginTicket } from 'google-auth-library';
 import {
   trpcQuery,
@@ -30,6 +29,7 @@ import {
   signToken,
   useIntegrationServer,
 } from './harness.js';
+import { createTenantScenario } from './scenario-builder.js';
 import { db as cpDb, schema as cpSchema } from '../../src/db/index.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../src/lib/session-cookies.js';
@@ -38,40 +38,16 @@ const integration = useIntegrationServer({ resetBeforeStart: true });
 const ONE_DAY_SECONDS = 24 * 60 * 60;
 const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
 
+function buildScenario() {
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+}
+
 async function seedTenantOrganization(params: { token: string; name: string }): Promise<string> {
-  const decoded = jwt.decode(params.token) as jwt.JwtPayload | null;
-  const userId = typeof decoded?.sub === 'string' ? decoded.sub : null;
-
-  if (!userId) {
-    throw new Error('seedTenantOrganization requires a token with subject');
-  }
-
-  const organizationId = `org-${Math.random().toString(36).slice(2, 10)}`;
-
-  await cpDb.insert(cpSchema.cpOrganizations).values({
-    id: organizationId,
-    name: params.name,
-    createdBy: userId,
+  const organization = await buildScenario().seedOrganizationForToken({
+    token: params.token,
+    organizationName: params.name,
   });
-
-  await cpDb.insert(cpSchema.cpMemberships).values({
-    id: `mem-${Math.random().toString(36).slice(2, 10)}`,
-    userId,
-    organizationId,
-    role: 'admin',
-    invitedBy: null,
-  });
-
-  await cpDb.insert(cpSchema.cpOrganizationEntitlements).values({
-    organizationId,
-    source: 'manual_admin',
-    status: 'active',
-    productKind: 'annual',
-    classroomLimit: 100,
-    grantedBy: userId,
-  });
-
-  return organizationId;
+  return organization.organizationId;
 }
 
 function getSetCookieHeaders(response: Response): string[] {
@@ -880,24 +856,11 @@ describe('ClassroomPath Gateway Integration', async () => {
   });
 
   test('should allow onboarding for new users', async () => {
-    const userId = 'user-123';
-    const email = uniqueEmail('user');
-
-    // Setup: User must exist in OpenPath for createOrganization to succeed
-    await openpathDb.insert(openpathSchema.users).values({
-      id: userId,
-      email,
+    const scenario = buildScenario();
+    const actor = await scenario.createActor({
+      userId: 'user-123',
       name: 'Test User',
-      passwordHash: 'hashed',
-      emailVerified: true,
-    });
-
-    const token = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: userId,
-      email,
-      name: 'Test User',
-      roles: [],
+      emailPrefix: 'user',
     });
 
     // 1. Check status (should be not onboarded)
@@ -905,21 +868,21 @@ describe('ClassroomPath Gateway Integration', async () => {
       integration.baseUrl,
       'onboarding.status',
       undefined,
-      bearerAuth(token)
+      bearerAuth(actor.token)
     );
     assertStatus(statusResp, 200);
     const { data: status } = (await parseTRPC(statusResp)) as { data: any };
     assert.strictEqual(status.hasMembership, false);
 
-    // 2. Complete tenant setup through the test seed helper
-    await seedTenantOrganization({ token, name: 'Test Organization' });
+    // 2. Complete tenant setup through the tenant scenario boundary
+    await scenario.seedOrganizationForActor({ actor, organizationName: 'Test Organization' });
 
     // 3. Verify status now shows membership
     const newStatusResp = await trpcQuery(
       integration.baseUrl,
       'onboarding.status',
       undefined,
-      bearerAuth(token)
+      bearerAuth(actor.token)
     );
     const { data: newStatus } = (await parseTRPC(newStatusResp)) as { data: any };
     assert.strictEqual(newStatus.hasMembership, true);
@@ -1076,38 +1039,21 @@ describe('ClassroomPath Gateway Integration', async () => {
   });
 
   test('/cp/trpc/requests.listGroups should work for authenticated tenant user', async () => {
-    // Create a user with organization membership
-    const userId = 'user-listgroups-test';
-    const email = uniqueEmail('listgroups');
-
-    // Setup: Create user in OpenPath
-    await openpathDb
-      .insert(openpathSchema.users)
-      .values({
-        id: userId,
-        email,
-        name: 'ListGroups Test User',
-        passwordHash: 'hashed',
-        emailVerified: true,
-      })
-      .onConflictDoNothing();
-
-    const token = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: userId,
-      email,
+    const scenario = buildScenario();
+    const actor = await scenario.createActor({
+      userId: 'user-listgroups-test',
       name: 'ListGroups Test User',
-      roles: [],
+      emailPrefix: 'listgroups',
     });
 
-    await seedTenantOrganization({ token, name: 'ListGroups Test Org' });
+    await scenario.seedOrganizationForActor({ actor, organizationName: 'ListGroups Test Org' });
 
     // Now call listGroups - should return empty array (no groups assigned yet)
     const resp = await trpcQuery(
       integration.baseUrl,
       'requests.listGroups',
       undefined,
-      bearerAuth(token)
+      bearerAuth(actor.token)
     );
     assertStatus(resp, 200);
     const { data } = (await parseTRPC(resp)) as { data: any[] };
@@ -1119,33 +1065,22 @@ describe('ClassroomPath Gateway Integration', async () => {
   // =========================================
 
   test('/cp/trpc/auth.me returns the upstream-authenticated user profile', async () => {
-    const userId = 'user-auth-me-test';
-    const email = uniqueEmail('authme');
+    const scenario = buildScenario();
     const userName = 'Auth Me Test User';
-
-    // Setup: Create user in OpenPath
-    await openpathDb
-      .insert(openpathSchema.users)
-      .values({
-        id: userId,
-        email,
-        name: userName,
-        passwordHash: 'hashed',
-        emailVerified: true,
-      })
-      .onConflictDoNothing();
-
-    const token = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: userId,
-      email,
+    const actor = await scenario.createActor({
+      userId: 'user-auth-me-test',
       name: userName,
-      roles: [],
+      emailPrefix: 'authme',
     });
 
-    await seedTenantOrganization({ token, name: 'Auth Me Test Org' });
+    await scenario.seedOrganizationForActor({ actor, organizationName: 'Auth Me Test Org' });
 
-    const resp = await trpcQuery(integration.baseUrl, 'auth.me', undefined, bearerAuth(token));
+    const resp = await trpcQuery(
+      integration.baseUrl,
+      'auth.me',
+      undefined,
+      bearerAuth(actor.token)
+    );
     assertStatus(resp, 200);
     const parsed = (await parseTRPC(resp)) as {
       data?: {
@@ -1156,8 +1091,8 @@ describe('ClassroomPath Gateway Integration', async () => {
         };
       };
     };
-    assert.strictEqual(parsed.data?.user?.id, userId);
-    assert.strictEqual(parsed.data?.user?.email, email);
+    assert.strictEqual(parsed.data?.user?.id, actor.userId);
+    assert.strictEqual(parsed.data?.user?.email, actor.email);
     assert.strictEqual(parsed.data?.user?.name, userName);
   });
 

@@ -1,7 +1,8 @@
 import { db } from '../../src/db/index.js';
 import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 import * as cpSchema from '../../src/db/schema.js';
-import { assertStatus, bearerAuth, trpcMutate, uniqueEmail } from '../test-utils.js';
+import { assertStatus, bearerAuth, parseTRPC, trpcMutate, uniqueEmail } from '../test-utils.js';
+import jwt from 'jsonwebtoken';
 import {
   approveOrganizationMember,
   bootstrapOrg,
@@ -37,6 +38,11 @@ export interface TestClassroom {
   displayName: string;
 }
 
+export interface TestSchedule {
+  id: string;
+  [key: string]: unknown;
+}
+
 type TestRole = TenantActorRole;
 
 function requireJwtSecret(jwtSecret: string | undefined): string {
@@ -45,6 +51,17 @@ function requireJwtSecret(jwtSecret: string | undefined): string {
   }
 
   return jwtSecret;
+}
+
+function requireTokenSubject(token: string): string {
+  const decoded = jwt.decode(token) as jwt.JwtPayload | null;
+  const userId = typeof decoded?.sub === 'string' ? decoded.sub : null;
+
+  if (!userId) {
+    throw new Error('Tenant scenario token requires a subject');
+  }
+
+  return userId;
 }
 
 export function withFrozenDate<T>(date: Date, fn: () => Promise<T>): Promise<T> {
@@ -91,7 +108,19 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
     });
   }
 
-  async function createActor(config: {
+  function getTenantToken(config: { token?: string; actor?: TestActor }): string {
+    if (config.actor) {
+      return config.actor.token;
+    }
+
+    if (config.token) {
+      return config.token;
+    }
+
+    throw new Error('Tenant scenario action requires an actor or token');
+  }
+
+  async function createSignedActor(config: {
     userId: string;
     name: string;
     emailPrefix: string;
@@ -115,14 +144,81 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
     };
   }
 
+  async function seedOrganizationRecord(config: {
+    userId: string;
+    organizationName: string;
+    organizationId?: string;
+    membershipRole?: TestRole;
+    invitedBy?: string | null;
+    grantEntitlement?: boolean;
+  }): Promise<TestOrganization> {
+    const organizationId =
+      config.organizationId ?? `org-${Math.random().toString(36).slice(2, 10)}`;
+    const membershipRole = config.membershipRole ?? 'admin';
+    const grantEntitlement = config.grantEntitlement ?? true;
+
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: organizationId,
+      name: config.organizationName,
+      createdBy: config.userId,
+    });
+    await db.insert(cpSchema.cpMemberships).values({
+      id: `mem-${Math.random().toString(36).slice(2, 10)}`,
+      userId: config.userId,
+      organizationId,
+      role: membershipRole,
+      invitedBy: config.invitedBy ?? null,
+    });
+
+    if (grantEntitlement) {
+      await db.insert(cpSchema.cpOrganizationEntitlements).values({
+        organizationId,
+        source: 'manual_admin',
+        status: 'active',
+        productKind: 'annual',
+        classroomLimit: 100,
+        grantedBy: config.userId,
+      });
+    }
+
+    return {
+      organizationId,
+      name: config.organizationName,
+    };
+  }
+
   return {
+    async createActor(config: {
+      userId: string;
+      role?: TestRole;
+      name?: string;
+      emailPrefix?: string;
+      groupIds?: string[];
+    }): Promise<TestActor> {
+      const role = config.role;
+
+      return createSignedActor({
+        userId: config.userId,
+        name: config.name ?? getDefaultTenantActorName(role ?? 'student'),
+        emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix(role ?? 'student'),
+        roles: role
+          ? [
+              {
+                role,
+                groupIds: config.groupIds ?? [],
+              },
+            ]
+          : [],
+      });
+    },
+
     async createOrgAdmin(config: {
       userId: string;
       name?: string;
       emailPrefix?: string;
       organizationName: string;
     }): Promise<{ actor: TestActor; organization: TestOrganization }> {
-      const actor = await createActor({
+      const actor = await createSignedActor({
         userId: config.userId,
         name: config.name ?? getDefaultTenantActorName('admin'),
         emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix('admin'),
@@ -144,13 +240,49 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
       };
     },
 
+    async seedOrganizationForActor(config: {
+      actor: TestActor;
+      organizationName: string;
+      organizationId?: string;
+      membershipRole?: TestRole;
+      invitedBy?: string | null;
+      grantEntitlement?: boolean;
+    }): Promise<TestOrganization> {
+      return seedOrganizationRecord({
+        userId: config.actor.userId,
+        organizationName: config.organizationName,
+        organizationId: config.organizationId,
+        membershipRole: config.membershipRole,
+        invitedBy: config.invitedBy,
+        grantEntitlement: config.grantEntitlement,
+      });
+    },
+
+    async seedOrganizationForToken(config: {
+      token: string;
+      organizationName: string;
+      organizationId?: string;
+      membershipRole?: TestRole;
+      invitedBy?: string | null;
+      grantEntitlement?: boolean;
+    }): Promise<TestOrganization> {
+      return seedOrganizationRecord({
+        userId: requireTokenSubject(config.token),
+        organizationName: config.organizationName,
+        organizationId: config.organizationId,
+        membershipRole: config.membershipRole,
+        invitedBy: config.invitedBy,
+        grantEntitlement: config.grantEntitlement,
+      });
+    },
+
     async seedOrgAdmin(config: {
       userId: string;
       name?: string;
       emailPrefix?: string;
       organizationName: string;
     }): Promise<{ actor: TestActor; organization: TestOrganization }> {
-      const actor = await createActor({
+      const actor = await createSignedActor({
         userId: config.userId,
         name: config.name ?? getDefaultTenantActorName('admin'),
         emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix('admin'),
@@ -202,7 +334,7 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
       emailPrefix?: string;
       groupIds?: string[];
     }): Promise<TestActor> {
-      const actor = await createActor({
+      const actor = await createSignedActor({
         userId: config.userId,
         name: config.name ?? getDefaultTenantActorName(config.role),
         emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix(config.role),
@@ -239,7 +371,7 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
       emailPrefix?: string;
       groupIds?: string[];
     }): Promise<TestActor> {
-      const actor = await createActor({
+      const actor = await createSignedActor({
         userId: config.userId,
         name: config.name ?? getDefaultTenantActorName('teacher'),
         emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix('teacher'),
@@ -265,7 +397,7 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
       name?: string;
       emailPrefix?: string;
     }): Promise<TestActor> {
-      const actor = await createActor({
+      const actor = await createSignedActor({
         userId: config.userId,
         name: config.name ?? getDefaultTenantActorName('student'),
         emailPrefix: config.emailPrefix ?? getDefaultTenantEmailPrefix('student'),
@@ -284,13 +416,14 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
     },
 
     async createGroup(config: {
-      token: string;
+      token?: string;
+      actor?: TestActor;
       name: string;
       displayName?: string;
     }): Promise<TestGroup> {
       return createTenantApiHarness({
         baseUrl: params.baseUrl,
-        token: config.token,
+        token: getTenantToken(config),
       }).createGroup(config);
     },
 
@@ -316,14 +449,15 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
     },
 
     async createClassroom(config: {
-      token: string;
+      token?: string;
+      actor?: TestActor;
       name: string;
       displayName?: string;
       defaultGroupId?: string;
     }): Promise<TestClassroom> {
       const classroom = await createTenantApiHarness({
         baseUrl: params.baseUrl,
-        token: config.token,
+        token: getTenantToken(config),
       }).createClassroom(config);
 
       return {
@@ -331,6 +465,56 @@ export function createTenantScenario(params: { baseUrl: string; jwtSecret?: stri
         name: classroom.name,
         displayName: classroom.displayName,
       };
+    },
+
+    async createWeeklySchedule(config: {
+      token?: string;
+      actor?: TestActor;
+      classroomId: string;
+      groupId: string;
+      dayOfWeek: number;
+      startTime: string;
+      endTime: string;
+    }): Promise<TestSchedule> {
+      const response = await trpcMutate(
+        params.baseUrl,
+        'schedules.create',
+        {
+          classroomId: config.classroomId,
+          groupId: config.groupId,
+          dayOfWeek: config.dayOfWeek,
+          startTime: config.startTime,
+          endTime: config.endTime,
+        },
+        bearerAuth(getTenantToken(config))
+      );
+      assertStatus(response, 200);
+      const { data } = (await parseTRPC(response)) as { data: TestSchedule };
+      return data;
+    },
+
+    async createOneOffSchedule(config: {
+      token?: string;
+      actor?: TestActor;
+      classroomId: string;
+      groupId: string;
+      startAt: string;
+      endAt: string;
+    }): Promise<TestSchedule> {
+      const response = await trpcMutate(
+        params.baseUrl,
+        'schedules.createOneOff',
+        {
+          classroomId: config.classroomId,
+          groupId: config.groupId,
+          startAt: config.startAt,
+          endAt: config.endAt,
+        },
+        bearerAuth(getTenantToken(config))
+      );
+      assertStatus(response, 200);
+      const { data } = (await parseTRPC(response)) as { data: TestSchedule };
+      return data;
     },
 
     withFrozenDate,

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseReleaseStateText,
   readReleaseStateSnapshot,
+  validateReleaseStatePromotionEvidence,
 } from '../scripts/lib/release-state-contract.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -289,6 +290,60 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
   assert.equal(report.deploymentMode, 'promotion-eligible');
   assert.equal(report.checks.signedFirefoxRelease.status, 'pass');
   assert.equal(report.checks.windowsFirefox.status, 'pass');
+});
+
+test('release-state contract owns promotion-evidence validation policy', () => {
+  const report = validateReleaseStatePromotionEvidence({
+    deploymentMode: 'promotion-eligible',
+    currentState: {
+      APP_SHA: 'abc123',
+      IMAGE_SOURCE: 'release-candidate',
+      CLASSROOMPATH_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+      CLASSROOMPATH_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+      OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+      OPENPATH_VERSION: '4.1.19',
+      OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+      CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
+    },
+    verificationState: {
+      STAGING_VERIFIED_APP_SHA: 'abc123',
+      STAGING_VERIFIED_IMAGE_SOURCE: 'release-candidate',
+      STAGING_VERIFIED_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+      STAGING_VERIFIED_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+      STAGING_VERIFIED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+      STAGING_VERIFIED_OPENPATH_VERSION: '4.1.19',
+      STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+      STAGING_VERIFIED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
+      STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS: 'present',
+      STAGING_SMOKE_RESULT: 'success',
+      STAGING_SMOKE_STATUS: 'PASS',
+      STAGING_RELEASE_GATE_RESULT: 'success',
+      STAGING_ENROLLMENT_DOWNLOAD_RESULT: 'success',
+      STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT: 'success',
+      STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT: 'success',
+      STAGING_FIREFOX_POLICY_RESULT: 'success',
+      STAGING_FIREFOX_EXTENSION_ID: 'openpath@example',
+      STAGING_FIREFOX_RELEASE_VERSION: '4.1.19',
+      STAGING_FIREFOX_SIGNATURE_SOURCE: 'amo',
+      STAGING_FIREFOX_SIGNATURE_STATE: 'signed',
+      STAGING_FIREFOX_METADATA_SHA256: 'meta123',
+      STAGING_FIREFOX_XPI_SHA256: 'xpi123',
+    },
+    expectedRuntime: {
+      EXPECTED_APP_SHA: 'abc123',
+      EXPECTED_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+      EXPECTED_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+      EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+      EXPECTED_OPENPATH_VERSION: '4.1.19',
+      EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+      EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
+    },
+    highRisk: false,
+  });
+
+  assert.equal(report.eligible, true);
+  assert.equal(report.checks.currentRuntime.status, 'pass');
+  assert.equal(report.checks.signedFirefoxRelease.status, 'pass');
 });
 
 test('verify-promotion-ready rejects staging evidence without signed Firefox release metadata', () => {

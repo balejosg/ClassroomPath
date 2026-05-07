@@ -45,4 +45,43 @@ describe('integration scenario builder', async () => {
     assert.ok(emails.has(admin.email));
     assert.ok(emails.has(teacher.email));
   });
+
+  test('standalone actors can be moved into a seeded tenant flow', async () => {
+    const scenario = createTenantScenario({
+      baseUrl: integration.baseUrl,
+      jwtSecret: JWT_SECRET,
+    });
+    const admin = await scenario.createActor({
+      userId: `scenario-admin-${Date.now()}`,
+      name: 'Scenario Admin',
+      role: 'admin',
+    });
+
+    const organization = await scenario.seedOrganizationForActor({
+      actor: admin,
+      organizationName: `Scenario Org ${Date.now()}`,
+    });
+    const group = await scenario.createGroup({
+      actor: admin,
+      name: `scenario-group-${Date.now()}`,
+    });
+    const classroom = await scenario.createClassroom({
+      actor: admin,
+      name: `scenario-classroom-${Date.now()}`,
+      defaultGroupId: group.id,
+    });
+    const schedule = await scenario.createWeeklySchedule({
+      actor: admin,
+      classroomId: classroom.id,
+      groupId: group.id,
+      dayOfWeek: 2,
+      startTime: '10:00',
+      endTime: '11:00',
+    });
+
+    assert.ok(organization.organizationId);
+    assert.ok(group.id);
+    assert.ok(classroom.id);
+    assert.ok(schedule.id);
+  });
 });

@@ -60,16 +60,18 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.strictEqual(unauth.error, 'Not authenticated');
 
     // Auth token but no membership -> FORBIDDEN
-    const userId = 'sched-no-membership';
-    const email = uniqueEmail('nomembership');
-    await ensureOpenPathUser({ userId, email, name: 'No Membership' });
-    const token = signToken({ userId, email, name: 'No Membership', roles: [] });
+    const scenario = buildScenario();
+    const actor = await scenario.createActor({
+      userId: 'sched-no-membership',
+      name: 'No Membership',
+      emailPrefix: 'nomembership',
+    });
 
     const resp = await trpcQuery(
       integration.baseUrl,
       'schedules.getMine',
       undefined,
-      bearerAuth(token)
+      bearerAuth(actor.token)
     );
     const parsed = (await parseTRPC(resp)) as any;
     assert.strictEqual(parsed.code, 'FORBIDDEN');
@@ -79,43 +81,28 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
   test('teacher can create schedule only for assigned group; getMine is tenant-scoped', async () => {
     await resetDb();
 
-    // Admin creates org
-    const adminUserId = 'sched-admin';
-    const adminEmail = uniqueEmail('admin');
-    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
-    const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: adminUserId,
-      email: adminEmail,
+    const scenario = buildScenario();
+    const { actor: admin, organization } = await scenario.createOrgAdmin({
+      userId: 'sched-admin',
       name: 'Admin User',
-      roles: [{ role: 'admin' }],
-    });
-    const { organizationId } = await bootstrapOrg({
-      baseUrl: integration.baseUrl,
-      token: adminToken,
-      name: 'Schedules Test Org',
+      organizationName: 'Schedules Test Org',
     });
 
-    const { groupId: adminGroupId } = await createGroup({ token: adminToken }, 'sched-admin-group');
-    const { classroomId } = await createClassroom({ token: adminToken });
-
-    // Teacher joins org
-    const teacherUserId = 'sched-teacher';
-    const teacherEmail = uniqueEmail('teacher');
-    await ensureOpenPathUser({ userId: teacherUserId, email: teacherEmail, name: 'Teacher User' });
-    const teacherTokenNoGroups = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: teacherUserId,
-      email: teacherEmail,
+    const adminGroup = await scenario.createGroup({
+      actor: admin,
+      name: 'sched-admin-group',
+    });
+    const classroom = await scenario.createClassroom({
+      actor: admin,
+      name: 'sched-test-classroom',
+      displayName: 'Schedules Classroom',
+    });
+    const teacher = await scenario.addTeacher({
+      adminToken: admin.token,
+      organizationId: organization.organizationId,
+      userId: 'sched-teacher',
       name: 'Teacher User',
-      roles: [{ role: 'teacher', groupIds: [] }],
-    });
-    await approveOrganizationMember({
-      baseUrl: integration.baseUrl,
-      adminToken,
-      memberToken: teacherTokenNoGroups,
-      memberUserId: teacherUserId,
-      organizationId,
+      groupIds: [],
     });
 
     // Teacher cannot create schedule for group they are not assigned to
@@ -123,13 +110,13 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       integration.baseUrl,
       'schedules.create',
       {
-        classroomId,
-        groupId: adminGroupId,
+        classroomId: classroom.id,
+        groupId: adminGroup.id,
         dayOfWeek: 1,
         startTime: '10:00',
         endTime: '11:00',
       },
-      bearerAuth(teacherTokenNoGroups)
+      bearerAuth(teacher.token)
     );
     const forbiddenJson = (await parseTRPC(forbiddenCreate)) as any;
     assert.strictEqual(forbiddenJson.code, 'FORBIDDEN');
@@ -139,40 +126,34 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     );
 
     // Teacher creates their own group and can schedule with it
-    const { groupId: teacherGroupId } = await createGroup(
-      { token: teacherTokenNoGroups },
-      'sched-teacher-group'
-    );
-    const createResp = await trpcMutate(
-      integration.baseUrl,
-      'schedules.create',
-      {
-        classroomId,
-        groupId: teacherGroupId,
-        dayOfWeek: 1,
-        startTime: '10:00',
-        endTime: '11:00',
-      },
-      bearerAuth(teacherTokenNoGroups)
-    );
-    assertStatus(createResp, 200);
-    const { data: created } = (await parseTRPC(createResp)) as { data: any };
+    const teacherGroup = await scenario.createGroup({
+      actor: teacher,
+      name: 'sched-teacher-group',
+    });
+    const created = await scenario.createWeeklySchedule({
+      actor: teacher,
+      classroomId: classroom.id,
+      groupId: teacherGroup.id,
+      dayOfWeek: 1,
+      startTime: '10:00',
+      endTime: '11:00',
+    });
     assert.ok(created?.id, 'create should return id');
-    assert.strictEqual(created.teacherId, teacherUserId);
+    assert.strictEqual(created.teacherId, teacher.userId);
 
     // getMine should return only schedules within org classrooms
     const mineResp = await trpcQuery(
       integration.baseUrl,
       'schedules.getMine',
       undefined,
-      bearerAuth(teacherTokenNoGroups)
+      bearerAuth(teacher.token)
     );
     assertStatus(mineResp, 200);
     const { data: mine } = (await parseTRPC(mineResp)) as { data: any[] };
     assert.ok(Array.isArray(mine));
     assert.strictEqual(mine.length, 1);
     assert.strictEqual(mine[0].id, created.id);
-    assert.strictEqual(mine[0].classroomId, classroomId);
+    assert.strictEqual(mine[0].classroomId, classroom.id);
   });
 
   test('schedules.getByClassroom exposes readable group and teacher names for schedules created by another teacher', async () => {

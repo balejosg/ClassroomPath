@@ -6,6 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  buildBundleCanaryEvidence,
   buildReleaseEvidenceBundle,
   parseLinuxBootstrapCanaryArtifact,
   parseWindowsBootstrapCanaryArtifact,
@@ -196,6 +197,42 @@ afterEach(() => {
 });
 
 describe('release evidence bundle module', () => {
+  test('selects parsed canary evidence only when artifact integrity passed', () => {
+    const windowsArtifactDir = createTempDir('classroompath-release-evidence-policy-windows-');
+    writeWindowsCanaryArtifact(windowsArtifactDir);
+
+    const parsed = buildBundleCanaryEvidence({
+      integrity: { status: 'ok' },
+      artifactDir: windowsArtifactDir,
+      parser: parseWindowsBootstrapCanaryArtifact,
+      fallbackFailureBoundary: { id: 'fallback', message: 'fallback' },
+      fallbackRedditHosts: {},
+    });
+
+    assert.equal(parsed.failureBoundary.id, 'none');
+    assert.equal(
+      parsed.artifactPath.endsWith('production-windows-ajax-auto-allow-canary.json'),
+      true
+    );
+
+    const fallback = buildBundleCanaryEvidence({
+      integrity: { status: 'missing' },
+      artifactDir: null,
+      parser: parseWindowsBootstrapCanaryArtifact,
+      fallbackFailureBoundary: { id: 'preproduction-installed-client-evidence', message: 'held' },
+      fallbackRedditHosts: { 'emoji.redditmedia.com': { pageEvent: false } },
+    });
+
+    assert.equal(fallback.failureBoundary.id, 'preproduction-installed-client-evidence');
+    assert.deepEqual(fallback.diagnosticPhases, [
+      { id: 'preproduction-installed-client-evidence', status: 'not_applicable' },
+      { id: 'artifact-written', status: 'passed' },
+    ]);
+    assert.deepEqual(fallback.redditHosts, {
+      'emoji.redditmedia.com': { pageEvent: false },
+    });
+  });
+
   test('parses Windows and Linux bootstrap canary artifacts into normalized evidence', () => {
     const windowsArtifactDir = createTempDir('classroompath-release-evidence-windows-');
     const linuxArtifactDir = createTempDir('classroompath-release-evidence-linux-');

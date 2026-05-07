@@ -9,13 +9,19 @@ import { fileURLToPath } from 'node:url';
 
 import { getDeployTarget } from './deploy-targets.mjs';
 import {
+  OPENPATH_ROOT_ON_WINDOWS,
+  WINDOWS_WORKSPACE,
+  buildWindowsAjaxCanaryGuestEnvironment,
   buildRunnerDiagnosticPlan,
+  emitRunnerDiagnosticEnvironment,
   initializeRunnerDiagnosticRuntime,
   loadRunnerDiagnosticEnvLocal,
   readRunnerDiagnosticKeyValueFile,
   resolveRunnerDiagnosticArtifactDir,
   resolveRunnerDiagnosticBaseUrl,
+  summarizeRunnerDiagnosticArtifact,
   summarizeRunnerDiagnosticPlan,
+  uploadRunnerDiagnosticPlanFiles,
   validateRunnerDiagnosticPlan,
 } from './lib/runner-diagnostic-execution.mjs';
 
@@ -25,18 +31,10 @@ const DEFAULT_WINDOWS_RUNNER_VMID = '103';
 const DEFAULT_CANARY_TIMEOUT_MS = '180000';
 const DEFAULT_POST_FAILURE_OBSERVATION_MS = '60000';
 const DEFAULT_FIREFOX_EXTENSION_SOURCE = 'managed';
-const WINDOWS_WORKSPACE = 'C:\\Windows\\Temp\\openpath-ajax-direct';
-const OPENPATH_ROOT_ON_WINDOWS = 'C:\\OpenPath';
 const LOCAL_FIREFOX_XPI_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\openpath-firefox-extension.xpi`;
 const SELENIUM_NODE_MODULES_ZIP_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\selenium-node-modules.zip`;
 const BINARY_UPLOAD_CHUNK_CHARS = 700000;
 const DRY_RUN = process.env.WINDOWS_AJAX_DIRECT_DRY_RUN === '1';
-const WINDOWS_AJAX_RUNTIME_SCRIPT_UPLOADS = [
-  {
-    source: 'scripts/lib/ajax-auto-allow-canary-harness.mjs',
-    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\ajax-auto-allow-canary-harness.mjs`,
-  },
-];
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
@@ -163,21 +161,14 @@ function renderCommand(args) {
   return args.map((arg) => shellQuote(arg)).join(' ');
 }
 
-function withWindowsAjaxRuntimeUploads(plan) {
-  const existingSources = new Set(plan.canaryScriptUploads.map((upload) => upload.source));
-  return {
-    ...plan,
-    canaryScriptUploads: [
-      ...plan.canaryScriptUploads,
-      ...WINDOWS_AJAX_RUNTIME_SCRIPT_UPLOADS.filter(
-        (upload) => !existingSources.has(upload.source)
-      ),
-    ],
-  };
-}
-
 function psSingleQuote(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function renderPowerShellEnvironment(environment) {
+  return Object.entries(environment)
+    .map(([key, value]) => `$env:${key} = ${psSingleQuote(value)}`)
+    .join('\n');
 }
 
 function encodePowerShell(script) {
@@ -781,13 +772,19 @@ Start-ScheduledTask -TaskName 'OpenPath-Watchdog'
   runGuestPowerShell(options, script, { timeoutSeconds: 300 });
 }
 
-function runAjaxCanary(options, summary, billingContext, localFirefoxExtension) {
-  const artifactPath = `${WINDOWS_WORKSPACE}\\production-windows-ajax-auto-allow-canary.json`;
+function runAjaxCanary(options, plan, summary, billingContext, localFirefoxExtension) {
+  const canaryEnvironment = buildWindowsAjaxCanaryGuestEnvironment({
+    plan,
+    summary,
+    billingContext,
+    canaryTimeoutMs: options.canaryTimeoutMs,
+    postFailureObservationMs: options.postFailureObservationMs,
+    localFirefoxExtension,
+  });
   const scriptPath = `${WINDOWS_WORKSPACE}\\scripts\\windows-ajax-auto-allow-canary.mjs`;
   const firefoxEnv =
     localFirefoxExtension === null
       ? `
-$env:WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE = 'selenium'
 $gecko = (Get-Command geckodriver.exe -ErrorAction SilentlyContinue).Source
 if (-not $gecko -and (Test-Path -LiteralPath 'C:\\tools\\selenium\\geckodriver.exe')) { $gecko = 'C:\\tools\\selenium\\geckodriver.exe' }
 if ($gecko) { $env:GECKODRIVER_PATH = $gecko }
@@ -802,8 +799,6 @@ $policyFirefoxPath = @(
 if ($policyFirefoxPath) { $env:FIREFOX_PATH = $policyFirefoxPath }
 `
       : `
-$env:WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE = 'selenium'
-$env:WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH = ${psSingleQuote(localFirefoxExtension.remotePath)}
 $gecko = (Get-Command geckodriver.exe -ErrorAction SilentlyContinue).Source
 if (-not $gecko -and (Test-Path -LiteralPath 'C:\\tools\\selenium\\geckodriver.exe')) { $gecko = 'C:\\tools\\selenium\\geckodriver.exe' }
 if ($gecko) { $env:GECKODRIVER_PATH = $gecko }
@@ -812,13 +807,7 @@ if ($firefoxPath) { $env:FIREFOX_PATH = $firefoxPath }
 `;
   const script = `
 $ErrorActionPreference = 'Stop'
-$env:OPENPATH_ROOT = ${psSingleQuote(OPENPATH_ROOT_ON_WINDOWS)}
-$env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL = ${psSingleQuote(summary.apiUrl)}
-$env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID = ${psSingleQuote(summary.groupId)}
-$env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN = ${psSingleQuote(billingContext.adminToken)}
-$env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT = ${psSingleQuote(artifactPath)}
-$env:WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS = ${psSingleQuote(options.canaryTimeoutMs)}
-$env:WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS = ${psSingleQuote(options.postFailureObservationMs)}
+${renderPowerShellEnvironment(canaryEnvironment)}
 ${firefoxEnv}
 node ${psSingleQuote(scriptPath)}
 if ($LASTEXITCODE -ne 0) {
@@ -878,35 +867,12 @@ function collectArtifacts(options, artifactDir) {
 }
 
 function summarizeAjaxArtifact(plan) {
-  const artifactPath = plan.artifacts.windowsAjaxCanary;
-  const markdownPath = plan.artifacts.windowsAjaxSummary;
-  const outputPath = plan.artifacts.windowsAjaxSummaryOutput;
-
   // This enriches local direct-run evidence with failureBoundary and diagnosticPhases.
-  if (DRY_RUN) {
-    console.log(
-      `local: node scripts/summarize-windows-ajax-auto-allow-evidence.mjs --artifact ${artifactPath} --summary ${markdownPath}`
-    );
-    console.log('local-artifact-fields: failureBoundary diagnosticPhases');
-    return;
-  }
-
-  runCommand(
-    [
-      process.execPath,
-      'scripts/summarize-windows-ajax-auto-allow-evidence.mjs',
-      '--artifact',
-      artifactPath,
-      '--summary',
-      markdownPath,
-    ],
-    {
-      env: {
-        ...process.env,
-        GITHUB_OUTPUT: outputPath,
-      },
-    }
-  );
+  summarizeRunnerDiagnosticArtifact(plan, {
+    dryRun: DRY_RUN,
+    outputFields: ['failureBoundary', 'diagnosticPhases'],
+    runCommand: ({ command, args, env }) => runCommand([command, ...args], { env }),
+  });
 }
 
 function main() {
@@ -942,19 +908,17 @@ function main() {
     environment: options.environment,
     includeEnvironmentInDefault: true,
   });
-  const plan = withWindowsAjaxRuntimeUploads(
-    buildRunnerDiagnosticPlan({
-      platform: 'windows',
-      suite: 'ajax-auto-allow',
-      environment: options.environment,
-      baseUrl,
-      artifactDir,
-      openpathRoot: options.openpathRoot,
-      proxmoxHost: options.proxmoxHost,
-      vmid: options.vmid,
-      confirmProduction: options.confirmProduction,
-    })
-  );
+  const plan = buildRunnerDiagnosticPlan({
+    platform: 'windows',
+    suite: 'ajax-auto-allow',
+    environment: options.environment,
+    baseUrl,
+    artifactDir,
+    openpathRoot: options.openpathRoot,
+    proxmoxHost: options.proxmoxHost,
+    vmid: options.vmid,
+    confirmProduction: options.confirmProduction,
+  });
   const validationErrors = validateRunnerDiagnosticPlan(plan);
 
   initializeRunnerDiagnosticRuntime(plan, {
@@ -988,26 +952,48 @@ function main() {
   ensureSeleniumFirefoxCanarySupport(options);
   installWindowsClient(options, summary);
 
-  for (const upload of plan.openpathOverlays) {
-    writeGuestText(options, resolve(options.openpathRoot, upload.source), upload.destination);
-  }
+  uploadRunnerDiagnosticPlanFiles(plan, {
+    projectRoot,
+    openpathRoot: options.openpathRoot,
+    sections: ['openpathOverlays'],
+    writeText: (sourcePath, destinationPath) =>
+      writeGuestText(options, sourcePath, destinationPath),
+  });
   refreshOpenPathIntegrity(options);
   runOpenPathUpdateAndSse(options);
 
-  for (const upload of plan.canaryScriptUploads) {
-    writeGuestText(options, resolve(projectRoot, upload.source), upload.destination);
-  }
-  console.log('guest-env: WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE=selenium');
+  uploadRunnerDiagnosticPlanFiles(plan, {
+    projectRoot,
+    openpathRoot: options.openpathRoot,
+    sections: ['canaryScriptUploads'],
+    writeText: (sourcePath, destinationPath) =>
+      writeGuestText(options, sourcePath, destinationPath),
+  });
+  const canaryEnvironment = buildWindowsAjaxCanaryGuestEnvironment({
+    plan,
+    summary,
+    billingContext,
+    canaryTimeoutMs: options.canaryTimeoutMs,
+    postFailureObservationMs: options.postFailureObservationMs,
+    localFirefoxExtension,
+  });
+  const visibleCanaryEnvironment = {
+    WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE,
+  };
   if (localFirefoxExtension !== null) {
     writeGuestBinary(options, localFirefoxExtension.localPath, localFirefoxExtension.remotePath);
-    console.log(
-      `guest-env: WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH=${localFirefoxExtension.remotePath}`
-    );
+    visibleCanaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH =
+      canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH;
   }
-  console.log(`guest-env: WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=${summary.apiUrl}`);
+  visibleCanaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL =
+    canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL;
+  emitRunnerDiagnosticEnvironment(plan, {
+    prefix: 'guest-env: ',
+    environment: visibleCanaryEnvironment,
+  });
   let canaryError = null;
   try {
-    runAjaxCanary(options, summary, billingContext, localFirefoxExtension);
+    runAjaxCanary(options, plan, summary, billingContext, localFirefoxExtension);
   } catch (error) {
     canaryError = error;
   } finally {

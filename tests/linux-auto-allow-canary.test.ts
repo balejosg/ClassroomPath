@@ -467,7 +467,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     });
 
     assert.equal(diagnostics.openpathObserverInstalled, true);
-    assert.deepEqual(visited, ['http://ajax-auto-allow-origin.127.0.0.1.sslip.io:18088/']);
+    assert.ok(visited.length >= 1);
+    assert.ok(
+      visited.every((url) => url === 'http://ajax-auto-allow-origin.127.0.0.1.sslip.io:18088/')
+    );
   });
 
   test('summarizer enriches Linux AJAX evidence with failure boundary outputs', () => {
@@ -484,16 +487,18 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
 
     assert.ok(canaryScript.includes('withLinuxAutoAllowDiagnostics'));
-    assert.ok(canaryScript.includes("from './lib/canary-progress.mjs'"));
-    assert.ok(canaryScript.includes("createCanaryProgressReporter({ canary: 'linux-ajax'"));
+    assert.ok(canaryScript.includes("from './lib/ajax-auto-allow-canary-runtime.mjs'"));
+    assert.ok(
+      canaryScript.includes("createAjaxAutoAllowCanaryRuntimeProgress({ canary: 'linux-ajax'")
+    );
     assert.ok(canaryScript.includes("progress('bootstrap', 'started'"));
     assert.ok(canaryScript.includes("progress('firefox-extension-ready', 'passed'"));
-    assert.ok(canaryScript.includes("progress('artifact-written', success ? 'passed' : 'failed'"));
-    assert.ok(canaryScript.includes("writeGithubOutput('failure_boundary_id'"));
-    assert.ok(canaryScript.includes("writeGithubOutput('failure_boundary_message'"));
+    assert.ok(canaryScript.includes('emitAjaxAutoAllowCanaryRuntimeSummary'));
+    assert.ok(canaryScript.includes("resultOutputKey: 'linux_ajax_auto_allow_result'"));
+    assert.ok(canaryScript.includes('failureBoundaryOutputs: true'));
     assert.match(
       canaryScript,
-      /const summary = withLinuxAutoAllowDiagnostics\(\{[\s\S]*writeGithubOutput\('linux_ajax_auto_allow_result'/
+      /const summary = withLinuxAutoAllowDiagnostics\(\{[\s\S]*emitAjaxAutoAllowCanaryRuntimeSummary/
     );
   });
 

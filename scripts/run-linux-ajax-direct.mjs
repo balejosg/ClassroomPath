@@ -8,12 +8,14 @@ import { fileURLToPath } from 'node:url';
 
 import { getDeployTarget } from './deploy-targets.mjs';
 import {
+  buildLinuxAjaxCanaryEnvironment,
   buildRunnerDiagnosticPlan,
   initializeRunnerDiagnosticRuntime,
   loadRunnerDiagnosticEnvLocal,
   readRunnerDiagnosticKeyValueFile,
   resolveRunnerDiagnosticArtifactDir,
   resolveRunnerDiagnosticBaseUrl,
+  summarizeRunnerDiagnosticArtifact,
   summarizeRunnerDiagnosticEnvironmentVariables,
   summarizeRunnerDiagnosticPlan,
   validateRunnerDiagnosticPlan,
@@ -176,9 +178,6 @@ function main() {
   const validationErrors = validateRunnerDiagnosticPlan(plan);
   const bootstrapArtifact = plan.artifacts.linuxBootstrapCanary;
   const bootstrapOutput = plan.artifacts.linuxBootstrapOutput;
-  const canaryArtifact = plan.artifacts.linuxAjaxCanary;
-  const canarySummary = plan.artifacts.linuxAjaxSummary;
-  const canaryOutput = plan.artifacts.linuxAjaxSummaryOutput;
   const installerPath = plan.artifacts.linuxInstaller;
 
   initializeRunnerDiagnosticRuntime(plan, {
@@ -226,6 +225,12 @@ function main() {
   const enrollmentToken = bootstrap.enrollment_token || '<enrollment-token>';
   const groupId = bootstrap.group_id || '<group-id>';
   const extensionId = bootstrap.extension_id || 'monitor-bloqueos@openpath';
+  const canaryEnvironment = buildLinuxAjaxCanaryEnvironment({
+    plan,
+    groupId,
+    adminToken,
+    extensionId,
+  });
 
   runCommand(
     'curl',
@@ -280,36 +285,20 @@ function main() {
   const canaryStatus = runCommand(process.execPath, [plan.canary.command], {
     env: {
       ...process.env,
-      LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: baseUrl,
-      LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: groupId,
-      LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: adminToken,
-      LINUX_AJAX_AUTO_ALLOW_CANARY_ARTIFACT: canaryArtifact,
-      EXPECTED_EXTENSION_ID: extensionId,
+      ...canaryEnvironment,
     },
     allowFailure: true,
     logDir: artifactDir,
     logName: 'linux-ajax-auto-allow-canary',
   });
 
-  runCommand(
-    process.execPath,
-    [
-      'scripts/summarize-linux-ajax-auto-allow-evidence.mjs',
-      '--artifact',
-      canaryArtifact,
-      '--summary',
-      canarySummary,
-    ],
-    {
-      env: {
-        ...process.env,
-        GITHUB_OUTPUT: canaryOutput,
-      },
-      allowFailure: true,
-      logDir: artifactDir,
-      logName: 'summarize-linux-ajax-auto-allow-evidence',
-    }
-  );
+  summarizeRunnerDiagnosticArtifact(plan, {
+    runCommand: ({ command, args, env, allowFailure, logDir, logName }) =>
+      runCommand(command, args, { env, allowFailure, logDir, logName }),
+    allowFailure: true,
+    logDir: artifactDir,
+    logName: 'summarize-linux-ajax-auto-allow-evidence',
+  });
 
   if (!DRY_RUN) {
     writeFileSync(

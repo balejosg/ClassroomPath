@@ -63,72 +63,59 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
   test('classrooms.list/getById include currentGroupId from schedule (or default)', async () => {
     await resetDb();
 
-    const adminUserId = 'classrooms-admin';
-    const adminEmail = uniqueEmail('admin');
-    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
-    const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
-      userId: adminUserId,
-      email: adminEmail,
+    const scenario = buildScenario();
+    const { actor: admin } = await scenario.createOrgAdmin({
+      userId: 'classrooms-admin',
       name: 'Admin User',
-      roles: [{ role: 'admin' }],
+      organizationName: 'Classrooms Test Org',
     });
 
-    await bootstrapOrg({
-      baseUrl: integration.baseUrl,
-      token: adminToken,
-      name: 'Classrooms Test Org',
+    const defaultGroup = await scenario.createGroup({ actor: admin, name: 'default-group' });
+    const scheduledGroup = await scenario.createGroup({ actor: admin, name: 'scheduled-group' });
+    const classroom = await scenario.createClassroom({
+      actor: admin,
+      name: 'classrooms-test-classroom',
+      displayName: 'Classrooms Classroom',
+      defaultGroupId: defaultGroup.id,
     });
-
-    const { groupId: defaultGroupId } = await createGroup({ token: adminToken }, 'default-group');
-    const { groupId: scheduledGroupId } = await createGroup(
-      { token: adminToken },
-      'scheduled-group'
-    );
-    const { classroomId } = await createClassroom({ token: adminToken }, { defaultGroupId });
 
     // Fixed local time: Tuesday 10:30 -> should match schedule dayOfWeek=2 (Tue)
     const inSlot = new Date(2026, 1, 3, 10, 30, 0, 0);
     await withFrozenDate(inSlot, async () => {
-      const createSchedule = await trpcMutate(
-        integration.baseUrl,
-        'schedules.create',
-        {
-          classroomId,
-          groupId: scheduledGroupId,
-          dayOfWeek: 2,
-          startTime: '10:00',
-          endTime: '11:00',
-        },
-        bearerAuth(adminToken)
-      );
-      assertStatus(createSchedule, 200);
+      await scenario.createWeeklySchedule({
+        actor: admin,
+        classroomId: classroom.id,
+        groupId: scheduledGroup.id,
+        dayOfWeek: 2,
+        startTime: '10:00',
+        endTime: '11:00',
+      });
 
       const listResp = await trpcQuery(
         integration.baseUrl,
         'classrooms.list',
         undefined,
-        bearerAuth(adminToken)
+        bearerAuth(admin.token)
       );
       assertStatus(listResp, 200);
       const { data: list } = (await parseTRPC(listResp)) as { data: any[] };
-      const row = list.find((c) => c.id === classroomId);
+      const row = list.find((c) => c.id === classroom.id);
       assert.ok(row, 'classroom should be in list');
-      assert.strictEqual(row.defaultGroupId, defaultGroupId);
+      assert.strictEqual(row.defaultGroupId, defaultGroup.id);
       assert.strictEqual(row.activeGroupId, null);
-      assert.strictEqual(row.currentGroupId, scheduledGroupId);
+      assert.strictEqual(row.currentGroupId, scheduledGroup.id);
       assert.strictEqual(row.currentGroupSource, 'schedule');
 
       const getResp = await trpcQuery(
         integration.baseUrl,
         'classrooms.getById',
-        { id: classroomId },
-        bearerAuth(adminToken)
+        { id: classroom.id },
+        bearerAuth(admin.token)
       );
       assertStatus(getResp, 200);
       const { data: got } = (await parseTRPC(getResp)) as { data: any };
-      assert.strictEqual(got.id, classroomId);
-      assert.strictEqual(got.currentGroupId, scheduledGroupId);
+      assert.strictEqual(got.id, classroom.id);
+      assert.strictEqual(got.currentGroupId, scheduledGroup.id);
       assert.strictEqual(got.currentGroupSource, 'schedule');
     });
 
@@ -138,12 +125,12 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
       const getResp = await trpcQuery(
         integration.baseUrl,
         'classrooms.getById',
-        { id: classroomId },
-        bearerAuth(adminToken)
+        { id: classroom.id },
+        bearerAuth(admin.token)
       );
       assertStatus(getResp, 200);
       const { data: got } = (await parseTRPC(getResp)) as { data: any };
-      assert.strictEqual(got.currentGroupId, defaultGroupId);
+      assert.strictEqual(got.currentGroupId, defaultGroup.id);
       assert.strictEqual(got.currentGroupSource, 'default');
     });
   });

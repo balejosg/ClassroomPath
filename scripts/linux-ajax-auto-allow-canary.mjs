@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
 import dns from 'node:dns/promises';
-import { appendFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 
 import {
   LINUX_AUTO_ALLOW_ORIGIN_HOST as ORIGIN_HOST,
@@ -19,17 +19,19 @@ import {
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
 } from './lib/windows-auto-allow-canary-evidence.mjs';
 import {
-  buildAjaxAutoAllowCanaryPage,
   buildAjaxAutoAllowProbeUrl,
   buildCompletedProbesFromHits,
-  createAjaxAutoAllowCanaryServer,
-  createAjaxAutoAllowCanaryState,
   hasAllAjaxAutoAllowProbesCompleted,
   openUrlWithTransientBrowserRetry,
   waitForAjaxAutoAllowPageObserver,
 } from './lib/ajax-auto-allow-canary-harness.mjs';
+import {
+  createAjaxAutoAllowCanaryRuntimeProgress,
+  createAjaxAutoAllowCanaryRuntimeServer,
+  emitAjaxAutoAllowCanaryRuntimeSummary,
+  listenAjaxAutoAllowCanaryRuntimeServer,
+} from './lib/ajax-auto-allow-canary-runtime.mjs';
 import { collectCanaryGroupDiagnostics as collectCanaryGroupDiagnosticsFromApi } from './lib/canary-group-diagnostics.mjs';
-import { createCanaryProgressReporter } from './lib/canary-progress.mjs';
 import { evaluateLinuxAjaxBrowserPageOutcome } from './linux-ajax-canary-result.mjs';
 
 const PORT = Number.parseInt(process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18089', 10);
@@ -80,13 +82,6 @@ const FIREFOX_EXTENSION_PATH_CANDIDATES = [
 const execFileAsync = promisify(execFile);
 
 class LinuxAjaxAutoAllowFunctionalFailure extends Error {}
-
-const progress = createCanaryProgressReporter({ canary: 'linux-ajax' });
-
-function writeGithubOutput(key, value) {
-  if (!process.env.GITHUB_OUTPUT) return;
-  appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${String(value)}\n`, 'utf8');
-}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -515,25 +510,33 @@ async function collectRedditDiagnostics(phase, pageEvidence = {}) {
   };
 }
 
-function createCanaryServer({ state }) {
-  return createAjaxAutoAllowCanaryServer({
-    platform: 'Linux',
-    probes: AUTO_ALLOW_PROBES,
-    originHost: ORIGIN_HOST,
+export function createLinuxAjaxAutoAllowCanaryHarness({
+  port = PORT,
+  timeoutMs = TIMEOUT_MS,
+  probeTimeoutMs = PROBE_TIMEOUT_MS,
+  onResult,
+} = {}) {
+  return createAjaxAutoAllowCanaryRuntimeServer({
+    platformAdapter: {
+      label: 'Linux',
+      probes: AUTO_ALLOW_PROBES,
+      originHost: ORIGIN_HOST,
+      stateGlobalName: '__openpathLinuxAjaxCanaryState',
+      scriptGlobalName: '__openpathLinuxAjaxAutoAllowScriptProbe',
+      stylesheetCss: 'body { --openpath-linux-ajax-auto-allow-style-probe: loaded; }',
+    },
+    port,
+    timeoutMs,
+    probeTimeoutMs,
+    onResult,
+  });
+}
+
+function createCanaryServer() {
+  return createLinuxAjaxAutoAllowCanaryHarness({
     port: PORT,
-    state,
-    scriptGlobalName: '__openpathLinuxAjaxAutoAllowScriptProbe',
-    stylesheetCss: 'body { --openpath-linux-ajax-auto-allow-style-probe: loaded; }',
-    buildPage: () =>
-      buildAjaxAutoAllowCanaryPage({
-        platform: 'Linux',
-        probes: AUTO_ALLOW_PROBES,
-        originHost: ORIGIN_HOST,
-        port: PORT,
-        timeoutMs: TIMEOUT_MS,
-        probeTimeoutMs: PROBE_TIMEOUT_MS,
-        stateGlobalName: '__openpathLinuxAjaxCanaryState',
-      }),
+    timeoutMs: TIMEOUT_MS,
+    probeTimeoutMs: PROBE_TIMEOUT_MS,
   });
 }
 
@@ -639,18 +642,15 @@ async function waitForPageObserver(driver, originUrl) {
 }
 
 async function main() {
+  const progress = createAjaxAutoAllowCanaryRuntimeProgress({ canary: 'linux-ajax' });
   progress('bootstrap', 'started', { message: 'Starting Linux AJAX auto-allow canary' });
   const originUrl = `http://${ORIGIN_HOST}:${PORT}/`;
   const expectedHosts = [
     ORIGIN_HOST,
     ...AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost),
   ];
-  const state = createAjaxAutoAllowCanaryState(AUTO_ALLOW_PROBES);
-  const server = createCanaryServer({ state });
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(PORT, '0.0.0.0', resolve);
-  });
+  const { state, server } = createCanaryServer();
+  await listenAjaxAutoAllowCanaryRuntimeServer(server, { port: PORT });
   progress('bootstrap', 'passed', { boundaryId: 'none' });
 
   let firefoxSession = null;
@@ -793,15 +793,15 @@ async function main() {
       failureDebug,
     });
 
-    await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
-    progress('artifact-written', success ? 'passed' : 'failed', {
-      boundaryId: summary.failureBoundary?.id ?? 'unknown',
-      message: summary.failureBoundary?.message ?? '',
+    await emitAjaxAutoAllowCanaryRuntimeSummary({
+      summary,
+      artifactPath: ARTIFACT_PATH,
+      summaryPrefix: 'LINUX_AJAX_AUTO_ALLOW_CANARY_SUMMARY',
+      resultOutputKey: 'linux_ajax_auto_allow_result',
+      failureBoundaryOutputs: true,
+      progress,
+      summaryOutputStream: () => 'error',
     });
-    console.error(`LINUX_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`);
-    writeGithubOutput('linux_ajax_auto_allow_result', success ? 'success' : 'failure');
-    writeGithubOutput('failure_boundary_id', summary.failureBoundary?.id ?? 'unknown');
-    writeGithubOutput('failure_boundary_message', summary.failureBoundary?.message ?? '');
     if (!success) throw new LinuxAjaxAutoAllowFunctionalFailure(summary.error);
   } finally {
     await firefoxSession?.driver?.quit().catch(() => {});
@@ -810,15 +810,21 @@ async function main() {
   }
 }
 
-main().catch(async (error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  if (!(error instanceof LinuxAjaxAutoAllowFunctionalFailure)) {
-    await writeFile(
-      ARTIFACT_PATH,
-      `${JSON.stringify({ success: false, error: message, artifactWritten: true }, null, 2)}\n`,
-      'utf8'
-    ).catch(() => {});
-  }
-  console.error(message);
-  process.exit(1);
-});
+export async function runLinuxAjaxAutoAllowCanaryRuntime() {
+  return main();
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runLinuxAjaxAutoAllowCanaryRuntime().catch(async (error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!(error instanceof LinuxAjaxAutoAllowFunctionalFailure)) {
+      await writeFile(
+        ARTIFACT_PATH,
+        `${JSON.stringify({ success: false, error: message, artifactWritten: true }, null, 2)}\n`,
+        'utf8'
+      ).catch(() => {});
+    }
+    console.error(message);
+    process.exit(1);
+  });
+}

@@ -8,7 +8,16 @@ import { runProjectCommand } from './helpers/ops-contracts.ts';
 import { buildDeployBrief, renderDeployBriefMarkdown } from '../scripts/lib/deploy-brief.mjs';
 import { renderCanaryBoundarySummary } from '../scripts/lib/release-evidence.mjs';
 import {
+  PROMOTION_ELIGIBILITY_POLICY,
+  RELEASE_JOB_RESULT_POLICY,
+  buildReleaseTimingEvidence,
   createReleaseEvidenceSnapshot,
+  deriveAdvisoryCanaryResult,
+  derivePostReleaseCanaryResult,
+  deriveProductionBootstrapCanaryResult,
+  derivePromotionEligibility,
+  deriveReleaseOutcome,
+  includesArtifactEvidence,
   projectReleaseEvidenceSnapshotToWorkflowOutputs,
   serializeReleaseEvidenceSnapshot,
   validateReleaseEvidenceSnapshot,
@@ -16,6 +25,8 @@ import {
 import {
   RELEASE_EVIDENCE_CANARY_ARTIFACTS,
   collectProductionPromotionDryRunFailures,
+  evaluateCanaryArtifactIntegrity,
+  shouldRequireCanaryArtifact,
   validateReleaseEvidenceChecklist,
   verifyArtifactIntegrity,
 } from '../scripts/lib/release-evidence-contract.mjs';
@@ -231,6 +242,25 @@ describe('release evidence contract', () => {
     assert.equal(missing.linuxProductionBootstrapCanary.status, 'missing');
   });
 
+  test('exposes canary artifact integrity as a named policy boundary', () => {
+    assert.equal(shouldRequireCanaryArtifact({ highRisk: false, result: 'success' }), false);
+    assert.equal(shouldRequireCanaryArtifact({ highRisk: true, result: 'pending' }), false);
+    assert.equal(shouldRequireCanaryArtifact({ highRisk: true, result: 'failed' }), true);
+
+    const integrity = evaluateCanaryArtifactIntegrity({
+      highRisk: true,
+      result: 'failed',
+      listed: false,
+      artifactDir: null,
+      downloadError: false,
+      parser: () => {
+        throw new Error('should not parse missing artifacts');
+      },
+    });
+
+    assert.equal(integrity.status, 'missing');
+  });
+
   test('collects production promotion dry-run comparisons through the contract', () => {
     const validation = collectProductionPromotionDryRunFailures({
       releaseEvidence: buildContractEvidence(),
@@ -251,6 +281,79 @@ describe('release evidence contract', () => {
 });
 
 describe('release evidence rendering', () => {
+  test('names snapshot policy boundaries without changing release evidence shape', () => {
+    assert.equal(PROMOTION_ELIGIBILITY_POLICY.requiredDeploymentMode, 'promotion-eligible');
+    assert.equal(PROMOTION_ELIGIBILITY_POLICY.requiredImageSource, 'release-candidate');
+    assert.deepEqual(RELEASE_JOB_RESULT_POLICY.evidenceBearingResults, [
+      'success',
+      'failure',
+      'failed',
+    ]);
+
+    assert.equal(
+      deriveAdvisoryCanaryResult({ highRisk: false, canaryResult: 'success' }),
+      'not_applicable'
+    );
+    assert.equal(deriveAdvisoryCanaryResult({ highRisk: true, canaryResult: '' }), 'not_run');
+    assert.equal(
+      derivePostReleaseCanaryResult({ highRisk: true, canaryResult: 'success' }),
+      'live-tested'
+    );
+    assert.equal(
+      derivePostReleaseCanaryResult({ highRisk: true, canaryResult: 'failure' }),
+      'failed'
+    );
+    assert.equal(
+      derivePostReleaseCanaryResult({ highRisk: true, canaryResult: 'toString' }),
+      'toString'
+    );
+    assert.equal(
+      deriveProductionBootstrapCanaryResult({
+        highRisk: true,
+        canaryResult: 'success',
+        jobResult: 'failure',
+      }),
+      'failure'
+    );
+    assert.equal(includesArtifactEvidence('failed'), true);
+    assert.equal(includesArtifactEvidence('pending-post-release'), false);
+    assert.equal(
+      deriveReleaseOutcome({
+        deployResult: 'success',
+        smokeResult: 'failure',
+        rollbackResult: 'success',
+      }),
+      'rolled_back_after_failed_smoke'
+    );
+    assert.deepEqual(derivePromotionEligibility({ PROMOTION_ELIGIBLE: 'true' }), {
+      status: 'eligible',
+      deploymentMode: null,
+    });
+  });
+
+  test('builds release timing evidence through the named timing policy', () => {
+    const timing = buildReleaseTimingEvidence({
+      totals: { wallSeconds: 505 },
+      criticalPath: {
+        jobs: [{ name: 'Deploy to Production' }, { name: 'Release Evidence' }],
+      },
+      jobs: [
+        { name: 'Deploy to Production', executionSeconds: 88 },
+        { name: 'Linux Production Bootstrap Canary', executionSeconds: 321 },
+        { name: 'Ignored Job', executionSeconds: 999 },
+      ],
+    });
+
+    assert.equal(timing.totalWallSeconds, 505);
+    assert.deepEqual(timing.criticalPath?.jobs, [
+      { name: 'Deploy to Production' },
+      { name: 'Release Evidence' },
+    ]);
+    assert.deepEqual(timing.jobs.deployProduction, { durationMs: 88000 });
+    assert.deepEqual(timing.jobs.linuxProductionBootstrapCanary, { durationMs: 321000 });
+    assert.equal(timing.jobs.ignoredJob, undefined);
+  });
+
   test('release evidence module owns the promotion readiness interface', async () => {
     const releaseEvidence = await import('../scripts/lib/release-evidence.mjs');
 

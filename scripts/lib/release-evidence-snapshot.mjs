@@ -10,6 +10,18 @@ import {
 } from './release-evidence-contract.mjs';
 
 export const STAGING_DEPLOYMENT_MODES = /** @type {const} */ (['promotion-eligible', 'debug']);
+export const PROMOTION_ELIGIBILITY_POLICY = Object.freeze({
+  requiredDeploymentMode: 'promotion-eligible',
+  requiredImageSource: 'release-candidate',
+});
+export const RELEASE_JOB_RESULT_POLICY = Object.freeze({
+  evidenceBearingResults: Object.freeze(['success', 'failure', 'failed']),
+  ignoredReusableJobResults: Object.freeze(['success', 'skipped']),
+  postReleaseAliases: Object.freeze({
+    success: 'live-tested',
+    failure: 'failed',
+  }),
+});
 
 /**
  * @typedef {'promotion-eligible' | 'debug'} StagingDeploymentMode
@@ -36,7 +48,7 @@ export function deriveStagingDeploymentMode(imageSource) {
 export function validateCurrentReleaseState(snapshot, expected) {
   const errors = [];
 
-  if ((snapshot.IMAGE_SOURCE ?? '') !== 'release-candidate') {
+  if ((snapshot.IMAGE_SOURCE ?? '') !== PROMOTION_ELIGIBILITY_POLICY.requiredImageSource) {
     errors.push(
       `::error::Staging is not running release candidate images (IMAGE_SOURCE=${snapshot.IMAGE_SOURCE ?? 'unset'})`
     );
@@ -323,13 +335,13 @@ export function evaluatePromotionEligibility({
   /** @type {string[]} */
   const deploymentModeErrors = [];
 
-  if (deploymentMode !== 'promotion-eligible') {
+  if (deploymentMode !== PROMOTION_ELIGIBILITY_POLICY.requiredDeploymentMode) {
     deploymentModeErrors.push(
       '::error::Staging deploy is not promotion-eligible. Use release-candidate promotion mode before tagging production.'
     );
   }
 
-  if (imageSource !== 'release-candidate') {
+  if (imageSource !== PROMOTION_ELIGIBILITY_POLICY.requiredImageSource) {
     deploymentModeErrors.push(
       `::error::Promotion requires immutable release-candidate images (imageSource=${imageSource})`
     );
@@ -402,7 +414,7 @@ export function buildPromotionEligibilityOutputs(report) {
   };
 }
 
-function deriveAdvisoryCanaryResult({ highRisk, canaryResult }) {
+export function deriveAdvisoryCanaryResult({ highRisk, canaryResult }) {
   if (!highRisk) {
     return 'not_applicable';
   }
@@ -410,7 +422,7 @@ function deriveAdvisoryCanaryResult({ highRisk, canaryResult }) {
   return valueOrNull(canaryResult) ?? 'not_run';
 }
 
-function derivePostReleaseCanaryResult({ highRisk, canaryResult }) {
+export function derivePostReleaseCanaryResult({ highRisk, canaryResult }) {
   if (!highRisk) {
     return 'not_applicable';
   }
@@ -420,12 +432,10 @@ function derivePostReleaseCanaryResult({ highRisk, canaryResult }) {
     return 'pending-post-release';
   }
 
-  if (normalized === 'success') {
-    return 'live-tested';
-  }
-
-  if (normalized === 'failure') {
-    return 'failed';
+  if (
+    Object.prototype.hasOwnProperty.call(RELEASE_JOB_RESULT_POLICY.postReleaseAliases, normalized)
+  ) {
+    return RELEASE_JOB_RESULT_POLICY.postReleaseAliases[normalized];
   }
 
   if (
@@ -440,32 +450,39 @@ function derivePostReleaseCanaryResult({ highRisk, canaryResult }) {
   return normalized;
 }
 
-function deriveProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResult }) {
-  if (!highRisk) {
-    return 'not_applicable';
-  }
-
+export function normalizeReusableCanaryJobResult({ canaryResult, jobResult, pendingResult }) {
   const normalizedJobResult = valueOrNull(jobResult);
   if (
     normalizedJobResult &&
-    normalizedJobResult !== 'success' &&
-    normalizedJobResult !== 'skipped'
+    !RELEASE_JOB_RESULT_POLICY.ignoredReusableJobResults.includes(normalizedJobResult)
   ) {
     return normalizedJobResult;
   }
 
-  return valueOrNull(canaryResult) ?? 'pending-post-release';
+  return valueOrNull(canaryResult) ?? pendingResult;
 }
 
-function deriveLinuxProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResult }) {
+export function deriveProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResult }) {
+  if (!highRisk) {
+    return 'not_applicable';
+  }
+
+  return normalizeReusableCanaryJobResult({
+    canaryResult,
+    jobResult,
+    pendingResult: 'pending-post-release',
+  });
+}
+
+export function deriveLinuxProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResult }) {
   return deriveProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResult });
 }
 
-function includesArtifactEvidence(result) {
-  return result === 'success' || result === 'failure' || result === 'failed';
+export function includesArtifactEvidence(result) {
+  return RELEASE_JOB_RESULT_POLICY.evidenceBearingResults.includes(result);
 }
 
-function formatDurationSeconds(seconds) {
+export function formatDurationSeconds(seconds) {
   const numericSeconds = Number(seconds);
   if (!Number.isFinite(numericSeconds) || numericSeconds < 0) {
     return 'n/a';
@@ -479,7 +496,7 @@ function formatDurationSeconds(seconds) {
     : `${remainingSeconds}s`;
 }
 
-const RELEASE_TIMING_JOB_KEYS = new Map([
+export const RELEASE_TIMING_JOB_KEYS = new Map([
   ['Verify OpenPath Upstream Checks', 'verifyOpenPathUpstream'],
   ['Verify OpenPath Upstream', 'verifyOpenPathUpstream'],
   ['Resolve Release Images', 'resolveReleaseImages'],
@@ -500,7 +517,7 @@ function timingJobDuration(job = {}) {
   return { durationMs: Number(job.executionSeconds) * 1000 };
 }
 
-function buildReleaseTimingEvidence(summary = {}) {
+export function buildReleaseTimingEvidence(summary = {}) {
   const jobs = {};
 
   for (const job of summary.jobs ?? []) {
@@ -519,7 +536,7 @@ function buildReleaseTimingEvidence(summary = {}) {
   };
 }
 
-function readReleaseTimingEvidence(env) {
+export function readReleaseTimingEvidence(env) {
   if (env.timings) {
     return env.timings;
   }
@@ -536,7 +553,7 @@ function readReleaseTimingEvidence(env) {
   }
 }
 
-function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
+export function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
   if (smokeResult === 'success') {
     return 'released';
   }
@@ -556,7 +573,7 @@ function deriveReleaseOutcome({ deployResult, smokeResult, rollbackResult }) {
   return 'blocked_before_deploy';
 }
 
-function derivePromotionEligibility(env) {
+export function derivePromotionEligibility(env) {
   const rawEligible = valueOrNull(env.PROMOTION_ELIGIBLE);
   const fallbackEligible =
     valueOrNull(env.VERIFY_STAGING_RESULT) === 'success' &&

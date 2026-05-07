@@ -36,6 +36,23 @@ function ensureOutputDir(outputDir) {
   mkdirSync(resolve(outputDir, 'canary-evidence'), { recursive: true });
 }
 
+export function buildBundleCanaryEvidence({
+  integrity,
+  artifactDir,
+  parser,
+  fallbackFailureBoundary,
+  fallbackDiagnosticPhases,
+  fallbackRedditHosts,
+}) {
+  return integrity?.status === 'ok'
+    ? parser(artifactDir)
+    : buildCanaryEvidenceFallback({
+        failureBoundary: fallbackFailureBoundary,
+        diagnosticPhases: fallbackDiagnosticPhases,
+        redditHosts: fallbackRedditHosts,
+      });
+}
+
 export function buildReleaseEvidenceBundle({
   releaseEvidence,
   productionHealth,
@@ -49,20 +66,21 @@ export function buildReleaseEvidenceBundle({
     linuxProductionBootstrapCanary,
   });
 
-  const windowsCanary =
-    artifactIntegrity.windowsProductionBootstrapCanary.status === 'ok'
-      ? parseWindowsBootstrapCanaryArtifact(windowsProductionBootstrapCanary.artifactDir)
-      : buildCanaryEvidenceFallback({
-          failureBoundary: releaseEvidence?.diagnostics?.windowsProductionBootstrapFailureBoundary,
-          redditHosts: buildFallbackWindowsRedditHosts(),
-        });
+  const windowsCanary = buildBundleCanaryEvidence({
+    integrity: artifactIntegrity.windowsProductionBootstrapCanary,
+    artifactDir: windowsProductionBootstrapCanary.artifactDir,
+    parser: parseWindowsBootstrapCanaryArtifact,
+    fallbackFailureBoundary:
+      releaseEvidence?.diagnostics?.windowsProductionBootstrapFailureBoundary,
+    fallbackRedditHosts: buildFallbackWindowsRedditHosts(),
+  });
 
-  const linuxCanary =
-    artifactIntegrity.linuxProductionBootstrapCanary.status === 'ok'
-      ? parseLinuxBootstrapCanaryArtifact(linuxProductionBootstrapCanary.artifactDir)
-      : buildCanaryEvidenceFallback({
-          failureBoundary: releaseEvidence?.diagnostics?.linuxProductionBootstrapFailureBoundary,
-        });
+  const linuxCanary = buildBundleCanaryEvidence({
+    integrity: artifactIntegrity.linuxProductionBootstrapCanary,
+    artifactDir: linuxProductionBootstrapCanary.artifactDir,
+    parser: parseLinuxBootstrapCanaryArtifact,
+    fallbackFailureBoundary: releaseEvidence?.diagnostics?.linuxProductionBootstrapFailureBoundary,
+  });
 
   const bundle = {
     ...releaseEvidence,

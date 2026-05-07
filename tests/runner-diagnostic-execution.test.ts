@@ -3,8 +3,13 @@ import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 
 import {
+  buildLinuxAjaxCanaryEnvironment,
   buildRunnerDiagnosticPlan,
+  buildWindowsAjaxCanaryGuestEnvironment,
+  emitRunnerDiagnosticEnvironment,
   summarizeRunnerDiagnosticPlan,
+  summarizeRunnerDiagnosticArtifact,
+  uploadRunnerDiagnosticPlanFiles,
   validateRunnerDiagnosticPlan,
 } from '../scripts/lib/runner-diagnostic-execution.mjs';
 
@@ -120,5 +125,194 @@ describe('runner diagnostic execution plan', () => {
     assert.deepEqual(validateRunnerDiagnosticPlan(plan), [
       'Direct Linux AJAX diagnostics reset local OpenPath state; pass --confirm-local-state-reset.',
     ]);
+  });
+
+  test('builds Windows AJAX guest environment from the diagnostic plan', () => {
+    const plan = buildRunnerDiagnosticPlan({
+      platform: 'windows',
+      suite: 'ajax-auto-allow',
+      environment: 'staging',
+      baseUrl: 'http://192.168.1.114:3000',
+      artifactDir: '/tmp/windows-direct',
+      openpathRoot: '/repo/OpenPath',
+    });
+
+    const env = buildWindowsAjaxCanaryGuestEnvironment({
+      plan,
+      summary: {
+        apiUrl: 'http://192.168.1.114:3000',
+        groupId: 'group-123',
+      },
+      billingContext: {
+        adminToken: 'admin-token',
+      },
+      canaryTimeoutMs: '180000',
+      postFailureObservationMs: '60000',
+      localFirefoxExtension: {
+        remotePath: 'C:\\Windows\\Temp\\openpath-ajax-direct\\openpath-firefox-extension.xpi',
+      },
+    });
+
+    assert.equal(env.OPENPATH_ROOT, 'C:\\OpenPath');
+    assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL, 'http://192.168.1.114:3000');
+    assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID, 'group-123');
+    assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN, 'admin-token');
+    assert.equal(
+      env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT,
+      'C:\\Windows\\Temp\\openpath-ajax-direct\\production-windows-ajax-auto-allow-canary.json'
+    );
+    assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS, '180000');
+    assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS, '60000');
+    assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE, 'selenium');
+    assert.equal(
+      env.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH,
+      'C:\\Windows\\Temp\\openpath-ajax-direct\\openpath-firefox-extension.xpi'
+    );
+  });
+
+  test('builds Linux AJAX canary environment from the diagnostic plan', () => {
+    const plan = buildRunnerDiagnosticPlan({
+      platform: 'linux',
+      suite: 'ajax-auto-allow',
+      environment: 'staging',
+      baseUrl: 'http://192.168.1.114:3000',
+      artifactDir: '/tmp/linux-direct',
+      confirmLocalStateReset: true,
+    });
+
+    const env = buildLinuxAjaxCanaryEnvironment({
+      plan,
+      groupId: 'group-123',
+      adminToken: 'admin-token',
+      extensionId: 'monitor-bloqueos@openpath',
+    });
+
+    assert.equal(env.LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL, 'http://192.168.1.114:3000');
+    assert.equal(env.LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID, 'group-123');
+    assert.equal(env.LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN, 'admin-token');
+    assert.equal(
+      env.LINUX_AJAX_AUTO_ALLOW_CANARY_ARTIFACT,
+      resolve('/tmp/linux-direct', 'production-linux-ajax-auto-allow-canary.json')
+    );
+    assert.equal(env.EXPECTED_EXTENSION_ID, 'monitor-bloqueos@openpath');
+  });
+
+  test('uploads plan-declared files through an execution adapter', () => {
+    const plan = buildRunnerDiagnosticPlan({
+      platform: 'windows',
+      suite: 'ajax-auto-allow',
+      environment: 'staging',
+      baseUrl: 'http://192.168.1.114:3000',
+      artifactDir: '/tmp/windows-direct',
+      openpathRoot: '/repo/OpenPath',
+    });
+    const uploads = [];
+
+    uploadRunnerDiagnosticPlanFiles(plan, {
+      projectRoot: '/repo/ClassroomPath',
+      openpathRoot: '/repo/OpenPath',
+      writeText: (sourcePath, destinationPath) => {
+        uploads.push({ sourcePath, destinationPath });
+      },
+    });
+
+    assert.equal(
+      uploads[0].sourcePath,
+      resolve('/repo/OpenPath', 'windows/scripts/Start-SSEListener.ps1')
+    );
+    assert.ok(
+      uploads.some(
+        (upload) =>
+          upload.sourcePath ===
+            resolve('/repo/ClassroomPath', 'scripts/lib/ajax-auto-allow-canary-runtime.mjs') &&
+          upload.destinationPath ===
+            'C:\\Windows\\Temp\\openpath-ajax-direct\\scripts\\lib\\ajax-auto-allow-canary-runtime.mjs'
+      )
+    );
+  });
+
+  test('emits plan environment variables through a shared formatter', () => {
+    const plan = buildRunnerDiagnosticPlan({
+      platform: 'windows',
+      suite: 'ajax-auto-allow',
+      environment: 'staging',
+      baseUrl: 'http://192.168.1.114:3000',
+      artifactDir: '/tmp/windows-direct',
+      openpathRoot: '/repo/OpenPath',
+    });
+    const lines = [];
+
+    emitRunnerDiagnosticEnvironment(plan, {
+      emit: (line) => lines.push(line),
+      prefix: 'guest-env: ',
+      environment: {
+        WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL: 'http://192.168.1.114:3000',
+        WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: 'selenium',
+      },
+    });
+
+    assert.deepEqual(lines, [
+      'guest-env: WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=http://192.168.1.114:3000',
+      'guest-env: WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE=selenium',
+    ]);
+  });
+
+  test('summarizes runner diagnostic artifacts from the plan', () => {
+    const windowsPlan = buildRunnerDiagnosticPlan({
+      platform: 'windows',
+      suite: 'ajax-auto-allow',
+      environment: 'staging',
+      baseUrl: 'http://192.168.1.114:3000',
+      artifactDir: '/tmp/windows-direct',
+      openpathRoot: '/repo/OpenPath',
+    });
+    const dryRunLines = [];
+
+    summarizeRunnerDiagnosticArtifact(windowsPlan, {
+      dryRun: true,
+      emit: (line) => dryRunLines.push(line),
+      outputFields: ['failureBoundary', 'diagnosticPhases'],
+    });
+
+    assert.deepEqual(dryRunLines, [
+      'local: node scripts/summarize-windows-ajax-auto-allow-evidence.mjs --artifact /tmp/windows-direct/production-windows-ajax-auto-allow-canary.json --summary /tmp/windows-direct/windows-ajax-auto-allow-canary-summary.md',
+      'local-artifact-fields: failureBoundary diagnosticPhases',
+    ]);
+
+    const linuxPlan = buildRunnerDiagnosticPlan({
+      platform: 'linux',
+      suite: 'ajax-auto-allow',
+      environment: 'staging',
+      baseUrl: 'http://192.168.1.114:3000',
+      artifactDir: '/tmp/linux-direct',
+      confirmLocalStateReset: true,
+    });
+    let commandCall;
+
+    summarizeRunnerDiagnosticArtifact(linuxPlan, {
+      env: { EXISTING: '1' },
+      runCommand: (call) => {
+        commandCall = call;
+        return 0;
+      },
+      allowFailure: true,
+      logDir: '/tmp/linux-direct',
+      logName: 'summarize-linux-ajax-auto-allow-evidence',
+    });
+
+    assert.equal(commandCall?.command, process.execPath);
+    assert.deepEqual(commandCall?.args, [
+      'scripts/summarize-linux-ajax-auto-allow-evidence.mjs',
+      '--artifact',
+      resolve('/tmp/linux-direct', 'production-linux-ajax-auto-allow-canary.json'),
+      '--summary',
+      resolve('/tmp/linux-direct', 'linux-ajax-auto-allow-canary-summary.md'),
+    ]);
+    assert.equal(
+      commandCall?.env.GITHUB_OUTPUT,
+      resolve('/tmp/linux-direct', 'linux-ajax-auto-allow-canary-summary.env')
+    );
+    assert.equal(commandCall?.allowFailure, true);
+    assert.equal(commandCall?.logName, 'summarize-linux-ajax-auto-allow-evidence');
   });
 });

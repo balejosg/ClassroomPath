@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const WINDOWS_WORKSPACE = 'C:\\Windows\\Temp\\openpath-ajax-direct';
-const OPENPATH_ROOT_ON_WINDOWS = 'C:\\OpenPath';
+export const WINDOWS_WORKSPACE = 'C:\\Windows\\Temp\\openpath-ajax-direct';
+export const OPENPATH_ROOT_ON_WINDOWS = 'C:\\OpenPath';
 const DEFAULT_WINDOWS_RUNNER_VMID = '103';
 const DEFAULT_PROXMOX_HOST = 'whitelist-proxmox';
 
@@ -41,6 +41,14 @@ export const WINDOWS_CANARY_SCRIPT_UPLOADS = [
   {
     source: 'scripts/lib/windows-ajax-auto-allow-runtime.mjs',
     destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\windows-ajax-auto-allow-runtime.mjs`,
+  },
+  {
+    source: 'scripts/lib/ajax-auto-allow-canary-runtime.mjs',
+    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\ajax-auto-allow-canary-runtime.mjs`,
+  },
+  {
+    source: 'scripts/lib/ajax-auto-allow-canary-harness.mjs',
+    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\ajax-auto-allow-canary-harness.mjs`,
   },
   {
     source: 'scripts/lib/canary-progress.mjs',
@@ -241,6 +249,136 @@ export function summarizeRunnerDiagnosticPlan(plan) {
 
 export function summarizeRunnerDiagnosticEnvironmentVariables(plan) {
   return Object.entries(plan.environmentVariables ?? {}).map(([key, value]) => `${key}=${value}`);
+}
+
+export function buildWindowsAjaxCanaryGuestEnvironment({
+  plan,
+  summary,
+  billingContext,
+  canaryTimeoutMs,
+  postFailureObservationMs,
+  localFirefoxExtension = null,
+}) {
+  const workspace = plan.runnerTarget.workspace ?? WINDOWS_WORKSPACE;
+  const environment = {
+    OPENPATH_ROOT: OPENPATH_ROOT_ON_WINDOWS,
+    WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL: summary.apiUrl ?? plan.baseUrl,
+    WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: summary.groupId,
+    WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: billingContext.adminToken,
+    WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT: `${workspace}\\production-windows-ajax-auto-allow-canary.json`,
+    WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS: canaryTimeoutMs,
+    WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS: postFailureObservationMs,
+    WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: plan.firefox.mode ?? 'selenium',
+  };
+
+  if (localFirefoxExtension?.remotePath) {
+    environment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH = localFirefoxExtension.remotePath;
+  }
+
+  return environment;
+}
+
+export function buildLinuxAjaxCanaryEnvironment({ plan, groupId, adminToken, extensionId }) {
+  return {
+    LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: plan.baseUrl,
+    LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: groupId,
+    LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: adminToken,
+    LINUX_AJAX_AUTO_ALLOW_CANARY_ARTIFACT: plan.artifacts.linuxAjaxCanary,
+    EXPECTED_EXTENSION_ID: extensionId,
+  };
+}
+
+export function emitRunnerDiagnosticEnvironment(
+  plan,
+  { emit = console.log, prefix = '', environment = plan.environmentVariables } = {}
+) {
+  for (const [key, value] of Object.entries(environment ?? {})) {
+    if (value !== undefined && value !== null) {
+      emit(`${prefix}${key}=${value}`);
+    }
+  }
+}
+
+export function uploadRunnerDiagnosticPlanFiles(
+  plan,
+  { projectRoot, openpathRoot, writeText, sections = ['openpathOverlays', 'canaryScriptUploads'] }
+) {
+  if (sections.includes('openpathOverlays')) {
+    for (const upload of plan.openpathOverlays) {
+      writeText(resolve(openpathRoot, upload.source), upload.destination);
+    }
+  }
+
+  if (sections.includes('canaryScriptUploads')) {
+    for (const upload of plan.canaryScriptUploads) {
+      writeText(resolve(projectRoot, upload.source), upload.destination);
+    }
+  }
+}
+
+function runnerDiagnosticSummarySpec(plan) {
+  if (plan.platform === 'windows') {
+    return {
+      script: 'scripts/summarize-windows-ajax-auto-allow-evidence.mjs',
+      artifact: plan.artifacts.windowsAjaxCanary,
+      summary: plan.artifacts.windowsAjaxSummary,
+      output: plan.artifacts.windowsAjaxSummaryOutput,
+    };
+  }
+
+  if (plan.platform === 'linux') {
+    return {
+      script: 'scripts/summarize-linux-ajax-auto-allow-evidence.mjs',
+      artifact: plan.artifacts.linuxAjaxCanary,
+      summary: plan.artifacts.linuxAjaxSummary,
+      output: plan.artifacts.linuxAjaxSummaryOutput,
+    };
+  }
+
+  throw new Error(`Unsupported runner diagnostic platform: ${plan.platform}`);
+}
+
+export function summarizeRunnerDiagnosticArtifact(
+  plan,
+  {
+    dryRun = false,
+    emit = console.log,
+    runCommand,
+    nodePath = process.execPath,
+    nodeLabel = 'node',
+    env = process.env,
+    allowFailure = false,
+    logDir = '',
+    logName = '',
+    outputFields = [],
+  } = {}
+) {
+  const spec = runnerDiagnosticSummarySpec(plan);
+  const args = [spec.script, '--artifact', spec.artifact, '--summary', spec.summary];
+
+  if (dryRun) {
+    emit(`local: ${nodeLabel} ${args.join(' ')}`);
+    if (outputFields.length > 0) {
+      emit(`local-artifact-fields: ${outputFields.join(' ')}`);
+    }
+    return undefined;
+  }
+
+  if (typeof runCommand !== 'function') {
+    throw new Error('runCommand adapter is required to summarize runner diagnostic artifacts');
+  }
+
+  return runCommand({
+    command: nodePath,
+    args,
+    env: {
+      ...env,
+      GITHUB_OUTPUT: spec.output,
+    },
+    allowFailure,
+    logDir,
+    logName,
+  });
 }
 
 export function initializeRunnerDiagnosticRuntime(

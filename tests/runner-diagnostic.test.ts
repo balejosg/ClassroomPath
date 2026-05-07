@@ -634,11 +634,13 @@ describe('runner diagnostic wrapper', () => {
 
   test('direct Linux AJAX diagnostic delegates artifact and canary facts to the shared execution module', () => {
     const script = readProjectText('scripts/run-linux-ajax-direct.mjs');
+    const executionModule = readProjectText('scripts/lib/runner-diagnostic-execution.mjs');
 
     assert.match(script, /buildRunnerDiagnosticPlan/);
     assert.match(script, /validateRunnerDiagnosticPlan/);
-    assert.match(script, /plan\.artifacts\.linuxAjaxCanary/);
+    assert.match(script, /buildLinuxAjaxCanaryEnvironment/);
     assert.match(script, /plan\.canary\.command/);
+    assert.match(executionModule, /plan\.artifacts\.linuxAjaxCanary/);
   });
 
   test('direct AJAX diagnostics delegate shared runtime lifecycle to the execution module', () => {
@@ -652,6 +654,21 @@ describe('runner diagnostic wrapper', () => {
       assert.match(script, /initializeRunnerDiagnosticRuntime/);
       assert.doesNotMatch(script, /function loadEnvLocal/);
     }
+  });
+
+  test('direct AJAX diagnostics delegate uploads, environment, and result summaries', () => {
+    const windowsScript = readProjectText('scripts/run-windows-ajax-direct.mjs');
+    const linuxScript = readProjectText('scripts/run-linux-ajax-direct.mjs');
+
+    assert.match(windowsScript, /uploadRunnerDiagnosticPlanFiles/);
+    assert.match(windowsScript, /buildWindowsAjaxCanaryGuestEnvironment/);
+    assert.match(windowsScript, /emitRunnerDiagnosticEnvironment/);
+    assert.match(windowsScript, /summarizeRunnerDiagnosticArtifact/);
+    assert.doesNotMatch(windowsScript, /writeGuestText\(options,\s*resolve\(options\.openpathRoot/);
+    assert.doesNotMatch(windowsScript, /writeGuestText\(options,\s*resolve\(projectRoot/);
+
+    assert.match(linuxScript, /buildLinuxAjaxCanaryEnvironment/);
+    assert.match(linuxScript, /summarizeRunnerDiagnosticArtifact/);
   });
 
   test('direct Linux AJAX diagnostic preflights before provisioning remote canaries', () => {
@@ -746,8 +763,9 @@ describe('runner diagnostic wrapper', () => {
 
   test('direct Windows AJAX diagnostic extends the browser canary timeout for local runner feedback', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+    const executionModule = readProjectText('scripts/lib/runner-diagnostic-execution.mjs');
 
-    assert.match(script, /WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS/);
+    assert.match(executionModule, /WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS/);
     assert.match(script, /DEFAULT_CANARY_TIMEOUT_MS = '180000'/);
     assert.match(script, /--canary-timeout-ms/);
   });
@@ -755,8 +773,9 @@ describe('runner diagnostic wrapper', () => {
   test('direct Windows AJAX diagnostic captures late local sync after canary failure', () => {
     const directScript = readProjectText('scripts/run-windows-ajax-direct.mjs');
     const canaryScript = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
+    const executionModule = readProjectText('scripts/lib/runner-diagnostic-execution.mjs');
 
-    assert.match(directScript, /WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS/);
+    assert.match(executionModule, /WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS/);
     assert.match(directScript, /DEFAULT_POST_FAILURE_OBSERVATION_MS = '60000'/);
     assert.match(directScript, /--post-failure-observation-ms/);
     assert.match(canaryScript, /POST_FAILURE_OBSERVATION_MS/);
@@ -775,7 +794,8 @@ describe('runner diagnostic wrapper', () => {
     const script = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
     const sharedHarness = readProjectText('scripts/lib/ajax-auto-allow-canary-harness.mjs');
 
-    assert.match(script, /createAjaxAutoAllowCanaryServer/);
+    assert.match(script, /createAjaxAutoAllowCanaryRuntimeServer/);
+    assert.match(script, /emitAjaxAutoAllowCanaryRuntimeSummary/);
     assert.match(sharedHarness, /pageResourceCandidateEvents/);
     assert.match(sharedHarness, /openpath-page-resource-candidate/);
     assert.match(sharedHarness, /completedCandidateEvents/);
@@ -793,18 +813,20 @@ describe('runner diagnostic wrapper', () => {
 
   test('direct Windows AJAX diagnostic passes server diagnostics context to the canary', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+    const executionModule = readProjectText('scripts/lib/runner-diagnostic-execution.mjs');
 
-    assert.match(script, /WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID/);
-    assert.match(script, /WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN/);
+    assert.match(executionModule, /WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID/);
+    assert.match(executionModule, /WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN/);
     assert.match(script, /summary\.groupId/);
     assert.match(script, /billingContext\.adminToken/);
   });
 
   test('direct Windows AJAX diagnostic preserves boundary-enriched artifacts locally', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+    const executionModule = readProjectText('scripts/lib/runner-diagnostic-execution.mjs');
 
-    assert.match(script, /summarize-windows-ajax-auto-allow-evidence\.mjs/);
-    assert.match(script, /production-windows-ajax-auto-allow-canary\.json/);
+    assert.match(executionModule, /summarize-windows-ajax-auto-allow-evidence\.mjs/);
+    assert.match(executionModule, /production-windows-ajax-auto-allow-canary\.json/);
     assert.match(script, /failureBoundary/);
     assert.match(script, /diagnosticPhases/);
   });

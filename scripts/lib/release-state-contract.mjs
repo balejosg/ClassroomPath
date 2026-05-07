@@ -2,7 +2,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import {
+  buildPromotionEligibilityOutputs as buildPromotionEligibilityOutputsFromReleaseEvidence,
   buildStagingReleaseEvidenceOutputs as buildStagingReleaseEvidenceOutputsFromReleaseEvidence,
+  evaluatePromotionEligibility as evaluatePromotionEligibilityFromReleaseEvidence,
   validateCurrentReleaseState as validateCurrentReleaseStateFromReleaseEvidence,
   validateHighRiskStagingVerification as validateHighRiskStagingVerificationFromReleaseEvidence,
   validateSignedFirefoxReleaseStagingVerification as validateSignedFirefoxReleaseStagingVerificationFromReleaseEvidence,
@@ -372,4 +374,26 @@ export function validateHighRiskStagingVerification(snapshot) {
 
 export function buildStagingReleaseEvidenceOutputs(snapshot) {
   return buildStagingReleaseEvidenceOutputsFromReleaseEvidence(snapshot);
+}
+
+export function validateReleaseStatePromotionEvidence({
+  deploymentMode = 'promotion-eligible',
+  imageSource,
+  currentState,
+  verificationState,
+  expectedRuntime,
+  highRisk = false,
+}) {
+  return evaluatePromotionEligibilityFromReleaseEvidence({
+    deploymentMode,
+    imageSource: imageSource ?? currentState?.IMAGE_SOURCE ?? 'source-build',
+    currentState,
+    verificationState,
+    expectedRuntime,
+    highRisk,
+  });
+}
+
+export function buildReleaseStatePromotionOutputs(report) {
+  return buildPromotionEligibilityOutputsFromReleaseEvidence(report);
 }

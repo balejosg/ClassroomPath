@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 
 import {
@@ -9,6 +12,11 @@ import {
   openUrlWithTransientBrowserRetry,
   waitForAjaxAutoAllowPageObserver,
 } from '../scripts/lib/ajax-auto-allow-canary-harness.mjs';
+import {
+  createAjaxAutoAllowCanaryRuntimeServer,
+  emitAjaxAutoAllowCanaryRuntimeSummary,
+  listenAjaxAutoAllowCanaryRuntimeServer,
+} from '../scripts/lib/ajax-auto-allow-canary-runtime.mjs';
 
 const probes = Object.freeze([
   {
@@ -251,5 +259,100 @@ describe('shared AJAX auto-allow canary harness', () => {
 
     assert.equal(result.opened, true);
     assert.deepEqual(events, ['driver-get:http://ajax-origin.127.0.0.1.sslip.io:18088/']);
+  });
+
+  test('runtime server lifecycle delegates page and result behavior through a platform adapter', async () => {
+    let resultPayload: unknown = null;
+    const { state, server } = createAjaxAutoAllowCanaryRuntimeServer({
+      platformAdapter: {
+        label: 'Adapter',
+        probes,
+        originHost: 'ajax-origin.127.0.0.1.sslip.io',
+        stateGlobalName: '__openpathAdapterAjaxCanaryState',
+        scriptGlobalName: '__openpathAdapterAjaxScriptProbe',
+        stylesheetCss: 'body { --adapter-probe: loaded; }',
+      },
+      port: 18093,
+      timeoutMs: 90000,
+      probeTimeoutMs: 4000,
+      onResult: (payload) => {
+        resultPayload = payload;
+      },
+    });
+
+    await listenAjaxAutoAllowCanaryRuntimeServer(server, { port: 18093, host: '127.0.0.1' });
+    try {
+      const page = await fetch('http://ajax-origin.127.0.0.1.sslip.io:18093/').then((response) =>
+        response.text()
+      );
+      assert.match(page, /Adapter AJAX Auto-Allow Canary/);
+      assert.match(page, /__openpathAdapterAjaxCanaryState/);
+
+      await fetch('http://ajax-origin.127.0.0.1.sslip.io:18093/result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: true, custom: 'adapter-result' }),
+      });
+
+      assert.equal(state.originPageHits, 1);
+      assert.deepEqual(resultPayload, { success: true, custom: 'adapter-result' });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('runtime summary emission preserves artifact, progress, log, and boundary outputs', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'ajax-runtime-summary-'));
+    const artifactPath = join(tempDir, 'summary.json');
+    const progressEvents: unknown[] = [];
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const githubOutputs: [string, string][] = [];
+    const summary = {
+      success: false,
+      failureBoundary: {
+        id: 'probe-traffic',
+        message: 'Probe traffic did not converge.',
+      },
+    };
+
+    try {
+      await emitAjaxAutoAllowCanaryRuntimeSummary({
+        summary,
+        artifactPath,
+        summaryPrefix: 'ADAPTER_AJAX_SUMMARY',
+        resultOutputKey: 'adapter_ajax_result',
+        failureBoundaryOutputs: true,
+        progress: (phase, status, details) => {
+          progressEvents.push({ phase, status, ...details });
+        },
+        output: {
+          log: (line) => logs.push(line),
+          error: (line) => errors.push(line),
+        },
+        githubOutput: (key, value) => {
+          githubOutputs.push([key, value]);
+        },
+      });
+
+      assert.deepEqual(JSON.parse(await readFile(artifactPath, 'utf8')), summary);
+      assert.deepEqual(progressEvents, [
+        {
+          phase: 'artifact-written',
+          status: 'failed',
+          boundaryId: 'probe-traffic',
+          message: 'Probe traffic did not converge.',
+        },
+      ]);
+      assert.deepEqual(logs, []);
+      assert.deepEqual(errors, [`ADAPTER_AJAX_SUMMARY ${JSON.stringify(summary)}`]);
+      assert.deepEqual(githubOutputs, [
+        ['adapter_ajax_result', 'failure'],
+        ['failure_boundary_id', 'probe-traffic'],
+        ['failure_boundary_message', 'Probe traffic did not converge.'],
+      ]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

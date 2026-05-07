@@ -1,5 +1,4 @@
-import { appendFileSync } from 'node:fs';
-import { mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -15,17 +14,17 @@ import {
   redactSensitiveWindowsCanaryValue,
   redactWindowsCanaryObject,
 } from './windows-auto-allow-canary-evidence.mjs';
+import { buildAjaxAutoAllowProbeUrl } from './ajax-auto-allow-canary-harness.mjs';
 import {
-  buildAjaxAutoAllowCanaryPage,
-  buildAjaxAutoAllowProbeUrl,
-  createAjaxAutoAllowCanaryServer,
-  createAjaxAutoAllowCanaryState,
-} from './ajax-auto-allow-canary-harness.mjs';
+  createAjaxAutoAllowCanaryRuntimeProgress,
+  createAjaxAutoAllowCanaryRuntimeServer,
+  emitAjaxAutoAllowCanaryRuntimeSummary,
+  listenAjaxAutoAllowCanaryRuntimeServer,
+} from './ajax-auto-allow-canary-runtime.mjs';
 import {
   evidenceContainsAllExpectedHosts,
   waitForEvidenceObservation,
 } from './auto-allow-observation.mjs';
-import { createCanaryProgressReporter } from './canary-progress.mjs';
 const PORT = Number.parseInt(process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_PORT ?? '18088', 10);
 const TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS ?? '90000',
@@ -143,7 +142,7 @@ export function createWindowsAjaxAutoAllowRuntimeConfig(env = process.env) {
 }
 
 async function runInjectedRuntime(config, adapters) {
-  const progress = createCanaryProgressReporter({
+  const progress = createAjaxAutoAllowCanaryRuntimeProgress({
     canary: 'windows-ajax',
     output: (line) => adapters.output.error?.(line),
   });
@@ -218,12 +217,17 @@ async function runInjectedRuntime(config, adapters) {
         },
       });
 
-      await adapters.filesystem.writeArtifact(
-        config.artifactPath,
-        `${JSON.stringify(summary, null, 2)}\n`
-      );
-      adapters.output.error?.(`WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`);
-      adapters.output.githubOutput?.('windows_ajax_auto_allow_result', 'failure');
+      await emitAjaxAutoAllowCanaryRuntimeSummary({
+        summary,
+        artifactPath: config.artifactPath,
+        summaryPrefix: 'WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY',
+        resultOutputKey: 'windows_ajax_auto_allow_result',
+        emitArtifactProgress: false,
+        output: adapters.output,
+        githubOutput: adapters.output.githubOutput,
+        writeArtifact: adapters.filesystem.writeArtifact,
+        summaryOutputStream: () => 'error',
+      });
       throw new Error(`Windows AJAX auto-allow canary failed: ${JSON.stringify(summary)}`);
     }
 
@@ -262,14 +266,6 @@ function findFirefox() {
   return firefoxPath;
 }
 
-function writeGithubOutput(key, value) {
-  if (!process.env.GITHUB_OUTPUT) {
-    return;
-  }
-
-  appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${String(value)}\n`, 'utf8');
-}
-
 function buildProbeUrl(probe, port = PORT) {
   return buildAjaxAutoAllowProbeUrl(probe, port);
 }
@@ -287,34 +283,25 @@ function createWindowsAjaxCanaryHarness({
   // document.createElement('link'), loadFont, loadStylesheetFont, @font-face, fontFamily,
   // /probe-state?probe=, withTimeout(runProbeOnce(probe), req.url === '/attempt',
   // reportAttempt(attemptResult, completed), and font/woff2.
-  const state = createAjaxAutoAllowCanaryState(probes, { redditDiagnosticProbes });
-  const server = createAjaxAutoAllowCanaryServer({
-    platform: 'Windows',
-    probes,
-    originHost: ORIGIN_HOST,
+  return createAjaxAutoAllowCanaryRuntimeServer({
+    platformAdapter: {
+      label: 'Windows',
+      probes,
+      redditDiagnosticProbes,
+      originHost: ORIGIN_HOST,
+      stateGlobalName: '__openpathWindowsAjaxCanaryState',
+      scriptGlobalName: '__openpathAjaxAutoAllowScriptProbe',
+      stylesheetCss: 'body { --openpath-ajax-auto-allow-style-probe: loaded; }',
+      statusElement: true,
+      redact: redactWindowsCanaryObject,
+    },
     port,
-    state,
-    maxAttempts: maxAttemptEvidence,
-    redact: redactWindowsCanaryObject,
-    scriptGlobalName: '__openpathAjaxAutoAllowScriptProbe',
-    stylesheetCss: 'body { --openpath-ajax-auto-allow-style-probe: loaded; }',
+    timeoutMs,
+    probeTimeoutMs: PROBE_TIMEOUT_MS,
+    redditDiagnosticTimeoutMs: REDDIT_DIAGNOSTIC_TIMEOUT_MS,
+    maxAttemptEvidence,
     onResult,
-    buildPage: () =>
-      buildAjaxAutoAllowCanaryPage({
-        platform: 'Windows',
-        probes,
-        redditDiagnosticProbes,
-        originHost: ORIGIN_HOST,
-        port,
-        timeoutMs,
-        probeTimeoutMs: PROBE_TIMEOUT_MS,
-        redditDiagnosticTimeoutMs: REDDIT_DIAGNOSTIC_TIMEOUT_MS,
-        stateGlobalName: '__openpathWindowsAjaxCanaryState',
-        statusElement: true,
-      }),
   });
-
-  return { state, server };
 }
 
 function sleep(ms) {
@@ -959,7 +946,7 @@ async function readWhitelistContainsHost(host) {
 }
 
 async function main() {
-  const progress = createCanaryProgressReporter({ canary: 'windows-ajax' });
+  const progress = createAjaxAutoAllowCanaryRuntimeProgress({ canary: 'windows-ajax' });
   progress('bootstrap', 'started', { message: 'Starting Windows AJAX auto-allow canary' });
   const firefoxPath = findFirefox();
   const targetUrl = buildProbeUrl(AUTO_ALLOW_PROBES[0]);
@@ -971,10 +958,7 @@ async function main() {
   });
   const { state, server } = createWindowsAjaxCanaryHarness({ onResult: resolveResult });
 
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(PORT, '0.0.0.0', resolve);
-  });
+  await listenAjaxAutoAllowCanaryRuntimeServer(server, { port: PORT });
   progress('bootstrap', 'passed', { boundaryId: 'none' });
 
   const preflightDiagnostics = await collectWindowsAutoAllowDiagnostics('preflight');
@@ -1048,9 +1032,14 @@ async function main() {
       },
     });
 
-    await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
-    console.error(`WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`);
-    writeGithubOutput('windows_ajax_auto_allow_result', 'failure');
+    await emitAjaxAutoAllowCanaryRuntimeSummary({
+      summary,
+      artifactPath: ARTIFACT_PATH,
+      summaryPrefix: 'WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY',
+      resultOutputKey: 'windows_ajax_auto_allow_result',
+      emitArtifactProgress: false,
+      summaryOutputStream: () => 'error',
+    });
     server.close();
     await rm(profileDir, { recursive: true, force: true }).catch(() => {});
     await restoreFirefoxEnterprisePolicy(managedPolicySuspension).catch(() => {});
@@ -1184,18 +1173,13 @@ async function main() {
       },
     });
 
-    await writeFile(ARTIFACT_PATH, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
-    progress('artifact-written', summary.success ? 'passed' : 'failed', {
-      boundaryId: summary.failureBoundary?.id ?? 'unknown',
-      message: summary.failureBoundary?.message ?? '',
+    await emitAjaxAutoAllowCanaryRuntimeSummary({
+      summary,
+      artifactPath: ARTIFACT_PATH,
+      summaryPrefix: 'WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY',
+      resultOutputKey: 'windows_ajax_auto_allow_result',
+      progress,
     });
-    const summaryLine = `WINDOWS_AJAX_AUTO_ALLOW_CANARY_SUMMARY ${JSON.stringify(summary)}`;
-    if (summary.success) {
-      console.log(summaryLine);
-    } else {
-      console.error(summaryLine);
-    }
-    writeGithubOutput('windows_ajax_auto_allow_result', summary.success ? 'success' : 'failure');
 
     assertWindowsAutoAllowCanarySuccess(summary);
   } finally {

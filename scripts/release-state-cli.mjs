@@ -4,14 +4,12 @@ import { appendFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
 import {
+  buildReleaseStatePromotionOutputs,
   getReleaseStateSnapshotFields,
   readReleaseStateSnapshot,
+  validateReleaseStatePromotionEvidence,
   writeReleaseStateSnapshot,
 } from './lib/release-state-contract.mjs';
-import {
-  buildPromotionEligibilityOutputs,
-  evaluatePromotionEligibility,
-} from './lib/release-evidence.mjs';
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
@@ -115,11 +113,8 @@ async function main() {
       const verificationState = readReleaseStateSnapshot(verificationPath);
       const expected = expectedRuntimeFromEnv(process.env);
 
-      const report = evaluatePromotionEligibility({
+      const report = validateReleaseStatePromotionEvidence({
         deploymentMode,
-        imageSource: /** @type {'release-candidate' | 'source-build'} */ (
-          currentState.IMAGE_SOURCE ?? 'source-build'
-        ),
         currentState,
         verificationState,
         expectedRuntime: expected,
@@ -134,7 +129,7 @@ async function main() {
         return;
       }
 
-      appendOutputs(githubOutput, buildPromotionEligibilityOutputs(report));
+      appendOutputs(githubOutput, buildReleaseStatePromotionOutputs(report));
       return;
     }
     default:
