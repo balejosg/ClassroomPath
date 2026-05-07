@@ -105,7 +105,7 @@ describe('Release candidate workflow contracts', () => {
     }
   });
 
-  test('release candidate detector changes rebuild every image family', async () => {
+  test('release candidate detector changes rebuild server images without forcing Firefox signing', async () => {
     const { classifyReleaseCandidateComponents } =
       await import('../scripts/lib/release-candidate-components.mjs');
 
@@ -125,7 +125,7 @@ describe('Release candidate workflow contracts', () => {
         spaChanged: true,
         verifierChanged: true,
       });
-      assert.equal(flags.openpathFirefoxAssetsChanged, true);
+      assert.equal(flags.openpathFirefoxAssetsChanged, false);
     }
   });
 

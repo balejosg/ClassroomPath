@@ -53,7 +53,6 @@ function markReleaseCandidateServerImagesChanged(flags) {
   flags.gatewayChanged = true;
   flags.migrationsChanged = true;
   flags.openpathApiChanged = true;
-  flags.openpathFirefoxAssetsChanged = true;
   flags.spaChanged = true;
   flags.verifierChanged = true;
 }

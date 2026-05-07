@@ -34,7 +34,7 @@ describe('release candidate component classification', () => {
     assert.equal(flags.verifierChanged, true);
   });
 
-  test('keeps OpenPath Firefox signing tooling changes out of Firefox release assets', () => {
+  test('maps OpenPath Firefox signing release tooling changes to Firefox assets', () => {
     const flags = classifyOpenPathChangedPaths([
       'firefox-extension/sign-firefox-release.mjs',
       'firefox-extension/tests/firefox-release.test.ts',
@@ -42,8 +42,8 @@ describe('release candidate component classification', () => {
     ]);
 
     assert.equal(flags.openpathApiChanged, false);
-    assert.equal(flags.openpathFirefoxAssetsChanged, false);
-    assert.equal(flags.verifierChanged, false);
+    assert.equal(flags.openpathFirefoxAssetsChanged, true);
+    assert.equal(flags.verifierChanged, true);
   });
 
   test('maps release-candidate image workflow plumbing changes to every server image family', () => {

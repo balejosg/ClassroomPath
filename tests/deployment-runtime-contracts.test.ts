@@ -318,9 +318,10 @@ describe('Deployment runtime contracts', () => {
         ) &&
         deployProductionRuntimeHelper.includes('verify_deploy_container_platform') &&
         deployProductionRuntimeHelper.includes('CP_REQUIRE_PUSH_NOTIFICATIONS=1') &&
-        syncBillingEnvScript.includes('VAPID_PUBLIC_KEY') &&
-        syncBillingEnvScript.includes('VAPID_PRIVATE_KEY') &&
-        syncBillingEnvScript.includes('VAPID_CONTACT') &&
+        syncBillingEnvScript.includes('runtime_policy_names push-env-names') &&
+        syncBillingEnvScript.includes('readarray -t push_vars') &&
+        syncBillingEnvScript.includes('for name in "${push_vars[@]}"') &&
+        syncBillingEnvScript.includes('upsert_env_var "$ENV_FILE" "$name" "${!name}"') &&
         syncBillingEnvScript.includes('VAPID_SUBJECT')
     );
     assert.ok(

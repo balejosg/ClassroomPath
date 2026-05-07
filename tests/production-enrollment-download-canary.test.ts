@@ -27,7 +27,8 @@ describe('production enrollment download canary', () => {
         if (String(url).endsWith('/windows.ps1')) {
           return new Response(
             [
-              '# OpenPath Enrollment (Windows)',
+              "$ErrorActionPreference = 'Stop'",
+              "$ProgressPreference = 'SilentlyContinue'",
               '$env:OPENPATH_VERSION = "0.0.20260421051157"',
               'api/agent/windows/bootstrap/manifest',
               'Install-OpenPath.ps1',
@@ -88,7 +89,8 @@ describe('production enrollment download canary', () => {
         if (String(url).endsWith('/windows.ps1')) {
           return new Response(
             [
-              '# OpenPath Enrollment (Windows)',
+              "$ErrorActionPreference = 'Stop'",
+              "$ProgressPreference = 'SilentlyContinue'",
               '$env:OPENPATH_VERSION = "0.0.20260421051157"',
               'api/agent/windows/bootstrap/manifest',
               'Install-OpenPath.ps1',

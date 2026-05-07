@@ -445,6 +445,11 @@ describe('Deploy workflow contracts', () => {
       /api\/agent\/windows\/bootstrap\/manifest/
     );
     assert.match(String(windowsEnrollmentStep?.run ?? ''), /\$env:OPENPATH_VERSION/);
+    assert.doesNotMatch(
+      String(windowsEnrollmentStep?.run ?? ''),
+      /OpenPath Enrollment \(Windows\)/,
+      'production smoke must not depend on non-functional Windows enrollment banner text'
+    );
     const runProductionSmokeStepIndex =
       productionSmokeJob?.steps?.findIndex((step) =>
         String(step.name ?? '').includes('Run smoke tests against production')

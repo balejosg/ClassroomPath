@@ -599,7 +599,6 @@ jobs:
           fi
 
           test -s "$windows_script"
-          grep -F 'OpenPath Enrollment (Windows)' "$windows_script"
           grep -F 'api/agent/windows/bootstrap/manifest' "$windows_script"
           grep -F '$env:OPENPATH_VERSION' "$windows_script"
           grep -F 'Install-OpenPath.ps1' "$windows_script"

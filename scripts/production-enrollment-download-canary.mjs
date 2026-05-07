@@ -47,7 +47,6 @@ function linuxMarkerChecks(content, expectedLinuxAgentVersion) {
 function windowsMarkerChecks(content) {
   const script = String(content ?? '');
   return {
-    hasEnrollmentTitle: script.includes('OpenPath Enrollment (Windows)'),
     hasBootstrapManifestPath: script.includes('api/agent/windows/bootstrap/manifest'),
     hasOpenPathVersionEnv: script.includes('$env:OPENPATH_VERSION'),
     hasInstallScriptReference: script.includes('Install-OpenPath.ps1'),
