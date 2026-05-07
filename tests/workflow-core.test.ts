@@ -124,6 +124,42 @@ describe('Workflow core contracts', () => {
     }
   });
 
+  test('verify trailers workflow exempts dependency and release bots while enforcing human pushes', () => {
+    const workflowText = readText('.github/workflows/verify-trailers.yml');
+    const workflow = readWorkflow('.github/workflows/verify-trailers.yml');
+
+    assert.ok(workflow.on?.pull_request, 'verify trailers must run on pull requests');
+    assert.ok(workflow.on?.push, 'verify trailers must run on main pushes');
+
+    for (const required of [
+      'EVENT_NAME: ${{ github.event_name }}',
+      'ACTOR: ${{ github.actor }}',
+      'BEFORE_SHA: ${{ github.event.before }}',
+      'AFTER_SHA: ${{ github.sha }}',
+      'dependabot[bot]',
+      'github-actions[bot]',
+      'classroompath-openpath-sync',
+      'is_exempt_actor',
+      'is_exempt_commit_author',
+      'no-commits',
+      'bot-exempt',
+      'human-required',
+      'Verified-by: pre-commit',
+      'Commit $c missing verification marker',
+    ]) {
+      assert.ok(workflowText.includes(required), `verify-trailers.yml should include ${required}`);
+    }
+
+    assert.ok(
+      workflowText.includes('git rev-list --no-merges "$BEFORE_SHA..$AFTER_SHA"'),
+      'verify-trailers.yml should validate push ranges on main'
+    );
+    assert.ok(
+      workflowText.includes('git rev-list --no-merges "$base_ref"..HEAD'),
+      'verify-trailers.yml should validate pull request ranges against the base branch'
+    );
+  });
+
   test('self-hosted Windows jobs restore runner DNS before checkout', () => {
     const coveredJobs: string[] = [];
 
