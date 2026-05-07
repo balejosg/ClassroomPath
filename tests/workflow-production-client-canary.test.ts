@@ -1490,6 +1490,20 @@ describe('Production client update canary workflow contracts', () => {
         ),
       'Windows AJAX canary workflow should pass base URL, canary group, and protected diagnostics token into the diagnostic script'
     );
+    assert.ok(
+      workflowText.includes('Firefox did not register the force-installed extension'),
+      'Windows bootstrap canary must fail when Firefox only emits policy logs'
+    );
+    assert.ok(
+      workflowText.includes('$extensionActive'),
+      'Windows bootstrap canary must require active Firefox runtime registration'
+    );
+    assert.ok(
+      !workflowText.includes(
+        'Firefox neither registered the force-installed extension nor emitted enterprise policy logs'
+      ),
+      'Windows bootstrap canary must not accept logs-only extension evidence'
+    );
     assert.ok(ajaxCanaryScript.includes('C:\\\\OpenPath\\\\data\\\\whitelist.txt'));
     assert.ok(
       ajaxCanaryEvidenceText.includes('Auto-allow AJAX target was not written to whitelist')

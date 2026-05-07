@@ -772,6 +772,16 @@ describe('Workflow core contracts', () => {
     assert.ok(productionBootstrapWorkflowText.includes('extensions.json'));
     assert.ok(
       productionBootstrapWorkflowText.includes(
+        'Firefox did not register the force-installed extension'
+      )
+    );
+    assert.ok(
+      !productionBootstrapWorkflowText.includes(
+        'Firefox neither registered the force-installed extension nor emitted enterprise policy logs'
+      )
+    );
+    assert.ok(
+      productionBootstrapWorkflowText.includes(
         'node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" publicUrl'
       )
     );

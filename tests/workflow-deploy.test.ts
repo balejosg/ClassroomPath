@@ -566,10 +566,21 @@ describe('Deploy workflow contracts', () => {
     );
     assert.ok(jobs['release-evidence']);
     assert.ok(jobs['windows-firefox-canary']);
+    assert.ok(jobs['windows-staging-bootstrap-canary']);
     assert.equal(
       jobs['windows-firefox-canary']?.uses,
       './.github/workflows/windows-firefox-canary.yml'
     );
+    assert.equal(
+      jobs['windows-staging-bootstrap-canary']?.uses,
+      './.github/workflows/windows-production-bootstrap-canary.yml'
+    );
+    assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.target_environment, 'staging');
+    assert.match(
+      String(jobs['windows-staging-bootstrap-canary']?.with?.base_url ?? ''),
+      /needs\.resolve-release-images\.outputs\.staging_public_url/
+    );
+    assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, 'false');
     assert.ok(
       !('continue-on-error' in jobs['windows-firefox-canary']),
       'reusable workflow jobs cannot use continue-on-error in the caller'
@@ -595,7 +606,7 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       deployWorkflowText,
-      /"WINDOWS_STAGING_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_windows_bootstrap_result \}\}"/
+      /"WINDOWS_STAGING_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-staging-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-staging-bootstrap-canary\.result \}\}"/
     );
     assert.match(
       deployWorkflowText,
@@ -611,16 +622,19 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       deployWorkflowText,
-      /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "not_run_preproduction_authoritative"/
-    );
-    assert.match(deployWorkflowText, /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "skipped"/);
-    assert.match(
-      deployWorkflowText,
-      /"WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "preproduction-installed-client-evidence"/
+      /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-staging-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-staging-bootstrap-canary\.result \}\}"/
     );
     assert.match(
       deployWorkflowText,
-      /Functional installed-client evidence is gated before production promotion/
+      /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.windows-staging-bootstrap-canary\.result \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "\$\{\{ needs\.windows-staging-bootstrap-canary\.outputs\.failure_boundary_id \|\| 'preproduction-windows-bootstrap-canary' \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /Windows staging bootstrap canary did not produce a failure boundary/
     );
     assert.match(
       deployWorkflowText,
@@ -685,11 +699,6 @@ describe('Deploy workflow contracts', () => {
     );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(
-      jobs['windows-staging-bootstrap-canary'],
-      undefined,
-      'production deploy must not duplicate the live Windows bootstrap gate already embedded in staging evidence'
-    );
-    assert.equal(
       jobs['windows-production-bootstrap-canary'],
       undefined,
       'production deploy must not repeat full Windows installed-client bootstrap canaries after deploy'
@@ -703,19 +712,17 @@ describe('Deploy workflow contracts', () => {
     const releaseEvidenceNeeds = normalizeNeeds(jobs['release-evidence']?.needs);
     assert.ok(deployNeeds.includes('resolve-release-images'));
     assert.ok(deployNeeds.includes('verify-staging-release-state'));
-    assert.ok(deployNeeds.includes('windows-firefox-canary'));
-    assert.ok(!deployNeeds.includes('windows-staging-bootstrap-canary'));
-    assert.ok(!releaseEvidenceNeeds.includes('windows-staging-bootstrap-canary'));
+    assert.ok(!deployNeeds.includes('windows-firefox-canary'));
+    assert.ok(deployNeeds.includes('windows-staging-bootstrap-canary'));
+    assert.ok(releaseEvidenceNeeds.includes('windows-firefox-canary'));
+    assert.ok(releaseEvidenceNeeds.includes('windows-staging-bootstrap-canary'));
     assert.ok(!releaseEvidenceNeeds.includes('windows-production-bootstrap-canary'));
     assert.ok(!releaseEvidenceNeeds.includes('linux-production-bootstrap-canary'));
     assert.match(String(jobs['deploy-production']?.if ?? ''), /^always\(\) && /);
+    assert.doesNotMatch(String(jobs['deploy-production']?.if ?? ''), /windows-firefox-canary/);
     assert.match(
       String(jobs['deploy-production']?.if ?? ''),
-      /needs\.windows-firefox-canary\.result == 'success' \|\| needs\.windows-firefox-canary\.result == 'skipped'/
-    );
-    assert.doesNotMatch(
-      String(jobs['deploy-production']?.if ?? ''),
-      /windows-staging-bootstrap-canary/
+      /needs\.windows-staging-bootstrap-canary\.result == 'success' \|\| needs\.windows-staging-bootstrap-canary\.result == 'skipped'/
     );
     assert.ok(
       !normalizeNeeds(jobs['rollback-production']?.needs).includes(

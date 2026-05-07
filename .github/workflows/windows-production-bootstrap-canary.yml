@@ -525,21 +525,25 @@ jobs:
           }
 
           $extensionInstalled = $null -ne $registryAddon -or (Test-Path $profileExtensionPath)
+          $extensionActive = $false
+          if ($registryAddon) {
+            $addonActive = if ($registryAddon.PSObject.Properties['active']) { [bool]$registryAddon.active } else { $true }
+            $addonDisabled = if ($registryAddon.PSObject.Properties['userDisabled']) { [bool]$registryAddon.userDisabled } else { $false }
+            $extensionActive = $addonActive -and (-not $addonDisabled)
+          } elseif (Test-Path $profileExtensionPath) {
+            $extensionActive = $true
+          }
           $firefoxLog = if (Test-Path $firefoxLogPath) { Get-Content $firefoxLogPath -Raw } else { '' }
 
-          if (-not $extensionInstalled -and -not $firefoxLog) {
-            throw 'Firefox neither registered the force-installed extension nor emitted enterprise policy logs'
+          if (-not $extensionInstalled) {
+            throw "Firefox did not register the force-installed extension $env:EXPECTED_EXTENSION_ID in extensions.json or the profile XPI path"
           }
 
           if ($firefoxLog -match 'policies\.json.*(error|failed|invalid)' -or $firefoxLog -match 'Enterprise Policies.*(error|failed|invalid)') {
             throw 'Firefox reported a policies.json parse error'
           }
 
-          if (-not $extensionInstalled -and $firefoxLog -notmatch [regex]::Escape($env:EXPECTED_EXTENSION_ID)) {
-            throw "Firefox did not register or report the extension id $env:EXPECTED_EXTENSION_ID"
-          }
-
-          if ($registryAddon -and $registryAddon.active -eq $false) {
+          if (-not $extensionActive) {
             throw "Firefox registered $env:EXPECTED_EXTENSION_ID but did not activate it"
           }
 
@@ -557,6 +561,7 @@ jobs:
             firefoxPolicyPath = $policiesPath
             extensionId = $env:EXPECTED_EXTENSION_ID
             extensionInstalled = [bool]$extensionInstalled
+            extensionActive = [bool]$extensionActive
             scheduledTasks = @(Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName })
             services = @(Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name):$($_.Status)" })
           }
