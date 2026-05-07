@@ -276,6 +276,70 @@ function getMockGoogleSdkScript(): string {
   `;
 }
 
+type LoginGoogleControlState = {
+  googleVisible: boolean;
+  retryVisible: boolean;
+  hiddenRenderedGoogleButton: boolean;
+};
+
+async function waitForLoginGoogleControlState(
+  page: import('playwright').Page
+): Promise<LoginGoogleControlState> {
+  const stateHandle = await page.waitForFunction(
+    () => {
+      // Keep this browser-side predicate free of nested functions: tsx/esbuild
+      // can serialize helper calls like __name into nested closures.
+      const state = {
+        googleVisible: false,
+        retryVisible: false,
+        hiddenRenderedGoogleButton: false,
+      };
+
+      const googleButton = document.querySelector('[data-testid="google-signin-btn"]');
+      if (googleButton instanceof HTMLElement) {
+        const style = window.getComputedStyle(googleButton);
+        const rect = googleButton.getBoundingClientRect();
+        state.googleVisible =
+          googleButton.childElementCount > 0 &&
+          !googleButton.classList.contains('opacity-0') &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          Number(style.opacity || '1') > 0 &&
+          rect.width > 0 &&
+          rect.height > 0;
+        state.hiddenRenderedGoogleButton =
+          googleButton.childElementCount > 0 && googleButton.classList.contains('opacity-0');
+      }
+
+      const buttons = document.querySelectorAll('button');
+      for (const button of buttons) {
+        if (!/reintentar google/i.test(button.textContent || '')) continue;
+
+        const style = window.getComputedStyle(button);
+        const rect = button.getBoundingClientRect();
+        if (
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          Number(style.opacity || '1') > 0 &&
+          rect.width > 0 &&
+          rect.height > 0
+        ) {
+          state.retryVisible = true;
+          break;
+        }
+      }
+
+      return state.googleVisible || state.retryVisible ? state : false;
+    },
+    undefined,
+    {
+      timeout: SMOKE_BROWSER_TIMEOUT,
+    }
+  );
+
+  return (await stateHandle.jsonValue()) as LoginGoogleControlState;
+}
+
 async function verifyLoginGoogleControlInBrowser(): Promise<void> {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({
@@ -297,70 +361,7 @@ async function verifyLoginGoogleControlInBrowser(): Promise<void> {
       timeout: SMOKE_BROWSER_TIMEOUT,
     });
 
-    await page.waitForFunction(
-      () => {
-        const isVisible = (element: Element | null): boolean => {
-          if (!(element instanceof HTMLElement)) return false;
-          const style = window.getComputedStyle(element);
-          const rect = element.getBoundingClientRect();
-          return (
-            style.display !== 'none' &&
-            style.visibility !== 'hidden' &&
-            Number(style.opacity || '1') > 0 &&
-            rect.width > 0 &&
-            rect.height > 0
-          );
-        };
-        const googleButton = document.querySelector('[data-testid="google-signin-btn"]');
-        const retryButton = Array.from(document.querySelectorAll('button')).find((button) =>
-          /reintentar google/i.test(button.textContent ?? '')
-        );
-
-        return (
-          (googleButton &&
-            googleButton.childElementCount > 0 &&
-            !googleButton.classList.contains('opacity-0') &&
-            isVisible(googleButton)) ||
-          isVisible(retryButton ?? null)
-        );
-      },
-      undefined,
-      { timeout: SMOKE_BROWSER_TIMEOUT }
-    );
-
-    const loginGoogleState = await page.evaluate(() => {
-      const isVisible = (element: Element | null): boolean => {
-        if (!(element instanceof HTMLElement)) return false;
-        const style = window.getComputedStyle(element);
-        const rect = element.getBoundingClientRect();
-        return (
-          style.display !== 'none' &&
-          style.visibility !== 'hidden' &&
-          Number(style.opacity || '1') > 0 &&
-          rect.width > 0 &&
-          rect.height > 0
-        );
-      };
-      const googleButton = document.querySelector('[data-testid="google-signin-btn"]');
-      const retryButton = Array.from(document.querySelectorAll('button')).find((button) =>
-        /reintentar google/i.test(button.textContent ?? '')
-      );
-
-      return {
-        googleVisible: Boolean(
-          googleButton &&
-          googleButton.childElementCount > 0 &&
-          !googleButton.classList.contains('opacity-0') &&
-          isVisible(googleButton)
-        ),
-        retryVisible: isVisible(retryButton ?? null),
-        hiddenRenderedGoogleButton: Boolean(
-          googleButton &&
-          googleButton.childElementCount > 0 &&
-          googleButton.classList.contains('opacity-0')
-        ),
-      };
-    });
+    const loginGoogleState = await waitForLoginGoogleControlState(page);
 
     assert.ok(
       loginGoogleState.googleVisible || loginGoogleState.retryVisible,

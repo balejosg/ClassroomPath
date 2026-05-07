@@ -205,6 +205,12 @@ export default function GoogleLoginButton({
           logo_alignment: 'left',
         });
 
+        if (hasRenderedGoogleButton(buttonElement)) {
+          setButtonRendered(true);
+          setError(null);
+          return;
+        }
+
         const timerId = window.setTimeout(() => {
           if (hasRenderedGoogleButton(buttonElement)) {
             setButtonRendered(true);

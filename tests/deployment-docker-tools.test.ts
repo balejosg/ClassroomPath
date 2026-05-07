@@ -20,6 +20,7 @@ void describe('Deploy Docker Tool Helpers', () => {
   const validationScriptPath = resolve(projectRoot, 'scripts/validate-runtime-config-docker.sh');
   const emailCheckScriptPath = resolve(projectRoot, 'scripts/check-email-delivery-docker.sh');
   const smokeScriptPath = resolve(projectRoot, 'scripts/run-smoke-in-verifier.sh');
+  const smokeTestPath = resolve(projectRoot, 'tests/smoke.test.ts');
   const deploymentTestPath = resolve(projectRoot, 'tests/deployment.test.ts');
 
   void test('dockerized runtime validation executes the TypeScript runtime contract check', () => {
@@ -131,6 +132,20 @@ void describe('Deploy Docker Tool Helpers', () => {
         smokeContent.includes('-e SMOKE_ALLOW_MUTATIONS') &&
         smokeContent.includes('-e SMOKE_TEST_RESOLVED_ADDRESS'),
       'dockerized smoke should preserve staging smoke environment knobs'
+    );
+  });
+
+  void test('browser smoke predicates avoid tsx helper injection in the verifier image', () => {
+    const content = readFileSync(smokeTestPath, 'utf-8');
+
+    assert.ok(
+      content.includes('waitForLoginGoogleControlState') &&
+        content.includes('const stateHandle = await page.waitForFunction(') &&
+        content.includes('return state.googleVisible || state.retryVisible ? state : false') &&
+        !content.includes('const isVisible = (element: Element | null): boolean =>') &&
+        !content.includes('LOGIN_GOOGLE_CONTROL_VISIBLE_PREDICATE') &&
+        !content.includes('LOGIN_GOOGLE_CONTROL_STATE_EXPRESSION'),
+      'browser smoke predicates should avoid string eval and nested TypeScript closures that can serialize tsx helper calls like __name into Playwright'
     );
   });
 

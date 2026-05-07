@@ -53,6 +53,7 @@ describe('GoogleLoginButton', () => {
     });
 
     expect(screen.getByTestId('google-signin-btn').childElementCount).toBeGreaterThan(0);
+    expect(screen.getByTestId('google-signin-btn')).not.toHaveClass('opacity-0');
     expect(screen.queryByRole('button', { name: /reintentar google/i })).not.toBeInTheDocument();
   });
 
