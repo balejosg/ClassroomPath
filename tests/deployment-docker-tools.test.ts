@@ -78,6 +78,10 @@ void describe('Deploy Docker Tool Helpers', () => {
     const validationContent = readFileSync(validationScriptPath, 'utf-8');
     const emailContent = readFileSync(emailCheckScriptPath, 'utf-8');
     const smokeContent = readFileSync(smokeScriptPath, 'utf-8');
+    const stagingGatesContent = readFileSync(
+      resolve(projectRoot, 'scripts/lib/staging-gates.sh'),
+      'utf-8'
+    );
 
     assert.ok(existsSync(deployImagesHelperPath), 'scripts/lib/deploy-images.sh should exist');
     assert.ok(
@@ -108,6 +112,16 @@ void describe('Deploy Docker Tool Helpers', () => {
     assert.ok(
       smokeContent.includes('source "$SCRIPT_DIR/lib/deploy-images.sh"'),
       'run-smoke-in-verifier.sh should source the shared deploy-images helper'
+    );
+    assert.ok(
+      stagingGatesContent.includes('bash scripts/run-smoke-in-verifier.sh'),
+      'staging smoke gates should use the release verifier image when it is available instead of requiring Playwright browsers on the runner'
+    );
+    assert.ok(
+      smokeContent.includes('-e SMOKE_SKIP_CORS') &&
+        smokeContent.includes('-e SMOKE_ALLOW_MUTATIONS') &&
+        smokeContent.includes('-e SMOKE_TEST_RESOLVED_ADDRESS'),
+      'dockerized smoke should preserve staging smoke environment knobs'
     );
   });
 

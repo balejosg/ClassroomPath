@@ -53,6 +53,10 @@ fi
 docker run --rm \
   -e SMOKE_TEST_URL \
   -e SMOKE_TEST_TIMEOUT \
+  -e SMOKE_SKIP_CORS \
+  -e SMOKE_ALLOW_MUTATIONS \
+  -e SMOKE_TEST_RESOLVED_ADDRESS \
+  -e SMOKE_REQUIRE_PUSH \
   "$CLASSROOMPATH_VERIFIER_IMAGE" \
   npm run test:smoke 2>&1 | tee smoke-results.txt
 

@@ -321,7 +321,12 @@ run_gate_command() {
   (
     cd "$STAGING_GATES_PROJECT_ROOT"
     set +e
-    env "$@" npm run "$npm_script" 2>&1 | tee "$results_file"
+    if [ "$gate_name" = "smoke" ] && [ -n "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then
+      env "$@" CLASSROOMPATH_VERIFIER_IMAGE="$CLASSROOMPATH_VERIFIER_IMAGE" \
+        bash scripts/run-smoke-in-verifier.sh 2>&1 | tee "$results_file"
+    else
+      env "$@" npm run "$npm_script" 2>&1 | tee "$results_file"
+    fi
     gate_exit_code=${PIPESTATUS[0]}
     exit "$gate_exit_code"
   )
