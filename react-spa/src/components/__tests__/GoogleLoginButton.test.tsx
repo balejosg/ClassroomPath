@@ -82,6 +82,24 @@ describe('GoogleLoginButton', () => {
     expect(screen.getByTestId('google-signin-btn').childElementCount).toBeGreaterThan(0);
   });
 
+  it('reveals the Google button when the SDK paints it after the first poll', async () => {
+    mockRenderButton.mockImplementation((element: HTMLElement) => {
+      window.setTimeout(() => {
+        element.appendChild(document.createElement('iframe'));
+      }, 300);
+    });
+
+    render(<GoogleLoginButton onSuccess={vi.fn()} />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('google-signin-btn').childElementCount).toBeGreaterThan(0);
+        expect(screen.getByTestId('google-signin-btn')).not.toHaveClass('opacity-0');
+      },
+      { timeout: 3000 }
+    );
+  });
+
   it('retries rendering when Google does not paint the button on the first attempt', async () => {
     mockRenderButton
       .mockImplementationOnce(() => {})

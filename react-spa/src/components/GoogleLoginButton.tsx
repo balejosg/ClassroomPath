@@ -106,6 +106,7 @@ export default function GoogleLoginButton({
 }: GoogleLoginButtonProps) {
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const renderTimerIdsRef = useRef<number[]>([]);
+  const renderObserverRef = useRef<MutationObserver | null>(null);
   const activeRenderRef = useRef<ActiveGoogleButtonRender | null>(null);
   const onSuccessRef = useRef(onSuccess);
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
@@ -121,6 +122,19 @@ export default function GoogleLoginButton({
       window.clearTimeout(timerId);
     }
     renderTimerIdsRef.current = [];
+    renderObserverRef.current?.disconnect();
+    renderObserverRef.current = null;
+  }, []);
+
+  const markGoogleButtonRendered = useCallback((buttonElement: HTMLDivElement): boolean => {
+    if (!hasRenderedGoogleButton(buttonElement)) {
+      return false;
+    }
+
+    buttonElement.classList.remove('opacity-0');
+    setButtonRendered(true);
+    setError(null);
+    return true;
   }, []);
 
   useEffect(() => {
@@ -185,6 +199,7 @@ export default function GoogleLoginButton({
       }
 
       try {
+        clearRenderTimers();
         buttonElement.innerHTML = '';
         activeRenderRef.current = nextRender;
         setButtonRendered(false);
@@ -205,16 +220,21 @@ export default function GoogleLoginButton({
           logo_alignment: 'left',
         });
 
-        if (hasRenderedGoogleButton(buttonElement)) {
-          setButtonRendered(true);
-          setError(null);
+        if (markGoogleButtonRendered(buttonElement)) {
           return;
         }
 
+        const observer = new MutationObserver(() => {
+          if (markGoogleButtonRendered(buttonElement)) {
+            clearRenderTimers();
+          }
+        });
+        observer.observe(buttonElement, { childList: true, subtree: true });
+        renderObserverRef.current = observer;
+
         const timerId = window.setTimeout(() => {
-          if (hasRenderedGoogleButton(buttonElement)) {
-            setButtonRendered(true);
-            setError(null);
+          if (markGoogleButtonRendered(buttonElement)) {
+            clearRenderTimers();
             return;
           }
 
@@ -245,7 +265,7 @@ export default function GoogleLoginButton({
         });
       }
     },
-    [googleClientId, text]
+    [clearRenderTimers, googleClientId, markGoogleButtonRendered, text]
   );
 
   useEffect(() => {
