@@ -286,6 +286,18 @@ compose_up_force_recreate_no_build() {
   return $compose_exit_code
 }
 
+login_staging_release_candidate_registry() {
+  if [ -n "${STAGING_GHCR_TOKEN:-}" ]; then
+    if [ -z "${STAGING_GHCR_USERNAME:-}" ]; then
+      log_error "STAGING_GHCR_TOKEN is set but STAGING_GHCR_USERNAME is missing"
+      return 1
+    fi
+
+    log_info "Authenticating to GHCR for release candidate image pulls..."
+    echo "$STAGING_GHCR_TOKEN" | docker login ghcr.io -u "$STAGING_GHCR_USERNAME" --password-stdin
+  fi
+}
+
 deploy_with_release_candidates() {
   if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" != "1" ]; then
     return 1
@@ -296,15 +308,6 @@ deploy_with_release_candidates() {
   if [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
     log_error "Release candidate manifest is incomplete"
     return 1
-  fi
-
-  if [ -n "${STAGING_GHCR_TOKEN:-}" ]; then
-    if [ -z "${STAGING_GHCR_USERNAME:-}" ]; then
-      log_error "STAGING_GHCR_TOKEN is set but STAGING_GHCR_USERNAME is missing"
-      return 1
-    fi
-
-    echo "$STAGING_GHCR_TOKEN" | docker login ghcr.io -u "$STAGING_GHCR_USERNAME" --password-stdin
   fi
 
   export COMPOSE_PROJECT_NAME=classroompath-staging
@@ -488,6 +491,7 @@ prepare_staging_checkout() {
   log_info "Staging checkout is now at $(git rev-parse HEAD)"
 
   load_staging_release_manifest
+  login_staging_release_candidate_registry
   classify_migration_risk
   release_execution_mark_stage preflight
 }

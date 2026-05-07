@@ -540,10 +540,20 @@ describe('Deployment runtime contracts', () => {
         stagingRemote.includes(
           'run_remote_deploy_phase_group staging-preflight run_staging_runtime_validation run_staging_email_delivery_preflight'
         ) &&
+        stagingRemote.includes('login_staging_release_candidate_registry()') &&
         stagingRemote.includes('cleanup_staging_disk_if_needed()') &&
         stagingRemote.includes('run_staging_database_migrations()') &&
         stagingRemote.includes('start_staging_runtime()') &&
         stagingRemote.includes('wait_for_staging_runtime_readiness()')
+    );
+    assert.ok(
+      stagingRemote.includes(
+        [
+          '  load_staging_release_manifest',
+          '  login_staging_release_candidate_registry',
+          '  classify_migration_risk',
+        ].join('\n')
+      )
     );
     assert.ok(
       stagingRemote.includes('plan_staging_runtime_deploy()') &&
