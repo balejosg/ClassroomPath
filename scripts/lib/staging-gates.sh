@@ -16,6 +16,9 @@ reset_staging_verification_env() {
   RELEASE_GATE_EXPECTED_ORIGIN=""
   RELEASE_GATE_RESOLVED_ADDRESS=""
   STAGING_RELEASE_GATE_RESULT=""
+  STAGING_ENROLLMENT_DOWNLOAD_RESULT=""
+  STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=""
+  STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=""
   STAGING_VERIFIED_AT=""
   STAGING_EMAIL_PREFLIGHT_MODE=""
   STAGING_EMAIL_DELIVERY_HIGH_RISK=""
@@ -72,6 +75,9 @@ staging_gate_results_file() {
     linux-bootstrap-gate)
       printf '/tmp/linux-bootstrap-gate.env\n'
       ;;
+    enrollment-download-gate)
+      printf '/tmp/staging-enrollment-download.env\n'
+      ;;
     *)
       echo "Unknown staging gate results file: ${1:-}" >&2
       return 1
@@ -116,6 +122,13 @@ STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE
 STAGING_WINDOWS_SELF_UPDATE_RESULT
 STAGING_LINUX_SELF_UPDATE_RESULT
 STAGING_PREPROMOTION_REHEARSAL_RESULT
+EOF
+      ;;
+    enrollment-download-gate)
+      cat <<'EOF'
+STAGING_ENROLLMENT_DOWNLOAD_RESULT
+STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT
+STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT
 EOF
       ;;
     *)
@@ -235,6 +248,36 @@ run_staging_linux_bootstrap_gate() {
   # shellcheck disable=SC1090
   . "$output_file"
   echo "Linux bootstrap gate passed" >&2
+}
+
+run_staging_enrollment_download_gate() {
+  local output_file=""
+
+  output_file="$(staging_gate_results_file enrollment-download-gate)"
+  STAGING_ENROLLMENT_DOWNLOAD_RESULT="${STAGING_ENROLLMENT_DOWNLOAD_RESULT:-failed}"
+  STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT="${STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT:-failed}"
+  STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT="${STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT:-failed}"
+
+  if [ -f "$output_file" ]; then
+    # shellcheck disable=SC1090
+    . "$output_file"
+  fi
+
+  if [ "${STAGING_ENROLLMENT_DOWNLOAD_RESULT:-}" = "success" ] &&
+    [ "${STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT:-}" = "success" ] &&
+    [ "${STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT:-}" = "success" ]; then
+    echo "Enrollment download gate passed" >&2
+    return 0
+  fi
+
+  print_staging_canary_failure_boundary \
+    "enrollment-download" \
+    "${STAGING_ENROLLMENT_DOWNLOAD_RESULT:-failed}" \
+    "enrollment-script-download" \
+    "Linux=${STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT:-unset}; Windows=${STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT:-unset}" \
+    "${GITHUB_RUN_ID:-unknown}"
+  echo "Enrollment download gate FAILED" >&2
+  return 1
 }
 
 resolve_target_address() {
@@ -468,12 +511,16 @@ run_staging_windows_bootstrap_gate() {
   local -a ssh_cmd=("$@")
   local windows_bootstrap_exit_code=0
   local windows_bootstrap_webhook_secret=""
+  local enrollment_download_output_file=""
 
   windows_bootstrap_webhook_secret="$("${ssh_cmd[@]}" "docker exec classroompath-api printenv STRIPE_WEBHOOK_SECRET" | tr -d '\r\n')"
   if [ -z "$windows_bootstrap_webhook_secret" ]; then
     echo "Windows bootstrap gate requires STRIPE_WEBHOOK_SECRET in classroompath-api" >&2
     return 1
   fi
+
+  enrollment_download_output_file="$(staging_gate_results_file enrollment-download-gate)"
+  rm -f "$enrollment_download_output_file"
 
   echo "Running Windows bootstrap gate against staging..." >&2
 
@@ -485,6 +532,9 @@ run_staging_windows_bootstrap_gate() {
     "WINDOWS_BOOTSTRAP_GATE_EXPECTED_VERSION=$STAGING_FIREFOX_RELEASE_VERSION" \
     "WINDOWS_BOOTSTRAP_GATE_EXPECTED_METADATA_SHA256=$STAGING_FIREFOX_METADATA_SHA256" \
     "WINDOWS_BOOTSTRAP_GATE_EXPECTED_XPI_SHA256=$STAGING_FIREFOX_XPI_SHA256" \
+    "WINDOWS_BOOTSTRAP_GATE_EXPECTED_LINUX_AGENT_VERSION=${OPENPATH_LINUX_AGENT_VERSION:-}" \
+    "WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_OUTPUT=$enrollment_download_output_file" \
+    "WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_EVIDENCE_OUTPUT=/tmp/staging-enrollment-download.json" \
     "WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET=$windows_bootstrap_webhook_secret" \
     "WINDOWS_BOOTSTRAP_GATE_TIMEOUT=30000" \
     "WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS=${RELEASE_GATE_RESOLVED_ADDRESS:-}"; then

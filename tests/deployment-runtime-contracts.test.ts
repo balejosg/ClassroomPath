@@ -534,6 +534,9 @@ describe('Deployment runtime contracts', () => {
 
     assert.ok(
       stagingRemote.includes('prepare_staging_checkout()') &&
+        stagingRemote.includes('login_staging_registry()') &&
+        stagingRemote.includes('preflight_staging_release_candidate_images()') &&
+        stagingRemote.includes('preflight_staging_release_candidate_image()') &&
         stagingRemote.includes('run_staging_runtime_validation()') &&
         stagingRemote.includes('run_staging_email_delivery_preflight()') &&
         stagingRemote.includes('run_staging_preflight_checks()') &&
@@ -546,11 +549,41 @@ describe('Deployment runtime contracts', () => {
         stagingRemote.includes('start_staging_runtime()') &&
         stagingRemote.includes('wait_for_staging_runtime_readiness()')
     );
+    const prepareStagingCheckout = stagingRemote.slice(
+      stagingRemote.indexOf('prepare_staging_checkout()'),
+      stagingRemote.indexOf('run_staging_runtime_validation()')
+    );
+    assert.ok(
+      prepareStagingCheckout.indexOf('load_staging_release_manifest') <
+        prepareStagingCheckout.indexOf('login_staging_registry') &&
+        prepareStagingCheckout.indexOf('login_staging_registry') <
+          prepareStagingCheckout.indexOf('preflight_staging_release_candidate_images'),
+      'staging should log into GHCR and pull every release image while preparing the checkout'
+    );
+    assert.ok(
+      stagingRemote.indexOf('prepare_staging_checkout') <
+        stagingRemote.indexOf('run_staging_runtime_validation') &&
+        stagingRemote.indexOf('prepare_staging_checkout') <
+          stagingRemote.indexOf('run_staging_database_migrations'),
+      'staging image preflight should happen before runtime validation or migrations'
+    );
+    for (const token of [
+      'preflight_staging_release_candidate_image "verifier" "$CLASSROOMPATH_VERIFIER_IMAGE"',
+      'preflight_staging_release_candidate_image "migrations" "$CLASSROOMPATH_MIGRATIONS_IMAGE"',
+      'preflight_staging_release_candidate_image "gateway" "$CLASSROOMPATH_GATEWAY_IMAGE"',
+      'preflight_staging_release_candidate_image "OpenPath API" "$OPENPATH_API_IMAGE"',
+      'preflight_staging_release_candidate_image "SPA" "$CLASSROOMPATH_SPA_IMAGE"',
+      'preflight_staging_release_candidate_image "OpenPath Firefox assets" "$OPENPATH_FIREFOX_ASSETS_IMAGE"',
+      'GHCR preflight failed for ${label} image: ${image_ref}',
+    ]) {
+      assert.ok(stagingRemote.includes(token), `missing staging GHCR preflight token: ${token}`);
+    }
     assert.ok(
       stagingRemote.includes(
         [
           '  load_staging_release_manifest',
-          '  login_staging_release_candidate_registry',
+          '  login_staging_registry',
+          '  preflight_staging_release_candidate_images',
           '  classify_migration_risk',
         ].join('\n')
       )

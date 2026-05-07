@@ -202,6 +202,9 @@ jobs:
       staging_smoke_result: ${{ steps.compare.outputs.staging_smoke_result }}
       staging_smoke_status: ${{ steps.compare.outputs.staging_smoke_status }}
       staging_release_gate_result: ${{ steps.compare.outputs.staging_release_gate_result }}
+      staging_enrollment_download_result: ${{ steps.compare.outputs.staging_enrollment_download_result }}
+      staging_linux_enrollment_script_result: ${{ steps.compare.outputs.staging_linux_enrollment_script_result }}
+      staging_windows_enrollment_script_result: ${{ steps.compare.outputs.staging_windows_enrollment_script_result }}
       staging_windows_bootstrap_result: ${{ steps.compare.outputs.staging_windows_bootstrap_result }}
       staging_firefox_policy_result: ${{ steps.compare.outputs.staging_firefox_policy_result }}
       staging_firefox_extension_id: ${{ steps.compare.outputs.staging_firefox_extension_id }}
@@ -574,34 +577,19 @@ jobs:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
-      - name: Download live Windows enrollment script
+      - name: Download live enrollment scripts
         shell: bash
         env:
-          PRODUCTION_BASE_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
-          CLASSROOM_ID: ${{ steps.provision-enrollment.outputs.classroom_id }}
-          ENROLLMENT_TOKEN: ${{ steps.provision-enrollment.outputs.enrollment_token }}
+          ENROLLMENT_CANARY_BASE_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
+          ENROLLMENT_CANARY_CLASSROOM_ID: ${{ steps.provision-enrollment.outputs.classroom_id }}
+          ENROLLMENT_CANARY_TOKEN: ${{ steps.provision-enrollment.outputs.enrollment_token }}
+          ENROLLMENT_CANARY_EXPECTED_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
+          ENROLLMENT_CANARY_ENVIRONMENT: production
+          ENROLLMENT_CANARY_OUTPUT: production-enrollment-download-canary.json
         run: |
           set -euo pipefail
-
-          windows_script="$RUNNER_TEMP/production-windows-enrollment.ps1"
-          http_status="$(
-            curl -sS \
-              -o "$windows_script" \
-              -w '%{http_code}' \
-              -H "Authorization: Bearer $ENROLLMENT_TOKEN" \
-              "$PRODUCTION_BASE_URL/api/enroll/$CLASSROOM_ID/windows.ps1"
-          )"
-
-          if [ "$http_status" != "200" ]; then
-            echo "::error::Windows enrollment script download returned HTTP $http_status"
-            sed -n '1,80p' "$windows_script" || true
-            exit 1
-          fi
-
-          test -s "$windows_script"
-          grep -F 'api/agent/windows/bootstrap/manifest' "$windows_script"
-          grep -F '$env:OPENPATH_VERSION' "$windows_script"
-          grep -F 'Install-OpenPath.ps1' "$windows_script"
+          node scripts/enrollment-download-canary.mjs
+          test -f production-enrollment-download-canary.json
 
       - name: Run smoke tests against production
         id: smoke
@@ -622,6 +610,7 @@ jobs:
           name: smoke-test-results-production
           path: |
             smoke-results.txt
+            production-enrollment-download-canary.json
           retention-days: 7
 
       - name: Report smoke test failure
@@ -710,6 +699,9 @@ jobs:
             "STAGING_SMOKE_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_smoke_result }}",
             "STAGING_SMOKE_STATUS": "${{ needs.verify-staging-release-state.outputs.staging_smoke_status }}",
             "STAGING_RELEASE_GATE_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_release_gate_result }}",
+            "STAGING_ENROLLMENT_DOWNLOAD_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_enrollment_download_result }}",
+            "STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_linux_enrollment_script_result }}",
+            "STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_windows_enrollment_script_result }}",
             "STAGING_WINDOWS_FIREFOX_HIGH_RISK": "${{ needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk }}",
             "STAGING_EMAIL_DELIVERY_HIGH_RISK": "${{ needs.verify-staging-release-state.outputs.staging_email_delivery_high_risk }}",
             "STAGING_WINDOWS_FIREFOX_RISK_BASE_REF": "${{ needs.verify-staging-release-state.outputs.staging_windows_firefox_risk_base_ref }}",

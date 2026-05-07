@@ -98,6 +98,9 @@ STAGING_WINDOWS_FIREFOX_HIGH_RISK
 STAGING_SMOKE_RESULT
 STAGING_SMOKE_STATUS
 STAGING_RELEASE_GATE_RESULT
+STAGING_ENROLLMENT_DOWNLOAD_RESULT
+STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT
+STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT
 STAGING_WINDOWS_BOOTSTRAP_RESULT
 STAGING_FIREFOX_POLICY_RESULT
 STAGING_FIREFOX_EXTENSION_ID
@@ -117,6 +120,9 @@ STAGING_SMOKE_STATUS
 RELEASE_GATE_TARGET_URL
 RELEASE_GATE_EXPECTED_ORIGIN
 STAGING_RELEASE_GATE_RESULT
+STAGING_ENROLLMENT_DOWNLOAD_RESULT
+STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT
+STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT
 STAGING_VERIFIED_AT
 STAGING_WINDOWS_FIREFOX_HIGH_RISK
 STAGING_FIREFOX_RELEASE_ARTIFACTS
@@ -227,6 +233,9 @@ write_staging_verification_pending_state() {
   STAGING_SMOKE_RESULT="pending" \
   STAGING_SMOKE_STATUS="pending" \
   STAGING_RELEASE_GATE_RESULT="pending" \
+  STAGING_ENROLLMENT_DOWNLOAD_RESULT="pending" \
+  STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT="pending" \
+  STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT="pending" \
   STAGING_WINDOWS_BOOTSTRAP_RESULT="pending" \
   STAGING_FIREFOX_POLICY_RESULT="pending" \
   STAGING_FIREFOX_EXTENSION_ID="" \
@@ -298,6 +307,13 @@ verify_staging_release_evidence_matches_expected() {
 
   if [ "${STAGING_RELEASE_GATE_RESULT:-}" != "success" ]; then
     echo "::error::Staging release-gate evidence is missing or failed (STAGING_RELEASE_GATE_RESULT=${STAGING_RELEASE_GATE_RESULT:-unset})"
+    return 1
+  fi
+
+  if [ "${STAGING_ENROLLMENT_DOWNLOAD_RESULT:-}" != "success" ] ||
+    [ "${STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT:-}" != "success" ] ||
+    [ "${STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT:-}" != "success" ]; then
+    echo "::error::Enrollment download evidence is missing or failed (STAGING_ENROLLMENT_DOWNLOAD_RESULT=${STAGING_ENROLLMENT_DOWNLOAD_RESULT:-unset}; STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=${STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT:-unset}; STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=${STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT:-unset})"
     return 1
   fi
 
@@ -391,6 +407,9 @@ emit_staging_release_evidence_outputs() {
     printf 'staging_smoke_result=%s\n' "${STAGING_SMOKE_RESULT:-unknown}"
     printf 'staging_smoke_status=%s\n' "${STAGING_SMOKE_STATUS:-unknown}"
     printf 'staging_release_gate_result=%s\n' "${STAGING_RELEASE_GATE_RESULT:-unknown}"
+    printf 'staging_enrollment_download_result=%s\n' "${STAGING_ENROLLMENT_DOWNLOAD_RESULT:-unknown}"
+    printf 'staging_linux_enrollment_script_result=%s\n' "${STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT:-unknown}"
+    printf 'staging_windows_enrollment_script_result=%s\n' "${STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT:-unknown}"
     printf 'staging_windows_bootstrap_result=%s\n' "${STAGING_WINDOWS_BOOTSTRAP_RESULT:-unknown}"
     printf 'staging_firefox_policy_result=%s\n' "${STAGING_FIREFOX_POLICY_RESULT:-unknown}"
     printf 'staging_firefox_extension_id=%s\n' "${STAGING_FIREFOX_EXTENSION_ID:-unknown}"

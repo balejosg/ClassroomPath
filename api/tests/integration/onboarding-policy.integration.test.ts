@@ -22,6 +22,10 @@ const integration = useIntegrationServer({ resetBeforeStart: true });
 const originalNodeEnv = process.env.NODE_ENV;
 const originalAllowSelfServiceOrgs = process.env.CP_ALLOW_SELF_SERVICE_ORGS;
 const originalAllowOrgDirectory = process.env.CP_ALLOW_ORG_DIRECTORY;
+const originalPublicUrl = process.env.PUBLIC_URL;
+const originalCorsOrigins = process.env.CORS_ORIGINS;
+
+const productionPolicyOrigin = 'https://classroompath.test';
 
 function restorePolicyEnv(): void {
   process.env.NODE_ENV = originalNodeEnv ?? 'test';
@@ -37,6 +41,24 @@ function restorePolicyEnv(): void {
   } else {
     process.env.CP_ALLOW_ORG_DIRECTORY = originalAllowOrgDirectory;
   }
+
+  if (originalPublicUrl === undefined) {
+    delete process.env.PUBLIC_URL;
+  } else {
+    process.env.PUBLIC_URL = originalPublicUrl;
+  }
+
+  if (originalCorsOrigins === undefined) {
+    delete process.env.CORS_ORIGINS;
+  } else {
+    process.env.CORS_ORIGINS = originalCorsOrigins;
+  }
+}
+
+function setProductionPolicyEnv(): void {
+  process.env.NODE_ENV = 'production';
+  process.env.PUBLIC_URL = productionPolicyOrigin;
+  process.env.CORS_ORIGINS = productionPolicyOrigin;
 }
 
 async function issueToken(userId: string, email: string, name = 'Onboarding Policy User') {
@@ -66,7 +88,7 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
   });
 
   test('blocks self-service organization creation by default in production while hiding the directory', async () => {
-    process.env.NODE_ENV = 'production';
+    setProductionPolicyEnv();
     delete process.env.CP_ALLOW_SELF_SERVICE_ORGS;
     delete process.env.CP_ALLOW_ORG_DIRECTORY;
 
@@ -110,7 +132,7 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
   });
 
   test('hides the organization directory by default in production', async () => {
-    process.env.NODE_ENV = 'production';
+    setProductionPolicyEnv();
     delete process.env.CP_ALLOW_SELF_SERVICE_ORGS;
     delete process.env.CP_ALLOW_ORG_DIRECTORY;
 
@@ -147,7 +169,7 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
   });
 
   test('still allows wait-for-invitation when the directory is hidden and only one org exists', async () => {
-    process.env.NODE_ENV = 'production';
+    setProductionPolicyEnv();
     delete process.env.CP_ALLOW_SELF_SERVICE_ORGS;
     delete process.env.CP_ALLOW_ORG_DIRECTORY;
 
@@ -184,7 +206,7 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
   });
 
   test('allows generic waiting when the directory is hidden and multiple orgs exist', async () => {
-    process.env.NODE_ENV = 'production';
+    setProductionPolicyEnv();
     delete process.env.CP_ALLOW_SELF_SERVICE_ORGS;
     delete process.env.CP_ALLOW_ORG_DIRECTORY;
 
@@ -239,7 +261,7 @@ describe('ClassroomPath onboarding policy integration', { concurrency: 1 }, asyn
   });
 
   test('re-enables self-service creation and org discovery when feature flags are on', async () => {
-    process.env.NODE_ENV = 'production';
+    setProductionPolicyEnv();
     process.env.CP_ALLOW_SELF_SERVICE_ORGS = 'true';
     process.env.CP_ALLOW_ORG_DIRECTORY = 'true';
 

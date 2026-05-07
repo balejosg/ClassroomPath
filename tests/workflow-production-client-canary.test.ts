@@ -637,6 +637,7 @@ describe('Production client update canary workflow contracts', () => {
   test('scheduled production enrollment download canary checks live scripts without consuming client runners', () => {
     const workflowText = readProjectText('.github/workflows/production-client-update-canary.yml');
     const helperText = readProjectText('scripts/production-enrollment-download-canary.mjs');
+    const genericHelperText = readProjectText('scripts/enrollment-download-canary.mjs');
     const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
     const jobs = workflow.jobs ?? {};
     const downloadJob = jobs['production-enrollment-download-canary'];
@@ -671,8 +672,9 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(workflowText.includes('scripts/production-enrollment-download-canary.mjs'));
     assert.ok(workflowText.includes('production-enrollment-download-canary.json'));
     assert.ok(workflowText.includes('production-enrollment-download-canary'));
-    assert.ok(helperText.includes('/api/enroll/'));
-    assert.ok(helperText.includes('/windows.ps1'));
+    assert.ok(helperText.includes('runEnrollmentDownloadCanary'));
+    assert.ok(genericHelperText.includes('/api/enroll/'));
+    assert.ok(genericHelperText.includes('/windows.ps1'));
     assert.ok(workflowText.includes('Production Enrollment Download Canary Failed'));
     assert.ok(workflowText.includes('close-smoke-recovery.mjs'));
     assert.ok(workflowText.includes('Read production Linux enrollment runtime'));

@@ -309,6 +309,18 @@ describe('Deploy workflow contracts', () => {
       '${{ steps.email-risk.outputs.high_risk }}'
     );
     assert.equal(
+      verifyStagingJob.outputs?.staging_enrollment_download_result,
+      '${{ steps.compare.outputs.staging_enrollment_download_result }}'
+    );
+    assert.equal(
+      verifyStagingJob.outputs?.staging_linux_enrollment_script_result,
+      '${{ steps.compare.outputs.staging_linux_enrollment_script_result }}'
+    );
+    assert.equal(
+      verifyStagingJob.outputs?.staging_windows_enrollment_script_result,
+      '${{ steps.compare.outputs.staging_windows_enrollment_script_result }}'
+    );
+    assert.equal(
       String(
         findWorkflowStepByName(verifyStagingJob, 'Compare staging release state')?.env?.[
           'EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE'
@@ -422,34 +434,52 @@ describe('Deploy workflow contracts', () => {
     );
 
     const windowsEnrollmentStep = productionSmokeJob?.steps?.find((step) =>
-      String(step.name ?? '').includes('Download live Windows enrollment script')
+      String(step.name ?? '').includes('Download live enrollment scripts')
     );
     const windowsEnrollmentStepIndex =
       productionSmokeJob?.steps?.findIndex((step) =>
-        String(step.name ?? '').includes('Download live Windows enrollment script')
+        String(step.name ?? '').includes('Download live enrollment scripts')
       ) ?? -1;
     assert.ok(
       windowsEnrollmentStep,
-      'production smoke must download a live Windows enrollment script'
+      'production smoke must download live Linux and Windows enrollment scripts'
     );
     assert.match(
       String(windowsEnrollmentStep?.run ?? ''),
-      /\/api\/enroll\/\$CLASSROOM_ID\/windows\.ps1/
+      /node scripts\/enrollment-download-canary\.mjs/
+    );
+    assert.equal(
+      windowsEnrollmentStep?.env?.ENROLLMENT_CANARY_BASE_URL,
+      '${{ needs.resolve-release-images.outputs.production_public_url }}'
+    );
+    assert.equal(
+      windowsEnrollmentStep?.env?.ENROLLMENT_CANARY_CLASSROOM_ID,
+      '${{ steps.provision-enrollment.outputs.classroom_id }}'
+    );
+    assert.equal(
+      windowsEnrollmentStep?.env?.ENROLLMENT_CANARY_TOKEN,
+      '${{ steps.provision-enrollment.outputs.enrollment_token }}'
+    );
+    assert.equal(windowsEnrollmentStep?.env?.ENROLLMENT_CANARY_ENVIRONMENT, 'production');
+    assert.equal(
+      windowsEnrollmentStep?.env?.ENROLLMENT_CANARY_EXPECTED_LINUX_AGENT_VERSION,
+      '${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}'
     );
     assert.match(
       String(windowsEnrollmentStep?.run ?? ''),
-      /Authorization: Bearer \$ENROLLMENT_TOKEN/
+      /production-enrollment-download-canary\.json/
     );
     assert.match(
       String(windowsEnrollmentStep?.run ?? ''),
-      /api\/agent\/windows\/bootstrap\/manifest/
+      /node scripts\/enrollment-download-canary\.mjs/
     );
-    assert.match(String(windowsEnrollmentStep?.run ?? ''), /\$env:OPENPATH_VERSION/);
+    assert.doesNotMatch(String(windowsEnrollmentStep?.run ?? ''), /grep/);
     assert.doesNotMatch(
       String(windowsEnrollmentStep?.run ?? ''),
       /OpenPath Enrollment \(Windows\)/,
       'production smoke must not depend on non-functional Windows enrollment banner text'
     );
+    assert.ok(!deployWorkflowText.includes('OpenPath Enrollment (Windows)'));
     const runProductionSmokeStepIndex =
       productionSmokeJob?.steps?.findIndex((step) =>
         String(step.name ?? '').includes('Run smoke tests against production')
@@ -523,6 +553,18 @@ describe('Deploy workflow contracts', () => {
     assert.match(
       deployWorkflowText,
       /"WINDOWS_STAGING_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_windows_bootstrap_result \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"STAGING_ENROLLMENT_DOWNLOAD_RESULT": "\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_enrollment_download_result \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT": "\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_linux_enrollment_script_result \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT": "\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_windows_enrollment_script_result \}\}"/
     );
     assert.match(
       deployWorkflowText,

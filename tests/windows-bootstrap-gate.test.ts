@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 import { CURRENT_TERMS_VERSION } from '../api/src/services/legal-consent.service.js';
+import { runEnrollmentDownloadCanary } from '../scripts/enrollment-download-canary.mjs';
 import { resolvedFetch } from './helpers/resolved-fetch.js';
 
 type TrpcEnvelope<T> = {
@@ -135,12 +137,19 @@ const EXPECTED_EXTENSION_ID = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_EXTENS
 const EXPECTED_VERSION = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_VERSION ?? '';
 const EXPECTED_METADATA_SHA256 = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_METADATA_SHA256 ?? '';
 const EXPECTED_XPI_SHA256 = process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_XPI_SHA256 ?? '';
+const EXPECTED_LINUX_AGENT_VERSION =
+  process.env.WINDOWS_BOOTSTRAP_GATE_EXPECTED_LINUX_AGENT_VERSION ?? '';
 const WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET =
   process.env.WINDOWS_BOOTSTRAP_GATE_STRIPE_WEBHOOK_SECRET ?? '';
 const WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS = process.env.WINDOWS_BOOTSTRAP_GATE_RESOLVED_ADDRESS;
 const WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH =
   process.env.WINDOWS_BOOTSTRAP_GATE_PUBLIC_FIREFOX_XPI_PATH ??
   '/api/extensions/firefox/openpath.xpi';
+const WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_OUTPUT =
+  process.env.WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_OUTPUT ?? '';
+const WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_EVIDENCE_OUTPUT =
+  process.env.WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_EVIDENCE_OUTPUT ??
+  '/tmp/staging-enrollment-download.json';
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`;
@@ -202,6 +211,27 @@ function extractTokenFromVerificationUrl(verificationUrl: string): string {
 
 function sha256Hex(input: Uint8Array | string): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+function writeEnrollmentDownloadOutput(evidence: {
+  result: string;
+  linux: { result: string };
+  windows: { result: string };
+}): void {
+  if (!WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_OUTPUT) {
+    return;
+  }
+
+  writeFileSync(
+    WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_OUTPUT,
+    [
+      `STAGING_ENROLLMENT_DOWNLOAD_RESULT=${evidence.result}`,
+      `STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=${evidence.linux.result}`,
+      `STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=${evidence.windows.result}`,
+      '',
+    ].join('\n'),
+    'utf-8'
+  );
 }
 
 async function timedBootstrapGateStep<T>(name: string, operation: () => Promise<T>): Promise<T> {
@@ -512,6 +542,22 @@ describe(
           ? { Origin: WINDOWS_BOOTSTRAP_GATE_REQUEST_ORIGIN }
           : {}),
       };
+
+      const enrollmentDownloadEvidence = await timedBootstrapGateStep(
+        'download enrollment scripts',
+        () =>
+          runEnrollmentDownloadCanary({
+            baseUrl: WINDOWS_BOOTSTRAP_GATE_URL,
+            classroomId: classroom.id,
+            enrollmentToken: ticketPayload.enrollmentToken!,
+            expectedLinuxAgentVersion: EXPECTED_LINUX_AGENT_VERSION,
+            environment: 'staging',
+            outputPath: WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_EVIDENCE_OUTPUT,
+            fetchImpl: (url, init) => fetchWithRetry(String(url), init),
+          })
+      );
+      writeEnrollmentDownloadOutput(enrollmentDownloadEvidence);
+      assert.equal(enrollmentDownloadEvidence.result, 'success');
 
       const manifestResponse = await timedBootstrapGateStep('read bootstrap manifest', () =>
         fetchWithRetry(`${WINDOWS_BOOTSTRAP_GATE_URL}/api/agent/windows/bootstrap/latest.json`, {

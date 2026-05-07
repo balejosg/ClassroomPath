@@ -52,6 +52,10 @@ describe('staging gates helper', () => {
       runHelper('staging_gate_results_file linux-bootstrap-gate'),
       '/tmp/linux-bootstrap-gate.env'
     );
+    assert.equal(
+      runHelper('staging_gate_results_file enrollment-download-gate'),
+      '/tmp/staging-enrollment-download.env'
+    );
   });
 
   test('publishes the gate-owned state fields for evidence persistence', () => {
@@ -84,6 +88,26 @@ describe('staging gates helper', () => {
       'STAGING_LINUX_SELF_UPDATE_RESULT',
       'STAGING_PREPROMOTION_REHEARSAL_RESULT',
     ]);
+    assert.deepEqual(runHelper('staging_gate_state_fields enrollment-download-gate').split('\n'), [
+      'STAGING_ENROLLMENT_DOWNLOAD_RESULT',
+      'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT',
+      'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT',
+    ]);
+  });
+
+  test('runs enrollment download canary as a blocking staging gate', () => {
+    const helper = readFileSync(helperPath, 'utf8');
+    const runner = readFileSync(runnerPath, 'utf8');
+    const bootstrapGate = readFileSync(windowsBootstrapGatePath, 'utf8');
+
+    assert.match(helper, /run_staging_enrollment_download_gate\(\)/);
+    assert.match(helper, /WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_OUTPUT=/);
+    assert.match(helper, /STAGING_ENROLLMENT_DOWNLOAD_RESULT/);
+    assert.match(helper, /STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT/);
+    assert.match(helper, /STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT/);
+    assert.match(runner, /run_staging_enrollment_download_gate/);
+    assert.match(bootstrapGate, /runEnrollmentDownloadCanary/);
+    assert.match(bootstrapGate, /WINDOWS_BOOTSTRAP_GATE_ENROLLMENT_DOWNLOAD_OUTPUT/);
   });
 
   test('prints compact staging canary failure boundary blocks', () => {
@@ -190,8 +214,9 @@ describe('staging gates helper', () => {
       content.includes('run_staging_smoke_gate') &&
         content.includes('run_staging_release_gate') &&
         content.includes('run_staging_windows_bootstrap_gate') &&
+        content.includes('run_staging_enrollment_download_gate') &&
         content.includes('run_staging_linux_bootstrap_gate'),
-      'run-staging-verification.sh should delegate smoke, release-gate, windows bootstrap, and linux bootstrap execution to the helper'
+      'run-staging-verification.sh should delegate smoke, release-gate, enrollment download, windows bootstrap, and linux bootstrap execution to the helper'
     );
     assert.ok(
       !content.includes('run_smoke_checks()') && !content.includes('run_release_gate_checks()'),
@@ -233,6 +258,7 @@ describe('staging gates helper', () => {
       'download private Firefox metadata',
       'download private Firefox XPI',
       'download public Firefox XPI',
+      'download enrollment scripts',
     ]) {
       assert.match(
         content,

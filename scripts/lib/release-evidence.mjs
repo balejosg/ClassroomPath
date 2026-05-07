@@ -164,6 +164,11 @@ function renderReleaseDashboardMarkdown({
       evidence: evidence.artifacts.stagingReleaseState ?? 'n/a',
     }),
     renderDashboardStatusRow({
+      label: 'Staging enrollment downloads',
+      result: evidence.stagingVerification.enrollmentDownloadResult ?? 'n/a',
+      evidence: evidence.artifacts.stagingReleaseState ?? 'n/a',
+    }),
+    renderDashboardStatusRow({
       label: 'Deploy production',
       result: evidence.jobs.deployProduction ?? 'n/a',
       duration: timings.deployProduction,

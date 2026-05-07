@@ -287,15 +287,7 @@ compose_up_force_recreate_no_build() {
 }
 
 login_staging_release_candidate_registry() {
-  if [ -n "${STAGING_GHCR_TOKEN:-}" ]; then
-    if [ -z "${STAGING_GHCR_USERNAME:-}" ]; then
-      log_error "STAGING_GHCR_TOKEN is set but STAGING_GHCR_USERNAME is missing"
-      return 1
-    fi
-
-    log_info "Authenticating to GHCR for release candidate image pulls..."
-    echo "$STAGING_GHCR_TOKEN" | docker login ghcr.io -u "$STAGING_GHCR_USERNAME" --password-stdin
-  fi
+  login_staging_registry
 }
 
 deploy_with_release_candidates() {
@@ -309,6 +301,8 @@ deploy_with_release_candidates() {
     log_error "Release candidate manifest is incomplete"
     return 1
   fi
+
+  login_staging_registry || return 1
 
   export COMPOSE_PROJECT_NAME=classroompath-staging
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
@@ -438,6 +432,68 @@ load_staging_release_manifest() {
   STAGING_RELEASE_SHA="$RELEASE_MANIFEST_APP_SHA"
 }
 
+login_staging_registry() {
+  if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" != "1" ]; then
+    return 0
+  fi
+
+  if [ "${STAGING_REGISTRY_LOGIN_DONE:-0}" = "1" ]; then
+    return 0
+  fi
+
+  if [ -n "${STAGING_GHCR_TOKEN:-}" ]; then
+    if [ -z "${STAGING_GHCR_USERNAME:-}" ]; then
+      log_error "STAGING_GHCR_TOKEN is set but STAGING_GHCR_USERNAME is missing"
+      return 1
+    fi
+
+    echo "$STAGING_GHCR_TOKEN" | docker login ghcr.io -u "$STAGING_GHCR_USERNAME" --password-stdin
+  fi
+
+  STAGING_REGISTRY_LOGIN_DONE=1
+}
+
+preflight_staging_release_candidate_image() {
+  local label="$1"
+  local image_ref="$2"
+  local pull_log=""
+
+  if [ -z "$image_ref" ]; then
+    log_error "GHCR preflight missing ${label} image ref"
+    return 1
+  fi
+
+  pull_log="$(mktemp)"
+  log_info "Preflighting ${label} image from GHCR: ${image_ref}"
+  if docker pull "$image_ref" >"$pull_log" 2>&1; then
+    rm -f "$pull_log"
+    return 0
+  fi
+
+  log_error "GHCR preflight failed for ${label} image: ${image_ref}"
+  if grep -qiE 'denied|unauthorized|forbidden|manifest unknown|not found|digest|failed to resolve' "$pull_log"; then
+    log_error "Registry access or digest resolution failed for ${label} image: ${image_ref}"
+  fi
+  cat "$pull_log" >&2
+  rm -f "$pull_log"
+  return 1
+}
+
+preflight_staging_release_candidate_images() {
+  if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" != "1" ]; then
+    return 0
+  fi
+
+  ensure_staging_release_candidate_runtime_env || return 1
+
+  preflight_staging_release_candidate_image "verifier" "$CLASSROOMPATH_VERIFIER_IMAGE" || return 1
+  preflight_staging_release_candidate_image "migrations" "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
+  preflight_staging_release_candidate_image "gateway" "$CLASSROOMPATH_GATEWAY_IMAGE" || return 1
+  preflight_staging_release_candidate_image "OpenPath API" "$OPENPATH_API_IMAGE" || return 1
+  preflight_staging_release_candidate_image "SPA" "$CLASSROOMPATH_SPA_IMAGE" || return 1
+  preflight_staging_release_candidate_image "OpenPath Firefox assets" "$OPENPATH_FIREFOX_ASSETS_IMAGE" || return 1
+}
+
 load_deploy_host_preflight_helper() {
   DEPLOY_HOST_PREFLIGHT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-host-preflight.sh")"
 
@@ -491,7 +547,8 @@ prepare_staging_checkout() {
   log_info "Staging checkout is now at $(git rev-parse HEAD)"
 
   load_staging_release_manifest
-  login_staging_release_candidate_registry
+  login_staging_registry
+  preflight_staging_release_candidate_images
   classify_migration_risk
   release_execution_mark_stage preflight
 }

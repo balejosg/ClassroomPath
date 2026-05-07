@@ -80,6 +80,9 @@ function writeHighRiskVerificationState(path: string, overrides: string[] = []) 
       'STAGING_SMOKE_RESULT=success',
       'STAGING_SMOKE_STATUS=PASS',
       'STAGING_RELEASE_GATE_RESULT=success',
+      'STAGING_ENROLLMENT_DOWNLOAD_RESULT=success',
+      'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=success',
+      'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=success',
       'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
       'STAGING_FIREFOX_POLICY_RESULT=success',
       'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
@@ -203,6 +206,9 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
       'STAGING_SMOKE_RESULT=success',
       'STAGING_SMOKE_STATUS=PASS',
       'STAGING_RELEASE_GATE_RESULT=success',
+      'STAGING_ENROLLMENT_DOWNLOAD_RESULT=success',
+      'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=success',
+      'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=success',
       'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
       'STAGING_FIREFOX_POLICY_RESULT=success',
       'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
@@ -266,6 +272,9 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
   assert.equal(outputs.promotion_eligible, 'true');
   assert.equal(outputs.promotion_deployment_mode, 'promotion-eligible');
   assert.equal(outputs.staging_smoke_result, 'success');
+  assert.equal(outputs.staging_enrollment_download_result, 'success');
+  assert.equal(outputs.staging_linux_enrollment_script_result, 'success');
+  assert.equal(outputs.staging_windows_enrollment_script_result, 'success');
   assert.equal(outputs.staging_email_preflight_result, 'success');
   assert.equal(outputs.staging_email_preflight_mode, 'required');
   assert.equal(outputs.staging_firefox_release_version, '4.1.19');
@@ -328,6 +337,55 @@ test('verify-promotion-ready rejects staging evidence without signed Firefox rel
   assert.match(result.stderr, /STAGING_FIREFOX_SIGNATURE_STATE is missing/);
 });
 
+test('verify-promotion-ready rejects staging evidence without enrollment download canary success', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-enrollment-download-'));
+  const currentStatePath = join(tempDir, 'staging-release-state.env');
+  const verificationStatePath = join(tempDir, 'staging-verification.env');
+
+  writePromotionEligibleCurrentState(currentStatePath);
+  writeHighRiskVerificationState(verificationStatePath, [
+    'STAGING_ENROLLMENT_DOWNLOAD_RESULT=failed',
+    'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=success',
+    'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=failed',
+    'STAGING_LINUX_BOOTSTRAP_RESULT=success',
+    'STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=none',
+  ]);
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      'verify-promotion-ready',
+      '--current',
+      currentStatePath,
+      '--verification',
+      verificationStatePath,
+      '--deployment-mode',
+      'promotion-eligible',
+      '--high-risk',
+      'false',
+    ],
+    {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+      env: {
+        ...process.env,
+        EXPECTED_APP_SHA: 'abc123',
+        EXPECTED_GATEWAY_IMAGE: 'ghcr.io/balejosg/classroompath-gateway:abc123',
+        EXPECTED_MIGRATIONS_IMAGE: 'ghcr.io/balejosg/classroompath-migrations:abc123',
+        EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
+        EXPECTED_OPENPATH_VERSION: '4.1.19',
+        EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+        EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
+      },
+    }
+  );
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Enrollment download evidence is missing or failed/);
+  assert.match(result.stderr, /STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=failed/);
+});
+
 test('release-state CLI rejects high-risk promotion without Linux staging bootstrap evidence', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-linux-gate-'));
   const currentStatePath = join(tempDir, 'staging-release-state.env');
@@ -367,6 +425,9 @@ test('release-state CLI rejects high-risk promotion without Linux staging bootst
       'STAGING_SMOKE_RESULT=success',
       'STAGING_SMOKE_STATUS=PASS',
       'STAGING_RELEASE_GATE_RESULT=success',
+      'STAGING_ENROLLMENT_DOWNLOAD_RESULT=success',
+      'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=success',
+      'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=success',
       'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
       'STAGING_FIREFOX_POLICY_RESULT=success',
       'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
@@ -500,6 +561,9 @@ test('verify-promotion-ready rejects pending staging verification for target SHA
       'STAGING_VERIFIED_APP_SHA=',
       'STAGING_SMOKE_RESULT=pending',
       'STAGING_RELEASE_GATE_RESULT=pending',
+      'STAGING_ENROLLMENT_DOWNLOAD_RESULT=pending',
+      'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=pending',
+      'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=pending',
       '',
     ].join('\n'),
     'utf-8'
@@ -645,6 +709,9 @@ test('release-state CLI lists canonical snapshot fields for shell consumers', ()
     'RELEASE_GATE_TARGET_URL',
     'RELEASE_GATE_EXPECTED_ORIGIN',
     'STAGING_RELEASE_GATE_RESULT',
+    'STAGING_ENROLLMENT_DOWNLOAD_RESULT',
+    'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT',
+    'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT',
     'STAGING_VERIFIED_AT',
     'STAGING_EMAIL_PREFLIGHT_MODE',
     'STAGING_EMAIL_DELIVERY_HIGH_RISK',
@@ -701,6 +768,9 @@ test('canonical shell release-state helper serializes snapshots through the type
         'STAGING_SMOKE_RESULT=success',
         'STAGING_SMOKE_STATUS=PASS',
         'STAGING_RELEASE_GATE_RESULT=success',
+        'STAGING_ENROLLMENT_DOWNLOAD_RESULT=success',
+        'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=success',
+        'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=success',
         'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
         'STAGING_FIREFOX_POLICY_RESULT=success',
         'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
@@ -755,6 +825,9 @@ test('canonical shell release-state helper serializes pending staging verificati
   assert.equal(snapshot.STAGING_VERIFIED_APP_SHA, '');
   assert.equal(snapshot.STAGING_SMOKE_RESULT, 'pending');
   assert.equal(snapshot.STAGING_RELEASE_GATE_RESULT, 'pending');
+  assert.equal(snapshot.STAGING_ENROLLMENT_DOWNLOAD_RESULT, 'pending');
+  assert.equal(snapshot.STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT, 'pending');
+  assert.equal(snapshot.STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT, 'pending');
   assert.equal(snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT, 'pending');
   assert.equal(snapshot.STAGING_LINUX_BOOTSTRAP_RESULT, 'pending');
 });
@@ -773,6 +846,9 @@ test('bash release-state helpers preserve shell-only staging verification values
         'STAGING_SMOKE_RESULT=success',
         'STAGING_SMOKE_STATUS=PASS',
         'STAGING_RELEASE_GATE_RESULT=success',
+        'STAGING_ENROLLMENT_DOWNLOAD_RESULT=success',
+        'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=success',
+        'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=success',
         'STAGING_VERIFIED_AT=2026-04-11T10:00:00Z',
         'STAGING_EMAIL_PREFLIGHT_MODE=skip',
         'STAGING_EMAIL_DELIVERY_HIGH_RISK=false',
@@ -801,6 +877,9 @@ test('bash release-state helpers preserve shell-only staging verification values
   const snapshot = readReleaseStateSnapshot(snapshotPath);
   assert.equal(snapshot.STAGING_SMOKE_RESULT, 'success');
   assert.equal(snapshot.STAGING_RELEASE_GATE_RESULT, 'success');
+  assert.equal(snapshot.STAGING_ENROLLMENT_DOWNLOAD_RESULT, 'success');
+  assert.equal(snapshot.STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT, 'success');
+  assert.equal(snapshot.STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT, 'success');
   assert.equal(snapshot.STAGING_EMAIL_PREFLIGHT_RESULT, 'skipped-low-risk');
   assert.equal(snapshot.STAGING_WINDOWS_FIREFOX_HIGH_RISK, 'false');
   assert.equal(snapshot.STAGING_VERIFIED_AT, '2026-04-11T10:00:00Z');

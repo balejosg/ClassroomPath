@@ -244,6 +244,15 @@ warn_if_other_release_candidate_run_in_progress target-sha
           'STAGING_WINDOWS_BOOTSTRAP_RESULT=${STAGING_WINDOWS_BOOTSTRAP_RESULT:-}'
         ) &&
         persistHelperContent.includes(
+          'STAGING_ENROLLMENT_DOWNLOAD_RESULT=${STAGING_ENROLLMENT_DOWNLOAD_RESULT:-}'
+        ) &&
+        persistHelperContent.includes(
+          'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=${STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT:-}'
+        ) &&
+        persistHelperContent.includes(
+          'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=${STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT:-}'
+        ) &&
+        persistHelperContent.includes(
           'STAGING_FIREFOX_POLICY_RESULT=${STAGING_FIREFOX_POLICY_RESULT:-}'
         )
     );
@@ -268,6 +277,8 @@ warn_if_other_release_candidate_run_in_progress target-sha
     );
     assert.ok(
       stagingGatesHelper.includes('STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE') &&
+        stagingGatesHelper.includes('run_staging_enrollment_download_gate') &&
+        stagingGatesHelper.includes('STAGING_ENROLLMENT_DOWNLOAD_RESULT') &&
         stagingGatesHelper.includes(
           'Release-candidate staging deploys must prove the live Windows bootstrap contract'
         )
@@ -405,6 +416,9 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(releaseStateHelper.includes('STAGING_RELEASE_GATE_RESULT'));
     assert.ok(
       releaseStateHelper.includes('STAGING_WINDOWS_BOOTSTRAP_RESULT') &&
+        releaseStateHelper.includes('STAGING_ENROLLMENT_DOWNLOAD_RESULT') &&
+        releaseStateHelper.includes('STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT') &&
+        releaseStateHelper.includes('STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT') &&
         releaseStateHelper.includes('STAGING_FIREFOX_POLICY_RESULT') &&
         releaseStateHelper.includes('PASS_WITH_FALLBACK')
     );

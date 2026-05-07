@@ -41,6 +41,9 @@ const verificationState = {
   STAGING_SMOKE_RESULT: 'success',
   STAGING_SMOKE_STATUS: 'PASS',
   STAGING_RELEASE_GATE_RESULT: 'success',
+  STAGING_ENROLLMENT_DOWNLOAD_RESULT: 'success',
+  STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT: 'success',
+  STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT: 'success',
   STAGING_WINDOWS_BOOTSTRAP_RESULT: 'success',
   STAGING_FIREFOX_POLICY_RESULT: 'success',
   STAGING_FIREFOX_EXTENSION_ID: 'openpath@example',
@@ -75,6 +78,10 @@ describe('promotion eligibility', () => {
     assert.equal(report.deploymentMode, 'promotion-eligible');
     assert.equal(report.checks.currentRuntime.status, 'pass');
     assert.equal(report.checks.stagingVerification.status, 'pass');
+    assert.equal(
+      buildPromotionEligibilityOutputs(report).staging_enrollment_download_result,
+      'success'
+    );
     assert.equal(report.checks.windowsFirefox.status, 'pass');
     assert.deepEqual(report.errors, []);
     assert.equal(
@@ -140,6 +147,26 @@ describe('promotion eligibility', () => {
     assert.equal(report.checks.signedFirefoxRelease.status, 'fail');
     assert.equal(report.checks.windowsFirefox.status, 'not_applicable');
     assert.match(report.errors.join('\n'), /STAGING_FIREFOX_SIGNATURE_STATE/);
+  });
+
+  test('requires staging enrollment download evidence for low-risk production promotions', () => {
+    const report = evaluatePromotionEligibility({
+      deploymentMode: 'promotion-eligible',
+      imageSource: 'release-candidate',
+      currentState,
+      verificationState: {
+        ...verificationState,
+        STAGING_ENROLLMENT_DOWNLOAD_RESULT: 'failed',
+        STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT: 'failed',
+      },
+      expectedRuntime,
+      highRisk: false,
+    });
+
+    assert.equal(report.eligible, false);
+    assert.equal(report.checks.stagingVerification.status, 'fail');
+    assert.match(report.errors.join('\n'), /Enrollment download evidence is missing or failed/);
+    assert.match(report.errors.join('\n'), /STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=failed/);
   });
 
   test('accepts LAN staging Linux bootstrap skip for high-risk promotions', () => {

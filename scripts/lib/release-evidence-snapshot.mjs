@@ -113,6 +113,16 @@ export function validateStagingVerification(snapshot, expected) {
     );
   }
 
+  if (
+    (snapshot.STAGING_ENROLLMENT_DOWNLOAD_RESULT ?? '') !== 'success' ||
+    (snapshot.STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT ?? '') !== 'success' ||
+    (snapshot.STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT ?? '') !== 'success'
+  ) {
+    errors.push(
+      `::error::Enrollment download evidence is missing or failed (STAGING_ENROLLMENT_DOWNLOAD_RESULT=${snapshot.STAGING_ENROLLMENT_DOWNLOAD_RESULT ?? 'unset'}; STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT=${snapshot.STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT ?? 'unset'}; STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=${snapshot.STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT ?? 'unset'})`
+    );
+  }
+
   if ((snapshot.STAGING_VERIFIED_IMAGE_SOURCE ?? '') !== 'release-candidate') {
     errors.push(
       `::error::Staging verification evidence does not point to release candidate images (STAGING_VERIFIED_IMAGE_SOURCE=${snapshot.STAGING_VERIFIED_IMAGE_SOURCE ?? 'unset'})`
@@ -248,6 +258,11 @@ export function buildStagingReleaseEvidenceOutputs(snapshot) {
     staging_smoke_result: snapshot.STAGING_SMOKE_RESULT ?? 'unknown',
     staging_smoke_status: snapshot.STAGING_SMOKE_STATUS ?? 'unknown',
     staging_release_gate_result: snapshot.STAGING_RELEASE_GATE_RESULT ?? 'unknown',
+    staging_enrollment_download_result: snapshot.STAGING_ENROLLMENT_DOWNLOAD_RESULT ?? 'unknown',
+    staging_linux_enrollment_script_result:
+      snapshot.STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT ?? 'unknown',
+    staging_windows_enrollment_script_result:
+      snapshot.STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT ?? 'unknown',
     staging_email_preflight_mode: snapshot.STAGING_EMAIL_PREFLIGHT_MODE ?? 'unknown',
     staging_email_delivery_high_risk: snapshot.STAGING_EMAIL_DELIVERY_HIGH_RISK ?? 'unknown',
     staging_email_preflight_result: snapshot.STAGING_EMAIL_PREFLIGHT_RESULT ?? 'unknown',
@@ -546,7 +561,10 @@ function derivePromotionEligibility(env) {
   const fallbackEligible =
     valueOrNull(env.VERIFY_STAGING_RESULT) === 'success' &&
     valueOrNull(env.STAGING_SMOKE_RESULT) === 'success' &&
-    valueOrNull(env.STAGING_RELEASE_GATE_RESULT) === 'success';
+    valueOrNull(env.STAGING_RELEASE_GATE_RESULT) === 'success' &&
+    valueOrNull(env.STAGING_ENROLLMENT_DOWNLOAD_RESULT) === 'success' &&
+    valueOrNull(env.STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT) === 'success' &&
+    valueOrNull(env.STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT) === 'success';
   const deploymentMode =
     valueOrNull(env.PROMOTION_DEPLOYMENT_MODE) ??
     (valueOrNull(env.STAGING_VERIFIED_IMAGE_SOURCE) === 'source-build'
@@ -664,6 +682,9 @@ export function createReleaseEvidenceSnapshot(input = process.env) {
       smokeResult: valueOrNull(env.STAGING_SMOKE_RESULT),
       smokeStatus: valueOrNull(env.STAGING_SMOKE_STATUS),
       releaseGateResult: valueOrNull(env.STAGING_RELEASE_GATE_RESULT),
+      enrollmentDownloadResult: valueOrNull(env.STAGING_ENROLLMENT_DOWNLOAD_RESULT),
+      linuxEnrollmentScriptResult: valueOrNull(env.STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT),
+      windowsEnrollmentScriptResult: valueOrNull(env.STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT),
       windowsFirefoxHighRisk: windowsFirefoxHighRisk ? 'true' : 'false',
       windowsBootstrapResult: valueOrNull(env.STAGING_WINDOWS_BOOTSTRAP_RESULT),
       firefoxPolicyResult: valueOrNull(env.STAGING_FIREFOX_POLICY_RESULT),
@@ -763,6 +784,11 @@ export function normalizeReleaseEvidenceSnapshot(snapshot) {
       smokeResult: snapshot.stagingVerification?.smokeResult ?? null,
       smokeStatus: snapshot.stagingVerification?.smokeStatus ?? null,
       releaseGateResult: snapshot.stagingVerification?.releaseGateResult ?? null,
+      enrollmentDownloadResult: snapshot.stagingVerification?.enrollmentDownloadResult ?? null,
+      linuxEnrollmentScriptResult:
+        snapshot.stagingVerification?.linuxEnrollmentScriptResult ?? null,
+      windowsEnrollmentScriptResult:
+        snapshot.stagingVerification?.windowsEnrollmentScriptResult ?? null,
       windowsFirefoxHighRisk: snapshot.stagingVerification?.windowsFirefoxHighRisk ?? null,
       windowsBootstrapResult: snapshot.stagingVerification?.windowsBootstrapResult ?? null,
       firefoxPolicyResult: snapshot.stagingVerification?.firefoxPolicyResult ?? null,

@@ -94,6 +94,7 @@ run_release_gate_subcommand() {
   reset_staging_verification_env
   run_staging_release_gate "$canonical_staging_url" "$staging_use_release_candidate" "${ssh_cmd[@]}"
   run_staging_windows_bootstrap_gate "$canonical_staging_url" "${ssh_cmd[@]}"
+  run_staging_enrollment_download_gate
   run_staging_linux_bootstrap_gate "$canonical_staging_url"
   write_staging_verification_run_state "$state_file"
 }
