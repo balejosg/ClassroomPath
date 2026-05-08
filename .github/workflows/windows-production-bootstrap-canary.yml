@@ -119,6 +119,7 @@ jobs:
           node -e "Promise.all([import('selenium-webdriver'), import('selenium-webdriver/firefox.js')])"
 
       - name: Resolve diagnostic target
+        id: inputs
         shell: bash
         run: |
           set -euo pipefail
@@ -136,6 +137,12 @@ jobs:
           echo "PRODUCTION_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
           echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=${base_url%/}" >> "$GITHUB_ENV"
           echo "WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=${base_url%/}" >> "$GITHUB_ENV"
+          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            firefox_install_base_url="$(node scripts/deploy-targets.mjs get staging canaryPublicUrl)"
+          else
+            firefox_install_base_url="$base_url"
+          fi
+          echo "firefox_install_url=${firefox_install_base_url%/}/api/extensions/firefox/openpath.xpi" >> "$GITHUB_OUTPUT"
           echo "Resolved $TARGET_ENVIRONMENT diagnostic target: ${base_url%/}"
           if [ "$RUNNER_DIAGNOSTIC_MODE" = "true" ]; then
             echo "Diagnostic-only runner canary; this run is not production release evidence."
@@ -383,6 +390,8 @@ jobs:
         env:
           CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
           ENROLLMENT_TOKEN: ${{ steps.provision.outputs.enrollment_token }}
+          OPENPATH_FIREFOX_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
+          OPENPATH_FIREFOX_EXTENSION_INSTALL_URL: ${{ steps.inputs.outputs.firefox_install_url }}
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -399,6 +408,9 @@ jobs:
           $windowsScriptPath = Join-Path $workspace 'windows.ps1'
 
           Invoke-WebRequest -Uri $windowsScriptUrl -Headers $headers -OutFile $windowsScriptPath
+          if (-not $env:OPENPATH_FIREFOX_EXTENSION_ID -or -not $env:OPENPATH_FIREFOX_EXTENSION_INSTALL_URL) {
+            throw 'Expected Firefox extension id and install URL are required before executing windows.ps1'
+          }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $windowsScriptPath
 
           if ($LASTEXITCODE -ne 0) {
@@ -410,7 +422,7 @@ jobs:
         env:
           EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
           EXPECTED_EXTENSION_VERSION: ${{ steps.provision.outputs.extension_version }}
-          EXPECTED_PUBLIC_XPI_URL: ${{ steps.provision.outputs.public_firefox_xpi_url }}
+          EXPECTED_PUBLIC_XPI_URL: ${{ steps.inputs.outputs.firefox_install_url }}
         run: |
           $ErrorActionPreference = 'Stop'
 
