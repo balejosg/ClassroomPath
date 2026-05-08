@@ -70,6 +70,12 @@ function markClassroomPathRuntimeChanged(flags) {
   flags.verifierChanged = true;
 }
 
+function markClassroomPathPublicSpaChanged(flags) {
+  flags.gatewayChanged = true;
+  flags.spaChanged = true;
+  flags.verifierChanged = true;
+}
+
 function markClassroomPathOpsChanged(flags) {
   flags.migrationsChanged = true;
   flags.verifierChanged = true;
@@ -370,6 +376,8 @@ export function classifyReleaseCandidateComponents({
         flags.verifierChanged = true;
         break;
       case /^react-spa\//.test(file):
+        markClassroomPathPublicSpaChanged(flags);
+        break;
       case file === 'docker/Dockerfile.spa':
         flags.spaChanged = true;
         flags.verifierChanged = true;

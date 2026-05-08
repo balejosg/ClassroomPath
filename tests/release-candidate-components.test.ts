@@ -191,17 +191,33 @@ describe('release candidate component classification', () => {
     assert.equal(flags.openpathLinuxAgentRequired, true);
   });
 
-  test('classifies top-level ClassroomPath changes without broadening unrelated image families', () => {
+  test('rebuilds the public gateway image when ClassroomPath SPA runtime changes', () => {
     assert.deepEqual(
       classifyReleaseCandidateComponents({
-        changedFiles: ['react-spa/src/app/router.tsx'],
+        changedFiles: ['react-spa/src/components/GoogleLoginButton.tsx'],
         openpathChangedFiles: [],
       }),
       {
-        gatewayChanged: false,
+        gatewayChanged: true,
         migrationsChanged: false,
         openpathApiChanged: false,
         spaChanged: true,
+        verifierChanged: true,
+      }
+    );
+  });
+
+  test('keeps Dockerfile.cp-api on the gateway path because it embeds react-spa/dist', () => {
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: ['docker/Dockerfile.cp-api'],
+        openpathChangedFiles: [],
+      }),
+      {
+        gatewayChanged: true,
+        migrationsChanged: false,
+        openpathApiChanged: false,
+        spaChanged: false,
         verifierChanged: true,
       }
     );
