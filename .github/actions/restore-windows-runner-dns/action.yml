@@ -8,6 +8,9 @@ inputs:
   require-github-connectivity:
     description: Whether to fail when github.com cannot be reached after DNS restore.
     default: 'true'
+  connectivity-hosts:
+    description: Comma-separated hosts that must resolve and accept TCP/443 after DNS restore.
+    default: github.com,pipelines.actions.githubusercontent.com
 
 runs:
   using: composite
@@ -40,11 +43,17 @@ runs:
 
         Clear-DnsClientCache -ErrorAction SilentlyContinue
 
-        $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
-        if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
-          $message = "GitHub connectivity check failed after DNS restore. NameResolution=$($githubProbe.NameResolutionSucceeded) Tcp443=$($githubProbe.TcpTestSucceeded)"
-          if ('${{ inputs.require-github-connectivity }}' -eq 'true') {
-            throw $message
+        $connectivityHosts = '${{ inputs.connectivity-hosts }}'.Split(',') |
+          ForEach-Object { $_.Trim() } |
+          Where-Object { $_ }
+
+        foreach ($connectivityHost in $connectivityHosts) {
+          $githubProbe = Test-NetConnection $connectivityHost -Port 443 -WarningAction SilentlyContinue
+          if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
+            $message = "GitHub connectivity check failed after DNS restore for $connectivityHost. NameResolution=$($githubProbe.NameResolutionSucceeded) Tcp443=$($githubProbe.TcpTestSucceeded)"
+            if ('${{ inputs.require-github-connectivity }}' -eq 'true') {
+              throw $message
+            }
+            Write-Warning $message
           }
-          Write-Warning $message
         }

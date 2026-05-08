@@ -570,7 +570,8 @@ describe('Production client update canary workflow contracts', () => {
 
     assert.ok(actionText.includes('Set-DnsClientServerAddress'));
     assert.ok(actionText.includes('Clear-DnsClientCache'));
-    assert.ok(actionText.includes('Test-NetConnection github.com -Port 443'));
+    assert.ok(actionText.includes('Test-NetConnection $connectivityHost -Port 443'));
+    assert.ok(actionText.includes('pipelines.actions.githubusercontent.com'));
     assert.ok(
       actionText.includes("Get-NetFirewallRule -DisplayName 'OpenPath-*'") &&
         actionText.includes('Remove-NetFirewallRule'),
@@ -1342,7 +1343,12 @@ describe('Production client update canary workflow contracts', () => {
     assert.equal(
       ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE,
       'selenium',
-      'Windows AJAX canary should use the runner-validated Selenium managed Firefox launcher'
+      'Windows AJAX canary should use the runner-validated Selenium Firefox launcher'
+    );
+    assert.equal(
+      ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH,
+      'C:\\OpenPath\\browser-extension\\firefox-release\\openpath-firefox-extension.xpi',
+      'Windows AJAX canary should load the signed XPI staged by the live bootstrap into Selenium'
     );
     assert.ok(ajaxScript.includes('node scripts/windows-ajax-auto-allow-canary.mjs'));
     assert.ok(ajaxCanaryEvidenceText.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
