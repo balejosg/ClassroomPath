@@ -673,7 +673,7 @@ describe('Workflow core contracts', () => {
     );
     assert.ok(windowsFirefoxWorkflowText.includes('openpath-firefox-extension.xpi'));
     assert.ok(
-      windowsFirefoxWorkflowText.includes('deploy-targets.mjs get staging publicUrl') &&
+      windowsFirefoxWorkflowText.includes('deploy-targets.mjs get staging canaryPublicUrl') &&
         windowsFirefoxWorkflowText.includes('/api/extensions/firefox/openpath.xpi')
     );
     assert.ok(!windowsFirefoxWorkflowText.includes('file:///'));
@@ -782,7 +782,7 @@ describe('Workflow core contracts', () => {
     );
     assert.ok(
       productionBootstrapWorkflowText.includes(
-        'node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" publicUrl'
+        'node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" canaryPublicUrl'
       )
     );
   });

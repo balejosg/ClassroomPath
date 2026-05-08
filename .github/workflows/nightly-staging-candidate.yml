@@ -23,6 +23,7 @@ jobs:
       sha: ${{ steps.release-candidate.outputs.sha }}
       release_candidate_run_id: ${{ steps.release-candidate.outputs.run_id }}
       staging_url: ${{ steps.nightly-staging.outputs.staging_url }}
+      staging_windows_canary_url: ${{ steps.nightly-staging.outputs.staging_windows_canary_url }}
       windows_firefox_high_risk: ${{ steps.nightly-staging.outputs.windows_firefox_high_risk }}
 
     steps:
@@ -156,7 +157,9 @@ jobs:
         run: |
           set -euo pipefail
           staging_url="$(node scripts/deploy-targets.mjs get staging publicUrl)"
+          staging_windows_canary_url="$(node scripts/deploy-targets.mjs get staging canaryPublicUrl)"
           echo "staging_url=$staging_url" >> "$GITHUB_OUTPUT"
+          echo "staging_windows_canary_url=$staging_windows_canary_url" >> "$GITHUB_OUTPUT"
           echo "windows_firefox_high_risk=true" >> "$GITHUB_OUTPUT"
 
   windows-staging-bootstrap-canary:
@@ -166,7 +169,7 @@ jobs:
     uses: ./.github/workflows/windows-production-bootstrap-canary.yml
     with:
       target_environment: staging
-      base_url: ${{ needs.deploy-current-main-to-staging.outputs.staging_url }}
+      base_url: ${{ needs.deploy-current-main-to-staging.outputs.staging_windows_canary_url }}
       diagnostic_mode: 'false'
     secrets: inherit
 
@@ -243,6 +246,40 @@ jobs:
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
+
+      - name: Ensure GitHub CLI
+        shell: bash
+        env:
+          GH_CLI_VERSION: 2.83.0
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            gh --version
+            exit 0
+          fi
+
+          case "$(uname -m)" in
+            x86_64|amd64)
+              gh_arch="amd64"
+              ;;
+            aarch64|arm64)
+              gh_arch="arm64"
+              ;;
+            *)
+              echo "Unsupported GitHub CLI architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+
+          gh_dir="$RUNNER_TEMP/gh-cli"
+          rm -rf "$gh_dir"
+          mkdir -p "$gh_dir"
+          curl -fsSL \
+            "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${gh_arch}.tar.gz" \
+            -o "$gh_dir/gh.tar.gz"
+          tar -xzf "$gh_dir/gh.tar.gz" -C "$gh_dir" --strip-components=1
+          echo "$gh_dir/bin" >> "$GITHUB_PATH"
+          "$gh_dir/bin/gh" --version
 
       - name: Install dependencies
         run: npm ci --ignore-scripts

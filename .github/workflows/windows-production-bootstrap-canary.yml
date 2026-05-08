@@ -130,7 +130,7 @@ jobs:
 
           base_url="$PRODUCTION_BASE_URL"
           if [ -z "$base_url" ]; then
-            base_url="$(node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" publicUrl)"
+            base_url="$(node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" canaryPublicUrl 2>/dev/null || node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" publicUrl)"
           fi
 
           echo "PRODUCTION_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"

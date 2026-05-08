@@ -194,9 +194,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $distributionDir | Out-Null
           New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
 
-          $stagingPublicUrl = (node scripts/deploy-targets.mjs get staging publicUrl).Trim().TrimEnd('/')
+          $stagingPublicUrl = (node scripts/deploy-targets.mjs get staging canaryPublicUrl).Trim().TrimEnd('/')
           if (-not $stagingPublicUrl) {
-            throw 'Could not resolve the canonical staging public URL'
+            throw 'Could not resolve the staging canary public URL'
           }
 
           $installUrl = "$stagingPublicUrl/api/extensions/firefox/openpath.xpi"

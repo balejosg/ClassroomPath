@@ -309,8 +309,8 @@ void describe('Environment Configuration', () => {
     assert.ok(existsSync(deployTargetsPath), 'config/deploy-targets.json should exist');
 
     const targets = JSON.parse(readFileSync(deployTargetsPath, 'utf-8')) as {
-      staging?: { publicUrl?: string; containerPlatform?: string };
-      production?: { publicUrl?: string; containerPlatform?: string };
+      staging?: { publicUrl?: string; canaryPublicUrl?: string; containerPlatform?: string };
+      production?: { publicUrl?: string; canaryPublicUrl?: string; containerPlatform?: string };
     };
 
     assert.strictEqual(
@@ -322,6 +322,16 @@ void describe('Environment Configuration', () => {
       targets.production?.publicUrl,
       'https://classroompath.eu',
       'Production public URL should stay centralized in deploy-targets.json'
+    );
+    assert.strictEqual(
+      targets.staging?.canaryPublicUrl,
+      'https://classroompath-staging.duckdns.org',
+      'Windows/Firefox canaries should use the HTTPS staging endpoint'
+    );
+    assert.strictEqual(
+      targets.production?.canaryPublicUrl,
+      'https://classroompath.eu',
+      'Production canaries should use the canonical HTTPS production endpoint'
     );
     assert.strictEqual(
       targets.staging?.containerPlatform,
