@@ -20,6 +20,7 @@ describe('Deployment runtime contracts', () => {
     'docker/Dockerfile.release-verifier.dockerignore'
   );
   const stagingDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
+  const commonHelperPath = resolve(projectRoot, 'scripts/lib/common.sh');
   const stagingLocalReleaseHelperPath = resolve(
     projectRoot,
     'scripts/lib/staging-deploy-local-release.sh'
@@ -172,6 +173,7 @@ describe('Deployment runtime contracts', () => {
 
   test('release manifest flows through staging and production as a single payload contract', () => {
     const stagingLocal = readFileSync(stagingDeployScriptPath, 'utf-8');
+    const commonHelper = readFileSync(commonHelperPath, 'utf-8');
     const stagingLocalRelease = readFileSync(stagingLocalReleaseHelperPath, 'utf-8');
     const stagingLocalRuntime = readFileSync(stagingLocalRuntimeHelperPath, 'utf-8');
     const stagingRemote = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
@@ -221,7 +223,9 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       stagingLocalRelease.includes('STAGING_DEPLOY_PAYLOAD_B64=') &&
         stagingLocalRelease.includes('STAGING_DEPLOY_PAYLOAD_B64="${DEPLOY_PAYLOAD_B64:-}"') &&
+        commonHelper.includes('remote_assignment()') &&
         stagingLocalRuntime.includes('remote_assignment STAGING_DEPLOY_PAYLOAD_B64') &&
+        !stagingLocalRuntime.includes('remote_assignment() {') &&
         stagingLocalRuntime.includes('remote_assignment STAGING_CONTAINER_PLATFORM') &&
         stagingLocalRuntime.includes('remote_assignment STAGING_PUBLIC_URL')
     );

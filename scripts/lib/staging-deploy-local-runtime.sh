@@ -146,12 +146,6 @@ hydrate_billing_env_from_remote_if_needed() {
     exit 1
 }
 
-remote_assignment() {
-    local key="$1"
-    local value="$2"
-    printf '%s=%q ' "$key" "$value"
-}
-
 validate_staging_local_support_files() {
     if [ ! -f "$STAGING_REMOTE_SCRIPT_PATH" ]; then
         log_error "Remote staging deploy script not found: $STAGING_REMOTE_SCRIPT_PATH"

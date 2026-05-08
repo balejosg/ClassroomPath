@@ -105,6 +105,12 @@ remove_env_file_var() {
   mv "$tmp_file" "$path"
 }
 
+remote_assignment() {
+  local key="$1"
+  local value="$2"
+  printf '%s=%q ' "$key" "$value"
+}
+
 is_tty_stdin() {
   [ -t 0 ]
 }
