@@ -769,11 +769,9 @@ describe('Workflow core contracts', () => {
       productionBootstrapWorkflowText.includes('policies.json') &&
         productionBootstrapWorkflowText.includes('force_installed')
     );
-    assert.ok(productionBootstrapWorkflowText.includes('extensions.json'));
     assert.ok(
-      productionBootstrapWorkflowText.includes(
-        'Firefox did not register the force-installed extension'
-      )
+      productionBootstrapWorkflowText.includes('Verify Windows AJAX auto-allow canary') &&
+        productionBootstrapWorkflowText.includes('WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE')
     );
     assert.ok(
       !productionBootstrapWorkflowText.includes(

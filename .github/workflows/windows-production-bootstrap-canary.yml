@@ -511,69 +511,12 @@ jobs:
             throw "Unexpected install_url in policies.json: $($policyEntry.install_url)"
           }
 
-          $profileDir = Join-Path $env:RUNNER_TEMP 'windows-production-bootstrap-firefox-profile'
-          $profileExtensionsDir = Join-Path $profileDir 'extensions'
-          $extensionsRegistryPath = Join-Path $profileDir 'extensions.json'
-          $firefoxLogPath = Join-Path $env:RUNNER_TEMP 'windows-production-bootstrap-firefox.log'
-
-          New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
-          Remove-Item $firefoxLogPath -ErrorAction SilentlyContinue
-
-          $env:MOZ_LOG = 'EnterprisePolicies:5'
-          $env:MOZ_LOG_FILE = $firefoxLogPath
-
-          $process = Start-Process -FilePath $firefoxCandidates[0] -ArgumentList '-headless', '-profile', $profileDir, 'about:blank' -PassThru
-          Start-Sleep -Seconds 20
-          if (-not $process.HasExited) {
-            Stop-Process -Id $process.Id -Force
-          }
-
-          $profileExtensionPath = Join-Path $profileExtensionsDir "$($env:EXPECTED_EXTENSION_ID).xpi"
-          $registryAddon = $null
-
-          if (Test-Path $extensionsRegistryPath) {
-            $registry = Get-Content $extensionsRegistryPath -Raw | ConvertFrom-Json
-            $registryAddon = @($registry.addons) | Where-Object { $_.id -eq $env:EXPECTED_EXTENSION_ID } | Select-Object -First 1
-          }
-
-          $extensionInstalled = $null -ne $registryAddon -or (Test-Path $profileExtensionPath)
-          $extensionActive = $false
-          if ($registryAddon) {
-            $addonActive = if ($registryAddon.PSObject.Properties['active']) { [bool]$registryAddon.active } else { $true }
-            $addonDisabled = if ($registryAddon.PSObject.Properties['userDisabled']) { [bool]$registryAddon.userDisabled } else { $false }
-            $extensionActive = $addonActive -and (-not $addonDisabled)
-          } elseif (Test-Path $profileExtensionPath) {
-            $extensionActive = $true
-          }
-          $firefoxLog = if (Test-Path $firefoxLogPath) { Get-Content $firefoxLogPath -Raw } else { '' }
-
-          if (-not $extensionInstalled) {
-            throw "Firefox did not register the force-installed extension $env:EXPECTED_EXTENSION_ID in extensions.json or the profile XPI path"
-          }
-
-          if ($firefoxLog -match 'policies\.json.*(error|failed|invalid)' -or $firefoxLog -match 'Enterprise Policies.*(error|failed|invalid)') {
-            throw 'Firefox reported a policies.json parse error'
-          }
-
-          if (-not $extensionActive) {
-            throw "Firefox registered $env:EXPECTED_EXTENSION_ID but did not activate it"
-          }
-
-          if (
-            $registryAddon -and
-            $env:EXPECTED_EXTENSION_VERSION -and
-            $registryAddon.version -and
-            $registryAddon.version -ne $env:EXPECTED_EXTENSION_VERSION
-          ) {
-            throw "Firefox installed version $($registryAddon.version) instead of $env:EXPECTED_EXTENSION_VERSION"
-          }
-
           $openPathStatus = @{
             configVersion = $browserPolicySpec.version
             firefoxPolicyPath = $policiesPath
             extensionId = $env:EXPECTED_EXTENSION_ID
-            extensionInstalled = [bool]$extensionInstalled
-            extensionActive = [bool]$extensionActive
+            extensionInstalled = $null
+            extensionActive = $null
             scheduledTasks = @(Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName })
             services = @(Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name):$($_.Status)" })
           }
