@@ -215,11 +215,12 @@ function parseTrpcEnvelope<T>(payload: unknown): {
     code?: string;
   };
 } {
-  if (!payload || typeof payload !== 'object') {
+  const candidate = Array.isArray(payload) ? payload[0] : payload;
+  if (!candidate || typeof candidate !== 'object') {
     return {};
   }
 
-  const envelope = payload as TrpcEnvelope<T>;
+  const envelope = candidate as TrpcEnvelope<T>;
   if (envelope.result !== undefined) {
     return { data: envelope.result.data };
   }
