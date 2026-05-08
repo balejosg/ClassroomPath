@@ -32,6 +32,10 @@ void describe('Remote Deploy Bootstrap', () => {
     projectRoot,
     'scripts/persist-staging-verification-remote.sh'
   );
+  const persistWindowsBootstrapCanaryPath = resolve(
+    projectRoot,
+    'scripts/persist-staging-windows-bootstrap-canary.sh'
+  );
 
   void test('remote bootstrap helper owns script-dir and helper-path resolution', () => {
     const content = readFileSync(remoteBootstrapHelperPath, 'utf-8');
@@ -395,6 +399,25 @@ void describe('Remote Deploy Bootstrap', () => {
         !content.includes('write_release_state_snapshot() {') &&
         !content.includes('write_staging_verification_state() {'),
       'persist-staging-verification-remote.sh should require versioned shared helpers instead of carrying inline bootstrap and release-state fallback bodies'
+    );
+  });
+
+  void test('Windows bootstrap canary persistence overrides loaded staging state with fresh workflow evidence', () => {
+    const content = readFileSync(persistWindowsBootstrapCanaryPath, 'utf-8');
+    const sourceStateIndex = content.indexOf('source "$state_file"');
+    const canaryOverrideIndex = content.indexOf(
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT="$INPUT_STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT"'
+    );
+    const writeStateIndex = content.indexOf('write_staging_verification_state "$state_file"');
+
+    assert.ok(sourceStateIndex > 0, 'persist script should load the existing staging state first');
+    assert.ok(
+      canaryOverrideIndex > sourceStateIndex,
+      'fresh workflow canary evidence should override stale values loaded from the state file'
+    );
+    assert.ok(
+      writeStateIndex > canaryOverrideIndex,
+      'persist script should write the merged staging state after applying fresh canary evidence'
     );
   });
 
