@@ -113,16 +113,24 @@ function assertNightlyStagingCandidateGate(
   workflow: WorkflowDefinition,
   workflowText: string
 ): void {
+  const jobs = workflow.jobs ?? {};
   const job = findWorkflowJob(workflow, 'deploy-current-main-to-staging');
+  const verifyJob = findWorkflowJob(workflow, 'verify-production-promotion-readiness');
   const workflowDispatchInputs = workflow.on?.workflow_dispatch?.inputs ?? {};
   const prepareSshStep = findWorkflowStepByName(job, 'Prepare SSH keys');
   const deployStep = findWorkflowStepByName(job, 'Deploy staging');
-  const promotionReadyStep = findWorkflowStepByName(job, 'Verify production promotion readiness');
+  const promotionReadyStep = findWorkflowStepByName(
+    verifyJob,
+    'Verify production promotion readiness'
+  );
+  const persistStep = findWorkflowStepByName(
+    findWorkflowJob(workflow, 'persist-windows-staging-bootstrap-canary'),
+    'Persist canary evidence to staging release state'
+  );
 
   assert.ok(!('dry_run' in workflowDispatchInputs));
   assert.equal(prepareSshStep.if, undefined);
   assert.equal(deployStep.if, undefined);
-  assert.equal(promotionReadyStep.if, undefined);
   assert.equal(prepareSshStep.shell, 'bash');
   assert.match(String(prepareSshStep.run ?? ''), /STAGING_SSH_KEY=/);
   assert.match(String(prepareSshStep.run ?? ''), /DEPLOY_SSH_KEY=/);
@@ -130,6 +138,21 @@ function assertNightlyStagingCandidateGate(
   assert.equal(prepareSshStep.env?.DEPLOY_SSH_KEY_SECRET, '${{ secrets.DEPLOY_SSH_KEY }}');
   assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-manifest'));
   assert.match(String(deployStep.run ?? ''), /npm run deploy:staging:assume-yes/);
+  assert.equal(
+    jobs['windows-staging-bootstrap-canary']?.uses,
+    './.github/workflows/windows-production-bootstrap-canary.yml'
+  );
+  assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.target_environment, 'staging');
+  assert.match(
+    String(jobs['windows-staging-bootstrap-canary']?.with?.base_url ?? ''),
+    /needs\.deploy-current-main-to-staging\.outputs\.staging_url/
+  );
+  assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, 'false');
+  assert.match(String(persistStep.run ?? ''), /persist-staging-windows-bootstrap-canary\.sh/);
+  assert.match(
+    String(persistStep.env?.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA ?? ''),
+    /needs\.deploy-current-main-to-staging\.outputs\.sha/
+  );
   assert.match(String(promotionReadyStep.run ?? ''), /npm run verify:promotion-ready/);
   assert.equal(promotionReadyStep.env?.GH_TOKEN, '${{ secrets.GITHUB_TOKEN }}');
   assert.equal(promotionReadyStep.env?.GITHUB_TOKEN, '${{ secrets.GITHUB_TOKEN }}');
@@ -137,7 +160,11 @@ function assertNightlyStagingCandidateGate(
   assert.match(String(promotionReadyStep.env?.PROMOTION_EVIDENCE_DIR ?? ''), /runner\.temp/);
   assert.ok(
     workflowText.indexOf('npm run deploy:staging:assume-yes') <
-      workflowText.indexOf('npm run verify:promotion-ready')
+      workflowText.indexOf('windows-production-bootstrap-canary.yml') &&
+      workflowText.indexOf('windows-production-bootstrap-canary.yml') <
+        workflowText.indexOf('persist-staging-windows-bootstrap-canary.sh') &&
+      workflowText.indexOf('persist-staging-windows-bootstrap-canary.sh') <
+        workflowText.indexOf('npm run verify:promotion-ready')
   );
   assert.ok(!workflowText.includes('Nightly Staging Candidate Dry Run'));
   assert.ok(!workflowText.includes('State | dry-run'));

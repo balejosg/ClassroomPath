@@ -86,6 +86,11 @@ function writeHighRiskVerificationState(path: string, overrides: string[] = []) 
       'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=success',
       'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
       'STAGING_FIREFOX_POLICY_RESULT=success',
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT=success',
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA=abc123',
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID=123456789',
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID=none',
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_MESSAGE=Windows AJAX auto-allow canary completed successfully.',
       'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
       'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
       'STAGING_FIREFOX_SIGNATURE_SOURCE=amo',
@@ -212,6 +217,11 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
       'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=success',
       'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
       'STAGING_FIREFOX_POLICY_RESULT=success',
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT=success',
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA=abc123',
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID=123456789',
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID=none',
+      'STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_MESSAGE=Windows AJAX auto-allow canary completed successfully.',
       'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
       'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
       'STAGING_FIREFOX_SIGNATURE_SOURCE=amo',
@@ -776,6 +786,11 @@ test('release-state CLI lists canonical snapshot fields for shell consumers', ()
     'STAGING_FIREFOX_RELEASE_ARTIFACTS',
     'STAGING_WINDOWS_BOOTSTRAP_RESULT',
     'STAGING_FIREFOX_POLICY_RESULT',
+    'STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT',
+    'STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA',
+    'STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID',
+    'STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID',
+    'STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_MESSAGE',
     'STAGING_FIREFOX_EXTENSION_ID',
     'STAGING_FIREFOX_RELEASE_VERSION',
     'STAGING_FIREFOX_SIGNATURE_SOURCE',
@@ -828,6 +843,11 @@ test('canonical shell release-state helper serializes snapshots through the type
         'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=success',
         'STAGING_WINDOWS_BOOTSTRAP_RESULT=success',
         'STAGING_FIREFOX_POLICY_RESULT=success',
+        'STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT=success',
+        'STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA=abc123',
+        'STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID=123456789',
+        'STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID=none',
+        'STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_MESSAGE=Windows AJAX auto-allow canary completed successfully.',
         'STAGING_FIREFOX_EXTENSION_ID=openpath@example',
         'STAGING_FIREFOX_RELEASE_VERSION=4.1.19',
         'STAGING_FIREFOX_SIGNATURE_SOURCE=amo',
@@ -852,6 +872,8 @@ test('canonical shell release-state helper serializes snapshots through the type
   assert.equal(snapshot.STAGING_FIREFOX_SIGNATURE_SOURCE, 'amo');
   assert.equal(snapshot.STAGING_FIREFOX_SIGNATURE_STATE, 'signed');
   assert.equal(snapshot.STAGING_FIREFOX_XPI_SHA256, 'xpi123');
+  assert.equal(snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT, 'success');
+  assert.equal(snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA, 'abc123');
 });
 
 test('canonical shell release-state helper serializes pending staging verification intent', () => {

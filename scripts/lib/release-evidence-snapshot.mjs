@@ -245,7 +245,27 @@ export function validateHighRiskStagingVerification(snapshot) {
 
   if ((snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT ?? '') !== 'success') {
     errors.push(
-      `::error::Windows bootstrap evidence is missing or failed (STAGING_WINDOWS_BOOTSTRAP_RESULT=${snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT ?? 'unset'})`
+      `::error::Windows download/bootstrap-assets evidence is missing or failed (STAGING_WINDOWS_BOOTSTRAP_RESULT=${snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT ?? 'unset'})`
+    );
+  }
+
+  if ((snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT ?? '') !== 'success') {
+    errors.push(
+      `::error::Windows runtime bootstrap canary evidence is missing or failed (STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT=${snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT ?? 'unset'})`
+    );
+  }
+
+  const expectedAppSha = String(snapshot.STAGING_VERIFIED_APP_SHA ?? '');
+  const canaryAppSha = String(snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA ?? '');
+  if (!canaryAppSha || canaryAppSha !== expectedAppSha) {
+    errors.push(
+      `::error::Windows runtime bootstrap canary evidence is not fresh for staged APP_SHA (STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA=${canaryAppSha || 'unset'}; STAGING_VERIFIED_APP_SHA=${expectedAppSha || 'unset'})`
+    );
+  }
+
+  if ((snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID ?? '') !== 'none') {
+    errors.push(
+      `::error::Windows runtime bootstrap canary did not reach firefox-extension-ready successfully (STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID=${snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID ?? 'unset'})`
     );
   }
 
@@ -281,6 +301,16 @@ export function buildStagingReleaseEvidenceOutputs(snapshot) {
     staging_email_preflight_provider: snapshot.STAGING_EMAIL_PREFLIGHT_PROVIDER ?? 'unknown',
     staging_windows_bootstrap_result: snapshot.STAGING_WINDOWS_BOOTSTRAP_RESULT ?? 'unknown',
     staging_firefox_policy_result: snapshot.STAGING_FIREFOX_POLICY_RESULT ?? 'unknown',
+    staging_windows_bootstrap_canary_result:
+      snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT ?? 'unknown',
+    staging_windows_bootstrap_canary_app_sha:
+      snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA ?? 'unknown',
+    staging_windows_bootstrap_canary_run_id:
+      snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID ?? 'unknown',
+    staging_windows_bootstrap_canary_failure_boundary_id:
+      snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID ?? 'unknown',
+    staging_windows_bootstrap_canary_failure_boundary_message:
+      snapshot.STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_MESSAGE ?? 'unknown',
     staging_firefox_extension_id: snapshot.STAGING_FIREFOX_EXTENSION_ID ?? 'unknown',
     staging_firefox_release_version: snapshot.STAGING_FIREFOX_RELEASE_VERSION ?? 'unknown',
     staging_firefox_signature_source: snapshot.STAGING_FIREFOX_SIGNATURE_SOURCE ?? 'unknown',

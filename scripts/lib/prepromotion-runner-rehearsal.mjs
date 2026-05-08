@@ -145,6 +145,28 @@ export function classifyPrepromotionRequirement({ stagingVerification, artifactP
     }
   }
 
+  if (stagingVerification?.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT !== 'success') {
+    failures.push(
+      `STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT=${stagingVerification?.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT ?? 'unset'}`
+    );
+  }
+
+  if (
+    !valueOrNull(stagingVerification?.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA) ||
+    stagingVerification?.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA !==
+      stagingVerification?.STAGING_VERIFIED_APP_SHA
+  ) {
+    failures.push(
+      `STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA=${stagingVerification?.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA ?? 'unset'}; STAGING_VERIFIED_APP_SHA=${stagingVerification?.STAGING_VERIFIED_APP_SHA ?? 'unset'}`
+    );
+  }
+
+  if (stagingVerification?.STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID !== 'none') {
+    failures.push(
+      `STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID=${stagingVerification?.STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID ?? 'unset'}`
+    );
+  }
+
   if (!linuxBootstrapEvidencePassed(stagingVerification)) {
     failures.push(
       `STAGING_LINUX_BOOTSTRAP_RESULT=${stagingVerification?.STAGING_LINUX_BOOTSTRAP_RESULT ?? 'unset'}; STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID=${stagingVerification?.STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID ?? 'unset'}`

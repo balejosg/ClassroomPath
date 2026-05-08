@@ -19,6 +19,11 @@ jobs:
     name: Deploy current main to staging
     runs-on: [self-hosted, Linux, X64, proxmox, classroompath]
     timeout-minutes: 90
+    outputs:
+      sha: ${{ steps.release-candidate.outputs.sha }}
+      release_candidate_run_id: ${{ steps.release-candidate.outputs.run_id }}
+      staging_url: ${{ steps.nightly-staging.outputs.staging_url }}
+      windows_firefox_high_risk: ${{ steps.nightly-staging.outputs.windows_firefox_high_risk }}
 
     steps:
       - name: Reset OpenPath submodule checkout
@@ -145,6 +150,119 @@ jobs:
             exit "$status"
           fi
 
+      - name: Resolve nightly staging outputs
+        id: nightly-staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging_url="$(node scripts/deploy-targets.mjs get staging publicUrl)"
+          echo "staging_url=$staging_url" >> "$GITHUB_OUTPUT"
+          echo "windows_firefox_high_risk=true" >> "$GITHUB_OUTPUT"
+
+  windows-staging-bootstrap-canary:
+    name: Windows Staging Bootstrap Canary
+    needs: deploy-current-main-to-staging
+    if: needs.deploy-current-main-to-staging.outputs.windows_firefox_high_risk == 'true'
+    uses: ./.github/workflows/windows-production-bootstrap-canary.yml
+    with:
+      target_environment: staging
+      base_url: ${{ needs.deploy-current-main-to-staging.outputs.staging_url }}
+      diagnostic_mode: 'false'
+    secrets: inherit
+
+  persist-windows-staging-bootstrap-canary:
+    name: Persist Windows staging bootstrap canary
+    runs-on: [self-hosted, Linux, X64, proxmox, classroompath]
+    timeout-minutes: 20
+    needs: [deploy-current-main-to-staging, windows-staging-bootstrap-canary]
+    if: needs.deploy-current-main-to-staging.outputs.windows_firefox_high_risk == 'true' && needs.windows-staging-bootstrap-canary.result == 'success'
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Prepare staging SSH key
+        shell: bash
+        env:
+          STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_SSH_KEY_SECRET"
+          install -m 700 -d "$RUNNER_TEMP/classroompath-ssh"
+          printf '%s\n' "$STAGING_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/staging"
+          chmod 600 "$RUNNER_TEMP/classroompath-ssh/staging"
+          echo "STAGING_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/staging" >> "$GITHUB_ENV"
+
+      - name: Persist canary evidence to staging release state
+        shell: bash
+        env:
+          STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT: ${{ needs.windows-staging-bootstrap-canary.outputs.canary_result }}
+          STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA: ${{ needs.deploy-current-main-to-staging.outputs.sha }}
+          STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID: ${{ github.run_id }}
+          STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID: ${{ needs.windows-staging-bootstrap-canary.outputs.failure_boundary_id || 'none' }}
+          STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_MESSAGE: ${{ needs.windows-staging-bootstrap-canary.outputs.failure_boundary_message || 'Windows staging bootstrap canary completed successfully.' }}
+        run: bash scripts/persist-staging-windows-bootstrap-canary.sh
+
+  verify-production-promotion-readiness:
+    name: Verify production promotion readiness
+    runs-on: [self-hosted, Linux, X64, proxmox, classroompath]
+    timeout-minutes: 30
+    needs:
+      [
+        deploy-current-main-to-staging,
+        windows-staging-bootstrap-canary,
+        persist-windows-staging-bootstrap-canary,
+      ]
+    if: always() && needs.deploy-current-main-to-staging.result == 'success' && (needs.persist-windows-staging-bootstrap-canary.result == 'success' || needs.persist-windows-staging-bootstrap-canary.result == 'skipped')
+
+    steps:
+      - name: Reset OpenPath submodule checkout
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          case "${GITHUB_WORKSPACE:-}" in
+            ""|"/")
+              echo "Refusing to reset OpenPath submodule checkout with unsafe GITHUB_WORKSPACE: ${GITHUB_WORKSPACE:-<empty>}" >&2
+              exit 1
+              ;;
+          esac
+          rm -rf "$GITHUB_WORKSPACE/upstream/openpath"
+          rm -rf "$GITHUB_WORKSPACE/.git/modules/upstream/openpath"
+
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Prepare SSH keys
+        shell: bash
+        env:
+          STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KEY_SECRET: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_SSH_KEY_SECRET"
+          test -n "$DEPLOY_SSH_KEY_SECRET"
+          install -m 700 -d "$RUNNER_TEMP/classroompath-ssh"
+          printf '%s\n' "$STAGING_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/staging"
+          printf '%s\n' "$DEPLOY_SSH_KEY_SECRET" > "$RUNNER_TEMP/classroompath-ssh/production"
+          chmod 600 "$RUNNER_TEMP/classroompath-ssh/staging" "$RUNNER_TEMP/classroompath-ssh/production"
+          echo "STAGING_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/staging" >> "$GITHUB_ENV"
+          echo "DEPLOY_SSH_KEY=$RUNNER_TEMP/classroompath-ssh/production" >> "$GITHUB_ENV"
+
       - name: Verify production promotion readiness
         id: promotion-ready
         shell: bash
@@ -161,16 +279,17 @@ jobs:
           status="$?"
           set -e
 
-          staging_url="$(node scripts/deploy-targets.mjs get staging publicUrl)"
+          staging_url="${{ needs.deploy-current-main-to-staging.outputs.staging_url }}"
           {
             echo "## Nightly Staging Candidate"
             echo
             echo "| Field | Value |"
             echo "| --- | --- |"
-            echo "| SHA | \`${{ steps.release-candidate.outputs.sha }}\` |"
-            echo "| Release-candidate run | \`${{ steps.release-candidate.outputs.run_id }}\` |"
+            echo "| SHA | \`${{ needs.deploy-current-main-to-staging.outputs.sha }}\` |"
+            echo "| Release-candidate run | \`${{ needs.deploy-current-main-to-staging.outputs.release_candidate_run_id }}\` |"
             echo "| Staging URL | $staging_url |"
             echo "| Staging deploy state | success |"
+            echo "| Windows staging bootstrap canary | \`${{ needs.windows-staging-bootstrap-canary.outputs.canary_result || needs.windows-staging-bootstrap-canary.result }}\` |"
             if [ "$status" -eq 0 ]; then
               echo "| Promotion-ready preflight state | success |"
               echo

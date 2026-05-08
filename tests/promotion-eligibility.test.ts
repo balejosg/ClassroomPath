@@ -46,6 +46,12 @@ const verificationState = {
   STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT: 'success',
   STAGING_WINDOWS_BOOTSTRAP_RESULT: 'success',
   STAGING_FIREFOX_POLICY_RESULT: 'success',
+  STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT: 'success',
+  STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA: 'abc123',
+  STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID: '123456789',
+  STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID: 'none',
+  STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_MESSAGE:
+    'Windows AJAX auto-allow canary completed successfully.',
   STAGING_FIREFOX_EXTENSION_ID: 'openpath@example',
   STAGING_FIREFOX_RELEASE_VERSION: '4.1.19',
   STAGING_FIREFOX_METADATA_SHA256: 'meta123',
@@ -127,7 +133,64 @@ describe('promotion eligibility', () => {
 
     assert.equal(report.eligible, false);
     assert.equal(report.checks.windowsFirefox.status, 'fail');
-    assert.match(report.errors.join('\n'), /Windows bootstrap evidence is missing or failed/);
+    assert.match(
+      report.errors.join('\n'),
+      /Windows download\/bootstrap-assets evidence is missing or failed/
+    );
+  });
+
+  test('requires real Windows runtime bootstrap canary evidence for high-risk promotions', () => {
+    const report = evaluatePromotionEligibility({
+      deploymentMode: 'promotion-eligible',
+      imageSource: 'release-candidate',
+      currentState,
+      verificationState: {
+        ...verificationState,
+        STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT: 'unknown',
+      },
+      expectedRuntime,
+      highRisk: true,
+    });
+
+    assert.equal(report.eligible, false);
+    assert.equal(report.checks.windowsFirefox.status, 'fail');
+    assert.match(report.errors.join('\n'), /Windows runtime bootstrap canary evidence/);
+  });
+
+  test('requires Windows runtime bootstrap canary evidence for the staged APP_SHA', () => {
+    const report = evaluatePromotionEligibility({
+      deploymentMode: 'promotion-eligible',
+      imageSource: 'release-candidate',
+      currentState,
+      verificationState: {
+        ...verificationState,
+        STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA: 'older-sha',
+      },
+      expectedRuntime,
+      highRisk: true,
+    });
+
+    assert.equal(report.eligible, false);
+    assert.equal(report.checks.windowsFirefox.status, 'fail');
+    assert.match(report.errors.join('\n'), /not fresh for staged APP_SHA/);
+  });
+
+  test('requires Windows runtime bootstrap canary to pass firefox-extension-ready', () => {
+    const report = evaluatePromotionEligibility({
+      deploymentMode: 'promotion-eligible',
+      imageSource: 'release-candidate',
+      currentState,
+      verificationState: {
+        ...verificationState,
+        STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID: 'firefox-extension-ready',
+      },
+      expectedRuntime,
+      highRisk: true,
+    });
+
+    assert.equal(report.eligible, false);
+    assert.equal(report.checks.windowsFirefox.status, 'fail');
+    assert.match(report.errors.join('\n'), /firefox-extension-ready/);
   });
 
   test('requires signed Firefox release evidence for low-risk production promotions', () => {
