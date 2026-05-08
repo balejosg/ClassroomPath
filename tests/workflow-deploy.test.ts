@@ -146,16 +146,12 @@ function assertNightlyStagingCandidateGate(
   assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.target_environment, 'staging');
   assert.match(
     String(jobs['windows-staging-bootstrap-canary']?.with?.base_url ?? ''),
-    /needs\.deploy-current-main-to-staging\.outputs\.staging_windows_canary_url/
+    /needs\.deploy-current-main-to-staging\.outputs\.staging_url/
   );
   assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, 'false');
   assert.match(
-    String(job.outputs?.staging_windows_canary_url ?? ''),
-    /steps\.nightly-staging\.outputs\.staging_windows_canary_url/
-  );
-  assert.match(
     String(findWorkflowStepByName(job, 'Resolve nightly staging outputs')?.run ?? ''),
-    /deploy-targets\.mjs get staging canaryPublicUrl/
+    /deploy-targets\.mjs get staging publicUrl/
   );
   assert.match(String(persistStep.run ?? ''), /persist-staging-windows-bootstrap-canary\.sh/);
   assert.match(
@@ -624,7 +620,7 @@ describe('Deploy workflow contracts', () => {
     assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.target_environment, 'staging');
     assert.match(
       String(jobs['windows-staging-bootstrap-canary']?.with?.base_url ?? ''),
-      /needs\.resolve-release-images\.outputs\.staging_canary_public_url/
+      /needs\.resolve-release-images\.outputs\.staging_public_url/
     );
     assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, 'false');
     assert.ok(

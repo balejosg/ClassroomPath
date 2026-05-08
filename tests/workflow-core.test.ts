@@ -782,7 +782,7 @@ describe('Workflow core contracts', () => {
     );
     assert.ok(
       productionBootstrapWorkflowText.includes(
-        'node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" canaryPublicUrl'
+        'node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" publicUrl'
       )
     );
   });

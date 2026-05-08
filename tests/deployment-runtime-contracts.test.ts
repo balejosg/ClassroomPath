@@ -238,6 +238,10 @@ describe('Deployment runtime contracts', () => {
         ) &&
         stagingRemote.includes('upsert_env_file_var "$APP_DIR/config/.env" PUBLIC_URL') &&
         stagingRemote.includes('upsert_env_file_var "$APP_DIR/config/.env" CORS_ORIGINS') &&
+        stagingRemote.includes(
+          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_EXTENSION_INSTALL_URL'
+        ) &&
+        stagingRemote.includes('deploy-targets.mjs" get staging canaryPublicUrl') &&
         stagingRemote.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
         stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"') &&
         stagingRemote.includes('ensure_staging_release_candidate_runtime_env || return 1') &&

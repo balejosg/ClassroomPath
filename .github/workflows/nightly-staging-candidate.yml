@@ -23,7 +23,6 @@ jobs:
       sha: ${{ steps.release-candidate.outputs.sha }}
       release_candidate_run_id: ${{ steps.release-candidate.outputs.run_id }}
       staging_url: ${{ steps.nightly-staging.outputs.staging_url }}
-      staging_windows_canary_url: ${{ steps.nightly-staging.outputs.staging_windows_canary_url }}
       windows_firefox_high_risk: ${{ steps.nightly-staging.outputs.windows_firefox_high_risk }}
 
     steps:
@@ -157,9 +156,7 @@ jobs:
         run: |
           set -euo pipefail
           staging_url="$(node scripts/deploy-targets.mjs get staging publicUrl)"
-          staging_windows_canary_url="$(node scripts/deploy-targets.mjs get staging canaryPublicUrl)"
           echo "staging_url=$staging_url" >> "$GITHUB_OUTPUT"
-          echo "staging_windows_canary_url=$staging_windows_canary_url" >> "$GITHUB_OUTPUT"
           echo "windows_firefox_high_risk=true" >> "$GITHUB_OUTPUT"
 
   windows-staging-bootstrap-canary:
@@ -169,7 +166,7 @@ jobs:
     uses: ./.github/workflows/windows-production-bootstrap-canary.yml
     with:
       target_environment: staging
-      base_url: ${{ needs.deploy-current-main-to-staging.outputs.staging_windows_canary_url }}
+      base_url: ${{ needs.deploy-current-main-to-staging.outputs.staging_url }}
       diagnostic_mode: 'false'
     secrets: inherit
 

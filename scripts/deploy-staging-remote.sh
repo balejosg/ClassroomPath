@@ -555,16 +555,22 @@ prepare_staging_checkout() {
 
 run_staging_runtime_validation() {
   local staging_public_url="${STAGING_PUBLIC_URL:-}"
+  local staging_canary_public_url="${STAGING_CANARY_PUBLIC_URL:-}"
 
   if [ -z "$staging_public_url" ]; then
     staging_public_url="$(node "$APP_DIR/scripts/deploy-targets.mjs" get staging publicUrl)"
   fi
+  if [ -z "$staging_canary_public_url" ]; then
+    staging_canary_public_url="$(node "$APP_DIR/scripts/deploy-targets.mjs" get staging canaryPublicUrl 2>/dev/null || printf '%s' "$staging_public_url")"
+  fi
 
   staging_public_url="${staging_public_url%/}"
+  staging_canary_public_url="${staging_canary_public_url%/}"
 
   log_info "Syncing staging public runtime env..."
   upsert_env_file_var "$APP_DIR/config/.env" PUBLIC_URL "$staging_public_url"
   upsert_env_file_var "$APP_DIR/config/.env" CORS_ORIGINS "$staging_public_url"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_EXTENSION_INSTALL_URL "$staging_canary_public_url/api/extensions/firefox/openpath.xpi"
 
   log_info "Syncing billing runtime env..."
   bash scripts/sync-billing-env.sh "$APP_DIR/config/.env"

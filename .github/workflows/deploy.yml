@@ -392,7 +392,7 @@ jobs:
     uses: ./.github/workflows/windows-production-bootstrap-canary.yml
     with:
       target_environment: staging
-      base_url: ${{ needs.resolve-release-images.outputs.staging_canary_public_url }}
+      base_url: ${{ needs.resolve-release-images.outputs.staging_public_url }}
       diagnostic_mode: 'false'
     secrets: inherit
 

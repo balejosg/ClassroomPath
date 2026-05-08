@@ -1222,9 +1222,7 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.ok(workflowText.includes('Resolve diagnostic target'));
     assert.ok(
-      workflowText.includes(
-        'node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" canaryPublicUrl'
-      )
+      workflowText.includes('node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" publicUrl')
     );
     assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=${base_url%/}'));
     assert.ok(workflowText.includes('WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=${base_url%/}'));
