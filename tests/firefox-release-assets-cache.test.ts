@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,6 +22,29 @@ function createTempDir(prefix: string): string {
   return dir;
 }
 
+function writeSignedXpiFixture(xpiPath: string): void {
+  const fixtureDir = createTempDir('cp-firefox-signed-xpi-');
+  mkdirSync(join(fixtureDir, 'META-INF'), { recursive: true });
+  writeFileSync(join(fixtureDir, 'manifest.json'), '{"manifest_version":3}\n');
+  writeFileSync(join(fixtureDir, 'META-INF', 'manifest.mf'), 'Manifest-Version: 1.0\n');
+  writeFileSync(join(fixtureDir, 'META-INF', 'mozilla.rsa'), 'fake-signature\n');
+  execFileSync('zip', ['-qr', xpiPath, '.'], { cwd: fixtureDir });
+}
+
+function writeUnsignedXpiFixture(xpiPath: string): void {
+  const fixtureDir = createTempDir('cp-firefox-unsigned-xpi-');
+  writeFileSync(join(fixtureDir, 'manifest.json'), '{"manifest_version":3}\n');
+  execFileSync('zip', ['-qr', xpiPath, '.'], { cwd: fixtureDir });
+}
+
+function writeManifestOnlyXpiFixture(xpiPath: string): void {
+  const fixtureDir = createTempDir('cp-firefox-manifest-only-xpi-');
+  mkdirSync(join(fixtureDir, 'META-INF'), { recursive: true });
+  writeFileSync(join(fixtureDir, 'manifest.json'), '{"manifest_version":3}\n');
+  writeFileSync(join(fixtureDir, 'META-INF', 'manifest.mf'), 'Manifest-Version: 1.0\n');
+  execFileSync('zip', ['-qr', xpiPath, '.'], { cwd: fixtureDir });
+}
+
 function writeValidFirefoxReleaseCache(artifactDir: string, payloadHash: string): void {
   mkdirSync(join(artifactDir, 'build', 'firefox-release'), { recursive: true });
   writeFileSync(join(artifactDir, 'payload-hash.txt'), `${payloadHash}\n`);
@@ -33,9 +57,8 @@ function writeValidFirefoxReleaseCache(artifactDir: string, payloadHash: string)
       signatureState: 'signed',
     })}\n`
   );
-  writeFileSync(
-    join(artifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi'),
-    'signed-xpi'
+  writeSignedXpiFixture(
+    join(artifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi')
   );
 }
 
@@ -74,9 +97,8 @@ describe('Firefox release asset cache validation', () => {
       join(artifactDir, 'build', 'firefox-release', 'metadata.json'),
       `${JSON.stringify({ extensionId: 'monitor-bloqueos@openpath', version: '2.0.0.123' })}\n`
     );
-    writeFileSync(
-      join(artifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi'),
-      'signed-xpi'
+    writeSignedXpiFixture(
+      join(artifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi')
     );
 
     assert.throws(
@@ -106,14 +128,61 @@ describe('Firefox release asset cache validation', () => {
     mkdirSync(join(artifactDir, 'build', 'firefox-release'), { recursive: true });
     writeFileSync(join(artifactDir, 'payload-hash.txt'), 'payload-sha\n');
     writeFileSync(join(artifactDir, 'build', 'firefox-release', 'metadata.json'), '{}\n');
-    writeFileSync(
-      join(artifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi'),
-      'signed-xpi'
+    writeSignedXpiFixture(
+      join(artifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi')
     );
 
     assert.throws(
       () => validateFirefoxReleaseAssetCache({ artifactDir, expectedPayloadHash: 'payload-sha' }),
       /metadata must include extensionId and version/
+    );
+  });
+
+  test('rejects cached assets whose XPI is labelled signed but has no AMO signature files', () => {
+    const artifactDir = createTempDir('cp-firefox-assets-cache-');
+
+    mkdirSync(join(artifactDir, 'build', 'firefox-release'), { recursive: true });
+    writeFileSync(join(artifactDir, 'payload-hash.txt'), 'payload-sha\n');
+    writeFileSync(
+      join(artifactDir, 'build', 'firefox-release', 'metadata.json'),
+      `${JSON.stringify({
+        extensionId: 'monitor-bloqueos@openpath',
+        version: '2.0.0.123',
+        signatureSource: 'amo',
+        signatureState: 'signed',
+      })}\n`
+    );
+    writeUnsignedXpiFixture(
+      join(artifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi')
+    );
+
+    assert.throws(
+      () => validateFirefoxReleaseAssetCache({ artifactDir, expectedPayloadHash: 'payload-sha' }),
+      /Firefox release asset XPI must include AMO signature files under META-INF/
+    );
+  });
+
+  test('rejects cached assets whose XPI has META-INF without Mozilla signature files', () => {
+    const artifactDir = createTempDir('cp-firefox-assets-cache-');
+
+    mkdirSync(join(artifactDir, 'build', 'firefox-release'), { recursive: true });
+    writeFileSync(join(artifactDir, 'payload-hash.txt'), 'payload-sha\n');
+    writeFileSync(
+      join(artifactDir, 'build', 'firefox-release', 'metadata.json'),
+      `${JSON.stringify({
+        extensionId: 'monitor-bloqueos@openpath',
+        version: '2.0.0.123',
+        signatureSource: 'amo',
+        signatureState: 'signed',
+      })}\n`
+    );
+    writeManifestOnlyXpiFixture(
+      join(artifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi')
+    );
+
+    assert.throws(
+      () => validateFirefoxReleaseAssetCache({ artifactDir, expectedPayloadHash: 'payload-sha' }),
+      /Firefox release asset XPI must include AMO signature files under META-INF/
     );
   });
 

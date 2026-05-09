@@ -112,7 +112,8 @@ function isVerifierRuntimeTestFile(filePath) {
     filePath === 'tests/release-gate.test.ts' ||
     filePath === 'tests/release-gate-policy.ts' ||
     filePath === 'tests/helpers/resolved-fetch.ts' ||
-    filePath === 'tests/helpers/release-gate-client.ts'
+    filePath === 'tests/helpers/release-gate-client.ts' ||
+    filePath === 'tests/helpers/trpc-envelope.ts'
   );
 }
 

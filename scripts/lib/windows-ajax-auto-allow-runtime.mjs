@@ -845,6 +845,25 @@ async function waitForFirefoxExtensionReady({ firefoxPath, profileDir }) {
   };
 }
 
+async function waitForProfileExtensionReady(profileDir) {
+  const deadline = Date.now() + FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS;
+  let evidence = await readProfileExtensionEvidence(profileDir);
+  while (Date.now() < deadline) {
+    evidence = await readProfileExtensionEvidence(profileDir);
+    if (evidence.registryAddonPresent || evidence.profileExtensionPresent) {
+      break;
+    }
+
+    await sleep(2000);
+  }
+
+  return {
+    ...evidence,
+    ready: evidence.registryAddonPresent || evidence.profileExtensionPresent,
+    timeoutMs: FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS,
+  };
+}
+
 async function suspendFirefoxEnterprisePolicy(firefoxPath) {
   const policyPath = join(dirname(firefoxPath), 'distribution', 'policies.json');
   const backupPath = `${policyPath}.openpath-direct-${process.pid}-${Date.now()}.bak`;
@@ -913,7 +932,7 @@ async function launchFirefoxWithSelenium({ firefoxPath, profileDir, originUrl })
 
   const capabilities = await driver.getCapabilities();
   const activeProfileDir = capabilities.get('moz:profile') || profileDir;
-  const extensionEvidence = await readProfileExtensionEvidence(String(activeProfileDir));
+  const extensionEvidence = await waitForProfileExtensionReady(String(activeProfileDir));
 
   let initialNavigation = { success: true, error: null };
   try {
@@ -929,7 +948,7 @@ async function launchFirefoxWithSelenium({ firefoxPath, profileDir, originUrl })
     driver,
     firefoxExtensionWarmup: {
       ...extensionEvidence,
-      ready: true,
+      ready: extensionEvidence.registryAddonPresent || extensionEvidence.profileExtensionPresent,
       mode: USE_LOCAL_FIREFOX_ADDON ? 'selenium-local-addon' : 'selenium-managed',
       localAddonPath: USE_LOCAL_FIREFOX_ADDON ? LOCAL_ADDON_PATH : null,
       geckodriverPath: GECKODRIVER_PATH || null,

@@ -420,6 +420,7 @@ describe('release candidate component classification', () => {
           'tests/release-gate-policy.ts',
           'tests/helpers/resolved-fetch.ts',
           'tests/helpers/release-gate-client.ts',
+          'tests/helpers/trpc-envelope.ts',
         ],
         openpathChangedFiles: [],
       }),

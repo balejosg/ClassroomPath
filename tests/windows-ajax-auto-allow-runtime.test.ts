@@ -150,4 +150,22 @@ describe('Windows AJAX auto-allow runtime module', () => {
     assert.match(runtimeSource, /try \{\s+await driver\.get\(originUrl\);\s+\} catch \(error\)/);
     assert.match(runtimeSource, /initialNavigation,/);
   });
+
+  test('managed Selenium warmup does not report ready without installed extension evidence', async () => {
+    const runtimeSource = await readFile(
+      new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),
+      'utf8'
+    );
+
+    assert.doesNotMatch(
+      runtimeSource,
+      /firefoxExtensionWarmup:\s*\{[\s\S]*?ready:\s*true[\s\S]*?mode:\s*USE_LOCAL_FIREFOX_ADDON \? 'selenium-local-addon' : 'selenium-managed'/,
+      'managed Selenium readiness must not be hardcoded to true'
+    );
+    assert.match(
+      runtimeSource,
+      /ready:\s*extensionEvidence\.registryAddonPresent \|\| extensionEvidence\.profileExtensionPresent/,
+      'managed Selenium readiness must depend on Firefox profile extension evidence'
+    );
+  });
 });

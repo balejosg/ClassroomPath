@@ -739,6 +739,20 @@ describe('Deploy workflow contracts', () => {
       /deploy-brief\/\*\*/,
       'release evidence upload should preserve the compact deploy brief'
     );
+    const failDeployBriefStep = findWorkflowStepByName(
+      jobs['release-evidence'],
+      'Fail release evidence on deploy brief failure'
+    );
+    assert.match(
+      String(failDeployBriefStep?.run ?? ''),
+      /deploy-brief\/deploy-brief\.json/,
+      'release evidence must inspect the generated deploy brief status'
+    );
+    assert.match(
+      String(failDeployBriefStep?.run ?? ''),
+      /Deploy brief status is not releasable/,
+      'release evidence must fail the workflow when the deploy brief status is fail'
+    );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(
       jobs['windows-production-bootstrap-canary'],
@@ -764,7 +778,7 @@ describe('Deploy workflow contracts', () => {
     assert.doesNotMatch(String(jobs['deploy-production']?.if ?? ''), /windows-firefox-canary/);
     assert.match(
       String(jobs['deploy-production']?.if ?? ''),
-      /needs\.windows-staging-bootstrap-canary\.result == 'success' \|\| needs\.windows-staging-bootstrap-canary\.result == 'skipped'/
+      /needs\.verify-staging-release-state\.outputs\.staging_windows_firefox_high_risk != 'true' \|\| needs\.windows-staging-bootstrap-canary\.result == 'success'/
     );
     assert.ok(
       !normalizeNeeds(jobs['rollback-production']?.needs).includes(

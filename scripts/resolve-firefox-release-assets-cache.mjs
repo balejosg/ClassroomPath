@@ -33,6 +33,51 @@ function requireFile(filePath, label) {
   }
 }
 
+function readZipEntryNames(filePath) {
+  const buffer = readFileSync(filePath);
+  const names = [];
+
+  for (let offset = 0; offset <= buffer.length - 30; ) {
+    const signature = buffer.readUInt32LE(offset);
+    if (signature === 0x04034b50) {
+      const fileNameLength = buffer.readUInt16LE(offset + 26);
+      const extraFieldLength = buffer.readUInt16LE(offset + 28);
+      const fileNameStart = offset + 30;
+      const fileNameEnd = fileNameStart + fileNameLength;
+      if (fileNameEnd > buffer.length) break;
+      names.push(buffer.subarray(fileNameStart, fileNameEnd).toString('utf8'));
+      offset = fileNameEnd + extraFieldLength;
+      continue;
+    }
+
+    if (signature === 0x02014b50) {
+      const fileNameLength = buffer.readUInt16LE(offset + 28);
+      const extraFieldLength = buffer.readUInt16LE(offset + 30);
+      const fileCommentLength = buffer.readUInt16LE(offset + 32);
+      const fileNameStart = offset + 46;
+      const fileNameEnd = fileNameStart + fileNameLength;
+      if (fileNameEnd > buffer.length) break;
+      names.push(buffer.subarray(fileNameStart, fileNameEnd).toString('utf8'));
+      offset = fileNameEnd + extraFieldLength + fileCommentLength;
+      continue;
+    }
+
+    offset += 1;
+  }
+
+  return [...new Set(names)];
+}
+
+function requireAmoSignedFirefoxXpi(filePath) {
+  const entryNames = readZipEntryNames(filePath).map((name) => name.toUpperCase());
+  if (
+    !entryNames.includes('META-INF/MANIFEST.MF') ||
+    (!entryNames.includes('META-INF/MOZILLA.RSA') && !entryNames.includes('META-INF/MOZILLA.SF'))
+  ) {
+    fail(`Firefox release asset XPI must include AMO signature files under META-INF: ${filePath}`);
+  }
+}
+
 export function validateFirefoxReleaseAssetCache({ artifactDir, expectedPayloadHash }) {
   const resolvedArtifactDir = resolve(artifactDir ?? '');
   const normalizedExpectedHash = String(expectedPayloadHash ?? '').trim();
@@ -67,10 +112,14 @@ export function validateFirefoxReleaseAssetCache({ artifactDir, expectedPayloadH
     fail('Firefox release asset metadata must include signatureState=signed');
   }
 
-  requireFile(
-    join(resolvedArtifactDir, 'build', 'firefox-release', 'openpath-firefox-extension.xpi'),
-    'build/firefox-release/openpath-firefox-extension.xpi'
+  const xpiPath = join(
+    resolvedArtifactDir,
+    'build',
+    'firefox-release',
+    'openpath-firefox-extension.xpi'
   );
+  requireFile(xpiPath, 'build/firefox-release/openpath-firefox-extension.xpi');
+  requireAmoSignedFirefoxXpi(xpiPath);
 
   return {
     extensionId: String(metadata.extensionId),

@@ -1347,8 +1347,8 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.equal(
       ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH,
-      'C:\\OpenPath\\browser-extension\\firefox-release\\openpath-firefox-extension.xpi',
-      'Windows AJAX canary should load the signed XPI staged by the live bootstrap into Selenium'
+      undefined,
+      'Windows AJAX canary must exercise the enterprise-managed Firefox extension from the live bootstrap, not a Selenium sideload'
     );
     assert.ok(ajaxScript.includes('node scripts/windows-ajax-auto-allow-canary.mjs'));
     assert.ok(ajaxCanaryEvidenceText.includes('ajax-auto-allow-origin.127.0.0.1.sslip.io'));
