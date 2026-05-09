@@ -406,6 +406,7 @@ run_staging_smoke_gate() {
     "SMOKE_TEST_TIMEOUT=15000" \
     "SMOKE_SKIP_CORS=$SMOKE_SKIP_CORS" \
     "SMOKE_ALLOW_MUTATIONS=1" \
+    "SMOKE_REQUIRE_PUSH=1" \
     "SMOKE_TEST_RESOLVED_ADDRESS=$smoke_test_resolved_address"; then
     smoke_exit_code=0
   else

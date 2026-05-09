@@ -95,6 +95,30 @@ describe('staging gates helper', () => {
     ]);
   });
 
+  test('staging smoke gate requires push notification readiness', () => {
+    const result = spawnSync(
+      'bash',
+      [
+        '-lc',
+        [
+          'source scripts/lib/staging-gates.sh',
+          'resolve_target_address() { printf ""; }',
+          'run_gate_command() { printf "%s\\n" "$@"; return 0; }',
+          'run_staging_smoke_gate staging-host https://classroompath-staging.example',
+        ].join('; '),
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /^smoke$/m);
+    assert.match(result.stdout, /^SMOKE_REQUIRE_PUSH=1$/m);
+    assert.match(result.stdout, /^SMOKE_ALLOW_MUTATIONS=1$/m);
+  });
+
   test('runs enrollment download canary as a blocking staging gate', () => {
     const helper = readFileSync(helperPath, 'utf8');
     const runner = readFileSync(runnerPath, 'utf8');

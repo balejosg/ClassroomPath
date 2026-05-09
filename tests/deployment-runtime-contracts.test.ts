@@ -150,6 +150,7 @@ describe('Deployment runtime contracts', () => {
     assert.ok(verifierDockerignore.includes('!tests/release-gate-policy.ts'));
     assert.ok(verifierDockerignore.includes('!tests/helpers/resolved-fetch.ts'));
     assert.ok(verifierDockerignore.includes('!tests/helpers/release-gate-client.ts'));
+    assert.ok(verifierDockerignore.includes('!tests/helpers/trpc-envelope.ts'));
     assert.ok(
       verifierDockerfile.includes('tests/release-gate.test.ts') ||
         verifierDockerfile.includes('tests/smoke.test.ts') ||

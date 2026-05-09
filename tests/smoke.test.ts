@@ -13,6 +13,7 @@ import assert from 'node:assert';
 
 import { CURRENT_TERMS_VERSION } from '../api/src/services/legal-consent.service.js';
 import { resolvedFetch } from './helpers/resolved-fetch.js';
+import { parseTrpcEnvelope } from './helpers/trpc-envelope.js';
 
 // Get the target URL from environment
 const SMOKE_TEST_URL = process.env.SMOKE_TEST_URL;
@@ -56,19 +57,6 @@ interface ErrorResponse {
   };
   message?: string;
   path?: string;
-}
-
-interface TrpcEnvelope<T = unknown> {
-  result?: {
-    data?: T;
-  };
-  error?: {
-    message?: string;
-    code?: string;
-    data?: {
-      code?: string;
-    };
-  };
 }
 
 interface RegistrationSmokeResponse {
@@ -206,33 +194,6 @@ function assertGatewaySecurityHeaders(response: Response): void {
 
 function uniqueSmokeEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`;
-}
-
-function parseTrpcEnvelope<T>(payload: unknown): {
-  data?: T;
-  error?: {
-    message?: string;
-    code?: string;
-  };
-} {
-  const candidate = Array.isArray(payload) ? payload[0] : payload;
-  if (!candidate || typeof candidate !== 'object') {
-    return {};
-  }
-
-  const envelope = candidate as TrpcEnvelope<T>;
-  if (envelope.result !== undefined) {
-    return { data: envelope.result.data };
-  }
-  if (envelope.error !== undefined) {
-    return {
-      error: {
-        message: envelope.error.message,
-        code: envelope.error.data?.code ?? envelope.error.code,
-      },
-    };
-  }
-  return {};
 }
 
 function getLoginSmokeUrl(): string {
