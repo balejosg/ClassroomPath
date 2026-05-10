@@ -809,9 +809,23 @@ if ($firefoxPath) { $env:FIREFOX_PATH = $firefoxPath }
 $ErrorActionPreference = 'Stop'
 ${renderPowerShellEnvironment(canaryEnvironment)}
 ${firefoxEnv}
-node ${psSingleQuote(scriptPath)}
-if ($LASTEXITCODE -ne 0) {
-  throw "windows-ajax-auto-allow-canary.mjs exited with code $LASTEXITCODE"
+try {
+  node ${psSingleQuote(scriptPath)}
+  $canaryExitCode = $LASTEXITCODE
+} finally {
+  $diagnosticProcesses = Get-CimInstance Win32_Process -Filter "Name = 'geckodriver.exe' OR Name = 'firefox.exe'" -ErrorAction SilentlyContinue |
+    Where-Object {
+      ($_.Name -eq 'geckodriver.exe') -or
+      ($_.CommandLine -like '*openpath-ajax-auto-allow-firefox-*') -or
+      ($_.CommandLine -like '*openpath-ajax-direct*') -or
+      ($_.CommandLine -like '*--websocket-port=*')
+    }
+  foreach ($process in @($diagnosticProcesses)) {
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+}
+if ($canaryExitCode -ne 0) {
+  throw "windows-ajax-auto-allow-canary.mjs exited with code $canaryExitCode"
 }
 `;
   runGuestPowerShell(options, script, { timeoutSeconds: 900 });

@@ -44,7 +44,29 @@ export function allExpectedHostsAbsent(value, expectedHosts) {
     return false;
   }
 
-  return expectedHosts.every((host) => value[host] === false);
+  return expectedHosts.every((host) => {
+    const state = value[host];
+    if (typeof state === 'boolean') {
+      return state === false;
+    }
+    if (!state || typeof state !== 'object') {
+      return false;
+    }
+    if (
+      state.whitelistRulePresent === true ||
+      state.rulePresent === true ||
+      state.present === true ||
+      state.inWhitelist === true
+    ) {
+      return false;
+    }
+    return (
+      state.whitelistRulePresent === false ||
+      state.rulePresent === false ||
+      state.present === false ||
+      state.inWhitelist === false
+    );
+  });
 }
 
 export function collectDiagnosticSnapshots(summary) {

@@ -219,6 +219,20 @@ describe('shared auto-allow boundary evidence model', () => {
                   },
                 },
               },
+              server: {
+                canaryGroup: {
+                  body: {
+                    expectedHostState: {
+                      'ajax-observe-target.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: false,
+                      },
+                      'ajax-observe-font.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: false,
+                      },
+                    },
+                  },
+                },
+              },
             },
           },
         },
@@ -238,6 +252,48 @@ describe('shared auto-allow boundary evidence model', () => {
         ]
       ),
       true
+    );
+  });
+
+  test('detects automatic rule creation from object state snapshots', () => {
+    assert.equal(
+      hasNoAutomaticRuleCreationEvidence(
+        {
+          diagnostics: {
+            postAttempt: {
+              server: {
+                canaryGroup: {
+                  body: {
+                    expectedHostState: {
+                      'ajax-observe-target.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: true,
+                      },
+                      'ajax-observe-font.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: false,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        [
+          {
+            id: 'observed-fetch',
+            host: 'ajax-observe-target.127.0.0.1.sslip.io',
+            expectedWhitelistHost: 'ajax-observe-target.127.0.0.1.sslip.io',
+            automaticRuleCreationExpected: false,
+          },
+          {
+            id: 'observed-font',
+            host: 'ajax-observe-font.127.0.0.1.sslip.io',
+            expectedWhitelistHost: 'ajax-observe-font.127.0.0.1.sslip.io',
+            automaticRuleCreationExpected: false,
+          },
+        ]
+      ),
+      false
     );
   });
 
