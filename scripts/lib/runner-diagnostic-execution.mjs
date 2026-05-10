@@ -269,6 +269,7 @@ export function buildWindowsAjaxCanaryGuestEnvironment({
     WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS: canaryTimeoutMs,
     WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS: postFailureObservationMs,
     WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: plan.firefox.mode ?? 'selenium',
+    EXPECTED_EXTENSION_ID: summary.extensionId,
   };
 
   if (localFirefoxExtension?.remotePath) {

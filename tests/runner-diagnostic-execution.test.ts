@@ -142,6 +142,7 @@ describe('runner diagnostic execution plan', () => {
       summary: {
         apiUrl: 'http://192.168.1.114:3000',
         groupId: 'group-123',
+        extensionId: 'openpath-block-monitor@openpath',
       },
       billingContext: {
         adminToken: 'admin-token',
@@ -164,6 +165,7 @@ describe('runner diagnostic execution plan', () => {
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS, '180000');
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS, '60000');
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE, 'selenium');
+    assert.equal(env.EXPECTED_EXTENSION_ID, 'openpath-block-monitor@openpath');
     assert.equal(
       env.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH,
       'C:\\Windows\\Temp\\openpath-ajax-direct\\openpath-firefox-extension.xpi'
