@@ -535,6 +535,7 @@ jobs:
           WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: ${{ steps.provision.outputs.group_id }}
           WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: ${{ env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN }}
           WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: selenium
+          EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
         run: |
           $ErrorActionPreference = 'Stop'
           node scripts/windows-ajax-auto-allow-canary.mjs

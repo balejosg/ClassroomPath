@@ -1345,6 +1345,12 @@ describe('Production client update canary workflow contracts', () => {
       'selenium',
       'Windows AJAX canary should use the runner-validated Selenium Firefox launcher'
     );
+    assert.ok(
+      String(ajaxStep?.env?.EXPECTED_EXTENSION_ID ?? '').includes(
+        'steps.provision.outputs.extension_id'
+      ),
+      'Windows AJAX canary should validate the same Firefox extension id provisioned by the live bootstrap'
+    );
     assert.equal(
       ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH,
       undefined,
