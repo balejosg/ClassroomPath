@@ -116,6 +116,18 @@ function buildArtifactIntegrityGates(releaseEvidence) {
   );
 }
 
+function derivePreproductionInstalledClientResult(releaseEvidence) {
+  if (releaseEvidence?.stagingVerification?.windowsFirefoxHighRisk !== 'true') {
+    return 'not_applicable';
+  }
+
+  return (
+    valueOrNull(releaseEvidence.stagingVerification?.prepromotionRehearsalResult) ??
+    valueOrNull(releaseEvidence.stagingVerification?.windowsBootstrapResult) ??
+    valueOrNull(releaseEvidence.stagingVerification?.firefoxPolicyResult)
+  );
+}
+
 function buildGates(releaseEvidence) {
   if (!releaseEvidence) {
     return [
@@ -155,13 +167,11 @@ function buildGates(releaseEvidence) {
     buildGate({
       id: 'preproduction-installed-client-evidence',
       label: 'Preproduction installed-client evidence',
-      result:
-        releaseEvidence.stagingVerification?.windowsFirefoxHighRisk === 'true'
-          ? releaseEvidence.stagingVerification?.prepromotionRehearsalResult
-          : 'not_applicable',
+      result: derivePreproductionInstalledClientResult(releaseEvidence),
       boundary:
-        releaseEvidence.stagingVerification?.prepromotionRehearsalResult &&
-        releaseEvidence.stagingVerification.prepromotionRehearsalResult !== 'success'
+        derivePreproductionInstalledClientResult(releaseEvidence) &&
+        derivePreproductionInstalledClientResult(releaseEvidence) !== 'success' &&
+        derivePreproductionInstalledClientResult(releaseEvidence) !== 'not_applicable'
           ? 'preproduction-installed-client-evidence'
           : 'none',
       evidence: releaseEvidence.artifacts?.stagingReleaseState,

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -85,13 +85,41 @@ function readJsonFile(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'));
 }
 
+function findArtifactFile(artifactDir, fileName) {
+  const pending = [artifactDir];
+
+  while (pending.length > 0) {
+    const currentDir = pending.shift();
+    const entries = readdirSync(currentDir, { withFileTypes: true }).sort((left, right) =>
+      left.name.localeCompare(right.name)
+    );
+
+    for (const entry of entries) {
+      const entryPath = resolve(currentDir, entry.name);
+      if (entry.isFile() && entry.name === fileName) {
+        return entryPath;
+      }
+      if (entry.isDirectory()) {
+        pending.push(entryPath);
+      }
+    }
+  }
+
+  return null;
+}
+
 function assertArtifactFileExists(artifactDir, fileName) {
   const artifactPath = resolve(artifactDir, fileName);
-  if (!existsSync(artifactPath)) {
+  if (existsSync(artifactPath)) {
+    return artifactPath;
+  }
+
+  const nestedArtifactPath = findArtifactFile(artifactDir, fileName);
+  if (!nestedArtifactPath) {
     throw new Error(`Missing required artifact file ${fileName} in ${artifactDir}`);
   }
 
-  return artifactPath;
+  return nestedArtifactPath;
 }
 
 function requireNonEmpty(value, fieldName) {

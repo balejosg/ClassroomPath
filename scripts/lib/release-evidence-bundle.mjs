@@ -8,8 +8,10 @@ import {
   assertReleaseEvidenceBundleCompleteness,
   buildCanaryEvidenceFallback,
   buildFallbackWindowsRedditHosts,
+  isTrueFlag,
   parseLinuxBootstrapCanaryArtifact,
   parseWindowsBootstrapCanaryArtifact,
+  shouldRequireCanaryArtifact,
   valueOrNull,
   verifyArtifactIntegrity,
   withReleaseTargetMetadata,
@@ -201,8 +203,12 @@ function loadReleaseEvidenceFromCwd() {
   return readJsonFile(releaseEvidencePath);
 }
 
-function selectArtifactRunId(preferredRunId, deployRunId) {
-  return preferredRunId ?? null;
+function selectArtifactRunId({ preferredRunId, deployRunId, highRisk, result }) {
+  if (preferredRunId) {
+    return preferredRunId;
+  }
+
+  return shouldRequireCanaryArtifact({ highRisk, result }) ? (deployRunId ?? null) : null;
 }
 
 function resolveArtifactEvidence({ repo, runId, artifactName, outputDir }) {
@@ -249,17 +255,30 @@ export async function runReleaseEvidenceBundle({
 
   ensureOutputDir(outputDir);
 
+  const windowsFirefoxHighRisk = isTrueFlag(
+    releaseEvidence?.stagingVerification?.windowsFirefoxHighRisk
+  );
   const windowsArtifactDir = resolve(outputDir, 'tmp-windows-production-bootstrap-canary');
   const linuxArtifactDir = resolve(outputDir, 'tmp-linux-production-bootstrap-canary');
   const windowsEvidence = resolveArtifactEvidence({
     repo,
-    runId: selectArtifactRunId(windowsCanaryRun, deployRun),
+    runId: selectArtifactRunId({
+      preferredRunId: windowsCanaryRun,
+      deployRunId: deployRun,
+      highRisk: windowsFirefoxHighRisk,
+      result: releaseEvidence?.jobs?.windowsProductionBootstrapCanary,
+    }),
     artifactName: WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
     outputDir: windowsArtifactDir,
   });
   const linuxEvidence = resolveArtifactEvidence({
     repo,
-    runId: selectArtifactRunId(linuxCanaryRun, deployRun),
+    runId: selectArtifactRunId({
+      preferredRunId: linuxCanaryRun,
+      deployRunId: deployRun,
+      highRisk: windowsFirefoxHighRisk,
+      result: releaseEvidence?.jobs?.linuxProductionBootstrapCanary,
+    }),
     artifactName: LINUX_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
     outputDir: linuxArtifactDir,
   });
