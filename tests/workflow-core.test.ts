@@ -754,6 +754,13 @@ describe('Workflow core contracts', () => {
       productionBootstrapWorkflowText.includes('/api/enroll/') &&
         productionBootstrapWorkflowText.includes('windows.ps1')
     );
+    assert.ok(
+      productionBootstrapWorkflowText.includes('firefox_install_base_url="$base_url"') &&
+        !productionBootstrapWorkflowText.includes(
+          'firefox_install_base_url="$(node scripts/deploy-targets.mjs get staging canaryPublicUrl)"'
+        ),
+      'Windows bootstrap canary must install Firefox from the same runner-reachable base URL used for windows.ps1'
+    );
     assert.ok(productionBootstrapWorkflowText.includes('Reset persistent Windows canary state'));
     assert.ok(productionBootstrapWorkflowText.includes("Get-ScheduledTask -TaskName 'OpenPath-*'"));
     assert.ok(productionBootstrapWorkflowText.includes("Remove-Item -LiteralPath 'C:\\OpenPath'"));

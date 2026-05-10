@@ -137,11 +137,7 @@ jobs:
           echo "PRODUCTION_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
           echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=${base_url%/}" >> "$GITHUB_ENV"
           echo "WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=${base_url%/}" >> "$GITHUB_ENV"
-          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
-            firefox_install_base_url="$(node scripts/deploy-targets.mjs get staging canaryPublicUrl)"
-          else
-            firefox_install_base_url="$base_url"
-          fi
+          firefox_install_base_url="$base_url"
           echo "firefox_install_url=${firefox_install_base_url%/}/api/extensions/firefox/openpath.xpi" >> "$GITHUB_OUTPUT"
           echo "Resolved $TARGET_ENVIRONMENT diagnostic target: ${base_url%/}"
           if [ "$RUNNER_DIAGNOSTIC_MODE" = "true" ]; then
