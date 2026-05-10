@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { readProjectText, readProjectWorkflow } from './helpers/ops-contracts.ts';
 import {
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
+  WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES,
   WINDOWS_AUTO_ALLOW_PROBES,
   assertWindowsAutoAllowCanarySuccess,
   buildWindowsAutoAllowCanarySummary,
@@ -20,9 +21,12 @@ const projectRoot = resolve(testDir, '..');
 const windowsAutoAllowExpectedHosts = WINDOWS_AUTO_ALLOW_PROBES.map(
   (probe) => probe.expectedWhitelistHost
 );
+const windowsObservedHosts = WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map(
+  (probe) => probe.expectedWhitelistHost
+);
 
-function buildContainsExpectedHosts(value: boolean) {
-  return Object.fromEntries(windowsAutoAllowExpectedHosts.map((host) => [host, value]));
+function buildContainsExpectedHosts(value: boolean, hosts = windowsAutoAllowExpectedHosts) {
+  return Object.fromEntries(hosts.map((host) => [host, value]));
 }
 
 function buildProbeEvidence({
@@ -72,11 +76,13 @@ function buildDiagnosticSummary(
     pageResourceCandidateEvents?: Array<Record<string, unknown>>;
     remoteWhitelistContainsExpectedHosts?: boolean;
     localWhitelistContainsExpectedHost?: boolean;
+    automaticRuleCreated?: boolean;
     probeHits?: number;
   } = {}
 ) {
   const remoteWhitelistContainsExpectedHosts =
     overrides.remoteWhitelistContainsExpectedHosts ?? true;
+  const observedHostsPresent = overrides.automaticRuleCreated ?? false;
 
   return buildWindowsAutoAllowCanarySummary({
     result: {
@@ -90,8 +96,23 @@ function buildDiagnosticSummary(
     originHits: overrides.originHits ?? 1,
     attempts: [{ ok: true }],
     completedProbes: buildProbeMap(true),
-    completedCandidateEvents: overrides.completedCandidateEvents ?? buildProbeMap(true),
-    pageResourceCandidateEvents: overrides.pageResourceCandidateEvents ?? buildCandidateEvents(),
+    completedCandidateEvents:
+      overrides.completedCandidateEvents ??
+      ({
+        ...buildProbeMap(true),
+        ...Object.fromEntries(
+          WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => [probe.id, true])
+        ),
+      } as Record<string, boolean>),
+    pageResourceCandidateEvents: overrides.pageResourceCandidateEvents ?? [
+      ...buildCandidateEvents(),
+      ...WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => ({
+        kind: probe.kind,
+        url: `http://${probe.host}:18088${probe.path}`,
+        matchedProbeId: probe.id,
+        seenAt: '2026-04-27T10:00:00.000Z',
+      })),
+    ],
     lastAttemptAt: '2026-04-27T10:00:00.000Z',
     whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
     firefoxExtensionWarmup: { ready: overrides.firefoxReady ?? true },
@@ -100,9 +121,18 @@ function buildDiagnosticSummary(
       preflight: {},
       postAttempt: {
         remoteWhitelist: {
-          containsExpectedHosts: buildContainsExpectedHosts(remoteWhitelistContainsExpectedHosts),
+          containsExpectedHosts: {
+            ...buildContainsExpectedHosts(remoteWhitelistContainsExpectedHosts),
+            ...buildContainsExpectedHosts(observedHostsPresent, windowsObservedHosts),
+          },
         },
         whitelist: {
+          local: {
+            containsExpectedHosts: buildContainsExpectedHosts(
+              observedHostsPresent,
+              windowsObservedHosts
+            ),
+          },
           remoteWhitelist: {
             containsExpectedHosts: buildContainsExpectedHosts(remoteWhitelistContainsExpectedHosts),
           },
@@ -279,6 +309,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       WINDOWS_AUTO_ALLOW_PROBES.map((probe) => probe.id),
       [
         'ajax-fetch',
+        'xhr-subresource',
         'image-subresource',
         'script-subresource',
         'stylesheet-subresource',
@@ -293,7 +324,23 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     );
     assert.ok(
       WINDOWS_AUTO_ALLOW_PROBES.some(
-        (probe) => probe.failureMessage === 'Auto-allow AJAX target was not written to whitelist'
+        (probe) => probe.failureMessage === 'Explicit AJAX target was not written to whitelist'
+      )
+    );
+    assert.deepEqual(
+      WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => probe.id),
+      [
+        'observed-fetch',
+        'observed-xhr',
+        'observed-image',
+        'observed-script',
+        'observed-stylesheet',
+        'observed-font',
+      ]
+    );
+    assert.ok(
+      WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.every(
+        (probe) => probe.automaticRuleCreationExpected === false && probe.requiresTraffic === false
       )
     );
     assert.deepEqual(REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS, [
@@ -362,7 +409,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
 
     assert.throws(
       () => assertWindowsAutoAllowCanarySuccess(failedSummary),
-      /Auto-allow AJAX target was not written to whitelist/
+      /Explicit AJAX target was not written to whitelist/
     );
 
     const noTrafficSummary = buildWindowsAutoAllowCanarySummary({
@@ -389,7 +436,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
 
     assert.throws(
       () => assertWindowsAutoAllowCanarySuccess(noTrafficSummary),
-      /Auto-allow font probe did not reach canary server/
+      /Explicit font probe did not reach canary server/
     );
   });
 
@@ -420,27 +467,25 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
         }),
       },
       {
-        name: 'reglas remotas ausentes',
-        expectedBoundary: 'remote-rule-creation',
+        name: 'creación automática inesperada',
+        expectedBoundary: 'no-automatic-rule-creation',
         summary: buildDiagnosticSummary({
           success: false,
-          remoteWhitelistContainsExpectedHosts: false,
+          automaticRuleCreated: true,
+        }),
+      },
+      {
+        name: 'allowlist explícita ausente',
+        expectedBoundary: 'explicit-whitelist-apply',
+        summary: buildDiagnosticSummary({
+          success: false,
           localWhitelistContainsExpectedHost: false,
           probeHits: 0,
         }),
       },
       {
-        name: 'remoto presente pero whitelist local ausente',
-        expectedBoundary: 'local-whitelist-apply',
-        summary: buildDiagnosticSummary({
-          success: false,
-          localWhitelistContainsExpectedHost: false,
-          probeHits: 0,
-        }),
-      },
-      {
-        name: 'whitelist local presente pero probes sin hits',
-        expectedBoundary: 'probe-traffic',
+        name: 'allowlist explícita presente pero probes sin hits',
+        expectedBoundary: 'explicit-probe-traffic',
         summary: buildDiagnosticSummary({
           success: false,
           probeHits: 0,
@@ -463,9 +508,9 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
           'origin-page-load',
           'page-observer',
           'page-resource-candidates',
-          'remote-rule-creation',
-          'local-whitelist-apply',
-          'probe-traffic',
+          'no-automatic-rule-creation',
+          'explicit-whitelist-apply',
+          'explicit-probe-traffic',
           'artifact-written',
         ],
         `${name} should keep the fixed phase order`
@@ -1439,7 +1484,7 @@ describe('Production client update canary workflow contracts', () => {
       'Windows AJAX canary should cover fonts discovered through a cross-origin stylesheet'
     );
     assert.ok(
-      ajaxCanaryEvidenceModule.includes('Auto-allow font target was not written to whitelist'),
+      ajaxCanaryEvidenceModule.includes('Explicit font target was not written to whitelist'),
       'Windows AJAX canary should expose the font whitelist failure boundary'
     );
     assert.ok(
@@ -1514,17 +1559,15 @@ describe('Production client update canary workflow contracts', () => {
       'Windows bootstrap canary must not accept logs-only extension evidence'
     );
     assert.ok(ajaxCanaryScript.includes('C:\\\\OpenPath\\\\data\\\\whitelist.txt'));
+    assert.ok(ajaxCanaryEvidenceText.includes('Explicit AJAX target was not written to whitelist'));
     assert.ok(
-      ajaxCanaryEvidenceText.includes('Auto-allow AJAX target was not written to whitelist')
+      ajaxCanaryEvidenceText.includes('Explicit image target was not written to whitelist')
     );
     assert.ok(
-      ajaxCanaryEvidenceText.includes('Auto-allow image target was not written to whitelist')
+      ajaxCanaryEvidenceText.includes('Explicit script target was not written to whitelist')
     );
     assert.ok(
-      ajaxCanaryEvidenceText.includes('Auto-allow script target was not written to whitelist')
-    );
-    assert.ok(
-      ajaxCanaryEvidenceText.includes('Auto-allow stylesheet target was not written to whitelist')
+      ajaxCanaryEvidenceText.includes('Explicit stylesheet target was not written to whitelist')
     );
     assert.ok(ajaxCanaryScript.includes('production-windows-ajax-auto-allow-canary.json'));
     const summaryStepIndex = steps.findIndex(

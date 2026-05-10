@@ -53,18 +53,18 @@ describe('failure brief', () => {
     });
   });
 
-  test('Linux DNS failures map to DNS layer and direct network check command', () => {
+  test('Linux explicit probe traffic failures map to DNS layer and direct network check command', () => {
     withTempDir((dir) => {
       const artifact = join(dir, 'production-linux-ajax-auto-allow-canary.json');
       writeJson(artifact, {
         success: false,
         failureBoundary: {
-          id: 'dns-policy-apply',
-          message: 'The Linux DNS policy did not allow every expected host.',
+          id: 'explicit-probe-traffic',
+          message: 'Explicitly allowed Linux probes did not reach the canary server.',
         },
         diagnosticPhases: [
           { id: 'firefox-extension-ready', status: 'passed' },
-          { id: 'dns-policy-apply', status: 'failed' },
+          { id: 'explicit-probe-traffic', status: 'failed' },
         ],
         probeEvidence: [{ id: 'ajax-fetch', expectedWhitelistHost: 'ajax.example.test' }],
       });
@@ -72,7 +72,7 @@ describe('failure brief', () => {
       const brief = buildFailureBrief({ artifactPath: artifact, kind: 'linux-ajax' });
 
       assert.equal(brief.status, 'fail');
-      assert.equal(brief.failureBoundary.id, 'dns-policy-apply');
+      assert.equal(brief.failureBoundary.id, 'explicit-probe-traffic');
       assert.equal(brief.probableLayer, 'dns');
       assert.equal(brief.safeToRetry, 'no');
       assert.match(brief.nextCommand, /diagnostics:linux-ajax:direct/);
@@ -99,7 +99,8 @@ describe('failure brief', () => {
         success: true,
         failureBoundary: {
           id: 'none',
-          message: 'Linux AJAX auto-allow canary completed successfully.',
+          message:
+            'Linux page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
         },
         diagnosticPhases: [{ id: 'artifact-written', status: 'passed' }],
       });

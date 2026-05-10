@@ -4,18 +4,26 @@ import {
   classifyAutoAllowFailureBoundary,
   enrichProbeEvidenceWithRemoteDiagnostics,
   hasCandidateEvidence,
-  hasDnsEvidence,
   hasLocalWhitelistEvidence,
+  hasNoAutomaticRuleCreationEvidence,
   hasProbeTrafficEvidence,
   hasRemoteRuleEvidence,
 } from './auto-allow-boundary-evidence.mjs';
 
 export const LINUX_AUTO_ALLOW_ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
 export const LINUX_AUTO_ALLOW_TARGET_HOST = 'ajax-auto-allow-target.127.0.0.1.sslip.io';
+export const LINUX_AUTO_ALLOW_XHR_HOST = 'ajax-auto-allow-xhr.127.0.0.1.sslip.io';
 export const LINUX_AUTO_ALLOW_ASSET_HOST = 'ajax-auto-allow-asset.127.0.0.1.sslip.io';
 export const LINUX_AUTO_ALLOW_SCRIPT_HOST = 'ajax-auto-allow-script.127.0.0.1.sslip.io';
 export const LINUX_AUTO_ALLOW_STYLESHEET_HOST = 'ajax-auto-allow-stylesheet.127.0.0.1.sslip.io';
 export const LINUX_AUTO_ALLOW_FONT_HOST = 'ajax-auto-allow-font.127.0.0.1.sslip.io';
+export const LINUX_AUTO_ALLOW_OBSERVED_FETCH_HOST = 'ajax-observe-fetch.127.0.0.1.sslip.io';
+export const LINUX_AUTO_ALLOW_OBSERVED_XHR_HOST = 'ajax-observe-xhr.127.0.0.1.sslip.io';
+export const LINUX_AUTO_ALLOW_OBSERVED_IMAGE_HOST = 'ajax-observe-image.127.0.0.1.sslip.io';
+export const LINUX_AUTO_ALLOW_OBSERVED_SCRIPT_HOST = 'ajax-observe-script.127.0.0.1.sslip.io';
+export const LINUX_AUTO_ALLOW_OBSERVED_STYLESHEET_HOST =
+  'ajax-observe-stylesheet.127.0.0.1.sslip.io';
+export const LINUX_AUTO_ALLOW_OBSERVED_FONT_HOST = 'ajax-observe-font.127.0.0.1.sslip.io';
 
 export const LINUX_AUTO_ALLOW_PROBES = Object.freeze([
   {
@@ -24,7 +32,15 @@ export const LINUX_AUTO_ALLOW_PROBES = Object.freeze([
     host: LINUX_AUTO_ALLOW_TARGET_HOST,
     path: '/data.json',
     expectedWhitelistHost: LINUX_AUTO_ALLOW_TARGET_HOST,
-    failureMessage: 'Auto-allow AJAX target was not written to the Linux whitelist',
+    failureMessage: 'Explicit AJAX target was not written to the Linux whitelist',
+  },
+  {
+    id: 'xhr-subresource',
+    kind: 'xhr',
+    host: LINUX_AUTO_ALLOW_XHR_HOST,
+    path: '/xhr.json',
+    expectedWhitelistHost: LINUX_AUTO_ALLOW_XHR_HOST,
+    failureMessage: 'Explicit XHR target was not written to the Linux whitelist',
   },
   {
     id: 'image-subresource',
@@ -32,7 +48,7 @@ export const LINUX_AUTO_ALLOW_PROBES = Object.freeze([
     host: LINUX_AUTO_ALLOW_ASSET_HOST,
     path: '/pixel.png',
     expectedWhitelistHost: LINUX_AUTO_ALLOW_ASSET_HOST,
-    failureMessage: 'Auto-allow image target was not written to the Linux whitelist',
+    failureMessage: 'Explicit image target was not written to the Linux whitelist',
   },
   {
     id: 'script-subresource',
@@ -40,7 +56,7 @@ export const LINUX_AUTO_ALLOW_PROBES = Object.freeze([
     host: LINUX_AUTO_ALLOW_SCRIPT_HOST,
     path: '/asset.js',
     expectedWhitelistHost: LINUX_AUTO_ALLOW_SCRIPT_HOST,
-    failureMessage: 'Auto-allow script target was not written to the Linux whitelist',
+    failureMessage: 'Explicit script target was not written to the Linux whitelist',
   },
   {
     id: 'stylesheet-subresource',
@@ -48,7 +64,7 @@ export const LINUX_AUTO_ALLOW_PROBES = Object.freeze([
     host: LINUX_AUTO_ALLOW_STYLESHEET_HOST,
     path: '/style.css',
     expectedWhitelistHost: LINUX_AUTO_ALLOW_STYLESHEET_HOST,
-    failureMessage: 'Auto-allow stylesheet target was not written to the Linux whitelist',
+    failureMessage: 'Explicit stylesheet target was not written to the Linux whitelist',
   },
   {
     id: 'font-subresource',
@@ -56,20 +72,80 @@ export const LINUX_AUTO_ALLOW_PROBES = Object.freeze([
     host: LINUX_AUTO_ALLOW_FONT_HOST,
     path: '/font.woff2',
     expectedWhitelistHost: LINUX_AUTO_ALLOW_FONT_HOST,
-    failureMessage: 'Auto-allow font target was not written to the Linux whitelist',
+    failureMessage: 'Explicit font target was not written to the Linux whitelist',
   },
+]);
+
+export const LINUX_AUTO_ALLOW_OBSERVATION_PROBES = Object.freeze([
+  {
+    id: 'observed-fetch',
+    kind: 'fetch',
+    host: LINUX_AUTO_ALLOW_OBSERVED_FETCH_HOST,
+    path: '/data.json',
+    expectedWhitelistHost: LINUX_AUTO_ALLOW_OBSERVED_FETCH_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+  {
+    id: 'observed-xhr',
+    kind: 'xhr',
+    host: LINUX_AUTO_ALLOW_OBSERVED_XHR_HOST,
+    path: '/xhr.json',
+    expectedWhitelistHost: LINUX_AUTO_ALLOW_OBSERVED_XHR_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+  {
+    id: 'observed-image',
+    kind: 'image',
+    host: LINUX_AUTO_ALLOW_OBSERVED_IMAGE_HOST,
+    path: '/pixel.png',
+    expectedWhitelistHost: LINUX_AUTO_ALLOW_OBSERVED_IMAGE_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+  {
+    id: 'observed-script',
+    kind: 'script',
+    host: LINUX_AUTO_ALLOW_OBSERVED_SCRIPT_HOST,
+    path: '/asset.js',
+    expectedWhitelistHost: LINUX_AUTO_ALLOW_OBSERVED_SCRIPT_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+  {
+    id: 'observed-stylesheet',
+    kind: 'stylesheet',
+    host: LINUX_AUTO_ALLOW_OBSERVED_STYLESHEET_HOST,
+    path: '/style.css',
+    expectedWhitelistHost: LINUX_AUTO_ALLOW_OBSERVED_STYLESHEET_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+  {
+    id: 'observed-font',
+    kind: 'font',
+    host: LINUX_AUTO_ALLOW_OBSERVED_FONT_HOST,
+    path: '/font.woff2',
+    expectedWhitelistHost: LINUX_AUTO_ALLOW_OBSERVED_FONT_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+]);
+
+export const LINUX_AUTO_ALLOW_ALL_PROBES = Object.freeze([
+  ...LINUX_AUTO_ALLOW_OBSERVATION_PROBES,
+  ...LINUX_AUTO_ALLOW_PROBES,
 ]);
 
 export const LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS = Object.freeze([
   'firefox-extension-ready',
   'origin-page-load',
-  'first-page-load',
   'page-observer',
   'page-resource-candidates',
-  'remote-rule-creation',
-  'local-whitelist-apply',
-  'dns-policy-apply',
-  'probe-traffic',
+  'no-automatic-rule-creation',
+  'explicit-whitelist-apply',
+  'explicit-probe-traffic',
   'artifact-written',
 ]);
 
@@ -84,11 +160,6 @@ export const LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
     recommendedNextAction:
       'Inspect Linux runner DNS, Firefox launch, and local canary server reachability.',
   },
-  'first-page-load': {
-    message: 'Firefox did not complete the first Linux AJAX canary page load before probing.',
-    recommendedNextAction:
-      'Inspect whether auto-allow is applied before the first resource wave is released.',
-  },
   'page-observer': {
     message: 'The Firefox page-resource observer was not installed in the origin page.',
     recommendedNextAction: 'Inspect Linux Firefox extension content-script injection.',
@@ -98,25 +169,19 @@ export const LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
     recommendedNextAction:
       'Inspect page-resource detection and candidate matching in the Firefox extension.',
   },
-  'remote-rule-creation': {
+  'no-automatic-rule-creation': {
     message:
-      'The remote ClassroomPath/OpenPath whitelist state did not contain every expected Linux probe host.',
+      'Observed Linux page-resource candidates appeared in whitelist state even though automatic rule creation is not expected.',
     recommendedNextAction:
-      'Inspect protected canary group diagnostics and remote whitelist publication.',
+      'Inspect Firefox/Core runtime and server-side request automation before treating this as a valid canary success.',
   },
-  'local-whitelist-apply': {
-    message:
-      'Remote rules were present but the local Linux whitelist did not contain every expected probe host.',
+  'explicit-whitelist-apply': {
+    message: 'Explicit Linux rules were missing from remote or local whitelist state.',
     recommendedNextAction:
-      'Inspect openpath-update.service, openpath-sse-listener.service, and /var/lib/openpath/whitelist.txt.',
+      'Inspect canary provisioning seed rules, openpath-update.service, openpath-sse-listener.service, and /var/lib/openpath/whitelist.txt.',
   },
-  'dns-policy-apply': {
-    message: 'The Linux DNS policy did not allow every expected auto-allowed probe host.',
-    recommendedNextAction: 'Inspect dnsmasq state, /etc/resolv.conf, and local dig evidence.',
-  },
-  'probe-traffic': {
-    message:
-      'The local Linux whitelist contained expected hosts but browser probes still did not reach the canary server.',
+  'explicit-probe-traffic': {
+    message: 'Explicitly whitelisted Linux browser probes still did not reach the canary server.',
     recommendedNextAction:
       'Inspect Firefox DNS cache, dnsmasq application, and extension/native-host visibility.',
   },
@@ -129,7 +194,8 @@ export const LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
     recommendedNextAction: 'Inspect runner connectivity to the GitHub artifact service.',
   },
   none: {
-    message: 'Linux AJAX auto-allow canary completed successfully.',
+    message:
+      'Linux page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
     recommendedNextAction: 'No follow-up required for this canary run.',
   },
 });
@@ -162,18 +228,6 @@ export const LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
     }),
   },
   {
-    id: 'first-page-load',
-    passed: (summary) =>
-      summary?.firstPageLoadCompleted !== false ||
-      summary?.browserNavigation?.beforeAttempts?.ok === true ||
-      summary?.browserNavigation?.afterAttempts?.ok === true,
-    evidence: (summary) => ({
-      firstPageLoadCompleted: summary?.firstPageLoadCompleted ?? null,
-      firstPageLoadError: summary?.firstPageLoadError ?? null,
-      browserNavigation: summary?.browserNavigation ?? null,
-    }),
-  },
-  {
     id: 'page-observer',
     passed: (summary) =>
       summary?.pageObserverInstalled === true || hasBrowserObservedPageObserver(summary),
@@ -185,44 +239,37 @@ export const LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
   },
   {
     id: 'page-resource-candidates',
-    passed: (summary, probes) => hasCandidateEvidence(summary, probes),
+    passed: (summary) => hasCandidateEvidence(summary, LINUX_AUTO_ALLOW_ALL_PROBES),
     evidence: (summary) => ({
       completedCandidateEvents: summary?.completedCandidateEvents ?? null,
       pageObserverState: summary?.pageObserverState ?? null,
     }),
   },
   {
-    id: 'remote-rule-creation',
+    id: 'no-automatic-rule-creation',
+    passed: (summary) =>
+      hasNoAutomaticRuleCreationEvidence(summary, LINUX_AUTO_ALLOW_OBSERVATION_PROBES),
+    evidence: () => ({
+      automaticRuleCreationExpected: false,
+      observedHosts: LINUX_AUTO_ALLOW_OBSERVATION_PROBES.map(
+        (probe) => probe.expectedWhitelistHost
+      ),
+    }),
+  },
+  {
+    id: 'explicit-whitelist-apply',
     passed: (summary, probes) =>
       hasRemoteRuleEvidence(
         summary,
         probes.map((probe) => probe.expectedWhitelistHost)
-      ),
-    evidence: (_summary, probes) => ({
-      expectedHosts: probes.map((probe) => probe.expectedWhitelistHost),
-    }),
-  },
-  {
-    id: 'local-whitelist-apply',
-    passed: (summary, probes) => hasLocalWhitelistEvidence(summary, probes),
+      ) && hasLocalWhitelistEvidence(summary, probes),
     evidence: (summary, probes) => ({
-      expectedHosts: probes.map((probe) => probe.expectedWhitelistHost),
+      explicitHosts: probes.map((probe) => probe.expectedWhitelistHost),
       probeEvidence: summary?.probeEvidence ?? [],
     }),
   },
   {
-    id: 'dns-policy-apply',
-    passed: (summary, probes) =>
-      hasDnsEvidence(
-        summary,
-        probes.map((probe) => probe.expectedWhitelistHost)
-      ),
-    evidence: (_summary, probes) => ({
-      expectedHosts: probes.map((probe) => probe.expectedWhitelistHost),
-    }),
-  },
-  {
-    id: 'probe-traffic',
+    id: 'explicit-probe-traffic',
     passed: (summary, probes) => hasProbeTrafficEvidence(summary, probes),
     evidence: (summary) => ({ probeEvidence: summary?.probeEvidence ?? [] }),
   },
@@ -254,7 +301,11 @@ export function classifyLinuxAutoAllowFailureBoundary(summary, probes = LINUX_AU
 export function withLinuxAutoAllowDiagnostics(summary, probes = LINUX_AUTO_ALLOW_PROBES) {
   return buildAutoAllowEvidenceModel({
     phases: LINUX_AUTO_ALLOW_DIAGNOSTIC_PHASES,
-    summary,
+    summary: {
+      contract: 'page-resource-observation-no-auto-allow',
+      automaticRuleCreationExpected: false,
+      ...summary,
+    },
     probes,
     boundaries: LINUX_AUTO_ALLOW_FAILURE_BOUNDARIES,
     enrichProbeEvidence: enrichProbeEvidenceWithRemoteDiagnostics,

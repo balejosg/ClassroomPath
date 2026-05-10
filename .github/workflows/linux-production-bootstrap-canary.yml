@@ -439,7 +439,7 @@ jobs:
             failure_boundary_message='Functional canary evidence was produced but GitHub artifact upload failed.'
           elif [ "$canary_result" = "success" ]; then
             failure_boundary_id=none
-            failure_boundary_message='Linux AJAX auto-allow canary completed successfully.'
+            failure_boundary_message='Linux page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.'
           fi
 
           echo "canary_result=$canary_result" >> "$GITHUB_OUTPUT"

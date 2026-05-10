@@ -8,7 +8,14 @@ import process from 'node:process';
 
 const DEFAULT_API_URL = 'https://classroompath.eu';
 const LINUX_AJAX_AUTO_ALLOW_ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
-const LINUX_AJAX_AUTO_ALLOW_FONT_HOST = 'ajax-auto-allow-font.127.0.0.1.sslip.io';
+const LINUX_EXPLICIT_AJAX_ALLOWLIST_HOSTS = Object.freeze([
+  'ajax-auto-allow-target.127.0.0.1.sslip.io',
+  'ajax-auto-allow-xhr.127.0.0.1.sslip.io',
+  'ajax-auto-allow-asset.127.0.0.1.sslip.io',
+  'ajax-auto-allow-script.127.0.0.1.sslip.io',
+  'ajax-auto-allow-stylesheet.127.0.0.1.sslip.io',
+  'ajax-auto-allow-font.127.0.0.1.sslip.io',
+]);
 const apiUrl = (process.env.PRODUCTION_LINUX_BOOTSTRAP_CANARY_URL ?? DEFAULT_API_URL).replace(
   /\/$/,
   ''
@@ -447,18 +454,24 @@ async function main() {
 
   assert.ok(group.id, 'groups.create should return a group id');
 
-  const { data: canaryRule } = await postTrpc(
-    'groups.createRule',
-    {
-      groupId: group.id,
-      type: 'whitelist',
-      value: LINUX_AJAX_AUTO_ALLOW_ORIGIN_HOST,
-      comment: 'Production Linux bootstrap canary AJAX origin seed rule',
-    },
-    cookieHeader
-  );
+  const explicitSeedHosts = [
+    LINUX_AJAX_AUTO_ALLOW_ORIGIN_HOST,
+    ...LINUX_EXPLICIT_AJAX_ALLOWLIST_HOSTS,
+  ];
+  for (const host of explicitSeedHosts) {
+    const { data: canaryRule } = await postTrpc(
+      'groups.createRule',
+      {
+        groupId: group.id,
+        type: 'whitelist',
+        value: host,
+        comment: 'Production Linux bootstrap canary explicit AJAX seed rule',
+      },
+      cookieHeader
+    );
 
-  assert.ok(canaryRule.id, 'groups.createRule should return a rule id');
+    assert.ok(canaryRule.id, 'groups.createRule should return a rule id');
+  }
 
   const { data: requestApiRule } = await postTrpc(
     'groups.createRule',
@@ -516,7 +529,8 @@ async function main() {
     manualRequestId: activation.manualRequestId ?? null,
     email,
     groupId: group.id,
-    fontHost: LINUX_AJAX_AUTO_ALLOW_FONT_HOST,
+    explicitAjaxAllowlistHosts: LINUX_EXPLICIT_AJAX_ALLOWLIST_HOSTS,
+    fontHost: 'ajax-auto-allow-font.127.0.0.1.sslip.io',
     classroomId: classroom.id,
     enrollmentToken: ticketPayload.enrollmentToken,
     linuxScriptUrl: `${apiUrl}/api/enroll/${classroom.id}`,

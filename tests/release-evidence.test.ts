@@ -410,14 +410,18 @@ describe('release evidence rendering', () => {
       windows: {
         result: 'success',
         boundaryId: 'none',
-        message: 'Windows AJAX auto-allow canary completed successfully.',
+        message:
+          'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
       },
     });
 
     assert.match(summary, /## Release Canary Boundary/);
     assert.match(summary, /Linux bootstrap\/AJAX/);
     assert.match(summary, /linux-install-openpath/);
-    assert.match(summary, /Windows AJAX auto-allow canary completed successfully\./);
+    assert.match(
+      summary,
+      /Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded\./
+    );
     assert.doesNotMatch(summary, /Bearer|token|secret/i);
   });
 
@@ -564,7 +568,8 @@ describe('release evidence rendering', () => {
       diagnostics: {
         windowsProductionBootstrapFailureBoundary: {
           id: 'none',
-          message: 'Windows AJAX auto-allow canary completed successfully.',
+          message:
+            'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
         },
         linuxProductionBootstrapFailureBoundary: {
           id: 'page-resource-candidates',
@@ -611,7 +616,8 @@ describe('release evidence rendering', () => {
         windows: {
           failureBoundary: {
             id: 'none',
-            message: 'Windows AJAX auto-allow canary completed successfully.',
+            message:
+              'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
           },
           diagnosticPhases: [{ id: 'artifact-written', status: 'passed' }],
           redditHosts: {
@@ -708,7 +714,7 @@ describe('release evidence rendering', () => {
     );
     assert.match(
       markdown,
-      /\| Windows bootstrap\/AJAX \| success \| none \| Windows AJAX auto-allow canary completed successfully\. \|/
+      /\| Windows bootstrap\/AJAX \| success \| none \| Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded\. \|/
     );
     assert.match(markdown, /Windows bootstrap failure boundary: `none`/);
     assert.match(markdown, /Linux bootstrap failure boundary: `page-resource-candidates`/);
@@ -891,29 +897,26 @@ describe('release evidence rendering', () => {
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
       WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'failure',
       WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT: 'failure',
-      WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'local-whitelist-apply',
+      WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'explicit-whitelist-apply',
       WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE:
-        'Remote whitelist contains expected hosts but local Windows whitelist did not.',
+        'Explicit Windows whitelist rules did not converge locally.',
     });
 
     assert.equal(json.jobs.windowsProductionBootstrapCanary, 'failure');
     assert.deepEqual(json.diagnostics.windowsProductionBootstrapFailureBoundary, {
-      id: 'local-whitelist-apply',
-      message: 'Remote whitelist contains expected hosts but local Windows whitelist did not.',
+      id: 'explicit-whitelist-apply',
+      message: 'Explicit Windows whitelist rules did not converge locally.',
     });
     assert.equal(
       json.artifacts.windowsProductionBootstrapCanary,
       'windows-production-bootstrap-canary'
     );
-    assert.match(markdown, /Windows bootstrap failure boundary: `local-whitelist-apply`/);
+    assert.match(markdown, /Windows bootstrap failure boundary: `explicit-whitelist-apply`/);
     assert.match(
       markdown,
       /Windows production bootstrap canary: `windows-production-bootstrap-canary`/
     );
-    assert.match(
-      markdown,
-      /Remote whitelist contains expected hosts but local Windows whitelist did not\./
-    );
+    assert.match(markdown, /Explicit Windows whitelist rules did not converge locally\./);
   });
 
   test('includes Linux production bootstrap canary artifact and failure boundary evidence', () => {

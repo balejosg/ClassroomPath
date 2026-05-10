@@ -311,8 +311,8 @@ describe('shared AJAX auto-allow canary harness', () => {
     const summary = {
       success: false,
       failureBoundary: {
-        id: 'probe-traffic',
-        message: 'Probe traffic did not converge.',
+        id: 'explicit-probe-traffic',
+        message: 'Explicit probe traffic did not converge.',
       },
     };
 
@@ -340,16 +340,16 @@ describe('shared AJAX auto-allow canary harness', () => {
         {
           phase: 'artifact-written',
           status: 'failed',
-          boundaryId: 'probe-traffic',
-          message: 'Probe traffic did not converge.',
+          boundaryId: 'explicit-probe-traffic',
+          message: 'Explicit probe traffic did not converge.',
         },
       ]);
       assert.deepEqual(logs, []);
       assert.deepEqual(errors, [`ADAPTER_AJAX_SUMMARY ${JSON.stringify(summary)}`]);
       assert.deepEqual(githubOutputs, [
         ['adapter_ajax_result', 'failure'],
-        ['failure_boundary_id', 'probe-traffic'],
-        ['failure_boundary_message', 'Probe traffic did not converge.'],
+        ['failure_boundary_id', 'explicit-probe-traffic'],
+        ['failure_boundary_message', 'Explicit probe traffic did not converge.'],
       ]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });

@@ -644,7 +644,7 @@ jobs:
             failure_boundary_message='Functional canary reported success but required evidence artifacts were missing or empty.'
           elif [ "$FUNCTIONAL_RESULT" = "success" ]; then
             failure_boundary_id=none
-            failure_boundary_message='Windows AJAX auto-allow canary completed successfully.'
+            failure_boundary_message='Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.'
           fi
 
           echo "canary_result=$result" >> "$GITHUB_OUTPUT"

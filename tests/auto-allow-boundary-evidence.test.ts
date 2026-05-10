@@ -8,6 +8,7 @@ import {
   classifyAutoAllowFailureBoundary,
   enrichProbeEvidenceWithRemoteDiagnostics,
   hasCandidateEvidence,
+  hasNoAutomaticRuleCreationEvidence,
   hasRemoteRuleEvidence,
 } from '../scripts/lib/auto-allow-boundary-evidence.mjs';
 import {
@@ -25,9 +26,13 @@ const probes = Object.freeze([
 ]);
 
 const boundaries = Object.freeze({
-  'remote-rule-creation': {
-    message: 'remote missing',
-    recommendedNextAction: 'check server',
+  'no-automatic-rule-creation': {
+    message: 'automatic rule created',
+    recommendedNextAction: 'check observer contract',
+  },
+  'explicit-whitelist-apply': {
+    message: 'explicit whitelist missing',
+    recommendedNextAction: 'check explicit seed rules',
   },
   'artifact-written': {
     message: 'artifact missing',
@@ -47,7 +52,7 @@ describe('shared auto-allow boundary evidence model', () => {
       boundaries,
       phases: [
         {
-          id: 'remote-rule-creation',
+          id: 'explicit-whitelist-apply',
           evidence: () => ({ ready: true }),
           passed: () => false,
         },
@@ -62,11 +67,11 @@ describe('shared auto-allow boundary evidence model', () => {
     assert.deepEqual(
       summary.diagnosticPhases.map((phase) => [phase.id, phase.status]),
       [
-        ['remote-rule-creation', 'failed'],
+        ['explicit-whitelist-apply', 'failed'],
         ['artifact-written', 'pending'],
       ]
     );
-    assert.equal(summary.failureBoundary.id, 'remote-rule-creation');
+    assert.equal(summary.failureBoundary.id, 'explicit-whitelist-apply');
   });
 
   test('declarative engine returns none when all phases pass', () => {
@@ -76,7 +81,7 @@ describe('shared auto-allow boundary evidence model', () => {
       boundaries,
       phases: [
         {
-          id: 'remote-rule-creation',
+          id: 'explicit-whitelist-apply',
           evidence: () => ({ ready: true }),
           passed: () => true,
         },
@@ -194,6 +199,48 @@ describe('shared auto-allow boundary evidence model', () => {
     );
   });
 
+  test('detects absence of automatic rule creation for observed probes', () => {
+    assert.equal(
+      hasNoAutomaticRuleCreationEvidence(
+        {
+          diagnostics: {
+            postAttempt: {
+              remoteWhitelist: {
+                containsExpectedHosts: {
+                  'ajax-observe-target.127.0.0.1.sslip.io': false,
+                  'ajax-observe-font.127.0.0.1.sslip.io': false,
+                },
+              },
+              whitelist: {
+                local: {
+                  containsExpectedHosts: {
+                    'ajax-observe-target.127.0.0.1.sslip.io': false,
+                    'ajax-observe-font.127.0.0.1.sslip.io': false,
+                  },
+                },
+              },
+            },
+          },
+        },
+        [
+          {
+            id: 'observed-fetch',
+            host: 'ajax-observe-target.127.0.0.1.sslip.io',
+            expectedWhitelistHost: 'ajax-observe-target.127.0.0.1.sslip.io',
+            automaticRuleCreationExpected: false,
+          },
+          {
+            id: 'observed-font',
+            host: 'ajax-observe-font.127.0.0.1.sslip.io',
+            expectedWhitelistHost: 'ajax-observe-font.127.0.0.1.sslip.io',
+            automaticRuleCreationExpected: false,
+          },
+        ]
+      ),
+      true
+    );
+  });
+
   test('builds phases and classifies the first failed boundary', () => {
     const phases = buildAutoAllowDiagnosticPhases({
       summary: { artifactWritten: true },
@@ -201,7 +248,7 @@ describe('shared auto-allow boundary evidence model', () => {
       boundaries,
       checks: [
         {
-          id: 'remote-rule-creation',
+          id: 'explicit-whitelist-apply',
           passed: false,
           evidence: { expectedHosts: probes.map((probe) => probe.expectedWhitelistHost) },
         },
@@ -216,9 +263,9 @@ describe('shared auto-allow boundary evidence model', () => {
     assert.equal(phases[0].status, 'failed');
     assert.equal(phases[1].status, 'pending');
     assert.deepEqual(classifyAutoAllowFailureBoundary({ diagnosticPhases: phases, boundaries }), {
-      id: 'remote-rule-creation',
-      message: 'remote missing',
-      recommendedNextAction: 'check server',
+      id: 'explicit-whitelist-apply',
+      message: 'explicit whitelist missing',
+      recommendedNextAction: 'check explicit seed rules',
     });
   });
 
@@ -228,7 +275,7 @@ describe('shared auto-allow boundary evidence model', () => {
       message: 'custom artifact failure',
       artifactPath: '/tmp/canary.json',
       error: 'ENOENT',
-      phaseIds: ['remote-rule-creation', 'artifact-written'],
+      phaseIds: ['explicit-whitelist-apply', 'artifact-written'],
       boundaries,
     });
 

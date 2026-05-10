@@ -7,6 +7,7 @@ import process from 'node:process';
 import {
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
+  WINDOWS_AUTO_ALLOW_ALL_PROBES,
   WINDOWS_AUTO_ALLOW_ORIGIN_HOST as ORIGIN_HOST,
   WINDOWS_AUTO_ALLOW_PROBES as AUTO_ALLOW_PROBES,
   assertWindowsAutoAllowCanarySuccess,
@@ -136,7 +137,7 @@ export function createWindowsAjaxAutoAllowRuntimeConfig(env = process.env) {
     geckodriverPath: env.GECKODRIVER_PATH ?? '',
     useLocalFirefoxAddon: localAddonPath.trim().length > 0,
     useSeleniumFirefox: firefoxMode === 'selenium' || localAddonPath.trim().length > 0,
-    probes: AUTO_ALLOW_PROBES,
+    probes: WINDOWS_AUTO_ALLOW_ALL_PROBES,
     redditDiagnosticProbes: REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
   };
 }
@@ -274,7 +275,7 @@ function createWindowsAjaxCanaryHarness({
   port = PORT,
   timeoutMs = TIMEOUT_MS,
   maxAttemptEvidence = MAX_ATTEMPT_EVIDENCE,
-  probes = AUTO_ALLOW_PROBES,
+  probes = WINDOWS_AUTO_ALLOW_ALL_PROBES,
   redditDiagnosticProbes = REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
   onResult,
 } = {}) {
@@ -648,7 +649,7 @@ async function sendNativeProtocolMessage(message) {
 }
 
 async function collectWindowsAutoAllowDiagnostics(phase) {
-  const expectedHosts = AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost);
+  const expectedHosts = WINDOWS_AUTO_ALLOW_ALL_PROBES.map((probe) => probe.expectedWhitelistHost);
   const [
     globalWhitelist,
     nativeWhitelist,
@@ -1097,7 +1098,7 @@ async function main() {
   const timeout = setTimeout(() => {
     resolveResult({
       success: false,
-      error: `Timed out after ${TIMEOUT_MS}ms waiting for AJAX auto-allow success`,
+      error: `Timed out after ${TIMEOUT_MS}ms waiting for explicit AJAX/page-resource probe success`,
       targetUrl,
       assetUrl,
       attempts: state.browserAttempts,
@@ -1154,7 +1155,7 @@ async function main() {
           }
         : null;
     const probeEvidence = [];
-    for (const probe of AUTO_ALLOW_PROBES) {
+    for (const probe of WINDOWS_AUTO_ALLOW_ALL_PROBES) {
       probeEvidence.push({
         id: probe.id,
         kind: probe.kind,

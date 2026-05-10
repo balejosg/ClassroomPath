@@ -203,7 +203,7 @@ function main() {
       STAGING_LINUX_BOOTSTRAP_RUN_ID: runId,
       STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'none',
       STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE:
-        'Linux AJAX auto-allow canary completed successfully.',
+        'Linux page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
     });
     return;
   }

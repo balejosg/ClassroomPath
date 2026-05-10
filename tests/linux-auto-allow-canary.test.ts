@@ -11,6 +11,7 @@ import {
 } from '../scripts/lib/ajax-auto-allow-canary-harness.mjs';
 import { collectCanaryGroupDiagnostics } from '../scripts/lib/canary-group-diagnostics.mjs';
 import {
+  LINUX_AUTO_ALLOW_OBSERVATION_PROBES,
   LINUX_AUTO_ALLOW_PROBES,
   buildLinuxAutoAllowProbeUrl,
   withLinuxAutoAllowDiagnostics,
@@ -107,6 +108,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       LINUX_AUTO_ALLOW_PROBES.map((probe) => probe.id),
       [
         'ajax-fetch',
+        'xhr-subresource',
         'image-subresource',
         'script-subresource',
         'stylesheet-subresource',
@@ -114,7 +116,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       ]
     );
     assert.equal(
-      buildLinuxAutoAllowProbeUrl(LINUX_AUTO_ALLOW_PROBES[4], 18088),
+      buildLinuxAutoAllowProbeUrl(LINUX_AUTO_ALLOW_PROBES[5], 18088),
       'http://ajax-auto-allow-font.127.0.0.1.sslip.io:18088/font.woff2'
     );
 
@@ -349,7 +351,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       originPageHits: 1,
       pageObserverInstalled: true,
       completedCandidateEvents: Object.fromEntries(
-        LINUX_AUTO_ALLOW_PROBES.map((probe) => [probe.id, true])
+        [...LINUX_AUTO_ALLOW_OBSERVATION_PROBES, ...LINUX_AUTO_ALLOW_PROBES].map((probe) => [
+          probe.id,
+          true,
+        ])
       ),
       probeEvidence: LINUX_AUTO_ALLOW_PROBES.map((probe) => ({
         id: probe.id,
@@ -376,9 +381,17 @@ describe('Linux AJAX auto-allow canary contracts', () => {
           },
           whitelist: {
             local: {
-              containsExpectedHosts: Object.fromEntries(
-                LINUX_AUTO_ALLOW_PROBES.map((probe) => [probe.expectedWhitelistHost, true])
-              ),
+              containsExpectedHosts: {
+                ...Object.fromEntries(
+                  LINUX_AUTO_ALLOW_PROBES.map((probe) => [probe.expectedWhitelistHost, true])
+                ),
+                ...Object.fromEntries(
+                  LINUX_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => [
+                    probe.expectedWhitelistHost,
+                    false,
+                  ])
+                ),
+              },
             },
           },
           dns: {
@@ -917,7 +930,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
 
     assert.match(canaryScript, /LINUX_AJAX_AUTO_ALLOW_ENROLLMENT_WAIT_MS/);
     assert.match(canaryScript, /async function waitForEnrollmentSeed/);
-    assert.match(canaryScript, /expectedHosts = \[\s*ORIGIN_HOST,[\s\S]*\.\.\.AUTO_ALLOW_PROBES/);
+    assert.match(
+      canaryScript,
+      /expectedHosts = \[\s*ORIGIN_HOST,[\s\S]*\.\.\.LINUX_AUTO_ALLOW_ALL_PROBES/
+    );
     assert.match(canaryScript, /collectLinuxFailureDebugSnapshot/);
     assert.match(
       canaryScript,

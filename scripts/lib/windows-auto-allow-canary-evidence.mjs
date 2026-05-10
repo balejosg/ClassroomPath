@@ -6,18 +6,27 @@ import {
   enrichProbeEvidenceWithRemoteDiagnostics,
   hasCandidateEvidence,
   hasLocalWhitelistEvidence,
+  hasNoAutomaticRuleCreationEvidence,
   hasProbeTrafficEvidence,
   hasRemoteRuleEvidence,
 } from './auto-allow-boundary-evidence.mjs';
 
 export const WINDOWS_AUTO_ALLOW_ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_TARGET_HOST = 'ajax-auto-allow-target.127.0.0.1.sslip.io';
+export const WINDOWS_AUTO_ALLOW_XHR_HOST = 'ajax-auto-allow-xhr.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_ASSET_HOST = 'ajax-auto-allow-asset.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_SCRIPT_HOST = 'ajax-auto-allow-script.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_STYLESHEET_HOST = 'ajax-auto-allow-stylesheet.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_FONT_HOST = 'ajax-auto-allow-font.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_STYLESHEET_FONT_HOST =
   'ajax-auto-allow-stylesheet-font.127.0.0.1.sslip.io';
+export const WINDOWS_AUTO_ALLOW_OBSERVED_FETCH_HOST = 'ajax-observe-fetch.127.0.0.1.sslip.io';
+export const WINDOWS_AUTO_ALLOW_OBSERVED_XHR_HOST = 'ajax-observe-xhr.127.0.0.1.sslip.io';
+export const WINDOWS_AUTO_ALLOW_OBSERVED_IMAGE_HOST = 'ajax-observe-image.127.0.0.1.sslip.io';
+export const WINDOWS_AUTO_ALLOW_OBSERVED_SCRIPT_HOST = 'ajax-observe-script.127.0.0.1.sslip.io';
+export const WINDOWS_AUTO_ALLOW_OBSERVED_STYLESHEET_HOST =
+  'ajax-observe-stylesheet.127.0.0.1.sslip.io';
+export const WINDOWS_AUTO_ALLOW_OBSERVED_FONT_HOST = 'ajax-observe-font.127.0.0.1.sslip.io';
 
 export const REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS = Object.freeze([
   'emoji.redditmedia.com',
@@ -67,7 +76,15 @@ export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
     host: WINDOWS_AUTO_ALLOW_TARGET_HOST,
     path: '/data.json',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_TARGET_HOST,
-    failureMessage: 'Auto-allow AJAX target was not written to whitelist',
+    failureMessage: 'Explicit AJAX target was not written to whitelist',
+  },
+  {
+    id: 'xhr-subresource',
+    kind: 'xhr',
+    host: WINDOWS_AUTO_ALLOW_XHR_HOST,
+    path: '/xhr.json',
+    expectedWhitelistHost: WINDOWS_AUTO_ALLOW_XHR_HOST,
+    failureMessage: 'Explicit XHR target was not written to whitelist',
   },
   {
     id: 'image-subresource',
@@ -75,7 +92,7 @@ export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
     host: WINDOWS_AUTO_ALLOW_ASSET_HOST,
     path: '/pixel.png',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_ASSET_HOST,
-    failureMessage: 'Auto-allow image target was not written to whitelist',
+    failureMessage: 'Explicit image target was not written to whitelist',
   },
   {
     id: 'script-subresource',
@@ -83,7 +100,7 @@ export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
     host: WINDOWS_AUTO_ALLOW_SCRIPT_HOST,
     path: '/asset.js',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_SCRIPT_HOST,
-    failureMessage: 'Auto-allow script target was not written to whitelist',
+    failureMessage: 'Explicit script target was not written to whitelist',
   },
   {
     id: 'stylesheet-subresource',
@@ -91,7 +108,7 @@ export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
     host: WINDOWS_AUTO_ALLOW_STYLESHEET_HOST,
     path: '/style.css',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_STYLESHEET_HOST,
-    failureMessage: 'Auto-allow stylesheet target was not written to whitelist',
+    failureMessage: 'Explicit stylesheet target was not written to whitelist',
   },
   {
     id: 'font-subresource',
@@ -99,7 +116,7 @@ export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
     host: WINDOWS_AUTO_ALLOW_FONT_HOST,
     path: '/font.woff2',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_FONT_HOST,
-    failureMessage: 'Auto-allow font target was not written to whitelist',
+    failureMessage: 'Explicit font target was not written to whitelist',
   },
   {
     id: 'stylesheet-font-subresource',
@@ -110,8 +127,70 @@ export const WINDOWS_AUTO_ALLOW_PROBES = Object.freeze([
     stylesheetPath: '/font-chain.css',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_STYLESHEET_FONT_HOST,
     expectsPageResourceCandidate: false,
-    failureMessage: 'Auto-allow stylesheet-discovered font target was not written to whitelist',
+    failureMessage: 'Explicit stylesheet-discovered font target was not written to whitelist',
   },
+]);
+
+export const WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES = Object.freeze([
+  {
+    id: 'observed-fetch',
+    kind: 'fetch',
+    host: WINDOWS_AUTO_ALLOW_OBSERVED_FETCH_HOST,
+    path: '/data.json',
+    expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_FETCH_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+  {
+    id: 'observed-xhr',
+    kind: 'xhr',
+    host: WINDOWS_AUTO_ALLOW_OBSERVED_XHR_HOST,
+    path: '/xhr.json',
+    expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_XHR_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+  {
+    id: 'observed-image',
+    kind: 'image',
+    host: WINDOWS_AUTO_ALLOW_OBSERVED_IMAGE_HOST,
+    path: '/pixel.png',
+    expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_IMAGE_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+  {
+    id: 'observed-script',
+    kind: 'script',
+    host: WINDOWS_AUTO_ALLOW_OBSERVED_SCRIPT_HOST,
+    path: '/asset.js',
+    expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_SCRIPT_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+  {
+    id: 'observed-stylesheet',
+    kind: 'stylesheet',
+    host: WINDOWS_AUTO_ALLOW_OBSERVED_STYLESHEET_HOST,
+    path: '/style.css',
+    expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_STYLESHEET_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+  {
+    id: 'observed-font',
+    kind: 'font',
+    host: WINDOWS_AUTO_ALLOW_OBSERVED_FONT_HOST,
+    path: '/font.woff2',
+    expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_FONT_HOST,
+    automaticRuleCreationExpected: false,
+    requiresTraffic: false,
+  },
+]);
+
+export const WINDOWS_AUTO_ALLOW_ALL_PROBES = Object.freeze([
+  ...WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES,
+  ...WINDOWS_AUTO_ALLOW_PROBES,
 ]);
 
 export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS = Object.freeze([
@@ -119,9 +198,9 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS = Object.freeze([
   'origin-page-load',
   'page-observer',
   'page-resource-candidates',
-  'remote-rule-creation',
-  'local-whitelist-apply',
-  'probe-traffic',
+  'no-automatic-rule-creation',
+  'explicit-whitelist-apply',
+  'explicit-probe-traffic',
   'artifact-written',
 ]);
 
@@ -150,24 +229,23 @@ export const WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
     recommendedNextAction:
       'Inspect extension page-resource detection, candidate matching, and browser console evidence.',
   },
-  'remote-rule-creation': {
-    label: 'Remote rule creation',
+  'no-automatic-rule-creation': {
+    label: 'No automatic rule creation',
     message:
-      'The remote ClassroomPath/OpenPath whitelist state did not contain every expected probe host.',
+      'Observed page-resource candidates appeared in whitelist state even though automatic rule creation is not expected.',
     recommendedNextAction:
-      'Inspect server-side auto-allow diagnostics, group rules, and remote whitelist publication.',
+      'Inspect Firefox/Core runtime and server-side request automation before treating this as a valid canary success.',
   },
-  'local-whitelist-apply': {
-    label: 'Local whitelist apply',
+  'explicit-whitelist-apply': {
+    label: 'Explicit whitelist apply',
     message:
-      'Remote rules were present but the local Windows whitelist did not contain every expected probe host.',
+      'The explicit ClassroomPath/OpenPath whitelist state did not contain every expected probe host.',
     recommendedNextAction:
-      'Inspect native-host update-whitelist, Update-OpenPath.ps1, local whitelist files, and task logs.',
+      'Inspect canary provisioning seed rules, remote whitelist publication, native-host update-whitelist, and local whitelist files.',
   },
-  'probe-traffic': {
-    label: 'Probe traffic',
-    message:
-      'The local whitelist contained expected hosts but browser probes still did not reach the canary server.',
+  'explicit-probe-traffic': {
+    label: 'Explicit probe traffic',
+    message: 'Explicitly whitelisted browser probes still did not reach the canary server.',
     recommendedNextAction:
       'Inspect Windows DNS/firewall application, Acrylic state, Firefox DNS cache, and native protocol check output.',
   },
@@ -185,7 +263,8 @@ export const WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
   },
   none: {
     label: 'No failure boundary',
-    message: 'Windows AJAX auto-allow canary completed successfully.',
+    message:
+      'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
     recommendedNextAction: 'No follow-up required for this canary run.',
   },
 });
@@ -252,7 +331,7 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
   },
   {
     id: 'page-resource-candidates',
-    passed: (summary, probes) => hasCandidateEvidence(summary, probes),
+    passed: (summary) => hasCandidateEvidence(summary, WINDOWS_AUTO_ALLOW_ALL_PROBES),
     evidence: (summary) => ({
       completedCandidateEvents: summary?.completedCandidateEvents ?? null,
       candidateEventsCount: Array.isArray(summary?.pageResourceCandidateEvents)
@@ -261,26 +340,30 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
     }),
   },
   {
-    id: 'remote-rule-creation',
+    id: 'no-automatic-rule-creation',
+    passed: (summary) =>
+      hasNoAutomaticRuleCreationEvidence(summary, WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES),
+    evidence: () => ({
+      automaticRuleCreationExpected: false,
+      observedHosts: WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map(
+        (probe) => probe.expectedWhitelistHost
+      ),
+    }),
+  },
+  {
+    id: 'explicit-whitelist-apply',
     passed: (summary, probes) =>
       hasRemoteRuleEvidence(
         summary,
         probes.map((probe) => probe.expectedWhitelistHost)
-      ),
-    evidence: (_summary, probes) => ({
-      expectedHosts: probes.map((probe) => probe.expectedWhitelistHost),
-    }),
-  },
-  {
-    id: 'local-whitelist-apply',
-    passed: (summary, probes) => hasLocalWhitelistEvidence(summary, probes),
+      ) && hasLocalWhitelistEvidence(summary, probes),
     evidence: (summary, probes) => ({
-      expectedHosts: probes.map((probe) => probe.expectedWhitelistHost),
+      explicitHosts: probes.map((probe) => probe.expectedWhitelistHost),
       probeEvidence: summary?.probeEvidence ?? [],
     }),
   },
   {
-    id: 'probe-traffic',
+    id: 'explicit-probe-traffic',
     passed: (summary, probes) => hasProbeTrafficEvidence(summary, probes),
     evidence: (summary) => ({
       probeEvidence: (summary?.probeEvidence ?? []).map((item) => ({
@@ -363,6 +446,7 @@ export function buildWindowsAutoAllowCanarySummary({
   diagnostics,
 }) {
   const ajaxEvidence = findProbeEvidence(probeEvidence, 'ajax-fetch');
+  const xhrEvidence = findProbeEvidence(probeEvidence, 'xhr-subresource');
   const imageEvidence = findProbeEvidence(probeEvidence, 'image-subresource');
   const scriptEvidence = findProbeEvidence(probeEvidence, 'script-subresource');
   const stylesheetEvidence = findProbeEvidence(probeEvidence, 'stylesheet-subresource');
@@ -378,17 +462,22 @@ export function buildWindowsAutoAllowCanarySummary({
   const summary = {
     ...result,
     originHost: WINDOWS_AUTO_ALLOW_ORIGIN_HOST,
+    contract: 'page-resource-observation-no-auto-allow',
+    automaticRuleCreationExpected: false,
     targetHost: WINDOWS_AUTO_ALLOW_TARGET_HOST,
+    xhrHost: WINDOWS_AUTO_ALLOW_XHR_HOST,
     assetHost: WINDOWS_AUTO_ALLOW_ASSET_HOST,
     scriptHost: WINDOWS_AUTO_ALLOW_SCRIPT_HOST,
     stylesheetHost: WINDOWS_AUTO_ALLOW_STYLESHEET_HOST,
     fontHost: WINDOWS_AUTO_ALLOW_FONT_HOST,
     stylesheetFontHost: WINDOWS_AUTO_ALLOW_STYLESHEET_FONT_HOST,
     targetUrl: ajaxEvidence?.url ?? result?.targetUrl,
+    xhrUrl: xhrEvidence?.url ?? result?.xhrUrl,
     assetUrl: imageEvidence?.url ?? result?.assetUrl,
     fontUrl: fontEvidence?.url ?? result?.fontUrl,
     originHits,
     targetHits: ajaxEvidence?.hits ?? 0,
+    xhrHits: xhrEvidence?.hits ?? 0,
     assetHits: imageEvidence?.hits ?? 0,
     scriptHits: scriptEvidence?.hits ?? 0,
     stylesheetHits: stylesheetEvidence?.hits ?? 0,
@@ -435,7 +524,7 @@ export function assertWindowsAutoAllowCanarySuccess(summary, probes = WINDOWS_AU
   for (const probe of probes) {
     const evidence = summary.probeEvidence?.find((item) => item.id === probe.id);
     if (Number(evidence?.hits ?? 0) <= 0) {
-      throw new Error(`Auto-allow ${probe.kind} probe did not reach canary server: ${probe.id}`);
+      throw new Error(`Explicit ${probe.kind} probe did not reach canary server: ${probe.id}`);
     }
   }
 }

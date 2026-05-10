@@ -49,7 +49,7 @@ function writeStagingVerification(
     STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID: '123456789',
     STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID: 'none',
     STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_MESSAGE:
-      'Windows AJAX auto-allow canary completed successfully.',
+      'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
     STAGING_LINUX_BOOTSTRAP_RESULT: 'success',
     ...overrides,
   };

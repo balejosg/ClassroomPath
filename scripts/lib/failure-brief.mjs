@@ -55,11 +55,11 @@ const BOUNDARY_META = Object.freeze({
     probableLayer: 'extension',
     safeToRetry: 'no',
   },
-  'remote-rule-creation': {
+  'no-automatic-rule-creation': {
     probableLayer: 'server',
-    safeToRetry: 'unknown',
+    safeToRetry: 'no',
   },
-  'local-whitelist-apply': {
+  'explicit-whitelist-apply': {
     probableLayer: 'native-host',
     safeToRetry: 'after-cleanup',
   },
@@ -79,9 +79,9 @@ const BOUNDARY_META = Object.freeze({
     probableLayer: 'dns',
     safeToRetry: 'no',
   },
-  'probe-traffic': {
-    probableLayer: 'server',
-    safeToRetry: 'unknown',
+  'explicit-probe-traffic': {
+    probableLayer: 'dns',
+    safeToRetry: 'no',
   },
   none: {
     probableLayer: 'none',

@@ -39,6 +39,14 @@ export function allExpectedRuleValuesPresent(rules, expectedHosts) {
   return expectedHosts.every((host) => values.has(String(host).toLowerCase()));
 }
 
+export function allExpectedHostsAbsent(value, expectedHosts) {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  return expectedHosts.every((host) => value[host] === false);
+}
+
 export function collectDiagnosticSnapshots(summary) {
   const diagnostics = summary?.diagnostics ?? {};
   return [
@@ -53,36 +61,53 @@ export function collectDiagnosticSnapshots(summary) {
   ].filter(Boolean);
 }
 
-export function hasRemoteRuleEvidence(summary, expectedHosts) {
+function collectContainsExpectedHostMaps(summary) {
+  const maps = [];
   for (const diagnostics of collectDiagnosticSnapshots(summary)) {
+    const candidates = [
+      diagnostics.remoteWhitelist?.containsExpectedHosts,
+      diagnostics.whitelist?.remoteWhitelist?.containsExpectedHosts,
+      diagnostics.whitelist?.global?.containsExpectedHosts,
+      diagnostics.whitelist?.native?.containsExpectedHosts,
+      diagnostics.whitelist?.local?.containsExpectedHosts,
+      diagnostics.global?.containsExpectedHosts,
+      diagnostics.native?.containsExpectedHosts,
+      diagnostics.local?.containsExpectedHosts,
+      diagnostics.server?.canaryGroup?.body?.expectedHostState,
+      diagnostics.body?.expectedHostState,
+    ];
+    for (const candidate of candidates) {
+      if (candidate && typeof candidate === 'object') {
+        maps.push(candidate);
+      }
+    }
+  }
+  return maps;
+}
+
+export function hasRemoteRuleEvidence(summary, expectedHosts) {
+  const hosts = expectedHosts.filter(Boolean);
+  for (const diagnostics of collectDiagnosticSnapshots(summary)) {
+    if (allExpectedHostsPresent(diagnostics.remoteWhitelist?.containsExpectedHosts, hosts)) {
+      return true;
+    }
     if (
-      allExpectedHostsPresent(diagnostics.remoteWhitelist?.containsExpectedHosts, expectedHosts)
+      allExpectedHostsPresent(diagnostics.whitelist?.remoteWhitelist?.containsExpectedHosts, hosts)
     ) {
       return true;
     }
     if (
-      allExpectedHostsPresent(
-        diagnostics.whitelist?.remoteWhitelist?.containsExpectedHosts,
-        expectedHosts
-      )
+      allExpectedHostStatePresent(diagnostics.server?.canaryGroup?.body?.expectedHostState, hosts)
     ) {
       return true;
     }
-    if (
-      allExpectedHostStatePresent(
-        diagnostics.server?.canaryGroup?.body?.expectedHostState,
-        expectedHosts
-      )
-    ) {
+    if (allExpectedHostStatePresent(diagnostics.body?.expectedHostState, hosts)) {
       return true;
     }
-    if (allExpectedHostStatePresent(diagnostics.body?.expectedHostState, expectedHosts)) {
+    if (allExpectedRuleValuesPresent(diagnostics.server?.canaryGroup?.body?.rules, hosts)) {
       return true;
     }
-    if (allExpectedRuleValuesPresent(diagnostics.server?.canaryGroup?.body?.rules, expectedHosts)) {
-      return true;
-    }
-    if (allExpectedRuleValuesPresent(diagnostics.body?.rules, expectedHosts)) {
+    if (allExpectedRuleValuesPresent(diagnostics.body?.rules, hosts)) {
       return true;
     }
   }
@@ -90,10 +115,31 @@ export function hasRemoteRuleEvidence(summary, expectedHosts) {
   return false;
 }
 
+export function hasNoAutomaticRuleCreationEvidence(summary, probes) {
+  const observedHosts = probes
+    .filter((probe) => probe.automaticRuleCreationExpected === false)
+    .map((probe) => probe.expectedWhitelistHost ?? probe.host)
+    .filter(Boolean);
+
+  if (observedHosts.length === 0) {
+    return true;
+  }
+
+  if (summary?.noAutomaticRuleCreation === true) {
+    return true;
+  }
+
+  const maps = collectContainsExpectedHostMaps(summary).filter((map) =>
+    observedHosts.every((host) => Object.hasOwn(map, host))
+  );
+  return maps.length > 0 && maps.every((map) => allExpectedHostsAbsent(map, observedHosts));
+}
+
 export function hasLocalWhitelistEvidence(summary, probes, paths = ['global', 'native', 'local']) {
   const probeEvidence = Array.isArray(summary?.probeEvidence) ? summary.probeEvidence : [];
+  const explicitProbes = probes.filter((probe) => probe.automaticRuleCreationExpected !== false);
   if (
-    probes.every(
+    explicitProbes.every(
       (probe) =>
         probeEvidence.find((item) => item.id === probe.id)?.whitelistContainsExpectedHost === true
     )
@@ -101,7 +147,7 @@ export function hasLocalWhitelistEvidence(summary, probes, paths = ['global', 'n
     return true;
   }
 
-  const expectedHosts = probes.map((probe) => probe.expectedWhitelistHost);
+  const expectedHosts = explicitProbes.map((probe) => probe.expectedWhitelistHost).filter(Boolean);
   for (const diagnostics of collectDiagnosticSnapshots(summary)) {
     for (const path of paths) {
       if (
@@ -119,8 +165,9 @@ export function hasLocalWhitelistEvidence(summary, probes, paths = ['global', 'n
 }
 
 export function hasDnsEvidence(summary, expectedHosts) {
+  const hosts = expectedHosts.filter(Boolean);
   for (const diagnostics of collectDiagnosticSnapshots(summary)) {
-    if (allExpectedHostsPresent(diagnostics.dns?.containsExpectedHosts, expectedHosts)) {
+    if (allExpectedHostsPresent(diagnostics.dns?.containsExpectedHosts, hosts)) {
       return true;
     }
   }
@@ -130,7 +177,8 @@ export function hasDnsEvidence(summary, expectedHosts) {
 
 export function hasProbeTrafficEvidence(summary, probes) {
   const probeEvidence = Array.isArray(summary?.probeEvidence) ? summary.probeEvidence : [];
-  return probes.every(
+  const explicitProbes = probes.filter((probe) => probe.requiresTraffic !== false);
+  return explicitProbes.every(
     (probe) => Number(probeEvidence.find((item) => item.id === probe.id)?.hits ?? 0) > 0
   );
 }

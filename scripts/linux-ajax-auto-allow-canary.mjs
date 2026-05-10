@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
 import {
+  LINUX_AUTO_ALLOW_ALL_PROBES,
   LINUX_AUTO_ALLOW_ORIGIN_HOST as ORIGIN_HOST,
   LINUX_AUTO_ALLOW_PROBES as AUTO_ALLOW_PROBES,
   withLinuxAutoAllowDiagnostics,
@@ -68,7 +69,7 @@ const CANARY_ADMIN_TOKEN = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN 
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? '/var/lib/openpath/whitelist.txt';
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
 const LINUX_AJAX_AUTO_ALLOW_FAILURE_MESSAGE =
-  'Linux AJAX auto-allow probes did not complete before timeout';
+  'Linux explicit AJAX/page-resource probes did not complete before timeout';
 const FIREFOX_EXTENSION_URL_CANDIDATES = [
   process.env.LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_URL ?? '',
   CANARY_API_URL ? `${CANARY_API_URL}/api/extensions/firefox/openpath.xpi` : '',
@@ -519,7 +520,7 @@ export function createLinuxAjaxAutoAllowCanaryHarness({
   return createAjaxAutoAllowCanaryRuntimeServer({
     platformAdapter: {
       label: 'Linux',
-      probes: AUTO_ALLOW_PROBES,
+      probes: LINUX_AUTO_ALLOW_ALL_PROBES,
       originHost: ORIGIN_HOST,
       stateGlobalName: '__openpathLinuxAjaxCanaryState',
       scriptGlobalName: '__openpathLinuxAjaxAutoAllowScriptProbe',
@@ -647,7 +648,7 @@ async function main() {
   const originUrl = `http://${ORIGIN_HOST}:${PORT}/`;
   const expectedHosts = [
     ORIGIN_HOST,
-    ...AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost),
+    ...LINUX_AUTO_ALLOW_ALL_PROBES.map((probe) => probe.expectedWhitelistHost),
   ];
   const { state, server } = createCanaryServer();
   await listenAjaxAutoAllowCanaryRuntimeServer(server, { port: PORT });
@@ -678,7 +679,7 @@ async function main() {
     const deadline = Date.now() + TIMEOUT_MS;
     while (Date.now() < deadline) {
       if (
-        hasAllAjaxAutoAllowProbesCompleted(AUTO_ALLOW_PROBES, state.completedProbes) &&
+        hasAllAjaxAutoAllowProbesCompleted(LINUX_AUTO_ALLOW_ALL_PROBES, state.completedProbes) &&
         state.pageObserverInstalled
       ) {
         break;
@@ -691,7 +692,7 @@ async function main() {
     );
     const postAttempt = await collectLinuxAutoAllowDiagnostics('post-attempt', expectedHosts);
     const completedProbesFromTraffic = buildCompletedProbesFromHits(
-      AUTO_ALLOW_PROBES,
+      LINUX_AUTO_ALLOW_ALL_PROBES,
       state.probeHits
     );
     const browserCompletedCandidateEvents =
@@ -714,7 +715,7 @@ async function main() {
       browserNavigationAfterAttempts.canaryState?.completedRedditDiagnosticEvents ??
       browserNavigationBeforeAttempts.canaryState?.completedRedditDiagnosticEvents ??
       {};
-    const probeEvidence = AUTO_ALLOW_PROBES.map((probe) => ({
+    const probeEvidence = LINUX_AUTO_ALLOW_ALL_PROBES.map((probe) => ({
       id: probe.id,
       kind: probe.kind,
       host: probe.host,
@@ -738,7 +739,7 @@ async function main() {
       expectedProbeIds: AUTO_ALLOW_PROBES.map((probe) => probe.id),
     });
     const preliminarySuccess =
-      hasAllAjaxAutoAllowProbesCompleted(AUTO_ALLOW_PROBES, completedProbesFromTraffic) &&
+      hasAllAjaxAutoAllowProbesCompleted(LINUX_AUTO_ALLOW_ALL_PROBES, completedProbesFromTraffic) &&
       pageObserverInstalled &&
       browserPageOutcome.success;
     const baseSummary = {

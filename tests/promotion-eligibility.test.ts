@@ -51,7 +51,7 @@ const verificationState = {
   STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID: '123456789',
   STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID: 'none',
   STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_MESSAGE:
-    'Windows AJAX auto-allow canary completed successfully.',
+    'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
   STAGING_FIREFOX_EXTENSION_ID: 'openpath@example',
   STAGING_FIREFOX_RELEASE_VERSION: '4.1.19',
   STAGING_FIREFOX_METADATA_SHA256: 'meta123',
@@ -62,7 +62,7 @@ const verificationState = {
   STAGING_LINUX_BOOTSTRAP_RUN_ID: '123456789',
   STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'none',
   STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE:
-    'Linux AJAX auto-allow canary completed successfully.',
+    'Linux page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
   STAGING_WINDOWS_SELF_UPDATE_RESULT: 'success',
   STAGING_LINUX_SELF_UPDATE_RESULT: 'success',
   STAGING_PREPROMOTION_REHEARSAL_RESULT: 'success',

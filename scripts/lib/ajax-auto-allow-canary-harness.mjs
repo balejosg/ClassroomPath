@@ -85,7 +85,9 @@ export function buildCompletedProbesFromHits(probes, probeHits) {
 }
 
 export function hasAllAjaxAutoAllowProbesCompleted(probes, completedProbes) {
-  return probes.every((probe) => completedProbes?.[probe.id] === true);
+  return probes
+    .filter((probe) => probe.requiresTraffic !== false)
+    .every((probe) => completedProbes?.[probe.id] === true);
 }
 
 function browserProbe(probe, port) {
@@ -141,6 +143,9 @@ ${statusMarkup}
 ${statusInit}
 const probes = ${JSON.stringify(browserProbes)};
 const redditDiagnosticProbes = ${JSON.stringify(browserRedditDiagnosticProbes)};
+const requiredProbeIds = new Set(
+  probes.filter((probe) => probe.requiresTraffic !== false).map((probe) => probe.id)
+);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PROBE_TIMEOUT_MS = ${probeTimeoutMs};
 const REDDIT_DIAGNOSTIC_TIMEOUT_MS = ${redditDiagnosticTimeoutMs};
@@ -274,6 +279,18 @@ function loadImage(url) {
   });
 }
 
+function loadXhr(url) {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', bust(url), true);
+    xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 400, status: xhr.status });
+    xhr.onerror = () => resolve({ ok: false, error: 'xhr load failed' });
+    xhr.ontimeout = () => resolve({ ok: false, error: 'xhr timed out' });
+    xhr.timeout = PROBE_TIMEOUT_MS;
+    xhr.send();
+  });
+}
+
 function loadScript(url) {
   return new Promise((resolve) => {
     const script = document.createElement('script');
@@ -360,6 +377,7 @@ async function runProbeOnce(probe) {
     const response = await fetch(bust(probe.url), { cache: 'no-store', mode: 'cors' });
     return { ok: response.ok, status: response.status };
   }
+  if (probe.kind === 'xhr') return loadXhr(probe.url);
   if (probe.kind === 'image') return loadImage(probe.url);
   if (probe.kind === 'script') return loadScript(probe.url);
   if (probe.kind === 'stylesheet') return loadStylesheet(probe.url);
@@ -415,7 +433,7 @@ async function runRedditDiagnosticProbes() {
     attempts.push(attemptResult);
     await reportAttempt(attemptResult, completed);
     canaryState.lastPhase = 'attempt-finished';
-    if (Object.values(completed).every(Boolean)) {
+    if ([...requiredProbeIds].every((probeId) => completed[probeId] === true)) {
       await report({
         success: true,
         attempts,
@@ -588,7 +606,7 @@ export function createAjaxAutoAllowCanaryServer({
     if (matchedProbe) {
       state.probeHits[matchedProbe.id] += 1;
       const headers = { 'Cache-Control': 'no-store' };
-      if (matchedProbe.kind === 'fetch') {
+      if (matchedProbe.kind === 'fetch' || matchedProbe.kind === 'xhr') {
         res.writeHead(200, {
           ...headers,
           'Access-Control-Allow-Origin': `http://${originHost}:${port}`,

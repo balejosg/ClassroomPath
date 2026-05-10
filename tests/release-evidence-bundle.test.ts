@@ -62,11 +62,13 @@ function buildReleaseEvidenceInput(overrides: Record<string, unknown> = {}) {
     diagnostics: {
       windowsProductionBootstrapFailureBoundary: {
         id: 'none',
-        message: 'Windows AJAX auto-allow canary completed successfully.',
+        message:
+          'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
       },
       linuxProductionBootstrapFailureBoundary: {
         id: 'none',
-        message: 'Linux AJAX auto-allow canary completed successfully.',
+        message:
+          'Linux page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
       },
     },
     stagingVerification: {
@@ -498,7 +500,7 @@ describe('release evidence bundle module', () => {
       success: false,
       failureBoundary: {
         id: 'linux-install-openpath',
-        message: 'Linux install-openpath failed before AJAX auto-allow verification.',
+        message: 'Linux install-openpath failed before explicit AJAX/page-resource verification.',
       },
       diagnosticPhases: [
         { id: 'linux-install-openpath', status: 'failed' },
@@ -523,11 +525,13 @@ describe('release evidence bundle module', () => {
         diagnostics: {
           windowsProductionBootstrapFailureBoundary: {
             id: 'none',
-            message: 'Windows AJAX auto-allow canary completed successfully.',
+            message:
+              'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
           },
           linuxProductionBootstrapFailureBoundary: {
             id: 'linux-install-openpath',
-            message: 'Linux install-openpath failed before AJAX auto-allow verification.',
+            message:
+              'Linux install-openpath failed before explicit AJAX/page-resource verification.',
           },
         },
       }),
