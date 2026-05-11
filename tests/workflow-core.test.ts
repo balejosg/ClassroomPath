@@ -762,6 +762,19 @@ describe('Workflow core contracts', () => {
       'Windows bootstrap canary must install Firefox from the same runner-reachable base URL used for windows.ps1'
     );
     assert.ok(productionBootstrapWorkflowText.includes('Reset persistent Windows canary state'));
+    assert.ok(productionBootstrapWorkflowText.includes('Acquire shared Windows runner lock'));
+    assert.ok(productionBootstrapWorkflowText.includes('Release shared Windows runner lock'));
+    assert.ok(
+      productionBootstrapWorkflowText.includes('scripts/acquire-shared-windows-runner-lock.ps1')
+    );
+    assert.ok(
+      productionBootstrapWorkflowText.includes('scripts/release-shared-windows-runner-lock.ps1')
+    );
+    assert.ok(
+      readText('scripts/acquire-shared-windows-runner-lock.ps1').includes(
+        'C:\\ProgramData\\OpenPathRunnerLocks\\destructive-openpath-windows'
+      )
+    );
     assert.ok(productionBootstrapWorkflowText.includes("Get-ScheduledTask -TaskName 'OpenPath-*'"));
     assert.ok(productionBootstrapWorkflowText.includes("Remove-Item -LiteralPath 'C:\\OpenPath'"));
     assert.ok(productionBootstrapWorkflowText.includes('Acrylic DNS Proxy'));
