@@ -571,7 +571,7 @@ warn_if_other_release_candidate_run_in_progress target-sha
         promotionReadyScript.includes(
           'node "$SCRIPT_DIR/openpath-required-checks.mjs" report || true'
         ) &&
-        promotionReadyScript.includes('node "$SCRIPT_DIR/openpath-required-checks.mjs"'),
+        promotionReadyScript.includes('node "$SCRIPT_DIR/openpath-required-checks.mjs" wait'),
       'promotion readiness should verify required OpenPath checks for the exact staged submodule SHA'
     );
     assert.ok(

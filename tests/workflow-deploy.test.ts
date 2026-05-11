@@ -171,6 +171,8 @@ function assertNightlyStagingCandidateGate(
   );
   assert.equal(promotionReadyStep.env?.GH_TOKEN, '${{ secrets.GITHUB_TOKEN }}');
   assert.equal(promotionReadyStep.env?.GITHUB_TOKEN, '${{ secrets.GITHUB_TOKEN }}');
+  assert.equal(promotionReadyStep.env?.OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS, 2400);
+  assert.equal(promotionReadyStep.env?.OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS, 10);
   assert.match(String(promotionReadyStep.env?.PROMOTION_REPORT_JSON_PATH ?? ''), /runner\.temp/);
   assert.match(String(promotionReadyStep.env?.PROMOTION_EVIDENCE_DIR ?? ''), /runner\.temp/);
   assert.ok(

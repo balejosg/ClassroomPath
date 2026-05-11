@@ -94,7 +94,7 @@ verify_openpath_required_checks() {
     node "$SCRIPT_DIR/openpath-required-checks.mjs" report || true
   OPENPATH_SHA="$openpath_sha" \
   OPENPATH_BASE_SHA="$openpath_base_sha" \
-    node "$SCRIPT_DIR/openpath-required-checks.mjs"
+    node "$SCRIPT_DIR/openpath-required-checks.mjs" wait
 }
 
 verify_openpath_required_checks
