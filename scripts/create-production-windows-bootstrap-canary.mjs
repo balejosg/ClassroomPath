@@ -32,6 +32,13 @@ const stripeWebhookSecret =
 const adminCanaryToken = process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN ?? '';
 const billingMode = process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE ?? 'stripe';
 const CANARY_MARKER = '[client-canary]';
+const REQUIRED_WINDOWS_BOOTSTRAP_RUNTIME_FILES = Object.freeze([
+  'scripts/Enroll-Machine.ps1',
+  'scripts/Pre-Install-Validation.ps1',
+  'scripts/Start-SSEListener.ps1',
+  'scripts/Test-DNSHealth.ps1',
+  'scripts/Update-OpenPath.ps1',
+]);
 
 function readCurrentTermsVersion() {
   const sourcePath = resolve('api/src/services/legal-consent.service.ts');
@@ -524,8 +531,37 @@ async function main() {
   );
 
   assert.ok(runtimeSpecEntry, 'bootstrap manifest should include runtime/browser-policy-spec.json');
+  for (const requiredRuntimeFile of REQUIRED_WINDOWS_BOOTSTRAP_RUNTIME_FILES) {
+    assert.ok(
+      manifest.files.some((file) => file.path === requiredRuntimeFile),
+      `bootstrap manifest should include ${requiredRuntimeFile}`
+    );
+  }
   assert.ok(metadataEntry, 'bootstrap manifest should include Firefox release metadata');
   assert.ok(xpiEntry, 'bootstrap manifest should include the signed Firefox XPI');
+
+  const bootstrapBundlePath = manifest.bundle?.path || '/api/agent/windows/bootstrap/bundle.zip';
+  const bootstrapBundleUrl = bootstrapBundlePath.match(/^https?:\/\//)
+    ? bootstrapBundlePath
+    : `${apiUrl}${bootstrapBundlePath}`;
+  const bootstrapBundleResponse = await fetchWithRetry(bootstrapBundleUrl, {
+    headers: authHeaders,
+  });
+  assert.equal(
+    bootstrapBundleResponse.status,
+    200,
+    'Windows bootstrap bundle should be downloadable'
+  );
+  const bootstrapBundleText = Buffer.from(await bootstrapBundleResponse.arrayBuffer()).toString(
+    'latin1'
+  );
+  for (const requiredRuntimeFile of REQUIRED_WINDOWS_BOOTSTRAP_RUNTIME_FILES) {
+    assert.match(
+      bootstrapBundleText,
+      new RegExp(requiredRuntimeFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      `Windows bootstrap bundle should include ${requiredRuntimeFile}`
+    );
+  }
 
   const metadataResponse = await fetchWithRetry(
     `${apiUrl}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('browser-extension/firefox-release/metadata.json')}`,

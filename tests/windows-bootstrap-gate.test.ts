@@ -49,6 +49,9 @@ type EnrollmentTicketPayload = {
 
 type BootstrapManifest = {
   success: boolean;
+  bundle?: {
+    path?: string;
+  };
   files: Array<{ path: string; sha256: string; size: number }>;
 };
 
@@ -65,6 +68,13 @@ type BootstrapGateTiming = {
 };
 
 const bootstrapGateTimings: BootstrapGateTiming[] = [];
+const REQUIRED_WINDOWS_BOOTSTRAP_RUNTIME_FILES = Object.freeze([
+  'scripts/Enroll-Machine.ps1',
+  'scripts/Pre-Install-Validation.ps1',
+  'scripts/Start-SSEListener.ps1',
+  'scripts/Test-DNSHealth.ps1',
+  'scripts/Update-OpenPath.ps1',
+]);
 
 function extractTrpcData<T>(envelope: TrpcEnvelope<T> | undefined): T | undefined {
   const data = envelope?.result?.data;
@@ -587,9 +597,39 @@ describe(
         runtimeSpecEntry,
         'bootstrap manifest should include the shared browser policy spec'
       );
+      for (const requiredRuntimeFile of REQUIRED_WINDOWS_BOOTSTRAP_RUNTIME_FILES) {
+        assert.ok(
+          manifest.files.some((file) => file.path === requiredRuntimeFile),
+          `bootstrap manifest should include ${requiredRuntimeFile}`
+        );
+      }
       assert.ok(metadataEntry, 'bootstrap manifest should include Firefox release metadata');
       assert.ok(xpiEntry, 'bootstrap manifest should include the signed Firefox XPI');
       assert.ok((xpiEntry?.size ?? 0) > 0, 'signed Firefox XPI should be non-empty');
+
+      const bootstrapBundlePath =
+        manifest.bundle?.path || '/api/agent/windows/bootstrap/bundle.zip';
+      const bootstrapBundleUrl = bootstrapBundlePath.match(/^https?:\/\//)
+        ? bootstrapBundlePath
+        : `${WINDOWS_BOOTSTRAP_GATE_URL}${bootstrapBundlePath}`;
+      const bootstrapBundleResponse = await timedBootstrapGateStep(
+        'download bootstrap bundle',
+        () =>
+          fetchWithRetry(bootstrapBundleUrl, {
+            headers: authHeaders,
+          })
+      );
+      assert.strictEqual(bootstrapBundleResponse.status, 200);
+      const bootstrapBundleText = Buffer.from(await bootstrapBundleResponse.arrayBuffer()).toString(
+        'latin1'
+      );
+      for (const requiredRuntimeFile of REQUIRED_WINDOWS_BOOTSTRAP_RUNTIME_FILES) {
+        assert.match(
+          bootstrapBundleText,
+          new RegExp(requiredRuntimeFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+          `bootstrap bundle should include ${requiredRuntimeFile}`
+        );
+      }
 
       const runtimeSpecResponse = await timedBootstrapGateStep('download runtime policy spec', () =>
         fetchWithRetry(
