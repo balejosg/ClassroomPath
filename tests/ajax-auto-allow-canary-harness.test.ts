@@ -9,6 +9,7 @@ import {
   buildCompletedProbesFromHits,
   createAjaxAutoAllowCanaryServer,
   createAjaxAutoAllowCanaryState,
+  hasAllAjaxAutoAllowProbesCompleted,
   openUrlWithTransientBrowserRetry,
   waitForAjaxAutoAllowPageObserver,
 } from '../scripts/lib/ajax-auto-allow-canary-harness.mjs';
@@ -17,6 +18,7 @@ import {
   emitAjaxAutoAllowCanaryRuntimeSummary,
   listenAjaxAutoAllowCanaryRuntimeServer,
 } from '../scripts/lib/ajax-auto-allow-canary-runtime.mjs';
+import { WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES } from '../scripts/lib/windows-auto-allow-canary-evidence.mjs';
 
 const probes = Object.freeze([
   {
@@ -124,6 +126,41 @@ describe('shared AJAX auto-allow canary harness', () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  test('required observed probes do not complete until every observed host has traffic', () => {
+    const zeroHits = Object.fromEntries(
+      WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => [probe.id, 0])
+    );
+    const partialHits = {
+      ...zeroHits,
+      [WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES[0].id]: 1,
+    };
+    const allHits = Object.fromEntries(
+      WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => [probe.id, 1])
+    );
+
+    assert.equal(
+      hasAllAjaxAutoAllowProbesCompleted(
+        WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES,
+        buildCompletedProbesFromHits(WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES, zeroHits)
+      ),
+      false
+    );
+    assert.equal(
+      hasAllAjaxAutoAllowProbesCompleted(
+        WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES,
+        buildCompletedProbesFromHits(WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES, partialHits)
+      ),
+      false
+    );
+    assert.equal(
+      hasAllAjaxAutoAllowProbesCompleted(
+        WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES,
+        buildCompletedProbesFromHits(WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES, allHits)
+      ),
+      true
+    );
   });
 
   test('server merges redacted attempt diagnostics and caps attempt evidence', async () => {

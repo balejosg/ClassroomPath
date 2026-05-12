@@ -139,7 +139,8 @@ export const WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES = Object.freeze([
     path: '/data.json',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_FETCH_HOST,
     automaticRuleCreationExpected: false,
-    requiresTraffic: false,
+    requiresTraffic: true,
+    failureMessage: 'Observed fetch probe did not reach canary server',
   },
   {
     id: 'observed-xhr',
@@ -148,7 +149,8 @@ export const WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES = Object.freeze([
     path: '/xhr.json',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_XHR_HOST,
     automaticRuleCreationExpected: false,
-    requiresTraffic: false,
+    requiresTraffic: true,
+    failureMessage: 'Observed XHR probe did not reach canary server',
   },
   {
     id: 'observed-image',
@@ -157,7 +159,8 @@ export const WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES = Object.freeze([
     path: '/pixel.png',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_IMAGE_HOST,
     automaticRuleCreationExpected: false,
-    requiresTraffic: false,
+    requiresTraffic: true,
+    failureMessage: 'Observed image probe did not reach canary server',
   },
   {
     id: 'observed-script',
@@ -166,7 +169,8 @@ export const WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES = Object.freeze([
     path: '/asset.js',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_SCRIPT_HOST,
     automaticRuleCreationExpected: false,
-    requiresTraffic: false,
+    requiresTraffic: true,
+    failureMessage: 'Observed script probe did not reach canary server',
   },
   {
     id: 'observed-stylesheet',
@@ -175,7 +179,8 @@ export const WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES = Object.freeze([
     path: '/style.css',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_STYLESHEET_HOST,
     automaticRuleCreationExpected: false,
-    requiresTraffic: false,
+    requiresTraffic: true,
+    failureMessage: 'Observed stylesheet probe did not reach canary server',
   },
   {
     id: 'observed-font',
@@ -184,7 +189,8 @@ export const WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES = Object.freeze([
     path: '/font.woff2',
     expectedWhitelistHost: WINDOWS_AUTO_ALLOW_OBSERVED_FONT_HOST,
     automaticRuleCreationExpected: false,
-    requiresTraffic: false,
+    requiresTraffic: true,
+    failureMessage: 'Observed font probe did not reach canary server',
   },
 ]);
 
@@ -198,6 +204,7 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS = Object.freeze([
   'origin-page-load',
   'page-observer',
   'page-resource-candidates',
+  'observed-probe-traffic',
   'no-automatic-rule-creation',
   'explicit-whitelist-apply',
   'explicit-probe-traffic',
@@ -230,6 +237,13 @@ export const WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
       'The page did not emit resource-candidate events and the local canary server did not see every observed probe.',
     recommendedNextAction:
       'Inspect extension page-resource detection, candidate matching, webRequest observation, and browser console evidence.',
+  },
+  'observed-probe-traffic': {
+    label: 'Observed probe traffic',
+    message:
+      'Controlled observed page-resource probes did not reach the canary server, even if candidate telemetry was present.',
+    recommendedNextAction:
+      'Inspect the browser page-resource load path, canary host routing, and local server hit evidence before treating candidate events as success.',
   },
   'no-automatic-rule-creation': {
     label: 'No automatic rule creation',
@@ -356,6 +370,19 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
     }),
   },
   {
+    id: 'observed-probe-traffic',
+    passed: (summary) => hasObservedProbeTrafficEvidence(summary),
+    evidence: (summary) => ({
+      probeEvidence: WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => {
+        const evidence = findProbeEvidence(summary?.probeEvidence ?? [], probe.id);
+        return {
+          id: probe.id,
+          hits: evidence?.hits ?? 0,
+        };
+      }),
+    }),
+  },
+  {
     id: 'no-automatic-rule-creation',
     passed: (summary) =>
       hasNoAutomaticRuleCreationEvidence(summary, WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES),
@@ -368,13 +395,21 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
   },
   {
     id: 'explicit-whitelist-apply',
-    passed: (summary, probes) =>
-      hasRemoteRuleEvidence(
-        summary,
-        probes.map((probe) => probe.expectedWhitelistHost)
-      ) && hasLocalWhitelistEvidence(summary, probes),
+    passed: (summary, probes) => {
+      const explicitProbes = probes.filter(
+        (probe) => probe.automaticRuleCreationExpected !== false
+      );
+      return (
+        hasRemoteRuleEvidence(
+          summary,
+          explicitProbes.map((probe) => probe.expectedWhitelistHost)
+        ) && hasLocalWhitelistEvidence(summary, explicitProbes)
+      );
+    },
     evidence: (summary, probes) => ({
-      explicitHosts: probes.map((probe) => probe.expectedWhitelistHost),
+      explicitHosts: probes
+        .filter((probe) => probe.automaticRuleCreationExpected !== false)
+        .map((probe) => probe.expectedWhitelistHost),
       probeEvidence: summary?.probeEvidence ?? [],
     }),
   },
@@ -397,7 +432,10 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
   },
 ]);
 
-export function buildWindowsAutoAllowDiagnosticPhases(summary, probes = WINDOWS_AUTO_ALLOW_PROBES) {
+export function buildWindowsAutoAllowDiagnosticPhases(
+  summary,
+  probes = WINDOWS_AUTO_ALLOW_ALL_PROBES
+) {
   return buildAutoAllowEvidenceModel({
     phases: WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES,
     summary,
@@ -408,7 +446,7 @@ export function buildWindowsAutoAllowDiagnosticPhases(summary, probes = WINDOWS_
 
 export function classifyWindowsAutoAllowFailureBoundary(
   summary,
-  probes = WINDOWS_AUTO_ALLOW_PROBES
+  probes = WINDOWS_AUTO_ALLOW_ALL_PROBES
 ) {
   const diagnosticPhases =
     summary?.diagnosticPhases ?? buildWindowsAutoAllowDiagnosticPhases(summary, probes);
@@ -418,7 +456,7 @@ export function classifyWindowsAutoAllowFailureBoundary(
   });
 }
 
-export function withWindowsAutoAllowDiagnostics(summary, probes = WINDOWS_AUTO_ALLOW_PROBES) {
+export function withWindowsAutoAllowDiagnostics(summary, probes = WINDOWS_AUTO_ALLOW_ALL_PROBES) {
   return buildAutoAllowEvidenceModel({
     phases: WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES,
     summary,
@@ -525,19 +563,25 @@ export function buildWindowsAutoAllowCanarySummary({
   return withWindowsAutoAllowDiagnostics(summary);
 }
 
-export function assertWindowsAutoAllowCanarySuccess(summary, probes = WINDOWS_AUTO_ALLOW_PROBES) {
+export function assertWindowsAutoAllowCanarySuccess(
+  summary,
+  probes = WINDOWS_AUTO_ALLOW_ALL_PROBES
+) {
   if (!summary.success) {
     throw new Error(`Windows AJAX auto-allow canary failed: ${JSON.stringify(summary)}`);
   }
 
-  for (const probe of probes) {
+  const explicitProbes = probes.filter((probe) => probe.automaticRuleCreationExpected !== false);
+  const observedProbes = probes.filter((probe) => probe.automaticRuleCreationExpected === false);
+
+  for (const probe of explicitProbes) {
     const evidence = summary.probeEvidence?.find((item) => item.id === probe.id);
     if (!evidence?.whitelistContainsExpectedHost) {
       throw new Error(probe.failureMessage);
     }
   }
 
-  for (const probe of probes) {
+  for (const probe of explicitProbes.filter((probe) => probe.requiresTraffic !== false)) {
     const evidence = summary.probeEvidence?.find((item) => item.id === probe.id);
     if (Number(evidence?.hits ?? 0) <= 0) {
       throw new Error(`Explicit ${probe.kind} probe did not reach canary server: ${probe.id}`);
@@ -548,5 +592,12 @@ export function assertWindowsAutoAllowCanarySuccess(summary, probes = WINDOWS_AU
   if (failureBoundaryId && failureBoundaryId !== 'none') {
     const message = summary.failureBoundary?.message ?? 'diagnostic flow did not complete';
     throw new Error(`Windows AJAX auto-allow canary stopped at ${failureBoundaryId}: ${message}`);
+  }
+
+  for (const probe of observedProbes.filter((probe) => probe.requiresTraffic !== false)) {
+    const evidence = summary.probeEvidence?.find((item) => item.id === probe.id);
+    if (Number(evidence?.hits ?? 0) <= 0) {
+      throw new Error(`Observed ${probe.kind} probe did not reach canary server: ${probe.id}`);
+    }
   }
 }

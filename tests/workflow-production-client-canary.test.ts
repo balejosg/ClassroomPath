@@ -350,7 +350,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     );
     assert.ok(
       WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.every(
-        (probe) => probe.automaticRuleCreationExpected === false && probe.requiresTraffic === false
+        (probe) => probe.automaticRuleCreationExpected === false && probe.requiresTraffic !== false
       )
     );
     assert.deepEqual(REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS, [
@@ -438,6 +438,20 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     assert.equal(pageObserverFailure.success, true);
     assert.equal(pageObserverFailure.failureBoundary?.id, 'page-observer');
     assert.throws(() => assertWindowsAutoAllowCanarySuccess(pageObserverFailure), /page-observer/);
+  });
+
+  test('fails Windows AJAX canary success when observed probes have no controlled traffic', () => {
+    const observedTrafficFailure = buildDiagnosticSummary({
+      pageObserverInstalled: true,
+      observedProbeHits: 0,
+    });
+
+    assert.equal(observedTrafficFailure.success, true);
+    assert.equal(observedTrafficFailure.failureBoundary?.id, 'observed-probe-traffic');
+    assert.throws(
+      () => assertWindowsAutoAllowCanarySuccess(observedTrafficFailure),
+      /observed-probe-traffic|Observed .* probe did not reach canary server/
+    );
   });
 
   test('accepts observed probe traffic when page-resource observer telemetry is unavailable', () => {
@@ -530,6 +544,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
           'origin-page-load',
           'page-observer',
           'page-resource-candidates',
+          'observed-probe-traffic',
           'no-automatic-rule-creation',
           'explicit-whitelist-apply',
           'explicit-probe-traffic',

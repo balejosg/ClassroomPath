@@ -20,6 +20,18 @@ export const WINDOWS_OPENPATH_OVERLAYS = [
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\Update.Runtime.psm1`,
   },
   {
+    source: 'windows/lib/DNS.psm1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\DNS.psm1`,
+  },
+  {
+    source: 'windows/lib/internal/Update.Script.Apply.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\Update.Script.Apply.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/DNS.Acrylic.Config.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\DNS.Acrylic.Config.ps1`,
+  },
+  {
     source: 'windows/lib/internal/Common.Integrity.ps1',
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\Common.Integrity.ps1`,
   },
