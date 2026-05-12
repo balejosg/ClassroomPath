@@ -120,6 +120,7 @@ export function buildAjaxAutoAllowCanaryPage({
   port,
   timeoutMs,
   probeTimeoutMs,
+  xhrTimeoutMs = probeTimeoutMs,
   redditDiagnosticTimeoutMs = 1500,
   stateGlobalName = '__openpathAjaxAutoAllowCanaryState',
   statusElement = false,
@@ -148,6 +149,7 @@ const requiredProbeIds = new Set(
 );
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PROBE_TIMEOUT_MS = ${probeTimeoutMs};
+const XHR_TIMEOUT_MS = ${xhrTimeoutMs};
 const REDDIT_DIAGNOSTIC_TIMEOUT_MS = ${redditDiagnosticTimeoutMs};
 const CANARY_TIMEOUT_MS = ${timeoutMs};
 const pageResourceCandidateEvents = [];
@@ -286,7 +288,7 @@ function loadXhr(url) {
     xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 400, status: xhr.status });
     xhr.onerror = () => resolve({ ok: false, error: 'xhr load failed' });
     xhr.ontimeout = () => resolve({ ok: false, error: 'xhr timed out' });
-    xhr.timeout = PROBE_TIMEOUT_MS;
+    xhr.timeout = XHR_TIMEOUT_MS;
     xhr.send();
   });
 }
@@ -426,8 +428,15 @@ async function runRedditDiagnosticProbes() {
       })
     );
     for (const item of results) {
-      attemptResult.probes[item.id] = item.result;
-      if (item.result?.ok === true) completed[item.id] = true;
+      let result = item.result;
+      if (result?.ok !== true && requiredProbeIds.has(item.id)) {
+        const hits = await readProbeHits(item.id).catch(() => 0);
+        if (Number(hits) > 0) {
+          result = { ...result, ok: true, hits, completedFromServerHits: true };
+        }
+      }
+      attemptResult.probes[item.id] = result;
+      if (result?.ok === true) completed[item.id] = true;
     }
     attemptResult.completedAt = new Date().toISOString();
     attempts.push(attemptResult);

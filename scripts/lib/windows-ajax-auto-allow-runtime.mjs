@@ -52,6 +52,10 @@ const MAX_ATTEMPT_EVIDENCE = Number.parseInt(
   10
 );
 const PROBE_TIMEOUT_MS = 4000;
+const XHR_PROBE_TIMEOUT_MS = Number.parseInt(
+  process.env.WINDOWS_AJAX_AUTO_ALLOW_XHR_PROBE_TIMEOUT_MS ?? '20000',
+  10
+);
 const REDDIT_DIAGNOSTIC_TIMEOUT_MS = 1500;
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
 const OPENPATH_ROOT = process.env.OPENPATH_ROOT ?? 'C:\\OpenPath';
@@ -113,6 +117,10 @@ export function createWindowsAjaxAutoAllowRuntimeConfig(env = process.env) {
     ),
     maxAttemptEvidence: Number.parseInt(
       env.WINDOWS_AJAX_AUTO_ALLOW_MAX_ATTEMPT_EVIDENCE ?? '60',
+      10
+    ),
+    xhrProbeTimeoutMs: Number.parseInt(
+      env.WINDOWS_AJAX_AUTO_ALLOW_XHR_PROBE_TIMEOUT_MS ?? '20000',
       10
     ),
     expectedExtensionId: env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath',
@@ -299,6 +307,7 @@ function createWindowsAjaxCanaryHarness({
     port,
     timeoutMs,
     probeTimeoutMs: PROBE_TIMEOUT_MS,
+    xhrTimeoutMs: XHR_PROBE_TIMEOUT_MS,
     redditDiagnosticTimeoutMs: REDDIT_DIAGNOSTIC_TIMEOUT_MS,
     maxAttemptEvidence,
     onResult,

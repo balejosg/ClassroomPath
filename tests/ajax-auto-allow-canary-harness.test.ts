@@ -77,6 +77,37 @@ describe('shared AJAX auto-allow canary harness', () => {
     assert.match(page, /\/probe-state\?probe=/);
   });
 
+  test('page generation can keep XHR alive longer than the probe attempt budget', () => {
+    const page = buildAjaxAutoAllowCanaryPage({
+      platform: 'Windows',
+      probes,
+      originHost: 'ajax-origin.127.0.0.1.sslip.io',
+      port: 18088,
+      timeoutMs: 90000,
+      probeTimeoutMs: 4000,
+      xhrTimeoutMs: 20000,
+      stateGlobalName: '__openpathWindowsAjaxCanaryState',
+    });
+
+    assert.match(page, /const XHR_TIMEOUT_MS = 20000;/);
+    assert.match(page, /xhr\.timeout = XHR_TIMEOUT_MS;/);
+  });
+
+  test('page generation can complete probes from server-side hit evidence after browser timeouts', () => {
+    const page = buildAjaxAutoAllowCanaryPage({
+      platform: 'Windows',
+      probes,
+      originHost: 'ajax-origin.127.0.0.1.sslip.io',
+      port: 18088,
+      timeoutMs: 90000,
+      probeTimeoutMs: 4000,
+      stateGlobalName: '__openpathWindowsAjaxCanaryState',
+    });
+
+    assert.match(page, /readProbeHits\(item\.id\)/);
+    assert.match(page, /completedFromServerHits: true/);
+  });
+
   test('page generation can include Reddit-style diagnostic probes', () => {
     const page = buildAjaxAutoAllowCanaryPage({
       platform: 'Windows',
