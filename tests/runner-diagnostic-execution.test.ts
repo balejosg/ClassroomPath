@@ -176,6 +176,7 @@ describe('runner diagnostic execution plan', () => {
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS, '180000');
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS, '60000');
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE, 'selenium');
+    assert.equal(env.WINDOWS_AJAX_REDDIT_NAVIGATION_MODE, 'off');
     assert.equal(env.EXPECTED_EXTENSION_ID, 'openpath-block-monitor@openpath');
     assert.equal(
       env.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH,

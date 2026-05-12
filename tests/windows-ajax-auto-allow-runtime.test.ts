@@ -17,6 +17,9 @@ describe('Windows AJAX auto-allow runtime module', () => {
       WINDOWS_AJAX_AUTO_ALLOW_CANARY_ARTIFACT: 'custom-artifact.json',
       WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: 'selenium',
       WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH: 'C:\\addon\\openpath.xpi',
+      WINDOWS_AJAX_REDDIT_NAVIGATION_MODE: 'gate',
+      WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS: '2345',
+      WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS: '34567',
       OPENPATH_ROOT: 'D:\\OpenPath',
     });
 
@@ -25,6 +28,9 @@ describe('Windows AJAX auto-allow runtime module', () => {
     assert.equal(config.artifactPath, 'custom-artifact.json');
     assert.equal(config.firefoxMode, 'selenium');
     assert.equal(config.localAddonPath, 'C:\\addon\\openpath.xpi');
+    assert.equal(config.redditNavigationMode, 'gate');
+    assert.equal(config.redditDiagnosticRetryDelayMs, 2345);
+    assert.equal(config.redditNavigationTimeoutMs, 34567);
     assert.equal(config.useLocalFirefoxAddon, true);
     assert.equal(config.openPathRoot, 'D:\\OpenPath');
     assert.equal(config.whitelistPath, 'D:\\OpenPath\\data\\whitelist.txt');

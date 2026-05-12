@@ -270,6 +270,9 @@ export function buildWindowsAjaxCanaryGuestEnvironment({
   canaryTimeoutMs,
   postFailureObservationMs,
   localFirefoxExtension = null,
+  redditNavigationMode = 'off',
+  redditDiagnosticRetryDelayMs,
+  redditNavigationTimeoutMs,
 }) {
   const workspace = plan.runnerTarget.workspace ?? WINDOWS_WORKSPACE;
   const environment = {
@@ -281,8 +284,16 @@ export function buildWindowsAjaxCanaryGuestEnvironment({
     WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS: canaryTimeoutMs,
     WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS: postFailureObservationMs,
     WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: plan.firefox.mode ?? 'selenium',
+    WINDOWS_AJAX_REDDIT_NAVIGATION_MODE: redditNavigationMode,
     EXPECTED_EXTENSION_ID: summary.extensionId,
   };
+
+  if (redditDiagnosticRetryDelayMs !== undefined) {
+    environment.WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS = redditDiagnosticRetryDelayMs;
+  }
+  if (redditNavigationTimeoutMs !== undefined) {
+    environment.WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS = redditNavigationTimeoutMs;
+  }
 
   if (localFirefoxExtension?.remotePath) {
     environment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH = localFirefoxExtension.remotePath;

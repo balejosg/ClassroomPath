@@ -81,6 +81,7 @@ function buildDiagnosticSummary(
     automaticRuleCreated?: boolean;
     probeHits?: number;
     observedProbeHits?: number;
+    redditNavigation?: Record<string, unknown>;
   } = {}
 ) {
   const remoteWhitelistContainsExpectedHosts =
@@ -123,6 +124,13 @@ function buildDiagnosticSummary(
         seenAt: '2026-04-27T10:00:00.000Z',
       })),
     ],
+    ...(overrides.redditNavigation
+      ? {
+          redditDiagnostics: {
+            navigation: overrides.redditNavigation,
+          },
+        }
+      : {}),
     lastAttemptAt: '2026-04-27T10:00:00.000Z',
     whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
     firefoxExtensionWarmup: { ready: overrides.firefoxReady ?? true },
@@ -590,6 +598,12 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       result: {
         success: true,
         redditDiagnostics: {
+          firstPass: {
+            'reddit-emoji-image': { ok: false, passLabel: 'firstPass' },
+          },
+          secondPass: {
+            'reddit-emoji-image': { ok: false, passLabel: 'secondPass' },
+          },
           probes: {
             'reddit-emoji-image': { ok: false, error: 'image load failed' },
           },
@@ -598,13 +612,32 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
           },
         },
       },
-      probeEvidence: buildProbeEvidence(),
+      probeEvidence: [
+        ...buildProbeEvidence(),
+        ...buildProbeEvidence({
+          probes: WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES,
+          whitelistContainsExpectedHost: false,
+        }),
+      ],
       originHits: 1,
       attempts: [],
       completedProbes: buildProbeMap(true),
-      completedCandidateEvents: buildProbeMap(true),
+      completedCandidateEvents: {
+        ...buildProbeMap(true),
+        ...Object.fromEntries(
+          WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => [probe.id, true])
+        ),
+      },
       completedRedditDiagnosticEvents: { 'reddit-emoji-image': true },
-      pageResourceCandidateEvents: buildCandidateEvents(),
+      pageResourceCandidateEvents: [
+        ...buildCandidateEvents(),
+        ...WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => ({
+          kind: probe.kind,
+          url: `http://${probe.host}:18088${probe.path}`,
+          matchedProbeId: probe.id,
+          seenAt: '2026-04-27T10:00:00.000Z',
+        })),
+      ],
       redditDiagnostics: {
         whitelist: {
           global: {
@@ -622,12 +655,49 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
             },
           },
         },
+        navigation: {
+          mode: 'diagnostic',
+          url: 'https://www.reddit.com/',
+          success: false,
+          blockedByOpenPath: false,
+          timedOut: true,
+          metrics: null,
+          resourceHosts: [],
+          errors: [{ message: 'navigation timed out' }],
+        },
       },
       lastAttemptAt: '2026-04-27T10:00:00.000Z',
       whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
       firefoxExtensionWarmup: { ready: true },
       firefoxOutput: 'ready',
-      diagnostics: { preflight: {}, postAttempt: {} },
+      diagnostics: {
+        preflight: {},
+        postAttempt: {
+          remoteWhitelist: {
+            containsExpectedHosts: buildContainsExpectedHosts(false, windowsObservedHosts),
+          },
+          whitelist: {
+            local: {
+              containsExpectedHosts: buildContainsExpectedHosts(false, windowsObservedHosts),
+            },
+            remoteWhitelist: {
+              containsExpectedHosts: buildContainsExpectedHosts(true),
+            },
+          },
+          server: {
+            canaryGroup: {
+              body: {
+                expectedHostState: {
+                  ...buildServerExpectedHostState(true),
+                  ...Object.fromEntries(
+                    windowsObservedHosts.map((host) => [host, { whitelistRulePresent: false }])
+                  ),
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     assert.equal(
@@ -642,6 +712,52 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       summary.redditDiagnostics.server.canaryGroup.body.expectedHostState['emoji.redditmedia.com']
         .whitelistRulePresent,
       true
+    );
+    assert.equal(summary.redditDiagnostics.navigation.mode, 'diagnostic');
+    assert.equal(summary.redditDiagnostics.navigation.success, false);
+    assert.equal(summary.failureBoundary?.id, 'none');
+    assert.equal(
+      summary.redditDiagnostics.navigation.firstPass['reddit-emoji-image'].passLabel,
+      'firstPass'
+    );
+    assert.equal(
+      summary.redditDiagnostics.navigation.secondPass['reddit-emoji-image'].passLabel,
+      'secondPass'
+    );
+  });
+
+  test('diagnostic reddit navigation does not change the failure boundary but gate mode can fail', () => {
+    const diagnosticSummary = buildDiagnosticSummary({
+      redditNavigation: {
+        mode: 'diagnostic',
+        url: 'https://www.reddit.com/',
+        success: false,
+        blockedByOpenPath: false,
+        timedOut: true,
+        metrics: null,
+        resourceHosts: [],
+        errors: [{ message: 'timeout' }],
+      },
+    });
+    const gateSummary = buildDiagnosticSummary({
+      redditNavigation: {
+        mode: 'gate',
+        url: 'https://www.reddit.com/',
+        success: false,
+        blockedByOpenPath: true,
+        timedOut: false,
+        metrics: null,
+        resourceHosts: ['www.reddit.com'],
+        errors: [],
+      },
+    });
+
+    assert.equal(diagnosticSummary.failureBoundary?.id, 'none');
+    assert.equal(gateSummary.failureBoundary?.id, 'reddit-real-navigation');
+    assert.equal(
+      gateSummary.diagnosticPhases.at(-1)?.id,
+      'reddit-real-navigation',
+      'gate mode should add the optional reddit navigation phase after controlled gates'
     );
   });
 });
@@ -1283,6 +1399,16 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(scriptText.includes('sanitizeSummaryForArtifact'));
     assert.ok(scriptText.includes("enrollmentToken: summary.enrollmentToken ? '[redacted]' : ''"));
     assert.ok(scriptText.includes('enrollment_token: summary.enrollmentToken'));
+  });
+
+  test('windows bootstrap canary can seed reversible reddit diagnostic allowlist hosts', () => {
+    const scriptText = readProjectText('scripts/create-production-windows-bootstrap-canary.mjs');
+
+    assert.ok(scriptText.includes('WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS'));
+    assert.ok(scriptText.includes('WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS.includes(host)'));
+    assert.ok(
+      scriptText.includes('Windows AJAX Reddit staging diagnostic explicit allowlist experiment')
+    );
   });
 
   test('windows bootstrap canary exposes a staging-first manual diagnostic dispatch', () => {

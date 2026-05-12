@@ -129,6 +129,26 @@ describe('shared AJAX auto-allow canary harness', () => {
     assert.match(page, /redditDiagnostics/);
   });
 
+  test('page generation records first and second Reddit diagnostic passes', () => {
+    const page = buildAjaxAutoAllowCanaryPage({
+      platform: 'Windows',
+      probes,
+      redditDiagnosticProbes,
+      originHost: 'ajax-origin.127.0.0.1.sslip.io',
+      port: 18088,
+      timeoutMs: 90000,
+      probeTimeoutMs: 4000,
+      redditDiagnosticTimeoutMs: 1500,
+      redditDiagnosticRetryDelayMs: 1750,
+      stateGlobalName: '__openpathWindowsAjaxCanaryState',
+    });
+
+    assert.match(page, /REDDIT_DIAGNOSTIC_RETRY_DELAY_MS = 1750/);
+    assert.match(page, /firstPass = await runRedditDiagnosticProbes\('firstPass'\)/);
+    assert.match(page, /secondPass = await runRedditDiagnosticProbes\('secondPass'\)/);
+    assert.match(page, /passLabel/);
+  });
+
   test('probe completion is derived from server traffic hits', async () => {
     const state = createAjaxAutoAllowCanaryState(probes);
     const server = createAjaxAutoAllowCanaryServer({

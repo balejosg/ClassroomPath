@@ -57,6 +57,15 @@ const XHR_PROBE_TIMEOUT_MS = Number.parseInt(
   10
 );
 const REDDIT_DIAGNOSTIC_TIMEOUT_MS = 1500;
+const REDDIT_DIAGNOSTIC_RETRY_DELAY_MS = Number.parseInt(
+  process.env.WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS ?? '2500',
+  10
+);
+const REDDIT_NAVIGATION_MODE = process.env.WINDOWS_AJAX_REDDIT_NAVIGATION_MODE ?? 'off';
+const REDDIT_NAVIGATION_TIMEOUT_MS = Number.parseInt(
+  process.env.WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS ?? '45000',
+  10
+);
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
 const OPENPATH_ROOT = process.env.OPENPATH_ROOT ?? 'C:\\OpenPath';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? 'C:\\OpenPath\\data\\whitelist.txt';
@@ -117,6 +126,15 @@ export function createWindowsAjaxAutoAllowRuntimeConfig(env = process.env) {
     ),
     maxAttemptEvidence: Number.parseInt(
       env.WINDOWS_AJAX_AUTO_ALLOW_MAX_ATTEMPT_EVIDENCE ?? '60',
+      10
+    ),
+    redditDiagnosticRetryDelayMs: Number.parseInt(
+      env.WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS ?? '2500',
+      10
+    ),
+    redditNavigationMode: env.WINDOWS_AJAX_REDDIT_NAVIGATION_MODE ?? 'off',
+    redditNavigationTimeoutMs: Number.parseInt(
+      env.WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS ?? '45000',
       10
     ),
     xhrProbeTimeoutMs: Number.parseInt(
@@ -285,6 +303,7 @@ function createWindowsAjaxCanaryHarness({
   maxAttemptEvidence = MAX_ATTEMPT_EVIDENCE,
   probes = WINDOWS_AUTO_ALLOW_ALL_PROBES,
   redditDiagnosticProbes = REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
+  redditDiagnosticRetryDelayMs = REDDIT_DIAGNOSTIC_RETRY_DELAY_MS,
   onResult,
 } = {}) {
   // The shared harness owns browser probe details formerly in this runtime:
@@ -309,6 +328,7 @@ function createWindowsAjaxCanaryHarness({
     probeTimeoutMs: PROBE_TIMEOUT_MS,
     xhrTimeoutMs: XHR_PROBE_TIMEOUT_MS,
     redditDiagnosticTimeoutMs: REDDIT_DIAGNOSTIC_TIMEOUT_MS,
+    redditDiagnosticRetryDelayMs,
     maxAttemptEvidence,
     onResult,
   });
@@ -735,7 +755,7 @@ async function collectWindowsAutoAllowDiagnostics(phase) {
   });
 }
 
-async function collectRedditDiagnostics(phase, pageEvidence = {}) {
+async function collectRedditDiagnostics(phase, pageEvidence = {}, navigationEvidence = null) {
   const [globalWhitelist, nativeWhitelist, remoteWhitelist, canaryGroup] = await Promise.all([
     readFileEvidence(WHITELIST_PATH, REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS),
     readFileEvidence(NATIVE_WHITELIST_PATH, REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS),
@@ -749,6 +769,9 @@ async function collectRedditDiagnostics(phase, pageEvidence = {}) {
     hosts: REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
     probes: REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
     page: pageEvidence,
+    navigation:
+      navigationEvidence ??
+      buildRedditNavigationSkippedEvidence(REDDIT_NAVIGATION_MODE, pageEvidence),
     whitelist: {
       global: globalWhitelist,
       native: nativeWhitelist,
@@ -758,6 +781,145 @@ async function collectRedditDiagnostics(phase, pageEvidence = {}) {
     server: {
       canaryGroup,
     },
+  });
+}
+
+function normalizeRedditNavigationMode(mode) {
+  return ['off', 'diagnostic', 'gate'].includes(mode) ? mode : 'off';
+}
+
+function buildRedditNavigationSkippedEvidence(mode, pageEvidence = {}) {
+  return {
+    mode: normalizeRedditNavigationMode(mode),
+    url: 'https://www.reddit.com/',
+    success: null,
+    blockedByOpenPath: false,
+    timedOut: false,
+    metrics: null,
+    resourceHosts: [],
+    errors: [],
+    firstPass: pageEvidence?.firstPass ?? pageEvidence?.probes ?? null,
+    secondPass: pageEvidence?.secondPass ?? null,
+  };
+}
+
+function collectNavigationMetricsScript() {
+  return `
+const navigation = performance.getEntriesByType('navigation')[0];
+const resources = performance.getEntriesByType('resource')
+  .map((entry) => {
+    try { return new URL(entry.name).hostname; } catch { return ''; }
+  })
+  .filter(Boolean);
+const resourceHosts = [...new Set(resources)].filter((host) =>
+  host === 'reddit.com' || host.endsWith('.reddit.com') ||
+  host === 'redd.it' || host.endsWith('.redd.it') ||
+  host === 'redditmedia.com' || host.endsWith('.redditmedia.com') ||
+  host === 'redditstatic.com' || host.endsWith('.redditstatic.com')
+);
+const text = document.body ? document.body.innerText.slice(0, 4000) : '';
+const title = document.title || '';
+const href = location.href;
+const blockedByOpenPath =
+  /openpath/i.test(text + ' ' + title) &&
+  /(blocked|bloquead|request access|solicitar acceso|whitelist|allowlist)/i.test(text + ' ' + title + ' ' + href);
+const timeOrigin = Math.round(performance.timeOrigin || Date.now() - performance.now());
+return {
+  href,
+  title,
+  readyState: document.readyState,
+  blockedByOpenPath,
+  metrics: navigation ? {
+    navigationStart: timeOrigin,
+    domContentLoaded: Math.round(navigation.domContentLoadedEventEnd),
+    loadEventEnd: Math.round(navigation.loadEventEnd),
+    duration: Math.round(navigation.duration),
+  } : null,
+  resourceHosts,
+};
+`;
+}
+
+async function collectBrowserLogErrors(driver) {
+  try {
+    const entries = await driver.manage().logs().get('browser');
+    return entries
+      .filter((entry) => /severe|error|warning/i.test(String(entry.level?.name ?? entry.level)))
+      .slice(-20)
+      .map((entry) => ({
+        level: String(entry.level?.name ?? entry.level ?? ''),
+        message: String(entry.message ?? '').slice(-1000),
+      }));
+  } catch (error) {
+    return [
+      {
+        level: 'unavailable',
+        message: error instanceof Error ? error.message : String(error),
+      },
+    ];
+  }
+}
+
+async function collectRedditRealNavigationDiagnostics({
+  driver,
+  mode = REDDIT_NAVIGATION_MODE,
+  pageEvidence = {},
+  url = 'https://www.reddit.com/',
+  timeoutMs = REDDIT_NAVIGATION_TIMEOUT_MS,
+}) {
+  const normalizedMode = normalizeRedditNavigationMode(mode);
+  const base = buildRedditNavigationSkippedEvidence(normalizedMode, pageEvidence);
+  if (normalizedMode === 'off') {
+    return base;
+  }
+
+  const startedAt = Date.now();
+  let timedOut = false;
+  let navigationError = null;
+  try {
+    await driver.manage().setTimeouts({ pageLoad: timeoutMs, script: 15_000 });
+    await driver.get(url);
+  } catch (error) {
+    navigationError = error instanceof Error ? error.message : String(error);
+    timedOut = /timeout|Timed out/i.test(navigationError);
+  }
+
+  let page = null;
+  try {
+    page = await driver.executeScript(collectNavigationMetricsScript());
+  } catch (error) {
+    navigationError = navigationError ?? (error instanceof Error ? error.message : String(error));
+  }
+
+  const browserErrors = await collectBrowserLogErrors(driver);
+  const errors = [
+    ...(navigationError ? [{ message: navigationError }] : []),
+    ...browserErrors,
+  ].slice(-20);
+  const blockedByOpenPath = page?.blockedByOpenPath === true;
+  const success = navigationError === null && !timedOut && !blockedByOpenPath;
+
+  return redactWindowsCanaryObject({
+    ...base,
+    mode: normalizedMode,
+    url,
+    success,
+    blockedByOpenPath,
+    timedOut,
+    metrics: page?.metrics
+      ? {
+          ...page.metrics,
+          totalDurationMs: Date.now() - startedAt,
+          readyState: page.readyState ?? null,
+        }
+      : {
+          totalDurationMs: Date.now() - startedAt,
+          readyState: page?.readyState ?? null,
+        },
+    resourceHosts: Array.isArray(page?.resourceHosts) ? page.resourceHosts : [],
+    errors,
+    href: page?.href ?? null,
+    title: page?.title ?? null,
   });
 }
 
@@ -1144,14 +1306,24 @@ async function main() {
     const postAttemptDiagnostics = await collectWindowsAutoAllowDiagnostics(
       result?.success ? 'post-success' : 'post-failure'
     );
+    const redditPageEvidence = result?.redditDiagnostics ?? {
+      completedRedditDiagnosticEvents:
+        result?.completedRedditDiagnosticEvents ?? state.completedRedditDiagnosticEvents,
+      pageResourceCandidateEvents:
+        result?.pageResourceCandidateEvents ?? state.pageResourceCandidateEvents,
+    };
+    const redditNavigation =
+      result?.success && seleniumDriver !== null
+        ? await collectRedditRealNavigationDiagnostics({
+            driver: seleniumDriver,
+            mode: REDDIT_NAVIGATION_MODE,
+            pageEvidence: redditPageEvidence,
+          })
+        : buildRedditNavigationSkippedEvidence(REDDIT_NAVIGATION_MODE, redditPageEvidence);
     const redditDiagnostics = await collectRedditDiagnostics(
       result?.success ? 'post-success' : 'post-failure',
-      result?.redditDiagnostics ?? {
-        completedRedditDiagnosticEvents:
-          result?.completedRedditDiagnosticEvents ?? state.completedRedditDiagnosticEvents,
-        pageResourceCandidateEvents:
-          result?.pageResourceCandidateEvents ?? state.pageResourceCandidateEvents,
-      }
+      redditPageEvidence,
+      redditNavigation
     );
     const postFailureObservation =
       !result?.success && POST_FAILURE_OBSERVATION_MS > 0

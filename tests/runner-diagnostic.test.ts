@@ -821,6 +821,33 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /billingContext\.adminToken/);
   });
 
+  test('direct Windows AJAX diagnostic defaults reddit real navigation to diagnostic mode', () => {
+    const result = runDirectDiagnostic(['--environment', 'staging']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /WINDOWS_AJAX_REDDIT_NAVIGATION_MODE=diagnostic/);
+    assert.match(result.stdout, /WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS=/);
+    assert.match(result.stdout, /WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS=/);
+    assert.match(
+      result.stdout,
+      /WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS=reddit\.com,www\.reddit\.com,emoji\.redditmedia\.com,external-preview\.redd\.it,i\.redd\.it,styles\.redditmedia\.com,www\.redditstatic\.com/
+    );
+  });
+
+  test('direct Windows AJAX diagnostic does not default reddit allowlist in production', () => {
+    const result = runDirectDiagnostic(['--environment', 'production', '--confirm-production']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS=/);
+  });
+
+  test('production bootstrap workflow does not opt into reddit diagnostics by default', () => {
+    const workflow = readProjectText('.github/workflows/windows-production-bootstrap-canary.yml');
+
+    assert.doesNotMatch(workflow, /WINDOWS_AJAX_REDDIT_NAVIGATION_MODE/);
+    assert.doesNotMatch(workflow, /WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS/);
+  });
+
   test('direct Windows AJAX diagnostic preserves boundary-enriched artifacts locally', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
     const executionModule = readProjectText('scripts/lib/runner-diagnostic-execution.mjs');

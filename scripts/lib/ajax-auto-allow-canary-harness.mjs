@@ -122,6 +122,7 @@ export function buildAjaxAutoAllowCanaryPage({
   probeTimeoutMs,
   xhrTimeoutMs = probeTimeoutMs,
   redditDiagnosticTimeoutMs = 1500,
+  redditDiagnosticRetryDelayMs = 2500,
   stateGlobalName = '__openpathAjaxAutoAllowCanaryState',
   statusElement = false,
 }) {
@@ -151,6 +152,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PROBE_TIMEOUT_MS = ${probeTimeoutMs};
 const XHR_TIMEOUT_MS = ${xhrTimeoutMs};
 const REDDIT_DIAGNOSTIC_TIMEOUT_MS = ${redditDiagnosticTimeoutMs};
+const REDDIT_DIAGNOSTIC_RETRY_DELAY_MS = ${redditDiagnosticRetryDelayMs};
 const CANARY_TIMEOUT_MS = ${timeoutMs};
 const pageResourceCandidateEvents = [];
 const completedCandidateEvents = Object.fromEntries(probes.map((probe) => [probe.id, false]));
@@ -388,16 +390,32 @@ async function runProbeOnce(probe) {
   return { ok: false, error: 'unsupported probe kind: ' + probe.kind };
 }
 
-async function runRedditDiagnosticProbes() {
+async function runRedditDiagnosticProbes(passLabel) {
   const results = {};
   for (const probe of redditDiagnosticProbes) {
-    results[probe.id] = await withTimeout(
+    const result = await withTimeout(
       runProbeOnce(probe),
       REDDIT_DIAGNOSTIC_TIMEOUT_MS,
       probe.id
     );
+    results[probe.id] = { ...result, passLabel };
   }
   return results;
+}
+
+async function runRedditDiagnosticProbePasses() {
+  const firstPass = await runRedditDiagnosticProbes('firstPass');
+  if (REDDIT_DIAGNOSTIC_RETRY_DELAY_MS > 0) {
+    await sleep(REDDIT_DIAGNOSTIC_RETRY_DELAY_MS);
+  }
+  const secondPass = await runRedditDiagnosticProbes('secondPass');
+  return {
+    firstPass,
+    secondPass,
+    probes: secondPass,
+    completedRedditDiagnosticEvents,
+    pageResourceCandidateEvents,
+  };
 }
 
 (async () => {
@@ -414,11 +432,7 @@ async function runRedditDiagnosticProbes() {
     canaryState.attempts.push(attemptResult);
     if (attempt === 1 && redditDiagnosticProbes.length > 0) {
       statusEl.textContent = 'reddit diagnostics';
-      redditDiagnostics = {
-        probes: await runRedditDiagnosticProbes(),
-        completedRedditDiagnosticEvents,
-        pageResourceCandidateEvents,
-      };
+      redditDiagnostics = await runRedditDiagnosticProbePasses();
     }
     const results = await Promise.all(
       probes.map(async (probe) => {

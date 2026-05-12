@@ -31,6 +31,18 @@ const DEFAULT_WINDOWS_RUNNER_VMID = '103';
 const DEFAULT_CANARY_TIMEOUT_MS = '180000';
 const DEFAULT_POST_FAILURE_OBSERVATION_MS = '60000';
 const DEFAULT_FIREFOX_EXTENSION_SOURCE = 'managed';
+const DEFAULT_REDDIT_NAVIGATION_MODE = 'diagnostic';
+const DEFAULT_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS = '2500';
+const DEFAULT_REDDIT_NAVIGATION_TIMEOUT_MS = '45000';
+const DEFAULT_STAGING_REDDIT_EXPLICIT_ALLOWLIST_HOSTS = Object.freeze([
+  'reddit.com',
+  'www.reddit.com',
+  'emoji.redditmedia.com',
+  'external-preview.redd.it',
+  'i.redd.it',
+  'styles.redditmedia.com',
+  'www.redditstatic.com',
+]);
 const LOCAL_FIREFOX_XPI_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\openpath-firefox-extension.xpi`;
 const SELENIUM_NODE_MODULES_ZIP_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\selenium-node-modules.zip`;
 const BINARY_UPLOAD_CHUNK_CHARS = 700000;
@@ -74,6 +86,8 @@ Options:
                               Extra local observation window after canary failure (default: ${DEFAULT_POST_FAILURE_OBSERVATION_MS})
   --firefox-extension-source <mode>
                               managed | local (default: ${DEFAULT_FIREFOX_EXTENSION_SOURCE})
+  --reddit-navigation-mode <mode>
+                              off | diagnostic | gate (default: ${DEFAULT_REDDIT_NAVIGATION_MODE})
   --skip-reset                Do not uninstall the existing OpenPath Windows client before enrollment
   --confirm-production        Required when --environment production
 `);
@@ -96,6 +110,13 @@ function parseArgs(argv) {
       DEFAULT_POST_FAILURE_OBSERVATION_MS,
     firefoxExtensionSource:
       process.env.WINDOWS_AJAX_DIRECT_FIREFOX_EXTENSION_SOURCE ?? DEFAULT_FIREFOX_EXTENSION_SOURCE,
+    redditNavigationMode:
+      process.env.WINDOWS_AJAX_REDDIT_NAVIGATION_MODE ?? DEFAULT_REDDIT_NAVIGATION_MODE,
+    redditDiagnosticRetryDelayMs:
+      process.env.WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS ??
+      DEFAULT_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS,
+    redditNavigationTimeoutMs:
+      process.env.WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS ?? DEFAULT_REDDIT_NAVIGATION_TIMEOUT_MS,
     skipReset: false,
     confirmProduction: false,
   };
@@ -129,6 +150,8 @@ function parseArgs(argv) {
       options.postFailureObservationMs = next();
     } else if (arg === '--firefox-extension-source') {
       options.firefoxExtensionSource = next();
+    } else if (arg === '--reddit-navigation-mode') {
+      options.redditNavigationMode = next();
     } else if (arg === '--skip-reset') {
       options.skipReset = true;
     } else if (arg === '--confirm-production') {
@@ -159,6 +182,25 @@ function shellQuote(value) {
 
 function renderCommand(args) {
   return args.map((arg) => shellQuote(arg)).join(' ');
+}
+
+function parseHostList(value) {
+  return String(value ?? '')
+    .split(/[,\s]+/)
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function resolveRedditExplicitAllowlistHosts(options, env) {
+  if (env.WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS !== undefined) {
+    return parseHostList(env.WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS);
+  }
+
+  if (options.environment === 'staging' && options.redditNavigationMode === 'diagnostic') {
+    return [...DEFAULT_STAGING_REDDIT_EXPLICIT_ALLOWLIST_HOSTS];
+  }
+
+  return [];
 }
 
 function psSingleQuote(value) {
@@ -495,6 +537,7 @@ function resolveBillingContext(options, env) {
 function provisionCanary({ options, baseUrl, artifactDir, billingContext, env }) {
   const outputPath = resolve(artifactDir, 'provision-outputs.env');
   const canaryArtifactPath = resolve(artifactDir, 'production-windows-bootstrap-canary.json');
+  const redditExplicitAllowlistHosts = resolveRedditExplicitAllowlistHosts(options, env);
   const provisionEnv = {
     ...env,
     PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: baseUrl,
@@ -505,8 +548,17 @@ function provisionCanary({ options, baseUrl, artifactDir, billingContext, env })
     PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET: billingContext.stripeWebhookSecret,
     GITHUB_OUTPUT: outputPath,
   };
+  if (redditExplicitAllowlistHosts.length > 0) {
+    provisionEnv.WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS =
+      redditExplicitAllowlistHosts.join(',');
+  }
 
   if (DRY_RUN) {
+    if (provisionEnv.WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS) {
+      console.log(
+        `local-env: WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS=${provisionEnv.WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS}`
+      );
+    }
     console.log(
       `local: PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=${baseUrl} node scripts/create-production-windows-bootstrap-canary.mjs`
     );
@@ -780,6 +832,9 @@ function runAjaxCanary(options, plan, summary, billingContext, localFirefoxExten
     canaryTimeoutMs: options.canaryTimeoutMs,
     postFailureObservationMs: options.postFailureObservationMs,
     localFirefoxExtension,
+    redditNavigationMode: options.redditNavigationMode,
+    redditDiagnosticRetryDelayMs: options.redditDiagnosticRetryDelayMs,
+    redditNavigationTimeoutMs: options.redditNavigationTimeoutMs,
   });
   const scriptPath = `${WINDOWS_WORKSPACE}\\scripts\\windows-ajax-auto-allow-canary.mjs`;
   const firefoxEnv =
@@ -909,6 +964,11 @@ function main() {
     process.exit(1);
   }
 
+  if (!['off', 'diagnostic', 'gate'].includes(options.redditNavigationMode)) {
+    console.error(`Unsupported Reddit navigation mode: ${options.redditNavigationMode}`);
+    process.exit(1);
+  }
+
   const env = { ...loadRunnerDiagnosticEnvLocal(projectRoot), ...process.env };
   const baseUrl = resolveRunnerDiagnosticBaseUrl({
     baseUrl: options.baseUrl,
@@ -942,6 +1002,7 @@ function main() {
     summaryLineFilter: (line) => !line.startsWith('firefox_mode='),
   });
   console.log(`firefox_extension_source=${options.firefoxExtensionSource}`);
+  console.log(`reddit_navigation_mode=${options.redditNavigationMode}`);
 
   ensureFilesExist(options, plan);
 
@@ -990,9 +1051,17 @@ function main() {
     canaryTimeoutMs: options.canaryTimeoutMs,
     postFailureObservationMs: options.postFailureObservationMs,
     localFirefoxExtension,
+    redditNavigationMode: options.redditNavigationMode,
+    redditDiagnosticRetryDelayMs: options.redditDiagnosticRetryDelayMs,
+    redditNavigationTimeoutMs: options.redditNavigationTimeoutMs,
   });
   const visibleCanaryEnvironment = {
     WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE,
+    WINDOWS_AJAX_REDDIT_NAVIGATION_MODE: canaryEnvironment.WINDOWS_AJAX_REDDIT_NAVIGATION_MODE,
+    WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS:
+      canaryEnvironment.WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS,
+    WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS:
+      canaryEnvironment.WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS,
   };
   if (localFirefoxExtension !== null) {
     writeGuestBinary(options, localFirefoxExtension.localPath, localFirefoxExtension.remotePath);

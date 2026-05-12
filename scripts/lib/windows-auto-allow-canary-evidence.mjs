@@ -271,6 +271,12 @@ export const WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
     recommendedNextAction:
       'Inspect runner filesystem state and the canary process output before treating functional evidence as complete.',
   },
+  'reddit-real-navigation': {
+    label: 'Reddit real navigation',
+    message: 'The optional Reddit real-navigation gate did not complete cleanly.',
+    recommendedNextAction:
+      'Inspect redditDiagnostics.navigation before treating this as an OpenPath auto-allow regression.',
+  },
   'artifact-upload': {
     label: 'Evidence artifact upload',
     message: 'Functional canary evidence was produced but GitHub artifact upload failed.',
@@ -432,12 +438,30 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
   },
 ]);
 
+const WINDOWS_AUTO_ALLOW_REDDIT_NAVIGATION_PHASE = Object.freeze({
+  id: 'reddit-real-navigation',
+  passed: (summary) => {
+    const navigation = summary?.redditDiagnostics?.navigation;
+    return navigation?.mode !== 'gate' || navigation?.success === true;
+  },
+  evidence: (summary) => summary?.redditDiagnostics?.navigation ?? null,
+});
+
+function buildWindowsAutoAllowDiagnosticPhaseList(summary) {
+  const phases = [...WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES];
+  const navigation = summary?.redditDiagnostics?.navigation;
+  if (navigation?.mode === 'gate') {
+    phases.push(WINDOWS_AUTO_ALLOW_REDDIT_NAVIGATION_PHASE);
+  }
+  return phases;
+}
+
 export function buildWindowsAutoAllowDiagnosticPhases(
   summary,
   probes = WINDOWS_AUTO_ALLOW_ALL_PROBES
 ) {
   return buildAutoAllowEvidenceModel({
-    phases: WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES,
+    phases: buildWindowsAutoAllowDiagnosticPhaseList(summary),
     summary,
     probes,
     boundaries: WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES,
@@ -458,7 +482,7 @@ export function classifyWindowsAutoAllowFailureBoundary(
 
 export function withWindowsAutoAllowDiagnostics(summary, probes = WINDOWS_AUTO_ALLOW_ALL_PROBES) {
   return buildAutoAllowEvidenceModel({
-    phases: WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES,
+    phases: buildWindowsAutoAllowDiagnosticPhaseList(summary),
     summary,
     probes,
     boundaries: WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES,
@@ -512,6 +536,20 @@ export function buildWindowsAutoAllowCanarySummary({
         page: result?.redditDiagnostics ?? redditDiagnostics.page ?? null,
       }
     : (result?.redditDiagnostics ?? null);
+  if (mergedRedditDiagnostics?.navigation) {
+    mergedRedditDiagnostics.navigation = {
+      ...mergedRedditDiagnostics.navigation,
+      firstPass:
+        mergedRedditDiagnostics.navigation.firstPass ??
+        mergedRedditDiagnostics.page?.firstPass ??
+        mergedRedditDiagnostics.page?.probes ??
+        null,
+      secondPass:
+        mergedRedditDiagnostics.navigation.secondPass ??
+        mergedRedditDiagnostics.page?.secondPass ??
+        null,
+    };
+  }
 
   const summary = {
     ...result,
