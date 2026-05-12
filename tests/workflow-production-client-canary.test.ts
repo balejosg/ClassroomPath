@@ -32,11 +32,13 @@ function buildContainsExpectedHosts(value: boolean, hosts = windowsAutoAllowExpe
 function buildProbeEvidence({
   hits = 1,
   whitelistContainsExpectedHost = true,
+  probes = WINDOWS_AUTO_ALLOW_PROBES,
 }: {
   hits?: number;
   whitelistContainsExpectedHost?: boolean;
+  probes?: typeof WINDOWS_AUTO_ALLOW_PROBES | typeof WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES;
 } = {}) {
-  return WINDOWS_AUTO_ALLOW_PROBES.map((probe) => ({
+  return probes.map((probe) => ({
     id: probe.id,
     kind: probe.kind,
     host: probe.host,
@@ -78,6 +80,7 @@ function buildDiagnosticSummary(
     localWhitelistContainsExpectedHost?: boolean;
     automaticRuleCreated?: boolean;
     probeHits?: number;
+    observedProbeHits?: number;
   } = {}
 ) {
   const remoteWhitelistContainsExpectedHosts =
@@ -89,10 +92,17 @@ function buildDiagnosticSummary(
       success: overrides.success ?? true,
       pageObserverInstalled: overrides.pageObserverInstalled ?? true,
     },
-    probeEvidence: buildProbeEvidence({
-      hits: overrides.probeHits ?? 1,
-      whitelistContainsExpectedHost: overrides.localWhitelistContainsExpectedHost ?? true,
-    }),
+    probeEvidence: [
+      ...buildProbeEvidence({
+        hits: overrides.probeHits ?? 1,
+        whitelistContainsExpectedHost: overrides.localWhitelistContainsExpectedHost ?? true,
+      }),
+      ...buildProbeEvidence({
+        hits: overrides.observedProbeHits ?? 1,
+        whitelistContainsExpectedHost: false,
+        probes: WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES,
+      }),
+    ],
     originHits: overrides.originHits ?? 1,
     attempts: [{ ok: true }],
     completedProbes: buildProbeMap(true),
@@ -353,28 +363,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
   });
 
   test('classifies canary summary from probe evidence without live side effects', () => {
-    const successfulSummary = buildWindowsAutoAllowCanarySummary({
-      result: { success: true },
-      probeEvidence: WINDOWS_AUTO_ALLOW_PROBES.map((probe) => ({
-        id: probe.id,
-        kind: probe.kind,
-        host: probe.host,
-        url: `http://${probe.host}:18088${probe.path}`,
-        hits: 1,
-        expectedWhitelistHost: probe.expectedWhitelistHost,
-        whitelistContainsExpectedHost: true,
-      })),
-      originHits: 1,
-      attempts: [{ ok: true }],
-      completedProbes: Object.fromEntries(
-        WINDOWS_AUTO_ALLOW_PROBES.map((probe) => [probe.id, true])
-      ),
-      lastAttemptAt: '2026-04-27T10:00:00.000Z',
-      whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
-      firefoxExtensionWarmup: { success: true },
-      firefoxOutput: 'ready',
-      diagnostics: { preflight: {}, postAttempt: {} },
-    });
+    const successfulSummary = buildDiagnosticSummary();
 
     assert.equal(successfulSummary.success, true);
     assert.equal(successfulSummary.whitelistContainsTarget, true);
@@ -440,6 +429,34 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     );
   });
 
+  test('fails Windows AJAX canary success when page-resource diagnostics did not complete', () => {
+    const pageObserverFailure = buildDiagnosticSummary({
+      pageObserverInstalled: false,
+      observedProbeHits: 0,
+    });
+
+    assert.equal(pageObserverFailure.success, true);
+    assert.equal(pageObserverFailure.failureBoundary?.id, 'page-observer');
+    assert.throws(() => assertWindowsAutoAllowCanarySuccess(pageObserverFailure), /page-observer/);
+  });
+
+  test('accepts observed probe traffic when page-resource observer telemetry is unavailable', () => {
+    const observedTrafficFallback = buildDiagnosticSummary({
+      pageObserverInstalled: false,
+      completedCandidateEvents: {
+        ...buildProbeMap(false),
+        ...Object.fromEntries(
+          WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => [probe.id, false])
+        ),
+      },
+      pageResourceCandidateEvents: [],
+    });
+
+    assert.equal(observedTrafficFallback.success, true);
+    assert.equal(observedTrafficFallback.failureBoundary?.id, 'none');
+    assert.doesNotThrow(() => assertWindowsAutoAllowCanarySuccess(observedTrafficFallback));
+  });
+
   test('adds ordered diagnostic phases and failure boundaries to canary summaries', () => {
     const cases = [
       {
@@ -455,7 +472,11 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       {
         name: 'observer no instalado',
         expectedBoundary: 'page-observer',
-        summary: buildDiagnosticSummary({ success: false, pageObserverInstalled: false }),
+        summary: buildDiagnosticSummary({
+          success: false,
+          pageObserverInstalled: false,
+          observedProbeHits: 0,
+        }),
       },
       {
         name: 'candidatos de página ausentes',
@@ -464,6 +485,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
           success: false,
           completedCandidateEvents: buildProbeMap(false),
           pageResourceCandidateEvents: [],
+          observedProbeHits: 0,
         }),
       },
       {

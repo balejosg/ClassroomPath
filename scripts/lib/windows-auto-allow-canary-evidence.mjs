@@ -219,15 +219,17 @@ export const WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
   },
   'page-observer': {
     label: 'Page observer',
-    message: 'The Firefox page-resource observer was not installed in the origin page.',
+    message:
+      'Neither Firefox page-resource observer installation nor observed probe traffic was confirmed for the origin page.',
     recommendedNextAction:
-      'Inspect extension content-script injection and the page observer registration path.',
+      'Inspect extension content-script injection, page observer registration, webRequest observation, and local canary server hit evidence.',
   },
   'page-resource-candidates': {
     label: 'Page resource candidates',
-    message: 'The page did not emit resource-candidate events for every AJAX/subresource probe.',
+    message:
+      'The page did not emit resource-candidate events and the local canary server did not see every observed probe.',
     recommendedNextAction:
-      'Inspect extension page-resource detection, candidate matching, and browser console evidence.',
+      'Inspect extension page-resource detection, candidate matching, webRequest observation, and browser console evidence.',
   },
   'no-automatic-rule-creation': {
     label: 'No automatic rule creation',
@@ -264,7 +266,7 @@ export const WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
   none: {
     label: 'No failure boundary',
     message:
-      'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
+      'Windows dependency observation completed without automatic rule creation and explicit allowlist probes succeeded.',
     recommendedNextAction: 'No follow-up required for this canary run.',
   },
 });
@@ -304,6 +306,13 @@ function findProbeEvidence(probeEvidence, id) {
   return probeEvidence.find((probe) => probe.id === id);
 }
 
+function hasObservedProbeTrafficEvidence(summary) {
+  const probeEvidence = Array.isArray(summary?.probeEvidence) ? summary.probeEvidence : [];
+  return WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES.every(
+    (probe) => Number(findProbeEvidence(probeEvidence, probe.id)?.hits ?? 0) > 0
+  );
+}
+
 function phase(id, status, evidence = {}) {
   return buildAutoAllowDiagnosticPhase({
     id,
@@ -326,17 +335,24 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
   },
   {
     id: 'page-observer',
-    passed: (summary) => summary?.pageObserverInstalled === true,
-    evidence: (summary) => ({ pageObserverInstalled: summary?.pageObserverInstalled ?? null }),
+    passed: (summary) =>
+      summary?.pageObserverInstalled === true || hasObservedProbeTrafficEvidence(summary),
+    evidence: (summary) => ({
+      pageObserverInstalled: summary?.pageObserverInstalled ?? null,
+      observedProbeTraffic: hasObservedProbeTrafficEvidence(summary),
+    }),
   },
   {
     id: 'page-resource-candidates',
-    passed: (summary) => hasCandidateEvidence(summary, WINDOWS_AUTO_ALLOW_ALL_PROBES),
+    passed: (summary) =>
+      hasCandidateEvidence(summary, WINDOWS_AUTO_ALLOW_ALL_PROBES) ||
+      hasObservedProbeTrafficEvidence(summary),
     evidence: (summary) => ({
       completedCandidateEvents: summary?.completedCandidateEvents ?? null,
       candidateEventsCount: Array.isArray(summary?.pageResourceCandidateEvents)
         ? summary.pageResourceCandidateEvents.length
         : 0,
+      observedProbeTraffic: hasObservedProbeTrafficEvidence(summary),
     }),
   },
   {
@@ -526,5 +542,11 @@ export function assertWindowsAutoAllowCanarySuccess(summary, probes = WINDOWS_AU
     if (Number(evidence?.hits ?? 0) <= 0) {
       throw new Error(`Explicit ${probe.kind} probe did not reach canary server: ${probe.id}`);
     }
+  }
+
+  const failureBoundaryId = summary.failureBoundary?.id;
+  if (failureBoundaryId && failureBoundaryId !== 'none') {
+    const message = summary.failureBoundary?.message ?? 'diagnostic flow did not complete';
+    throw new Error(`Windows AJAX auto-allow canary stopped at ${failureBoundaryId}: ${message}`);
   }
 }
