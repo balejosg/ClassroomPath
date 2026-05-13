@@ -45,6 +45,7 @@ const DEFAULT_STAGING_REDDIT_EXPLICIT_ALLOWLIST_HOSTS = Object.freeze([
 ]);
 const LOCAL_FIREFOX_XPI_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\openpath-firefox-extension.xpi`;
 const SELENIUM_NODE_MODULES_ZIP_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\selenium-node-modules.zip`;
+const WINDOWS_RUNNER_SERVICE_STATE_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\github-runner-services-paused.json`;
 const BINARY_UPLOAD_CHUNK_CHARS = 700000;
 const DRY_RUN = process.env.WINDOWS_AJAX_DIRECT_DRY_RUN === '1';
 
@@ -774,6 +775,96 @@ node --version
   runGuestPowerShell(options, script, { timeoutSeconds: 120 });
 }
 
+function assertWindowsRunnerExecutionIdle(options, context) {
+  const script = `
+$ErrorActionPreference = 'Stop'
+$context = ${psSingleQuote(context)}
+$blockers = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+  $cmd = [string]$_.CommandLine
+  $name = [string]$_.Name
+  (-not [string]::IsNullOrWhiteSpace($cmd)) -and
+    ($name -notin @('Runner.Listener.exe', 'RunnerService.exe')) -and
+    ($cmd -notlike '*openpath-ajax-direct*') -and
+    (($cmd -match '\\\\_work\\\\') -or ($cmd -match 'actions-runner') -or ($cmd -match 'Runner\\.Worker'))
+} | Select-Object -First 8 -Property Name, ProcessId, @{Name='Reason'; Expression={
+  $cmd = [string]$_.CommandLine
+  if ($cmd -match '\\\\_work\\\\') { 'runner-workspace' }
+  elseif ($cmd -match 'Runner\\.Worker') { 'runner-worker' }
+  else { 'actions-runner' }
+}})
+if ($blockers.Count -gt 0) {
+  $summary = ($blockers | ForEach-Object { "$($_.Reason):$($_.Name):$($_.ProcessId)" }) -join ', '
+  throw "Windows runner is busy during \${context}: $summary"
+}
+Write-Host "Windows runner execution idle: $context"
+`;
+  runGuestPowerShell(options, script, { timeoutSeconds: 120 });
+}
+
+function pauseWindowsRunnerServices(options) {
+  assertWindowsRunnerExecutionIdle(options, 'pre-direct-diagnostic');
+
+  const script = `
+$ErrorActionPreference = 'Stop'
+$workspace = ${psSingleQuote(WINDOWS_WORKSPACE)}
+New-Item -ItemType Directory -Force -Path $workspace | Out-Null
+$statePath = ${psSingleQuote(WINDOWS_RUNNER_SERVICE_STATE_ON_WINDOWS)}
+$services = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object {
+  ($_.Name -like 'actions.runner.*') -or
+    ([string]$_.PathName -match 'RunnerService\\.exe') -or
+    ([string]$_.PathName -match 'actions-runner')
+} | Sort-Object Name)
+$serviceState = @($services | Select-Object Name, State, StartMode)
+$serviceState | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $statePath -Encoding UTF8
+foreach ($service in @($services)) {
+  if ($service.State -eq 'Running') {
+    Stop-Service -Name $service.Name -Force -ErrorAction Stop
+  }
+}
+$deadline = (Get-Date).AddSeconds(60)
+while ((Get-Date) -lt $deadline) {
+  $running = @(Get-Service -Name @($services.Name) -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Running' })
+  if ($running.Count -eq 0) { break }
+  Start-Sleep -Seconds 1
+}
+$stillRunning = @(Get-Service -Name @($services.Name) -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Running' })
+if ($stillRunning.Count -gt 0) {
+  throw "Timed out pausing GitHub runner services: $(@($stillRunning.Name) -join ', ')"
+}
+Write-Host "Paused GitHub runner services for direct Windows diagnostic: $(@($serviceState.Name) -join ', ')"
+`;
+  runGuestPowerShell(options, script, { timeoutSeconds: 180 });
+  assertWindowsRunnerExecutionIdle(options, 'after-pausing-runner-services');
+}
+
+function resumeWindowsRunnerServices(options) {
+  const script = `
+$ErrorActionPreference = 'Continue'
+$statePath = ${psSingleQuote(WINDOWS_RUNNER_SERVICE_STATE_ON_WINDOWS)}
+$serviceState = @()
+if (Test-Path -LiteralPath $statePath) {
+  $raw = Get-Content -LiteralPath $statePath -Raw
+  if (-not [string]::IsNullOrWhiteSpace($raw)) {
+    $serviceState = @($raw | ConvertFrom-Json)
+  }
+}
+if ($serviceState.Count -eq 0) {
+  $serviceState = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object {
+    ($_.Name -like 'actions.runner.*') -or
+      ([string]$_.PathName -match 'RunnerService\\.exe') -or
+      ([string]$_.PathName -match 'actions-runner')
+  } | Select-Object Name, State, StartMode)
+}
+foreach ($service in @($serviceState)) {
+  if ([string]$service.StartMode -eq 'Disabled') { continue }
+  Start-Service -Name $service.Name -ErrorAction SilentlyContinue
+}
+Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
+Write-Host "Resumed GitHub runner services after direct Windows diagnostic: $(@($serviceState.Name) -join ', ')"
+`;
+  runGuestPowerShell(options, script, { timeoutSeconds: 180 });
+}
+
 function runOpenPathUpdateAndSse(options) {
   const script = `
 $ErrorActionPreference = 'Stop'
@@ -1025,108 +1116,123 @@ function main() {
   const localFirefoxExtension = buildLocalFirefoxExtension(options, artifactDir);
   const seleniumNodeModulesBundle = buildSeleniumNodeModulesBundle(options, artifactDir);
 
-  const billingContext = resolveBillingContext(options, env);
-  const summary = provisionCanary({ options, baseUrl, artifactDir, billingContext, env });
-  summary.apiUrl = summary.apiUrl || baseUrl;
-
-  verifyWindowsPreflight(options);
-  if (!options.skipReset) {
-    resetWindowsClient(options, baseUrl);
-  }
-  if (seleniumNodeModulesBundle !== null) {
-    writeGuestBinary(
-      options,
-      seleniumNodeModulesBundle.localPath,
-      seleniumNodeModulesBundle.remotePath
-    );
-  }
-  ensureSeleniumFirefoxCanarySupport(options);
-  installWindowsClient(options, summary);
-
-  uploadRunnerDiagnosticPlanFiles(plan, {
-    projectRoot,
-    openpathRoot: options.openpathRoot,
-    sections: ['openpathOverlays'],
-    writeText: (sourcePath, destinationPath) =>
-      writeGuestText(options, sourcePath, destinationPath),
-  });
-  registerOpenPathRuntimeTasksAndNativeHost(options);
-  refreshOpenPathIntegrity(options);
-  runOpenPathUpdateAndSse(options);
-
-  uploadRunnerDiagnosticPlanFiles(plan, {
-    projectRoot,
-    openpathRoot: options.openpathRoot,
-    sections: ['canaryScriptUploads'],
-    writeText: (sourcePath, destinationPath) =>
-      writeGuestText(options, sourcePath, destinationPath),
-  });
-  const canaryEnvironment = buildWindowsAjaxCanaryGuestEnvironment({
-    plan,
-    summary,
-    billingContext,
-    canaryTimeoutMs: options.canaryTimeoutMs,
-    postFailureObservationMs: options.postFailureObservationMs,
-    localFirefoxExtension,
-    redditNavigationMode: options.redditNavigationMode,
-    redditDiagnosticRetryDelayMs: options.redditDiagnosticRetryDelayMs,
-    redditNavigationTimeoutMs: options.redditNavigationTimeoutMs,
-  });
-  const visibleCanaryEnvironment = {
-    WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE,
-    WINDOWS_AJAX_REDDIT_NAVIGATION_MODE: canaryEnvironment.WINDOWS_AJAX_REDDIT_NAVIGATION_MODE,
-    WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS:
-      canaryEnvironment.WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS,
-    WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS:
-      canaryEnvironment.WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS,
-  };
-  if (localFirefoxExtension !== null) {
-    writeGuestBinary(options, localFirefoxExtension.localPath, localFirefoxExtension.remotePath);
-    visibleCanaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH =
-      canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH;
-  }
-  visibleCanaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL =
-    canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL;
-  emitRunnerDiagnosticEnvironment(plan, {
-    prefix: 'guest-env: ',
-    environment: visibleCanaryEnvironment,
-  });
-  let canaryError = null;
+  let runnerServicesPaused = false;
   try {
-    runAjaxCanary(options, plan, summary, billingContext, localFirefoxExtension);
-  } catch (error) {
-    canaryError = error;
-  } finally {
+    verifyWindowsPreflight(options);
+    pauseWindowsRunnerServices(options);
+    runnerServicesPaused = true;
+
+    const billingContext = resolveBillingContext(options, env);
+    const summary = provisionCanary({ options, baseUrl, artifactDir, billingContext, env });
+    summary.apiUrl = summary.apiUrl || baseUrl;
+
+    if (!options.skipReset) {
+      resetWindowsClient(options, baseUrl);
+    }
+    if (seleniumNodeModulesBundle !== null) {
+      writeGuestBinary(
+        options,
+        seleniumNodeModulesBundle.localPath,
+        seleniumNodeModulesBundle.remotePath
+      );
+    }
+    ensureSeleniumFirefoxCanarySupport(options);
+    installWindowsClient(options, summary);
+
+    uploadRunnerDiagnosticPlanFiles(plan, {
+      projectRoot,
+      openpathRoot: options.openpathRoot,
+      sections: ['openpathOverlays'],
+      writeText: (sourcePath, destinationPath) =>
+        writeGuestText(options, sourcePath, destinationPath),
+    });
+    registerOpenPathRuntimeTasksAndNativeHost(options);
+    refreshOpenPathIntegrity(options);
+    runOpenPathUpdateAndSse(options);
+
+    uploadRunnerDiagnosticPlanFiles(plan, {
+      projectRoot,
+      openpathRoot: options.openpathRoot,
+      sections: ['canaryScriptUploads'],
+      writeText: (sourcePath, destinationPath) =>
+        writeGuestText(options, sourcePath, destinationPath),
+    });
+    const canaryEnvironment = buildWindowsAjaxCanaryGuestEnvironment({
+      plan,
+      summary,
+      billingContext,
+      canaryTimeoutMs: options.canaryTimeoutMs,
+      postFailureObservationMs: options.postFailureObservationMs,
+      localFirefoxExtension,
+      redditNavigationMode: options.redditNavigationMode,
+      redditDiagnosticRetryDelayMs: options.redditDiagnosticRetryDelayMs,
+      redditNavigationTimeoutMs: options.redditNavigationTimeoutMs,
+    });
+    const visibleCanaryEnvironment = {
+      WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE,
+      WINDOWS_AJAX_REDDIT_NAVIGATION_MODE: canaryEnvironment.WINDOWS_AJAX_REDDIT_NAVIGATION_MODE,
+      WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS:
+        canaryEnvironment.WINDOWS_AJAX_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS,
+      WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS:
+        canaryEnvironment.WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS,
+    };
+    if (localFirefoxExtension !== null) {
+      writeGuestBinary(options, localFirefoxExtension.localPath, localFirefoxExtension.remotePath);
+      visibleCanaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH =
+        canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH;
+    }
+    visibleCanaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL =
+      canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL;
+    emitRunnerDiagnosticEnvironment(plan, {
+      prefix: 'guest-env: ',
+      environment: visibleCanaryEnvironment,
+    });
+    let canaryError = null;
     try {
-      cleanupWindowsAjaxBrowserProcesses(options);
-    } catch (cleanupError) {
-      const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
-      console.error(`Windows AJAX diagnostic browser cleanup failed: ${message}`);
-    }
-    if (!DRY_RUN) {
+      runAjaxCanary(options, plan, summary, billingContext, localFirefoxExtension);
+    } catch (error) {
+      canaryError = error;
+    } finally {
       try {
-        collectArtifacts(options, artifactDir);
-        summarizeAjaxArtifact(plan);
-      } catch (artifactError) {
-        if (!canaryError) {
-          throw artifactError;
-        }
-        console.error(
-          artifactError instanceof Error
-            ? `Artifact collection failed after canary failure: ${artifactError.message}`
-            : `Artifact collection failed after canary failure: ${String(artifactError)}`
-        );
+        cleanupWindowsAjaxBrowserProcesses(options);
+      } catch (cleanupError) {
+        const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+        console.error(`Windows AJAX diagnostic browser cleanup failed: ${message}`);
       }
-    } else {
-      summarizeAjaxArtifact(plan);
+      if (!DRY_RUN) {
+        try {
+          collectArtifacts(options, artifactDir);
+          summarizeAjaxArtifact(plan);
+        } catch (artifactError) {
+          if (!canaryError) {
+            throw artifactError;
+          }
+          console.error(
+            artifactError instanceof Error
+              ? `Artifact collection failed after canary failure: ${artifactError.message}`
+              : `Artifact collection failed after canary failure: ${String(artifactError)}`
+          );
+        }
+      } else {
+        summarizeAjaxArtifact(plan);
+      }
+    }
+
+    if (canaryError) {
+      throw canaryError;
+    }
+
+    console.log(`direct Windows AJAX diagnostic complete: ${artifactDir}`);
+  } finally {
+    if (runnerServicesPaused) {
+      try {
+        resumeWindowsRunnerServices(options);
+      } catch (resumeError) {
+        const message = resumeError instanceof Error ? resumeError.message : String(resumeError);
+        console.error(`Failed to resume GitHub runner services: ${message}`);
+      }
     }
   }
-
-  if (canaryError) {
-    throw canaryError;
-  }
-
-  console.log(`direct Windows AJAX diagnostic complete: ${artifactDir}`);
 }
 
 try {

@@ -67,8 +67,20 @@ function writeWindowsAjaxArtifact(filePath: string, overrides: Record<string, un
     failureBoundary: { id: 'none', message: 'success' },
     diagnosticPhases: [
       { id: 'firefox-extension-ready', status: 'passed' },
+      { id: 'external-allowlisted-navigation', status: 'passed' },
       { id: 'artifact-written', status: 'passed' },
     ],
+    allowlistedNavigation: {
+      url: 'https://example.com/',
+      expectedHosts: ['example.com'],
+      finalHost: 'example.com',
+      href: 'https://example.com/',
+      title: 'Example Domain',
+      success: true,
+      blockedByOpenPath: false,
+      timedOut: false,
+      errors: [],
+    },
     redditDiagnostics: {
       page: {
         completedRedditDiagnosticEvents: {
@@ -256,6 +268,48 @@ describe('prepromotion runner rehearsal', () => {
 
     assert.equal(result.state, 'failed');
     assert.deepEqual(result.missingHosts, ['www.redditstatic.com']);
+  });
+
+  test('returns failed when external allowlisted navigation evidence is missing', () => {
+    const tempDir = createTempDir('classroompath-prepromotion-missing-navigation-');
+    const artifactPath = resolve(tempDir, 'production-windows-ajax-auto-allow-canary.json');
+
+    writeWindowsAjaxArtifact(artifactPath, {
+      allowlistedNavigation: null,
+      diagnosticPhases: [
+        { id: 'firefox-extension-ready', status: 'passed' },
+        { id: 'external-allowlisted-navigation', status: 'pending' },
+        { id: 'artifact-written', status: 'passed' },
+      ],
+    });
+
+    const result = verifyWindowsAjaxArtifact({ artifactPath });
+
+    assert.equal(result.state, 'failed');
+    assert.match(result.reason, /external allowlisted navigation/i);
+  });
+
+  test('returns failed when external allowlisted navigation was blocked', () => {
+    const tempDir = createTempDir('classroompath-prepromotion-blocked-navigation-');
+    const artifactPath = resolve(tempDir, 'production-windows-ajax-auto-allow-canary.json');
+
+    writeWindowsAjaxArtifact(artifactPath, {
+      allowlistedNavigation: {
+        url: 'https://example.com/',
+        expectedHosts: ['example.com'],
+        finalHost: 'example.com',
+        href: 'https://example.com/',
+        success: false,
+        blockedByOpenPath: true,
+        timedOut: false,
+        errors: [],
+      },
+    });
+
+    const result = verifyWindowsAjaxArtifact({ artifactPath });
+
+    assert.equal(result.state, 'failed');
+    assert.match(result.reason, /external allowlisted navigation/i);
   });
 
   test('returns failed when failureBoundary is not none', () => {

@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { readProjectText, readProjectWorkflow } from './helpers/ops-contracts.ts';
 import {
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
+  WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST,
+  WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
   WINDOWS_AUTO_ALLOW_OBSERVATION_PROBES,
   WINDOWS_AUTO_ALLOW_PROBES,
   assertWindowsAutoAllowCanarySuccess,
@@ -81,6 +83,7 @@ function buildDiagnosticSummary(
     automaticRuleCreated?: boolean;
     probeHits?: number;
     observedProbeHits?: number;
+    allowlistedNavigation?: Record<string, unknown>;
     redditNavigation?: Record<string, unknown>;
   } = {}
 ) {
@@ -131,6 +134,20 @@ function buildDiagnosticSummary(
           },
         }
       : {}),
+    allowlistedNavigation:
+      'allowlistedNavigation' in overrides
+        ? overrides.allowlistedNavigation
+        : ({
+            url: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
+            expectedHosts: [WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST],
+            finalHost: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST,
+            href: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
+            title: 'Example Domain',
+            success: true,
+            blockedByOpenPath: false,
+            timedOut: false,
+            errors: [],
+          } as Record<string, unknown>),
     lastAttemptAt: '2026-04-27T10:00:00.000Z',
     whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
     firefoxExtensionWarmup: { ready: overrides.firefoxReady ?? true },
@@ -368,6 +385,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       'styles.redditmedia.com',
       'www.redditstatic.com',
     ]);
+    assert.equal(WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST, 'example.com');
   });
 
   test('classifies canary summary from probe evidence without live side effects', () => {
@@ -402,6 +420,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       firefoxExtensionWarmup: { success: true },
       firefoxOutput: '',
       diagnostics: { preflight: {}, postAttempt: {} },
+      allowlistedNavigation: { success: true },
     });
 
     assert.throws(
@@ -429,11 +448,44 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       firefoxExtensionWarmup: { success: true },
       firefoxOutput: '',
       diagnostics: { preflight: {}, postAttempt: {} },
+      allowlistedNavigation: { success: true },
     });
 
     assert.throws(
       () => assertWindowsAutoAllowCanarySuccess(noTrafficSummary),
       /Explicit font probe did not reach canary server/
+    );
+  });
+
+  test('fails Windows AJAX canary success without real external allowlisted navigation', () => {
+    const missingNavigationSummary = buildDiagnosticSummary({
+      allowlistedNavigation: null as unknown as Record<string, unknown>,
+    });
+
+    assert.equal(missingNavigationSummary.success, false);
+    assert.equal(missingNavigationSummary.failureBoundary?.id, 'external-allowlisted-navigation');
+    assert.throws(
+      () => assertWindowsAutoAllowCanarySuccess(missingNavigationSummary),
+      /external-allowlisted-navigation/
+    );
+
+    const blockedNavigationSummary = buildDiagnosticSummary({
+      allowlistedNavigation: {
+        url: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
+        expectedHosts: [WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST],
+        finalHost: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST,
+        success: false,
+        blockedByOpenPath: true,
+        timedOut: false,
+        errors: [],
+      },
+    });
+
+    assert.equal(blockedNavigationSummary.failureBoundary?.id, 'external-allowlisted-navigation');
+    assert.equal(blockedNavigationSummary.success, false);
+    assert.throws(
+      () => assertWindowsAutoAllowCanarySuccess(blockedNavigationSummary),
+      /external-allowlisted-navigation/
     );
   });
 
@@ -556,6 +608,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
           'no-automatic-rule-creation',
           'explicit-whitelist-apply',
           'explicit-probe-traffic',
+          'external-allowlisted-navigation',
           'artifact-written',
         ],
         `${name} should keep the fixed phase order`
@@ -665,6 +718,17 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
           resourceHosts: [],
           errors: [{ message: 'navigation timed out' }],
         },
+      },
+      allowlistedNavigation: {
+        url: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
+        expectedHosts: [WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST],
+        finalHost: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST,
+        href: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
+        title: 'Example Domain',
+        success: true,
+        blockedByOpenPath: false,
+        timedOut: false,
+        errors: [],
       },
       lastAttemptAt: '2026-04-27T10:00:00.000Z',
       whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',

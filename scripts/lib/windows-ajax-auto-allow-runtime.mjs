@@ -7,6 +7,8 @@ import process from 'node:process';
 import {
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
+  WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
+  WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
   WINDOWS_AUTO_ALLOW_ALL_PROBES,
   WINDOWS_AUTO_ALLOW_ORIGIN_HOST as ORIGIN_HOST,
   WINDOWS_AUTO_ALLOW_PROBES as AUTO_ALLOW_PROBES,
@@ -64,6 +66,10 @@ const REDDIT_DIAGNOSTIC_RETRY_DELAY_MS = Number.parseInt(
 const REDDIT_NAVIGATION_MODE = process.env.WINDOWS_AJAX_REDDIT_NAVIGATION_MODE ?? 'off';
 const REDDIT_NAVIGATION_TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS ?? '45000',
+  10
+);
+const EXTERNAL_ALLOWLISTED_NAVIGATION_TIMEOUT_MS = Number.parseInt(
+  process.env.WINDOWS_EXTERNAL_ALLOWLISTED_NAVIGATION_TIMEOUT_MS ?? '45000',
   10
 );
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
@@ -137,6 +143,13 @@ export function createWindowsAjaxAutoAllowRuntimeConfig(env = process.env) {
       env.WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS ?? '45000',
       10
     ),
+    externalAllowlistedNavigationTimeoutMs: Number.parseInt(
+      env.WINDOWS_EXTERNAL_ALLOWLISTED_NAVIGATION_TIMEOUT_MS ?? '45000',
+      10
+    ),
+    externalAllowlistedNavigationUrl:
+      env.WINDOWS_EXTERNAL_ALLOWLISTED_NAVIGATION_URL ?? WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
+    externalAllowlistedNavigationHosts: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
     xhrProbeTimeoutMs: Number.parseInt(
       env.WINDOWS_AJAX_AUTO_ALLOW_XHR_PROBE_TIMEOUT_MS ?? '20000',
       10
@@ -732,7 +745,12 @@ async function sendNativeProtocolMessage(message) {
 }
 
 async function collectWindowsAutoAllowDiagnostics(phase) {
-  const expectedHosts = WINDOWS_AUTO_ALLOW_ALL_PROBES.map((probe) => probe.expectedWhitelistHost);
+  const expectedHosts = [
+    ...new Set([
+      ...WINDOWS_AUTO_ALLOW_ALL_PROBES.map((probe) => probe.expectedWhitelistHost),
+      ...WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
+    ]),
+  ];
   const [
     globalWhitelist,
     nativeWhitelist,
@@ -981,6 +999,137 @@ async function collectRedditRealNavigationDiagnostics({
     errors,
     href: page?.href ?? null,
     title: page?.title ?? null,
+  });
+}
+
+function buildAllowlistedNavigationSkippedEvidence(reason) {
+  return {
+    url: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
+    expectedHosts: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
+    finalHost: null,
+    href: null,
+    title: null,
+    success: false,
+    skipped: true,
+    reason,
+    blockedByOpenPath: false,
+    timedOut: false,
+    metrics: null,
+    resourceHosts: [],
+    errors: [{ message: reason }],
+  };
+}
+
+function collectAllowlistedNavigationMetricsScript() {
+  return `
+const navigation = performance.getEntriesByType('navigation')[0];
+const resourceHosts = [...new Set(performance.getEntriesByType('resource')
+  .map((entry) => {
+    try { return new URL(entry.name).hostname; } catch { return ''; }
+  })
+  .filter(Boolean))].slice(0, 50);
+const text = document.body ? document.body.innerText.slice(0, 4000) : '';
+const title = document.title || '';
+const href = location.href;
+const blockedByOpenPath =
+  /openpath/i.test(text + ' ' + title) &&
+  /(blocked|bloquead|request access|solicitar acceso|whitelist|allowlist)/i.test(text + ' ' + title + ' ' + href);
+const timeOrigin = Math.round(performance.timeOrigin || Date.now() - performance.now());
+return {
+  href,
+  title,
+  readyState: document.readyState,
+  blockedByOpenPath,
+  metrics: navigation ? {
+    navigationStart: timeOrigin,
+    domContentLoaded: Math.round(navigation.domContentLoadedEventEnd),
+    loadEventEnd: Math.round(navigation.loadEventEnd),
+    duration: Math.round(navigation.duration),
+  } : null,
+  resourceHosts,
+};
+`;
+}
+
+function parseNavigationHost(value) {
+  try {
+    return new URL(String(value)).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function hostMatchesExpected(host, expectedHost) {
+  const normalizedHost = String(host ?? '')
+    .trim()
+    .toLowerCase();
+  const normalizedExpectedHost = String(expectedHost ?? '')
+    .trim()
+    .toLowerCase();
+  return (
+    normalizedHost === normalizedExpectedHost ||
+    normalizedHost.endsWith(`.${normalizedExpectedHost}`)
+  );
+}
+
+async function collectAllowlistedExternalNavigationDiagnostics({
+  driver,
+  url = WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
+  expectedHosts = WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
+  timeoutMs = EXTERNAL_ALLOWLISTED_NAVIGATION_TIMEOUT_MS,
+}) {
+  const startedAt = Date.now();
+  let timedOut = false;
+  let navigationError = null;
+  try {
+    await driver.manage().setTimeouts({ pageLoad: timeoutMs, script: 15_000 });
+    await driver.get(url);
+  } catch (error) {
+    navigationError = error instanceof Error ? error.message : String(error);
+    timedOut = /timeout|Timed out/i.test(navigationError);
+  }
+
+  let page = null;
+  try {
+    page = await driver.executeScript(collectAllowlistedNavigationMetricsScript());
+  } catch (error) {
+    navigationError = navigationError ?? (error instanceof Error ? error.message : String(error));
+  }
+
+  const browserErrors = await collectBrowserLogErrors(driver);
+  const errors = [
+    ...(navigationError ? [{ message: navigationError }] : []),
+    ...browserErrors,
+  ].slice(-20);
+  const finalHost = parseNavigationHost(page?.href);
+  const hostAllowed = expectedHosts.some((expectedHost) =>
+    hostMatchesExpected(finalHost, expectedHost)
+  );
+  const blockedByOpenPath = page?.blockedByOpenPath === true;
+  const success = navigationError === null && !timedOut && !blockedByOpenPath && hostAllowed;
+
+  return redactWindowsCanaryObject({
+    url,
+    expectedHosts,
+    finalHost,
+    hostAllowed,
+    href: page?.href ?? null,
+    title: page?.title ?? null,
+    success,
+    blockedByOpenPath,
+    timedOut,
+    metrics: page?.metrics
+      ? {
+          ...page.metrics,
+          totalDurationMs: Date.now() - startedAt,
+          readyState: page.readyState ?? null,
+        }
+      : {
+          totalDurationMs: Date.now() - startedAt,
+          readyState: page?.readyState ?? null,
+        },
+    resourceHosts: Array.isArray(page?.resourceHosts) ? page.resourceHosts : [],
+    errors,
   });
 }
 
@@ -1346,7 +1495,12 @@ async function main() {
   try {
     const result = await resultPromise;
     clearTimeout(timeout);
-    const expectedHosts = AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost);
+    const expectedHosts = [
+      ...new Set([
+        ...AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost),
+        ...WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
+      ]),
+    ];
     let postSuccessObservation = null;
     if (result?.success && POST_SUCCESS_OBSERVATION_MS > 0) {
       const observationStartedAt = Date.now();
@@ -1386,6 +1540,26 @@ async function main() {
       redditPageEvidence,
       redditNavigation
     );
+    const allowlistedNavigation =
+      result?.success && seleniumDriver !== null
+        ? await collectAllowlistedExternalNavigationDiagnostics({ driver: seleniumDriver })
+        : buildAllowlistedNavigationSkippedEvidence(
+            result?.success
+              ? 'Selenium Firefox driver unavailable for external allowlisted navigation'
+              : 'Canary did not reach external allowlisted navigation phase'
+          );
+    if (result?.success) {
+      progress(
+        'external-allowlisted-navigation',
+        allowlistedNavigation.success === true ? 'passed' : 'failed',
+        {
+          boundaryId:
+            allowlistedNavigation.success === true ? 'none' : 'external-allowlisted-navigation',
+          url: allowlistedNavigation.url,
+          finalHost: allowlistedNavigation.finalHost,
+        }
+      );
+    }
     const postFailureObservation =
       !result?.success && POST_FAILURE_OBSERVATION_MS > 0
         ? {
@@ -1422,6 +1596,7 @@ async function main() {
       pageResourceCandidateEvents:
         result?.pageResourceCandidateEvents ?? state.pageResourceCandidateEvents,
       redditDiagnostics,
+      allowlistedNavigation,
       pageObserverInstalled: result?.pageObserverInstalled ?? state.pageObserverInstalled,
       lastAttemptAt: result?.lastAttemptAt ?? state.lastAttemptAt,
       whitelistPath: WHITELIST_PATH,

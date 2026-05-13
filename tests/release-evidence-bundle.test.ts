@@ -120,8 +120,20 @@ function writeWindowsCanaryArtifact(artifactDir: string) {
     },
     diagnosticPhases: [
       { id: 'firefox-extension-ready', status: 'passed' },
+      { id: 'external-allowlisted-navigation', status: 'passed' },
       { id: 'artifact-written', status: 'passed' },
     ],
+    allowlistedNavigation: {
+      url: 'https://example.com/',
+      expectedHosts: ['example.com'],
+      finalHost: 'example.com',
+      href: 'https://example.com/',
+      title: 'Example Domain',
+      success: true,
+      blockedByOpenPath: false,
+      timedOut: false,
+      errors: [],
+    },
     redditDiagnostics: {
       page: {
         completedRedditDiagnosticEvents: {
@@ -250,9 +262,10 @@ describe('release evidence bundle module', () => {
     assert.equal(windows.redditHosts['emoji.redditmedia.com'].nativeWhitelist, true);
     assert.equal(windows.redditHosts['emoji.redditmedia.com'].pageEvent, true);
     assert.equal(windows.redditHosts['www.redditstatic.com'].pageEvent, false);
+    assert.equal(windows.allowlistedNavigation.finalHost, 'example.com');
     assert.deepEqual(
       windows.diagnosticPhases.map((phase: { id: string }) => phase.id),
-      ['firefox-extension-ready', 'artifact-written']
+      ['firefox-extension-ready', 'external-allowlisted-navigation', 'artifact-written']
     );
     assert.equal(linux.failureBoundary.id, 'none');
     assert.equal(linux.redditHosts['emoji.redditmedia.com'].globalWhitelist, true);

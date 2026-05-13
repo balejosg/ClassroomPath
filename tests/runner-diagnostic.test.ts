@@ -974,6 +974,20 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /base64\.slice\(offset, offset \+ BINARY_UPLOAD_CHUNK_CHARS\)/);
   });
 
+  test('direct Windows AJAX diagnostic pauses GitHub runner services while mutating the VM', () => {
+    const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+
+    assert.match(script, /function assertWindowsRunnerExecutionIdle/);
+    assert.match(script, /\\\\_work\\\\/);
+    assert.ok(script.includes('Runner\\\\.Worker'));
+    assert.match(script, /function pauseWindowsRunnerServices/);
+    assert.match(script, /Stop-Service -Name \$service\.Name -Force/);
+    assert.match(script, /function resumeWindowsRunnerServices/);
+    assert.match(script, /Start-Service -Name \$service\.Name/);
+    assert.match(script, /pauseWindowsRunnerServices\(options\)/);
+    assert.match(script, /resumeWindowsRunnerServices\(options\)/);
+  });
+
   test('Windows AJAX canary supports Selenium-installed local Firefox addons', () => {
     const script = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
 

@@ -27,6 +27,11 @@ export const WINDOWS_AUTO_ALLOW_OBSERVED_SCRIPT_HOST = 'ajax-observe-script.127.
 export const WINDOWS_AUTO_ALLOW_OBSERVED_STYLESHEET_HOST =
   'ajax-observe-stylesheet.127.0.0.1.sslip.io';
 export const WINDOWS_AUTO_ALLOW_OBSERVED_FONT_HOST = 'ajax-observe-font.127.0.0.1.sslip.io';
+export const WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST = 'example.com';
+export const WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL = `https://${WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST}/`;
+export const WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS = Object.freeze([
+  WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST,
+]);
 
 export const REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS = Object.freeze([
   'emoji.redditmedia.com',
@@ -208,6 +213,7 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS = Object.freeze([
   'no-automatic-rule-creation',
   'explicit-whitelist-apply',
   'explicit-probe-traffic',
+  'external-allowlisted-navigation',
   'artifact-written',
 ]);
 
@@ -265,6 +271,13 @@ export const WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
     recommendedNextAction:
       'Inspect Windows DNS/firewall application, Acrylic state, Firefox DNS cache, and native protocol check output.',
   },
+  'external-allowlisted-navigation': {
+    label: 'External allowlisted navigation',
+    message:
+      'Firefox could not navigate to an externally resolved allowlisted domain after explicit whitelist application.',
+    recommendedNextAction:
+      'Inspect upstream DNS resolution, Acrylic forwarding, Windows firewall policy, and real Firefox navigation for non-sslip allowlisted domains.',
+  },
   'artifact-written': {
     label: 'Evidence artifact written',
     message: 'The Windows AJAX canary did not write a usable evidence artifact.',
@@ -286,7 +299,7 @@ export const WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
   none: {
     label: 'No failure boundary',
     message:
-      'Windows dependency observation completed without automatic rule creation and explicit allowlist probes succeeded.',
+      'Windows dependency observation completed without automatic rule creation, explicit allowlist probes succeeded, and external allowlisted navigation loaded.',
     recommendedNextAction: 'No follow-up required for this canary run.',
   },
 });
@@ -430,6 +443,11 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
     }),
   },
   {
+    id: 'external-allowlisted-navigation',
+    passed: (summary) => summary?.allowlistedNavigation?.success === true,
+    evidence: (summary) => summary?.allowlistedNavigation ?? null,
+  },
+  {
     id: 'artifact-written',
     passed: (summary) => summary?.artifactWritten !== false && summary?.artifact?.written !== false,
     evidence: (summary) => ({
@@ -517,6 +535,7 @@ export function buildWindowsAutoAllowCanarySummary({
   completedRedditDiagnosticEvents,
   pageResourceCandidateEvents,
   redditDiagnostics,
+  allowlistedNavigation,
   lastAttemptAt,
   whitelistPath,
   firefoxExtensionWarmup,
@@ -550,9 +569,12 @@ export function buildWindowsAutoAllowCanarySummary({
         null,
     };
   }
+  const resolvedAllowlistedNavigation =
+    allowlistedNavigation ?? result?.allowlistedNavigation ?? null;
 
   const summary = {
     ...result,
+    success: result?.success === true && resolvedAllowlistedNavigation?.success === true,
     originHost: WINDOWS_AUTO_ALLOW_ORIGIN_HOST,
     contract: 'page-resource-observation-no-auto-allow',
     automaticRuleCreationExpected: false,
@@ -583,6 +605,7 @@ export function buildWindowsAutoAllowCanarySummary({
     pageResourceCandidateEvents:
       result?.pageResourceCandidateEvents ?? pageResourceCandidateEvents ?? [],
     redditDiagnostics: mergedRedditDiagnostics,
+    allowlistedNavigation: resolvedAllowlistedNavigation,
     lastAttemptAt: result?.lastAttemptAt ?? lastAttemptAt,
     probeEvidence,
     whitelistPath,

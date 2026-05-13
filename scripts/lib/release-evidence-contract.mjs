@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import {
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
+  WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
 } from './windows-auto-allow-canary-evidence.mjs';
 
 export const WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT = 'windows-production-bootstrap-canary';
@@ -175,6 +176,61 @@ function getRedditPageEventByHost(pageDiagnostics, host) {
   return pageDiagnostics?.completedRedditDiagnosticEvents?.[probe.id] === true;
 }
 
+function parseHostname(value) {
+  try {
+    return new URL(String(value)).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function hostMatchesExpected(host, expectedHost) {
+  const normalizedHost = String(host ?? '')
+    .trim()
+    .toLowerCase();
+  const normalizedExpectedHost = String(expectedHost ?? '')
+    .trim()
+    .toLowerCase();
+  return (
+    normalizedHost === normalizedExpectedHost ||
+    normalizedHost.endsWith(`.${normalizedExpectedHost}`)
+  );
+}
+
+function parseWindowsAllowlistedNavigation(artifact) {
+  const navigation = artifact?.allowlistedNavigation;
+  if (
+    navigation?.success !== true ||
+    navigation.blockedByOpenPath === true ||
+    navigation.timedOut === true
+  ) {
+    throw new Error('windows.allowlistedNavigation.success missing or false');
+  }
+
+  const observedHosts = [
+    navigation.finalHost,
+    parseHostname(navigation.href),
+    parseHostname(navigation.url),
+    ...(Array.isArray(navigation.expectedHosts) ? navigation.expectedHosts : []),
+  ].filter(Boolean);
+
+  for (const expectedHost of WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS) {
+    if (!observedHosts.some((host) => hostMatchesExpected(host, expectedHost))) {
+      throw new Error(`windows.allowlistedNavigation missing expected host ${expectedHost}`);
+    }
+  }
+
+  return {
+    success: true,
+    url: valueOrNull(navigation.url),
+    href: valueOrNull(navigation.href),
+    finalHost: valueOrNull(navigation.finalHost),
+    expectedHosts: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
+    blockedByOpenPath: false,
+    timedOut: false,
+  };
+}
+
 export function buildFallbackWindowsRedditHosts() {
   return Object.fromEntries(
     REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS.map((host) => [
@@ -201,9 +257,11 @@ export function parseWindowsBootstrapCanaryArtifact(artifactDir) {
   });
   const whitelist = artifact?.redditDiagnostics?.whitelist ?? {};
   const pageDiagnostics = artifact?.redditDiagnostics?.page ?? {};
+  const allowlistedNavigation = parseWindowsAllowlistedNavigation(artifact);
 
   return {
     ...boundaryContract,
+    allowlistedNavigation,
     redditHosts: Object.fromEntries(
       REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS.map((host) => [
         host,

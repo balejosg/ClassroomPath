@@ -4,9 +4,11 @@ import { parseReleaseStateText } from './release-state-contract.mjs';
 import {
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_PROBES,
+  WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
 } from './windows-auto-allow-canary-evidence.mjs';
 
 export const EXPECTED_REDDIT_HOSTS = REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS;
+export const EXPECTED_EXTERNAL_NAVIGATION_HOSTS = WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS;
 
 function isTrueFlag(value) {
   return (
@@ -45,6 +47,52 @@ function artifactProvesHost(artifact, host) {
   );
 }
 
+function parseHostname(value) {
+  try {
+    return new URL(String(value)).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function hostMatchesExpected(host, expectedHost) {
+  const normalizedHost = String(host ?? '')
+    .trim()
+    .toLowerCase();
+  const normalizedExpectedHost = String(expectedHost ?? '')
+    .trim()
+    .toLowerCase();
+  return (
+    normalizedHost === normalizedExpectedHost ||
+    normalizedHost.endsWith(`.${normalizedExpectedHost}`)
+  );
+}
+
+function artifactProvesExternalNavigation(
+  artifact,
+  expectedHosts = EXPECTED_EXTERNAL_NAVIGATION_HOSTS
+) {
+  const navigation = artifact?.allowlistedNavigation;
+  if (
+    navigation?.success !== true ||
+    navigation.blockedByOpenPath === true ||
+    navigation.timedOut === true
+  ) {
+    return false;
+  }
+
+  const observedHosts = [
+    navigation.finalHost,
+    parseHostname(navigation.href),
+    parseHostname(navigation.url),
+    ...(Array.isArray(navigation.expectedHosts) ? navigation.expectedHosts : []),
+  ].filter(Boolean);
+
+  return expectedHosts.every((expectedHost) =>
+    observedHosts.some((observedHost) => hostMatchesExpected(observedHost, expectedHost))
+  );
+}
+
 export function readStagingVerificationEnv(path) {
   return parseReleaseStateText(readFileSync(path, 'utf8'));
 }
@@ -73,11 +121,22 @@ export function verifyWindowsAjaxArtifact({ artifactPath, expectedHosts = EXPECT
 
   const boundaryId = valueOrNull(artifact?.failureBoundary?.id);
   const missingHosts = expectedHosts.filter((host) => !artifactProvesHost(artifact, host));
+  const externalNavigationPassed = artifactProvesExternalNavigation(artifact);
 
   if (boundaryId !== 'none') {
     return {
       state: 'failed',
       reason: `Direct runner rehearsal artifact failureBoundary.id is ${boundaryId ?? 'missing'}, expected none.`,
+      artifactPath,
+      missingHosts,
+    };
+  }
+
+  if (!externalNavigationPassed) {
+    return {
+      state: 'failed',
+      reason:
+        'Direct runner rehearsal artifact is missing successful external allowlisted navigation evidence.',
       artifactPath,
       missingHosts,
     };

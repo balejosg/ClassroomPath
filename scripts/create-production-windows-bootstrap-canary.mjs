@@ -17,6 +17,7 @@ const WINDOWS_EXPLICIT_AJAX_ALLOWLIST_HOSTS = Object.freeze([
   'ajax-auto-allow-font.127.0.0.1.sslip.io',
   'ajax-auto-allow-stylesheet-font.127.0.0.1.sslip.io',
 ]);
+const WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS = Object.freeze(['example.com']);
 const WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS = Object.freeze(
   (process.env.WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS ?? '')
     .split(/[,\s]+/)
@@ -460,6 +461,7 @@ async function main() {
   const explicitSeedHosts = [
     WINDOWS_AJAX_AUTO_ALLOW_ORIGIN_HOST,
     ...WINDOWS_EXPLICIT_AJAX_ALLOWLIST_HOSTS,
+    ...WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
     ...WINDOWS_AJAX_REDDIT_EXPLICIT_ALLOWLIST_HOSTS,
   ];
   for (const host of explicitSeedHosts) {
