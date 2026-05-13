@@ -20,6 +20,7 @@ function createContext(overrides: Partial<Context> = {}): Context {
 describe('auth-session-procedures', () => {
   it('exposes the session procedures through the split router module', () => {
     assert.deepStrictEqual(Object.keys(authSessionProcedures).sort(), [
+      'changePassword',
       'googleLogin',
       'login',
       'logout',

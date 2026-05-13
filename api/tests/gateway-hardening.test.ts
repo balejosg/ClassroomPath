@@ -60,6 +60,7 @@ await describe('gateway hardening helpers', async () => {
     assert.strictEqual(globalRule?.matches('/api/agent/linux/latest.json'), false);
     assert.strictEqual(authRule?.matches('/cp/trpc/auth.login'), true);
     assert.strictEqual(authRule?.matches('/cp/trpc/auth.googleSignup'), true);
+    assert.strictEqual(authRule?.matches('/cp/trpc/auth.changePassword'), true);
     assert.strictEqual(authRule?.matches('/trpc/auth.resetPassword?batch=1'), true);
     assert.strictEqual(authRule?.matches('/cp/trpc/onboarding.waitForInvitation'), false);
     assert.strictEqual(

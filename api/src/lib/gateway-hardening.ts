@@ -82,7 +82,7 @@ export function createGatewayRateLimitRules(
       limit: options.authRateLimitMax,
       windowMs: options.authRateLimitWindowMs,
       matches: (path: string) =>
-        /^\/(?:cp\/)?trpc\/auth\.(?:login|register|googleLogin|googleSignup|resetPassword|logout)(?:\?|$)/.test(
+        /^\/(?:cp\/)?trpc\/auth\.(?:login|register|googleLogin|googleSignup|resetPassword|changePassword|logout)(?:\?|$)/.test(
           path
         ),
     },

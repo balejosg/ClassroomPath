@@ -554,6 +554,30 @@ describe('ClassroomPath Gateway Integration', async () => {
     assert.strictEqual(isMockOpenPathTokenRevoked(refreshToken), true);
   });
 
+  test('/cp/trpc/auth.changePassword forwards the authenticated password change to OpenPath', async () => {
+    const accessToken = signToken({
+      jwtSecret: JWT_SECRET,
+      userId: 'change-password-user',
+      email: uniqueEmail('change-password'),
+      name: 'Change Password User',
+      roles: [],
+    });
+
+    const response = await trpcMutate(
+      integration.baseUrl,
+      'auth.changePassword',
+      {
+        currentPassword: 'CurrentPassword123!',
+        newPassword: 'NewPassword456!',
+      },
+      bearerAuth(accessToken)
+    );
+
+    assertStatus(response, 200);
+    const parsed = (await parseTRPC(response)) as { data?: { success?: boolean } };
+    assert.strictEqual(parsed.data?.success, true);
+  });
+
   test('/cp/trpc/auth.logout clears local cookies but returns an explicit degraded error when upstream revocation fails', async () => {
     const accessToken = signToken({
       jwtSecret: JWT_SECRET,

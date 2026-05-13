@@ -3,6 +3,7 @@ import { TRPCError } from '@trpc/server';
 
 import { protectedProcedure, publicProcedure } from '../trpc.js';
 import {
+  forwardOpenPathAuthProcedure,
   forwardOpenPathSessionMutation,
   getOpenPathMeProfile,
   logoutOpenPathSession,
@@ -102,6 +103,26 @@ export const authSessionProcedures = {
       token: ctx.token,
     })
   ),
+
+  changePassword: protectedProcedure
+    .input(
+      z.object({
+        currentPassword: z.string().min(1),
+        newPassword: z.string().min(8),
+      })
+    )
+    .mutation(async ({ input, ctx }) =>
+      forwardOpenPathAuthProcedure({
+        procedure: 'auth.changePassword',
+        req: ctx.req,
+        token: ctx.token,
+        includeAuth: true,
+        input,
+        defaultErrorCode: 'BAD_REQUEST',
+        upstreamFailureMessage: 'Password change failed',
+        unavailableMessage: 'Authentication service unavailable',
+      })
+    ),
 
   logout: protectedProcedure.mutation(async ({ ctx }) =>
     logoutOpenPathSession({

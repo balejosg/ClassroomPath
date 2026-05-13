@@ -902,6 +902,30 @@ async function ensureMockOpenPathServer(): Promise<string> {
     res.json({ result: { data: { success: true } } });
   });
 
+  app.post('/trpc/auth.changePassword', (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({
+        error: {
+          message: 'Not authenticated',
+          code: 'UNAUTHORIZED',
+        },
+      });
+    }
+
+    const body = req.body as { currentPassword?: unknown; newPassword?: unknown } | undefined;
+    if (typeof body?.currentPassword !== 'string' || typeof body?.newPassword !== 'string') {
+      return res.status(400).json({
+        error: {
+          message: 'Current and new password are required',
+          code: 'BAD_REQUEST',
+        },
+      });
+    }
+
+    res.json({ result: { data: { success: true } } });
+  });
+
   app.post('/trpc/auth.resetPassword', (req, res) => {
     const body = req.body as { token?: unknown } | undefined;
     if (body?.token === 'mock-reset-invalid-json') {
