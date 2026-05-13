@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { router, teacherOrAdminProcedure, tenantMemberProcedure } from '../trpc.js';
+import {
+  router,
+  teacherOrAdminProcedure,
+  tenantAdminProcedure,
+  tenantMemberProcedure,
+} from '../trpc.js';
 import {
   getTenantClassroomById,
   listActiveClassroomExemptions,
@@ -8,6 +13,7 @@ import {
 } from '../../services/classrooms/classroom-access.service.js';
 import {
   createClassroomExemptionForTenant,
+  createOperationalClassroomExemptionForTenant,
   createClassroomForTenant,
   deleteClassroomExemptionForTenant,
   deleteClassroomForTenant,
@@ -28,6 +34,13 @@ const UpdateClassroomSchema = z.object({
   id: z.string(),
   displayName: z.string().min(1).max(255).optional(),
   defaultGroupId: z.string().optional(),
+});
+
+const CreateOperationalExemptionSchema = z.object({
+  machineId: z.string().min(1),
+  classroomId: z.string().min(1),
+  durationHours: z.number().int().min(1).max(24),
+  reason: z.string().trim().min(3).max(500),
 });
 
 export const classroomsRouter = router({
@@ -68,6 +81,12 @@ export const classroomsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       return createClassroomExemptionForTenant({ ctx, input });
+    }),
+
+  createOperationalExemption: tenantAdminProcedure
+    .input(CreateOperationalExemptionSchema)
+    .mutation(async ({ ctx, input }) => {
+      return createOperationalClassroomExemptionForTenant({ ctx, input });
     }),
 
   deleteExemption: teacherOrAdminProcedure

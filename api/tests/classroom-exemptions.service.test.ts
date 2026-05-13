@@ -7,6 +7,7 @@ import { openpathDb, openpathSchema } from '../src/db/openpath.js';
 import { createClassroomForTenant } from '../src/services/classrooms/classroom-write.service.js';
 import {
   createClassroomExemptionForTenant,
+  createOperationalClassroomExemptionForTenant,
   deleteClassroomExemptionForTenant,
 } from '../src/services/classrooms/classroom-exemptions.service.js';
 import { acquireTestDbLock, releaseTestDbLock } from './test-db.js';
@@ -20,6 +21,12 @@ const adminCtx = {
   organizationId: ORG_ID,
   userRole: 'admin' as const,
   user: { sub: ADMIN_ID },
+};
+
+const teacherCtx = {
+  organizationId: ORG_ID,
+  userRole: 'teacher' as const,
+  user: { sub: `teacher_classroom_exemptions_${RUN_ID}` },
 };
 
 async function cleanupTenantFixtures() {
@@ -183,6 +190,95 @@ describe('classroom-exemptions.service', () => {
       .select({ id: openpathSchema.machineExemptions.id })
       .from(openpathSchema.machineExemptions)
       .where(eq(openpathSchema.machineExemptions.classroomId, classroom.id));
+    assert.strictEqual(remaining.length, 0);
+  });
+
+  it('creates operational exemptions for admins and blocks teacher revocation', async () => {
+    const classroom = await createClassroomForTenant({
+      ctx: adminCtx,
+      input: {
+        name: 'classroom-operational-exemptions',
+        displayName: 'Classroom Operational Exemptions',
+        defaultGroupId: GROUP_ID,
+      },
+    });
+
+    const machineId = `machine_operational_exemptions_${RUN_ID}`;
+    await openpathDb.insert(openpathSchema.machines).values({
+      id: machineId,
+      hostname: `machine-operational-exemptions-${RUN_ID}.test`,
+      classroomId: classroom.id,
+      version: '1.0.0',
+    });
+
+    await assert.rejects(
+      () =>
+        createOperationalClassroomExemptionForTenant({
+          ctx: teacherCtx,
+          input: {
+            machineId,
+            classroomId: classroom.id,
+            durationHours: 4,
+            reason: 'Mantenimiento',
+          },
+        }),
+      /Admin access required/
+    );
+
+    const before = new Date();
+    const created = await createOperationalClassroomExemptionForTenant({
+      ctx: adminCtx,
+      input: {
+        machineId,
+        classroomId: classroom.id,
+        durationHours: 4,
+        reason: '  Mantenimiento urgente  ',
+      },
+    });
+
+    assert.ok(created.id.startsWith('exempt_'));
+    assert.strictEqual(created.machineId, machineId);
+    assert.strictEqual(created.classroomId, classroom.id);
+    assert.strictEqual(created.scheduleId, null);
+    assert.strictEqual(created.source, 'operational');
+    assert.strictEqual(created.reason, 'Mantenimiento urgente');
+    assert.strictEqual(created.createdBy, ADMIN_ID);
+    assert.ok(new Date(created.expiresAt).getTime() > before.getTime());
+
+    const rows = await openpathDb
+      .select({
+        id: openpathSchema.machineExemptions.id,
+        scheduleId: openpathSchema.machineExemptions.scheduleId,
+        source: openpathSchema.machineExemptions.source,
+        reason: openpathSchema.machineExemptions.reason,
+      })
+      .from(openpathSchema.machineExemptions)
+      .where(eq(openpathSchema.machineExemptions.id, created.id));
+    assert.deepStrictEqual(rows[0], {
+      id: created.id,
+      scheduleId: null,
+      source: 'operational',
+      reason: 'Mantenimiento urgente',
+    });
+
+    await assert.rejects(
+      () =>
+        deleteClassroomExemptionForTenant({
+          ctx: teacherCtx,
+          id: created.id,
+        }),
+      /Only administrators can revoke operational exemptions/
+    );
+
+    await deleteClassroomExemptionForTenant({
+      ctx: adminCtx,
+      id: created.id,
+    });
+
+    const remaining = await openpathDb
+      .select({ id: openpathSchema.machineExemptions.id })
+      .from(openpathSchema.machineExemptions)
+      .where(eq(openpathSchema.machineExemptions.id, created.id));
     assert.strictEqual(remaining.length, 0);
   });
 });

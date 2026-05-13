@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   pgTable,
   varchar,
@@ -8,6 +8,9 @@ import {
   boolean,
   integer,
   unique,
+  uniqueIndex,
+  index,
+  check,
   uuid,
   time,
 } from 'drizzle-orm/pg-core';
@@ -183,18 +186,27 @@ export const machineExemptions = pgTable(
     id: varchar('id', { length: 50 }).primaryKey(),
     machineId: varchar('machine_id', { length: 50 }).notNull(),
     classroomId: varchar('classroom_id', { length: 50 }).notNull(),
-    scheduleId: uuid('schedule_id').notNull(),
+    scheduleId: uuid('schedule_id'),
+    source: varchar('source', { length: 20 }).notNull().default('schedule'),
+    reason: text('reason'),
     createdBy: varchar('created_by', { length: 50 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },
-  (table) => ({
-    machineScheduleExpiresUnique: unique('machine_exemptions_machine_schedule_expires_key').on(
-      table.machineId,
-      table.scheduleId,
-      table.expiresAt
+  (table) => [
+    uniqueIndex('machine_exemptions_machine_schedule_expires_key')
+      .on(table.machineId, table.scheduleId, table.expiresAt)
+      .where(sql`${table.source} = 'schedule'`),
+    uniqueIndex('machine_exemptions_machine_operational_expires_key')
+      .on(table.machineId, table.expiresAt)
+      .where(sql`${table.source} = 'operational' AND ${table.scheduleId} IS NULL`),
+    index('machine_exemptions_classroom_expires_idx').on(table.classroomId, table.expiresAt),
+    index('machine_exemptions_machine_expires_idx').on(table.machineId, table.expiresAt),
+    check(
+      'machine_exemptions_source_schedule_id_check',
+      sql`${table.source} IN ('schedule', 'operational') AND ((${table.source} = 'schedule' AND ${table.scheduleId} IS NOT NULL) OR (${table.source} = 'operational' AND ${table.scheduleId} IS NULL))`
     ),
-  })
+  ]
 );
 
 export const requests = pgTable('requests', {

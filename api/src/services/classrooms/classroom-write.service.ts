@@ -1,5 +1,6 @@
 import {
   createClassroomExemptionForTenant,
+  createOperationalClassroomExemptionForTenant,
   deleteClassroomExemptionForTenant,
   deleteClassroomMachineForTenant,
 } from './classroom-exemptions.service.js';
@@ -18,6 +19,7 @@ export type {
 } from './classroom-write-shared.js';
 export {
   createClassroomExemptionForTenant,
+  createOperationalClassroomExemptionForTenant,
   deleteClassroomExemptionForTenant,
   deleteClassroomMachineForTenant,
 } from './classroom-exemptions.service.js';

@@ -990,6 +990,113 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     });
   });
 
+  test('classrooms.createOperationalExemption is admin-only and teacher cannot revoke operational exemptions', async () => {
+    await resetDb();
+
+    const scenario = buildScenario();
+    const { actor: admin, organization } = await scenario.createOrgAdmin({
+      userId: 'classrooms-operational-exemptions-admin',
+      organizationName: 'Operational Exemptions Org',
+    });
+    const classroom = await scenario.createClassroom({
+      actor: admin,
+      name: 'operational-exemptions-classroom',
+      displayName: 'Operational Exemptions Classroom',
+    });
+
+    const machineId = 'operational-exemptions-machine';
+    const machineHostname = 'operational-exemptions-machine.test';
+    await openpathDb.insert(openpathSchema.machines).values({
+      id: machineId,
+      hostname: machineHostname,
+      classroomId: classroom.id,
+      version: '1.0.0',
+    });
+
+    const teacher = await scenario.addTeacher({
+      adminToken: admin.token,
+      organizationId: organization.organizationId,
+      userId: 'classrooms-operational-exemptions-teacher',
+      name: 'Operational Exemptions Teacher',
+      groupIds: [],
+    });
+
+    const teacherCreate = await trpcMutate(
+      integration.baseUrl,
+      'classrooms.createOperationalExemption',
+      { machineId, classroomId: classroom.id, durationHours: 4, reason: 'Mantenimiento' },
+      bearerAuth(teacher.token)
+    );
+    assertStatus(teacherCreate, 403);
+    const teacherCreateParsed = await parseTRPC(teacherCreate);
+    assert.strictEqual(teacherCreateParsed.code, 'FORBIDDEN');
+    assert.strictEqual(teacherCreateParsed.error, 'Admin access required');
+
+    const createdAt = new Date(2026, 1, 3, 10, 30, 0, 0);
+    await withFrozenDate(createdAt, async () => {
+      const createResp = await trpcMutate(
+        integration.baseUrl,
+        'classrooms.createOperationalExemption',
+        {
+          machineId,
+          classroomId: classroom.id,
+          durationHours: 4,
+          reason: '  Mantenimiento urgente  ',
+        },
+        bearerAuth(admin.token)
+      );
+      assertStatus(createResp, 200);
+      const { data: operational } = (await parseTRPC(createResp)) as { data: any };
+      assert.ok(String(operational.id).startsWith('exempt_'));
+      assert.strictEqual(operational.machineId, machineId);
+      assert.strictEqual(operational.classroomId, classroom.id);
+      assert.strictEqual(operational.scheduleId, null);
+      assert.strictEqual(operational.source, 'operational');
+      assert.strictEqual(operational.reason, 'Mantenimiento urgente');
+      assert.strictEqual(operational.createdBy, admin.userId);
+      assert.strictEqual(operational.expiresAt, new Date(2026, 1, 3, 14, 30, 0, 0).toISOString());
+
+      const listResp = await trpcQuery(
+        integration.baseUrl,
+        'classrooms.listExemptions',
+        { classroomId: classroom.id },
+        bearerAuth(admin.token)
+      );
+      assertStatus(listResp, 200);
+      const { data: list } = (await parseTRPC(listResp)) as { data: any };
+      assert.strictEqual(list.exemptions.length, 1);
+      assert.strictEqual(list.exemptions[0].id, operational.id);
+      assert.strictEqual(list.exemptions[0].machineHostname, machineHostname);
+      assert.strictEqual(list.exemptions[0].scheduleId, null);
+      assert.strictEqual(list.exemptions[0].source, 'operational');
+      assert.strictEqual(list.exemptions[0].reason, 'Mantenimiento urgente');
+
+      const teacherDelete = await trpcMutate(
+        integration.baseUrl,
+        'classrooms.deleteExemption',
+        { id: operational.id },
+        bearerAuth(teacher.token)
+      );
+      assertStatus(teacherDelete, 403);
+      const teacherDeleteParsed = await parseTRPC(teacherDelete);
+      assert.strictEqual(teacherDeleteParsed.code, 'FORBIDDEN');
+      assert.strictEqual(
+        teacherDeleteParsed.error,
+        'Only administrators can revoke operational exemptions'
+      );
+
+      const adminDelete = await trpcMutate(
+        integration.baseUrl,
+        'classrooms.deleteExemption',
+        { id: operational.id },
+        bearerAuth(admin.token)
+      );
+      assertStatus(adminDelete, 200);
+      const { data: deleted } = (await parseTRPC(adminDelete)) as { data: any };
+      assert.strictEqual(deleted.success, true);
+    });
+  });
+
   test('classrooms.createExemption rejects weekends', async () => {
     await resetDb();
 

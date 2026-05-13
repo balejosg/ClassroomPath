@@ -23,6 +23,13 @@ export interface CreateClassroomExemptionInput {
   scheduleId: string;
 }
 
+export interface CreateOperationalClassroomExemptionInput {
+  machineId: string;
+  classroomId: string;
+  durationHours: number;
+  reason: string;
+}
+
 export interface DeleteClassroomMachineInput {
   id: string;
   classroomId: string;
@@ -44,6 +51,8 @@ export function presentClassroomExemption(row: typeof machineExemptions.$inferSe
     machineId: row.machineId,
     classroomId: row.classroomId,
     scheduleId: row.scheduleId,
+    source: row.source === 'operational' ? 'operational' : 'schedule',
+    reason: row.reason ?? null,
     createdBy: row.createdBy ?? null,
     createdAt: row.createdAt ? row.createdAt.toISOString() : null,
     expiresAt: row.expiresAt.toISOString(),
