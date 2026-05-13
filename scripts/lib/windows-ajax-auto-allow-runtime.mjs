@@ -629,6 +629,60 @@ $info = Get-ScheduledTaskInfo -TaskName '${escapedTaskName}' -ErrorAction Silent
   }
 }
 
+function parseKeyValueTimingLine(line) {
+  const fields = {};
+  for (const match of String(line ?? '').matchAll(/\b([A-Za-z][A-Za-z0-9]*)=([^\s]+)/g)) {
+    const [, key, value] = match;
+    fields[key] = /^-?\d+$/.test(value) ? Number.parseInt(value, 10) : value;
+  }
+  return fields;
+}
+
+function extractRuntimeDependencyTimingEvidence(nativeLogTail, openPathLogTail) {
+  const nativeLines = String(nativeLogTail ?? '')
+    .split(/\r?\n/)
+    .filter((line) => line.includes('Native host action='));
+  const nativeActions = nativeLines
+    .map((line) => ({ line, fields: parseKeyValueTimingLine(line) }))
+    .filter((entry) =>
+      [
+        'allow-local-runtime-dependency',
+        'allow-local-runtime-dependency-batch',
+        'update-whitelist',
+      ].includes(String(entry.fields.action ?? ''))
+    )
+    .slice(-20);
+  const latestNativeAction = [...nativeActions]
+    .reverse()
+    .find((entry) =>
+      String(entry.fields.action ?? '').startsWith('allow-local-runtime-dependency')
+    );
+  const latestUpdateAction = [...nativeActions]
+    .reverse()
+    .find((entry) => entry.fields.action === 'update-whitelist');
+  const fastApplyLine = String(openPathLogTail ?? '')
+    .split(/\r?\n/)
+    .reverse()
+    .find((line) => line.includes('Runtime dependency fast apply metrics:'));
+  const fastApplyMetrics = fastApplyLine ? parseKeyValueTimingLine(fastApplyLine) : null;
+
+  return redactWindowsCanaryObject({
+    variant: fastApplyMetrics ? 'fast-queue-apply-product' : 'baseline-current',
+    nativeActionElapsedMs: latestNativeAction?.fields?.elapsedMs ?? null,
+    queueWriteMs: latestNativeAction?.fields?.queueWriteMs ?? null,
+    updateTriggerMs: latestUpdateAction?.fields?.updateTriggerMs ?? null,
+    updateWaitMs: latestUpdateAction?.fields?.updateWaitMs ?? null,
+    queueProcessedMs: fastApplyMetrics?.queueProcessedMs ?? null,
+    queueProcessed: fastApplyMetrics?.processed ?? null,
+    queueRejected: fastApplyMetrics?.rejected ?? null,
+    overlayWriteMs: fastApplyMetrics?.overlayWriteMs ?? null,
+    acrylicHostUpdateMs: fastApplyMetrics?.acrylicHostUpdateMs ?? null,
+    acrylicReloadMs: fastApplyMetrics?.acrylicReloadMs ?? null,
+    fastApplyMetrics,
+    nativeActions,
+  });
+}
+
 async function sendNativeProtocolMessage(message) {
   if (!existsSync(NATIVE_HOST_SCRIPT_PATH)) {
     return { success: false, error: `${NATIVE_HOST_SCRIPT_PATH} is not present` };
@@ -686,6 +740,7 @@ async function collectWindowsAutoAllowDiagnostics(phase) {
     nativeLogTail,
     openPathLogTail,
     updateTask,
+    runtimeDependencyApplyTask,
     sseTask,
     remoteWhitelist,
     canaryGroup,
@@ -696,6 +751,7 @@ async function collectWindowsAutoAllowDiagnostics(phase) {
     readTextIfExists(NATIVE_LOG_PATH),
     readTextIfExists(OPENPATH_LOG_PATH),
     readScheduledTaskEvidence('OpenPath-Update'),
+    readScheduledTaskEvidence('OpenPath-RuntimeDependencyApply'),
     readScheduledTaskEvidence('OpenPath-SSE'),
     collectRemoteWhitelistEvidence(expectedHosts),
     collectCanaryGroupDiagnostics(expectedHosts),
@@ -743,10 +799,15 @@ async function collectWindowsAutoAllowDiagnostics(phase) {
       openPathLogTail,
       tasks: {
         update: updateTask,
+        runtimeDependencyApply: runtimeDependencyApplyTask,
         sse: sseTask,
       },
       taskName: 'OpenPath-Update',
       task: updateTask,
+      runtimeDependencyTiming: extractRuntimeDependencyTimingEvidence(
+        nativeLogTail,
+        openPathLogTail
+      ),
     },
     nativeProtocol,
     server: {

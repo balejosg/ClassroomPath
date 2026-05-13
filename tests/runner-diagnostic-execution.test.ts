@@ -66,10 +66,28 @@ describe('runner diagnostic execution plan', () => {
     assert.ok(
       plan.openpathOverlays.some((upload) => upload.source === 'windows/lib/Update.Runtime.psm1')
     );
+    assert.ok(
+      plan.openpathOverlays.some(
+        (upload) => upload.source === 'windows/scripts/Apply-RuntimeDependencyQueue.ps1'
+      )
+    );
+    assert.ok(
+      plan.openpathOverlays.some(
+        (upload) => upload.source === 'windows/scripts/OpenPath-NativeHost.ps1'
+      )
+    );
     assert.ok(plan.openpathOverlays.some((upload) => upload.source === 'windows/lib/DNS.psm1'));
+    assert.ok(
+      plan.openpathOverlays.some((upload) => upload.source === 'windows/lib/Services.psm1')
+    );
     assert.ok(
       plan.openpathOverlays.some(
         (upload) => upload.source === 'windows/lib/internal/Update.Script.Apply.ps1'
+      )
+    );
+    assert.ok(
+      plan.openpathOverlays.some(
+        (upload) => upload.source === 'windows/lib/internal/Services.TaskBuilders.ps1'
       )
     );
     assert.ok(

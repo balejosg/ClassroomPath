@@ -808,6 +808,22 @@ if (-not $connected) {
   runGuestPowerShell(options, script, { timeoutSeconds: 900 });
 }
 
+function registerOpenPathRuntimeTasksAndNativeHost(options) {
+  const script = `
+$ErrorActionPreference = 'Stop'
+$openPathRoot = ${psSingleQuote(OPENPATH_ROOT_ON_WINDOWS)}
+Import-Module (Join-Path $openPathRoot 'lib\\Common.psm1') -Force
+Import-Module (Join-Path $openPathRoot 'lib\\Services.psm1') -Force
+Import-Module (Join-Path $openPathRoot 'lib\\Browser.FirefoxNativeHost.psm1') -Force
+$config = Get-OpenPathConfig
+$updateInterval = if ($config.PSObject.Properties['updateIntervalMinutes'] -and $config.updateIntervalMinutes) { [int]$config.updateIntervalMinutes } else { 15 }
+$watchdogInterval = if ($config.PSObject.Properties['watchdogIntervalMinutes'] -and $config.watchdogIntervalMinutes) { [int]$config.watchdogIntervalMinutes } else { 1 }
+Register-OpenPathTask -UpdateIntervalMinutes $updateInterval -WatchdogIntervalMinutes $watchdogInterval | Out-Null
+Register-OpenPathFirefoxNativeHost -Config $config | Out-Null
+`;
+  runGuestPowerShell(options, script, { timeoutSeconds: 300 });
+}
+
 function refreshOpenPathIntegrity(options) {
   const script = `
 $ErrorActionPreference = 'Stop'
@@ -1034,6 +1050,7 @@ function main() {
     writeText: (sourcePath, destinationPath) =>
       writeGuestText(options, sourcePath, destinationPath),
   });
+  registerOpenPathRuntimeTasksAndNativeHost(options);
   refreshOpenPathIntegrity(options);
   runOpenPathUpdateAndSse(options);
 

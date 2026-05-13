@@ -146,6 +146,23 @@ describe('Windows AJAX auto-allow runtime module', () => {
     assert.doesNotMatch(runtimeSource, /createServer\(\(req, res\) =>/);
   });
 
+  test('collects runtime dependency fast-apply timing evidence from Windows logs', async () => {
+    const runtimeSource = await readFile(
+      new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),
+      'utf8'
+    );
+
+    assert.match(runtimeSource, /readScheduledTaskEvidence\('OpenPath-RuntimeDependencyApply'\)/);
+    assert.match(runtimeSource, /extractRuntimeDependencyTimingEvidence/);
+    assert.match(runtimeSource, /Runtime dependency fast apply metrics:/);
+    assert.match(runtimeSource, /variant:\s*fastApplyMetrics \? 'fast-queue-apply-product'/);
+    assert.match(runtimeSource, /nativeActionElapsedMs/);
+    assert.match(runtimeSource, /queueWriteMs/);
+    assert.match(runtimeSource, /updateTriggerMs/);
+    assert.match(runtimeSource, /overlayWriteMs/);
+    assert.match(runtimeSource, /acrylicReloadMs/);
+  });
+
   test('does not abort artifact collection on initial Selenium navigation timeout', async () => {
     const runtimeSource = await readFile(
       new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),

@@ -16,8 +16,20 @@ export const WINDOWS_OPENPATH_OVERLAYS = [
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\scripts\\Update-OpenPath.ps1`,
   },
   {
+    source: 'windows/scripts/Apply-RuntimeDependencyQueue.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\scripts\\Apply-RuntimeDependencyQueue.ps1`,
+  },
+  {
+    source: 'windows/scripts/OpenPath-NativeHost.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\scripts\\OpenPath-NativeHost.ps1`,
+  },
+  {
     source: 'windows/lib/Update.Runtime.psm1',
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\Update.Runtime.psm1`,
+  },
+  {
+    source: 'windows/lib/Services.psm1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\Services.psm1`,
   },
   {
     source: 'windows/lib/DNS.psm1',
@@ -36,8 +48,16 @@ export const WINDOWS_OPENPATH_OVERLAYS = [
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\Common.Integrity.ps1`,
   },
   {
+    source: 'windows/lib/internal/Services.TaskBuilders.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\Services.TaskBuilders.ps1`,
+  },
+  {
     source: 'windows/lib/internal/NativeHost.Actions.ps1',
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\NativeHost.Actions.ps1`,
+  },
+  {
+    source: 'windows/scripts/OpenPath-NativeHost.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\browser-extension\\firefox\\native\\OpenPath-NativeHost.ps1`,
   },
   {
     source: 'windows/lib/internal/NativeHost.Actions.ps1',

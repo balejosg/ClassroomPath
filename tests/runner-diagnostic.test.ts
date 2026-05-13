@@ -559,8 +559,16 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stdout, /--pass-stdin 1/);
     assert.match(result.stdout, /C:\\OpenPath\\scripts\\Start-SSEListener\.ps1/);
     assert.match(result.stdout, /C:\\OpenPath\\scripts\\Update-OpenPath\.ps1/);
+    assert.match(result.stdout, /C:\\OpenPath\\scripts\\Apply-RuntimeDependencyQueue\.ps1/);
+    assert.match(result.stdout, /C:\\OpenPath\\scripts\\OpenPath-NativeHost\.ps1/);
     assert.match(result.stdout, /C:\\OpenPath\\lib\\Update\.Runtime\.psm1/);
+    assert.match(result.stdout, /C:\\OpenPath\\lib\\Services\.psm1/);
+    assert.match(result.stdout, /C:\\OpenPath\\lib\\internal\\Services\.TaskBuilders\.ps1/);
     assert.match(result.stdout, /C:\\OpenPath\\lib\\internal\\NativeHost\.Actions\.ps1/);
+    assert.match(
+      result.stdout,
+      /C:\\OpenPath\\browser-extension\\firefox\\native\\OpenPath-NativeHost\.ps1/
+    );
     assert.match(
       result.stdout,
       /C:\\OpenPath\\browser-extension\\firefox\\native\\NativeHost\.Actions\.ps1/
@@ -755,6 +763,11 @@ describe('runner diagnostic wrapper', () => {
   test('direct Windows AJAX diagnostic refreshes integrity after overlaying local OpenPath files', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
 
+    assert.match(script, /function registerOpenPathRuntimeTasksAndNativeHost/);
+    assert.match(script, /Import-Module \(Join-Path \$openPathRoot 'lib\\\\Common\.psm1'\) -Force/);
+    assert.match(script, /Register-OpenPathTask/);
+    assert.match(script, /Register-OpenPathFirefoxNativeHost/);
+    assert.match(script, /registerOpenPathRuntimeTasksAndNativeHost\(options\)/);
     assert.match(script, /function refreshOpenPathIntegrity/);
     assert.match(script, /Save-OpenPathIntegrityBackup/);
     assert.match(script, /New-OpenPathIntegrityBaseline/);
