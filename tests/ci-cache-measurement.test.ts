@@ -86,7 +86,14 @@ test('buildCiCacheMeasurement records cache candidates without recommending unsu
     ]
   );
   assert.equal(measurement.turbo.recommendation.action, 'measure-more');
-  assert.match(measurement.turbo.recommendation.reason, /at least two successful timing samples/);
+  assert.match(
+    measurement.turbo.recommendation.reason,
+    /at least two successful queue\/execution timing samples/
+  );
+  assert.match(
+    measurement.turbo.recommendation.reason,
+    /scripts\/run-github-run-timing-summary\.mjs/
+  );
 
   assert.deepEqual(
     measurement.dependencyInstalls.commands.map((command) => ({
@@ -197,6 +204,8 @@ test('normalizes gh run view jobs JSON and renders an evidence-first markdown re
   assert.match(markdown, /Product Validation: 1m 30s/);
   assert.match(markdown, /Do not add Playwright browser cache/);
   assert.match(markdown, /observability only/);
+  assert.match(markdown, /queue time versus execution time/);
+  assert.match(markdown, /scripts\/run-github-run-timing-summary\.mjs/);
 });
 
 test('CI workflow publishes timing metadata without adding dependency installs or cache policy', () => {

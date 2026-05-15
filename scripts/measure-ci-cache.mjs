@@ -285,25 +285,25 @@ function buildDependencyInstallRecommendation(commands, timingSamples) {
 }
 
 function buildTurboRecommendation(turboBackedCommands, timingSamples) {
+  const timingSummaryCommand = 'scripts/run-github-run-timing-summary.mjs';
+
   if (turboBackedCommands.length === 0) {
     return {
       action: 'do-not-add-cache',
-      reason: 'No turbo-backed workflow commands were found in the audited workflows.',
+      reason: `No turbo-backed workflow commands were found in the audited workflows; keep measuring queue and execution time with ${timingSummaryCommand} before adding remote Turbo, more parallelism, or new caches.`,
     };
   }
 
   if (timingSamples.length < 2) {
     return {
       action: 'measure-more',
-      reason:
-        'Turbo-backed workflow commands exist, but at least two successful timing samples are required before adding cache.',
+      reason: `Turbo-backed workflow commands exist, but at least two successful queue/execution timing samples from ${timingSummaryCommand} are required before remote Turbo, more parallelism, or new caches.`,
     };
   }
 
   return {
-    action: 'evaluate-cache',
-    reason:
-      'Repeated successful timing samples exist; compare elapsed time and cache-hit stability before introducing a Turbo cache.',
+    action: 'evaluate-runner-orchestration',
+    reason: `Repeated successful timing samples exist; compare queue time and execution time with ${timingSummaryCommand} before choosing remote Turbo, more parallelism, or new caches.`,
   };
 }
 
@@ -424,7 +424,7 @@ Recommendation: ${measurement.turbo.recommendation.action} - ${measurement.turbo
 
 Recommendation: ${measurement.playwright.recommendation.action} - ${measurement.playwright.recommendation.reason}
 
-Policy: this report is observability only. Do not add Playwright cache, Turbo cache, or new cache policy from this artifact unless repeated CI samples show a material, stable bottleneck.
+Policy: this report is observability only. Use \`scripts/run-github-run-timing-summary.mjs\` to confirm queue time versus execution time before remote Turbo, more parallelism, Playwright cache, Turbo cache, or any new cache policy.
 `;
 }
 

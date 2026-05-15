@@ -103,6 +103,11 @@ describe('Deployment runtime contracts', () => {
     assert.ok(gatewayDockerfile.includes('COPY react-spa/src ./react-spa/src'));
     assert.ok(
       gatewayDockerfile.includes(
+        'HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD curl -fsS http://127.0.0.1:3001/cp/ready || exit 1'
+      )
+    );
+    assert.ok(
+      gatewayDockerfile.includes(
         'COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src'
       )
     );
@@ -123,6 +128,11 @@ describe('Deployment runtime contracts', () => {
     assert.ok(gatewayDockerignore.includes('upstream/openpath/react-spa/src/**/__tests__/**'));
 
     assert.ok(!spaDockerfile.includes('COPY . .'));
+    assert.ok(
+      spaDockerfile.includes(
+        'HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1'
+      )
+    );
     assert.ok(spaDockerfile.includes('COPY react-spa/src ./react-spa/src'));
     assert.ok(
       spaDockerfile.includes(

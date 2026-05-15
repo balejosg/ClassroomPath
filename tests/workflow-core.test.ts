@@ -551,6 +551,11 @@ describe('Workflow core contracts', () => {
     );
     const setupNodeStep = steps.find((step) => step.name === 'Setup Node.js');
     const securityWorkflowDefinition = readWorkflow('.github/workflows/security.yml');
+    const codeqlJob = findWorkflowJob(securityWorkflowDefinition, 'codeql');
+    const codeqlInitStep = findWorkflowStepByName(codeqlJob, 'Initialize CodeQL');
+    const codeqlAnalyzeStep = findWorkflowStepByName(codeqlJob, 'Perform CodeQL Analysis');
+    const npmAuditJob = findWorkflowJob(securityWorkflowDefinition, 'npm-audit');
+    const npmAuditStep = findWorkflowStepByName(npmAuditJob, 'Run npm audit');
     const secretScanJob = findWorkflowJob(securityWorkflowDefinition, 'secret-scan');
     const secretScanCheckoutStep = findWorkflowStepByName(secretScanJob, 'Checkout code');
     const gitleaksInstallStep = findWorkflowStepByName(secretScanJob, 'Install Gitleaks');
@@ -559,6 +564,18 @@ describe('Workflow core contracts', () => {
     const securityWorkflow = readText('.github/workflows/security.yml');
     const setupNodeAction = readText('.github/actions/setup-node/action.yml');
 
+    assert.equal(codeqlInitStep?.uses, 'github/codeql-action/init@v4');
+    assert.equal(codeqlInitStep?.with?.languages, 'javascript');
+    assert.equal(codeqlInitStep?.with?.queries, 'security-extended,security-and-quality');
+    assert.equal(codeqlAnalyzeStep?.uses, 'github/codeql-action/analyze@v4');
+    assert.match(String(npmAuditStep?.run ?? ''), /npm audit --audit-level=high --json/);
+    assert.match(String(npmAuditStep?.run ?? ''), /check-npm-audit-critical\.mjs/);
+    assert.deepEqual(securityWorkflowDefinition.jobs?.['security-summary']?.needs, [
+      'codeql',
+      'trivy-config-scan',
+      'npm-audit',
+      'secret-scan',
+    ]);
     assert.equal(classroomPathInstall?.run, 'npm ci');
     assert.equal(openPathInstall?.run, 'npm ci');
     assert.equal(openPathInstall?.['working-directory'], 'upstream/openpath');
@@ -571,6 +588,8 @@ describe('Workflow core contracts', () => {
     assert.ok(!securityWorkflow.includes('aquasecurity/trivy-action@master'));
     assert.ok(securityWorkflow.includes('./.github/actions/setup-node'));
     assert.ok(securityWorkflow.includes('github/codeql-action/upload-sarif@v4'));
+    assert.ok(securityWorkflow.includes('github/codeql-action/init@v4'));
+    assert.ok(securityWorkflow.includes('github/codeql-action/analyze@v4'));
     assert.ok(!securityWorkflow.includes('github/codeql-action/upload-sarif@v3'));
     assert.equal(secretScanCheckoutStep?.with?.['fetch-depth'], 0);
     assert.match(String(gitleaksInstallStep?.run ?? ''), /version="8\.30\.1"/);

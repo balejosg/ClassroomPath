@@ -15,6 +15,23 @@ permissions:
   actions: read
 
 jobs:
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript
+          queries: security-extended,security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+
   trivy-config-scan:
     name: Docker Config Security Scan
     runs-on: ubuntu-latest
@@ -83,8 +100,8 @@ jobs:
       - name: Run npm audit
         run: |
           echo "Running npm audit for the ClassroomPath workspace lockfile..."
-          npm audit --audit-level=high || true
-          npm audit --json > classroompath-audit-report.json || true
+          npm audit --audit-level=high --json > classroompath-audit-report.json || true
+          node scripts/check-npm-audit-critical.mjs classroompath-audit-report.json
 
       - name: Upload audit report
         uses: actions/upload-artifact@v7
@@ -174,7 +191,7 @@ jobs:
   security-summary:
     name: Security Summary
     runs-on: ubuntu-latest
-    needs: [trivy-config-scan, npm-audit, secret-scan]
+    needs: [codeql, trivy-config-scan, npm-audit, secret-scan]
     if: always()
 
     steps:
@@ -184,13 +201,16 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| CodeQL | ${{ needs.codeql.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Docker config scan (Trivy) | ${{ needs.trivy-config-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| NPM audit | ${{ needs.npm-audit.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Secret scanning | ${{ needs.secret-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Artifacts: Trivy SARIF/table output and the root npm audit report are uploaded with this workflow." >> $GITHUB_STEP_SUMMARY
 
-          if [[ "${{ needs.trivy-config-scan.result }}" == "failure" ]] || \
+          if [[ "${{ needs.codeql.result }}" == "failure" ]] || \
+             [[ "${{ needs.trivy-config-scan.result }}" == "failure" ]] || \
+             [[ "${{ needs.npm-audit.result }}" == "failure" ]] || \
              [[ "${{ needs.secret-scan.result }}" == "failure" ]]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Critical security issues detected." >> $GITHUB_STEP_SUMMARY

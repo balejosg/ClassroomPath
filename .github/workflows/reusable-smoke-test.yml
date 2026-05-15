@@ -154,7 +154,7 @@ jobs:
           retention-days: 7
 
       - name: Create issue on failure
-        if: ${{ failure() && inputs.create_issue_on_failure && (!inputs.create_issue_on_schedule_only || github.event_name == 'schedule') }}
+        if: ${{ always() && (steps.readiness.outcome != 'success' || steps.smoke.outcome != 'success') && inputs.create_issue_on_failure && (!inputs.create_issue_on_schedule_only || github.event_name == 'schedule') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -167,6 +167,8 @@ jobs:
           SMOKE_READY_URL: ${{ steps.target.outputs.ready_url }}
           SMOKE_API_HEALTH_URL: ${{ steps.target.outputs.api_health_url }}
           SMOKE_API_CONFIG_URL: ${{ steps.target.outputs.api_config_url }}
+          SMOKE_FAILURE_BOUNDARY_ID: ${{ steps.failure-boundary.outputs.failure_boundary_id }}
+          SMOKE_FAILURE_BOUNDARY_MESSAGE: ${{ steps.failure-boundary.outputs.failure_boundary_message }}
         run: node scripts/report-smoke-failure.mjs
 
       - name: Close existing issue on recovery

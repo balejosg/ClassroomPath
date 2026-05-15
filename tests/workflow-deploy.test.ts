@@ -325,6 +325,9 @@ describe('Deploy workflow contracts', () => {
     assert.match(reusableSmokeWorkflowText, /readiness-timeout/);
     assert.match(reusableSmokeWorkflowText, /smoke-failure-boundary\.json/);
     assert.match(reusableSmokeWorkflowText, /failureBoundary: \\`\$failure_boundary_id\\`/);
+    assert.match(reusableSmokeWorkflowText, /steps\.readiness\.outcome != 'success'/);
+    assert.match(reusableSmokeWorkflowText, /SMOKE_FAILURE_BOUNDARY_ID/);
+    assert.match(reusableSmokeWorkflowText, /SMOKE_FAILURE_BOUNDARY_MESSAGE/);
     assert.match(reusableSmokeWorkflowText, /smoke-results\.txt\n\s+smoke-failure-boundary\.json/);
     assert.match(runSmokeInVerifierScript, /verifier-image-pull/);
     assert.match(runSmokeInVerifierScript, /smoke-test-failed/);
