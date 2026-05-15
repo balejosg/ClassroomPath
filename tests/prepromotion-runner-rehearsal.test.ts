@@ -11,6 +11,7 @@ import {
   readStagingVerificationEnv,
   verifyWindowsAjaxArtifact,
 } from '../scripts/lib/prepromotion-runner-rehearsal.mjs';
+import { resolveWindowsPrepromotionRequirement } from '../scripts/lib/prepromotion-windows-evidence.mjs';
 
 const tempDirs: string[] = [];
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -160,6 +161,28 @@ describe('prepromotion runner rehearsal', () => {
 
     assert.equal(result.state, 'passed');
     assert.match(result.reason, /preproduction runner evidence passed/i);
+  });
+
+  test('diagnoses missing Windows canary result with the direct diagnostic command', () => {
+    const tempDir = createTempDir('classroompath-prepromotion-missing-canary-result-');
+    const stagingVerificationPath = resolve(tempDir, 'staging-verification.env');
+    writeStagingVerification(stagingVerificationPath, 'true', {
+      STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT: '',
+    });
+
+    const result = resolveWindowsPrepromotionRequirement({
+      artifactDir: '',
+      openpathRoot: '',
+      stagingVerification: readStagingVerificationEnv(stagingVerificationPath),
+    });
+
+    assert.equal(result.required, true);
+    assert.equal(result.state, 'failed');
+    assert.match(result.reason, /STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT/);
+    assert.equal(
+      result.command,
+      'npm run diagnostics:windows-ajax:direct -- --environment staging'
+    );
   });
 
   test('accepts LAN staging Linux bootstrap skip with the matching boundary', () => {
