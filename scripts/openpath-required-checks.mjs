@@ -12,6 +12,7 @@ import {
 } from './lib/openpath-ci-checks.mjs';
 import { buildGitHubApiHeaders, isDirectExecution } from './lib/github-actions.mjs';
 import { rerunGitHubRunFailedJobs } from './lib/github-actions-artifacts.mjs';
+import { classifyWorkflowRunHealth } from './lib/github-actions-health.mjs';
 import { gitOutput } from './lib/git-process.mjs';
 import {
   classifyOpenPathPrereleaseRecovery,
@@ -246,6 +247,11 @@ function printRequiredChecksReport({ context, evaluation }) {
     requiredCheckResolution: context.requiredCheckResolution,
   });
   console.log(report);
+  const healthSummary = formatRequiredCheckRunHealthSummary({ context, evaluation });
+  if (healthSummary) {
+    console.log('');
+    console.log(healthSummary);
+  }
 }
 
 function printFailureSummary({ context, result, evaluation }) {
@@ -260,6 +266,11 @@ function printFailureSummary({ context, result, evaluation }) {
         requiredCheckResolution: context.requiredCheckResolution,
       })
     );
+    const healthSummary = formatRequiredCheckRunHealthSummary({ context, evaluation });
+    if (healthSummary) {
+      console.error('');
+      console.error(healthSummary);
+    }
     console.error('');
   }
 
@@ -273,6 +284,81 @@ function printFailureSummary({ context, result, evaluation }) {
   for (const failing of result.failing) {
     console.error(`Check ${failing.name} is ${failing.conclusion} (status: ${failing.status})`);
   }
+}
+
+function normalizeWorkflowJobForHealth(job) {
+  return {
+    name: job.name,
+    status: job.status,
+    conclusion: job.conclusion,
+    startedAt: job.startedAt ?? job.started_at,
+  };
+}
+
+function collectRequiredCheckRunHealthFindings({ context, evaluation }) {
+  const latestByName = selectLatestCheckRuns(evaluation.checkRuns ?? []);
+  const findings = [];
+
+  for (const checkName of context.requiredChecks) {
+    const checkRun = latestByName.get(checkName);
+    const checkSucceeded = checkRun?.status === 'completed' && checkRun?.conclusion === 'success';
+    if (!checkRun || checkSucceeded) {
+      continue;
+    }
+
+    const runId = parseRunIdFromUrl(checkRun.details_url ?? checkRun.html_url ?? '');
+    if (!runId) {
+      continue;
+    }
+
+    const jobs = (evaluation.workflowJobsByRunId?.[runId] ?? []).map(normalizeWorkflowJobForHealth);
+    const health = classifyWorkflowRunHealth({
+      status: checkRun.status,
+      conclusion: checkRun.conclusion,
+      jobs,
+    });
+
+    if (health.state === 'corrupt' || health.state === 'stale') {
+      findings.push({
+        checkName,
+        runId,
+        health,
+      });
+    }
+  }
+
+  return findings;
+}
+
+function formatRequiredCheckRunHealthFinding({ repo, finding }) {
+  if (finding.health.state === 'corrupt') {
+    return [
+      `Corrupt workflow run ${finding.runId}: ${finding.health.reason}`,
+      `Next action: gh run rerun ${finding.runId} --repo ${repo}`,
+    ].join('\n');
+  }
+
+  return [
+    `Stale workflow run ${finding.runId}: ${finding.health.reason}`,
+    `Next action: gh run view ${finding.runId} --repo ${repo}`,
+  ].join('\n');
+}
+
+function formatRequiredCheckRunHealthSummary({ context, evaluation }) {
+  const findings = collectRequiredCheckRunHealthFindings({ context, evaluation });
+  if (findings.length === 0) {
+    return '';
+  }
+
+  return findings
+    .map((finding) => formatRequiredCheckRunHealthFinding({ repo: context.repo, finding }))
+    .join('\n');
+}
+
+function findCorruptRequiredCheckRun({ context, evaluation }) {
+  return collectRequiredCheckRunHealthFindings({ context, evaluation }).find(
+    (finding) => finding.health.state === 'corrupt'
+  );
 }
 
 function resolveExecutionContext() {
@@ -404,10 +490,19 @@ async function waitForRequiredChecks(context, options) {
         })
       : null;
     const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+    const corruptRequiredCheckRun = findCorruptRequiredCheckRun({ context, evaluation });
 
     if (recoveryDecision?.state === 'ready' || waitState.kind === 'passed') {
       printSuccessSummary(context);
       return true;
+    }
+
+    if (corruptRequiredCheckRun) {
+      printFailureSummary({ context, result, evaluation });
+      console.error(
+        `OpenPath required checks reached corrupt workflow run after ${elapsedSeconds}s.`
+      );
+      return false;
     }
 
     if (recoveryDecision?.state === 'rerun_requested' && recoveryDecision.runId) {

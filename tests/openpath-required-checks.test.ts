@@ -69,11 +69,13 @@ function checkRun({
 }
 
 async function runOpenPathRequiredChecks(
-  command: 'check' | 'report',
+  command: 'check' | 'report' | 'wait',
   {
     checkRuns,
+    jobsByRunId = {},
   }: {
     checkRuns: unknown[];
+    jobsByRunId?: Record<string, unknown[]>;
   }
 ) {
   const originalFetch = globalThis.fetch;
@@ -87,6 +89,9 @@ async function runOpenPathRequiredChecks(
     OPENPATH_REPO: process.env.OPENPATH_REPO,
     OPENPATH_REQUIRED_CHECKS: process.env.OPENPATH_REQUIRED_CHECKS,
     OPENPATH_BASE_SHA: process.env.OPENPATH_BASE_SHA,
+    OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS: process.env.OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS,
+    OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS:
+      process.env.OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS,
   };
   let stdout = '';
   let stderr = '';
@@ -95,7 +100,8 @@ async function runOpenPathRequiredChecks(
     const url = String(input);
 
     if (url.includes('/actions/runs/')) {
-      return buildFetchResponse({ jobs: [] });
+      const runId = url.match(/\/actions\/runs\/(\d+)\/jobs/)?.[1] ?? '';
+      return buildFetchResponse({ jobs: jobsByRunId[runId] ?? [] });
     }
 
     return buildFetchResponse({ check_runs: checkRuns });
@@ -111,6 +117,8 @@ async function runOpenPathRequiredChecks(
   process.env.OPENPATH_SHA = '4d35dc2900000000000000000000000000000000';
   process.env.OPENPATH_REPO = 'balejosg/openpath';
   process.env.OPENPATH_REQUIRED_CHECKS = 'CI Success,Installer Contracts Success';
+  process.env.OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS = '60';
+  process.env.OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS = '60';
   delete process.env.OPENPATH_BASE_SHA;
 
   try {
@@ -197,6 +205,81 @@ describe('openpath-required-checks CLI report output', () => {
       result.stderr,
       /OpenPath required checks failed for balejosg\/openpath@4d35dc2900000000000000000000000000000000/
     );
+  });
+
+  it('reports corrupt required-check runs with a rerun action', async () => {
+    const result = await runOpenPathRequiredChecks('check', {
+      checkRuns: [
+        checkRun({
+          name: 'CI Success',
+          status: 'completed',
+          conclusion: 'failure',
+          runId: '102',
+          completedAt: '2026-04-27T18:02:00Z',
+        }),
+        checkRun({
+          name: 'Installer Contracts Success',
+          status: 'completed',
+          conclusion: 'success',
+          runId: '103',
+          completedAt: '2026-04-27T18:03:00Z',
+        }),
+      ],
+      jobsByRunId: {
+        '102': [
+          {
+            name: 'Windows Agent Tests (Pester)',
+            status: 'queued',
+            conclusion: null,
+            started_at: '2026-04-27T18:01:00Z',
+          },
+        ],
+      },
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /CI Success: failure \(run 102\)/);
+    assert.match(result.stderr, /Corrupt workflow run 102: queued jobs have startedAt/);
+    assert.match(result.stderr, /Windows Agent Tests \(Pester\)/);
+    assert.match(result.stderr, /gh run rerun 102 --repo balejosg\/openpath/);
+  });
+
+  it('wait mode fails fast for corrupt required-check runs', async () => {
+    const startedAt = Date.now();
+    const result = await runOpenPathRequiredChecks('wait', {
+      checkRuns: [
+        checkRun({
+          name: 'CI Success',
+          status: 'completed',
+          conclusion: 'failure',
+          runId: '102',
+          completedAt: '2026-04-27T18:02:00Z',
+        }),
+        checkRun({
+          name: 'Installer Contracts Success',
+          status: 'completed',
+          conclusion: 'success',
+          runId: '103',
+          completedAt: '2026-04-27T18:03:00Z',
+        }),
+      ],
+      jobsByRunId: {
+        '102': [
+          {
+            name: 'Windows Agent Tests (Pester)',
+            status: 'queued',
+            conclusion: null,
+            started_at: '2026-04-27T18:01:00Z',
+          },
+        ],
+      },
+    });
+
+    assert.equal(result.status, 1);
+    assert.ok(Date.now() - startedAt < 5000);
+    assert.match(result.stderr, /Corrupt workflow run 102: queued jobs have startedAt/);
+    assert.match(result.stderr, /Next action: gh run rerun 102 --repo balejosg\/openpath/);
+    assert.doesNotMatch(result.stderr, /Timed out/);
   });
 });
 
