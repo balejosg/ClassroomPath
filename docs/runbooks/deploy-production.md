@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: ClassroomPath production environment
-> Last verified: 2026-04-13
+> Last verified: 2026-05-15
 > Source of truth: `docs/runbooks/deploy-production.md`
 
 Source files:
@@ -13,6 +13,11 @@ Source files:
 - `scripts/lib/deploy-production-context.sh`
 - `scripts/lib/deploy-production-runtime.sh`
 - `scripts/lib/release-state.sh`
+- `scripts/release-status.mjs`
+- `scripts/release-promote.mjs`
+- `scripts/prepromotion-windows-evidence.mjs`
+- `scripts/ghcr-preflight.mjs`
+- `scripts/actions-health.mjs`
 - `config/deploy-targets.json`
 
 Production is deployed on the Oracle host behind `https://classroompath.eu`.
@@ -78,6 +83,25 @@ production tag until both `npm run verify:production-host -- <candidate-host>` a
 
 ## Promotion Steps
 
+Start every promotion with read-only status:
+
+```bash
+npm run release:status -- --json
+```
+
+When piping into `jq`, use npm's silent mode so npm lifecycle text does not
+pollute stdout:
+
+```bash
+npm --silent run release:status -- --json | jq '.blockers'
+```
+
+The JSON reports the local ClassroomPath SHA, OpenPath submodule checks,
+release-candidate manifest, staging verification state, production deploy
+state, and current blockers. Treat blockers as the diagnosis queue; do not
+create a production tag until the relevant blocker is cleared or the override
+below is explicitly chosen.
+
 ### Automatic Nightly Path
 
 1. Let the `Nightly Staging Candidate` workflow stage the current `main` release-candidate.
@@ -122,18 +146,42 @@ npm run deploy:staging
 npm run verify:promotion-ready
 ```
 
-4. Create and push the production tag through the canonical gated script.
+4. Inspect the hardened promotion plan without running it.
 
 ```bash
-npm run promote:production -- v1.2.4
+npm run release:promote -- --tag v1.2.4 --dry-run
 ```
 
-The script creates an annotated production tag. The annotation embeds the
-staging release-state evidence that was just verified locally, so the GitHub
-Deploy workflow can validate the same evidence even when the runner cannot
-reach staging over SSH. This is a fallback for runner connectivity, not a bypass:
-the workflow still compares the embedded evidence against the approved release
-candidate manifest and the promoted commit SHA.
+Dry run prints the clean-repo, release-candidate, staging deploy, Windows
+prepromotion, `verify:promotion-ready`, tag, deploy wait, and production health
+steps. It does not deploy, mutate staging, create a tag, wait on production, or
+run health checks.
+
+5. Run the hardened promotion command.
+
+```bash
+npm run release:promote -- --tag v1.2.4
+```
+
+The default plan includes Windows prepromotion evidence. The only accepted local
+override for that step is explicit:
+
+```bash
+npm run release:promote -- --tag v1.2.4 --no-high-risk-windows
+```
+
+Use that override only when the release has been reviewed as not requiring fresh
+Windows prepromotion evidence. To append the post-production Windows client
+canary after production health, add `--post-production-windows-canary`.
+
+The promotion step still creates the production tag through
+`npm run promote:production -- <tag>`. That script creates an annotated
+production tag and embeds the staging release-state evidence that was just
+verified locally, so the GitHub Deploy workflow can validate the same evidence
+even when the runner cannot reach staging over SSH. This is a fallback for
+runner connectivity, not a bypass: the workflow still compares the embedded
+evidence against the approved release-candidate manifest and the promoted
+commit SHA.
 
 To use the same latest-only behavior from a local shell, run:
 
@@ -141,18 +189,55 @@ To use the same latest-only behavior from a local shell, run:
 npm run promote:current-staging
 ```
 
-5. Monitor the workflow and inspect the release evidence.
+6. Monitor the workflow and inspect the release evidence.
 
 ```bash
 gh run watch --workflow Deploy
 ```
 
-6. Verify production after the workflow finishes.
+7. Verify production after the workflow finishes.
 
 ```bash
 curl -sS https://classroompath.eu/cp/ready
 curl -sS https://classroompath.eu/api/config
 ```
+
+### Manual Fallback Commands
+
+If you are not using `release:promote`, keep the old gates in the same order:
+
+```bash
+npm run deploy:staging
+npm run verify:promotion-ready
+npm run promote:production -- v1.2.4
+```
+
+If staging GHCR preflight fails with an auth denial, rerun the same staging
+deploy with private-package credentials available only to that command:
+
+```bash
+STAGING_GHCR_USERNAME=<github-user> \
+STAGING_GHCR_TOKEN="$(gh auth token)" \
+npm run deploy:staging
+```
+
+If `verify:promotion-ready` reports missing or stale Windows prepromotion
+evidence, inspect the staging evidence first:
+
+```bash
+node scripts/prepromotion-windows-evidence.mjs inspect \
+  --staging-host 192.168.1.114
+```
+
+When the inspect command says fresh evidence is required for the staged SHA, run
+and persist it:
+
+```bash
+node scripts/prepromotion-windows-evidence.mjs run-and-persist \
+  --openpath-root ../OpenPath
+```
+
+Then rerun `npm run verify:promotion-ready`.
 
 ## What The Workflow Verifies
 
@@ -164,12 +249,13 @@ curl -sS https://classroompath.eu/api/config
 5. Dockerized runtime config on the production host
 6. post-deploy health, readiness, and smoke behavior
 
-## Windows Canary Timeout Note
+## Windows Evidence Notes
 
-The Windows/Firefox canary is advisory. GitHub-hosted Windows runners can time out when opening
-SSH to the private staging host; when staging evidence for the same tag already records successful
-Windows bootstrap and Firefox policy checks, and production deploy plus smoke pass, treat that SSH
-timeout as the documented platform connectivity defect rather than as a production rollback signal.
+Prepromotion Windows evidence is a release gate when required by the staging
+state. Post-production Windows canary reporting can still be non-blocking when
+the production deploy and smoke checks have already passed; treat stale or
+corrupt GitHub Actions run reporting as diagnostic evidence to inspect or rerun,
+not as proof that production changed.
 
 Successful tagged releases publish `release-evidence-<tag>` with:
 
@@ -240,3 +326,28 @@ docker logs classroompath-api --tail 50
 Always export `COMPOSE_PROJECT_NAME=classroompath-production` before any manual `docker compose`
 command on the production host. Without it, Docker Compose can derive a different project name and
 create a second network namespace.
+
+For release-flow diagnosis, use read-only commands before rerunning deploys:
+
+```bash
+npm --silent run release:status -- --json | jq '.blockers'
+node scripts/actions-health.mjs classify \
+  --repo balejosg/ClassroomPath \
+  --run-id <run-id>
+```
+
+`actions-health` distinguishes healthy, failed, queued, stale, and corrupt
+workflow states and prints the recommended next action. For corrupt queued
+states, rerun the workflow run. For stale in-progress states, inspect runner
+logs before canceling or retrying.
+
+Direct production diagnostics require an explicit confirmation flag:
+
+```bash
+npm run diagnostics:windows-ajax:direct -- \
+  --environment production \
+  --confirm-production
+```
+
+Use production diagnostics only when a production symptom must be inspected.
+For development and prepromotion evidence, keep diagnostics on staging.

@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: ClassroomPath verification and release flow
-> Last verified: 2026-04-29
+> Last verified: 2026-05-15
 > Source of truth: `docs/verification-matrix.md`
 
 This matrix maps the current verification lanes to the evidence they provide.
@@ -199,18 +199,20 @@ The shared workspace wrapper selects the maintained first pass. During developme
 - `../scripts/validate-hypothesis.sh classroompath windows-bootstrap-gh`
 - `../scripts/validate-hypothesis.sh classroompath windows-ajax-direct`
 
-| Lane                            | Purpose                                                                                                   | Command / Source                                                                                                     | Blocks release |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------- |
-| Commit hook                     | Fast staged-file format and secret checks on commit                                                       | `.husky/pre-commit` -> `npm run verify:precommit`                                                                    | Yes            |
-| Docs verification               | Validate maintained repo-hosted docs before broader lanes                                                 | `npm run verify:docs`                                                                                                | No             |
-| Targeted local verification     | Extra manual confidence while iterating                                                                   | selected `node --import tsx --test ...`, `npm run test:deployment`, `npm run test:e2e:*`                             | No             |
-| Direct Linux student diagnostic | Run the OpenPath Linux student-policy lane from ClassroomPath and preserve the `failureBoundary` artifact | `npm run diagnostics:linux-student:direct -- --openpath-root ../OpenPath`                                            | No             |
-| Targeted runner diagnostic      | Check Windows/bootstrap/canary hypotheses without full promotion flow                                     | `npm run diagnostics:windows-ajax:direct`, then `npm run diagnostics:runner` when workflow-shaped evidence is needed | No             |
-| Staging deploy                  | Verify the real deployed staging stack                                                                    | `npm run deploy:staging`                                                                                             | Yes            |
-| Staging evidence                | Persist smoke and release-gate proof for the promoted SHA                                                 | `staging-verification.env` on the staging host                                                                       | Yes            |
-| Production deploy               | Roll out immutable images by tag only                                                                     | `.github/workflows/deploy.yml`                                                                                       | Yes            |
-| Production smoke                | Verify the live public stack after deploy                                                                 | workflow smoke steps against production                                                                              | Yes            |
-| Release evidence                | Publish a transparent summary of the promoted release                                                     | `release-evidence-<tag>` artifact + workflow summary                                                                 | No             |
+| Lane                            | Purpose                                                                                                   | Command / Source                                                                                                                 | Blocks release |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| Commit hook                     | Fast staged-file format and secret checks on commit                                                       | `.husky/pre-commit` -> `npm run verify:precommit`                                                                                | Yes            |
+| Docs verification               | Validate maintained repo-hosted docs before broader lanes                                                 | `npm run verify:docs`                                                                                                            | No             |
+| Targeted local verification     | Extra manual confidence while iterating                                                                   | selected `node --import tsx --test ...`, `npm run test:deployment`, `npm run test:e2e:*`                                         | No             |
+| Direct Linux student diagnostic | Run the OpenPath Linux student-policy lane from ClassroomPath and preserve the `failureBoundary` artifact | `npm run diagnostics:linux-student:direct -- --openpath-root ../OpenPath`                                                        | No             |
+| Targeted runner diagnostic      | Check Windows/bootstrap/canary hypotheses without full promotion flow                                     | `npm run diagnostics:windows-ajax:direct`, then `npm run diagnostics:runner` when workflow-shaped evidence is needed             | No             |
+| Release status                  | Inspect promotion blockers, staging evidence, OpenPath checks, release-candidate state, and last deploy   | `npm run release:status -- --json`                                                                                               | No             |
+| Windows prepromotion evidence   | Inspect or refresh the staging Windows proof required before production tagging                           | `node scripts/prepromotion-windows-evidence.mjs inspect ...` or `node scripts/prepromotion-windows-evidence.mjs run-and-persist` | Yes            |
+| Staging deploy                  | Verify the real deployed staging stack                                                                    | `npm run deploy:staging`                                                                                                         | Yes            |
+| Staging evidence                | Persist smoke and release-gate proof for the promoted SHA                                                 | `staging-verification.env` on the staging host                                                                                   | Yes            |
+| Production deploy               | Roll out immutable images by tag only                                                                     | `.github/workflows/deploy.yml`                                                                                                   | Yes            |
+| Production smoke                | Verify the live public stack after deploy                                                                 | workflow smoke steps against production                                                                                          | Yes            |
+| Release evidence                | Publish a transparent summary of the promoted release                                                     | `release-evidence-<tag>` artifact + workflow summary                                                                             | No             |
 
 ## Current CI/CD Efficiency Controls
 
@@ -237,6 +239,31 @@ The shared workspace wrapper selects the maintained first pass. During developme
   forced checks; low-risk deploys record `skipped-low-risk` and keep the
   registration/release gates on reserved test recipients that do not consume
   Resend quota.
+- Release hardening commands are diagnostic-first. Use
+  `npm run release:status -- --json` to inspect blockers before promotion; use
+  `npm --silent run release:status -- --json | jq ...` when piping the JSON.
+  `npm run release:promote -- --tag <tag> --dry-run` prints the ordered plan
+  without deploying, tagging, waiting for production, or running health checks.
+- The promotion orchestrator runs clean-repo checks, release-candidate wait,
+  staging deploy, Windows prepromotion evidence, `verify:promotion-ready`,
+  production tagging, deploy wait, and production health in order. The default
+  plan includes Windows prepromotion evidence; `--no-high-risk-windows` is the
+  explicit override for releases where that proof is reviewed as unnecessary.
+  `--post-production-windows-canary` appends the post-production Windows client
+  canary after production health.
+- Staging deploy GHCR preflight classifies auth, missing manifest, and network
+  failures before remote mutation. For private GHCR access failures, rerun the
+  same deploy command with `STAGING_GHCR_USERNAME=<user>` and
+  `STAGING_GHCR_TOKEN="$(gh auth token)"` so the staging host can inspect the
+  release-candidate images.
+- Production-targeted direct diagnostics require explicit confirmation. Use
+  staging by default; only pass `--environment production --confirm-production`
+  for a deliberate production diagnostic, with `--base-url` only when the
+  target URL override has been reviewed.
+- Required-check reports may include stale or corrupt GitHub Actions run
+  findings as diagnosis, including suggested `gh run view` or `gh run rerun`
+  commands. Those findings explain the failure boundary; they do not by
+  themselves replace the required check result.
 
 ## Release Timing Update - 2026-04-29
 
@@ -322,6 +349,31 @@ state, Firefox policy, native-host behavior, or AJAX auto-allow behavior. Use
 `workflow_dispatch` only when the question needs workflow-shaped integration
 evidence, and use staging/production release workflows only after local or
 direct runner evidence has narrowed the failure boundary.
+
+When promotion readiness fails on Windows evidence, inspect before rerunning the
+full release flow:
+
+```bash
+node scripts/prepromotion-windows-evidence.mjs inspect \
+  --staging-host 192.168.1.114
+```
+
+If the output says evidence is required or stale for the staged SHA, refresh and
+persist it:
+
+```bash
+node scripts/prepromotion-windows-evidence.mjs run-and-persist \
+  --openpath-root ../OpenPath
+```
+
+Then rerun `npm run verify:promotion-ready` or the promotion dry run. If a
+GitHub Actions run appears stuck, classify it before retrying broad workflows:
+
+```bash
+node scripts/actions-health.mjs classify \
+  --repo balejosg/ClassroomPath \
+  --run-id <run-id>
+```
 
 ## Reading Results
 
