@@ -24,6 +24,7 @@ describe('release promotion orchestration', () => {
         'tag-production',
         'wait-production-deploy',
         'verify-production-health',
+        'report-residual-actions-runs',
         'print-summary',
       ]
     );
@@ -51,6 +52,8 @@ describe('release promotion orchestration', () => {
     assert.match(commandsById['wait-production-deploy'], /actions-health\.mjs wait/);
     assert.match(commandsById['verify-production-health'], /\/cp\/health/);
     assert.match(commandsById['verify-production-health'], /\/cp\/ready/);
+    assert.match(commandsById['report-residual-actions-runs'], /actions-health\.mjs report-stale/);
+    assert.match(commandsById['report-residual-actions-runs'], /--tag v1\.2\.301/);
   });
 
   it('supports an optional post-production Windows canary step before summary', () => {
@@ -60,8 +63,17 @@ describe('release promotion orchestration', () => {
       postProductionWindowsCanary: true,
     });
 
-    assert.equal(plan.steps.at(-2)?.id, 'run-post-production-windows-canary');
+    const commandsById = Object.fromEntries(
+      plan.steps.map((step) => [step.id, formatCommand(step.command)])
+    );
+
+    assert.equal(plan.steps.at(-3)?.id, 'run-post-production-windows-canary');
+    assert.equal(plan.steps.at(-2)?.id, 'report-residual-actions-runs');
     assert.equal(plan.steps.at(-1)?.id, 'print-summary');
+    assert.equal(
+      commandsById['run-post-production-windows-canary'],
+      'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir .opencode/tmp/postproduction-windows-ajax/v1.2.301'
+    );
   });
 
   it('parses release-promote CLI options', () => {
@@ -105,6 +117,30 @@ describe('release promotion orchestration', () => {
     assert.match(stdout, /ensure-windows-prepromotion-evidence/);
     assert.match(stdout, /npm run deploy:staging/);
     assert.match(stdout, /npm run promote:production -- v0\.0\.0/);
+    assert.match(stdout, /actions-health\.mjs report-stale/);
+  });
+
+  it('prints the requested post-production canary command in dry-run mode', async () => {
+    let stdout = '';
+
+    const result = await runReleasePromoteCommand(
+      ['--tag', 'v0.0.0', '--dry-run', '--post-production-windows-canary'],
+      {
+        stdout: (value) => {
+          stdout += value;
+        },
+        stderr: () => {},
+        runStep: async () => {
+          throw new Error('dry-run must not execute steps');
+        },
+      }
+    );
+
+    assert.equal(result.status, 0);
+    assert.match(
+      stdout,
+      /npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir \.opencode\/tmp\/postproduction-windows-ajax\/v0\.0\.0/
+    );
   });
 
   it('rejects missing tag before building a plan', async () => {

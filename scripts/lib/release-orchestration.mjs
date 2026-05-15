@@ -136,11 +136,33 @@ export function buildPromotionPlan({
     steps.push(
       step(
         'run-post-production-windows-canary',
-        ['npm', 'run', 'diagnostics:runner', '--', '--suite', 'production-client-update'],
-        'Run the post-production Windows client canary.'
+        [
+          'npm',
+          'run',
+          'diagnostics:windows-ajax:direct',
+          '--',
+          '--environment',
+          'production',
+          '--confirm-production',
+          '--artifact-dir',
+          `.opencode/tmp/postproduction-windows-ajax/${tag}`,
+        ],
+        'Run the post-production Windows AJAX canary against production.'
       )
     );
   }
+
+  steps.push(
+    step(
+      'report-residual-actions-runs',
+      [
+        'bash',
+        '-lc',
+        `sha="$(git rev-parse HEAD)" && node scripts/actions-health.mjs report-stale --repo ${DEFAULT_REPO} --sha "$sha" --tag ${tag}`,
+      ],
+      'Report residual stale/corrupt non-gate GitHub Actions runs without blocking promotion.'
+    )
+  );
 
   steps.push(step('print-summary', null, 'Print promotion summary.'));
 

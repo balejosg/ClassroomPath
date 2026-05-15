@@ -217,13 +217,86 @@ describe('actions-health CLI', () => {
     assert.equal(output.status, 0);
     assert.equal(JSON.parse(output.stdout).state, 'healthy');
   });
+
+  it('reports residual stale non-gate runs without failing', async () => {
+    const ghCalls: string[][] = [];
+    const output = await runCommand(
+      [
+        'report-stale',
+        '--repo',
+        'balejosg/ClassroomPath',
+        '--sha',
+        'target-sha',
+        '--tag',
+        'v1.2.301',
+      ],
+      {
+        ghCalls,
+        ghJson: (commandArgs) => {
+          if (commandArgs[1] === 'list') {
+            return [
+              {
+                databaseId: 25907115658,
+                workflowName: 'Security Scanning',
+                status: 'queued',
+                conclusion: '',
+                headSha: 'target-sha',
+                headBranch: 'main',
+                createdAt: '2026-05-15T07:58:41Z',
+                updatedAt: '2026-05-15T07:58:41Z',
+                url: 'https://github.com/balejosg/ClassroomPath/actions/runs/25907115658',
+              },
+              {
+                databaseId: 25907115659,
+                workflowName: 'Deploy',
+                status: 'queued',
+                conclusion: '',
+                headSha: 'target-sha',
+                headBranch: 'v1.2.301',
+                createdAt: '2026-05-15T07:58:41Z',
+              },
+            ];
+          }
+
+          return { jobs: [] };
+        },
+        nowMs: () => Date.parse('2026-05-15T08:45:00Z'),
+      }
+    );
+
+    assert.equal(output.status, 0);
+    assert.match(output.stdout, /Residual non-blocking Actions runs:/);
+    assert.match(output.stdout, /Security Scanning 25907115658 queued since 2026-05-15T07:58:41Z/);
+    assert.match(output.stdout, /not part of production gate/);
+    assert.doesNotMatch(output.stdout, /Deploy 25907115659/);
+    assert.ok(ghCalls.some((args) => args.includes('list')));
+    assert.ok(ghCalls.some((args) => args.includes('view')));
+  });
+
+  it('degrades residual stale reporting gracefully when gh is unavailable', async () => {
+    const output = await runCommand(
+      ['report-stale', '--repo', 'balejosg/ClassroomPath', '--sha', 'target-sha'],
+      {
+        execError: new Error('gh unavailable'),
+        ghJson: [],
+      }
+    );
+
+    assert.equal(output.status, 0);
+    assert.match(output.stdout, /Residual non-blocking Actions runs:/);
+    assert.match(
+      output.stdout,
+      /unavailable: residual Actions run report unavailable: gh unavailable/
+    );
+  });
 });
 
 async function runCommand(
   args: string[],
   options: {
-    ghJson: unknown | (() => unknown);
+    ghJson: unknown | ((commandArgs: string[]) => unknown);
     ghCalls?: string[][];
+    execError?: Error;
     sleep?: (ms: number) => Promise<void>;
     nowMs?: () => number;
   }
@@ -234,7 +307,11 @@ async function runCommand(
     execFile: async (command: string, commandArgs: string[]) => {
       assert.equal(command, 'gh');
       options.ghCalls?.push(commandArgs);
-      const payload = typeof options.ghJson === 'function' ? options.ghJson() : options.ghJson;
+      if (options.execError) {
+        throw options.execError;
+      }
+      const payload =
+        typeof options.ghJson === 'function' ? options.ghJson(commandArgs) : options.ghJson;
       return { stdout: `${JSON.stringify(payload)}\n`, stderr: '' };
     },
     stdout: (value: string) => {
