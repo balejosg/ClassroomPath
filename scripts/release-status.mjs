@@ -189,6 +189,140 @@ function normalizeRun(run) {
   };
 }
 
+function normalizeReleaseRun(run) {
+  if (!run) {
+    return null;
+  }
+
+  return {
+    runId: run.databaseId,
+    databaseId: run.databaseId,
+    headSha: run.headSha,
+    status: run.conclusion ?? run.status ?? 'unknown',
+    workflowStatus: run.status,
+    conclusion: run.conclusion,
+    updatedAt: run.updatedAt,
+    url: run.url,
+  };
+}
+
+function isSuccess(value) {
+  return (
+    String(value ?? '')
+      .trim()
+      .toLowerCase() === 'success'
+  );
+}
+
+function isReleaseCandidateAvailable(releaseCandidate) {
+  return (
+    releaseCandidate.latestRun?.conclusion === 'success' &&
+    releaseCandidate.manifestStatus === 'read' &&
+    Boolean(releaseCandidate.manifest)
+  );
+}
+
+function isStagingPromotionEligible({ status, stagingState, stagingCurrentImages }) {
+  return (
+    stagingState.STAGING_VERIFIED_APP_SHA === status.classroomPath.headSha &&
+    stagingState.STAGING_VERIFIED_OPENPATH_SHA === status.openPath.submoduleSha &&
+    stagingState.STAGING_VERIFIED_IMAGE_SOURCE === 'release-candidate' &&
+    stagingCurrentImages.IMAGE_SOURCE === 'release-candidate' &&
+    isSuccess(stagingState.STAGING_SMOKE_RESULT ?? stagingState.STAGING_SMOKE_STATUS) &&
+    isSuccess(stagingState.STAGING_RELEASE_GATE_RESULT) &&
+    isSuccess(stagingState.STAGING_PREPROMOTION_REHEARSAL_RESULT)
+  );
+}
+
+function hasWindowsPrepromotionEvidence(stagingState) {
+  return isSuccess(stagingState.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT);
+}
+
+export function deriveReleaseBlockers(status) {
+  const blockers = [];
+  const stagingState = status.stagingVerification.state ?? {};
+  const stagingCurrentImages = status.stagingCurrentImages.state ?? {};
+
+  if (
+    status.classroomPath.originMainSha &&
+    status.classroomPath.headSha !== status.classroomPath.originMainSha
+  ) {
+    blockers.push('classroompath-head-behind-origin');
+  }
+
+  if (
+    status.openPath.requiredChecks.length === 0 ||
+    status.openPath.requiredChecks.some((check) => check.status !== 'success')
+  ) {
+    blockers.push('openpath-required-checks-not-green');
+  }
+
+  if (!isReleaseCandidateAvailable(status.releaseCandidate)) {
+    blockers.push('release-candidate-missing');
+  }
+
+  if (!isStagingPromotionEligible({ status, stagingState, stagingCurrentImages })) {
+    blockers.push('staging-not-promotion-eligible');
+  }
+
+  if (!hasWindowsPrepromotionEvidence(stagingState)) {
+    blockers.push('windows-prepromotion-evidence-missing');
+  }
+
+  if (status.productionDeploy.latestRun?.conclusion !== 'success') {
+    blockers.push('production-deploy-not-success');
+  }
+
+  return blockers;
+}
+
+export function buildReleaseStatusJson(status) {
+  const stagingState = status.stagingVerification.state ?? {};
+  const stagingCurrentImages = status.stagingCurrentImages.state ?? {};
+  const productionCurrentImages = status.productionDeploy.currentState ?? {};
+  const releaseCandidateRun = normalizeReleaseRun(status.releaseCandidate.latestRun);
+  const productionDeployRun = normalizeReleaseRun(status.productionDeploy.latestRun);
+
+  return {
+    classroompath: {
+      head: status.classroomPath.headSha,
+      headSha: status.classroomPath.headSha,
+      originMain: status.classroomPath.originMainSha,
+      originMainSha: status.classroomPath.originMainSha,
+      repository: status.classroomPath.repository,
+    },
+    openpath: {
+      repository: status.openPath.repository,
+      submoduleSha: status.openPath.submoduleSha,
+      requiredChecks: status.openPath.requiredChecks,
+      prereleaseAptRequiredCheck: status.openPath.prereleaseAptRequiredCheck,
+    },
+    releaseCandidate: {
+      runId: releaseCandidateRun?.runId ?? null,
+      status: releaseCandidateRun?.status ?? null,
+      conclusion: releaseCandidateRun?.conclusion ?? null,
+      workflowStatus: releaseCandidateRun?.workflowStatus ?? null,
+      latestRun: releaseCandidateRun,
+      manifest: status.releaseCandidate.manifest,
+      manifestStatus: status.releaseCandidate.manifestStatus,
+      manifestArtifact: status.releaseCandidate.manifestArtifact,
+      manifestError: status.releaseCandidate.manifestError,
+    },
+    staging: {
+      currentImages: stagingCurrentImages,
+      currentImagesError: status.stagingCurrentImages.error,
+      verification: stagingState,
+      verificationError: status.stagingVerification.error,
+    },
+    production: {
+      lastDeploy: productionDeployRun,
+      currentImages: productionCurrentImages,
+      currentImagesError: status.productionDeploy.currentStateError,
+    },
+    blockers: status.blockers,
+  };
+}
+
 function runGit(runCommand, args, env) {
   return String(runCommand('git', args, { cwd: projectRoot, env })).trim();
 }
@@ -527,6 +661,15 @@ export async function buildReleaseStatus({
     })
   );
 
+  const stagingCurrentImages = tryRead('staging current images state', () =>
+    readRemoteState({
+      runCommand,
+      env: mergedEnv,
+      access: resolveStagingAccess(mergedEnv),
+      fileName: 'current-images.env',
+    })
+  );
+
   const productionState = tryRead('production current state', () =>
     readRemoteState({
       runCommand,
@@ -558,7 +701,7 @@ export async function buildReleaseStatus({
     )
   );
 
-  return {
+  const status = {
     generatedAt: new Date().toISOString(),
     classroomPath: {
       repository,
@@ -589,6 +732,9 @@ export async function buildReleaseStatus({
     stagingVerification: stagingVerification.ok
       ? stagingVerification.value
       : { ok: false, state: null, error: stagingVerification.error },
+    stagingCurrentImages: stagingCurrentImages.ok
+      ? stagingCurrentImages.value
+      : { ok: false, state: null, error: stagingCurrentImages.error },
     productionDeploy: {
       workflow: PRODUCTION_DEPLOY_WORKFLOW,
       latestRun: productionRuns.ok ? normalizeRun(latestRun(productionRuns.value)) : null,
@@ -596,6 +742,13 @@ export async function buildReleaseStatus({
       currentState: productionState.ok ? productionState.value.state : null,
       currentStateError: productionState.ok ? productionState.value.error : productionState.error,
     },
+  };
+
+  const blockers = deriveReleaseBlockers(status);
+  return {
+    ...status,
+    blockers,
+    ...buildReleaseStatusJson({ ...status, blockers }),
   };
 }
 
