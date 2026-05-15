@@ -169,6 +169,15 @@ echo ""
 trap cleanup_staging_local_temp_files EXIT
 prepare_staging_local_release_context
 
+if [ -n "${STAGING_RELEASE_MANIFEST_FILE:-}" ]; then
+    if ! node "$SCRIPT_DIR/ghcr-preflight.mjs" staging --manifest-file "$STAGING_RELEASE_MANIFEST_FILE"; then
+        echo ""
+        echo "Set for this command only:"
+        echo 'STAGING_GHCR_USERNAME=balejosg STAGING_GHCR_TOKEN="$(gh auth token)" npm run deploy:staging'
+        exit 1
+    fi
+fi
+
 # =============================================================================
 # Step 2: SSH and deploy
 # =============================================================================
