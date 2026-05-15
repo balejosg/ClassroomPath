@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { gitOutput } from '../scripts/lib/git-process.mjs';
+import { listReleaseRiskChangedFiles } from '../scripts/lib/release-risk.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
@@ -62,6 +63,58 @@ const writeFile = (cwd: string, relativePath: string, content: string) => {
 };
 
 void describe('Release Risk Detection', () => {
+  void test('listReleaseRiskChangedFiles falls back when triple-dot has no merge base', () => {
+    const calls: string[] = [];
+    const files = listReleaseRiskChangedFiles('v1.2.299', 'HEAD', '/repo', {
+      gitOutput(args: string[]) {
+        calls.push(args.join(' '));
+        if (args.includes('v1.2.299...HEAD')) {
+          const error = new Error('fatal: v1.2.299...HEAD: no merge base');
+          throw error;
+        }
+        if (args.join(' ') === 'diff --name-only v1.2.299 HEAD') {
+          return 'upstream/openpath\n';
+        }
+        return '';
+      },
+      gitMaybe() {
+        return '';
+      },
+    });
+
+    assert.deepEqual(files, ['upstream/openpath']);
+    assert.ok(calls.includes('diff --name-only v1.2.299...HEAD'));
+    assert.ok(calls.includes('diff --name-only v1.2.299 HEAD'));
+  });
+
+  void test('listReleaseRiskChangedFiles fetches extra history before diffing shallow repos', () => {
+    const calls: string[] = [];
+    const files = listReleaseRiskChangedFiles('v1.2.299', 'HEAD', '/repo', {
+      gitOutput(args: string[]) {
+        calls.push(args.join(' '));
+        if (args.join(' ') === 'rev-parse --is-shallow-repository') {
+          return 'true';
+        }
+        if (args.join(' ') === 'diff --name-only v1.2.299...HEAD') {
+          return 'scripts/deploy-staging-local.sh\n';
+        }
+        return '';
+      },
+      gitMaybe(args: string[]) {
+        calls.push(args.join(' '));
+        return '';
+      },
+    });
+
+    assert.deepEqual(files, ['scripts/deploy-staging-local.sh']);
+    assert.ok(calls.includes('fetch --unshallow --tags --force origin'));
+    assert.ok(calls.includes('fetch --deepen=200 --tags --force origin'));
+    assert.ok(
+      calls.indexOf('fetch --unshallow --tags --force origin') <
+        calls.indexOf('diff --name-only v1.2.299...HEAD')
+    );
+  });
+
   void test('detects high risk against the currently deployed production SHA instead of the previous tag', () => {
     const repoDir = mkdtempSync(join(tmpdir(), 'release-risk-production-state-'));
 

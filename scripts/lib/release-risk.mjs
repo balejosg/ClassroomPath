@@ -1,7 +1,8 @@
 import { appendFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { gitMaybe, gitOutput } from './git-process.mjs';
+import { gitMaybe as defaultGitMaybe, gitOutput as defaultGitOutput } from './git-process.mjs';
+import { listChangedFilesMergeBaseSafe } from './git-history-preflight.mjs';
 import { readReleaseStateSnapshot } from './release-state-contract.mjs';
 import {
   evaluateReleaseRiskPaths,
@@ -17,7 +18,7 @@ export function resolveReleaseRiskTargetSha(env = process.env, cwd = process.cwd
     return env.GITHUB_SHA;
   }
 
-  return gitOutput(['rev-parse', 'HEAD'], { cwd, env });
+  return defaultGitOutput(['rev-parse', 'HEAD'], { cwd, env });
 }
 
 export function resolveReleaseRiskBaseRef(env = process.env, cwd = process.cwd()) {
@@ -37,9 +38,9 @@ export function resolveReleaseRiskBaseRef(env = process.env, cwd = process.cwd()
     }
   }
 
-  gitMaybe(['fetch', '--tags', '--force'], { cwd, env });
+  defaultGitMaybe(['fetch', '--tags', '--force'], { cwd, env });
   const currentRefName = env.GITHUB_REF_NAME || '';
-  const previousTag = gitMaybe(['tag', '--sort=-creatordate'], { cwd, env })
+  const previousTag = defaultGitMaybe(['tag', '--sort=-creatordate'], { cwd, env })
     .split('\n')
     .filter(Boolean)
     .find((tag) => tag.startsWith('v') && tag !== currentRefName);
@@ -51,10 +52,18 @@ export function resolveReleaseRiskBaseRef(env = process.env, cwd = process.cwd()
   return { baseRef: '', baseSource: 'target-only' };
 }
 
-export function listReleaseRiskChangedFiles(baseRef, targetRef, cwd = process.cwd()) {
-  const output = baseRef
-    ? gitOutput(['diff', '--name-only', `${baseRef}...${targetRef}`], { cwd })
-    : gitOutput(['show', '--pretty=', '--name-only', targetRef], { cwd });
+export function listReleaseRiskChangedFiles(baseRef, targetRef, cwd = process.cwd(), options = {}) {
+  const gitOutput = options.gitOutput ?? defaultGitOutput;
+  const gitMaybe = options.gitMaybe ?? defaultGitMaybe;
+  const env = options.env ?? process.env;
+  const output = listChangedFilesMergeBaseSafe({
+    gitOutput,
+    gitMaybe,
+    baseRef,
+    targetRef,
+    cwd,
+    env,
+  });
 
   return output
     .split('\n')
