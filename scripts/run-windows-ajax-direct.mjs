@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+
+import JSZip from 'jszip';
 
 import { getDeployTarget } from './deploy-targets.mjs';
 import {
@@ -31,6 +33,7 @@ const DEFAULT_WINDOWS_RUNNER_VMID = '103';
 const DEFAULT_CANARY_TIMEOUT_MS = '180000';
 const DEFAULT_POST_FAILURE_OBSERVATION_MS = '60000';
 const DEFAULT_FIREFOX_EXTENSION_SOURCE = 'managed';
+const DEFAULT_WINDOWS_BOOTSTRAP_SOURCE = 'managed';
 const DEFAULT_REDDIT_NAVIGATION_MODE = 'diagnostic';
 const DEFAULT_REDDIT_DIAGNOSTIC_RETRY_DELAY_MS = '2500';
 const DEFAULT_REDDIT_NAVIGATION_TIMEOUT_MS = '45000';
@@ -46,7 +49,7 @@ const DEFAULT_STAGING_REDDIT_EXPLICIT_ALLOWLIST_HOSTS = Object.freeze([
 const LOCAL_FIREFOX_XPI_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\openpath-firefox-extension.xpi`;
 const SELENIUM_NODE_MODULES_ZIP_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\selenium-node-modules.zip`;
 const WINDOWS_RUNNER_SERVICE_STATE_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\github-runner-services-paused.json`;
-const BINARY_UPLOAD_CHUNK_CHARS = 700000;
+const BINARY_UPLOAD_CHUNK_CHARS = 524288;
 const DRY_RUN = process.env.WINDOWS_AJAX_DIRECT_DRY_RUN === '1';
 
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -71,6 +74,42 @@ const SELENIUM_NODE_MODULES = [
   'lie',
 ];
 
+function listLocalOpenPathFiles(openpathRoot, relativeDirectory, extensionPattern) {
+  const sourceDirectory = resolve(openpathRoot, relativeDirectory);
+  if (!existsSync(sourceDirectory)) {
+    return [];
+  }
+
+  return readdirSync(sourceDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && extensionPattern.test(entry.name))
+    .map((entry) => `${relativeDirectory}/${entry.name}`);
+}
+
+function buildLocalInstallerOverlays(openpathRoot) {
+  const packageFiles = [
+    'windows/Install-OpenPath.ps1',
+    'windows/OpenPath.ps1',
+    'windows/Rotate-Token.ps1',
+    'windows/runtime/browser-policy-spec.json',
+    ...listLocalOpenPathFiles(openpathRoot, 'windows/lib', /\.psm1$/),
+    ...listLocalOpenPathFiles(openpathRoot, 'windows/lib/install', /\.ps1$/),
+    ...listLocalOpenPathFiles(openpathRoot, 'windows/lib/internal', /\.ps1$/),
+    ...listLocalOpenPathFiles(openpathRoot, 'windows/scripts', /\.(?:ps1|cmd)$/),
+  ];
+
+  return packageFiles
+    .filter((source, index, files) => files.indexOf(source) === index)
+    .filter((source) => existsSync(resolve(openpathRoot, source)))
+    .map((source) => {
+      const packageRelativePath = source.replace(/^windows\//, '').replaceAll('/', '\\');
+      return {
+        source,
+        remote: `${WINDOWS_WORKSPACE}\\local-windows\\${packageRelativePath}`,
+        destination: packageRelativePath,
+      };
+    });
+}
+
 function printUsage() {
   console.error(`Usage:
   npm run diagnostics:windows-ajax:direct -- [options]
@@ -87,6 +126,8 @@ Options:
                               Extra local observation window after canary failure (default: ${DEFAULT_POST_FAILURE_OBSERVATION_MS})
   --firefox-extension-source <mode>
                               managed | local (default: ${DEFAULT_FIREFOX_EXTENSION_SOURCE})
+  --windows-bootstrap-source <mode>
+                              managed | local-installer-runtime (default: ${DEFAULT_WINDOWS_BOOTSTRAP_SOURCE})
   --reddit-navigation-mode <mode>
                               off | diagnostic | gate (default: ${DEFAULT_REDDIT_NAVIGATION_MODE})
   --skip-reset                Do not uninstall the existing OpenPath Windows client before enrollment
@@ -111,6 +152,8 @@ function parseArgs(argv) {
       DEFAULT_POST_FAILURE_OBSERVATION_MS,
     firefoxExtensionSource:
       process.env.WINDOWS_AJAX_DIRECT_FIREFOX_EXTENSION_SOURCE ?? DEFAULT_FIREFOX_EXTENSION_SOURCE,
+    windowsBootstrapSource:
+      process.env.WINDOWS_AJAX_DIRECT_WINDOWS_BOOTSTRAP_SOURCE ?? DEFAULT_WINDOWS_BOOTSTRAP_SOURCE,
     redditNavigationMode:
       process.env.WINDOWS_AJAX_REDDIT_NAVIGATION_MODE ?? DEFAULT_REDDIT_NAVIGATION_MODE,
     redditDiagnosticRetryDelayMs:
@@ -151,6 +194,8 @@ function parseArgs(argv) {
       options.postFailureObservationMs = next();
     } else if (arg === '--firefox-extension-source') {
       options.firefoxExtensionSource = next();
+    } else if (arg === '--windows-bootstrap-source') {
+      options.windowsBootstrapSource = next();
     } else if (arg === '--reddit-navigation-mode') {
       options.redditNavigationMode = next();
     } else if (arg === '--skip-reset') {
@@ -254,6 +299,31 @@ function ensureFilesExist(options, plan) {
       }
     }
   }
+
+  if (options.windowsBootstrapSource === 'local-installer-runtime') {
+    const localInstallerOverlays = buildLocalInstallerOverlays(options.openpathRoot);
+    for (const requiredDestination of [
+      'Install-OpenPath.ps1',
+      'lib\\install\\Installer.Dns.ps1',
+      'lib\\internal\\CapabilityStorage.ps1',
+    ]) {
+      if (!localInstallerOverlays.some((overlay) => overlay.destination === requiredDestination)) {
+        throw new Error(
+          `Required local Windows installer overlay is missing: ${requiredDestination}`
+        );
+      }
+    }
+    for (const overlay of localInstallerOverlays) {
+      const sourcePath = resolve(options.openpathRoot, overlay.source);
+      if (!existsSync(sourcePath)) {
+        throw new Error(`Required local Windows installer file is missing: ${sourcePath}`);
+      }
+    }
+  } else if (options.windowsBootstrapSource !== 'managed') {
+    throw new Error(
+      `Unsupported Windows bootstrap source: ${options.windowsBootstrapSource}. Expected managed or local-installer-runtime.`
+    );
+  }
 }
 
 function runCommand(args, { cwd = projectRoot, env = process.env, input, capture = false } = {}) {
@@ -329,6 +399,25 @@ function runGuestPowerShell(options, script, { input, timeoutSeconds = 600 } = {
   );
 }
 
+function buildGuestStdinExactReadScript(expectedInputChars) {
+  return `
+function Read-GuestStdinExact {
+  param([int]$ExpectedChars)
+  $buffer = New-Object char[] $ExpectedChars
+  $offset = 0
+  while ($offset -lt $ExpectedChars) {
+    $read = [Console]::In.Read($buffer, $offset, $ExpectedChars - $offset)
+    if ($read -le 0) {
+      throw "Guest stdin ended after $offset of $ExpectedChars characters"
+    }
+    $offset += $read
+  }
+  return -join $buffer
+}
+$content = Read-GuestStdinExact -ExpectedChars ${expectedInputChars}
+`;
+}
+
 function writeGuestText(options, localSourcePath, destinationPath) {
   const content = readFileSync(localSourcePath, 'utf8');
   const script = `
@@ -336,8 +425,8 @@ $ErrorActionPreference = 'Stop'
 $path = ${psSingleQuote(destinationPath)}
 $parent = Split-Path -Parent $path
 New-Item -ItemType Directory -Force -Path $parent | Out-Null
-$content = [Console]::In.ReadToEnd()
-Set-Content -LiteralPath $path -Value $content -Encoding UTF8
+${buildGuestStdinExactReadScript(content.length)}
+[System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false))
 `;
 
   if (DRY_RUN) {
@@ -358,7 +447,7 @@ New-Item -ItemType Directory -Force -Path $parent | Out-Null
   const appendScript = `
 $ErrorActionPreference = 'Stop'
 $path = ${psSingleQuote(destinationPath)}
-$content = [Console]::In.ReadToEnd()
+__READ_STDIN_EXACT__
 $bytes = [Convert]::FromBase64String($content)
 $stream = [System.IO.File]::Open($path, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write)
 try {
@@ -379,7 +468,13 @@ try {
   runGuestPowerShell(options, initializeScript);
   for (let offset = 0; offset < base64.length; offset += BINARY_UPLOAD_CHUNK_CHARS) {
     const chunk = base64.slice(offset, offset + BINARY_UPLOAD_CHUNK_CHARS);
-    runGuestPowerShell(options, appendScript, { input: chunk });
+    runGuestPowerShell(
+      options,
+      appendScript.replace('__READ_STDIN_EXACT__', buildGuestStdinExactReadScript(chunk.length)),
+      {
+        input: chunk,
+      }
+    );
   }
 }
 
@@ -417,17 +512,53 @@ if (-not (Test-Path -LiteralPath $path)) { exit 0 }
 
 function buildDnsBootstrapScript(baseUrl) {
   const hostname = new URL(baseUrl).hostname;
-  const dnsProbe =
-    isIP(hostname) === 0
-      ? `Resolve-DnsName -Name ${psSingleQuote(hostname)} -ErrorAction Stop | Out-Null`
-      : `Write-Host ${psSingleQuote(`Skipping DNS lookup for literal IP target ${hostname}`)}`;
+  if (isIP(hostname) !== 0) {
+    return `
+Write-Host ${psSingleQuote(`Skipping DNS lookup for literal IP target ${hostname}`)}
+`;
+  }
   return `
-$dnsServers = @('1.1.1.1', '8.8.8.8')
+$targetHost = ${psSingleQuote(hostname)}
+$publicDnsServers = @('1.1.1.1', '8.8.8.8')
 $networkAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' })
-foreach ($adapter in $networkAdapters) {
-  Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+$currentDnsServers = @(Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.ServerAddresses } | Where-Object { $_ } | Select-Object -Unique)
+$gatewayDnsServers = @(Get-NetIPConfiguration -ErrorAction SilentlyContinue | ForEach-Object { $_.IPv4DefaultGateway.NextHop } | Where-Object { $_ } | Select-Object -Unique)
+
+function Test-OpenPathDnsServers($servers, $label) {
+  foreach ($server in @($servers | Where-Object { $_ } | Select-Object -Unique)) {
+    try {
+      Resolve-DnsName -Name $targetHost -Server $server -Type A -QuickTimeout -ErrorAction Stop | Where-Object { $_.IPAddress } | Select-Object -First 1 | Out-Null
+      Write-Host "DNS resolver $server ($label) can resolve $targetHost"
+      return $true
+    } catch {
+      Write-Host "DNS resolver $server ($label) cannot resolve \${targetHost}: $($_.Exception.Message)"
+    }
+  }
+  return $false
 }
-${dnsProbe}
+
+function Set-OpenPathAdapterDns($servers, $label) {
+  foreach ($adapter in $networkAdapters) {
+    Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $servers -ErrorAction SilentlyContinue
+  }
+  Write-Host "Using $label DNS resolvers for $targetHost"
+}
+
+try {
+  Resolve-DnsName -Name $targetHost -Type A -QuickTimeout -ErrorAction Stop | Where-Object { $_.IPAddress } | Select-Object -First 1 | Out-Null
+  Write-Host "Existing DNS configuration can resolve $targetHost"
+} catch {
+  if (Test-OpenPathDnsServers $gatewayDnsServers 'default gateway') {
+    Set-OpenPathAdapterDns $gatewayDnsServers 'default gateway'
+  } elseif (Test-OpenPathDnsServers $publicDnsServers 'public') {
+    Set-OpenPathAdapterDns $publicDnsServers 'public'
+  } elseif (Test-OpenPathDnsServers $currentDnsServers 'current adapter') {
+    Write-Host "Current adapter DNS servers are reachable, leaving adapter DNS unchanged"
+  } else {
+    Write-Host "No candidate DNS resolver could resolve $targetHost; leaving adapter DNS unchanged"
+  }
+  Resolve-DnsName -Name $targetHost -Type A -QuickTimeout -ErrorAction Stop | Out-Null
+}
 `;
 }
 
@@ -599,6 +730,39 @@ function provisionCanary({ options, baseUrl, artifactDir, billingContext, env })
 }
 
 function installWindowsClient(options, summary) {
+  const localInstallerOverlays =
+    options.windowsBootstrapSource === 'local-installer-runtime'
+      ? buildLocalInstallerOverlays(options.openpathRoot)
+      : [];
+  if (localInstallerOverlays.length > 0) {
+    uploadRunnerDiagnosticPlanFiles(
+      {
+        localInstallerOverlays: localInstallerOverlays.map((overlay) => ({
+          source: overlay.source,
+          destination: overlay.remote,
+        })),
+      },
+      {
+        projectRoot,
+        openpathRoot: options.openpathRoot,
+        sections: ['localInstallerOverlays'],
+        writeText: (sourcePath, destinationPath) =>
+          writeGuestText(options, sourcePath, destinationPath),
+      }
+    );
+  }
+  const patchLocalInstallerRuntime = localInstallerOverlays.length
+    ? `
+$wrapperContent = Get-Content -LiteralPath $windowsScriptPath -Raw
+$patch = @'
+if (Test-Path -LiteralPath '${WINDOWS_WORKSPACE}\\local-windows') {
+  Copy-Item -Path '${WINDOWS_WORKSPACE}\\local-windows\\*' -Destination $WindowsRoot -Recurse -Force
+}
+'@
+$wrapperContent = $wrapperContent -replace 'Push-Location \\$WindowsRoot', ($patch + [Environment]::NewLine + 'Push-Location $WindowsRoot')
+Set-Content -LiteralPath $windowsScriptPath -Value $wrapperContent -Encoding UTF8
+`
+    : '';
   const script = `
 $ErrorActionPreference = 'Stop'
 ${buildDnsBootstrapScript(summary.apiUrl)}
@@ -610,6 +774,7 @@ $windowsScriptUrl = ${psSingleQuote(summary.windowsScriptUrl ?? `${summary.apiUr
 $windowsScriptPath = Join-Path $workspace 'windows.ps1'
 
 Invoke-WebRequest -Uri $windowsScriptUrl -Headers $headers -OutFile $windowsScriptPath
+${patchLocalInstallerRuntime}
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $windowsScriptPath
 if ($LASTEXITCODE -ne 0) {
   throw "windows.ps1 exited with code $LASTEXITCODE"
@@ -618,7 +783,26 @@ if ($LASTEXITCODE -ne 0) {
   runGuestPowerShell(options, script, { timeoutSeconds: 1200 });
 }
 
-function buildLocalFirefoxExtension(options, artifactDir) {
+function buildLocalCanaryFirefoxVersion() {
+  return `9999.${Math.floor(Date.now() / 1000)}.0`;
+}
+
+async function writeLocalFirefoxCanaryXpi(sourceXpiPath, destinationXpiPath) {
+  const zip = await JSZip.loadAsync(readFileSync(sourceXpiPath));
+  const manifestFile = zip.file('manifest.json');
+  if (!manifestFile) {
+    throw new Error(`Local Firefox extension XPI is missing manifest.json: ${sourceXpiPath}`);
+  }
+
+  const manifest = JSON.parse(await manifestFile.async('string'));
+  const version = buildLocalCanaryFirefoxVersion();
+  manifest.version = version;
+  zip.file('manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+  writeFileSync(destinationXpiPath, await zip.generateAsync({ type: 'nodebuffer' }));
+  return version;
+}
+
+async function buildLocalFirefoxExtension(options, artifactDir) {
   if (options.firefoxExtensionSource !== 'local') {
     return null;
   }
@@ -632,6 +816,7 @@ function buildLocalFirefoxExtension(options, artifactDir) {
     return {
       localPath: localXpiPath,
       remotePath: LOCAL_FIREFOX_XPI_ON_WINDOWS,
+      version: 'dry-run',
     };
   }
 
@@ -652,10 +837,11 @@ function buildLocalFirefoxExtension(options, artifactDir) {
     throw new Error(`Local Firefox extension XPI was not produced: ${builtXpiPath}`);
   }
 
-  copyFileSync(builtXpiPath, localXpiPath);
+  const versionOverride = await writeLocalFirefoxCanaryXpi(builtXpiPath, localXpiPath);
   return {
     localPath: localXpiPath,
     remotePath: LOCAL_FIREFOX_XPI_ON_WINDOWS,
+    version: versionOverride,
   };
 }
 
@@ -961,6 +1147,18 @@ $policyFirefoxPath = @(
 if ($policyFirefoxPath) { $env:FIREFOX_PATH = $policyFirefoxPath }
 `
       : `
+$firefoxPolicyRegKey = 'HKLM\\SOFTWARE\\Policies\\Mozilla\\Firefox'
+$firefoxPolicyRegPath = 'HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox'
+$firefoxPolicyBackupPath = Join-Path $env:TEMP ('openpath-firefox-policy-' + [Guid]::NewGuid().ToString('N') + '.reg')
+$firefoxPolicyWasBackedUp = $false
+if (Test-Path -LiteralPath $firefoxPolicyRegPath) {
+  & reg.exe export $firefoxPolicyRegKey $firefoxPolicyBackupPath /y | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to export Firefox machine policy registry key: $firefoxPolicyRegKey"
+  }
+  Remove-Item -LiteralPath $firefoxPolicyRegPath -Recurse -Force
+  $firefoxPolicyWasBackedUp = $true
+}
 $gecko = (Get-Command geckodriver.exe -ErrorAction SilentlyContinue).Source
 if (-not $gecko -and (Test-Path -LiteralPath 'C:\\tools\\selenium\\geckodriver.exe')) { $gecko = 'C:\\tools\\selenium\\geckodriver.exe' }
 if ($gecko) { $env:GECKODRIVER_PATH = $gecko }
@@ -970,6 +1168,9 @@ if ($firefoxPath) { $env:FIREFOX_PATH = $firefoxPath }
   const script = `
 $ErrorActionPreference = 'Stop'
 ${renderPowerShellEnvironment(canaryEnvironment)}
+$firefoxPolicyRegPath = 'HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox'
+$firefoxPolicyBackupPath = $null
+$firefoxPolicyWasBackedUp = $false
 ${firefoxEnv}
 try {
   node ${psSingleQuote(scriptPath)}
@@ -984,6 +1185,11 @@ try {
     }
   foreach ($process in @($diagnosticProcesses)) {
     Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+  if ($firefoxPolicyWasBackedUp) {
+    Remove-Item -LiteralPath $firefoxPolicyRegPath -Recurse -Force -ErrorAction SilentlyContinue
+    & reg.exe import $firefoxPolicyBackupPath | Out-Null
+    Remove-Item -LiteralPath $firefoxPolicyBackupPath -Force -ErrorAction SilentlyContinue
   }
 }
 if ($canaryExitCode -ne 0) {
@@ -1051,7 +1257,7 @@ function summarizeAjaxArtifact(plan) {
   });
 }
 
-function main() {
+async function main() {
   let options;
   try {
     options = parseArgs(process.argv.slice(2));
@@ -1068,6 +1274,11 @@ function main() {
 
   if (!['managed', 'local'].includes(options.firefoxExtensionSource)) {
     console.error(`Unsupported Firefox extension source: ${options.firefoxExtensionSource}`);
+    process.exit(1);
+  }
+
+  if (!['managed', 'local-installer-runtime'].includes(options.windowsBootstrapSource)) {
+    console.error(`Unsupported Windows bootstrap source: ${options.windowsBootstrapSource}`);
     process.exit(1);
   }
 
@@ -1109,11 +1320,12 @@ function main() {
     summaryLineFilter: (line) => !line.startsWith('firefox_mode='),
   });
   console.log(`firefox_extension_source=${options.firefoxExtensionSource}`);
+  console.log(`windows_bootstrap_source=${options.windowsBootstrapSource}`);
   console.log(`reddit_navigation_mode=${options.redditNavigationMode}`);
 
   ensureFilesExist(options, plan);
 
-  const localFirefoxExtension = buildLocalFirefoxExtension(options, artifactDir);
+  const localFirefoxExtension = await buildLocalFirefoxExtension(options, artifactDir);
   const seleniumNodeModulesBundle = buildSeleniumNodeModulesBundle(options, artifactDir);
 
   let runnerServicesPaused = false;
@@ -1180,6 +1392,8 @@ function main() {
       writeGuestBinary(options, localFirefoxExtension.localPath, localFirefoxExtension.remotePath);
       visibleCanaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH =
         canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH;
+      visibleCanaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_VERSION =
+        canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_VERSION;
     }
     visibleCanaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL =
       canaryEnvironment.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL;
@@ -1236,7 +1450,7 @@ function main() {
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);

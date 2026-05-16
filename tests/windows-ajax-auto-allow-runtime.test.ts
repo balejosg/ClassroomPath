@@ -187,8 +187,44 @@ describe('Windows AJAX auto-allow runtime module', () => {
     );
     assert.match(
       runtimeSource,
-      /ready:\s*extensionEvidence\.registryAddonPresent \|\| extensionEvidence\.profileExtensionPresent/,
+      /ready:\s*\(\s*extensionEvidence\.registryAddonPresent \|\| extensionEvidence\.profileExtensionPresent\s*\)\s*&&\s*localAddonVersionMatches/,
       'managed Selenium readiness must depend on Firefox profile extension evidence'
     );
+  });
+
+  test('runtime includes a real blocked-page unblock request subcheck without runtime permission prompting', async () => {
+    const runtimeSource = await readFile(
+      new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),
+      'utf8'
+    );
+
+    assert.match(runtimeSource, /BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN/);
+    assert.match(runtimeSource, /runBlockedPageUnblockRequestCheck/);
+    assert.match(runtimeSource, /extensions\\.webextensions\\.uuids/);
+    assert.match(runtimeSource, /blocked\/blocked\.html/);
+    assert.match(runtimeSource, /request-reason/);
+    assert.match(runtimeSource, /submit-unblock-request/);
+    assert.match(runtimeSource, /request-status/);
+    assert.match(runtimeSource, /Enviando solicitud/);
+    assert.match(runtimeSource, /installAddon\(LOCAL_ADDON_PATH,\s*true\)/);
+    assert.match(runtimeSource, /permissionsMonkeypatch:\s*false/);
+    assert.match(runtimeSource, /permissionStrategy:\s*'required-data-collection'/);
+    assert.match(
+      runtimeSource,
+      /permissions\.request may only be called from a user input handler/
+    );
+    assert.doesNotMatch(runtimeSource, /executeScript\([\s\S]*browser\.permissions/);
+    assert.doesNotMatch(runtimeSource, /acceptFirefoxPermissionPromptIfPresent/);
+    assert.doesNotMatch(runtimeSource, /permissionPrompt/);
+  });
+
+  test('runtime suppresses unsupported Firefox browser-log collection noise', async () => {
+    const runtimeSource = await readFile(
+      new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),
+      'utf8'
+    );
+
+    assert.match(runtimeSource, /HTTP method not allowed/i);
+    assert.match(runtimeSource, /return \[\];/);
   });
 });

@@ -231,6 +231,33 @@ function parseWindowsAllowlistedNavigation(artifact) {
   };
 }
 
+function parseWindowsBlockedPageUnblockRequest(artifact) {
+  const request = artifact?.blockedPageUnblockRequest;
+  if (request?.success !== true) {
+    throw new Error('windows.blockedPageUnblockRequest.success missing or false');
+  }
+  if (request.permissionsMonkeypatch !== false) {
+    throw new Error('windows.blockedPageUnblockRequest.permissionsMonkeypatch must be false');
+  }
+  if (request.permissionStrategy !== 'required-data-collection') {
+    throw new Error(
+      'windows.blockedPageUnblockRequest.permissionStrategy must be required-data-collection'
+    );
+  }
+
+  return {
+    success: true,
+    permissionsMonkeypatch: false,
+    permissionStrategy: 'required-data-collection',
+    extensionSource: valueOrNull(request.extensionSource),
+    firefoxMode: valueOrNull(request.firefoxMode),
+    blockedPageDomain: valueOrNull(request.blockedPageDomain),
+    blockedPageUrl: valueOrNull(request.blockedPageUrl),
+    statusText: valueOrNull(request.statusText),
+    errorText: valueOrNull(request.errorText) ?? '',
+  };
+}
+
 export function buildFallbackWindowsRedditHosts() {
   return Object.fromEntries(
     REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS.map((host) => [
@@ -255,13 +282,22 @@ export function parseWindowsBootstrapCanaryArtifact(artifactDir) {
     platform: 'windows',
     artifactPath,
   });
+  if (
+    !boundaryContract.diagnosticPhases.some(
+      (phase) => phase?.id === 'blocked-page-unblock-request' && phase?.status === 'passed'
+    )
+  ) {
+    throw new Error('windows.diagnosticPhases blocked-page-unblock-request passed missing');
+  }
   const whitelist = artifact?.redditDiagnostics?.whitelist ?? {};
   const pageDiagnostics = artifact?.redditDiagnostics?.page ?? {};
   const allowlistedNavigation = parseWindowsAllowlistedNavigation(artifact);
+  const blockedPageUnblockRequest = parseWindowsBlockedPageUnblockRequest(artifact);
 
   return {
     ...boundaryContract,
     allowlistedNavigation,
+    blockedPageUnblockRequest,
     redditHosts: Object.fromEntries(
       REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS.map((host) => [
         host,

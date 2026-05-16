@@ -748,14 +748,19 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stderr, /--confirm-production/);
   });
 
-  test('direct Windows AJAX diagnostic pins DNS before downloading enrollment scripts', () => {
+  test('direct Windows AJAX diagnostic only mutates DNS after proving a resolver works', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
 
     assert.match(script, /import \{ isIP \} from 'node:net'/);
+    assert.match(script, /function Test-OpenPathDnsServers/);
+    assert.match(script, /-Server \$server/);
+    assert.match(script, /-QuickTimeout/);
+    assert.match(script, /Existing DNS configuration can resolve/);
+    assert.match(script, /default gateway/);
     assert.match(script, /Set-DnsClientServerAddress/);
     assert.match(script, /1\.1\.1\.1/);
     assert.match(script, /8\.8\.8\.8/);
-    assert.match(script, /isIP\(hostname\) === 0/);
+    assert.match(script, /isIP\(hostname\) !== 0/);
     assert.match(script, /Resolve-DnsName/);
     assert.match(script, /Skipping DNS lookup for literal IP target/);
   });
@@ -929,6 +934,7 @@ describe('runner diagnostic wrapper', () => {
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /firefox_extension_source=local/);
+    assert.match(result.stdout, /windows_bootstrap_source=managed/);
     assert.match(result.stdout, /local: npm run build --workspace=@openpath\/firefox-extension/);
     assert.match(
       result.stdout,
@@ -943,6 +949,45 @@ describe('runner diagnostic wrapper', () => {
       result.stdout,
       /guest-env: WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH=C:\\Windows\\Temp\\openpath-ajax-direct\\openpath-firefox-extension\.xpi/
     );
+    assert.match(result.stdout, /guest-env: WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_VERSION=dry-run/);
+  });
+
+  test('direct Windows AJAX diagnostic can overlay the local installer runtime before windows.ps1 runs', () => {
+    const result = runDirectDiagnostic(['--windows-bootstrap-source', 'local-installer-runtime']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /windows_bootstrap_source=local-installer-runtime/);
+    assert.match(
+      result.stdout,
+      /guest-upload: .*windows\/lib\/install\/Installer\.Runtime\.ps1 -> C:\\Windows\\Temp\\openpath-ajax-direct\\local-windows\\lib\\install\\Installer\.Runtime\.ps1/
+    );
+    assert.match(
+      result.stdout,
+      /guest-upload: .*windows\/Install-OpenPath\.ps1 -> C:\\Windows\\Temp\\openpath-ajax-direct\\local-windows\\Install-OpenPath\.ps1/
+    );
+    assert.match(
+      result.stdout,
+      /guest-upload: .*windows\/lib\/install\/Installer\.Plan\.ps1 -> C:\\Windows\\Temp\\openpath-ajax-direct\\local-windows\\lib\\install\\Installer\.Plan\.ps1/
+    );
+    assert.match(
+      result.stdout,
+      /guest-upload: .*windows\/lib\/install\/Installer\.Dns\.ps1 -> C:\\Windows\\Temp\\openpath-ajax-direct\\local-windows\\lib\\install\\Installer\.Dns\.ps1/
+    );
+    assert.match(
+      result.stdout,
+      /guest-upload: .*windows\/lib\/internal\/CapabilityStorage\.ps1 -> C:\\Windows\\Temp\\openpath-ajax-direct\\local-windows\\lib\\internal\\CapabilityStorage\.ps1/
+    );
+
+    const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+    assert.match(script, /function buildLocalInstallerOverlays/);
+    assert.match(script, /Copy-Item -Path '\$\{WINDOWS_WORKSPACE\}\\\\local-windows\\\\\*'/);
+    assert.match(script, /windows\/lib\/internal/);
+    assert.match(script, /windows\/runtime\/browser-policy-spec\.json/);
+    assert.match(
+      script,
+      /\[System\.IO\.File\]::WriteAllText\(\$path, \$content, \[System\.Text\.UTF8Encoding\]::new\(\$false\)\)/
+    );
+    assert.ok(script.includes("'Push-Location \\\\$WindowsRoot'"));
   });
 
   test('direct Windows AJAX diagnostic runs managed signed Firefox through Selenium', () => {
@@ -950,6 +995,7 @@ describe('runner diagnostic wrapper', () => {
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /firefox_extension_source=managed/);
+    assert.match(result.stdout, /windows_bootstrap_source=managed/);
     assert.match(
       result.stdout,
       /guest-upload-binary: .*selenium-node-modules\.zip -> C:\\Windows\\Temp\\openpath-ajax-direct\\selenium-node-modules\.zip/
@@ -968,10 +1014,18 @@ describe('runner diagnostic wrapper', () => {
 
   test('direct Windows AJAX diagnostic chunks binary uploads under guest-agent stdin limits', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+    const chunkMatch = script.match(/const BINARY_UPLOAD_CHUNK_CHARS = (?<value>\d+);/);
 
     assert.match(script, /BINARY_UPLOAD_CHUNK_CHARS/);
     assert.match(script, /FileMode\]::Append/);
     assert.match(script, /base64\.slice\(offset, offset \+ BINARY_UPLOAD_CHUNK_CHARS\)/);
+    assert.match(script, /Read-GuestStdinExact/);
+    assert.doesNotMatch(script, /\[Console\]::In\.ReadToEnd\(\)/);
+    assert.ok(chunkMatch?.groups?.value, 'binary upload chunk size should be explicit');
+    assert.ok(
+      Number(chunkMatch.groups.value) <= 700000,
+      'binary upload chunks should stay below the guest-agent 1 MiB stdin limit'
+    );
   });
 
   test('direct Windows AJAX diagnostic pauses GitHub runner services while mutating the VM', () => {

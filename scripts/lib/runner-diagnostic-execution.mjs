@@ -36,24 +36,100 @@ export const WINDOWS_OPENPATH_OVERLAYS = [
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\DNS.psm1`,
   },
   {
+    source: 'windows/lib/ScriptBootstrap.psm1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\ScriptBootstrap.psm1`,
+  },
+  {
+    source: 'windows/lib/internal/AcrylicConfigWriter.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\AcrylicConfigWriter.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/AcrylicHostsModel.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\AcrylicHostsModel.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/AcrylicHostsRenderer.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\AcrylicHostsRenderer.ps1`,
+  },
+  {
     source: 'windows/lib/internal/Update.Script.Apply.ps1',
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\Update.Script.Apply.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/Update.Script.Config.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\Update.Script.Config.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/Update.Script.Rollback.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\Update.Script.Rollback.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/DNS.Acrylic.Install.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\DNS.Acrylic.Install.ps1`,
   },
   {
     source: 'windows/lib/internal/DNS.Acrylic.Config.ps1',
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\DNS.Acrylic.Config.ps1`,
   },
   {
+    source: 'windows/lib/internal/DNS.Acrylic.Service.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\DNS.Acrylic.Service.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/DNS.Diagnostics.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\DNS.Diagnostics.ps1`,
+  },
+  {
     source: 'windows/lib/internal/Common.Integrity.ps1',
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\Common.Integrity.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/EndpointPolicyState.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\EndpointPolicyState.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/EndpointStateReconciler.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\EndpointStateReconciler.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/RuntimeDependency.Overlay.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\RuntimeDependency.Overlay.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/RuntimeDependency.Policy.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\RuntimeDependency.Policy.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/RuntimeDependency.Queue.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\RuntimeDependency.Queue.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/ScheduledTaskCatalog.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\ScheduledTaskCatalog.ps1`,
   },
   {
     source: 'windows/lib/internal/Services.TaskBuilders.ps1',
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\Services.TaskBuilders.ps1`,
   },
   {
+    source: 'windows/lib/internal/TaskRunner.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\TaskRunner.ps1`,
+  },
+  {
     source: 'windows/lib/internal/NativeHost.Actions.ps1',
     destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\NativeHost.Actions.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/NativeHost.ArtifactCatalog.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\NativeHost.ArtifactCatalog.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/NativeHost.Protocol.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\NativeHost.Protocol.ps1`,
+  },
+  {
+    source: 'windows/lib/internal/NativeHost.State.ps1',
+    destination: `${OPENPATH_ROOT_ON_WINDOWS}\\lib\\internal\\NativeHost.State.ps1`,
   },
   {
     source: 'windows/scripts/OpenPath-NativeHost.ps1',
@@ -317,6 +393,9 @@ export function buildWindowsAjaxCanaryGuestEnvironment({
 
   if (localFirefoxExtension?.remotePath) {
     environment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH = localFirefoxExtension.remotePath;
+    if (localFirefoxExtension.version) {
+      environment.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_VERSION = localFirefoxExtension.version;
+    }
   }
 
   return environment;
@@ -356,6 +435,12 @@ export function uploadRunnerDiagnosticPlanFiles(
   if (sections.includes('canaryScriptUploads')) {
     for (const upload of plan.canaryScriptUploads) {
       writeText(resolve(projectRoot, upload.source), upload.destination);
+    }
+  }
+
+  if (sections.includes('localInstallerOverlays')) {
+    for (const upload of plan.localInstallerOverlays ?? []) {
+      writeText(resolve(openpathRoot, upload.source), upload.destination);
     }
   }
 }

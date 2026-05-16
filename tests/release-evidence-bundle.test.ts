@@ -120,6 +120,7 @@ function writeWindowsCanaryArtifact(artifactDir: string) {
     },
     diagnosticPhases: [
       { id: 'firefox-extension-ready', status: 'passed' },
+      { id: 'blocked-page-unblock-request', status: 'passed' },
       { id: 'external-allowlisted-navigation', status: 'passed' },
       { id: 'artifact-written', status: 'passed' },
     ],
@@ -133,6 +134,18 @@ function writeWindowsCanaryArtifact(artifactDir: string) {
       blockedByOpenPath: false,
       timedOut: false,
       errors: [],
+    },
+    blockedPageUnblockRequest: {
+      success: true,
+      permissionsMonkeypatch: false,
+      permissionStrategy: 'required-data-collection',
+      extensionSource: 'managed',
+      firefoxMode: 'selenium-managed',
+      blockedPageDomain: 'blocked-page-unblock-request.127.0.0.1.sslip.io',
+      blockedPageUrl:
+        'moz-extension://canary/blocked/blocked.html?domain=blocked-page-unblock-request.127.0.0.1.sslip.io',
+      statusText: 'Solicitud enviada. Quedara pendiente hasta que la revisen.',
+      errorText: '',
     },
     redditDiagnostics: {
       page: {
@@ -263,9 +276,16 @@ describe('release evidence bundle module', () => {
     assert.equal(windows.redditHosts['emoji.redditmedia.com'].pageEvent, true);
     assert.equal(windows.redditHosts['www.redditstatic.com'].pageEvent, false);
     assert.equal(windows.allowlistedNavigation.finalHost, 'example.com');
+    assert.equal(windows.blockedPageUnblockRequest.permissionsMonkeypatch, false);
+    assert.equal(windows.blockedPageUnblockRequest.permissionStrategy, 'required-data-collection');
     assert.deepEqual(
       windows.diagnosticPhases.map((phase: { id: string }) => phase.id),
-      ['firefox-extension-ready', 'external-allowlisted-navigation', 'artifact-written']
+      [
+        'firefox-extension-ready',
+        'blocked-page-unblock-request',
+        'external-allowlisted-navigation',
+        'artifact-written',
+      ]
     );
     assert.equal(linux.failureBoundary.id, 'none');
     assert.equal(linux.redditHosts['emoji.redditmedia.com'].globalWhitelist, true);
@@ -275,6 +295,92 @@ describe('release evidence bundle module', () => {
     assert.deepEqual(
       linux.diagnosticPhases.map((phase: { id: string }) => phase.id),
       ['origin-page-load', 'artifact-written']
+    );
+  });
+
+  test('rejects Windows canary evidence without a real blocked-page unblock request proof', () => {
+    const windowsArtifactDir = createTempDir(
+      'classroompath-release-evidence-windows-missing-blocked-'
+    );
+    writeWindowsCanaryArtifact(windowsArtifactDir);
+    const artifactPath = resolve(
+      windowsArtifactDir,
+      'production-windows-ajax-auto-allow-canary.json'
+    );
+    const artifact = JSON.parse(readFileSync(artifactPath, 'utf8')) as Record<string, unknown>;
+    delete artifact.blockedPageUnblockRequest;
+    writeJson(artifactPath, artifact);
+
+    assert.throws(
+      () => parseWindowsBootstrapCanaryArtifact(windowsArtifactDir),
+      /windows\.blockedPageUnblockRequest\.success missing or false/
+    );
+  });
+
+  test('rejects Windows canary evidence without a passed blocked-page diagnostic phase', () => {
+    const windowsArtifactDir = createTempDir(
+      'classroompath-release-evidence-windows-missing-blocked-phase-'
+    );
+    writeWindowsCanaryArtifact(windowsArtifactDir);
+    const artifactPath = resolve(
+      windowsArtifactDir,
+      'production-windows-ajax-auto-allow-canary.json'
+    );
+    const artifact = JSON.parse(readFileSync(artifactPath, 'utf8')) as {
+      diagnosticPhases?: Array<Record<string, unknown>>;
+    };
+    artifact.diagnosticPhases = artifact.diagnosticPhases?.filter(
+      (phase) => phase.id !== 'blocked-page-unblock-request'
+    );
+    writeJson(artifactPath, artifact);
+
+    assert.throws(
+      () => parseWindowsBootstrapCanaryArtifact(windowsArtifactDir),
+      /windows\.diagnosticPhases blocked-page-unblock-request passed missing/
+    );
+  });
+
+  test('rejects Windows canary evidence that monkeypatches permissions', () => {
+    const windowsArtifactDir = createTempDir('classroompath-release-evidence-windows-monkeypatch-');
+    writeWindowsCanaryArtifact(windowsArtifactDir);
+    const artifactPath = resolve(
+      windowsArtifactDir,
+      'production-windows-ajax-auto-allow-canary.json'
+    );
+    const artifact = JSON.parse(readFileSync(artifactPath, 'utf8')) as {
+      blockedPageUnblockRequest?: Record<string, unknown>;
+    };
+    artifact.blockedPageUnblockRequest = {
+      ...(artifact.blockedPageUnblockRequest ?? {}),
+      permissionsMonkeypatch: true,
+    };
+    writeJson(artifactPath, artifact);
+
+    assert.throws(
+      () => parseWindowsBootstrapCanaryArtifact(windowsArtifactDir),
+      /windows\.blockedPageUnblockRequest\.permissionsMonkeypatch must be false/
+    );
+  });
+
+  test('rejects Windows canary evidence without the required data-collection strategy', () => {
+    const windowsArtifactDir = createTempDir('classroompath-release-evidence-windows-permission-');
+    writeWindowsCanaryArtifact(windowsArtifactDir);
+    const artifactPath = resolve(
+      windowsArtifactDir,
+      'production-windows-ajax-auto-allow-canary.json'
+    );
+    const artifact = JSON.parse(readFileSync(artifactPath, 'utf8')) as {
+      blockedPageUnblockRequest?: Record<string, unknown>;
+    };
+    artifact.blockedPageUnblockRequest = {
+      ...(artifact.blockedPageUnblockRequest ?? {}),
+      permissionStrategy: 'runtime-optional-prompt',
+    };
+    writeJson(artifactPath, artifact);
+
+    assert.throws(
+      () => parseWindowsBootstrapCanaryArtifact(windowsArtifactDir),
+      /windows\.blockedPageUnblockRequest\.permissionStrategy must be required-data-collection/
     );
   });
 

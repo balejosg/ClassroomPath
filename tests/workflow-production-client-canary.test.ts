@@ -84,6 +84,7 @@ function buildDiagnosticSummary(
     probeHits?: number;
     observedProbeHits?: number;
     allowlistedNavigation?: Record<string, unknown>;
+    blockedPageUnblockRequest?: Record<string, unknown>;
     redditNavigation?: Record<string, unknown>;
   } = {}
 ) {
@@ -147,6 +148,21 @@ function buildDiagnosticSummary(
             blockedByOpenPath: false,
             timedOut: false,
             errors: [],
+          } as Record<string, unknown>),
+    blockedPageUnblockRequest:
+      'blockedPageUnblockRequest' in overrides
+        ? overrides.blockedPageUnblockRequest
+        : ({
+            success: true,
+            permissionsMonkeypatch: false,
+            permissionStrategy: 'required-data-collection',
+            extensionSource: 'managed',
+            firefoxMode: 'selenium-managed',
+            blockedPageDomain: 'blocked-page-unblock-request.127.0.0.1.sslip.io',
+            blockedPageUrl:
+              'moz-extension://canary/blocked/blocked.html?domain=blocked-page-unblock-request.127.0.0.1.sslip.io',
+            statusText: 'Solicitud enviada. Quedara pendiente hasta que la revisen.',
+            errorText: '',
           } as Record<string, unknown>),
     lastAttemptAt: '2026-04-27T10:00:00.000Z',
     whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',
@@ -421,6 +437,11 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       firefoxOutput: '',
       diagnostics: { preflight: {}, postAttempt: {} },
       allowlistedNavigation: { success: true },
+      blockedPageUnblockRequest: {
+        success: true,
+        permissionsMonkeypatch: false,
+        permissionStrategy: 'required-data-collection',
+      },
     });
 
     assert.throws(
@@ -449,6 +470,11 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       firefoxOutput: '',
       diagnostics: { preflight: {}, postAttempt: {} },
       allowlistedNavigation: { success: true },
+      blockedPageUnblockRequest: {
+        success: true,
+        permissionsMonkeypatch: false,
+        permissionStrategy: 'required-data-collection',
+      },
     });
 
     assert.throws(
@@ -479,6 +505,18 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
         timedOut: false,
         errors: [],
       },
+      blockedPageUnblockRequest: {
+        success: true,
+        permissionsMonkeypatch: false,
+        permissionStrategy: 'required-data-collection',
+        extensionSource: 'managed',
+        firefoxMode: 'selenium-managed',
+        blockedPageDomain: 'blocked-page-unblock-request.127.0.0.1.sslip.io',
+        blockedPageUrl:
+          'moz-extension://canary/blocked/blocked.html?domain=blocked-page-unblock-request.127.0.0.1.sslip.io',
+        statusText: 'Solicitud enviada. Quedara pendiente hasta que la revisen.',
+        errorText: '',
+      },
     });
 
     assert.equal(blockedNavigationSummary.failureBoundary?.id, 'external-allowlisted-navigation');
@@ -486,6 +524,19 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     assert.throws(
       () => assertWindowsAutoAllowCanarySuccess(blockedNavigationSummary),
       /external-allowlisted-navigation/
+    );
+  });
+
+  test('fails Windows AJAX canary success without blocked-page unblock request evidence', () => {
+    const missingBlockedPageSummary = buildDiagnosticSummary({
+      blockedPageUnblockRequest: null as unknown as Record<string, unknown>,
+    });
+
+    assert.equal(missingBlockedPageSummary.success, false);
+    assert.equal(missingBlockedPageSummary.failureBoundary?.id, 'blocked-page-unblock-request');
+    assert.throws(
+      () => assertWindowsAutoAllowCanarySuccess(missingBlockedPageSummary),
+      /blocked-page-unblock-request/
     );
   });
 
@@ -608,6 +659,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
           'no-automatic-rule-creation',
           'explicit-whitelist-apply',
           'explicit-probe-traffic',
+          'blocked-page-unblock-request',
           'external-allowlisted-navigation',
           'artifact-written',
         ],
@@ -729,6 +781,18 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
         blockedByOpenPath: false,
         timedOut: false,
         errors: [],
+      },
+      blockedPageUnblockRequest: {
+        success: true,
+        permissionsMonkeypatch: false,
+        permissionStrategy: 'required-data-collection',
+        extensionSource: 'managed',
+        firefoxMode: 'selenium-managed',
+        blockedPageDomain: 'blocked-page-unblock-request.127.0.0.1.sslip.io',
+        blockedPageUrl:
+          'moz-extension://canary/blocked/blocked.html?domain=blocked-page-unblock-request.127.0.0.1.sslip.io',
+        statusText: 'Solicitud enviada. Quedara pendiente hasta que la revisen.',
+        errorText: '',
       },
       lastAttemptAt: '2026-04-27T10:00:00.000Z',
       whitelistPath: 'C:\\OpenPath\\data\\whitelist.txt',

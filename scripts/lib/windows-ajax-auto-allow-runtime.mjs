@@ -72,6 +72,15 @@ const EXTERNAL_ALLOWLISTED_NAVIGATION_TIMEOUT_MS = Number.parseInt(
   process.env.WINDOWS_EXTERNAL_ALLOWLISTED_NAVIGATION_TIMEOUT_MS ?? '45000',
   10
 );
+const BLOCKED_PAGE_UNBLOCK_REQUEST_TIMEOUT_MS = Number.parseInt(
+  process.env.WINDOWS_BLOCKED_PAGE_UNBLOCK_REQUEST_TIMEOUT_MS ?? '30000',
+  10
+);
+const BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN =
+  process.env.WINDOWS_BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN ??
+  'blocked-page-unblock-request.127.0.0.1.sslip.io';
+const PERMISSIONS_USER_INPUT_HANDLER_ERROR =
+  'permissions.request may only be called from a user input handler';
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
 const OPENPATH_ROOT = process.env.OPENPATH_ROOT ?? 'C:\\OpenPath';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? 'C:\\OpenPath\\data\\whitelist.txt';
@@ -95,6 +104,7 @@ const CANARY_GROUP_ID = process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '
 const CANARY_ADMIN_TOKEN = process.env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN ?? '';
 const FIREFOX_MODE = process.env.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE ?? 'managed';
 const LOCAL_ADDON_PATH = process.env.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH ?? '';
+const EXPECTED_LOCAL_ADDON_VERSION = process.env.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_VERSION ?? '';
 const GECKODRIVER_PATH = process.env.GECKODRIVER_PATH ?? '';
 const USE_LOCAL_FIREFOX_ADDON = LOCAL_ADDON_PATH.trim().length > 0;
 const USE_SELENIUM_FIREFOX = FIREFOX_MODE === 'selenium' || USE_LOCAL_FIREFOX_ADDON;
@@ -150,6 +160,13 @@ export function createWindowsAjaxAutoAllowRuntimeConfig(env = process.env) {
     externalAllowlistedNavigationUrl:
       env.WINDOWS_EXTERNAL_ALLOWLISTED_NAVIGATION_URL ?? WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_URL,
     externalAllowlistedNavigationHosts: WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
+    blockedPageUnblockRequestTimeoutMs: Number.parseInt(
+      env.WINDOWS_BLOCKED_PAGE_UNBLOCK_REQUEST_TIMEOUT_MS ?? '30000',
+      10
+    ),
+    blockedPageUnblockRequestDomain:
+      env.WINDOWS_BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN ??
+      'blocked-page-unblock-request.127.0.0.1.sslip.io',
     xhrProbeTimeoutMs: Number.parseInt(
       env.WINDOWS_AJAX_AUTO_ALLOW_XHR_PROBE_TIMEOUT_MS ?? '20000',
       10
@@ -930,12 +947,11 @@ async function collectBrowserLogErrors(driver) {
         message: String(entry.message ?? '').slice(-1000),
       }));
   } catch (error) {
-    return [
-      {
-        level: 'unavailable',
-        message: error instanceof Error ? error.message : String(error),
-      },
-    ];
+    const message = error instanceof Error ? error.message : String(error);
+    if (/HTTP method not allowed/i.test(message)) {
+      return [];
+    }
+    return [{ level: 'unavailable', message }];
   }
 }
 
@@ -999,6 +1015,282 @@ async function collectRedditRealNavigationDiagnostics({
     errors,
     href: page?.href ?? null,
     title: page?.title ?? null,
+  });
+}
+
+function buildBlockedPageUnblockRequestSkippedEvidence(reason, config = null) {
+  const extensionSource = config?.useLocalFirefoxAddon ? 'local' : 'managed';
+  return {
+    success: false,
+    skipped: true,
+    reason,
+    permissionsMonkeypatch: false,
+    extensionSource,
+    firefoxMode: config?.useLocalFirefoxAddon
+      ? 'selenium-local-addon'
+      : config?.useSeleniumFirefox
+        ? 'selenium-managed'
+        : FIREFOX_MODE,
+    blockedPageDomain:
+      config?.blockedPageUnblockRequestDomain ?? BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN,
+    blockedPageUrl: null,
+    statusText: '',
+    errorText: reason,
+    userInputHandlerError: reason.includes(PERMISSIONS_USER_INPUT_HANDLER_ERROR),
+    errors: [{ message: reason }],
+  };
+}
+
+async function discoverExtensionBaseUrlFromProfile(
+  profileDir,
+  expectedExtensionId = EXPECTED_EXTENSION_ID
+) {
+  const registryPath = join(profileDir, 'extensions.json');
+  const prefsPath = join(profileDir, 'prefs.js');
+  let prefsDiscovery = null;
+  try {
+    const prefsContent = await readFile(prefsPath, 'utf8');
+    const match = prefsContent.match(
+      /user_pref\("extensions\.webextensions\.uuids",\s*"((?:\\.|[^"])*)"\);/
+    );
+    if (match) {
+      const uuidJson = JSON.parse(`"${match[1]}"`);
+      const uuidMap = JSON.parse(uuidJson);
+      const extensionUuid =
+        typeof uuidMap?.[expectedExtensionId] === 'string' ? uuidMap[expectedExtensionId] : null;
+      prefsDiscovery = {
+        success: extensionUuid !== null,
+        prefsPath,
+        expectedExtensionId,
+        extensionUuid,
+        baseUrl: extensionUuid ? `moz-extension://${extensionUuid}/` : null,
+        uuidMapKeys: Object.keys(uuidMap ?? {}),
+      };
+      if (prefsDiscovery.baseUrl) {
+        return prefsDiscovery;
+      }
+    }
+  } catch (error) {
+    prefsDiscovery = {
+      success: false,
+      prefsPath,
+      expectedExtensionId,
+      baseUrl: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  try {
+    const registry = JSON.parse(await readFile(registryPath, 'utf8'));
+    const addon = registry?.addons?.find((candidate) => candidate?.id === expectedExtensionId);
+    const candidates = [
+      addon?.rootURI,
+      addon?.baseURL,
+      addon?.locationURI,
+      addon?.resourceURI,
+    ].filter((value) => typeof value === 'string' && value.startsWith('moz-extension://'));
+    const baseUrl = candidates[0] ?? null;
+    return {
+      success: baseUrl !== null,
+      registryPath,
+      expectedExtensionId,
+      baseUrl,
+      prefs: prefsDiscovery,
+      addonPresent: addon !== undefined,
+      addonActive: addon?.active ?? null,
+      addonVersion: addon?.version ?? null,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      registryPath,
+      expectedExtensionId,
+      baseUrl: null,
+      prefs: prefsDiscovery,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function buildBlockedPageUrl(extensionBaseUrl, domain) {
+  const baseUrl = extensionBaseUrl.endsWith('/') ? extensionBaseUrl : `${extensionBaseUrl}/`;
+  const url = new URL('blocked/blocked.html', baseUrl);
+  url.searchParams.set('domain', domain);
+  url.searchParams.set('blockedUrl', `https://${domain}/`);
+  url.searchParams.set('origin', `https://${ORIGIN_HOST}/`);
+  url.searchParams.set('error', 'WINDOWS_AJAX_DIRECT_BLOCKED_PAGE_UNBLOCK_REQUEST_CANARY');
+  return url.toString();
+}
+
+async function collectExtensionRuntimeDiagnostics(driver, domains) {
+  try {
+    return await driver.executeAsyncScript(
+      `
+const domains = arguments[0];
+const done = arguments[arguments.length - 1];
+try {
+  const runtime = globalThis.browser && globalThis.browser.runtime;
+  if (!runtime || typeof runtime.sendMessage !== 'function') {
+    done({ success: false, error: 'browser.runtime.sendMessage unavailable' });
+    return;
+  }
+  Promise.resolve(runtime.sendMessage({ action: 'getOpenPathDiagnostics', domains }))
+    .then((response) => done(response))
+    .catch((error) => done({ success: false, error: String(error && error.message ? error.message : error) }));
+} catch (error) {
+  done({ success: false, error: String(error && error.message ? error.message : error) });
+}
+`,
+      domains
+    );
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function runBlockedPageUnblockRequestCheck({
+  driver,
+  profileDir,
+  firefoxExtensionWarmup,
+  config,
+}) {
+  const extensionSource = config.useLocalFirefoxAddon ? 'local' : 'managed';
+  const firefoxMode =
+    firefoxExtensionWarmup?.mode ??
+    (config.useLocalFirefoxAddon
+      ? 'selenium-local-addon'
+      : config.useSeleniumFirefox
+        ? 'selenium-managed'
+        : FIREFOX_MODE);
+  const blockedPageDomain =
+    config.blockedPageUnblockRequestDomain ?? BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN;
+  const discovery = await discoverExtensionBaseUrlFromProfile(
+    String(firefoxExtensionWarmup?.profileDir ?? profileDir),
+    config.expectedExtensionId ?? EXPECTED_EXTENSION_ID
+  );
+  if (!discovery.baseUrl) {
+    return redactWindowsCanaryObject({
+      ...buildBlockedPageUnblockRequestSkippedEvidence(
+        discovery.error ?? 'Firefox extension moz-extension base URL was not discoverable',
+        config
+      ),
+      skipped: false,
+      extensionSource,
+      firefoxMode,
+      discovery,
+    });
+  }
+
+  const blockedPageUrl = buildBlockedPageUrl(discovery.baseUrl, blockedPageDomain);
+  const startedAt = Date.now();
+  let navigationError = null;
+  let statusText = '';
+  let errorText = '';
+  let pageSnapshot = null;
+  let submitClicked = false;
+  let extensionDiagnosticsBeforeSubmit = null;
+  let extensionDiagnosticsAfterSubmit = null;
+
+  try {
+    const { By } = await import('selenium-webdriver');
+    await driver.manage().setTimeouts({
+      pageLoad: config.blockedPageUnblockRequestTimeoutMs,
+      script: 15_000,
+      implicit: 2_000,
+    });
+    await driver.get(blockedPageUrl);
+    extensionDiagnosticsBeforeSubmit = await collectExtensionRuntimeDiagnostics(driver, [
+      blockedPageDomain,
+    ]);
+    const reasonInput = await driver.findElement(By.id('request-reason'));
+    await reasonInput.clear();
+    await reasonInput.sendKeys('Windows direct canary blocked-page unblock request');
+    const submitButton = await driver.findElement(By.id('submit-unblock-request'));
+    await submitButton.click();
+    submitClicked = true;
+    const statusElement = await driver.findElement(By.id('request-status'));
+    await driver
+      .wait(async () => {
+        const text = String(await statusElement.getText()).trim();
+        if (/Solicitud enviada/i.test(text)) {
+          return text;
+        }
+        if (
+          text.length > 0 &&
+          !/Enviando solicitud/i.test(text) &&
+          /no es compatible|avisa a tu profesor|error|fall[oó]|no se pudo/i.test(text)
+        ) {
+          return text;
+        }
+        return false;
+      }, config.blockedPageUnblockRequestTimeoutMs)
+      .catch(() => null);
+    statusText = String(await statusElement.getText()).trim();
+    extensionDiagnosticsAfterSubmit = await collectExtensionRuntimeDiagnostics(driver, [
+      blockedPageDomain,
+    ]);
+    pageSnapshot = await driver.executeScript(`
+const status = document.getElementById('request-status');
+const bodyText = document.body ? document.body.innerText : '';
+return {
+  href: location.href,
+  title: document.title,
+  readyState: document.readyState,
+  statusText: status ? status.textContent || '' : '',
+  statusClass: status ? status.className || '' : '',
+  bodyText: bodyText.slice(0, 4000)
+};
+`);
+  } catch (error) {
+    navigationError = error instanceof Error ? error.message : String(error);
+  }
+
+  const browserErrors = await collectBrowserLogErrors(driver);
+  const combinedText = [
+    statusText,
+    pageSnapshot?.statusText,
+    pageSnapshot?.bodyText,
+    navigationError,
+    ...browserErrors.map((entry) => entry.message),
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const userInputHandlerError = combinedText.includes(PERMISSIONS_USER_INPUT_HANDLER_ERROR);
+  errorText = userInputHandlerError
+    ? PERMISSIONS_USER_INPUT_HANDLER_ERROR
+    : (navigationError ?? '');
+  const statusIndicatesSuccess = /Solicitud enviada/i.test(
+    statusText || pageSnapshot?.statusText || ''
+  );
+  const statusIndicatesError =
+    userInputHandlerError ||
+    /no es compatible|avisa a tu profesor|error|fall[oó]|no se pudo/i.test(combinedText);
+  const success =
+    navigationError === null && submitClicked && statusIndicatesSuccess && !statusIndicatesError;
+
+  return redactWindowsCanaryObject({
+    success,
+    permissionsMonkeypatch: false,
+    permissionStrategy: 'required-data-collection',
+    extensionSource,
+    firefoxMode,
+    blockedPageDomain,
+    blockedPageUrl,
+    statusText: statusText || pageSnapshot?.statusText || '',
+    errorText,
+    userInputHandlerError,
+    submitClicked,
+    elapsedMs: Date.now() - startedAt,
+    discovery,
+    extensionDiagnosticsBeforeSubmit,
+    extensionDiagnosticsAfterSubmit,
+    page: pageSnapshot,
+    errors: [...(navigationError ? [{ message: navigationError }] : []), ...browserErrors].slice(
+      -20
+    ),
   });
 }
 
@@ -1247,21 +1539,41 @@ async function waitForProfileExtensionReady(profileDir) {
 }
 
 async function suspendFirefoxEnterprisePolicy(firefoxPath) {
-  const policyPath = join(dirname(firefoxPath), 'distribution', 'policies.json');
-  const backupPath = `${policyPath}.openpath-direct-${process.pid}-${Date.now()}.bak`;
-  if (!existsSync(policyPath)) {
+  const candidatePolicyPaths = [
+    join(dirname(firefoxPath), 'distribution', 'policies.json'),
+    'C:\\Program Files\\Mozilla Firefox\\distribution\\policies.json',
+    'C:\\Program Files (x86)\\Mozilla Firefox\\distribution\\policies.json',
+    'C:\\Program Files\\Firefox Developer Edition\\distribution\\policies.json',
+    'C:\\Program Files\\Firefox Nightly\\distribution\\policies.json',
+  ];
+  const uniquePolicyPaths = [...new Set(candidatePolicyPaths)];
+  const suspendedPolicies = [];
+
+  for (const policyPath of uniquePolicyPaths) {
+    const backupPath = `${policyPath}.openpath-direct-${process.pid}-${Date.now()}.bak`;
+    if (!existsSync(policyPath)) {
+      continue;
+    }
+
+    await rename(policyPath, backupPath);
+    suspendedPolicies.push({ policyPath, backupPath });
+  }
+
+  if (suspendedPolicies.length === 0) {
     return {
       suspended: false,
-      policyPath,
+      policyPath: uniquePolicyPaths[0],
       backupPath: null,
+      checkedPolicyPaths: uniquePolicyPaths,
     };
   }
 
-  await rename(policyPath, backupPath);
   return {
     suspended: true,
-    policyPath,
-    backupPath,
+    policyPath: suspendedPolicies[0].policyPath,
+    backupPath: suspendedPolicies[0].backupPath,
+    policies: suspendedPolicies,
+    checkedPolicyPaths: uniquePolicyPaths,
   };
 }
 
@@ -1270,8 +1582,19 @@ async function restoreFirefoxEnterprisePolicy(managedPolicySuspension) {
     return;
   }
 
-  await rm(managedPolicySuspension.policyPath, { force: true }).catch(() => {});
-  await rename(managedPolicySuspension.backupPath, managedPolicySuspension.policyPath);
+  const policies = Array.isArray(managedPolicySuspension.policies)
+    ? managedPolicySuspension.policies
+    : [
+        {
+          policyPath: managedPolicySuspension.policyPath,
+          backupPath: managedPolicySuspension.backupPath,
+        },
+      ];
+
+  for (const policy of policies) {
+    await rm(policy.policyPath, { force: true }).catch(() => {});
+    await rename(policy.backupPath, policy.policyPath);
+  }
 }
 
 async function launchFirefoxWithSelenium({ firefoxPath, profileDir, originUrl }) {
@@ -1312,9 +1635,18 @@ async function launchFirefoxWithSelenium({ firefoxPath, profileDir, originUrl })
   const driver = await builder.build();
   await driver.manage().setTimeouts({ implicit: 2_000, pageLoad: 30_000, script: 15_000 });
 
+  let installedTemporaryAddonId = null;
+  if (USE_LOCAL_FIREFOX_ADDON && typeof driver.installAddon === 'function') {
+    installedTemporaryAddonId = await driver.installAddon(LOCAL_ADDON_PATH, true);
+  }
+
   const capabilities = await driver.getCapabilities();
   const activeProfileDir = capabilities.get('moz:profile') || profileDir;
   const extensionEvidence = await waitForProfileExtensionReady(String(activeProfileDir));
+  const localAddonVersionMatches =
+    !USE_LOCAL_FIREFOX_ADDON ||
+    EXPECTED_LOCAL_ADDON_VERSION.trim().length === 0 ||
+    extensionEvidence.registryAddonVersion === EXPECTED_LOCAL_ADDON_VERSION;
 
   let initialNavigation = { success: true, error: null };
   try {
@@ -1330,9 +1662,17 @@ async function launchFirefoxWithSelenium({ firefoxPath, profileDir, originUrl })
     driver,
     firefoxExtensionWarmup: {
       ...extensionEvidence,
-      ready: extensionEvidence.registryAddonPresent || extensionEvidence.profileExtensionPresent,
+      ready:
+        (extensionEvidence.registryAddonPresent || extensionEvidence.profileExtensionPresent) &&
+        localAddonVersionMatches,
       mode: USE_LOCAL_FIREFOX_ADDON ? 'selenium-local-addon' : 'selenium-managed',
       localAddonPath: USE_LOCAL_FIREFOX_ADDON ? LOCAL_ADDON_PATH : null,
+      expectedLocalAddonVersion:
+        USE_LOCAL_FIREFOX_ADDON && EXPECTED_LOCAL_ADDON_VERSION.trim().length > 0
+          ? EXPECTED_LOCAL_ADDON_VERSION
+          : null,
+      localAddonVersionMatches,
+      installedTemporaryAddonId,
       geckodriverPath: GECKODRIVER_PATH || null,
       profileDir: activeProfileDir,
       timeoutMs: FIREFOX_EXTENSION_WARMUP_TIMEOUT_MS,
@@ -1495,6 +1835,7 @@ async function main() {
   try {
     const result = await resultPromise;
     clearTimeout(timeout);
+    const runtimeConfig = createWindowsAjaxAutoAllowRuntimeConfig();
     const expectedHosts = [
       ...new Set([
         ...AUTO_ALLOW_PROBES.map((probe) => probe.expectedWhitelistHost),
@@ -1517,6 +1858,34 @@ async function main() {
         remoteRules,
         localWhitelist,
       };
+    }
+    const blockedPageUnblockRequest =
+      result?.success && seleniumDriver !== null
+        ? await runBlockedPageUnblockRequestCheck({
+            driver: seleniumDriver,
+            profileDir,
+            firefoxExtensionWarmup,
+            config: runtimeConfig,
+          })
+        : buildBlockedPageUnblockRequestSkippedEvidence(
+            result?.success
+              ? 'Selenium Firefox driver unavailable for blocked-page unblock request check'
+              : 'Canary did not reach blocked-page unblock request phase',
+            runtimeConfig
+          );
+    if (result?.success) {
+      progress(
+        'blocked-page-unblock-request',
+        blockedPageUnblockRequest.success === true ? 'passed' : 'failed',
+        {
+          boundaryId:
+            blockedPageUnblockRequest.success === true ? 'none' : 'blocked-page-unblock-request',
+          extensionSource: blockedPageUnblockRequest.extensionSource,
+          firefoxMode: blockedPageUnblockRequest.firefoxMode,
+          blockedPageDomain: blockedPageUnblockRequest.blockedPageDomain,
+          userInputHandlerError: blockedPageUnblockRequest.userInputHandlerError,
+        }
+      );
     }
     const postAttemptDiagnostics = await collectWindowsAutoAllowDiagnostics(
       result?.success ? 'post-success' : 'post-failure'
@@ -1597,6 +1966,7 @@ async function main() {
         result?.pageResourceCandidateEvents ?? state.pageResourceCandidateEvents,
       redditDiagnostics,
       allowlistedNavigation,
+      blockedPageUnblockRequest,
       pageObserverInstalled: result?.pageObserverInstalled ?? state.pageObserverInstalled,
       lastAttemptAt: result?.lastAttemptAt ?? state.lastAttemptAt,
       whitelistPath: WHITELIST_PATH,

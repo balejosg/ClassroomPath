@@ -235,6 +235,34 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
     });
   });
 
+  test('registerGatewayProxyRoutes proxies public OpenPath request submissions at the root API path', async () => {
+    const response = await fetch(`${baseUrl}/api/requests/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        domain: 'learning.example',
+        hostname: 'student-01',
+        token: 'machine-token',
+      }),
+    });
+
+    assert.strictEqual(response.status, 418);
+    assert.deepStrictEqual(await response.json(), {
+      proxied: true,
+      path: '/api/requests/submit',
+    });
+  });
+
+  test('registerGatewayProxyRoutes does not expose public OpenPath request submissions below /cp', async () => {
+    const response = await fetch(`${baseUrl}/cp/api/requests/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    assert.strictEqual(response.status, 404);
+  });
+
   test('registerGatewayProxyRoutes configures proxy request auth injection for enrollment tickets', () => {
     const hasProxyReqHook = proxyOptions.some((options) => {
       const maybeOptions = options as {

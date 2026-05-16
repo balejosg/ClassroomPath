@@ -213,6 +213,7 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS = Object.freeze([
   'no-automatic-rule-creation',
   'explicit-whitelist-apply',
   'explicit-probe-traffic',
+  'blocked-page-unblock-request',
   'external-allowlisted-navigation',
   'artifact-written',
 ]);
@@ -223,6 +224,13 @@ export const WINDOWS_AUTO_ALLOW_FAILURE_BOUNDARIES = Object.freeze({
     message: 'Firefox did not report the OpenPath extension as ready before the canary page ran.',
     recommendedNextAction:
       'Inspect Firefox enterprise policy, profile extension registry, XPI delivery, and warmup logs.',
+  },
+  'blocked-page-unblock-request': {
+    label: 'Blocked-page unblock request',
+    message:
+      'Firefox blocked-page request form did not submit cleanly from a real user click path.',
+    recommendedNextAction:
+      'Inspect blocked-page permissions.request user activation, request configuration, and background request submission evidence.',
   },
   'origin-page-load': {
     label: 'Origin page load',
@@ -443,6 +451,11 @@ export const WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASES = Object.freeze([
     }),
   },
   {
+    id: 'blocked-page-unblock-request',
+    passed: (summary) => summary?.blockedPageUnblockRequest?.success === true,
+    evidence: (summary) => summary?.blockedPageUnblockRequest ?? null,
+  },
+  {
     id: 'external-allowlisted-navigation',
     passed: (summary) => summary?.allowlistedNavigation?.success === true,
     evidence: (summary) => summary?.allowlistedNavigation ?? null,
@@ -536,6 +549,7 @@ export function buildWindowsAutoAllowCanarySummary({
   pageResourceCandidateEvents,
   redditDiagnostics,
   allowlistedNavigation,
+  blockedPageUnblockRequest,
   lastAttemptAt,
   whitelistPath,
   firefoxExtensionWarmup,
@@ -571,10 +585,15 @@ export function buildWindowsAutoAllowCanarySummary({
   }
   const resolvedAllowlistedNavigation =
     allowlistedNavigation ?? result?.allowlistedNavigation ?? null;
+  const resolvedBlockedPageUnblockRequest =
+    blockedPageUnblockRequest ?? result?.blockedPageUnblockRequest ?? null;
 
   const summary = {
     ...result,
-    success: result?.success === true && resolvedAllowlistedNavigation?.success === true,
+    success:
+      result?.success === true &&
+      resolvedAllowlistedNavigation?.success === true &&
+      resolvedBlockedPageUnblockRequest?.success === true,
     originHost: WINDOWS_AUTO_ALLOW_ORIGIN_HOST,
     contract: 'page-resource-observation-no-auto-allow',
     automaticRuleCreationExpected: false,
@@ -606,6 +625,7 @@ export function buildWindowsAutoAllowCanarySummary({
       result?.pageResourceCandidateEvents ?? pageResourceCandidateEvents ?? [],
     redditDiagnostics: mergedRedditDiagnostics,
     allowlistedNavigation: resolvedAllowlistedNavigation,
+    blockedPageUnblockRequest: resolvedBlockedPageUnblockRequest,
     lastAttemptAt: result?.lastAttemptAt ?? lastAttemptAt,
     probeEvidence,
     whitelistPath,

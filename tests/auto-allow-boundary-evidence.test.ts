@@ -17,6 +17,7 @@ import {
 } from '../scripts/lib/linux-auto-allow-canary-evidence.mjs';
 import {
   WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS,
+  classifyWindowsAutoAllowFailureBoundary,
   withWindowsAutoAllowDiagnostics,
 } from '../scripts/lib/windows-auto-allow-canary-evidence.mjs';
 
@@ -133,6 +134,122 @@ describe('shared auto-allow boundary evidence model', () => {
       WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS
     );
     assert.equal(summary.failureBoundary.id, 'page-resource-candidates');
+  });
+
+  test('Windows declarative spec surfaces blocked-page unblock request as its own phase', () => {
+    assert.ok(WINDOWS_AUTO_ALLOW_DIAGNOSTIC_PHASE_IDS.includes('blocked-page-unblock-request'));
+
+    const summary = withWindowsAutoAllowDiagnostics({
+      firefoxExtensionWarmup: { ready: true },
+      originHits: 1,
+      pageObserverInstalled: true,
+      completedCandidateEvents: {
+        'observed-fetch': true,
+        'observed-xhr': true,
+        'observed-image': true,
+        'observed-script': true,
+        'observed-stylesheet': true,
+        'observed-font': true,
+      },
+      probeEvidence: [
+        ...[
+          'observed-fetch',
+          'observed-xhr',
+          'observed-image',
+          'observed-script',
+          'observed-stylesheet',
+          'observed-font',
+        ].map((id) => ({ id, hits: 1 })),
+        { id: 'ajax-fetch', hits: 1, whitelistContainsExpectedHost: true },
+        { id: 'xhr-subresource', hits: 1, whitelistContainsExpectedHost: true },
+        { id: 'image-subresource', hits: 1, whitelistContainsExpectedHost: true },
+        { id: 'script-subresource', hits: 1, whitelistContainsExpectedHost: true },
+        { id: 'stylesheet-subresource', hits: 1, whitelistContainsExpectedHost: true },
+        { id: 'font-subresource', hits: 1, whitelistContainsExpectedHost: true },
+        { id: 'stylesheet-font-subresource', hits: 1, whitelistContainsExpectedHost: true },
+      ],
+      diagnostics: {
+        postSuccessObservation: {
+          remoteRules: {
+            diagnostics: {
+              server: {
+                canaryGroup: {
+                  body: {
+                    expectedHostState: {
+                      'ajax-auto-allow-target.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: true,
+                      },
+                      'ajax-auto-allow-xhr.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: true,
+                      },
+                      'ajax-auto-allow-asset.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: true,
+                      },
+                      'ajax-auto-allow-script.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: true,
+                      },
+                      'ajax-auto-allow-stylesheet.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: true,
+                      },
+                      'ajax-auto-allow-font.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: true,
+                      },
+                      'ajax-auto-allow-stylesheet-font.127.0.0.1.sslip.io': {
+                        whitelistRulePresent: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        postAttempt: {
+          server: {
+            canaryGroup: {
+              body: {
+                expectedHostState: {
+                  'ajax-observe-fetch.127.0.0.1.sslip.io': {
+                    whitelistRulePresent: false,
+                  },
+                  'ajax-observe-xhr.127.0.0.1.sslip.io': {
+                    whitelistRulePresent: false,
+                  },
+                  'ajax-observe-image.127.0.0.1.sslip.io': {
+                    whitelistRulePresent: false,
+                  },
+                  'ajax-observe-script.127.0.0.1.sslip.io': {
+                    whitelistRulePresent: false,
+                  },
+                  'ajax-observe-stylesheet.127.0.0.1.sslip.io': {
+                    whitelistRulePresent: false,
+                  },
+                  'ajax-observe-font.127.0.0.1.sslip.io': {
+                    whitelistRulePresent: false,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      allowlistedNavigation: { success: true },
+      blockedPageUnblockRequest: {
+        success: false,
+        permissionsMonkeypatch: false,
+        errorText: 'permissions.request may only be called from a user input handler',
+      },
+    });
+
+    assert.equal(summary.failureBoundary.id, 'blocked-page-unblock-request');
+    assert.equal(
+      summary.diagnosticPhases.find((phase) => phase.id === 'blocked-page-unblock-request')?.status,
+      'failed'
+    );
+    assert.equal(
+      classifyWindowsAutoAllowFailureBoundary(summary).id,
+      'blocked-page-unblock-request'
+    );
   });
 
   test('detects remote rule evidence from expected host state snapshots', () => {

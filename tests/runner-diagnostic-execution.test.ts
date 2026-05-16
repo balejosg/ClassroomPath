@@ -180,6 +180,7 @@ describe('runner diagnostic execution plan', () => {
       postFailureObservationMs: '60000',
       localFirefoxExtension: {
         remotePath: 'C:\\Windows\\Temp\\openpath-ajax-direct\\openpath-firefox-extension.xpi',
+        version: '9999.123.0',
       },
     });
 
@@ -200,6 +201,7 @@ describe('runner diagnostic execution plan', () => {
       env.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH,
       'C:\\Windows\\Temp\\openpath-ajax-direct\\openpath-firefox-extension.xpi'
     );
+    assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_VERSION, '9999.123.0');
   });
 
   test('builds Linux AJAX canary environment from the diagnostic plan', () => {
