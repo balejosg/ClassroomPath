@@ -739,6 +739,123 @@ exit 1
     }
   });
 
+  test('accepts the legacy Windows production artifact as preproduction evidence', async () => {
+    const workspace = createTempDir('classroompath-release-evidence-legacy-workspace-');
+    const fakeBinDir = createTempDir('classroompath-release-evidence-legacy-bin-');
+    const windowsSourceDir = createTempDir('classroompath-release-evidence-legacy-windows-');
+    const outputDir = resolve(workspace, 'bundle-output');
+    const fakeGhPath = resolve(fakeBinDir, 'gh');
+    const ghLogPath = resolve(workspace, 'gh.log');
+    const baseEvidence = buildReleaseEvidenceInput();
+
+    writeWindowsCanaryArtifact(windowsSourceDir);
+    writeJson(
+      resolve(workspace, 'release-evidence.json'),
+      buildReleaseEvidenceInput({
+        jobs: {
+          ...baseEvidence.jobs,
+          linuxProductionBootstrapCanary: 'not_run_preproduction_authoritative',
+        },
+      })
+    );
+
+    writeFileSync(
+      fakeGhPath,
+      `#!/bin/sh
+set -eu
+printf '%s\\n' "$*" >> "${ghLogPath}"
+if [ "$1" = "api" ]; then
+  case "$2" in
+    *"/runs/deploy-legacy/artifacts")
+      printf '%s\\n' '{"artifacts":[{"name":"windows-production-bootstrap-canary"}]}'
+      exit 0
+      ;;
+  esac
+fi
+if [ "$1" = "run" ] && [ "$2" = "download" ] && [ "$3" = "deploy-legacy" ]; then
+  artifact_name=''
+  output_dir=''
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name)
+        artifact_name="$2"
+        shift 2
+        ;;
+      --dir)
+        output_dir="$2"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  mkdir -p "$output_dir"
+  if [ "$artifact_name" = "windows-production-bootstrap-canary" ]; then
+    cp -R "$TEST_WINDOWS_ARTIFACT_DIR"/. "$output_dir"/
+    exit 0
+  fi
+fi
+echo "unexpected gh invocation: $*" >&2
+exit 1
+`,
+      'utf8'
+    );
+    chmodSync(fakeGhPath, 0o755);
+
+    const originalCwd = process.cwd();
+    const originalPath = process.env.PATH;
+    const originalWindowsArtifactDir = process.env.TEST_WINDOWS_ARTIFACT_DIR;
+    const originalFetch = globalThis.fetch;
+
+    try {
+      process.chdir(workspace);
+      process.env.PATH = `${fakeBinDir}:${originalPath ?? ''}`;
+      process.env.TEST_WINDOWS_ARTIFACT_DIR = windowsSourceDir;
+      globalThis.fetch = (async (input: string | URL | Request) => {
+        const url =
+          typeof input === 'string' || input instanceof URL ? String(input) : String(input.url);
+
+        if (url.endsWith('/cp/health')) {
+          return {
+            ok: true,
+            text: async () => '{"status":"ok"}',
+          } as Response;
+        }
+
+        if (url.endsWith('/cp/ready')) {
+          return {
+            ok: true,
+            text: async () => '{"ready":true}',
+          } as Response;
+        }
+
+        return {
+          ok: false,
+          text: async () => '{"error":"not-found"}',
+        } as Response;
+      }) as typeof fetch;
+
+      const bundle = await runReleaseEvidenceBundle({
+        repo: 'balejosg/ClassroomPath',
+        deployRun: 'deploy-legacy',
+        tag: 'v1.2.99',
+        outputDir,
+        productionUrl: 'https://classroompath.eu',
+        windowsCanaryRun: null,
+        linuxCanaryRun: null,
+      });
+
+      assert.equal(bundle.artifactIntegrity.preproductionWindowsBootstrapCanary.status, 'ok');
+      assert.match(readFileSync(ghLogPath, 'utf8'), /--name windows-production-bootstrap-canary/);
+    } finally {
+      process.chdir(originalCwd);
+      process.env.PATH = originalPath;
+      process.env.TEST_WINDOWS_ARTIFACT_DIR = originalWindowsArtifactDir;
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test('collects Linux canary evidence artifact when the functional canary failed', () => {
     const linuxArtifactDir = createTempDir('classroompath-release-evidence-linux-failure-');
     const outputDir = createTempDir('classroompath-release-evidence-linux-failure-output-');

@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import {
   LINUX_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
   PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT,
+  WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
   assertReleaseEvidenceBundleCompleteness,
   buildCanaryEvidenceFallback,
   buildFallbackWindowsRedditHosts,
@@ -216,7 +217,13 @@ function selectArtifactRunId({ preferredRunId, deployRunId, highRisk, result }) 
   return shouldRequireCanaryArtifact({ highRisk, result }) ? (deployRunId ?? null) : null;
 }
 
-function resolveArtifactEvidence({ repo, runId, artifactName, outputDir }) {
+function resolveArtifactEvidence({
+  repo,
+  runId,
+  artifactName,
+  fallbackArtifactNames = [],
+  outputDir,
+}) {
   if (!runId) {
     return {
       listed: false,
@@ -226,21 +233,32 @@ function resolveArtifactEvidence({ repo, runId, artifactName, outputDir }) {
   }
 
   const listedArtifacts = listRunArtifacts({ repo, runId });
-  const listed = listedArtifacts.some((artifact) => artifact?.name === artifactName);
-  if (!listed) {
+  const artifactNames = [artifactName, ...fallbackArtifactNames];
+  for (const candidateArtifactName of artifactNames) {
+    const listed = listedArtifacts.some((artifact) => artifact?.name === candidateArtifactName);
+    if (!listed) {
+      continue;
+    }
+
+    const download = tryDownloadRunArtifact({
+      repo,
+      runId,
+      artifactName: candidateArtifactName,
+      outputDir,
+    });
     return {
-      listed: false,
-      artifactDir: null,
-      downloadError: false,
+      listed,
+      artifactDir: download.success ? outputDir : null,
+      downloadError: !download.success,
+      downloadErrorMessage: download.error,
+      artifactName: candidateArtifactName,
     };
   }
 
-  const download = tryDownloadRunArtifact({ repo, runId, artifactName, outputDir });
   return {
-    listed,
-    artifactDir: download.success ? outputDir : null,
-    downloadError: !download.success,
-    downloadErrorMessage: download.error,
+    listed: false,
+    artifactDir: null,
+    downloadError: false,
   };
 }
 
@@ -276,6 +294,7 @@ export async function runReleaseEvidenceBundle({
         releaseEvidence?.jobs?.windowsProductionBootstrapCanary,
     }),
     artifactName: PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT,
+    fallbackArtifactNames: [WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT],
     outputDir: windowsArtifactDir,
   });
   const linuxEvidence = resolveArtifactEvidence({
