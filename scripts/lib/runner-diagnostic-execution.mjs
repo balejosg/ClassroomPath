@@ -371,6 +371,7 @@ export function buildWindowsAjaxCanaryGuestEnvironment({
   redditNavigationTimeoutMs,
 }) {
   const workspace = plan.runnerTarget.workspace ?? WINDOWS_WORKSPACE;
+  const blockedRequestDomain = buildWindowsBlockedPageUnblockRequestDomain(summary);
   const environment = {
     OPENPATH_ROOT: OPENPATH_ROOT_ON_WINDOWS,
     WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL: summary.apiUrl ?? plan.baseUrl,
@@ -380,6 +381,7 @@ export function buildWindowsAjaxCanaryGuestEnvironment({
     WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS: canaryTimeoutMs,
     WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS: postFailureObservationMs,
     WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: plan.firefox.mode ?? 'selenium',
+    WINDOWS_BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN: blockedRequestDomain,
     WINDOWS_AJAX_REDDIT_NAVIGATION_MODE: redditNavigationMode,
     EXPECTED_EXTENSION_ID: summary.extensionId,
   };
@@ -399,6 +401,17 @@ export function buildWindowsAjaxCanaryGuestEnvironment({
   }
 
   return environment;
+}
+
+export function buildWindowsBlockedPageUnblockRequestDomain(summary = {}) {
+  const source = String(summary.classroomId ?? summary.groupId ?? Date.now());
+  const suffix =
+    source
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 24) || 'run';
+  return `blocked-page-unblock-request-${suffix}.127.0.0.1.sslip.io`;
 }
 
 export function buildLinuxAjaxCanaryEnvironment({ plan, groupId, adminToken, extensionId }) {

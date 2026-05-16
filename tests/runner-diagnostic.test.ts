@@ -1001,6 +1001,10 @@ describe('runner diagnostic wrapper', () => {
       /guest-upload-binary: .*selenium-node-modules\.zip -> C:\\Windows\\Temp\\openpath-ajax-direct\\selenium-node-modules\.zip/
     );
     assert.match(result.stdout, /guest-env: WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE=selenium/);
+    assert.match(
+      result.stdout,
+      /guest-env: WINDOWS_BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN=blocked-page-unblock-request-classroom-id\.127\.0\.0\.1\.sslip\.io/
+    );
     assert.doesNotMatch(result.stdout, /WINDOWS_AJAX_AUTO_ALLOW_LOCAL_ADDON_PATH=/);
   });
 

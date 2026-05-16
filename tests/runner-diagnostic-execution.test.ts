@@ -170,6 +170,7 @@ describe('runner diagnostic execution plan', () => {
       plan,
       summary: {
         apiUrl: 'http://192.168.1.114:3000',
+        classroomId: 'classroom_abc-123',
         groupId: 'group-123',
         extensionId: 'openpath-block-monitor@openpath',
       },
@@ -195,6 +196,10 @@ describe('runner diagnostic execution plan', () => {
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_TIMEOUT_MS, '180000');
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_POST_FAILURE_OBSERVATION_MS, '60000');
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE, 'selenium');
+    assert.equal(
+      env.WINDOWS_BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN,
+      'blocked-page-unblock-request-classroom-abc-123.127.0.0.1.sslip.io'
+    );
     assert.equal(env.WINDOWS_AJAX_REDDIT_NAVIGATION_MODE, 'off');
     assert.equal(env.EXPECTED_EXTENSION_ID, 'openpath-block-monitor@openpath');
     assert.equal(
