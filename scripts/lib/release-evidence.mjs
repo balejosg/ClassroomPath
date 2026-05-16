@@ -181,11 +181,14 @@ function renderReleaseDashboardMarkdown({
       evidence: evidence.artifacts.productionSmokeResults ?? 'n/a',
     }),
     renderDashboardStatusRow({
-      label: 'Windows production bootstrap canary',
-      result: evidence.jobs.windowsProductionBootstrapCanary ?? 'n/a',
+      label: 'Preproduction Windows bootstrap gate',
+      result: evidence.jobs.preproductionWindowsBootstrapCanary ?? 'n/a',
       boundary: windowsFailureBoundary,
       duration: timings.windowsProductionBootstrapCanary,
-      evidence: evidence.artifacts.windowsProductionBootstrapCanary ?? 'n/a',
+      evidence:
+        evidence.artifacts.preproductionWindowsBootstrapCanary ??
+        evidence.artifacts.windowsProductionBootstrapCanary ??
+        'n/a',
     }),
     renderDashboardStatusRow({
       label: 'Linux production bootstrap canary',
@@ -208,15 +211,19 @@ function renderReleaseDashboardMarkdown({
 export function renderReleaseEvidenceMarkdown(evidenceInput) {
   const evidence = createReleaseEvidenceSnapshot(evidenceInput);
   const windowsArtifactIntegrity =
-    evidence.artifactIntegrity?.windowsProductionBootstrapCanary?.status ?? 'n/a';
+    evidence.artifactIntegrity?.preproductionWindowsBootstrapCanary?.status ??
+    evidence.artifactIntegrity?.windowsProductionBootstrapCanary?.status ??
+    'n/a';
   const linuxArtifactIntegrity =
     evidence.artifactIntegrity?.linuxProductionBootstrapCanary?.status ?? 'n/a';
   const windowsFailureBoundary =
     evidence.canaries?.windows?.failureBoundary?.id ??
+    evidence.diagnostics.preproductionWindowsBootstrapFailureBoundary?.id ??
     evidence.diagnostics.windowsProductionBootstrapFailureBoundary.id ??
     'n/a';
   const windowsFailureBoundaryMessage =
     evidence.canaries?.windows?.failureBoundary?.message ??
+    evidence.diagnostics.preproductionWindowsBootstrapFailureBoundary?.message ??
     evidence.diagnostics.windowsProductionBootstrapFailureBoundary.message ??
     'n/a';
   const linuxFailureBoundary =
@@ -243,7 +250,7 @@ export function renderReleaseEvidenceMarkdown(evidenceInput) {
         message: summaryValue(linuxFailureBoundaryMessage),
       },
       windows: {
-        result: evidence.jobs.windowsProductionBootstrapCanary,
+        result: evidence.jobs.preproductionWindowsBootstrapCanary,
         boundaryId: summaryValue(windowsFailureBoundary),
         message: summaryValue(windowsFailureBoundaryMessage),
       },
@@ -264,7 +271,8 @@ export function renderReleaseEvidenceMarkdown(evidenceInput) {
     `| Resolve release images | ${evidence.jobs.resolveReleaseImages ?? 'n/a'} |`,
     `| Verify staging release state | ${evidence.jobs.verifyStagingReleaseState ?? 'n/a'} |`,
     `| Windows/Firefox canary (advisory) | ${evidence.jobs.windowsFirefoxCanary ?? 'n/a'} |`,
-    `| Windows production bootstrap canary | ${evidence.jobs.windowsProductionBootstrapCanary ?? 'n/a'} |`,
+    `| Preproduction Windows bootstrap gate | ${evidence.jobs.preproductionWindowsBootstrapCanary ?? 'n/a'} |`,
+    `| Live Windows production bootstrap canary | ${evidence.jobs.windowsProductionBootstrapCanary ?? 'n/a'} |`,
     `| Linux production bootstrap canary | ${evidence.jobs.linuxProductionBootstrapCanary ?? 'n/a'} |`,
     `| Production client update canary (post-release) | ${evidence.jobs.productionClientUpdateCanary ?? 'n/a'} |`,
     `| Deploy production | ${evidence.jobs.deployProduction ?? 'n/a'} |`,
@@ -280,7 +288,7 @@ export function renderReleaseEvidenceMarkdown(evidenceInput) {
     '',
     `- Windows bootstrap failure boundary: \`${windowsFailureBoundary}\``,
     `- Boundary message: ${windowsFailureBoundaryMessage}`,
-    `- Windows target URL: ${windowsCanaryTargetUrl}`,
+    `- Preproduction Windows target URL: ${windowsCanaryTargetUrl}`,
     `- Linux bootstrap failure boundary: \`${linuxFailureBoundary}\``,
     `- Linux boundary message: ${linuxFailureBoundaryMessage}`,
     `- Linux target URL: ${linuxCanaryTargetUrl}`,
@@ -319,7 +327,8 @@ export function renderReleaseEvidenceMarkdown(evidenceInput) {
     `- Release image metadata: \`${evidence.artifacts.releaseImageMetadata ?? 'n/a'}\``,
     `- Staging release state + verification: \`${evidence.artifacts.stagingReleaseState ?? 'n/a'}\``,
     `- Production smoke results: \`${evidence.artifacts.productionSmokeResults}\``,
-    `- Windows production bootstrap canary: \`${evidence.artifacts.windowsProductionBootstrapCanary ?? 'n/a'}\``,
+    `- Preproduction Windows bootstrap gate: \`${evidence.artifacts.preproductionWindowsBootstrapCanary ?? evidence.artifacts.windowsProductionBootstrapCanary ?? 'n/a'}\``,
+    `- Live Windows production bootstrap canary: \`${evidence.artifacts.windowsProductionBootstrapCanary ?? 'n/a'}\``,
     `- Linux production bootstrap canary: \`${evidence.artifacts.linuxProductionBootstrapCanary ?? 'n/a'}\``,
     `- Release evidence bundle: \`${evidence.artifacts.releaseEvidence ?? 'n/a'}\``,
     '',

@@ -57,20 +57,29 @@ type ReleaseEvidence = {
   };
   jobs: {
     windowsFirefoxCanary: string;
-    windowsProductionBootstrapCanary: string;
+    preproductionWindowsBootstrapCanary: string;
+    windowsProductionBootstrapCanary: string | null;
     productionClientUpdateCanary: string;
   };
   diagnostics: {
+    preproductionWindowsBootstrapFailureBoundary: {
+      id: string | null;
+      message: string | null;
+    };
     windowsProductionBootstrapFailureBoundary: {
       id: string | null;
       message: string | null;
     };
   };
   artifacts: {
+    preproductionWindowsBootstrapCanary: string | null;
     windowsProductionBootstrapCanary: string | null;
     linuxProductionBootstrapCanary?: string | null;
   };
   artifactIntegrity?: {
+    preproductionWindowsBootstrapCanary?: {
+      status: string;
+    };
     windowsProductionBootstrapCanary?: {
       status: string;
     };
@@ -162,7 +171,8 @@ function buildContractEvidence() {
       openPathSha: 'op-sha',
     },
     jobs: {
-      windowsProductionBootstrapCanary: 'success',
+      preproductionWindowsBootstrapCanary: 'success',
+      windowsProductionBootstrapCanary: null,
       linuxProductionBootstrapCanary: 'success',
     },
     stagingVerification: {
@@ -191,7 +201,7 @@ function buildContractEvidence() {
       releaseImageMetadata: 'release-image-metadata-v1.2.99',
       stagingReleaseState: 'staging-release-state-v1.2.99',
       productionSmokeResults: 'smoke-test-results-production',
-      windowsProductionBootstrapCanary: RELEASE_EVIDENCE_CANARY_ARTIFACTS.windows.artifactName,
+      preproductionWindowsBootstrapCanary: RELEASE_EVIDENCE_CANARY_ARTIFACTS.windows.artifactName,
       linuxProductionBootstrapCanary: RELEASE_EVIDENCE_CANARY_ARTIFACTS.linux.artifactName,
       releaseEvidence: 'release-evidence-v1.2.99',
     },
@@ -204,7 +214,7 @@ describe('release evidence contract', () => {
     assert.equal(complete.ok, true);
     assert.equal(
       RELEASE_EVIDENCE_CANARY_ARTIFACTS.windows.artifactName,
-      'windows-production-bootstrap-canary'
+      'preproduction-windows-bootstrap-canary'
     );
     assert.equal(
       RELEASE_EVIDENCE_CANARY_ARTIFACTS.linux.artifactName,
@@ -226,19 +236,19 @@ describe('release evidence contract', () => {
     lowRisk.stagingVerification.windowsFirefoxHighRisk = 'false';
 
     const lowRiskIntegrity = verifyArtifactIntegrity({ releaseEvidence: lowRisk });
-    assert.equal(lowRiskIntegrity.windowsProductionBootstrapCanary.status, 'not_applicable');
+    assert.equal(lowRiskIntegrity.preproductionWindowsBootstrapCanary.status, 'not_applicable');
     assert.equal(lowRiskIntegrity.linuxProductionBootstrapCanary.status, 'not_applicable');
 
     const pending = buildContractEvidence();
-    pending.jobs.windowsProductionBootstrapCanary = 'pending-post-release';
+    pending.jobs.preproductionWindowsBootstrapCanary = 'pending-post-release';
     pending.jobs.linuxProductionBootstrapCanary = 'pending-post-release';
 
     const pendingIntegrity = verifyArtifactIntegrity({ releaseEvidence: pending });
-    assert.equal(pendingIntegrity.windowsProductionBootstrapCanary.status, 'not_applicable');
+    assert.equal(pendingIntegrity.preproductionWindowsBootstrapCanary.status, 'not_applicable');
     assert.equal(pendingIntegrity.linuxProductionBootstrapCanary.status, 'not_applicable');
 
     const missing = verifyArtifactIntegrity({ releaseEvidence: buildContractEvidence() });
-    assert.equal(missing.windowsProductionBootstrapCanary.status, 'missing');
+    assert.equal(missing.preproductionWindowsBootstrapCanary.status, 'missing');
     assert.equal(missing.linuxProductionBootstrapCanary.status, 'missing');
   });
 
@@ -275,7 +285,7 @@ describe('release evidence contract', () => {
         'release.classroomPathSha expected other-cp-sha but found cp-sha'
       )
     );
-    assert.ok(validation.failures.includes('windowsProductionBootstrapCanary missing'));
+    assert.ok(validation.failures.includes('preproductionWindowsBootstrapCanary missing'));
     assert.ok(validation.failures.includes('linuxProductionBootstrapCanary missing'));
   });
 });
@@ -379,12 +389,13 @@ describe('release evidence rendering', () => {
       DEPLOY_RESULT: 'success',
       PRODUCTION_SMOKE_RESULT: 'success',
       ROLLBACK_RESULT: 'skipped',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'success',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT: 'success',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_RESULT: 'success',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_JOB_RESULT: 'success',
     });
 
     assert.equal(snapshot.release.outcome, 'released');
-    assert.equal(snapshot.jobs.windowsProductionBootstrapCanary, 'success');
+    assert.equal(snapshot.jobs.preproductionWindowsBootstrapCanary, 'success');
+    assert.equal(snapshot.jobs.windowsProductionBootstrapCanary, null);
     assert.equal(validateReleaseEvidenceSnapshot(snapshot).ok, true);
 
     const serialized = serializeReleaseEvidenceSnapshot(snapshot);
@@ -527,14 +538,15 @@ describe('release evidence rendering', () => {
       PRODUCTION_SMOKE_RESULT: 'success',
       ROLLBACK_RESULT: 'skipped',
       WINDOWS_FIREFOX_CANARY_RESULT: 'success',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'success',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_RESULT: 'success',
     });
 
     assert.equal(json.release.outcome, 'released');
     assert.equal(json.promotionEligibility.status, 'eligible');
     assert.equal(json.promotionEligibility.deploymentMode, 'promotion-eligible');
     assert.equal(json.jobs.windowsFirefoxCanary, 'success');
-    assert.equal(json.jobs.windowsProductionBootstrapCanary, 'success');
+    assert.equal(json.jobs.preproductionWindowsBootstrapCanary, 'success');
+    assert.equal(json.jobs.windowsProductionBootstrapCanary, null);
     assert.match(markdown, /Outcome: `released`/);
     assert.match(markdown, /Promotion eligibility: `eligible`/);
   });
@@ -558,7 +570,8 @@ describe('release evidence rendering', () => {
         resolveReleaseImages: 'success',
         verifyStagingReleaseState: 'success',
         windowsFirefoxCanary: 'success',
-        windowsProductionBootstrapCanary: 'success',
+        preproductionWindowsBootstrapCanary: 'success',
+        windowsProductionBootstrapCanary: null,
         linuxProductionBootstrapCanary: 'failure',
         productionClientUpdateCanary: 'live-tested',
         deployProduction: 'success',
@@ -566,7 +579,7 @@ describe('release evidence rendering', () => {
         rollbackProduction: 'skipped',
       },
       diagnostics: {
-        windowsProductionBootstrapFailureBoundary: {
+        preproductionWindowsBootstrapFailureBoundary: {
           id: 'none',
           message:
             'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
@@ -600,12 +613,13 @@ describe('release evidence rendering', () => {
         releaseImageMetadata: 'release-image-metadata-v1.2.99',
         stagingReleaseState: 'staging-release-state-v1.2.99',
         productionSmokeResults: 'smoke-test-results-production',
-        windowsProductionBootstrapCanary: 'windows-production-bootstrap-canary',
+        preproductionWindowsBootstrapCanary: 'windows-production-bootstrap-canary',
+        windowsProductionBootstrapCanary: null,
         linuxProductionBootstrapCanary: 'linux-production-bootstrap-canary',
         releaseEvidence: 'release-evidence-v1.2.99',
       },
       artifactIntegrity: {
-        windowsProductionBootstrapCanary: {
+        preproductionWindowsBootstrapCanary: {
           status: 'ok',
         },
         linuxProductionBootstrapCanary: {
@@ -674,7 +688,7 @@ describe('release evidence rendering', () => {
       },
     });
 
-    assert.equal(json.artifactIntegrity?.windowsProductionBootstrapCanary?.status, 'ok');
+    assert.equal(json.artifactIntegrity?.preproductionWindowsBootstrapCanary?.status, 'ok');
     assert.equal(json.artifactIntegrity?.linuxProductionBootstrapCanary?.status, 'missing');
     assert.ok(
       markdown.indexOf('## Release Dashboard') < markdown.indexOf('## Release Evidence'),
@@ -693,7 +707,7 @@ describe('release evidence rendering', () => {
     );
     assert.match(
       markdown,
-      /\| Windows production bootstrap canary \| success \| none \| 3m15s \| windows-production-bootstrap-canary \|/
+      /\| Preproduction Windows bootstrap gate \| success \| none \| 3m15s \| windows-production-bootstrap-canary \|/
     );
     assert.match(markdown, /### Release Timing/);
     assert.match(markdown, /Staging-to-production duration: `8m25s`/);
@@ -790,12 +804,13 @@ describe('release evidence rendering', () => {
       STAGING_LINUX_BOOTSTRAP_RUN_ID: '123456',
       STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'none',
       WINDOWS_FIREFOX_CANARY_RESULT: 'success',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'success',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_RESULT: 'success',
       PRODUCTION_CLIENT_UPDATE_CANARY_RESULT: 'success',
     });
 
     assert.equal(json.jobs.windowsFirefoxCanary, 'success');
-    assert.equal(json.jobs.windowsProductionBootstrapCanary, 'success');
+    assert.equal(json.jobs.preproductionWindowsBootstrapCanary, 'success');
+    assert.equal(json.jobs.windowsProductionBootstrapCanary, null);
     assert.equal(json.jobs.productionClientUpdateCanary, 'live-tested');
     assert.equal(json.promotionEligibility.status, 'eligible');
     assert.equal(json.stagingVerification.windowsFirefoxHighRisk, 'true');
@@ -804,7 +819,7 @@ describe('release evidence rendering', () => {
     assert.equal(json.stagingVerification.linuxBootstrapResult, 'success');
     assert.equal(json.stagingVerification.linuxBootstrapRunId, '123456');
     assert.match(markdown, /\| Windows\/Firefox canary \(advisory\) \| success \|/);
-    assert.match(markdown, /\| Windows production bootstrap canary \| success \|/);
+    assert.match(markdown, /\| Preproduction Windows bootstrap gate \| success \|/);
     assert.match(markdown, /\| Production client update canary \(post-release\) \| live-tested \|/);
     assert.match(markdown, /Windows\/Firefox high risk: `true`/);
     assert.match(markdown, /Linux bootstrap result: `success`/);
@@ -818,15 +833,16 @@ describe('release evidence rendering', () => {
       STAGING_WINDOWS_BOOTSTRAP_RESULT: 'success',
       STAGING_FIREFOX_POLICY_RESULT: 'success',
       WINDOWS_FIREFOX_CANARY_RESULT: 'failure',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'failure',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_RESULT: 'failure',
     });
 
     assert.equal(json.release.outcome, 'released');
     assert.equal(json.promotionEligibility.status, 'ineligible');
     assert.equal(json.jobs.windowsFirefoxCanary, 'failure');
-    assert.equal(json.jobs.windowsProductionBootstrapCanary, 'failure');
+    assert.equal(json.jobs.preproductionWindowsBootstrapCanary, 'failure');
+    assert.equal(json.jobs.windowsProductionBootstrapCanary, null);
     assert.match(markdown, /\| Windows\/Firefox canary \(advisory\) \| failure \|/);
-    assert.match(markdown, /\| Windows production bootstrap canary \| failure \|/);
+    assert.match(markdown, /\| Preproduction Windows bootstrap gate \| failure \|/);
     assert.match(markdown, /Promotion eligibility: `ineligible`/);
   });
 
@@ -836,10 +852,11 @@ describe('release evidence rendering', () => {
     });
 
     assert.equal(json.release.outcome, 'released');
-    assert.equal(json.jobs.windowsProductionBootstrapCanary, 'pending-post-release');
+    assert.equal(json.jobs.preproductionWindowsBootstrapCanary, 'pending-post-release');
+    assert.equal(json.jobs.windowsProductionBootstrapCanary, null);
     assert.equal(json.jobs.productionClientUpdateCanary, 'pending-post-release');
     assert.match(markdown, /Outcome: `released`/);
-    assert.match(markdown, /\| Windows production bootstrap canary \| pending-post-release \|/);
+    assert.match(markdown, /\| Preproduction Windows bootstrap gate \| pending-post-release \|/);
     assert.match(
       markdown,
       /\| Production client update canary \(post-release\) \| pending-post-release \|/
@@ -852,11 +869,12 @@ describe('release evidence rendering', () => {
     });
 
     assert.equal(json.jobs.windowsFirefoxCanary, 'not_applicable');
-    assert.equal(json.jobs.windowsProductionBootstrapCanary, 'not_applicable');
+    assert.equal(json.jobs.preproductionWindowsBootstrapCanary, 'not_applicable');
+    assert.equal(json.jobs.windowsProductionBootstrapCanary, null);
     assert.equal(json.jobs.productionClientUpdateCanary, 'not_applicable');
     assert.equal(json.stagingVerification.windowsFirefoxHighRisk, 'false');
     assert.match(markdown, /\| Windows\/Firefox canary \(advisory\) \| not_applicable \|/);
-    assert.match(markdown, /\| Windows production bootstrap canary \| not_applicable \|/);
+    assert.match(markdown, /\| Preproduction Windows bootstrap gate \| not_applicable \|/);
     assert.match(
       markdown,
       /\| Production client update canary \(post-release\) \| not_applicable \|/
@@ -877,44 +895,46 @@ describe('release evidence rendering', () => {
   test('includes production bootstrap canary artifact evidence in release bundle', () => {
     const { json, markdown } = generateEvidence({
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'success',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT: 'success',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_RESULT: 'success',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_JOB_RESULT: 'success',
     });
 
-    assert.equal(json.jobs.windowsProductionBootstrapCanary, 'success');
+    assert.equal(json.jobs.preproductionWindowsBootstrapCanary, 'success');
+    assert.equal(json.jobs.windowsProductionBootstrapCanary, null);
     assert.equal(
-      json.artifacts.windowsProductionBootstrapCanary,
-      'windows-production-bootstrap-canary'
+      json.artifacts.preproductionWindowsBootstrapCanary,
+      'preproduction-windows-bootstrap-canary'
     );
     assert.match(
       markdown,
-      /Windows production bootstrap canary: `windows-production-bootstrap-canary`/
+      /Preproduction Windows bootstrap gate: `preproduction-windows-bootstrap-canary`/
     );
   });
 
   test('includes the production bootstrap failure boundary in release evidence', () => {
     const { json, markdown } = generateEvidence({
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'failure',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT: 'failure',
-      WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'explicit-whitelist-apply',
-      WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE:
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_RESULT: 'failure',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_JOB_RESULT: 'failure',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_FAILURE_BOUNDARY_ID: 'explicit-whitelist-apply',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE:
         'Explicit Windows whitelist rules did not converge locally.',
     });
 
-    assert.equal(json.jobs.windowsProductionBootstrapCanary, 'failure');
-    assert.deepEqual(json.diagnostics.windowsProductionBootstrapFailureBoundary, {
+    assert.equal(json.jobs.preproductionWindowsBootstrapCanary, 'failure');
+    assert.equal(json.jobs.windowsProductionBootstrapCanary, null);
+    assert.deepEqual(json.diagnostics.preproductionWindowsBootstrapFailureBoundary, {
       id: 'explicit-whitelist-apply',
       message: 'Explicit Windows whitelist rules did not converge locally.',
     });
     assert.equal(
-      json.artifacts.windowsProductionBootstrapCanary,
-      'windows-production-bootstrap-canary'
+      json.artifacts.preproductionWindowsBootstrapCanary,
+      'preproduction-windows-bootstrap-canary'
     );
     assert.match(markdown, /Windows bootstrap failure boundary: `explicit-whitelist-apply`/);
     assert.match(
       markdown,
-      /Windows production bootstrap canary: `windows-production-bootstrap-canary`/
+      /Preproduction Windows bootstrap gate: `preproduction-windows-bootstrap-canary`/
     );
     assert.match(markdown, /Explicit Windows whitelist rules did not converge locally\./);
   });
@@ -949,19 +969,20 @@ describe('release evidence rendering', () => {
   test('does not trust a bootstrap canary success output when the reusable job failed later', () => {
     const { json, markdown } = generateEvidence({
       STAGING_WINDOWS_FIREFOX_HIGH_RISK: 'true',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT: 'success',
-      WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT: 'failure',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_RESULT: 'success',
+      PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_JOB_RESULT: 'failure',
     });
 
-    assert.equal(json.jobs.windowsProductionBootstrapCanary, 'failure');
+    assert.equal(json.jobs.preproductionWindowsBootstrapCanary, 'failure');
+    assert.equal(json.jobs.windowsProductionBootstrapCanary, null);
     assert.equal(
-      json.artifacts.windowsProductionBootstrapCanary,
-      'windows-production-bootstrap-canary'
+      json.artifacts.preproductionWindowsBootstrapCanary,
+      'preproduction-windows-bootstrap-canary'
     );
-    assert.match(markdown, /\| Windows production bootstrap canary \| failure \|/);
+    assert.match(markdown, /\| Preproduction Windows bootstrap gate \| failure \|/);
     assert.match(
       markdown,
-      /Windows production bootstrap canary: `windows-production-bootstrap-canary`/
+      /Preproduction Windows bootstrap gate: `preproduction-windows-bootstrap-canary`/
     );
   });
 

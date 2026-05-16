@@ -7,6 +7,8 @@ import {
   WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOSTS,
 } from './windows-auto-allow-canary-evidence.mjs';
 
+export const PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT =
+  'preproduction-windows-bootstrap-canary';
 export const WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT = 'windows-production-bootstrap-canary';
 export const LINUX_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT = 'linux-production-bootstrap-canary';
 export const WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JSON =
@@ -50,9 +52,11 @@ export const RELEASE_EVIDENCE_ACCEPTED_ARTIFACT_INTEGRITY_STATUSES = new Set([
 ]);
 export const RELEASE_EVIDENCE_CANARY_ARTIFACTS = {
   windows: {
-    artifactName: WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
+    artifactName: PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT,
     jsonFileName: WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JSON,
-    integrityName: 'windowsProductionBootstrapCanary',
+    integrityName: 'preproductionWindowsBootstrapCanary',
+    legacyArtifactName: WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
+    legacyIntegrityName: 'windowsProductionBootstrapCanary',
   },
   linux: {
     artifactName: LINUX_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
@@ -61,6 +65,7 @@ export const RELEASE_EVIDENCE_CANARY_ARTIFACTS = {
   },
 };
 export const RELEASE_EVIDENCE_ARTIFACT_STATUS_LABELS = {
+  preproductionWindowsBootstrapCanary: PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT,
   windowsProductionBootstrapCanary: WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
   linuxProductionBootstrapCanary: LINUX_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
 };
@@ -389,15 +394,31 @@ export function evaluateCanaryArtifactIntegrity({
 
 export function verifyArtifactIntegrity({
   releaseEvidence,
+  preproductionWindowsBootstrapCanary,
   windowsProductionBootstrapCanary = {},
   linuxProductionBootstrapCanary = {},
 }) {
   const highRisk = isTrueFlag(releaseEvidence?.stagingVerification?.windowsFirefoxHighRisk);
+  const legacyWindowsProductionMeansPreproduction =
+    !valueOrNull(releaseEvidence?.jobs?.preproductionWindowsBootstrapCanary) &&
+    valueOrNull(releaseEvidence?.jobs?.windowsProductionBootstrapCanary);
+  const preproductionWindowsEvidence =
+    preproductionWindowsBootstrapCanary ?? windowsProductionBootstrapCanary;
 
   return {
+    preproductionWindowsBootstrapCanary: evaluateCanaryArtifactIntegrity({
+      highRisk,
+      result: valueOrNull(releaseEvidence?.jobs?.preproductionWindowsBootstrapCanary),
+      listed: preproductionWindowsEvidence.listed === true,
+      artifactDir: preproductionWindowsEvidence.artifactDir ?? null,
+      downloadError: preproductionWindowsEvidence.downloadError === true,
+      parser: parseWindowsBootstrapCanaryArtifact,
+    }),
     windowsProductionBootstrapCanary: evaluateCanaryArtifactIntegrity({
       highRisk,
-      result: valueOrNull(releaseEvidence?.jobs?.windowsProductionBootstrapCanary),
+      result: legacyWindowsProductionMeansPreproduction
+        ? null
+        : valueOrNull(releaseEvidence?.jobs?.windowsProductionBootstrapCanary),
       listed: windowsProductionBootstrapCanary.listed === true,
       artifactDir: windowsProductionBootstrapCanary.artifactDir ?? null,
       downloadError: windowsProductionBootstrapCanary.downloadError === true,
@@ -523,7 +544,10 @@ export function assertReleaseEvidenceBundleCompleteness(bundle) {
     if (!valueOrNull(canary?.targetTag)) {
       failures.push(`${platform}.targetTag missing`);
     }
-    const integrityName = `${platform}ProductionBootstrapCanary`;
+    const integrityName =
+      platform === 'windows'
+        ? 'preproductionWindowsBootstrapCanary'
+        : `${platform}ProductionBootstrapCanary`;
     if (
       bundle.artifactIntegrity?.[integrityName]?.status === 'ok' &&
       !valueOrNull(canary?.artifactPath)

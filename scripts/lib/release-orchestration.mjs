@@ -36,7 +36,7 @@ export async function runStep({ id, command, env = {}, cwd = process.cwd() }) {
 export function buildPromotionPlan({
   tag,
   highRiskWindows = false,
-  postProductionWindowsCanary = false,
+  postProductionWindowsCanary = true,
 } = {}) {
   if (!tag) {
     throw new Error('tag is required');
@@ -114,11 +114,7 @@ export function buildPromotionPlan({
     ),
     step(
       'wait-production-deploy',
-      [
-        'bash',
-        '-lc',
-        `run_id="$(gh run list --repo ${DEFAULT_REPO} --workflow deploy.yml --event push --json databaseId,headBranch --jq '.[] | select(.headBranch == "${tag}") | .databaseId' --limit 20 | head -n1)" && test -n "$run_id" && node scripts/actions-health.mjs wait --repo ${DEFAULT_REPO} --run-id "$run_id"`,
-      ],
+      buildWaitForTagDeployCommand(tag),
       'Wait for the tag-triggered production deploy workflow to finish.'
     ),
     step(
@@ -179,6 +175,26 @@ export function formatCommand(command) {
   }
 
   return command.map(quoteShellArg).join(' ');
+}
+
+export function buildWaitForTagDeployCommand(tag) {
+  return [
+    'bash',
+    '-lc',
+    [
+      'deadline=$((SECONDS + 600))',
+      'run_id=""',
+      'while [ "$SECONDS" -le "$deadline" ]; do',
+      `  run_id="$(gh run list --repo ${quoteShellArg(DEFAULT_REPO)} --workflow deploy.yml --event push --branch ${quoteShellArg(tag)} --json databaseId,headBranch,event,workflowName,name --jq ${quoteShellArg(`.[] | select(.headBranch == "${tag}" and .event == "push" and (.workflowName == "Deploy" or .name == "Deploy")) | .databaseId`)} --limit 50 | head -n1)"`,
+      '  if [ -n "$run_id" ]; then',
+      '    break',
+      '  fi',
+      '  sleep 10',
+      'done',
+      'test -n "$run_id"',
+      `node scripts/actions-health.mjs wait --repo ${quoteShellArg(DEFAULT_REPO)} --run-id "$run_id"`,
+    ].join('\n'),
+  ];
 }
 
 function step(id, command, description) {

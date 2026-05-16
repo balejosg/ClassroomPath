@@ -750,20 +750,32 @@ describe('runner diagnostic wrapper', () => {
 
   test('direct Windows AJAX diagnostic only mutates DNS after proving a resolver works', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+    const dnsRepairScript = readProjectText('scripts/Restore-WindowsRunnerDns.ps1');
 
     assert.match(script, /import \{ isIP \} from 'node:net'/);
-    assert.match(script, /function Test-OpenPathDnsServers/);
-    assert.match(script, /-Server \$server/);
+    assert.match(script, /WINDOWS_RUNNER_DNS_REPAIR_SCRIPT/);
+    assert.match(script, /Restore-WindowsRunnerDns\.ps1/);
+    assert.match(
+      script,
+      /writeGuestText\(\s*options,\s*resolve\(projectRoot, WINDOWS_RUNNER_DNS_REPAIR_SCRIPT\)/
+    );
+    assert.match(
+      script,
+      /& \$dnsRepairScript -DnsServers @\('1\.1\.1\.1', '8\.8\.8\.8'\) -ConnectivityHosts @\(\$targetHost\) -RequireConnectivity \$false/
+    );
+    assert.match(dnsRepairScript, /param\(/);
+    assert.match(dnsRepairScript, /\[string\[\]\]\$DnsServers/);
+    assert.match(dnsRepairScript, /\[string\[\]\]\$ConnectivityHosts/);
     assert.match(script, /-QuickTimeout/);
     assert.match(script, /\$label DNS configuration can resolve/);
-    assert.match(script, /default gateway/);
-    assert.match(script, /Set-DnsClientServerAddress/);
-    assert.match(script, /1\.1\.1\.1/);
-    assert.match(script, /8\.8\.8\.8/);
+    assert.match(dnsRepairScript, /Set-DnsClientServerAddress/);
+    assert.match(dnsRepairScript, /1\.1\.1\.1/);
+    assert.match(dnsRepairScript, /8\.8\.8\.8/);
     assert.match(script, /\[System\.Net\.Dns\]::GetHostAddresses/);
     assert.match(script, /function Repair-OpenPathTargetDns/);
     assert.match(script, /function Invoke-OpenPathWebRequestWithDnsRecovery/);
     assert.match(script, /Download attempt \$attempt failed due to DNS/);
+    assert.match(script, /\$attempt -le 2/);
     assert.match(script, /isIP\(hostname\) !== 0/);
     assert.match(script, /Resolve-DnsName/);
     assert.match(script, /Skipping DNS lookup for literal IP target/);
@@ -961,6 +973,10 @@ describe('runner diagnostic wrapper', () => {
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /windows_bootstrap_source=local-installer-runtime/);
+    assert.match(
+      result.stdout,
+      /guest-upload: .*scripts\/Restore-WindowsRunnerDns\.ps1 -> C:\\Windows\\Temp\\openpath-ajax-direct\\Restore-WindowsRunnerDns\.ps1/
+    );
     assert.match(
       result.stdout,
       /guest-upload: .*windows\/lib\/install\/Installer\.Runtime\.ps1 -> C:\\Windows\\Temp\\openpath-ajax-direct\\local-windows\\lib\\install\\Installer\.Runtime\.ps1/

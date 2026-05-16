@@ -893,14 +893,18 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
 describe('Production client update canary workflow contracts', () => {
   test('Windows canaries share the runner DNS restoration action', () => {
     const actionText = readProjectText(windowsRunnerDnsActionPath);
+    const dnsRepairScript = readProjectText('scripts/Restore-WindowsRunnerDns.ps1');
 
-    assert.ok(actionText.includes('Set-DnsClientServerAddress'));
-    assert.ok(actionText.includes('Clear-DnsClientCache'));
-    assert.ok(actionText.includes('Test-NetConnection $connectivityHost -Port 443'));
-    assert.ok(actionText.includes('pipelines.actions.githubusercontent.com'));
+    assert.ok(actionText.includes('scripts\\Restore-WindowsRunnerDns.ps1'));
+    assert.ok(actionText.includes('-DnsServers $dnsServers'));
+    assert.ok(actionText.includes('-ConnectivityHosts $connectivityHosts'));
+    assert.ok(dnsRepairScript.includes('Set-DnsClientServerAddress'));
+    assert.ok(dnsRepairScript.includes('Clear-DnsClientCache'));
+    assert.ok(dnsRepairScript.includes('Test-NetConnection $connectivityHost -Port 443'));
+    assert.ok(dnsRepairScript.includes('pipelines.actions.githubusercontent.com'));
     assert.ok(
-      actionText.includes("Get-NetFirewallRule -DisplayName 'OpenPath-*'") &&
-        actionText.includes('Remove-NetFirewallRule'),
+      dnsRepairScript.includes("Get-NetFirewallRule -DisplayName 'OpenPath-*'") &&
+        dnsRepairScript.includes('Remove-NetFirewallRule'),
       'Windows runner DNS restore must remove OpenPath firewall rules that can block artifact-service DNS after canaries'
     );
 

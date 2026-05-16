@@ -49,6 +49,8 @@ const DEFAULT_STAGING_REDDIT_EXPLICIT_ALLOWLIST_HOSTS = Object.freeze([
 const LOCAL_FIREFOX_XPI_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\openpath-firefox-extension.xpi`;
 const SELENIUM_NODE_MODULES_ZIP_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\selenium-node-modules.zip`;
 const WINDOWS_RUNNER_SERVICE_STATE_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\github-runner-services-paused.json`;
+const WINDOWS_RUNNER_DNS_REPAIR_SCRIPT = 'scripts/Restore-WindowsRunnerDns.ps1';
+const WINDOWS_RUNNER_DNS_REPAIR_SCRIPT_ON_WINDOWS = `${WINDOWS_WORKSPACE}\\Restore-WindowsRunnerDns.ps1`;
 const BINARY_UPLOAD_CHUNK_CHARS = 524288;
 const DRY_RUN = process.env.WINDOWS_AJAX_DIRECT_DRY_RUN === '1';
 
@@ -528,30 +530,7 @@ function Invoke-OpenPathWebRequestWithDnsRecovery {
   }
   return `
 $targetHost = ${psSingleQuote(hostname)}
-$publicDnsServers = @('1.1.1.1', '8.8.8.8')
-$networkAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' })
-$currentDnsServers = @(Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.ServerAddresses } | Where-Object { $_ } | Select-Object -Unique)
-$gatewayDnsServers = @(Get-NetIPConfiguration -ErrorAction SilentlyContinue | ForEach-Object { $_.IPv4DefaultGateway.NextHop } | Where-Object { $_ } | Select-Object -Unique)
-
-function Test-OpenPathDnsServers($servers, $label) {
-  foreach ($server in @($servers | Where-Object { $_ } | Select-Object -Unique)) {
-    try {
-      Resolve-DnsName -Name $targetHost -Server $server -Type A -QuickTimeout -ErrorAction Stop | Where-Object { $_.IPAddress } | Select-Object -First 1 | Out-Null
-      Write-Host "DNS resolver $server ($label) can resolve $targetHost"
-      return $true
-    } catch {
-      Write-Host "DNS resolver $server ($label) cannot resolve \${targetHost}: $($_.Exception.Message)"
-    }
-  }
-  return $false
-}
-
-function Set-OpenPathAdapterDns($servers, $label) {
-  foreach ($adapter in $networkAdapters) {
-    Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $servers -ErrorAction SilentlyContinue
-  }
-  Write-Host "Using $label DNS resolvers for $targetHost"
-}
+$dnsRepairScript = ${psSingleQuote(WINDOWS_RUNNER_DNS_REPAIR_SCRIPT_ON_WINDOWS)}
 
 function Test-OpenPathTargetDns($label) {
   try {
@@ -567,15 +546,10 @@ function Test-OpenPathTargetDns($label) {
 
 function Repair-OpenPathTargetDns {
   if (Test-OpenPathTargetDns 'Existing') { return }
-  if (Test-OpenPathDnsServers $gatewayDnsServers 'default gateway') {
-    Set-OpenPathAdapterDns $gatewayDnsServers 'default gateway'
-  } elseif (Test-OpenPathDnsServers $publicDnsServers 'public') {
-    Set-OpenPathAdapterDns $publicDnsServers 'public'
-  } elseif (Test-OpenPathDnsServers $currentDnsServers 'current adapter') {
-    Write-Host "Current adapter DNS servers are reachable, leaving adapter DNS unchanged"
-  } else {
-    Write-Host "No candidate DNS resolver could resolve $targetHost; leaving adapter DNS unchanged"
+  if (-not (Test-Path -LiteralPath $dnsRepairScript)) {
+    throw "Windows runner DNS repair script is missing: $dnsRepairScript"
   }
+  & $dnsRepairScript -DnsServers @('1.1.1.1', '8.8.8.8') -ConnectivityHosts @($targetHost) -RequireConnectivity $false
   if (-not (Test-OpenPathTargetDns 'Repaired')) {
     throw "Unable to resolve $targetHost after DNS repair"
   }
@@ -588,7 +562,7 @@ function Invoke-OpenPathWebRequestWithDnsRecovery {
     [Parameter(Mandatory = $true)][string]$OutFile
   )
   $lastError = $null
-  for ($attempt = 1; $attempt -le 3; $attempt++) {
+  for ($attempt = 1; $attempt -le 2; $attempt++) {
     try {
       Invoke-WebRequest -Uri $Uri -Headers $Headers -OutFile $OutFile
       return
@@ -599,8 +573,9 @@ function Invoke-OpenPathWebRequestWithDnsRecovery {
         throw
       }
       Write-Host "Download attempt $attempt failed due to DNS: $message"
+      if ($attempt -ge 2) { break }
       Repair-OpenPathTargetDns
-      Start-Sleep -Seconds (2 * $attempt)
+      Start-Sleep -Seconds 2
     }
   }
   throw $lastError
@@ -778,6 +753,12 @@ function provisionCanary({ options, baseUrl, artifactDir, billingContext, env })
 }
 
 function installWindowsClient(options, summary) {
+  writeGuestText(
+    options,
+    resolve(projectRoot, WINDOWS_RUNNER_DNS_REPAIR_SCRIPT),
+    WINDOWS_RUNNER_DNS_REPAIR_SCRIPT_ON_WINDOWS
+  );
+
   const localInstallerOverlays =
     options.windowsBootstrapSource === 'local-installer-runtime'
       ? buildLocalInstallerOverlays(options.openpathRoot)

@@ -52,7 +52,8 @@ function buildReleaseEvidenceInput(overrides: Record<string, unknown> = {}) {
       resolveReleaseImages: 'success',
       verifyStagingReleaseState: 'success',
       windowsFirefoxCanary: 'success',
-      windowsProductionBootstrapCanary: 'success',
+      preproductionWindowsBootstrapCanary: 'success',
+      windowsProductionBootstrapCanary: null,
       linuxProductionBootstrapCanary: 'success',
       productionClientUpdateCanary: 'live-tested',
       deployProduction: 'success',
@@ -60,7 +61,7 @@ function buildReleaseEvidenceInput(overrides: Record<string, unknown> = {}) {
       rollbackProduction: 'skipped',
     },
     diagnostics: {
-      windowsProductionBootstrapFailureBoundary: {
+      preproductionWindowsBootstrapFailureBoundary: {
         id: 'none',
         message:
           'Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.',
@@ -103,7 +104,8 @@ function buildReleaseEvidenceInput(overrides: Record<string, unknown> = {}) {
       releaseImageMetadata: 'release-image-metadata-v1.2.99',
       stagingReleaseState: 'staging-release-state-v1.2.99',
       productionSmokeResults: 'smoke-test-results-production',
-      windowsProductionBootstrapCanary: 'windows-production-bootstrap-canary',
+      preproductionWindowsBootstrapCanary: 'preproduction-windows-bootstrap-canary',
+      windowsProductionBootstrapCanary: null,
       linuxProductionBootstrapCanary: 'linux-production-bootstrap-canary',
       releaseEvidence: 'release-evidence-v1.2.99',
     },
@@ -396,7 +398,8 @@ describe('release evidence bundle module', () => {
           resolveReleaseImages: 'success',
           verifyStagingReleaseState: 'success',
           windowsFirefoxCanary: 'success',
-          windowsProductionBootstrapCanary: 'success',
+          preproductionWindowsBootstrapCanary: 'success',
+          windowsProductionBootstrapCanary: null,
           linuxProductionBootstrapCanary: 'failure',
           productionClientUpdateCanary: 'live-tested',
           deployProduction: 'success',
@@ -404,7 +407,7 @@ describe('release evidence bundle module', () => {
           rollbackProduction: 'skipped',
         },
       }),
-      windowsProductionBootstrapCanary: {
+      preproductionWindowsBootstrapCanary: {
         listed: true,
         artifactDir: windowsArtifactDir,
       },
@@ -414,7 +417,7 @@ describe('release evidence bundle module', () => {
       },
     });
 
-    assert.equal(integrity.windowsProductionBootstrapCanary.status, 'missing');
+    assert.equal(integrity.preproductionWindowsBootstrapCanary.status, 'missing');
     assert.equal(integrity.linuxProductionBootstrapCanary.status, 'missing');
   });
 
@@ -431,14 +434,14 @@ describe('release evidence bundle module', () => {
 
     const integrity = verifyArtifactIntegrity({
       releaseEvidence: buildReleaseEvidenceInput(),
-      windowsProductionBootstrapCanary: {
+      preproductionWindowsBootstrapCanary: {
         listed: true,
         artifactDir: windowsArtifactDir,
       },
     });
 
-    assert.equal(integrity.windowsProductionBootstrapCanary.status, 'invalid');
-    assert.match(integrity.windowsProductionBootstrapCanary.message, /failureBoundary\.message/);
+    assert.equal(integrity.preproductionWindowsBootstrapCanary.status, 'invalid');
+    assert.match(integrity.preproductionWindowsBootstrapCanary.message, /failureBoundary\.message/);
   });
 
   test('validates release evidence checklist fields used by production promotion dry runs', () => {
@@ -475,7 +478,8 @@ describe('release evidence bundle module', () => {
           resolveReleaseImages: 'success',
           verifyStagingReleaseState: 'success',
           windowsFirefoxCanary: 'success',
-          windowsProductionBootstrapCanary: 'pending-post-release',
+          preproductionWindowsBootstrapCanary: 'pending-post-release',
+          windowsProductionBootstrapCanary: null,
           linuxProductionBootstrapCanary: 'pending-post-release',
           productionClientUpdateCanary: 'pending-post-release',
           deployProduction: 'success',
@@ -483,7 +487,7 @@ describe('release evidence bundle module', () => {
           rollbackProduction: 'skipped',
         },
       }),
-      windowsProductionBootstrapCanary: {
+      preproductionWindowsBootstrapCanary: {
         listed: false,
         artifactDir: null,
       },
@@ -493,7 +497,7 @@ describe('release evidence bundle module', () => {
       },
     });
 
-    assert.equal(integrity.windowsProductionBootstrapCanary.status, 'not_applicable');
+    assert.equal(integrity.preproductionWindowsBootstrapCanary.status, 'not_applicable');
     assert.equal(integrity.linuxProductionBootstrapCanary.status, 'not_applicable');
   });
 
@@ -575,7 +579,7 @@ describe('release evidence bundle module', () => {
       });
 
       assert.equal(
-        bundle.artifactIntegrity.windowsProductionBootstrapCanary.status,
+        bundle.artifactIntegrity.preproductionWindowsBootstrapCanary.status,
         'not_applicable'
       );
       assert.equal(
@@ -602,7 +606,7 @@ describe('release evidence bundle module', () => {
       );
       assert.equal(
         JSON.parse(readFileSync(resolve(outputDir, 'artifact-integrity.json'), 'utf8'))
-          .windowsProductionBootstrapCanary.status,
+          .preproductionWindowsBootstrapCanary.status,
         'not_applicable'
       );
     } finally {
@@ -632,7 +636,7 @@ printf '%s\\n' "$*" >> "${ghLogPath}"
 if [ "$1" = "api" ]; then
   case "$2" in
     *"/runs/deploy-456/artifacts")
-      printf '%s\\n' '{"artifacts":[{"name":"windows-production-bootstrap-canary"},{"name":"linux-production-bootstrap-canary"}]}'
+      printf '%s\\n' '{"artifacts":[{"name":"preproduction-windows-bootstrap-canary"},{"name":"linux-production-bootstrap-canary"}]}'
       exit 0
       ;;
   esac
@@ -656,7 +660,7 @@ if [ "$1" = "run" ] && [ "$2" = "download" ] && [ "$3" = "deploy-456" ]; then
     esac
   done
   mkdir -p "$output_dir"
-  if [ "$artifact_name" = "windows-production-bootstrap-canary" ]; then
+  if [ "$artifact_name" = "preproduction-windows-bootstrap-canary" ]; then
     mkdir -p "$output_dir/ClassroomPath/ClassroomPath"
     cp -R "$TEST_WINDOWS_ARTIFACT_DIR"/. "$output_dir/ClassroomPath/ClassroomPath"/
     exit 0
@@ -719,7 +723,7 @@ exit 1
         linuxCanaryRun: null,
       });
 
-      assert.equal(bundle.artifactIntegrity.windowsProductionBootstrapCanary.status, 'ok');
+      assert.equal(bundle.artifactIntegrity.preproductionWindowsBootstrapCanary.status, 'ok');
       assert.equal(bundle.artifactIntegrity.linuxProductionBootstrapCanary.status, 'ok');
       assert.match(
         bundle.canaries.windows.artifactPath,
@@ -758,7 +762,8 @@ exit 1
           resolveReleaseImages: 'success',
           verifyStagingReleaseState: 'success',
           windowsFirefoxCanary: 'success',
-          windowsProductionBootstrapCanary: 'success',
+          preproductionWindowsBootstrapCanary: 'success',
+          windowsProductionBootstrapCanary: null,
           linuxProductionBootstrapCanary: 'failure',
           productionClientUpdateCanary: 'live-tested',
           deployProduction: 'success',
@@ -815,7 +820,7 @@ exit 1
       `#!/bin/sh
 set -eu
 if [ "$1" = "api" ]; then
-  printf '%s\n' '{"artifacts":[{"name":"windows-production-bootstrap-canary"},{"name":"linux-production-bootstrap-canary"}]}'
+  printf '%s\n' '{"artifacts":[{"name":"preproduction-windows-bootstrap-canary"},{"name":"linux-production-bootstrap-canary"}]}'
   exit 0
 fi
 if [ "$1" = "run" ] && [ "$2" = "download" ]; then
@@ -837,7 +842,7 @@ if [ "$1" = "run" ] && [ "$2" = "download" ]; then
     esac
   done
   mkdir -p "$output_dir"
-  if [ "$artifact_name" = "windows-production-bootstrap-canary" ]; then
+  if [ "$artifact_name" = "preproduction-windows-bootstrap-canary" ]; then
     cp -R "$TEST_WINDOWS_ARTIFACT_DIR"/. "$output_dir"/
     exit 0
   fi
@@ -867,7 +872,7 @@ exit 1
         ready: { ready: true },
       },
       outputDir: bundleOutputDir,
-      windowsProductionBootstrapCanary: {
+      preproductionWindowsBootstrapCanary: {
         listed: true,
         artifactDir: windowsSourceDir,
       },
@@ -877,7 +882,7 @@ exit 1
       },
     });
 
-    assert.equal(bundle.artifactIntegrity.windowsProductionBootstrapCanary.status, 'missing');
+    assert.equal(bundle.artifactIntegrity.preproductionWindowsBootstrapCanary.status, 'missing');
     assert.equal(bundle.artifactIntegrity.linuxProductionBootstrapCanary.status, 'ok');
     assert.equal(bundle.canaries.linux.targetSha, 'cp-sha');
     assert.equal(bundle.canaries.linux.targetTag, 'v1.2.99');
@@ -888,7 +893,7 @@ exit 1
     );
     assert.equal(
       JSON.parse(readFileSync(resolve(bundleOutputDir, 'artifact-integrity.json'), 'utf8'))
-        .windowsProductionBootstrapCanary.status,
+        .preproductionWindowsBootstrapCanary.status,
       'missing'
     );
     assert.equal(
@@ -946,11 +951,11 @@ exit 1
           windowsCanaryRun: null,
           linuxCanaryRun: null,
         }),
-        /windows-production-bootstrap-canary.*missing/
+        /preproduction-windows-bootstrap-canary.*missing/
       );
       assert.equal(
         JSON.parse(readFileSync(resolve(cliOutputDir, 'artifact-integrity.json'), 'utf8'))
-          .windowsProductionBootstrapCanary.status,
+          .preproductionWindowsBootstrapCanary.status,
         'missing'
       );
       assert.equal(
@@ -960,7 +965,7 @@ exit 1
       );
       assert.equal(
         JSON.parse(readFileSync(resolve(cliOutputDir, 'release-evidence.json'), 'utf8'))
-          .artifactIntegrity.windowsProductionBootstrapCanary.status,
+          .artifactIntegrity.preproductionWindowsBootstrapCanary.status,
         'missing'
       );
     } finally {
@@ -1068,7 +1073,8 @@ describe('deploy brief module', () => {
           resolveReleaseImages: 'success',
           verifyStagingReleaseState: 'success',
           windowsFirefoxCanary: 'failure',
-          windowsProductionBootstrapCanary: 'pending-post-release',
+          preproductionWindowsBootstrapCanary: 'success',
+          windowsProductionBootstrapCanary: null,
           linuxProductionBootstrapCanary: 'skipped',
           productionClientUpdateCanary: 'advisory-only',
           deployProduction: 'success',

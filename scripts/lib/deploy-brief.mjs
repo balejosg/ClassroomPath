@@ -199,11 +199,26 @@ function buildGates(releaseEvidence) {
       category: 'required',
     }),
     buildGate({
-      id: 'windows-production-bootstrap-canary',
-      label: 'Windows production bootstrap canary monitor',
-      result: releaseEvidence.jobs?.windowsProductionBootstrapCanary,
+      id: 'preproduction-windows-bootstrap-canary',
+      label: 'Preproduction Windows bootstrap gate',
+      result:
+        releaseEvidence.jobs?.preproductionWindowsBootstrapCanary ??
+        releaseEvidence.jobs?.windowsProductionBootstrapCanary,
       boundary:
         releaseEvidence.canaries?.windows?.failureBoundary?.id ??
+        releaseEvidence.diagnostics?.preproductionWindowsBootstrapFailureBoundary?.id ??
+        releaseEvidence.diagnostics?.windowsProductionBootstrapFailureBoundary?.id,
+      evidence:
+        releaseEvidence.artifacts?.preproductionWindowsBootstrapCanary ??
+        releaseEvidence.artifacts?.windowsProductionBootstrapCanary,
+      category: 'required',
+    }),
+    buildGate({
+      id: 'windows-production-bootstrap-canary',
+      label: 'Live Windows production bootstrap canary monitor',
+      result: releaseEvidence.jobs?.windowsProductionBootstrapCanary,
+      boundary:
+        releaseEvidence.canaries?.windowsProduction?.failureBoundary?.id ??
         releaseEvidence.diagnostics?.windowsProductionBootstrapFailureBoundary?.id,
       evidence: releaseEvidence.artifacts?.windowsProductionBootstrapCanary,
       category: 'post-release-advisory',
@@ -334,11 +349,14 @@ function deriveFailureBoundary({ status, releaseEvidence, gates, runMetadata, so
     const message =
       explicitBoundaryGate.id === 'preproduction-installed-client-evidence'
         ? 'Preproduction installed-client evidence failed before production promotion.'
-        : explicitBoundaryGate.id === 'windows-production-bootstrap-canary'
+        : explicitBoundaryGate.id === 'preproduction-windows-bootstrap-canary'
           ? (releaseEvidence?.canaries?.windows?.failureBoundary?.message ??
-            releaseEvidence?.diagnostics?.windowsProductionBootstrapFailureBoundary?.message)
-          : (releaseEvidence?.canaries?.linux?.failureBoundary?.message ??
-            releaseEvidence?.diagnostics?.linuxProductionBootstrapFailureBoundary?.message);
+            releaseEvidence?.diagnostics?.preproductionWindowsBootstrapFailureBoundary?.message)
+          : explicitBoundaryGate.id === 'windows-production-bootstrap-canary'
+            ? (releaseEvidence?.canaries?.windowsProduction?.failureBoundary?.message ??
+              releaseEvidence?.diagnostics?.windowsProductionBootstrapFailureBoundary?.message)
+            : (releaseEvidence?.canaries?.linux?.failureBoundary?.message ??
+              releaseEvidence?.diagnostics?.linuxProductionBootstrapFailureBoundary?.message);
 
     return {
       id: explicitBoundaryGate.boundary,
@@ -346,7 +364,9 @@ function deriveFailureBoundary({ status, releaseEvidence, gates, runMetadata, so
       recommendedNextAction:
         explicitBoundaryGate.id === 'preproduction-installed-client-evidence'
           ? 'Inspect the failed preproduction gate, refresh staging evidence for the same SHA, then retry promotion readiness.'
-          : 'Inspect the canary artifact and clean up target state before retrying.',
+          : explicitBoundaryGate.id === 'preproduction-windows-bootstrap-canary'
+            ? 'Inspect the failed preproduction Windows gate, refresh staging evidence for the same SHA, then retry promotion readiness.'
+            : 'Inspect the canary artifact and clean up target state before retrying.',
       safeToRetry: 'after-cleanup',
     };
   }

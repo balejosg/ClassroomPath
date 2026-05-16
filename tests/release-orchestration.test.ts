@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   buildPromotionPlan,
+  buildWaitForTagDeployCommand,
   formatCommand,
   runStep,
 } from '../scripts/lib/release-orchestration.mjs';
@@ -24,6 +25,7 @@ describe('release promotion orchestration', () => {
         'tag-production',
         'wait-production-deploy',
         'verify-production-health',
+        'run-post-production-windows-canary',
         'report-residual-actions-runs',
         'print-summary',
       ]
@@ -50,17 +52,20 @@ describe('release promotion orchestration', () => {
     assert.match(commandsById['verify-promotion-ready'], /npm run verify:promotion-ready/);
     assert.match(commandsById['tag-production'], /npm run promote:production -- v1\.2\.301/);
     assert.match(commandsById['wait-production-deploy'], /actions-health\.mjs wait/);
+    assert.match(commandsById['wait-production-deploy'], /gh run list/);
+    assert.match(commandsById['wait-production-deploy'], /--workflow deploy\.yml/);
+    assert.match(commandsById['wait-production-deploy'], /--event push/);
+    assert.match(commandsById['wait-production-deploy'], /--branch v1\.2\.301/);
     assert.match(commandsById['verify-production-health'], /\/cp\/health/);
     assert.match(commandsById['verify-production-health'], /\/cp\/ready/);
     assert.match(commandsById['report-residual-actions-runs'], /actions-health\.mjs report-stale/);
     assert.match(commandsById['report-residual-actions-runs'], /--tag v1\.2\.301/);
   });
 
-  it('supports an optional post-production Windows canary step before summary', () => {
+  it('runs the post-production Windows canary by default before residual reporting', () => {
     const plan = buildPromotionPlan({
       tag: 'v1.2.301',
       highRiskWindows: true,
-      postProductionWindowsCanary: true,
     });
 
     const commandsById = Object.fromEntries(
@@ -74,6 +79,35 @@ describe('release promotion orchestration', () => {
       commandsById['run-post-production-windows-canary'],
       'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir .opencode/tmp/postproduction-windows-ajax/v1.2.301'
     );
+  });
+
+  it('omits the post-production Windows canary when explicitly disabled', () => {
+    const plan = buildPromotionPlan({
+      tag: 'v1.2.301',
+      highRiskWindows: true,
+      postProductionWindowsCanary: false,
+    });
+
+    assert.equal(
+      plan.steps.some((step) => step.id === 'run-post-production-windows-canary'),
+      false
+    );
+    assert.equal(plan.steps.at(-2)?.id, 'report-residual-actions-runs');
+    assert.equal(plan.steps.at(-1)?.id, 'print-summary');
+  });
+
+  it('builds a polling command for the tag-triggered deploy run', () => {
+    const command = formatCommand(buildWaitForTagDeployCommand('v1.2.301'));
+
+    assert.match(command, /deadline=\$\(\(SECONDS \+ 600\)\)/);
+    assert.match(command, /gh run list/);
+    assert.match(command, /--workflow deploy\.yml/);
+    assert.match(command, /--event push/);
+    assert.match(command, /--branch v1\.2\.301/);
+    assert.match(command, /headBranch == "v1\.2\.301"/);
+    assert.match(command, /event == "push"/);
+    assert.match(command, /workflowName == "Deploy"/);
+    assert.match(command, /actions-health\.mjs wait --repo balejosg\/ClassroomPath --run-id/);
   });
 
   it('parses release-promote CLI options', () => {
@@ -90,6 +124,22 @@ describe('release promotion orchestration', () => {
         dryRun: true,
         highRiskWindows: true,
         postProductionWindowsCanary: true,
+        help: false,
+      }
+    );
+
+    assert.deepEqual(
+      parseReleasePromoteArgs([
+        '--tag',
+        'v1.2.301',
+        '--dry-run',
+        '--no-post-production-windows-canary',
+      ]),
+      {
+        tag: 'v1.2.301',
+        dryRun: true,
+        highRiskWindows: true,
+        postProductionWindowsCanary: false,
         help: false,
       }
     );
@@ -117,14 +167,15 @@ describe('release promotion orchestration', () => {
     assert.match(stdout, /ensure-windows-prepromotion-evidence/);
     assert.match(stdout, /npm run deploy:staging/);
     assert.match(stdout, /npm run promote:production -- v0\.0\.0/);
+    assert.match(stdout, /run-post-production-windows-canary/);
     assert.match(stdout, /actions-health\.mjs report-stale/);
   });
 
-  it('prints the requested post-production canary command in dry-run mode', async () => {
+  it('omits the post-production canary command in dry-run mode only with opt-out', async () => {
     let stdout = '';
 
     const result = await runReleasePromoteCommand(
-      ['--tag', 'v0.0.0', '--dry-run', '--post-production-windows-canary'],
+      ['--tag', 'v0.0.0', '--dry-run', '--no-post-production-windows-canary'],
       {
         stdout: (value) => {
           stdout += value;
@@ -137,7 +188,7 @@ describe('release promotion orchestration', () => {
     );
 
     assert.equal(result.status, 0);
-    assert.match(
+    assert.doesNotMatch(
       stdout,
       /npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir \.opencode\/tmp\/postproduction-windows-ajax\/v0\.0\.0/
     );

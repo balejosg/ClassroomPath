@@ -18,42 +18,10 @@ runs:
     - name: Restore DNS client servers
       shell: pwsh
       run: |
-        $ErrorActionPreference = 'Continue'
-
-        $dnsServers = '${{ inputs.dns-servers }}'.Split(',') |
-          ForEach-Object { $_.Trim() } |
-          Where-Object { $_ }
-        if (-not $dnsServers) {
-          throw 'At least one DNS server must be configured'
-        }
-
-        Get-NetFirewallRule -DisplayName 'OpenPath-*' -ErrorAction SilentlyContinue |
-          Remove-NetFirewallRule -ErrorAction SilentlyContinue
-
-        $activeAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue |
-          Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' })
-
-        foreach ($adapter in $activeAdapters) {
-          Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
-        }
-
-        if (-not $activeAdapters) {
-          Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
-        }
-
-        Clear-DnsClientCache -ErrorAction SilentlyContinue
-
-        $connectivityHosts = '${{ inputs.connectivity-hosts }}'.Split(',') |
-          ForEach-Object { $_.Trim() } |
-          Where-Object { $_ }
-
-        foreach ($connectivityHost in $connectivityHosts) {
-          $githubProbe = Test-NetConnection $connectivityHost -Port 443 -WarningAction SilentlyContinue
-          if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
-            $message = "GitHub connectivity check failed after DNS restore for $connectivityHost. NameResolution=$($githubProbe.NameResolutionSucceeded) Tcp443=$($githubProbe.TcpTestSucceeded)"
-            if ('${{ inputs.require-github-connectivity }}' -eq 'true') {
-              throw $message
-            }
-            Write-Warning $message
-          }
-        }
+        $dnsServers = '${{ inputs.dns-servers }}'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        $connectivityHosts = '${{ inputs.connectivity-hosts }}'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        $requireConnectivity = '${{ inputs.require-github-connectivity }}' -eq 'true'
+        & "$env:GITHUB_WORKSPACE\scripts\Restore-WindowsRunnerDns.ps1" `
+          -DnsServers $dnsServers `
+          -ConnectivityHosts $connectivityHosts `
+          -RequireConnectivity $requireConnectivity

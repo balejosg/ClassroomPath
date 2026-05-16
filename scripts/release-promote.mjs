@@ -4,7 +4,7 @@ import { isDirectExecution } from './lib/github-actions.mjs';
 import { buildPromotionPlan, formatCommand, runStep } from './lib/release-orchestration.mjs';
 
 function usage() {
-  return `Usage: npm run release:promote -- --tag <vX.Y.Z> [--dry-run] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary]
+  return `Usage: npm run release:promote -- --tag <vX.Y.Z> [--dry-run] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary|--no-post-production-windows-canary]
 
 Builds and runs the production promotion plan.
 
@@ -13,7 +13,8 @@ Options:
   --dry-run                           Print the ordered plan without running commands.
   --high-risk-windows                 Include Windows prepromotion evidence step. Default.
   --no-high-risk-windows              Omit Windows prepromotion evidence step.
-  --post-production-windows-canary    Append the post-production Windows canary step.
+  --post-production-windows-canary    Include the post-production Windows canary step. Default.
+  --no-post-production-windows-canary Omit the post-production Windows canary step for emergency opt-out.
   --help                              Show this help.
 `;
 }
@@ -23,7 +24,7 @@ export function parseReleasePromoteArgs(argv) {
     tag: '',
     dryRun: false,
     highRiskWindows: true,
-    postProductionWindowsCanary: false,
+    postProductionWindowsCanary: true,
     help: false,
   };
 
@@ -44,6 +45,9 @@ export function parseReleasePromoteArgs(argv) {
         break;
       case '--post-production-windows-canary':
         options.postProductionWindowsCanary = true;
+        break;
+      case '--no-post-production-windows-canary':
+        options.postProductionWindowsCanary = false;
         break;
       case '--help':
       case '-h':

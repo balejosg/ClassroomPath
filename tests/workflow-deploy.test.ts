@@ -669,15 +669,15 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       deployWorkflowText,
-      /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-staging-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-staging-bootstrap-canary\.result \}\}"/
+      /"PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-staging-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-staging-bootstrap-canary\.result \}\}"/
     );
     assert.match(
       deployWorkflowText,
-      /"WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.windows-staging-bootstrap-canary\.result \}\}"/
+      /"PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.windows-staging-bootstrap-canary\.result \}\}"/
     );
     assert.match(
       deployWorkflowText,
-      /"WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "\$\{\{ needs\.windows-staging-bootstrap-canary\.outputs\.failure_boundary_id \|\| 'preproduction-windows-bootstrap-canary' \}\}"/
+      /"PREPRODUCTION_WINDOWS_BOOTSTRAP_FAILURE_BOUNDARY_ID": "\$\{\{ needs\.windows-staging-bootstrap-canary\.outputs\.failure_boundary_id \|\| 'preproduction-windows-bootstrap-canary' \}\}"/
     );
     assert.match(
       deployWorkflowText,

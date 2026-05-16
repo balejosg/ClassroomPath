@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   LINUX_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
+  PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT,
   WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
   isTrueFlag,
   valueOrNull,
@@ -508,6 +509,17 @@ export function deriveLinuxProductionBootstrapCanaryResult({ highRisk, canaryRes
   return deriveProductionBootstrapCanaryResult({ highRisk, canaryResult, jobResult });
 }
 
+function firstValue(...values) {
+  for (const value of values) {
+    const normalized = valueOrNull(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
 export function includesArtifactEvidence(result) {
   return RELEASE_JOB_RESULT_POLICY.evidenceBearingResults.includes(result);
 }
@@ -644,11 +656,27 @@ export function createReleaseEvidenceSnapshot(input = process.env) {
   const env = /** @type {NodeJS.ProcessEnv} */ (input);
   const windowsFirefoxHighRisk = isTrueFlag(env.STAGING_WINDOWS_FIREFOX_HIGH_RISK);
   const promotionEligibility = derivePromotionEligibility(env);
-  const windowsProductionBootstrapCanary = deriveProductionBootstrapCanaryResult({
+  const preproductionWindowsBootstrapCanary = deriveProductionBootstrapCanaryResult({
     highRisk: windowsFirefoxHighRisk,
-    canaryResult: env.WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT,
-    jobResult: env.WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT,
+    canaryResult: firstValue(
+      env.PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_RESULT,
+      env.WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT
+    ),
+    jobResult: firstValue(
+      env.PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_JOB_RESULT,
+      env.WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT
+    ),
   });
+  const hasLiveWindowsProductionBootstrapInput =
+    valueOrNull(env.LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT) ||
+    valueOrNull(env.LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT);
+  const windowsProductionBootstrapCanary = hasLiveWindowsProductionBootstrapInput
+    ? deriveProductionBootstrapCanaryResult({
+        highRisk: windowsFirefoxHighRisk,
+        canaryResult: env.LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT,
+        jobResult: env.LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT,
+      })
+    : null;
   const linuxProductionBootstrapCanary = deriveLinuxProductionBootstrapCanaryResult({
     highRisk: windowsFirefoxHighRisk,
     canaryResult: env.LINUX_PRODUCTION_BOOTSTRAP_CANARY_RESULT,
@@ -705,6 +733,7 @@ export function createReleaseEvidenceSnapshot(input = process.env) {
         highRisk: windowsFirefoxHighRisk,
         canaryResult: env.WINDOWS_FIREFOX_CANARY_RESULT,
       }),
+      preproductionWindowsBootstrapCanary,
       windowsProductionBootstrapCanary,
       linuxProductionBootstrapCanary,
       productionClientUpdateCanary: derivePostReleaseCanaryResult({
@@ -716,9 +745,19 @@ export function createReleaseEvidenceSnapshot(input = process.env) {
       rollbackProduction: valueOrNull(env.ROLLBACK_RESULT),
     },
     diagnostics: {
+      preproductionWindowsBootstrapFailureBoundary: {
+        id: firstValue(
+          env.PREPRODUCTION_WINDOWS_BOOTSTRAP_FAILURE_BOUNDARY_ID,
+          env.WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID
+        ),
+        message: firstValue(
+          env.PREPRODUCTION_WINDOWS_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE,
+          env.WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE
+        ),
+      },
       windowsProductionBootstrapFailureBoundary: {
-        id: valueOrNull(env.WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID),
-        message: valueOrNull(env.WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE),
+        id: valueOrNull(env.LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID),
+        message: valueOrNull(env.LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE),
       },
       linuxProductionBootstrapFailureBoundary: {
         id: valueOrNull(env.LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID),
@@ -762,6 +801,11 @@ export function createReleaseEvidenceSnapshot(input = process.env) {
         ? `staging-release-state-${env.TAG_NAME}`
         : null,
       productionSmokeResults: 'smoke-test-results-production',
+      preproductionWindowsBootstrapCanary: includesArtifactEvidence(
+        preproductionWindowsBootstrapCanary
+      )
+        ? PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT
+        : null,
       windowsProductionBootstrapCanary: includesArtifactEvidence(windowsProductionBootstrapCanary)
         ? WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT
         : null,
@@ -808,6 +852,10 @@ export function normalizeReleaseEvidenceSnapshot(snapshot) {
       resolveReleaseImages: snapshot.jobs?.resolveReleaseImages ?? null,
       verifyStagingReleaseState: snapshot.jobs?.verifyStagingReleaseState ?? null,
       windowsFirefoxCanary: snapshot.jobs?.windowsFirefoxCanary ?? null,
+      preproductionWindowsBootstrapCanary:
+        snapshot.jobs?.preproductionWindowsBootstrapCanary ??
+        snapshot.jobs?.windowsProductionBootstrapCanary ??
+        null,
       windowsProductionBootstrapCanary: snapshot.jobs?.windowsProductionBootstrapCanary ?? null,
       linuxProductionBootstrapCanary: snapshot.jobs?.linuxProductionBootstrapCanary ?? null,
       productionClientUpdateCanary: snapshot.jobs?.productionClientUpdateCanary ?? null,
@@ -816,6 +864,12 @@ export function normalizeReleaseEvidenceSnapshot(snapshot) {
       rollbackProduction: snapshot.jobs?.rollbackProduction ?? null,
     },
     diagnostics: {
+      preproductionWindowsBootstrapFailureBoundary: snapshot.diagnostics
+        ?.preproductionWindowsBootstrapFailureBoundary ??
+        snapshot.diagnostics?.windowsProductionBootstrapFailureBoundary ?? {
+          id: null,
+          message: null,
+        },
       windowsProductionBootstrapFailureBoundary: snapshot.diagnostics
         ?.windowsProductionBootstrapFailureBoundary ?? {
         id: null,
@@ -863,6 +917,10 @@ export function normalizeReleaseEvidenceSnapshot(snapshot) {
       releaseImageMetadata: snapshot.artifacts?.releaseImageMetadata ?? null,
       stagingReleaseState: snapshot.artifacts?.stagingReleaseState ?? null,
       productionSmokeResults: snapshot.artifacts?.productionSmokeResults ?? null,
+      preproductionWindowsBootstrapCanary:
+        snapshot.artifacts?.preproductionWindowsBootstrapCanary ??
+        snapshot.artifacts?.windowsProductionBootstrapCanary ??
+        null,
       windowsProductionBootstrapCanary:
         snapshot.artifacts?.windowsProductionBootstrapCanary ?? null,
       linuxProductionBootstrapCanary: snapshot.artifacts?.linuxProductionBootstrapCanary ?? null,

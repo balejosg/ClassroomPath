@@ -4,6 +4,27 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '.github/actions/build-release-candidate-image/**'
+      - '.github/actions/publish-release-candidate-manifest/**'
+      - '.github/actions/setup-docker-build/**'
+      - '.github/actions/setup-node/**'
+      - '.github/workflows/release-candidate-images.yml'
+      - '.github/workflows/reusable-release-candidate-image-family.yml'
+      - 'api/**'
+      - 'config/**'
+      - 'docker/**'
+      - 'package*.json'
+      - 'react-spa/**'
+      - 'scripts/detect-release-candidate-components.sh'
+      - 'scripts/fetch-release-candidate-diff-base.sh'
+      - 'scripts/lib/release-candidate-components.mjs'
+      - 'scripts/openpath-required-checks.mjs'
+      - 'scripts/release-images.mjs'
+      - 'scripts/resolve-latest-verifier-image.mjs'
+      - 'scripts/resolve-openpath-linux-agent-version.mjs'
+      - 'upstream/openpath'
+      - 'upstream/openpath/**'
   workflow_dispatch:
 
 permissions:
