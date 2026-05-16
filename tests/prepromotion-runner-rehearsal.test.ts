@@ -12,8 +12,10 @@ import {
   verifyWindowsAjaxArtifact,
 } from '../scripts/lib/prepromotion-runner-rehearsal.mjs';
 import {
+  buildWindowsPrepromotionPersistEnv,
   buildPrepromotionProcessEnv,
   resolveWindowsPrepromotionRequirement,
+  runAndPersistWindowsPrepromotionEvidence,
 } from '../scripts/lib/prepromotion-windows-evidence.mjs';
 
 const tempDirs: string[] = [];
@@ -208,6 +210,89 @@ describe('prepromotion runner rehearsal', () => {
     assert.equal(env.STAGING_HOST, '192.168.1.114');
     assert.equal(env.STAGING_SSH_KEY, '~/.ssh/classroompath_staging');
     assert.equal(env.EXPORTED_VALUE, 'from-process');
+  });
+
+  test('adds prepromotion rehearsal success only for successful canary evidence on the staged SHA', () => {
+    const persistEnv = buildWindowsPrepromotionPersistEnv({
+      artifact: {
+        success: true,
+        failureBoundary: { id: 'none', message: 'success' },
+      },
+      appSha: 'abc123',
+      targetSha: 'abc123',
+      stagingVerification: { STAGING_VERIFIED_APP_SHA: 'abc123' },
+      runId: 'direct-staging-test',
+      env: {},
+    });
+
+    assert.equal(persistEnv.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT, 'success');
+    assert.equal(persistEnv.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA, 'abc123');
+    assert.equal(persistEnv.STAGING_PREPROMOTION_REHEARSAL_RESULT, 'success');
+  });
+
+  test('does not add prepromotion rehearsal success when canary evidence failed', () => {
+    const persistEnv = buildWindowsPrepromotionPersistEnv({
+      artifact: {
+        success: false,
+        failureBoundary: { id: 'firefox-extension-ready', message: 'failed' },
+      },
+      appSha: 'abc123',
+      targetSha: 'abc123',
+      stagingVerification: { STAGING_VERIFIED_APP_SHA: 'abc123' },
+      runId: 'direct-staging-test',
+      env: {},
+    });
+
+    assert.equal(persistEnv.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT, 'failed');
+    assert.equal(
+      persistEnv.STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID,
+      'firefox-extension-ready'
+    );
+    assert.equal('STAGING_PREPROMOTION_REHEARSAL_RESULT' in persistEnv, false);
+  });
+
+  test('refuses to persist prepromotion success when target SHA mismatches staging', () => {
+    assert.throws(
+      () =>
+        buildWindowsPrepromotionPersistEnv({
+          artifact: {
+            success: true,
+            failureBoundary: { id: 'none', message: 'success' },
+          },
+          appSha: 'new-sha',
+          targetSha: 'new-sha',
+          stagingVerification: { STAGING_VERIFIED_APP_SHA: 'old-sha' },
+          env: {},
+        }),
+      /does not match staging verification SHA/
+    );
+  });
+
+  test('run-and-persist passes rehearsal success through the existing canary persistence env', () => {
+    const tempDir = createTempDir('classroompath-prepromotion-persist-');
+    const artifactPath = resolve(tempDir, 'production-windows-ajax-auto-allow-canary.json');
+    writeWindowsAjaxArtifact(artifactPath);
+    const calls: Array<{ command: string; args: string[]; env?: Record<string, string> }> = [];
+
+    const result = runAndPersistWindowsPrepromotionEvidence({
+      artifactDir: tempDir,
+      openpathRoot: '',
+      targetSha: 'abc123',
+      stagingVerification: { STAGING_VERIFIED_APP_SHA: 'abc123' },
+      env: { STAGING_SSH_KEY: '/tmp/classroompath_staging_key' },
+      cwd: projectRoot,
+      spawnCommand(command, args, options) {
+        calls.push({ command, args, env: options?.env });
+        return { status: 0 };
+      },
+    });
+
+    assert.equal(result.persisted.STAGING_PREPROMOTION_REHEARSAL_RESULT, 'success');
+    assert.equal(calls.length, 3);
+    assert.equal(calls[1].command, 'bash');
+    assert.equal(calls[1].env?.STAGING_PREPROMOTION_REHEARSAL_RESULT, 'success');
+    assert.equal(calls[2].command, 'ssh');
+    assert.equal(calls[2].args.includes('/tmp/classroompath_staging_key'), true);
   });
 
   test('accepts LAN staging Linux bootstrap skip with the matching boundary', () => {

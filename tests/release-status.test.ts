@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   buildReleaseStatus,
   buildReleaseStatusJson,
+  deriveReleaseBlockerGroups,
   deriveReleaseBlockers,
   parseReleaseStatusArgs,
   renderReleaseStatusText,
@@ -207,6 +208,8 @@ test('renders human output by default', async () => {
   assert.match(text, /Prerelease APT pin: unstable/);
   assert.match(text, /OpenPath required checks/);
   assert.match(text, /Last production deploy/);
+  assert.match(text, /Promotion blockers/);
+  assert.match(text, /Production blockers/);
 });
 
 test('CLI emits JSON when requested', () => {
@@ -228,6 +231,8 @@ test('CLI emits JSON when requested', () => {
   assert.equal(payload.classroompath.head, CLASSROOM_SHA);
   assert.equal(payload.openpath.submoduleSha, OPENPATH_SHA);
   assert.equal(payload.releaseCandidate.manifest.linux_agent_apt_suite, 'unstable');
+  assert.deepEqual(payload.promotionBlockers, []);
+  assert.deepEqual(payload.productionBlockers, []);
   assert.deepEqual(payload.blockers, []);
   assert.equal(result.stderr, '');
   assert.doesNotThrow(() => JSON.parse(result.stdout));
@@ -257,6 +262,8 @@ test('builds normalized JSON sections for release automation', async () => {
   assert.equal(payload.staging.verification.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT, 'success');
   assert.equal(payload.production.lastDeploy?.runId, 987654);
   assert.equal(payload.production.currentImages.APP_SHA, CLASSROOM_SHA);
+  assert.deepEqual(payload.promotionBlockers, []);
+  assert.deepEqual(payload.productionBlockers, []);
   assert.deepEqual(payload.blockers, []);
 });
 
@@ -314,6 +321,16 @@ test('derives stable release blockers from release status evidence', async () =>
     'windows-prepromotion-evidence-missing',
     'production-deploy-not-success',
   ]);
+  assert.deepEqual(deriveReleaseBlockerGroups(status), {
+    promotionBlockers: [
+      'classroompath-head-behind-origin',
+      'openpath-required-checks-not-green',
+      'release-candidate-missing',
+      'staging-not-promotion-eligible',
+      'windows-prepromotion-evidence-missing',
+    ],
+    productionBlockers: ['production-deploy-not-success'],
+  });
 });
 
 function createReleaseStatusFakeBin() {

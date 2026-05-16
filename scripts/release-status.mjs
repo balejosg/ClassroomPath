@@ -245,7 +245,13 @@ function hasWindowsPrepromotionEvidence(stagingState) {
 }
 
 export function deriveReleaseBlockers(status) {
+  const groups = deriveReleaseBlockerGroups(status);
+  return [...groups.promotionBlockers, ...groups.productionBlockers];
+}
+
+export function deriveReleaseBlockerGroups(status) {
   const blockers = [];
+  const productionBlockers = [];
   const stagingState = status.stagingVerification.state ?? {};
   const stagingCurrentImages = status.stagingCurrentImages.state ?? {};
 
@@ -276,10 +282,13 @@ export function deriveReleaseBlockers(status) {
   }
 
   if (status.productionDeploy.latestRun?.conclusion !== 'success') {
-    blockers.push('production-deploy-not-success');
+    productionBlockers.push('production-deploy-not-success');
   }
 
-  return blockers;
+  return {
+    promotionBlockers: blockers,
+    productionBlockers,
+  };
 }
 
 export function buildReleaseStatusJson(status) {
@@ -288,6 +297,17 @@ export function buildReleaseStatusJson(status) {
   const productionCurrentImages = status.productionDeploy.currentState ?? {};
   const releaseCandidateRun = normalizeReleaseRun(status.releaseCandidate.latestRun);
   const productionDeployRun = normalizeReleaseRun(status.productionDeploy.latestRun);
+  const blockerGroups =
+    status.promotionBlockers && status.productionBlockers
+      ? {
+          promotionBlockers: status.promotionBlockers,
+          productionBlockers: status.productionBlockers,
+        }
+      : deriveReleaseBlockerGroups(status);
+  const blockers = status.blockers ?? [
+    ...blockerGroups.promotionBlockers,
+    ...blockerGroups.productionBlockers,
+  ];
 
   return {
     classroompath: {
@@ -325,7 +345,9 @@ export function buildReleaseStatusJson(status) {
       currentImages: productionCurrentImages,
       currentImagesError: status.productionDeploy.currentStateError,
     },
-    blockers: status.blockers,
+    promotionBlockers: blockerGroups.promotionBlockers,
+    productionBlockers: blockerGroups.productionBlockers,
+    blockers,
   };
 }
 
@@ -770,11 +792,13 @@ export async function buildReleaseStatus({
     },
   };
 
-  const blockers = deriveReleaseBlockers(status);
+  const blockerGroups = deriveReleaseBlockerGroups(status);
+  const blockers = [...blockerGroups.promotionBlockers, ...blockerGroups.productionBlockers];
   return {
     ...status,
+    ...blockerGroups,
     blockers,
-    ...buildReleaseStatusJson({ ...status, blockers }),
+    ...buildReleaseStatusJson({ ...status, ...blockerGroups, blockers }),
   };
 }
 
@@ -828,6 +852,16 @@ export function renderReleaseStatusText(status) {
     status.productionDeploy.currentStateError
       ? `  note: ${status.productionDeploy.currentStateError}`
       : '',
+    '',
+    'Promotion blockers:',
+    ...(status.promotionBlockers?.length
+      ? status.promotionBlockers.map((blocker) => `  - ${blocker}`)
+      : ['  - none']),
+    '',
+    'Production blockers:',
+    ...(status.productionBlockers?.length
+      ? status.productionBlockers.map((blocker) => `  - ${blocker}`)
+      : ['  - none']),
   ];
 
   return `${lines.filter((line) => line !== '').join('\n')}\n`;
