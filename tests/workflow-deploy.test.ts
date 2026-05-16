@@ -663,6 +663,13 @@ describe('Deploy workflow contracts', () => {
       ),
       /TARGET_ENVIRONMENT != 'production'/
     );
+    assert.match(
+      String(
+        findWorkflowStepByName(windowsProductionBootstrapCanaryJob, 'Record canary result')?.env
+          ?.PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME ?? ''
+      ),
+      /TARGET_ENVIRONMENT == 'production'.*'success'/
+    );
     assert.equal(
       findWorkflowStepByName(
         canaryReusableJob,

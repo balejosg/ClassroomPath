@@ -676,7 +676,7 @@ jobs:
           FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax-summary.outputs.failure_boundary_message || 'Windows AJAX evidence artifact was not written.' }}
           VERIFY_ARTIFACTS_OUTCOME: ${{ steps.verify-artifacts.outcome }}
           ARTIFACT_UPLOAD_OUTCOME: ${{ steps.upload-artifacts.outcome }}
-          PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME: ${{ steps.upload-preproduction-artifacts.outcome || 'success' }}
+          PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME: ${{ env.TARGET_ENVIRONMENT == 'production' && 'success' || steps.upload-preproduction-artifacts.outcome }}
         run: |
           set -euo pipefail
 
