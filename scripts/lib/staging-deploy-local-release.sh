@@ -142,13 +142,13 @@ prepare_staging_local_release_context() {
 
     local workspace_guard="$SCRIPT_DIR/../../scripts/parallel_session_guard.py"
     if [ "$STAGING_DEPLOYMENT_MODE" = "promotion-eligible" ] && [ -f "$workspace_guard" ]; then
-        local release_id_arg=()
         local release_id=""
-        release_id="$(resolve_active_release_fence_id "$workspace_guard" "$REMOTE_SHA" || true)"
-        if [ -n "$release_id" ]; then
-            release_id_arg=(--release-id "$release_id")
+        release_id="$(resolve_active_release_fence_id "$workspace_guard" || true)"
+        if [ -z "$release_id" ]; then
+            log_error "Promotion-eligible staging requires an active release fence id"
+            exit 2
         fi
-        python3 "$workspace_guard" release-mark-staged "${release_id_arg[@]}" --classroompath-sha "$REMOTE_SHA"
+        python3 "$workspace_guard" release-mark-staged --release-id "$release_id" --classroompath-sha "$REMOTE_SHA"
     fi
 
     log_success "Git state checked"
@@ -156,7 +156,6 @@ prepare_staging_local_release_context() {
 
 resolve_active_release_fence_id() {
     local workspace_guard="$1"
-    local target_sha="$2"
     local fence_json=""
 
     fence_json="$(python3 "$workspace_guard" release-status 2>/dev/null || true)"
@@ -168,13 +167,11 @@ resolve_active_release_fence_id() {
             ;;
     esac
 
-    FENCE_JSON="$fence_json" TARGET_SHA="$target_sha" node <<'NODE'
+    FENCE_JSON="$fence_json" node <<'NODE'
 const fence = JSON.parse(process.env.FENCE_JSON || '{}');
-const targetSha = String(process.env.TARGET_SHA || '');
 const releaseId = String(fence.release_id || '');
-const fenceSha = String(fence.classroompath_sha || '');
 
-if (releaseId && (!fenceSha || fenceSha === targetSha)) {
+if (releaseId) {
   console.log(releaseId);
 }
 NODE

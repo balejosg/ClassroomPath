@@ -67,6 +67,10 @@ describe('Deployment staging and promotion contracts', () => {
     const releaseHelperContent = readFileSync(stagingLocalReleaseHelperPath, 'utf-8');
     const releasePlanContent = readFileSync(releasePlanScriptPath, 'utf-8');
     const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
+    const releaseCandidateWorkflowContent = readFileSync(
+      resolve(projectRoot, '.github/workflows/release-candidate-images.yml'),
+      'utf-8'
+    );
 
     assert.ok(existsSync(releaseImagesScriptPath));
     assert.ok(existsSync(waitForReleaseCandidateScriptPath));
@@ -75,6 +79,11 @@ describe('Deployment staging and promotion contracts', () => {
         releaseHelperContent.includes(
           'node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest'
         )
+    );
+    assert.ok(
+      releaseCandidateWorkflowContent.includes("'scripts/deploy-staging-local.sh'") &&
+        releaseCandidateWorkflowContent.includes("'scripts/lib/staging-deploy-local-release.sh'"),
+      'release-candidate images should refresh when promotion-eligible staging deploy logic changes'
     );
     assert.ok(
       releaseHelperContent.includes('warn_if_other_release_candidate_run_in_progress "$REMOTE_SHA"')
@@ -590,10 +599,12 @@ warn_if_other_release_candidate_run_in_progress target-sha
     const stagingReleaseHelper = readFileSync(stagingLocalReleaseHelperPath, 'utf8');
     assert.ok(
       stagingReleaseHelper.includes('Promotion-eligible staging requires a clean worktree') &&
+        stagingReleaseHelper.includes('resolve_active_release_fence_id "$workspace_guard"') &&
         stagingReleaseHelper.includes(
-          'resolve_active_release_fence_id "$workspace_guard" "$REMOTE_SHA"'
+          'Promotion-eligible staging requires an active release fence id'
         ) &&
         stagingReleaseHelper.includes('release-mark-staged') &&
+        stagingReleaseHelper.includes('--release-id "$release_id"') &&
         stagingReleaseHelper.includes('--classroompath-sha "$REMOTE_SHA"'),
       'promotion-eligible staging should reject local dirt and mark the active release fence staged'
     );
