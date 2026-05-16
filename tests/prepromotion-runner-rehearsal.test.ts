@@ -11,7 +11,10 @@ import {
   readStagingVerificationEnv,
   verifyWindowsAjaxArtifact,
 } from '../scripts/lib/prepromotion-runner-rehearsal.mjs';
-import { resolveWindowsPrepromotionRequirement } from '../scripts/lib/prepromotion-windows-evidence.mjs';
+import {
+  buildPrepromotionProcessEnv,
+  resolveWindowsPrepromotionRequirement,
+} from '../scripts/lib/prepromotion-windows-evidence.mjs';
 
 const tempDirs: string[] = [];
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -183,6 +186,28 @@ describe('prepromotion runner rehearsal', () => {
       result.command,
       'npm run diagnostics:windows-ajax:direct -- --environment staging'
     );
+  });
+
+  test('loads local staging SSH config for prepromotion persistence without overriding exports', () => {
+    const tempDir = createTempDir('classroompath-prepromotion-env-local-');
+    writeText(
+      resolve(tempDir, '.env.local'),
+      [
+        'STAGING_HOST=192.168.1.114',
+        'STAGING_SSH_KEY=~/.ssh/classroompath_staging',
+        'EXPORTED_VALUE=from-file',
+        '',
+      ].join('\n')
+    );
+
+    const env = buildPrepromotionProcessEnv({
+      cwd: tempDir,
+      env: { EXPORTED_VALUE: 'from-process' },
+    });
+
+    assert.equal(env.STAGING_HOST, '192.168.1.114');
+    assert.equal(env.STAGING_SSH_KEY, '~/.ssh/classroompath_staging');
+    assert.equal(env.EXPORTED_VALUE, 'from-process');
   });
 
   test('accepts LAN staging Linux bootstrap skip with the matching boundary', () => {

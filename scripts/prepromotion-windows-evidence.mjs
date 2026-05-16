@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 
 import {
+  buildPrepromotionProcessEnv,
   readStagingVerificationFromFile,
   readStagingVerificationFromHost,
   resolveWindowsPrepromotionRequirement,
@@ -143,6 +144,14 @@ function main() {
 
   const artifactDir = options.artifactDir || defaultArtifactDir();
   let stagingVerification;
+  const effectiveEnv = buildPrepromotionProcessEnv({
+    cwd: process.cwd(),
+    env: process.env,
+  });
+  if (!options.stagingSshKey) {
+    options.stagingSshKey = effectiveEnv.STAGING_SSH_KEY ?? '';
+  }
+
   try {
     stagingVerification = loadStagingVerification(options);
   } catch (error) {
@@ -168,7 +177,7 @@ function main() {
       openpathRoot: options.openpathRoot,
       targetSha: options.targetSha,
       stagingVerification,
-      env: process.env,
+      env: effectiveEnv,
       cwd: process.cwd(),
     });
     printPersisted(result);

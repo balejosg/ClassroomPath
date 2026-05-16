@@ -30,6 +30,43 @@ function isTrueFlag(value) {
   );
 }
 
+export function readEnvLocalFile(path) {
+  if (!existsSync(path)) {
+    return {};
+  }
+
+  const env = {};
+  for (const rawLine of readFileSync(path, 'utf8').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#') || !line.includes('=')) {
+      continue;
+    }
+
+    const [key, ...valueParts] = line.split('=');
+    let value = valueParts.join('=').trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    env[key.trim()] = value;
+  }
+
+  return env;
+}
+
+export function buildPrepromotionProcessEnv({
+  cwd = process.cwd(),
+  env = process.env,
+  envFile = '.env.local',
+} = {}) {
+  return {
+    ...readEnvLocalFile(resolve(cwd, envFile)),
+    ...env,
+  };
+}
+
 export function shouldRunWindowsPrepromotionCanary(stagingVerification) {
   return (
     stagingVerification.STAGING_WINDOWS_FIREFOX_HIGH_RISK === 'true' &&
