@@ -242,6 +242,35 @@ async function materializeFirefoxCanaryExtensionArchive(extensionDir) {
   return archivePath;
 }
 
+function readFirefoxExtensionIdFromManifest(manifestText) {
+  const manifest = JSON.parse(manifestText);
+  const extensionId =
+    manifest?.browser_specific_settings?.gecko?.id ?? manifest?.applications?.gecko?.id;
+  return typeof extensionId === 'string' && extensionId !== '' ? extensionId : null;
+}
+
+async function resolveFirefoxExpectedExtensionId(extensionPath) {
+  if (process.env.EXPECTED_EXTENSION_ID) {
+    return EXPECTED_EXTENSION_ID;
+  }
+
+  if (!extensionPath) {
+    return EXPECTED_EXTENSION_ID;
+  }
+
+  const extensionStat = await stat(extensionPath);
+  if (extensionStat.isDirectory()) {
+    const manifestText = await readFile(join(extensionPath, 'manifest.json'), 'utf8');
+    return readFirefoxExtensionIdFromManifest(manifestText) ?? EXPECTED_EXTENSION_ID;
+  }
+
+  const { stdout } = await execFileAsync('unzip', ['-p', extensionPath, 'manifest.json'], {
+    timeout: 10000,
+    maxBuffer: 1024 * 1024,
+  });
+  return readFirefoxExtensionIdFromManifest(stdout) ?? EXPECTED_EXTENSION_ID;
+}
+
 async function readFileEvidence(path, expectedHosts = []) {
   try {
     const [fileStat, contents] = await Promise.all([stat(path), readFile(path, 'utf8')]);
@@ -545,6 +574,7 @@ async function createFirefoxSession() {
   const { Builder } = await import('selenium-webdriver');
   const firefox = await import('selenium-webdriver/firefox.js');
   const seleniumExtensionPath = await resolveFirefoxCanaryExtensionPath();
+  const expectedExtensionId = await resolveFirefoxExpectedExtensionId(seleniumExtensionPath);
   const options = new firefox.Options();
   options.addArguments('-headless');
   if (seleniumExtensionPath !== null) {
@@ -565,9 +595,10 @@ async function createFirefoxSession() {
   const firefoxExtensionWarmup = await waitForFirefoxExtensionRuntimeReady({
     driver,
     profileDir,
+    extensionId: expectedExtensionId,
   }).catch((error) => ({
     ready: false,
-    expectedExtensionId: EXPECTED_EXTENSION_ID,
+    expectedExtensionId,
     profileDir,
     seleniumExtensionPath,
     error: error instanceof Error ? error.message : String(error),
@@ -745,7 +776,8 @@ async function main() {
     const baseSummary = {
       originHost: ORIGIN_HOST,
       originUrl,
-      expectedExtensionId: EXPECTED_EXTENSION_ID,
+      expectedExtensionId:
+        firefoxSession.firefoxExtensionWarmup?.expectedExtensionId ?? EXPECTED_EXTENSION_ID,
       originHits: state.originPageHits,
       originPageHits: state.originPageHits,
       firstPageLoadCompleted: firefoxSession.firstPageLoadCompleted,
