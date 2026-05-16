@@ -169,7 +169,9 @@ function readEnvFileIfPresent(env, filePath) {
 function latestMatchingRun(runs, sha) {
   return (
     sortWorkflowRunsNewestFirst(runs).find(
-      (run) => normalizeWorkflowRunHeadSha(run) === sha && run.event === 'push'
+      (run) =>
+        normalizeWorkflowRunHeadSha(run) === sha &&
+        (run.event === 'push' || run.event === 'workflow_dispatch')
     ) ?? null
   );
 }

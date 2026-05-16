@@ -82,7 +82,7 @@ function createCommandHarness(options: { originSha?: string; openpathCheckStatus
           {
             databaseId: 123456,
             headSha: CLASSROOM_SHA,
-            event: 'push',
+            event: 'workflow_dispatch',
             status: 'completed',
             conclusion: 'success',
             updatedAt: '2026-05-05T08:00:00Z',
