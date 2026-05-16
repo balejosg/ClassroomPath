@@ -186,6 +186,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.match(canaryScript, /applications\?\.gecko\?\.id/);
     assert.match(canaryScript, /async function resolveFirefoxExpectedExtensionId/);
     assert.match(canaryScript, /unzip', \['-p', extensionPath, 'manifest\.json'\]/);
+    assert.doesNotMatch(
+      canaryScript,
+      /if \(process\.env\.EXPECTED_EXTENSION_ID\) \{\s*return EXPECTED_EXTENSION_ID;\s*\}/
+    );
     assert.match(
       canaryScript,
       /\/usr\/share\/openpath\/firefox-release\/openpath-firefox-extension\.xpi/

@@ -250,10 +250,6 @@ function readFirefoxExtensionIdFromManifest(manifestText) {
 }
 
 async function resolveFirefoxExpectedExtensionId(extensionPath) {
-  if (process.env.EXPECTED_EXTENSION_ID) {
-    return EXPECTED_EXTENSION_ID;
-  }
-
   if (!extensionPath) {
     return EXPECTED_EXTENSION_ID;
   }
