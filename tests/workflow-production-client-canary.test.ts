@@ -1943,7 +1943,11 @@ describe('Production client update canary workflow contracts', () => {
     assert.match(workflow, /production-windows-runner-health\.json/);
     assert.match(
       workflow,
-      /if \[ "\$ARTIFACT_UPLOAD_OUTCOME" != "success" \]; then[\s\S]*failure_boundary_id=artifact-upload/
+      /if \[ "\$ARTIFACT_UPLOAD_OUTCOME" != "success" \] \|\| \[ "\$PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME" != "success" \]; then[\s\S]*failure_boundary_id=artifact-upload/
+    );
+    assert.match(
+      workflow,
+      /PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME: \$\{\{ env\.TARGET_ENVIRONMENT == 'production' && 'success' \|\| steps\.upload-preproduction-artifacts\.outcome \}\}/
     );
     assert.match(
       workflow,
