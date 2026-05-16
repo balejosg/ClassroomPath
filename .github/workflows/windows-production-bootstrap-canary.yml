@@ -116,11 +116,34 @@ jobs:
           enable-cache: false
           cache-dependency-path: package-lock.json
 
+      - name: Restore Windows runner DNS before dependency install
+        uses: ./.github/actions/restore-windows-runner-dns
+
       - name: Install Windows AJAX canary dependencies
         shell: bash
         run: |
           set -euo pipefail
-          npm ci --ignore-scripts
+          install_status=1
+          for attempt in 1 2 3; do
+            if npm ci --ignore-scripts; then
+              install_status=0
+              break
+            fi
+
+            install_status=$?
+            if [ "$attempt" -eq 3 ]; then
+              break
+            fi
+
+            echo "::warning::npm ci failed on attempt ${attempt}; retrying after npm cache verification"
+            npm cache verify || true
+            sleep $((attempt * 10))
+          done
+
+          if [ "$install_status" -ne 0 ]; then
+            exit "$install_status"
+          fi
+
           node -e "Promise.all([import('selenium-webdriver'), import('selenium-webdriver/firefox.js')])"
 
       - name: Resolve diagnostic target

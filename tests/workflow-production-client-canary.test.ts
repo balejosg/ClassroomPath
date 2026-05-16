@@ -1595,6 +1595,9 @@ describe('Production client update canary workflow contracts', () => {
       String(step.name ?? '').includes('Re-run Update-OpenPath.ps1')
     );
     const setupNodeStepIndex = steps.findIndex((step) => step.name === 'Setup Node.js');
+    const restoreDependencyDnsStepIndex = steps.findIndex(
+      (step) => step.name === 'Restore Windows runner DNS before dependency install'
+    );
     const dependencyStepIndex = steps.findIndex(
       (step) => step.name === 'Install Windows AJAX canary dependencies'
     );
@@ -1663,12 +1666,23 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.ok(
       setupNodeStepIndex >= 0 &&
+        setupNodeStepIndex < restoreDependencyDnsStepIndex &&
+        restoreDependencyDnsStepIndex < dependencyStepIndex &&
         setupNodeStepIndex < dependencyStepIndex &&
         dependencyStepIndex < ajaxStepIndex,
-      'Windows AJAX canary must install Selenium dependencies after Node setup and before loading the canary script'
+      'Windows AJAX canary must restore DNS and install Selenium dependencies after Node setup and before loading the canary script'
+    );
+    assert.equal(
+      steps[restoreDependencyDnsStepIndex]?.uses,
+      './.github/actions/restore-windows-runner-dns'
     );
     assert.equal(dependencyStep?.shell, 'bash');
     assert.ok(dependencyScript.includes('npm ci --ignore-scripts'));
+    assert.ok(
+      dependencyScript.includes('for attempt in 1 2 3'),
+      'Windows AJAX canary dependency install should retry transient registry DNS failures'
+    );
+    assert.ok(dependencyScript.includes('npm cache verify'));
     assert.match(dependencyScript, /import\('selenium-webdriver'\)/);
     assert.match(dependencyScript, /import\('selenium-webdriver\/firefox\.js'\)/);
     assert.ok(
