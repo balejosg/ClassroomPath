@@ -33,6 +33,7 @@ export const LINUX_AUTO_ALLOW_PROBES = Object.freeze([
     path: '/data.json',
     expectedWhitelistHost: LINUX_AUTO_ALLOW_TARGET_HOST,
     failureMessage: 'Explicit AJAX target was not written to the Linux whitelist',
+    requiresTraffic: false,
   },
   {
     id: 'xhr-subresource',
@@ -49,6 +50,7 @@ export const LINUX_AUTO_ALLOW_PROBES = Object.freeze([
     path: '/pixel.png',
     expectedWhitelistHost: LINUX_AUTO_ALLOW_ASSET_HOST,
     failureMessage: 'Explicit image target was not written to the Linux whitelist',
+    requiresTraffic: false,
   },
   {
     id: 'script-subresource',

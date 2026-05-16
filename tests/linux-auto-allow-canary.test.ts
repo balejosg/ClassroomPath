@@ -415,6 +415,68 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.equal(summary.failureBoundary.id, 'none');
   });
 
+  test('Linux explicit traffic diagnostics require only stable browser primitives', () => {
+    const probeHits = {
+      'ajax-fetch': 0,
+      'xhr-subresource': 1,
+      'image-subresource': 0,
+      'script-subresource': 1,
+      'stylesheet-subresource': 1,
+      'font-subresource': 1,
+    };
+    const summary = withLinuxAutoAllowDiagnostics({
+      firefoxExtensionWarmup: { ready: true },
+      originHits: 1,
+      originPageHits: 1,
+      pageObserverInstalled: true,
+      completedCandidateEvents: Object.fromEntries(
+        [...LINUX_AUTO_ALLOW_OBSERVATION_PROBES, ...LINUX_AUTO_ALLOW_PROBES].map((probe) => [
+          probe.id,
+          true,
+        ])
+      ),
+      probeEvidence: LINUX_AUTO_ALLOW_PROBES.map((probe) => ({
+        id: probe.id,
+        expectedWhitelistHost: probe.expectedWhitelistHost,
+        hits: probeHits[probe.id as keyof typeof probeHits],
+        whitelistContainsExpectedHost: true,
+      })),
+      diagnostics: {
+        postAttempt: {
+          server: {
+            canaryGroup: {
+              body: {
+                rules: LINUX_AUTO_ALLOW_PROBES.map((probe) => ({
+                  type: 'whitelist',
+                  value: probe.expectedWhitelistHost,
+                })),
+              },
+            },
+          },
+          whitelist: {
+            local: {
+              containsExpectedHosts: Object.fromEntries([
+                ...LINUX_AUTO_ALLOW_PROBES.map((probe) => [probe.expectedWhitelistHost, true]),
+                ...LINUX_AUTO_ALLOW_OBSERVATION_PROBES.map((probe) => [
+                  probe.expectedWhitelistHost,
+                  false,
+                ]),
+              ]),
+            },
+          },
+        },
+      },
+    });
+
+    assert.deepEqual(
+      LINUX_AUTO_ALLOW_PROBES.filter((probe) => probe.requiresTraffic !== false).map(
+        (probe) => probe.id
+      ),
+      ['xhr-subresource', 'script-subresource', 'stylesheet-subresource', 'font-subresource']
+    );
+    assert.equal(summary.failureBoundary.id, 'none');
+  });
+
   test('Linux canary exits successfully when declarative diagnostics converge', () => {
     const canaryScript = readProjectText('scripts/linux-ajax-auto-allow-canary.mjs');
 
