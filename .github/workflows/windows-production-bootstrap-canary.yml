@@ -650,6 +650,22 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload preproduction bootstrap canary artifacts
+        id: upload-preproduction-artifacts
+        if: always() && env.TARGET_ENVIRONMENT != 'production'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: preproduction-windows-bootstrap-canary
+          path: |
+            production-windows-bootstrap-canary.json
+            production-windows-ajax-auto-allow-canary.json
+            production-windows-runner-health.json
+            ${{ runner.temp }}/Update-OpenPath.log
+            ${{ runner.temp }}/windows-production-bootstrap-firefox.log
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Record canary result
         id: result
         if: always()
@@ -660,6 +676,7 @@ jobs:
           FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax-summary.outputs.failure_boundary_message || 'Windows AJAX evidence artifact was not written.' }}
           VERIFY_ARTIFACTS_OUTCOME: ${{ steps.verify-artifacts.outcome }}
           ARTIFACT_UPLOAD_OUTCOME: ${{ steps.upload-artifacts.outcome }}
+          PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME: ${{ steps.upload-preproduction-artifacts.outcome || 'success' }}
         run: |
           set -euo pipefail
 
@@ -668,7 +685,7 @@ jobs:
           failure_boundary_id="$FUNCTIONAL_BOUNDARY_ID"
           failure_boundary_message="$FUNCTIONAL_BOUNDARY_MESSAGE"
 
-          if [ "$ARTIFACT_UPLOAD_OUTCOME" != "success" ]; then
+          if [ "$ARTIFACT_UPLOAD_OUTCOME" != "success" ] || [ "$PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME" != "success" ]; then
             result=failure
             failure_boundary_id=artifact-upload
             failure_boundary_message='Functional canary evidence was produced but GitHub artifact upload failed.'

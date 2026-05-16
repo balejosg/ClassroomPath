@@ -5,7 +5,9 @@ import {
   buildPromotionPlan,
   buildWaitForTagDeployCommand,
   formatCommand,
+  monitorGitHubRun,
   runStep,
+  summarizeGitHubRunMonitor,
 } from '../scripts/lib/release-orchestration.mjs';
 import { parseReleasePromoteArgs, runReleasePromoteCommand } from '../scripts/release-promote.mjs';
 
@@ -122,6 +124,7 @@ describe('release promotion orchestration', () => {
       {
         tag: 'v1.2.301',
         dryRun: true,
+        execute: false,
         highRiskWindows: true,
         postProductionWindowsCanary: true,
         help: false,
@@ -138,18 +141,28 @@ describe('release promotion orchestration', () => {
       {
         tag: 'v1.2.301',
         dryRun: true,
+        execute: false,
         highRiskWindows: true,
         postProductionWindowsCanary: false,
         help: false,
       }
     );
+
+    assert.deepEqual(parseReleasePromoteArgs(['--tag', 'v1.2.301', '--execute']), {
+      tag: 'v1.2.301',
+      dryRun: false,
+      execute: true,
+      highRiskWindows: true,
+      postProductionWindowsCanary: true,
+      help: false,
+    });
   });
 
-  it('prints the dry-run plan without executing steps', async () => {
+  it('defaults to dry-run and does not execute steps', async () => {
     let stdout = '';
     let executed = false;
 
-    const result = await runReleasePromoteCommand(['--tag', 'v0.0.0', '--dry-run'], {
+    const result = await runReleasePromoteCommand(['--tag', 'v0.0.0'], {
       stdout: (value) => {
         stdout += value;
       },
@@ -169,6 +182,36 @@ describe('release promotion orchestration', () => {
     assert.match(stdout, /npm run promote:production -- v0\.0\.0/);
     assert.match(stdout, /run-post-production-windows-canary/);
     assert.match(stdout, /actions-health\.mjs report-stale/);
+  });
+
+  it('executes the plan only when --execute is explicit', async () => {
+    const executedSteps = [];
+
+    const result = await runReleasePromoteCommand(
+      ['--tag', 'v0.0.0', '--execute', '--no-post-production-windows-canary'],
+      {
+        stdout: () => {},
+        stderr: () => {},
+        runStep: async (step) => {
+          executedSteps.push(step.id);
+          return { id: step.id, status: 'success', seconds: 0 };
+        },
+      }
+    );
+
+    assert.equal(result.status, 0);
+    assert.deepEqual(executedSteps, [
+      'verify-clean-repos',
+      'resolve-origin-main',
+      'wait-release-candidate',
+      'deploy-staging',
+      'ensure-windows-prepromotion-evidence',
+      'verify-promotion-ready',
+      'tag-production',
+      'wait-production-deploy',
+      'verify-production-health',
+      'report-residual-actions-runs',
+    ]);
   });
 
   it('omits the post-production canary command in dry-run mode only with opt-out', async () => {
@@ -216,5 +259,38 @@ describe('release promotion orchestration', () => {
     assert.equal(result.id, 'sample');
     assert.equal(result.status, 'success');
     assert.equal(typeof result.seconds, 'number');
+  });
+
+  it('summarizes GitHub Actions run status and failed jobs without watch noise', async () => {
+    const summary = await monitorGitHubRun({
+      repo: 'balejosg/ClassroomPath',
+      runId: '123',
+      execFile: async (file, args) => {
+        assert.equal(file, 'gh');
+        assert.deepEqual(args.slice(0, 4), ['run', 'view', '123', '--repo']);
+        return {
+          stdout: JSON.stringify({
+            workflowName: 'Deploy',
+            status: 'completed',
+            conclusion: 'failure',
+            url: 'https://github.com/balejosg/ClassroomPath/actions/runs/123',
+            jobs: [
+              { name: 'Deploy to Production', status: 'completed', conclusion: 'success' },
+              { name: 'Release Evidence', status: 'completed', conclusion: 'failure' },
+            ],
+          }),
+        };
+      },
+    });
+
+    assert.equal(summary.status, 'completed');
+    assert.equal(summary.conclusion, 'failure');
+    assert.deepEqual(summary.failedJobs, [
+      { name: 'Release Evidence', status: 'completed', conclusion: 'failure' },
+    ]);
+    assert.equal(
+      summarizeGitHubRunMonitor(summary),
+      'GitHub Actions run 123: Deploy status=completed conclusion=failure failed_jobs=Release Evidence:failure https://github.com/balejosg/ClassroomPath/actions/runs/123'
+    );
   });
 });

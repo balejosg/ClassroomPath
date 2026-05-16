@@ -636,6 +636,33 @@ describe('Deploy workflow contracts', () => {
       canaryReusableJob.outputs?.canary_result,
       '${{ steps.result.outputs.canary_result }}'
     );
+    const windowsProductionBootstrapCanaryJob = findWorkflowJob(
+      windowsProductionBootstrapCanaryWorkflow,
+      'windows-production-bootstrap-canary'
+    );
+    assert.equal(
+      findWorkflowStepByName(
+        windowsProductionBootstrapCanaryJob,
+        'Upload production bootstrap canary artifacts'
+      )?.with?.name,
+      'windows-production-bootstrap-canary'
+    );
+    assert.equal(
+      findWorkflowStepByName(
+        windowsProductionBootstrapCanaryJob,
+        'Upload preproduction bootstrap canary artifacts'
+      )?.with?.name,
+      'preproduction-windows-bootstrap-canary'
+    );
+    assert.match(
+      String(
+        findWorkflowStepByName(
+          windowsProductionBootstrapCanaryJob,
+          'Upload preproduction bootstrap canary artifacts'
+        )?.if ?? ''
+      ),
+      /TARGET_ENVIRONMENT != 'production'/
+    );
     assert.equal(
       findWorkflowStepByName(
         canaryReusableJob,
@@ -824,10 +851,6 @@ describe('Deploy workflow contracts', () => {
     assert.equal(
       windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs?.base_url?.required,
       true
-    );
-    const windowsProductionBootstrapCanaryJob = findWorkflowJob(
-      windowsProductionBootstrapCanaryWorkflow,
-      'windows-production-bootstrap-canary'
     );
     assert.match(
       String(

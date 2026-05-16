@@ -1,8 +1,11 @@
-import { spawn } from 'node:child_process';
+import { execFile as nodeExecFile, spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
+import { promisify } from 'node:util';
 
 const DEFAULT_REPO = 'balejosg/ClassroomPath';
 const PRODUCTION_URL = 'https://classroompath.eu';
+const execFile = promisify(nodeExecFile);
+const GH_RUN_MONITOR_FIELDS = 'status,conclusion,jobs,url,name,workflowName';
 
 export async function runStep({ id, command, env = {}, cwd = process.cwd() }) {
   if (!id) {
@@ -192,9 +195,68 @@ export function buildWaitForTagDeployCommand(tag) {
       '  sleep 10',
       'done',
       'test -n "$run_id"',
-      `node scripts/actions-health.mjs wait --repo ${quoteShellArg(DEFAULT_REPO)} --run-id "$run_id"`,
+      `node scripts/actions-health.mjs wait --repo ${quoteShellArg(DEFAULT_REPO)} --run-id "$run_id" --json`,
     ].join('\n'),
   ];
+}
+
+export async function monitorGitHubRun({
+  repo = DEFAULT_REPO,
+  runId,
+  execFile: runExecFile = execFile,
+} = {}) {
+  if (!runId) {
+    throw new Error('runId is required');
+  }
+
+  const result = await runExecFile('gh', [
+    'run',
+    'view',
+    String(runId),
+    '--repo',
+    repo,
+    '--json',
+    GH_RUN_MONITOR_FIELDS,
+  ]);
+  const run = JSON.parse(String(result.stdout ?? '{}'));
+  return buildGitHubRunMonitorSummary({ repo, runId: String(runId), run });
+}
+
+export function buildGitHubRunMonitorSummary({ repo = DEFAULT_REPO, runId, run }) {
+  const jobs = Array.isArray(run?.jobs) ? run.jobs : [];
+  const failedJobs = jobs.filter((job) => {
+    const conclusion = String(job?.conclusion ?? '').toLowerCase();
+    return conclusion && conclusion !== 'success' && conclusion !== 'skipped';
+  });
+
+  return {
+    repo,
+    runId: String(runId ?? ''),
+    workflow: run?.workflowName ?? run?.name ?? 'unknown',
+    status: run?.status ?? 'unknown',
+    conclusion: run?.conclusion ?? 'unknown',
+    url: run?.url ?? null,
+    jobs: jobs.map((job) => ({
+      name: job?.name ?? 'unknown',
+      status: job?.status ?? 'unknown',
+      conclusion: job?.conclusion ?? 'unknown',
+    })),
+    failedJobs: failedJobs.map((job) => ({
+      name: job?.name ?? 'unknown',
+      status: job?.status ?? 'unknown',
+      conclusion: job?.conclusion ?? 'unknown',
+    })),
+  };
+}
+
+export function summarizeGitHubRunMonitor(summary) {
+  const failed = summary.failedJobs ?? [];
+  const failureText =
+    failed.length > 0
+      ? ` failed_jobs=${failed.map((job) => `${job.name}:${job.conclusion}`).join(',')}`
+      : '';
+  const urlText = summary.url ? ` ${summary.url}` : '';
+  return `GitHub Actions run ${summary.runId}: ${summary.workflow} status=${summary.status} conclusion=${summary.conclusion}${failureText}${urlText}`;
 }
 
 function step(id, command, description) {

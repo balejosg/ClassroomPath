@@ -1,16 +1,22 @@
 #!/usr/bin/env node
 
 import { isDirectExecution } from './lib/github-actions.mjs';
-import { buildPromotionPlan, formatCommand, runStep } from './lib/release-orchestration.mjs';
+import {
+  buildPromotionPlan,
+  formatCommand,
+  runStep,
+  summarizeGitHubRunMonitor,
+} from './lib/release-orchestration.mjs';
 
 function usage() {
-  return `Usage: npm run release:promote -- --tag <vX.Y.Z> [--dry-run] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary|--no-post-production-windows-canary]
+  return `Usage: npm run release:promote -- --tag <vX.Y.Z> [--execute|--dry-run] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary|--no-post-production-windows-canary]
 
 Builds and runs the production promotion plan.
 
 Options:
   --tag <tag>                         Production tag to create, for example v1.2.301.
-  --dry-run                           Print the ordered plan without running commands.
+  --dry-run                           Print the ordered plan without running commands. Default.
+  --execute                           Run the ordered plan. This can deploy staging and create/push the production tag.
   --high-risk-windows                 Include Windows prepromotion evidence step. Default.
   --no-high-risk-windows              Omit Windows prepromotion evidence step.
   --post-production-windows-canary    Include the post-production Windows canary step. Default.
@@ -22,7 +28,8 @@ Options:
 export function parseReleasePromoteArgs(argv) {
   const options = {
     tag: '',
-    dryRun: false,
+    dryRun: true,
+    execute: false,
     highRiskWindows: true,
     postProductionWindowsCanary: true,
     help: false,
@@ -36,6 +43,11 @@ export function parseReleasePromoteArgs(argv) {
         break;
       case '--dry-run':
         options.dryRun = true;
+        options.execute = false;
+        break;
+      case '--execute':
+        options.execute = true;
+        options.dryRun = false;
         break;
       case '--high-risk-windows':
         options.highRiskWindows = true;
@@ -82,7 +94,7 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       postProductionWindowsCanary: options.postProductionWindowsCanary,
     });
 
-    if (options.dryRun) {
+    if (options.dryRun || !options.execute) {
       printPlan(plan, io);
       return { status: 0 };
     }
@@ -97,6 +109,9 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       io.stdout(`\n==> ${planStep.id}\n${formatCommand(planStep.command)}\n`);
       const result = await (dependencies.runStep ?? runStep)(planStep);
       results.push(result);
+      if (result.githubRun) {
+        io.stdout(`${summarizeGitHubRunMonitor(result.githubRun)}\n`);
+      }
       if (result.status !== 'success') {
         io.stderr(`Step failed: ${result.id}\n`);
         return { status: 1, results };

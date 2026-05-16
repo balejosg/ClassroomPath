@@ -38,6 +38,8 @@ docs/plans/*
 # Test artifacts
 playwright-report/
 tests/e2e/test-results/
+smoke-results.txt
+smoke-failure-boundary.json
 
 # Coverage
 coverage/

@@ -590,6 +590,9 @@ warn_if_other_release_candidate_run_in_progress target-sha
     const stagingReleaseHelper = readFileSync(stagingLocalReleaseHelperPath, 'utf8');
     assert.ok(
       stagingReleaseHelper.includes('Promotion-eligible staging requires a clean worktree') &&
+        stagingReleaseHelper.includes(
+          'resolve_active_release_fence_id "$workspace_guard" "$REMOTE_SHA"'
+        ) &&
         stagingReleaseHelper.includes('release-mark-staged') &&
         stagingReleaseHelper.includes('--classroompath-sha "$REMOTE_SHA"'),
       'promotion-eligible staging should reject local dirt and mark the active release fence staged'
@@ -610,8 +613,10 @@ warn_if_other_release_candidate_run_in_progress target-sha
     );
     assert.ok(
       tagScript.includes('release-status') &&
+        tagScript.includes('resolve_active_release_fence_id "$fence_json" "$main_sha"') &&
         tagScript.includes('Release fence must be staged before production tagging') &&
         tagScript.includes('release-mark-tagged') &&
+        tagScript.includes('--release-id "$release_fence_id"') &&
         tagScript.includes('--tag "$TAG_NAME"'),
       'production tagging should require a staged release fence and mark it tagged after tag creation'
     );
