@@ -29,7 +29,7 @@ is an explicit recovery/debug exception and should not become the default path.
 
 ## Canonical Targets
 
-- public URL: `http://192.168.1.114:3000`
+- public URL: `https://classroompath-staging.duckdns.org`
 - gateway health: `http://192.168.1.114:3000/cp/health`
 - gateway readiness: `http://192.168.1.114:3000/cp/ready`
 - upstream health passthrough: `http://192.168.1.114:3000/health`

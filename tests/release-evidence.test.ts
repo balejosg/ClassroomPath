@@ -184,7 +184,7 @@ function buildContractEvidence() {
     },
     targets: {
       staging: {
-        publicUrl: 'http://192.168.1.114:3000',
+        publicUrl: 'https://classroompath-staging.duckdns.org',
       },
       production: {
         publicUrl: 'https://classroompath.eu',
@@ -599,7 +599,7 @@ describe('release evidence rendering', () => {
         verifiedAt: '2026-04-30T09:59:00.000Z',
       },
       targets: {
-        staging: { publicUrl: 'http://192.168.1.114:3000' },
+        staging: { publicUrl: 'https://classroompath-staging.duckdns.org' },
         production: { publicUrl: 'https://classroompath.eu' },
       },
       immutableImages: {

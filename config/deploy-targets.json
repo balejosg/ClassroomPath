@@ -1,6 +1,6 @@
 {
   "staging": {
-    "publicUrl": "http://192.168.1.114:3000",
+    "publicUrl": "https://classroompath-staging.duckdns.org",
     "canaryPublicUrl": "https://classroompath-staging.duckdns.org",
     "gatewayHealthUrl": "http://192.168.1.114:3000/cp/health",
     "readyUrl": "http://192.168.1.114:3000/cp/ready",

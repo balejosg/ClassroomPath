@@ -33,12 +33,10 @@ Dockerized stack.
 - `JWT_REFRESH_EXPIRY`: refresh token lifetime; ClassroomPath defaults to `30d` for installed app sessions
 - `CORS_ORIGINS`: comma-separated browser origins; deployed environments must include the `PUBLIC_URL` origin
 
-Staging uses the LAN HTTP origin from `config/deploy-targets.json`
-(`http://192.168.1.114:3000`). Production remains HTTPS-only. Release-gate verification allows HTTP
-verification URLs only when the expected origin is non-localhost LAN staging; every public production
-origin must continue to use HTTPS. Hosted verifiers can only hit `PUBLIC_URL` when that origin is
-publicly routable; LAN staging verification records an explicit skip for GitHub-hosted Linux
-bootstrap evidence.
+Staging uses the HTTPS DuckDNS origin from `config/deploy-targets.json`
+(`https://classroompath-staging.duckdns.org`). Production remains HTTPS-only. LAN HTTP endpoints are
+reserved for internal readiness checks, not the deployed public URL. Hosted verifiers can hit staging
+through the public DuckDNS origin; direct LAN checks may still use the internal health endpoints.
 
 ### Gateway And Routing
 
