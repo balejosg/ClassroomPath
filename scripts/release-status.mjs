@@ -15,7 +15,11 @@ import {
   sortWorkflowRunsNewestFirst,
 } from './lib/github-actions.mjs';
 import { OPENPATH_PRERELEASE_APT_REQUIRED_CHECK } from './lib/openpath-ci-checks.mjs';
-import { parseCanonicalReleaseManifestText } from './lib/release-manifest.mjs';
+import {
+  buildCanonicalReleaseManifest,
+  parseArtifactReleaseManifestText,
+  parseCanonicalReleaseManifestText,
+} from './lib/release-manifest.mjs';
 import { parseReleaseStateText } from './lib/release-state-contract.mjs';
 import { detectRepositorySlug } from './lib/release-images.mjs';
 
@@ -532,12 +536,28 @@ function extractManifestTextFromArtifact(payload) {
   );
 }
 
+function parseReleaseCandidateManifestText(text, { sha, repo, runId }) {
+  try {
+    return parseCanonicalReleaseManifestText(text, { sha });
+  } catch {
+    return buildCanonicalReleaseManifest({
+      repository: repo,
+      runId: String(runId),
+      manifest: parseArtifactReleaseManifestText(text, { sha }),
+    });
+  }
+}
+
 function readReleaseCandidateManifest({ runCommand, env, repo, run, sha }) {
   if (env.RELEASE_STATUS_TEST_MANIFEST) {
     return {
       status: 'read',
       artifactName: `release-candidate-images-${sha}`,
-      manifest: parseCanonicalReleaseManifestText(env.RELEASE_STATUS_TEST_MANIFEST, { sha }),
+      manifest: parseReleaseCandidateManifestText(env.RELEASE_STATUS_TEST_MANIFEST, {
+        sha,
+        repo,
+        runId: run?.databaseId ?? '',
+      }),
       error: '',
     };
   }
@@ -549,7 +569,7 @@ function readReleaseCandidateManifest({ runCommand, env, repo, run, sha }) {
   const artifactMetadata = parseJsonOrEmpty(
     runGh(
       runCommand,
-      ['run', 'view', String(run.databaseId), '--repo', repo, '--json', 'artifacts'],
+      ['api', `repos/${repo}/actions/runs/${String(run.databaseId)}/artifacts`],
       env
     ),
     {}
@@ -575,7 +595,11 @@ function readReleaseCandidateManifest({ runCommand, env, repo, run, sha }) {
     return {
       status: artifact.expired ? 'expired' : 'read',
       artifactName,
-      manifest: parseCanonicalReleaseManifestText(artifactText, { sha }),
+      manifest: parseReleaseCandidateManifestText(artifactText, {
+        sha,
+        repo,
+        runId: run.databaseId,
+      }),
       error: '',
     };
   } catch (error) {

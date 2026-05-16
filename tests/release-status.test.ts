@@ -106,13 +106,17 @@ function createCommandHarness(options: { originSha?: string; openpathCheckStatus
       }
     }
 
-    if (command === 'gh' && args[0] === 'run' && args[1] === 'view') {
+    if (
+      command === 'gh' &&
+      args[0] === 'api' &&
+      args[1].includes(`/actions/runs/123456/artifacts`)
+    ) {
       return JSON.stringify({
-        artifacts: [{ name: `release-candidate-images-${CLASSROOM_SHA}`, expired: false }],
+        artifacts: [{ id: 789, name: `release-candidate-images-${CLASSROOM_SHA}`, expired: false }],
       });
     }
 
-    if (command === 'gh' && args[0] === 'api' && args[1].includes('/artifacts')) {
+    if (command === 'gh' && args[0] === 'api' && args[1].includes('/actions/artifacts/789/zip')) {
       return manifestText;
     }
 
