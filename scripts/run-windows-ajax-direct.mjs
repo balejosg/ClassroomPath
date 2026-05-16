@@ -515,6 +515,15 @@ function buildDnsBootstrapScript(baseUrl) {
   if (isIP(hostname) !== 0) {
     return `
 Write-Host ${psSingleQuote(`Skipping DNS lookup for literal IP target ${hostname}`)}
+function Repair-OpenPathTargetDns { return }
+function Invoke-OpenPathWebRequestWithDnsRecovery {
+  param(
+    [Parameter(Mandatory = $true)][string]$Uri,
+    [hashtable]$Headers,
+    [Parameter(Mandatory = $true)][string]$OutFile
+  )
+  Invoke-WebRequest -Uri $Uri -Headers $Headers -OutFile $OutFile
+}
 `;
   }
   return `
@@ -544,10 +553,20 @@ function Set-OpenPathAdapterDns($servers, $label) {
   Write-Host "Using $label DNS resolvers for $targetHost"
 }
 
-try {
-  Resolve-DnsName -Name $targetHost -Type A -QuickTimeout -ErrorAction Stop | Where-Object { $_.IPAddress } | Select-Object -First 1 | Out-Null
-  Write-Host "Existing DNS configuration can resolve $targetHost"
-} catch {
+function Test-OpenPathTargetDns($label) {
+  try {
+    Resolve-DnsName -Name $targetHost -Type A -QuickTimeout -ErrorAction Stop | Where-Object { $_.IPAddress } | Select-Object -First 1 | Out-Null
+    [System.Net.Dns]::GetHostAddresses($targetHost) | Select-Object -First 1 | Out-Null
+    Write-Host "$label DNS configuration can resolve $targetHost"
+    return $true
+  } catch {
+    Write-Host "$label DNS configuration cannot resolve \${targetHost}: $($_.Exception.Message)"
+    return $false
+  }
+}
+
+function Repair-OpenPathTargetDns {
+  if (Test-OpenPathTargetDns 'Existing') { return }
   if (Test-OpenPathDnsServers $gatewayDnsServers 'default gateway') {
     Set-OpenPathAdapterDns $gatewayDnsServers 'default gateway'
   } elseif (Test-OpenPathDnsServers $publicDnsServers 'public') {
@@ -557,8 +576,37 @@ try {
   } else {
     Write-Host "No candidate DNS resolver could resolve $targetHost; leaving adapter DNS unchanged"
   }
-  Resolve-DnsName -Name $targetHost -Type A -QuickTimeout -ErrorAction Stop | Out-Null
+  if (-not (Test-OpenPathTargetDns 'Repaired')) {
+    throw "Unable to resolve $targetHost after DNS repair"
+  }
 }
+
+function Invoke-OpenPathWebRequestWithDnsRecovery {
+  param(
+    [Parameter(Mandatory = $true)][string]$Uri,
+    [hashtable]$Headers,
+    [Parameter(Mandatory = $true)][string]$OutFile
+  )
+  $lastError = $null
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    try {
+      Invoke-WebRequest -Uri $Uri -Headers $Headers -OutFile $OutFile
+      return
+    } catch {
+      $lastError = $_
+      $message = [string]$_.Exception.Message
+      if ($message -notmatch 'remote name could not be resolved|name resolution|NameResolutionFailure|No such host') {
+        throw
+      }
+      Write-Host "Download attempt $attempt failed due to DNS: $message"
+      Repair-OpenPathTargetDns
+      Start-Sleep -Seconds (2 * $attempt)
+    }
+  }
+  throw $lastError
+}
+
+Repair-OpenPathTargetDns
 `;
 }
 
@@ -773,7 +821,7 @@ $headers = @{ Authorization = ${psSingleQuote(`Bearer ${summary.enrollmentToken}
 $windowsScriptUrl = ${psSingleQuote(summary.windowsScriptUrl ?? `${summary.apiUrl}/api/enroll/${summary.classroomId}/windows.ps1`)}
 $windowsScriptPath = Join-Path $workspace 'windows.ps1'
 
-Invoke-WebRequest -Uri $windowsScriptUrl -Headers $headers -OutFile $windowsScriptPath
+Invoke-OpenPathWebRequestWithDnsRecovery -Uri $windowsScriptUrl -Headers $headers -OutFile $windowsScriptPath
 ${patchLocalInstallerRuntime}
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $windowsScriptPath
 if ($LASTEXITCODE -ne 0) {

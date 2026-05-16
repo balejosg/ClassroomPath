@@ -755,11 +755,15 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /function Test-OpenPathDnsServers/);
     assert.match(script, /-Server \$server/);
     assert.match(script, /-QuickTimeout/);
-    assert.match(script, /Existing DNS configuration can resolve/);
+    assert.match(script, /\$label DNS configuration can resolve/);
     assert.match(script, /default gateway/);
     assert.match(script, /Set-DnsClientServerAddress/);
     assert.match(script, /1\.1\.1\.1/);
     assert.match(script, /8\.8\.8\.8/);
+    assert.match(script, /\[System\.Net\.Dns\]::GetHostAddresses/);
+    assert.match(script, /function Repair-OpenPathTargetDns/);
+    assert.match(script, /function Invoke-OpenPathWebRequestWithDnsRecovery/);
+    assert.match(script, /Download attempt \$attempt failed due to DNS/);
     assert.match(script, /isIP\(hostname\) !== 0/);
     assert.match(script, /Resolve-DnsName/);
     assert.match(script, /Skipping DNS lookup for literal IP target/);
