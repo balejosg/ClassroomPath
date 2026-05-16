@@ -101,7 +101,7 @@ Use exact URLs before debugging or deploying anything.
 
 | Check          | Staging                                     | Production                                          |
 | -------------- | ------------------------------------------- | --------------------------------------------------- |
-| Public URL     | `http://192.168.1.114:3000`                 | `https://classroompath.eu`                          |
+| Public URL     | `https://classroompath-staging.duckdns.org` | `https://classroompath.eu`                          |
 | Gateway health | `http://192.168.1.114:3000/cp/health`       | `https://classroompath.eu/cp/health`                |
 | Trigger        | `npm run deploy:staging`                    | tag `v*`                                            |
 | Runtime host   | CT 114 (`classroompath-app-staging`)        | Oracle host (`/opt/classroompath/app`)              |
