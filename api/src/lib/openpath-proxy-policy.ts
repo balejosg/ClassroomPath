@@ -58,6 +58,14 @@ export const OPENPATH_PROXY_MANIFEST = {
     },
     {
       method: 'use',
+      path: '/api/requests/status',
+    },
+    {
+      method: 'use',
+      path: '/cp/api/requests/status',
+    },
+    {
+      method: 'use',
       path: '/api/agent/windows',
     },
     {
@@ -89,6 +97,12 @@ export const OPENPATH_PROXY_MANIFEST = {
 } as const satisfies OpenPathProxyManifest;
 
 export const OPENPATH_PROXY_REWRITE_RULES = [
+  {
+    publicPath: '/cp/api/requests/status',
+    rewrite(reqUrl: string) {
+      return reqUrl.replace(/^\/cp\/api\/requests\/status(?=\/|\?|$)/, '/api/requests/status');
+    },
+  },
   {
     publicPath: '/api/agent/windows/bootstrap/latest.json',
     targetPath: '/api/agent/windows/bootstrap/manifest',
@@ -131,7 +145,10 @@ export function rewriteOpenPathProxyUrl(reqUrl: string): string {
   const requestPath = normalizeRequestPath(reqUrl);
 
   for (const rule of OPENPATH_PROXY_REWRITE_RULES) {
-    if (requestPath !== rule.publicPath) {
+    if (
+      requestPath !== rule.publicPath &&
+      !('rewrite' in rule && matchesPathPrefix(requestPath, rule.publicPath))
+    ) {
       continue;
     }
 

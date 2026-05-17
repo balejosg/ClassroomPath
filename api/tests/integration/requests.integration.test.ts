@@ -167,6 +167,49 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     assert.strictEqual(updatedRequest[0]?.status, 'approved');
   });
 
+  test('approve creates root whitelist rule for legacy subdomain requests', async () => {
+    await resetDb();
+
+    const userId = 'req-admin-root-legacy';
+    const email = uniqueEmail('req-admin-root-legacy');
+    const orgId = 'org-req-root-legacy';
+    const groupId = 'group-req-root-legacy';
+    const requestId = 'request-req-root-legacy';
+
+    await seedOpenPathUser({ userId, email, name: 'Req Root Legacy Admin' });
+    await seedTenant({ orgId, userId, userRole: 'admin' });
+    await seedGroupForOrg({ orgId, groupId });
+    await seedRequest({ requestId, groupId, domain: 'es.wikipedia.org' });
+
+    const token = signToken({
+      userId,
+      email,
+      name: 'Req Root Legacy Admin',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+
+    const resp = await trpcMutate(
+      integration.baseUrl,
+      'requests.approve',
+      { id: requestId },
+      bearerAuth(token)
+    );
+    assertStatus(resp, 200);
+
+    const createdRule = await openpathDb
+      .select()
+      .from(openpathSchema.whitelistRules)
+      .where(
+        and(
+          eq(openpathSchema.whitelistRules.groupId, groupId),
+          eq(openpathSchema.whitelistRules.type, 'whitelist'),
+          eq(openpathSchema.whitelistRules.value, 'wikipedia.org')
+        )
+      )
+      .limit(1);
+    assert.strictEqual(createdRule.length, 1);
+  });
+
   test('approve is blocked for cross-tenant request', async () => {
     await resetDb();
 
@@ -479,6 +522,55 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const created = rows.find((row) => row.domain === 'tenant-visible-request.test');
     assert.ok(created, 'created request should appear in tenant list');
     assert.strictEqual(created?.groupId, groupId);
+  });
+
+  test('create normalizes subdomains and duplicate detection is root-based', async () => {
+    await resetDb();
+
+    const userId = 'req-create-root';
+    const email = uniqueEmail('req-create-root');
+    const orgId = 'org-create-root';
+    const groupId = 'grp-create-root';
+
+    await seedOpenPathUser({ userId, email, name: 'Create Root' });
+    await seedTenant({ orgId, userId, userRole: 'teacher' });
+    await seedGroupForOrg({ orgId, groupId });
+    await seedTeacherRoleOwnership({ userId, groupId });
+
+    const token = signToken({
+      userId,
+      email,
+      name: 'Create Root',
+      roles: [{ role: 'teacher', groupIds: [groupId] }],
+    });
+
+    const createResp = await trpcMutate(
+      integration.baseUrl,
+      'requests.create',
+      {
+        domain: 'es.wikipedia.org',
+        groupId,
+        reason: 'tenant scoped root create',
+      },
+      bearerAuth(token)
+    );
+    assertStatus(createResp, 200);
+    const parsed = (await parseTRPC(createResp)) as {
+      data?: { domain: string };
+    };
+    assert.strictEqual(parsed.data?.domain, 'wikipedia.org');
+
+    const duplicateResp = await trpcMutate(
+      integration.baseUrl,
+      'requests.create',
+      {
+        domain: 'mobile.wikipedia.org',
+        groupId,
+        reason: 'same root duplicate',
+      },
+      bearerAuth(token)
+    );
+    assertStatus(duplicateResp, 409);
   });
 
   test('listGroups returns groups for tenant admin', async () => {

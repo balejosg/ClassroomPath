@@ -7,6 +7,7 @@ import {
   requests,
   whitelistRules,
 } from '../db/openpath.js';
+import { getRootDomain } from '../openpath/domain.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
 import {
   assertCanManageGroup,
@@ -32,7 +33,7 @@ export async function approveTenantRequest(
       id: `rule-${nanoid(16)}`,
       groupId: requestGroupId,
       type: 'whitelist',
-      value: request.domain,
+      value: getRootDomain(request.domain),
       source: 'manual',
     })
     .onConflictDoNothing({

@@ -20,6 +20,8 @@ void describe('openpath-proxy-policy', () => {
         '/api/enroll',
         '/api/requests/auto',
         '/api/requests/submit',
+        '/api/requests/status',
+        '/cp/api/requests/status',
         '/api/agent/windows',
         '/api/agent/linux',
         '/api/machines/events',
@@ -38,6 +40,7 @@ void describe('openpath-proxy-policy', () => {
     assert.deepStrictEqual(
       OPENPATH_PROXY_REWRITE_RULES.map((rule) => rule.publicPath),
       [
+        '/cp/api/requests/status',
         '/api/agent/windows/bootstrap/latest.json',
         '/api/agent/windows/latest.json',
         '/api/agent/linux/latest.json',
@@ -48,6 +51,10 @@ void describe('openpath-proxy-policy', () => {
   });
 
   test('rewrites public gateway aliases through the declarative compatibility map', () => {
+    assert.strictEqual(
+      rewriteOpenPathProxyUrl('/cp/api/requests/status/request-123?poll=1'),
+      '/api/requests/status/request-123?poll=1'
+    );
     assert.strictEqual(
       rewriteOpenPathProxyUrl('/api/agent/windows/bootstrap/latest.json'),
       '/api/agent/windows/bootstrap/manifest'
@@ -99,6 +106,8 @@ void describe('openpath-proxy-policy', () => {
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/enroll/cls_123/ticket'), null);
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/requests/auto'), null);
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/requests/submit'), null);
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/requests/status/req-1'), null);
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/cp/api/requests/status/req-1'), null);
     assert.strictEqual(
       findBlockedOpenPathPassthroughPath('/api/agent/windows/bootstrap/latest.json'),
       null

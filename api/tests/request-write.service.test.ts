@@ -163,16 +163,17 @@ describe('request-write.service', () => {
   });
 
   it('creates and approves a tenant request inside the caller tenant scope', async () => {
+    const rootDomain = `created-${RUN_ID}.test`;
     const created = await createTenantRequest({
       ctx: teacherContext(),
       input: {
-        domain: `created-${RUN_ID}.example.com`,
+        domain: `lesson.${rootDomain}`,
         groupId: GROUP_ID,
         reason: 'teacher request',
       },
     });
 
-    assert.strictEqual(created.domain, `created-${RUN_ID}.example.com`);
+    assert.strictEqual(created.domain, rootDomain);
     assert.strictEqual(created.groupId, GROUP_ID);
     assert.strictEqual(created.status, 'pending');
 
@@ -194,7 +195,7 @@ describe('request-write.service', () => {
         and(
           eq(whitelistRules.groupId, GROUP_ID),
           eq(whitelistRules.type, 'whitelist'),
-          eq(whitelistRules.value, `created-${RUN_ID}.example.com`)
+          eq(whitelistRules.value, rootDomain)
         )
       )
       .limit(1);

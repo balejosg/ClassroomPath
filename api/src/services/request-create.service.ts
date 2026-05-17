@@ -4,6 +4,7 @@ import { and, eq, sql } from 'drizzle-orm';
 
 import { openpathDb, requests } from '../db/openpath.js';
 import { logger } from '../lib/logger.js';
+import { getRootDomain } from '../openpath/domain.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
 import {
   assertCanManageGroup,
@@ -23,13 +24,14 @@ export async function createTenantRequest(params: {
 }) {
   await assertGroupBelongsToTenant(params.ctx, params.input.groupId);
   await assertCanManageGroup(params.ctx, params.input.groupId);
+  const normalizedDomain = getRootDomain(params.input.domain);
 
   const pendingRequest = await openpathDb
     .select({ id: requests.id })
     .from(requests)
     .where(
       and(
-        sql`LOWER(${requests.domain}) = LOWER(${params.input.domain})`,
+        sql`LOWER(${requests.domain}) = LOWER(${normalizedDomain})`,
         eq(requests.status, 'pending')
       )
     )
@@ -46,7 +48,7 @@ export async function createTenantRequest(params: {
     .insert(requests)
     .values({
       id: `req_${nanoid(8)}`,
-      domain: params.input.domain.toLowerCase(),
+      domain: normalizedDomain.toLowerCase(),
       reason: params.input.reason ?? 'No reason provided',
       requesterEmail:
         params.input.requesterEmail ?? params.ctx.user.email ?? 'anonymous@tenant.local',
