@@ -111,6 +111,11 @@ describe('Deployment runtime contracts', () => {
         'COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src'
       )
     );
+    assert.ok(
+      gatewayDockerfile.includes(
+        'COPY upstream/openpath/react-spa/public-i18n.ts ./upstream/openpath/react-spa/public-i18n.ts'
+      )
+    );
     assert.ok(gatewayDockerfile.includes('COPY contracts/package*.json ./contracts/'));
     assert.ok(gatewayDockerfile.includes('COPY presenters/package*.json ./presenters/'));
     assert.ok(gatewayDockerfile.includes('COPY contracts/src ./contracts/src'));
@@ -137,6 +142,11 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       spaDockerfile.includes(
         'COPY upstream/openpath/react-spa/src ./upstream/openpath/react-spa/src'
+      )
+    );
+    assert.ok(
+      spaDockerfile.includes(
+        'COPY upstream/openpath/react-spa/public-i18n.ts ./upstream/openpath/react-spa/public-i18n.ts'
       )
     );
     assert.ok(spaDockerfile.includes('COPY contracts/package*.json ./contracts/'));

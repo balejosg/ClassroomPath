@@ -45,6 +45,7 @@ COPY upstream/openpath/react-spa/vite.config.ts ./upstream/openpath/react-spa/vi
 COPY upstream/openpath/react-spa/openpath.css ./upstream/openpath/react-spa/openpath.css
 COPY upstream/openpath/react-spa/public-auth.ts ./upstream/openpath/react-spa/public-auth.ts
 COPY upstream/openpath/react-spa/public-google.ts ./upstream/openpath/react-spa/public-google.ts
+COPY upstream/openpath/react-spa/public-i18n.ts ./upstream/openpath/react-spa/public-i18n.ts
 COPY upstream/openpath/react-spa/public-shell.ts ./upstream/openpath/react-spa/public-shell.ts
 COPY upstream/openpath/react-spa/public-ui.ts ./upstream/openpath/react-spa/public-ui.ts
 COPY upstream/openpath/react-spa/postcss.config.js ./upstream/openpath/react-spa/postcss.config.js
