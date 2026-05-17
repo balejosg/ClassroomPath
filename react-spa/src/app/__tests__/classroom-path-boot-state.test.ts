@@ -46,7 +46,7 @@ describe('classroom-path-boot-state', () => {
       getClassroomPathBootScreen({
         openPathReady: true,
         isAuth: true,
-        pathname: '/dominios',
+        pathname: '/domain-requests',
       })
     ).toBe('onboarding-gate');
   });
@@ -56,7 +56,7 @@ describe('classroom-path-boot-state', () => {
       shouldRedirectToLogin({
         isAuth: false,
         shouldShowLogin: true,
-        pathname: '/dominios/aprobar/req_1',
+        pathname: '/domain-requests/approve/req_1',
       })
     ).toBe(true);
     expect(
@@ -70,7 +70,7 @@ describe('classroom-path-boot-state', () => {
       shouldRedirectToLogin({
         isAuth: true,
         shouldShowLogin: true,
-        pathname: '/dominios',
+        pathname: '/domain-requests',
       })
     ).toBe(false);
   });

@@ -9,6 +9,7 @@ import { OnboardingAccessGate } from './app/OnboardingAccessGate';
 import { useClassroomPathBoot } from './app/use-classroom-path-boot';
 import { BillingCancel } from './views/BillingCancel';
 import { BillingSuccess } from './views/BillingSuccess';
+import { ClassroomPathI18nProvider, useClassroomPathT } from './i18n/classroompath-i18n';
 import './index.css';
 
 const ClassroomPathShell = React.lazy(() => import('./ClassroomPathShell'));
@@ -26,9 +27,10 @@ function FullScreenLoader({ label }: { label: string }) {
 
 function AppContent() {
   const boot = useClassroomPathBoot();
+  const t = useClassroomPathT();
 
   if (boot.screen === 'preparing') {
-    return <FullScreenLoader label="Preparando ClassroomPath..." />;
+    return <FullScreenLoader label={t('app.loader.preparing')} />;
   }
 
   if (boot.screen === 'auth') {
@@ -67,7 +69,7 @@ function AppContent() {
       onCancelWaitingSuccess={boot.onCancelWaitingSuccess}
       onOrgCreated={boot.onOrgCreated}
       authenticatedContent={
-        <React.Suspense fallback={<FullScreenLoader label="Cargando tu panel..." />}>
+        <React.Suspense fallback={<FullScreenLoader label={t('app.loader.panel')} />}>
           <AdminPanel userRole={boot.status?.organization?.role} />
           <GroupLibrary userRole={boot.status?.organization?.role} />
           <ClassroomPathShell />
@@ -79,11 +81,13 @@ function AppContent() {
 
 export function ClassroomPathApp() {
   return (
-    <DualTRPCProvider>
-      <BrowserRouter>
-        <AppContent />
-      </BrowserRouter>
-    </DualTRPCProvider>
+    <ClassroomPathI18nProvider>
+      <DualTRPCProvider>
+        <BrowserRouter>
+          <AppContent />
+        </BrowserRouter>
+      </DualTRPCProvider>
+    </ClassroomPathI18nProvider>
   );
 }
 

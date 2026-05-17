@@ -73,13 +73,13 @@ async function createReactSpaFixture() {
   await writeFile(
     path.join(reactSpaSsrPath, 'ssr-entry.js'),
     [
-      'export function renderPublicPage(pathname) {',
+      'export function renderPublicPage({ pathname, locale }) {',
       '  if (pathname === "/" || pathname === "/pricing") {',
       '    return {',
-      '      appHtml: `<main data-path="${pathname}">SSR ${pathname}</main>`,',
+      '      appHtml: `<main data-path="${pathname}" data-locale="${locale}">SSR ${pathname} ${locale}</main>`,',
       '      canonicalPath: pathname === "/" ? "/" : "/pricing",',
-      '      description: `Description for ${pathname}`,',
-      '      title: pathname === "/" ? "Landing SSR" : "Pricing SSR",',
+      '      description: `Description for ${pathname} in ${locale}`,',
+      '      title: `${pathname === "/" ? "Landing" : "Pricing"} SSR ${locale}`,',
       '    };',
       '  }',
       '  return null;',
@@ -102,10 +102,19 @@ test('serves SSR public routes and static assets from the built SPA', async () =
   const reactSpaPath = await createReactSpaFixture();
   const baseUrl = await startApp(reactSpaPath);
 
-  const pricingResponse = await fetch(`${baseUrl}/pricing`);
+  const pricingResponse = await fetch(`${baseUrl}/pricing`, {
+    headers: { 'Accept-Language': 'es-ES, en;q=0.5' },
+  });
   const pricingHtml = await pricingResponse.text();
   assert.equal(pricingResponse.status, 200);
-  assert.match(pricingHtml, /<main data-path="\/pricing">SSR \/pricing<\/main>/);
+  assert.equal(pricingResponse.headers.get('vary'), 'Accept-Language');
+  assert.match(pricingHtml, /<html lang="es">/);
+  assert.match(
+    pricingHtml,
+    /<main data-path="\/pricing" data-locale="es">SSR \/pricing es<\/main>/
+  );
+  assert.match(pricingHtml, /data-classroompath-locale="es"/);
+  assert.match(pricingHtml, /data-product-locale="es"/);
 
   const assetResponse = await fetch(`${baseUrl}/assets/app.js`);
   assert.equal(assetResponse.status, 200);

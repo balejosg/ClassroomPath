@@ -1,7 +1,7 @@
 {
   "name": "ClassroomPath",
   "short_name": "ClassroomPath",
-  "description": "Gestión de solicitudes de dominios para docentes",
+  "description": "Domain access request management for teachers",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

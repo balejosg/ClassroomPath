@@ -4,22 +4,25 @@ import { renderPublicPage } from '../ssr-entry';
 
 describe('renderPublicPage', () => {
   it('renders metadata and HTML for landing', () => {
-    const rendered = renderPublicPage('/');
+    const rendered = renderPublicPage({ pathname: '/', locale: 'en-US' });
 
     expect(rendered).not.toBeNull();
     expect(rendered?.canonicalPath).toBe('/');
-    expect(rendered?.title).toBe('Filtrado web escolar por aula | ClassroomPath');
+    expect(rendered?.lang).toBe('en');
+    expect(rendered?.hydrationLocale).toBe('en');
+    expect(rendered?.title).toBe('Classroom web filtering | ClassroomPath');
     expect(rendered?.description).toBe(
-      'Controla qué se abre y qué se bloquea en cada aula. Servicio gestionado sobre OpenPath, precio por aula y activación remota con el IT del centro.'
+      'Control what opens and what gets blocked in each classroom. Managed service on OpenPath, classroom-based pricing, and remote activation with the school IT team.'
     );
     expect(rendered?.appHtml).toContain('Decide qué Internet entra en cada aula');
   });
 
   it('renders metadata and HTML for pricing', () => {
-    const rendered = renderPublicPage('/pricing');
+    const rendered = renderPublicPage({ pathname: '/pricing', locale: 'es-ES' });
 
     expect(rendered).not.toBeNull();
     expect(rendered?.canonicalPath).toBe('/pricing');
+    expect(rendered?.lang).toBe('es');
     expect(rendered?.title).toBe('Precios de filtrado web escolar por aula | ClassroomPath');
     expect(rendered?.description).toBe(
       'Calcula el coste de ClassroomPath por número de aulas. Precio público, onboarding separado, activación remota ligera y servicio gestionado sobre OpenPath.'
@@ -28,6 +31,6 @@ describe('renderPublicPage', () => {
   });
 
   it('returns null for non-public SSR routes', () => {
-    expect(renderPublicPage('/login')).toBeNull();
+    expect(renderPublicPage({ pathname: '/login', locale: 'en' })).toBeNull();
   });
 });

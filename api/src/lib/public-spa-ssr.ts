@@ -9,11 +9,17 @@ type RenderedPublicPage = {
   title: string;
 };
 
+export type ProductLocale = 'en' | 'es';
+
 type PublicRendererModule = {
-  renderPublicPage: (pathname: string) => RenderedPublicPage | null;
+  renderPublicPage: (options: {
+    pathname: string;
+    locale: ProductLocale;
+  }) => RenderedPublicPage | null;
 };
 
 type RenderPublicSpaOptions = {
+  locale: ProductLocale;
   origin: string;
   pathname: string;
 };
@@ -48,11 +54,49 @@ function injectHeadMetadata(indexHtml: string, page: RenderedPublicPage, origin:
   return withTitle.replace('</head>', `${metadata}</head>`);
 }
 
-function injectAppHtml(indexHtml: string, appHtml: string): string {
+function injectLocale(indexHtml: string, locale: ProductLocale): string {
+  return indexHtml.replace(/<html([^>]*)>/i, (_match, attributes: string) => {
+    const withoutLang = attributes.replace(/\s+lang=(?:"[^"]*"|'[^']*'|[^\s>]*)/i, '');
+    return `<html${withoutLang} lang="${locale}">`;
+  });
+}
+
+function injectAppHtml(indexHtml: string, appHtml: string, locale: ProductLocale): string {
+  const hydrationState = `<script>window.__CLASSROOMPATH_PRODUCT_LOCALE__=${JSON.stringify(locale)};</script>`;
   return indexHtml.replace(
     '<div id="root"></div>',
-    `<div id="root" data-classroompath-public-ssr="true">${appHtml}</div>`
+    `<div id="root" data-classroompath-public-ssr="true" data-classroompath-locale="${locale}" data-product-locale="${locale}">${appHtml}</div>${hydrationState}`
   );
+}
+
+export function resolveProductLocaleFromAcceptLanguage(
+  acceptLanguage: string | string[] | undefined
+): ProductLocale {
+  const headerValue = Array.isArray(acceptLanguage) ? acceptLanguage.join(',') : acceptLanguage;
+  if (!headerValue) return 'en';
+
+  const candidates = headerValue
+    .split(',')
+    .map((entry) => {
+      const [language = '', ...params] = entry.trim().split(';');
+      const qParam = params.find((param) => param.trim().toLowerCase().startsWith('q='));
+      const parsedQ = qParam ? Number.parseFloat(qParam.split('=')[1] ?? '') : 1;
+      return {
+        language: language.trim().toLowerCase(),
+        q: Number.isFinite(parsedQ) ? parsedQ : 0,
+      };
+    })
+    .filter((candidate) => candidate.language.length > 0 && candidate.q > 0)
+    .sort((left, right) => right.q - left.q);
+
+  for (const candidate of candidates) {
+    const [baseLocale = ''] = candidate.language.split('-');
+    if (baseLocale === 'en' || baseLocale === 'es') {
+      return baseLocale;
+    }
+  }
+
+  return 'en';
 }
 
 export function createPublicSpaRenderer(reactSpaPath: string): PublicSpaRenderer {
@@ -80,11 +124,15 @@ export function createPublicSpaRenderer(reactSpaPath: string): PublicSpaRenderer
     canRender: true,
     async render(options) {
       const renderer = await loadRenderer();
-      const page = renderer.renderPublicPage(options.pathname);
+      const page = renderer.renderPublicPage({
+        pathname: options.pathname,
+        locale: options.locale,
+      });
       if (!page) return null;
 
-      const htmlWithHead = injectHeadMetadata(indexHtml, page, options.origin);
-      return injectAppHtml(htmlWithHead, page.appHtml);
+      const htmlWithLocale = injectLocale(indexHtml, options.locale);
+      const htmlWithHead = injectHeadMetadata(htmlWithLocale, page, options.origin);
+      return injectAppHtml(htmlWithHead, page.appHtml, options.locale);
     },
   };
 }

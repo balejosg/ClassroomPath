@@ -73,13 +73,13 @@ async function createReactSpaFixture() {
   await writeFile(
     path.join(reactSpaSsrPath, 'ssr-entry.js'),
     [
-      'export function renderPublicPage(pathname) {',
+      'export function renderPublicPage({ pathname, locale }) {',
       '  if (pathname === "/" || pathname === "/pricing") {',
       '    return {',
-      '      appHtml: `<main data-path="${pathname}">SSR ${pathname}</main>`,',
+      '      appHtml: `<main data-path="${pathname}" data-locale="${locale}">SSR ${pathname} ${locale}</main>`,',
       '      canonicalPath: pathname === "/" ? "/" : "/pricing",',
-      '      description: `Description for ${pathname}`,',
-      '      title: pathname === "/" ? "Landing SSR" : "Pricing SSR",',
+      '      description: `Description for ${pathname} in ${locale}`,',
+      '      title: `${pathname === "/" ? "Landing" : "Pricing"} SSR ${locale}`,',
       '    };',
       '  }',
       '  return null;',
@@ -94,15 +94,21 @@ test('SSR renders landing and preserves client asset references', async () => {
   const reactSpaPath = await createReactSpaFixture();
   const baseUrl = await startApp(reactSpaPath);
 
-  const response = await fetch(baseUrl);
+  const response = await fetch(baseUrl, { headers: { 'Accept-Language': 'es-ES, en;q=0.5' } });
   const html = await response.text();
 
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get('vary'), 'Accept-Language');
   assert.match(response.headers.get('content-type') ?? '', /text\/html/);
-  assert.match(html, /<div id="root" data-classroompath-public-ssr="true">/);
-  assert.match(html, /<main data-path="\/">SSR \/<\/main>/);
-  assert.match(html, /<title>Landing SSR<\/title>/);
-  assert.match(html, /<meta name="description" content="Description for \//);
+  assert.match(html, /<html lang="es">/);
+  assert.match(
+    html,
+    /<div id="root" data-classroompath-public-ssr="true" data-classroompath-locale="es" data-product-locale="es">/
+  );
+  assert.match(html, /<main data-path="\/" data-locale="es">SSR \/ es<\/main>/);
+  assert.match(html, /window\.__CLASSROOMPATH_PRODUCT_LOCALE__="es"/);
+  assert.match(html, /<title>Landing SSR es<\/title>/);
+  assert.match(html, /<meta name="description" content="Description for \/ in es/);
   assert.match(html, /<script type="module" src="\/assets\/app.js"><\/script>/);
 });
 
@@ -113,8 +119,12 @@ test('SSR renders pricing while other public routes fall back to the SPA shell',
   const pricingResponse = await fetch(`${baseUrl}/pricing`);
   const pricingHtml = await pricingResponse.text();
   assert.equal(pricingResponse.status, 200);
-  assert.match(pricingHtml, /<main data-path="\/pricing">SSR \/pricing<\/main>/);
-  assert.match(pricingHtml, /<title>Pricing SSR<\/title>/);
+  assert.equal(pricingResponse.headers.get('vary'), 'Accept-Language');
+  assert.match(
+    pricingHtml,
+    /<main data-path="\/pricing" data-locale="en">SSR \/pricing en<\/main>/
+  );
+  assert.match(pricingHtml, /<title>Pricing SSR en<\/title>/);
 
   const loginResponse = await fetch(`${baseUrl}/login`);
   const loginHtml = await loginResponse.text();

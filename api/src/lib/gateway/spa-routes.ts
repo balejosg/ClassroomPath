@@ -3,7 +3,10 @@ import fs from 'fs';
 import path from 'path';
 
 import { logger } from '../logger.js';
-import { createPublicSpaRenderer } from '../public-spa-ssr.js';
+import {
+  createPublicSpaRenderer,
+  resolveProductLocaleFromAcceptLanguage,
+} from '../public-spa-ssr.js';
 
 export interface GatewaySpaRoutesOptions {
   reactSpaPath: string;
@@ -22,10 +25,14 @@ export function registerGatewaySpaRoutes(app: Express, options: GatewaySpaRoutes
   const spaShellPath = path.join(options.reactSpaPath, 'index.html');
 
   app.get(['/', '/pricing', '/pricing/'], async (req, res) => {
+    res.vary('Accept-Language');
+
     if (publicSpaRenderer.canRender) {
       try {
         const origin = `${req.protocol}://${req.get('host') ?? 'localhost'}`;
+        const locale = resolveProductLocaleFromAcceptLanguage(req.get('accept-language'));
         const renderedHtml = await publicSpaRenderer.render({
+          locale,
           origin,
           pathname: req.path,
         });

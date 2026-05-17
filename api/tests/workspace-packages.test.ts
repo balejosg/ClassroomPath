@@ -266,7 +266,7 @@ void describe('internal workspace package boundaries', () => {
     const reactSpaSourceFiles = listFiles('react-spa/src');
     const apiSourceFiles = listFiles('api/src');
     const upstreamImportPattern =
-      /@openpath\/public-auth|@openpath\/public-shell|@openpath\/public-ui|@openpath\/public-google|@openpath\/shared(?:\/roles|\/slug|\/domain)?|@openpath\/openpath\.css/;
+      /@openpath\/public-auth|@openpath\/public-shell|@openpath\/public-ui|@openpath\/public-google|@openpath\/public-i18n|@openpath\/shared(?:\/roles|\/slug|\/domain)?|@openpath\/openpath\.css/;
 
     for (const relativePath of reactSpaSourceFiles) {
       const content = readProjectFile(relativePath);

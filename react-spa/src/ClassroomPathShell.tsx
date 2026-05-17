@@ -23,6 +23,7 @@ import {
   type AppTab,
 } from './app/classroom-path-shell-routing';
 import { getShellTitle, type SelectedGroupState } from './app/classroom-path-shell-state';
+import { useClassroomPathT } from './i18n/classroompath-i18n';
 
 interface SelectedGroup extends SelectedGroupState {}
 
@@ -35,6 +36,7 @@ function ClassroomPathShellContent() {
   const [selectedGroup, setSelectedGroup] = useState<SelectedGroup | null>(null);
   const [pendingSelectedClassroomId, setPendingSelectedClassroomId] = useState<string | null>(null);
   const admin = isAdmin();
+  const t = useClassroomPathT();
 
   const navigateToTab = (tab: AppTab) => {
     setPendingSelectedClassroomId(null);
@@ -44,17 +46,17 @@ function ClassroomPathShellContent() {
 
   const handleNavigateToRules = (group: SelectedGroup) => {
     setSelectedGroup(group);
-    navigate('/reglas');
+    navigate('/rules');
   };
 
   const handleBackFromRules = () => {
     setSelectedGroup(null);
-    navigate('/politicas');
+    navigate('/policies');
   };
 
   const handleNavigateToClassroom = (classroom: { id: string; name: string }) => {
     setPendingSelectedClassroomId(classroom.id);
-    navigate('/aulas');
+    navigate('/classrooms');
   };
 
   const handlePendingSelectedClassroomIdConsumed = () => {
@@ -94,7 +96,7 @@ function ClassroomPathShellContent() {
       <div className="flex min-h-screen flex-1 flex-col md:ml-64">
         <Header
           onMenuClick={() => setSidebarOpen((current) => !current)}
-          title={getShellTitle({ activeTab, admin, selectedGroup })}
+          title={getShellTitle({ activeTab, admin, selectedGroup, t })}
         />
 
         <main className="flex-1 overflow-y-auto p-6 md:p-8">
@@ -103,7 +105,7 @@ function ClassroomPathShellContent() {
               <Route path="/" element={renderDashboard()} />
               <Route path="/dashboard" element={<Navigate replace to="/" />} />
               <Route
-                path="/aulas"
+                path="/classrooms"
                 element={
                   <Classrooms
                     initialSelectedClassroomId={pendingSelectedClassroomId}
@@ -112,12 +114,11 @@ function ClassroomPathShellContent() {
                 }
               />
               <Route
-                path="/politicas"
+                path="/policies"
                 element={<Groups onNavigateToRules={handleNavigateToRules} />}
               />
-              <Route path="/grupos" element={<Navigate replace to="/politicas" />} />
               <Route
-                path="/reglas"
+                path="/rules"
                 element={
                   selectedGroup ? (
                     <RulesManager
@@ -132,13 +133,15 @@ function ClassroomPathShellContent() {
                 }
               />
               <Route
-                path="/usuarios"
+                path="/users"
                 element={admin ? <OrganizationUsers /> : renderTeacherFallback()}
               />
-              <Route path="/dominios/aprobar/:requestId" element={<DomainRequestApprovalPage />} />
-              <Route path="/dominios" element={<DomainRequestsPage />} />
-              <Route path="/configuracion" element={<Settings />} />
-              <Route path="/settings" element={<Navigate replace to="/configuracion" />} />
+              <Route
+                path="/domain-requests/approve/:requestId"
+                element={<DomainRequestApprovalPage />}
+              />
+              <Route path="/domain-requests" element={<DomainRequestsPage />} />
+              <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate replace to="/" />} />
             </Routes>
           </div>

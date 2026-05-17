@@ -46,8 +46,8 @@ describe('classroompath service worker', () => {
         close: vi.fn(),
         data: {
           requestId: 'req_123',
-          approvalUrl: '/dominios/aprobar/req_123',
-          url: '/dominios?highlight=req_123',
+          approvalUrl: '/domain-requests/approve/req_123',
+          url: '/domain-requests?highlight=req_123',
         },
       },
       waitUntil,
@@ -55,7 +55,7 @@ describe('classroompath service worker', () => {
 
     await waitUntil.mock.results[0]?.value;
 
-    expect(openWindow).toHaveBeenCalledWith('/dominios/aprobar/req_123');
+    expect(openWindow).toHaveBeenCalledWith('/domain-requests/approve/req_123');
   });
 
   it('falls back to login with next approval URL when direct approval loses authentication', async () => {
@@ -74,7 +74,7 @@ describe('classroompath service worker', () => {
         close: vi.fn(),
         data: {
           requestId: 'req_123',
-          approvalUrl: '/dominios/aprobar/req_123',
+          approvalUrl: '/domain-requests/approve/req_123',
         },
       },
       waitUntil,
@@ -98,6 +98,6 @@ describe('classroompath service worker', () => {
         body: JSON.stringify({ requestId: 'req_123' }),
       }
     );
-    expect(openWindow).toHaveBeenCalledWith('/login?next=%2Fdominios%2Faprobar%2Freq_123');
+    expect(openWindow).toHaveBeenCalledWith('/login?next=%2Fdomain-requests%2Fapprove%2Freq_123');
   });
 });

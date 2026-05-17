@@ -10,14 +10,14 @@ describe('classroom-path-shell-state', () => {
         admin: true,
         selectedGroup: null,
       })
-    ).toBe('Vista General');
+    ).toBe('Overview');
     expect(
       getShellTitle({
         activeTab: 'users',
         admin: false,
         selectedGroup: null,
       })
-    ).toBe('Mi Panel');
+    ).toBe('My Dashboard');
   });
 
   it('uses the selected group name for rules titles', () => {
@@ -27,6 +27,6 @@ describe('classroom-path-shell-state', () => {
         admin: true,
         selectedGroup: { id: 'grp-1', name: 'Grupo Demo' },
       })
-    ).toBe('Reglas: Grupo Demo');
+    ).toBe('Rules: Grupo Demo');
   });
 });

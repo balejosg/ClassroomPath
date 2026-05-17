@@ -29,12 +29,12 @@ vi.mock('../../lib/dual-trpc-provider', () => ({
 
 import { DomainRequestApprovalPage } from '../DomainRequestApprovalPage';
 
-function renderApprovalPage(path = '/dominios/aprobar/req_123') {
+function renderApprovalPage(path = '/domain-requests/approve/req_123') {
   render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/dominios/aprobar/:requestId" element={<DomainRequestApprovalPage />} />
-        <Route path="/dominios" element={<div>Solicitudes</div>} />
+        <Route path="/domain-requests/approve/:requestId" element={<DomainRequestApprovalPage />} />
+        <Route path="/domain-requests" element={<div>Requests</div>} />
       </Routes>
     </MemoryRouter>
   );
@@ -72,16 +72,16 @@ describe('DomainRequestApprovalPage', () => {
   it('approves the pending request with one focused action', async () => {
     renderApprovalPage();
 
-    expect(screen.getByRole('heading', { name: 'Aprobar dominio' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Approve domain' })).toBeInTheDocument();
     expect(screen.getByText('science.example')).toBeInTheDocument();
     expect(screen.getByText('Grupo A')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aprobar dominio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve domain' }));
 
     await waitFor(() => {
       expect(requestsMocks.approve).toHaveBeenCalledWith({ id: 'req_123' });
     });
-    expect(await screen.findByText('Dominio aprobado')).toBeInTheDocument();
+    expect(await screen.findByText('Domain approved')).toBeInTheDocument();
   });
 
   it('shows a resolved state when the request is no longer pending', () => {
@@ -94,10 +94,10 @@ describe('DomainRequestApprovalPage', () => {
 
     renderApprovalPage();
 
-    expect(screen.getByText('Solicitud no disponible')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Volver a solicitudes' })).toHaveAttribute(
+    expect(screen.getByText('Request unavailable')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to requests' })).toHaveAttribute(
       'href',
-      '/dominios'
+      '/domain-requests'
     );
   });
 });

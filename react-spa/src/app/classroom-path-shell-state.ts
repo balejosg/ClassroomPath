@@ -1,4 +1,5 @@
 import type { AppTab } from './classroom-path-shell-routing';
+import { translateClassroomPathText, type ClassroomPathT } from '../i18n/classroompath-i18n';
 
 export interface SelectedGroupState {
   id: string;
@@ -10,24 +11,28 @@ export function getShellTitle(args: {
   activeTab: AppTab;
   admin: boolean;
   selectedGroup: SelectedGroupState | null;
+  t?: ClassroomPathT;
 }): string {
   const { activeTab, admin, selectedGroup } = args;
+  const t = args.t ?? ((key, params) => translateClassroomPathText('en', key, params));
 
   switch (activeTab) {
     case 'dashboard':
-      return admin ? 'Vista General' : 'Mi Panel';
+      return admin ? t('app.title.dashboard.admin') : t('app.title.dashboard.user');
     case 'classrooms':
-      return admin ? 'Gestión de Aulas' : 'Aulas';
+      return admin ? t('app.title.classrooms.admin') : t('app.title.classrooms.user');
     case 'groups':
-      return admin ? 'Grupos y Políticas' : 'Mis Políticas';
+      return admin ? t('app.title.groups.admin') : t('app.title.groups.user');
     case 'rules':
-      return selectedGroup ? `Reglas: ${selectedGroup.name}` : 'Gestión de Reglas';
+      return selectedGroup
+        ? t('app.title.rules.group', { groupName: selectedGroup.name })
+        : t('app.title.rules.default');
     case 'users':
-      return admin ? 'Administración de Usuarios' : 'Mi Panel';
+      return admin ? t('app.title.users.admin') : t('app.title.dashboard.user');
     case 'domains':
-      return 'Solicitudes de Acceso';
+      return t('app.title.domainRequests.admin');
     case 'settings':
-      return 'Configuración';
+      return t('app.title.settings');
     default:
       return 'ClassroomPath';
   }

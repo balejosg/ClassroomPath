@@ -332,7 +332,7 @@ describe('ClassroomPathApp', () => {
   });
 
   it('preserves protected notification approval paths as a safe post-login destination', async () => {
-    window.history.pushState({}, '', '/dominios/aprobar/req_123?from=push');
+    window.history.pushState({}, '', '/domain-requests/approve/req_123?from=push');
     mockUseOnboardingStatus.mockReturnValue(
       makeOnboardingQuery({
         data: {
@@ -360,13 +360,15 @@ describe('ClassroomPathApp', () => {
     await waitFor(() => {
       expect(screen.getByText('Login View')).toBeInTheDocument();
       expect(window.location.pathname).toBe('/login');
-      expect(window.location.search).toBe('?next=%2Fdominios%2Faprobar%2Freq_123%3Ffrom%3Dpush');
+      expect(window.location.search).toBe(
+        '?next=%2Fdomain-requests%2Fapprove%2Freq_123%3Ffrom%3Dpush'
+      );
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Login success' }));
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/dominios/aprobar/req_123');
+      expect(window.location.pathname).toBe('/domain-requests/approve/req_123');
       expect(window.location.search).toBe('?from=push');
     });
   });

@@ -3,10 +3,12 @@ import { Link, useParams } from 'react-router-dom';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 
 export function DomainRequestApprovalPage() {
   const { requestId = '' } = useParams();
   const [approved, setApproved] = useState(false);
+  const t = useClassroomPathT();
   const requestsQuery = cpTrpcReact.requests.list.useQuery({ status: 'pending' });
   const groupsQuery = cpTrpcReact.requests.listGroups.useQuery();
   const approveMutation = cpTrpcReact.requests.approve.useMutation();
@@ -34,7 +36,7 @@ export function DomainRequestApprovalPage() {
     return (
       <section className="mx-auto flex min-h-[55vh] max-w-xl items-center justify-center text-slate-700">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden="true" />
-        Cargando solicitud...
+        {t('domainApproval.loading')}
       </section>
     );
   }
@@ -43,13 +45,13 @@ export function DomainRequestApprovalPage() {
     return (
       <section className="mx-auto max-w-xl rounded-lg border border-emerald-200 bg-emerald-50 p-6 text-center text-slate-900">
         <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-600" aria-hidden="true" />
-        <h2 className="text-xl font-semibold">Dominio aprobado</h2>
-        <p className="mt-2 text-sm text-slate-700">La solicitud ya se ha añadido a la whitelist.</p>
+        <h2 className="text-xl font-semibold">{t('domainApproval.approved.title')}</h2>
+        <p className="mt-2 text-sm text-slate-700">{t('domainApproval.approved.body')}</p>
         <Link
           className="mt-5 inline-flex min-h-11 items-center justify-center rounded-md border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
-          to="/dominios"
+          to="/domain-requests"
         >
-          Volver a solicitudes
+          {t('domainApproval.backToRequests')}
         </Link>
       </section>
     );
@@ -58,15 +60,13 @@ export function DomainRequestApprovalPage() {
   if (requestsQuery.isError || !request) {
     return (
       <section className="mx-auto max-w-xl rounded-lg border border-slate-200 bg-white p-6 text-center text-slate-900 shadow-sm">
-        <h2 className="text-xl font-semibold">Solicitud no disponible</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          La solicitud puede haber sido aprobada, rechazada o ya no estar asignada a tus grupos.
-        </p>
+        <h2 className="text-xl font-semibold">{t('domainApproval.unavailable.title')}</h2>
+        <p className="mt-2 text-sm text-slate-600">{t('domainApproval.unavailable.body')}</p>
         <Link
           className="mt-5 inline-flex min-h-11 items-center justify-center rounded-md bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800"
-          to="/dominios"
+          to="/domain-requests"
         >
-          Volver a solicitudes
+          {t('domainApproval.backToRequests')}
         </Link>
       </section>
     );
@@ -76,14 +76,14 @@ export function DomainRequestApprovalPage() {
 
   return (
     <section className="mx-auto max-w-xl rounded-lg border border-sky-200 bg-white p-6 text-slate-900 shadow-sm">
-      <p className="text-sm font-semibold text-sky-700">Solicitud pendiente</p>
-      <h2 className="mt-2 text-2xl font-semibold">Aprobar dominio</h2>
+      <p className="text-sm font-semibold text-sky-700">{t('domainApproval.pending.label')}</p>
+      <h2 className="mt-2 text-2xl font-semibold">{t('domainApproval.pending.title')}</h2>
       <div className="mt-5 rounded-md bg-slate-50 p-4">
-        <p className="text-sm text-slate-500">Dominio</p>
+        <p className="text-sm text-slate-500">{t('domainApproval.domain.label')}</p>
         <p className="mt-1 break-all text-xl font-semibold">{request.domain}</p>
         {groupName ? (
           <>
-            <p className="mt-4 text-sm text-slate-500">Grupo</p>
+            <p className="mt-4 text-sm text-slate-500">{t('domainApproval.group.label')}</p>
             <p className="mt-1 font-medium">{groupName}</p>
           </>
         ) : null}
@@ -94,13 +94,13 @@ export function DomainRequestApprovalPage() {
         onClick={approveRequest}
         type="button"
       >
-        {isApproving ? 'Aprobando...' : 'Aprobar dominio'}
+        {isApproving ? t('domainApproval.approve.pending') : t('domainApproval.approve.action')}
       </button>
       <Link
         className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        to="/dominios"
+        to="/domain-requests"
       >
-        Volver a solicitudes
+        {t('domainApproval.backToRequests')}
       </Link>
     </section>
   );

@@ -2,7 +2,7 @@ self.addEventListener('push', (event) => {
   const fallback = {
     title: 'Nueva solicitud de dominio',
     body: 'Hay una solicitud pendiente',
-    data: { url: '/dominios' },
+    data: { url: '/domain-requests' },
     actions: [{ action: 'approve', title: 'Aprobar' }],
   };
   const payload = event.data ? event.data.json() : fallback;
@@ -28,7 +28,7 @@ function resolveInternalPath(candidate, fallback) {
 }
 
 function buildLoginPath(nextPath) {
-  return `/login?next=${encodeURIComponent(resolveInternalPath(nextPath, '/dominios'))}`;
+  return `/login?next=${encodeURIComponent(resolveInternalPath(nextPath, '/domain-requests'))}`;
 }
 
 async function refreshAppSession() {
@@ -43,7 +43,7 @@ async function refreshAppSession() {
 }
 
 async function openClientWindow(path) {
-  const targetPath = resolveInternalPath(path, '/dominios');
+  const targetPath = resolveInternalPath(path, '/domain-requests');
   const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
   const existing = windows.find((client) => {
     try {
@@ -74,9 +74,9 @@ self.addEventListener('notificationclick', (event) => {
 
   const data = event.notification.data || {};
   const requestId = data.requestId;
-  const targetUrl = data.url || '/dominios';
+  const targetUrl = data.url || '/domain-requests';
   const approvalUrl =
-    data.approvalUrl || (requestId ? `/dominios/aprobar/${requestId}` : targetUrl);
+    data.approvalUrl || (requestId ? `/domain-requests/approve/${requestId}` : targetUrl);
 
   if (event.action === 'approve' && requestId) {
     event.waitUntil(
@@ -95,7 +95,7 @@ self.addEventListener('notificationclick', (event) => {
         })
         .then((response) => {
           if (response.ok) {
-            return openClientWindow(`/dominios?approved=${encodeURIComponent(requestId)}`);
+            return openClientWindow(`/domain-requests?approved=${encodeURIComponent(requestId)}`);
           }
 
           return openClientWindow(buildLoginPath(approvalUrl));

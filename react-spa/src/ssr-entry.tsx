@@ -4,36 +4,61 @@ import { renderToString } from 'react-dom/server';
 import { normalizePathname } from './app/classroom-path-auth-routing';
 import { ClassroomPathLandingPage } from './views/Landing';
 import { ClassroomPathPricingPage } from './views/Pricing';
+import {
+  ClassroomPathI18nProvider,
+  resolveClassroomPathLocale,
+  translateClassroomPathText,
+} from './i18n/classroompath-i18n';
+import type { ProductLocale } from './openpath/public-i18n';
 
 type PublicPageMetadata = {
   appHtml: string;
   canonicalPath: '/' | '/pricing';
   description: string;
+  hydrationLocale: ProductLocale;
+  lang: ProductLocale;
   title: string;
 };
 
+type RenderPublicPageInput =
+  | string
+  | {
+      pathname: string;
+      locale?: string | readonly string[] | null;
+    };
+
 const NOOP = () => {};
 
-export function renderPublicPage(pathname: string): PublicPageMetadata | null {
+function renderWithLocale(children: React.ReactNode, locale: ProductLocale): string {
+  return renderToString(
+    <ClassroomPathI18nProvider locale={locale}>{children}</ClassroomPathI18nProvider>
+  );
+}
+
+export function renderPublicPage(input: RenderPublicPageInput): PublicPageMetadata | null {
+  const pathname = typeof input === 'string' ? input : input.pathname;
+  const locale = resolveClassroomPathLocale(typeof input === 'string' ? null : input.locale);
   const normalizedPathname = normalizePathname(pathname);
 
   if (normalizedPathname === '/') {
     return {
-      appHtml: renderToString(<ClassroomPathLandingPage onNavigateToLogin={NOOP} />),
+      appHtml: renderWithLocale(<ClassroomPathLandingPage onNavigateToLogin={NOOP} />, locale),
       canonicalPath: '/',
-      description:
-        'Controla qué se abre y qué se bloquea en cada aula. Servicio gestionado sobre OpenPath, precio por aula y activación remota con el IT del centro.',
-      title: 'Filtrado web escolar por aula | ClassroomPath',
+      description: translateClassroomPathText(locale, 'public.landing.description'),
+      hydrationLocale: locale,
+      lang: locale,
+      title: translateClassroomPathText(locale, 'public.landing.title'),
     };
   }
 
   if (normalizedPathname === '/pricing') {
     return {
-      appHtml: renderToString(<ClassroomPathPricingPage onNavigateToLogin={NOOP} />),
+      appHtml: renderWithLocale(<ClassroomPathPricingPage onNavigateToLogin={NOOP} />, locale),
       canonicalPath: '/pricing',
-      description:
-        'Calcula el coste de ClassroomPath por número de aulas. Precio público, onboarding separado, activación remota ligera y servicio gestionado sobre OpenPath.',
-      title: 'Precios de filtrado web escolar por aula | ClassroomPath',
+      description: translateClassroomPathText(locale, 'public.pricing.description'),
+      hydrationLocale: locale,
+      lang: locale,
+      title: translateClassroomPathText(locale, 'public.pricing.title'),
     };
   }
 

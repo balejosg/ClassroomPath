@@ -186,8 +186,8 @@ describe('push service', () => {
       const payload = JSON.parse(sendMock.mock.calls[0]?.arguments[1] as string) as {
         data?: { approvalUrl?: string; url?: string };
       };
-      assert.strictEqual(payload.data?.approvalUrl, '/dominios/aprobar/req_push');
-      assert.strictEqual(payload.data?.url, '/dominios?highlight=req_push');
+      assert.strictEqual(payload.data?.approvalUrl, '/domain-requests/approve/req_push');
+      assert.strictEqual(payload.data?.url, '/domain-requests?highlight=req_push');
       assert.strictEqual(deleteMock.mock.callCount(), 1);
     } finally {
       selectMock.mock.restore();

@@ -169,7 +169,7 @@ describe('useClassroomPathBoot', () => {
   });
 
   it('sets up ClassroomPath request routing, OpenPath unauthorized handling, and cleanup', () => {
-    const { unmount } = renderBootProbe('/dominios');
+    const { unmount } = renderBootProbe('/domain-requests');
 
     expect(mockSetReportErrorSink).toHaveBeenCalledWith('report-error-sink');
     expect(mockSetRequestsApiUrl).toHaveBeenCalledWith('/cp');
@@ -196,7 +196,7 @@ describe('useClassroomPathBoot', () => {
       })
     );
 
-    renderBootProbe('/dominios');
+    renderBootProbe('/domain-requests');
 
     await waitFor(() => {
       expect(refresh).toHaveBeenCalledWith({ clientMode: 'web' });
@@ -215,7 +215,7 @@ describe('useClassroomPathBoot', () => {
       })
     );
 
-    renderBootProbe('/dominios');
+    renderBootProbe('/domain-requests');
 
     await waitFor(() => {
       expect(mockClearSession).toHaveBeenCalledTimes(1);
@@ -228,7 +228,7 @@ describe('useClassroomPathBoot', () => {
     const refetch = vi.fn();
     mockUseOnboardingStatus.mockReturnValue(makeOnboardingQuery({ isLoading: true, refetch }));
 
-    renderBootProbe('/dominios');
+    renderBootProbe('/domain-requests');
 
     expect(screen.getByTestId('loading-timeout')).toHaveTextContent('false');
 

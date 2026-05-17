@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { createPublicSpaRenderer } from '../src/lib/public-spa-ssr.ts';
+import {
+  createPublicSpaRenderer,
+  resolveProductLocaleFromAcceptLanguage,
+} from '../src/lib/public-spa-ssr.ts';
 
 async function createFixture() {
   const rootDir = await mkdtemp(path.join(tmpdir(), 'cp-public-ssr-'));
@@ -34,13 +37,13 @@ async function createFixture() {
   await writeFile(
     path.join(reactSpaSsrPath, 'ssr-entry.js'),
     [
-      'export function renderPublicPage(pathname) {',
+      'export function renderPublicPage({ pathname, locale }) {',
       '  if (pathname !== "/" && pathname !== "/pricing") return null;',
       '  return {',
-      '    appHtml: `<main><h1>${pathname === "/" ? "Landing" : "Pricing"}</h1></main>`,',
+      '    appHtml: `<main data-locale="${locale}"><h1>${pathname === "/" ? "Landing" : "Pricing"} ${locale}</h1></main>`,',
       '    canonicalPath: pathname === "/" ? "/" : "/pricing",',
-      '    description: `Description for ${pathname}`,',
-      '    title: pathname === "/" ? "Landing SSR" : "Pricing SSR",',
+      '    description: `Description for ${pathname} in ${locale}`,',
+      '    title: `${pathname === "/" ? "Landing" : "Pricing"} SSR ${locale}`,',
       '  };',
       '}',
     ].join('\n')
@@ -56,6 +59,7 @@ test('returns a disabled renderer when build artifacts are missing', async () =>
   assert.equal(renderer.canRender, false);
   assert.equal(
     await renderer.render({
+      locale: 'en',
       origin: 'https://classroompath.test',
       pathname: '/',
     }),
@@ -70,18 +74,21 @@ test('renders SSR HTML with metadata for supported public routes', async () => {
   assert.equal(renderer.canRender, true);
 
   const html = await renderer.render({
+    locale: 'es',
     origin: 'https://classroompath.test',
     pathname: '/pricing',
   });
 
   assert.ok(html);
+  assert.match(html, /<html lang="es">/);
   assert.match(
     html,
-    /<div id="root" data-classroompath-public-ssr="true"><main><h1>Pricing<\/h1><\/main><\/div>/
+    /<div id="root" data-classroompath-public-ssr="true" data-classroompath-locale="es" data-product-locale="es"><main data-locale="es"><h1>Pricing es<\/h1><\/main><\/div>/
   );
-  assert.match(html, /<title>Pricing SSR<\/title>/);
+  assert.match(html, /window\.__CLASSROOMPATH_PRODUCT_LOCALE__="es"/);
+  assert.match(html, /<title>Pricing SSR es<\/title>/);
   assert.match(html, /<link rel="canonical" href="https:\/\/classroompath\.test\/pricing" \/>/);
-  assert.match(html, /<meta property="og:title" content="Pricing SSR" \/>/);
+  assert.match(html, /<meta property="og:title" content="Pricing SSR es" \/>/);
 });
 
 test('returns null when the SSR module does not support a route', async () => {
@@ -90,9 +97,18 @@ test('returns null when the SSR module does not support a route', async () => {
 
   assert.equal(
     await renderer.render({
+      locale: 'en',
       origin: 'https://classroompath.test',
       pathname: '/login',
     }),
     null
   );
+});
+
+test('resolves product locale from Accept-Language with English default', () => {
+  assert.equal(resolveProductLocaleFromAcceptLanguage(undefined), 'en');
+  assert.equal(resolveProductLocaleFromAcceptLanguage('fr-FR,es;q=0.8,en;q=0.4'), 'es');
+  assert.equal(resolveProductLocaleFromAcceptLanguage('de-DE,en-US;q=0.9,es;q=0.7'), 'en');
+  assert.equal(resolveProductLocaleFromAcceptLanguage('es-ES, en;q=0.8'), 'es');
+  assert.equal(resolveProductLocaleFromAcceptLanguage('fr-FR,*;q=0.5'), 'en');
 });
