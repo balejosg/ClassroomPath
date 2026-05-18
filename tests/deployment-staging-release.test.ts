@@ -604,7 +604,7 @@ warn_if_other_release_candidate_run_in_progress target-sha
           'Promotion-eligible staging requires an active release fence id'
         ) &&
         stagingReleaseHelper.includes('release-mark-staged') &&
-        stagingReleaseHelper.includes('--release-id "$release_id"') &&
+        stagingReleaseHelper.includes('--release-id "$STAGING_RELEASE_FENCE_ID"') &&
         stagingReleaseHelper.includes('--classroompath-sha "$REMOTE_SHA"'),
       'promotion-eligible staging should reject local dirt and mark the active release fence staged'
     );

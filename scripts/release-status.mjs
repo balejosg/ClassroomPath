@@ -244,6 +244,13 @@ function hasWindowsPrepromotionEvidence(stagingState) {
   return isSuccess(stagingState.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT);
 }
 
+function isProductionCurrentAtTarget(status) {
+  return (
+    status.productionDeploy.latestRun?.conclusion === 'success' &&
+    status.productionDeploy.currentState?.APP_SHA === status.classroomPath.headSha
+  );
+}
+
 export function deriveReleaseBlockers(status) {
   const groups = deriveReleaseBlockerGroups(status);
   return [...groups.promotionBlockers, ...groups.productionBlockers];
@@ -304,10 +311,11 @@ export function buildReleaseStatusJson(status) {
           productionBlockers: status.productionBlockers,
         }
       : deriveReleaseBlockerGroups(status);
-  const blockers = status.blockers ?? [
-    ...blockerGroups.promotionBlockers,
-    ...blockerGroups.productionBlockers,
-  ];
+  const blockers =
+    status.blockers ??
+    (isProductionCurrentAtTarget(status)
+      ? [...blockerGroups.productionBlockers]
+      : [...blockerGroups.promotionBlockers, ...blockerGroups.productionBlockers]);
 
   return {
     classroompath: {
@@ -793,7 +801,9 @@ export async function buildReleaseStatus({
   };
 
   const blockerGroups = deriveReleaseBlockerGroups(status);
-  const blockers = [...blockerGroups.promotionBlockers, ...blockerGroups.productionBlockers];
+  const blockers = isProductionCurrentAtTarget(status)
+    ? [...blockerGroups.productionBlockers]
+    : [...blockerGroups.promotionBlockers, ...blockerGroups.productionBlockers];
   return {
     ...status,
     ...blockerGroups,

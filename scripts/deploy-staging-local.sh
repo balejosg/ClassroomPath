@@ -170,6 +170,11 @@ trap cleanup_staging_local_temp_files EXIT
 prepare_staging_local_release_context
 
 if [ -n "${STAGING_RELEASE_MANIFEST_FILE:-}" ]; then
+    if [ -z "${STAGING_GHCR_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then
+        STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-balejosg}"
+        STAGING_GHCR_TOKEN="$(gh auth token 2>/dev/null || true)"
+        export STAGING_GHCR_USERNAME STAGING_GHCR_TOKEN
+    fi
     if ! node "$SCRIPT_DIR/ghcr-preflight.mjs" staging --manifest-file "$STAGING_RELEASE_MANIFEST_FILE"; then
         echo ""
         echo "Set for this command only:"
@@ -177,6 +182,8 @@ if [ -n "${STAGING_RELEASE_MANIFEST_FILE:-}" ]; then
         exit 1
     fi
 fi
+
+mark_staging_release_fence_staged
 
 # =============================================================================
 # Step 2: SSH and deploy

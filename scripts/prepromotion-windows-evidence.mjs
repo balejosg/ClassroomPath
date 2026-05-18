@@ -96,9 +96,9 @@ function loadStagingVerification(options) {
   if (options.stagingVerification) {
     return readStagingVerificationFromFile(options.stagingVerification);
   }
-  if (options.stagingHost) {
+  if (options.stagingHost || options.command === 'run-and-persist') {
     return readStagingVerificationFromHost({
-      stagingHost: options.stagingHost,
+      stagingHost: options.stagingHost || '192.168.1.114',
       stagingUser: options.stagingUser,
       stagingPort: options.stagingPort,
       stagingSshKey: options.stagingSshKey,
@@ -113,9 +113,9 @@ function loadStagingVerification(options) {
 function printInspect(requirement) {
   console.log(`required=${requirement.required ? 'true' : 'false'}`);
   console.log(`reason=${requirement.reason}`);
-  console.log(`command=${requirement.command}`);
+  console.log(`command=${requirement.remediationCommand || requirement.command}`);
   if (requirement.required) {
-    console.log(`persist_command=${requirement.persistCommand}`);
+    console.log(`corrected_command=${requirement.remediationCommand || requirement.command}`);
   }
 }
 
@@ -148,6 +148,15 @@ function main() {
     cwd: process.cwd(),
     env: process.env,
   });
+  if (!options.stagingHost) {
+    options.stagingHost = effectiveEnv.STAGING_HOST ?? '';
+  }
+  if (!options.stagingUser || options.stagingUser === 'deploy') {
+    options.stagingUser = effectiveEnv.STAGING_USER ?? options.stagingUser;
+  }
+  if (!options.stagingPort || options.stagingPort === '22') {
+    options.stagingPort = effectiveEnv.STAGING_PORT ?? options.stagingPort;
+  }
   if (!options.stagingSshKey) {
     options.stagingSshKey = effectiveEnv.STAGING_SSH_KEY ?? '';
   }

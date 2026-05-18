@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { execFile as nodeExecFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
 import { isDirectExecution } from './lib/github-actions.mjs';
 import {
   buildPromotionPlan,
@@ -8,13 +11,16 @@ import {
   summarizeGitHubRunMonitor,
 } from './lib/release-orchestration.mjs';
 
+const execFile = promisify(nodeExecFile);
+
 function usage() {
-  return `Usage: npm run release:promote -- --tag <vX.Y.Z> [--execute|--dry-run] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary|--no-post-production-windows-canary]
+  return `Usage: npm run release:promote -- (--tag <vX.Y.Z>|--auto-tag) [--execute|--dry-run] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary|--no-post-production-windows-canary]
 
 Builds and runs the production promotion plan.
 
 Options:
   --tag <tag>                         Production tag to create, for example v1.2.301.
+  --auto-tag                          Use the next patch tag after the highest remote vX.Y.Z tag.
   --dry-run                           Print the ordered plan without running commands. Default.
   --execute                           Run the ordered plan. This can deploy staging and create/push the production tag.
   --high-risk-windows                 Include Windows prepromotion evidence step. Default.
@@ -28,6 +34,7 @@ Options:
 export function parseReleasePromoteArgs(argv) {
   const options = {
     tag: '',
+    autoTag: false,
     dryRun: true,
     execute: false,
     highRiskWindows: true,
@@ -40,6 +47,9 @@ export function parseReleasePromoteArgs(argv) {
     switch (arg) {
       case '--tag':
         options.tag = requireNextValue(argv, ++index, '--tag');
+        break;
+      case '--auto-tag':
+        options.autoTag = true;
         break;
       case '--dry-run':
         options.dryRun = true;
@@ -86,10 +96,18 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       return { status: 0 };
     }
 
-    validateTag(options.tag);
+    if (options.autoTag && options.tag) {
+      throw new Error('--auto-tag cannot be combined with --tag');
+    }
+
+    const tag = options.autoTag
+      ? await resolveNextPatchTag({ execFile: dependencies.execFile ?? execFile })
+      : options.tag;
+
+    validateTag(tag);
 
     const plan = buildPromotionPlan({
-      tag: options.tag,
+      tag,
       highRiskWindows: options.highRiskWindows,
       postProductionWindowsCanary: options.postProductionWindowsCanary,
     });
@@ -123,6 +141,33 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
     io.stderr(`${error.message}\n\n${usage()}`);
     return { status: 2 };
   }
+}
+
+export async function resolveNextPatchTag({ execFile: runExecFile = execFile } = {}) {
+  const result = await runExecFile('git', ['ls-remote', '--tags', '--refs', 'origin', 'v*']);
+  const tags = String(result.stdout ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/)[1] ?? '')
+    .map((ref) => ref.replace(/^refs\/tags\//, ''))
+    .map((tag) => /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag))
+    .filter(Boolean)
+    .map((match) => ({
+      major: Number(match[1]),
+      minor: Number(match[2]),
+      patch: Number(match[3]),
+    }))
+    .sort((left, right) => {
+      if (left.major !== right.major) return right.major - left.major;
+      if (left.minor !== right.minor) return right.minor - left.minor;
+      return right.patch - left.patch;
+    });
+
+  if (tags.length === 0) {
+    throw new Error('No remote vX.Y.Z tags found for --auto-tag');
+  }
+
+  const latest = tags[0];
+  return `v${latest.major}.${latest.minor}.${latest.patch + 1}`;
 }
 
 function printPlan(plan, io) {

@@ -68,6 +68,7 @@
     "release:evidence-bundle": "node scripts/release-evidence-bundle.mjs",
     "release:promote": "node scripts/release-promote.mjs",
     "release:status": "node scripts/release-status.mjs",
+    "promote:production:full": "node scripts/release-promote.mjs --auto-tag",
     "release:production": "bash scripts/tag-production-release.sh",
     "verify:static": "bash scripts/run-turbo.sh verify:static",
     "security:secrets": "secretlint '**/*.{js,ts,tsx,json,yml,yaml,env,env.*}'",

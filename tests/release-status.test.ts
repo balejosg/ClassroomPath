@@ -333,6 +333,40 @@ test('derives stable release blockers from release status evidence', async () =>
   });
 });
 
+test('keeps stale staging as promotion-only blocker when production already runs target SHA', async () => {
+  const harness = createCommandHarness({ originSha: CLASSROOM_SHA });
+  const status = await buildReleaseStatus({
+    argv: ['--sha', CLASSROOM_SHA],
+    env: {
+      ...process.env,
+      RELEASE_STATUS_TEST_MODE: '1',
+      RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
+      RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+    },
+    runCommand(command, args) {
+      if (command === 'ssh' && args.at(-1)?.includes('staging-verification.env')) {
+        return [
+          'STAGING_VERIFIED_APP_SHA=old-sha',
+          `STAGING_VERIFIED_OPENPATH_SHA=${OPENPATH_SHA}`,
+          'STAGING_VERIFIED_IMAGE_SOURCE=source-build',
+          'STAGING_SMOKE_RESULT=failed',
+          'STAGING_RELEASE_GATE_RESULT=failed',
+          '',
+        ].join('\n');
+      }
+
+      return harness.runCommand(command, args);
+    },
+  });
+
+  const payload = buildReleaseStatusJson(status);
+
+  assert.ok(payload.promotionBlockers.includes('staging-not-promotion-eligible'));
+  assert.ok(payload.promotionBlockers.includes('windows-prepromotion-evidence-missing'));
+  assert.deepEqual(payload.productionBlockers, []);
+  assert.deepEqual(payload.blockers, []);
+});
+
 function createReleaseStatusFakeBin() {
   const binDir = mkdtempSync(resolve(tmpdir(), 'release-status-bin-'));
   const scripts: Record<string, string> = {

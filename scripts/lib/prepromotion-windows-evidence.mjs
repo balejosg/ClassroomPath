@@ -163,6 +163,16 @@ export function resolveWindowsPrepromotionRequirement({
   if (stagedSha) effectiveVerification.STAGING_VERIFIED_APP_SHA = stagedSha;
 
   const command = buildWindowsPrepromotionCommandText({ artifactDir, openpathRoot });
+  const remediationCommand = [
+    'node',
+    'scripts/prepromotion-windows-evidence.mjs',
+    'run-and-persist',
+    ...(artifactDir ? ['--artifact-dir', artifactDir] : []),
+    ...(openpathRoot ? ['--openpath-root', openpathRoot] : []),
+    ...(stagedSha ? ['--target-sha', stagedSha] : []),
+  ]
+    .map(shellQuote)
+    .join(' ');
   const persistCommand = buildPersistCommand({
     appSha: stagedSha ?? '<staged-sha>',
     runId: 'direct-staging-<timestamp>',
@@ -177,6 +187,7 @@ export function resolveWindowsPrepromotionRequirement({
       required: false,
       reason: 'STAGING_WINDOWS_FIREFOX_HIGH_RISK is not true.',
       command,
+      remediationCommand: '',
       persistCommand: '',
     };
   }
@@ -187,6 +198,7 @@ export function resolveWindowsPrepromotionRequirement({
       required: true,
       reason: 'missing STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT for staged SHA',
       command,
+      remediationCommand,
       persistCommand,
     };
   }
@@ -201,6 +213,7 @@ export function resolveWindowsPrepromotionRequirement({
       required: true,
       reason: 'stale STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA for staged SHA',
       command,
+      remediationCommand,
       persistCommand,
     };
   }
@@ -211,6 +224,7 @@ export function resolveWindowsPrepromotionRequirement({
       required: true,
       reason: 'STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID is not none',
       command,
+      remediationCommand,
       persistCommand,
     };
   }
@@ -220,6 +234,7 @@ export function resolveWindowsPrepromotionRequirement({
     required: false,
     reason: 'fresh Windows prepromotion evidence already exists for staged SHA',
     command,
+    remediationCommand: '',
     persistCommand: '',
   };
 }

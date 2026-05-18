@@ -73,6 +73,7 @@ prepare_staging_local_release_context() {
     STAGING_DEPLOY_PAYLOAD_ENV_FILE=""
     STAGING_DEPLOY_PAYLOAD_B64=""
     STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE="0"
+    STAGING_RELEASE_FENCE_ID=""
     VERIFICATION_STATE_FILE=""
 
     if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
@@ -142,16 +143,28 @@ prepare_staging_local_release_context() {
 
     local workspace_guard="$SCRIPT_DIR/../../scripts/parallel_session_guard.py"
     if [ "$STAGING_DEPLOYMENT_MODE" = "promotion-eligible" ] && [ -f "$workspace_guard" ]; then
-        local release_id=""
-        release_id="$(resolve_active_release_fence_id "$workspace_guard" || true)"
-        if [ -z "$release_id" ]; then
+        STAGING_RELEASE_FENCE_ID="$(resolve_active_release_fence_id "$workspace_guard" || true)"
+        if [ -z "$STAGING_RELEASE_FENCE_ID" ]; then
             log_error "Promotion-eligible staging requires an active release fence id"
             exit 2
         fi
-        python3 "$workspace_guard" release-mark-staged --release-id "$release_id" --classroompath-sha "$REMOTE_SHA"
     fi
 
     log_success "Git state checked"
+}
+
+mark_staging_release_fence_staged() {
+    local workspace_guard="$SCRIPT_DIR/../../scripts/parallel_session_guard.py"
+    if [ "${STAGING_DEPLOYMENT_MODE:-}" != "promotion-eligible" ] || [ ! -f "$workspace_guard" ]; then
+        return 0
+    fi
+
+    if [ -z "${STAGING_RELEASE_FENCE_ID:-}" ]; then
+        log_error "Promotion-eligible staging requires an active release fence id"
+        exit 2
+    fi
+
+    python3 "$workspace_guard" release-mark-staged --release-id "$STAGING_RELEASE_FENCE_ID" --classroompath-sha "$REMOTE_SHA"
 }
 
 resolve_active_release_fence_id() {

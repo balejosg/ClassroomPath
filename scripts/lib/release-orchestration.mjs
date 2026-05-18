@@ -17,8 +17,12 @@ export async function runStep({ id, command, env = {}, cwd = process.cwd() }) {
 
   const startedAt = performance.now();
   const { executable, args, shell } = normalizeCommand(command);
+  const heartbeatIntervalSeconds = Number(
+    env.RELEASE_PROMOTE_HEARTBEAT_SECONDS ?? process.env.RELEASE_PROMOTE_HEARTBEAT_SECONDS ?? '60'
+  );
 
   const status = await new Promise((resolve, reject) => {
+    let heartbeat;
     const child = spawn(executable, args, {
       cwd,
       env: { ...process.env, ...env },
@@ -26,8 +30,17 @@ export async function runStep({ id, command, env = {}, cwd = process.cwd() }) {
       stdio: 'inherit',
     });
 
+    if (Number.isFinite(heartbeatIntervalSeconds) && heartbeatIntervalSeconds > 0) {
+      heartbeat = setInterval(() => {
+        const elapsed = Number(((performance.now() - startedAt) / 1000).toFixed(0));
+        process.stderr.write(`[release-promote] ${id} still running after ${elapsed}s\n`);
+      }, heartbeatIntervalSeconds * 1000);
+      heartbeat.unref?.();
+    }
+
     child.on('error', reject);
     child.on('close', (code) => {
+      if (heartbeat) clearInterval(heartbeat);
       resolve(code === 0 ? 'success' : 'failed');
     });
   });
@@ -88,7 +101,7 @@ export function buildPromotionPlan({
       [
         'bash',
         '-lc',
-        'STAGING_GHCR_USERNAME=balejosg STAGING_GHCR_TOKEN="$(gh auth token)" npm run deploy:staging',
+        'STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-balejosg}" STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-$(gh auth token)}" npm run deploy:staging',
       ],
       'Deploy the resolved release candidate to staging.'
     ),
@@ -190,8 +203,10 @@ export function buildWaitForTagDeployCommand(tag) {
       'while [ "$SECONDS" -le "$deadline" ]; do',
       `  run_id="$(gh run list --repo ${quoteShellArg(DEFAULT_REPO)} --workflow deploy.yml --event push --branch ${quoteShellArg(tag)} --json databaseId,headBranch,event,workflowName,name --jq ${quoteShellArg(`.[] | select(.headBranch == "${tag}" and .event == "push" and (.workflowName == "Deploy" or .name == "Deploy")) | .databaseId`)} --limit 50 | head -n1)"`,
       '  if [ -n "$run_id" ]; then',
+      '    echo "Found production deploy run: $run_id"',
       '    break',
       '  fi',
+      `  echo "Waiting for production deploy workflow for ${tag}..."`,
       '  sleep 10',
       'done',
       'test -n "$run_id"',

@@ -9,7 +9,11 @@ import {
   runStep,
   summarizeGitHubRunMonitor,
 } from '../scripts/lib/release-orchestration.mjs';
-import { parseReleasePromoteArgs, runReleasePromoteCommand } from '../scripts/release-promote.mjs';
+import {
+  parseReleasePromoteArgs,
+  resolveNextPatchTag,
+  runReleasePromoteCommand,
+} from '../scripts/release-promote.mjs';
 
 describe('release promotion orchestration', () => {
   it('plans the required step order for high-risk Windows changes', () => {
@@ -123,6 +127,7 @@ describe('release promotion orchestration', () => {
       ]),
       {
         tag: 'v1.2.301',
+        autoTag: false,
         dryRun: true,
         execute: false,
         highRiskWindows: true,
@@ -140,6 +145,7 @@ describe('release promotion orchestration', () => {
       ]),
       {
         tag: 'v1.2.301',
+        autoTag: false,
         dryRun: true,
         execute: false,
         highRiskWindows: true,
@@ -150,12 +156,70 @@ describe('release promotion orchestration', () => {
 
     assert.deepEqual(parseReleasePromoteArgs(['--tag', 'v1.2.301', '--execute']), {
       tag: 'v1.2.301',
+      autoTag: false,
       dryRun: false,
       execute: true,
       highRiskWindows: true,
       postProductionWindowsCanary: true,
       help: false,
     });
+
+    assert.deepEqual(parseReleasePromoteArgs(['--auto-tag', '--dry-run']), {
+      tag: '',
+      autoTag: true,
+      dryRun: true,
+      execute: false,
+      highRiskWindows: true,
+      postProductionWindowsCanary: true,
+      help: false,
+    });
+  });
+
+  it('resolves --auto-tag from remote tags and keeps dry-run non-mutating', async () => {
+    let stdout = '';
+    let executed = false;
+
+    const result = await runReleasePromoteCommand(['--auto-tag', '--dry-run'], {
+      stdout: (value) => {
+        stdout += value;
+      },
+      stderr: () => {},
+      execFile: async (file, args) => {
+        assert.equal(file, 'git');
+        assert.deepEqual(args, ['ls-remote', '--tags', '--refs', 'origin', 'v*']);
+        return {
+          stdout: [
+            'aaa\trefs/tags/v1.2.299',
+            'bbb\trefs/tags/v1.2.301',
+            'ccc\trefs/tags/not-semver',
+            '',
+          ].join('\n'),
+        };
+      },
+      runStep: async () => {
+        executed = true;
+        return { id: 'unexpected', status: 'success', seconds: 0 };
+      },
+    });
+
+    assert.equal(result.status, 0);
+    assert.equal(executed, false);
+    assert.match(stdout, /Production promotion plan for v1\.2\.302/);
+  });
+
+  it('increments the highest semantic remote patch tag', async () => {
+    const tag = await resolveNextPatchTag({
+      execFile: async () => ({
+        stdout: [
+          'aaa\trefs/tags/v1.9.9',
+          'bbb\trefs/tags/v2.0.0',
+          'ccc\trefs/tags/v1.10.4',
+          '',
+        ].join('\n'),
+      }),
+    });
+
+    assert.equal(tag, 'v2.0.1');
   });
 
   it('defaults to dry-run and does not execute steps', async () => {
