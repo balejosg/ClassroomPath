@@ -70,6 +70,18 @@ jobs:
       TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'staging' }}
       PRODUCTION_BASE_URL: ${{ inputs.base_url }}
       RUNNER_DIAGNOSTIC_MODE: ${{ inputs.diagnostic_mode || 'false' }}
+      CLASSROOMPATH_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}', secrets.STAGING_DEPLOY_HOST) }}
+      CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL: ${{ vars.STAGING_CANARY_PUBLIC_URL || secrets.STAGING_CANARY_PUBLIC_URL || vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}', secrets.STAGING_DEPLOY_HOST) }}
+      CLASSROOMPATH_STAGING_GATEWAY_HEALTH_URL: ${{ vars.STAGING_GATEWAY_HEALTH_URL || secrets.STAGING_GATEWAY_HEALTH_URL || format('https://{0}/cp/health', secrets.STAGING_DEPLOY_HOST) }}
+      CLASSROOMPATH_STAGING_READY_URL: ${{ vars.STAGING_READY_URL || secrets.STAGING_READY_URL || format('https://{0}/cp/ready', secrets.STAGING_DEPLOY_HOST) }}
+      CLASSROOMPATH_STAGING_API_HEALTH_URL: ${{ vars.STAGING_API_HEALTH_URL || secrets.STAGING_API_HEALTH_URL || format('https://{0}/health', secrets.STAGING_DEPLOY_HOST) }}
+      CLASSROOMPATH_STAGING_API_CONFIG_URL: ${{ vars.STAGING_API_CONFIG_URL || secrets.STAGING_API_CONFIG_URL || format('https://{0}/api/config', secrets.STAGING_DEPLOY_HOST) }}
+      CLASSROOMPATH_PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}', secrets.DEPLOY_HOST) }}
+      CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL: ${{ vars.PRODUCTION_CANARY_PUBLIC_URL || secrets.PRODUCTION_CANARY_PUBLIC_URL || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}', secrets.DEPLOY_HOST) }}
+      CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL: ${{ vars.PRODUCTION_GATEWAY_HEALTH_URL || secrets.PRODUCTION_GATEWAY_HEALTH_URL || format('https://{0}/cp/health', secrets.DEPLOY_HOST) }}
+      CLASSROOMPATH_PRODUCTION_READY_URL: ${{ vars.PRODUCTION_READY_URL || secrets.PRODUCTION_READY_URL || format('https://{0}/cp/ready', secrets.DEPLOY_HOST) }}
+      CLASSROOMPATH_PRODUCTION_API_HEALTH_URL: ${{ vars.PRODUCTION_API_HEALTH_URL || secrets.PRODUCTION_API_HEALTH_URL || format('https://{0}/health', secrets.DEPLOY_HOST) }}
+      CLASSROOMPATH_PRODUCTION_API_CONFIG_URL: ${{ vars.PRODUCTION_API_CONFIG_URL || secrets.PRODUCTION_API_CONFIG_URL || format('https://{0}/api/config', secrets.DEPLOY_HOST) }}
 
     steps:
       - name: Restore Windows runner DNS before checkout

@@ -1701,6 +1701,16 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(
       workflowText.includes('node scripts/deploy-targets.mjs get "$TARGET_ENVIRONMENT" publicUrl')
     );
+    assert.equal(
+      job?.env?.CLASSROOMPATH_STAGING_PUBLIC_URL,
+      "${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}', secrets.STAGING_DEPLOY_HOST) }}",
+      'reusable bootstrap canary must resolve staging targets locally when caller URL outputs are secret-redacted'
+    );
+    assert.equal(
+      job?.env?.CLASSROOMPATH_PRODUCTION_PUBLIC_URL,
+      "${{ vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}', secrets.DEPLOY_HOST) }}",
+      'reusable bootstrap canary must resolve production targets locally when caller URL outputs are secret-redacted'
+    );
     assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=${base_url%/}'));
     assert.ok(workflowText.includes('WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=${base_url%/}'));
     assert.ok(
