@@ -170,15 +170,12 @@ describe('Deployment foundation contracts', () => {
     assert.ok(stagingLocalRuntime.includes('staging-email-preflight'));
   });
 
-  test('production compose defaults and runbook commands pin the canonical compose project name', () => {
+  test('production compose defaults and runtime commands pin the canonical compose project name', () => {
     const compose = readFileSync(dockerComposePath, 'utf-8');
-    const runbook = readFileSync(deployProductionRunbookPath, 'utf-8');
+    const productionRuntime = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
 
     assert.ok(compose.includes('name: ${COMPOSE_PROJECT_NAME:-classroompath-production}'));
-    assert.ok(
-      runbook.includes('export COMPOSE_PROJECT_NAME=classroompath-production') &&
-        runbook.includes('create a second network namespace')
-    );
+    assert.ok(productionRuntime.includes('export COMPOSE_PROJECT_NAME=classroompath-production'));
   });
 
   test('verify-full keeps the release lane on full Playwright and routes policy through the typed orchestrator', () => {
@@ -197,7 +194,7 @@ describe('Deployment foundation contracts', () => {
 
     assert.equal(
       packageJson.scripts?.['verify:commit'],
-      'VERIFY_MODE=commit bash scripts/verify-full.sh'
+      'npm run verify:public-surface && VERIFY_MODE=commit bash scripts/verify-full.sh'
     );
     assert.equal(packageJson.scripts?.['verify:precommit'], 'lint-staged');
     assert.equal(packageJson.scripts?.['verify:incremental'], 'npm run verify:fast');
@@ -299,7 +296,12 @@ describe('Deployment foundation contracts', () => {
     assert.ok(tagScript.includes('PROMOTION_EVIDENCE_DIR="$promotion_evidence_dir"'));
     assert.ok(tagScript.includes('git push origin "$TAG_NAME"'));
     assert.ok(tagScript.includes('HEAD must match origin/main'));
-    assert.ok(runbook.includes('npm run promote:production -- v1.2.4'));
+    assert.ok(
+      runbook.includes(
+        'The public repository intentionally does not document production deployment commands'
+      )
+    );
+    assert.ok(!runbook.includes('npm run promote:production -- v1.2.4'));
     assert.ok(!runbook.includes('git tag v1.2.4'));
   });
 
