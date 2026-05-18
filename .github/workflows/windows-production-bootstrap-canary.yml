@@ -521,7 +521,8 @@ jobs:
 
           $policiesPath = $policiesCandidates[0]
           $policies = Get-Content $policiesPath -Raw | ConvertFrom-Json
-          $policyEntry = $policies.policies.ExtensionSettings.$env:EXPECTED_EXTENSION_ID
+          $policyEntryProperty = $policies.policies.ExtensionSettings.PSObject.Properties[$env:EXPECTED_EXTENSION_ID]
+          $policyEntry = if ($policyEntryProperty) { $policyEntryProperty.Value } else { $null }
 
           if (-not $policyEntry) {
             throw "policies.json does not contain the expected extension id $env:EXPECTED_EXTENSION_ID"
@@ -531,8 +532,17 @@ jobs:
             throw 'policies.json did not request force_installed'
           }
 
-          if ($env:EXPECTED_PUBLIC_XPI_URL -and $policyEntry.install_url -ne $env:EXPECTED_PUBLIC_XPI_URL) {
-            throw "Unexpected install_url in policies.json: $($policyEntry.install_url)"
+          $policyInstallUrl = [string]$policyEntry.install_url
+          if ($env:EXPECTED_PUBLIC_XPI_URL) {
+            $expectedInstallUrls = @([string]$env:EXPECTED_PUBLIC_XPI_URL)
+            if ($env:EXPECTED_EXTENSION_VERSION) {
+              $encodedVersion = [uri]::EscapeDataString([string]$env:EXPECTED_EXTENSION_VERSION)
+              $separator = if ([string]$env:EXPECTED_PUBLIC_XPI_URL -like '*?*') { '&' } else { '?' }
+              $expectedInstallUrls += "$env:EXPECTED_PUBLIC_XPI_URL${separator}openpath_version=$encodedVersion"
+            }
+            if ($expectedInstallUrls -notcontains $policyInstallUrl) {
+              throw "Unexpected install_url in policies.json: $policyInstallUrl"
+            }
           }
 
           $openPathStatus = @{

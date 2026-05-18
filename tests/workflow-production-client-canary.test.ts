@@ -1998,6 +1998,16 @@ describe('Production client update canary workflow contracts', () => {
       'Windows bootstrap canary must leave runtime extension readiness to the Selenium firefox-extension-ready gate'
     );
     assert.ok(
+      workflowText.includes(
+        '$policies.policies.ExtensionSettings.PSObject.Properties[$env:EXPECTED_EXTENSION_ID]'
+      ),
+      'Windows bootstrap policy validation must read the force-installed extension entry by dynamic extension id'
+    );
+    assert.ok(
+      workflowText.includes('openpath_version=$encodedVersion'),
+      'Windows bootstrap policy validation must accept the OpenPath-managed versioned Firefox XPI install URL'
+    );
+    assert.ok(
       !workflowText.includes(
         'Firefox neither registered the force-installed extension nor emitted enterprise policy logs'
       ),
