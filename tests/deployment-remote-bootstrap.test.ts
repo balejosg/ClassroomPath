@@ -258,14 +258,15 @@ void describe('Remote Deploy Bootstrap', () => {
       'common.sh should publish a shared node PATH bootstrap for non-login SSH shells'
     );
     assert.ok(
-      deployRemoteContent.includes(
-        'source "$COMMON_SH_PATH"\nif ! declare -F configure_node_path'
+      !deployRemoteContent.includes(
+        'configure_node_path\n\nif release_manifest_helper_supports_contract'
       ) &&
-        deployRemoteContent.includes('configure_node_path() {') &&
+        deployRemoteContent.includes('classify_migration_risk_without_node()') &&
+        deployRemoteContent.includes('if command -v node >/dev/null 2>&1; then') &&
         deployRemoteContent.includes(
-          'configure_node_path\n\nif release_manifest_helper_supports_contract'
+          'release_execution_classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"'
         ),
-      'deploy-production-remote.sh should make node resolvable before sourcing helpers that invoke node, even when the deployed common.sh is stale'
+      'deploy-production-remote.sh should not require host node before checkout and should classify migrations with a shell fallback'
     );
     assert.ok(
       syncBillingEnvContent.includes('source "$SCRIPT_DIR/lib/common.sh"\nconfigure_node_path') &&
