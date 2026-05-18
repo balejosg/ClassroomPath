@@ -5,13 +5,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+configure_node_path
 
 ENV_FILE="${1:-$SCRIPT_DIR/../config/.env}"
 RUNTIME_ENV_POLICY_SCRIPT="$SCRIPT_DIR/lib/runtime-environment-policy.mjs"
 CP_BILLING_MODE="${CP_BILLING_MODE:-manual_only}"
 
 runtime_policy_names() {
-  node "$RUNTIME_ENV_POLICY_SCRIPT" "$1"
+  "$NODE_BIN" "$RUNTIME_ENV_POLICY_SCRIPT" "$1"
 }
 
 readarray -t stripe_vars < <(runtime_policy_names stripe-required-env-names)

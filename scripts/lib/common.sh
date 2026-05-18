@@ -50,6 +50,20 @@ resolve_node_bin() {
   die "Missing required command: node"
 }
 
+configure_node_path() {
+  local node_bin=""
+  local node_dir=""
+
+  node_bin="$(resolve_node_bin)"
+  node_dir="$(dirname "$node_bin")"
+  export NODE_BIN="$node_bin"
+
+  case ":$PATH:" in
+    *":$node_dir:"*) ;;
+    *) export PATH="$node_dir:$PATH" ;;
+  esac
+}
+
 load_env_file() {
   local path="$1"
   if [ -f "$path" ]; then

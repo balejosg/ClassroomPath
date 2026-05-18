@@ -326,6 +326,9 @@ describe('Deployment runtime contracts', () => {
         deployProductionRuntimeHelper.includes('prepare_openpath_firefox_assets_from_image') &&
         releaseRuntimeHelper.includes('docker pull "$OPENPATH_FIREFOX_ASSETS_IMAGE"') &&
         releaseRuntimeHelper.includes(
+          '${OPENPATH_FIREFOX_RELEASE_HOST_ROOT:-${CLASSROOMPATH_DEPLOY_ROOT:-/srv/classroompath}/openpath-firefox-release}'
+        ) &&
+        releaseRuntimeHelper.includes(
           'docker cp "$assets_container:/openpath-firefox-release/openpath-firefox-extension.xpi"'
         ) &&
         deployProductionRuntimeHelper.includes('RELEASE_MANIFEST_B64_FROM_PAYLOAD') &&

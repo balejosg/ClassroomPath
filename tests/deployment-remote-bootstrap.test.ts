@@ -213,6 +213,14 @@ void describe('Remote Deploy Bootstrap', () => {
   void test('production remote scripts can resolve helper libraries when ssh-action omits BASH_SOURCE', () => {
     const deployRemoteContent = readFileSync(productionRemotePath, 'utf-8');
     const rollbackRemoteContent = readFileSync(rollbackRemotePath, 'utf-8');
+    const commonHelperContent = readFileSync(
+      resolve(projectRoot, 'scripts/lib/common.sh'),
+      'utf-8'
+    );
+    const syncBillingEnvContent = readFileSync(
+      resolve(projectRoot, 'scripts/sync-billing-env.sh'),
+      'utf-8'
+    );
 
     for (const [scriptName, content] of [
       ['deploy-production-remote.sh', deployRemoteContent],
@@ -241,6 +249,23 @@ void describe('Remote Deploy Bootstrap', () => {
         `${scriptName} should re-source helper functions from the freshly checked out app directory`
       );
     }
+
+    assert.ok(
+      commonHelperContent.includes('configure_node_path()') &&
+        commonHelperContent.includes('node_bin="$(resolve_node_bin)"') &&
+        commonHelperContent.includes('export NODE_BIN="$node_bin"') &&
+        commonHelperContent.includes('export PATH="$node_dir:$PATH"'),
+      'common.sh should publish a shared node PATH bootstrap for non-login SSH shells'
+    );
+    assert.ok(
+      deployRemoteContent.includes('source "$COMMON_SH_PATH"\nconfigure_node_path'),
+      'deploy-production-remote.sh should make node resolvable before sourcing helpers that invoke node'
+    );
+    assert.ok(
+      syncBillingEnvContent.includes('source "$SCRIPT_DIR/lib/common.sh"\nconfigure_node_path') &&
+        syncBillingEnvContent.includes('"$NODE_BIN" "$RUNTIME_ENV_POLICY_SCRIPT" "$1"'),
+      'sync-billing-env.sh should resolve node through the shared bootstrap instead of relying on the inherited PATH'
+    );
 
     assert.ok(
       deployRemoteContent.includes('REMOTE_HELPER_CONTRACTS_PATH') &&

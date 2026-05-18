@@ -68,6 +68,7 @@ fi
 
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
+configure_node_path
 
 if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
   # shellcheck source=lib/release-manifest.sh

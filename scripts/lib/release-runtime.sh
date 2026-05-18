@@ -39,7 +39,7 @@ write_release_runtime_state() {
 prepare_openpath_firefox_assets_from_image() {
   local image_ref="${1:-${OPENPATH_FIREFOX_ASSETS_IMAGE:-}}"
   local app_sha="${2:-${TARGET_SHA:-${STAGING_RELEASE_SHA:-current}}}"
-  local host_root="${OPENPATH_FIREFOX_RELEASE_HOST_ROOT:-/srv/classroompath/openpath-firefox-release}"
+  local host_root="${OPENPATH_FIREFOX_RELEASE_HOST_ROOT:-${CLASSROOMPATH_DEPLOY_ROOT:-/srv/classroompath}/openpath-firefox-release}"
   local tmp_dir=""
   local target_dir=""
   local assets_container=""
