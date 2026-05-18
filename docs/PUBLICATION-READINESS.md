@@ -2,6 +2,7 @@
 
 > Status: maintained
 > Applies to: public ClassroomPath repository readiness
+> Last verified: 2026-05-18
 > Source of truth: `docs/PUBLICATION-READINESS.md`
 
 ClassroomPath is public for transparency, auditability, security review, interoperability
