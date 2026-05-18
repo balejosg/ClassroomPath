@@ -74,8 +74,8 @@ jobs:
         env:
           STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
           STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
-          STAGING_DEPLOY_LAN_HOST: staging-host.example.invalid
-          STAGING_DEPLOY_LAN_PORT: 22
+          STAGING_DEPLOY_LAN_HOST: ${{ secrets.STAGING_DEPLOY_LAN_HOST }}
+          STAGING_DEPLOY_LAN_PORT: ${{ secrets.STAGING_DEPLOY_LAN_PORT }}
           RUNNER_ENVIRONMENT_CONTEXT: ${{ runner.environment }}
         run: |
           set -euo pipefail
@@ -83,8 +83,8 @@ jobs:
           target_host="$STAGING_DEPLOY_HOST"
           target_port="${STAGING_DEPLOY_PORT:-22}"
           if [ "$RUNNER_ENVIRONMENT_CONTEXT" = "self-hosted" ]; then
-            target_host="$STAGING_DEPLOY_LAN_HOST"
-            target_port="$STAGING_DEPLOY_LAN_PORT"
+            target_host="${STAGING_DEPLOY_LAN_HOST:-$STAGING_DEPLOY_HOST}"
+            target_port="${STAGING_DEPLOY_LAN_PORT:-${STAGING_DEPLOY_PORT:-22}}"
           fi
 
           bash scripts/resolve-ssh-host.sh "$target_host" "$target_port" >> "$GITHUB_OUTPUT"

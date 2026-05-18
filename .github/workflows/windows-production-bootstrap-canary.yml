@@ -312,8 +312,8 @@ jobs:
           STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
           STAGING_DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
           STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
-          STAGING_DEPLOY_LAN_HOST: staging-host.example.invalid
-          STAGING_DEPLOY_LAN_PORT: 22
+          STAGING_DEPLOY_LAN_HOST: ${{ secrets.STAGING_DEPLOY_LAN_HOST }}
+          STAGING_DEPLOY_LAN_PORT: ${{ secrets.STAGING_DEPLOY_LAN_PORT }}
           RUNNER_ENVIRONMENT_CONTEXT: ${{ runner.environment }}
         run: |
           set -euo pipefail
@@ -330,8 +330,8 @@ jobs:
             target_user="$STAGING_DEPLOY_USER"
             target_key="$STAGING_DEPLOY_SSH_KEY"
             if [ "$RUNNER_ENVIRONMENT_CONTEXT" = "self-hosted" ]; then
-              target_host="$STAGING_DEPLOY_LAN_HOST"
-              target_port="$STAGING_DEPLOY_LAN_PORT"
+              target_host="${STAGING_DEPLOY_LAN_HOST:-$STAGING_DEPLOY_HOST}"
+              target_port="${STAGING_DEPLOY_LAN_PORT:-${STAGING_DEPLOY_PORT:-22}}"
             fi
           else
             echo "::error::Unsupported TARGET_ENVIRONMENT: $TARGET_ENVIRONMENT"
