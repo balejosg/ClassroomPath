@@ -537,7 +537,7 @@ jobs:
             $expectedInstallUrls = @([string]$env:EXPECTED_PUBLIC_XPI_URL)
             if ($env:EXPECTED_EXTENSION_VERSION) {
               $encodedVersion = [uri]::EscapeDataString([string]$env:EXPECTED_EXTENSION_VERSION)
-              $separator = if ([string]$env:EXPECTED_PUBLIC_XPI_URL -like '*?*') { '&' } else { '?' }
+              $separator = if (([string]$env:EXPECTED_PUBLIC_XPI_URL).Contains('?')) { '&' } else { '?' }
               $expectedInstallUrls += "$env:EXPECTED_PUBLIC_XPI_URL${separator}openpath_version=$encodedVersion"
             }
             if ($expectedInstallUrls -notcontains $policyInstallUrl) {

@@ -2008,6 +2008,14 @@ describe('Production client update canary workflow contracts', () => {
       'Windows bootstrap policy validation must accept the OpenPath-managed versioned Firefox XPI install URL'
     );
     assert.ok(
+      workflowText.includes("[string]$env:EXPECTED_PUBLIC_XPI_URL).Contains('?')"),
+      'Windows bootstrap policy validation must detect an existing query string with literal Contains, not a PowerShell wildcard'
+    );
+    assert.ok(
+      !workflowText.includes("-like '*?*'"),
+      'PowerShell -like treats ? as a wildcard and must not choose the versioned install_url separator'
+    );
+    assert.ok(
       !workflowText.includes(
         'Firefox neither registered the force-installed extension nor emitted enterprise policy logs'
       ),
