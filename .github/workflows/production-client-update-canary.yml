@@ -355,6 +355,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          submodules: recursive
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node

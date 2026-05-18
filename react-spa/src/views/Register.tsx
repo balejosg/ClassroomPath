@@ -2,13 +2,18 @@ import React, { useState } from 'react';
 import { Button, Card, Input } from '../openpath/public-ui';
 import { PasswordStrength } from '../components/PasswordStrength';
 import GoogleLoginButton from '../components/GoogleLoginButton';
-import { validateEmail, validatePassword, ERROR_MESSAGES_ES } from '../utils/validation';
+import {
+  validateEmail,
+  validatePassword,
+  ERROR_MESSAGES_EN,
+  ERROR_MESSAGES_ES,
+} from '../utils/validation';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { reportError } from '../lib/reportError';
 import { getSessionClientMode } from '../lib/session-client-mode';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
 import { CLASSROOMPATH_BRAND_ASSETS } from '../brand-assets';
-import { useClassroomPathT } from '../i18n/classroompath-i18n';
+import { useClassroomPathI18n } from '../i18n/classroompath-i18n';
 import {
   getPasswordSetupError,
   getVerificationDeliveryMessage,
@@ -25,7 +30,8 @@ interface Props {
 }
 
 export function Register({ onLoginClick, onAuthenticated }: Props) {
-  const t = useClassroomPathT();
+  const { locale, t } = useClassroomPathI18n();
+  const validationMessages = locale === 'es' ? ERROR_MESSAGES_ES : ERROR_MESSAGES_EN;
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -48,7 +54,7 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
 
     // Validaciones
     if (!validateEmail(normalizedEmail)) {
-      setError(ERROR_MESSAGES_ES.invalidEmail);
+      setError(validationMessages.invalidEmail);
       return;
     }
 
@@ -57,9 +63,9 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
       confirmPassword,
       termsAccepted,
       passwordPolicy: (candidatePassword) => validatePassword(candidatePassword).isValid,
-      passwordErrorMessage: ERROR_MESSAGES_ES.weakPassword,
-      passwordMismatchMessage: ERROR_MESSAGES_ES.passwordMismatch,
-      termsRequiredMessage: ERROR_MESSAGES_ES.termsRequired,
+      passwordErrorMessage: validationMessages.weakPassword,
+      passwordMismatchMessage: validationMessages.passwordMismatch,
+      termsRequiredMessage: validationMessages.termsRequired,
     });
     if (passwordSetupError) {
       setError(passwordSetupError);
@@ -77,7 +83,7 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
 
       setRegistrationState(normalizeVerificationDeliveryState(result, normalizedEmail));
     } catch (err) {
-      setError(err instanceof Error ? err.message : ERROR_MESSAGES_ES.registrationFailed);
+      setError(err instanceof Error ? err.message : validationMessages.registrationFailed);
       reportError('Failed to register user', err, {
         action: 'register',
         userRole: 'anonymous',
@@ -90,7 +96,7 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
     setError('');
 
     if (!termsAccepted) {
-      setError(ERROR_MESSAGES_ES.termsRequired);
+      setError(validationMessages.termsRequired);
       return;
     }
 

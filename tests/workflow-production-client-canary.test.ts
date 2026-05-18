@@ -1198,6 +1198,7 @@ describe('Production client update canary workflow contracts', () => {
     const workflowText = readProjectText('.github/workflows/production-client-update-canary.yml');
     const job = workflow.jobs?.['windows-client-self-update-canary'];
     const steps = job?.steps ?? [];
+    const checkoutStep = steps.find((step) => step.name === 'Checkout');
     const setupNodeStepIndex = steps.findIndex((step) => step.name === 'Setup Node.js');
     const restoreDependencyDnsStepIndex = steps.findIndex(
       (step) => step.name === 'Restore Windows runner DNS before dependency install'
@@ -1231,6 +1232,11 @@ describe('Production client update canary workflow contracts', () => {
         restoreDependencyDnsStepIndex < dependencyStepIndex &&
         dependencyStepIndex < ajaxStepIndex,
       'Windows production client canary should install Selenium after Node setup and before the Firefox unblock probe'
+    );
+    assert.equal(
+      checkoutStep?.with?.submodules,
+      'recursive',
+      'Windows production client canary must initialize the OpenPath submodule before npm ci'
     );
     assert.equal(
       steps[restoreDependencyDnsStepIndex]?.uses,

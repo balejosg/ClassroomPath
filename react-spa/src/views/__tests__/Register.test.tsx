@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 import { Register } from '../Register';
-import { ERROR_MESSAGES_ES } from '../../utils/validation';
+import { ERROR_MESSAGES_EN, ERROR_MESSAGES_ES } from '../../utils/validation';
 import { CURRENT_TERMS_VERSION } from '../../constants/legal';
 import { setClassroomPathTestLocale } from '../../test/locale';
 
@@ -108,6 +108,30 @@ describe('Register View', () => {
     fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
 
     expect(await screen.findByText(ERROR_MESSAGES_ES.invalidEmail)).toBeInTheDocument();
+  });
+
+  it('uses English validation errors when the resolved locale is English', async () => {
+    setClassroomPathTestLocale('en');
+
+    render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
+
+    fireEvent.change(screen.getByTestId('register-email'), {
+      target: { value: 'invalid-email' },
+    });
+    fireEvent.change(screen.getByTestId('register-name'), {
+      target: { value: 'Test User' },
+    });
+    fireEvent.change(screen.getByTestId('register-password'), {
+      target: { value: 'StrongPassword1' },
+    });
+    fireEvent.change(screen.getByTestId('register-confirm-password'), {
+      target: { value: 'StrongPassword1' },
+    });
+    fireEvent.click(screen.getByTestId('register-terms'));
+    fireEvent.click(screen.getByTestId('register-submit'));
+
+    expect(await screen.findByText(ERROR_MESSAGES_EN.invalidEmail)).toBeInTheDocument();
+    expect(screen.queryByText(ERROR_MESSAGES_ES.invalidEmail)).not.toBeInTheDocument();
   });
 
   it('should show error if password is weak', async () => {
