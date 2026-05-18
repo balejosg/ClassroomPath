@@ -68,6 +68,21 @@ fi
 
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
+if ! declare -F configure_node_path >/dev/null 2>&1; then
+  configure_node_path() {
+    local node_bin=""
+    local node_dir=""
+
+    node_bin="$(resolve_node_bin)"
+    node_dir="$(dirname "$node_bin")"
+    export NODE_BIN="$node_bin"
+
+    case ":$PATH:" in
+      *":$node_dir:"*) ;;
+      *) export PATH="$node_dir:$PATH" ;;
+    esac
+  }
+fi
 configure_node_path
 
 if release_manifest_helper_supports_contract "$RELEASE_MANIFEST_HELPER_PATH"; then
