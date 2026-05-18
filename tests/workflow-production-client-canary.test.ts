@@ -4,7 +4,11 @@ import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { readProjectText, readProjectWorkflow } from './helpers/ops-contracts.ts';
+import {
+  findWorkflowStepByName,
+  readProjectText,
+  readProjectWorkflow,
+} from './helpers/ops-contracts.ts';
 import {
   REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS,
   WINDOWS_EXTERNAL_NAVIGATION_ALLOWLIST_HOST,
@@ -1703,13 +1707,32 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.equal(
       job?.env?.CLASSROOMPATH_STAGING_PUBLIC_URL,
-      "${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}', secrets.STAGING_DEPLOY_HOST) }}",
-      'reusable bootstrap canary must resolve staging targets locally when caller URL outputs are secret-redacted'
+      "${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || 'https://classroompath-staging.duckdns.org' }}",
+      'reusable bootstrap canary must resolve staging public URLs locally without falling back to the SSH host'
     );
     assert.equal(
       job?.env?.CLASSROOMPATH_PRODUCTION_PUBLIC_URL,
-      "${{ vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}', secrets.DEPLOY_HOST) }}",
-      'reusable bootstrap canary must resolve production targets locally when caller URL outputs are secret-redacted'
+      "${{ vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || 'https://classroompath.eu' }}",
+      'reusable bootstrap canary must resolve production public URLs locally without falling back to the SSH host'
+    );
+    assert.equal(
+      job?.env?.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL,
+      "${{ vars.STAGING_CANARY_PUBLIC_URL || secrets.STAGING_CANARY_PUBLIC_URL || vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || 'https://classroompath-staging.duckdns.org' }}"
+    );
+    assert.ok(
+      !String(job?.env?.CLASSROOMPATH_STAGING_PUBLIC_URL ?? '').includes('STAGING_DEPLOY_HOST')
+    );
+    assert.ok(
+      !String(job?.env?.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL ?? '').includes(
+        'STAGING_DEPLOY_HOST'
+      )
+    );
+    assert.match(
+      String(
+        findWorkflowStepByName(job, 'Resolve target host')?.env?.STAGING_DEPLOY_LAN_HOST ?? ''
+      ),
+      /secrets\.STAGING_DEPLOY_LAN_HOST/,
+      'self-hosted Windows canaries should still use the LAN host only for SSH target resolution'
     );
     assert.ok(workflowText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=${base_url%/}'));
     assert.ok(workflowText.includes('WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=${base_url%/}'));

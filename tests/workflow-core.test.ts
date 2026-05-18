@@ -725,6 +725,7 @@ describe('Workflow core contracts', () => {
       '.github/workflows/windows-production-bootstrap-canary.yml';
     const productionBootstrapWorkflowText = readText(productionBootstrapWorkflowPath);
     const productionBootstrapWorkflow = readWorkflow(productionBootstrapWorkflowPath);
+    const deployWorkflowText = readText('.github/workflows/deploy.yml');
     const productionBootstrapJob =
       productionBootstrapWorkflow.jobs?.['windows-production-bootstrap-canary'];
     const productionBootstrapSteps = Array.isArray(productionBootstrapJob?.steps)
@@ -805,6 +806,22 @@ describe('Workflow core contracts', () => {
           'firefox_install_base_url="$(node scripts/deploy-targets.mjs get staging canaryPublicUrl)"'
         ),
       'Windows bootstrap canary must install Firefox from the same runner-reachable base URL used for windows.ps1'
+    );
+    assert.ok(
+      deployWorkflowText.includes(
+        'base_url: ${{ needs.resolve-release-images.outputs.staging_canary_public_url }}'
+      ),
+      'Deploy should pass the public canary URL to the staging Windows bootstrap canary'
+    );
+    assert.ok(
+      productionBootstrapWorkflowText.includes(
+        "CLASSROOMPATH_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || 'https://classroompath-staging.duckdns.org' }}"
+      )
+    );
+    assert.ok(
+      !productionBootstrapWorkflowText.includes(
+        "format('https://{0}', secrets.STAGING_DEPLOY_HOST)"
+      )
     );
     assert.ok(productionBootstrapWorkflowText.includes('Reset persistent Windows canary state'));
     assert.ok(productionBootstrapWorkflowText.includes('Acquire shared Windows runner lock'));

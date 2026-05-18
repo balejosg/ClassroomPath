@@ -644,7 +644,7 @@ describe('Deploy workflow contracts', () => {
     assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.target_environment, 'staging');
     assert.match(
       String(jobs['windows-staging-bootstrap-canary']?.with?.base_url ?? ''),
-      /needs\.resolve-release-images\.outputs\.staging_public_url/
+      /needs\.resolve-release-images\.outputs\.staging_canary_public_url/
     );
     assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, 'false');
     assert.ok(
