@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-APP_DIR="/srv/classroompath/app"
+CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"
+APP_DIR="${APP_DIR:-$CLASSROOMPATH_DEPLOY_ROOT/app}"
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
 COMMON_SH_DEPLOYED_PATH="$APP_DIR/scripts/lib/common.sh"
 
@@ -107,7 +108,7 @@ refresh_rollback_checked_out_helpers() {
   source "$RELEASE_RUNTIME_HELPER_PATH"
 }
 
-DEPLOY_DIR="/srv/classroompath"
+DEPLOY_DIR="$CLASSROOMPATH_DEPLOY_ROOT"
 STATE_DIR="$DEPLOY_DIR/release-state"
 deployment_state_init_paths "$STATE_DIR"
 deployment_state_load_previous_release

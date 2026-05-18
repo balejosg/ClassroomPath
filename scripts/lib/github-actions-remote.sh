@@ -153,7 +153,7 @@ github_actions_remote_read_env_key() {
   local user="$3"
   local ip="$4"
   local env_key="$5"
-  local env_file="${6:-/srv/classroompath/app/config/.env}"
+  local env_file="${6:-/opt/classroompath/app/config/.env}"
 
   github_actions_remote_ssh \
     "$key_path" \

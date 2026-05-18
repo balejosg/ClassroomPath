@@ -6,6 +6,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -356,6 +357,23 @@ void describe('Environment Configuration', () => {
       packageJson.includes('scripts/deploy-targets.mjs get production publicUrl'),
       'Production smoke script should resolve the canonical URL from deploy-targets.mjs'
     );
+  });
+
+  void test('deploy-targets.mjs accepts private environment overrides', () => {
+    const output = execFileSync(
+      process.execPath,
+      ['scripts/deploy-targets.mjs', 'get', 'production', 'publicUrl'],
+      {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          CLASSROOMPATH_PRODUCTION_PUBLIC_URL: 'https://production.example.test',
+        },
+        encoding: 'utf8',
+      }
+    ).trim();
+
+    assert.strictEqual(output, 'https://production.example.test');
   });
 });
 

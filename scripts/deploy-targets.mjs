@@ -14,7 +14,24 @@ const explicitConfigPath = process.env.CLASSROOMPATH_DEPLOY_TARGETS_FILE
 export function loadDeployTargets() {
   const configPath =
     explicitConfigPath || (existsSync(localConfigPath) ? localConfigPath : publicConfigPath);
-  return JSON.parse(readFileSync(configPath, 'utf8'));
+  const targets = JSON.parse(readFileSync(configPath, 'utf8'));
+  applyDeployTargetEnvironmentOverrides(targets);
+  return targets;
+}
+
+function envOverrideName(environment, field) {
+  return `CLASSROOMPATH_${environment}_${toOutputKey(field)}`.toUpperCase();
+}
+
+function applyDeployTargetEnvironmentOverrides(targets) {
+  for (const [environment, target] of Object.entries(targets)) {
+    for (const field of Object.keys(target)) {
+      const value = process.env[envOverrideName(environment, field)];
+      if (value) {
+        target[field] = value;
+      }
+    }
+  }
 }
 
 export function getDeployTarget(environment) {

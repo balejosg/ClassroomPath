@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-APP_DIR="/srv/classroompath/app"
+CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"
+APP_DIR="${APP_DIR:-$CLASSROOMPATH_DEPLOY_ROOT/app}"
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
 COMMON_SH_DEPLOYED_PATH="$APP_DIR/scripts/lib/common.sh"
 
@@ -138,7 +139,7 @@ fi
 
 log_info "Starting ClassroomPath Docker deployment..."
 
-DEPLOY_DIR="/srv/classroompath"
+DEPLOY_DIR="$CLASSROOMPATH_DEPLOY_ROOT"
 STATE_DIR="$DEPLOY_DIR/release-state"
 DEPLOY_CONTEXT_FILE="$STATE_DIR/deploy-context.env"
 mkdir -p "$STATE_DIR"

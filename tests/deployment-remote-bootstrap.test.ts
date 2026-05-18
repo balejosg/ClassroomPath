@@ -183,7 +183,7 @@ void describe('Remote Deploy Bootstrap', () => {
     );
     assert.ok(
       remoteContent.includes('APP_DIR="/srv/classroompath/app"'),
-      'deploy-staging-remote.sh should declare the canonical app directory explicitly'
+      'deploy-staging-remote.sh should declare the canonical staging app directory explicitly'
     );
     assert.ok(
       remoteContent.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
@@ -223,8 +223,10 @@ void describe('Remote Deploy Bootstrap', () => {
         `${scriptName} should guard against missing BASH_SOURCE when appleboy/ssh-action streams the payload`
       );
       assert.ok(
-        content.includes('APP_DIR="/srv/classroompath/app"'),
-        `${scriptName} should declare the canonical app directory explicitly`
+        content.includes(
+          'CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"'
+        ) && content.includes('APP_DIR="${APP_DIR:-$CLASSROOMPATH_DEPLOY_ROOT/app}"'),
+        `${scriptName} should resolve the production app directory from the deploy root`
       );
       assert.ok(
         content.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
