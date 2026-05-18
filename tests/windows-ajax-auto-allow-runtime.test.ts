@@ -6,6 +6,7 @@ import { describe, test } from 'node:test';
 
 import {
   createWindowsAjaxAutoAllowRuntimeConfig,
+  isBlockedPageUnblockRequestSuccessText,
   runWindowsAjaxAutoAllowCanaryRuntime,
 } from '../scripts/lib/windows-ajax-auto-allow-runtime.mjs';
 
@@ -216,6 +217,28 @@ describe('Windows AJAX auto-allow runtime module', () => {
     assert.doesNotMatch(runtimeSource, /executeScript\([\s\S]*browser\.permissions/);
     assert.doesNotMatch(runtimeSource, /acceptFirefoxPermissionPromptIfPresent/);
     assert.doesNotMatch(runtimeSource, /permissionPrompt/);
+  });
+
+  test('blocked-page unblock request accepts English and Spanish success text', async () => {
+    assert.equal(
+      isBlockedPageUnblockRequestSuccessText('Request sent. It remains pending until reviewed.'),
+      true
+    );
+    assert.equal(
+      isBlockedPageUnblockRequestSuccessText(
+        'Solicitud enviada. Quedara pendiente hasta que la revisen.'
+      ),
+      true
+    );
+    assert.equal(isBlockedPageUnblockRequestSuccessText('Error: no se pudo enviar'), false);
+
+    const runtimeSource = await readFile(
+      new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),
+      'utf8'
+    );
+    assert.match(runtimeSource, /isBlockedPageUnblockRequestSuccessText\(pageVisibleText\)/);
+    assert.match(runtimeSource, /userInputHandlerError\s*\|\|/);
+    assert.match(runtimeSource, /statusIndicatesSuccess && !statusIndicatesError/);
   });
 
   test('runtime suppresses unsupported Firefox browser-log collection noise', async () => {

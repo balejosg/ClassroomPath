@@ -81,6 +81,7 @@ const BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN =
   'blocked-page-unblock-request.127.0.0.1.sslip.io';
 const PERMISSIONS_USER_INPUT_HANDLER_ERROR =
   'permissions.request may only be called from a user input handler';
+const BLOCKED_PAGE_UNBLOCK_REQUEST_SUCCESS_PATTERN = /\bRequest sent\b|Solicitud enviada/i;
 const EXPECTED_EXTENSION_ID = process.env.EXPECTED_EXTENSION_ID ?? 'monitor-bloqueos@openpath';
 const OPENPATH_ROOT = process.env.OPENPATH_ROOT ?? 'C:\\OpenPath';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? 'C:\\OpenPath\\data\\whitelist.txt';
@@ -111,6 +112,10 @@ const USE_SELENIUM_FIREFOX = FIREFOX_MODE === 'selenium' || USE_LOCAL_FIREFOX_AD
 
 function windowsJoin(root, ...parts) {
   return [String(root).replace(/[\\/]+$/, ''), ...parts].join('\\');
+}
+
+export function isBlockedPageUnblockRequestSuccessText(text) {
+  return BLOCKED_PAGE_UNBLOCK_REQUEST_SUCCESS_PATTERN.test(String(text ?? ''));
 }
 
 export function createWindowsAjaxAutoAllowRuntimeConfig(env = process.env) {
@@ -1215,7 +1220,7 @@ async function runBlockedPageUnblockRequestCheck({
     await driver
       .wait(async () => {
         const text = String(await statusElement.getText()).trim();
-        if (/Solicitud enviada/i.test(text)) {
+        if (isBlockedPageUnblockRequestSuccessText(text)) {
           return text;
         }
         if (
@@ -1262,9 +1267,10 @@ return {
   errorText = userInputHandlerError
     ? PERMISSIONS_USER_INPUT_HANDLER_ERROR
     : (navigationError ?? '');
-  const statusIndicatesSuccess = /Solicitud enviada/i.test(
-    statusText || pageSnapshot?.statusText || ''
-  );
+  const pageVisibleText = [statusText, pageSnapshot?.statusText, pageSnapshot?.bodyText]
+    .filter(Boolean)
+    .join('\n');
+  const statusIndicatesSuccess = isBlockedPageUnblockRequestSuccessText(pageVisibleText);
   const statusIndicatesError =
     userInputHandlerError ||
     /no es compatible|avisa a tu profesor|error|fall[oó]|no se pudo/i.test(combinedText);
