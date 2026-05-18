@@ -1,9 +1,10 @@
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { OnboardingStatusDto } from '@classroompath/presenters/onboarding';
 
 import { OnboardingAccessGate } from '../OnboardingAccessGate';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 vi.mock('../../views/Waiting', () => ({
   Waiting: ({
@@ -102,6 +103,10 @@ function renderGate(overrides?: Partial<React.ComponentProps<typeof OnboardingAc
 }
 
 describe('OnboardingAccessGate', () => {
+  beforeEach(() => {
+    setClassroomPathTestLocale('es');
+  });
+
   it('shows loading, timeout, and error states', () => {
     const onRetry = vi.fn();
     const onLogoutToLogin = vi.fn();

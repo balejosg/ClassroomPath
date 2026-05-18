@@ -118,15 +118,11 @@ describe('GroupLibrary', () => {
   it('opens and closes the library modal for teachers', () => {
     renderWithQueryClient(<GroupLibrary userRole="teacher" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /abrir biblioteca/i }));
-    expect(
-      screen.getByRole('heading', { name: /biblioteca de pol\u00edticas/i })
-    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
+    expect(screen.getByRole('heading', { name: /Policy library/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
-    expect(
-      screen.queryByRole('heading', { name: /biblioteca de pol\u00edticas/i })
-    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('heading', { name: /Policy library/i })).not.toBeInTheDocument();
   });
 
   it('clones a library policy from the teacher-facing tab', () => {
@@ -143,7 +139,7 @@ describe('GroupLibrary', () => {
 
     renderWithQueryClient(<GroupLibrary userRole="teacher" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /abrir biblioteca/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Clonar' }));
 
     expect(mockCloneMutate).toHaveBeenCalledWith({ sourceGroupId: 'group-1' });
@@ -164,12 +160,12 @@ describe('GroupLibrary', () => {
 
     renderWithQueryClient(<GroupLibrary userRole="admin" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /abrir biblioteca/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Gestionar' }));
-    fireEvent.change(screen.getByDisplayValue('Privada'), {
+    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Manage' }));
+    fireEvent.change(screen.getByDisplayValue('Private'), {
       target: { value: 'instance_public' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Publicar plantilla' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish template' }));
 
     expect(mockUpdateMutate).toHaveBeenCalledWith({
       id: 'group-2',
@@ -204,24 +200,24 @@ describe('GroupLibrary', () => {
 
     renderWithQueryClient(<GroupLibrary userRole="teacher" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /abrir biblioteca/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Ver' }));
+    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
 
     expect(
       screen.getByRole('heading', { name: /vista previa \(solo lectura\)/i })
     ).toBeInTheDocument();
     expect(screen.getByText('math.example.com')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText('Buscar dominio...'), {
+    fireEvent.change(screen.getByPlaceholderText('Search domain...'), {
       target: { value: 'math.example.com' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
-    expect(screen.getByRole('button', { name: 'Anterior' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Previous' })).not.toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Anterior' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Clonar' })[1]);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Cerrar' })[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[1]);
 
     expect(mockCloneMutate).toHaveBeenCalledWith({ sourceGroupId: 'group-1' });
     expect(
@@ -251,26 +247,26 @@ describe('GroupLibrary', () => {
     const { queryClient } = renderWithQueryClient(<GroupLibrary userRole="admin" />);
     const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
-    fireEvent.click(screen.getByRole('button', { name: /abrir biblioteca/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Plantillas' }));
-    fireEvent.change(screen.getByPlaceholderText('Buscar por nombre...'), {
+    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Templates' }));
+    fireEvent.change(screen.getByPlaceholderText('Search by name...'), {
       target: { value: 'starter' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Ver' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
 
     expect(screen.getByRole('heading', { name: /vista previa de plantilla/i })).toBeInTheDocument();
     expect(screen.getByText('starter.example.com')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText('Buscar dominio...'), {
+    fireEvent.change(screen.getByPlaceholderText('Search domain...'), {
       target: { value: 'starter.example.com' },
     });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Importar' })[1]);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Cerrar' })[1]);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Cerrar' })[0]);
-    fireEvent.click(screen.getByRole('button', { name: /abrir biblioteca/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Importar' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
 
-    expect(screen.getByRole('button', { name: 'Biblioteca' })).toHaveClass('bg-slate-900');
-    expect(screen.getByPlaceholderText('Buscar por nombre...')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Library' })).toHaveClass('bg-slate-900');
+    expect(screen.getByPlaceholderText('Search by name...')).toHaveValue('');
     expect(mockImportMutate).toHaveBeenCalledWith({ templateId: 'template-1' });
 
     await cloneMutationOptions?.onSuccess?.();

@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../openpath/public-ui', () => ({
   Button: ({
@@ -14,8 +14,13 @@ vi.mock('../../../openpath/public-ui', () => ({
 }));
 
 import { OnboardingBillingCard, OnboardingInvitationCard } from '../OnboardingCards';
+import { setClassroomPathTestLocale } from '../../../test/locale';
 
 describe('OnboardingCards', () => {
+  beforeEach(() => {
+    setClassroomPathTestLocale('es');
+  });
+
   it('renders billing actions and forwards callbacks', () => {
     const onBillingInputChange = vi.fn();
     const onCheckout = vi.fn();
@@ -65,7 +70,7 @@ describe('OnboardingCards', () => {
     );
 
     fireEvent.change(screen.getByTestId('onboarding-target-org'), { target: { value: 'org-1' } });
-    fireEvent.click(screen.getByText('Solicitar Acceso'));
+    fireEvent.click(screen.getByText('Solicitar acceso'));
 
     expect(onTargetOrgChange).toHaveBeenCalledWith('org-1');
     expect(onWait).toHaveBeenCalledTimes(1);

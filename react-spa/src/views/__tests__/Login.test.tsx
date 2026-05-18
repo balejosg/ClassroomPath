@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { Login } from '../Login';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 const mockLoginMutateAsync = vi.fn();
 const mockGoogleLoginMutateAsync = vi.fn();
@@ -77,6 +78,7 @@ vi.mock('../auth-helpers', async () => {
 
 describe('Login View', () => {
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     window.history.pushState({}, '', '/login');
     mockShouldShowManualVerificationLink.mockReturnValue(false);
@@ -170,7 +172,7 @@ describe('Login View', () => {
     fireEvent.click(screen.getByTestId('login-submit'));
 
     expect(
-      await screen.findByText('Credenciales invalidas o error de conexion')
+      await screen.findByText('Credenciales inválidas o error de conexión')
     ).toBeInTheDocument();
     expect(mockReportError).toHaveBeenCalled();
   });
@@ -191,7 +193,7 @@ describe('Login View', () => {
     fireEvent.click(screen.getByTestId('login-submit'));
 
     expect(
-      await screen.findByText('Debes verificar tu correo antes de iniciar sesion.')
+      await screen.findByText('Debes verificar tu correo antes de iniciar sesión.')
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('login-resend-verification'));
@@ -201,8 +203,8 @@ describe('Login View', () => {
         email: 'teacher@example.com',
       });
     });
-    expect(await screen.findByText('Te enviamos un nuevo enlace de verificacion.')).toBeVisible();
-    expect(screen.queryByText('Enlace manual de verificacion')).not.toBeInTheDocument();
+    expect(await screen.findByText('Te enviamos un nuevo enlace de verificación.')).toBeVisible();
+    expect(screen.queryByText('Enlace manual de verificación')).not.toBeInTheDocument();
   });
 
   it('shows a manual verification link when resend delivery cannot be confirmed', async () => {
@@ -231,7 +233,7 @@ describe('Login View', () => {
     expect(
       await screen.findByText('No pudimos confirmar la entrega del correo. Usa el enlace manual.')
     ).toBeVisible();
-    expect(await screen.findByText('Enlace manual de verificacion')).toBeVisible();
+    expect(await screen.findByText('Enlace manual de verificación')).toBeVisible();
   });
 
   it('verifies the email automatically when the login route receives a token', async () => {
@@ -246,7 +248,7 @@ describe('Login View', () => {
       });
     });
 
-    expect(await screen.findByText('Correo verificado. Ya puedes iniciar sesion.')).toBeVisible();
+    expect(await screen.findByText('Correo verificado. Ya puedes iniciar sesión.')).toBeVisible();
   });
 
   it('shows the upstream message when Google login fails', async () => {

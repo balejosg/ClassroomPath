@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { BillingCancel } from '../BillingCancel';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 describe('BillingCancel', () => {
+  beforeEach(() => {
+    setClassroomPathTestLocale('es');
+  });
+
   it('routes the user back or out after a canceled checkout', () => {
     const onBack = vi.fn();
     const onLogout = vi.fn();

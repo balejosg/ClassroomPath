@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   PricingCalculatorSection,
@@ -8,8 +8,13 @@ import {
   parsePositiveInteger,
 } from '../PricingPageSections';
 import { getPricingQuote } from '../../../data/pricing-data';
+import { setClassroomPathTestLocale } from '../../../test/locale';
 
 describe('PricingPageSections', () => {
+  beforeEach(() => {
+    setClassroomPathTestLocale('es');
+  });
+
   it('parses positive classroom counts and rejects invalid values', () => {
     expect(parsePositiveInteger('12')).toBe(12);
     expect(parsePositiveInteger('0')).toBeNull();

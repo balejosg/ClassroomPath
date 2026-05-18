@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { AdminPanel } from '../AdminPanel';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 let pendingUsersState: any;
 
@@ -15,6 +16,7 @@ vi.mock('../../views/PendingUsers', () => ({
 
 describe('AdminPanel', () => {
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     pendingUsersState = {
       data: [],
       isLoading: false,
@@ -34,14 +36,14 @@ describe('AdminPanel', () => {
 
     render(<AdminPanel userRole="admin" />);
 
-    expect(screen.getByText('2 users waiting for approval')).toBeInTheDocument();
+    expect(screen.getByText('2 usuarios esperando aprobación')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar' }));
 
-    expect(screen.getByText('Access Requests')).toBeInTheDocument();
+    expect(screen.getByText('Solicitudes de acceso')).toBeInTheDocument();
     expect(screen.getByText('Pending Users Panel')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar panel' }));
     expect(screen.queryByText('Pending Users Panel')).not.toBeInTheDocument();
   });
 });

@@ -66,13 +66,11 @@ describe('GroupLibraryDialog', () => {
 
     renderDialog('library', { onPreviewGroup, onCloneGroup });
 
-    expect(
-      screen.getByRole('heading', { name: /biblioteca de pol[íi]ticas/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Policy library/i })).toBeInTheDocument();
     expect(screen.getByText('Math Policy')).toBeInTheDocument();
-    expect(screen.getByText('Dominios: 3')).toBeInTheDocument();
+    expect(screen.getByText('Domains: 3')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ver' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
     fireEvent.click(screen.getByRole('button', { name: 'Clonar' }));
 
     expect(onPreviewGroup).toHaveBeenCalledWith('group-1');
@@ -85,11 +83,11 @@ describe('GroupLibraryDialog', () => {
 
     renderDialog('templates', { onImportTemplate, onPreviewTemplate });
 
-    expect(screen.getByText(/plantillas disponibles/i)).toBeInTheDocument();
+    expect(screen.getByText(/Templates available to every organization/i)).toBeInTheDocument();
     expect(screen.getByText('Starter Template')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ver' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Importar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
 
     expect(onPreviewTemplate).toHaveBeenCalledWith('template-1');
     expect(onImportTemplate).toHaveBeenCalledWith('template-1');
@@ -108,14 +106,14 @@ describe('GroupLibraryDialog', () => {
       onSearchChange,
     });
 
-    fireEvent.change(screen.getByPlaceholderText('Buscar por nombre...'), {
+    fireEvent.change(screen.getByPlaceholderText('Search by name...'), {
       target: { value: 'math' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Biblioteca' }));
-    fireEvent.change(screen.getByDisplayValue('Privada'), {
+    fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+    fireEvent.change(screen.getByDisplayValue('Private'), {
       target: { value: 'instance_public' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Publicar plantilla' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish template' }));
 
     expect(onSearchChange).toHaveBeenCalledWith('math');
     expect(onTabChange).toHaveBeenCalledWith('library');

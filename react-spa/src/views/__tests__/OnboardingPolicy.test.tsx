@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { Onboarding } from '../Onboarding';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 const mockCreateCheckout = vi.fn();
 const mockCreateManualRequest = vi.fn();
@@ -48,6 +49,7 @@ describe('Onboarding policy UI', () => {
   const onWaitClick = vi.fn();
 
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     organizations = [{ id: 'org_1', name: 'Org 1' }];
     mockPolicy = {

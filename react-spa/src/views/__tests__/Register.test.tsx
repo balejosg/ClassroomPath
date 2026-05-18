@@ -4,6 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Register } from '../Register';
 import { ERROR_MESSAGES_ES } from '../../utils/validation';
 import { CURRENT_TERMS_VERSION } from '../../constants/legal';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 const mockRegisterMutateAsync = vi.fn();
 const mockGoogleSignupMutateAsync = vi.fn();
@@ -56,6 +57,7 @@ describe('Register View', () => {
   const mockOnAuthenticated = vi.fn();
 
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     mockRegisterMutateAsync.mockResolvedValue({
       email: 'test@example.com',
@@ -79,9 +81,9 @@ describe('Register View', () => {
       'src',
       '/brand/classroompath-logo-horizontal.svg'
     );
-    expect(screen.getByText('Crear Cuenta')).toBeInTheDocument();
+    expect(screen.getByText('Crear cuenta')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /continuar con google/i })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('correo@ejemplo.com')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('usuario@dominio.com')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Tu nombre completo')).toBeInTheDocument();
     expect(screen.getAllByPlaceholderText('••••••••')).toHaveLength(2);
     expect(screen.getByText('Registrarse')).toBeInTheDocument();
@@ -90,7 +92,7 @@ describe('Register View', () => {
   it('should show error if email is invalid', async () => {
     render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
-    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
+    fireEvent.change(screen.getByPlaceholderText('usuario@dominio.com'), {
       target: { value: 'invalid-email' },
     });
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
@@ -111,7 +113,7 @@ describe('Register View', () => {
   it('should show error if password is weak', async () => {
     render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
-    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
+    fireEvent.change(screen.getByPlaceholderText('usuario@dominio.com'), {
       target: { value: 'test@example.com' },
     });
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
@@ -128,7 +130,7 @@ describe('Register View', () => {
   it('should show error if passwords do not match', async () => {
     render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
-    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
+    fireEvent.change(screen.getByPlaceholderText('usuario@dominio.com'), {
       target: { value: 'test@example.com' },
     });
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
@@ -149,7 +151,7 @@ describe('Register View', () => {
   it('should disable submit button when terms are not accepted', () => {
     render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
-    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
+    fireEvent.change(screen.getByPlaceholderText('usuario@dominio.com'), {
       target: { value: 'test@example.com' },
     });
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
@@ -168,7 +170,7 @@ describe('Register View', () => {
   it('submits normalized email plus terms metadata when the form is valid', async () => {
     render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
-    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
+    fireEvent.change(screen.getByPlaceholderText('usuario@dominio.com'), {
       target: { value: ' Test@Example.COM ' },
     });
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
@@ -197,7 +199,7 @@ describe('Register View', () => {
   it('shows a verification success state after registration', async () => {
     render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
-    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
+    fireEvent.change(screen.getByPlaceholderText('usuario@dominio.com'), {
       target: { value: 'test@example.com' },
     });
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
@@ -228,7 +230,7 @@ describe('Register View', () => {
 
     render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
-    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
+    fireEvent.change(screen.getByPlaceholderText('usuario@dominio.com'), {
       target: { value: 'test@example.com' },
     });
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {
@@ -243,7 +245,7 @@ describe('Register View', () => {
     fireEvent.click(screen.getByLabelText(/Acepto los/));
     fireEvent.click(screen.getByRole('button', { name: /registrarse/i }));
 
-    expect(await screen.findByText('Enlace manual de verificacion')).toBeInTheDocument();
+    expect(await screen.findByText('Enlace manual de verificación')).toBeInTheDocument();
     expect(
       screen.getByRole('link', {
         name: 'https://classroompath.local/login?email=test%40example.com&token=abc123',
@@ -256,7 +258,7 @@ describe('Register View', () => {
 
     render(<Register onLoginClick={mockOnLoginClick} onAuthenticated={mockOnAuthenticated} />);
 
-    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
+    fireEvent.change(screen.getByPlaceholderText('usuario@dominio.com'), {
       target: { value: 'test@example.com' },
     });
     fireEvent.change(screen.getByPlaceholderText('Tu nombre completo'), {

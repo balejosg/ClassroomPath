@@ -221,7 +221,9 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       (step) => step.name === 'Upload CI workflow hygiene report'
     );
 
-    assert.equal(workflow.on?.schedule?.[0]?.cron, '*/15 * * * *');
+    const scheduledCrons = (workflow.on?.schedule ?? []).map((entry) => entry.cron);
+    assert.ok(scheduledCrons.includes('*/15 * * * *'));
+    assert.ok(scheduledCrons.includes('17 3 * * *'));
     assert.equal(workflow.permissions?.actions, 'read');
     assert.equal(guardJob?.['runs-on'], 'ubuntu-latest');
     assert.equal(guardJob?.outputs?.should_skip, '${{ steps.duplicate.outputs.should_skip }}');
@@ -268,9 +270,11 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     );
     assert.equal(workflow.on?.workflow_run, undefined);
     assert.match(String(windowsJob?.if ?? ''), /github\.event_name == 'workflow_dispatch'/);
+    assert.match(String(windowsJob?.if ?? ''), /github\.event\.schedule == '17 3 \* \* \*'/);
     assert.match(String(linuxJob?.if ?? ''), /github\.event_name == 'workflow_dispatch'/);
     assert.doesNotMatch(String(windowsJob?.if ?? ''), /workflow_run/);
     assert.doesNotMatch(String(linuxJob?.if ?? ''), /workflow_run/);
+    assert.doesNotMatch(String(linuxJob?.if ?? ''), /github\.event\.schedule == '17 3 \* \* \*'/);
     assert.ok(
       workflowText.includes(
         'CI_DUPLICATE_POLICY: same workflow success or deploy evidence + same SHA within 60m'
@@ -1027,10 +1031,18 @@ describe('Production client update canary workflow contracts', () => {
       workflow.on?.schedule?.some((entry) => entry.cron === '*/15 * * * *'),
       'production enrollment download canary should run every 15 minutes'
     );
+    assert.ok(
+      workflow.on?.schedule?.some((entry) => entry.cron === '17 3 * * *'),
+      'production client canary should run an installed Windows Firefox path daily'
+    );
     assert.equal(downloadJob?.['runs-on'], 'ubuntu-latest');
     assert.ok(
-      String(existingWindowsJob?.if ?? '').includes("github.event_name == 'workflow_dispatch'"),
-      'scheduled download checks must not consume the persistent Windows runner'
+      String(existingWindowsJob?.if ?? '').includes("github.event.schedule == '17 3 * * *'"),
+      'daily installed-client checks should exercise the persistent Windows runner'
+    );
+    assert.ok(
+      !String(existingWindowsJob?.if ?? '').includes("github.event.schedule == '*/15 * * * *'"),
+      '15-minute scheduled download checks must not consume the persistent Windows runner'
     );
     assert.ok(
       String(existingWindowsJob?.if ?? '').includes(
@@ -1041,6 +1053,10 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(
       String(existingLinuxJob?.if ?? '').includes("github.event_name == 'workflow_dispatch'"),
       'scheduled download checks must not run the full Linux install canary'
+    );
+    assert.ok(
+      !String(existingLinuxJob?.if ?? '').includes("github.event.schedule == '17 3 * * *'"),
+      'daily installed-client checks are Windows-only for the Firefox unblock regression'
     );
     assert.ok(
       String(existingLinuxJob?.if ?? '').includes(
@@ -1079,6 +1095,7 @@ describe('Production client update canary workflow contracts', () => {
     const windowsJob = jobs['windows-client-self-update-canary'];
     const linuxJob = jobs['linux-client-self-update-canary'];
     const workflowDispatchInputs = workflow.on?.workflow_dispatch?.inputs ?? {};
+    const windowsAjaxRuntime = readProjectText('scripts/lib/windows-ajax-auto-allow-runtime.mjs');
 
     assert.equal(workflow.on?.workflow_run, undefined);
     assert.ok(workflowText.includes('workflow_dispatch:'));
@@ -1091,9 +1108,11 @@ describe('Production client update canary workflow contracts', () => {
     ]);
     assert.ok(!workflowText.includes('workflow_call:'));
     assert.match(String(windowsJob?.if ?? ''), /github\.event_name == 'workflow_dispatch'/);
+    assert.match(String(windowsJob?.if ?? ''), /github\.event\.schedule == '17 3 \* \* \*'/);
     assert.match(String(linuxJob?.if ?? ''), /github\.event_name == 'workflow_dispatch'/);
     assert.doesNotMatch(String(windowsJob?.if ?? ''), /workflow_run/);
     assert.doesNotMatch(String(linuxJob?.if ?? ''), /workflow_run/);
+    assert.doesNotMatch(String(linuxJob?.if ?? ''), /github\.event\.schedule == '17 3 \* \* \*'/);
     assert.deepEqual(windowsJob?.['runs-on'], [
       'self-hosted',
       'Windows',
@@ -1141,6 +1160,15 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(
       workflowText.includes('OpenPath.ps1') && workflowText.includes('self-update --silent')
     );
+    assert.ok(workflowText.includes('Install Windows AJAX canary dependencies'));
+    assert.ok(workflowText.includes('Verify Windows AJAX auto-allow canary'));
+    assert.ok(workflowText.includes('Summarize Windows AJAX auto-allow evidence'));
+    assert.ok(workflowText.includes('production-windows-ajax-auto-allow-canary.json'));
+    assert.ok(
+      windowsAjaxRuntime.includes(
+        'permissions.request may only be called from a user input handler'
+      )
+    );
     assert.ok(workflowText.includes('config.json') && workflowText.includes('lastAgentUpdateAt'));
     assert.ok(
       workflowText.includes('/api/enroll/$CLASSROOM_ID') &&
@@ -1163,6 +1191,96 @@ describe('Production client update canary workflow contracts', () => {
       String(linuxJob?.if ?? '').includes("github.event.inputs.target_platform != 'windows'"),
       'Manual Windows-only production canary runs must not consume Linux runner time'
     );
+  });
+
+  test('Windows production client canary clicks the live Firefox unblock flow after self-update', () => {
+    const workflow = readProjectWorkflow('.github/workflows/production-client-update-canary.yml');
+    const workflowText = readProjectText('.github/workflows/production-client-update-canary.yml');
+    const job = workflow.jobs?.['windows-client-self-update-canary'];
+    const steps = job?.steps ?? [];
+    const setupNodeStepIndex = steps.findIndex((step) => step.name === 'Setup Node.js');
+    const restoreDependencyDnsStepIndex = steps.findIndex(
+      (step) => step.name === 'Restore Windows runner DNS before dependency install'
+    );
+    const dependencyStepIndex = steps.findIndex(
+      (step) => step.name === 'Install Windows AJAX canary dependencies'
+    );
+    const selfUpdateStepIndex = steps.findIndex(
+      (step) => step.name === 'Force installed Windows client self-update'
+    );
+    const ajaxStepIndex = steps.findIndex(
+      (step) => step.name === 'Verify Windows AJAX auto-allow canary'
+    );
+    const summaryStepIndex = steps.findIndex(
+      (step) => step.name === 'Summarize Windows AJAX auto-allow evidence'
+    );
+    const evidenceStepIndex = steps.findIndex(
+      (step) => step.name === 'Write Windows client canary evidence'
+    );
+    const ensureStepIndex = steps.findIndex(
+      (step) => step.name === 'Ensure Windows self-update artifact files'
+    );
+    const dependencyStep = dependencyStepIndex >= 0 ? steps[dependencyStepIndex] : undefined;
+    const ajaxStep = ajaxStepIndex >= 0 ? steps[ajaxStepIndex] : undefined;
+    const summaryStep = summaryStepIndex >= 0 ? steps[summaryStepIndex] : undefined;
+
+    assert.match(String(job?.if ?? ''), /github\.event\.schedule == '17 3 \* \* \*'/);
+    assert.ok(
+      setupNodeStepIndex >= 0 &&
+        setupNodeStepIndex < restoreDependencyDnsStepIndex &&
+        restoreDependencyDnsStepIndex < dependencyStepIndex &&
+        dependencyStepIndex < ajaxStepIndex,
+      'Windows production client canary should install Selenium after Node setup and before the Firefox unblock probe'
+    );
+    assert.equal(
+      steps[restoreDependencyDnsStepIndex]?.uses,
+      './.github/actions/restore-windows-runner-dns'
+    );
+    assert.equal(dependencyStep?.shell, 'bash');
+    assert.ok(String(dependencyStep?.run ?? '').includes('npm ci --ignore-scripts'));
+    assert.match(String(dependencyStep?.run ?? ''), /import\('selenium-webdriver'\)/);
+    assert.match(String(dependencyStep?.run ?? ''), /import\('selenium-webdriver\/firefox\.js'\)/);
+    assert.ok(
+      selfUpdateStepIndex >= 0 &&
+        selfUpdateStepIndex < ajaxStepIndex &&
+        ajaxStepIndex < summaryStepIndex &&
+        summaryStepIndex < evidenceStepIndex &&
+        summaryStepIndex < ensureStepIndex,
+      'the live Firefox unblock proof must run after self-update and before evidence/artifact archiving'
+    );
+    assert.equal(ajaxStep?.shell, 'pwsh');
+    assert.equal(ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE, 'selenium');
+    assert.ok(
+      String(ajaxStep?.env?.EXPECTED_EXTENSION_ID ?? '').includes(
+        'steps.provision.outputs.extension_id'
+      )
+    );
+    assert.ok(
+      String(ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '').includes(
+        'steps.provision.outputs.group_id'
+      )
+    );
+    assert.ok(
+      String(ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN ?? '').includes(
+        'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN'
+      )
+    );
+    assert.ok(
+      String(ajaxStep?.env?.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL ?? '').includes(
+        'PRODUCTION_BASE_URL'
+      )
+    );
+    assert.ok(
+      String(ajaxStep?.run ?? '').includes('node scripts/windows-ajax-auto-allow-canary.mjs')
+    );
+    assert.equal(summaryStep?.id, 'ajax-summary');
+    assert.equal(summaryStep?.if, 'always()');
+    assert.match(
+      String(summaryStep?.run ?? ''),
+      /scripts\/summarize-windows-ajax-auto-allow-evidence\.mjs[\s\S]*production-windows-ajax-auto-allow-canary\.json/
+    );
+    assert.match(workflowText, /production-windows-client-self-update-canary\.zip/);
+    assert.match(workflowText, /production-windows-ajax-auto-allow-canary\.json/);
   });
 
   test('production client canary artifact archives are required and uploads are best effort', () => {
@@ -1243,6 +1361,18 @@ describe('Production client update canary workflow contracts', () => {
       assert.ok(String(ensureStep?.run ?? '').includes(logFile));
       assert.ok(String(ensureStep?.run ?? '').includes(archiveFile));
       assert.ok(String(ensureStep?.run ?? '').includes(archiveCommand));
+      if (platform === 'Windows') {
+        assert.ok(
+          String(ensureStep?.run ?? '').includes('production-windows-ajax-auto-allow-canary.json'),
+          'Windows canary archive must include the live Firefox unblock evidence'
+        );
+        assert.ok(
+          String(ensureStep?.run ?? '').includes(
+            'Windows AJAX auto-allow canary did not create evidence before artifact upload.'
+          ),
+          'Windows canary should still archive a failure boundary when the AJAX script crashes before writing JSON'
+        );
+      }
       assert.equal(uploadStep?.uses, 'actions/upload-artifact@v7');
       assert.equal(
         uploadStep?.['continue-on-error'],

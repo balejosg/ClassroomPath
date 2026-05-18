@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import PendingUsers from '../PendingUsers';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 const mockRefetch = vi.fn();
 const mockApproveMutateAsync = vi.fn();
@@ -21,6 +22,7 @@ vi.mock('../../lib/reportError', () => ({
 
 describe('PendingUsers', () => {
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     vi.stubGlobal(
       'confirm',

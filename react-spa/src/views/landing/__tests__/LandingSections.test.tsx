@@ -1,9 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LandingHeroSection, LandingRequestSection } from '../LandingSections';
+import { setClassroomPathTestLocale } from '../../../test/locale';
 
 describe('LandingSections', () => {
+  beforeEach(() => {
+    setClassroomPathTestLocale('es');
+  });
+
   it('renders the hero CTAs and trust line', () => {
     render(<LandingHeroSection onNavigateToLogin={vi.fn()} />);
 

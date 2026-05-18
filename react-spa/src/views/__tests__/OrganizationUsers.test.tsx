@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { OrganizationUsers } from '../OrganizationUsers';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 const mockCreateInvitationMutateAsync = vi.fn();
 const mockRevokeInvitationMutateAsync = vi.fn();
@@ -63,6 +64,7 @@ vi.mock('../../lib/reportError', () => ({
 
 describe('OrganizationUsers', () => {
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     createInvitationMutationState.isPending = false;
     revokeInvitationMutationState.isPending = false;
@@ -109,7 +111,7 @@ describe('OrganizationUsers', () => {
   it('renders invite, reset, and revoke actions without asking for a password', () => {
     render(<OrganizationUsers />);
 
-    expect(screen.getByText('Gestión de Usuarios')).toBeInTheDocument();
+    expect(screen.getByText('Gestión de usuarios')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Invitar usuario' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Restablecer acceso' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Revocar invitación' })).toBeInTheDocument();
@@ -326,7 +328,7 @@ describe('OrganizationUsers', () => {
     expect(screen.getByText('Se envió la invitación a ada@example.com.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Enlace manual')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     await waitFor(() => {
       expect(screen.queryByText('Invitación enviada')).not.toBeInTheDocument();
@@ -448,7 +450,7 @@ describe('OrganizationUsers', () => {
       expect.any(Error)
     );
 
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancelar' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => {
       expect(
@@ -475,7 +477,7 @@ describe('OrganizationUsers', () => {
       expect.any(Error)
     );
 
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancelar' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: 'Revocar invitación' })).not.toBeInTheDocument();

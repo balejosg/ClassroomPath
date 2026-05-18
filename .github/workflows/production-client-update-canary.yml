@@ -3,6 +3,7 @@ name: Production Client Update Canary
 on:
   schedule:
     - cron: '*/15 * * * *'
+    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       production_base_url:
@@ -303,10 +304,16 @@ jobs:
     name: Windows Client Self-Update Canary
     needs: [ci-signal-policy]
     if: >-
-      needs.ci-signal-policy.outputs.should_skip != 'true' &&
-      github.event_name == 'workflow_dispatch' &&
-      github.event.inputs.target_platform != 'download' &&
-      github.event.inputs.target_platform != 'linux'
+      (
+        github.event_name == 'schedule' &&
+        github.event.schedule == '17 3 * * *'
+      ) ||
+      (
+        needs.ci-signal-policy.outputs.should_skip != 'true' &&
+        github.event_name == 'workflow_dispatch' &&
+        github.event.inputs.target_platform != 'download' &&
+        github.event.inputs.target_platform != 'linux'
+      )
     runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     timeout-minutes: 35
     env:
@@ -354,6 +361,36 @@ jobs:
         with:
           enable-cache: false
           cache-dependency-path: package-lock.json
+
+      - name: Restore Windows runner DNS before dependency install
+        uses: ./.github/actions/restore-windows-runner-dns
+
+      - name: Install Windows AJAX canary dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_status=1
+          for attempt in 1 2 3; do
+            if npm ci --ignore-scripts; then
+              install_status=0
+              break
+            fi
+
+            install_status=$?
+            if [ "$attempt" -eq 3 ]; then
+              break
+            fi
+
+            echo "::warning::npm ci failed on attempt ${attempt}; retrying after npm cache verification"
+            npm cache verify || true
+            sleep $((attempt * 10))
+          done
+
+          if [ "$install_status" -ne 0 ]; then
+            exit "$install_status"
+          fi
+
+          node -e "Promise.all([import('selenium-webdriver'), import('selenium-webdriver/firefox.js')])"
 
       - name: Assert destructive Windows runner is available
         shell: bash
@@ -633,6 +670,27 @@ jobs:
             --openpath-status-json "${OPENPATH_STATUS_JSON:-{}}" \
             --target-url "$PRODUCTION_BASE_URL"
 
+      - name: Verify Windows AJAX auto-allow canary
+        shell: pwsh
+        env:
+          WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: ${{ steps.provision.outputs.group_id }}
+          WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: ${{ env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN }}
+          WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL: ${{ env.PRODUCTION_BASE_URL }}
+          WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: selenium
+          EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/windows-ajax-auto-allow-canary.mjs
+
+      - name: Summarize Windows AJAX auto-allow evidence
+        id: ajax-summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/summarize-windows-ajax-auto-allow-evidence.mjs \
+            --artifact production-windows-ajax-auto-allow-canary.json
+
       - name: Write Windows client canary evidence
         if: always()
         id: evidence
@@ -656,9 +714,33 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
+          if (-not (Test-Path 'production-windows-ajax-auto-allow-canary.json')) {
+            $ajaxFallbackEvidence = [ordered]@{
+              success = $false
+              failureBoundary = [ordered]@{
+                id = 'blocked-page-unblock-request'
+                message = 'Windows AJAX auto-allow canary did not create evidence before artifact upload.'
+                recommendedNextAction = 'Inspect the Windows client self-update log and rerun the Windows AJAX canary.'
+              }
+              diagnosticPhases = @(
+                [ordered]@{
+                  id = 'artifact-written'
+                  status = 'failure'
+                  evidence = [ordered]@{
+                    artifactWritten = $false
+                  }
+                }
+              )
+            }
+            $ajaxFallbackEvidence |
+              ConvertTo-Json -Depth 10 |
+              Set-Content -Path 'production-windows-ajax-auto-allow-canary.json' -Encoding UTF8
+          }
+
           foreach ($requiredPath in @(
             'production-windows-bootstrap-canary.json',
             'production-client-canary-evidence-windows.json',
+            'production-windows-ajax-auto-allow-canary.json',
             'production-windows-runner-health.json'
           )) {
             if (-not (Test-Path $requiredPath)) {
@@ -680,6 +762,7 @@ jobs:
           Compress-Archive -Path @(
             'production-windows-bootstrap-canary.json',
             'production-client-canary-evidence-windows.json',
+            'production-windows-ajax-auto-allow-canary.json',
             'production-windows-runner-health.json',
             $logPath
           ) -DestinationPath $archivePath -Force

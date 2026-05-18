@@ -11,7 +11,7 @@ describe('useOrganizationUsersState helpers', () => {
         name: 'Invited User',
         email: 'invite@example.com',
         role: 'teacher',
-        status: 'Pendiente',
+        status: 'pending',
         expiresAt: '2026-03-12T10:00:00.000Z',
       })
     ).toEqual({

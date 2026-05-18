@@ -36,4 +36,12 @@ export const ERROR_MESSAGES_EN = {
   loginFailed: 'Could not log in. Check your credentials.',
 };
 
-export const ERROR_MESSAGES_ES = ERROR_MESSAGES_EN;
+export const ERROR_MESSAGES_ES = {
+  invalidEmail: 'Correo electrónico inválido',
+  weakPassword:
+    'La contraseña debe tener al menos 8 caracteres e incluir mayúsculas, minúsculas y números',
+  passwordMismatch: 'Las contraseñas no coinciden',
+  termsRequired: 'Debes aceptar los términos de servicio',
+  registrationFailed: 'No se pudo crear la cuenta. Inténtalo de nuevo.',
+  loginFailed: 'No se pudo iniciar sesión. Revisa tus credenciales.',
+};

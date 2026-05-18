@@ -65,7 +65,7 @@ describe('OrganizationUsersTable', () => {
       name: 'Ada Lovelace',
       email: 'ada@example.com',
       role: 'admin' as const,
-      status: 'Activo' as const,
+      status: 'active' as const,
     };
 
     const invitationRow = {
@@ -74,7 +74,7 @@ describe('OrganizationUsersTable', () => {
       name: 'Grace Hopper',
       email: 'grace@example.com',
       role: 'teacher' as const,
-      status: 'Pendiente' as const,
+      status: 'pending' as const,
       expiresAt: '2026-03-12T10:00:00.000Z',
     };
 

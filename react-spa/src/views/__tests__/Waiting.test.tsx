@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Waiting } from '../Waiting';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 // Mock the hooks
 const mockRefetch = vi.fn();
@@ -40,6 +41,7 @@ describe('Waiting View', () => {
   const mockOnCancelSuccess = vi.fn();
 
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     mockOnboardingStatus.mockReturnValue({
       data: null,

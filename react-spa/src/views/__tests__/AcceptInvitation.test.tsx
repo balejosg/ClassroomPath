@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ClassroomPathRouterOutputs } from '@classroompath/trpc-contract';
 
 import { AcceptInvitation } from '../AcceptInvitation';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 const mockAcceptInvitationMutateAsync = vi.fn();
 const mockPersistSession = vi.fn();
@@ -54,6 +55,7 @@ vi.mock('../../lib/auth-storage', () => ({
 
 describe('AcceptInvitation', () => {
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     acceptMutationState.isPending = false;
     window.history.pushState({}, '', '/accept-invitation?token=invite-token');
@@ -100,7 +102,7 @@ describe('AcceptInvitation', () => {
     fireEvent.click(screen.getByTestId('accept-invitation-submit'));
 
     expect(
-      await screen.findByText('La contraseña debe tener al menos 8 caracteres')
+      await screen.findByText(/La contraseña debe tener al menos 8 caracteres/)
     ).toBeInTheDocument();
     expect(mockAcceptInvitationMutateAsync).not.toHaveBeenCalled();
   });
@@ -132,7 +134,7 @@ describe('AcceptInvitation', () => {
     fireEvent.click(screen.getByTestId('accept-invitation-submit'));
 
     expect(
-      await screen.findByText('Debes aceptar los terminos para activar tu acceso')
+      await screen.findByText('Debes aceptar los términos para activar tu acceso')
     ).toBeInTheDocument();
     expect(mockAcceptInvitationMutateAsync).not.toHaveBeenCalled();
   });

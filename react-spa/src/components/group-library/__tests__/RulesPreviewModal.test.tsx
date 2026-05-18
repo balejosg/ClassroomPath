@@ -17,7 +17,7 @@ describe('RulesPreviewModal', () => {
         subtitle="Solo lectura"
         search="math"
         onSearchChange={() => undefined}
-        primaryActionLabel="Clonar"
+        primaryActionLabel="Clone"
         onPrimaryAction={onPrimaryAction}
         primaryActionDisabled={false}
         onClose={onClose}
@@ -41,11 +41,11 @@ describe('RulesPreviewModal', () => {
     expect(screen.getByText('math.example.com')).toBeInTheDocument();
     expect(screen.getByText('science.example.com')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Clonar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
-    expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
     expect(onPrimaryAction).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onNextPage).toHaveBeenCalledTimes(1);
@@ -59,7 +59,7 @@ describe('RulesPreviewModal', () => {
         subtitle="Solo lectura"
         search=""
         onSearchChange={() => undefined}
-        primaryActionLabel="Clonar"
+        primaryActionLabel="Clone"
         onPrimaryAction={() => undefined}
         primaryActionDisabled={false}
         onClose={() => undefined}
@@ -71,7 +71,7 @@ describe('RulesPreviewModal', () => {
       />
     );
 
-    expect(screen.getByText('Cargando reglas...')).toBeInTheDocument();
+    expect(screen.getByText('Loading rules...')).toBeInTheDocument();
   });
 
   it('shows the empty state when no rules are available', () => {
@@ -81,7 +81,7 @@ describe('RulesPreviewModal', () => {
         subtitle="Solo lectura"
         search=""
         onSearchChange={() => undefined}
-        primaryActionLabel="Clonar"
+        primaryActionLabel="Clone"
         onPrimaryAction={() => undefined}
         primaryActionDisabled={false}
         onClose={() => undefined}

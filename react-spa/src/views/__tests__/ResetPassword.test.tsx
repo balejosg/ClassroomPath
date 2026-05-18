@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { ResetPassword } from '../ResetPassword';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 const mockResetPasswordMutateAsync = vi.fn();
 const resetMutationState = { isPending: false };
@@ -21,6 +22,7 @@ vi.mock('../../lib/dual-trpc-provider', () => ({
 
 describe('ResetPassword', () => {
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     resetMutationState.isPending = false;
     window.history.pushState({}, '', '/reset-password?email=user%40example.com&token=token-123');
@@ -63,7 +65,7 @@ describe('ResetPassword', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Actualizar contraseña' }));
 
     expect(
-      await screen.findByText('La contraseña debe tener al menos 8 caracteres')
+      await screen.findByText(/La contraseña debe tener al menos 8 caracteres/)
     ).toBeInTheDocument();
     expect(mockResetPasswordMutateAsync).not.toHaveBeenCalled();
   });

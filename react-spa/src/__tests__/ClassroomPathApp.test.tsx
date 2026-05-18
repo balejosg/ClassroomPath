@@ -2,6 +2,8 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+import { setClassroomPathTestLocale } from '../test/locale';
+
 const storage = new Map<string, string>();
 const localStorageMock: Storage = {
   get length() {
@@ -198,6 +200,7 @@ function setStandaloneDisplayMode(matches: boolean): void {
 
 describe('ClassroomPathApp', () => {
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.useRealTimers();
     vi.clearAllMocks();
     storage.clear();
@@ -315,7 +318,7 @@ describe('ClassroomPathApp', () => {
       await vi.advanceTimersByTimeAsync(15000);
     });
 
-    expect(screen.getByText('Esto esta tardando demasiado')).toBeInTheDocument();
+    expect(screen.getByText('Esto está tardando demasiado')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Onboarding } from '../Onboarding';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 const mockCreateOrg = vi.fn();
 const mockCreateCheckout = vi.fn();
@@ -59,6 +60,7 @@ describe('Onboarding View', () => {
   const mockOnWaitClick = vi.fn();
 
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     mockPolicy = {
       allowSelfServiceOrgs: true,
@@ -197,7 +199,7 @@ describe('Onboarding View', () => {
     ).toBeInTheDocument();
   });
 
-  it('should call onWaitClick when Solicitar Acceso is clicked', async () => {
+  it('should call onWaitClick when Solicitar acceso is clicked', async () => {
     vi.mocked(mockWaitForInv).mockImplementation((_data, options) => {
       options?.onSuccess?.();
     });
@@ -209,7 +211,7 @@ describe('Onboarding View', () => {
       expect(select.value).toBe('org_1');
     });
 
-    fireEvent.click(screen.getByText('Solicitar Acceso'));
+    fireEvent.click(screen.getByText('Solicitar acceso'));
 
     expect(mockWaitForInv).toHaveBeenCalled();
     expect(mockOnWaitClick).toHaveBeenCalled();
@@ -271,6 +273,7 @@ describe('Onboarding policy UI', () => {
   const mockOnWaitClick = vi.fn();
 
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     mockPolicy = {
       allowSelfServiceOrgs: true,

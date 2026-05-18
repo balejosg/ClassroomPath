@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { setClassroomPathTestLocale } from '../../test/locale';
 
 const { mockMutateAsync, mockRefetch, mockMeQuery, mockPersistSession } = vi.hoisted(() => ({
   mockMutateAsync: vi.fn(),
@@ -35,6 +36,7 @@ import { BillingSuccess } from '../BillingSuccess';
 
 describe('BillingSuccess', () => {
   beforeEach(() => {
+    setClassroomPathTestLocale('es');
     vi.clearAllMocks();
     vi.useRealTimers();
     mockMutateAsync.mockResolvedValue({});
