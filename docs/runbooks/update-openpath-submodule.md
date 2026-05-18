@@ -13,25 +13,14 @@ Before changing the ClassroomPath wrapper around OpenPath, also review:
 - [`upstream/openpath/docs/INDEX.md`](../../upstream/openpath/docs/INDEX.md)
 - [`upstream/openpath/docs/adr/0010-public-spa-extension-surface.md`](../../upstream/openpath/docs/adr/0010-public-spa-extension-surface.md)
 
-## Standard Flow
+## Public Workflow
 
-1. Land and push the OpenPath change in the OpenPath repository.
-2. In ClassroomPath, update the submodule pointer.
+ClassroomPath consumes OpenPath as a dependency. Public review should verify that changes continue
+to use documented OpenPath public entrypoints and do not edit `upstream/openpath/` directly for
+ClassroomPath-only behavior.
 
-```bash
-npm run submodule:update
-git add upstream/openpath
-git commit -m "chore: update openpath submodule"
-git push origin main
-```
-
-3. Deploy staging.
-
-```bash
-npm run deploy:staging
-```
-
-4. If staging is good and the change is approved for production, promote using the production runbook.
+For private maintainer operations, submodule update, release, and deployment steps are maintained in
+private operational documentation.
 
 ## Rules
 

@@ -545,7 +545,7 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(
       productionHostReadinessScript.includes('verify_host_arch_matches_target_platform') &&
         productionHostReadinessScript.includes('linux/arm64') &&
-        productionHostReadinessScript.includes('test -d /opt/classroompath/app/.git') &&
+        productionHostReadinessScript.includes('test -d /srv/classroompath/app/.git') &&
         productionHostReadinessScript.includes('docker compose version') &&
         productionHostReadinessScript.includes('docker info') &&
         productionHostReadinessScript.includes('current-images.env') &&
@@ -683,8 +683,8 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(
       workflow.includes('PROMOTION_TAG_PUSH_TOKEN: ${{ steps.promotion-app-token.outputs.token }}')
     );
-    assert.ok(helper.includes('cat /opt/classroompath/release-state/current-images.env'));
-    assert.ok(helper.includes('cat /opt/classroompath/release-state/staging-verification.env'));
+    assert.ok(helper.includes('cat /srv/classroompath/release-state/current-images.env'));
+    assert.ok(helper.includes('cat /srv/classroompath/release-state/staging-verification.env'));
     assert.ok(helper.includes('target_sha="$(read_env_value "$current_state_file" APP_SHA)"'));
     assert.ok(helper.includes('if [ "$target_sha" != "$verified_sha" ]; then'));
     assert.ok(helper.includes('STAGING_VERIFICATION_STATE=${verification_state:-unset}'));
@@ -704,8 +704,8 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(helper.includes('PROMOTION_TAG_PUSH_TOKEN'));
     assert.ok(helper.includes('"refs/tags/$next_tag"'));
     assert.ok(helper.includes('git push origin "$next_tag"'));
-    assert.ok(preflight.includes('cat /opt/classroompath/release-state/current-images.env'));
-    assert.ok(preflight.includes('cat /opt/classroompath/release-state/staging-verification.env'));
+    assert.ok(preflight.includes('cat /srv/classroompath/release-state/current-images.env'));
+    assert.ok(preflight.includes('cat /srv/classroompath/release-state/staging-verification.env'));
     assert.ok(preflight.includes('"${PRODUCTION_SSH_CMD[@]}" "true"'));
     assert.ok(preflight.includes('if [ "$target_sha" != "$verified_sha" ]; then'));
     assert.ok(preflight.includes('STAGING_VERIFICATION_STATE=${verification_state:-unset}'));

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-APP_DIR="/opt/classroompath/app"
+APP_DIR="/srv/classroompath/app"
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
 if [ -n "$SCRIPT_SOURCE" ]; then
   SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
@@ -122,7 +122,7 @@ else
   exit 1
 fi
 
-STATE_DIR="/opt/classroompath/release-state"
+STATE_DIR="/srv/classroompath/release-state"
 CURRENT_STATE_FILE="$STATE_DIR/current-images.env"
 PREVIOUS_STATE_FILE="$STATE_DIR/previous-images.env"
 DEPLOY_CONTEXT_FILE="$STATE_DIR/staging-deploy-context.env"

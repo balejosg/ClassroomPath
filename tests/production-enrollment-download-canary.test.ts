@@ -49,7 +49,7 @@ describe('production enrollment download canary', () => {
     const outputPath = join(mkdtempSync(join(tmpdir(), 'cp-enrollment-canary-')), 'evidence.json');
 
     const evidence = await runEnrollmentDownloadCanary({
-      baseUrl: 'https://classroompath-staging.duckdns.org/',
+      baseUrl: 'https://staging.classroompath.example.invalid/',
       classroomId: 'classroom-123',
       enrollmentToken: 'secret-token',
       expectedLinuxAgentVersion: '0.0.20260421051157',
@@ -62,8 +62,8 @@ describe('production enrollment download canary', () => {
     assert.deepEqual(
       requests.map((request) => request.url),
       [
-        'https://classroompath-staging.duckdns.org/api/enroll/classroom-123',
-        'https://classroompath-staging.duckdns.org/api/enroll/classroom-123/windows.ps1',
+        'https://staging.classroompath.example.invalid/api/enroll/classroom-123',
+        'https://staging.classroompath.example.invalid/api/enroll/classroom-123/windows.ps1',
       ]
     );
     assert.deepEqual(
@@ -73,7 +73,7 @@ describe('production enrollment download canary', () => {
     assert.equal(evidence.generatedAt, '2026-04-23T08:00:00.000Z');
     assert.equal(evidence.environment, 'staging');
     assert.equal(evidence.result, 'success');
-    assert.equal(evidence.baseUrl, 'https://classroompath-staging.duckdns.org');
+    assert.equal(evidence.baseUrl, 'https://staging.classroompath.example.invalid');
     assert.equal(evidence.linux.status, 200);
     assert.equal(evidence.linux.ok, true);
     assert.equal(evidence.linux.result, 'success');
@@ -95,7 +95,7 @@ describe('production enrollment download canary', () => {
     const outputPath = join(mkdtempSync(join(tmpdir(), 'cp-enrollment-canary-')), 'evidence.json');
 
     const evidence = await runProductionEnrollmentDownloadCanary({
-      baseUrl: 'https://classroompath.eu/',
+      baseUrl: 'https://classroompath.example.invalid/',
       classroomId: 'classroom-123',
       enrollmentToken: 'secret-token',
       expectedLinuxAgentVersion: '0.0.20260423054341',
@@ -138,7 +138,7 @@ describe('production enrollment download canary', () => {
     const outputPath = join(mkdtempSync(join(tmpdir(), 'cp-enrollment-canary-')), 'evidence.json');
 
     const evidence = await runProductionEnrollmentDownloadCanary({
-      baseUrl: 'https://classroompath.eu/',
+      baseUrl: 'https://classroompath.example.invalid/',
       classroomId: 'classroom-123',
       enrollmentToken: 'secret-token',
       expectedLinuxAgentVersion: '0.0.20260421051157',
@@ -156,7 +156,7 @@ describe('production enrollment download canary', () => {
     const outputPath = join(mkdtempSync(join(tmpdir(), 'cp-enrollment-canary-')), 'evidence.json');
 
     const evidence = await runEnrollmentDownloadCanary({
-      baseUrl: 'https://classroompath.eu/',
+      baseUrl: 'https://classroompath.example.invalid/',
       classroomId: 'classroom-123',
       enrollmentToken: 'secret-token',
       expectedLinuxAgentVersion: '0.0.20260421051157',
@@ -181,7 +181,7 @@ describe('production enrollment download canary', () => {
     const outputPath = join(mkdtempSync(join(tmpdir(), 'cp-enrollment-canary-')), 'evidence.json');
 
     const evidence = await runEnrollmentDownloadCanary({
-      baseUrl: 'https://classroompath.eu/',
+      baseUrl: 'https://classroompath.example.invalid/',
       classroomId: 'classroom-123',
       enrollmentToken: 'secret-token',
       expectedLinuxAgentVersion: '0.0.20260421051157',
@@ -202,7 +202,7 @@ describe('production enrollment download canary', () => {
     const outputPath = join(mkdtempSync(join(tmpdir(), 'cp-enrollment-canary-')), 'evidence.json');
 
     const evidence = await runEnrollmentDownloadCanary({
-      baseUrl: 'https://classroompath.eu/',
+      baseUrl: 'https://classroompath.example.invalid/',
       classroomId: 'classroom-123',
       enrollmentToken: 'secret-token',
       expectedLinuxAgentVersion: '0.0.20260423054341',

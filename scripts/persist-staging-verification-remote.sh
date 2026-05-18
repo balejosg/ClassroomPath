@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/opt/classroompath/app}"
+APP_DIR="${APP_DIR:-/srv/classroompath/app}"
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
 
 if [ -n "$SCRIPT_SOURCE" ]; then
@@ -59,7 +59,7 @@ if [ ! -f "$STAGING_VERIFICATION_RUNNER_PATH" ]; then
   exit 1
 fi
 
-STATE_DIR="${STATE_DIR:-/opt/classroompath/release-state}"
+STATE_DIR="${STATE_DIR:-/srv/classroompath/release-state}"
 STAGING_VERIFICATION_STATE_FILE="$STATE_DIR/staging-verification.env"
 STAGING_EMAIL_PREFLIGHT_MODE=${STAGING_EMAIL_PREFLIGHT_MODE:-unknown} \
 STAGING_EMAIL_DELIVERY_HIGH_RISK=${STAGING_EMAIL_DELIVERY_HIGH_RISK:-unknown} \

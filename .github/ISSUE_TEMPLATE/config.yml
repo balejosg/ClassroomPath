@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: OpenPath OSS-core bugs, features, and community feedback
+    url: https://github.com/balejosg/openpath/issues
+    about: Use OpenPath for open-source core issues and community discussion.
+  - name: ClassroomPath security reports
+    url: https://github.com/balejosg/ClassroomPath/security/advisories/new
+    about: Do not open public issues for suspected vulnerabilities. Use private vulnerability reporting.

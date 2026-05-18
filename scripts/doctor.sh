@@ -31,7 +31,7 @@ else
 fi
 
 # Mirror deploy-staging-local.sh defaults
-STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
+STAGING_HOST="${STAGING_HOST:-staging-host.example.invalid}"
 STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
@@ -120,9 +120,9 @@ fi
 log_success "SSH connectivity OK"
 
 log_info "Checking remote docker + app directory..."
-REMOTE_OK=$("${SSH_CMD[@]}" "test -d /opt/classroompath/app && docker info >/dev/null 2>&1 && echo ok" 2>/dev/null || echo "")
+REMOTE_OK=$("${SSH_CMD[@]}" "test -d /srv/classroompath/app && docker info >/dev/null 2>&1 && echo ok" 2>/dev/null || echo "")
 if [ "$REMOTE_OK" != "ok" ]; then
-  die "Remote prerequisites failed (missing /opt/classroompath/app or docker not running)" 1
+  die "Remote prerequisites failed (missing /srv/classroompath/app or docker not running)" 1
 fi
 log_success "Remote prerequisites OK"
 

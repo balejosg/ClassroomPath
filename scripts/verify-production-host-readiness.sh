@@ -46,7 +46,7 @@ resolve_default_deploy_host() {
 
 DEPLOY_HOST="${1:-${DEPLOY_HOST:-$(resolve_default_deploy_host)}}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
-DEPLOY_USER="${DEPLOY_USER:-deploy}"
+DEPLOY_USER="${DEPLOY_USER:-}"
 DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"
 DEPLOY_SSH_STRICT_HOSTKEY="${DEPLOY_SSH_STRICT_HOSTKEY:-accept-new}"
 DEFAULT_DEPLOY_SSH_KEY="$HOME/.ssh/classroompath_deploy"
@@ -63,6 +63,11 @@ fi
 if [ -z "$DEPLOY_HOST" ]; then
   usage
   die "DEPLOY_HOST must be set or passed as the first argument" 1
+fi
+
+if [ -z "$DEPLOY_USER" ]; then
+  usage
+  die "DEPLOY_USER must be set before checking production host readiness" 1
 fi
 
 if [ -z "${DEPLOY_SSH_KEY:-}" ]; then
@@ -129,20 +134,20 @@ done
 
 docker compose version >/dev/null 2>&1 || fail "Missing required Docker Compose plugin"
 
-test -d /opt/classroompath || fail "Missing /opt/classroompath"
-test -d /opt/classroompath/app/.git || fail "Missing git checkout at /opt/classroompath/app"
-test -d /opt/classroompath/app/docker || fail "Missing compose directory at /opt/classroompath/app/docker"
-test -r /opt/classroompath/app/config/.env || fail "Missing readable runtime env file at /opt/classroompath/app/config/.env"
+test -d /srv/classroompath || fail "Missing /srv/classroompath"
+test -d /srv/classroompath/app/.git || fail "Missing git checkout at /srv/classroompath/app"
+test -d /srv/classroompath/app/docker || fail "Missing compose directory at /srv/classroompath/app/docker"
+test -r /srv/classroompath/app/config/.env || fail "Missing readable runtime env file at /srv/classroompath/app/config/.env"
 
-if [ -f /opt/classroompath/release-state/current-images.env ]; then
-  grep -q '^APP_SHA=' /opt/classroompath/release-state/current-images.env \
+if [ -f /srv/classroompath/release-state/current-images.env ]; then
+  grep -q '^APP_SHA=' /srv/classroompath/release-state/current-images.env \
     || fail "Production current-images.env exists but does not include APP_SHA"
   info "Production release state is present"
 else
   info "Production current-images.env is absent; first promotion will use git diff risk detection without a production-state base"
 fi
 
-git -C /opt/classroompath/app rev-parse --is-inside-work-tree >/dev/null
+git -C /srv/classroompath/app rev-parse --is-inside-work-tree >/dev/null
 docker info >/dev/null 2>&1 || fail "Docker daemon is not reachable by this SSH user"
 
 info "Production host candidate passed read-only readiness checks"

@@ -26,11 +26,11 @@ describe('release-gate policy', () => {
     assert.doesNotThrow(() =>
       assertVerificationDeliveryPolicy({
         context: 'auth.register',
-        expectedOrigin: 'http://192.168.1.114:3000',
+        expectedOrigin: 'http://staging-host.example.invalid:3000',
         payload: {
           verificationRequired: true,
           emailSent: true,
-          verificationUrl: 'http://192.168.1.114:3000/login?token=abc123',
+          verificationUrl: 'http://staging-host.example.invalid:3000/login?token=abc123',
         },
       })
     );
@@ -91,7 +91,7 @@ describe('release-gate policy', () => {
           payload: {
             verificationRequired: true,
             emailSent: true,
-            verificationUrl: 'https://classroompath.eu/login?token=abc123',
+            verificationUrl: 'https://classroompath.example.invalid/login?token=abc123',
           },
         }),
       /expected origin/

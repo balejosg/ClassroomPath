@@ -355,7 +355,7 @@ full release flow:
 
 ```bash
 node scripts/prepromotion-windows-evidence.mjs inspect \
-  --staging-host 192.168.1.114
+  --staging-host staging-host.example.invalid
 ```
 
 If the output says evidence is required or stale for the staged SHA, refresh and

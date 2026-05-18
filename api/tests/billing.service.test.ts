@@ -71,10 +71,10 @@ describe('billing.service', () => {
   });
 
   it('normalizes the platform admin allowlist from runtime env', () => {
-    process.env.CP_PLATFORM_ADMIN_EMAILS = ' Ops@ClassroomPath.eu , billing@example.com ';
+    process.env.CP_PLATFORM_ADMIN_EMAILS = ' Ops@example.com , billing@example.com ';
 
-    assert.equal(isPlatformAdminEmail('ops@classroompath.eu'), true);
+    assert.equal(isPlatformAdminEmail('ops@example.com'), true);
     assert.equal(isPlatformAdminEmail('billing@example.com'), true);
-    assert.equal(isPlatformAdminEmail('teacher@classroompath.eu'), false);
+    assert.equal(isPlatformAdminEmail('teacher@classroompath.example.invalid'), false);
   });
 });

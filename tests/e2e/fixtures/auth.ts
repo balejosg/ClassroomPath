@@ -99,11 +99,16 @@ export async function registerUser(page: Page, user: TestUser): Promise<void> {
   }
 
   await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 10000 });
-  await page.getByText(/Correo verificado|Verificando tu correo/i).waitFor({
+  await page
+    .getByText(/Correo verificado|Verificando tu correo|Email verified|Verifying your email/i)
+    .waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  await page.getByText(/Correo verificado|Email verified/i).waitFor({
     state: 'visible',
     timeout: 10000,
   });
-  await page.getByText(/Correo verificado/i).waitFor({ state: 'visible', timeout: 10000 });
   await page.goto('/login');
   await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 10000 });
   await page.getByTestId('login-email').fill(user.email);

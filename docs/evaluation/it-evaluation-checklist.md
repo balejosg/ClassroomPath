@@ -39,6 +39,6 @@ If the answer is mostly self-hosted, also review the OpenPath adoption path at [
 
 - [ ] Technical review of the OSS core in [`balejosg/openpath`](https://github.com/balejosg/openpath)
 - [ ] Product comparison in [`openpath-vs-classroompath.md`](openpath-vs-classroompath.md)
-- [ ] Commercial follow-up for demo, pilot, or pricing at [classroompath.eu](https://classroompath.eu/)
+- [ ] Commercial follow-up for demo, pilot, or pricing at [classroompath.example.invalid](https://classroompath.example.invalid/)
 
 If any required condition remains unanswered after this checklist, do not treat the product as approved. Record the missing item and resolve it during the evaluation process.

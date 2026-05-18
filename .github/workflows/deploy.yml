@@ -311,7 +311,7 @@ jobs:
             "${{ steps.resolve.outputs.port }}" \
             "${{ steps.resolve.outputs.user }}" \
             "${{ steps.resolve.outputs.ip }}" \
-            /opt/classroompath/release-state/current-images.env > staging-release-state.env
+            /srv/classroompath/release-state/current-images.env > staging-release-state.env
 
       - name: Read staging verification evidence
         if: steps.tag-evidence.outputs.source != 'tag'
@@ -322,7 +322,7 @@ jobs:
             "${{ steps.resolve.outputs.port }}" \
             "${{ steps.resolve.outputs.user }}" \
             "${{ steps.resolve.outputs.ip }}" \
-            /opt/classroompath/release-state/staging-verification.env > staging-verification.env
+            /srv/classroompath/release-state/staging-verification.env > staging-verification.env
 
       - name: Read production release state
         run: |
@@ -332,7 +332,7 @@ jobs:
             "${{ steps.resolve-production.outputs.port }}" \
             "${{ steps.resolve-production.outputs.user }}" \
             "${{ steps.resolve-production.outputs.ip }}" \
-            /opt/classroompath/release-state/current-images.env > production-release-state.env
+            /srv/classroompath/release-state/current-images.env > production-release-state.env
 
       - name: Detect promoted Windows/Firefox risk
         id: risk

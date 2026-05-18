@@ -204,10 +204,9 @@ export class OrganizationPage {
       name: /Invitar usuario|Nuevo Usuario|\+ Nuevo|Invitar|Invite/i,
     });
     this.newUserButton = page.getByRole('button', {
-      name: /Invitar usuario|\+ Nuevo Usuario|Nuevo Usuario/i,
+      name: /Invitar usuario|\+ Nuevo Usuario|Nuevo Usuario|Invite user/i,
     });
-    // Sidebar navigation button (Spanish UI: "Usuarios y Roles")
-    this.usersButton = page.getByRole('button', { name: 'Usuarios y Roles' });
+    this.usersButton = page.getByRole('button', { name: /Usuarios y Roles|Users and Roles/i });
 
     // OpenPath Users view hooks (rendered inside ClassroomPath tenant shell)
     this.usersTable = page.getByTestId('users-table');

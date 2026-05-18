@@ -107,7 +107,7 @@ void describe('Docker Compose Configuration', () => {
       'Gateway should resolve host.docker.internal for host-backed infrastructure'
     );
     assert.ok(
-      gateway.volumes?.includes('/opt/classroompath/downloads:/app/react-spa/dist/downloads:ro'),
+      gateway.volumes?.includes('/srv/classroompath/downloads:/app/react-spa/dist/downloads:ro'),
       'Gateway should mount the signed Firefox distribution directory into the public SPA asset root'
     );
   });
@@ -305,7 +305,7 @@ void describe('Environment Configuration', () => {
     }
   });
 
-  void test('deploy-targets.json captures the canonical public URLs', () => {
+  void test('deploy-targets.json contains only public placeholders', () => {
     assert.ok(existsSync(deployTargetsPath), 'config/deploy-targets.json should exist');
 
     const targets = JSON.parse(readFileSync(deployTargetsPath, 'utf-8')) as {
@@ -314,24 +314,24 @@ void describe('Environment Configuration', () => {
     };
 
     assert.strictEqual(
-      targets.staging?.publicUrl,
-      'https://classroompath-staging.duckdns.org',
-      'Staging public URL should stay centralized in deploy-targets.json'
+      targets.staging?.publicUrl.endsWith('.invalid'),
+      true,
+      'Staging public URL should be a placeholder in the public repo'
     );
     assert.strictEqual(
-      targets.production?.publicUrl,
-      'https://classroompath.eu',
-      'Production public URL should stay centralized in deploy-targets.json'
+      targets.production?.publicUrl.endsWith('.invalid'),
+      true,
+      'Production public URL should be a placeholder in the public repo'
     );
     assert.strictEqual(
-      targets.staging?.canaryPublicUrl,
-      'https://classroompath-staging.duckdns.org',
-      'Windows/Firefox canaries should use the HTTPS staging endpoint'
+      targets.staging?.canaryPublicUrl.endsWith('.invalid'),
+      true,
+      'Staging canary URL should be a placeholder in the public repo'
     );
     assert.strictEqual(
-      targets.production?.canaryPublicUrl,
-      'https://classroompath.eu',
-      'Production canaries should use the canonical HTTPS production endpoint'
+      targets.production?.canaryPublicUrl.endsWith('.invalid'),
+      true,
+      'Production canary URL should be a placeholder in the public repo'
     );
     assert.strictEqual(
       targets.staging?.containerPlatform,

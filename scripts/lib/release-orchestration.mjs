@@ -3,7 +3,7 @@ import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
 
 const DEFAULT_REPO = 'balejosg/ClassroomPath';
-const PRODUCTION_URL = 'https://classroompath.eu';
+const PRODUCTION_URL = 'https://classroompath.example.invalid';
 const execFile = promisify(nodeExecFile);
 const GH_RUN_MONITOR_FIELDS = 'status,conclusion,jobs,url,name,workflowName';
 

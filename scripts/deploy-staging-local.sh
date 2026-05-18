@@ -5,8 +5,8 @@
 #        ./scripts/deploy-staging-local.sh
 #
 # Environment variables (set in .env.local or export):
-#   STAGING_HOST     - IP of CT 114 (default: 192.168.1.114)
-#   STAGING_USER     - SSH user (default: deploy)
+#   STAGING_HOST     - Private deploy host (required)
+#   STAGING_USER     - SSH user (required)
 #   STAGING_SSH_KEY  - Path to SSH private key (required)
 #   STAGING_PORT     - SSH port (default: 22)
 #
@@ -79,8 +79,8 @@ ENV_FILE="$SCRIPT_DIR/../.env.local"
 load_env_file "$ENV_FILE" || true
 
 # Configuration with defaults
-STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
-STAGING_USER="${STAGING_USER:-deploy}"
+STAGING_HOST="${STAGING_HOST:-}"
+STAGING_USER="${STAGING_USER:-}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
 STAGING_IMAGE_MODE="${STAGING_IMAGE_MODE:-release-candidate}"
@@ -95,8 +95,8 @@ STAGING_HEALTH_CHECK_SCRIPT_PATH="$SCRIPT_DIR/check-staging-health.sh"
 STAGING_REMOTE_SCRIPT_PATH="$SCRIPT_DIR/deploy-staging-remote.sh"
 STAGING_VERIFICATION_RUNNER_PATH="$SCRIPT_DIR/run-staging-verification.sh"
 STAGING_VERIFY_STATE_SCRIPT_PATH="$SCRIPT_DIR/persist-staging-verification-remote.sh"
-APP_DIR="/opt/classroompath/app"
-STATE_DIR="/opt/classroompath/release-state"
+APP_DIR="/srv/classroompath/app"
+STATE_DIR="/srv/classroompath/release-state"
 
 require_cmd git
 require_cmd ssh
@@ -114,6 +114,20 @@ if [ -z "${STAGING_SSH_KEY:-}" ]; then
     echo ""
     echo "Set it in .env.local or export:"
     echo "  export STAGING_SSH_KEY=~/.ssh/classroompath_staging"
+    exit 1
+fi
+
+if [ -z "$STAGING_HOST" ]; then
+    log_error "STAGING_HOST not set"
+    echo ""
+    echo "Set it in .env.local for private deployment only."
+    exit 1
+fi
+
+if [ -z "$STAGING_USER" ]; then
+    log_error "STAGING_USER not set"
+    echo ""
+    echo "Set it in .env.local for private deployment only."
     exit 1
 fi
 

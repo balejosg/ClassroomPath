@@ -503,7 +503,7 @@ describe('runner diagnostic wrapper', () => {
 
     assert.equal(summary.queue_seconds, 150);
     assert.equal(summary.execution_seconds, 529);
-    assert.equal(summary.runner_name, 'classroompath-windows-103');
+    assert.equal(summary.runner_name, 'classroompath-windows-runner');
     assert.equal(summary.runner_group_name, 'Default');
     assert.deepEqual(summary.labels, ['self-hosted', 'Windows', 'X64', 'proxmox', 'classroompath']);
     assert.deepEqual(summary.skipped_jobs, ['Hosted Windows Advisory']);
@@ -555,7 +555,10 @@ describe('runner diagnostic wrapper', () => {
       result.stdout,
       /PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=http:\/\/192\.168\.1\.114:3000/
     );
-    assert.match(result.stdout, /ssh whitelist-proxmox qm guest exec 103 -- powershell\.exe/);
+    assert.match(
+      result.stdout,
+      /ssh proxmox-host.example.invalid qm guest exec 103 -- powershell\.exe/
+    );
     assert.match(result.stdout, /--pass-stdin 1/);
     assert.match(result.stdout, /C:\\OpenPath\\scripts\\Start-SSEListener\.ps1/);
     assert.match(result.stdout, /C:\\OpenPath\\scripts\\Update-OpenPath\.ps1/);
@@ -617,7 +620,7 @@ describe('runner diagnostic wrapper', () => {
     const result = runLinuxAjaxDirectDiagnostic([
       '--confirm-local-state-reset',
       '--base-url',
-      'http://192.168.1.114:3000',
+      'http://staging-host.example.invalid:3000',
     ]);
 
     assert.equal(result.status, 0, result.stderr);
@@ -683,12 +686,14 @@ describe('runner diagnostic wrapper', () => {
     const result = runLinuxAjaxDirectDiagnostic([
       '--confirm-local-state-reset',
       '--base-url',
-      'http://192.168.1.114:3000',
+      'http://staging-host.example.invalid:3000',
     ]);
 
     assert.equal(result.status, 0, result.stderr);
     const sudoPreflightIndex = result.stdout.indexOf('sudo -n true');
-    const healthIndex = result.stdout.indexOf('curl -fsS http://192.168.1.114:3000/cp/health');
+    const healthIndex = result.stdout.indexOf(
+      'curl -fsS http://staging-host.example.invalid:3000/cp/health'
+    );
     const provisionIndex = result.stdout.indexOf(
       'scripts/create-production-linux-bootstrap-canary.mjs'
     );
@@ -712,7 +717,7 @@ describe('runner diagnostic wrapper', () => {
         linuxAjaxDirectScriptPath,
         '--confirm-local-state-reset',
         '--base-url',
-        'http://192.168.1.114:3000',
+        'http://staging-host.example.invalid:3000',
       ],
       {
         cwd: projectRoot,

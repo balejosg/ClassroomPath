@@ -1,28 +1,28 @@
 {
   "environment": "staging",
-  "baseUrl": "http://192.168.1.114:3000",
+  "baseUrl": "http://staging-host.example.invalid:3000",
   "classroomId": "class_stage_20260502_informatica",
   "fixtures": [
     {
       "group": "Mates",
-      "allowed": "http://192.168.1.114:3000/cp/qa-fixtures/basic",
-      "allowedAjax": "http://192.168.1.114:3000/cp/qa-fixtures/ajax",
+      "allowed": "http://staging-host.example.invalid:3000/cp/qa-fixtures/basic",
+      "allowedAjax": "http://staging-host.example.invalid:3000/cp/qa-fixtures/ajax",
       "requestAccess": "https://example.net/",
       "blockedSubdomain": "chat.staging-blocked.test",
       "blockedPath": "example.com/openpath-blocked-path"
     },
     {
       "group": "Lengua",
-      "allowed": "http://192.168.1.114:3000/cp/qa-fixtures/basic",
-      "allowedAjax": "http://192.168.1.114:3000/cp/qa-fixtures/ajax",
+      "allowed": "http://staging-host.example.invalid:3000/cp/qa-fixtures/basic",
+      "allowedAjax": "http://staging-host.example.invalid:3000/cp/qa-fixtures/ajax",
       "requestAccess": "https://example.net/",
       "blockedSubdomain": "video.staging-blocked.test",
       "blockedPath": "example.com/openpath-blocked-path"
     },
     {
       "group": "Ciencias",
-      "allowed": "http://192.168.1.114:3000/cp/qa-fixtures/basic",
-      "allowedAjax": "http://192.168.1.114:3000/cp/qa-fixtures/ajax",
+      "allowed": "http://staging-host.example.invalid:3000/cp/qa-fixtures/basic",
+      "allowedAjax": "http://staging-host.example.invalid:3000/cp/qa-fixtures/ajax",
       "requestAccess": "https://example.net/",
       "blockedSubdomain": "chat.staging-blocked.test",
       "blockedPath": "example.com/openpath-blocked-path"

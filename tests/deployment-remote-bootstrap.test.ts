@@ -182,7 +182,7 @@ void describe('Remote Deploy Bootstrap', () => {
       'deploy-staging-remote.sh should guard against missing BASH_SOURCE when the payload is streamed over SSH'
     );
     assert.ok(
-      remoteContent.includes('APP_DIR="/opt/classroompath/app"'),
+      remoteContent.includes('APP_DIR="/srv/classroompath/app"'),
       'deploy-staging-remote.sh should declare the canonical app directory explicitly'
     );
     assert.ok(
@@ -223,7 +223,7 @@ void describe('Remote Deploy Bootstrap', () => {
         `${scriptName} should guard against missing BASH_SOURCE when appleboy/ssh-action streams the payload`
       );
       assert.ok(
-        content.includes('APP_DIR="/opt/classroompath/app"'),
+        content.includes('APP_DIR="/srv/classroompath/app"'),
         `${scriptName} should declare the canonical app directory explicitly`
       );
       assert.ok(

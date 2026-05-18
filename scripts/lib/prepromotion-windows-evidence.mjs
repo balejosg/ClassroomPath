@@ -8,7 +8,7 @@ import { parseReleaseStateText } from './release-state-contract.mjs';
 const CANARY_ARTIFACT_NAME = 'production-windows-ajax-auto-allow-canary.json';
 const DEFAULT_OPENPATH_ROOT = '../OpenPath';
 const DEFAULT_STAGING_VERIFICATION_PATH =
-  '/opt/classroompath/release-state/staging-verification.env';
+  '/srv/classroompath/release-state/staging-verification.env';
 const DIRECT_WINDOWS_COMMAND = 'npm run diagnostics:windows-ajax:direct -- --environment staging';
 
 function valueOrNull(value) {
@@ -340,14 +340,14 @@ function buildStagingSshArgs({ env, remoteCommand }) {
     stagingSshKey,
     '-p',
     String(env.STAGING_PORT ?? '22'),
-    `${env.STAGING_USER ?? 'deploy'}@${env.STAGING_HOST ?? '192.168.1.114'}`,
+    `${env.STAGING_USER ?? 'deploy'}@${env.STAGING_HOST ?? 'staging-host.example.invalid'}`,
     remoteCommand,
   ];
 }
 
 function buildPersistPrepromotionRehearsalCommand(env) {
-  const stateDir = env.STATE_DIR ?? '/opt/classroompath/release-state';
-  const appDir = env.APP_DIR ?? '/opt/classroompath/app';
+  const stateDir = env.STATE_DIR ?? '/srv/classroompath/release-state';
+  const appDir = env.APP_DIR ?? '/srv/classroompath/app';
   return [
     `STATE_DIR=${shellQuote(stateDir)}`,
     `APP_DIR=${shellQuote(appDir)}`,

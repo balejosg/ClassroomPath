@@ -362,7 +362,7 @@ describe('Deployment runtime contracts', () => {
           'OPENPATH_FIREFOX_EXTENSION_INSTALL_URL=${OPENPATH_FIREFOX_EXTENSION_INSTALL_URL:-}'
         ) &&
         dockerCompose.includes(
-          '${OPENPATH_FIREFOX_RELEASE_DIR:-/opt/classroompath/openpath-firefox-release/current}:/openpath-firefox-release:ro'
+          '${OPENPATH_FIREFOX_RELEASE_DIR:-/srv/classroompath/openpath-firefox-release/current}:/openpath-firefox-release:ro'
         ),
       'OpenPath API runtime should consume the separately published Firefox assets image through a read-only mount'
     );

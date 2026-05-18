@@ -116,9 +116,9 @@ snapshot-clean-baseline-20260510 pre-lab clean baseline
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /gh api repos\/balejosg\/ClassroomPath\/actions\/runners/);
     assert.match(result.stdout, /gh run list --repo balejosg\/ClassroomPath --status queued/);
-    assert.match(result.stdout, /ssh whitelist-proxmox qm status 103/);
-    assert.match(result.stdout, /ssh whitelist-proxmox qm listsnapshot 103/);
-    assert.match(result.stdout, /ssh whitelist-proxmox qm config 103/);
+    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm status 103/);
+    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm listsnapshot 103/);
+    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm config 103/);
     assert.doesNotMatch(result.stdout, /\bqm rollback\b/);
     assert.doesNotMatch(result.stdout, /\bgh run cancel\b/);
   });
@@ -141,10 +141,10 @@ snapshot-clean-baseline-20260510 pre-lab clean baseline
     assert.equal(result.status, 0, result.stderr);
     assert.match(
       result.stdout,
-      /ssh whitelist-proxmox qm rollback 103 snapshot-clean-baseline-20260510/
+      /ssh proxmox-host.example.invalid qm rollback 103 snapshot-clean-baseline-20260510/
     );
-    assert.match(result.stdout, /ssh whitelist-proxmox qm set 103 --boot order=sata0/);
-    assert.match(result.stdout, /ssh whitelist-proxmox qm start 103/);
-    assert.match(result.stdout, /wait for classroompath-windows-103 online busy=false/);
+    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm set 103 --boot order=sata0/);
+    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm start 103/);
+    assert.match(result.stdout, /wait for classroompath-windows-runner online busy=false/);
   });
 });

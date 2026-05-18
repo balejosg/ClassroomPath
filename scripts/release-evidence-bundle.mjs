@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { runReleaseEvidenceBundle } from './lib/release-evidence-bundle.mjs';
 
 const DEFAULT_REPO = 'balejosg/ClassroomPath';
-const DEFAULT_PRODUCTION_URL = 'https://classroompath.eu';
+const DEFAULT_PRODUCTION_URL = 'https://classroompath.example.invalid';
 
 function usage() {
   return `Usage: npm run release:evidence-bundle -- --deploy-run <id> [options]

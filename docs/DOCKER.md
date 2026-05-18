@@ -48,13 +48,13 @@ docker compose -f docker/docker-compose.yml ps
 
 Proxy Host details:
 
-| Field                 | Value                                      |
-| --------------------- | ------------------------------------------ |
-| Domain Names          | `classroompath.eu` or the staging hostname |
-| Scheme                | `http`                                     |
-| Forward Hostname/IP   | `classroompath-spa`                        |
-| Forward Port          | `8080`                                     |
-| Block Common Exploits | enabled                                    |
+| Field                 | Value                                                   |
+| --------------------- | ------------------------------------------------------- |
+| Domain Names          | `classroompath.example.invalid` or the staging hostname |
+| Scheme                | `http`                                                  |
+| Forward Hostname/IP   | `classroompath-spa`                                     |
+| Forward Port          | `8080`                                                  |
+| Block Common Exploits | enabled                                                 |
 
 SSL:
 

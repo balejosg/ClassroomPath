@@ -64,9 +64,9 @@ await describe('logger', async () => {
           method: 'GET',
           originalUrl: '/cp/health',
           url: '/cp/health',
-          ip: '10.0.0.8',
+          ip: '203.0.113.8',
           headers: {
-            'x-forwarded-for': '198.51.100.21, 10.0.0.8',
+            'x-forwarded-for': '198.51.100.21, 203.0.113.8',
           },
           get: () => 'node-test',
         } as never,

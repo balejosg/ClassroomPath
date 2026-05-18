@@ -11,7 +11,7 @@ on:
       base_url:
         description: Public base URL.
         required: false
-        default: https://classroompath-staging.duckdns.org
+        default: https://staging.classroompath.example.invalid
       diagnostic_mode:
         description: Diagnostic-only run.
         required: false

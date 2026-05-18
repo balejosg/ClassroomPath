@@ -14,7 +14,7 @@ import {
 const DEFAULT_REF = 'main';
 const DEFAULT_ENVIRONMENT = 'staging';
 const DEFAULT_SUITE = 'windows-bootstrap-ajax';
-const DEFAULT_RUNNER_NAME = 'classroompath-windows-103';
+const DEFAULT_RUNNER_NAME = 'classroompath-windows-runner';
 const DRY_RUN = process.env.RUNNER_DIAGNOSTIC_DRY_RUN === '1';
 const FAKE_WATCH_FAILURE = process.env.RUNNER_DIAGNOSTIC_FAKE_WATCH_FAILURE === '1';
 const FAKE_ARTIFACT_DOWNLOAD_FAILURE =

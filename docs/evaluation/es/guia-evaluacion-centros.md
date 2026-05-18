@@ -29,7 +29,7 @@ Si tu centro está valorando ClassroomPath, esta es la ruta corta:
    Usad [`../pilot-runbook.md`](../pilot-runbook.md) para dejar claro alcance, responsables, mediciones y criterios de salida.
 
 7. **Pide el siguiente paso correcto.**
-   Para presupuesto, piloto o demo, usad [classroompath.eu](https://classroompath.eu/).
+   Para presupuesto, piloto o demo, usad [classroompath.example.invalid](https://classroompath.example.invalid/).
 
 ## Qué deberíais tener claro antes de seguir
 

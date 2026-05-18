@@ -16,8 +16,9 @@ Rules:
 
 ## Start Here
 
-- Repository overview and operator-facing summary: [`README.md`](../README.md)
-- Agent workflow, environment identification, and deployment rules: [`AGENTS.md`](../AGENTS.md)
+- Repository overview and public positioning: [`README.md`](../README.md)
+- Security reporting policy: [`SECURITY.md`](../SECURITY.md)
+- Agent workflow and public repository rules: [`AGENTS.md`](../AGENTS.md)
 - Workspace routing and search policy: `agent-manifest.json` in the workspace root
 - OpenPath documentation index: [`upstream/openpath/docs/INDEX.md`](../upstream/openpath/docs/INDEX.md)
 - OpenPath SPA wrapper boundary: [`upstream/openpath/docs/adr/0010-public-spa-extension-surface.md`](../upstream/openpath/docs/adr/0010-public-spa-extension-surface.md)
@@ -40,21 +41,20 @@ Rules:
 - OpenPath vs. ClassroomPath: [`docs/evaluation/openpath-vs-classroompath.md`](evaluation/openpath-vs-classroompath.md)
 - Spanish guide for school IT teams: [`docs/evaluation/es/guia-evaluacion-centros.md`](evaluation/es/guia-evaluacion-centros.md)
 
-## Operations
+## Public Operations Boundary
 
-- Shared workspace hypothesis-validation wrapper: `../scripts/validate-hypothesis.sh` from the workspace root
 - CI/CD signal inventory: [`docs/ci-cd-signal-inventory.md`](ci-cd-signal-inventory.md)
-- Direct Windows runner diagnostic: [`scripts/run-windows-ajax-direct.mjs`](../scripts/run-windows-ajax-direct.mjs)
-- Deploy staging (local SSH workflow after push): [`docs/runbooks/deploy-staging.md`](runbooks/deploy-staging.md)
-- Staging QA fixtures: [`docs/runbooks/staging-qa-fixtures.md`](runbooks/staging-qa-fixtures.md)
-- Deploy production (tag-only promotion): [`docs/runbooks/deploy-production.md`](runbooks/deploy-production.md)
-- Recover the Windows runner: [`docs/runbooks/windows-runner-recovery.md`](runbooks/windows-runner-recovery.md)
-- Configure Stripe billing: [`docs/runbooks/configure-stripe-billing.md`](runbooks/configure-stripe-billing.md)
-- Canonical deploy targets: [`config/deploy-targets.json`](../config/deploy-targets.json)
-- Update OpenPath submodule: [`docs/runbooks/update-openpath-submodule.md`](runbooks/update-openpath-submodule.md)
+- Public staging deployment note: [`docs/runbooks/deploy-staging.md`](runbooks/deploy-staging.md)
+- Public production deployment note: [`docs/runbooks/deploy-production.md`](runbooks/deploy-production.md)
+- Public billing provider note: [`docs/runbooks/configure-stripe-billing.md`](runbooks/configure-stripe-billing.md)
+- Public staging QA note: [`docs/runbooks/staging-qa-fixtures.md`](runbooks/staging-qa-fixtures.md)
+- Public Windows runner recovery note: [`docs/runbooks/windows-runner-recovery.md`](runbooks/windows-runner-recovery.md)
+- Deploy target example: [`config/deploy-targets.example.json`](../config/deploy-targets.example.json)
+- Update OpenPath submodule boundary: [`docs/runbooks/update-openpath-submodule.md`](runbooks/update-openpath-submodule.md)
 - Docker + Nginx Proxy Manager: [`docs/DOCKER.md`](DOCKER.md)
-- Production secrets (GitHub Actions): [`docs/SECRETS.md`](SECRETS.md)
+- Secrets and private operations: [`docs/SECRETS.md`](SECRETS.md)
 - Session/security model: [`docs/SESSION_SECURITY_MODEL.md`](SESSION_SECURITY_MODEL.md)
+- Public readiness notes: [`docs/PUBLICATION-READINESS.md`](PUBLICATION-READINESS.md)
 
 ## Architecture Decisions
 

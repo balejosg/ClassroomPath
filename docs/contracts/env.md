@@ -34,7 +34,7 @@ Dockerized stack.
 - `CORS_ORIGINS`: comma-separated browser origins; deployed environments must include the `PUBLIC_URL` origin
 
 Staging uses the HTTPS DuckDNS origin from `config/deploy-targets.json`
-(`https://classroompath-staging.duckdns.org`). Production remains HTTPS-only. LAN HTTP endpoints are
+(`https://staging.classroompath.example.invalid`). Production remains HTTPS-only. LAN HTTP endpoints are
 reserved for internal readiness checks, not the deployed public URL. Hosted verifiers can hit staging
 through the public DuckDNS origin; direct LAN checks may still use the internal health endpoints.
 

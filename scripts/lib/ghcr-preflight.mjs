@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(nodeExecFile);
-const DEFAULT_STAGING_HOST = '192.168.1.114';
+const DEFAULT_STAGING_HOST = 'staging-host.example.invalid';
 const DEFAULT_STAGING_USER = 'deploy';
 const DEFAULT_STAGING_PORT = '22';
 const DEFAULT_STAGING_STRICT_HOSTKEY = 'accept-new';

@@ -140,10 +140,10 @@ function buildStripeCatalog(): CatalogItem[] {
 function printUsage(): void {
   console.error('Usage:');
   console.error(
-    '  node --import tsx scripts/setup-stripe-billing.ts [--dry-run] [--public-url https://classroompath.eu]'
+    '  node --import tsx scripts/setup-stripe-billing.ts [--dry-run] [--public-url https://classroompath.example.invalid]'
   );
   console.error(
-    '      [--webhook-url https://classroompath.eu/cp/stripe/webhook] [--api-key sk_live_...]'
+    '      [--webhook-url https://classroompath.example.invalid/cp/stripe/webhook] [--api-key sk_live_...]'
   );
   console.error('      [--env-input config/.env] [--write-env config/.env]');
 }

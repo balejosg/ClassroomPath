@@ -28,17 +28,17 @@ describe('runtime environment policy', () => {
 
     const policy = policyModule.resolveRuntimeEnvironmentPolicy({
       CP_BILLING_MODE: 'manual_only',
-      CP_PLATFORM_ADMIN_EMAILS: ' Ops@ClassroomPath.eu , billing@example.com ',
+      CP_PLATFORM_ADMIN_EMAILS: ' Ops@example.com , billing@example.com ',
       CP_CLIENT_CANARY_ADMIN_TOKEN: 'canary-token',
       CP_FAKE_EMAIL_DELIVERY: '1',
       CP_EMAIL_PREFLIGHT_MODE: 'skip',
       VAPID_PUBLIC_KEY: 'public-key',
       VAPID_PRIVATE_KEY: 'private-key',
-      VAPID_CONTACT: 'mailto:ops@classroompath.eu',
+      VAPID_CONTACT: 'mailto:ops@classroompath.example.invalid',
     });
 
     assert.equal(policy.billingMode, 'manual_only');
-    assert.deepEqual(policy.platformAdminEmails, ['ops@classroompath.eu', 'billing@example.com']);
+    assert.deepEqual(policy.platformAdminEmails, ['ops@example.com', 'billing@example.com']);
     assert.equal(policy.clientCanaryAdminToken, 'canary-token');
     assert.equal(policy.email.deliveryMode, 'mock');
     assert.equal(policy.email.preflightMode, 'skip');
@@ -52,7 +52,7 @@ describe('runtime environment policy', () => {
       () =>
         policyModule.assertRuntimeEnvironmentPolicyConfigured({
           CP_BILLING_MODE: 'stripe',
-          CP_PLATFORM_ADMIN_EMAILS: 'ops@classroompath.eu',
+          CP_PLATFORM_ADMIN_EMAILS: 'ops@classroompath.example.invalid',
           STRIPE_SECRET_KEY: 'sk_test_classroompath',
           STRIPE_WEBHOOK_SECRET: 'whsec_classroompath',
         }),
@@ -63,10 +63,10 @@ describe('runtime environment policy', () => {
       () =>
         policyModule.assertRuntimeEnvironmentPolicyConfigured({
           CP_BILLING_MODE: 'manual_only',
-          CP_PLATFORM_ADMIN_EMAILS: 'ops@classroompath.eu',
+          CP_PLATFORM_ADMIN_EMAILS: 'ops@classroompath.example.invalid',
           CP_REQUIRE_PUSH_NOTIFICATIONS: '1',
           VAPID_PUBLIC_KEY: 'public-key',
-          VAPID_CONTACT: 'mailto:ops@classroompath.eu',
+          VAPID_CONTACT: 'mailto:ops@classroompath.example.invalid',
         }),
       /VAPID_PRIVATE_KEY must be set for push notifications/
     );

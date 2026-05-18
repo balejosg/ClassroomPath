@@ -30,7 +30,7 @@ services:
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     volumes:
-      - /opt/classroompath/downloads:/app/react-spa/dist/downloads:ro
+      - /srv/classroompath/downloads:/app/react-spa/dist/downloads:ro
     depends_on:
       - api
     healthcheck:
@@ -69,7 +69,7 @@ services:
       - 'host.docker.internal:host-gateway'
     volumes:
       - api-data:/app/data
-      - ${OPENPATH_FIREFOX_RELEASE_DIR:-/opt/classroompath/openpath-firefox-release/current}:/openpath-firefox-release:ro
+      - ${OPENPATH_FIREFOX_RELEASE_DIR:-/srv/classroompath/openpath-firefox-release/current}:/openpath-firefox-release:ro
     healthcheck:
       test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://127.0.0.1:3000/health']
       interval: 5s

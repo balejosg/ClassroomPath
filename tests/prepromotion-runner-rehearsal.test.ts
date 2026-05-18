@@ -195,7 +195,7 @@ describe('prepromotion runner rehearsal', () => {
     writeText(
       resolve(tempDir, '.env.local'),
       [
-        'STAGING_HOST=192.168.1.114',
+        'STAGING_HOST=staging-host.example.invalid',
         'STAGING_SSH_KEY=~/.ssh/classroompath_staging',
         'EXPORTED_VALUE=from-file',
         '',
@@ -207,7 +207,7 @@ describe('prepromotion runner rehearsal', () => {
       env: { EXPORTED_VALUE: 'from-process' },
     });
 
-    assert.equal(env.STAGING_HOST, '192.168.1.114');
+    assert.equal(env.STAGING_HOST, 'staging-host.example.invalid');
     assert.equal(env.STAGING_SSH_KEY, '~/.ssh/classroompath_staging');
     assert.equal(env.EXPORTED_VALUE, 'from-process');
   });

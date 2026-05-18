@@ -54,7 +54,7 @@ describe('runtime config contract', () => {
   it('disables self-service organization creation by default in production while keeping the directory hidden', async () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_SECRET = 'production-secret-value';
-    process.env.PUBLIC_URL = 'https://classroompath.eu';
+    process.env.PUBLIC_URL = 'https://classroompath.example.invalid';
     delete process.env.CP_ALLOW_SELF_SERVICE_ORGS;
     delete process.env.CP_ALLOW_ORG_DIRECTORY;
 
@@ -71,10 +71,10 @@ describe('runtime config contract', () => {
   it('allows manual-only billing mode without Stripe secrets', async () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_SECRET = 'production-secret-value';
-    process.env.PUBLIC_URL = 'https://classroompath.eu';
-    process.env.CORS_ORIGINS = 'https://classroompath.eu';
+    process.env.PUBLIC_URL = 'https://classroompath.example.invalid';
+    process.env.CORS_ORIGINS = 'https://classroompath.example.invalid';
     process.env.CP_BILLING_MODE = 'manual_only';
-    process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.eu';
+    process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.example.invalid';
     delete process.env.STRIPE_SECRET_KEY;
     delete process.env.STRIPE_WEBHOOK_SECRET;
     delete process.env.STRIPE_ANNUAL_PRICE_1_10;
@@ -97,9 +97,9 @@ describe('runtime config contract', () => {
   it('resolves the Stripe checkout and platform admin runtime contract', async () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_SECRET = 'production-secret-value';
-    process.env.PUBLIC_URL = 'https://classroompath.eu';
+    process.env.PUBLIC_URL = 'https://classroompath.example.invalid';
     process.env.CP_BILLING_MODE = 'stripe';
-    process.env.CP_PLATFORM_ADMIN_EMAILS = ' Admin@ClassroomPath.eu, billing@example.com ';
+    process.env.CP_PLATFORM_ADMIN_EMAILS = ' Admin@example.com, billing@example.com ';
     process.env.STRIPE_SECRET_KEY = 'sk_test_classroompath';
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_classroompath';
     process.env.STRIPE_ANNUAL_PRICE_1_10 = 'price_annual_1_10';
@@ -120,7 +120,7 @@ describe('runtime config contract', () => {
     assert.equal(runtimeConfig.stripe.priceIds.onboarding['26_100'], 'price_onboarding_26_100');
     assert.equal(runtimeConfig.stripe.priceIds.pilot, 'price_pilot');
     assert.deepEqual(runtimeConfig.platformAdminEmails, [
-      'admin@classroompath.eu',
+      'admin@example.com',
       'billing@example.com',
     ]);
   });
@@ -128,10 +128,10 @@ describe('runtime config contract', () => {
   it('requires the public origin to be present in CORS_ORIGINS', async () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_SECRET = 'production-secret-value';
-    process.env.PUBLIC_URL = 'https://classroompath.eu';
+    process.env.PUBLIC_URL = 'https://classroompath.example.invalid';
     process.env.CP_BILLING_MODE = 'stripe';
-    process.env.CORS_ORIGINS = 'https://staging.classroompath.eu';
-    process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.eu';
+    process.env.CORS_ORIGINS = 'https://staging.classroompath.example.invalid';
+    process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.example.invalid';
     process.env.STRIPE_SECRET_KEY = 'sk_test_classroompath';
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_classroompath';
     process.env.STRIPE_ANNUAL_PRICE_1_10 = 'price_annual_1_10';
@@ -154,14 +154,14 @@ describe('runtime config contract', () => {
   it('requires complete VAPID configuration when push notifications are required', async () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_SECRET = 'production-secret-value';
-    process.env.PUBLIC_URL = 'https://classroompath.eu';
-    process.env.CORS_ORIGINS = 'https://classroompath.eu';
+    process.env.PUBLIC_URL = 'https://classroompath.example.invalid';
+    process.env.CORS_ORIGINS = 'https://classroompath.example.invalid';
     process.env.CP_BILLING_MODE = 'manual_only';
-    process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.eu';
+    process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.example.invalid';
     process.env.CP_REQUIRE_PUSH_NOTIFICATIONS = '1';
     process.env.VAPID_PUBLIC_KEY = 'public-key';
     delete process.env.VAPID_PRIVATE_KEY;
-    process.env.VAPID_CONTACT = 'mailto:ops@classroompath.eu';
+    process.env.VAPID_CONTACT = 'mailto:ops@classroompath.example.invalid';
 
     const tag = `runtime-config-required-push-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const configModule = await import(`../src/config.ts?${tag}`);

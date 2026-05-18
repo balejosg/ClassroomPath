@@ -139,7 +139,7 @@ describe('email.service', () => {
       const result = await sendTransactionalEmail({
         to: 'release-gate-123@test.local',
         subject: 'Verification',
-        html: '<p><a href="http://192.168.1.114:3000/login?token=abc">verify</a></p>',
+        html: '<p><a href="http://staging-host.example.invalid:3000/login?token=abc">verify</a></p>',
         text: 'Verify',
       });
 

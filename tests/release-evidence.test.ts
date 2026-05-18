@@ -184,10 +184,10 @@ function buildContractEvidence() {
     },
     targets: {
       staging: {
-        publicUrl: 'https://classroompath-staging.duckdns.org',
+        publicUrl: 'https://staging.classroompath.example.invalid',
       },
       production: {
-        publicUrl: 'https://classroompath.eu',
+        publicUrl: 'https://classroompath.example.invalid',
       },
     },
     immutableImages: {
@@ -599,8 +599,8 @@ describe('release evidence rendering', () => {
         verifiedAt: '2026-04-30T09:59:00.000Z',
       },
       targets: {
-        staging: { publicUrl: 'https://classroompath-staging.duckdns.org' },
-        production: { publicUrl: 'https://classroompath.eu' },
+        staging: { publicUrl: 'https://staging.classroompath.example.invalid' },
+        production: { publicUrl: 'https://classroompath.example.invalid' },
       },
       immutableImages: {
         gateway: 'gateway@sha256:1',

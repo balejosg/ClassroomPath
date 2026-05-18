@@ -87,7 +87,7 @@ function buildReleaseEvidenceInput(overrides: Record<string, unknown> = {}) {
     },
     targets: {
       staging: {
-        publicUrl: 'https://classroompath-staging.duckdns.org',
+        publicUrl: 'https://staging.classroompath.example.invalid',
       },
       production: {
         publicUrl: 'http://127.0.0.1:0',
@@ -573,7 +573,7 @@ describe('release evidence bundle module', () => {
         deployRun: '123',
         tag: 'v1.2.99',
         outputDir,
-        productionUrl: 'https://classroompath.eu',
+        productionUrl: 'https://classroompath.example.invalid',
         windowsCanaryRun: null,
         linuxCanaryRun: null,
       });
@@ -718,7 +718,7 @@ exit 1
         deployRun: 'deploy-456',
         tag: 'v1.2.99',
         outputDir,
-        productionUrl: 'https://classroompath.eu',
+        productionUrl: 'https://classroompath.example.invalid',
         windowsCanaryRun: null,
         linuxCanaryRun: null,
       });
@@ -841,7 +841,7 @@ exit 1
         deployRun: 'deploy-legacy',
         tag: 'v1.2.99',
         outputDir,
-        productionUrl: 'https://classroompath.eu',
+        productionUrl: 'https://classroompath.example.invalid',
         windowsCanaryRun: null,
         linuxCanaryRun: null,
       });
@@ -902,7 +902,7 @@ exit 1
       }),
       productionHealth: {
         checkedAt: '2026-04-30T10:05:00.000Z',
-        productionUrl: 'https://classroompath.eu',
+        productionUrl: 'https://classroompath.example.invalid',
         health: { status: 'ok' },
         ready: { ready: true },
       },
@@ -978,13 +978,13 @@ exit 1
     const bundle = buildReleaseEvidenceBundle({
       releaseEvidence: buildReleaseEvidenceInput({
         targets: {
-          staging: { publicUrl: 'https://classroompath-staging.duckdns.org' },
-          production: { publicUrl: 'https://classroompath.eu' },
+          staging: { publicUrl: 'https://staging.classroompath.example.invalid' },
+          production: { publicUrl: 'https://classroompath.example.invalid' },
         },
       }),
       productionHealth: {
         checkedAt: '2026-04-30T10:05:00.000Z',
-        productionUrl: 'https://classroompath.eu',
+        productionUrl: 'https://classroompath.example.invalid',
         health: { status: 'ok' },
         ready: { ready: true },
       },
@@ -1003,7 +1003,7 @@ exit 1
     assert.equal(bundle.artifactIntegrity.linuxProductionBootstrapCanary.status, 'ok');
     assert.equal(bundle.canaries.linux.targetSha, 'cp-sha');
     assert.equal(bundle.canaries.linux.targetTag, 'v1.2.99');
-    assert.equal(bundle.canaries.linux.targetUrl, 'https://classroompath.eu');
+    assert.equal(bundle.canaries.linux.targetUrl, 'https://classroompath.example.invalid');
     assert.match(
       bundle.canaries.linux.artifactPath,
       /production-linux-ajax-auto-allow-canary\.json/
@@ -1064,7 +1064,7 @@ exit 1
           deployRun: '123',
           tag: 'v1.2.99',
           outputDir: cliOutputDir,
-          productionUrl: 'https://classroompath.eu',
+          productionUrl: 'https://classroompath.example.invalid',
           windowsCanaryRun: null,
           linuxCanaryRun: null,
         }),

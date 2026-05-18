@@ -691,12 +691,12 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     assert.deepEqual(
       redactWindowsCanaryObject({
         machineToken: 'secret-token',
-        whitelistUrl: 'https://classroompath.eu/w/group-secret/whitelist.txt',
+        whitelistUrl: 'https://classroompath.example.invalid/w/group-secret/whitelist.txt',
         native: { raw: 'machineToken=another-secret' },
       }),
       {
         machineToken: '[redacted]',
-        whitelistUrl: 'https://classroompath.eu/w/[redacted]/whitelist.txt',
+        whitelistUrl: 'https://classroompath.example.invalid/w/[redacted]/whitelist.txt',
         native: { raw: 'machineToken="[redacted]"' },
       }
     );

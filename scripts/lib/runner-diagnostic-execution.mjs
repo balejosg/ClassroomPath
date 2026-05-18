@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 export const WINDOWS_WORKSPACE = 'C:\\Windows\\Temp\\openpath-ajax-direct';
 export const OPENPATH_ROOT_ON_WINDOWS = 'C:\\OpenPath';
 const DEFAULT_WINDOWS_RUNNER_VMID = '103';
-const DEFAULT_PROXMOX_HOST = 'whitelist-proxmox';
+const DEFAULT_PROXMOX_HOST = 'proxmox-host.example.invalid';
 
 export const WINDOWS_OPENPATH_OVERLAYS = [
   {

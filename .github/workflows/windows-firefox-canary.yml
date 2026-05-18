@@ -74,7 +74,7 @@ jobs:
         env:
           STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
           STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
-          STAGING_DEPLOY_LAN_HOST: 192.168.1.114
+          STAGING_DEPLOY_LAN_HOST: staging-host.example.invalid
           STAGING_DEPLOY_LAN_PORT: 22
           RUNNER_ENVIRONMENT_CONTEXT: ${{ runner.environment }}
         run: |
@@ -122,7 +122,7 @@ jobs:
 
           ssh "${SSH_OPTS[@]}" \
             "${STAGING_DEPLOY_USER}@${{ steps.resolve.outputs.ip }}" \
-            "cat /opt/classroompath/release-state/staging-verification.env" > staging-verification.env
+            "cat /srv/classroompath/release-state/staging-verification.env" > staging-verification.env
 
           set -a
           . ./staging-verification.env

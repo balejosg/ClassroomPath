@@ -43,12 +43,12 @@ do
   require_env "$field"
 done
 
-STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
+STAGING_HOST="${STAGING_HOST:-staging-host.example.invalid}"
 STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-no}"
-STATE_DIR="${STATE_DIR:-/opt/classroompath/release-state}"
-APP_DIR="${APP_DIR:-/opt/classroompath/app}"
+STATE_DIR="${STATE_DIR:-/srv/classroompath/release-state}"
+APP_DIR="${APP_DIR:-/srv/classroompath/app}"
 
 STAGING_SSH_KEY="$(expand_tilde "$STAGING_SSH_KEY")"
 if [ ! -f "$STAGING_SSH_KEY" ]; then

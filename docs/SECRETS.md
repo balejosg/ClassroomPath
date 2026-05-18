@@ -1,88 +1,22 @@
-# GitHub Secrets Configuration
+# Secrets And Private Operations
 
-> Status: maintained
-> Applies to: ClassroomPath GitHub Actions deploy and verification workflows
-> Last verified: 2026-04-13
+> Status: public stub
+> Applies to: ClassroomPath public repository surface
 > Source of truth: `docs/SECRETS.md`
 
-Primary workflow: `.github/workflows/deploy.yml`
+ClassroomPath uses secrets for authentication, sessions, email, billing, deployment, release
+automation, and private infrastructure access. Exact secret inventories, host bindings, key names,
+rotation procedures, and provider setup steps are maintained privately.
 
-Staging deploys still run locally via `npm run deploy:staging`, but GitHub Actions also needs
-staging access for verification, cleanup, and canary workflows.
+Public repository rules:
 
-## Production Deploy Secrets
+- Do not commit real `.env` files, private keys, API keys, OAuth secrets, webhook secrets, SSH keys,
+  certificates, database URLs, deployment hosts, or private infrastructure paths.
+- Keep `config/.env.example`, `.env.local.example`, and `config/deploy-targets.example.json` limited
+  to blank values and `.invalid` or `example.com` placeholders.
+- Store real runtime values in private secret stores or untracked local files.
+- Rotate any credential that may have appeared in git history, public issues, workflow logs,
+  artifacts, releases, packages, screenshots, or support material.
 
-Configure these for the production deploy workflow:
-
-- `DEPLOY_HOST`
-- `DEPLOY_PORT`
-- `DEPLOY_USER`
-- `DEPLOY_SSH_KEY`
-
-`DEPLOY_HOST` points to the production server. The current production server target is
-`linux/arm64`; ARM64 support here is for ClassroomPath server images, not endpoint client
-artifacts. Before changing the host or access path, run:
-
-```bash
-DEPLOY_SSH_KEY=~/.ssh/classroompath_deploy \
-npm run verify:production-host -- <candidate-host>
-```
-
-Do not create or push a production tag until the host-readiness gate and
-`npm run verify:promotion-ready` both pass against the same host.
-
-Production environment/runtime secrets used by the deploy workflow:
-
-- `CP_BILLING_MODE`
-- `CP_PLATFORM_ADMIN_EMAILS`
-- `CP_CLIENT_CANARY_ADMIN_TOKEN`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_ANNUAL_PRICE_1_10`
-- `STRIPE_ANNUAL_PRICE_11_25`
-- `STRIPE_ANNUAL_PRICE_26_50`
-- `STRIPE_ANNUAL_PRICE_51_100`
-- `STRIPE_ONBOARDING_PRICE_1_25`
-- `STRIPE_ONBOARDING_PRICE_26_100`
-- `STRIPE_PILOT_PRICE`
-- `PRODUCTION_DB_BACKUP_COMMAND`
-- `PRODUCTION_DB_BACKUP_ID`
-
-## Staging Access Secrets Used By GitHub Actions
-
-- `STAGING_DEPLOY_HOST`
-- `STAGING_DEPLOY_PORT`
-- `STAGING_DEPLOY_USER`
-- `STAGING_DEPLOY_SSH_KEY`
-
-These are used for:
-
-- staging-state verification in production promotion for legacy/lightweight tags
-- staging cleanup workflow
-- Windows/Firefox canary workflows
-
-Current production tags created by `npm run promote:production -- vX.Y.Z` embed
-the locally verified staging release-state evidence in the annotated tag. The
-Deploy workflow validates that embedded evidence first, then falls back to these
-staging SSH secrets only when promoting an older tag without embedded evidence.
-
-## SSH Key Setup
-
-```bash
-ssh-keygen -t ed25519 -C "classroompath-deploy" -f ~/.ssh/classroompath_deploy
-ssh-copy-id -i ~/.ssh/classroompath_deploy.pub deploy@YOUR_SERVER
-cat ~/.ssh/classroompath_deploy
-```
-
-Store the private key in the corresponding GitHub secret.
-
-## Server Prerequisites
-
-The production workflow expects:
-
-- Docker with `docker compose`
-- Git
-- repo checkout at `/opt/classroompath/app`
-- real runtime env file at `/opt/classroompath/app/config/.env`
-
-Do not commit the production or staging runtime `.env` files into the repository.
+Use `npm run verify:public-surface` before publishing changes that touch docs, config, workflows, or
+operational scripts.

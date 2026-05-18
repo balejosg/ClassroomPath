@@ -70,4 +70,4 @@ This guide does not claim:
 - identity-provider integrations that are not documented in this repo
 - "set and forget" operation without any local policy ownership from the school
 
-If one of those points is mandatory for your evaluation, raise it explicitly during the commercial review at [classroompath.eu](https://classroompath.eu/).
+If one of those points is mandatory for your evaluation, raise it explicitly during the commercial review at [classroompath.example.invalid](https://classroompath.example.invalid/).

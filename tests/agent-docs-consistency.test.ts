@@ -37,70 +37,56 @@ describe('Agent docs consistency', () => {
   const stagingRunbook = readText('docs/runbooks/deploy-staging.md');
   const productionRunbook = readText('docs/runbooks/deploy-production.md');
 
-  test('repo-hosted operational docs use the canonical public URLs', () => {
+  test('repo-hosted operational docs avoid canonical deploy targets in public guidance', () => {
     assert.ok(
-      agentsDoc.includes(deployTargets.staging.publicUrl),
-      'AGENTS should reference the canonical staging public URL'
+      agentsDoc.includes('config/deploy-targets.local.json'),
+      'AGENTS should point maintainers to private deploy target config'
     );
     assert.ok(
-      agentsDoc.includes(deployTargets.production.publicUrl),
-      'AGENTS should reference the canonical production public URL'
+      stagingRunbook.includes('config/deploy-targets.local.json'),
+      'staging runbook should point maintainers to private deploy target config'
     );
     assert.ok(
-      stagingRunbook.includes(deployTargets.staging.publicUrl),
-      'staging runbook should reference the canonical staging public URL'
-    );
-    assert.ok(
-      productionRunbook.includes(deployTargets.production.publicUrl),
-      'production runbook should reference the canonical production public URL'
+      productionRunbook.includes('operational material'),
+      'production runbook should be a public operational stub'
     );
   });
 
-  test('AGENTS documents local staging deploys and tag-only production promotion', () => {
+  test('AGENTS documents public low-profile safeguards', () => {
     assert.ok(
-      agentsDoc.includes('npm run deploy:staging'),
-      'AGENTS should document the local staging deployment command'
+      agentsDoc.includes('Do not publish live deployment targets'),
+      'AGENTS should prohibit publishing operational target details'
     );
     assert.ok(
-      agentsDoc.includes('npm run promote:production -- v1.2.4'),
-      'AGENTS should document the canonical production promotion command'
+      agentsDoc.includes('Do not run staging deploys'),
+      'AGENTS should prohibit deploys during public-surface work'
     );
     assert.ok(
-      agentsDoc.includes('verify staging evidence'),
-      'AGENTS should require verifying staging evidence before production tagging'
+      agentsDoc.includes('OpenPath is the OSS core'),
+      'AGENTS should route community work to OpenPath'
     );
     assert.ok(
-      agentsDoc.includes('annotated tag') && agentsDoc.includes('Promotion evidence'),
-      'AGENTS should explain that production tags carry embedded staging evidence'
-    );
-    assert.match(
-      agentsDoc,
-      /Production server images require linux\/arm64[\s\S]*Endpoint client\s+arm64 builds are discontinued for now/,
-      'AGENTS should distinguish server ARM64 from discontinued endpoint client ARM64 builds'
+      agentsDoc.includes('verify:public-surface'),
+      'AGENTS should include the public surface verification command'
     );
   });
 
-  test('documented gateway health endpoints match deploy targets', () => {
+  test('public deploy target placeholders remain non-live', () => {
     assert.ok(
-      agentsDoc.includes(deployTargets.staging.gatewayHealthUrl),
-      'AGENTS should use the canonical staging gateway health URL'
+      deployTargets.staging.publicUrl.includes('.invalid'),
+      'staging target should be a placeholder'
     );
     assert.ok(
-      agentsDoc.includes(deployTargets.production.gatewayHealthUrl),
-      'AGENTS should use the canonical production gateway health URL'
+      deployTargets.production.publicUrl.includes('.invalid'),
+      'production target should be a placeholder'
     );
     assert.ok(
-      stagingRunbook.includes(deployTargets.staging.gatewayHealthUrl),
-      'staging runbook should use the canonical staging gateway health URL'
+      deployTargets.staging.gatewayHealthUrl.includes('.invalid'),
+      'staging health target should be a placeholder'
     );
     assert.ok(
-      productionRunbook.includes(deployTargets.production.gatewayHealthUrl),
-      'production runbook should use the canonical production gateway health URL'
-    );
-
-    assert.ok(
-      productionRunbook.includes(deployTargets.production.readyUrl),
-      'production runbook should reference the canonical production ready URL'
+      deployTargets.production.gatewayHealthUrl.includes('.invalid'),
+      'production health target should be a placeholder'
     );
   });
 
@@ -111,7 +97,7 @@ describe('Agent docs consistency', () => {
       ['docs/runbooks/deploy-production.md', productionRunbook],
     ] as const) {
       assert.ok(
-        !content.includes('classroompath.duckdns.org'),
+        !content.includes('classroompath.example.invalid'),
         `${label} should not reference the retired production duckdns hostname`
       );
       assert.ok(

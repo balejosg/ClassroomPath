@@ -52,8 +52,8 @@ describe('release gate client', () => {
 
     const client = createReleaseGateClient({
       baseUrl: `http://staging-lan.test:${address.port}`,
-      expectedOrigin: 'http://192.168.1.114:3000',
-      requestOrigin: 'http://192.168.1.114:3000',
+      expectedOrigin: 'http://staging-host.example.invalid:3000',
+      requestOrigin: 'http://staging-host.example.invalid:3000',
       resolvedAddress: '127.0.0.1',
       timeoutMs: 2_000,
     });
@@ -65,11 +65,14 @@ describe('release gate client', () => {
     }>('auth.register', { email: 'teacher@example.com' });
 
     assert.deepEqual(payload.body, { email: 'teacher@example.com' });
-    assert.equal(payload.origin, 'http://192.168.1.114:3000');
+    assert.equal(payload.origin, 'http://staging-host.example.invalid:3000');
     assert.equal(payload.url, '/cp/trpc/auth.register');
   });
 
   it('extracts verification tokens from public URLs', () => {
-    assert.equal(getVerificationToken('http://192.168.1.114:3000/login?token=abc123'), 'abc123');
+    assert.equal(
+      getVerificationToken('http://staging-host.example.invalid:3000/login?token=abc123'),
+      'abc123'
+    );
   });
 });

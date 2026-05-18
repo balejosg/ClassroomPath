@@ -14,8 +14,8 @@ source "$SCRIPT_DIR/lib/staging-gates.sh"
 source "$SCRIPT_DIR/lib/release-state.sh"
 
 persist_staging_verification_evidence() {
-  local state_dir="${STATE_DIR:-/opt/classroompath/release-state}"
-  local app_dir="${APP_DIR:-/opt/classroompath/app}"
+  local state_dir="${STATE_DIR:-/srv/classroompath/release-state}"
+  local app_dir="${APP_DIR:-/srv/classroompath/app}"
   local openpath_sha=""
 
   mkdir -p "$state_dir"

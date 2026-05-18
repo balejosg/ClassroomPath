@@ -300,7 +300,7 @@ jobs:
           STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
           STAGING_DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
           STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
-          STAGING_DEPLOY_LAN_HOST: 192.168.1.114
+          STAGING_DEPLOY_LAN_HOST: staging-host.example.invalid
           STAGING_DEPLOY_LAN_PORT: 22
           RUNNER_ENVIRONMENT_CONTEXT: ${{ runner.environment }}
         run: |

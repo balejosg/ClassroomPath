@@ -49,7 +49,9 @@ describe('setup-stripe-billing', () => {
     );
 
     const updated = updateEnvFileContents(
-      ['PUBLIC_URL=https://classroompath.eu', 'STRIPE_PILOT_PRICE=old_pilot'].join('\n'),
+      ['PUBLIC_URL=https://classroompath.example.invalid', 'STRIPE_PILOT_PRICE=old_pilot'].join(
+        '\n'
+      ),
       envValues
     );
 
@@ -60,10 +62,13 @@ describe('setup-stripe-billing', () => {
   });
 
   test('normalizes public url helpers and detects mode', () => {
-    assert.equal(normalizePublicUrl('https://classroompath.eu///'), 'https://classroompath.eu');
     assert.equal(
-      buildWebhookUrl('https://classroompath.eu/'),
-      'https://classroompath.eu/cp/stripe/webhook'
+      normalizePublicUrl('https://classroompath.example.invalid///'),
+      'https://classroompath.example.invalid'
+    );
+    assert.equal(
+      buildWebhookUrl('https://classroompath.example.invalid/'),
+      'https://classroompath.example.invalid/cp/stripe/webhook'
     );
     assert.equal(detectStripeMode('sk_live_123'), 'live');
     assert.equal(detectStripeMode('sk_test_123'), 'test');

@@ -29,7 +29,7 @@ const projectRoot = resolve(dirname(currentFilePath), '..');
 const DEFAULT_OPENPATH_REPO = 'balejosg/openpath';
 const RC_WORKFLOW = 'release-candidate-images.yml';
 const PRODUCTION_DEPLOY_WORKFLOW = 'deploy.yml';
-const STATE_DIR = '/opt/classroompath/release-state';
+const STATE_DIR = '/srv/classroompath/release-state';
 
 function usage() {
   return `Usage: npm run release:status -- [--sha <classroompath-sha>] [--openpath-sha <sha>] [--json]
@@ -410,7 +410,7 @@ function resolveStagingAccess(env) {
     env.STAGING_SSH_KEY ||
     `${env.HOME}/.ssh/classroompath_staging`;
   return {
-    host: env.STAGING_HOST || '192.168.1.114',
+    host: env.STAGING_HOST || 'staging-host.example.invalid',
     user: env.STAGING_USER || 'deploy',
     port: env.STAGING_PORT || '22',
     key: expandTilde(key, env),
@@ -424,7 +424,7 @@ function resolveProductionAccess(env) {
     env.DEPLOY_SSH_KEY ||
     `${env.HOME}/.ssh/classroompath_deploy`;
   return {
-    host: env.DEPLOY_HOST || 'classroompath.eu',
+    host: env.DEPLOY_HOST || 'classroompath.example.invalid',
     user: env.DEPLOY_USER || 'deploy',
     port: env.DEPLOY_PORT || '22',
     key: expandTilde(key, env),

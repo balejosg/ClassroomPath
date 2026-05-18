@@ -35,4 +35,4 @@ Start with **ClassroomPath** if your first question is:
 - OpenPath OSS adoption path: [`balejosg/openpath/docs/evaluation/adoption-path.md`](https://github.com/balejosg/openpath/blob/main/docs/evaluation/adoption-path.md)
 - ClassroomPath security and trust guide: [`security-trust.md`](security-trust.md)
 - ClassroomPath IT evaluation checklist: [`it-evaluation-checklist.md`](it-evaluation-checklist.md)
-- Demo, pilot, and pricing route: [classroompath.eu](https://classroompath.eu/)
+- Demo, pilot, and pricing route: [classroompath.example.invalid](https://classroompath.example.invalid/)

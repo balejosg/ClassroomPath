@@ -343,7 +343,7 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
   before(() => {
     if (!SMOKE_TEST_URL) {
       console.log('\nWARN: SMOKE_TEST_URL not set. Skipping smoke tests.');
-      console.log('   Set SMOKE_TEST_URL=https://your-staging-url.com to run these tests.\n');
+      console.log('   Set SMOKE_TEST_URL=https://staging.example.invalid to run these tests.\n');
       return;
     }
 

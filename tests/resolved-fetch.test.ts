@@ -46,7 +46,7 @@ test('resolvedFetch can connect via explicit IP while preserving the canonical h
     targetUrl,
     {
       headers: {
-        Origin: 'http://192.168.1.114:3000',
+        Origin: 'http://staging-host.example.invalid:3000',
       },
     },
     {
@@ -60,7 +60,7 @@ test('resolvedFetch can connect via explicit IP while preserving the canonical h
 
   const payload = (await response.json()) as { host?: string; origin?: string; url?: string };
   assert.equal(payload.host, `staging-lan.test:${address.port}`);
-  assert.equal(payload.origin, 'http://192.168.1.114:3000');
+  assert.equal(payload.origin, 'http://staging-host.example.invalid:3000');
   assert.equal(payload.url, '/cp/health');
 });
 
@@ -86,7 +86,7 @@ test('resolvedFetch preserves 204 responses without constructing an invalid body
     {
       method: 'OPTIONS',
       headers: {
-        Origin: 'http://192.168.1.114:3000',
+        Origin: 'http://staging-host.example.invalid:3000',
       },
     },
     {

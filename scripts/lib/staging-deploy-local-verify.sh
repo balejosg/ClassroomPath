@@ -14,7 +14,7 @@ run_staging_local_health_checks() {
         log_success "$line"
     done <<< "$health_check_output"
 
-    STAGING_DEPLOY_IMAGE_SOURCE=$("${SSH_CMD[@]}" "awk -F= '/^IMAGE_SOURCE=/{print \$2}' /opt/classroompath/release-state/current-images.env 2>/dev/null || true")
+    STAGING_DEPLOY_IMAGE_SOURCE=$("${SSH_CMD[@]}" "awk -F= '/^IMAGE_SOURCE=/{print \$2}' /srv/classroompath/release-state/current-images.env 2>/dev/null || true")
     if [ -n "$STAGING_DEPLOY_IMAGE_SOURCE" ]; then
         log_info "Staging image source: $STAGING_DEPLOY_IMAGE_SOURCE"
     fi

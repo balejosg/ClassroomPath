@@ -16,7 +16,7 @@ if [ -f "$ENV_LOCAL" ]; then
   load_env_file "$ENV_LOCAL" || true
 fi
 
-STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
+STAGING_HOST="${STAGING_HOST:-staging-host.example.invalid}"
 STAGING_USER="${STAGING_USER:-deploy}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_CONFIG="${STAGING_SSH_CONFIG:-/dev/null}"
@@ -95,8 +95,8 @@ PRODUCTION_SSH_CMD=(
 
 log_info "Running current staging promotion preflight..."
 
-"${STAGING_SSH_CMD[@]}" "cat /opt/classroompath/release-state/current-images.env" > "$current_state_file"
-"${STAGING_SSH_CMD[@]}" "cat /opt/classroompath/release-state/staging-verification.env" > "$verification_state_file"
+"${STAGING_SSH_CMD[@]}" "cat /srv/classroompath/release-state/current-images.env" > "$current_state_file"
+"${STAGING_SSH_CMD[@]}" "cat /srv/classroompath/release-state/staging-verification.env" > "$verification_state_file"
 "${PRODUCTION_SSH_CMD[@]}" "true" >/dev/null
 
 target_sha="$(read_env_value "$current_state_file" APP_SHA)"

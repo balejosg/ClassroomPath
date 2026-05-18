@@ -1,13 +1,19 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
 const projectRoot = resolve(scriptDir, '..');
-const configPath = resolve(projectRoot, 'config/deploy-targets.json');
+const publicConfigPath = resolve(projectRoot, 'config/deploy-targets.json');
+const localConfigPath = resolve(projectRoot, 'config/deploy-targets.local.json');
+const explicitConfigPath = process.env.CLASSROOMPATH_DEPLOY_TARGETS_FILE
+  ? resolve(projectRoot, process.env.CLASSROOMPATH_DEPLOY_TARGETS_FILE)
+  : '';
 
 export function loadDeployTargets() {
+  const configPath =
+    explicitConfigPath || (existsSync(localConfigPath) ? localConfigPath : publicConfigPath);
   return JSON.parse(readFileSync(configPath, 'utf8'));
 }
 
@@ -21,6 +27,27 @@ export function getDeployTarget(environment) {
   }
 
   return target;
+}
+
+function isPlaceholderValue(value) {
+  return typeof value === 'string' && value.includes('.invalid');
+}
+
+export function assertDeployTargetReady(environment, target) {
+  const placeholderFields = Object.entries(target)
+    .filter(([, value]) => isPlaceholderValue(value))
+    .map(([field]) => field);
+
+  if (
+    placeholderFields.length > 0 &&
+    process.env.CLASSROOMPATH_DEPLOY_TARGETS_ALLOW_EXAMPLE !== '1'
+  ) {
+    throw new Error(
+      `Deploy target "${environment}" uses placeholder .invalid values in ${placeholderFields.join(
+        ', '
+      )}. Create config/deploy-targets.local.json or set CLASSROOMPATH_DEPLOY_TARGETS_FILE to a private config file.`
+    );
+  }
 }
 
 function toOutputKey(field) {
@@ -56,11 +83,13 @@ function main() {
       );
     }
 
+    assertDeployTargetReady(environment, target);
     process.stdout.write(`${target[field]}\n`);
     return;
   }
 
   if (command === 'outputs') {
+    assertDeployTargetReady(environment, target);
     process.stdout.write(`environment=${environment}\n`);
     for (const [targetField, value] of Object.entries(target)) {
       process.stdout.write(`${toOutputKey(targetField)}=${value}\n`);

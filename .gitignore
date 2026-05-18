@@ -5,6 +5,7 @@ api/package-lock.json
 # Environment
 .env
 config/.env
+config/deploy-targets.local.json
 
 # Build artifacts
 dist/

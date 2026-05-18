@@ -276,7 +276,7 @@ describe('Workflow core contracts', () => {
     assert.equal(inspectJob?.['runs-on'], 'ubuntu-latest');
     assert.ok(
       workflowText.includes('gh api repos/${{ github.repository }}/actions/runners') &&
-        workflowText.includes('classroompath-windows-103') &&
+        workflowText.includes('classroompath-windows-runner') &&
         workflowText.includes('Resource not accessible by integration') &&
         workflowText.includes('runner_online=unknown') &&
         workflowText.includes('runner-health-unavailable'),
@@ -291,7 +291,7 @@ describe('Workflow core contracts', () => {
       'classroompath',
     ]);
     assert.ok(
-      workflowText.includes('classroompath-windows-103'),
+      workflowText.includes('classroompath-windows-runner'),
       'self-hosted Windows runner smoke should verify the expected ClassroomPath runner name'
     );
     assert.ok(
@@ -678,7 +678,9 @@ describe('Workflow core contracts', () => {
     assert.ok(windowsFirefoxWorkflowText.includes('workflow_call'));
     assert.ok(windowsFirefoxWorkflowText.includes('staging-verification.env'));
     assert.ok(windowsFirefoxWorkflowText.includes('RUNNER_ENVIRONMENT_CONTEXT'));
-    assert.ok(windowsFirefoxWorkflowText.includes('STAGING_DEPLOY_LAN_HOST: 192.168.1.114'));
+    assert.ok(
+      windowsFirefoxWorkflowText.includes('STAGING_DEPLOY_LAN_HOST: staging-host.example.invalid')
+    );
     assert.ok(windowsFirefoxWorkflowText.includes('STAGING_DEPLOY_LAN_PORT: 22'));
     assert.ok(
       windowsFirefoxSteps.some(
@@ -733,7 +735,11 @@ describe('Workflow core contracts', () => {
       'proxmox',
       'classroompath',
     ]);
-    assert.ok(productionBootstrapWorkflowText.includes('STAGING_DEPLOY_LAN_HOST: 192.168.1.114'));
+    assert.ok(
+      productionBootstrapWorkflowText.includes(
+        'STAGING_DEPLOY_LAN_HOST: staging-host.example.invalid'
+      )
+    );
     assert.ok(productionBootstrapWorkflowText.includes('STAGING_DEPLOY_LAN_PORT: 22'));
     assert.ok(
       productionBootstrapSteps.some(

@@ -98,7 +98,7 @@ function loadStagingVerification(options) {
   }
   if (options.stagingHost || options.command === 'run-and-persist') {
     return readStagingVerificationFromHost({
-      stagingHost: options.stagingHost || '192.168.1.114',
+      stagingHost: options.stagingHost || 'staging-host.example.invalid',
       stagingUser: options.stagingUser,
       stagingPort: options.stagingPort,
       stagingSshKey: options.stagingSshKey,

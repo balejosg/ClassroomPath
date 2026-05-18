@@ -31,13 +31,13 @@ resolve_default_deploy_host() {
   printf '%s\n' "${public_url%%/*}"
 }
 
-STAGING_HOST="${STAGING_HOST:-192.168.1.114}"
-STAGING_USER="${STAGING_USER:-deploy}"
+STAGING_HOST="${STAGING_HOST:-}"
+STAGING_USER="${STAGING_USER:-}"
 STAGING_PORT="${STAGING_PORT:-22}"
 STAGING_SSH_CONFIG="${STAGING_SSH_CONFIG:-/dev/null}"
 STAGING_SSH_STRICT_HOSTKEY="${STAGING_SSH_STRICT_HOSTKEY:-accept-new}"
 DEPLOY_HOST="${DEPLOY_HOST:-$(resolve_default_deploy_host)}"
-DEPLOY_USER="${DEPLOY_USER:-deploy}"
+DEPLOY_USER="${DEPLOY_USER:-}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"
 DEPLOY_SSH_STRICT_HOSTKEY="${DEPLOY_SSH_STRICT_HOSTKEY:-accept-new}"
@@ -49,6 +49,14 @@ fi
 
 if [ -z "${STAGING_SSH_KEY:-}" ]; then
   die "STAGING_SSH_KEY not set (set it in .env.local or export it)" 1
+fi
+
+if [ -z "$STAGING_HOST" ] || [ -z "$STAGING_USER" ]; then
+  die "STAGING_HOST and STAGING_USER must be set in private config before promotion verification" 1
+fi
+
+if [ -z "$DEPLOY_USER" ]; then
+  die "DEPLOY_USER must be set in private config before promotion verification" 1
 fi
 
 STAGING_SSH_KEY="$(expand_tilde "$STAGING_SSH_KEY")"
@@ -196,8 +204,8 @@ PRODUCTION_SSH_CMD=(
 
 verify_production_container_platform_ready "$(node "$SCRIPT_DIR/deploy-targets.mjs" get production containerPlatform)"
 
-"${SSH_CMD[@]}" "cat /opt/classroompath/release-state/current-images.env" > "$current_state_file"
-"${SSH_CMD[@]}" "cat /opt/classroompath/release-state/staging-verification.env" > "$verification_state_file"
+"${SSH_CMD[@]}" "cat /srv/classroompath/release-state/current-images.env" > "$current_state_file"
+"${SSH_CMD[@]}" "cat /srv/classroompath/release-state/staging-verification.env" > "$verification_state_file"
 
 if ! node "$SCRIPT_DIR/prepromotion-runner-rehearsal.mjs" verify \
   --staging-verification "$verification_state_file" \
@@ -209,8 +217,8 @@ if ! node "$SCRIPT_DIR/prepromotion-runner-rehearsal.mjs" verify \
   exit 1
 fi
 
-if "${PRODUCTION_SSH_CMD[@]}" "test -f /opt/classroompath/release-state/current-images.env" >/dev/null 2>&1; then
-  "${PRODUCTION_SSH_CMD[@]}" "cat /opt/classroompath/release-state/current-images.env" > "$production_state_file" || true
+if "${PRODUCTION_SSH_CMD[@]}" "test -f /srv/classroompath/release-state/current-images.env" >/dev/null 2>&1; then
+  "${PRODUCTION_SSH_CMD[@]}" "cat /srv/classroompath/release-state/current-images.env" > "$production_state_file" || true
 fi
 
 PRODUCTION_RELEASE_STATE_PATH="$production_state_file" \

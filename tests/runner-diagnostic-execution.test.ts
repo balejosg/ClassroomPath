@@ -19,7 +19,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'windows',
       suite: 'ajax-auto-allow',
       environment: 'staging',
-      baseUrl: 'http://192.168.1.114:3000',
+      baseUrl: 'http://staging-host.example.invalid:3000',
       artifactDir: '/tmp/windows-direct',
       openpathRoot: '/repo/OpenPath',
     });
@@ -114,7 +114,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'windows',
       suite: 'ajax-auto-allow',
       environment: 'production',
-      baseUrl: 'https://classroompath.eu',
+      baseUrl: 'https://classroompath.example.invalid',
       artifactDir: '/tmp/windows-direct',
       openpathRoot: '/repo/OpenPath',
     });
@@ -127,7 +127,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'windows',
       suite: 'ajax-auto-allow',
       environment: 'production',
-      baseUrl: 'https://classroompath.eu',
+      baseUrl: 'https://classroompath.example.invalid',
       artifactDir: '/tmp/windows-direct',
       openpathRoot: '/repo/OpenPath',
       confirmProduction: true,
@@ -141,7 +141,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'linux',
       suite: 'ajax-auto-allow',
       environment: 'staging',
-      baseUrl: 'http://192.168.1.114:3000',
+      baseUrl: 'http://staging-host.example.invalid:3000',
       artifactDir: '/tmp/linux-direct',
     });
 
@@ -161,7 +161,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'windows',
       suite: 'ajax-auto-allow',
       environment: 'staging',
-      baseUrl: 'http://192.168.1.114:3000',
+      baseUrl: 'http://staging-host.example.invalid:3000',
       artifactDir: '/tmp/windows-direct',
       openpathRoot: '/repo/OpenPath',
     });
@@ -169,7 +169,7 @@ describe('runner diagnostic execution plan', () => {
     const env = buildWindowsAjaxCanaryGuestEnvironment({
       plan,
       summary: {
-        apiUrl: 'http://192.168.1.114:3000',
+        apiUrl: 'http://staging-host.example.invalid:3000',
         classroomId: 'classroom_abc-123',
         groupId: 'group-123',
         extensionId: 'openpath-block-monitor@openpath',
@@ -186,7 +186,10 @@ describe('runner diagnostic execution plan', () => {
     });
 
     assert.equal(env.OPENPATH_ROOT, 'C:\\OpenPath');
-    assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL, 'http://192.168.1.114:3000');
+    assert.equal(
+      env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL,
+      'http://staging-host.example.invalid:3000'
+    );
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID, 'group-123');
     assert.equal(env.WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN, 'admin-token');
     assert.equal(
@@ -214,7 +217,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'linux',
       suite: 'ajax-auto-allow',
       environment: 'staging',
-      baseUrl: 'http://192.168.1.114:3000',
+      baseUrl: 'http://staging-host.example.invalid:3000',
       artifactDir: '/tmp/linux-direct',
       confirmLocalStateReset: true,
     });
@@ -226,7 +229,10 @@ describe('runner diagnostic execution plan', () => {
       extensionId: 'monitor-bloqueos@openpath',
     });
 
-    assert.equal(env.LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL, 'http://192.168.1.114:3000');
+    assert.equal(
+      env.LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL,
+      'http://staging-host.example.invalid:3000'
+    );
     assert.equal(env.LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID, 'group-123');
     assert.equal(env.LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN, 'admin-token');
     assert.equal(
@@ -241,7 +247,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'windows',
       suite: 'ajax-auto-allow',
       environment: 'staging',
-      baseUrl: 'http://192.168.1.114:3000',
+      baseUrl: 'http://staging-host.example.invalid:3000',
       artifactDir: '/tmp/windows-direct',
       openpathRoot: '/repo/OpenPath',
     });
@@ -275,7 +281,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'windows',
       suite: 'ajax-auto-allow',
       environment: 'staging',
-      baseUrl: 'http://192.168.1.114:3000',
+      baseUrl: 'http://staging-host.example.invalid:3000',
       artifactDir: '/tmp/windows-direct',
       openpathRoot: '/repo/OpenPath',
     });
@@ -285,13 +291,13 @@ describe('runner diagnostic execution plan', () => {
       emit: (line) => lines.push(line),
       prefix: 'guest-env: ',
       environment: {
-        WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL: 'http://192.168.1.114:3000',
+        WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL: 'http://staging-host.example.invalid:3000',
         WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: 'selenium',
       },
     });
 
     assert.deepEqual(lines, [
-      'guest-env: WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=http://192.168.1.114:3000',
+      'guest-env: WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=http://staging-host.example.invalid:3000',
       'guest-env: WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE=selenium',
     ]);
   });
@@ -301,7 +307,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'windows',
       suite: 'ajax-auto-allow',
       environment: 'staging',
-      baseUrl: 'http://192.168.1.114:3000',
+      baseUrl: 'http://staging-host.example.invalid:3000',
       artifactDir: '/tmp/windows-direct',
       openpathRoot: '/repo/OpenPath',
     });
@@ -322,7 +328,7 @@ describe('runner diagnostic execution plan', () => {
       platform: 'linux',
       suite: 'ajax-auto-allow',
       environment: 'staging',
-      baseUrl: 'http://192.168.1.114:3000',
+      baseUrl: 'http://staging-host.example.invalid:3000',
       artifactDir: '/tmp/linux-direct',
       confirmLocalStateReset: true,
     });

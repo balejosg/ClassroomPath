@@ -1,126 +1,17 @@
-# Runbook: Deploy Staging
+# Public Note: Staging Deployment
 
-> Status: maintained
-> Applies to: ClassroomPath staging environment
-> Last verified: 2026-04-13
+> Status: public stub
+> Applies to: ClassroomPath public repository surface
 > Source of truth: `docs/runbooks/deploy-staging.md`
 
-Source files:
+ClassroomPath staging deployment runbooks are operational material and are maintained privately.
+They may include environment targets, SSH access details, release-state paths, smoke URLs, and
+operator procedures that do not belong in the public source-available repository.
 
-- `scripts/deploy-staging-local.sh`
-- `scripts/deploy-staging-remote.sh`
-- `scripts/check-staging-health.sh`
-- `scripts/run-staging-verification.sh`
-- `scripts/persist-staging-verification-remote.sh`
-- `config/deploy-targets.json`
+For local private evaluation, copy `config/deploy-targets.example.json` to
+`config/deploy-targets.local.json` and use placeholder or private non-production values. The
+committed deploy targets intentionally use `.invalid` hosts and deployment commands fail closed until
+private targets are supplied.
 
-Staging deploys are executed locally or by the `Nightly Staging Candidate` workflow via SSH and
-always deploy `origin/main`.
-
-Normal mode uses release-candidate images and their matching migrations image. `STAGING_IMAGE_MODE=source-build`
-is an explicit recovery/debug exception and should not become the default path.
-
-## Prerequisites
-
-- `.env.local` created from `.env.local.example`
-- SSH access to the staging host
-- if release-candidate images are private, valid `STAGING_GHCR_USERNAME` and `STAGING_GHCR_TOKEN`
-- optional local billing overrides only when you intentionally need to override the staging billing block
-
-## Canonical Targets
-
-- public URL: `https://classroompath-staging.duckdns.org`
-- gateway health: `http://192.168.1.114:3000/cp/health`
-- gateway readiness: `http://192.168.1.114:3000/cp/ready`
-- upstream health passthrough: `http://192.168.1.114:3000/health`
-
-Machine-readable source of truth: [`config/deploy-targets.json`](../../config/deploy-targets.json)
-
-Staging intentionally uses the LAN HTTP origin because it is a Proxmox VM reached from the operator
-network. The release gate accepts HTTP verification links only when the expected origin is this
-non-localhost LAN staging origin; production promotion keeps the HTTPS-only public-origin contract.
-
-## Standard Flow
-
-```bash
-git add .
-git commit -m "<message>"
-git push origin main
-npm run deploy:staging
-```
-
-## Nightly Staging Candidate
-
-The scheduled `Nightly Staging Candidate` workflow runs on the LAN-reachable self-hosted Linux
-runner. It checks out `main`, waits for the matching `release-candidate-images-<sha>` manifest, and
-runs `npm run deploy:staging:assume-yes`.
-
-Staging is latest-only: the only promotable candidate is the release currently running on staging.
-Older nightly runs are implicit history. Once a later nightly deploys staging, the previous staging
-candidate becomes superseded and cannot be promoted from historical artifacts.
-
-Nightly states:
-
-- `failed`: staging was not updated successfully
-- `staged`: staging now runs this candidate and its verification evidence is current
-- `superseded-by-next-nightly`: a later staging deploy replaced this candidate
-- `promoted`: the current staging candidate was promoted by creating a production tag
-
-Manual QA must always inspect what the staging URL shows now, not an older workflow artifact.
-
-## What The Script Does
-
-1. Loads `.env.local`
-2. Resolves the canonical staging URL from `config/deploy-targets.json`
-3. Prepares the release-candidate manifest and SSH payload
-4. Runs the remote staging deploy
-5. Polls remote health and readiness
-6. Runs the staging verification runner
-7. Writes reusable evidence to `/opt/classroompath/release-state/staging-verification.env`
-
-## Expected Result
-
-- script exits `0`
-- script prints `Verification Status: PASS` or `Verification Status: PASS_WITH_FALLBACK`
-- script prints `Release Gate: success`
-- script reports `Image Source: release-candidate` unless you intentionally forced `source-build`
-- health and readiness pass
-- `/opt/classroompath/release-state/staging-verification.env` exists for the promoted SHA
-- `/opt/classroompath/release-state/staging-deploy-context.env` records failure/recovery context when needed
-
-If startup or readiness fails after migrations, staging attempts application-level recovery to the
-previous release state. This does not imply automatic database rollback.
-
-## Promotion Gate
-
-`npm run deploy:staging` and the nightly workflow already run staging verification and record
-reusable release-gate evidence. Production promotion should consume the live staging evidence
-instead of rebuilding the same proof.
-
-Optional diagnostic rerun without redeploying:
-
-```bash
-npm run test:release-gate:staging
-```
-
-## Debugging
-
-```bash
-ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-gateway --tail 50"
-ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "docker logs classroompath-api --tail 50"
-ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "cat /opt/classroompath/release-state/staging-deploy-context.env"
-ssh -i ~/.ssh/classroompath_staging deploy@192.168.1.114 "cat /opt/classroompath/release-state/staging-verification.env"
-curl -sS http://192.168.1.114:3000/cp/ready
-curl -sS http://192.168.1.114:3000/api/config
-```
-
-If the script reports `PASS_WITH_FALLBACK`, the smoke lane used direct-IP or relaxed-CORS fallback.
-For LAN staging that is expected. Treat it as staging evidence, but do not infer production HTTPS
-parity from that result alone.
-
-The GitHub-hosted Linux bootstrap canary is skipped for LAN staging targets and records
-`STAGING_LINUX_BOOTSTRAP_RESULT=skipped-lan-staging`. GitHub-hosted runners cannot route to
-`192.168.1.114`, so this skip is the expected result after removing the public DuckDNS staging
-ingress. When Linux bootstrap evidence is required for a release-risk decision, run a LAN-reachable
-direct runner or a production-target canary instead of treating the hosted staging skip as target
-platform evidence.
+Public reviewers can use the evaluation and contract docs linked from `docs/INDEX.md` to assess the
+architecture without access to live staging procedures.

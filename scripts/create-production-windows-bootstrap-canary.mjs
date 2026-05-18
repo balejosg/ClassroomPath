@@ -6,7 +6,7 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
 
-const DEFAULT_API_URL = 'https://classroompath.eu';
+const DEFAULT_API_URL = 'https://classroompath.example.invalid';
 const WINDOWS_AJAX_AUTO_ALLOW_ORIGIN_HOST = 'ajax-auto-allow-origin.127.0.0.1.sslip.io';
 const WINDOWS_EXPLICIT_AJAX_ALLOWLIST_HOSTS = Object.freeze([
   'ajax-auto-allow-target.127.0.0.1.sslip.io',

@@ -28,7 +28,7 @@ import {
 } from './lib/runner-diagnostic-execution.mjs';
 
 const DEFAULT_ENVIRONMENT = 'staging';
-const DEFAULT_PROXMOX_HOST = 'whitelist-proxmox';
+const DEFAULT_PROXMOX_HOST = 'proxmox-host.example.invalid';
 const DEFAULT_WINDOWS_RUNNER_VMID = '103';
 const DEFAULT_CANARY_TIMEOUT_MS = '180000';
 const DEFAULT_POST_FAILURE_OBSERVATION_MS = '60000';
@@ -601,7 +601,7 @@ function redactProvisionOutputs(outputs) {
 function resolveRemoteAccess(environment, env) {
   if (environment === 'staging') {
     return {
-      host: env.STAGING_HOST ?? '192.168.1.114',
+      host: env.STAGING_HOST ?? 'staging-host.example.invalid',
       user: env.STAGING_USER ?? 'deploy',
       port: env.STAGING_PORT ?? '22',
       key: expandTilde(env.STAGING_SSH_KEY ?? ''),
@@ -622,7 +622,7 @@ function readRemoteEnvKey(access, key) {
     throw new Error(`SSH key is required to read ${key} from the target host`);
   }
 
-  const remote = `grep '^${key}=' /opt/classroompath/app/config/.env | sed 's/^${key}=//' | head -n1`;
+  const remote = `grep '^${key}=' /srv/classroompath/app/config/.env | sed 's/^${key}=//' | head -n1`;
   return runCommand(
     [
       'ssh',

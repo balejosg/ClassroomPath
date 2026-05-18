@@ -61,7 +61,7 @@ describe('playwright global setup', () => {
   });
 
   test('skips local mutations for external BASE_URL values', async () => {
-    process.env.BASE_URL = 'https://classroompath-staging.example.test';
+    process.env.BASE_URL = 'https://staging.classroompath.example.invalid.test';
     const fetchMock = mock.fn(async () => ({ ok: true }) as Response);
     const execSyncMock = mock.method(commandRunner, 'execSync', () => Buffer.from(''));
     global.fetch = fetchMock as typeof fetch;
