@@ -185,6 +185,18 @@ test('builds a local promotion status summary from read-only command sources', a
   assert.ok(commandLines.some((line) => line.startsWith('git rev-parse HEAD')));
   assert.ok(commandLines.some((line) => line.startsWith('gh run list')));
   assert.ok(commandLines.some((line) => line.startsWith('ssh ')));
+  assert.ok(
+    commandLines.some((line) =>
+      line.includes('/srv/classroompath/release-state/current-images.env')
+    ),
+    'release status should keep staging release-state reads on the staging deploy root'
+  );
+  assert.ok(
+    commandLines.some((line) =>
+      line.includes('/opt/classroompath/release-state/current-images.env')
+    ),
+    'release status should read production release-state from the production deploy root'
+  );
   assert.equal(
     commandLines.some((line) =>
       /(git push|git tag|gh workflow run|gh run rerun|npm run deploy|promote:production)/.test(line)

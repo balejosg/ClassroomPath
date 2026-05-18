@@ -41,6 +41,8 @@ DEPLOY_USER="${DEPLOY_USER:-}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"
 DEPLOY_SSH_STRICT_HOSTKEY="${DEPLOY_SSH_STRICT_HOSTKEY:-accept-new}"
+PRODUCTION_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"
+PRODUCTION_CURRENT_STATE_PATH="${PRODUCTION_DEPLOY_ROOT%/}/release-state/current-images.env"
 DEFAULT_DEPLOY_SSH_KEY="$HOME/.ssh/classroompath_deploy"
 
 if [ -z "${DEPLOY_SSH_KEY:-}" ] && [ -f "$DEFAULT_DEPLOY_SSH_KEY" ]; then
@@ -217,8 +219,8 @@ if ! node "$SCRIPT_DIR/prepromotion-runner-rehearsal.mjs" verify \
   exit 1
 fi
 
-if "${PRODUCTION_SSH_CMD[@]}" "test -f /srv/classroompath/release-state/current-images.env" >/dev/null 2>&1; then
-  "${PRODUCTION_SSH_CMD[@]}" "cat /srv/classroompath/release-state/current-images.env" > "$production_state_file" || true
+if "${PRODUCTION_SSH_CMD[@]}" "test -f '$PRODUCTION_CURRENT_STATE_PATH'" >/dev/null 2>&1; then
+  "${PRODUCTION_SSH_CMD[@]}" "cat '$PRODUCTION_CURRENT_STATE_PATH'" > "$production_state_file" || true
 fi
 
 PRODUCTION_RELEASE_STATE_PATH="$production_state_file" \

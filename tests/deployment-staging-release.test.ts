@@ -520,11 +520,12 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(
       tagProductionScript.includes('git tag -a "$TAG_NAME" "$main_sha" -F "$tag_message_file"')
     );
-    assert.ok(runbook.includes('npm run verify:promotion-ready'));
-    assert.ok(runbook.includes('npm run promote:production -- v1.2.4'));
-    assert.ok(runbook.includes('Production server images support linux/arm64'));
-    assert.ok(runbook.includes('npm run verify:production-host -- <candidate-host>'));
-    assert.ok(secretsDoc.includes('npm run verify:production-host -- <candidate-host>'));
+    assert.ok(
+      runbook.includes(
+        'The public repository intentionally does not document production deployment commands or live targets.'
+      )
+    );
+    assert.ok(secretsDoc.includes('Use `npm run verify:public-surface`'));
     assert.ok(packageJson.includes('"verify:production-host"'));
     assert.ok(
       packageJson.includes('"deploy:staging:assume-yes"'),
@@ -545,11 +546,27 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(
       productionHostReadinessScript.includes('verify_host_arch_matches_target_platform') &&
         productionHostReadinessScript.includes('linux/arm64') &&
-        productionHostReadinessScript.includes('test -d /srv/classroompath/app/.git') &&
+        productionHostReadinessScript.includes(
+          'CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"'
+        ) &&
+        productionHostReadinessScript.includes('app_dir="${deploy_root%/}/app"') &&
+        productionHostReadinessScript.includes('test -d "$app_dir/.git"') &&
         productionHostReadinessScript.includes('docker compose version') &&
         productionHostReadinessScript.includes('docker info') &&
         productionHostReadinessScript.includes('current-images.env') &&
         !productionHostReadinessScript.includes('qemu-x86_64')
+    );
+    assert.ok(
+      promotionReadyScript.includes(
+        'PRODUCTION_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"'
+      ) &&
+        promotionReadyScript.includes(
+          'PRODUCTION_CURRENT_STATE_PATH="${PRODUCTION_DEPLOY_ROOT%/}/release-state/current-images.env"'
+        ) &&
+        !promotionReadyScript.includes(
+          'test -f /srv/classroompath/release-state/current-images.env'
+        ),
+      'promotion readiness should read production release state from CLASSROOMPATH_DEPLOY_ROOT'
     );
     assert.ok(
       productionHostReadinessScript.includes(

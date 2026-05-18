@@ -283,6 +283,11 @@ describe('Deploy workflow contracts', () => {
     );
     const concurrency = deployWorkflow.concurrency;
     const jobs = deployWorkflow.jobs ?? {};
+    const readProductionReleaseStateStep = findWorkflowStepByName(
+      verifyStagingJob,
+      'Read production release state'
+    );
+    const readProductionReleaseStateScript = String(readProductionReleaseStateStep?.run ?? '');
 
     assert.ok(smokeWorkflowText.includes('./.github/workflows/reusable-smoke-test.yml'));
     assert.ok(smokeWorkflowText.includes('resolve-latest-verifier-image.mjs'));
@@ -379,6 +384,20 @@ describe('Deploy workflow contracts', () => {
     assert.ok(deployWorkflowText.includes('verify-staging-release-state.sh'));
     assert.ok(deployWorkflowText.includes('Extract staging evidence from production tag'));
     assert.ok(deployWorkflowText.includes('promotion-evidence-cli.mjs extract-tag-message'));
+    assert.equal(
+      deployWorkflow.env?.CLASSROOMPATH_DEPLOY_ROOT,
+      "${{ vars.CLASSROOMPATH_DEPLOY_ROOT || '/opt/classroompath' }}"
+    );
+    assert.match(
+      readProductionReleaseStateScript,
+      /production_release_state_path="\$\{CLASSROOMPATH_DEPLOY_ROOT%\/\}\/release-state\/current-images\.env"/
+    );
+    assert.match(readProductionReleaseStateScript, /"\$production_release_state_path"/);
+    assert.doesNotMatch(
+      readProductionReleaseStateScript,
+      /\/srv\/classroompath\/release-state\/current-images\.env/,
+      'production release-state reads must use CLASSROOMPATH_DEPLOY_ROOT, not the staging root'
+    );
     assert.ok(deployWorkflowText.includes('Resolve OpenPath required-check base'));
     assert.ok(deployWorkflowText.includes('OPENPATH_BASE_SHA'));
     assert.ok(!deployWorkflowText.includes('OPENPATH_REQUIRED_CHECKS: CI Success'));
@@ -934,6 +953,7 @@ describe('Deploy workflow contracts', () => {
       deployWorkflowText,
       /CP_EMAIL_PREFLIGHT_MODE:\s+\$\{\{ needs\.verify-staging-release-state\.outputs\.staging_email_delivery_high_risk == 'true' && 'required' \|\| 'skip' \}\}/
     );
+    assert.match(deployWorkflowText, /envs: .*CLASSROOMPATH_DEPLOY_ROOT/);
     assert.match(deployWorkflowText, /envs: .*CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA/);
     assert.match(deployWorkflowText, /envs: .*CP_EMAIL_PREFLIGHT_MODE/);
     assert.ok(!deployNeeds.includes('release-gate-staging'));

@@ -28,6 +28,7 @@ Environment:
   DEPLOY_SSH_KEY              Private key path
   DEPLOY_SSH_CONFIG           SSH client config file (default: /dev/null)
   DEPLOY_SSH_STRICT_HOSTKEY   StrictHostKeyChecking value (default: accept-new)
+  CLASSROOMPATH_DEPLOY_ROOT   Production deploy root (default: /opt/classroompath)
 EOF
 }
 
@@ -49,6 +50,7 @@ DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_USER="${DEPLOY_USER:-}"
 DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"
 DEPLOY_SSH_STRICT_HOSTKEY="${DEPLOY_SSH_STRICT_HOSTKEY:-accept-new}"
+CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"
 DEFAULT_DEPLOY_SSH_KEY="$HOME/.ssh/classroompath_deploy"
 
 if [ -z "${DEPLOY_SSH_KEY:-}" ] && [ -f "$DEFAULT_DEPLOY_SSH_KEY" ]; then
@@ -95,7 +97,7 @@ SSH_CMD=(
 
 log_info "Checking production host candidate: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PORT}"
 
-"${SSH_CMD[@]}" "TARGET_CONTAINER_PLATFORM=$CLASSROOMPATH_CONTAINER_PLATFORM bash -s" <<'REMOTE_CHECK'
+"${SSH_CMD[@]}" "TARGET_CONTAINER_PLATFORM=$CLASSROOMPATH_CONTAINER_PLATFORM CLASSROOMPATH_DEPLOY_ROOT='$CLASSROOMPATH_DEPLOY_ROOT' bash -s" <<'REMOTE_CHECK'
 set -euo pipefail
 
 fail() {
@@ -128,26 +130,30 @@ verify_host_arch_matches_target_platform() {
 
 verify_host_arch_matches_target_platform
 
+deploy_root="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"
+app_dir="${deploy_root%/}/app"
+state_dir="${deploy_root%/}/release-state"
+
 for required_cmd in bash git docker; do
   command -v "$required_cmd" >/dev/null 2>&1 || fail "Missing required command: $required_cmd"
 done
 
 docker compose version >/dev/null 2>&1 || fail "Missing required Docker Compose plugin"
 
-test -d /srv/classroompath || fail "Missing /srv/classroompath"
-test -d /srv/classroompath/app/.git || fail "Missing git checkout at /srv/classroompath/app"
-test -d /srv/classroompath/app/docker || fail "Missing compose directory at /srv/classroompath/app/docker"
-test -r /srv/classroompath/app/config/.env || fail "Missing readable runtime env file at /srv/classroompath/app/config/.env"
+test -d "$deploy_root" || fail "Missing $deploy_root"
+test -d "$app_dir/.git" || fail "Missing git checkout at $app_dir"
+test -d "$app_dir/docker" || fail "Missing compose directory at $app_dir/docker"
+test -r "$app_dir/config/.env" || fail "Missing readable runtime env file at $app_dir/config/.env"
 
-if [ -f /srv/classroompath/release-state/current-images.env ]; then
-  grep -q '^APP_SHA=' /srv/classroompath/release-state/current-images.env \
+if [ -f "$state_dir/current-images.env" ]; then
+  grep -q '^APP_SHA=' "$state_dir/current-images.env" \
     || fail "Production current-images.env exists but does not include APP_SHA"
   info "Production release state is present"
 else
   info "Production current-images.env is absent; first promotion will use git diff risk detection without a production-state base"
 fi
 
-git -C /srv/classroompath/app rev-parse --is-inside-work-tree >/dev/null
+git -C "$app_dir" rev-parse --is-inside-work-tree >/dev/null
 docker info >/dev/null 2>&1 || fail "Docker daemon is not reachable by this SSH user"
 
 info "Production host candidate passed read-only readiness checks"

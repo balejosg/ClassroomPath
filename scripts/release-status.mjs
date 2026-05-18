@@ -29,7 +29,8 @@ const projectRoot = resolve(dirname(currentFilePath), '..');
 const DEFAULT_OPENPATH_REPO = 'balejosg/openpath';
 const RC_WORKFLOW = 'release-candidate-images.yml';
 const PRODUCTION_DEPLOY_WORKFLOW = 'deploy.yml';
-const STATE_DIR = '/srv/classroompath/release-state';
+const DEFAULT_STAGING_DEPLOY_ROOT = '/srv/classroompath';
+const DEFAULT_PRODUCTION_DEPLOY_ROOT = '/opt/classroompath';
 
 function usage() {
   return `Usage: npm run release:status -- [--sha <classroompath-sha>] [--openpath-sha <sha>] [--json]
@@ -415,6 +416,7 @@ function resolveStagingAccess(env) {
     port: env.STAGING_PORT || '22',
     key: expandTilde(key, env),
     strictHostKey: env.STAGING_SSH_STRICT_HOSTKEY || 'accept-new',
+    deployRoot: env.CLASSROOMPATH_STAGING_DEPLOY_ROOT || DEFAULT_STAGING_DEPLOY_ROOT,
   };
 }
 
@@ -429,6 +431,7 @@ function resolveProductionAccess(env) {
     port: env.DEPLOY_PORT || '22',
     key: expandTilde(key, env),
     strictHostKey: env.DEPLOY_SSH_STRICT_HOSTKEY || 'accept-new',
+    deployRoot: env.CLASSROOMPATH_DEPLOY_ROOT || DEFAULT_PRODUCTION_DEPLOY_ROOT,
   };
 }
 
@@ -441,7 +444,8 @@ function readRemoteState({ runCommand, env, access, fileName }) {
     };
   }
 
-  const remoteCommand = `test -f ${STATE_DIR}/${fileName} && cat ${STATE_DIR}/${fileName}`;
+  const stateDir = `${String(access.deployRoot).replace(/\/+$/, '')}/release-state`;
+  const remoteCommand = `test -f ${stateDir}/${fileName} && cat ${stateDir}/${fileName}`;
   const text = runCommand('ssh', buildSshArgs({ ...access, remoteCommand }), {
     cwd: projectRoot,
     env,
