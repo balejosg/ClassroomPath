@@ -40,15 +40,30 @@ for attempt in $(seq 1 "$MAX_RETRIES"); do
 
   if [ -z "$IP" ]; then
     if command -v nslookup >/dev/null 2>&1; then
-      IP=$(nslookup "$HOST" 1.1.1.1 2>/dev/null | awk '/^Address: / {print $2}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | tail -1 || true)
+      IP=$(
+        nslookup "$HOST" 1.1.1.1 2>/dev/null |
+          awk '
+            /^Non-authoritative answer:/ { in_answer = 1; next }
+            /^Name:/ { in_answer = 1; next }
+            in_answer && /^Address: / { print $2 }
+            in_answer && /^Addresses: / {
+              for (field_index = 2; field_index <= NF; field_index += 1) {
+                print $field_index
+              }
+            }
+          ' |
+          grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' |
+          grep -v '^1\.1\.1\.1$' |
+          head -1 || true
+      )
     fi
   fi
 
   if [ -z "$IP" ]; then
     if command -v powershell.exe >/dev/null 2>&1; then
-      IP=$(powershell.exe -NoProfile -Command "[System.Net.Dns]::GetHostAddresses('$HOST') | Where-Object { \$_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } | Select-Object -First 1 -ExpandProperty IPAddressToString" 2>/dev/null | tr -d '\r' | head -1)
+      IP=$(powershell.exe -NoProfile -Command "[System.Net.Dns]::GetHostAddresses('$HOST') | Where-Object { \$_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } | Select-Object -First 1 -ExpandProperty IPAddressToString" 2>/dev/null | tr -d '\r' | head -1 || true)
     elif command -v pwsh >/dev/null 2>&1; then
-      IP=$(pwsh -NoProfile -Command "[System.Net.Dns]::GetHostAddresses('$HOST') | Where-Object { \$_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } | Select-Object -First 1 -ExpandProperty IPAddressToString" 2>/dev/null | tr -d '\r' | head -1)
+      IP=$(pwsh -NoProfile -Command "[System.Net.Dns]::GetHostAddresses('$HOST') | Where-Object { \$_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } | Select-Object -First 1 -ExpandProperty IPAddressToString" 2>/dev/null | tr -d '\r' | head -1 || true)
     fi
   fi
 
