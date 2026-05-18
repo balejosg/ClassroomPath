@@ -3,6 +3,7 @@ import type { GoogleCredentialResponse } from '../openpath/public-google';
 import '../openpath/public-google';
 
 import { reportError } from '../lib/reportError';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 
 type GoogleButtonText = 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
 
@@ -104,6 +105,7 @@ export default function GoogleLoginButton({
   disabled = false,
   text = 'signin_with',
 }: GoogleLoginButtonProps) {
+  const t = useClassroomPathT();
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const renderTimerIdsRef = useRef<number[]>([]);
   const renderObserverRef = useRef<MutationObserver | null>(null);
@@ -308,7 +310,7 @@ export default function GoogleLoginButton({
           {!buttonRendered && !error ? (
             <div
               className="absolute inset-0 rounded-lg border border-slate-200 bg-slate-100 animate-pulse"
-              aria-label="Cargando botón de Google..."
+              aria-label={t('google.loading.aria')}
             />
           ) : null}
 
@@ -326,7 +328,7 @@ export default function GoogleLoginButton({
             disabled={disabled}
             className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Reintentar Google
+            {t('google.retry')}
           </button>
         ) : null}
       </div>

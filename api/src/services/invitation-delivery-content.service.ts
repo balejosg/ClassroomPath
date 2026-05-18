@@ -1,6 +1,9 @@
+import { getApiCopy } from '../lib/api-content.js';
+
 type OrganizationInvitationEmailParams = {
   expiresAtIso: string;
   invitationUrl: string;
+  locale?: string | null;
   organizationName: string;
   recipientName: string;
   role: 'admin' | 'teacher';
@@ -11,21 +14,23 @@ export function buildOrganizationInvitationEmail(params: OrganizationInvitationE
   subject: string;
   text: string;
 } {
+  const copy = getApiCopy(params.locale).email;
+
   return {
-    subject: `Invitación a ${params.organizationName} en ClassroomPath`,
+    subject: copy.invitationSubject(params.organizationName),
     text: [
-      `Hola ${params.recipientName},`,
+      copy.greeting(params.recipientName),
       '',
-      `${params.organizationName} te invitó a ClassroomPath como ${params.role}.`,
-      `Activa tu acceso aquí: ${params.invitationUrl}`,
+      copy.invitationIntro(params.organizationName, params.role),
+      copy.invitationAction(params.invitationUrl),
       '',
-      `Este enlace vence el ${params.expiresAtIso}.`,
+      copy.linkExpires(params.expiresAtIso),
     ].join('\n'),
     html: [
-      `<p>Hola ${params.recipientName},</p>`,
-      `<p><strong>${params.organizationName}</strong> te invitó a ClassroomPath como <strong>${params.role}</strong>.</p>`,
-      `<p><a href="${params.invitationUrl}">Activa tu acceso</a></p>`,
-      `<p>Este enlace vence el <strong>${params.expiresAtIso}</strong>.</p>`,
+      `<p>${copy.greeting(params.recipientName)}</p>`,
+      `<p>${copy.invitationIntro(params.organizationName, `<strong>${params.role}</strong>`)}</p>`,
+      `<p><a href="${params.invitationUrl}">${copy.invitationActionLabel}</a></p>`,
+      `<p>${copy.linkExpires(`<strong>${params.expiresAtIso}</strong>`)}</p>`,
     ].join(''),
   };
 }

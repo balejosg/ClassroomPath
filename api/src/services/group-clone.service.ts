@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { openpathDb, whitelistGroups, whitelistRules } from '../db/openpath.js';
 import * as schema from '../db/schema.js';
+import { apiCopy } from '../lib/api-content.js';
 import { isOpenPathGroupEnabled } from '../lib/tenant-access.js';
 import { createOrganizationGroupFromRules } from './group-write.service.js';
 
@@ -31,7 +32,7 @@ export async function cloneGroupIntoOrganization(params: {
   if (!isOpenPathGroupEnabled(source[0].enabled)) {
     throw new TRPCError({
       code: 'CONFLICT',
-      message: 'No se puede clonar un grupo inactivo',
+      message: apiCopy.en.errors.inactiveGroupClone,
     });
   }
 

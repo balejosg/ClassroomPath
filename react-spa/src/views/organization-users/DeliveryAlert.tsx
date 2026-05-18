@@ -24,7 +24,7 @@ export function DeliveryAlert({
           onClick={onDismiss}
           className="text-xs font-semibold uppercase tracking-wide opacity-75 hover:opacity-100"
         >
-          Cerrar
+          Close
         </button>
       </div>
     </div>

@@ -16,8 +16,8 @@ import {
 import { RulesPreviewModal } from './group-library/RulesPreviewModal';
 
 const GROUP_LIBRARY_OPEN_TEXT = {
-  openAriaLabel: 'Abrir biblioteca de pol\u00edticas',
-  openSrLabel: 'Biblioteca',
+  openAriaLabel: 'Open policy library',
+  openSrLabel: 'Library',
 } as const;
 
 export function GroupLibrary({ userRole }: { userRole?: string }) {

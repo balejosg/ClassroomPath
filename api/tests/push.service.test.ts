@@ -184,14 +184,74 @@ describe('push service', () => {
       assert.strictEqual(setVapidMock.mock.callCount(), 1);
       assert.strictEqual(sendMock.mock.callCount(), 3);
       const payload = JSON.parse(sendMock.mock.calls[0]?.arguments[1] as string) as {
+        actions?: Array<{ action?: string; title?: string }>;
+        body?: string;
         data?: { approvalUrl?: string; url?: string };
+        title?: string;
       };
+      assert.strictEqual(payload.title, 'New domain request');
+      assert.strictEqual(payload.body, 'science.example is requesting access');
+      assert.deepStrictEqual(payload.actions, [{ action: 'approve', title: 'Approve' }]);
       assert.strictEqual(payload.data?.approvalUrl, '/domain-requests/approve/req_push');
       assert.strictEqual(payload.data?.url, '/domain-requests?highlight=req_push');
       assert.strictEqual(deleteMock.mock.callCount(), 1);
     } finally {
       selectMock.mock.restore();
       deleteMock.mock.restore();
+      setVapidMock.mock.restore();
+      sendMock.mock.restore();
+    }
+  });
+
+  it('supports Spanish push payload copy when requested', async () => {
+    process.env.VAPID_PUBLIC_KEY = 'public-key';
+    process.env.VAPID_PRIVATE_KEY = 'private-key';
+    process.env.VAPID_CONTACT = 'mailto:admin@example.test';
+
+    const rows = [
+      {
+        id: 'push_es',
+        userId: 'teacher_1',
+        groupIds: ['grp-1'],
+        endpoint: 'https://push.example.test/es',
+        p256dh: 'p256dh-es',
+        auth: 'auth-es',
+        userAgent: 'Test Browser',
+        createdAt: new Date('2026-01-02T03:04:05.000Z'),
+      },
+    ];
+    const selectMock = mock.method(openpathDb, 'select', () => ({
+      from: () => ({
+        where: async () => rows,
+      }),
+    }));
+    const setVapidMock = mock.method(webPush, 'setVapidDetails', () => undefined);
+    const sendMock = mock.method(webPush, 'sendNotification', () =>
+      Promise.resolve({ statusCode: 201 })
+    );
+
+    try {
+      await notifyTenantTeachersOfNewRequest(
+        {
+          id: 'req_push_es',
+          domain: 'science.example',
+          reason: 'lesson',
+          requesterEmail: 'student@example.test',
+          groupId: 'grp-1',
+        },
+        { locale: 'es' }
+      );
+
+      const payload = JSON.parse(sendMock.mock.calls[0]?.arguments[1] as string) as {
+        actions?: Array<{ action?: string; title?: string }>;
+        body?: string;
+        title?: string;
+      };
+      assert.strictEqual(payload.title, 'Nueva solicitud de dominio');
+      assert.strictEqual(payload.body, 'science.example solicita acceso');
+      assert.deepStrictEqual(payload.actions, [{ action: 'approve', title: 'Aprobar' }]);
+    } finally {
+      selectMock.mock.restore();
       setVapidMock.mock.restore();
       sendMock.mock.restore();
     }

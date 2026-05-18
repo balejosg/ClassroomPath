@@ -27,20 +27,20 @@ describe('InviteUserModal', () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Ada Lovelace' } });
-    fireEvent.change(screen.getByLabelText('Correo electrónico'), {
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
+    fireEvent.change(screen.getByLabelText('Email address'), {
       target: { value: 'ada@example.com' },
     });
-    fireEvent.change(screen.getByLabelText('Rol'), { target: { value: 'admin' } });
-    fireEvent.submit(screen.getByRole('button', { name: 'Enviar invitación' }).closest('form')!);
-    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'admin' } });
+    fireEvent.submit(screen.getByRole('button', { name: 'Send invitation' }).closest('form')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(onInviteNameChange).toHaveBeenCalledWith('Ada Lovelace');
     expect(onInviteEmailChange).toHaveBeenCalledWith('ada@example.com');
     expect(onInviteRoleChange).toHaveBeenCalledWith('admin');
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(screen.queryByLabelText(/Contraseña/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Password/i)).not.toBeInTheDocument();
   });
 
   it('renders invite errors and disables the form while pending', () => {
@@ -50,7 +50,7 @@ describe('InviteUserModal', () => {
         inviteName="Ada"
         inviteEmail="ada@example.com"
         inviteRole="teacher"
-        inviteError="El dominio no está permitido"
+        inviteError="Domain is not allowed"
         isPending
         onInviteNameChange={() => {}}
         onInviteEmailChange={() => {}}
@@ -60,8 +60,8 @@ describe('InviteUserModal', () => {
       />
     );
 
-    expect(screen.getByRole('alert')).toHaveTextContent('El dominio no está permitido');
-    expect(screen.getByLabelText('Nombre')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Domain is not allowed');
+    expect(screen.getByLabelText('Name')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
   });
 });

@@ -11,17 +11,17 @@ describe('DeliveryAlert', () => {
       <DeliveryAlert
         notice={{
           tone: 'success',
-          title: 'Invitación enviada',
-          description: 'Se envió la invitación a ada@example.com.',
+          title: 'Invitation sent',
+          description: 'Invitation sent to ada@example.com.',
         }}
         onDismiss={onDismiss}
       />
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent('Invitación enviada');
+    expect(screen.getByRole('status')).toHaveTextContent('Invitation sent');
     expect(screen.queryByDisplayValue(/https?:\/\//)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
@@ -30,14 +30,14 @@ describe('DeliveryAlert', () => {
       <DeliveryAlert
         notice={{
           tone: 'warning',
-          title: 'Invitación pendiente de envío',
-          description: 'Reintenta la invitación desde esta pantalla.',
+          title: 'Invitation delivery pending',
+          description: 'Retry the invitation from this screen.',
         }}
         onDismiss={() => {}}
       />
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent('Invitación pendiente de envío');
-    expect(screen.queryByLabelText('Enlace manual')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Invitation delivery pending');
+    expect(screen.queryByLabelText('Manual link')).not.toBeInTheDocument();
   });
 });

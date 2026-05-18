@@ -4,6 +4,7 @@ import GoogleLoginButton from '../components/GoogleLoginButton';
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { reportError } from '../lib/reportError';
 import { getSessionClientMode } from '../lib/session-client-mode';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 import { AuthSplitLayout } from './auth/AuthSplitLayout';
 import {
   normalizeEmailAddress,
@@ -19,6 +20,7 @@ interface LoginProps {
 }
 
 export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword }: LoginProps) {
+  const t = useClassroomPathT();
   const loginMutation = cpTrpcReact.auth.login.useMutation();
   const googleLoginMutation = cpTrpcReact.auth.googleLogin.useMutation();
   const resendVerificationMutation = cpTrpcReact.auth.generateEmailVerificationToken.useMutation();
@@ -47,7 +49,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
     const normalizedEmail = normalizeEmailAddress(emailFromLink);
     setEmail(normalizedEmail);
     setError('');
-    setInfo('Verificando tu correo...');
+    setInfo(t('auth.login.verifyingEmail'));
     setVerificationUrl('');
     setShowResendVerification(false);
     setIsVerifyingFromLink(true);
@@ -55,11 +57,11 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
     void verifyEmailMutation
       .mutateAsync({ email: normalizedEmail, token })
       .then(() => {
-        setInfo('Correo verificado. Ya puedes iniciar sesion.');
+        setInfo(t('auth.login.emailVerified'));
         setShowResendVerification(false);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'No se pudo verificar tu correo');
+        setError(err instanceof Error ? err.message : t('auth.login.verifyFailed'));
         setInfo('');
         setShowResendVerification(true);
         reportError('Failed to verify email', err, {
@@ -72,7 +74,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
         setIsVerifyingFromLink(false);
         window.history.replaceState({}, '', '/login');
       });
-  }, [verifyEmailMutation]);
+  }, [t, verifyEmailMutation]);
 
   const isLoading =
     loginMutation.isPending ||
@@ -83,7 +85,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
   const resendVerification = async () => {
     const normalizedEmail = normalizeEmailAddress(email);
     if (!normalizedEmail) {
-      setError('Introduce tu correo para reenviar la verificacion');
+      setError(t('auth.login.enterEmailForVerification'));
       return;
     }
 
@@ -104,11 +106,11 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
       );
       setInfo(
         delivery.emailSent
-          ? 'Te enviamos un nuevo enlace de verificacion.'
-          : 'No pudimos confirmar la entrega del correo. Usa el enlace manual.'
+          ? t('auth.login.verificationSent')
+          : t('auth.login.verificationDeliveryUnconfirmed')
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo reenviar la verificacion');
+      setError(err instanceof Error ? err.message : t('auth.login.resendFailed'));
       reportError('Failed to resend email verification', err, {
         action: 'resend-email-verification',
         userRole: 'anonymous',
@@ -141,8 +143,8 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
       setShowResendVerification(requiresVerification);
       setError(
         requiresVerification
-          ? 'Debes verificar tu correo antes de iniciar sesion.'
-          : 'Credenciales invalidas o error de conexion'
+          ? t('auth.login.requiresVerification')
+          : t('auth.login.invalidCredentials')
       );
       reportError('Failed to login', err, {
         action: 'login',
@@ -166,7 +168,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
       persistAuthSession(result);
       onLogin();
     } catch (err: any) {
-      setError(err?.message || 'Error al iniciar sesión con Google');
+      setError(err?.message || t('auth.login.googleFailed'));
       reportError('Failed to login with Google', err, {
         action: 'google-login',
         userRole: 'anonymous',
@@ -178,12 +180,12 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
     <AuthSplitLayout heroTitle="ClassroomPath">
       <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-slate-200">
         <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold text-slate-900">Acceso</h2>
+          <h2 className="text-2xl font-bold text-slate-900">{t('auth.login.title')}</h2>
         </div>
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100 flex items-center gap-2">
-            <span className="font-semibold">Error:</span> {error}
+            <span className="font-semibold">{t('app.common.error')}</span> {error}
           </div>
         )}
 
@@ -195,7 +197,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
 
         {verificationUrl ? (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-            <p className="font-semibold text-amber-900">Enlace manual de verificacion</p>
+            <p className="font-semibold text-amber-900">{t('auth.login.manualVerificationLink')}</p>
             <a
               href={verificationUrl}
               className="mt-2 block break-all text-blue-600 hover:underline"
@@ -208,7 +210,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Correo Electrónico
+              {t('auth.email.label')}
             </label>
             <div className="relative">
               <Mail className="absolute left-3 top-2.5 text-slate-400" size={18} />
@@ -222,13 +224,15 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
                 required
                 disabled={isLoading}
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 placeholder-slate-400 transition-all disabled:bg-slate-50"
-                placeholder="admin@institucion.edu"
+                placeholder={t('auth.email.placeholder')}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Contraseña</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              {t('app.common.password')}
+            </label>
             <div className="relative">
               <Lock className="absolute left-3 top-2.5 text-slate-400" size={18} />
               <input
@@ -251,7 +255,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
                 data-testid="navigate-to-reset-password"
                 className="text-sm text-blue-600 font-medium hover:underline cursor-pointer"
               >
-                ¿Necesitas restablecer tu acceso?
+                {t('auth.login.resetPrompt')}
               </button>
             </div>
           </div>
@@ -266,7 +270,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
               <Loader2 className="animate-spin" size={18} />
             ) : (
               <>
-                Entrar <ArrowRight size={18} />
+                {t('auth.login.submit')} <ArrowRight size={18} />
               </>
             )}
           </button>
@@ -280,8 +284,8 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
               className="w-full border border-slate-300 text-slate-700 font-medium py-2.5 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isVerifyingFromLink || resendVerificationMutation.isPending
-                ? 'Procesando...'
-                : 'Reenviar verificacion'}
+                ? t('app.common.processing')
+                : t('auth.login.resendVerification')}
             </button>
           ) : null}
 
@@ -290,7 +294,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
               <div className="w-full border-t border-slate-200" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-slate-400">O también</span>
+              <span className="bg-white px-2 text-slate-400">{t('auth.login.divider')}</span>
             </div>
           </div>
 
@@ -298,15 +302,15 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToResetPassword
         </form>
 
         <div className="mt-6 pt-6 border-t border-slate-100 text-center text-sm">
-          <span className="text-slate-500">¿No tienes cuenta? </span>
+          <span className="text-slate-500">{t('auth.login.noAccount')} </span>
           <button
             type="button"
             onClick={onNavigateToRegister}
             data-testid="navigate-to-register"
-            aria-label="Ir a página de registro"
+            aria-label={t('auth.login.registerAria')}
             className="text-blue-600 font-bold hover:underline cursor-pointer"
           >
-            Regístrate
+            {t('auth.login.register')}
           </button>
         </div>
       </div>

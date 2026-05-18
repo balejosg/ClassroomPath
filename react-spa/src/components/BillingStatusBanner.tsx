@@ -1,4 +1,5 @@
 import React from 'react';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 type BillingInfo = {
   status: string | null;
   productKind: string | null;
@@ -27,13 +28,14 @@ function isPilotExpiringSoon(billing: BillingInfo): boolean {
 }
 
 export function BillingStatusBanner({ billing }: { billing: BillingInfo | null | undefined }) {
+  const t = useClassroomPathT();
   if (!billing) return null;
 
   if (billing.status === 'grace_period') {
     return (
       <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        El centro sigue activo temporalmente mientras resolvemos el cobro. Fecha límite:{' '}
-        <strong>{formatDate(billing.graceEndsAt) ?? 'pendiente'}</strong>.
+        {t('billing.banner.grace')}{' '}
+        <strong>{formatDate(billing.graceEndsAt) ?? t('app.common.pending')}</strong>.
       </div>
     );
   }
@@ -41,8 +43,8 @@ export function BillingStatusBanner({ billing }: { billing: BillingInfo | null |
   if (billing.cancelAtPeriodEnd === true) {
     return (
       <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
-        La suscripción está marcada para finalizar al cierre del periodo actual:{' '}
-        <strong>{formatDate(billing.currentPeriodEnd) ?? 'pendiente'}</strong>.
+        {t('billing.banner.cancel')}{' '}
+        <strong>{formatDate(billing.currentPeriodEnd) ?? t('app.common.pending')}</strong>.
       </div>
     );
   }
@@ -50,8 +52,7 @@ export function BillingStatusBanner({ billing }: { billing: BillingInfo | null |
   if (isPilotExpiringSoon(billing)) {
     return (
       <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-        El piloto termina el <strong>{formatDate(billing.expiresAt)}</strong>. Conviene cerrar la
-        renovación antes de esa fecha.
+        {t('billing.banner.pilot', { date: formatDate(billing.expiresAt) ?? '' })}
       </div>
     );
   }

@@ -10,18 +10,18 @@ describe('ClassroomPathPricingPage', () => {
 
     expect(
       screen.getByRole('heading', {
-        name: 'Calcula el primer año en segundos y decide el siguiente paso.',
+        name: 'Calculate the first year in seconds and decide the next step.',
       })
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Primer año = cuota anual por aula + onboarding único. Desde el segundo año, solo mantienes la cuota anual por aula. Si quieres empezar con poco alcance, usa la activación remota ligera y valida el encaje con tu equipo IT antes de ampliar.'
+        'First year = annual classroom fee + one-time onboarding. From the second year, you keep only the annual classroom fee. If you want to start small, use lightweight remote activation and validate the fit with your IT team before expanding.'
       )
     ).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'Calcular precio' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('link', { name: 'Solicitar activación' }).length).toBeGreaterThan(0);
-    expect(screen.getByText('Más habitual')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Qué paso te conviene ahora' })).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Calculate price' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Request activation' }).length).toBeGreaterThan(0);
+    expect(screen.getByText('Most common')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'What step suits you now' })).toBeInTheDocument();
     expect(screen.getByText('149 €')).toBeInTheDocument();
     expect(screen.queryByText(/Aproximado por dispositivo/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Lightspeed|Securly|GoGuardian|Linewize/)).not.toBeInTheDocument();
@@ -30,30 +30,30 @@ describe('ClassroomPathPricingPage', () => {
   it('renders the request form as budget, activation, or demo intake', () => {
     render(<ClassroomPathPricingPage onNavigateToLogin={vi.fn()} />);
 
-    expect(screen.getByText('Solicitar presupuesto, activación o demo')).toBeInTheDocument();
+    expect(screen.getByText('Request a quote, activation, or demo')).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Pide presupuesto, activación o revisión de despliegue' })
+      screen.getByRole('heading', { name: 'Ask for a quote, activation, or deployment review' })
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Nombre')).toBeInTheDocument();
-    expect(screen.getByLabelText('Centro educativo')).toBeInTheDocument();
-    expect(screen.getByLabelText('Email de contacto')).toBeInTheDocument();
-    expect(screen.getByLabelText('Responsable técnico (opcional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('School')).toBeInTheDocument();
+    expect(screen.getByLabelText('Contact email')).toBeInTheDocument();
+    expect(screen.getByLabelText('Technical owner (optional)')).toBeInTheDocument();
   });
 
   it('updates calculator totals when the classroom count changes', () => {
     render(<ClassroomPathPricingPage onNavigateToLogin={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText('Número de aulas'), { target: { value: '40' } });
+    fireEvent.change(screen.getByLabelText('Number of classrooms'), { target: { value: '40' } });
 
     const quote = getPricingQuote(40);
 
-    expect(screen.getAllByText('Centro grande').length).toBeGreaterThan(0);
-    expect(screen.getByText(/40 aulas x 37/)).toBeInTheDocument();
+    expect(screen.getAllByText('Large school').length).toBeGreaterThan(0);
+    expect(screen.getByText(/40 classrooms x 37/)).toBeInTheDocument();
     expect(quote.annualTotal).toBe(1480);
     expect(quote.onboardingFee).toBe(890);
     expect(quote.totalFirstYear).toBe(2370);
-    expect(screen.getByText('Estimación del primer año')).toBeInTheDocument();
-    expect(screen.getByText('Total primer año')).toBeInTheDocument();
+    expect(screen.getByText('First-year estimate')).toBeInTheDocument();
+    expect(screen.getByText('Total first year')).toBeInTheDocument();
     expect(screen.queryByText(/Precio aproximado por dispositivo/i)).not.toBeInTheDocument();
   });
 
@@ -62,7 +62,7 @@ describe('ClassroomPathPricingPage', () => {
 
     render(<ClassroomPathPricingPage onNavigateToLogin={onNavigateToLogin} />);
 
-    fireEvent.click(screen.getByRole('link', { name: 'Acceder' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Sign in' }));
 
     expect(onNavigateToLogin).toHaveBeenCalledTimes(1);
   });

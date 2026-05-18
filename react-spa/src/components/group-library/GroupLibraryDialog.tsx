@@ -9,10 +9,10 @@ import {
 } from './group-library-helpers';
 
 const GROUP_LIBRARY_TEXT = {
-  title: 'Biblioteca de pol\u00edticas',
-  description: 'Ver y clonar pol\u00edticas compartidas en tu organizaci\u00f3n.',
-  emptyOrg: 'No hay pol\u00edticas para mostrar.',
-  emptyLibrary: 'No hay pol\u00edticas p\u00fablicas en esta organizaci\u00f3n.',
+  title: 'Policy library',
+  description: 'View and clone shared policies in your organization.',
+  emptyOrg: 'No policies to show.',
+  emptyLibrary: 'No public policies in this organization.',
 } as const;
 
 type PublishableGroup = Pick<GroupLibraryGroup, 'id' | 'name' | 'displayName'>;
@@ -71,7 +71,7 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
             type="button"
             onClick={props.onClose}
             className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-            aria-label="Cerrar"
+            aria-label="Close"
           >
             <X size={20} />
           </button>
@@ -81,24 +81,24 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
           <input
             value={props.search}
             onChange={(event) => props.onSearchChange(event.target.value)}
-            placeholder="Buscar por nombre..."
+            placeholder="Search by name..."
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
           />
 
           <div className="flex items-center gap-2">
             <TabButton
-              label="Biblioteca"
+              label="Library"
               isActive={props.tab === 'library'}
               onClick={() => props.onTabChange('library')}
             />
             <TabButton
-              label="Plantillas"
+              label="Templates"
               isActive={props.tab === 'templates'}
               onClick={() => props.onTabChange('templates')}
             />
             {props.isAdmin && (
               <TabButton
-                label="Gestionar"
+                label="Manage"
                 isActive={props.tab === 'manage'}
                 onClick={() => props.onTabChange('manage')}
               />
@@ -110,13 +110,13 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
           {props.tab === 'manage' && props.isAdmin ? (
             <div className="space-y-3">
               <div className="text-sm text-slate-600">
-                {'Marca una pol\u00edtica como '}
-                <span className="font-medium">{'P\u00fablica'}</span>
-                {' para que aparezca en la biblioteca de la organizaci\u00f3n.'}
+                {'Mark a policy as '}
+                <span className="font-medium">Public</span>
+                {' so it appears in the organization library.'}
               </div>
 
               {props.orgGroupsLoading ? (
-                <div className="text-sm text-slate-500">Cargando...</div>
+                <div className="text-sm text-slate-500">Loading...</div>
               ) : props.filteredOrgGroups.length === 0 ? (
                 <div className="text-sm text-slate-500">{GROUP_LIBRARY_TEXT.emptyOrg}</div>
               ) : (
@@ -132,7 +132,7 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
                         </div>
                         <div className="text-xs text-slate-500 truncate">{group.name}</div>
                         <div className="text-xs text-slate-500 mt-2">
-                          Dominios: {getGroupLibraryDomainCount(group)}
+                          Domains: {getGroupLibraryDomainCount(group)}
                         </div>
                       </div>
 
@@ -148,8 +148,8 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
                           className="text-sm rounded-lg border border-slate-200 px-2 py-1 bg-white"
                           disabled={props.updateDisabled}
                         >
-                          <option value="private">Privada</option>
-                          <option value="instance_public">{'P\u00fablica (org)'}</option>
+                          <option value="private">Private</option>
+                          <option value="instance_public">Public (org)</option>
                         </select>
 
                         <button
@@ -164,7 +164,7 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
                           className="text-xs px-3 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
                           disabled={props.publishDisabled}
                         >
-                          Publicar plantilla
+                          Publish template
                         </button>
                       </div>
                     </div>
@@ -175,13 +175,13 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
           ) : props.tab === 'templates' ? (
             <div className="space-y-3">
               <div className="text-sm text-slate-600">
-                Plantillas disponibles para todas las organizaciones (se copian al importar).
+                Templates available to every organization. They are copied when imported.
               </div>
 
               {props.templatesLoading ? (
-                <div className="text-sm text-slate-500">Cargando...</div>
+                <div className="text-sm text-slate-500">Loading...</div>
               ) : props.filteredTemplates.length === 0 ? (
-                <div className="text-sm text-slate-500">No hay plantillas publicadas.</div>
+                <div className="text-sm text-slate-500">No published templates.</div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {props.filteredTemplates.map((template) => (
@@ -200,7 +200,7 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
                           </div>
                         )}
                         <div className="text-xs text-slate-500 mt-2">
-                          Reglas: {template.ruleCount}
+                          Rules: {template.ruleCount}
                         </div>
                       </div>
 
@@ -209,7 +209,7 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
                           type="button"
                           onClick={() => props.onPreviewTemplate(template.id)}
                           className="p-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
-                          aria-label="Ver"
+                          aria-label="View"
                         >
                           <Eye size={16} />
                         </button>
@@ -217,7 +217,7 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
                           type="button"
                           onClick={() => props.onImportTemplate(template.id)}
                           className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-                          aria-label="Importar"
+                          aria-label="Import"
                           disabled={props.importDisabled}
                         >
                           <Copy size={16} />
@@ -231,7 +231,7 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
           ) : (
             <div className="space-y-3">
               {props.libraryLoading ? (
-                <div className="text-sm text-slate-500">Cargando...</div>
+                <div className="text-sm text-slate-500">Loading...</div>
               ) : props.filteredLibrary.length === 0 ? (
                 <div className="text-sm text-slate-500">{GROUP_LIBRARY_TEXT.emptyLibrary}</div>
               ) : (
@@ -247,7 +247,7 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
                         </div>
                         <div className="text-xs text-slate-500 truncate">{group.name}</div>
                         <div className="text-xs text-slate-500 mt-2">
-                          Dominios: {getGroupLibraryDomainCount(group)}
+                          Domains: {getGroupLibraryDomainCount(group)}
                         </div>
                       </div>
 
@@ -256,7 +256,7 @@ export function GroupLibraryDialog(props: GroupLibraryDialogProps) {
                           type="button"
                           onClick={() => props.onPreviewGroup(group.id)}
                           className="p-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
-                          aria-label="Ver"
+                          aria-label="View"
                         >
                           <Eye size={16} />
                         </button>

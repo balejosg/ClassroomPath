@@ -1,21 +1,23 @@
 import React from 'react';
 import { Check, X } from 'lucide-react';
 import { validatePassword } from '../utils/validation';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 
 interface Props {
   password: string;
 }
 
 export function PasswordStrength({ password }: Props) {
+  const t = useClassroomPathT();
   if (!password) return null;
 
   const validation = validatePassword(password);
 
   const requirements = [
-    { label: 'Al menos 8 caracteres', met: validation.length },
-    { label: 'Una mayúscula', met: validation.hasUpper },
-    { label: 'Una minúscula', met: validation.hasLower },
-    { label: 'Un número', met: validation.hasDigit },
+    { label: t('validation.minLength'), met: validation.length },
+    { label: t('passwordStrength.hasUpper'), met: validation.hasUpper },
+    { label: t('passwordStrength.hasLower'), met: validation.hasLower },
+    { label: t('passwordStrength.hasDigit'), met: validation.hasDigit },
   ];
 
   const strength = [
@@ -34,7 +36,7 @@ export function PasswordStrength({ password }: Props) {
       data-testid="password-strength"
       role="status"
       aria-live="polite"
-      aria-label={`Fortaleza de contraseña: ${strength} de 4 requisitos cumplidos`}
+      aria-label={t('passwordStrength.aria', { strength })}
     >
       <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
         <div

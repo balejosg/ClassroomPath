@@ -108,8 +108,8 @@ describe('PushNotificationControl', () => {
 
     render(<PushNotificationControl />);
 
-    expect(screen.getByText('Instala ClassroomPath en este iPhone')).toBeInTheDocument();
-    expect(screen.getByText(/Añadir a pantalla de inicio/)).toBeInTheDocument();
+    expect(screen.getByText('Install ClassroomPath on this iPhone')).toBeInTheDocument();
+    expect(screen.getByText(/Add to Home Screen/)).toBeInTheDocument();
     expect(pushMocks.getVapidPublicKey).not.toHaveBeenCalled();
     expect(pushMocks.subscribe).not.toHaveBeenCalled();
   });
@@ -132,13 +132,13 @@ describe('PushNotificationControl', () => {
 
     render(<PushNotificationControl />);
 
-    expect(await screen.findByRole('button', { name: 'Notificaciones activas' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Notifications active' })).toBeDisabled();
   });
 
   it('subscribes the current browser with the ClassroomPath push router', async () => {
     render(<PushNotificationControl />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Activar notificaciones' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable notifications' }));
 
     await waitFor(() => {
       expect(pushMocks.subscribe).toHaveBeenCalledWith({
@@ -153,7 +153,7 @@ describe('PushNotificationControl', () => {
       });
     });
 
-    expect(screen.getByRole('button', { name: 'Notificaciones activas' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Notifications active' })).toBeDisabled();
   });
 
   it('shows a denied state when the browser rejects notification permission', async () => {
@@ -161,9 +161,9 @@ describe('PushNotificationControl', () => {
 
     render(<PushNotificationControl />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Activar notificaciones' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable notifications' }));
 
-    expect(await screen.findByText('Permiso de notificación denegado')).toBeInTheDocument();
+    expect(await screen.findByText('Notification permission denied')).toBeInTheDocument();
     expect(pushMocks.getVapidPublicKey).not.toHaveBeenCalled();
     expect(pushMocks.subscribe).not.toHaveBeenCalled();
   });
@@ -176,9 +176,9 @@ describe('PushNotificationControl', () => {
 
     render(<PushNotificationControl />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Activar notificaciones' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable notifications' }));
 
-    expect(await screen.findByText('Notificaciones no configuradas')).toBeInTheDocument();
+    expect(await screen.findByText('Notifications are not configured')).toBeInTheDocument();
     expect(pushMocks.subscribe).not.toHaveBeenCalled();
   });
 });

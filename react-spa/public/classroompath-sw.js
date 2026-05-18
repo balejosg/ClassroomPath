@@ -1,9 +1,9 @@
 self.addEventListener('push', (event) => {
   const fallback = {
-    title: 'Nueva solicitud de dominio',
-    body: 'Hay una solicitud pendiente',
+    title: 'New domain request',
+    body: 'There is a pending request',
     data: { url: '/domain-requests' },
-    actions: [{ action: 'approve', title: 'Aprobar' }],
+    actions: [{ action: 'approve', title: 'Approve' }],
   };
   const payload = event.data ? event.data.json() : fallback;
   const title = payload.title || fallback.title;

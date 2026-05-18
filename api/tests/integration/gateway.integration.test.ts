@@ -607,7 +607,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
       const parsed = (await parseTRPC(response)) as { error?: string; code?: string };
       assert.strictEqual(parsed.code, 'SERVICE_UNAVAILABLE');
-      assert.match(parsed.error ?? '', /sesión local se cerró|logout|revoc/i);
+      assert.match(parsed.error ?? '', /local session was closed|logout|revok/i);
       assert.strictEqual(isMockOpenPathTokenRevoked(accessToken), false);
       assert.strictEqual(isMockOpenPathTokenRevoked(refreshToken), false);
 
@@ -843,7 +843,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       assert.strictEqual(parsed.code, 'SERVICE_UNAVAILABLE');
       assert.strictEqual(
         parsed.error,
-        'No se pudo enviar el correo de recuperación. Genera un nuevo correo para reintentar.'
+        'The recovery email could not be sent. Generate a new email to try again.'
       );
 
       const tokens = await openpathDb

@@ -5,6 +5,7 @@ import webPush from 'web-push';
 
 import { config } from '../config.js';
 import { openpathDb, pushSubscriptions } from '../db/openpath.js';
+import { getApiCopy } from '../lib/api-content.js';
 import { logger } from '../lib/logger.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
 import { getAccessibleRequestGroupIds } from './request-shared.service.js';
@@ -186,7 +187,8 @@ async function deleteSubscriptionByEndpoint(endpoint: string): Promise<void> {
 }
 
 export async function notifyTenantTeachersOfNewRequest(
-  request: TenantRequestNotification
+  request: TenantRequestNotification,
+  options: { locale?: string | null } = {}
 ): Promise<{ sent: number; failed: number; disabled?: boolean; noSubscriptions?: boolean }> {
   if (!request.groupId) {
     return { sent: 0, failed: 0, noSubscriptions: true };
@@ -201,9 +203,10 @@ export async function notifyTenantTeachersOfNewRequest(
     return { sent: 0, failed: 0, noSubscriptions: true };
   }
 
+  const copy = getApiCopy(options.locale).push;
   const payload = {
-    title: 'Nueva solicitud de dominio',
-    body: `${request.domain} solicita acceso`,
+    title: copy.newDomainRequestTitle,
+    body: copy.newDomainRequestBody(request.domain),
     icon: '/icons/android-chrome-192x192.png',
     badge: '/icons/badge-96x96.png',
     data: {
@@ -213,7 +216,7 @@ export async function notifyTenantTeachersOfNewRequest(
       approvalUrl: `/domain-requests/approve/${encodeURIComponent(request.id)}`,
       url: `/domain-requests?highlight=${encodeURIComponent(request.id)}`,
     },
-    actions: [{ action: 'approve', title: 'Aprobar' }],
+    actions: [{ action: 'approve', title: copy.approveAction }],
   };
 
   const results = await Promise.allSettled(

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { cpTrpc } from '../lib/cp-trpc';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 
 type PushState =
   | 'idle'
@@ -71,11 +72,12 @@ function subscriptionToInput(subscription: PushSubscription) {
 }
 
 export function PushNotificationControl() {
+  const t = useClassroomPathT();
   const [state, setState] = useState<PushState>(getInitialPushState);
   const [message, setMessage] = useState('');
   const buttonLabel = useMemo(
-    () => (state === 'enabling' ? 'Activando...' : 'Activar notificaciones'),
-    [state]
+    () => (state === 'enabling' ? t('pwa.enabling') : t('pwa.enable')),
+    [state, t]
   );
 
   useEffect(() => {
@@ -88,7 +90,7 @@ export function PushNotificationControl() {
         if (!active) return;
         if (!status.pushEnabled) {
           setState('disabled');
-          setMessage('Notificaciones no configuradas');
+          setMessage(t('pwa.notConfigured'));
           return;
         }
         if (status.subscriptionCount > 0) {
@@ -103,7 +105,7 @@ export function PushNotificationControl() {
     return () => {
       active = false;
     };
-  }, [state]);
+  }, [state, t]);
 
   const enableNotifications = async () => {
     if (state === 'install-ios') {
@@ -123,14 +125,14 @@ export function PushNotificationControl() {
         Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
       if (permission !== 'granted') {
         setState('denied');
-        setMessage('Permiso de notificación denegado');
+        setMessage(t('pwa.permissionDenied'));
         return;
       }
 
       const vapid = await cpTrpc.push.getVapidPublicKey.query();
       if (!vapid.enabled || !vapid.publicKey) {
         setState('disabled');
-        setMessage('Notificaciones no configuradas');
+        setMessage(t('pwa.notConfigured'));
         return;
       }
 
@@ -150,10 +152,10 @@ export function PushNotificationControl() {
       });
 
       setState('enabled');
-      setMessage('Notificaciones activas');
+      setMessage(t('pwa.enabled'));
     } catch (error) {
       setState('error');
-      setMessage(error instanceof Error ? error.message : 'No se pudieron activar');
+      setMessage(error instanceof Error ? error.message : t('pwa.enableFailed'));
     }
   };
 
@@ -164,11 +166,8 @@ export function PushNotificationControl() {
   if (state === 'install-ios') {
     return (
       <div className="mb-4 rounded-md border border-sky-200 bg-sky-50 p-4 text-slate-900">
-        <p className="text-sm font-semibold">Instala ClassroomPath en este iPhone</p>
-        <p className="mt-1 text-sm text-slate-700">
-          En Safari, abre compartir y pulsa Añadir a pantalla de inicio. Después abre ClassroomPath
-          desde el icono y activa las notificaciones.
-        </p>
+        <p className="text-sm font-semibold">{t('pwa.iosTitle')}</p>
+        <p className="mt-1 text-sm text-slate-700">{t('pwa.iosBody')}</p>
       </div>
     );
   }
@@ -176,7 +175,7 @@ export function PushNotificationControl() {
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-md border border-sky-200 bg-sky-50 p-4 text-slate-900 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p className="text-sm font-semibold">Avisos de solicitudes</p>
+        <p className="text-sm font-semibold">{t('pwa.requestAlerts')}</p>
         {message ? <p className="mt-1 text-sm text-slate-700">{message}</p> : null}
       </div>
       <button
@@ -185,7 +184,7 @@ export function PushNotificationControl() {
         onClick={enableNotifications}
         type="button"
       >
-        {state === 'enabled' ? 'Notificaciones activas' : buttonLabel}
+        {state === 'enabled' ? t('pwa.enabled') : buttonLabel}
       </button>
     </div>
   );

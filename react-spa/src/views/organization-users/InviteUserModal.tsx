@@ -2,6 +2,9 @@ import { ShieldCheck } from 'lucide-react';
 import { Button, Modal } from '../../openpath/public-ui';
 
 import { InviteRole } from '../organization-users-helpers';
+import { translateClassroomPathText, type ClassroomPathT } from '../../i18n/classroompath-i18n';
+
+const defaultT: ClassroomPathT = (key, values) => translateClassroomPathText('en', key, values);
 
 export function InviteUserModal({
   isOpen,
@@ -15,6 +18,7 @@ export function InviteUserModal({
   onInviteRoleChange,
   onClose,
   onSubmit,
+  t = defaultT,
 }: {
   isOpen: boolean;
   inviteName: string;
@@ -27,20 +31,21 @@ export function InviteUserModal({
   onInviteRoleChange: (role: InviteRole) => void;
   onClose: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  t?: ClassroomPathT;
 }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Invitar usuario">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('orgUsers.inviteUser')}>
       <form onSubmit={onSubmit} className="space-y-5">
         <div>
           <label htmlFor="invite-name" className="mb-2 block text-sm font-semibold text-slate-700">
-            Nombre
+            {t('app.common.name')}
           </label>
           <input
             id="invite-name"
             type="text"
             value={inviteName}
             onChange={(event) => onInviteNameChange(event.target.value)}
-            placeholder="Nombre completo"
+            placeholder={t('orgUsers.invite.fullNamePlaceholder')}
             required
             disabled={isPending}
             className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -49,14 +54,14 @@ export function InviteUserModal({
 
         <div>
           <label htmlFor="invite-email" className="mb-2 block text-sm font-semibold text-slate-700">
-            Correo electrónico
+            {t('auth.email.label')}
           </label>
           <input
             id="invite-email"
             type="email"
             value={inviteEmail}
             onChange={(event) => onInviteEmailChange(event.target.value)}
-            placeholder="usuario@dominio.com"
+            placeholder={t('orgUsers.invite.emailPlaceholder')}
             required
             disabled={isPending}
             className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -65,7 +70,7 @@ export function InviteUserModal({
 
         <div>
           <label htmlFor="invite-role" className="mb-2 block text-sm font-semibold text-slate-700">
-            Rol
+            {t('app.common.role')}
           </label>
           <select
             id="invite-role"
@@ -74,13 +79,13 @@ export function InviteUserModal({
             disabled={isPending}
             className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           >
-            <option value="teacher">Profesor</option>
-            <option value="admin">Administrador</option>
+            <option value="teacher">{t('app.common.teacher')}</option>
+            <option value="admin">{t('app.common.admin')}</option>
           </select>
         </div>
 
         <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
-          La contraseña no se define aquí. El usuario la creará al aceptar su invitación.
+          {t('orgUsers.invite.passwordNote')}
         </div>
 
         {inviteError ? (
@@ -100,11 +105,11 @@ export function InviteUserModal({
             onClick={onClose}
             disabled={isPending}
           >
-            Cancelar
+            {t('app.common.cancel')}
           </Button>
           <Button type="submit" className="flex-1 gap-2" isLoading={isPending}>
             <ShieldCheck size={16} />
-            Enviar invitación
+            {t('orgUsers.invite.send')}
           </Button>
         </div>
       </form>

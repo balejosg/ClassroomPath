@@ -38,7 +38,7 @@ describe('organization-users-helpers', () => {
         name: 'Ada Lovelace',
         email: 'ada@example.com',
         role: 'teacher',
-        status: 'Activo',
+        status: 'active',
       },
       {
         kind: 'member',
@@ -46,7 +46,7 @@ describe('organization-users-helpers', () => {
         name: 'Student User',
         email: 'student@example.com',
         role: 'user',
-        status: 'Inactivo',
+        status: 'inactive',
       },
     ]);
 
@@ -67,7 +67,7 @@ describe('organization-users-helpers', () => {
         name: 'Grace Hopper',
         email: 'grace@example.com',
         role: 'admin',
-        status: 'Pendiente',
+        status: 'pending',
         expiresAt: '2026-03-12T10:00:00.000Z',
       },
     ]);
@@ -103,7 +103,7 @@ describe('organization-users-helpers', () => {
         name: 'Ada Pending',
         email: 'ada@example.com',
         role: 'teacher',
-        status: 'Pendiente',
+        status: 'pending',
         expiresAt: '2026-03-12T10:00:00.000Z',
       },
     ]);
@@ -141,8 +141,8 @@ describe('organization-users-helpers', () => {
       })
     ).toEqual({
       tone: 'success',
-      title: 'Invitación enviada',
-      description: 'Se envió la invitación a ada@example.com.',
+      title: 'Invitation sent',
+      description: 'The invitation was sent to ada@example.com.',
     });
 
     expect(
@@ -152,9 +152,9 @@ describe('organization-users-helpers', () => {
       })
     ).toEqual({
       tone: 'warning',
-      title: 'Invitación pendiente de envío',
+      title: 'Invitation pending delivery',
       description:
-        'No se pudo confirmar el envío a ada@example.com. Reintenta la invitación desde esta pantalla.',
+        'Could not confirm delivery to ada@example.com. Retry the invitation from this screen.',
     });
 
     expect(
@@ -164,8 +164,8 @@ describe('organization-users-helpers', () => {
       })
     ).toEqual({
       tone: 'success',
-      title: 'Enlace de recuperación enviado',
-      description: 'Se envió un correo de recuperación a admin@example.com.',
+      title: 'Recovery link sent',
+      description: 'A recovery email was sent to admin@example.com.',
     });
 
     expect(
@@ -175,9 +175,9 @@ describe('organization-users-helpers', () => {
       })
     ).toEqual({
       tone: 'warning',
-      title: 'Recuperación pendiente de envío',
+      title: 'Recovery pending delivery',
       description:
-        'No se pudo confirmar el envío a admin@example.com. Genera un nuevo correo de recuperación para reintentar.',
+        'Could not confirm delivery to admin@example.com. Generate a new recovery email to retry.',
     });
   });
 
@@ -186,16 +186,16 @@ describe('organization-users-helpers', () => {
     expect(getPrimaryRoleLabel([{ role: 'teacher' }])).toBe('teacher');
     expect(getPrimaryRoleLabel([{ role: 'student' }])).toBe('user');
 
-    expect(getRoleLabel('admin')).toBe('Administrador');
-    expect(getRoleLabel('teacher')).toBe('Profesor');
-    expect(getRoleLabel('user')).toBe('Usuario');
+    expect(getRoleLabel('admin')).toBe('Administrator');
+    expect(getRoleLabel('teacher')).toBe('Teacher');
+    expect(getRoleLabel('user')).toBe('User');
 
     expect(getRowInitials('Ada Lovelace')).toBe('AL');
     expect(getRowInitials('')).toBe('??');
   });
 
   it('computes the table summary label from the filtered row count', () => {
-    expect(getSummaryLabel(0)).toBe('Mostrando 0-0 de 0 usuarios');
-    expect(getSummaryLabel(3)).toBe('Mostrando 1-3 de 3 usuarios');
+    expect(getSummaryLabel(0)).toBe('Showing 0-0 of 0 users');
+    expect(getSummaryLabel(3)).toBe('Showing 1-3 of 3 users');
   });
 });

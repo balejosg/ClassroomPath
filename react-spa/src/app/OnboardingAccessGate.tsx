@@ -8,6 +8,7 @@ import { Onboarding } from '../views/Onboarding';
 import { Waiting } from '../views/Waiting';
 import { PlatformAdminPanel } from '../components/PlatformAdminPanel';
 import { BillingStatusBanner } from '../components/BillingStatusBanner';
+import { useClassroomPathT, type ClassroomPathT } from '../i18n/classroompath-i18n';
 
 type OnboardingAccessGateProps = {
   status?: OnboardingStatusDto;
@@ -42,18 +43,21 @@ function PendingInvitationTransferCard(props: {
   isBusy: boolean;
   onAccept: () => void;
   onDismiss: () => void;
+  t: ClassroomPathT;
 }) {
+  const { t } = props;
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
       <div className="w-full max-w-md rounded-xl border border-amber-200 bg-white p-8 shadow-sm">
-        <h2 className="text-2xl font-bold text-slate-900">Tienes una invitación pendiente</h2>
-        <p className="mt-3 text-sm text-slate-600">
-          Ya formas parte de otra organización. Si aceptas esta invitación, ClassroomPath te moverá
-          a la nueva organización.
-        </p>
+        <h2 className="text-2xl font-bold text-slate-900">{t('onboarding.gate.pendingTitle')}</h2>
+        <p className="mt-3 text-sm text-slate-600">{t('onboarding.gate.pendingBody')}</p>
         <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          <p>Organización actual: {props.currentOrganizationName ?? 'Sin organización actual'}</p>
-          <p>Nueva organización: {props.invitedOrganizationName}</p>
+          <p>
+            {t('auth.invitation.currentOrg', {
+              organization: props.currentOrganizationName ?? t('auth.invitation.noCurrentOrg'),
+            })}
+          </p>
+          <p>{t('auth.invitation.newOrg', { organization: props.invitedOrganizationName })}</p>
         </div>
         <div className="mt-6 flex flex-col gap-3">
           <button
@@ -62,7 +66,7 @@ function PendingInvitationTransferCard(props: {
             disabled={props.isBusy}
             className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {props.isBusy ? 'Aceptando invitación...' : 'Cambiar de organización'}
+            {props.isBusy ? t('auth.invitation.accepting') : t('onboarding.gate.changeOrg')}
           </button>
           <button
             type="button"
@@ -70,7 +74,7 @@ function PendingInvitationTransferCard(props: {
             disabled={props.isBusy}
             className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Seguir con mi organización actual
+            {t('onboarding.gate.keepOrg')}
           </button>
         </div>
       </div>
@@ -79,29 +83,30 @@ function PendingInvitationTransferCard(props: {
 }
 
 export function OnboardingAccessGate(props: OnboardingAccessGateProps) {
+  const t = useClassroomPathT();
   if (props.isLoading) {
     if (props.loadingTimedOut) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
           <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Esto esta tardando demasiado</h2>
-            <p className="text-sm text-slate-600 mt-2">
-              No se pudo verificar tu estado a tiempo. Reintenta o vuelve a iniciar sesion.
-            </p>
+            <h2 className="text-lg font-semibold text-slate-900">
+              {t('onboarding.gate.slowTitle')}
+            </h2>
+            <p className="text-sm text-slate-600 mt-2">{t('onboarding.gate.slowBody')}</p>
             <div className="mt-4 flex gap-3">
               <button
                 type="button"
                 onClick={props.onRetry}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
               >
-                Reintentar
+                {t('app.common.retry')}
               </button>
               <button
                 type="button"
                 onClick={props.onLogoutToLogin}
                 className="px-4 py-2 rounded-lg bg-slate-100 text-slate-800 font-medium hover:bg-slate-200"
               >
-                Volver a login
+                {t('app.common.backToLogin')}
               </button>
             </div>
           </div>
@@ -109,31 +114,31 @@ export function OnboardingAccessGate(props: OnboardingAccessGateProps) {
       );
     }
 
-    return <InlineLoader label="Verificando estado..." />;
+    return <InlineLoader label={t('onboarding.gate.verifying')} />;
   }
 
   if (props.isError && !props.status) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
         <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">No se pudo verificar tu acceso</h2>
-          <p className="text-sm text-slate-600 mt-2">
-            Reintenta en unos segundos. Si el problema persiste, vuelve a iniciar sesion.
-          </p>
+          <h2 className="text-lg font-semibold text-slate-900">
+            {t('onboarding.gate.accessFailedTitle')}
+          </h2>
+          <p className="text-sm text-slate-600 mt-2">{t('onboarding.gate.accessFailedBody')}</p>
           <div className="mt-4 flex gap-3">
             <button
               type="button"
               onClick={props.onRetry}
               className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
             >
-              Reintentar
+              {t('app.common.retry')}
             </button>
             <button
               type="button"
               onClick={props.onLogoutToLogin}
               className="px-4 py-2 rounded-lg bg-slate-100 text-slate-800 font-medium hover:bg-slate-200"
             >
-              Volver a login
+              {t('app.common.backToLogin')}
             </button>
           </div>
         </div>
@@ -142,7 +147,7 @@ export function OnboardingAccessGate(props: OnboardingAccessGateProps) {
   }
 
   if (props.isAcceptingPendingInvitation) {
-    return <InlineLoader label="Aceptando invitación..." />;
+    return <InlineLoader label={t('auth.invitation.accepting')} />;
   }
 
   if (props.status?.pendingInvitation?.requiresMigration) {
@@ -153,6 +158,7 @@ export function OnboardingAccessGate(props: OnboardingAccessGateProps) {
         isBusy={props.isAcceptingPendingInvitation}
         onAccept={props.onAcceptPendingInvitation}
         onDismiss={props.onDismissPendingInvitation}
+        t={t}
       />
     );
   }

@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 
 import { config } from '../../config.js';
 import { openpathDb, openpathSchema } from '../../db/openpath.js';
+import { getApiCopy } from '../../lib/api-content.js';
 import { logger } from '../../lib/logger.js';
 import { sendTransactionalEmail } from '../../services/email.service.js';
 
@@ -54,6 +55,7 @@ export async function issueOpenPathEmailVerificationToken(
 
 export async function deliverEmailVerification(params: {
   email: string;
+  locale?: string | null;
   name: string;
   verificationToken: string;
   verificationExpiresAt: string;
@@ -64,23 +66,24 @@ export async function deliverEmailVerification(params: {
   });
 
   let emailSent = false;
+  const copy = getApiCopy(params.locale).email;
   try {
     const delivery = await sendTransactionalEmail({
       to: params.email,
-      subject: 'Verifica tu correo de ClassroomPath',
+      subject: copy.verificationSubject,
       text: [
-        `Hola ${params.name},`,
+        copy.greeting(params.name),
         '',
-        'Tu cuenta de ClassroomPath ya esta creada.',
-        `Verifica tu correo aqui: ${verificationUrl}`,
+        copy.verificationIntro,
+        copy.verificationAction(verificationUrl),
         '',
-        `Este enlace vence el ${params.verificationExpiresAt}.`,
+        copy.linkExpires(params.verificationExpiresAt),
       ].join('\n'),
       html: [
-        `<p>Hola ${params.name},</p>`,
-        '<p>Tu cuenta de ClassroomPath ya esta creada.</p>',
-        `<p><a href="${verificationUrl}">Verificar correo</a></p>`,
-        `<p>Este enlace vence el <strong>${params.verificationExpiresAt}</strong>.</p>`,
+        `<p>${copy.greeting(params.name)}</p>`,
+        `<p>${copy.verificationIntro}</p>`,
+        `<p><a href="${verificationUrl}">${copy.verificationActionLabel}</a></p>`,
+        `<p>${copy.linkExpires(`<strong>${params.verificationExpiresAt}</strong>`)}</p>`,
       ].join(''),
     });
 
@@ -104,11 +107,13 @@ export async function deliverEmailVerification(params: {
 export async function issueEmailVerificationDelivery(params: {
   userId: string;
   email: string;
+  locale?: string | null;
   name: string;
 }): Promise<EmailVerificationDeliveryResult> {
   const verification = await issueOpenPathEmailVerificationToken(params.userId);
   return deliverEmailVerification({
     email: params.email,
+    locale: params.locale,
     name: params.name,
     verificationToken: verification.verificationToken,
     verificationExpiresAt: verification.verificationExpiresAt,

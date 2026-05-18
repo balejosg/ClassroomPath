@@ -2,7 +2,8 @@ import { ShieldCheck } from 'lucide-react';
 
 import { FaqAccordion } from '../components/FaqAccordion';
 import { SharedFooter } from '../components/SharedFooter';
-import { LANDING_FAQS } from '../data/faqs';
+import { getLandingFaqs } from '../data/faqs';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 import {
   LandingFitSection,
   LandingHeroSection,
@@ -19,6 +20,9 @@ interface ClassroomPathLandingPageProps {
 }
 
 export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLandingPageProps) {
+  const t = useClassroomPathT();
+  const landingFaqs = getLandingFaqs(t);
+
   return (
     <div className="min-h-screen scroll-smooth bg-slate-50 text-slate-900">
       <header className="sticky top-0 z-30 border-b border-white/10 bg-slate-900">
@@ -32,7 +36,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                 <div className="text-base font-semibold tracking-tight text-white">
                   ClassroomPath
                 </div>
-                <div className="text-xs text-slate-400">Filtrado web escolar por aula</div>
+                <div className="text-xs text-slate-400">{t('public.nav.tagline')}</div>
               </div>
             </div>
 
@@ -41,7 +45,7 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                 href="/pricing"
                 className="hidden text-sm font-medium text-slate-300 transition hover:text-white sm:inline"
               >
-                Precios
+                {t('public.nav.pricing')}
               </a>
               <a
                 href="/login"
@@ -51,19 +55,19 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
                 }}
                 className="hidden text-sm font-medium text-slate-400 transition hover:text-white sm:inline"
               >
-                Acceder
+                {t('public.nav.access')}
               </a>
               <a
                 href="/pricing"
                 className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-900/50 transition hover:bg-sky-500"
               >
-                Calcular precio
+                {t('public.nav.calculatePrice')}
               </a>
               <a
-                href="#solicitud"
+                href="#request"
                 className="hidden rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 md:inline-flex"
               >
-                Solicitar activación
+                {t('public.nav.requestActivation')}
               </a>
             </div>
           </div>
@@ -79,9 +83,9 @@ export function ClassroomPathLandingPage({ onNavigateToLogin }: ClassroomPathLan
         <LandingFitSection />
         <LandingPublicCampaignSection />
         <FaqAccordion
-          items={LANDING_FAQS}
-          sectionLabel="Preguntas frecuentes"
-          sectionTitle="Lo que suelen preguntar los centros"
+          items={landingFaqs}
+          sectionLabel={t('public.faq.label')}
+          sectionTitle={t('public.faq.landingTitle')}
         />
         <LandingRequestSection onNavigateToLogin={onNavigateToLogin} />
       </main>

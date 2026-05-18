@@ -6,6 +6,7 @@ import {
   type OnboardingPolicy,
 } from '@classroompath/contracts/onboarding-policy';
 import type { OrganizationSummaryDto } from '@classroompath/presenters/onboarding';
+import { useClassroomPathT } from '../../i18n/classroompath-i18n';
 
 type BillingInputState = {
   orgName: string;
@@ -23,6 +24,7 @@ export function OnboardingBillingCard(props: {
   onCheckout: (kind: 'annual' | 'pilot') => void;
   onManualRequest: () => void;
 }) {
+  const t = useClassroomPathT();
   const { allowsOnlineCheckout, billingInput } = props;
 
   return (
@@ -32,18 +34,20 @@ export function OnboardingBillingCard(props: {
           <CreditCard size={32} />
         </div>
         <h2 className="text-xl font-bold text-gray-800">
-          {allowsOnlineCheckout ? 'Contratar centro' : 'Activar centro'}
+          {allowsOnlineCheckout
+            ? t('onboarding.billing.contract')
+            : t('onboarding.billing.activate')}
         </h2>
       </div>
       <p className="mb-8 text-gray-600 leading-relaxed">
         {allowsOnlineCheckout
-          ? 'Activa el centro con checkout seguro antes de crear la organización. La cuota anual incluye Stripe Tax y el onboarding queda separado en la primera factura.'
-          : 'Los centros públicos pueden solicitar activación sin pago online. Revisaremos la solicitud antes de habilitar la organización.'}
+          ? t('onboarding.billing.contractBody')
+          : t('onboarding.billing.publicBody')}
       </p>
       <div className="mt-auto space-y-4">
         <div>
           <label className="mb-2 block text-sm font-semibold text-gray-700">
-            Nombre de la organización
+            {t('onboarding.billing.orgName')}
           </label>
           <Input
             type="text"
@@ -51,13 +55,15 @@ export function OnboardingBillingCard(props: {
             data-testid="onboarding-org-name"
             value={billingInput.orgName}
             onChange={(event) => props.onBillingInputChange('orgName', event.target.value)}
-            placeholder="Ej: Colegio San José"
+            placeholder={t('onboarding.billing.orgPlaceholder')}
             maxLength={100}
             required
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold text-gray-700">Número de aulas</label>
+          <label className="mb-2 block text-sm font-semibold text-gray-700">
+            {t('onboarding.billing.classrooms')}
+          </label>
           <Input
             type="number"
             name="classrooms"
@@ -78,7 +84,9 @@ export function OnboardingBillingCard(props: {
                 className="w-full cursor-pointer py-6"
                 disabled={props.checkoutPending}
               >
-                {props.checkoutPending ? 'Preparando...' : 'Contratar cuota anual'}
+                {props.checkoutPending
+                  ? t('onboarding.billing.preparing')
+                  : t('onboarding.billing.annual')}
               </Button>
               <Button
                 type="button"
@@ -88,7 +96,7 @@ export function OnboardingBillingCard(props: {
                 className="w-full cursor-pointer border-2 py-6"
                 disabled={props.checkoutPending}
               >
-                Empezar piloto
+                {t('onboarding.billing.pilot')}
               </Button>
             </>
           ) : null}
@@ -100,7 +108,7 @@ export function OnboardingBillingCard(props: {
             className="w-full cursor-pointer py-6"
             disabled={props.manualRequestPending}
           >
-            Soy un centro público
+            {t('onboarding.billing.publicCenter')}
           </Button>
         </div>
       </div>
@@ -119,22 +127,22 @@ export function OnboardingInvitationCard(props: {
   onTargetOrgChange: (value: string) => void;
   onWait: () => void;
 }) {
+  const t = useClassroomPathT();
   return (
     <Card className="flex flex-col border-t-4 border-t-green-600 p-8 shadow-md">
       <div className="mb-6 flex items-center gap-4">
         <div className="rounded-lg bg-green-100 p-3 text-green-600">
           <Users size={32} />
         </div>
-        <h2 className="text-xl font-bold text-gray-800">Esperar invitación</h2>
+        <h2 className="text-xl font-bold text-gray-800">{t('onboarding.invitation.waitTitle')}</h2>
       </div>
-      <p className="mb-8 text-gray-600 leading-relaxed">
-        Si tu institución ya utiliza ClassroomPath, puedes solicitar acceso y esperar a que un
-        administrador te agregue. Tu solicitud seguira un flujo institucional trazable.
-      </p>
+      <p className="mb-8 text-gray-600 leading-relaxed">{t('onboarding.invitation.body')}</p>
       <div className="mt-auto">
         {!shouldShowOnboardingAccessPolicyNotice(props.onboardingPolicy) ? (
           <div className="mb-4">
-            <label className="mb-2 block text-sm font-semibold text-gray-700">Organización</label>
+            <label className="mb-2 block text-sm font-semibold text-gray-700">
+              {t('onboarding.invitation.organization')}
+            </label>
             <select
               name="targetOrganization"
               data-testid="onboarding-target-org"
@@ -143,7 +151,7 @@ export function OnboardingInvitationCard(props: {
               className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={props.organizationsPending}
             >
-              <option value="">Seleccionar organización...</option>
+              <option value="">{t('onboarding.invitation.selectOrg')}</option>
               {props.organizations.map((org) => (
                 <option key={org.id} value={org.id}>
                   {org.name}
@@ -151,7 +159,7 @@ export function OnboardingInvitationCard(props: {
               ))}
             </select>
             {props.organizationsError ? (
-              <p className="mt-2 text-xs text-red-600">No se pudieron cargar organizaciones.</p>
+              <p className="mt-2 text-xs text-red-600">{t('onboarding.invitation.loadFailed')}</p>
             ) : null}
           </div>
         ) : (
@@ -159,8 +167,7 @@ export function OnboardingInvitationCard(props: {
             data-testid="onboarding-access-policy"
             className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600"
           >
-            Un administrador de tu institución debe autorizar tu acceso. No mostraremos el
-            directorio ni los nombres de otras organizaciones desde este portal.
+            {t('onboarding.invitation.policyNotice')}
           </div>
         )}
         <Button
@@ -170,7 +177,9 @@ export function OnboardingInvitationCard(props: {
           className="w-full cursor-pointer border-2 py-6"
           disabled={props.waitPending || (props.allowOrgDirectory && props.organizationsPending)}
         >
-          {props.waitPending ? 'Procesando...' : 'Solicitar Acceso'}
+          {props.waitPending
+            ? t('app.common.processing')
+            : t('onboarding.invitation.requestAccess')}
         </Button>
       </div>
     </Card>

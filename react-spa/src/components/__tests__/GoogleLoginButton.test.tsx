@@ -54,7 +54,7 @@ describe('GoogleLoginButton', () => {
 
     expect(screen.getByTestId('google-signin-btn').childElementCount).toBeGreaterThan(0);
     expect(screen.getByTestId('google-signin-btn')).not.toHaveClass('opacity-0');
-    expect(screen.queryByRole('button', { name: /reintentar google/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry google/i })).not.toBeInTheDocument();
   });
 
   it('keeps the rendered Google button visible across parent re-renders', async () => {
@@ -123,7 +123,7 @@ describe('GoogleLoginButton', () => {
     render(<GoogleLoginButton onSuccess={vi.fn()} />);
 
     expect(
-      await screen.findByRole('button', { name: /reintentar google/i }, { timeout: 3000 })
+      await screen.findByRole('button', { name: /retry google/i }, { timeout: 3000 })
     ).toBeInTheDocument();
     expect(mockReportError).toHaveBeenCalled();
 
@@ -131,7 +131,7 @@ describe('GoogleLoginButton', () => {
       element.appendChild(document.createElement('iframe'));
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /reintentar google/i }));
+    fireEvent.click(screen.getByRole('button', { name: /retry google/i }));
 
     await waitFor(
       () => {
@@ -151,7 +151,7 @@ describe('GoogleLoginButton', () => {
     render(<GoogleLoginButton onSuccess={vi.fn()} />);
 
     expect(
-      await screen.findByRole('button', { name: /reintentar google/i }, { timeout: 3000 })
+      await screen.findByRole('button', { name: /retry google/i }, { timeout: 3000 })
     ).toBeInTheDocument();
     expect(mockReportError).toHaveBeenCalledWith(
       'Failed to prepare Google login button',
@@ -168,7 +168,7 @@ describe('GoogleLoginButton', () => {
     render(<GoogleLoginButton onSuccess={vi.fn()} />);
 
     expect(
-      await screen.findByRole('button', { name: /reintentar google/i }, { timeout: 3000 })
+      await screen.findByRole('button', { name: /retry google/i }, { timeout: 3000 })
     ).toBeInTheDocument();
     expect(mockReportError).toHaveBeenCalledWith(
       'Failed to render Google login button',

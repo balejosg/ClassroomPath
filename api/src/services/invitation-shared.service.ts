@@ -6,10 +6,10 @@ import { config } from '../config.js';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { openpathDb, openpathSchema } from '../db/openpath.js';
+import { apiCopy } from '../lib/api-content.js';
 
 export const INVITATION_TTL_HOURS = 72;
-export const INVITATION_DELIVERY_FAILED_MESSAGE =
-  'No se pudo enviar la invitación. Reintenta desde esta pantalla.';
+export const INVITATION_DELIVERY_FAILED_MESSAGE = apiCopy.en.errors.invitationDeliveryFailed;
 
 export interface OrganizationInvitationSummary {
   id: string;

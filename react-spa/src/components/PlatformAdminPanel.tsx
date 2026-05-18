@@ -7,20 +7,22 @@ import {
   usePlatformManualBillingRequests,
   useRejectManualBillingRequest,
 } from '../lib/hooks';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 
 type ResolutionNotes = Record<string, string>;
 
-function formatDate(value: string | null): string {
-  if (!value) return 'pendiente';
+function formatDate(value: string | null, pendingLabel: string): string {
+  if (!value) return pendingLabel;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'pendiente';
-  return new Intl.DateTimeFormat('es-ES', {
+  if (Number.isNaN(date.getTime())) return pendingLabel;
+  return new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date);
 }
 
 export function PlatformAdminPanel() {
+  const t = useClassroomPathT();
   const requestsQuery = usePlatformManualBillingRequests({ refetchInterval: 30000 });
   const entitlementsQuery = usePlatformEntitlements({ refetchInterval: 30000 });
   const auditTrailQuery = useBillingAuditTrail(undefined, { refetchInterval: 30000 });
@@ -44,7 +46,7 @@ export function PlatformAdminPanel() {
   function requireResolutionNote(requestId: string): string | null {
     const note = noteFor(requestId).trim();
     if (!note) {
-      setError('Cada resolución manual requiere una nota.');
+      setError(t('platform.noteRequired'));
       return null;
     }
     setError('');
@@ -55,11 +57,8 @@ export function PlatformAdminPanel() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="mx-auto max-w-6xl space-y-8">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Administración de plataforma</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Revisa excepciones comerciales, vigila el estado de los centros y conserva la
-            trazabilidad.
-          </p>
+          <h1 className="text-3xl font-bold text-slate-900">{t('platform.title')}</h1>
+          <p className="mt-2 text-sm text-slate-600">{t('platform.subtitle')}</p>
         </div>
 
         {error ? (
@@ -69,11 +68,11 @@ export function PlatformAdminPanel() {
         ) : null}
 
         <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900">Solicitudes manuales</h2>
+          <h2 className="text-xl font-bold text-slate-900">{t('platform.manualRequests')}</h2>
           {requestsQuery.isLoading ? (
-            <p className="mt-4 text-sm text-slate-500">Cargando solicitudes...</p>
+            <p className="mt-4 text-sm text-slate-500">{t('platform.loadingRequests')}</p>
           ) : requests.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">No hay solicitudes registradas.</p>
+            <p className="mt-4 text-sm text-slate-500">{t('platform.noRequests')}</p>
           ) : (
             <div className="mt-4 grid gap-4">
               {requests.map((request) => (
@@ -85,14 +84,15 @@ export function PlatformAdminPanel() {
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold text-slate-900">{request.organizationName}</div>
                       <div className="mt-1 text-sm text-slate-600">
-                        {request.kind} · {request.classrooms} aulas · {request.status}
+                        {request.kind} · {t('platform.classrooms', { count: request.classrooms })} ·{' '}
+                        {request.status}
                       </div>
                       {request.note ? (
                         <div className="mt-2 text-sm text-slate-500">{request.note}</div>
                       ) : null}
                       {request.resolutionNote ? (
                         <div className="mt-2 text-sm text-slate-700">
-                          Resolución: <strong>{request.resolutionNote}</strong>
+                          {t('platform.resolution')} <strong>{request.resolutionNote}</strong>
                         </div>
                       ) : null}
                     </div>
@@ -109,7 +109,7 @@ export function PlatformAdminPanel() {
                               [request.id]: event.target.value,
                             }))
                           }
-                          placeholder="Nota obligatoria para soporte y auditoría"
+                          placeholder={t('platform.notePlaceholder')}
                         />
                         <div className="flex gap-3">
                           <Button
@@ -121,7 +121,7 @@ export function PlatformAdminPanel() {
                             }}
                             disabled={approveMutation.isPending || rejectMutation.isPending}
                           >
-                            Aprobar excepción
+                            {t('platform.approveException')}
                           </Button>
                           <Button
                             type="button"
@@ -133,7 +133,7 @@ export function PlatformAdminPanel() {
                             }}
                             disabled={approveMutation.isPending || rejectMutation.isPending}
                           >
-                            Rechazar
+                            {t('app.common.reject')}
                           </Button>
                         </div>
                       </div>
@@ -145,17 +145,17 @@ export function PlatformAdminPanel() {
           )}
           {pendingRequests.length > 0 ? (
             <p className="mt-4 text-xs text-slate-500">
-              Pendientes ahora: {pendingRequests.length}. Cada acción exige nota de resolución.
+              {t('platform.pendingNow', { count: pendingRequests.length })}
             </p>
           ) : null}
         </Card>
 
         <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900">Entitlements activos y recientes</h2>
+          <h2 className="text-xl font-bold text-slate-900">{t('platform.entitlements')}</h2>
           {entitlementsQuery.isLoading ? (
-            <p className="mt-4 text-sm text-slate-500">Cargando centros...</p>
+            <p className="mt-4 text-sm text-slate-500">{t('platform.loadingSchools')}</p>
           ) : entitlements.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">Aún no hay entitlements registradas.</p>
+            <p className="mt-4 text-sm text-slate-500">{t('platform.noEntitlements')}</p>
           ) : (
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               {entitlements.map((entitlement) => (
@@ -165,19 +165,24 @@ export function PlatformAdminPanel() {
                 >
                   <div className="font-semibold text-slate-900">{entitlement.organizationName}</div>
                   <div className="mt-1 text-sm text-slate-600">
-                    {entitlement.productKind} · {entitlement.classroomLimit} aulas ·{' '}
+                    {entitlement.productKind} ·{' '}
+                    {t('platform.classrooms', { count: entitlement.classroomLimit })} ·{' '}
                     {entitlement.status}
                   </div>
                   <div className="mt-2 text-sm text-slate-500">
-                    Fuente: {entitlement.source}
+                    {t('platform.source')} {entitlement.source}
                     <br />
-                    Fin de periodo: {formatDate(entitlement.currentPeriodEnd)}
+                    {t('platform.periodEnd')}{' '}
+                    {formatDate(entitlement.currentPeriodEnd, t('app.common.pending'))}
                     <br />
-                    Fin de gracia: {formatDate(entitlement.graceEndsAt)}
+                    {t('platform.graceEnd')}{' '}
+                    {formatDate(entitlement.graceEndsAt, t('app.common.pending'))}
                     <br />
-                    Expira: {formatDate(entitlement.expiresAt)}
+                    {t('platform.expires')}{' '}
+                    {formatDate(entitlement.expiresAt, t('app.common.pending'))}
                     <br />
-                    Última actualización: {formatDate(entitlement.updatedAt)}
+                    {t('platform.updated')}{' '}
+                    {formatDate(entitlement.updatedAt, t('app.common.pending'))}
                   </div>
                 </div>
               ))}
@@ -186,11 +191,11 @@ export function PlatformAdminPanel() {
         </Card>
 
         <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900">Timeline de billing</h2>
+          <h2 className="text-xl font-bold text-slate-900">{t('platform.billingTimeline')}</h2>
           {auditTrailQuery.isLoading ? (
-            <p className="mt-4 text-sm text-slate-500">Cargando actividad...</p>
+            <p className="mt-4 text-sm text-slate-500">{t('platform.loadingActivity')}</p>
           ) : auditTrail.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">Todavía no hay eventos de billing.</p>
+            <p className="mt-4 text-sm text-slate-500">{t('platform.noBillingEvents')}</p>
           ) : (
             <div className="mt-4 space-y-3">
               {auditTrail.map((event) => (
@@ -200,7 +205,9 @@ export function PlatformAdminPanel() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="text-sm font-medium text-slate-900">{event.action}</div>
-                    <div className="text-xs text-slate-500">{formatDate(event.createdAt)}</div>
+                    <div className="text-xs text-slate-500">
+                      {formatDate(event.createdAt, t('app.common.pending'))}
+                    </div>
                   </div>
                   <div className="mt-1 text-sm text-slate-600">
                     {event.actorType} · {event.targetType} · {event.targetId}

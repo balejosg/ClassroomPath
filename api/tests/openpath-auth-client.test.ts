@@ -242,7 +242,7 @@ describe('openpath-auth-client', () => {
       (error: unknown) =>
         error instanceof TRPCError &&
         error.code === 'SERVICE_UNAVAILABLE' &&
-        /sesión local se cerró|logout|revoc/i.test(error.message)
+        /local session was closed|logout|revok/i.test(error.message)
     );
 
     assert.equal(seenAuthorization, 'Bearer access-token');

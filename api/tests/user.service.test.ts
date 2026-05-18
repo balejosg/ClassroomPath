@@ -167,7 +167,7 @@ describe('user.service', { concurrency: 1 }, () => {
         assert.strictEqual((error as { code?: unknown }).code, 'SERVICE_UNAVAILABLE');
         assert.strictEqual(
           (error as { message?: unknown }).message,
-          'No se pudo enviar la invitación. Reintenta desde esta pantalla.'
+          'The invitation email could not be sent. Try again from this screen.'
         );
         return true;
       }

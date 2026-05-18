@@ -8,6 +8,9 @@ import {
   getRowInitials,
   getStatusClasses,
 } from '../organization-users-helpers';
+import { translateClassroomPathText, type ClassroomPathT } from '../../i18n/classroompath-i18n';
+
+const defaultT: ClassroomPathT = (key, values) => translateClassroomPathText('en', key, values);
 
 export function OrganizationUsersTable({
   rows,
@@ -17,6 +20,7 @@ export function OrganizationUsersTable({
   onRetry,
   onRequestReset,
   onRequestRevoke,
+  t = defaultT,
 }: {
   rows: TableRow[];
   isInitialLoading: boolean;
@@ -25,6 +29,7 @@ export function OrganizationUsersTable({
   onRetry: () => void;
   onRequestReset: (row: MemberRow) => void;
   onRequestRevoke: (row: TableRow) => void;
+  t?: ClassroomPathT;
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -32,11 +37,11 @@ export function OrganizationUsersTable({
         <table data-testid="users-table" className="w-full border-collapse text-left">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-6 py-4">Usuario</th>
-              <th className="px-6 py-4">Correo</th>
-              <th className="px-6 py-4">Rol</th>
-              <th className="px-6 py-4">Estado</th>
-              <th className="px-6 py-4 text-right">Acciones</th>
+              <th className="px-6 py-4">{t('orgUsers.table.user')}</th>
+              <th className="px-6 py-4">{t('orgUsers.table.email')}</th>
+              <th className="px-6 py-4">{t('app.common.role')}</th>
+              <th className="px-6 py-4">{t('orgUsers.table.status')}</th>
+              <th className="px-6 py-4 text-right">{t('pendingUsers.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -44,7 +49,9 @@ export function OrganizationUsersTable({
               <tr>
                 <td colSpan={5} className="px-6 py-10 text-center">
                   <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
-                  <span className="mt-2 block text-sm text-slate-500">Cargando usuarios...</span>
+                  <span className="mt-2 block text-sm text-slate-500">
+                    {t('orgUsers.table.loading')}
+                  </span>
                 </td>
               </tr>
             ) : hasQueryError ? (
@@ -57,14 +64,14 @@ export function OrganizationUsersTable({
                     onClick={onRetry}
                     className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-800"
                   >
-                    Reintentar
+                    {t('app.common.retry')}
                   </button>
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-500">
-                  No hay usuarios ni invitaciones para mostrar.
+                  {t('orgUsers.table.empty')}
                 </td>
               </tr>
             ) : (
@@ -79,8 +86,8 @@ export function OrganizationUsersTable({
                         <p className="text-sm font-semibold text-slate-900">{row.name}</p>
                         {row.kind === 'invitation' ? (
                           <p className="text-xs text-slate-400">
-                            Invitación válida hasta{' '}
-                            {new Date(row.expiresAt).toLocaleString('es-ES')}
+                            {t('orgUsers.table.invitationValidUntil')}{' '}
+                            {new Date(row.expiresAt).toLocaleString('en-US')}
                           </p>
                         ) : null}
                       </div>
@@ -92,12 +99,16 @@ export function OrganizationUsersTable({
                       <span>{row.email}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-slate-700">{getRoleLabel(row.role)}</td>
+                  <td className="px-6 py-4 text-sm text-slate-700">{getRoleLabel(row.role, t)}</td>
                   <td className="px-6 py-4">
                     <span
                       className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(row.status)}`}
                     >
-                      {row.status}
+                      {row.status === 'pending'
+                        ? t('orgUsers.statusPending')
+                        : row.status === 'active'
+                          ? t('app.common.active')
+                          : t('app.common.inactive')}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -112,7 +123,7 @@ export function OrganizationUsersTable({
                             onClick={() => onRequestReset(row)}
                           >
                             <KeyRound size={14} />
-                            Restablecer acceso
+                            {t('orgUsers.table.resetAccess')}
                           </Button>
                           <Button
                             type="button"
@@ -122,7 +133,7 @@ export function OrganizationUsersTable({
                             onClick={() => onRequestRevoke(row)}
                           >
                             <Trash2 size={14} />
-                            Revocar acceso
+                            {t('orgUsers.revokeAccess')}
                           </Button>
                         </>
                       ) : (
@@ -134,7 +145,7 @@ export function OrganizationUsersTable({
                           onClick={() => onRequestRevoke(row)}
                         >
                           <Trash2 size={14} />
-                          Revocar invitación
+                          {t('orgUsers.revokeInvitation')}
                         </Button>
                       )}
                     </div>

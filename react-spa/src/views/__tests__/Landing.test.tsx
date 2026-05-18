@@ -9,34 +9,32 @@ describe('ClassroomPathLandingPage', () => {
 
     expect(
       screen.getByRole('heading', {
-        name: 'Decide qué Internet entra en cada aula, sin cargar más al equipo TIC.',
+        name: 'Decide what Internet reaches each classroom, without adding more work for the IT team.',
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Filtrado web escolar por aula · servicio gestionado sobre OpenPath')
+      screen.getByText('Classroom web filtering by classroom · managed service on OpenPath')
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Hasta 30 dispositivos por aula · apoyo remoto al IT del centro · código abierto auditable'
+        'Up to 30 devices per classroom · remote support for school IT · auditable open source'
       )
     ).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'Calcular precio' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('link', { name: 'Solicitar activación' }).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('link', { name: 'Solicitar demo' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Calculate price' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Request activation' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('link', { name: 'Request demo' })).not.toBeInTheDocument();
   });
 
   it('renders the new positioning, practical flow, and fit sections', () => {
     render(<ClassroomPathLandingPage onNavigateToLogin={vi.fn()} />);
 
     expect(
-      screen.getByRole('heading', { name: 'No vendemos más tiempo de pantalla.' })
+      screen.getByRole('heading', { name: 'We do not sell more screen time.' })
     ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'How it works in practice' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'What each profile gains' })).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Cómo funciona en la práctica' })
-    ).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Qué gana cada perfil' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'ClassroomPath encaja si tu centro necesita...' })
+      screen.getByRole('heading', { name: 'ClassroomPath fits if your school needs...' })
     ).toBeInTheDocument();
     expect(screen.queryByText('Ruta recomendada')).not.toBeInTheDocument();
     expect(screen.queryByText(/No añadimos otra capa de ruido/i)).not.toBeInTheDocument();
@@ -45,14 +43,14 @@ describe('ClassroomPathLandingPage', () => {
   it('renders the broadened final request section', () => {
     render(<ClassroomPathLandingPage onNavigateToLogin={vi.fn()} />);
 
-    expect(screen.getByText('Solicitar presupuesto, activación o demo')).toBeInTheDocument();
+    expect(screen.getByText('Request a quote, activation, or demo')).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Coordina el siguiente paso con tu equipo IT' })
+      screen.getByRole('heading', { name: 'Coordinate the next step with your IT team' })
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Nombre')).toBeInTheDocument();
-    expect(screen.getByLabelText('Centro educativo')).toBeInTheDocument();
-    expect(screen.getByLabelText('Email de contacto')).toBeInTheDocument();
-    expect(screen.getByLabelText('Responsable técnico (opcional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('School')).toBeInTheDocument();
+    expect(screen.getByLabelText('Contact email')).toBeInTheDocument();
+    expect(screen.getByLabelText('Technical owner (optional)')).toBeInTheDocument();
   });
 
   it('navigates to login when the access CTA is clicked', () => {
@@ -60,7 +58,7 @@ describe('ClassroomPathLandingPage', () => {
 
     render(<ClassroomPathLandingPage onNavigateToLogin={onNavigateToLogin} />);
 
-    fireEvent.click(screen.getByRole('link', { name: 'Acceder' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Sign in' }));
 
     expect(onNavigateToLogin).toHaveBeenCalledTimes(1);
   });

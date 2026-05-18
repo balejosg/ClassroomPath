@@ -1,3 +1,5 @@
+import type { ClassroomPathT } from '../i18n/classroompath-i18n';
+
 export type PricingTier = {
   name: string;
   rangeLabel: string;
@@ -19,139 +21,147 @@ export type OnboardingTier = {
 };
 
 export const PILOT = {
-  name: 'Piloto',
+  name: 'Pilot',
   classrooms: 5,
   durationDays: 90,
   totalPrice: 290,
   tagline:
-    'Valida el modelo en pocas aulas antes de escalar. Es la opción más útil cuando necesitas comprobar encaje operativo y evidencia interna con poco riesgo.',
+    'Validate the model in a few classrooms before scaling. It is most useful when you need to check operational fit and internal evidence with little risk.',
 } as const;
 
 export const ACTIVATION_STARTER = {
-  name: 'Activación remota ligera',
+  name: 'Lightweight remote activation',
   classrooms: 2,
   totalPrice: 149,
   tagline:
-    'Incluye checklist técnica, una sesión remota con el IT del centro y apoyo para dejar 1-2 aulas operativas sin asumir una implantación completa.',
+    'Includes a technical checklist, one remote session with school IT, and support to leave 1-2 classrooms operational without assuming a full implementation.',
 } as const;
 
 export const PUBLIC_CAMPAIGN = {
   classrooms: 5,
   tagline:
-    'Acceso sin coste para hasta 5 aulas mientras haya disponibilidad y se verifique titularidad pública.',
+    'No-cost access for up to 5 classrooms while availability lasts and public ownership is verified.',
 } as const;
 
 export const PRICING_TIERS: PricingTier[] = [
   {
-    name: 'Centro pequeño',
-    rangeLabel: '1-10 aulas',
+    name: 'Small school',
+    rangeLabel: '1-10 classrooms',
     minClassrooms: 1,
     maxClassrooms: 10,
     pricePerClassroomPerYear: 55,
     approxPricePerDevicePerYear: 1.83,
-    tagline: 'Para primeros despliegues o un único espacio docente con dispositivos del centro.',
-    bestFor: 'Primer despliegue o un único espacio docente con dispositivos del centro.',
+    tagline: 'For first deployments or one teaching space with school-owned devices.',
+    bestFor: 'First deployment or one teaching space with school-owned devices.',
   },
   {
-    name: 'Centro mediano',
-    rangeLabel: '11-25 aulas',
+    name: 'Medium school',
+    rangeLabel: '11-25 classrooms',
     minClassrooms: 11,
     maxClassrooms: 25,
     pricePerClassroomPerYear: 45,
     approxPricePerDevicePerYear: 1.5,
-    tagline: 'El tramo más habitual para centros que ya quieren una política estable por aula.',
-    bestFor: 'El tramo más habitual para centros que ya quieren una política estable por aula.',
+    tagline: 'The most common tier for schools that already want a stable classroom policy.',
+    bestFor: 'The most common tier for schools that already want a stable classroom policy.',
     recommended: true,
   },
   {
-    name: 'Centro grande',
-    rangeLabel: '26-50 aulas',
+    name: 'Large school',
+    rangeLabel: '26-50 classrooms',
     minClassrooms: 26,
     maxClassrooms: 50,
     pricePerClassroomPerYear: 37,
     approxPricePerDevicePerYear: 1.23,
-    tagline: 'Pensado para centros con varias líneas, laboratorios o crecimiento por etapas.',
-    bestFor: 'Centros con varias líneas, laboratorios o crecimiento por etapas.',
+    tagline: 'Designed for schools with several lines, labs, or staged growth.',
+    bestFor: 'Schools with several lines, labs, or staged growth.',
   },
   {
-    name: 'Organización educativa',
-    rangeLabel: '51-100 aulas',
+    name: 'Educational organization',
+    rangeLabel: '51-100 classrooms',
     minClassrooms: 51,
     maxClassrooms: 100,
     pricePerClassroomPerYear: 32,
     approxPricePerDevicePerYear: 1.07,
-    tagline: 'Para estructuras con coordinación TIC central y varias sedes o etapas.',
-    bestFor: 'Para estructuras con coordinación TIC central y varias sedes o etapas.',
+    tagline: 'For structures with central IT coordination and several sites or stages.',
+    bestFor: 'For structures with central IT coordination and several sites or stages.',
   },
   {
-    name: 'Red de centros',
-    rangeLabel: '101+ aulas',
+    name: 'School network',
+    rangeLabel: '101+ classrooms',
     minClassrooms: 101,
     maxClassrooms: null,
     pricePerClassroomPerYear: 27,
     approxPricePerDevicePerYear: 0.9,
-    tagline: 'Precio optimizado para redes de centros y despliegues multi-sede.',
-    bestFor: 'Precio optimizado para despliegues multi-sede y redes educativas.',
+    tagline: 'Optimized pricing for school networks and multi-site deployments.',
+    bestFor: 'Optimized pricing for multi-site deployments and education networks.',
   },
 ];
 
 export const ONBOARDING_TIERS: OnboardingTier[] = [
   {
-    rangeLabel: 'Hasta 25 aulas',
+    rangeLabel: 'Up to 25 classrooms',
     minClassrooms: 1,
     maxClassrooms: 25,
     oneTimeFee: 490,
   },
   {
-    rangeLabel: '26-100 aulas',
+    rangeLabel: '26-100 classrooms',
     minClassrooms: 26,
     maxClassrooms: 100,
     oneTimeFee: 890,
   },
   {
-    rangeLabel: '101+ aulas',
+    rangeLabel: '101+ classrooms',
     minClassrooms: 101,
     maxClassrooms: null,
     oneTimeFee: null,
-    label: 'Consultar',
+    label: 'Contact us',
   },
 ];
 
-export const INCLUDED_PER_CLASSROOM = [
-  'Hasta 30 dispositivos por aula',
-  'Políticas de acceso a Internet',
-  'Cola de solicitudes de desbloqueo',
-  'Panel de administración',
-  'Hosting y operación incluidos',
-  'Actualizaciones incluidas',
-  'Soporte estándar por email',
-  'Servicio gestionado sobre OpenPath',
-];
+export function getIncludedPerClassroom(t: ClassroomPathT) {
+  return [
+    t('pricing.data.included.devices'),
+    t('pricing.data.included.policies'),
+    t('pricing.data.included.requests'),
+    t('pricing.data.included.admin'),
+    t('pricing.data.included.hosting'),
+    t('pricing.data.included.updates'),
+    t('pricing.data.included.support'),
+    t('pricing.data.included.openpath'),
+  ];
+}
 
-export const NOT_INCLUDED_BASE_PLAN = [
-  'SSO empresarial',
-  'SLA premium',
-  'Migración avanzada',
-  'Formación onsite',
-  'Soporte prioritario',
-  'Políticas muy personalizadas por sede o etapa',
-];
+export function getNotIncludedBasePlan(t: ClassroomPathT) {
+  return [
+    t('pricing.data.notIncluded.sso'),
+    t('pricing.data.notIncluded.sla'),
+    t('pricing.data.notIncluded.migration'),
+    t('pricing.data.notIncluded.training'),
+    t('pricing.data.notIncluded.priority'),
+    t('pricing.data.notIncluded.customPolicies'),
+  ];
+}
 
-export const VALUE_BULLETS = [
-  'Precio público desde el primer clic',
-  'Unidad de compra clara: el aula',
-  'Activación remota para empezar con poco alcance',
-  'Servicio gestionado sobre software abierto',
-  'Sin dependencia obligatoria de proveedor',
-];
+export function getValueBullets(t: ClassroomPathT) {
+  return [
+    t('pricing.data.value.public'),
+    t('pricing.data.value.unit'),
+    t('pricing.data.value.activation'),
+    t('pricing.data.value.open'),
+    t('pricing.data.value.noLockIn'),
+  ];
+}
 
-export const PER_CLASSROOM_POINTS = [
-  'El centro organiza su operación por espacios y grupos docentes, no por una suma abstracta de licencias.',
-  'Más fácil de explicar en presupuesto',
-  'Más fácil de escalar por espacios reales',
-  'Más claro al separar arranque y renovación',
-  'Más coherente con un servicio gestionado',
-];
+export function getPerClassroomPoints(t: ClassroomPathT) {
+  return [
+    t('pricing.data.points.operation'),
+    t('pricing.data.points.budget'),
+    t('pricing.data.points.scale'),
+    t('pricing.data.points.renewal'),
+    t('pricing.data.points.service'),
+  ];
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────────
 

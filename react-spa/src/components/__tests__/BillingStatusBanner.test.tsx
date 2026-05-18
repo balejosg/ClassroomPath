@@ -27,7 +27,7 @@ describe('BillingStatusBanner', () => {
       />
     );
 
-    expect(screen.getByText(/sigue activo temporalmente/)).toBeInTheDocument();
+    expect(screen.getByText(/remains temporarily active/)).toBeInTheDocument();
     expect(screen.getByText('20/04/2026')).toBeInTheDocument();
   });
 
@@ -45,7 +45,7 @@ describe('BillingStatusBanner', () => {
       />
     );
 
-    expect(screen.getByText(/marcada para finalizar/)).toBeInTheDocument();
+    expect(screen.getByText(/marked to end/)).toBeInTheDocument();
     expect(screen.getByText('01/05/2026')).toBeInTheDocument();
   });
 
@@ -66,8 +66,8 @@ describe('BillingStatusBanner', () => {
       />
     );
 
-    expect(screen.getByText(/El piloto termina el/)).toBeInTheDocument();
-    expect(screen.getByText('10/04/2026')).toBeInTheDocument();
+    expect(screen.getByText(/The pilot ends on/)).toBeInTheDocument();
+    expect(screen.getByText(/10\/04\/2026/)).toBeInTheDocument();
   });
 
   it('returns no banner for invalid dates or non-expiring pilot states', () => {

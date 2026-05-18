@@ -7,8 +7,8 @@ describe('SharedFooter', () => {
     render(<SharedFooter />);
 
     expect(screen.getByText('ClassroomPath')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Aviso Legal' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Política de Privacidad' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Legal notice' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Privacy policy' })).toBeInTheDocument();
   });
 
   it('renders the OpenPath link pointing to GitHub', () => {

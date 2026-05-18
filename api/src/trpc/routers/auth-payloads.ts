@@ -8,6 +8,7 @@ import {
   type OpenPathRegistrationPayload,
   type OpenPathSessionPayload,
 } from '../../lib/openpath-auth-schema.js';
+import { apiCopy } from '../../lib/api-content.js';
 import { CURRENT_TERMS_VERSION } from '../../services/legal-consent.service.js';
 
 function invalidUpstreamPayload(message: string): never {
@@ -58,7 +59,7 @@ export function assertCurrentTermsVersion(termsVersion: string): void {
   if (termsVersion !== CURRENT_TERMS_VERSION) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
-      message: 'Debes aceptar la version vigente de los terminos',
+      message: apiCopy.en.errors.currentTermsRequired,
     });
   }
 }

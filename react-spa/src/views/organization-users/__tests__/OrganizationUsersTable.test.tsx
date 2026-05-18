@@ -17,7 +17,7 @@ describe('OrganizationUsersTable', () => {
       />
     );
 
-    expect(screen.getByText('Cargando usuarios...')).toBeInTheDocument();
+    expect(screen.getByText('Loading users...')).toBeInTheDocument();
   });
 
   it('renders the retry state and forwards the retry action', () => {
@@ -35,7 +35,7 @@ describe('OrganizationUsersTable', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
@@ -52,7 +52,7 @@ describe('OrganizationUsersTable', () => {
       />
     );
 
-    expect(screen.getByText('No hay usuarios ni invitaciones para mostrar.')).toBeInTheDocument();
+    expect(screen.getByText('No users or invitations to show.')).toBeInTheDocument();
   });
 
   it('renders member and invitation rows and forwards row actions', () => {
@@ -90,14 +90,14 @@ describe('OrganizationUsersTable', () => {
       />
     );
 
-    expect(screen.getByText('Administrador')).toBeInTheDocument();
-    expect(screen.getByText('Profesor')).toBeInTheDocument();
+    expect(screen.getByText('Administrator')).toBeInTheDocument();
+    expect(screen.getByText('Teacher')).toBeInTheDocument();
     expect(screen.getByText('AL')).toBeInTheDocument();
     expect(screen.getByText('GH')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Restablecer acceso' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Revocar acceso' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Revocar invitación' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke invitation' }));
 
     expect(onRequestReset).toHaveBeenCalledWith(memberRow);
     expect(onRequestRevoke).toHaveBeenCalledWith(memberRow);

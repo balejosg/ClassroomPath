@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
+import { apiCopy } from '../lib/api-content.js';
 import { generateId } from '../lib/id.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
 import {
@@ -41,7 +42,7 @@ export async function createPendingOrganizationInvitationRecord(params: {
       expiresAt,
     });
   } catch (error) {
-    throwConflictOnUniqueViolation(error, 'Ya existe una invitación activa para este correo');
+    throwConflictOnUniqueViolation(error, apiCopy.en.errors.activeInvitationExists);
     throw error;
   }
 

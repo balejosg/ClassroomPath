@@ -16,6 +16,7 @@ import {
   getDeliveryNoticeFromResetResult,
   getSummaryLabel,
 } from '../organization-users-helpers';
+import { useClassroomPathT, type ClassroomPathT } from '../../i18n/classroompath-i18n';
 
 export type RevokeTarget =
   | {
@@ -50,6 +51,7 @@ export function buildOrganizationUsersQueryState(args: {
   invitationsError?: { message?: string } | null;
   usersErrored: boolean;
   invitationsErrored: boolean;
+  t?: ClassroomPathT;
 }) {
   const memberRows = buildMemberRows(args.users ?? []);
   const invitationRows = buildInvitationRows(args.invitations ?? []);
@@ -61,17 +63,21 @@ export function buildOrganizationUsersQueryState(args: {
 
   return {
     filteredRows,
-    summaryLabel: getSummaryLabel(filteredRows.length),
+    summaryLabel: getSummaryLabel(filteredRows.length, args.t),
     isInitialLoading:
       (args.usersLoading || args.invitationsLoading) && !args.users && !args.invitations,
     hasQueryError:
       (args.usersErrored && !args.users) || (args.invitationsErrored && !args.invitations),
     queryErrorMessage:
-      args.usersError?.message ?? args.invitationsError?.message ?? 'Error al cargar usuarios',
+      args.usersError?.message ??
+      args.invitationsError?.message ??
+      args.t?.('orgUsers.loadError') ??
+      'Could not load users',
   };
 }
 
 export function useOrganizationUsersState() {
+  const t = useClassroomPathT();
   const usersQuery = cpTrpcReact.users.list.useQuery();
   const invitationsQuery = cpTrpcReact.users.listInvitations.useQuery();
 
@@ -108,6 +114,7 @@ export function useOrganizationUsersState() {
         invitationsError: invitationsQuery.error,
         usersErrored: usersQuery.isError,
         invitationsErrored: invitationsQuery.isError,
+        t,
       }),
     [
       invitationsQuery.data,
@@ -119,6 +126,7 @@ export function useOrganizationUsersState() {
       usersQuery.error,
       usersQuery.isError,
       usersQuery.isLoading,
+      t,
     ]
   );
 
@@ -149,13 +157,13 @@ export function useOrganizationUsersState() {
       setInviteName('');
       setInviteEmail('');
       setInviteRole('teacher');
-      setNotice(getDeliveryNoticeFromInvitationResult(result));
+      setNotice(getDeliveryNoticeFromInvitationResult({ ...result, t }));
       void refetchAll().catch((error) => {
         reportError('Failed to refresh organization users after invitation', error);
       });
     } catch (error) {
       reportError('Failed to create organization invitation', error);
-      setInviteError(error instanceof Error ? error.message : 'No se pudo crear la invitación');
+      setInviteError(error instanceof Error ? error.message : t('orgUsers.inviteFailed'));
     }
   };
 
@@ -176,9 +184,7 @@ export function useOrganizationUsersState() {
       setRevokeTarget(null);
     } catch (error) {
       reportError('Failed to revoke organization access', error);
-      setRevokeError(
-        error instanceof Error ? error.message : 'No se pudo revocar el acceso seleccionado'
-      );
+      setRevokeError(error instanceof Error ? error.message : t('orgUsers.revokeFailed'));
     }
   };
 
@@ -197,13 +203,12 @@ export function useOrganizationUsersState() {
         getDeliveryNoticeFromResetResult({
           ...result,
           email: targetEmail,
+          t,
         })
       );
     } catch (error) {
       reportError('Failed to generate tenant reset token', error);
-      setResetError(
-        error instanceof Error ? error.message : 'No se pudo generar el enlace de recuperación'
-      );
+      setResetError(error instanceof Error ? error.message : t('orgUsers.resetFailed'));
     }
   };
 
@@ -243,5 +248,6 @@ export function useOrganizationUsersState() {
     setRevokeError,
     setResetTarget,
     setResetError,
+    t,
   };
 }

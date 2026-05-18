@@ -8,6 +8,7 @@ import { PasswordStrength } from '../components/PasswordStrength';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
 import { AuthSplitLayout } from './auth/AuthSplitLayout';
 import { getPasswordSetupError, persistAuthSession } from './auth-helpers';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 
 function buildInvitationLoginPath(token: string): string {
   const next = `/accept-invitation?token=${encodeURIComponent(token)}`;
@@ -27,6 +28,7 @@ export function AcceptInvitation({
   onLoginClick,
   onSuccess,
 }: AcceptInvitationProps) {
+  const t = useClassroomPathT();
   const token = useMemo(() => {
     if (typeof window === 'undefined') return '';
     return new URLSearchParams(window.location.search).get('token') ?? '';
@@ -60,9 +62,9 @@ export function AcceptInvitation({
       password,
       confirmPassword,
       termsAccepted,
-      passwordErrorMessage: 'La contraseña debe tener al menos 8 caracteres',
-      passwordMismatchMessage: 'Las contraseñas no coinciden',
-      termsRequiredMessage: 'Debes aceptar los terminos para activar tu acceso',
+      passwordErrorMessage: t('validation.weakPassword'),
+      passwordMismatchMessage: t('validation.passwordMismatch'),
+      termsRequiredMessage: t('auth.invitation.termsRequired'),
     });
     if (passwordSetupError) {
       setError(passwordSetupError);
@@ -80,7 +82,7 @@ export function AcceptInvitation({
       persistAuthSession(result);
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo activar la invitación');
+      setError(err instanceof Error ? err.message : t('auth.invitation.activateFailed'));
     }
   };
 
@@ -97,7 +99,7 @@ export function AcceptInvitation({
       persistAuthSession(result);
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo aceptar la invitación');
+      setError(err instanceof Error ? err.message : t('auth.invitation.acceptFailed'));
     }
   };
 
@@ -105,16 +107,14 @@ export function AcceptInvitation({
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
         <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm text-center">
-          <h1 className="text-2xl font-bold text-slate-900">Invitación inválida</h1>
-          <p className="mt-3 text-sm text-slate-600">
-            Falta el token de activación. Abre el enlace que recibiste por correo.
-          </p>
+          <h1 className="text-2xl font-bold text-slate-900">{t('auth.invitation.invalidTitle')}</h1>
+          <p className="mt-3 text-sm text-slate-600">{t('auth.invitation.missingToken')}</p>
           <button
             type="button"
             onClick={onLoginClick}
             className="mt-6 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
           >
-            Volver al inicio
+            {t('app.common.backToHome')}
           </button>
         </div>
       </div>
@@ -126,7 +126,7 @@ export function AcceptInvitation({
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <Loader2 className="mx-auto h-10 w-10 animate-spin text-blue-600" />
-          <p className="mt-4 text-sm text-slate-600">Validando invitación...</p>
+          <p className="mt-4 text-sm text-slate-600">{t('auth.invitation.validating')}</p>
         </div>
       </div>
     );
@@ -136,16 +136,14 @@ export function AcceptInvitation({
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
         <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm text-center">
-          <h1 className="text-2xl font-bold text-slate-900">Invitación vencida o inválida</h1>
-          <p className="mt-3 text-sm text-slate-600">
-            Pide a tu administrador que te envíe una nueva invitación.
-          </p>
+          <h1 className="text-2xl font-bold text-slate-900">{t('auth.invitation.expiredTitle')}</h1>
+          <p className="mt-3 text-sm text-slate-600">{t('auth.invitation.expiredBody')}</p>
           <button
             type="button"
             onClick={onLoginClick}
             className="mt-6 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
           >
-            Volver al inicio
+            {t('app.common.backToHome')}
           </button>
         </div>
       </div>
@@ -153,11 +151,13 @@ export function AcceptInvitation({
   }
 
   return (
-    <AuthSplitLayout heroTitle="Activa tu acceso">
+    <AuthSplitLayout heroTitle={t('auth.invitation.hero')}>
       <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-slate-200">
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-slate-900">
-            {isExistingAccountFlow ? 'Acepta tu invitación' : 'Completa tu registro'}
+            {isExistingAccountFlow
+              ? t('auth.invitation.acceptTitle')
+              : t('auth.invitation.completeRegistration')}
           </h2>
         </div>
 
@@ -168,7 +168,7 @@ export function AcceptInvitation({
               <p className="text-sm font-semibold text-slate-900">{invitation.name}</p>
               <p className="text-sm text-slate-600">{invitation.email}</p>
               <p className="text-xs uppercase tracking-wide text-slate-500 mt-1">
-                {invitation.role === 'admin' ? 'Administrador' : 'Profesor'} ·{' '}
+                {invitation.role === 'admin' ? t('app.common.admin') : t('app.common.teacher')} ·{' '}
                 {invitation.organizationName}
               </p>
             </div>
@@ -183,17 +183,17 @@ export function AcceptInvitation({
 
         {invitation.hasExistingAccount ? (
           <div className="space-y-5">
-            <p className="text-sm text-slate-600">
-              Ya tienes una cuenta. Inicia sesión para revisar y aceptar esta invitación.
-            </p>
+            <p className="text-sm text-slate-600">{t('auth.invitation.existingAccount')}</p>
 
             {isOrganizationTransfer ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                <p className="font-semibold">
-                  Aceptar esta invitación te cambiará de organización en ClassroomPath.
+                <p className="font-semibold">{t('auth.invitation.transferWarning')}</p>
+                <p className="mt-2">
+                  {t('auth.invitation.currentOrg', {
+                    organization: invitation.currentOrganizationName ?? '',
+                  })}
                 </p>
-                <p className="mt-2">Organización actual: {invitation.currentOrganizationName}</p>
-                <p>Nueva organización: {invitation.organizationName}</p>
+                <p>{t('auth.invitation.newOrg', { organization: invitation.organizationName })}</p>
               </div>
             ) : null}
 
@@ -208,12 +208,12 @@ export function AcceptInvitation({
                 {acceptMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Aceptando invitación...
+                    {t('auth.invitation.accepting')}
                   </>
                 ) : isOrganizationTransfer ? (
-                  'Aceptar cambio de organización'
+                  t('auth.invitation.acceptTransfer')
                 ) : (
-                  'Aceptar invitación'
+                  t('auth.invitation.accept')
                 )}
               </button>
             ) : (
@@ -222,14 +222,16 @@ export function AcceptInvitation({
                 onClick={onLoginClick}
                 className="block w-full rounded-lg bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-700"
               >
-                Inicia sesión para continuar
+                {t('auth.invitation.loginToContinue')}
               </a>
             )}
           </div>
         ) : (
           <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Contraseña</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                {t('app.common.password')}
+              </label>
               <input
                 type="password"
                 value={password}
@@ -237,14 +239,14 @@ export function AcceptInvitation({
                 data-testid="accept-invitation-password"
                 disabled={isBusy}
                 className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Crea una contraseña segura"
+                placeholder={t('auth.password.placeholder')}
               />
               <PasswordStrength password={password} />
             </div>
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Confirmar contraseña
+                {t('app.common.confirmPassword')}
               </label>
               <input
                 type="password"
@@ -253,7 +255,7 @@ export function AcceptInvitation({
                 data-testid="accept-invitation-confirm-password"
                 disabled={isBusy}
                 className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Repite tu contraseña"
+                placeholder={t('auth.password.repeatPlaceholder')}
               />
             </div>
 
@@ -267,9 +269,9 @@ export function AcceptInvitation({
                 className="mt-1 h-4 w-4 rounded border-slate-300"
               />
               <span>
-                Acepto los{' '}
+                {t('auth.register.acceptTermsPrefix')}{' '}
                 <a href="/terms.html" target="_blank" className="text-blue-600 hover:underline">
-                  términos de servicio
+                  {t('auth.register.termsLink')}
                 </a>
               </span>
             </label>
@@ -283,23 +285,23 @@ export function AcceptInvitation({
               {acceptMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Activando acceso...
+                  {t('auth.invitation.activating')}
                 </>
               ) : (
-                'Activar acceso'
+                t('auth.invitation.activate')
               )}
             </button>
           </form>
         )}
 
         <div className="mt-6 pt-6 border-t border-slate-100 text-center text-sm">
-          <span className="text-slate-500">¿Ya tienes cuenta? </span>
+          <span className="text-slate-500">{t('auth.register.hasAccount')} </span>
           <button
             type="button"
             onClick={onLoginClick}
             className="text-blue-600 font-bold hover:underline cursor-pointer"
           >
-            Inicia sesión
+            {t('auth.register.login')}
           </button>
         </div>
       </div>

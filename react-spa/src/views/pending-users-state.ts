@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { useApproveUser, usePendingUsers, useRejectUser } from '../lib/hooks';
 import { reportError } from '../lib/reportError';
+import { useClassroomPathT, type ClassroomPathT } from '../i18n/classroompath-i18n';
 
 export interface PendingUser {
   userId: string;
@@ -12,11 +13,11 @@ export interface PendingUser {
 
 export type RoleOption = 'teacher' | 'admin';
 
-export function formatPendingUserDate(dateStr: string | null): string {
-  if (!dateStr) return 'Fecha desconocida';
+export function formatPendingUserDate(dateStr: string | null, t?: ClassroomPathT): string {
+  if (!dateStr) return t ? t('pendingUsers.unknownDate') : 'Unknown date';
 
   const date = new Date(dateStr);
-  return date.toLocaleDateString('es-ES', {
+  return date.toLocaleDateString('en-US', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -25,11 +26,13 @@ export function formatPendingUserDate(dateStr: string | null): string {
   });
 }
 
-export function getPendingUsersSummaryLabel(count: number): string {
-  return `${count} solicitud${count !== 1 ? 'es' : ''} pendiente${count !== 1 ? 's' : ''}`;
+export function getPendingUsersSummaryLabel(count: number, t?: ClassroomPathT): string {
+  if (t) return t('pendingUsers.summary', { count, plural: count !== 1 ? 's' : '' });
+  return `${count} pending request${count !== 1 ? 's' : ''}`;
 }
 
 export function usePendingUsersState() {
+  const t = useClassroomPathT();
   const { data: pendingUsers, isLoading, error, refetch } = usePendingUsers();
   const approveMutation = useApproveUser();
   const rejectMutation = useRejectUser();
@@ -59,7 +62,7 @@ export function usePendingUsersState() {
   };
 
   const handleReject = async (userId: string) => {
-    if (!confirm('¿Estás seguro de que quieres rechazar esta solicitud?')) return;
+    if (!confirm(t('pendingUsers.rejectConfirm'))) return;
 
     setProcessingUser(userId);
     try {
@@ -86,6 +89,7 @@ export function usePendingUsersState() {
     setSelectedRoles,
     handleApprove,
     handleReject,
-    summaryLabel: getPendingUsersSummaryLabel(users.length),
+    summaryLabel: getPendingUsersSummaryLabel(users.length, t),
+    t,
   };
 }

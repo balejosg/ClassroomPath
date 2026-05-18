@@ -4,6 +4,7 @@ import type { TRPC_ERROR_CODE_KEY } from '@trpc/server/rpc';
 import { callOpenPathTrpc } from './openpath/trpc-client.js';
 import { fetchOpenPathMeProfile } from './openpath/auth-client.js';
 import type { OpenPathForwardRequest } from './openpath/headers.js';
+import { apiCopy } from './api-content.js';
 import { logger } from './logger.js';
 import {
   clearSessionCookies,
@@ -82,7 +83,7 @@ export async function logoutOpenPathSession(params: {
 
     throw new TRPCError({
       code: 'SERVICE_UNAVAILABLE',
-      message: 'No se pudo revocar la sesión en OpenPath. La sesión local se cerró.',
+      message: apiCopy.en.errors.logoutRevocationFailed,
     });
   } finally {
     clearSessionCookies(params.res);

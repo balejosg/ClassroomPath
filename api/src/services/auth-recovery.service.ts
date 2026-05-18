@@ -7,6 +7,7 @@ import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { openpathDb, openpathSchema } from '../db/openpath.js';
 import { config } from '../config.js';
+import { apiCopy, getApiCopy } from '../lib/api-content.js';
 import { generateId } from '../lib/id.js';
 import {
   deleteAuditEventByIdBestEffort,
@@ -19,13 +20,13 @@ function createPasswordResetToken(): string {
   return randomBytes(6).toString('hex');
 }
 
-const RESET_DELIVERY_FAILED_MESSAGE =
-  'No se pudo enviar el correo de recuperación. Genera un nuevo correo para reintentar.';
+const RESET_DELIVERY_FAILED_MESSAGE = apiCopy.en.errors.resetDeliveryFailed;
 
 export async function generateTenantResetToken(params: {
   organizationId: string;
   email: string;
   actedBy: string;
+  locale?: string | null;
 }): Promise<{ success: true; emailSent: boolean }> {
   const normalizedEmail = normalizeEmailAddress(params.email);
 
@@ -86,24 +87,25 @@ export async function generateTenantResetToken(params: {
     userId: user.id,
     email: user.email,
   });
+  const copy = getApiCopy(params.locale).email;
 
   try {
     const delivery = await sendTransactionalEmail({
       to: user.email,
-      subject: 'Restablece tu acceso a ClassroomPath',
+      subject: copy.resetSubject,
       text: [
-        `Hola ${user.name},`,
+        copy.greeting(user.name),
         '',
-        'Tu administrador genero un enlace para restablecer tu acceso a ClassroomPath.',
-        `Usalo aqui: ${resetUrl}`,
+        copy.resetIntro,
+        copy.resetAction(resetUrl),
         '',
-        `Este enlace vence el ${expiresAt.toISOString()}.`,
+        copy.linkExpires(expiresAt.toISOString()),
       ].join('\n'),
       html: [
-        `<p>Hola ${user.name},</p>`,
-        '<p>Tu administrador genero un enlace para restablecer tu acceso a ClassroomPath.</p>',
-        `<p><a href="${resetUrl}">Restablecer acceso</a></p>`,
-        `<p>Este enlace vence el <strong>${expiresAt.toISOString()}</strong>.</p>`,
+        `<p>${copy.greeting(user.name)}</p>`,
+        `<p>${copy.resetIntro}</p>`,
+        `<p><a href="${resetUrl}">${copy.resetActionLabel}</a></p>`,
+        `<p>${copy.linkExpires(`<strong>${expiresAt.toISOString()}</strong>`)}</p>`,
       ].join(''),
     });
 

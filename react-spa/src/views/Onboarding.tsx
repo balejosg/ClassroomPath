@@ -17,6 +17,7 @@ import { CLASSROOMPATH_BRAND_ASSETS } from '../brand-assets';
 import { OnboardingAlert } from './onboarding/OnboardingAlerts';
 import { OnboardingFeatureStrip } from './onboarding/OnboardingFeatureStrip';
 import { OnboardingBillingCard, OnboardingInvitationCard } from './onboarding/OnboardingCards';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 
 interface Props {
   onOrgCreated: (result: CreateOrganizationSuccessDto) => void;
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
+  const t = useClassroomPathT();
   const [orgName, setOrgName] = useState(initialOrgName ?? '');
   const [classrooms, setClassrooms] = useState('12');
   const [targetOrgId, setTargetOrgId] = useState('');
@@ -59,13 +61,13 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
     setNotice('');
 
     if (!orgName.trim()) {
-      setError('Debes ingresar un nombre para la organización');
+      setError(t('onboarding.orgNameRequired'));
       return null;
     }
 
     const parsedClassrooms = Number.parseInt(classrooms, 10);
     if (!Number.isInteger(parsedClassrooms) || parsedClassrooms < 1) {
-      setError('Debes indicar al menos un aula');
+      setError(t('onboarding.classroomRequired'));
       return null;
     }
 
@@ -86,7 +88,7 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
           window.location.href = data.checkoutUrl;
         },
         onError: (err) => {
-          setError(err.message || 'No se pudo iniciar el checkout');
+          setError(err.message || t('onboarding.checkoutFailed'));
         },
       }
     );
@@ -100,14 +102,14 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
       {
         ...input,
         kind: 'public_campaign',
-        note: 'Solicitud de centro publico desde onboarding',
+        note: t('onboarding.manualNote'),
       },
       {
         onSuccess: () => {
-          setNotice('Solicitud enviada. Revisaremos la activación antes de habilitar el centro.');
+          setNotice(t('onboarding.manualSuccess'));
         },
         onError: (err) => {
-          setError(err.message || 'No se pudo enviar la solicitud');
+          setError(err.message || t('onboarding.manualFailed'));
         },
       }
     );
@@ -117,7 +119,7 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
     setError('');
 
     if (allowOrgDirectory && !targetOrgId) {
-      setError('Selecciona una organización para solicitar acceso');
+      setError(t('onboarding.selectOrg'));
       return;
     }
 
@@ -126,7 +128,7 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
         onWaitClick();
       },
       onError: (err) => {
-        setError(err.message || 'Error al procesar solicitud');
+        setError(err.message || t('onboarding.waitFailed'));
       },
     });
   };
@@ -135,11 +137,9 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-4xl">
         <h1 className="text-3xl font-bold text-center mb-2 text-gray-900">
-          ¡Bienvenido a ClassroomPath!
+          {t('onboarding.title')}
         </h1>
-        <p className="text-center text-gray-600 mb-10">
-          Elige cómo quieres comenzar a gestionar tus salas
-        </p>
+        <p className="text-center text-gray-600 mb-10">{t('onboarding.subtitle')}</p>
 
         <img
           src={CLASSROOMPATH_BRAND_ASSETS.onboardingGovernance}
@@ -192,7 +192,7 @@ export function Onboarding({ initialOrgName, onWaitClick, onLogout }: Props) {
               onClick={onLogout}
               className="text-sm text-slate-500 hover:text-slate-700 underline"
             >
-              Cerrar sesión
+              {t('app.common.logout')}
             </button>
           </div>
         )}

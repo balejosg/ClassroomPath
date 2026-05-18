@@ -1,6 +1,9 @@
 import { ShieldCheck } from 'lucide-react';
 
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
+
 export function SharedFooter() {
+  const t = useClassroomPathT();
   return (
     <footer className="border-t border-slate-200 bg-white">
       <div className="mx-auto max-w-7xl px-6 py-10 lg:px-8">
@@ -11,7 +14,7 @@ export function SharedFooter() {
             </div>
             <span className="text-sm font-semibold text-slate-900">ClassroomPath</span>
             <span className="text-slate-300">·</span>
-            <span className="text-sm text-slate-500">Servicio gestionado sobre</span>
+            <span className="text-sm text-slate-500">{t('public.nav.footerManaged')}</span>
             <a
               href="https://github.com/balejosg/openpath"
               target="_blank"
@@ -23,10 +26,10 @@ export function SharedFooter() {
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
             <a href="/legal" className="transition hover:text-slate-900">
-              Aviso Legal
+              {t('public.nav.legalNotice')}
             </a>
             <a href="/privacidad" className="transition hover:text-slate-900">
-              Política de Privacidad
+              {t('public.nav.privacyPolicy')}
             </a>
             <a href="mailto:hola@classroompath.com" className="transition hover:text-slate-900">
               hola@classroompath.com

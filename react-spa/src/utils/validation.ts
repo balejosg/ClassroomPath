@@ -26,12 +26,14 @@ export function validatePassword(password: string): PasswordValidation {
   };
 }
 
-export const ERROR_MESSAGES_ES = {
-  invalidEmail: 'Correo electrónico inválido',
+export const ERROR_MESSAGES_EN = {
+  invalidEmail: 'Invalid email address',
   weakPassword:
-    'La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas y números',
-  passwordMismatch: 'Las contraseñas no coinciden',
-  termsRequired: 'Debes aceptar los términos de servicio',
-  registrationFailed: 'Error al registrar usuario. Por favor intenta nuevamente.',
-  loginFailed: 'No se pudo iniciar sesión. Verifica tus credenciales.',
+    'Password must be at least 8 characters and include uppercase, lowercase, and numbers',
+  passwordMismatch: 'Passwords do not match',
+  termsRequired: 'You must accept the terms of service',
+  registrationFailed: 'Could not create the account. Please try again.',
+  loginFailed: 'Could not log in. Check your credentials.',
 };
+
+export const ERROR_MESSAGES_ES = ERROR_MESSAGES_EN;

@@ -296,7 +296,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
     const parsed = await parseTRPC(response);
     assert.ok(parsed.error, 'Expected error payload');
     assert.strictEqual(parsed.code, 'BAD_REQUEST');
-    assert.match(parsed.error ?? '', /No hay organizaciones disponibles/i);
+    assert.match(parsed.error ?? '', /No organizations are available/i);
   });
 
   test('onboarding.waitForInvitation allows generic waiting when multiple organizations exist and the directory is hidden', async () => {

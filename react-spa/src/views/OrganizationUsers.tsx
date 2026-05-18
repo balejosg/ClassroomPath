@@ -12,20 +12,19 @@ import {
 
 export function OrganizationUsers() {
   const state = useOrganizationUsersState();
+  const { t } = state;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">Gestión de Usuarios</h2>
-          <p className="text-sm text-slate-500">
-            Invita nuevos miembros, revoca accesos y genera recuperaciones sin pedir contraseñas.
-          </p>
+          <h2 className="text-xl font-bold text-slate-900">{t('orgUsers.title')}</h2>
+          <p className="text-sm text-slate-500">{t('orgUsers.subtitle')}</p>
         </div>
 
         <Button type="button" onClick={state.openInviteModal} className="gap-2">
           <UserPlus size={16} />
-          Invitar usuario
+          {t('orgUsers.inviteUser')}
         </Button>
       </div>
 
@@ -44,7 +43,7 @@ export function OrganizationUsers() {
               type="text"
               value={state.searchQuery}
               onChange={(event) => state.setSearchQuery(event.target.value)}
-              placeholder="Buscar por nombre o correo"
+              placeholder={t('orgUsers.searchPlaceholder')}
               className="w-full rounded-lg border border-slate-300 bg-slate-50 py-2 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
             />
           </label>
@@ -69,6 +68,7 @@ export function OrganizationUsers() {
           state.setRevokeError('');
           state.setRevokeTarget(toRevokeTarget(row));
         }}
+        t={t}
       />
 
       <InviteUserModal
@@ -83,13 +83,20 @@ export function OrganizationUsers() {
         onInviteRoleChange={state.setInviteRole}
         onClose={state.closeInviteModal}
         onSubmit={(event) => void state.handleInviteSubmit(event)}
+        t={t}
       />
 
       <DangerConfirmDialog
         isOpen={state.revokeTarget !== null}
-        title={state.revokeTarget?.kind === 'invitation' ? 'Revocar invitación' : 'Revocar acceso'}
+        title={
+          state.revokeTarget?.kind === 'invitation'
+            ? t('orgUsers.revokeInvitation')
+            : t('orgUsers.revokeAccess')
+        }
         confirmLabel={
-          state.revokeTarget?.kind === 'invitation' ? 'Revocar invitación' : 'Revocar acceso'
+          state.revokeTarget?.kind === 'invitation'
+            ? t('orgUsers.revokeInvitation')
+            : t('orgUsers.revokeAccess')
         }
         isLoading={state.revokeInvitationMutation.isPending || state.deleteUserMutation.isPending}
         errorMessage={state.revokeError || undefined}
@@ -101,15 +108,15 @@ export function OrganizationUsers() {
       >
         <p className="text-sm text-slate-600">
           {state.revokeTarget?.kind === 'invitation'
-            ? `Se eliminará la invitación pendiente de ${state.revokeTarget?.email}.`
-            : `Se quitará el acceso de ${state.revokeTarget?.email} a esta organización.`}
+            ? t('orgUsers.revokeInvitationBody', { email: state.revokeTarget?.email ?? '' })
+            : t('orgUsers.revokeAccessBody', { email: state.revokeTarget?.email ?? '' })}
         </p>
       </DangerConfirmDialog>
 
       <ConfirmDialog
         isOpen={state.resetTarget !== null}
-        title="Generar recuperación"
-        confirmLabel="Generar enlace"
+        title={t('orgUsers.generateRecovery')}
+        confirmLabel={t('orgUsers.generateLink')}
         isLoading={state.resetPasswordMutation.isPending}
         errorMessage={state.resetError || undefined}
         onClose={() => {
@@ -120,7 +127,7 @@ export function OrganizationUsers() {
         onConfirm={() => void state.handleGenerateReset()}
       >
         <p className="text-sm text-slate-600">
-          Se generará un enlace de recuperación para <strong>{state.resetTarget?.email}</strong>.
+          {t('orgUsers.generateRecoveryBody', { email: state.resetTarget?.email ?? '' })}
         </p>
       </ConfirmDialog>
     </div>

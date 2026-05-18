@@ -8,6 +8,7 @@ import { reportError } from '../lib/reportError';
 import { getSessionClientMode } from '../lib/session-client-mode';
 import { CURRENT_TERMS_VERSION } from '../constants/legal';
 import { CLASSROOMPATH_BRAND_ASSETS } from '../brand-assets';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 import {
   getPasswordSetupError,
   getVerificationDeliveryMessage,
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export function Register({ onLoginClick, onAuthenticated }: Props) {
+  const t = useClassroomPathT();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -103,7 +105,7 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
       persistAuthSession(result);
       onAuthenticated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo continuar con Google');
+      setError(err instanceof Error ? err.message : t('auth.register.googleFailed'));
       reportError('Failed to register user with Google', err, {
         action: 'google-signup',
         userRole: 'anonymous',
@@ -124,14 +126,16 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
             alt="ClassroomPath"
             className="mx-auto mb-6 h-12 w-auto"
           />
-          <h1 className="text-2xl font-bold mb-4 text-center">Revisa tu correo</h1>
+          <h1 className="text-2xl font-bold mb-4 text-center">{t('auth.register.reviewEmail')}</h1>
           <p className="text-sm text-gray-600 text-center leading-relaxed">
             {getVerificationDeliveryMessage(registrationState)}
           </p>
 
           {shouldShowVerificationLink ? (
             <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
-              <p className="font-medium text-amber-900">Enlace manual de verificacion</p>
+              <p className="font-medium text-amber-900">
+                {t('auth.register.manualVerificationLink')}
+              </p>
               <a
                 data-testid="register-manual-verification-link"
                 href={registrationState.verificationUrl}
@@ -143,7 +147,7 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
           ) : null}
 
           <Button type="button" onClick={onLoginClick} className="mt-6 w-full cursor-pointer">
-            Ir a iniciar sesion
+            {t('auth.register.goToLogin')}
           </Button>
         </Card>
       </div>
@@ -158,7 +162,7 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
           alt="ClassroomPath"
           className="mx-auto mb-6 h-12 w-auto"
         />
-        <h1 className="text-2xl font-bold mb-6 text-center">Crear Cuenta</h1>
+        <h1 className="text-2xl font-bold mb-6 text-center">{t('auth.register.title')}</h1>
 
         {error && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm">{error}</div>
@@ -182,35 +186,41 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">Email</label>
+            <label className="block text-sm font-medium mb-1 text-gray-700">
+              {t('app.common.email')}
+            </label>
             <Input
               type="email"
               name="email"
               data-testid="register-email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="correo@ejemplo.com"
+              placeholder={t('auth.email.genericPlaceholder')}
               required
               disabled={isBusy}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">Nombre</label>
+            <label className="block text-sm font-medium mb-1 text-gray-700">
+              {t('app.common.name')}
+            </label>
             <Input
               type="text"
               name="name"
               data-testid="register-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Tu nombre completo"
+              placeholder={t('auth.register.fullName.placeholder')}
               required
               disabled={isBusy}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">Contraseña</label>
+            <label className="block text-sm font-medium mb-1 text-gray-700">
+              {t('app.common.password')}
+            </label>
             <Input
               type="password"
               name="password"
@@ -226,7 +236,7 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
 
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">
-              Confirmar Contraseña
+              {t('app.common.confirmPassword')}
             </label>
             <Input
               type="password"
@@ -252,9 +262,9 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
               disabled={isBusy}
             />
             <label htmlFor="terms" className="text-sm text-gray-600">
-              Acepto los{' '}
+              {t('auth.register.acceptTermsPrefix')}{' '}
               <a href="/terms.html" target="_blank" className="text-blue-600 hover:underline">
-                términos de servicio
+                {t('auth.register.termsLink')}
               </a>
             </label>
           </div>
@@ -265,18 +275,18 @@ export function Register({ onLoginClick, onAuthenticated }: Props) {
             className="w-full cursor-pointer"
             disabled={isBusy || !termsAccepted}
           >
-            {isBusy ? 'Creando cuenta...' : 'Registrarse'}
+            {isBusy ? t('auth.register.creating') : t('auth.register.submit')}
           </Button>
         </form>
 
         <p className="mt-6 text-center text-sm text-gray-600">
-          ¿Ya tienes cuenta?{' '}
+          {t('auth.register.hasAccount')}{' '}
           <button
             type="button"
             onClick={onLoginClick}
             className="text-blue-600 font-medium hover:underline cursor-pointer"
           >
-            Inicia sesión
+            {t('auth.register.login')}
           </button>
         </p>
       </Card>

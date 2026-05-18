@@ -2,6 +2,7 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
 import { protectedProcedure, publicProcedure } from '../trpc.js';
+import { apiCopy } from '../../lib/api-content.js';
 import { callOpenPathTrpc } from '../../lib/openpath/trpc-client.js';
 import { loginOpenPathUser, registerOpenPathUser } from '../../lib/openpath/auth-client.js';
 import { synchronizeOpenPathRole } from '../../lib/openpath-roles.js';
@@ -36,14 +37,14 @@ function getAuthenticatedInvitationUser(params: {
   if (!params.user) {
     throw new TRPCError({
       code: 'UNAUTHORIZED',
-      message: 'Inicia sesión con la cuenta invitada para aceptar esta invitación.',
+      message: apiCopy.en.errors.invitationLoginRequired,
     });
   }
 
   if (normalizeEmailAddress(params.user.email) !== params.invitation.email) {
     throw new TRPCError({
       code: 'FORBIDDEN',
-      message: 'Debes iniciar sesión con el correo invitado para aceptar esta invitación.',
+      message: apiCopy.en.errors.invitationEmailMismatch,
     });
   }
 
@@ -130,7 +131,7 @@ export const authInvitationProcedures = {
       if (!input.password) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Debes crear una contraseña para activar esta invitación.',
+          message: apiCopy.en.errors.invitationPasswordRequired,
         });
       }
 
@@ -209,7 +210,7 @@ export const authInvitationProcedures = {
       if (!invitation) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: 'No tienes ninguna invitación pendiente.',
+          message: apiCopy.en.errors.noPendingInvitation,
         });
       }
 

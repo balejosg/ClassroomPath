@@ -34,14 +34,14 @@ describe('AdminPanel', () => {
 
     render(<AdminPanel userRole="admin" />);
 
-    expect(screen.getByText('2 usuarios esperando aprobación')).toBeInTheDocument();
+    expect(screen.getByText('2 users waiting for approval')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Revisar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
 
-    expect(screen.getByText('Solicitudes de Acceso')).toBeInTheDocument();
+    expect(screen.getByText('Access Requests')).toBeInTheDocument();
     expect(screen.getByText('Pending Users Panel')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar panel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
     expect(screen.queryByText('Pending Users Panel')).not.toBeInTheDocument();
   });
 });

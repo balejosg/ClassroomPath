@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { UserPlus, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { usePendingUsers } from '../lib/hooks';
 import { PendingUsers } from '../views/PendingUsers';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 
 interface AdminPanelProps {
   userRole?: string;
 }
 
 export function AdminPanel({ userRole }: AdminPanelProps) {
+  const t = useClassroomPathT();
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Only show for admins
@@ -41,14 +43,17 @@ export function AdminPanel({ userRole }: AdminPanelProps) {
                 <UserPlus size={16} />
               </div>
               <span className="font-medium text-sm">
-                {pendingCount} usuario{pendingCount !== 1 ? 's' : ''} esperando aprobación
+                {t('admin.pendingUsersBanner', {
+                  count: pendingCount,
+                  plural: pendingCount !== 1 ? 's' : '',
+                })}
               </span>
             </div>
             <button
               onClick={() => setIsExpanded(true)}
               className="flex items-center gap-1 bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
             >
-              Revisar
+              {t('admin.review')}
               <ChevronDown size={16} />
             </button>
           </div>
@@ -66,17 +71,19 @@ export function AdminPanel({ userRole }: AdminPanelProps) {
                   <UserPlus size={20} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Solicitudes de Acceso</h2>
+                  <h2 className="text-lg font-bold text-slate-900">{t('admin.accessRequests')}</h2>
                   <p className="text-sm text-slate-500">
-                    {pendingCount} usuario{pendingCount !== 1 ? 's' : ''} pendiente
-                    {pendingCount !== 1 ? 's' : ''}
+                    {t('admin.pendingUsersSummary', {
+                      count: pendingCount,
+                      plural: pendingCount !== 1 ? 's' : '',
+                    })}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsExpanded(false)}
-                aria-label="Cerrar panel"
-                title="Cerrar panel"
+                aria-label={t('admin.closePanel')}
+                title={t('admin.closePanel')}
                 className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <X size={20} />

@@ -4,51 +4,56 @@ import { ArrowRight, Building2, Calculator, School, ShieldCheck } from 'lucide-r
 import { ContactForm } from '../../components/ContactForm';
 import { FaqAccordion } from '../../components/FaqAccordion';
 import { RevealSection } from '../../components/RevealSection';
-import { PRICING_FAQS } from '../../data/faqs';
+import { getPricingFaqs } from '../../data/faqs';
 import {
   ACTIVATION_STARTER,
-  INCLUDED_PER_CLASSROOM,
-  NOT_INCLUDED_BASE_PLAN,
   ONBOARDING_TIERS,
-  PER_CLASSROOM_POINTS,
   PRICING_TIERS,
   PUBLIC_CAMPAIGN,
-  VALUE_BULLETS,
   formatCurrency,
+  getIncludedPerClassroom,
+  getNotIncludedBasePlan,
+  getPerClassroomPoints,
   getPricingQuote,
+  getValueBullets,
 } from '../../data/pricing-data';
-
-const nextStepCards = [
-  {
-    icon: <Calculator size={18} className="text-sky-600" />,
-    title: 'Calcular presupuesto',
-    text: 'Si necesitas una cifra rápida para presupuesto, usa la calculadora y obtén una estimación del primer año.',
-    href: '#calculator',
-    cta: 'Ir a calculadora',
-  },
-  {
-    icon: <School size={18} className="text-sky-600" />,
-    title: 'Solicitar activación remota',
-    text: 'Si quieres empezar con poco alcance, acompasamos el arranque con el IT del centro y dejamos 1-2 aulas operativas.',
-    href: '#activation',
-    cta: 'Ver activación',
-  },
-  {
-    icon: <Building2 size={18} className="text-sky-600" />,
-    title: 'Solicitar demo',
-    text: 'Si ya estás comparando opciones, revisamos política, alcance y despliegue contigo.',
-    href: '#solicitud',
-    cta: 'Solicitar demo',
-  },
-];
-
-const onboardingItems = [
-  'Sesión de arranque y definición de criterio',
-  'Configuración inicial y validación con el IT del centro',
-  'Revisión del arranque y siguientes pasos',
-];
+import { useClassroomPathT } from '../../i18n/classroompath-i18n';
 
 const exampleQuote = getPricingQuote(12);
+
+function getNextStepCards(t: ReturnType<typeof useClassroomPathT>) {
+  return [
+    {
+      icon: <Calculator size={18} className="text-sky-600" />,
+      title: t('pricing.next.calculate.title'),
+      text: t('pricing.next.calculate.text'),
+      href: '#calculator',
+      cta: t('pricing.next.calculate.cta'),
+    },
+    {
+      icon: <School size={18} className="text-sky-600" />,
+      title: t('pricing.next.activation.title'),
+      text: t('pricing.next.activation.text'),
+      href: '#activation',
+      cta: t('pricing.next.activation.cta'),
+    },
+    {
+      icon: <Building2 size={18} className="text-sky-600" />,
+      title: t('pricing.next.demo.title'),
+      text: t('pricing.next.demo.text'),
+      href: '#request',
+      cta: t('pricing.next.demo.cta'),
+    },
+  ];
+}
+
+function getOnboardingItems(t: ReturnType<typeof useClassroomPathT>) {
+  return [
+    t('pricing.onboarding.item.criteria'),
+    t('pricing.onboarding.item.configuration'),
+    t('pricing.onboarding.item.review'),
+  ];
+}
 
 export function parsePositiveInteger(value: string) {
   const parsed = Number.parseInt(value, 10);
@@ -57,6 +62,7 @@ export function parsePositiveInteger(value: string) {
 }
 
 export function PricingPageHeader({ onNavigateToLogin }: { onNavigateToLogin: () => void }) {
+  const t = useClassroomPathT();
   return (
     <header className="sticky top-0 z-30 border-b border-white/10 bg-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-5 lg:px-8">
@@ -67,7 +73,7 @@ export function PricingPageHeader({ onNavigateToLogin }: { onNavigateToLogin: ()
             </div>
             <div>
               <div className="text-base font-semibold tracking-tight text-white">ClassroomPath</div>
-              <div className="text-xs text-slate-400">Filtrado web escolar por aula</div>
+              <div className="text-xs text-slate-400">{t('public.nav.tagline')}</div>
             </div>
           </a>
 
@@ -76,7 +82,7 @@ export function PricingPageHeader({ onNavigateToLogin }: { onNavigateToLogin: ()
               href="/"
               className="hidden text-sm font-medium text-slate-300 transition hover:text-white sm:inline"
             >
-              Inicio
+              {t('public.nav.home')}
             </a>
             <a
               href="/login"
@@ -86,19 +92,19 @@ export function PricingPageHeader({ onNavigateToLogin }: { onNavigateToLogin: ()
               }}
               className="hidden text-sm font-medium text-slate-400 transition hover:text-white sm:inline"
             >
-              Acceder
+              {t('public.nav.access')}
             </a>
             <a
               href="#calculator"
               className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-900/50 transition hover:bg-sky-500"
             >
-              Calcular precio
+              {t('public.nav.calculatePrice')}
             </a>
             <a
               href="#activation"
               className="hidden rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 md:inline-flex"
             >
-              Solicitar activación
+              {t('public.nav.requestActivation')}
             </a>
           </div>
         </div>
@@ -112,6 +118,7 @@ export function PricingHero({
 }: {
   recommendedTier: (typeof PRICING_TIERS)[number];
 }) {
+  const t = useClassroomPathT();
   return (
     <section className="relative overflow-hidden border-b border-white/10 bg-slate-900">
       <div
@@ -132,40 +139,32 @@ export function PricingHero({
       <div className="relative mx-auto grid max-w-7xl gap-12 px-6 pb-20 pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-28 lg:pt-16">
         <div className="max-w-3xl">
           <div className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-sky-300">
-            Precios públicos por aula · sin sorpresas
+            {t('pricing.hero.badge')}
           </div>
           <h1 className="mt-6 text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Calcula el primer año en segundos y decide el siguiente paso.
+            {t('pricing.hero.title')}
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
-            Primer año = cuota anual por aula + onboarding único. Desde el segundo año, solo
-            mantienes la cuota anual por aula. Si quieres empezar con poco alcance, usa la
-            activación remota ligera y valida el encaje con tu equipo IT antes de ampliar.
+            {t('pricing.hero.body')}
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
             <a
               href="#calculator"
               className="rounded-lg bg-sky-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-900/50 transition hover:bg-sky-500"
             >
-              Calcular precio
+              {t('public.nav.calculatePrice')}
             </a>
             <a
               href="#activation"
               className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
             >
-              Solicitar activación
+              {t('public.nav.requestActivation')}
             </a>
           </div>
           <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-slate-300">
-            <span>
-              Hasta 30 dispositivos por aula · apoyo remoto al IT del centro · servicio gestionado
-              sobre OpenPath
-            </span>
-            <a
-              href="#solicitud"
-              className="font-semibold text-sky-300 transition hover:text-sky-200"
-            >
-              Solicitar demo
+            <span>{t('pricing.hero.proof')}</span>
+            <a href="#request" className="font-semibold text-sky-300 transition hover:text-sky-200">
+              {t('pricing.hero.demo')}
             </a>
           </div>
         </div>
@@ -173,28 +172,32 @@ export function PricingHero({
         <div className="grid gap-5 self-start">
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-950/40 backdrop-blur">
             <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-300">
-              Tramo más habitual
+              {t('pricing.hero.recommended')}
             </div>
-            <div className="mt-3 text-sm font-medium text-slate-300">Centro mediano</div>
+            <div className="mt-3 text-sm font-medium text-slate-300">
+              {t('pricing.hero.mediumSchool')}
+            </div>
             <div className="mt-2 text-4xl font-semibold text-white">
               {formatCurrency(recommendedTier.pricePerClassroomPerYear)}
             </div>
-            <div className="mt-1 text-sm text-slate-400">por aula / año</div>
+            <div className="mt-1 text-sm text-slate-400">{t('pricing.hero.perClassroomYear')}</div>
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
-                <div className="text-sm text-slate-300">Activación remota</div>
+                <div className="text-sm text-slate-300">{t('pricing.hero.remoteActivation')}</div>
                 <div className="mt-2 text-2xl font-semibold text-white">
                   {formatCurrency(ACTIVATION_STARTER.totalPrice)}
                 </div>
                 <div className="mt-1 text-sm text-slate-400">
-                  Hasta {ACTIVATION_STARTER.classrooms} aulas con apoyo remoto al IT
+                  {t('pricing.hero.activationLimit', { classrooms: ACTIVATION_STARTER.classrooms })}
                 </div>
               </div>
               <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
-                <div className="text-sm text-slate-300">Onboarding</div>
-                <div className="mt-2 text-2xl font-semibold text-white">Separado · desde 490 €</div>
+                <div className="text-sm text-slate-300">{t('pricing.hero.onboarding')}</div>
+                <div className="mt-2 text-2xl font-semibold text-white">
+                  {t('pricing.hero.onboardingPrice')}
+                </div>
                 <div className="mt-1 text-sm text-slate-400">
-                  Lo esencial para controlar el acceso por aula, sin módulos que no vas a usar.
+                  {t('pricing.hero.onboardingBody')}
                 </div>
               </div>
             </div>
@@ -206,17 +209,16 @@ export function PricingHero({
 }
 
 export function PricingNextStepsSection() {
+  const t = useClassroomPathT();
+  const nextStepCards = getNextStepCards(t);
   return (
     <RevealSection id="next-step" className="border-b border-slate-200 bg-white">
       <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
         <div className="max-w-3xl">
           <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Qué paso te conviene ahora
+            {t('pricing.next.title')}
           </h2>
-          <p className="mt-5 text-base leading-8 text-slate-600">
-            Cada centro llega con una necesidad distinta. Elige el recorrido que mejor te convenga
-            ahora.
-          </p>
+          <p className="mt-5 text-base leading-8 text-slate-600">{t('pricing.next.body')}</p>
         </div>
 
         <div className="mt-10 grid gap-6 lg:grid-cols-3">
@@ -245,18 +247,20 @@ export function PricingNextStepsSection() {
 }
 
 export function PricingIncludedSection() {
+  const t = useClassroomPathT();
+  const includedPerClassroom = getIncludedPerClassroom(t);
   return (
     <RevealSection className="border-b border-slate-200 bg-slate-50">
       <div className="mx-auto grid max-w-7xl gap-8 px-6 py-20 lg:grid-cols-[1.15fr_0.85fr] lg:px-8">
         <div>
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-            Qué incluye cada aula
+            {t('pricing.included.label')}
           </div>
           <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Un servicio gestionado para ordenar el acceso a Internet sin cargar más al equipo TIC
+            {t('pricing.included.title')}
           </h2>
           <div className="mt-8 grid gap-4 md:grid-cols-2">
-            {INCLUDED_PER_CLASSROOM.map((item) => (
+            {includedPerClassroom.map((item) => (
               <div
                 key={item}
                 className="rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm font-medium leading-7 text-slate-700"
@@ -275,13 +279,13 @@ export function PricingIncludedSection() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                  Campaña activa
+                  {t('pricing.campaign.label')}
                 </div>
                 <h3 className="mt-3 text-lg font-semibold text-slate-900">
-                  Acceso inicial para centros públicos
+                  {t('pricing.campaign.title')}
                 </h3>
                 <p className="mt-1 text-sm text-slate-600">
-                  Hasta {PUBLIC_CAMPAIGN.classrooms} aulas sin coste. Plazas limitadas.
+                  {t('pricing.campaign.body', { classrooms: PUBLIC_CAMPAIGN.classrooms })}
                 </p>
               </div>
               <ArrowRight
@@ -296,17 +300,17 @@ export function PricingIncludedSection() {
             className="rounded-2xl border border-sky-200 bg-sky-50 px-6 py-7 shadow-sm"
           >
             <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-              Activación remota ligera
+              {t('pricing.hero.remoteActivation')}
             </div>
             <h3 className="mt-3 text-2xl font-semibold text-slate-900">
-              Activa 1-2 aulas con tu equipo IT por 149 €
+              {t('pricing.activation.title')}
             </h3>
             <p className="mt-3 text-sm leading-7 text-slate-700">{ACTIVATION_STARTER.tagline}</p>
             <a
-              href="#solicitud"
+              href="#request"
               className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
             >
-              Solicitar activación <ArrowRight size={16} />
+              {t('public.nav.requestActivation')} <ArrowRight size={16} />
             </a>
           </div>
         </div>
@@ -316,21 +320,18 @@ export function PricingIncludedSection() {
 }
 
 export function PricingTiersSection() {
+  const t = useClassroomPathT();
   return (
     <RevealSection id="pricing" className="bg-slate-50">
       <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
         <div className="max-w-3xl">
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-            Tramos de precio
+            {t('pricing.tiers.label')}
           </div>
           <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Un precio por aula. Más aulas, menos coste por cada una.
+            {t('pricing.tiers.title')}
           </h2>
-          <p className="mt-5 text-base leading-8 text-slate-600">
-            ClassroomPath cobra por aula controlada, no por licencias sueltas. Así el centro
-            entiende el coste rápido, identifica el tramo habitual y sabe cuándo necesita una
-            validación comercial más específica.
-          </p>
+          <p className="mt-5 text-base leading-8 text-slate-600">{t('pricing.tiers.body')}</p>
         </div>
 
         <div className="mt-12 grid gap-5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
@@ -349,7 +350,7 @@ export function PricingTiersSection() {
                 </div>
                 {tier.recommended ? (
                   <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
-                    Más habitual
+                    {t('pricing.tiers.recommended')}
                   </span>
                 ) : null}
               </div>
@@ -357,39 +358,39 @@ export function PricingTiersSection() {
               <div className="mt-5 text-4xl font-semibold tracking-tight text-slate-950">
                 {formatCurrency(tier.pricePerClassroomPerYear)}
               </div>
-              <div className="mt-1 text-sm text-slate-500">por aula / año</div>
+              <div className="mt-1 text-sm text-slate-500">
+                {t('pricing.hero.perClassroomYear')}
+              </div>
               <p className="mt-4 text-sm leading-7 text-slate-600">{tier.tagline}</p>
               <p className="mt-4 text-sm leading-7 text-slate-500">{tier.bestFor}</p>
             </div>
           ))}
         </div>
 
-        <p className="mt-5 text-sm text-slate-500">
-          Todos los tramos requieren onboarding inicial. IVA no incluido.
-        </p>
+        <p className="mt-5 text-sm text-slate-500">{t('pricing.tiers.footer')}</p>
       </div>
     </RevealSection>
   );
 }
 
 export function PricingOnboardingSection() {
+  const t = useClassroomPathT();
+  const onboardingItems = getOnboardingItems(t);
+  const valueBullets = getValueBullets(t);
   return (
     <RevealSection id="onboarding" className="border-y border-slate-200 bg-white">
       <div className="mx-auto grid max-w-7xl gap-8 px-6 py-20 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
         <div className="rounded-[2rem] border border-slate-200 bg-slate-50 px-6 py-7 shadow-sm">
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-            Onboarding
+            {t('pricing.hero.onboarding')}
           </div>
           <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Onboarding separado para que la renovación sea clara
+            {t('pricing.onboarding.title')}
           </h2>
-          <p className="mt-5 text-base leading-8 text-slate-600">
-            Separamos el arranque del recurrente para que el centro compare mejor el coste anual por
-            aula y vea el esfuerzo inicial por separado.
-          </p>
+          <p className="mt-5 text-base leading-8 text-slate-600">{t('pricing.onboarding.body')}</p>
           <div className="mt-8">
             <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Qué cubre el onboarding
+              {t('pricing.onboarding.covers')}
             </div>
             <div className="mt-4 grid gap-3">
               {onboardingItems.map((item) => (
@@ -416,10 +417,10 @@ export function PricingOnboardingSection() {
 
         <div className="rounded-[2rem] border border-slate-200 bg-white px-6 py-7 shadow-sm">
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Por qué este modelo se entiende más rápido
+            {t('pricing.value.label')}
           </div>
           <div className="mt-6 space-y-4">
-            {VALUE_BULLETS.map((item) => (
+            {valueBullets.map((item) => (
               <div
                 key={item}
                 className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-7 text-slate-700"
@@ -441,6 +442,7 @@ export function PricingCalculatorSection(props: {
   onClassroomsInputChange: (value: string) => void;
 }) {
   const { classroomsInput, classroomsInputId, onClassroomsInputChange, quote } = props;
+  const t = useClassroomPathT();
 
   return (
     <section id="calculator" className="border-y border-slate-200 bg-slate-900 text-white">
@@ -448,22 +450,19 @@ export function PricingCalculatorSection(props: {
         <div className="max-w-2xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-300">
             <Calculator size={16} />
-            Calculadora
+            {t('pricing.calculator.label')}
           </div>
           <h2 className="mt-5 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-            Estima el coste del primer año en 10 segundos
+            {t('pricing.calculator.title')}
           </h2>
-          <p className="mt-5 text-base leading-8 text-slate-300">
-            Introduce el número de aulas y verás: tramo aplicado, cuota anual, onboarding y total
-            del primer año antes de pedir una propuesta detallada.
-          </p>
+          <p className="mt-5 text-base leading-8 text-slate-300">{t('pricing.calculator.body')}</p>
 
           <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-6">
             <label
               htmlFor={classroomsInputId}
               className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-200"
             >
-              Número de aulas
+              {t('pricing.calculator.classrooms')}
             </label>
             <input
               id={classroomsInputId}
@@ -475,37 +474,37 @@ export function PricingCalculatorSection(props: {
               className="mt-4 w-full rounded-xl border border-white/10 bg-slate-800 px-5 py-4 text-3xl font-semibold text-white outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/30"
             />
             <p className="mt-3 text-sm leading-7 text-slate-400">
-              Aula controlada = hasta 30 dispositivos bajo una política de acceso definida.
+              {t('pricing.calculator.classroomHelp')}
             </p>
           </div>
         </div>
 
         <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-950/50 backdrop-blur">
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-300">
-            Estimación del primer año
+            {t('pricing.calculator.estimate')}
           </div>
           <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-300">
-                Tramo aplicado
+                {t('pricing.calculator.appliedTier')}
               </div>
               <div className="mt-3 text-3xl font-semibold text-white">{quote.tier.name}</div>
               <p className="mt-2 text-sm leading-7 text-slate-300">{quote.tier.tagline}</p>
             </div>
             <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-200">
-              {quote.classrooms} aulas x {formatCurrency(quote.tier.pricePerClassroomPerYear)}
+              {quote.classrooms} classrooms x {formatCurrency(quote.tier.pricePerClassroomPerYear)}
             </div>
           </div>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             <div className="rounded-xl border border-white/10 bg-slate-800/70 p-5">
-              <div className="text-sm text-slate-400">Cuota anual</div>
+              <div className="text-sm text-slate-400">{t('pricing.calculator.annualFee')}</div>
               <div className="mt-2 text-3xl font-semibold text-white">
                 {formatCurrency(quote.annualTotal)}
               </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-slate-800/70 p-5">
-              <div className="text-sm text-slate-400">Onboarding</div>
+              <div className="text-sm text-slate-400">{t('pricing.hero.onboarding')}</div>
               <div className="mt-2 text-3xl font-semibold text-white">
                 {quote.onboardingFee === null
                   ? quote.onboardingTier.label
@@ -513,7 +512,7 @@ export function PricingCalculatorSection(props: {
               </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-slate-800/70 p-5">
-              <div className="text-sm text-slate-400">Total primer año</div>
+              <div className="text-sm text-slate-400">{t('pricing.calculator.totalFirstYear')}</div>
               <div className="mt-2 text-3xl font-semibold text-white">
                 {quote.totalFirstYear === null
                   ? quote.onboardingTier.label
@@ -523,16 +522,21 @@ export function PricingCalculatorSection(props: {
           </div>
 
           <div className="mt-6 rounded-xl border border-white/10 bg-white/5 px-5 py-4 text-sm leading-7 text-slate-300">
-            Ejemplo: 12 aulas x {formatCurrency(exampleQuote.tier.pricePerClassroomPerYear)} ={' '}
-            {formatCurrency(exampleQuote.annualTotal)} / año · Onboarding:{' '}
-            {formatCurrency(exampleQuote.onboardingFee ?? 0)} · Total primer año:{' '}
-            {formatCurrency(exampleQuote.totalFirstYear ?? 0)}
+            {t('pricing.calculator.example', {
+              annualTotal: formatCurrency(exampleQuote.annualTotal),
+              onboarding: formatCurrency(exampleQuote.onboardingFee ?? 0),
+              price: formatCurrency(exampleQuote.tier.pricePerClassroomPerYear),
+              total: formatCurrency(exampleQuote.totalFirstYear ?? 0),
+            })}
           </div>
 
           <div className="mt-6 rounded-xl border border-white/10 bg-white/5 px-5 py-4 text-sm leading-7 text-slate-300">
             {quote.onboardingFee === null
-              ? 'En despliegues de 101 aulas o más, el onboarding se define con una propuesta específica por sede, alcance y ritmo de implantación.'
-              : `El onboarding para ${quote.classrooms} aulas queda en el tramo ${quote.onboardingTier.rangeLabel.toLowerCase()}.`}
+              ? t('pricing.calculator.customOnboarding')
+              : t('pricing.calculator.onboardingTier', {
+                  classrooms: quote.classrooms,
+                  rangeLabel: quote.onboardingTier.rangeLabel.toLowerCase(),
+                })}
           </div>
         </div>
       </div>
@@ -541,18 +545,21 @@ export function PricingCalculatorSection(props: {
 }
 
 export function PricingModelSection() {
+  const t = useClassroomPathT();
+  const perClassroomPoints = getPerClassroomPoints(t);
+  const valueBullets = getValueBullets(t);
   return (
     <RevealSection className="bg-white">
       <div className="mx-auto grid max-w-7xl gap-8 px-6 py-20 lg:grid-cols-2 lg:px-8">
         <div className="rounded-[2rem] border border-slate-200 bg-slate-50 px-6 py-7 shadow-sm">
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-            Por qué cobramos por aula
+            {t('pricing.model.label')}
           </div>
           <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Un precio más cercano a la realidad operativa del centro
+            {t('pricing.model.title')}
           </h2>
           <div className="mt-8 space-y-4">
-            {PER_CLASSROOM_POINTS.map((item) => (
+            {perClassroomPoints.map((item) => (
               <div
                 key={item}
                 className="rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm leading-7 text-slate-700"
@@ -565,13 +572,11 @@ export function PricingModelSection() {
 
         <div className="rounded-[2rem] border border-slate-200 bg-white px-6 py-7 shadow-sm">
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Modelo comercial
+            {t('pricing.model.commercial')}
           </div>
-          <h3 className="mt-4 text-2xl font-semibold text-slate-900">
-            Por qué este modelo se entiende más rápido
-          </h3>
+          <h3 className="mt-4 text-2xl font-semibold text-slate-900">{t('pricing.value.label')}</h3>
           <div className="mt-6 space-y-4">
-            {VALUE_BULLETS.map((item) => (
+            {valueBullets.map((item) => (
               <div key={item} className="rounded-xl bg-slate-50 px-5 py-4 text-sm text-slate-700">
                 {item}
               </div>
@@ -584,23 +589,22 @@ export function PricingModelSection() {
 }
 
 export function PricingNotIncludedSection() {
+  const t = useClassroomPathT();
+  const notIncludedBasePlan = getNotIncludedBasePlan(t);
   return (
     <RevealSection className="border-y border-slate-200 bg-slate-50">
       <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
         <div className="max-w-3xl">
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Transparencia del plan base
+            {t('pricing.notIncluded.label')}
           </div>
           <h2 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">
-            Lo que no está incluido en el recurrente estándar
+            {t('pricing.notIncluded.title')}
           </h2>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
-            Estas funcionalidades están disponibles, pero se presupuestan aparte para no encarecer
-            el plan base a quienes no las necesitan.
-          </p>
+          <p className="mt-3 text-sm leading-7 text-slate-600">{t('pricing.notIncluded.body')}</p>
         </div>
         <div className="mt-8 grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-          {NOT_INCLUDED_BASE_PLAN.map((item) => (
+          {notIncludedBasePlan.map((item) => (
             <div
               key={item}
               className="rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm text-slate-600"
@@ -615,8 +619,9 @@ export function PricingNotIncludedSection() {
 }
 
 export function PricingContactSection({ onNavigateToLogin }: { onNavigateToLogin: () => void }) {
+  const t = useClassroomPathT();
   return (
-    <section id="solicitud" className="bg-slate-50 py-20">
+    <section id="request" className="bg-slate-50 py-20">
       <div className="mx-auto max-w-5xl px-6 lg:px-8">
         <div className="rounded-[2.25rem] border border-sky-100 bg-white px-8 py-14 shadow-lg shadow-sky-100/60">
           <div className="text-center">
@@ -624,21 +629,20 @@ export function PricingContactSection({ onNavigateToLogin }: { onNavigateToLogin
               <ShieldCheck size={32} className="text-sky-600" />
             </div>
             <div className="mt-6 text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
-              Solicitar presupuesto, activación o demo
+              {t('public.contact.requestLabel')}
             </div>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-              Pide presupuesto, activación o revisión de despliegue
+              {t('pricing.contact.title')}
             </h2>
             <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600">
-              Revisamos el número de aulas, la política de acceso prevista y si conviene activación
-              remota, propuesta anual o partner de implantación. Respondemos en 48 h.
+              {t('pricing.contact.body')}
             </p>
           </div>
           <div className="mx-auto mt-10 max-w-2xl">
             <ContactForm />
           </div>
           <p className="mt-8 text-center text-xs leading-6 text-slate-400">
-            ¿Ya tienes cuenta?{' '}
+            {t('public.contact.loginPrompt')}{' '}
             <a
               href="/login"
               onClick={(event) => {
@@ -647,7 +651,7 @@ export function PricingContactSection({ onNavigateToLogin }: { onNavigateToLogin
               }}
               className="underline transition hover:text-slate-600"
             >
-              Acceder al panel
+              {t('app.common.openDashboard')}
             </a>
           </p>
         </div>
@@ -657,11 +661,12 @@ export function PricingContactSection({ onNavigateToLogin }: { onNavigateToLogin
 }
 
 export function PricingFaqSection() {
+  const t = useClassroomPathT();
   return (
     <FaqAccordion
-      items={PRICING_FAQS}
-      sectionLabel="FAQ"
-      sectionTitle="Respuestas directas para evaluación institucional"
+      items={getPricingFaqs(t)}
+      sectionLabel={t('public.faq.label')}
+      sectionTitle={t('public.faq.pricingTitle')}
     />
   );
 }

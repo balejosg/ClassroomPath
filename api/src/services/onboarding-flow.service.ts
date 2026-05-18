@@ -7,6 +7,7 @@ import { config } from '../config.js';
 import * as jwt from '../lib/jwt.js';
 import { storeSessionFromPayload } from '../lib/session-cookies.js';
 import type { SessionClientMode } from '../lib/session-cookies.js';
+import { apiCopy } from '../lib/api-content.js';
 import * as openpathRoles from '../lib/openpath-roles.js';
 import * as openpathUsers from '../lib/openpath-users.js';
 import * as onboardingService from './onboarding.service.js';
@@ -108,7 +109,7 @@ export async function setWaitingForInvitation(params: {
   if (orgs.length === 0) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
-      message: 'No hay organizaciones disponibles',
+      message: apiCopy.en.errors.noOrganizationsAvailable,
     });
   }
 
@@ -119,7 +120,7 @@ export async function setWaitingForInvitation(params: {
 
   throw new TRPCError({
     code: 'BAD_REQUEST',
-    message: 'Debes seleccionar una organización para solicitar acceso',
+    message: apiCopy.en.errors.organizationSelectionRequired,
   });
 }
 

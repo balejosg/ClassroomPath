@@ -46,10 +46,10 @@ describe('PlatformAdminPanel', () => {
   it('renders the empty states when there is no billing activity yet', () => {
     render(<PlatformAdminPanel />);
 
-    expect(screen.getByText('Administración de plataforma')).toBeInTheDocument();
-    expect(screen.getByText('No hay solicitudes registradas.')).toBeInTheDocument();
-    expect(screen.getByText('Aún no hay entitlements registradas.')).toBeInTheDocument();
-    expect(screen.getByText('Todavía no hay eventos de billing.')).toBeInTheDocument();
+    expect(screen.getByText('Platform administration')).toBeInTheDocument();
+    expect(screen.getByText('No requests registered.')).toBeInTheDocument();
+    expect(screen.getByText('No entitlements registered yet.')).toBeInTheDocument();
+    expect(screen.getByText('No billing events yet.')).toBeInTheDocument();
   });
 
   it('requires a resolution note before approving or rejecting manual requests', () => {
@@ -76,23 +76,23 @@ describe('PlatformAdminPanel', () => {
 
     render(<PlatformAdminPanel />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aprobar excepción' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve exception' }));
     expect(mockApprove).not.toHaveBeenCalled();
-    expect(screen.getByText('Cada resolución manual requiere una nota.')).toBeInTheDocument();
+    expect(screen.getByText('Every manual resolution requires a note.')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText('Nota obligatoria para soporte y auditoría'), {
+    fireEvent.change(screen.getByPlaceholderText('Required note for support and audit'), {
       target: { value: 'Aprobado por soporte' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Aprobar excepción' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve exception' }));
     expect(mockApprove).toHaveBeenCalledWith({
       requestId: 'req_1',
       resolutionNote: 'Aprobado por soporte',
     });
 
-    fireEvent.change(screen.getByPlaceholderText('Nota obligatoria para soporte y auditoría'), {
+    fireEvent.change(screen.getByPlaceholderText('Required note for support and audit'), {
       target: { value: 'No procede' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Rechazar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
     expect(mockReject).toHaveBeenCalledWith({
       requestId: 'req_1',
       resolutionNote: 'No procede',
@@ -154,9 +154,9 @@ describe('PlatformAdminPanel', () => {
     render(<PlatformAdminPanel />);
 
     expect(screen.getAllByText('Centro resuelto')).toHaveLength(2);
-    expect(screen.getByText(/Resolución:/)).toBeInTheDocument();
-    expect(screen.getByText(/annual · 18 aulas · grace_period/)).toBeInTheDocument();
-    expect(screen.getByText(/Fuente: manual/)).toBeInTheDocument();
+    expect(screen.getByText(/Resolution:/)).toBeInTheDocument();
+    expect(screen.getByText(/annual · 18 classrooms · grace_period/)).toBeInTheDocument();
+    expect(screen.getByText(/Source: manual/)).toBeInTheDocument();
     expect(screen.getByText('manual-request.approved')).toBeInTheDocument();
     expect(screen.getByText(/platform_admin · manual_request · req_resolved/)).toBeInTheDocument();
   });
@@ -168,8 +168,8 @@ describe('PlatformAdminPanel', () => {
 
     render(<PlatformAdminPanel />);
 
-    expect(screen.getByText('Cargando solicitudes...')).toBeInTheDocument();
-    expect(screen.getByText('Cargando centros...')).toBeInTheDocument();
-    expect(screen.getByText('Cargando actividad...')).toBeInTheDocument();
+    expect(screen.getByText('Loading requests...')).toBeInTheDocument();
+    expect(screen.getByText('Loading schools...')).toBeInTheDocument();
+    expect(screen.getByText('Loading activity...')).toBeInTheDocument();
   });
 });

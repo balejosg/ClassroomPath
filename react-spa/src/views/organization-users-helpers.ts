@@ -1,4 +1,5 @@
 import { normalizeUserRoleString } from '../openpath/roles';
+import { translateClassroomPathText, type ClassroomPathT } from '../i18n/classroompath-i18n';
 
 export type InviteRole = 'admin' | 'teacher';
 
@@ -8,7 +9,7 @@ export type MemberRow = {
   name: string;
   email: string;
   role: InviteRole | 'user';
-  status: 'Activo' | 'Inactivo';
+  status: 'active' | 'inactive';
 };
 
 export type InvitationRow = {
@@ -17,7 +18,7 @@ export type InvitationRow = {
   name: string;
   email: string;
   role: InviteRole;
-  status: 'Pendiente';
+  status: 'pending';
   expiresAt: string;
 };
 
@@ -57,10 +58,12 @@ export function getPrimaryRoleLabel(roles: RoleEntry[]): InviteRole | 'user' {
   return 'user';
 }
 
-export function getRoleLabel(role: InviteRole | 'user'): string {
-  if (role === 'admin') return 'Administrador';
-  if (role === 'teacher') return 'Profesor';
-  return 'Usuario';
+const englishT: ClassroomPathT = (key, params) => translateClassroomPathText('en', key, params);
+
+export function getRoleLabel(role: InviteRole | 'user', t: ClassroomPathT = englishT): string {
+  if (role === 'admin') return t('app.common.admin');
+  if (role === 'teacher') return t('app.common.teacher');
+  return t('app.common.user');
 }
 
 export function buildMemberRows(users: MemberRecord[]): MemberRow[] {
@@ -70,7 +73,7 @@ export function buildMemberRows(users: MemberRecord[]): MemberRow[] {
     name: user.name,
     email: user.email,
     role: getPrimaryRoleLabel(user.roles),
-    status: user.isActive ? 'Activo' : 'Inactivo',
+    status: user.isActive ? 'active' : 'inactive',
   }));
 }
 
@@ -81,7 +84,7 @@ export function buildInvitationRows(invitations: InvitationRecord[]): Invitation
     name: invitation.name,
     email: invitation.email,
     role: invitation.role,
-    status: 'Pendiente',
+    status: 'pending',
     expiresAt: invitation.expiresAt,
   }));
 }
@@ -97,7 +100,7 @@ export function filterOrganizationUserRows({
 }): TableRow[] {
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const rows = [...memberRows, ...invitationRows].sort((left, right) =>
-    left.name.localeCompare(right.name, 'es')
+    left.name.localeCompare(right.name, 'en')
   );
 
   if (!normalizedQuery) return rows;
@@ -109,53 +112,55 @@ export function filterOrganizationUserRows({
   );
 }
 
-export function getSummaryLabel(totalRows: number): string {
-  return totalRows === 0
-    ? 'Mostrando 0-0 de 0 usuarios'
-    : `Mostrando 1-${totalRows} de ${totalRows} usuarios`;
+export function getSummaryLabel(totalRows: number, t: ClassroomPathT = englishT): string {
+  return totalRows === 0 ? t('orgUsers.showingNone') : t('orgUsers.showing', { count: totalRows });
 }
 
 export function getDeliveryNoticeFromInvitationResult({
   email,
   emailSent,
+  t = englishT,
 }: {
   email: string;
   emailSent: boolean;
+  t?: ClassroomPathT;
 }): DeliveryNotice {
   if (emailSent) {
     return {
       tone: 'success',
-      title: 'Invitación enviada',
-      description: `Se envió la invitación a ${email}.`,
+      title: t('orgUsers.invitationSent'),
+      description: t('orgUsers.invitationSentBody', { email }),
     };
   }
 
   return {
     tone: 'warning',
-    title: 'Invitación pendiente de envío',
-    description: `No se pudo confirmar el envío a ${email}. Reintenta la invitación desde esta pantalla.`,
+    title: t('orgUsers.invitationPending'),
+    description: t('orgUsers.invitationPendingBody', { email }),
   };
 }
 
 export function getDeliveryNoticeFromResetResult({
   email,
   emailSent,
+  t = englishT,
 }: {
   email: string;
   emailSent: boolean;
+  t?: ClassroomPathT;
 }): DeliveryNotice {
   if (emailSent) {
     return {
       tone: 'success',
-      title: 'Enlace de recuperación enviado',
-      description: `Se envió un correo de recuperación a ${email}.`,
+      title: t('orgUsers.resetSent'),
+      description: t('orgUsers.resetSentBody', { email }),
     };
   }
 
   return {
     tone: 'warning',
-    title: 'Recuperación pendiente de envío',
-    description: `No se pudo confirmar el envío a ${email}. Genera un nuevo correo de recuperación para reintentar.`,
+    title: t('orgUsers.resetPending'),
+    description: t('orgUsers.resetPendingBody', { email }),
   };
 }
 
@@ -172,7 +177,7 @@ export function getRowInitials(name: string): string {
 }
 
 export function getStatusClasses(status: TableRow['status']): string {
-  if (status === 'Pendiente') return 'border-amber-200 bg-amber-50 text-amber-700';
-  if (status === 'Activo') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (status === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (status === 'active') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   return 'border-slate-200 bg-slate-100 text-slate-600';
 }

@@ -14,7 +14,7 @@ describe('renderPublicPage', () => {
     expect(rendered?.description).toBe(
       'Control what opens and what gets blocked in each classroom. Managed service on OpenPath, classroom-based pricing, and remote activation with the school IT team.'
     );
-    expect(rendered?.appHtml).toContain('Decide qué Internet entra en cada aula');
+    expect(rendered?.appHtml).toContain('Decide what Internet reaches each classroom');
   });
 
   it('renders metadata and HTML for pricing', () => {

@@ -13,16 +13,16 @@ import {
 describe('pricing-data', () => {
   describe('getPricingTier', () => {
     it('returns the correct tier for each range', () => {
-      expect(getPricingTier(1).name).toBe('Centro pequeño');
-      expect(getPricingTier(10).name).toBe('Centro pequeño');
-      expect(getPricingTier(11).name).toBe('Centro mediano');
-      expect(getPricingTier(25).name).toBe('Centro mediano');
-      expect(getPricingTier(26).name).toBe('Centro grande');
-      expect(getPricingTier(50).name).toBe('Centro grande');
-      expect(getPricingTier(51).name).toBe('Organización educativa');
-      expect(getPricingTier(100).name).toBe('Organización educativa');
-      expect(getPricingTier(101).name).toBe('Red de centros');
-      expect(getPricingTier(9999).name).toBe('Red de centros');
+      expect(getPricingTier(1).name).toBe('Small school');
+      expect(getPricingTier(10).name).toBe('Small school');
+      expect(getPricingTier(11).name).toBe('Medium school');
+      expect(getPricingTier(25).name).toBe('Medium school');
+      expect(getPricingTier(26).name).toBe('Large school');
+      expect(getPricingTier(50).name).toBe('Large school');
+      expect(getPricingTier(51).name).toBe('Educational organization');
+      expect(getPricingTier(100).name).toBe('Educational organization');
+      expect(getPricingTier(101).name).toBe('School network');
+      expect(getPricingTier(9999).name).toBe('School network');
     });
   });
 
@@ -39,7 +39,7 @@ describe('pricing-data', () => {
   describe('getPricingQuote', () => {
     it('computes the correct annual total and first-year total', () => {
       const quote = getPricingQuote(12);
-      expect(quote.tier.name).toBe('Centro mediano');
+      expect(quote.tier.name).toBe('Medium school');
       expect(quote.annualTotal).toBe(12 * 45);
       expect(quote.onboardingFee).toBe(490);
       expect(quote.totalFirstYear).toBe(12 * 45 + 490);

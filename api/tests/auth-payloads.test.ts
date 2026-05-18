@@ -71,7 +71,7 @@ describe('auth-payloads', () => {
     );
     assert.throws(
       () => assertCurrentTermsVersion('2025-01-01'),
-      /Debes aceptar la version vigente de los terminos/
+      /must accept the current terms version/
     );
   });
 });

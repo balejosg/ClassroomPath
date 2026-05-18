@@ -37,7 +37,7 @@ export function RulesPreviewModal(props: RulesPreviewModalProps) {
             type="button"
             onClick={props.onClose}
             className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-            aria-label="Cerrar"
+            aria-label="Close"
           >
             <X size={20} />
           </button>
@@ -47,7 +47,7 @@ export function RulesPreviewModal(props: RulesPreviewModalProps) {
           <input
             value={props.search}
             onChange={(event) => props.onSearchChange(event.target.value)}
-            placeholder="Buscar dominio..."
+            placeholder="Search domain..."
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
           />
           <button
@@ -63,19 +63,19 @@ export function RulesPreviewModal(props: RulesPreviewModalProps) {
 
         <div className="p-5 flex-1 overflow-y-auto">
           {props.isLoading ? (
-            <div className="text-sm text-slate-500">Cargando reglas...</div>
+            <div className="text-sm text-slate-500">Loading rules...</div>
           ) : rules.length ? (
             <div className="space-y-3">
               <div className="text-xs text-slate-500">
-                Total: {total} (mostrando {rules.length})
+                Total: {total} (showing {rules.length})
               </div>
 
               <div className="border border-slate-200 rounded-xl overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-slate-600">
                     <tr>
-                      <th className="text-left font-semibold px-3 py-2">Tipo</th>
-                      <th className="text-left font-semibold px-3 py-2">Dominio</th>
+                      <th className="text-left font-semibold px-3 py-2">Type</th>
+                      <th className="text-left font-semibold px-3 py-2">Domain</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -100,7 +100,7 @@ export function RulesPreviewModal(props: RulesPreviewModalProps) {
                   disabled={props.offset === 0}
                   className="text-sm px-3 py-2 rounded-lg border border-slate-200 text-slate-700 disabled:opacity-60"
                 >
-                  Anterior
+                  Previous
                 </button>
                 <button
                   type="button"
@@ -108,7 +108,7 @@ export function RulesPreviewModal(props: RulesPreviewModalProps) {
                   disabled={!hasMore}
                   className="text-sm px-3 py-2 rounded-lg border border-slate-200 text-slate-700 disabled:opacity-60"
                 >
-                  Siguiente
+                  Next
                 </button>
               </div>
             </div>

@@ -7,6 +7,7 @@ import {
 } from '@classroompath/contracts/onboarding-policy';
 import { CLASSROOMPATH_BRAND_ASSETS } from '../brand-assets';
 import { useOnboardingStatus, useCancelWaiting } from '../lib/hooks';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 
 interface Props {
   onStatusChange: () => void;
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
+  const t = useClassroomPathT();
   const query = useOnboardingStatus({
     refetchInterval: 30000, // Polling cada 30s
   });
@@ -49,20 +51,11 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
             data-testid="waiting-room-illustration"
             className="mx-auto mb-6 aspect-[4/3] w-full max-w-xs rounded-lg object-cover"
           />
-          <h1 className="text-2xl font-bold mb-3 text-gray-900">Esperando invitación</h1>
-          <p className="text-gray-600 leading-relaxed">
-            Un administrador de tu institución debe agregarte a la organización. Te redirigiremos
-            automáticamente cuando esto suceda.
-          </p>
-          <p className="mt-3 text-sm text-slate-500">
-            Tu solicitud sigue un flujo institucional trazable sobre una base open source con
-            alojamiento en servidores de la UE.
-          </p>
+          <h1 className="text-2xl font-bold mb-3 text-gray-900">{t('waiting.title')}</h1>
+          <p className="text-gray-600 leading-relaxed">{t('waiting.body')}</p>
+          <p className="mt-3 text-sm text-slate-500">{t('waiting.traceability')}</p>
           {shouldShowOnboardingAccessPolicyNotice(onboardingPolicy) ? (
-            <p className="mt-3 text-sm text-slate-500">
-              Por privacidad, este portal no mostrará el directorio de organizaciones mientras tu
-              solicitud siga pendiente.
-            </p>
+            <p className="mt-3 text-sm text-slate-500">{t('waiting.privacy')}</p>
           ) : null}
         </div>
 
@@ -75,7 +68,7 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
             disabled={isFetching}
           >
             <RefreshCw size={18} className={`mr-2 ${isFetching ? 'animate-spin' : ''}`} />
-            {isFetching ? 'Verificando...' : 'Verificar ahora'}
+            {isFetching ? t('waiting.checking') : t('waiting.checkNow')}
           </Button>
 
           <Button
@@ -86,19 +79,17 @@ export function Waiting({ onStatusChange, onCancelSuccess, onLogout }: Props) {
             disabled={cancelMutation.isPending}
           >
             <ArrowLeft size={18} className="mr-2" />
-            Cambiar de opinión
+            {t('waiting.cancel')}
           </Button>
 
           {onLogout && (
             <Button onClick={onLogout} variant="outline" className="w-full py-6 border-2">
-              Cerrar sesión
+              {t('app.common.logout')}
             </Button>
           )}
         </div>
 
-        <p className="mt-8 text-xs text-gray-400">
-          Esta página se actualiza automáticamente cada 30 segundos.
-        </p>
+        <p className="mt-8 text-xs text-gray-400">{t('waiting.autoRefresh')}</p>
       </Card>
     </div>
   );
