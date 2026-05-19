@@ -137,8 +137,14 @@ function assertNightlyStagingCandidateGate(
   assert.match(String(prepareSshStep.run ?? ''), /DEPLOY_SSH_KEY=/);
   assert.equal(prepareSshStep.env?.STAGING_SSH_KEY_SECRET, '${{ secrets.STAGING_DEPLOY_SSH_KEY }}');
   assert.equal(prepareSshStep.env?.DEPLOY_SSH_KEY_SECRET, '${{ secrets.DEPLOY_SSH_KEY }}');
-  assert.equal(deployStep.env?.STAGING_HOST, '${{ secrets.STAGING_DEPLOY_HOST }}');
-  assert.equal(deployStep.env?.STAGING_PORT, '${{ secrets.STAGING_DEPLOY_PORT }}');
+  assert.equal(
+    deployStep.env?.STAGING_HOST,
+    '${{ secrets.STAGING_DEPLOY_LAN_HOST || secrets.STAGING_DEPLOY_HOST }}'
+  );
+  assert.equal(
+    deployStep.env?.STAGING_PORT,
+    '${{ secrets.STAGING_DEPLOY_LAN_PORT || secrets.STAGING_DEPLOY_PORT }}'
+  );
   assert.equal(deployStep.env?.STAGING_USER, '${{ secrets.STAGING_DEPLOY_USER }}');
   assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-manifest'));
   assert.match(String(deployStep.run ?? ''), /npm run deploy:staging:assume-yes/);
@@ -161,8 +167,14 @@ function assertNightlyStagingCandidateGate(
     String(persistStep.env?.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA ?? ''),
     /needs\.deploy-current-main-to-staging\.outputs\.sha/
   );
-  assert.equal(persistStep.env?.STAGING_HOST, '${{ secrets.STAGING_DEPLOY_HOST }}');
-  assert.equal(persistStep.env?.STAGING_PORT, '${{ secrets.STAGING_DEPLOY_PORT }}');
+  assert.equal(
+    persistStep.env?.STAGING_HOST,
+    '${{ secrets.STAGING_DEPLOY_LAN_HOST || secrets.STAGING_DEPLOY_HOST }}'
+  );
+  assert.equal(
+    persistStep.env?.STAGING_PORT,
+    '${{ secrets.STAGING_DEPLOY_LAN_PORT || secrets.STAGING_DEPLOY_PORT }}'
+  );
   assert.equal(persistStep.env?.STAGING_USER, '${{ secrets.STAGING_DEPLOY_USER }}');
   assert.match(String(promotionReadyStep.run ?? ''), /npm run verify:promotion-ready/);
   assert.equal(verifyGhStep.shell, 'bash');
@@ -177,8 +189,14 @@ function assertNightlyStagingCandidateGate(
   );
   assert.equal(promotionReadyStep.env?.GH_TOKEN, '${{ secrets.GITHUB_TOKEN }}');
   assert.equal(promotionReadyStep.env?.GITHUB_TOKEN, '${{ secrets.GITHUB_TOKEN }}');
-  assert.equal(promotionReadyStep.env?.STAGING_HOST, '${{ secrets.STAGING_DEPLOY_HOST }}');
-  assert.equal(promotionReadyStep.env?.STAGING_PORT, '${{ secrets.STAGING_DEPLOY_PORT }}');
+  assert.equal(
+    promotionReadyStep.env?.STAGING_HOST,
+    '${{ secrets.STAGING_DEPLOY_LAN_HOST || secrets.STAGING_DEPLOY_HOST }}'
+  );
+  assert.equal(
+    promotionReadyStep.env?.STAGING_PORT,
+    '${{ secrets.STAGING_DEPLOY_LAN_PORT || secrets.STAGING_DEPLOY_PORT }}'
+  );
   assert.equal(promotionReadyStep.env?.STAGING_USER, '${{ secrets.STAGING_DEPLOY_USER }}');
   assert.equal(promotionReadyStep.env?.DEPLOY_HOST, '${{ secrets.DEPLOY_HOST }}');
   assert.equal(promotionReadyStep.env?.DEPLOY_PORT, '${{ secrets.DEPLOY_PORT }}');
