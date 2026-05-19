@@ -836,8 +836,10 @@ describe('Workflow core contracts', () => {
       'Windows bootstrap canary must install Firefox from the same runner-reachable base URL used for windows.ps1'
     );
     assert.ok(
-      deployWorkflowText.includes('base_url: ${{ env.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL }}'),
-      'Deploy should pass a job-local public canary URL to the staging Windows bootstrap canary'
+      deployWorkflowText.includes(
+        'base_url: ${{ vars.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL || vars.STAGING_CANARY_PUBLIC_URL || vars.CLASSROOMPATH_STAGING_PUBLIC_URL || vars.STAGING_PUBLIC_URL }}'
+      ) && !deployWorkflowText.includes('base_url: ${{ env.'),
+      'Deploy reusable workflow inputs must resolve the staging public canary URL from repo vars, not env context'
     );
     assert.ok(
       productionBootstrapWorkflowText.includes(
