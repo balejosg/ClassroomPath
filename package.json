@@ -69,6 +69,7 @@
     "ops:failure-brief": "node scripts/failure-brief.mjs",
     "release:evidence-bundle": "node scripts/release-evidence-bundle.mjs",
     "release:promote": "node scripts/release-promote.mjs",
+    "release:preflight": "node scripts/release-preflight.mjs",
     "release:status": "node scripts/release-status.mjs",
     "promote:production:full": "node scripts/release-promote.mjs --auto-tag",
     "release:production": "bash scripts/tag-production-release.sh",

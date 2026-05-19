@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 
 import { execFile as nodeExecFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { isDirectExecution } from './lib/github-actions.mjs';
+import { rerunGitHubRunFailedJobs as defaultRerunGitHubRunFailedJobs } from './lib/github-actions-artifacts.mjs';
 import {
   buildPromotionPlan,
   formatCommand,
   runStep,
   summarizeGitHubRunMonitor,
 } from './lib/release-orchestration.mjs';
+import { buildReleaseTranscript, writeReleaseTranscript } from './lib/release-transcript.mjs';
 
 const execFile = promisify(nodeExecFile);
 
@@ -118,29 +122,278 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
     }
 
     const results = [];
+    const retries = [];
+    const reruns = [];
+    const startedAt = new Date().toISOString();
+    const executeStep = async (planStep, extra = {}) => {
+      io.stdout(`\n==> ${planStep.id}\n${formatCommand(planStep.command)}\n`);
+      const result = await (dependencies.runStep ?? runStep)(planStep);
+      const recorded = {
+        ...result,
+        command: formatCommand(planStep.command),
+        retryOf: extra.retryOf ?? null,
+      };
+      results.push(recorded);
+      if (recorded.githubRun) {
+        io.stdout(`${summarizeGitHubRunMonitor(recorded.githubRun)}\n`);
+      }
+      return recorded;
+    };
+
     for (const planStep of plan.steps) {
       if (!planStep.command) {
         printSummary(plan, results, io);
         continue;
       }
 
-      io.stdout(`\n==> ${planStep.id}\n${formatCommand(planStep.command)}\n`);
-      const result = await (dependencies.runStep ?? runStep)(planStep);
-      results.push(result);
-      if (result.githubRun) {
-        io.stdout(`${summarizeGitHubRunMonitor(result.githubRun)}\n`);
+      let result = await executeStep(planStep);
+      if (planStep.id === 'wait-production-deploy') {
+        attachProductionDeployRun(result);
       }
+
+      if (
+        result.status !== 'success' &&
+        planStep.id === 'verify-promotion-ready' &&
+        shouldRefreshWindowsPrepromotionEvidence(result)
+      ) {
+        const evidenceStep = buildWindowsPrepromotionEvidenceStep();
+        retries.push({
+          step: planStep.id,
+          retryStep: evidenceStep.id,
+          reason: 'missing-or-stale-windows-prepromotion-evidence',
+        });
+        const evidenceResult = await executeStep(evidenceStep);
+        if (evidenceResult.status !== 'success') {
+          io.stderr(
+            'Windows prepromotion evidence refresh failed; check real deploy target/canary config for placeholders.\n'
+          );
+          writeTranscriptIfRequested({
+            dependencies,
+            tag,
+            status: 'failed',
+            startedAt,
+            results,
+            retries,
+            reruns,
+          });
+          return { status: 1, results, retries, reruns };
+        }
+        result = await executeStep(planStep, { retryOf: planStep.id });
+      }
+
+      if (
+        result.status !== 'success' &&
+        planStep.id === 'wait-production-deploy' &&
+        (await enrichFailedProductionDeploy({ result, tag, dependencies, executeStep })) &&
+        shouldRerunProductionDeploy(result)
+      ) {
+        const runId = result.githubRun?.runId;
+        const repo = result.githubRun?.repo ?? 'balejosg/ClassroomPath';
+        reruns.push({ step: planStep.id, runId, repo });
+        await (dependencies.rerunGitHubRunFailedJobs ?? defaultRerunGitHubRunFailedJobs)({
+          repo,
+          runId,
+        });
+        result = await executeStep(planStep, { retryOf: planStep.id });
+        attachProductionDeployRun(result);
+      }
+
       if (result.status !== 'success') {
         io.stderr(`Step failed: ${result.id}\n`);
-        return { status: 1, results };
+        writeTranscriptIfRequested({
+          dependencies,
+          tag,
+          status: 'failed',
+          startedAt,
+          results,
+          retries,
+          reruns,
+        });
+        return { status: 1, results, retries, reruns };
       }
     }
 
-    return { status: 0, results };
+    writeTranscriptIfRequested({
+      dependencies,
+      tag,
+      status: 'success',
+      startedAt,
+      results,
+      retries,
+      reruns,
+    });
+    return { status: 0, results, retries, reruns };
   } catch (error) {
     io.stderr(`${error.message}\n\n${usage()}`);
     return { status: 2 };
   }
+}
+
+function buildWindowsPrepromotionEvidenceStep() {
+  return {
+    id: 'ensure-windows-prepromotion-evidence',
+    command: ['node', 'scripts/prepromotion-windows-evidence.mjs', 'run-and-persist'],
+    description: 'Run and persist required Windows prepromotion evidence.',
+  };
+}
+
+function shouldRefreshWindowsPrepromotionEvidence(result) {
+  const text = [result.stderr, result.stdout, result.message, result.error?.message]
+    .filter(Boolean)
+    .join('\n')
+    .toLowerCase();
+
+  return (
+    text.includes('windows-prepromotion-evidence-missing') ||
+    text.includes('windows-prepromotion-evidence-stale') ||
+    text.includes('prepromotion windows evidence') ||
+    text.includes('windows prepromotion evidence') ||
+    text.includes('preproduction installed-client evidence')
+  );
+}
+
+function shouldRerunProductionDeploy(result) {
+  const runId = result.githubRun?.runId;
+  if (!runId) {
+    return false;
+  }
+
+  const safeToRetry = String(result.deployBrief?.failureBoundary?.safeToRetry ?? '').toLowerCase();
+  const nextCommand = String(result.deployBrief?.nextCommand ?? '').toLowerCase();
+  const recommendedAction = String(result.githubRun?.recommendedAction ?? '').toLowerCase();
+  const state = String(result.githubRun?.state ?? '').toLowerCase();
+  const failedJobs = result.githubRun?.failedJobs ?? [];
+  const failedText = failedJobs.map((job) => `${job.name ?? ''} ${job.conclusion ?? ''}`).join(' ');
+
+  return (
+    safeToRetry === 'yes' ||
+    safeToRetry === 'after-cleanup' ||
+    recommendedAction === 'rerun-workflow' ||
+    state === 'corrupt' ||
+    nextCommand.includes(`gh run rerun ${runId}`) ||
+    /\b(ghcr|timeout|timed out|network|runner|apt|rate limit|502|503|504)\b/i.test(failedText)
+  );
+}
+
+async function enrichFailedProductionDeploy({ result, tag, dependencies, executeStep }) {
+  if (!result.githubRun?.runId) {
+    return false;
+  }
+  if (result.deployBrief) {
+    return true;
+  }
+
+  const runId = result.githubRun.runId;
+  const outputDir = join(
+    dependencies.transcriptRoot ?? '.opencode/tmp/release-promote',
+    tag,
+    'deploy-brief'
+  );
+  const briefStep = {
+    id: 'build-production-deploy-brief',
+    command: [
+      'npm',
+      'run',
+      'ops:deploy-brief',
+      '--',
+      '--run',
+      String(runId),
+      '--tag',
+      tag,
+      '--output-dir',
+      outputDir,
+    ],
+    description: 'Generate deploy failure brief for the failed production deploy run.',
+  };
+
+  const briefResult = await executeStep(briefStep);
+  result.deployBrief =
+    parseJsonObjectFromText(briefResult.stdout) ?? readDeployBriefJson(outputDir) ?? null;
+
+  return true;
+}
+
+function attachProductionDeployRun(result) {
+  if (result.githubRun) {
+    return result;
+  }
+
+  const stdout = String(result.stdout ?? '');
+  const health = parseJsonObjectFromText(stdout) ?? {};
+  const foundRunId = stdout.match(/Found production deploy run:\s*(\d+)/)?.[1];
+  const runId = String(health.runId ?? health.databaseId ?? foundRunId ?? '').trim();
+  if (!runId) {
+    return result;
+  }
+
+  result.githubRun = {
+    repo: 'balejosg/ClassroomPath',
+    runId,
+    workflow: health.workflowName ?? health.workflow ?? health.name ?? 'Deploy',
+    status: health.status ?? 'unknown',
+    conclusion: health.conclusion ?? 'unknown',
+    state: health.state ?? null,
+    recommendedAction: health.recommendedAction ?? null,
+    url: health.url ?? null,
+    jobs: Array.isArray(health.jobs) ? health.jobs : [],
+    failedJobs: Array.isArray(health.failedJobs) ? health.failedJobs : [],
+  };
+  return result;
+}
+
+function readDeployBriefJson(outputDir) {
+  try {
+    return JSON.parse(readFileSync(join(outputDir, 'deploy-brief.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function parseJsonObjectFromText(text) {
+  const lines = String(text ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (!lines[index].startsWith('{')) {
+      continue;
+    }
+    try {
+      return JSON.parse(lines.slice(index).join('\n'));
+    } catch {
+      try {
+        return JSON.parse(lines[index]);
+      } catch {
+        // Keep scanning older lines.
+      }
+    }
+  }
+  return null;
+}
+
+function writeTranscriptIfRequested({
+  dependencies,
+  tag,
+  status,
+  startedAt,
+  results,
+  retries,
+  reruns,
+}) {
+  const transcript = buildReleaseTranscript({
+    tag,
+    status,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    steps: results,
+    retries,
+    reruns,
+  });
+  writeReleaseTranscript({
+    transcript,
+    root: dependencies.transcriptRoot,
+  });
 }
 
 export async function resolveNextPatchTag({ execFile: runExecFile = execFile } = {}) {

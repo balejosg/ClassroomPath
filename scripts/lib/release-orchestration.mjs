@@ -22,11 +22,22 @@ export async function runStep({ id, command, env = {}, cwd = process.cwd() }) {
 
   const status = await new Promise((resolve, reject) => {
     let heartbeat;
+    const stdoutChunks = [];
+    const stderrChunks = [];
     const child = spawn(executable, args, {
       cwd,
       env: { ...process.env, ...env },
       shell,
-      stdio: 'inherit',
+      stdio: ['inherit', 'pipe', 'pipe'],
+    });
+
+    child.stdout?.on('data', (chunk) => {
+      stdoutChunks.push(Buffer.from(chunk));
+      process.stdout.write(chunk);
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderrChunks.push(Buffer.from(chunk));
+      process.stderr.write(chunk);
     });
 
     if (Number.isFinite(heartbeatIntervalSeconds) && heartbeatIntervalSeconds > 0) {
@@ -40,12 +51,16 @@ export async function runStep({ id, command, env = {}, cwd = process.cwd() }) {
     child.on('error', reject);
     child.on('close', (code) => {
       if (heartbeat) clearInterval(heartbeat);
-      resolve(code === 0 ? 'success' : 'failed');
+      resolve({
+        status: code === 0 ? 'success' : 'failed',
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        stderr: Buffer.concat(stderrChunks).toString('utf8'),
+      });
     });
   });
 
   const seconds = Number(((performance.now() - startedAt) / 1000).toFixed(2));
-  return { id, status, seconds };
+  return { id, status: status.status, seconds, stdout: status.stdout, stderr: status.stderr };
 }
 
 export function buildPromotionPlan({
@@ -126,6 +141,11 @@ export function buildPromotionPlan({
       'verify-production-target-ready',
       ['npm', 'run', 'verify:production-target-ready'],
       'Verify the production SSH target, release-state, public URLs, platform, and no-host-node deploy contract before tagging.'
+    ),
+    step(
+      'release-preflight',
+      ['bash', '-lc', `RELEASE_PREFLIGHT_NEXT_TAG=${quoteShellArg(tag)} npm run release:preflight`],
+      'Run the consolidated release preflight before creating the production tag.'
     ),
     step(
       'tag-production',

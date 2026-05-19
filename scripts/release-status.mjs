@@ -125,6 +125,37 @@ function valueOrNA(value) {
   return text || 'n/a';
 }
 
+function normalizeTag(value) {
+  const text = String(value ?? '').trim();
+  return text ? `v${text.replace(/^v/, '')}` : '';
+}
+
+export function resolveNextPatchTagFromRemoteTags(text) {
+  const tags = String(text ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/)[1] ?? '')
+    .map((ref) => ref.replace(/^refs\/tags\//, ''))
+    .map((tag) => /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag))
+    .filter(Boolean)
+    .map((match) => ({
+      major: Number(match[1]),
+      minor: Number(match[2]),
+      patch: Number(match[3]),
+    }))
+    .sort((left, right) => {
+      if (left.major !== right.major) return right.major - left.major;
+      if (left.minor !== right.minor) return right.minor - left.minor;
+      return right.patch - left.patch;
+    });
+
+  if (tags.length === 0) {
+    return '';
+  }
+
+  const latest = tags[0];
+  return `v${latest.major}.${latest.minor}.${latest.patch + 1}`;
+}
+
 function expandTilde(path, env) {
   const value = String(path ?? '').trim();
   if (value === '~') {
@@ -221,6 +252,28 @@ function isSuccess(value) {
   );
 }
 
+export function detectOperationalTargetPlaceholders(env) {
+  const proxmoxAlias = String(env.PROXMOX_SSH_ALIAS ?? '').trim();
+  const windowsRunnerProxmoxHost = String(env.WINDOWS_RUNNER_PROXMOX_HOST ?? '').trim();
+  const proxmoxHost = String(env.PROXMOX_HOST ?? '').trim();
+  const proxmoxTarget =
+    proxmoxHost && !/(^|[.])example[.]invalid$/.test(proxmoxHost)
+      ? ['PROXMOX_HOST', proxmoxHost]
+      : proxmoxAlias
+        ? ['PROXMOX_SSH_ALIAS', proxmoxAlias]
+        : windowsRunnerProxmoxHost
+          ? ['WINDOWS_RUNNER_PROXMOX_HOST', windowsRunnerProxmoxHost]
+          : ['PROXMOX_HOST', proxmoxHost || 'proxmox-host.example.invalid'];
+
+  return [
+    ['STAGING_HOST', env.STAGING_HOST ?? 'staging-host.example.invalid'],
+    ['DEPLOY_HOST', env.DEPLOY_HOST ?? 'classroompath.example.invalid'],
+    proxmoxTarget,
+  ]
+    .map(([name, value]) => ({ name, value: String(value ?? '').trim() }))
+    .filter(({ value }) => value && /(^|[.])example[.]invalid$/.test(value));
+}
+
 function isReleaseCandidateAvailable(releaseCandidate) {
   return (
     releaseCandidate.latestRun?.conclusion === 'success' &&
@@ -289,6 +342,10 @@ export function deriveReleaseBlockerGroups(status) {
     blockers.push('windows-prepromotion-evidence-missing');
   }
 
+  if (status.operationalTargets?.placeholders?.length > 0) {
+    blockers.push('operational-target-placeholder');
+  }
+
   if (status.productionDeploy.latestRun?.conclusion !== 'success') {
     productionBlockers.push('production-deploy-not-success');
   }
@@ -353,6 +410,12 @@ export function buildReleaseStatusJson(status) {
       lastDeploy: productionDeployRun,
       currentImages: productionCurrentImages,
       currentImagesError: status.productionDeploy.currentStateError,
+    },
+    release: {
+      nextTag: status.release?.nextTag ?? '',
+    },
+    operationalTargets: status.operationalTargets ?? {
+      placeholders: [],
     },
     promotionBlockers: blockerGroups.promotionBlockers,
     productionBlockers: blockerGroups.productionBlockers,
@@ -761,6 +824,10 @@ export async function buildReleaseStatus({
     )
   );
 
+  const remoteTags = tryRead('remote release tags', () =>
+    runGit(runCommand, ['ls-remote', '--tags', '--refs', 'origin', 'v*'], mergedEnv)
+  );
+
   const status = {
     generatedAt: new Date().toISOString(),
     classroomPath: {
@@ -801,6 +868,17 @@ export async function buildReleaseStatus({
       runsError: productionRuns.ok ? '' : productionRuns.error,
       currentState: productionState.ok ? productionState.value.state : null,
       currentStateError: productionState.ok ? productionState.value.error : productionState.error,
+    },
+    release: {
+      nextTag: normalizeTag(
+        mergedEnv.RELEASE_STATUS_NEXT_TAG ??
+          mergedEnv.RELEASE_PREFLIGHT_NEXT_TAG ??
+          (remoteTags.ok ? resolveNextPatchTagFromRemoteTags(remoteTags.value) : '')
+      ),
+      nextTagError: remoteTags.ok ? '' : remoteTags.error,
+    },
+    operationalTargets: {
+      placeholders: detectOperationalTargetPlaceholders(mergedEnv),
     },
   };
 

@@ -11,6 +11,7 @@ import {
   buildReleaseStatusJson,
   deriveReleaseBlockerGroups,
   deriveReleaseBlockers,
+  detectOperationalTargetPlaceholders,
   parseReleaseStatusArgs,
   renderReleaseStatusText,
 } from '../scripts/release-status.mjs';
@@ -39,6 +40,14 @@ const manifestText = [
   '',
 ].join('\n');
 
+function realOperationalTargetEnv() {
+  return {
+    STAGING_HOST: 'staging.internal',
+    DEPLOY_HOST: 'production.internal',
+    PROXMOX_HOST: 'proxmox.internal',
+  };
+}
+
 function createCommandHarness(options: { originSha?: string; openpathCheckStatus?: string } = {}) {
   const calls: Array<{ command: string; args: string[] }> = [];
   const originSha = options.originSha ?? ORIGIN_SHA;
@@ -62,6 +71,15 @@ function createCommandHarness(options: { originSha?: string; openpathCheckStatus
 
     if (commandLine === 'git remote get-url origin') {
       return 'git@github.com:BalejosG/ClassroomPath.git';
+    }
+
+    if (commandLine === 'git ls-remote --tags --refs origin v*') {
+      return [
+        'aaa\trefs/tags/v1.2.299',
+        'bbb\trefs/tags/v1.2.301',
+        'ccc\trefs/tags/not-semver',
+        '',
+      ].join('\n');
     }
 
     if (command === 'gh' && args[0] === 'api' && args[1].includes('/commits/')) {
@@ -234,6 +252,7 @@ test('CLI emits JSON when requested', () => {
       PATH: `${binDir}:${process.env.PATH ?? ''}`,
       RELEASE_STATUS_TEST_MODE: '1',
       RELEASE_STATUS_TEST_MANIFEST: manifestText,
+      ...realOperationalTargetEnv(),
     },
   });
 
@@ -259,6 +278,7 @@ test('builds normalized JSON sections for release automation', async () => {
       RELEASE_STATUS_TEST_MODE: '1',
       RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
       RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
     },
     runCommand: harness.runCommand,
   });
@@ -274,6 +294,7 @@ test('builds normalized JSON sections for release automation', async () => {
   assert.equal(payload.staging.verification.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT, 'success');
   assert.equal(payload.production.lastDeploy?.runId, 987654);
   assert.equal(payload.production.currentImages.APP_SHA, CLASSROOM_SHA);
+  assert.equal(payload.release.nextTag, 'v1.2.302');
   assert.deepEqual(payload.promotionBlockers, []);
   assert.deepEqual(payload.productionBlockers, []);
   assert.deepEqual(payload.blockers, []);
@@ -288,6 +309,7 @@ test('derives stable release blockers from release status evidence', async () =>
       RELEASE_STATUS_TEST_MODE: '1',
       RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
       RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
     },
     runCommand(command, args) {
       if (command === 'gh' && args[0] === 'run' && args[1] === 'list') {
@@ -377,6 +399,66 @@ test('keeps stale staging as promotion-only blocker when production already runs
   assert.ok(payload.promotionBlockers.includes('windows-prepromotion-evidence-missing'));
   assert.deepEqual(payload.productionBlockers, []);
   assert.deepEqual(payload.blockers, []);
+});
+
+test('detects operational placeholders in status JSON for preflight consumers', async () => {
+  const harness = createCommandHarness({ originSha: CLASSROOM_SHA });
+  const status = await buildReleaseStatus({
+    argv: ['--sha', CLASSROOM_SHA],
+    env: {
+      ...process.env,
+      RELEASE_STATUS_TEST_MODE: '1',
+      RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
+      RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      STAGING_HOST: 'staging-host.example.invalid',
+      DEPLOY_HOST: 'classroompath.example.invalid',
+      PROXMOX_HOST: 'proxmox-host.example.invalid',
+    },
+    runCommand: harness.runCommand,
+  });
+
+  const payload = buildReleaseStatusJson(status);
+
+  assert.deepEqual(payload.operationalTargets.placeholders, [
+    { name: 'STAGING_HOST', value: 'staging-host.example.invalid' },
+    { name: 'DEPLOY_HOST', value: 'classroompath.example.invalid' },
+    { name: 'PROXMOX_HOST', value: 'proxmox-host.example.invalid' },
+  ]);
+  assert.ok(payload.promotionBlockers.includes('operational-target-placeholder'));
+});
+
+test('classifies example.invalid operational targets as placeholders', () => {
+  assert.deepEqual(
+    detectOperationalTargetPlaceholders({
+      STAGING_HOST: 'staging-host.example.invalid',
+      DEPLOY_HOST: 'prod.example.invalid',
+      PROXMOX_HOST: 'proxmox-host.example.invalid',
+    }),
+    [
+      { name: 'STAGING_HOST', value: 'staging-host.example.invalid' },
+      { name: 'DEPLOY_HOST', value: 'prod.example.invalid' },
+      { name: 'PROXMOX_HOST', value: 'proxmox-host.example.invalid' },
+    ]
+  );
+});
+
+test('does not require PROXMOX_HOST when a real Proxmox alias is configured', () => {
+  assert.deepEqual(
+    detectOperationalTargetPlaceholders({
+      STAGING_HOST: 'staging.internal',
+      DEPLOY_HOST: 'prod.internal',
+      PROXMOX_SSH_ALIAS: 'whitelist-proxmox',
+    }),
+    []
+  );
+  assert.deepEqual(
+    detectOperationalTargetPlaceholders({
+      STAGING_HOST: 'staging.internal',
+      DEPLOY_HOST: 'prod.internal',
+      WINDOWS_RUNNER_PROXMOX_HOST: 'windows-proxmox',
+    }),
+    []
+  );
 });
 
 function createReleaseStatusFakeBin() {

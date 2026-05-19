@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
@@ -29,6 +32,7 @@ describe('release promotion orchestration', () => {
         'ensure-windows-prepromotion-evidence',
         'verify-promotion-ready',
         'verify-production-target-ready',
+        'release-preflight',
         'tag-production',
         'wait-production-deploy',
         'verify-production-health',
@@ -60,6 +64,10 @@ describe('release promotion orchestration', () => {
     assert.match(
       commandsById['verify-production-target-ready'],
       /npm run verify:production-target-ready/
+    );
+    assert.match(
+      commandsById['release-preflight'],
+      /RELEASE_PREFLIGHT_NEXT_TAG=v1\.2\.301 npm run release:preflight/
     );
     assert.match(commandsById['tag-production'], /npm run promote:production -- v1\.2\.301/);
     assert.match(commandsById['wait-production-deploy'], /actions-health\.mjs wait/);
@@ -288,11 +296,274 @@ describe('release promotion orchestration', () => {
       'ensure-windows-prepromotion-evidence',
       'verify-promotion-ready',
       'verify-production-target-ready',
+      'release-preflight',
       'tag-production',
       'wait-production-deploy',
       'verify-production-health',
       'report-residual-actions-runs',
     ]);
+  });
+
+  it('refreshes stale Windows prepromotion evidence once and retries promotion readiness', async () => {
+    const executedSteps = [];
+    let verifyAttempts = 0;
+
+    const result = await runReleasePromoteCommand(
+      [
+        '--tag',
+        'v0.0.0',
+        '--execute',
+        '--no-high-risk-windows',
+        '--no-post-production-windows-canary',
+      ],
+      {
+        stdout: () => {},
+        stderr: () => {},
+        runStep: async (step) => {
+          executedSteps.push(step.id);
+          if (step.id === 'verify-promotion-ready') {
+            verifyAttempts += 1;
+            return verifyAttempts === 1
+              ? {
+                  id: step.id,
+                  status: 'failed',
+                  seconds: 1,
+                  stderr: 'windows-prepromotion-evidence-stale for staged SHA',
+                }
+              : { id: step.id, status: 'success', seconds: 1 };
+          }
+          return { id: step.id, status: 'success', seconds: 1 };
+        },
+      }
+    );
+
+    assert.equal(result.status, 0);
+    assert.equal(verifyAttempts, 2);
+    assert.deepEqual(
+      executedSteps.filter(
+        (id) => id === 'verify-promotion-ready' || id === 'ensure-windows-prepromotion-evidence'
+      ),
+      ['verify-promotion-ready', 'ensure-windows-prepromotion-evidence', 'verify-promotion-ready']
+    );
+  });
+
+  it('reruns a retryable failed production deploy once and waits again', async () => {
+    const executedSteps = [];
+    let waitAttempts = 0;
+    const reruns = [];
+
+    const result = await runReleasePromoteCommand(
+      [
+        '--tag',
+        'v0.0.0',
+        '--execute',
+        '--no-high-risk-windows',
+        '--no-post-production-windows-canary',
+      ],
+      {
+        stdout: () => {},
+        stderr: () => {},
+        rerunGitHubRunFailedJobs: async (options) => {
+          reruns.push(options);
+          return { id: 'rerun-production-deploy', status: 'success', seconds: 1 };
+        },
+        runStep: async (step) => {
+          executedSteps.push(step.id);
+          if (step.id === 'wait-production-deploy') {
+            waitAttempts += 1;
+            return waitAttempts === 1
+              ? {
+                  id: step.id,
+                  status: 'failed',
+                  seconds: 1,
+                  githubRun: {
+                    repo: 'balejosg/ClassroomPath',
+                    runId: '12345',
+                    workflow: 'Deploy',
+                    status: 'completed',
+                    conclusion: 'failure',
+                    failedJobs: [{ name: 'Deploy to Production', conclusion: 'failure' }],
+                  },
+                  deployBrief: {
+                    failureBoundary: { safeToRetry: 'after-cleanup' },
+                    nextCommand: 'gh run rerun 12345 --failed --repo balejosg/ClassroomPath',
+                  },
+                }
+              : {
+                  id: step.id,
+                  status: 'success',
+                  seconds: 1,
+                  githubRun: {
+                    repo: 'balejosg/ClassroomPath',
+                    runId: '12345',
+                    workflow: 'Deploy',
+                    status: 'completed',
+                    conclusion: 'success',
+                    failedJobs: [],
+                  },
+                };
+          }
+          return { id: step.id, status: 'success', seconds: 1 };
+        },
+      }
+    );
+
+    assert.equal(result.status, 0);
+    assert.equal(waitAttempts, 2);
+    assert.deepEqual(reruns, [{ repo: 'balejosg/ClassroomPath', runId: '12345' }]);
+    assert.deepEqual(
+      executedSteps.filter((id) => id === 'wait-production-deploy'),
+      ['wait-production-deploy', 'wait-production-deploy']
+    );
+  });
+
+  it('parses actions-health stdout, runs deploy brief, and reruns retryable production deploys', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'release-promote-actions-health-'));
+    const executedSteps = [];
+    const reruns = [];
+    let waitAttempts = 0;
+
+    const result = await runReleasePromoteCommand(
+      [
+        '--tag',
+        'v0.0.0',
+        '--execute',
+        '--no-high-risk-windows',
+        '--no-post-production-windows-canary',
+      ],
+      {
+        transcriptRoot: outputRoot,
+        stdout: () => {},
+        stderr: () => {},
+        rerunGitHubRunFailedJobs: async (options) => {
+          reruns.push(options);
+          return { id: 'rerun-production-deploy', status: 'success', seconds: 1 };
+        },
+        runStep: async (step) => {
+          executedSteps.push({ id: step.id, command: formatCommand(step.command) });
+          if (step.id === 'wait-production-deploy') {
+            waitAttempts += 1;
+            return waitAttempts === 1
+              ? {
+                  id: step.id,
+                  status: 'failed',
+                  seconds: 1,
+                  stdout: [
+                    'Found production deploy run: 24680',
+                    JSON.stringify({
+                      runId: '24680',
+                      status: 'completed',
+                      conclusion: 'failure',
+                      state: 'corrupt',
+                      recommendedAction: 'rerun-workflow',
+                      url: 'https://github.com/balejosg/ClassroomPath/actions/runs/24680',
+                    }),
+                    '',
+                  ].join('\n'),
+                }
+              : {
+                  id: step.id,
+                  status: 'success',
+                  seconds: 1,
+                  stdout: [
+                    'Found production deploy run: 24680',
+                    JSON.stringify({
+                      runId: '24680',
+                      status: 'completed',
+                      conclusion: 'success',
+                      state: 'healthy',
+                      recommendedAction: 'none',
+                      url: 'https://github.com/balejosg/ClassroomPath/actions/runs/24680',
+                    }),
+                    '',
+                  ].join('\n'),
+                };
+          }
+          if (step.id === 'build-production-deploy-brief') {
+            return {
+              id: step.id,
+              status: 'success',
+              seconds: 1,
+              stdout: JSON.stringify({
+                failureBoundary: { safeToRetry: 'after-cleanup' },
+                nextCommand: 'gh run rerun 24680 --failed --repo balejosg/ClassroomPath',
+              }),
+            };
+          }
+          return { id: step.id, status: 'success', seconds: 1 };
+        },
+      }
+    );
+
+    assert.equal(result.status, 0);
+    assert.deepEqual(reruns, [{ repo: 'balejosg/ClassroomPath', runId: '24680' }]);
+    assert.match(
+      executedSteps.find((step) => step.id === 'build-production-deploy-brief').command,
+      /npm run ops:deploy-brief -- --run 24680 --tag v0\.0\.0 --output-dir/
+    );
+
+    const transcriptJson = JSON.parse(
+      readFileSync(join(outputRoot, 'v0.0.0', 'release-promote-transcript.json'), 'utf8')
+    );
+    const deployWaitSteps = transcriptJson.steps.filter(
+      (step) => step.id === 'wait-production-deploy'
+    );
+    assert.equal(deployWaitSteps[0].runId, '24680');
+    assert.equal(deployWaitSteps[1].runId, '24680');
+  });
+
+  it('writes execute transcripts under the tag-specific release-promote directory', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'release-promote-transcript-'));
+
+    const result = await runReleasePromoteCommand(
+      [
+        '--tag',
+        'v0.0.0',
+        '--execute',
+        '--no-high-risk-windows',
+        '--no-post-production-windows-canary',
+      ],
+      {
+        transcriptRoot: outputRoot,
+        stdout: () => {},
+        stderr: () => {},
+        runStep: async (step) => ({
+          id: step.id,
+          status: 'success',
+          seconds: 1,
+          githubRun:
+            step.id === 'wait-production-deploy'
+              ? {
+                  repo: 'balejosg/ClassroomPath',
+                  runId: '777',
+                  url: 'https://github.com/balejosg/ClassroomPath/actions/runs/777',
+                  workflow: 'Deploy',
+                  status: 'completed',
+                  conclusion: 'success',
+                  failedJobs: [],
+                }
+              : undefined,
+        }),
+      }
+    );
+
+    assert.equal(result.status, 0);
+    const transcriptJson = JSON.parse(
+      readFileSync(join(outputRoot, 'v0.0.0', 'release-promote-transcript.json'), 'utf8')
+    );
+    const transcriptMarkdown = readFileSync(
+      join(outputRoot, 'v0.0.0', 'release-promote-transcript.md'),
+      'utf8'
+    );
+
+    assert.equal(transcriptJson.tag, 'v0.0.0');
+    assert.equal(transcriptJson.status, 'success');
+    assert.equal(
+      transcriptJson.steps.find((step) => step.id === 'wait-production-deploy').runId,
+      '777'
+    );
+    assert.match(transcriptMarkdown, /# Release Promote Transcript: v0\.0\.0/);
+    assert.match(transcriptMarkdown, /\| wait-production-deploy \| success \|/);
   });
 
   it('omits the post-production canary command in dry-run mode only with opt-out', async () => {
