@@ -124,6 +124,9 @@ log_info "Verifying staging promotion eligibility before tagging $TAG_NAME..."
 ensure_github_token_env
 PROMOTION_EVIDENCE_DIR="$promotion_evidence_dir" bash scripts/verify-production-promotion-ready.sh
 
+log_info "Verifying production target readiness before tagging $TAG_NAME..."
+bash scripts/preflight-production-promotion-target.sh
+
 node scripts/promotion-evidence-cli.mjs write-tag-message \
   --tag "$TAG_NAME" \
   --commit "$main_sha" \

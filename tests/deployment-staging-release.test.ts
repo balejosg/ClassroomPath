@@ -53,6 +53,10 @@ describe('Deployment staging and promotion contracts', () => {
     projectRoot,
     'scripts/verify-production-host-readiness.sh'
   );
+  const productionTargetPreflightScriptPath = resolve(
+    projectRoot,
+    'scripts/preflight-production-promotion-target.sh'
+  );
   const deployProductionContextHelperPath = resolve(
     projectRoot,
     'scripts/lib/deploy-production-context.sh'
@@ -501,10 +505,19 @@ warn_if_other_release_candidate_run_in_progress target-sha
       resolve(projectRoot, 'scripts/tag-production-release.sh'),
       'utf-8'
     );
+    const promoteCurrentScript = readFileSync(
+      resolve(projectRoot, 'scripts/promote-current-staging-candidate.sh'),
+      'utf-8'
+    );
     const productionHostReadinessScript = readFileSync(productionHostReadinessScriptPath, 'utf-8');
+    const productionTargetPreflightScript = readFileSync(
+      productionTargetPreflightScriptPath,
+      'utf-8'
+    );
 
     assert.ok(existsSync(promotionReadyScriptPath));
     assert.ok(existsSync(productionHostReadinessScriptPath));
+    assert.ok(existsSync(productionTargetPreflightScriptPath));
     assert.ok(
       promotionReadyScript.includes('release-state-cli.mjs') &&
         promotionReadyScript.includes('verify-promotion-ready') &&
@@ -527,6 +540,8 @@ warn_if_other_release_candidate_run_in_progress target-sha
     );
     assert.ok(secretsDoc.includes('Use `npm run verify:public-surface`'));
     assert.ok(packageJson.includes('"verify:production-host"'));
+    assert.ok(packageJson.includes('"verify:production-target-ready"'));
+    assert.ok(packageJson.includes('bash scripts/preflight-production-promotion-target.sh'));
     assert.ok(
       packageJson.includes('"deploy:staging:assume-yes"'),
       'package.json should expose an explicit non-interactive staging deploy command'
@@ -567,6 +582,49 @@ warn_if_other_release_candidate_run_in_progress target-sha
           'test -f /srv/classroompath/release-state/current-images.env'
         ),
       'promotion readiness should read production release state from CLASSROOMPATH_DEPLOY_ROOT'
+    );
+    assert.ok(
+      productionTargetPreflightScript.includes(
+        'CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"'
+      ) &&
+        productionTargetPreflightScript.includes(
+          'PRODUCTION_CURRENT_STATE_PATH="${CLASSROOMPATH_DEPLOY_ROOT%/}/release-state/current-images.env"'
+        ) &&
+        productionTargetPreflightScript.includes(
+          '"$SCRIPT_DIR/deploy-targets.mjs" get production publicUrl'
+        ) &&
+        productionTargetPreflightScript.includes(
+          '"$SCRIPT_DIR/deploy-targets.mjs" get production gatewayHealthUrl'
+        ) &&
+        productionTargetPreflightScript.includes(
+          '"$SCRIPT_DIR/deploy-targets.mjs" get production readyUrl'
+        ) &&
+        productionTargetPreflightScript.includes(
+          '"$SCRIPT_DIR/deploy-targets.mjs" get production containerPlatform'
+        ) &&
+        productionTargetPreflightScript.includes('"${PRODUCTION_SSH_CMD[@]}" "true"') &&
+        productionTargetPreflightScript.includes("test -r '$PRODUCTION_CURRENT_STATE_PATH'") &&
+        productionTargetPreflightScript.includes('curl --max-time 15') &&
+        productionTargetPreflightScript.includes(
+          'grep -q \'require_cmd node\' "$SCRIPT_DIR/deploy-production-remote.sh"'
+        ) &&
+        productionTargetPreflightScript.includes('classify_migration_risk_without_node()'),
+      'production target preflight should verify SSH, release-state, URLs, platform, and no-host-node deploy contract'
+    );
+    assert.ok(
+      tagProductionScript.indexOf('bash scripts/preflight-production-promotion-target.sh') >
+        tagProductionScript.indexOf('bash scripts/verify-production-promotion-ready.sh') &&
+        tagProductionScript.indexOf('bash scripts/preflight-production-promotion-target.sh') <
+          tagProductionScript.indexOf('git tag -a "$TAG_NAME"'),
+      'manual production tagging should run production target preflight before tag creation'
+    );
+    assert.ok(
+      promoteCurrentScript.indexOf('bash "$SCRIPT_DIR/preflight-production-promotion-target.sh"') >
+        promoteCurrentScript.indexOf('bash "$SCRIPT_DIR/verify-production-promotion-ready.sh"') &&
+        promoteCurrentScript.indexOf(
+          'bash "$SCRIPT_DIR/preflight-production-promotion-target.sh"'
+        ) < promoteCurrentScript.indexOf('git tag -a "$next_tag"'),
+      'latest-only production tagging should run production target preflight before tag creation'
     );
     assert.ok(
       productionHostReadinessScript.includes(

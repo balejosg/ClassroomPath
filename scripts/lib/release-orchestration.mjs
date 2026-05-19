@@ -3,7 +3,6 @@ import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
 
 const DEFAULT_REPO = 'balejosg/ClassroomPath';
-const PRODUCTION_URL = 'https://classroompath.example.invalid';
 const execFile = promisify(nodeExecFile);
 const GH_RUN_MONITOR_FIELDS = 'status,conclusion,jobs,url,name,workflowName';
 
@@ -124,6 +123,11 @@ export function buildPromotionPlan({
       'Verify staging evidence is production-promotion ready.'
     ),
     step(
+      'verify-production-target-ready',
+      ['npm', 'run', 'verify:production-target-ready'],
+      'Verify the production SSH target, release-state, public URLs, platform, and no-host-node deploy contract before tagging.'
+    ),
+    step(
       'tag-production',
       ['npm', 'run', 'promote:production', '--', tag],
       `Create and push production tag ${tag}.`
@@ -138,7 +142,12 @@ export function buildPromotionPlan({
       [
         'bash',
         '-lc',
-        `curl -fsS ${PRODUCTION_URL}/cp/health && curl -fsS ${PRODUCTION_URL}/cp/ready`,
+        [
+          'production_health_url="$(node scripts/deploy-targets.mjs get production gatewayHealthUrl)"',
+          'production_ready_url="$(node scripts/deploy-targets.mjs get production readyUrl)"',
+          'curl -fsS "$production_health_url"',
+          'curl -fsS "$production_ready_url"',
+        ].join(' && '),
       ],
       'Verify production gateway health and readiness.'
     )

@@ -388,6 +388,26 @@ describe('Deploy workflow contracts', () => {
       deployWorkflow.env?.CLASSROOMPATH_DEPLOY_ROOT,
       "${{ vars.CLASSROOMPATH_DEPLOY_ROOT || '/opt/classroompath' }}"
     );
+    assert.equal(
+      deployWorkflow.env?.CLASSROOMPATH_PRODUCTION_PUBLIC_URL,
+      '${{ vars.CLASSROOMPATH_PRODUCTION_PUBLIC_URL || vars.PRODUCTION_PUBLIC_URL }}',
+      'production public URL workflow env must come from public GitHub variables, not SSH host secrets'
+    );
+    assert.equal(
+      deployWorkflow.env?.CLASSROOMPATH_STAGING_PUBLIC_URL,
+      '${{ vars.CLASSROOMPATH_STAGING_PUBLIC_URL || vars.STAGING_PUBLIC_URL }}',
+      'staging public URL workflow env must come from public GitHub variables, not SSH host secrets'
+    );
+    assert.doesNotMatch(
+      deployWorkflowText,
+      /format\('https:\/\/\{0\}[^']*', secrets\.(?:DEPLOY_HOST|STAGING_DEPLOY_HOST)\)/,
+      'deploy workflow must not synthesize public HTTPS URLs from SSH host secrets'
+    );
+    assert.doesNotMatch(
+      deployWorkflowText,
+      /secrets\.(?:PRODUCTION|STAGING)_(?:PUBLIC|CANARY_PUBLIC|GATEWAY_HEALTH|READY|API_HEALTH|API_CONFIG)_URL/,
+      'public deploy target URLs should be GitHub variables or deploy-targets.mjs values, not secrets'
+    );
     assert.match(
       readProductionReleaseStateScript,
       /production_release_state_path="\$\{CLASSROOMPATH_DEPLOY_ROOT%\/\}\/release-state\/current-images\.env"/
@@ -453,6 +473,13 @@ describe('Deploy workflow contracts', () => {
     assert.equal((concurrency as { 'cancel-in-progress'?: boolean })['cancel-in-progress'], false);
     assert.ok(jobs['resolve-release-images']);
     assert.ok((jobs['resolve-release-images']?.outputs ?? {})['payload_base64']);
+    assert.deepEqual(
+      Object.keys(jobs['resolve-release-images']?.outputs ?? {}).filter((outputName) =>
+        /(?:public_url|health_url|ready_url|api_config_url)$/.test(outputName)
+      ),
+      [],
+      'resolve-release-images must not publish cross-job public URL outputs'
+    );
     assert.ok(jobs['verify-staging-release-state']);
     assert.ok(jobs['deploy-production']);
     assert.ok(jobs['smoke-test-production']);
@@ -675,7 +702,7 @@ describe('Deploy workflow contracts', () => {
     assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.target_environment, 'staging');
     assert.match(
       String(jobs['windows-staging-bootstrap-canary']?.with?.base_url ?? ''),
-      /needs\.resolve-release-images\.outputs\.staging_canary_public_url/
+      /env\.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL/
     );
     assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, 'false');
     assert.ok(
@@ -987,6 +1014,29 @@ describe('Deploy workflow contracts', () => {
     assert.match(deployWorkflowText, /envs: .*CLASSROOMPATH_DEPLOY_ROOT/);
     assert.match(deployWorkflowText, /envs: .*CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA/);
     assert.match(deployWorkflowText, /envs: .*CP_EMAIL_PREFLIGHT_MODE/);
+    const downloadDeployDebugStep = findWorkflowStepByName(
+      jobs['deploy-production'],
+      'Download deploy debug artifact'
+    );
+    const uploadDeployDebugStep = findWorkflowStepByName(
+      jobs['deploy-production'],
+      'Upload deploy debug artifact'
+    );
+    assert.equal(downloadDeployDebugStep?.if, 'failure()');
+    assert.equal(uploadDeployDebugStep?.if, 'failure()');
+    assert.equal(downloadDeployDebugStep?.['continue-on-error'], true);
+    assert.equal(uploadDeployDebugStep?.['continue-on-error'], true);
+    assert.match(
+      String(downloadDeployDebugStep?.run ?? ''),
+      /\$\{CLASSROOMPATH_DEPLOY_ROOT%\/\}\/release-state\/deploy-debug\.json/,
+      'production deploy failure should fetch the sanitized deploy-debug.json from the configured deploy root'
+    );
+    assert.equal(
+      uploadDeployDebugStep?.with?.name,
+      'production-deploy-debug-${{ github.ref_name }}'
+    );
+    assert.equal(uploadDeployDebugStep?.with?.['if-no-files-found'], 'ignore');
+    assert.equal(uploadDeployDebugStep?.with?.path, 'deploy-debug.json');
     assert.ok(!deployNeeds.includes('release-gate-staging'));
   });
 });

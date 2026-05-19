@@ -28,6 +28,7 @@ describe('release promotion orchestration', () => {
         'deploy-staging',
         'ensure-windows-prepromotion-evidence',
         'verify-promotion-ready',
+        'verify-production-target-ready',
         'tag-production',
         'wait-production-deploy',
         'verify-production-health',
@@ -56,14 +57,28 @@ describe('release promotion orchestration', () => {
     assert.match(commandsById['deploy-staging'], /npm run deploy:staging/);
     assert.match(commandsById['ensure-windows-prepromotion-evidence'], /run-and-persist/);
     assert.match(commandsById['verify-promotion-ready'], /npm run verify:promotion-ready/);
+    assert.match(
+      commandsById['verify-production-target-ready'],
+      /npm run verify:production-target-ready/
+    );
     assert.match(commandsById['tag-production'], /npm run promote:production -- v1\.2\.301/);
     assert.match(commandsById['wait-production-deploy'], /actions-health\.mjs wait/);
     assert.match(commandsById['wait-production-deploy'], /gh run list/);
     assert.match(commandsById['wait-production-deploy'], /--workflow deploy\.yml/);
     assert.match(commandsById['wait-production-deploy'], /--event push/);
     assert.match(commandsById['wait-production-deploy'], /--branch v1\.2\.301/);
-    assert.match(commandsById['verify-production-health'], /\/cp\/health/);
-    assert.match(commandsById['verify-production-health'], /\/cp\/ready/);
+    assert.match(
+      commandsById['verify-production-health'],
+      /deploy-targets\.mjs get production gatewayHealthUrl/
+    );
+    assert.match(
+      commandsById['verify-production-health'],
+      /deploy-targets\.mjs get production readyUrl/
+    );
+    assert.doesNotMatch(
+      commandsById['verify-production-health'],
+      /classroompath\.example\.invalid/
+    );
     assert.match(commandsById['report-residual-actions-runs'], /actions-health\.mjs report-stale/);
     assert.match(commandsById['report-residual-actions-runs'], /--tag v1\.2\.301/);
   });
@@ -243,6 +258,7 @@ describe('release promotion orchestration', () => {
     assert.match(stdout, /1\. verify-clean-repos/);
     assert.match(stdout, /ensure-windows-prepromotion-evidence/);
     assert.match(stdout, /npm run deploy:staging/);
+    assert.match(stdout, /npm run verify:production-target-ready/);
     assert.match(stdout, /npm run promote:production -- v0\.0\.0/);
     assert.match(stdout, /run-post-production-windows-canary/);
     assert.match(stdout, /actions-health\.mjs report-stale/);
@@ -271,6 +287,7 @@ describe('release promotion orchestration', () => {
       'deploy-staging',
       'ensure-windows-prepromotion-evidence',
       'verify-promotion-ready',
+      'verify-production-target-ready',
       'tag-production',
       'wait-production-deploy',
       'verify-production-health',

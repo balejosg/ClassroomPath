@@ -8,6 +8,7 @@ on:
 permissions:
   actions: read
   contents: read
+  issues: write
   packages: read
 
 concurrency:
@@ -134,6 +135,7 @@ jobs:
 
           if [ "$status" -ne 0 ]; then
             staging_url="$(node scripts/deploy-targets.mjs get staging publicUrl)"
+            run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             {
               echo "## Nightly Staging Candidate"
               echo
@@ -141,12 +143,47 @@ jobs:
               echo "| --- | --- |"
               echo "| SHA | \`${{ steps.release-candidate.outputs.sha }}\` |"
               echo "| Release-candidate run | \`${{ steps.release-candidate.outputs.run_id }}\` |"
+              echo "| Workflow run | $run_url |"
               echo "| Staging URL | $staging_url |"
               echo "| Staging deploy state | failed |"
+              echo "| Release promotion state | blocked |"
               echo "| Promotion-ready preflight state | skipped |"
               echo
-              echo "Staging deployment failed, so production promotion readiness was not checked."
+              echo "Staging deployment failed, so production promotion readiness was not checked. This scheduled red is an operational blocker until the deploy failure is fixed."
             } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${GITHUB_EVENT_NAME:-}" = "schedule" ]; then
+              issue_title="Nightly staging candidate failed for ${{ steps.release-candidate.outputs.sha }}"
+              issue_body="$(mktemp)"
+              {
+                echo "## Nightly staging candidate failed"
+                echo
+                echo "| Field | Value |"
+                echo "| --- | --- |"
+                echo "| SHA | \`${{ steps.release-candidate.outputs.sha }}\` |"
+                echo "| Release-candidate run | \`${{ steps.release-candidate.outputs.run_id }}\` |"
+                echo "| Workflow run | $run_url |"
+                echo "| Staging URL | $staging_url |"
+                echo "| Failed step | Deploy staging |"
+                echo "| Release promotion state | blocked |"
+                echo
+                echo "Scheduled nightly staging candidate failures block release promotion until fixed. Inspect the workflow run logs for the Deploy staging step; this workflow remains failed after writing this evidence."
+              } > "$issue_body"
+              existing_issue_url="$(
+                gh issue list \
+                  --state open \
+                  --search "Nightly staging candidate failed in:title" \
+                  --json url \
+                  --jq '.[0].url // ""'
+              )"
+              if [ -n "$existing_issue_url" ]; then
+                gh issue comment "$existing_issue_url" --body-file "$issue_body"
+                echo "Updated existing nightly staging failure issue: $existing_issue_url" >> "$GITHUB_STEP_SUMMARY"
+              else
+                gh issue create \
+                  --title "$issue_title" \
+                  --body-file "$issue_body"
+              fi
+            fi
             exit "$status"
           fi
 

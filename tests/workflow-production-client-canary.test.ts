@@ -228,6 +228,7 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     const scheduledCrons = (workflow.on?.schedule ?? []).map((entry) => entry.cron);
     assert.ok(scheduledCrons.includes('*/15 * * * *'));
     assert.ok(scheduledCrons.includes('17 3 * * *'));
+    assert.equal(workflow.on?.workflow_dispatch?.inputs?.production_base_url?.default, '');
     assert.equal(workflow.permissions?.actions, 'read');
     assert.equal(guardJob?.['runs-on'], 'ubuntu-latest');
     assert.equal(guardJob?.outputs?.should_skip, '${{ steps.duplicate.outputs.should_skip }}');
@@ -291,6 +292,18 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     assert.ok(workflowText.includes('name: ci-signal-policy-evidence'));
     assert.ok(workflowText.includes('ci-workflow-hygiene-report.json'));
     assert.ok(workflowText.includes('name: ci-workflow-hygiene-report'));
+    assert.ok(
+      workflowText.includes(
+        "github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || 'https://classroompath.eu'"
+      ),
+      'production canary must resolve a real production URL when the manual input is empty'
+    );
+    assert.ok(
+      !workflowText.includes(
+        "github.event.inputs.production_base_url || 'https://classroompath.example.invalid'"
+      ),
+      'production canary must not default scheduled runs to the public placeholder host'
+    );
   });
 
   test('ci/cd signal inventory classifies schedules and duplicate-run policy', () => {
@@ -307,6 +320,10 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
       'advisory drift detection',
       'maintenance',
       'same workflow already passed on the same SHA within 60 minutes',
+      'skipped-duplicate',
+      'fresh same-SHA evidence',
+      'operational blocker',
+      'Failed scheduled runs keep release promotion blocked until actionable issue evidence is fixed',
       'Manual dispatch is never suppressed',
       'Do not suppress by SHA; environment drift can change without a commit',
       'Tag production deploys are non-cancelable',

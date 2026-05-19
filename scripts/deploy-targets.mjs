@@ -50,8 +50,9 @@ function isPlaceholderValue(value) {
   return typeof value === 'string' && value.includes('.invalid');
 }
 
-export function assertDeployTargetReady(environment, target) {
+export function assertDeployTargetReady(environment, target, fields = Object.keys(target)) {
   const placeholderFields = Object.entries(target)
+    .filter(([field]) => fields.includes(field))
     .filter(([, value]) => isPlaceholderValue(value))
     .map(([field]) => field);
 
@@ -100,7 +101,7 @@ function main() {
       );
     }
 
-    assertDeployTargetReady(environment, target);
+    assertDeployTargetReady(environment, target, [field]);
     process.stdout.write(`${target[field]}\n`);
     return;
   }

@@ -61,6 +61,7 @@
     "verify:docs": "node scripts/verify-docs.mjs",
     "verify:public-surface": "node scripts/check-public-surface.mjs",
     "verify:promotion-ready": "bash scripts/verify-production-promotion-ready.sh",
+    "verify:production-target-ready": "bash scripts/preflight-production-promotion-target.sh",
     "verify:production-promotion-dry": "node scripts/production-promotion-dry-validate.mjs",
     "verify:production-host": "bash scripts/verify-production-host-readiness.sh",
     "ops:change-brief": "node ../scripts/change-brief.mjs --workspace .. --repo classroompath",

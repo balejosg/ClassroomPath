@@ -24,14 +24,14 @@ jobs:
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
-          RUNNER_NAME: classroompath-windows-runner
+          RUNNER_NAME: classroompath-windows-103
         shell: bash
         run: |
           set -euo pipefail
           runner_json_path="$(mktemp)"
           runner_error_path="$(mktemp)"
 
-          if ! gh api repos/${{ github.repository }}/actions/runners --paginate --jq '.runners[] | select(.name == "classroompath-windows-runner")' >"$runner_json_path" 2>"$runner_error_path"; then
+          if ! gh api repos/${{ github.repository }}/actions/runners --paginate --jq '.runners[] | select(.name == "classroompath-windows-103")' >"$runner_json_path" 2>"$runner_error_path"; then
             runner_error="$(cat "$runner_error_path")"
             if grep -q 'Resource not accessible by integration' "$runner_error_path"; then
               echo "::warning::GITHUB_TOKEN cannot inspect self-hosted runner registration; continuing with on-runner smoke. $runner_error"
@@ -108,7 +108,7 @@ jobs:
       - name: Verify runner identity
         shell: pwsh
         run: |
-          if ($env:RUNNER_NAME -ne 'classroompath-windows-runner') {
+          if ($env:RUNNER_NAME -ne 'classroompath-windows-103') {
             throw "Unexpected runner name: $env:RUNNER_NAME"
           }
           if ($env:RUNNER_OS -ne 'Windows') {

@@ -158,8 +158,15 @@ DEPLOY_PAYLOAD_FILE=""
 RELEASE_MANIFEST_B64_FROM_PAYLOAD=""
 TARGET_SHA=""
 PRODUCTION_REGISTRY_LOGGED_IN=0
+DEPLOY_DEBUG_FILE="$STATE_DIR/deploy-debug.json"
 
 cleanup_production_deploy_artifacts() {
+  local exit_status="$?"
+
+  if [ "$exit_status" -ne 0 ] && declare -f write_production_deploy_debug_context >/dev/null 2>&1; then
+    write_production_deploy_debug_context "$exit_status" || true
+  fi
+
   rm -f "${RELEASE_MANIFEST_FILE:-}" "${DEPLOY_PAYLOAD_FILE:-}"
   if [ "${PRODUCTION_REGISTRY_LOGGED_IN:-0}" = "1" ]; then
     docker logout ghcr.io >/dev/null 2>&1 || true
@@ -167,6 +174,93 @@ cleanup_production_deploy_artifacts() {
 }
 
 trap cleanup_production_deploy_artifacts EXIT
+
+json_escape() {
+  printf '%s' "${1:-}" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'
+}
+
+command_status_json() {
+  local command_name="$1"
+  local status="missing"
+
+  if command -v "$command_name" >/dev/null 2>&1; then
+    status="available"
+  fi
+
+  printf '"%s":"%s"' "$(json_escape "$command_name")" "$status"
+}
+
+helper_contract_status_json() {
+  local helper_name="$1"
+  local helper_path="$2"
+  local contract_status="missing"
+
+  if [ -f "$helper_path" ]; then
+    contract_status="present"
+  fi
+
+  printf '"%s":{"path":"%s","status":"%s"}' \
+    "$(json_escape "$helper_name")" \
+    "$(json_escape "$helper_path")" \
+    "$contract_status"
+}
+
+write_production_deploy_debug_context() {
+  local failed_status="${1:-1}"
+  local tmp_file=""
+
+  mkdir -p "$STATE_DIR"
+  tmp_file="$(mktemp)"
+
+  {
+    printf '{\n'
+    printf '  "deployStage":"%s",\n' "$(json_escape "${DEPLOY_FAILURE_STAGE:-${FAILURE_STAGE:-preflight}}")"
+    printf '  "targetSha":"%s",\n' "$(json_escape "${TARGET_SHA:-${DEPLOY_SHA:-unknown}}")"
+    printf '  "deployRoot":"%s",\n' "$(json_escape "$DEPLOY_DIR")"
+    printf '  "containerPlatform":"%s",\n' "$(json_escape "${CLASSROOMPATH_CONTAINER_PLATFORM:-${PRODUCTION_CONTAINER_PLATFORM:-unknown}}")"
+    printf '  "lastFailingPhase":"%s",\n' "$(json_escape "${FAILURE_STAGE:-${DEPLOY_FAILURE_STAGE:-preflight}}")"
+    printf '  "exitStatus":%s,\n' "$failed_status"
+    printf '  "helperContracts":{'
+    helper_contract_status_json "remoteBootstrap" "$REMOTE_BOOTSTRAP_HELPER_PATH"
+    printf ','
+    helper_contract_status_json "remoteHelperContracts" "$REMOTE_HELPER_CONTRACTS_PATH"
+    printf ','
+    helper_contract_status_json "releaseManifest" "$RELEASE_MANIFEST_HELPER_PATH"
+    printf ','
+    helper_contract_status_json "releaseState" "$RELEASE_STATE_HELPER_PATH"
+    printf ','
+    helper_contract_status_json "releaseRuntime" "$RELEASE_RUNTIME_HELPER_PATH"
+    printf ','
+    helper_contract_status_json "deploymentState" "$DEPLOYMENT_STATE_HELPER_PATH"
+    printf ','
+    helper_contract_status_json "releaseExecution" "$RELEASE_EXECUTION_HELPER_PATH"
+    printf '},\n'
+    printf '  "commands":{'
+    command_status_json bash
+    printf ','
+    command_status_json git
+    printf ','
+    command_status_json docker
+    printf ','
+    command_status_json node
+    printf '}\n'
+    printf '}\n'
+  } > "$tmp_file"
+
+  install -m 600 "$tmp_file" "$DEPLOY_DEBUG_FILE"
+  rm -f "$tmp_file"
+  printf 'Production deploy debug context written to %s\n' "$DEPLOY_DEBUG_FILE" >&2
+}
+
+capture_production_deploy_failure() {
+  local failed_status="$?"
+
+  trap - ERR
+  write_production_deploy_debug_context "$failed_status" || true
+  return "$failed_status"
+}
+
+trap capture_production_deploy_failure ERR
 
 login_production_registry() {
   if [ "${PRODUCTION_REGISTRY_LOGGED_IN:-0}" = "1" ]; then

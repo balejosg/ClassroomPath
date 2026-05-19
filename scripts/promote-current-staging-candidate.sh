@@ -145,6 +145,9 @@ log_info "Verifying current staging candidate $target_sha before tagging $next_t
 TARGET_SHA="$target_sha" PROMOTION_EVIDENCE_DIR="$promotion_evidence_dir" \
   bash "$SCRIPT_DIR/verify-production-promotion-ready.sh"
 
+log_info "Verifying production target readiness before tagging $next_tag..."
+bash "$SCRIPT_DIR/preflight-production-promotion-target.sh"
+
 node "$SCRIPT_DIR/promotion-evidence-cli.mjs" write-tag-message \
   --tag "$next_tag" \
   --commit "$target_sha" \

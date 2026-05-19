@@ -16,18 +16,18 @@ concurrency:
 
 env:
   CLASSROOMPATH_DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT || '/opt/classroompath' }}
-  CLASSROOMPATH_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}', secrets.STAGING_DEPLOY_HOST) }}
-  CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL: ${{ vars.STAGING_CANARY_PUBLIC_URL || secrets.STAGING_CANARY_PUBLIC_URL || vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}', secrets.STAGING_DEPLOY_HOST) }}
-  CLASSROOMPATH_STAGING_GATEWAY_HEALTH_URL: ${{ vars.STAGING_GATEWAY_HEALTH_URL || secrets.STAGING_GATEWAY_HEALTH_URL || format('https://{0}/cp/health', secrets.STAGING_DEPLOY_HOST) }}
-  CLASSROOMPATH_STAGING_READY_URL: ${{ vars.STAGING_READY_URL || secrets.STAGING_READY_URL || format('https://{0}/cp/ready', secrets.STAGING_DEPLOY_HOST) }}
-  CLASSROOMPATH_STAGING_API_HEALTH_URL: ${{ vars.STAGING_API_HEALTH_URL || secrets.STAGING_API_HEALTH_URL || format('https://{0}/health', secrets.STAGING_DEPLOY_HOST) }}
-  CLASSROOMPATH_STAGING_API_CONFIG_URL: ${{ vars.STAGING_API_CONFIG_URL || secrets.STAGING_API_CONFIG_URL || format('https://{0}/api/config', secrets.STAGING_DEPLOY_HOST) }}
-  CLASSROOMPATH_PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}', secrets.DEPLOY_HOST) }}
-  CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL: ${{ vars.PRODUCTION_CANARY_PUBLIC_URL || secrets.PRODUCTION_CANARY_PUBLIC_URL || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}', secrets.DEPLOY_HOST) }}
-  CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL: ${{ vars.PRODUCTION_GATEWAY_HEALTH_URL || secrets.PRODUCTION_GATEWAY_HEALTH_URL || format('https://{0}/cp/health', secrets.DEPLOY_HOST) }}
-  CLASSROOMPATH_PRODUCTION_READY_URL: ${{ vars.PRODUCTION_READY_URL || secrets.PRODUCTION_READY_URL || format('https://{0}/cp/ready', secrets.DEPLOY_HOST) }}
-  CLASSROOMPATH_PRODUCTION_API_HEALTH_URL: ${{ vars.PRODUCTION_API_HEALTH_URL || secrets.PRODUCTION_API_HEALTH_URL || format('https://{0}/health', secrets.DEPLOY_HOST) }}
-  CLASSROOMPATH_PRODUCTION_API_CONFIG_URL: ${{ vars.PRODUCTION_API_CONFIG_URL || secrets.PRODUCTION_API_CONFIG_URL || format('https://{0}/api/config', secrets.DEPLOY_HOST) }}
+  CLASSROOMPATH_STAGING_PUBLIC_URL: ${{ vars.CLASSROOMPATH_STAGING_PUBLIC_URL || vars.STAGING_PUBLIC_URL }}
+  CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL: ${{ vars.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL || vars.STAGING_CANARY_PUBLIC_URL || vars.CLASSROOMPATH_STAGING_PUBLIC_URL || vars.STAGING_PUBLIC_URL }}
+  CLASSROOMPATH_STAGING_GATEWAY_HEALTH_URL: ${{ vars.CLASSROOMPATH_STAGING_GATEWAY_HEALTH_URL || vars.STAGING_GATEWAY_HEALTH_URL }}
+  CLASSROOMPATH_STAGING_READY_URL: ${{ vars.CLASSROOMPATH_STAGING_READY_URL || vars.STAGING_READY_URL }}
+  CLASSROOMPATH_STAGING_API_HEALTH_URL: ${{ vars.CLASSROOMPATH_STAGING_API_HEALTH_URL || vars.STAGING_API_HEALTH_URL }}
+  CLASSROOMPATH_STAGING_API_CONFIG_URL: ${{ vars.CLASSROOMPATH_STAGING_API_CONFIG_URL || vars.STAGING_API_CONFIG_URL }}
+  CLASSROOMPATH_PRODUCTION_PUBLIC_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_PUBLIC_URL || vars.PRODUCTION_PUBLIC_URL }}
+  CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL || vars.PRODUCTION_CANARY_PUBLIC_URL || vars.CLASSROOMPATH_PRODUCTION_PUBLIC_URL || vars.PRODUCTION_PUBLIC_URL }}
+  CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL || vars.PRODUCTION_GATEWAY_HEALTH_URL }}
+  CLASSROOMPATH_PRODUCTION_READY_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_READY_URL || vars.PRODUCTION_READY_URL }}
+  CLASSROOMPATH_PRODUCTION_API_HEALTH_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_API_HEALTH_URL || vars.PRODUCTION_API_HEALTH_URL }}
+  CLASSROOMPATH_PRODUCTION_API_CONFIG_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_API_CONFIG_URL || vars.PRODUCTION_API_CONFIG_URL }}
 
 # NOTE: Staging deploys are handled locally via `npm run deploy:staging`.
 # Production rollouts are intentionally tag-only (`v*`) so the server can be
@@ -99,17 +99,7 @@ jobs:
       verifier_image: ${{ steps.release-images.outputs.verifier_image }}
       manifest_base64: ${{ steps.release-images.outputs.manifest_base64 }}
       payload_base64: ${{ steps.deploy-payload.outputs.payload_base64 }}
-      staging_public_url: ${{ steps.deploy-targets.outputs.staging_public_url }}
-      staging_canary_public_url: ${{ steps.deploy-targets.outputs.staging_canary_public_url }}
-      staging_gateway_health_url: ${{ steps.deploy-targets.outputs.staging_gateway_health_url }}
-      staging_ready_url: ${{ steps.deploy-targets.outputs.staging_ready_url }}
-      staging_api_config_url: ${{ steps.deploy-targets.outputs.staging_api_config_url }}
       staging_container_platform: ${{ steps.deploy-targets.outputs.staging_container_platform }}
-      production_public_url: ${{ steps.deploy-targets.outputs.production_public_url }}
-      production_canary_public_url: ${{ steps.deploy-targets.outputs.production_canary_public_url }}
-      production_gateway_health_url: ${{ steps.deploy-targets.outputs.production_gateway_health_url }}
-      production_ready_url: ${{ steps.deploy-targets.outputs.production_ready_url }}
-      production_api_config_url: ${{ steps.deploy-targets.outputs.production_api_config_url }}
       production_container_platform: ${{ steps.deploy-targets.outputs.production_container_platform }}
 
     steps:
@@ -409,7 +399,7 @@ jobs:
     uses: ./.github/workflows/windows-production-bootstrap-canary.yml
     with:
       target_environment: staging
-      base_url: ${{ needs.resolve-release-images.outputs.staging_canary_public_url }}
+      base_url: ${{ env.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL }}
       diagnostic_mode: 'false'
     secrets: inherit
 
@@ -480,6 +470,34 @@ jobs:
           command_timeout: 20m
           envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CLASSROOMPATH_DEPLOY_ROOT,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,CP_CLIENT_CANARY_ADMIN_TOKEN,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_CONTACT,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE,CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA,CP_EMAIL_PREFLIGHT_MODE
           script_path: scripts/deploy-production-remote.sh
+
+      - name: Download deploy debug artifact
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-debug
+          deploy_debug_path="${CLASSROOMPATH_DEPLOY_ROOT%/}/release-state/deploy-debug.json"
+          github_actions_remote_read_file \
+            ~/.ssh/classroompath-production-debug \
+            "${{ steps.resolve.outputs.port }}" \
+            "${{ secrets.DEPLOY_USER }}" \
+            "${{ steps.resolve.outputs.ip }}" \
+            "$deploy_debug_path" > deploy-debug.json
+
+      - name: Upload deploy debug artifact
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-deploy-debug-${{ github.ref_name }}
+          if-no-files-found: ignore
+          path: deploy-debug.json
+          retention-days: 7
 
   smoke-test-production:
     name: Smoke Test Production

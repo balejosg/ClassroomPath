@@ -276,7 +276,7 @@ describe('Workflow core contracts', () => {
     assert.equal(inspectJob?.['runs-on'], 'ubuntu-latest');
     assert.ok(
       workflowText.includes('gh api repos/${{ github.repository }}/actions/runners') &&
-        workflowText.includes('classroompath-windows-runner') &&
+        workflowText.includes('classroompath-windows-103') &&
         workflowText.includes('Resource not accessible by integration') &&
         workflowText.includes('runner_online=unknown') &&
         workflowText.includes('runner-health-unavailable'),
@@ -291,8 +291,12 @@ describe('Workflow core contracts', () => {
       'classroompath',
     ]);
     assert.ok(
-      workflowText.includes('classroompath-windows-runner'),
+      workflowText.includes('classroompath-windows-103'),
       'self-hosted Windows runner smoke should verify the expected ClassroomPath runner name'
+    );
+    assert.ok(
+      !workflowText.includes('classroompath-windows-runner'),
+      'self-hosted Windows runner smoke must not assert the old runner name'
     );
     assert.ok(
       workflowText.includes('actions/checkout@v6') &&
@@ -659,6 +663,30 @@ describe('Workflow core contracts', () => {
     assert.doesNotMatch(cleanupScript, /--volumes\b/);
   });
 
+  test('nightly staging candidate keeps failed deploys blocking and actionable', () => {
+    const workflowPath = '.github/workflows/nightly-staging-candidate.yml';
+    const workflow = readWorkflow(workflowPath);
+    const workflowText = readText(workflowPath);
+    const deployJob = findWorkflowJob(workflow, 'deploy-current-main-to-staging');
+    const deployStep = findWorkflowStepByName(deployJob, 'Deploy staging');
+    const deployScript = String(deployStep.run ?? '');
+
+    assert.equal(workflow.permissions?.issues, 'write');
+    assert.match(String(deployStep.env?.GH_TOKEN ?? ''), /secrets\.GITHUB_TOKEN/);
+    assert.match(deployScript, /npm run deploy:staging:assume-yes/);
+    assert.match(deployScript, /Release promotion state \| blocked/);
+    assert.match(deployScript, /operational blocker/);
+    assert.match(deployScript, /gh issue list/);
+    assert.match(deployScript, /gh issue create/);
+    assert.match(deployScript, /gh issue comment/);
+    assert.match(deployScript, /Failed step \| Deploy staging/);
+    assert.match(deployScript, /exit "\$status"/);
+    assert.ok(
+      workflowText.includes('Workflow run') && workflowText.includes('${GITHUB_RUN_ID}'),
+      'failed nightly staging deploys should point operators at the actionable run evidence'
+    );
+  });
+
   test('Windows canary workflows keep live staging and production bootstrap coverage', () => {
     const windowsFirefoxWorkflowText = readText('.github/workflows/windows-firefox-canary.yml');
     const windowsFirefoxWorkflow = readWorkflow('.github/workflows/windows-firefox-canary.yml');
@@ -808,10 +836,8 @@ describe('Workflow core contracts', () => {
       'Windows bootstrap canary must install Firefox from the same runner-reachable base URL used for windows.ps1'
     );
     assert.ok(
-      deployWorkflowText.includes(
-        'base_url: ${{ needs.resolve-release-images.outputs.staging_canary_public_url }}'
-      ),
-      'Deploy should pass the public canary URL to the staging Windows bootstrap canary'
+      deployWorkflowText.includes('base_url: ${{ env.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL }}'),
+      'Deploy should pass a job-local public canary URL to the staging Windows bootstrap canary'
     );
     assert.ok(
       productionBootstrapWorkflowText.includes(

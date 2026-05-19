@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       production_base_url:
-        description: Production public base URL to exercise.
-        default: https://classroompath.example.invalid
+        description: Optional production public base URL override to exercise.
+        default: ''
         required: false
         type: string
       target_platform:
@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || 'https://classroompath.example.invalid' }}
+      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || 'https://classroompath.eu' }}
 
     steps:
       - name: Checkout
@@ -317,7 +317,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     timeout-minutes: 35
     env:
-      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || 'https://classroompath.example.invalid' }}
+      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || 'https://classroompath.eu' }}
 
     steps:
       - name: Restore Windows runner DNS before checkout
@@ -824,7 +824,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, proxmox, classroompath]
     timeout-minutes: 35
     env:
-      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || 'https://classroompath.example.invalid' }}
+      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || 'https://classroompath.eu' }}
 
     steps:
       - name: Checkout

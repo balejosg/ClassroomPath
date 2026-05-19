@@ -375,6 +375,28 @@ void describe('Environment Configuration', () => {
 
     assert.strictEqual(output, 'https://production.example.test');
   });
+
+  void test('deploy-targets.mjs does not derive public URLs from SSH host variables', () => {
+    assert.throws(
+      () =>
+        execFileSync(
+          process.execPath,
+          ['scripts/deploy-targets.mjs', 'get', 'production', 'publicUrl'],
+          {
+            cwd: projectRoot,
+            env: {
+              ...process.env,
+              CLASSROOMPATH_DEPLOY_TARGETS_FILE: 'config/deploy-targets.json',
+              DEPLOY_HOST: 'ssh-only.example.test',
+              STAGING_DEPLOY_HOST: 'staging-ssh-only.example.test',
+            },
+            encoding: 'utf8',
+          }
+        ),
+      /\.invalid values/,
+      'SSH host variables must not satisfy deploy-target public URL resolution'
+    );
+  });
 });
 
 void describe('Nginx Configuration', () => {

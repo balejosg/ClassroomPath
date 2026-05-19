@@ -313,6 +313,36 @@ void describe('Remote Deploy Bootstrap', () => {
     );
   });
 
+  void test('production remote deploy writes sanitized failure debug context', () => {
+    const deployRemoteContent = readFileSync(productionRemotePath, 'utf-8');
+
+    assert.ok(
+      deployRemoteContent.includes('DEPLOY_DEBUG_FILE="$STATE_DIR/deploy-debug.json"') &&
+        deployRemoteContent.includes('write_production_deploy_debug_context()') &&
+        deployRemoteContent.includes('install -m 600 "$tmp_file" "$DEPLOY_DEBUG_FILE"') &&
+        deployRemoteContent.includes('capture_production_deploy_failure()') &&
+        deployRemoteContent.includes('trap capture_production_deploy_failure ERR'),
+      'production deploy failures should persist a restricted debug JSON file'
+    );
+    assert.ok(
+      deployRemoteContent.includes('"deployStage"') &&
+        deployRemoteContent.includes('"targetSha"') &&
+        deployRemoteContent.includes('"deployRoot"') &&
+        deployRemoteContent.includes('"containerPlatform"') &&
+        deployRemoteContent.includes('"helperContracts"') &&
+        deployRemoteContent.includes('"commands"') &&
+        deployRemoteContent.includes('"lastFailingPhase"'),
+      'debug JSON should include the requested sanitized failure context'
+    );
+    assert.ok(
+      deployRemoteContent.includes('command_status_json bash') &&
+        deployRemoteContent.includes('command_status_json git') &&
+        deployRemoteContent.includes('command_status_json docker') &&
+        deployRemoteContent.includes('command_status_json node'),
+      'debug JSON should record command availability without secrets'
+    );
+  });
+
   void test('remote deploy scripts reuse remote-bootstrap helper when available', () => {
     for (const [scriptName, content] of [
       ['deploy-staging-remote.sh', readFileSync(stagingRemotePath, 'utf-8')],

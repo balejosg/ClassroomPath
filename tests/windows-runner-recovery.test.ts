@@ -145,6 +145,6 @@ snapshot-clean-baseline-20260510 pre-lab clean baseline
     );
     assert.match(result.stdout, /ssh proxmox-host.example.invalid qm set 103 --boot order=sata0/);
     assert.match(result.stdout, /ssh proxmox-host.example.invalid qm start 103/);
-    assert.match(result.stdout, /wait for classroompath-windows-runner online busy=false/);
+    assert.match(result.stdout, /wait for classroompath-windows-103 online busy=false/);
   });
 });
