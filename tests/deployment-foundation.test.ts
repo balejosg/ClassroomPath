@@ -1,7 +1,9 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { assertTextSequence, readProjectText } from './helpers/ops-contracts.ts';
 
@@ -168,6 +170,33 @@ describe('Deployment foundation contracts', () => {
     assert.ok(syncScript.includes('billing-required-env-names'));
     assert.ok(stagingLocalRuntime.includes('runtime-environment-policy.mjs'));
     assert.ok(stagingLocalRuntime.includes('staging-email-preflight'));
+  });
+
+  test('billing env sync can run on production hosts without node', () => {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'cp-billing-env-'));
+    const envPath = resolve(tempDir, '.env');
+
+    execFileSync('bash', [syncBillingEnvScriptPath, envPath], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        NODE_BIN: '/no/such/node',
+        CP_BILLING_MODE: 'manual_only',
+        CP_PLATFORM_ADMIN_EMAILS: 'ops@example.invalid',
+        CP_CLIENT_CANARY_ADMIN_TOKEN: 'canary-token',
+        VAPID_PUBLIC_KEY: 'public-key',
+        VAPID_PRIVATE_KEY: 'private-key',
+        VAPID_CONTACT: 'mailto:ops@example.invalid',
+        CP_REQUIRE_PUSH_NOTIFICATIONS: '1',
+      },
+      stdio: 'pipe',
+    });
+
+    const syncedEnv = readFileSync(envPath, 'utf-8');
+    assert.match(syncedEnv, /^CP_BILLING_MODE=manual_only$/m);
+    assert.match(syncedEnv, /^CP_PLATFORM_ADMIN_EMAILS=ops@example.invalid$/m);
+    assert.match(syncedEnv, /^VAPID_SUBJECT=mailto:ops@example.invalid$/m);
+    assert.doesNotMatch(syncedEnv, /^STRIPE_SECRET_KEY=/m);
   });
 
   test('production compose defaults and runtime commands pin the canonical compose project name', () => {

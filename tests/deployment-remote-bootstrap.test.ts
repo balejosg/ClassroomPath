@@ -269,9 +269,13 @@ void describe('Remote Deploy Bootstrap', () => {
       'deploy-production-remote.sh should not require host node before checkout and should classify migrations with a shell fallback'
     );
     assert.ok(
-      syncBillingEnvContent.includes('source "$SCRIPT_DIR/lib/common.sh"\nconfigure_node_path') &&
-        syncBillingEnvContent.includes('"$NODE_BIN" "$RUNTIME_ENV_POLICY_SCRIPT" "$1"'),
-      'sync-billing-env.sh should resolve node through the shared bootstrap instead of relying on the inherited PATH'
+      syncBillingEnvContent.includes(
+        'NODE_BIN="${NODE_BIN:-$(command -v node 2>/dev/null || true)}"'
+      ) &&
+        syncBillingEnvContent.includes('if [ -n "$NODE_BIN" ] && [ -x "$NODE_BIN" ]; then') &&
+        syncBillingEnvContent.includes('"$NODE_BIN" "$RUNTIME_ENV_POLICY_SCRIPT" "$1"') &&
+        syncBillingEnvContent.includes('Unsupported runtime policy command without node'),
+      'sync-billing-env.sh should use node when present and a shell policy fallback on production hosts without node'
     );
 
     assert.ok(

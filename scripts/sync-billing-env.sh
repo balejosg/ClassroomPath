@@ -5,14 +5,62 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
-configure_node_path
 
 ENV_FILE="${1:-$SCRIPT_DIR/../config/.env}"
 RUNTIME_ENV_POLICY_SCRIPT="$SCRIPT_DIR/lib/runtime-environment-policy.mjs"
 CP_BILLING_MODE="${CP_BILLING_MODE:-manual_only}"
+NODE_BIN="${NODE_BIN:-$(command -v node 2>/dev/null || true)}"
+
+fallback_bool_is_true() {
+  case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
 
 runtime_policy_names() {
-  "$NODE_BIN" "$RUNTIME_ENV_POLICY_SCRIPT" "$1"
+  if [ -n "$NODE_BIN" ] && [ -x "$NODE_BIN" ]; then
+    "$NODE_BIN" "$RUNTIME_ENV_POLICY_SCRIPT" "$1"
+    return 0
+  fi
+
+  case "$1" in
+    stripe-required-env-names)
+      printf '%s\n' \
+        STRIPE_SECRET_KEY \
+        STRIPE_WEBHOOK_SECRET \
+        STRIPE_ANNUAL_PRICE_1_10 \
+        STRIPE_ANNUAL_PRICE_11_25 \
+        STRIPE_ANNUAL_PRICE_26_50 \
+        STRIPE_ANNUAL_PRICE_51_100 \
+        STRIPE_ONBOARDING_PRICE_1_25 \
+        STRIPE_ONBOARDING_PRICE_26_100 \
+        STRIPE_PILOT_PRICE
+      ;;
+    billing-required-env-names)
+      printf '%s\n' CP_BILLING_MODE
+      if ! fallback_bool_is_true "${CP_ALLOW_SELF_SERVICE_ORGS:-}"; then
+        printf '%s\n' CP_PLATFORM_ADMIN_EMAILS
+        if [ "$CP_BILLING_MODE" = "stripe" ]; then
+          runtime_policy_names stripe-required-env-names
+        fi
+      fi
+      ;;
+    optional-billing-env-names)
+      printf '%s\n' CP_ALLOW_SELF_SERVICE_ORGS CP_CLIENT_CANARY_ADMIN_TOKEN
+      ;;
+    push-env-names)
+      printf '%s\n' VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_CONTACT
+      ;;
+    *)
+      log_error "Unsupported runtime policy command without node: $1"
+      return 1
+      ;;
+  esac
 }
 
 readarray -t stripe_vars < <(runtime_policy_names stripe-required-env-names)
