@@ -457,10 +457,25 @@ describe('Deploy workflow contracts', () => {
     assert.ok(jobs['deploy-production']);
     assert.ok(jobs['smoke-test-production']);
     const productionSmokeJob = jobs['smoke-test-production'];
+    const waitForProductionReadinessStep = findWorkflowStepByName(
+      productionSmokeJob,
+      'Wait for production readiness'
+    );
     assert.equal(
       productionSmokeJob?.['timeout-minutes'],
       25,
       'production smoke job must not be able to hang the deploy workflow indefinitely'
+    );
+    assert.match(
+      String(waitForProductionReadinessStep?.run ?? ''),
+      /\$CLASSROOMPATH_PRODUCTION_READY_URL/,
+      'production smoke readiness must use job env directly because GitHub drops secret-looking URL job outputs'
+    );
+    assert.ok(
+      !String(waitForProductionReadinessStep?.env?.PRODUCTION_READY_URL ?? '').includes(
+        'needs.resolve-release-images.outputs.production_ready_url'
+      ),
+      'production smoke readiness must not depend on resolve-release-images URL outputs'
     );
     assert.ok(
       String(
@@ -559,7 +574,7 @@ describe('Deploy workflow contracts', () => {
     );
     assert.equal(
       windowsEnrollmentStep?.env?.ENROLLMENT_CANARY_BASE_URL,
-      '${{ needs.resolve-release-images.outputs.production_public_url }}'
+      '${{ env.CLASSROOMPATH_PRODUCTION_PUBLIC_URL }}'
     );
     assert.equal(
       windowsEnrollmentStep?.env?.ENROLLMENT_CANARY_CLASSROOM_ID,
@@ -593,6 +608,22 @@ describe('Deploy workflow contracts', () => {
       productionSmokeJob?.steps?.findIndex((step) =>
         String(step.name ?? '').includes('Run smoke tests against production')
       ) ?? -1;
+    const provisionEnrollmentStep = findWorkflowStepByName(
+      productionSmokeJob,
+      'Provision production enrollment smoke canary'
+    );
+    const runProductionSmokeStep = findWorkflowStepByName(
+      productionSmokeJob,
+      'Run smoke tests against production'
+    );
+    assert.equal(
+      provisionEnrollmentStep?.env?.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL,
+      '${{ env.CLASSROOMPATH_PRODUCTION_PUBLIC_URL }}'
+    );
+    assert.equal(
+      runProductionSmokeStep?.env?.SMOKE_TEST_URL,
+      '${{ env.CLASSROOMPATH_PRODUCTION_PUBLIC_URL }}'
+    );
     assert.ok(
       windowsEnrollmentStepIndex >= 0 && windowsEnrollmentStepIndex < runProductionSmokeStepIndex,
       'production smoke should verify the live Windows script before the general app smoke'

@@ -510,9 +510,7 @@ jobs:
 
       - name: Wait for production readiness
         shell: bash
-        env:
-          PRODUCTION_READY_URL: ${{ needs.resolve-release-images.outputs.production_ready_url }}
-        run: bash scripts/wait-for-ready.sh "$PRODUCTION_READY_URL"
+        run: bash scripts/wait-for-ready.sh "$CLASSROOMPATH_PRODUCTION_READY_URL"
 
       - name: Resolve production host
         id: resolve-production
@@ -603,14 +601,14 @@ jobs:
       - name: Provision production enrollment smoke canary
         id: provision-enrollment
         env:
-          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.CLASSROOMPATH_PRODUCTION_PUBLIC_URL }}
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
       - name: Download live enrollment scripts
         shell: bash
         env:
-          ENROLLMENT_CANARY_BASE_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
+          ENROLLMENT_CANARY_BASE_URL: ${{ env.CLASSROOMPATH_PRODUCTION_PUBLIC_URL }}
           ENROLLMENT_CANARY_CLASSROOM_ID: ${{ steps.provision-enrollment.outputs.classroom_id }}
           ENROLLMENT_CANARY_TOKEN: ${{ steps.provision-enrollment.outputs.enrollment_token }}
           ENROLLMENT_CANARY_EXPECTED_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
@@ -624,7 +622,7 @@ jobs:
       - name: Run smoke tests against production
         id: smoke
         env:
-          SMOKE_TEST_URL: ${{ needs.resolve-release-images.outputs.production_public_url }}
+          SMOKE_TEST_URL: ${{ env.CLASSROOMPATH_PRODUCTION_PUBLIC_URL }}
           SMOKE_TEST_TIMEOUT: '30000'
           SMOKE_REQUIRE_PUSH: '1'
           CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
@@ -655,8 +653,8 @@ jobs:
           echo "  - Container health check passed but service not fully ready"
           echo ""
           echo "Debug commands (run on production server):"
-          echo "  curl -i ${{ needs.resolve-release-images.outputs.production_gateway_health_url }}"
-          echo "  curl -i ${{ needs.resolve-release-images.outputs.production_ready_url }}"
+          echo "  curl -i $CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL"
+          echo "  curl -i $CLASSROOMPATH_PRODUCTION_READY_URL"
           echo "  docker logs classroompath-api --tail 50"
 
   release-evidence:
