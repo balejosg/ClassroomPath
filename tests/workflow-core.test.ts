@@ -672,6 +672,7 @@ describe('Workflow core contracts', () => {
     const deployScript = String(deployStep.run ?? '');
 
     assert.equal(workflow.permissions?.issues, 'write');
+    assert.equal(workflow.permissions?.actions, 'write');
     assert.match(String(deployStep.env?.GH_TOKEN ?? ''), /secrets\.GITHUB_TOKEN/);
     assert.match(deployScript, /npm run deploy:staging:assume-yes/);
     assert.match(deployScript, /Release promotion state \| blocked/);

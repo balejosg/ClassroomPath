@@ -227,6 +227,11 @@ describe('Deploy workflow contracts', () => {
     assert.ok(workflow.on?.schedule?.[0]?.cron);
     assert.deepEqual(workflow.on?.workflow_dispatch, {});
     assert.deepEqual(job['runs-on'], ['self-hosted', 'Linux', 'X64', 'proxmox', 'classroompath']);
+    assert.equal(
+      workflow.permissions?.actions,
+      'write',
+      'nightly staging deploy dispatches child canary workflows with GITHUB_TOKEN'
+    );
     assert.equal(workflow.permissions?.contents, 'read');
     assert.ok(workflowText.includes('ref: main'));
     assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-manifest'));
