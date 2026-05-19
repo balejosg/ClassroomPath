@@ -3,6 +3,8 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, writeFileSync } from 'node:fs';
 
 const DURATION_PATTERN = /^(\d+)(m|h|d)$/;
+const DEPLOY_WORKFLOW_SELECTOR = 'deploy.yml';
+const DEPLOY_WORKFLOW_NAMES = new Set(['Deploy', 'deploy.yml', '.github/workflows/deploy.yml']);
 
 export function parseFreshnessWindow(value) {
   const match = String(value ?? '')
@@ -67,7 +69,7 @@ export function findFreshDeployEvidenceRun({
 
     return (
       runId !== String(currentRunId ?? '') &&
-      workflowName === 'Deploy' &&
+      DEPLOY_WORKFLOW_NAMES.has(workflowName) &&
       run.event === 'push' &&
       headBranch.startsWith('v') &&
       run.headSha === sha &&
@@ -158,11 +160,16 @@ function ghRunList({ workflowName, limit, event = null, branch = null }) {
 }
 
 function writeOutput(name, value) {
+  const outputValue = normalizeGitHubOutputValue(value);
   if (!process.env.GITHUB_OUTPUT) {
-    console.log(`${name}=${value}`);
+    console.log(`${name}=${outputValue}`);
     return;
   }
-  appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+  appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${outputValue}\n`);
+}
+
+export function normalizeGitHubOutputValue(value) {
+  return String(value ?? '').replace(/\r?\n/g, ' ');
 }
 
 function matchingRunTimestamp(run) {
@@ -263,7 +270,9 @@ function runDuplicateSuppressionCli() {
         ? ghRunList({ workflowName, limit, event: 'schedule', branch: 'main' })
         : [];
     deployRuns =
-      eventName === 'schedule' ? ghRunList({ workflowName: 'Deploy', limit, event: 'push' }) : [];
+      eventName === 'schedule'
+        ? ghRunList({ workflowName: DEPLOY_WORKFLOW_SELECTOR, limit, event: 'push' })
+        : [];
   } catch (error) {
     const reason = `could not inspect prior scheduled runs: ${error.message}`;
     const result = { shouldSkip: false, reason };

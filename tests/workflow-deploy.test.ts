@@ -148,7 +148,7 @@ function assertNightlyStagingCandidateGate(
     String(jobs['windows-staging-bootstrap-canary']?.with?.base_url ?? ''),
     /needs\.deploy-current-main-to-staging\.outputs\.staging_url/
   );
-  assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, 'false');
+  assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, "${{ 'false' }}");
   assert.match(
     String(findWorkflowStepByName(job, 'Resolve nightly staging outputs')?.run ?? ''),
     /deploy-targets\.mjs get staging publicUrl/
@@ -712,9 +712,14 @@ describe('Deploy workflow contracts', () => {
     assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.target_environment, 'staging');
     assert.match(
       String(jobs['windows-staging-bootstrap-canary']?.with?.base_url ?? ''),
-      /env\.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL/
+      /vars\.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL/
     );
-    assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, 'false');
+    assert.doesNotMatch(
+      String(jobs['windows-staging-bootstrap-canary']?.with?.base_url ?? ''),
+      /env\./,
+      'reusable workflow inputs cannot use env context'
+    );
+    assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, "${{ 'false' }}");
     assert.ok(
       !('continue-on-error' in jobs['windows-firefox-canary']),
       'reusable workflow jobs cannot use continue-on-error in the caller'

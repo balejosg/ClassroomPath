@@ -5,6 +5,7 @@ import {
   buildCiSignalPolicyEvidence,
   findFreshDeployEvidenceRun,
   findFreshSameShaSuccess,
+  normalizeGitHubOutputValue,
   parseFreshnessWindow,
   resolveDuplicateSuppression,
 } from '../scripts/ci-signal-policy.mjs';
@@ -276,6 +277,40 @@ describe('CI signal policy', () => {
     assert.equal(result.shouldSkip, true);
     assert.equal(result.run?.databaseId, 10);
     assert.match(result.reason, /deploy evidence run 10 is already covering abc/);
+  });
+
+  test('accepts deploy workflow evidence returned by filename selectors', () => {
+    const now = new Date('2026-05-01T12:00:00.000Z');
+    const deployRuns = [
+      {
+        databaseId: 11,
+        workflowName: '.github/workflows/deploy.yml',
+        event: 'push',
+        headBranch: 'v1.2.99',
+        headSha: 'abc',
+        status: 'completed',
+        conclusion: 'success',
+        updatedAt: '2026-05-01T11:59:00.000Z',
+      },
+    ];
+
+    assert.equal(
+      findFreshDeployEvidenceRun({
+        runs: deployRuns,
+        sha: 'abc',
+        currentRunId: 6,
+        now,
+        freshnessMs: parseFreshnessWindow('60m'),
+      })?.databaseId,
+      11
+    );
+  });
+
+  test('normalizes multiline GitHub output values', () => {
+    assert.equal(
+      normalizeGitHubOutputValue('could not inspect prior scheduled runs:\ncould not find Deploy'),
+      'could not inspect prior scheduled runs: could not find Deploy'
+    );
   });
 
   test('does not suppress workflow-run post-deploy evidence', () => {

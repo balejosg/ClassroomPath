@@ -218,7 +218,7 @@ jobs:
     with:
       target_environment: staging
       base_url: ${{ needs.deploy-current-main-to-staging.outputs.staging_url }}
-      diagnostic_mode: 'false'
+      diagnostic_mode: ${{ 'false' }}
     secrets: inherit
 
   persist-windows-staging-bootstrap-canary:

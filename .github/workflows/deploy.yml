@@ -399,8 +399,8 @@ jobs:
     uses: ./.github/workflows/windows-production-bootstrap-canary.yml
     with:
       target_environment: staging
-      base_url: ${{ env.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL }}
-      diagnostic_mode: 'false'
+      base_url: ${{ vars.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL || vars.STAGING_CANARY_PUBLIC_URL || vars.CLASSROOMPATH_STAGING_PUBLIC_URL || vars.STAGING_PUBLIC_URL }}
+      diagnostic_mode: ${{ 'false' }}
     secrets: inherit
 
   deploy-production:
