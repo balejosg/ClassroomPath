@@ -1,23 +1,24 @@
 import type { ClassroomPathT } from '../i18n/classroompath-i18n';
+import type { ProductLocale } from '../openpath/public-i18n';
 
 export type PricingTier = {
-  name: string;
-  rangeLabel: string;
+  nameKey: Parameters<ClassroomPathT>[0];
+  rangeLabelKey: Parameters<ClassroomPathT>[0];
   minClassrooms: number;
   maxClassrooms: number | null;
   pricePerClassroomPerYear: number;
   approxPricePerDevicePerYear: number;
-  tagline: string;
-  bestFor: string;
+  taglineKey: Parameters<ClassroomPathT>[0];
+  bestForKey: Parameters<ClassroomPathT>[0];
   recommended?: boolean;
 };
 
 export type OnboardingTier = {
-  rangeLabel: string;
+  rangeLabelKey: Parameters<ClassroomPathT>[0];
   minClassrooms: number;
   maxClassrooms: number | null;
   oneTimeFee: number | null;
-  label?: string;
+  labelKey?: Parameters<ClassroomPathT>[0];
 };
 
 export const PILOT = {
@@ -45,77 +46,77 @@ export const PUBLIC_CAMPAIGN = {
 
 export const PRICING_TIERS: PricingTier[] = [
   {
-    name: 'Small school',
-    rangeLabel: '1-10 classrooms',
+    nameKey: 'pricing.tier.small.name',
+    rangeLabelKey: 'pricing.tier.small.range',
     minClassrooms: 1,
     maxClassrooms: 10,
     pricePerClassroomPerYear: 55,
     approxPricePerDevicePerYear: 1.83,
-    tagline: 'For first deployments or one teaching space with school-owned devices.',
-    bestFor: 'First deployment or one teaching space with school-owned devices.',
+    taglineKey: 'pricing.tier.small.tagline',
+    bestForKey: 'pricing.tier.small.bestFor',
   },
   {
-    name: 'Medium school',
-    rangeLabel: '11-25 classrooms',
+    nameKey: 'pricing.tier.medium.name',
+    rangeLabelKey: 'pricing.tier.medium.range',
     minClassrooms: 11,
     maxClassrooms: 25,
     pricePerClassroomPerYear: 45,
     approxPricePerDevicePerYear: 1.5,
-    tagline: 'The most common tier for schools that already want a stable classroom policy.',
-    bestFor: 'The most common tier for schools that already want a stable classroom policy.',
+    taglineKey: 'pricing.tier.medium.tagline',
+    bestForKey: 'pricing.tier.medium.bestFor',
     recommended: true,
   },
   {
-    name: 'Large school',
-    rangeLabel: '26-50 classrooms',
+    nameKey: 'pricing.tier.large.name',
+    rangeLabelKey: 'pricing.tier.large.range',
     minClassrooms: 26,
     maxClassrooms: 50,
     pricePerClassroomPerYear: 37,
     approxPricePerDevicePerYear: 1.23,
-    tagline: 'Designed for schools with several lines, labs, or staged growth.',
-    bestFor: 'Schools with several lines, labs, or staged growth.',
+    taglineKey: 'pricing.tier.large.tagline',
+    bestForKey: 'pricing.tier.large.bestFor',
   },
   {
-    name: 'Educational organization',
-    rangeLabel: '51-100 classrooms',
+    nameKey: 'pricing.tier.organization.name',
+    rangeLabelKey: 'pricing.tier.organization.range',
     minClassrooms: 51,
     maxClassrooms: 100,
     pricePerClassroomPerYear: 32,
     approxPricePerDevicePerYear: 1.07,
-    tagline: 'For structures with central IT coordination and several sites or stages.',
-    bestFor: 'For structures with central IT coordination and several sites or stages.',
+    taglineKey: 'pricing.tier.organization.tagline',
+    bestForKey: 'pricing.tier.organization.bestFor',
   },
   {
-    name: 'School network',
-    rangeLabel: '101+ classrooms',
+    nameKey: 'pricing.tier.network.name',
+    rangeLabelKey: 'pricing.tier.network.range',
     minClassrooms: 101,
     maxClassrooms: null,
     pricePerClassroomPerYear: 27,
     approxPricePerDevicePerYear: 0.9,
-    tagline: 'Optimized pricing for school networks and multi-site deployments.',
-    bestFor: 'Optimized pricing for multi-site deployments and education networks.',
+    taglineKey: 'pricing.tier.network.tagline',
+    bestForKey: 'pricing.tier.network.bestFor',
   },
 ];
 
 export const ONBOARDING_TIERS: OnboardingTier[] = [
   {
-    rangeLabel: 'Up to 25 classrooms',
+    rangeLabelKey: 'pricing.onboarding.tier.small.range',
     minClassrooms: 1,
     maxClassrooms: 25,
     oneTimeFee: 490,
   },
   {
-    rangeLabel: '26-100 classrooms',
+    rangeLabelKey: 'pricing.onboarding.tier.medium.range',
     minClassrooms: 26,
     maxClassrooms: 100,
     oneTimeFee: 890,
   },
   {
-    rangeLabel: '101+ classrooms',
+    rangeLabelKey: 'pricing.onboarding.tier.large.range',
     minClassrooms: 101,
     maxClassrooms: null,
     oneTimeFee: null,
-    label: 'Contact us',
+    labelKey: 'pricing.onboarding.tier.contact',
   },
 ];
 
@@ -165,16 +166,20 @@ export function getPerClassroomPoints(t: ClassroomPathT) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────────
 
-export function formatCurrency(value: number) {
-  return new Intl.NumberFormat('es-ES', {
+function toIntlLocale(locale: ProductLocale): string {
+  return locale === 'es' ? 'es-ES' : 'en-US';
+}
+
+export function formatCurrency(value: number, locale: ProductLocale = 'es') {
+  return new Intl.NumberFormat(toIntlLocale(locale), {
     style: 'currency',
     currency: 'EUR',
     maximumFractionDigits: 0,
   }).format(value);
 }
 
-export function formatPricePerDevice(value: number) {
-  return new Intl.NumberFormat('es-ES', {
+export function formatPricePerDevice(value: number, locale: ProductLocale = 'es') {
+  return new Intl.NumberFormat(toIntlLocale(locale), {
     style: 'currency',
     currency: 'EUR',
     minimumFractionDigits: value < 1 ? 2 : 1,

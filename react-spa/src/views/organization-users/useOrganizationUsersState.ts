@@ -16,7 +16,7 @@ import {
   getDeliveryNoticeFromResetResult,
   getSummaryLabel,
 } from '../organization-users-helpers';
-import { useClassroomPathT, type ClassroomPathT } from '../../i18n/classroompath-i18n';
+import { useClassroomPathI18n, type ClassroomPathT } from '../../i18n/classroompath-i18n';
 
 export type RevokeTarget =
   | {
@@ -77,7 +77,7 @@ export function buildOrganizationUsersQueryState(args: {
 }
 
 export function useOrganizationUsersState() {
-  const t = useClassroomPathT();
+  const { locale, t } = useClassroomPathI18n();
   const usersQuery = cpTrpcReact.users.list.useQuery();
   const invitationsQuery = cpTrpcReact.users.listInvitations.useQuery();
 
@@ -249,5 +249,6 @@ export function useOrganizationUsersState() {
     setResetTarget,
     setResetError,
     t,
+    locale,
   };
 }

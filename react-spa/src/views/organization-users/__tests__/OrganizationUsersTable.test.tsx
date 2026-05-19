@@ -103,4 +103,31 @@ describe('OrganizationUsersTable', () => {
     expect(onRequestRevoke).toHaveBeenCalledWith(memberRow);
     expect(onRequestRevoke).toHaveBeenCalledWith(invitationRow);
   });
+
+  it('formats invitation dates with the active locale', () => {
+    render(
+      <OrganizationUsersTable
+        rows={[
+          {
+            kind: 'invitation',
+            id: 'inv-1',
+            name: 'Grace Hopper',
+            email: 'grace@example.com',
+            role: 'teacher',
+            status: 'pending',
+            expiresAt: '2026-03-12T10:00:00.000Z',
+          },
+        ]}
+        isInitialLoading={false}
+        hasQueryError={false}
+        queryErrorMessage=""
+        onRetry={() => {}}
+        onRequestReset={() => {}}
+        onRequestRevoke={() => {}}
+        locale="es"
+      />
+    );
+
+    expect(screen.getByText(/12\/3\/2026|12\/3\/26/)).toBeInTheDocument();
+  });
 });

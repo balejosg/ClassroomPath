@@ -43,10 +43,12 @@ export function AdminPanel({ userRole }: AdminPanelProps) {
                 <UserPlus size={16} />
               </div>
               <span className="font-medium text-sm">
-                {t('admin.pendingUsersBanner', {
-                  count: pendingCount,
-                  plural: pendingCount !== 1 ? 's' : '',
-                })}
+                {t(
+                  pendingCount === 1
+                    ? 'admin.pendingUsersBanner.one'
+                    : 'admin.pendingUsersBanner.many',
+                  { count: pendingCount }
+                )}
               </span>
             </div>
             <button
@@ -73,10 +75,12 @@ export function AdminPanel({ userRole }: AdminPanelProps) {
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">{t('admin.accessRequests')}</h2>
                   <p className="text-sm text-slate-500">
-                    {t('admin.pendingUsersSummary', {
-                      count: pendingCount,
-                      plural: pendingCount !== 1 ? 's' : '',
-                    })}
+                    {t(
+                      pendingCount === 1
+                        ? 'admin.pendingUsersSummary.one'
+                        : 'admin.pendingUsersSummary.many',
+                      { count: pendingCount }
+                    )}
                   </p>
                 </div>
               </div>

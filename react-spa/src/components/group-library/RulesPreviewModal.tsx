@@ -2,6 +2,7 @@ import React from 'react';
 import { Copy, X } from 'lucide-react';
 
 import type { RulesPage } from './group-library-helpers';
+import type { ClassroomPathT } from '../../i18n/classroompath-i18n';
 
 type RulesPreviewModalProps = {
   title: string;
@@ -18,7 +19,25 @@ type RulesPreviewModalProps = {
   onPrevPage: () => void;
   onNextPage: () => void;
   emptyText: string;
+  t: ClassroomPathT;
 };
+
+function getRuleTypeLabel(type: string, t: ClassroomPathT): string {
+  switch (type) {
+    case 'allow':
+    case 'whitelist':
+      return t('groupLibrary.ruleType.allow');
+    case 'deny':
+    case 'blocked_subdomain':
+    case 'block_subdomain':
+      return t('groupLibrary.ruleType.deny');
+    case 'blocked_path':
+    case 'block_path':
+      return t('groupLibrary.ruleType.blockPath');
+    default:
+      return type;
+  }
+}
 
 export function RulesPreviewModal(props: RulesPreviewModalProps) {
   const rules = props.page?.rules ?? [];
@@ -37,7 +56,7 @@ export function RulesPreviewModal(props: RulesPreviewModalProps) {
             type="button"
             onClick={props.onClose}
             className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-            aria-label="Close"
+            aria-label={props.t('app.common.close')}
           >
             <X size={20} />
           </button>
@@ -47,7 +66,7 @@ export function RulesPreviewModal(props: RulesPreviewModalProps) {
           <input
             value={props.search}
             onChange={(event) => props.onSearchChange(event.target.value)}
-            placeholder="Search domain..."
+            placeholder={props.t('groupLibrary.preview.searchPlaceholder')}
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
           />
           <button
@@ -63,26 +82,32 @@ export function RulesPreviewModal(props: RulesPreviewModalProps) {
 
         <div className="p-5 flex-1 overflow-y-auto">
           {props.isLoading ? (
-            <div className="text-sm text-slate-500">Loading rules...</div>
+            <div className="text-sm text-slate-500">
+              {props.t('groupLibrary.preview.loadingRules')}
+            </div>
           ) : rules.length ? (
             <div className="space-y-3">
               <div className="text-xs text-slate-500">
-                Total: {total} (showing {rules.length})
+                {props.t('groupLibrary.preview.total', { total, count: rules.length })}
               </div>
 
               <div className="border border-slate-200 rounded-xl overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-slate-600">
                     <tr>
-                      <th className="text-left font-semibold px-3 py-2">Type</th>
-                      <th className="text-left font-semibold px-3 py-2">Domain</th>
+                      <th className="text-left font-semibold px-3 py-2">
+                        {props.t('groupLibrary.preview.type')}
+                      </th>
+                      <th className="text-left font-semibold px-3 py-2">
+                        {props.t('groupLibrary.preview.domain')}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {rules.map((rule) => (
                       <tr key={rule.id} className="border-t border-slate-100">
                         <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
-                          {rule.type}
+                          {getRuleTypeLabel(rule.type, props.t)}
                         </td>
                         <td className="px-3 py-2 font-mono text-xs text-slate-900 break-all">
                           {rule.value}
@@ -100,7 +125,7 @@ export function RulesPreviewModal(props: RulesPreviewModalProps) {
                   disabled={props.offset === 0}
                   className="text-sm px-3 py-2 rounded-lg border border-slate-200 text-slate-700 disabled:opacity-60"
                 >
-                  Previous
+                  {props.t('groupLibrary.previous')}
                 </button>
                 <button
                   type="button"
@@ -108,7 +133,7 @@ export function RulesPreviewModal(props: RulesPreviewModalProps) {
                   disabled={!hasMore}
                   className="text-sm px-3 py-2 rounded-lg border border-slate-200 text-slate-700 disabled:opacity-60"
                 >
-                  Next
+                  {props.t('groupLibrary.next')}
                 </button>
               </div>
             </div>

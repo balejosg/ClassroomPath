@@ -100,7 +100,7 @@ export function PendingUsers() {
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-600">{user.email}</td>
                     <td className="px-6 py-4 text-sm text-slate-500">
-                      {formatPendingUserDate(user.createdAt, t)}
+                      {formatPendingUserDate(user.createdAt, t, state.locale)}
                     </td>
                     <td className="px-6 py-4">
                       <RoleSelector

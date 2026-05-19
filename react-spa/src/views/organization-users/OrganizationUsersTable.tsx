@@ -21,6 +21,7 @@ export function OrganizationUsersTable({
   onRequestReset,
   onRequestRevoke,
   t = defaultT,
+  locale = 'en',
 }: {
   rows: TableRow[];
   isInitialLoading: boolean;
@@ -30,6 +31,7 @@ export function OrganizationUsersTable({
   onRequestReset: (row: MemberRow) => void;
   onRequestRevoke: (row: TableRow) => void;
   t?: ClassroomPathT;
+  locale?: string;
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -87,7 +89,7 @@ export function OrganizationUsersTable({
                         {row.kind === 'invitation' ? (
                           <p className="text-xs text-slate-400">
                             {t('orgUsers.table.invitationValidUntil')}{' '}
-                            {new Date(row.expiresAt).toLocaleString('en-US')}
+                            {new Date(row.expiresAt).toLocaleString(locale)}
                           </p>
                         ) : null}
                       </div>

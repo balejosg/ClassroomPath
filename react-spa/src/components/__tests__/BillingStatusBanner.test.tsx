@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import { BillingStatusBanner } from '../BillingStatusBanner';
+import { ClassroomPathI18nProvider } from '../../i18n/classroompath-i18n';
 
 describe('BillingStatusBanner', () => {
   beforeEach(() => {
@@ -28,7 +29,27 @@ describe('BillingStatusBanner', () => {
     );
 
     expect(screen.getByText(/remains temporarily active/)).toBeInTheDocument();
-    expect(screen.getByText('20/04/2026')).toBeInTheDocument();
+    expect(screen.getByText('04/20/2026')).toBeInTheDocument();
+  });
+
+  it('uses the active locale for visible deadline dates', () => {
+    render(
+      <ClassroomPathI18nProvider locale="en">
+        <BillingStatusBanner
+          billing={{
+            status: 'grace_period',
+            productKind: 'annual',
+            expiresAt: null,
+            graceEndsAt: '2026-04-20T00:00:00.000Z',
+            currentPeriodEnd: null,
+            cancelAtPeriodEnd: false,
+          }}
+        />
+      </ClassroomPathI18nProvider>
+    );
+
+    expect(screen.getByText('04/20/2026')).toBeInTheDocument();
+    expect(screen.queryByText('20/04/2026')).not.toBeInTheDocument();
   });
 
   it('renders the cancellation notice when the subscription ends at period close', () => {
@@ -46,7 +67,7 @@ describe('BillingStatusBanner', () => {
     );
 
     expect(screen.getByText(/marked to end/)).toBeInTheDocument();
-    expect(screen.getByText('01/05/2026')).toBeInTheDocument();
+    expect(screen.getByText('05/01/2026')).toBeInTheDocument();
   });
 
   it('renders the pilot renewal warning when expiry is within two weeks', () => {
@@ -67,7 +88,7 @@ describe('BillingStatusBanner', () => {
     );
 
     expect(screen.getByText(/The pilot ends on/)).toBeInTheDocument();
-    expect(screen.getByText(/10\/04\/2026/)).toBeInTheDocument();
+    expect(screen.getByText(/04\/10\/2026/)).toBeInTheDocument();
   });
 
   it('returns no banner for invalid dates or non-expiring pilot states', () => {

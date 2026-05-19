@@ -39,19 +39,6 @@ export type PreviewState = {
   offset: number;
 } | null;
 
-const RULES_PREVIEW_COPY = {
-  group: {
-    title: 'Vista previa (solo lectura)',
-    subtitle: 'Puedes clonar para editar.',
-    primaryActionLabel: 'Clonar',
-  },
-  template: {
-    title: 'Vista previa de plantilla',
-    subtitle: 'Puedes importar para editar.',
-    primaryActionLabel: 'Importar',
-  },
-} as const;
-
 export function normalizeGroupLibrarySearch(raw: string): string {
   return raw.trim().toLowerCase();
 }
@@ -78,6 +65,19 @@ export function getGroupLibraryDomainCount(group: {
   return group.whitelistCount + group.blockedSubdomainCount + group.blockedPathCount;
 }
 
-export function getRulesPreviewCopy(kind: PreviewKind) {
-  return RULES_PREVIEW_COPY[kind];
+export function getRulesPreviewCopy(kind: PreviewKind, t: ClassroomPathT) {
+  if (kind === 'group') {
+    return {
+      title: t('groupLibrary.preview.groupTitle'),
+      subtitle: t('groupLibrary.preview.groupSubtitle'),
+      primaryActionLabel: t('groupLibrary.clone'),
+    };
+  }
+
+  return {
+    title: t('groupLibrary.preview.templateTitle'),
+    subtitle: t('groupLibrary.preview.templateSubtitle'),
+    primaryActionLabel: t('groupLibrary.import'),
+  };
 }
+import type { ClassroomPathT } from '../../i18n/classroompath-i18n';

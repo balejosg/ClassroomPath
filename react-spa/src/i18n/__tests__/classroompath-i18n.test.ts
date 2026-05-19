@@ -27,4 +27,14 @@ describe('classroompath-i18n', () => {
       translateClassroomPathText('es', 'app.title.rules.group', { groupName: 'Ciencias' })
     ).toBe('Reglas: Ciencias');
   });
+
+  it('uses a consistent Spanish catalog term for entitlement labels', () => {
+    const spanishValues = Object.entries(classroomPathI18nCatalogs.es)
+      .filter(([key]) => key.includes('entitlement'))
+      .map(([, value]) => value);
+
+    expect(spanishValues.length).toBeGreaterThan(0);
+    expect(spanishValues.join(' ')).not.toMatch(/Entitlement/i);
+    expect(spanishValues.join(' ')).toMatch(/derecho/i);
+  });
 });

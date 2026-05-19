@@ -1,5 +1,6 @@
 import React from 'react';
-import { useClassroomPathT } from '../i18n/classroompath-i18n';
+import { useClassroomPathI18n } from '../i18n/classroompath-i18n';
+import type { ProductLocale } from '../openpath/public-i18n';
 type BillingInfo = {
   status: string | null;
   productKind: string | null;
@@ -9,11 +10,11 @@ type BillingInfo = {
   cancelAtPeriodEnd?: boolean;
 };
 
-function formatDate(value: string | null | undefined): string | null {
+function formatDate(value: string | null | undefined, locale: ProductLocale): string | null {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat('es-ES', {
+  return new Intl.DateTimeFormat(locale === 'es' ? 'es-ES' : 'en-US', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -28,14 +29,14 @@ function isPilotExpiringSoon(billing: BillingInfo): boolean {
 }
 
 export function BillingStatusBanner({ billing }: { billing: BillingInfo | null | undefined }) {
-  const t = useClassroomPathT();
+  const { locale, t } = useClassroomPathI18n();
   if (!billing) return null;
 
   if (billing.status === 'grace_period') {
     return (
       <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         {t('billing.banner.grace')}{' '}
-        <strong>{formatDate(billing.graceEndsAt) ?? t('app.common.pending')}</strong>.
+        <strong>{formatDate(billing.graceEndsAt, locale) ?? t('app.common.pending')}</strong>.
       </div>
     );
   }
@@ -44,7 +45,7 @@ export function BillingStatusBanner({ billing }: { billing: BillingInfo | null |
     return (
       <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
         {t('billing.banner.cancel')}{' '}
-        <strong>{formatDate(billing.currentPeriodEnd) ?? t('app.common.pending')}</strong>.
+        <strong>{formatDate(billing.currentPeriodEnd, locale) ?? t('app.common.pending')}</strong>.
       </div>
     );
   }
@@ -52,7 +53,7 @@ export function BillingStatusBanner({ billing }: { billing: BillingInfo | null |
   if (isPilotExpiringSoon(billing)) {
     return (
       <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-        {t('billing.banner.pilot', { date: formatDate(billing.expiresAt) ?? '' })}
+        {t('billing.banner.pilot', { date: formatDate(billing.expiresAt, locale) ?? '' })}
       </div>
     );
   }

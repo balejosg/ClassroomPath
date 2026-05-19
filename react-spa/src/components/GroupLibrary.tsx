@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
 import { FloatingActionButton } from './FloatingActionButton';
+import { useClassroomPathT } from '../i18n/classroompath-i18n';
 import { GroupLibraryDialog } from './group-library/GroupLibraryDialog';
 import {
   type GroupLibraryGroup,
@@ -15,12 +16,8 @@ import {
 } from './group-library/group-library-helpers';
 import { RulesPreviewModal } from './group-library/RulesPreviewModal';
 
-const GROUP_LIBRARY_OPEN_TEXT = {
-  openAriaLabel: 'Open policy library',
-  openSrLabel: 'Library',
-} as const;
-
 export function GroupLibrary({ userRole }: { userRole?: string }) {
+  const t = useClassroomPathT();
   const canUse = userRole === 'admin' || userRole === 'teacher';
   const isAdmin = userRole === 'admin';
 
@@ -147,7 +144,7 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
 
   if (!canUse) return null;
 
-  const previewCopy = preview ? getRulesPreviewCopy(preview.kind) : null;
+  const previewCopy = preview ? getRulesPreviewCopy(preview.kind, t) : null;
   const previewPage = preview?.kind === 'group' ? rulesQuery.data : templateRulesQuery.data;
   const previewLoading =
     preview?.kind === 'group' ? rulesQuery.isLoading : templateRulesQuery.isLoading;
@@ -155,11 +152,11 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
   return (
     <>
       <FloatingActionButton
-        ariaLabel={GROUP_LIBRARY_OPEN_TEXT.openAriaLabel}
+        ariaLabel={t('groupLibrary.openAriaLabel')}
         onClick={() => setIsOpen(true)}
       >
         <BookOpen size={18} />
-        <span className="sr-only">{GROUP_LIBRARY_OPEN_TEXT.openSrLabel}</span>
+        <span className="sr-only">{t('groupLibrary.openSrLabel')}</span>
       </FloatingActionButton>
 
       {isOpen && (
@@ -199,6 +196,7 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
                 displayName: group.displayName || group.name,
               })
             }
+            t={t}
           />
 
           {preview !== null && previewCopy && (
@@ -241,7 +239,8 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
                   current ? { ...current, offset: current.offset + rulesLimit } : current
                 )
               }
-              emptyText="No hay reglas para mostrar."
+              emptyText={t('groupLibrary.preview.empty')}
+              t={t}
             />
           )}
         </>

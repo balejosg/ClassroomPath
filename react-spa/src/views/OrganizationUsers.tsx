@@ -69,6 +69,7 @@ export function OrganizationUsers() {
           state.setRevokeTarget(toRevokeTarget(row));
         }}
         t={t}
+        locale={state.locale}
       />
 
       <InviteUserModal

@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { RulesPreviewModal } from '../RulesPreviewModal';
+import { translateClassroomPathText, type ClassroomPathT } from '../../../i18n/classroompath-i18n';
+
+const tEs: ClassroomPathT = (key, params) => translateClassroomPathText('es', key, params);
 
 describe('RulesPreviewModal', () => {
   it('renders rules and forwards preview actions', () => {
@@ -34,6 +37,7 @@ describe('RulesPreviewModal', () => {
         onPrevPage={onPrevPage}
         onNextPage={onNextPage}
         emptyText="Sin reglas"
+        t={tEs}
       />
     );
 
@@ -42,10 +46,14 @@ describe('RulesPreviewModal', () => {
     expect(screen.getByText('science.example.com')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
 
-    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+    expect(screen.getByText('Permitir')).toBeInTheDocument();
+    expect(screen.getByText('Bloquear')).toBeInTheDocument();
+    expect(screen.queryByText('allow')).not.toBeInTheDocument();
+    expect(screen.queryByText('deny')).not.toBeInTheDocument();
     expect(onPrimaryAction).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onNextPage).toHaveBeenCalledTimes(1);
@@ -68,10 +76,11 @@ describe('RulesPreviewModal', () => {
         onPrevPage={() => undefined}
         onNextPage={() => undefined}
         emptyText="Sin reglas"
+        t={tEs}
       />
     );
 
-    expect(screen.getByText('Loading rules...')).toBeInTheDocument();
+    expect(screen.getByText('Cargando reglas...')).toBeInTheDocument();
   });
 
   it('shows the empty state when no rules are available', () => {
@@ -91,6 +100,7 @@ describe('RulesPreviewModal', () => {
         onPrevPage={() => undefined}
         onNextPage={() => undefined}
         emptyText="Sin reglas"
+        t={tEs}
       />
     );
 

@@ -17,7 +17,7 @@ import {
   getPricingQuote,
   getValueBullets,
 } from '../../data/pricing-data';
-import { useClassroomPathT } from '../../i18n/classroompath-i18n';
+import { useClassroomPathI18n, useClassroomPathT } from '../../i18n/classroompath-i18n';
 
 const exampleQuote = getPricingQuote(12);
 
@@ -118,7 +118,7 @@ export function PricingHero({
 }: {
   recommendedTier: (typeof PRICING_TIERS)[number];
 }) {
-  const t = useClassroomPathT();
+  const { locale, t } = useClassroomPathI18n();
   return (
     <section className="relative overflow-hidden border-b border-white/10 bg-slate-900">
       <div
@@ -178,14 +178,14 @@ export function PricingHero({
               {t('pricing.hero.mediumSchool')}
             </div>
             <div className="mt-2 text-4xl font-semibold text-white">
-              {formatCurrency(recommendedTier.pricePerClassroomPerYear)}
+              {formatCurrency(recommendedTier.pricePerClassroomPerYear, locale)}
             </div>
             <div className="mt-1 text-sm text-slate-400">{t('pricing.hero.perClassroomYear')}</div>
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-white/10 bg-slate-800/80 p-4">
                 <div className="text-sm text-slate-300">{t('pricing.hero.remoteActivation')}</div>
                 <div className="mt-2 text-2xl font-semibold text-white">
-                  {formatCurrency(ACTIVATION_STARTER.totalPrice)}
+                  {formatCurrency(ACTIVATION_STARTER.totalPrice, locale)}
                 </div>
                 <div className="mt-1 text-sm text-slate-400">
                   {t('pricing.hero.activationLimit', { classrooms: ACTIVATION_STARTER.classrooms })}
@@ -305,7 +305,7 @@ export function PricingIncludedSection() {
             <h3 className="mt-3 text-2xl font-semibold text-slate-900">
               {t('pricing.activation.title')}
             </h3>
-            <p className="mt-3 text-sm leading-7 text-slate-700">{ACTIVATION_STARTER.tagline}</p>
+            <p className="mt-3 text-sm leading-7 text-slate-700">{t('pricing.activation.body')}</p>
             <a
               href="#request"
               className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -320,7 +320,7 @@ export function PricingIncludedSection() {
 }
 
 export function PricingTiersSection() {
-  const t = useClassroomPathT();
+  const { locale, t } = useClassroomPathI18n();
   return (
     <RevealSection id="pricing" className="bg-slate-50">
       <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
@@ -337,7 +337,7 @@ export function PricingTiersSection() {
         <div className="mt-12 grid gap-5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
           {PRICING_TIERS.map((tier) => (
             <div
-              key={tier.name}
+              key={tier.nameKey}
               className={`rounded-[2rem] border p-6 shadow-sm ${
                 tier.recommended
                   ? 'border-sky-300 bg-white ring-1 ring-inset ring-sky-200'
@@ -346,7 +346,7 @@ export function PricingTiersSection() {
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  {tier.rangeLabel}
+                  {t(tier.rangeLabelKey)}
                 </div>
                 {tier.recommended ? (
                   <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
@@ -354,15 +354,15 @@ export function PricingTiersSection() {
                   </span>
                 ) : null}
               </div>
-              <h3 className="mt-3 text-lg font-semibold text-slate-900">{tier.name}</h3>
+              <h3 className="mt-3 text-lg font-semibold text-slate-900">{t(tier.nameKey)}</h3>
               <div className="mt-5 text-4xl font-semibold tracking-tight text-slate-950">
-                {formatCurrency(tier.pricePerClassroomPerYear)}
+                {formatCurrency(tier.pricePerClassroomPerYear, locale)}
               </div>
               <div className="mt-1 text-sm text-slate-500">
                 {t('pricing.hero.perClassroomYear')}
               </div>
-              <p className="mt-4 text-sm leading-7 text-slate-600">{tier.tagline}</p>
-              <p className="mt-4 text-sm leading-7 text-slate-500">{tier.bestFor}</p>
+              <p className="mt-4 text-sm leading-7 text-slate-600">{t(tier.taglineKey)}</p>
+              <p className="mt-4 text-sm leading-7 text-slate-500">{t(tier.bestForKey)}</p>
             </div>
           ))}
         </div>
@@ -374,7 +374,7 @@ export function PricingTiersSection() {
 }
 
 export function PricingOnboardingSection() {
-  const t = useClassroomPathT();
+  const { locale, t } = useClassroomPathI18n();
   const onboardingItems = getOnboardingItems(t);
   const valueBullets = getValueBullets(t);
   return (
@@ -405,10 +405,12 @@ export function PricingOnboardingSection() {
           </div>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {ONBOARDING_TIERS.map((tier) => (
-              <div key={tier.rangeLabel} className="rounded-xl bg-white px-4 py-4 shadow-sm">
-                <div className="text-sm font-semibold text-slate-900">{tier.rangeLabel}</div>
+              <div key={tier.rangeLabelKey} className="rounded-xl bg-white px-4 py-4 shadow-sm">
+                <div className="text-sm font-semibold text-slate-900">{t(tier.rangeLabelKey)}</div>
                 <div className="mt-3 text-2xl font-semibold text-slate-950">
-                  {tier.oneTimeFee === null ? tier.label : formatCurrency(tier.oneTimeFee)}
+                  {tier.oneTimeFee === null
+                    ? t(tier.labelKey ?? 'pricing.onboarding.tier.contact')
+                    : formatCurrency(tier.oneTimeFee, locale)}
                 </div>
               </div>
             ))}
@@ -442,7 +444,7 @@ export function PricingCalculatorSection(props: {
   onClassroomsInputChange: (value: string) => void;
 }) {
   const { classroomsInput, classroomsInputId, onClassroomsInputChange, quote } = props;
-  const t = useClassroomPathT();
+  const { locale, t } = useClassroomPathI18n();
 
   return (
     <section id="calculator" className="border-y border-slate-200 bg-slate-900 text-white">
@@ -488,11 +490,14 @@ export function PricingCalculatorSection(props: {
               <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-300">
                 {t('pricing.calculator.appliedTier')}
               </div>
-              <div className="mt-3 text-3xl font-semibold text-white">{quote.tier.name}</div>
-              <p className="mt-2 text-sm leading-7 text-slate-300">{quote.tier.tagline}</p>
+              <div className="mt-3 text-3xl font-semibold text-white">{t(quote.tier.nameKey)}</div>
+              <p className="mt-2 text-sm leading-7 text-slate-300">{t(quote.tier.taglineKey)}</p>
             </div>
             <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-200">
-              {quote.classrooms} classrooms x {formatCurrency(quote.tier.pricePerClassroomPerYear)}
+              {t('pricing.calculator.classroomLine', {
+                classrooms: quote.classrooms,
+                price: formatCurrency(quote.tier.pricePerClassroomPerYear, locale),
+              })}
             </div>
           </div>
 
@@ -500,33 +505,33 @@ export function PricingCalculatorSection(props: {
             <div className="rounded-xl border border-white/10 bg-slate-800/70 p-5">
               <div className="text-sm text-slate-400">{t('pricing.calculator.annualFee')}</div>
               <div className="mt-2 text-3xl font-semibold text-white">
-                {formatCurrency(quote.annualTotal)}
+                {formatCurrency(quote.annualTotal, locale)}
               </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-slate-800/70 p-5">
               <div className="text-sm text-slate-400">{t('pricing.hero.onboarding')}</div>
               <div className="mt-2 text-3xl font-semibold text-white">
                 {quote.onboardingFee === null
-                  ? quote.onboardingTier.label
-                  : formatCurrency(quote.onboardingFee)}
+                  ? t(quote.onboardingTier.labelKey ?? 'pricing.onboarding.tier.contact')
+                  : formatCurrency(quote.onboardingFee, locale)}
               </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-slate-800/70 p-5">
               <div className="text-sm text-slate-400">{t('pricing.calculator.totalFirstYear')}</div>
               <div className="mt-2 text-3xl font-semibold text-white">
                 {quote.totalFirstYear === null
-                  ? quote.onboardingTier.label
-                  : formatCurrency(quote.totalFirstYear)}
+                  ? t(quote.onboardingTier.labelKey ?? 'pricing.onboarding.tier.contact')
+                  : formatCurrency(quote.totalFirstYear, locale)}
               </div>
             </div>
           </div>
 
           <div className="mt-6 rounded-xl border border-white/10 bg-white/5 px-5 py-4 text-sm leading-7 text-slate-300">
             {t('pricing.calculator.example', {
-              annualTotal: formatCurrency(exampleQuote.annualTotal),
-              onboarding: formatCurrency(exampleQuote.onboardingFee ?? 0),
-              price: formatCurrency(exampleQuote.tier.pricePerClassroomPerYear),
-              total: formatCurrency(exampleQuote.totalFirstYear ?? 0),
+              annualTotal: formatCurrency(exampleQuote.annualTotal, locale),
+              onboarding: formatCurrency(exampleQuote.onboardingFee ?? 0, locale),
+              price: formatCurrency(exampleQuote.tier.pricePerClassroomPerYear, locale),
+              total: formatCurrency(exampleQuote.totalFirstYear ?? 0, locale),
             })}
           </div>
 
@@ -535,7 +540,7 @@ export function PricingCalculatorSection(props: {
               ? t('pricing.calculator.customOnboarding')
               : t('pricing.calculator.onboardingTier', {
                   classrooms: quote.classrooms,
-                  rangeLabel: quote.onboardingTier.rangeLabel.toLowerCase(),
+                  rangeLabel: t(quote.onboardingTier.rangeLabelKey).toLowerCase(),
                 })}
           </div>
         </div>

@@ -140,7 +140,7 @@ describe('GroupLibrary', () => {
     renderWithQueryClient(<GroupLibrary userRole="teacher" />);
 
     fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Clonar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
 
     expect(mockCloneMutate).toHaveBeenCalledWith({ sourceGroupId: 'group-1' });
   });
@@ -201,11 +201,9 @@ describe('GroupLibrary', () => {
     renderWithQueryClient(<GroupLibrary userRole="teacher" />);
 
     fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
 
-    expect(
-      screen.getByRole('heading', { name: /vista previa \(solo lectura\)/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /preview \(read-only\)/i })).toBeInTheDocument();
     expect(screen.getByText('math.example.com')).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText('Search domain...'), {
@@ -216,12 +214,12 @@ describe('GroupLibrary', () => {
     expect(screen.getByRole('button', { name: 'Previous' })).not.toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
-    fireEvent.click(screen.getAllByRole('button', { name: 'Clonar' })[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Clone' })[1]);
     fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[1]);
 
     expect(mockCloneMutate).toHaveBeenCalledWith({ sourceGroupId: 'group-1' });
     expect(
-      screen.queryByRole('heading', { name: /vista previa \(solo lectura\)/i })
+      screen.queryByRole('heading', { name: /preview \(read-only\)/i })
     ).not.toBeInTheDocument();
   });
 
@@ -252,15 +250,15 @@ describe('GroupLibrary', () => {
     fireEvent.change(screen.getByPlaceholderText('Search by name...'), {
       target: { value: 'starter' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
 
-    expect(screen.getByRole('heading', { name: /vista previa de plantilla/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /template preview/i })).toBeInTheDocument();
     expect(screen.getByText('starter.example.com')).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText('Search domain...'), {
       target: { value: 'starter.example.com' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Importar' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Import' })[1]);
     fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[1]);
     fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
     fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));

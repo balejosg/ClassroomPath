@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { PlatformAdminPanel } from '../PlatformAdminPanel';
+import { ClassroomPathI18nProvider } from '../../i18n/classroompath-i18n';
 
 const { mockApprove, mockReject } = vi.hoisted(() => ({
   mockApprove: vi.fn(),
@@ -151,14 +152,24 @@ describe('PlatformAdminPanel', () => {
       isLoading: false,
     };
 
-    render(<PlatformAdminPanel />);
+    render(
+      <ClassroomPathI18nProvider locale="es">
+        <PlatformAdminPanel />
+      </ClassroomPathI18nProvider>
+    );
 
     expect(screen.getAllByText('Centro resuelto')).toHaveLength(2);
-    expect(screen.getByText(/Resolution:/)).toBeInTheDocument();
-    expect(screen.getByText(/annual · 18 classrooms · grace_period/)).toBeInTheDocument();
-    expect(screen.getByText(/Source: manual/)).toBeInTheDocument();
-    expect(screen.getByText('manual-request.approved')).toBeInTheDocument();
-    expect(screen.getByText(/platform_admin · manual_request · req_resolved/)).toBeInTheDocument();
+    expect(screen.getByText(/Resolución:/)).toBeInTheDocument();
+    expect(screen.getByText(/Presupuesto personalizado · 18 aulas · Aprobada/)).toBeInTheDocument();
+    expect(screen.getByText(/Anual · 18 aulas · Periodo de gracia/)).toBeInTheDocument();
+    expect(screen.getByText(/Fuente: Manual/)).toBeInTheDocument();
+    expect(screen.getByText('Solicitud manual aprobada')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Administrador de plataforma · Solicitud manual · req_resolved/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/1 may 2026/)).toBeInTheDocument();
+    expect(screen.queryByText(/grace_period/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/platform_admin/)).not.toBeInTheDocument();
   });
 
   it('shows loading placeholders while queries are pending', () => {

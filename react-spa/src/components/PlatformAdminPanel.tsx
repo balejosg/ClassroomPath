@@ -7,22 +7,38 @@ import {
   usePlatformManualBillingRequests,
   useRejectManualBillingRequest,
 } from '../lib/hooks';
-import { useClassroomPathT } from '../i18n/classroompath-i18n';
+import { useClassroomPathI18n, type ClassroomPathT } from '../i18n/classroompath-i18n';
 
 type ResolutionNotes = Record<string, string>;
 
-function formatDate(value: string | null, pendingLabel: string): string {
+function formatDate(value: string | null, pendingLabel: string, locale: string): string {
   if (!value) return pendingLabel;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return pendingLabel;
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date);
 }
 
+function labelForEnum(
+  prefix:
+    | 'billingKind'
+    | 'billingStatus'
+    | 'billingSource'
+    | 'auditActor'
+    | 'auditTarget'
+    | 'auditAction',
+  value: string,
+  t: ClassroomPathT
+): string {
+  const key = `platform.${prefix}.${value}` as Parameters<ClassroomPathT>[0];
+  const translated = t(key);
+  return translated === key ? value : translated;
+}
+
 export function PlatformAdminPanel() {
-  const t = useClassroomPathT();
+  const { locale, t } = useClassroomPathI18n();
   const requestsQuery = usePlatformManualBillingRequests({ refetchInterval: 30000 });
   const entitlementsQuery = usePlatformEntitlements({ refetchInterval: 30000 });
   const auditTrailQuery = useBillingAuditTrail(undefined, { refetchInterval: 30000 });
@@ -84,8 +100,9 @@ export function PlatformAdminPanel() {
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold text-slate-900">{request.organizationName}</div>
                       <div className="mt-1 text-sm text-slate-600">
-                        {request.kind} · {t('platform.classrooms', { count: request.classrooms })} ·{' '}
-                        {request.status}
+                        {labelForEnum('billingKind', request.kind, t)} ·{' '}
+                        {t('platform.classrooms', { count: request.classrooms })} ·{' '}
+                        {labelForEnum('billingStatus', request.status, t)}
                       </div>
                       {request.note ? (
                         <div className="mt-2 text-sm text-slate-500">{request.note}</div>
@@ -165,24 +182,24 @@ export function PlatformAdminPanel() {
                 >
                   <div className="font-semibold text-slate-900">{entitlement.organizationName}</div>
                   <div className="mt-1 text-sm text-slate-600">
-                    {entitlement.productKind} ·{' '}
+                    {labelForEnum('billingKind', entitlement.productKind, t)} ·{' '}
                     {t('platform.classrooms', { count: entitlement.classroomLimit })} ·{' '}
-                    {entitlement.status}
+                    {labelForEnum('billingStatus', entitlement.status, t)}
                   </div>
                   <div className="mt-2 text-sm text-slate-500">
-                    {t('platform.source')} {entitlement.source}
+                    {t('platform.source')} {labelForEnum('billingSource', entitlement.source, t)}
                     <br />
                     {t('platform.periodEnd')}{' '}
-                    {formatDate(entitlement.currentPeriodEnd, t('app.common.pending'))}
+                    {formatDate(entitlement.currentPeriodEnd, t('app.common.pending'), locale)}
                     <br />
                     {t('platform.graceEnd')}{' '}
-                    {formatDate(entitlement.graceEndsAt, t('app.common.pending'))}
+                    {formatDate(entitlement.graceEndsAt, t('app.common.pending'), locale)}
                     <br />
                     {t('platform.expires')}{' '}
-                    {formatDate(entitlement.expiresAt, t('app.common.pending'))}
+                    {formatDate(entitlement.expiresAt, t('app.common.pending'), locale)}
                     <br />
                     {t('platform.updated')}{' '}
-                    {formatDate(entitlement.updatedAt, t('app.common.pending'))}
+                    {formatDate(entitlement.updatedAt, t('app.common.pending'), locale)}
                   </div>
                 </div>
               ))}
@@ -204,13 +221,16 @@ export function PlatformAdminPanel() {
                   className="rounded-lg border border-slate-200 bg-white px-4 py-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-sm font-medium text-slate-900">{event.action}</div>
+                    <div className="text-sm font-medium text-slate-900">
+                      {labelForEnum('auditAction', event.action, t)}
+                    </div>
                     <div className="text-xs text-slate-500">
-                      {formatDate(event.createdAt, t('app.common.pending'))}
+                      {formatDate(event.createdAt, t('app.common.pending'), locale)}
                     </div>
                   </div>
                   <div className="mt-1 text-sm text-slate-600">
-                    {event.actorType} · {event.targetType} · {event.targetId}
+                    {labelForEnum('auditActor', event.actorType, t)} ·{' '}
+                    {labelForEnum('auditTarget', event.targetType, t)} · {event.targetId}
                   </div>
                 </div>
               ))}

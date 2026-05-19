@@ -4,6 +4,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 import { GroupLibraryDialog } from '../GroupLibraryDialog';
 import type { GroupLibraryGroup, GroupLibraryTemplate, LibraryTab } from '../group-library-helpers';
+import { translateClassroomPathText, type ClassroomPathT } from '../../../i18n/classroompath-i18n';
+
+const tEs: ClassroomPathT = (key, params) => translateClassroomPathText('es', key, params);
 
 function renderDialog(
   tab: LibraryTab,
@@ -53,6 +56,7 @@ function renderDialog(
     onImportTemplate: () => undefined,
     onUpdateGroupVisibility: () => undefined,
     onPublishTemplate: () => undefined,
+    t: tEs,
     ...overrides,
   };
 
@@ -66,11 +70,11 @@ describe('GroupLibraryDialog', () => {
 
     renderDialog('library', { onPreviewGroup, onCloneGroup });
 
-    expect(screen.getByRole('heading', { name: /Policy library/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Biblioteca de políticas/i })).toBeInTheDocument();
     expect(screen.getByText('Math Policy')).toBeInTheDocument();
-    expect(screen.getByText('Domains: 3')).toBeInTheDocument();
+    expect(screen.getByText('Dominios: 3')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Vista previa' }));
     fireEvent.click(screen.getByRole('button', { name: 'Clonar' }));
 
     expect(onPreviewGroup).toHaveBeenCalledWith('group-1');
@@ -83,11 +87,13 @@ describe('GroupLibraryDialog', () => {
 
     renderDialog('templates', { onImportTemplate, onPreviewTemplate });
 
-    expect(screen.getByText(/Templates available to every organization/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Plantillas disponibles para todas las organizaciones/i)
+    ).toBeInTheDocument();
     expect(screen.getByText('Starter Template')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'View' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Vista previa' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Importar' }));
 
     expect(onPreviewTemplate).toHaveBeenCalledWith('template-1');
     expect(onImportTemplate).toHaveBeenCalledWith('template-1');
@@ -106,14 +112,14 @@ describe('GroupLibraryDialog', () => {
       onSearchChange,
     });
 
-    fireEvent.change(screen.getByPlaceholderText('Search by name...'), {
+    fireEvent.change(screen.getByPlaceholderText('Buscar por nombre...'), {
       target: { value: 'math' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Library' }));
-    fireEvent.change(screen.getByDisplayValue('Private'), {
+    fireEvent.click(screen.getByRole('button', { name: 'Biblioteca' }));
+    fireEvent.change(screen.getByDisplayValue('Privada'), {
       target: { value: 'instance_public' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Publish template' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publicar plantilla' }));
 
     expect(onSearchChange).toHaveBeenCalledWith('math');
     expect(onTabChange).toHaveBeenCalledWith('library');

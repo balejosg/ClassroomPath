@@ -22,7 +22,7 @@ describe('ClassroomPathPricingPage', () => {
     expect(screen.getAllByRole('link', { name: 'Request activation' }).length).toBeGreaterThan(0);
     expect(screen.getByText('Most common')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'What step suits you now' })).toBeInTheDocument();
-    expect(screen.getByText('149 €')).toBeInTheDocument();
+    expect(screen.getByText('€149')).toBeInTheDocument();
     expect(screen.queryByText(/Aproximado por dispositivo/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Lightspeed|Securly|GoGuardian|Linewize/)).not.toBeInTheDocument();
   });
@@ -48,7 +48,7 @@ describe('ClassroomPathPricingPage', () => {
     const quote = getPricingQuote(40);
 
     expect(screen.getAllByText('Large school').length).toBeGreaterThan(0);
-    expect(screen.getByText(/40 classrooms x 37/)).toBeInTheDocument();
+    expect(screen.getAllByText(/40 classrooms x €37/).length).toBeGreaterThan(0);
     expect(quote.annualTotal).toBe(1480);
     expect(quote.onboardingFee).toBe(890);
     expect(quote.totalFirstYear).toBe(2370);

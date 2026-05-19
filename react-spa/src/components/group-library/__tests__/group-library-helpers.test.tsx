@@ -6,6 +6,9 @@ import {
   getRulesPreviewCopy,
   normalizeGroupLibrarySearch,
 } from '../group-library-helpers';
+import { translateClassroomPathText, type ClassroomPathT } from '../../../i18n/classroompath-i18n';
+
+const tEs: ClassroomPathT = (key, params) => translateClassroomPathText('es', key, params);
 
 describe('group-library-helpers', () => {
   it('normalizes search by trimming and lowercasing', () => {
@@ -40,13 +43,13 @@ describe('group-library-helpers', () => {
   });
 
   it('returns the correct preview copy for groups and templates', () => {
-    expect(getRulesPreviewCopy('group')).toEqual({
+    expect(getRulesPreviewCopy('group', tEs)).toEqual({
       title: 'Vista previa (solo lectura)',
       subtitle: 'Puedes clonar para editar.',
       primaryActionLabel: 'Clonar',
     });
 
-    expect(getRulesPreviewCopy('template')).toEqual({
+    expect(getRulesPreviewCopy('template', tEs)).toEqual({
       title: 'Vista previa de plantilla',
       subtitle: 'Puedes importar para editar.',
       primaryActionLabel: 'Importar',

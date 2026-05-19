@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { useApproveUser, usePendingUsers, useRejectUser } from '../lib/hooks';
 import { reportError } from '../lib/reportError';
-import { useClassroomPathT, type ClassroomPathT } from '../i18n/classroompath-i18n';
+import { useClassroomPathI18n, type ClassroomPathT } from '../i18n/classroompath-i18n';
 
 export interface PendingUser {
   userId: string;
@@ -13,11 +13,15 @@ export interface PendingUser {
 
 export type RoleOption = 'teacher' | 'admin';
 
-export function formatPendingUserDate(dateStr: string | null, t?: ClassroomPathT): string {
+export function formatPendingUserDate(
+  dateStr: string | null,
+  t?: ClassroomPathT,
+  locale?: string
+): string {
   if (!dateStr) return t ? t('pendingUsers.unknownDate') : 'Unknown date';
 
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', {
+  return date.toLocaleDateString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -27,12 +31,14 @@ export function formatPendingUserDate(dateStr: string | null, t?: ClassroomPathT
 }
 
 export function getPendingUsersSummaryLabel(count: number, t?: ClassroomPathT): string {
-  if (t) return t('pendingUsers.summary', { count, plural: count !== 1 ? 's' : '' });
+  if (t) {
+    return t(count === 1 ? 'pendingUsers.summary.one' : 'pendingUsers.summary.many', { count });
+  }
   return `${count} pending request${count !== 1 ? 's' : ''}`;
 }
 
 export function usePendingUsersState() {
-  const t = useClassroomPathT();
+  const { locale, t } = useClassroomPathI18n();
   const { data: pendingUsers, isLoading, error, refetch } = usePendingUsers();
   const approveMutation = useApproveUser();
   const rejectMutation = useRejectUser();
@@ -90,6 +96,7 @@ export function usePendingUsersState() {
     handleApprove,
     handleReject,
     summaryLabel: getPendingUsersSummaryLabel(users.length, t),
+    locale,
     t,
   };
 }

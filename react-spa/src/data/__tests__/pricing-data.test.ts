@@ -13,16 +13,16 @@ import {
 describe('pricing-data', () => {
   describe('getPricingTier', () => {
     it('returns the correct tier for each range', () => {
-      expect(getPricingTier(1).name).toBe('Small school');
-      expect(getPricingTier(10).name).toBe('Small school');
-      expect(getPricingTier(11).name).toBe('Medium school');
-      expect(getPricingTier(25).name).toBe('Medium school');
-      expect(getPricingTier(26).name).toBe('Large school');
-      expect(getPricingTier(50).name).toBe('Large school');
-      expect(getPricingTier(51).name).toBe('Educational organization');
-      expect(getPricingTier(100).name).toBe('Educational organization');
-      expect(getPricingTier(101).name).toBe('School network');
-      expect(getPricingTier(9999).name).toBe('School network');
+      expect(getPricingTier(1).nameKey).toBe('pricing.tier.small.name');
+      expect(getPricingTier(10).nameKey).toBe('pricing.tier.small.name');
+      expect(getPricingTier(11).nameKey).toBe('pricing.tier.medium.name');
+      expect(getPricingTier(25).nameKey).toBe('pricing.tier.medium.name');
+      expect(getPricingTier(26).nameKey).toBe('pricing.tier.large.name');
+      expect(getPricingTier(50).nameKey).toBe('pricing.tier.large.name');
+      expect(getPricingTier(51).nameKey).toBe('pricing.tier.organization.name');
+      expect(getPricingTier(100).nameKey).toBe('pricing.tier.organization.name');
+      expect(getPricingTier(101).nameKey).toBe('pricing.tier.network.name');
+      expect(getPricingTier(9999).nameKey).toBe('pricing.tier.network.name');
     });
   });
 
@@ -39,7 +39,7 @@ describe('pricing-data', () => {
   describe('getPricingQuote', () => {
     it('computes the correct annual total and first-year total', () => {
       const quote = getPricingQuote(12);
-      expect(quote.tier.name).toBe('Medium school');
+      expect(quote.tier.nameKey).toBe('pricing.tier.medium.name');
       expect(quote.annualTotal).toBe(12 * 45);
       expect(quote.onboardingFee).toBe(490);
       expect(quote.totalFirstYear).toBe(12 * 45 + 490);
@@ -53,18 +53,16 @@ describe('pricing-data', () => {
   });
 
   describe('formatCurrency', () => {
-    it('formats an integer as euros without decimals', () => {
-      // Locale formatting may use non-breaking spaces; strip them for comparison
-      const result = formatCurrency(490).replace(/\s/g, ' ');
-      expect(result).toContain('490');
-      expect(result).toContain('€');
+    it('formats euros with the active locale', () => {
+      expect(formatCurrency(490, 'es').replace(/\s/g, ' ')).toContain('490 €');
+      expect(formatCurrency(490, 'en').replace(/\s/g, ' ')).toContain('€490');
     });
   });
 
   describe('formatPricePerDevice', () => {
-    it('formats sub-unit values with 2 decimal places', () => {
-      const result = formatPricePerDevice(0.9).replace(/\s/g, ' ');
-      expect(result).toContain('0,90');
+    it('formats sub-unit values with the active locale', () => {
+      expect(formatPricePerDevice(0.9, 'es').replace(/\s/g, ' ')).toContain('0,90');
+      expect(formatPricePerDevice(0.9, 'en').replace(/\s/g, ' ')).toContain('0.90');
     });
   });
 
