@@ -693,7 +693,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'app.common.cancel': 'Cancelar',
   'app.common.close': 'Cerrar',
   'app.common.backToHome': 'Volver al inicio',
-  'app.common.backToLogin': 'Volver a login',
+  'app.common.backToLogin': 'Volver al inicio de sesión',
   'app.common.login': 'Inicia sesión',
   'app.common.openDashboard': 'Acceder al panel',
   'app.common.error': 'Error:',
@@ -1229,9 +1229,9 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'pricing.calculator.appliedTier': 'Tramo aplicado',
   'pricing.calculator.annualFee': 'Cuota anual',
   'pricing.calculator.totalFirstYear': 'Total primer año',
-  'pricing.calculator.classroomLine': '{classrooms} aulas x {price}',
+  'pricing.calculator.classroomLine': '{classrooms} aulas × {price}',
   'pricing.calculator.example':
-    'Ejemplo: 12 aulas x {price} = {annualTotal} / año · Onboarding: {onboarding} · Total primer año: {total}',
+    'Ejemplo: 12 aulas × {price} = {annualTotal} / año · Onboarding: {onboarding} · Total primer año: {total}',
   'pricing.calculator.customOnboarding':
     'En despliegues de 101 aulas o más, el onboarding se define con una propuesta específica por sede, alcance y ritmo de implantación.',
   'pricing.calculator.onboardingTier':
@@ -1313,7 +1313,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'contact.center.placeholder': 'Nombre del centro',
   'contact.email.label': 'Email de contacto',
   'contact.email.placeholder': 'email@centro.es',
-  'contact.classrooms.label': 'Nº de aulas (opcional)',
+  'contact.classrooms.label': 'N.º de aulas (opcional)',
   'contact.technicalOwner.label': 'Responsable técnico (opcional)',
   'contact.technicalOwner.placeholder': 'Nombre del responsable IT',
   'contact.partner.label': '¿Necesitáis partner de implantación?',
@@ -1328,7 +1328,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'contact.submit': 'Enviar solicitud',
   'contact.email.subject': 'Solicitud ClassroomPath',
   'contact.email.body':
-    'Qué necesitas: {intent}\nNombre: {name}\nCentro: {center}\nEmail: {email}\nNº de aulas (aprox.): {classrooms}\nResponsable técnico: {technicalOwner}\n¿Necesita partner de implantación?: {deploymentPartnerNeed}',
+    'Qué necesitas: {intent}\nNombre: {name}\nCentro: {center}\nEmail: {email}\nN.º de aulas (aprox.): {classrooms}\nResponsable técnico: {technicalOwner}\n¿Necesita partner de implantación?: {deploymentPartnerNeed}',
   'contact.notProvided': 'No indicado',
   'faq.landing.screenTime.q': '¿ClassroomPath promueve más uso de pantallas?',
   'faq.landing.screenTime.a':

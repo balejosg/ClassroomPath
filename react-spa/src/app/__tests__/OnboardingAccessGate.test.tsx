@@ -133,7 +133,7 @@ describe('OnboardingAccessGate', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Volver a login' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Volver al inicio de sesión' }));
 
     rerender(
       <OnboardingAccessGate

@@ -81,7 +81,7 @@ export async function assertNoOneOffConflict(params: {
   if (conflicts.length > 0) {
     throw new TRPCError({
       code: 'CONFLICT',
-      message: 'Ese tramo horario ya esta reservado',
+      message: 'Ese tramo horario ya está reservado',
     });
   }
 }
@@ -121,7 +121,7 @@ export async function assertNoConflict(params: {
   if (conflicts.length > 0) {
     throw new TRPCError({
       code: 'CONFLICT',
-      message: 'Ese tramo horario ya esta reservado',
+      message: 'Ese tramo horario ya está reservado',
     });
   }
 }

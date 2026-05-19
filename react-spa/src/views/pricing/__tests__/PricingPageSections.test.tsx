@@ -48,7 +48,7 @@ describe('PricingPageSections', () => {
 
     expect(screen.getByText('Estimación del primer año')).toBeInTheDocument();
     expect(screen.getByLabelText('Número de aulas')).toBeInTheDocument();
-    expect(screen.getAllByText(/12 aulas x 45 €/)).toHaveLength(2);
+    expect(screen.getAllByText(/12 aulas × 45 €/)).toHaveLength(2);
   });
 
   it('renders pricing figures and classroom line item in English locale', () => {
@@ -65,6 +65,6 @@ describe('PricingPageSections', () => {
 
     expect(screen.getByText('First-year estimate')).toBeInTheDocument();
     expect(screen.getAllByText(/12 classrooms x €45/)).toHaveLength(2);
-    expect(screen.queryByText(/12 aulas x/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/12 aulas ×/)).not.toBeInTheDocument();
   });
 });

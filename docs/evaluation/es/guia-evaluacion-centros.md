@@ -9,7 +9,7 @@ Si tu centro está valorando ClassroomPath, esta es la ruta corta:
 
 1. **Aclara el modelo de operación.**
    Si queréis operar el sistema vosotros mismos, empezad por [OpenPath](https://github.com/balejosg/openpath) y su guía de adopción OSS.
-   Si queréis demo, piloto o servicio gestionado, empezad por ClassroomPath.
+   Si queréis una demo, un piloto o un servicio gestionado, empezad por ClassroomPath.
 
 2. **Revisa la confianza técnica mínima.**
    Leed la guía de seguridad y confianza: [`../security-trust.md`](../security-trust.md).
@@ -25,7 +25,7 @@ Si tu centro está valorando ClassroomPath, esta es la ruta corta:
 5. **Compara core OSS frente a servicio gestionado.**
    Leed [`../openpath-vs-classroompath.md`](../openpath-vs-classroompath.md) para decidir si necesitáis autogestión o una vía operativa con menos carga diaria.
 
-6. **Diseñad el piloto antes de ampliarlo.**
+6. **Diseña el piloto antes de ampliarlo.**
    Usad [`../pilot-runbook.md`](../pilot-runbook.md) para dejar claro alcance, responsables, mediciones y criterios de salida.
 
 7. **Pide el siguiente paso correcto.**
