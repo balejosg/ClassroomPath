@@ -139,6 +139,9 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STAGING_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          STAGING_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          STAGING_USER: ${{ secrets.STAGING_DEPLOY_USER }}
           STAGING_GHCR_USERNAME: ${{ github.actor }}
           STAGING_GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -251,6 +254,9 @@ jobs:
       - name: Persist canary evidence to staging release state
         shell: bash
         env:
+          STAGING_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          STAGING_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          STAGING_USER: ${{ secrets.STAGING_DEPLOY_USER }}
           STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT: ${{ needs.windows-staging-bootstrap-canary.outputs.canary_result }}
           STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA: ${{ needs.deploy-current-main-to-staging.outputs.sha }}
           STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID: ${{ github.run_id }}
@@ -354,6 +360,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STAGING_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          STAGING_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          STAGING_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS: 2400
           OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS: 10
           PROMOTION_REPORT_JSON_PATH: ${{ runner.temp }}/promotion-ready/report.json
