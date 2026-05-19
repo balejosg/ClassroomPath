@@ -203,6 +203,16 @@ describe('Deploy workflow contracts', () => {
     assert.ok(workflowText.includes('npm run deploy:staging:assume-yes'));
     assert.ok(workflowText.includes('npm run verify:promotion-ready'));
     assert.ok(workflowText.includes('release-candidate-images.env'));
+    assert.equal(
+      workflow.env?.CLASSROOMPATH_STAGING_PUBLIC_URL,
+      '${{ vars.CLASSROOMPATH_STAGING_PUBLIC_URL || vars.STAGING_PUBLIC_URL }}',
+      'nightly staging deploy must inject public staging URL variables for deploy-targets.mjs'
+    );
+    assert.equal(
+      workflow.env?.CLASSROOMPATH_PRODUCTION_PUBLIC_URL,
+      '${{ vars.CLASSROOMPATH_PRODUCTION_PUBLIC_URL || vars.PRODUCTION_PUBLIC_URL }}',
+      'nightly promotion readiness must inject public production URL variables for deploy-targets.mjs'
+    );
     assert.ok(workflowText.includes('GITHUB_STEP_SUMMARY'));
     assert.ok(!workflowText.includes('git tag'));
     assert.ok(!workflowText.includes('promote:production'));
