@@ -2,6 +2,7 @@ export const OPENPATH_CI_JOB_NAMES = [
   'Detect Relevant Changes',
   'Linux Agent Tests (BATS)',
   'Windows Agent Tests (Pester)',
+  'Windows Agent Tests (Pester, hosted)',
   'Delivery Contracts (Node)',
 ];
 

@@ -36,6 +36,8 @@ Environment variables:
   OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS   Wait mode timeout. Default: 600.
   OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS  Wait mode polling interval. Default: 10.
   OPENPATH_REQUIRED_CHECKS_FAIL_FAST         Wait mode terminal failure behavior. Default: true.
+  OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH     Set to true to dispatch missing OpenPath evidence in wait mode.
+  OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN    Write token used only for OpenPath workflow dispatch/ref creation.
   OPENPATH_PRERELEASE_RECOVERY_MODE          Advisory by default. Set to rerun-failed-once to rerun one failed prerelease APT job.
   GITHUB_TOKEN or GH_TOKEN  Token used to query the GitHub API.
 `);
@@ -106,6 +108,7 @@ export function parseWaitOptions(env = process.env) {
     timeoutSeconds: parsePositiveIntegerEnv(env, 'OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS', 600),
     intervalSeconds: parsePositiveIntegerEnv(env, 'OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS', 10),
     failFast: parseBooleanEnv(env, 'OPENPATH_REQUIRED_CHECKS_FAIL_FAST', true),
+    autoDispatch: parseBooleanEnv(env, 'OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH', false),
   };
 }
 
@@ -206,6 +209,192 @@ async function fetchWorkflowRunJobs({ repo, runId, token }) {
 
   const payload = await response.json();
   return payload.jobs ?? [];
+}
+
+const OPENPATH_REQUIRED_CHECK_WORKFLOWS = new Map([
+  ['CI Success', { workflow: 'ci.yml', inputs: {} }],
+  [
+    'E2E Summary',
+    {
+      workflow: 'e2e-tests.yml',
+      inputs: {
+        platform: 'all',
+        suite: 'all',
+        student_policy_sse_group: 'auto',
+      },
+    },
+  ],
+  ['Installer Contracts Success', { workflow: 'installer-contracts.yml', inputs: {} }],
+  [OPENPATH_PRERELEASE_APT_REQUIRED_CHECK, { workflow: 'prerelease-deb.yml', inputs: {} }],
+]);
+
+function evidenceRefName(sha) {
+  return `release-evidence/${sha}`;
+}
+
+async function readGitHubErrorBody(response) {
+  try {
+    return await response.text();
+  } catch {
+    return '';
+  }
+}
+
+function formatDispatchApiError(action, response, body) {
+  return `${action} failed with ${response.status}: ${body}. Check OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN has actions:write and contents:write on OpenPath.`;
+}
+
+export async function ensureOpenPathEvidenceRef({ repo, sha, token }) {
+  if (!token) {
+    throw new Error('OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN must be set for auto-dispatch');
+  }
+
+  const refName = evidenceRefName(sha);
+  const refPath = `heads/${refName}`;
+  const headers = buildGitHubApiHeaders({
+    token,
+    userAgent: 'classroompath-openpath-required-checks-dispatch',
+  });
+  const refUrl = `https://api.github.com/repos/${repo}/git/ref/${refPath}`;
+  const refResponse = await fetch(refUrl, { headers });
+
+  if (refResponse.ok) {
+    return refName;
+  }
+
+  if (refResponse.status !== 404) {
+    const body = await readGitHubErrorBody(refResponse);
+    throw new Error(formatDispatchApiError('OpenPath evidence ref lookup', refResponse, body));
+  }
+
+  const createResponse = await fetch(`https://api.github.com/repos/${repo}/git/refs`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      ref: `refs/${refPath}`,
+      sha,
+    }),
+  });
+
+  if (createResponse.ok) {
+    return refName;
+  }
+
+  if (createResponse.status === 422) {
+    const retryResponse = await fetch(refUrl, { headers });
+    if (retryResponse.ok) {
+      return refName;
+    }
+    const body = await readGitHubErrorBody(retryResponse);
+    throw new Error(formatDispatchApiError('OpenPath evidence ref reuse', retryResponse, body));
+  }
+
+  const body = await readGitHubErrorBody(createResponse);
+  throw new Error(formatDispatchApiError('OpenPath evidence ref creation', createResponse, body));
+}
+
+async function fetchWorkflowRunsForSha({ repo, workflow, sha, token }) {
+  const url = new URL(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/runs`);
+  url.searchParams.set('head_sha', sha);
+  url.searchParams.set('per_page', String(GITHUB_PAGE_SIZE));
+
+  const response = await fetch(url, {
+    headers: buildGitHubApiHeaders({
+      token,
+      userAgent: 'classroompath-openpath-required-checks-dispatch',
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await readGitHubErrorBody(response);
+    throw new Error(`OpenPath workflow run lookup failed with ${response.status}: ${body}`);
+  }
+
+  const payload = await response.json();
+  return payload.workflow_runs ?? [];
+}
+
+function workflowRunMatchesSha(workflowRun, sha) {
+  return (
+    workflowRun.head_sha === sha &&
+    ['queued', 'in_progress', 'completed'].includes(workflowRun.status)
+  );
+}
+
+async function dispatchOpenPathWorkflow({ repo, workflow, ref, inputs, token }) {
+  const response = await fetch(
+    `https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`,
+    {
+      method: 'POST',
+      headers: buildGitHubApiHeaders({
+        token,
+        userAgent: 'classroompath-openpath-required-checks-dispatch',
+      }),
+      body: JSON.stringify({
+        ref,
+        inputs,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const body = await readGitHubErrorBody(response);
+    throw new Error(formatDispatchApiError('OpenPath workflow dispatch', response, body));
+  }
+}
+
+export async function dispatchMissingOpenPathRequiredChecks({
+  repo,
+  sha,
+  token,
+  queryToken = token,
+  dispatchToken = token,
+  missingChecks,
+  alreadyDispatched = new Set(),
+}) {
+  const dispatched = [];
+  const reused = [];
+
+  for (const checkName of missingChecks) {
+    const workflowConfig = OPENPATH_REQUIRED_CHECK_WORKFLOWS.get(checkName);
+    if (!workflowConfig) {
+      throw new Error(`No OpenPath workflow dispatch mapping for required check: ${checkName}`);
+    }
+
+    const dispatchKey = `${sha}:${checkName}`;
+    if (alreadyDispatched.has(dispatchKey)) {
+      continue;
+    }
+
+    const workflowRuns = await fetchWorkflowRunsForSha({
+      repo,
+      workflow: workflowConfig.workflow,
+      sha,
+      token: queryToken,
+    });
+
+    if (workflowRuns.some((workflowRun) => workflowRunMatchesSha(workflowRun, sha))) {
+      alreadyDispatched.add(dispatchKey);
+      reused.push(checkName);
+      continue;
+    }
+
+    const ref = await ensureOpenPathEvidenceRef({ repo, sha, token: dispatchToken });
+    await dispatchOpenPathWorkflow({
+      repo,
+      workflow: workflowConfig.workflow,
+      ref,
+      inputs: workflowConfig.inputs,
+      token: dispatchToken,
+    });
+    alreadyDispatched.add(dispatchKey);
+    dispatched.push(checkName);
+  }
+
+  return {
+    dispatched,
+    reused,
+  };
 }
 
 async function buildWorkflowJobsByRunId({ repo, checkRuns, requiredChecks, token }) {
@@ -366,6 +555,7 @@ function resolveExecutionContext() {
   const sha = resolveOpenPathSha();
   const baseSha = resolveOpenPathBaseSha();
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const dispatchToken = process.env.OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN?.trim() || '';
   const explicitRequiredChecks = process.env.OPENPATH_REQUIRED_CHECKS
     ? parseRequiredChecks(process.env.OPENPATH_REQUIRED_CHECKS)
     : undefined;
@@ -388,6 +578,7 @@ function resolveExecutionContext() {
     repo,
     sha,
     token,
+    dispatchToken,
     requiredCheckResolution,
     requiredChecks,
   };
@@ -465,6 +656,7 @@ async function waitForRequiredChecks(context, options) {
   const intervalMilliseconds = options.intervalSeconds * 1000;
   let attempt = 1;
   let alreadyReranPrerelease = false;
+  const alreadyDispatched = new Set();
 
   while (true) {
     const evaluation = await evaluateOpenPathRequiredChecks(context);
@@ -525,6 +717,29 @@ async function waitForRequiredChecks(context, options) {
       printFailureSummary({ context, result, evaluation });
       console.error(formatOpenPathPrereleaseRecoveryDecision(recoveryDecision));
       return false;
+    }
+
+    if (options.autoDispatch && result.missing.length > 0) {
+      if (!context.dispatchToken) {
+        throw new Error('OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN must be set for auto-dispatch');
+      }
+
+      const dispatchResult = await dispatchMissingOpenPathRequiredChecks({
+        repo: context.repo,
+        sha: context.sha,
+        queryToken: context.token,
+        dispatchToken: context.dispatchToken,
+        missingChecks: result.missing,
+        alreadyDispatched,
+      });
+
+      if (dispatchResult.dispatched.length > 0 || dispatchResult.reused.length > 0) {
+        console.log(
+          `OpenPath auto-dispatch evidence recovery for ${context.repo}@${context.sha}: dispatched ${
+            dispatchResult.dispatched.join(', ') || 'none'
+          }; reused ${dispatchResult.reused.join(', ') || 'none'}`
+        );
+      }
     }
 
     if (recoveryDecision?.state === 'waiting') {

@@ -14,7 +14,10 @@ import {
   normalizeWorkflowRunUpdatedAt,
   sortWorkflowRunsNewestFirst,
 } from './lib/github-actions.mjs';
-import { OPENPATH_PRERELEASE_APT_REQUIRED_CHECK } from './lib/openpath-ci-checks.mjs';
+import {
+  OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
+  resolveOpenPathRequiredChecks,
+} from './lib/openpath-ci-checks.mjs';
 import {
   buildCanonicalReleaseManifest,
   parseArtifactReleaseManifestText,
@@ -435,13 +438,13 @@ function parseCheckRuns(payload) {
   return Array.isArray(payload?.check_runs) ? payload.check_runs : [];
 }
 
-function summarizeRequiredChecks(checkRuns) {
+function summarizeRequiredChecks(checkRuns, requiredChecks) {
   const latestByName = new Map();
   for (const checkRun of checkRuns) {
     latestByName.set(checkRun.name, checkRun);
   }
 
-  return ['CI Success', OPENPATH_PRERELEASE_APT_REQUIRED_CHECK].map((name) => {
+  return requiredChecks.map((name) => {
     const checkRun = latestByName.get(name);
     return {
       name,
@@ -449,6 +452,34 @@ function summarizeRequiredChecks(checkRuns) {
       detailsUrl: checkRun?.details_url ?? checkRun?.html_url ?? null,
     };
   });
+}
+
+function resolvePreviousReleaseOpenPathSha(runCommand, env) {
+  const tags = runGit(runCommand, ['tag', '--sort=-creatordate'], env)
+    .split(/\r?\n/)
+    .map((tag) => tag.trim())
+    .filter((tag) => /^v/.test(tag));
+
+  for (const tag of tags) {
+    try {
+      return runGit(runCommand, ['rev-parse', `${tag}:upstream/openpath`], env);
+    } catch {
+      continue;
+    }
+  }
+
+  return '';
+}
+
+function resolveOpenPathChangedFiles({ runCommand, env, baseSha, sha }) {
+  if (!baseSha || baseSha === sha) {
+    return [];
+  }
+
+  return runGit(runCommand, ['-C', 'upstream/openpath', 'diff', '--name-only', baseSha, sha], env)
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
 }
 
 function buildSshArgs({ host, user, port, key, strictHostKey, remoteCommand }) {
@@ -774,6 +805,20 @@ export async function buildReleaseStatus({
       )
     )
   );
+  const openPathBaseSha = tryRead('previous release OpenPath SHA', () =>
+    resolvePreviousReleaseOpenPathSha(runCommand, mergedEnv)
+  );
+  const openPathChangedFiles = tryRead('OpenPath changed files', () =>
+    resolveOpenPathChangedFiles({
+      runCommand,
+      env: mergedEnv,
+      baseSha: openPathBaseSha.ok ? openPathBaseSha.value : '',
+      sha: openpathSha,
+    })
+  );
+  const requiredCheckResolution = resolveOpenPathRequiredChecks({
+    changedFiles: openPathChangedFiles.ok ? openPathChangedFiles.value : [],
+  });
 
   const stagingVerification = tryRead('staging verification state', () =>
     readRemoteState({
@@ -839,7 +884,11 @@ export async function buildReleaseStatus({
     openPath: {
       repository: DEFAULT_OPENPATH_REPO,
       submoduleSha: openpathSha,
-      requiredChecks: checkRuns.ok ? summarizeRequiredChecks(checkRuns.value) : [],
+      baseSha: openPathBaseSha.ok ? openPathBaseSha.value : '',
+      changedFiles: openPathChangedFiles.ok ? openPathChangedFiles.value : [],
+      requiredChecks: checkRuns.ok
+        ? summarizeRequiredChecks(checkRuns.value, requiredCheckResolution.requiredChecks)
+        : [],
       requiredChecksError: checkRuns.ok ? '' : checkRuns.error,
       prereleaseAptRequiredCheck: OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
     },

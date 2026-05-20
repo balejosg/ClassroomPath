@@ -101,9 +101,11 @@ verify_openpath_required_checks() {
   log_info "Verifying required OpenPath checks for staged submodule SHA $openpath_sha..."
   OPENPATH_SHA="$openpath_sha" \
   OPENPATH_BASE_SHA="$openpath_base_sha" \
+  OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH="${OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH:-true}" \
     node "$SCRIPT_DIR/openpath-required-checks.mjs" report || true
   OPENPATH_SHA="$openpath_sha" \
   OPENPATH_BASE_SHA="$openpath_base_sha" \
+  OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH="${OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH:-true}" \
     node "$SCRIPT_DIR/openpath-required-checks.mjs" wait
 }
 

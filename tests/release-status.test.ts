@@ -48,10 +48,17 @@ function realOperationalTargetEnv() {
   };
 }
 
-function createCommandHarness(options: { originSha?: string; openpathCheckStatus?: string } = {}) {
+function createCommandHarness(
+  options: {
+    originSha?: string;
+    openpathCheckStatus?: string;
+    openpathChangedFiles?: string[];
+  } = {}
+) {
   const calls: Array<{ command: string; args: string[] }> = [];
   const originSha = options.originSha ?? ORIGIN_SHA;
   const openpathCheckStatus = options.openpathCheckStatus ?? 'success';
+  const openpathChangedFiles = options.openpathChangedFiles ?? [];
 
   const runCommand = (command: string, args: string[]) => {
     calls.push({ command, args });
@@ -67,6 +74,21 @@ function createCommandHarness(options: { originSha?: string; openpathCheckStatus
 
     if (commandLine === 'git rev-parse HEAD:upstream/openpath') {
       return OPENPATH_SHA;
+    }
+
+    if (commandLine === 'git tag --sort=-creatordate') {
+      return ['v1.2.301', 'v1.2.300', ''].join('\n');
+    }
+
+    if (commandLine === 'git rev-parse v1.2.301:upstream/openpath') {
+      return 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    }
+
+    if (
+      commandLine ===
+      `git -C upstream/openpath diff --name-only bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ${OPENPATH_SHA}`
+    ) {
+      return [...openpathChangedFiles, ''].join('\n');
     }
 
     if (commandLine === 'git remote get-url origin') {
@@ -86,6 +108,12 @@ function createCommandHarness(options: { originSha?: string; openpathCheckStatus
       return JSON.stringify({
         check_runs: [
           { name: 'CI Success', status: 'completed', conclusion: openpathCheckStatus },
+          { name: 'E2E Summary', status: 'completed', conclusion: openpathCheckStatus },
+          {
+            name: 'Installer Contracts Success',
+            status: 'completed',
+            conclusion: openpathCheckStatus,
+          },
           {
             name: 'Publish Prerelease to APT Repository / Publish to APT Repository (unstable)',
             status: 'completed',
@@ -217,7 +245,9 @@ test('builds a local promotion status summary from read-only command sources', a
   );
   assert.equal(
     commandLines.some((line) =>
-      /(git push|git tag|gh workflow run|gh run rerun|npm run deploy|promote:production)/.test(line)
+      /(git push|git tag (?!--)|gh workflow run|gh run rerun|npm run deploy|promote:production)/.test(
+        line
+      )
     ),
     false
   );
@@ -298,6 +328,78 @@ test('builds normalized JSON sections for release automation', async () => {
   assert.deepEqual(payload.promotionBlockers, []);
   assert.deepEqual(payload.productionBlockers, []);
   assert.deepEqual(payload.blockers, []);
+});
+
+test('release status uses promotion-ready OpenPath risk checks for low-risk diffs', async () => {
+  const harness = createCommandHarness({
+    originSha: CLASSROOM_SHA,
+    openpathChangedFiles: ['docs/INDEX.md'],
+  });
+  const status = await buildReleaseStatus({
+    argv: ['--sha', CLASSROOM_SHA],
+    env: {
+      ...process.env,
+      RELEASE_STATUS_TEST_MODE: '1',
+      RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
+      RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
+    },
+    runCommand: harness.runCommand,
+  });
+
+  assert.deepEqual(
+    status.openPath.requiredChecks.map((check) => check.name),
+    ['CI Success']
+  );
+  assert.deepEqual(status.blockers, []);
+});
+
+test('release status uses promotion-ready OpenPath risk checks for endpoint diffs', async () => {
+  const harness = createCommandHarness({
+    originSha: CLASSROOM_SHA,
+    openpathChangedFiles: ['windows/OpenPath.psm1', 'linux/lib/firefox-policy.sh'],
+  });
+  const status = await buildReleaseStatus({
+    argv: ['--sha', CLASSROOM_SHA],
+    env: {
+      ...process.env,
+      RELEASE_STATUS_TEST_MODE: '1',
+      RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
+      RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
+    },
+    runCommand: harness.runCommand,
+  });
+
+  assert.deepEqual(
+    status.openPath.requiredChecks.map((check) => check.name),
+    ['CI Success', 'E2E Summary', 'Installer Contracts Success']
+  );
+  assert.deepEqual(status.blockers, []);
+});
+
+test('release status uses promotion-ready OpenPath risk checks for release infrastructure diffs', async () => {
+  const harness = createCommandHarness({
+    originSha: CLASSROOM_SHA,
+    openpathChangedFiles: ['.github/workflows/release.yml'],
+  });
+  const status = await buildReleaseStatus({
+    argv: ['--sha', CLASSROOM_SHA],
+    env: {
+      ...process.env,
+      RELEASE_STATUS_TEST_MODE: '1',
+      RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
+      RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
+    },
+    runCommand: harness.runCommand,
+  });
+
+  assert.deepEqual(
+    status.openPath.requiredChecks.map((check) => check.name),
+    ['CI Success', 'Publish Prerelease to APT Repository / Publish to APT Repository (unstable)']
+  );
+  assert.deepEqual(status.blockers, []);
 });
 
 test('derives stable release blockers from release status evidence', async () => {
@@ -470,6 +572,10 @@ const line = args.join(' ');
 if (line === 'rev-parse HEAD') console.log('${CLASSROOM_SHA}');
 else if (line === 'rev-parse origin/main') console.log('${CLASSROOM_SHA}');
 else if (line === 'rev-parse HEAD:upstream/openpath') console.log('${OPENPATH_SHA}');
+else if (line === 'tag --sort=-creatordate') console.log('v1.2.301');
+else if (line === 'rev-parse v1.2.301:upstream/openpath') console.log('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+else if (line === 'ls-remote --tags --refs origin v*') console.log('aaa\\trefs/tags/v1.2.301');
+else if (line === '-C upstream/openpath diff --name-only bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ${OPENPATH_SHA}') console.log('docs/INDEX.md');
 else if (line === 'remote get-url origin') console.log('git@github.com:BalejosG/ClassroomPath.git');
 else { console.error('Unexpected git ' + line); process.exit(1); }
 `,

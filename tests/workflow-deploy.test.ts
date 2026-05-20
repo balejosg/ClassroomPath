@@ -265,6 +265,26 @@ describe('Deploy workflow contracts', () => {
     assertNightlyStagingCandidateGate(workflow, workflowText);
   });
 
+  test('nightly promotion readiness has enough time and OpenPath dispatch credentials', () => {
+    const workflow = readWorkflow('.github/workflows/nightly-staging-candidate.yml');
+    const job = findWorkflowJob(workflow, 'verify-production-promotion-readiness');
+    const tokenStep = findWorkflowStepByName(job, 'Create OpenPath dispatch token');
+    const verifyStep = findWorkflowStepByName(job, 'Verify production promotion readiness');
+
+    assert.equal(job['timeout-minutes'], 90);
+    assert.equal(tokenStep.uses, 'actions/create-github-app-token@v3');
+    assert.equal(tokenStep.with?.['permission-actions'], 'write');
+    assert.equal(tokenStep.with?.['permission-contents'], 'write');
+    assert.equal(tokenStep.with?.owner, '${{ github.repository_owner }}');
+    assert.equal(tokenStep.with?.repositories, 'openpath');
+    assert.equal(
+      verifyStep.env?.OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN,
+      '${{ steps.openpath-dispatch-token.outputs.token }}'
+    );
+    assert.equal(verifyStep.env?.OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH, true);
+    assert.equal(verifyStep.env?.OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS, 2400);
+  });
+
   test('manual current staging promotion workflow creates a tag and leaves deploy to deploy.yml', () => {
     const workflow = readWorkflow('.github/workflows/promote-current-staging-candidate.yml');
     const workflowText = readText('.github/workflows/promote-current-staging-candidate.yml');

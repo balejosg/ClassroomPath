@@ -11,6 +11,8 @@ import {
 } from '../scripts/lib/openpath-ci-checks.mjs';
 import {
   fetchCheckRuns,
+  dispatchMissingOpenPathRequiredChecks,
+  ensureOpenPathEvidenceRef,
   parseWaitOptions,
   runOpenPathRequiredChecksCommand,
 } from '../scripts/openpath-required-checks.mjs';
@@ -92,6 +94,8 @@ async function runOpenPathRequiredChecks(
     OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS: process.env.OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS,
     OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS:
       process.env.OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS,
+    OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH: process.env.OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH,
+    OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN: process.env.OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN,
   };
   let stdout = '';
   let stderr = '';
@@ -284,6 +288,10 @@ describe('openpath-required-checks CLI report output', () => {
 });
 
 describe('evaluateRequiredChecks', () => {
+  it('includes the hosted Windows Pester job in CI Success recovery', () => {
+    assert.ok(OPENPATH_CI_JOB_NAMES.includes('Windows Agent Tests (Pester, hosted)'));
+  });
+
   it('accepts the latest success for every required check', () => {
     const result = evaluateRequiredChecks({
       checkRuns: [
@@ -406,6 +414,7 @@ describe('evaluateRequiredChecks', () => {
         buildCompletedWorkflowJob('Detect Relevant Changes'),
         buildCompletedWorkflowJob('Linux Agent Tests (BATS)'),
         buildCompletedWorkflowJob('Delivery Contracts (Node)'),
+        buildCompletedWorkflowJob('Windows Agent Tests (Pester, hosted)'),
         buildCompletedWorkflowJob('Windows Agent Tests (Pester)', {
           status: 'in_progress',
           conclusion: null,
@@ -446,7 +455,10 @@ describe('evaluateRequiredChecks', () => {
     const result = evaluateRequiredChecks({
       checkRuns: fixture.checkRuns,
       requiredChecks: ['CI Success'],
-      workflowJobs: fixture.workflowJobs,
+      workflowJobs: [
+        ...fixture.workflowJobs,
+        buildCompletedWorkflowJob('Windows Agent Tests (Pester, hosted)'),
+      ],
     });
 
     assert.equal(result.ok, true);
@@ -462,6 +474,7 @@ describe('evaluateRequiredChecks', () => {
         buildCompletedWorkflowJob('Detect Relevant Changes'),
         buildCompletedWorkflowJob('Linux Agent Tests (BATS)'),
         buildCompletedWorkflowJob('Delivery Contracts (Node)'),
+        buildCompletedWorkflowJob('Windows Agent Tests (Pester, hosted)'),
         buildCompletedWorkflowJob('Windows Agent Tests (Pester)', {
           status: 'completed',
           conclusion: 'failure',
@@ -499,6 +512,7 @@ describe('evaluateRequiredChecks', () => {
         buildCompletedWorkflowJob('Detect Relevant Changes'),
         buildCompletedWorkflowJob('Linux Agent Tests (BATS)'),
         buildCompletedWorkflowJob('Delivery Contracts (Node)'),
+        buildCompletedWorkflowJob('Windows Agent Tests (Pester, hosted)'),
         buildCompletedWorkflowJob('Windows Agent Tests (Pester)', {
           status: 'in_progress',
           conclusion: null,
@@ -522,6 +536,215 @@ describe('evaluateRequiredChecks', () => {
     assert.equal(result.ok, false);
     assert.deepEqual(result.missing, ['CI Success']);
     assert.deepEqual(result.failing, []);
+  });
+});
+
+describe('OpenPath required check auto-dispatch', () => {
+  const sha = '4d35dc2900000000000000000000000000000000';
+  const repo = 'balejosg/openpath';
+
+  it('creates a durable release-evidence ref from the target SHA when it is missing', async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; method: string; body?: unknown }> = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({
+        url,
+        method: init?.method ?? 'GET',
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+
+      if (
+        url.endsWith('/git/ref/heads/release-evidence/4d35dc2900000000000000000000000000000000')
+      ) {
+        return {
+          ok: false,
+          status: 404,
+          text: async () => 'not found',
+        } as Response;
+      }
+
+      return buildFetchResponse({
+        ref: 'refs/heads/release-evidence/4d35dc2900000000000000000000000000000000',
+      });
+    }) as typeof fetch;
+
+    try {
+      const ref = await ensureOpenPathEvidenceRef({
+        repo,
+        sha,
+        token: 'dispatch-token',
+      });
+
+      assert.equal(ref, 'release-evidence/4d35dc2900000000000000000000000000000000');
+      assert.deepEqual(
+        requests.map((request) => request.method),
+        ['GET', 'POST']
+      );
+      assert.deepEqual(requests[1]?.body, {
+        ref: `refs/heads/release-evidence/${sha}`,
+        sha,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('fails closed when the evidence ref cannot be read', async () => {
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async () =>
+      ({
+        ok: false,
+        status: 403,
+        text: async () => 'forbidden',
+      }) as Response) as typeof fetch;
+
+    try {
+      await assert.rejects(
+        () =>
+          ensureOpenPathEvidenceRef({
+            repo,
+            sha,
+            token: 'dispatch-token',
+          }),
+        /OpenPath evidence ref lookup failed with 403/
+      );
+      await assert.rejects(
+        () =>
+          ensureOpenPathEvidenceRef({
+            repo,
+            sha,
+            token: 'dispatch-token',
+          }),
+        /OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN has actions:write and contents:write/
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('dispatches known missing checks once and reuses an existing run for the same SHA/workflow', async () => {
+    const originalFetch = globalThis.fetch;
+    const dispatches: unknown[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes('/actions/workflows/ci.yml/runs')) {
+        return buildFetchResponse({
+          workflow_runs: [
+            {
+              id: 101,
+              head_sha: sha,
+              status: 'in_progress',
+            },
+          ],
+        });
+      }
+
+      if (url.includes('/actions/workflows/e2e-tests.yml/runs')) {
+        return buildFetchResponse({ workflow_runs: [] });
+      }
+
+      if (url.includes('/git/ref/heads/release-evidence/')) {
+        return buildFetchResponse({
+          ref: `refs/heads/release-evidence/${sha}`,
+        });
+      }
+
+      if (url.includes('/actions/workflows/e2e-tests.yml/dispatches')) {
+        dispatches.push(JSON.parse(String(init?.body)));
+        return {
+          ok: true,
+          status: 204,
+          json: async () => ({}),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected URL ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const result = await dispatchMissingOpenPathRequiredChecks({
+        repo,
+        sha,
+        token: 'dispatch-token',
+        missingChecks: ['CI Success', 'E2E Summary'],
+      });
+
+      assert.deepEqual(result.dispatched, ['E2E Summary']);
+      assert.deepEqual(result.reused, ['CI Success']);
+      assert.deepEqual(dispatches, [
+        {
+          ref: `release-evidence/${sha}`,
+          inputs: {
+            platform: 'all',
+            suite: 'all',
+            student_policy_sse_group: 'auto',
+          },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('fails closed for unknown required checks', async () => {
+    await assert.rejects(
+      () =>
+        dispatchMissingOpenPathRequiredChecks({
+          repo,
+          sha,
+          token: 'dispatch-token',
+          missingChecks: ['Unexpected Check'],
+        }),
+      /No OpenPath workflow dispatch mapping for required check: Unexpected Check/
+    );
+  });
+
+  it('fails closed with an actionable permission message when workflow dispatch is denied', async () => {
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.includes('/actions/workflows/installer-contracts.yml/runs')) {
+        return buildFetchResponse({ workflow_runs: [] });
+      }
+
+      if (url.includes('/git/ref/heads/release-evidence/')) {
+        return buildFetchResponse({
+          ref: `refs/heads/release-evidence/${sha}`,
+        });
+      }
+
+      if (url.includes('/actions/workflows/installer-contracts.yml/dispatches')) {
+        return {
+          ok: false,
+          status: 403,
+          text: async () => 'Resource not accessible by integration',
+        } as Response;
+      }
+
+      throw new Error(`Unexpected URL ${url}`);
+    }) as typeof fetch;
+
+    try {
+      await assert.rejects(
+        () =>
+          dispatchMissingOpenPathRequiredChecks({
+            repo,
+            sha,
+            token: 'dispatch-token',
+            missingChecks: ['Installer Contracts Success'],
+          }),
+        /OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN has actions:write and contents:write/
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
@@ -686,6 +909,7 @@ describe('parseWaitOptions', () => {
       timeoutSeconds: 600,
       intervalSeconds: 10,
       failFast: true,
+      autoDispatch: false,
     });
   });
 
@@ -695,11 +919,13 @@ describe('parseWaitOptions', () => {
         OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS: '120',
         OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS: '5',
         OPENPATH_REQUIRED_CHECKS_FAIL_FAST: 'false',
+        OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH: 'true',
       }),
       {
         timeoutSeconds: 120,
         intervalSeconds: 5,
         failFast: false,
+        autoDispatch: true,
       }
     );
   });

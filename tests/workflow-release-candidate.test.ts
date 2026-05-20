@@ -259,6 +259,9 @@ describe('Release candidate workflow contracts', () => {
     const waitForOpenPathAptPublishStep = verifyOpenPathPrereleaseAptJob?.steps?.find(
       (step) => step.name === 'Wait for OpenPath prerelease APT publish'
     );
+    const openPathDispatchTokenStep = verifyOpenPathPrereleaseAptJob?.steps?.find(
+      (step) => step.name === 'Create OpenPath dispatch token'
+    );
     const waitForOpenPathAptPublishRun = waitForOpenPathAptPublishStep?.run ?? '';
     const waitForOpenPathAptPublishEnv = waitForOpenPathAptPublishStep?.env ?? {};
     const deriveStepNames =
@@ -279,6 +282,16 @@ describe('Release candidate workflow contracts', () => {
       waitForOpenPathAptPublishEnv['OPENPATH_PRERELEASE_RECOVERY_MODE'],
       'rerun-failed-once'
     );
+    assert.equal(openPathDispatchTokenStep?.uses, 'actions/create-github-app-token@v3');
+    assert.equal(openPathDispatchTokenStep?.with?.['permission-actions'], 'write');
+    assert.equal(openPathDispatchTokenStep?.with?.['permission-contents'], 'write');
+    assert.equal(openPathDispatchTokenStep?.with?.owner, '${{ github.repository_owner }}');
+    assert.equal(openPathDispatchTokenStep?.with?.repositories, 'openpath');
+    assert.equal(
+      waitForOpenPathAptPublishEnv['OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN'],
+      '${{ steps.openpath-dispatch-token.outputs.token }}'
+    );
+    assert.equal(waitForOpenPathAptPublishEnv['OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH'], true);
     assert.deepEqual(
       normalizeNeeds(jobs['derive-release-image-refs']?.needs).sort(),
       ['detect-release-candidate-components', 'resolve-previous-release-candidate-manifest'].sort()

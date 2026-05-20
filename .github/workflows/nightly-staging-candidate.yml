@@ -267,7 +267,7 @@ jobs:
   verify-production-promotion-readiness:
     name: Verify production promotion readiness
     runs-on: [self-hosted, Linux, X64, proxmox, classroompath]
-    timeout-minutes: 30
+    timeout-minutes: 90
     needs:
       [
         deploy-current-main-to-staging,
@@ -297,6 +297,17 @@ jobs:
           ref: main
           fetch-depth: 0
           submodules: recursive
+
+      - name: Create OpenPath dispatch token
+        id: openpath-dispatch-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CLASSROOMPATH_PROMOTION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CLASSROOMPATH_PROMOTION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: openpath
+          permission-actions: write
+          permission-contents: write
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
@@ -366,6 +377,8 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH: true
+          OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN: ${{ steps.openpath-dispatch-token.outputs.token }}
           OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS: 2400
           OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS: 10
           PROMOTION_REPORT_JSON_PATH: ${{ runner.temp }}/promotion-ready/report.json

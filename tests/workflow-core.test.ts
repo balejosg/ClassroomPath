@@ -348,6 +348,7 @@ describe('Workflow core contracts', () => {
     const syncJob = findWorkflowJob(workflow, 'sync');
     const resolveModeStep = findWorkflowStepByName(syncJob, 'Resolve sync mode');
     const verifyStep = findWorkflowStepByName(syncJob, 'Verify OpenPath upstream checks');
+    const tokenStep = findWorkflowStepByName(syncJob, 'Create OpenPath dispatch token');
     const directPushStep = findWorkflowStepByName(syncJob, 'Commit and push direct sync');
     const pullRequestStep = findWorkflowStepByName(syncJob, 'Open Pull Request');
     const hygieneStep = findWorkflowStepByName(syncJob, 'Report stale scheduled workflow runs');
@@ -358,6 +359,16 @@ describe('Workflow core contracts', () => {
 
     assert.equal(workflow.on?.schedule?.[0]?.cron, '*/15 * * * *');
     assert.equal(workflow.permissions?.actions, 'read');
+    assert.equal(tokenStep.uses, 'actions/create-github-app-token@v3');
+    assert.equal(tokenStep.with?.['permission-actions'], 'write');
+    assert.equal(tokenStep.with?.['permission-contents'], 'write');
+    assert.equal(tokenStep.with?.owner, '${{ github.repository_owner }}');
+    assert.equal(tokenStep.with?.repositories, 'openpath');
+    assert.equal(
+      verifyStep.env?.OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN,
+      '${{ steps.openpath-dispatch-token.outputs.token }}'
+    );
+    assert.equal(verifyStep.env?.OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH, true);
     assert.match(String(hygieneStep.run ?? ''), /ci-workflow-hygiene\.mjs report-stale-runs/);
     assert.equal(hygieneStep.env?.CI_WORKFLOW_HYGIENE_MODE, 'dry-run');
     assert.equal(hygieneStep.env?.CI_WORKFLOW_HYGIENE_STALE_AFTER, '90m');

@@ -139,11 +139,25 @@ jobs:
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
 
+      - name: Create OpenPath dispatch token
+        id: openpath-dispatch-token
+        if: needs.detect-release-candidate-components.outputs.openpath_linux_agent_required == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CLASSROOMPATH_PROMOTION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CLASSROOMPATH_PROMOTION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: openpath
+          permission-actions: write
+          permission-contents: write
+
       - name: Wait for OpenPath prerelease APT publish
         env:
           GITHUB_TOKEN: ${{ github.token }}
           OPENPATH_SHA: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
           OPENPATH_REQUIRED_CHECKS: Publish Prerelease to APT Repository / Publish to APT Repository (unstable)
+          OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH: true
+          OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN: ${{ steps.openpath-dispatch-token.outputs.token }}
           OPENPATH_PRERELEASE_RECOVERY_MODE: rerun-failed-once
         run: |
           set -euo pipefail
