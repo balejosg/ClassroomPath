@@ -27,7 +27,11 @@ import { useClassroomPathT } from './i18n/classroompath-i18n';
 
 interface SelectedGroup extends SelectedGroupState {}
 
-function ClassroomPathShellContent() {
+type ClassroomPathShellProps = {
+  topBanner?: React.ReactNode;
+};
+
+function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const pathname = normalizeShellPathname(location.pathname);
@@ -99,7 +103,16 @@ function ClassroomPathShellContent() {
           title={getShellTitle({ activeTab, admin, selectedGroup, t })}
         />
 
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        {topBanner ? (
+          <div
+            data-testid="classroompath-shell-banner"
+            className="border-b border-slate-200 bg-white px-4 py-3 md:px-8"
+          >
+            <div className="mx-auto max-w-7xl">{topBanner}</div>
+          </div>
+        ) : null}
+
+        <main data-testid="classroompath-shell-main" className="flex-1 overflow-y-auto p-6 md:p-8">
           <div className="mx-auto max-w-7xl">
             <Routes>
               <Route path="/" element={renderDashboard()} />
@@ -151,6 +164,6 @@ function ClassroomPathShellContent() {
   );
 }
 
-export default function ClassroomPathShell() {
-  return <ClassroomPathShellContent />;
+export default function ClassroomPathShell(props: ClassroomPathShellProps) {
+  return <ClassroomPathShellContent topBanner={props.topBanner} />;
 }

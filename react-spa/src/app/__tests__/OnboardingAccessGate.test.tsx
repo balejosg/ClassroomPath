@@ -261,6 +261,22 @@ describe('OnboardingAccessGate', () => {
     expect(screen.getByText('Authenticated Shell')).toBeInTheDocument();
   });
 
+  it('does not render billing chrome outside authenticated content', () => {
+    const { container } = renderGate({
+      status: createStatus({
+        billing: activeBilling({
+          status: 'grace_period',
+          graceEndsAt: '2026-04-20T00:00:00.000Z',
+        }),
+      }),
+      authenticatedContent: <div>Authenticated Shell</div>,
+    });
+
+    expect(screen.getByText('Authenticated Shell')).toBeInTheDocument();
+    expect(screen.queryByText(/remains temporarily active/i)).not.toBeInTheDocument();
+    expect(container.querySelector('.mb-4')).not.toBeInTheDocument();
+  });
+
   it('renders the platform admin panel for allowlisted users without tenant membership', () => {
     renderGate({
       status: createStatus({

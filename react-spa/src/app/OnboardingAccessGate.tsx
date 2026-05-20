@@ -7,7 +7,6 @@ import type {
 import { Onboarding } from '../views/Onboarding';
 import { Waiting } from '../views/Waiting';
 import { PlatformAdminPanel } from '../components/PlatformAdminPanel';
-import { BillingStatusBanner } from '../components/BillingStatusBanner';
 import { useClassroomPathT, type ClassroomPathT } from '../i18n/classroompath-i18n';
 
 type OnboardingAccessGateProps = {
@@ -198,10 +197,5 @@ export function OnboardingAccessGate(props: OnboardingAccessGateProps) {
     );
   }
 
-  return (
-    <>
-      <BillingStatusBanner billing={props.status.billing} />
-      {props.authenticatedContent}
-    </>
-  );
+  return <>{props.authenticatedContent}</>;
 }

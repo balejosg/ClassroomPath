@@ -1,3 +1,4 @@
+import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
@@ -116,10 +117,10 @@ vi.mock('../views/DomainRequestApprovalPage', () => ({
 
 import ClassroomPathShell from '../ClassroomPathShell';
 
-function renderShell() {
+function renderShell(props?: React.ComponentProps<typeof ClassroomPathShell>) {
   return render(
     <BrowserRouter>
-      <ClassroomPathShell />
+      <ClassroomPathShell {...props} />
     </BrowserRouter>
   );
 }
@@ -136,6 +137,13 @@ describe('ClassroomPathShell', () => {
 
     expect(screen.getByRole('heading', { name: 'User Administration' })).toBeInTheDocument();
     expect(screen.getByText('Organization Users View')).toBeInTheDocument();
+  });
+
+  it('renders a top banner between the header and main content', () => {
+    renderShell({ topBanner: <div>Billing alert</div> });
+
+    expect(screen.getByTestId('classroompath-shell-banner')).toHaveTextContent('Billing alert');
+    expect(screen.getByTestId('classroompath-shell-main')).toBeInTheDocument();
   });
 
   it('updates the active route and title when navigating through the sidebar', () => {

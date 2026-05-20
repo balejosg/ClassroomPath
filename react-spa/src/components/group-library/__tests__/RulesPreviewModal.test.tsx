@@ -60,6 +60,39 @@ describe('RulesPreviewModal', () => {
     expect(onPrevPage).not.toHaveBeenCalled();
   });
 
+  it('renders through an accessible localized dialog shell', () => {
+    const onClose = vi.fn();
+
+    render(
+      <RulesPreviewModal
+        title="Vista previa"
+        subtitle="Solo lectura"
+        search=""
+        onSearchChange={() => undefined}
+        primaryActionLabel="Clone"
+        onPrimaryAction={() => undefined}
+        primaryActionDisabled={false}
+        onClose={onClose}
+        isLoading={false}
+        page={{ total: 0, hasMore: false, rules: [] }}
+        offset={0}
+        onPrevPage={() => undefined}
+        onNextPage={() => undefined}
+        emptyText="Sin reglas"
+        t={tEs}
+      />
+    );
+
+    expect(screen.getByRole('dialog', { name: 'Vista previa' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument();
+    expect(screen.getByTestId('rules-preview-modal-controls')).toBeInTheDocument();
+    expect(screen.getByTestId('rules-preview-modal-body')).toHaveClass('overflow-y-auto');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('shows a loading state while rules are being fetched', () => {
     render(
       <RulesPreviewModal

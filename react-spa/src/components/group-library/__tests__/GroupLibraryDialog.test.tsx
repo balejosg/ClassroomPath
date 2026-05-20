@@ -64,6 +64,21 @@ function renderDialog(
 }
 
 describe('GroupLibraryDialog', () => {
+  it('renders through an accessible localized dialog shell', () => {
+    const onClose = vi.fn();
+
+    renderDialog('library', { onClose });
+
+    expect(screen.getByRole('dialog', { name: /Biblioteca de políticas/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument();
+    expect(screen.getByTestId('group-library-dialog-controls')).toBeInTheDocument();
+    expect(screen.getByTestId('group-library-dialog-body')).toHaveClass('overflow-y-auto');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('renders the library tab and wires preview plus clone actions', () => {
     const onPreviewGroup = vi.fn();
     const onCloneGroup = vi.fn();

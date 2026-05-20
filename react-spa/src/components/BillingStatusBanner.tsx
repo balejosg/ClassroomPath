@@ -34,7 +34,7 @@ export function BillingStatusBanner({ billing }: { billing: BillingInfo | null |
 
   if (billing.status === 'grace_period') {
     return (
-      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         {t('billing.banner.grace')}{' '}
         <strong>{formatDate(billing.graceEndsAt, locale) ?? t('app.common.pending')}</strong>.
       </div>
@@ -43,7 +43,7 @@ export function BillingStatusBanner({ billing }: { billing: BillingInfo | null |
 
   if (billing.cancelAtPeriodEnd === true) {
     return (
-      <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+      <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
         {t('billing.banner.cancel')}{' '}
         <strong>{formatDate(billing.currentPeriodEnd, locale) ?? t('app.common.pending')}</strong>.
       </div>
@@ -52,7 +52,7 @@ export function BillingStatusBanner({ billing }: { billing: BillingInfo | null |
 
   if (isPilotExpiringSoon(billing)) {
     return (
-      <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+      <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
         {t('billing.banner.pilot', { date: formatDate(billing.expiresAt, locale) ?? '' })}
       </div>
     );

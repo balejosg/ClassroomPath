@@ -28,7 +28,9 @@ describe('BillingStatusBanner', () => {
       />
     );
 
-    expect(screen.getByText(/remains temporarily active/)).toBeInTheDocument();
+    const alert = screen.getByText(/remains temporarily active/);
+    expect(alert).toBeInTheDocument();
+    expect(alert).not.toHaveClass('mb-4');
     expect(screen.getByText('04/20/2026')).toBeInTheDocument();
   });
 

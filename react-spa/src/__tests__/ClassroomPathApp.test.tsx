@@ -165,8 +165,18 @@ vi.mock('../components/GroupLibrary', () => ({
   GroupLibrary: ({ userRole }: { userRole?: string }) => <div>Group Library {userRole}</div>,
 }));
 
+const shellProps: Array<{ topBanner?: React.ReactNode }> = [];
+
 vi.mock('../ClassroomPathShell', () => ({
-  default: () => <div>Shell View</div>,
+  default: (props: { topBanner?: React.ReactNode }) => {
+    shellProps.push(props);
+    return (
+      <div>
+        <div>Shell View</div>
+        {props.topBanner}
+      </div>
+    );
+  },
 }));
 
 import ClassroomPathApp from '../ClassroomPathApp';
@@ -217,6 +227,7 @@ describe('ClassroomPathApp', () => {
     setStandaloneDisplayMode(false);
     window.localStorage.clear();
     window.history.pushState({}, '', '/login');
+    shellProps.length = 0;
   });
 
   it('bootstraps the auth path and updates it while logged out', async () => {
@@ -478,5 +489,39 @@ describe('ClassroomPathApp', () => {
 
     expect(mockAuthMeQuery).toHaveBeenCalledTimes(1);
     expect(mockPersistSession).toHaveBeenCalledWith({ user: { id: 'persisted-user' } });
+  });
+
+  it('passes billing status chrome into the authenticated shell', async () => {
+    mockHasSessionMarker.mockReturnValue(true);
+    mockUseOnboardingStatus.mockReturnValue(
+      makeOnboardingQuery({
+        data: {
+          hasMembership: true,
+          isWaiting: false,
+          organization: { role: 'admin' },
+          platformAdmin: false,
+          billing: {
+            hasActiveEntitlement: true,
+            source: 'stripe',
+            status: 'grace_period',
+            productKind: 'annual',
+            classroomLimit: 12,
+            currentPeriodEnd: null,
+            graceEndsAt: '2026-04-20T00:00:00.000Z',
+            cancelAtPeriodEnd: false,
+            expiresAt: null,
+          },
+        },
+      })
+    );
+
+    render(<ClassroomPathApp />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Shell View')).toBeInTheDocument();
+      expect(screen.getByText(/El centro sigue activo temporalmente/i)).toBeInTheDocument();
+    });
+
+    expect(shellProps.at(-1)?.topBanner).toBeDefined();
   });
 });

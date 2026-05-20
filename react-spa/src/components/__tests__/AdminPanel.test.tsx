@@ -37,13 +37,36 @@ describe('AdminPanel', () => {
     render(<AdminPanel userRole="admin" />);
 
     expect(screen.getByText('2 usuarios esperando aprobación')).toBeInTheDocument();
+    const banner = screen.getByTestId('admin-pending-users-banner');
+    expect(banner).toHaveClass('top-16');
+    expect(banner).not.toHaveClass('top-0');
 
     fireEvent.click(screen.getByRole('button', { name: 'Revisar' }));
 
-    expect(screen.getByText('Solicitudes de acceso')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Solicitudes de acceso' });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveClass('fixed');
+    expect(dialog).toHaveClass('right-0');
+    expect(dialog).toHaveClass('top-16');
     expect(screen.getByText('Pending Users Panel')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar panel' }));
     expect(screen.queryByText('Pending Users Panel')).not.toBeInTheDocument();
+  });
+
+  it('closes the pending users panel with Escape', () => {
+    pendingUsersState = {
+      data: [{ id: 'pending-1' }],
+      isLoading: false,
+    };
+
+    render(<AdminPanel userRole="admin" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar' }));
+    expect(screen.getByRole('dialog', { name: 'Solicitudes de acceso' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Solicitudes de acceso' })).not.toBeInTheDocument();
   });
 });
