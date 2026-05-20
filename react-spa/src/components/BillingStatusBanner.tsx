@@ -1,7 +1,7 @@
 import React from 'react';
 import { useClassroomPathI18n } from '../i18n/classroompath-i18n';
 import type { ProductLocale } from '../openpath/public-i18n';
-type BillingInfo = {
+export type BillingInfo = {
   status: string | null;
   productKind: string | null;
   expiresAt: string | null;
@@ -28,9 +28,21 @@ function isPilotExpiringSoon(billing: BillingInfo): boolean {
   return expiresAt > now && expiresAt - now <= 14 * 24 * 60 * 60 * 1000;
 }
 
+export function shouldShowBillingStatusBanner(
+  billing: BillingInfo | null | undefined
+): billing is BillingInfo {
+  if (!billing) return false;
+
+  return (
+    billing.status === 'grace_period' ||
+    billing.cancelAtPeriodEnd === true ||
+    isPilotExpiringSoon(billing)
+  );
+}
+
 export function BillingStatusBanner({ billing }: { billing: BillingInfo | null | undefined }) {
   const { locale, t } = useClassroomPathI18n();
-  if (!billing) return null;
+  if (!shouldShowBillingStatusBanner(billing)) return null;
 
   if (billing.status === 'grace_period') {
     return (

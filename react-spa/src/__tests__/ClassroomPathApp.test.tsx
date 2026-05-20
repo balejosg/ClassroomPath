@@ -491,6 +491,39 @@ describe('ClassroomPathApp', () => {
     expect(mockPersistSession).toHaveBeenCalledWith({ user: { id: 'persisted-user' } });
   });
 
+  it('does not reserve shell banner chrome for normal active billing states', async () => {
+    mockHasSessionMarker.mockReturnValue(true);
+    mockUseOnboardingStatus.mockReturnValue(
+      makeOnboardingQuery({
+        data: {
+          hasMembership: true,
+          isWaiting: false,
+          organization: { role: 'admin' },
+          platformAdmin: false,
+          billing: {
+            hasActiveEntitlement: true,
+            source: 'stripe',
+            status: 'active',
+            productKind: 'annual',
+            classroomLimit: 12,
+            currentPeriodEnd: null,
+            graceEndsAt: null,
+            cancelAtPeriodEnd: false,
+            expiresAt: null,
+          },
+        },
+      })
+    );
+
+    render(<ClassroomPathApp />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Shell View')).toBeInTheDocument();
+    });
+
+    expect(shellProps.at(-1)?.topBanner).toBeUndefined();
+  });
+
   it('passes billing status chrome into the authenticated shell', async () => {
     mockHasSessionMarker.mockReturnValue(true);
     mockUseOnboardingStatus.mockReturnValue(

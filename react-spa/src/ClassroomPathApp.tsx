@@ -9,7 +9,10 @@ import { OnboardingAccessGate } from './app/OnboardingAccessGate';
 import { useClassroomPathBoot } from './app/use-classroom-path-boot';
 import { BillingCancel } from './views/BillingCancel';
 import { BillingSuccess } from './views/BillingSuccess';
-import { BillingStatusBanner } from './components/BillingStatusBanner';
+import {
+  BillingStatusBanner,
+  shouldShowBillingStatusBanner,
+} from './components/BillingStatusBanner';
 import { ClassroomPathI18nProvider, useClassroomPathT } from './i18n/classroompath-i18n';
 import './index.css';
 
@@ -55,6 +58,10 @@ function AppContent() {
     return <BillingCancel onBack={boot.onBillingCancelBack} onLogout={boot.onBillingLogout} />;
   }
 
+  const topBanner = shouldShowBillingStatusBanner(boot.status?.billing) ? (
+    <BillingStatusBanner billing={boot.status.billing} />
+  ) : undefined;
+
   return (
     <OnboardingAccessGate
       status={boot.status}
@@ -73,7 +80,7 @@ function AppContent() {
         <React.Suspense fallback={<FullScreenLoader label={t('app.loader.panel')} />}>
           <AdminPanel userRole={boot.status?.organization?.role} />
           <GroupLibrary userRole={boot.status?.organization?.role} />
-          <ClassroomPathShell topBanner={<BillingStatusBanner billing={boot.status?.billing} />} />
+          <ClassroomPathShell topBanner={topBanner} />
         </React.Suspense>
       }
     />
