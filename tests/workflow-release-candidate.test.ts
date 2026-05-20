@@ -207,36 +207,11 @@ describe('Release candidate workflow contracts', () => {
     const workflowText = readText('.github/workflows/release-candidate-images.yml');
 
     assert.ok(workflow.on?.push?.branches?.includes('main'));
-    assert.deepEqual(workflow.on?.push?.paths, [
-      '.github/actions/build-release-candidate-image/**',
-      '.github/actions/publish-release-candidate-manifest/**',
-      '.github/actions/setup-docker-build/**',
-      '.github/actions/setup-node/**',
-      '.github/workflows/release-candidate-images.yml',
-      '.github/workflows/reusable-release-candidate-image-family.yml',
-      'api/**',
-      'config/**',
-      'docker/**',
-      'package*.json',
-      'react-spa/**',
-      'scripts/detect-release-candidate-components.sh',
-      'scripts/deploy-staging-local.sh',
-      'scripts/fetch-release-candidate-diff-base.sh',
-      'scripts/lib/release-evidence*.mjs',
-      'scripts/lib/release-candidate-components.mjs',
-      'scripts/lib/release-orchestration.mjs',
-      'scripts/lib/staging-deploy-local-release.sh',
-      'scripts/openpath-required-checks.mjs',
-      'scripts/release-promote.mjs',
-      'scripts/release-images.mjs',
-      'scripts/resolve-latest-verifier-image.mjs',
-      'scripts/resolve-openpath-linux-agent-version.mjs',
-      'scripts/tag-production-release.sh',
-      'scripts/verify-production-promotion-ready.sh',
-      'scripts/wait-for-release-candidate.mjs',
-      'upstream/openpath',
-      'upstream/openpath/**',
-    ]);
+    assert.equal(
+      workflow.on?.push?.paths,
+      undefined,
+      'every main SHA needs a release-candidate manifest so unattended nightly can resolve it'
+    );
     assert.ok(workflowText.includes('workflow_dispatch:'));
     assert.ok(jobs['derive-release-image-refs']);
     const deriveOpenPathShaRun =
