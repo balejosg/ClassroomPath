@@ -163,10 +163,7 @@ function assertNightlyStagingCandidateGate(
     /deploy-targets\.mjs get staging publicUrl/
   );
   assert.match(String(persistStep.run ?? ''), /persist-staging-windows-bootstrap-canary\.sh/);
-  assert.match(
-    String(persistStep.env?.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA ?? ''),
-    /needs\.deploy-current-main-to-staging\.outputs\.sha/
-  );
+  assert.equal(persistStep.env?.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA, '${{ github.sha }}');
   assert.equal(
     persistStep.env?.STAGING_HOST,
     '${{ secrets.STAGING_DEPLOY_LAN_HOST || secrets.STAGING_DEPLOY_HOST }}'
@@ -253,6 +250,13 @@ describe('Deploy workflow contracts', () => {
     assert.ok(!workflowText.includes('promote:production'));
     assert.ok(!workflowText.includes('deploy:production'));
     assert.ok(!workflowText.includes('deploy-production-remote.sh'));
+
+    const persistJob = findWorkflowJob(workflow, 'persist-windows-staging-bootstrap-canary');
+    const persistStep = findWorkflowStepByName(
+      persistJob,
+      'Persist canary evidence to staging release state'
+    );
+    assert.equal(persistStep.env?.STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA, '${{ github.sha }}');
     assertOpenPathSubmoduleResetBeforeRecursiveCheckout(
       '.github/workflows/nightly-staging-candidate.yml',
       'deploy-current-main-to-staging'

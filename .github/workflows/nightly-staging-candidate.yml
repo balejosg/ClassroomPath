@@ -258,7 +258,7 @@ jobs:
           STAGING_PORT: ${{ secrets.STAGING_DEPLOY_LAN_PORT || secrets.STAGING_DEPLOY_PORT }}
           STAGING_USER: ${{ secrets.STAGING_DEPLOY_USER }}
           STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT: ${{ needs.windows-staging-bootstrap-canary.outputs.canary_result }}
-          STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA: ${{ needs.deploy-current-main-to-staging.outputs.sha }}
+          STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA: ${{ github.sha }}
           STAGING_WINDOWS_BOOTSTRAP_CANARY_RUN_ID: ${{ github.run_id }}
           STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_ID: ${{ needs.windows-staging-bootstrap-canary.outputs.failure_boundary_id || 'none' }}
           STAGING_WINDOWS_BOOTSTRAP_CANARY_FAILURE_BOUNDARY_MESSAGE: ${{ needs.windows-staging-bootstrap-canary.outputs.failure_boundary_message || 'Windows staging bootstrap canary completed successfully.' }}
