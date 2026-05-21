@@ -31,16 +31,41 @@ type ClassroomPathShellProps = {
   topBanner?: React.ReactNode;
 };
 
+function cx(...classes: Array<string | false | null | undefined>): string {
+  return classes.filter(Boolean).join(' ');
+}
+
 function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const pathname = normalizeShellPathname(location.pathname);
   const activeTab = getTabFromPathname(pathname);
+  const isClassroomsView = activeTab === 'classrooms';
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<SelectedGroup | null>(null);
   const [pendingSelectedClassroomId, setPendingSelectedClassroomId] = useState<string | null>(null);
   const admin = isAdmin();
   const t = useClassroomPathT();
+
+  const shellClassName = cx(
+    'flex min-h-screen bg-slate-50 font-sans text-slate-900',
+    isClassroomsView ? 'md:h-screen md:overflow-hidden' : ''
+  );
+
+  const contentShellClassName = cx(
+    'flex min-h-screen flex-1 flex-col md:ml-64',
+    isClassroomsView ? 'md:h-full md:min-h-0 md:overflow-hidden' : ''
+  );
+
+  const mainClassName = cx(
+    'flex-1 p-6 md:p-8',
+    isClassroomsView ? 'overflow-y-auto md:min-h-0 md:overflow-hidden' : 'overflow-y-auto'
+  );
+
+  const contentWrapperClassName = cx(
+    'mx-auto max-w-7xl',
+    isClassroomsView ? 'md:h-full md:min-h-0' : ''
+  );
 
   const navigateToTab = (tab: AppTab) => {
     setPendingSelectedClassroomId(null);
@@ -82,7 +107,7 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
   );
 
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
+    <div data-testid="classroompath-shell-root" className={shellClassName}>
       <Sidebar
         activeTab={activeTab}
         setActiveTab={(tab) => navigateToTab(tab as AppTab)}
@@ -97,7 +122,7 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
         />
       ) : null}
 
-      <div className="flex min-h-screen flex-1 flex-col md:ml-64">
+      <div data-testid="classroompath-shell-content" className={contentShellClassName}>
         <Header
           onMenuClick={() => setSidebarOpen((current) => !current)}
           title={getShellTitle({ activeTab, admin, selectedGroup, t })}
@@ -112,8 +137,11 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
           </div>
         ) : null}
 
-        <main data-testid="classroompath-shell-main" className="flex-1 overflow-y-auto p-6 md:p-8">
-          <div className="mx-auto max-w-7xl">
+        <main data-testid="classroompath-shell-main" className={mainClassName}>
+          <div
+            data-testid="classroompath-shell-content-wrapper"
+            className={contentWrapperClassName}
+          >
             <Routes>
               <Route path="/" element={renderDashboard()} />
               <Route path="/dashboard" element={<Navigate replace to="/" />} />

@@ -146,6 +146,56 @@ describe('ClassroomPathShell', () => {
     expect(screen.getByTestId('classroompath-shell-main')).toBeInTheDocument();
   });
 
+  it('applies desktop viewport containment on the classrooms route', () => {
+    window.history.pushState({}, '', '/classrooms');
+
+    renderShell();
+
+    expect(screen.getByTestId('classroompath-shell-root')).toHaveClass(
+      'md:h-screen',
+      'md:overflow-hidden'
+    );
+    expect(screen.getByTestId('classroompath-shell-content')).toHaveClass(
+      'md:h-full',
+      'md:min-h-0',
+      'md:overflow-hidden'
+    );
+    expect(screen.getByTestId('classroompath-shell-main')).toHaveClass(
+      'overflow-y-auto',
+      'md:min-h-0',
+      'md:overflow-hidden'
+    );
+    expect(screen.getByTestId('classroompath-shell-content-wrapper')).toHaveClass(
+      'md:h-full',
+      'md:min-h-0'
+    );
+  });
+
+  it('keeps non-classrooms routes outside desktop viewport containment', () => {
+    window.history.pushState({}, '', '/users');
+
+    renderShell();
+
+    expect(screen.getByTestId('classroompath-shell-root')).not.toHaveClass(
+      'md:h-screen',
+      'md:overflow-hidden'
+    );
+    expect(screen.getByTestId('classroompath-shell-content')).not.toHaveClass(
+      'md:h-full',
+      'md:min-h-0',
+      'md:overflow-hidden'
+    );
+    expect(screen.getByTestId('classroompath-shell-main')).toHaveClass('overflow-y-auto');
+    expect(screen.getByTestId('classroompath-shell-main')).not.toHaveClass(
+      'md:min-h-0',
+      'md:overflow-hidden'
+    );
+    expect(screen.getByTestId('classroompath-shell-content-wrapper')).not.toHaveClass(
+      'md:h-full',
+      'md:min-h-0'
+    );
+  });
+
   it('updates the active route and title when navigating through the sidebar', () => {
     renderShell();
 
