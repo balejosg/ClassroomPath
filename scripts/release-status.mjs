@@ -438,10 +438,18 @@ function parseCheckRuns(payload) {
   return Array.isArray(payload?.check_runs) ? payload.check_runs : [];
 }
 
+function parseCheckRunTimestamp(checkRun) {
+  const timestamp = Date.parse(checkRun?.completed_at ?? checkRun?.started_at ?? '');
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
 function summarizeRequiredChecks(checkRuns, requiredChecks) {
   const latestByName = new Map();
   for (const checkRun of checkRuns) {
-    latestByName.set(checkRun.name, checkRun);
+    const previous = latestByName.get(checkRun.name);
+    if (!previous || parseCheckRunTimestamp(checkRun) >= parseCheckRunTimestamp(previous)) {
+      latestByName.set(checkRun.name, checkRun);
+    }
   }
 
   return requiredChecks.map((name) => {

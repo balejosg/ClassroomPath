@@ -53,6 +53,7 @@ function createCommandHarness(
     originSha?: string;
     openpathCheckStatus?: string;
     openpathChangedFiles?: string[];
+    includeOlderFailedE2eCheck?: boolean;
   } = {}
 ) {
   const calls: Array<{ command: string; args: string[] }> = [];
@@ -105,21 +106,35 @@ function createCommandHarness(
     }
 
     if (command === 'gh' && args[0] === 'api' && args[1].includes('/commits/')) {
+      const checkRuns = [
+        { name: 'CI Success', status: 'completed', conclusion: openpathCheckStatus },
+        {
+          name: 'E2E Summary',
+          status: 'completed',
+          conclusion: openpathCheckStatus,
+          completed_at: '2026-05-21T05:54:11Z',
+        },
+        {
+          name: 'Installer Contracts Success',
+          status: 'completed',
+          conclusion: openpathCheckStatus,
+        },
+        {
+          name: 'Publish Prerelease to APT Repository / Publish to APT Repository (unstable)',
+          status: 'completed',
+          conclusion: openpathCheckStatus,
+        },
+      ];
+      if (options.includeOlderFailedE2eCheck) {
+        checkRuns.push({
+          name: 'E2E Summary',
+          status: 'completed',
+          conclusion: 'failure',
+          completed_at: '2026-05-21T05:45:12Z',
+        });
+      }
       return JSON.stringify({
-        check_runs: [
-          { name: 'CI Success', status: 'completed', conclusion: openpathCheckStatus },
-          { name: 'E2E Summary', status: 'completed', conclusion: openpathCheckStatus },
-          {
-            name: 'Installer Contracts Success',
-            status: 'completed',
-            conclusion: openpathCheckStatus,
-          },
-          {
-            name: 'Publish Prerelease to APT Repository / Publish to APT Repository (unstable)',
-            status: 'completed',
-            conclusion: openpathCheckStatus,
-          },
-        ],
+        check_runs: checkRuns,
       });
     }
 
@@ -374,6 +389,31 @@ test('release status uses promotion-ready OpenPath risk checks for endpoint diff
   assert.deepEqual(
     status.openPath.requiredChecks.map((check) => check.name),
     ['CI Success', 'E2E Summary', 'Installer Contracts Success']
+  );
+  assert.deepEqual(status.blockers, []);
+});
+
+test('release status uses the latest OpenPath check-run when a retry replaces a failure', async () => {
+  const harness = createCommandHarness({
+    originSha: CLASSROOM_SHA,
+    openpathChangedFiles: ['windows/OpenPath.psm1', 'linux/lib/firefox-policy.sh'],
+    includeOlderFailedE2eCheck: true,
+  });
+  const status = await buildReleaseStatus({
+    argv: ['--sha', CLASSROOM_SHA],
+    env: {
+      ...process.env,
+      RELEASE_STATUS_TEST_MODE: '1',
+      RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
+      RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
+    },
+    runCommand: harness.runCommand,
+  });
+
+  assert.equal(
+    status.openPath.requiredChecks.find((check) => check.name === 'E2E Summary')?.status,
+    'success'
   );
   assert.deepEqual(status.blockers, []);
 });
