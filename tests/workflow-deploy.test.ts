@@ -759,6 +759,11 @@ describe('Deploy workflow contracts', () => {
       jobs['windows-firefox-canary']?.uses,
       './.github/workflows/windows-firefox-canary.yml'
     );
+    assert.match(
+      String(jobs['windows-firefox-canary']?.with?.staging_canary_public_url ?? ''),
+      /vars\.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL/,
+      'Windows Firefox canary must receive the real staging canary URL instead of falling back to public placeholders'
+    );
     assert.equal(
       jobs['windows-staging-bootstrap-canary']?.uses,
       './.github/workflows/windows-production-bootstrap-canary.yml'
@@ -826,6 +831,14 @@ describe('Deploy workflow contracts', () => {
     assert.equal(
       findWorkflowStepByName(canaryReusableJob, 'Run Firefox policy canary')?.['continue-on-error'],
       true
+    );
+    assert.match(
+      String(
+        findWorkflowStepByName(canaryReusableJob, 'Run Firefox policy canary')?.env
+          ?.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL ?? ''
+      ),
+      /inputs\.staging_canary_public_url/,
+      'Windows Firefox canary must export the caller-provided canary URL for deploy-targets.mjs'
     );
     assert.match(
       deployWorkflowText,

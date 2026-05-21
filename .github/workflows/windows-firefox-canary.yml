@@ -2,6 +2,11 @@ name: Windows Firefox Canary
 
 on:
   workflow_call:
+    inputs:
+      staging_canary_public_url:
+        description: Public staging URL used to download the Firefox policy install URL.
+        required: false
+        type: string
     outputs:
       canary_result:
         description: Advisory Windows/Firefox canary result for release evidence.
@@ -16,6 +21,11 @@ on:
       STAGING_DEPLOY_SSH_KEY:
         required: true
   workflow_dispatch:
+    inputs:
+      staging_canary_public_url:
+        description: Public staging URL used to download the Firefox policy install URL.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -146,6 +156,8 @@ jobs:
         if: steps.staging_assets.outcome == 'success'
         continue-on-error: true
         shell: pwsh
+        env:
+          CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL: ${{ inputs.staging_canary_public_url }}
         run: |
           Get-Content staging-verification.env | ForEach-Object {
             if ($_ -match '^([A-Z0-9_]+)=(.*)$') {

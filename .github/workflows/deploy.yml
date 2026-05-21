@@ -390,6 +390,8 @@ jobs:
     needs: verify-staging-release-state
     if: needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk == 'true'
     uses: ./.github/workflows/windows-firefox-canary.yml
+    with:
+      staging_canary_public_url: ${{ vars.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL || vars.STAGING_CANARY_PUBLIC_URL || vars.CLASSROOMPATH_STAGING_PUBLIC_URL || vars.STAGING_PUBLIC_URL }}
     secrets: inherit
 
   windows-staging-bootstrap-canary:
