@@ -14,7 +14,6 @@ import {
   shouldShowBillingStatusBanner,
 } from './components/BillingStatusBanner';
 import { ClassroomPathI18nProvider, useClassroomPathT } from './i18n/classroompath-i18n';
-import './index.css';
 
 const ClassroomPathShell = React.lazy(() => import('./ClassroomPathShell'));
 

@@ -152,22 +152,22 @@ describe('ClassroomPathShell', () => {
     renderShell();
 
     expect(screen.getByTestId('classroompath-shell-root')).toHaveClass(
-      'md:h-screen',
-      'md:overflow-hidden'
+      'lg:h-screen',
+      'lg:overflow-hidden'
     );
     expect(screen.getByTestId('classroompath-shell-content')).toHaveClass(
-      'md:h-full',
-      'md:min-h-0',
-      'md:overflow-hidden'
+      'lg:h-full',
+      'lg:min-h-0',
+      'lg:overflow-hidden'
     );
     expect(screen.getByTestId('classroompath-shell-main')).toHaveClass(
       'overflow-y-auto',
-      'md:min-h-0',
-      'md:overflow-hidden'
+      'lg:min-h-0',
+      'lg:overflow-hidden'
     );
     expect(screen.getByTestId('classroompath-shell-content-wrapper')).toHaveClass(
-      'md:h-full',
-      'md:min-h-0'
+      'lg:h-full',
+      'lg:min-h-0'
     );
   });
 
@@ -177,22 +177,22 @@ describe('ClassroomPathShell', () => {
     renderShell();
 
     expect(screen.getByTestId('classroompath-shell-root')).not.toHaveClass(
-      'md:h-screen',
-      'md:overflow-hidden'
+      'lg:h-screen',
+      'lg:overflow-hidden'
     );
     expect(screen.getByTestId('classroompath-shell-content')).not.toHaveClass(
-      'md:h-full',
-      'md:min-h-0',
-      'md:overflow-hidden'
+      'lg:h-full',
+      'lg:min-h-0',
+      'lg:overflow-hidden'
     );
     expect(screen.getByTestId('classroompath-shell-main')).toHaveClass('overflow-y-auto');
     expect(screen.getByTestId('classroompath-shell-main')).not.toHaveClass(
-      'md:min-h-0',
-      'md:overflow-hidden'
+      'lg:min-h-0',
+      'lg:overflow-hidden'
     );
     expect(screen.getByTestId('classroompath-shell-content-wrapper')).not.toHaveClass(
-      'md:h-full',
-      'md:min-h-0'
+      'lg:h-full',
+      'lg:min-h-0'
     );
   });
 

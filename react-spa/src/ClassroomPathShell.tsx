@@ -49,22 +49,22 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
 
   const shellClassName = cx(
     'flex min-h-screen bg-slate-50 font-sans text-slate-900',
-    isClassroomsView ? 'md:h-screen md:overflow-hidden' : ''
+    isClassroomsView ? 'lg:h-screen lg:overflow-hidden' : ''
   );
 
   const contentShellClassName = cx(
     'flex min-h-screen flex-1 flex-col md:ml-64',
-    isClassroomsView ? 'md:h-full md:min-h-0 md:overflow-hidden' : ''
+    isClassroomsView ? 'lg:h-full lg:min-h-0 lg:overflow-hidden' : ''
   );
 
   const mainClassName = cx(
     'flex-1 p-6 md:p-8',
-    isClassroomsView ? 'overflow-y-auto md:min-h-0 md:overflow-hidden' : 'overflow-y-auto'
+    isClassroomsView ? 'overflow-y-auto lg:min-h-0 lg:overflow-hidden' : 'overflow-y-auto'
   );
 
   const contentWrapperClassName = cx(
     'mx-auto max-w-7xl',
-    isClassroomsView ? 'md:h-full md:min-h-0' : ''
+    isClassroomsView ? 'lg:h-full lg:min-h-0' : ''
   );
 
   const navigateToTab = (tab: AppTab) => {
