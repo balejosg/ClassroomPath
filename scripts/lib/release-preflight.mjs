@@ -13,11 +13,11 @@ import {
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '../..');
 
-function defaultRunCommand(command, args, options = {}) {
+export function defaultRunCommand(command, args, options = {}) {
   return execFileSync(command, args, {
     cwd: options.cwd ?? projectRoot,
     env: options.env ?? process.env,
-    encoding: 'utf8',
+    encoding: options.encoding === 'buffer' ? 'buffer' : 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 }

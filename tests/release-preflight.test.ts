@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 
-import { resolveNextPatchTag, runReleasePreflight } from '../scripts/lib/release-preflight.mjs';
+import {
+  defaultRunCommand,
+  resolveNextPatchTag,
+  runReleasePreflight,
+} from '../scripts/lib/release-preflight.mjs';
 
 const CLASSROOM_SHA = '1111111111111111111111111111111111111111';
 const OPENPATH_SHA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -169,6 +173,17 @@ test('release preflight infers next tag from remote tags when no tag is provided
   assert.equal(result.ok, true);
   assert.equal(result.nextTag, 'v1.2.302');
   assert.deepEqual(resolveNextPatchTag('aaa\trefs/tags/v1.9.4\nbbb\trefs/tags/v2.0.0\n'), 'v2.0.1');
+});
+
+test('release preflight default runner preserves binary command output when requested', () => {
+  const output = defaultRunCommand(
+    process.execPath,
+    ['-e', 'process.stdout.write(Buffer.from([0, 255, 1, 254]))'],
+    { encoding: 'buffer' }
+  );
+
+  assert.ok(Buffer.isBuffer(output));
+  assert.deepEqual([...output], [0, 255, 1, 254]);
 });
 
 test('release preflight blocks dirty checkout, stale HEAD, missing evidence, and existing tag', async () => {
