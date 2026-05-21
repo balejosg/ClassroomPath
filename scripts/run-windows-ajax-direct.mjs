@@ -753,11 +753,7 @@ function provisionCanary({ options, baseUrl, artifactDir, billingContext, env })
 }
 
 function installWindowsClient(options, summary) {
-  writeGuestText(
-    options,
-    resolve(projectRoot, WINDOWS_RUNNER_DNS_REPAIR_SCRIPT),
-    WINDOWS_RUNNER_DNS_REPAIR_SCRIPT_ON_WINDOWS
-  );
+  uploadWindowsRunnerDnsRepairScript(options);
 
   const localInstallerOverlays =
     options.windowsBootstrapSource === 'local-installer-runtime'
@@ -810,6 +806,14 @@ if ($LASTEXITCODE -ne 0) {
 }
 `;
   runGuestPowerShell(options, script, { timeoutSeconds: 1200 });
+}
+
+function uploadWindowsRunnerDnsRepairScript(options) {
+  writeGuestText(
+    options,
+    resolve(projectRoot, WINDOWS_RUNNER_DNS_REPAIR_SCRIPT),
+    WINDOWS_RUNNER_DNS_REPAIR_SCRIPT_ON_WINDOWS
+  );
 }
 
 function buildLocalCanaryFirefoxVersion() {
@@ -974,8 +978,8 @@ Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue | Stop-Sc
 if (Test-Path 'C:\\OpenPath\\Uninstall-OpenPath.ps1') {
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\\OpenPath\\Uninstall-OpenPath.ps1'
 }
-Remove-Item ${psSingleQuote(WINDOWS_WORKSPACE)} -Recurse -Force -ErrorAction SilentlyContinue
 ${buildDnsBootstrapScript(baseUrl)}
+Remove-Item ${psSingleQuote(WINDOWS_WORKSPACE)} -Recurse -Force -ErrorAction SilentlyContinue
 `;
   runGuestPowerShell(options, script, { timeoutSeconds: 600 });
 }
@@ -1368,6 +1372,7 @@ async function main() {
     summary.apiUrl = summary.apiUrl || baseUrl;
 
     if (!options.skipReset) {
+      uploadWindowsRunnerDnsRepairScript(options);
       resetWindowsClient(options, baseUrl);
     }
     if (seleniumNodeModulesBundle !== null) {

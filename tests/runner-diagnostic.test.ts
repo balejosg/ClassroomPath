@@ -786,6 +786,43 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /Skipping DNS lookup for literal IP target/);
   });
 
+  test('direct Windows AJAX diagnostic uploads DNS repair before reset can need it', () => {
+    const result = runDirectDiagnostic([]);
+    const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+
+    assert.equal(result.status, 0, result.stderr);
+
+    const dnsRepairUploads = [
+      ...result.stdout.matchAll(/guest-upload: .*Restore-WindowsRunnerDns\.ps1 ->/g),
+    ];
+    assert.ok(dnsRepairUploads.length >= 2, result.stdout);
+
+    const firstDnsRepairUpload = result.stdout.indexOf('Restore-WindowsRunnerDns.ps1 ->');
+    const seleniumBundleUpload = result.stdout.indexOf('selenium-node-modules.zip ->');
+    assert.ok(firstDnsRepairUpload >= 0, result.stdout);
+    assert.ok(seleniumBundleUpload >= 0, result.stdout);
+    assert.ok(
+      firstDnsRepairUpload < seleniumBundleUpload,
+      'DNS repair script must be uploaded before reset/installer staging removes the workspace'
+    );
+
+    const resetStart = script.indexOf('function resetWindowsClient(options, baseUrl)');
+    const resetEnd = script.indexOf('function verifyWindowsPreflight', resetStart);
+    const resetClientSource = script.slice(resetStart, resetEnd);
+    const dnsBootstrapIndex = resetClientSource.indexOf('buildDnsBootstrapScript(baseUrl)');
+    const workspaceRemovalIndex = resetClientSource.indexOf(
+      'Remove-Item ${psSingleQuote(WINDOWS_WORKSPACE)}'
+    );
+    assert.ok(resetStart >= 0, script);
+    assert.ok(resetEnd > resetStart, script);
+    assert.ok(dnsBootstrapIndex >= 0, resetClientSource);
+    assert.ok(workspaceRemovalIndex >= 0, resetClientSource);
+    assert.ok(
+      dnsBootstrapIndex < workspaceRemovalIndex,
+      'reset must repair target DNS before removing the workspace that contains the repair script'
+    );
+  });
+
   test('direct Windows AJAX diagnostic refreshes integrity after overlaying local OpenPath files', () => {
     const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
 
