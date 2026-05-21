@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readProjectWorkflow } from './helpers/ops-contracts.ts';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
@@ -75,6 +76,9 @@ describe('Deployment staging and promotion contracts', () => {
       resolve(projectRoot, '.github/workflows/release-candidate-images.yml'),
       'utf-8'
     );
+    const releaseCandidateWorkflow = readProjectWorkflow(
+      '.github/workflows/release-candidate-images.yml'
+    );
 
     assert.ok(existsSync(releaseImagesScriptPath));
     assert.ok(existsSync(waitForReleaseCandidateScriptPath));
@@ -84,10 +88,10 @@ describe('Deployment staging and promotion contracts', () => {
           'node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest'
         )
     );
+    assert.deepEqual(releaseCandidateWorkflow.on?.push?.branches, ['main']);
     assert.ok(
-      releaseCandidateWorkflowContent.includes("'scripts/deploy-staging-local.sh'") &&
-        releaseCandidateWorkflowContent.includes("'scripts/lib/staging-deploy-local-release.sh'"),
-      'release-candidate images should refresh when promotion-eligible staging deploy logic changes'
+      !Object.hasOwn(releaseCandidateWorkflow.on?.push ?? {}, 'paths'),
+      'release-candidate images should refresh on every main push, including promotion-eligible staging deploy logic changes'
     );
     assert.ok(
       releaseHelperContent.includes('warn_if_other_release_candidate_run_in_progress "$REMOTE_SHA"')
