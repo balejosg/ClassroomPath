@@ -58,8 +58,9 @@ describe('Release candidate workflow contracts', () => {
     assert.match(fetchDiffBaseScript, /git fetch --no-tags --depth=1 origin "\$BASE_SHA"/);
     assert.match(
       fetchDiffBaseScript,
-      /git -C upstream\/openpath fetch --no-tags --depth=1 origin "\$openpath_base_sha" "\$openpath_head_sha"/
+      /if ! git -C upstream\/openpath fetch --no-tags --depth=1 origin "\$openpath_base_sha" "\$openpath_head_sha"/
     );
+    assert.match(fetchDiffBaseScript, /Unable to fetch OpenPath gitlink diff base/);
     assert.match(detectScript, /__unknown_openpath_gitlink_change__/);
     assert.ok(!detectScript.includes('-d upstream/openpath/.git'));
     assert.ok(!detectScript.includes('cannot infer which OpenPath workspace changed'));

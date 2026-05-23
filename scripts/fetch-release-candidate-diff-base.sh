@@ -24,4 +24,6 @@ if ! git -C upstream/openpath rev-parse --is-inside-work-tree >/dev/null 2>&1; t
   exit 0
 fi
 
-git -C upstream/openpath fetch --no-tags --depth=1 origin "$openpath_base_sha" "$openpath_head_sha"
+if ! git -C upstream/openpath fetch --no-tags --depth=1 origin "$openpath_base_sha" "$openpath_head_sha"; then
+  echo 'Unable to fetch OpenPath gitlink diff base; detector will rebuild every image family if the submodule diff is unavailable.' >&2
+fi
