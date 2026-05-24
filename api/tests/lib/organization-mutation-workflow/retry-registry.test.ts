@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   getOrganizationMutationRetryHandler,
   organizationMutationRetryHandlers,
-} from '../src/lib/organization-mutation-workflow/retry-registry.js';
+} from '../../../src/lib/organization-mutation-workflow/retry-registry.js';
 
 void describe('organization-mutation-workflow/retry-registry', () => {
   void test('resolves registered retry handlers and fails closed for unknown operations', () => {

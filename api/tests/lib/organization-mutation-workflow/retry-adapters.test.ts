@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { organizationMutationRetryAdapters } from '../src/lib/organization-mutation-workflow/retry-adapters.js';
+import { organizationMutationRetryAdapters } from '../../../src/lib/organization-mutation-workflow/retry-adapters.js';
 
 void describe('organization-mutation-workflow/retry-adapters', () => {
   void test('keeps concrete retry adapters outside the pure catalog', () => {

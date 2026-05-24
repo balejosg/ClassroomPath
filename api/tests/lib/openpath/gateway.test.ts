@@ -5,7 +5,7 @@ import { TRPCError } from '@trpc/server';
 import {
   createOpenPathGateway,
   getOpenPathGatewaySystemInfo,
-} from '../src/lib/openpath/gateway.js';
+} from '../../../src/lib/openpath/gateway.js';
 
 function trpcResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify({ result: { data } }), {

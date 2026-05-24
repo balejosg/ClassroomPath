@@ -6,7 +6,7 @@ import {
   getOrganizationMutationWorkflowFamily,
   organizationMutationCatalog,
   organizationMutationOperationTypes,
-} from '../src/lib/organization-mutation-workflow/catalog.js';
+} from '../../../src/lib/organization-mutation-workflow/catalog.js';
 
 void describe('organization-mutation-workflow/catalog', () => {
   void test('builds catalog facts without retry handlers', () => {
