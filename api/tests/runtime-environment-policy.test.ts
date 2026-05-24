@@ -5,6 +5,10 @@ describe('runtime environment policy', () => {
   it('centralizes billing, Stripe, push, email, and canary runtime policy', async () => {
     const policyModule = await import('../src/config/runtime-environment-policy.ts');
 
+    assert.deepEqual(policyModule.OPTIONAL_BILLING_ENV_NAMES, [
+      'CP_ALLOW_SELF_SERVICE_ORGS',
+      'CP_CLIENT_CANARY_ADMIN_TOKEN',
+    ]);
     assert.deepEqual(policyModule.BILLING_BASE_REQUIRED_ENV_NAMES, [
       'CP_BILLING_MODE',
       'CP_PLATFORM_ADMIN_EMAILS',
@@ -25,6 +29,7 @@ describe('runtime environment policy', () => {
       'VAPID_PRIVATE_KEY',
       'VAPID_CONTACT',
     ]);
+    assert.deepEqual(policyModule.STAGING_EMAIL_PREFLIGHT_MODES, ['auto', 'required', 'skip']);
 
     const policy = policyModule.resolveRuntimeEnvironmentPolicy({
       CP_BILLING_MODE: 'manual_only',

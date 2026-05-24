@@ -1,23 +1,26 @@
-export const BILLING_BASE_REQUIRED_ENV_NAMES = ['CP_BILLING_MODE', 'CP_PLATFORM_ADMIN_EMAILS'];
+import { readFileSync } from 'node:fs';
 
-export const STRIPE_REQUIRED_ENV_NAMES = [
-  'STRIPE_SECRET_KEY',
-  'STRIPE_WEBHOOK_SECRET',
-  'STRIPE_ANNUAL_PRICE_1_10',
-  'STRIPE_ANNUAL_PRICE_11_25',
-  'STRIPE_ANNUAL_PRICE_26_50',
-  'STRIPE_ANNUAL_PRICE_51_100',
-  'STRIPE_ONBOARDING_PRICE_1_25',
-  'STRIPE_ONBOARDING_PRICE_26_100',
-  'STRIPE_PILOT_PRICE',
-];
+function loadRuntimeEnvironmentPolicyCatalog() {
+  const catalogUrl = new URL(
+    '../../config/runtime-environment-policy.catalog.json',
+    import.meta.url
+  );
+  return JSON.parse(readFileSync(catalogUrl, 'utf8'));
+}
 
-export const OPTIONAL_BILLING_ENV_NAMES = [
-  'CP_ALLOW_SELF_SERVICE_ORGS',
-  'CP_CLIENT_CANARY_ADMIN_TOKEN',
-];
-export const PUSH_ENV_NAMES = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_CONTACT'];
-export const STAGING_EMAIL_PREFLIGHT_MODES = ['auto', 'required', 'skip'];
+const runtimeEnvironmentPolicyCatalog = loadRuntimeEnvironmentPolicyCatalog();
+
+export const BILLING_BASE_REQUIRED_ENV_NAMES =
+  runtimeEnvironmentPolicyCatalog.billingBaseRequiredEnvNames;
+
+export const STRIPE_REQUIRED_ENV_NAMES = runtimeEnvironmentPolicyCatalog.stripeRequiredEnvNames;
+
+export const OPTIONAL_BILLING_ENV_NAMES = runtimeEnvironmentPolicyCatalog.optionalBillingEnvNames;
+
+export const PUSH_ENV_NAMES = runtimeEnvironmentPolicyCatalog.pushEnvNames;
+
+export const STAGING_EMAIL_PREFLIGHT_MODES =
+  runtimeEnvironmentPolicyCatalog.stagingEmailPreflightModes;
 
 export const BILLING_RUNTIME_ENV_NAMES = [
   ...BILLING_BASE_REQUIRED_ENV_NAMES,

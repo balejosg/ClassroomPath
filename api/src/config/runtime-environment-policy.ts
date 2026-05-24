@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { parseBooleanEnv, trimToNull, type RuntimeEnv } from './shared.js';
 
 export type { RuntimeEnv } from './shared.js';
@@ -6,26 +8,35 @@ export type BillingMode = 'stripe' | 'manual_only';
 export type EmailDeliveryMode = 'mock' | 'resend' | 'disabled';
 export type EmailPreflightMode = 'required' | 'skip';
 
-export const BILLING_BASE_REQUIRED_ENV_NAMES = [
-  'CP_BILLING_MODE',
-  'CP_PLATFORM_ADMIN_EMAILS',
-] as const;
+interface RuntimeEnvironmentPolicyCatalog {
+  billingBaseRequiredEnvNames: string[];
+  stripeRequiredEnvNames: string[];
+  optionalBillingEnvNames: string[];
+  pushEnvNames: string[];
+  stagingEmailPreflightModes: string[];
+}
 
-export const STRIPE_REQUIRED_ENV_NAMES = [
-  'STRIPE_SECRET_KEY',
-  'STRIPE_WEBHOOK_SECRET',
-  'STRIPE_ANNUAL_PRICE_1_10',
-  'STRIPE_ANNUAL_PRICE_11_25',
-  'STRIPE_ANNUAL_PRICE_26_50',
-  'STRIPE_ANNUAL_PRICE_51_100',
-  'STRIPE_ONBOARDING_PRICE_1_25',
-  'STRIPE_ONBOARDING_PRICE_26_100',
-  'STRIPE_PILOT_PRICE',
-] as const;
+function loadRuntimeEnvironmentPolicyCatalog(): RuntimeEnvironmentPolicyCatalog {
+  const catalogUrl = new URL(
+    '../../../config/runtime-environment-policy.catalog.json',
+    import.meta.url
+  );
+  return JSON.parse(readFileSync(catalogUrl, 'utf8')) as RuntimeEnvironmentPolicyCatalog;
+}
 
-export const OPTIONAL_BILLING_ENV_NAMES = ['CP_CLIENT_CANARY_ADMIN_TOKEN'] as const;
+const runtimeEnvironmentPolicyCatalog = loadRuntimeEnvironmentPolicyCatalog();
 
-export const PUSH_ENV_NAMES = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_CONTACT'] as const;
+export const BILLING_BASE_REQUIRED_ENV_NAMES =
+  runtimeEnvironmentPolicyCatalog.billingBaseRequiredEnvNames;
+
+export const STRIPE_REQUIRED_ENV_NAMES = runtimeEnvironmentPolicyCatalog.stripeRequiredEnvNames;
+
+export const OPTIONAL_BILLING_ENV_NAMES = runtimeEnvironmentPolicyCatalog.optionalBillingEnvNames;
+
+export const PUSH_ENV_NAMES = runtimeEnvironmentPolicyCatalog.pushEnvNames;
+
+export const STAGING_EMAIL_PREFLIGHT_MODES =
+  runtimeEnvironmentPolicyCatalog.stagingEmailPreflightModes;
 
 export interface StripeRuntimeConfig {
   secretKey: string | null;

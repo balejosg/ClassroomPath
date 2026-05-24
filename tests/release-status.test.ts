@@ -9,12 +9,17 @@ import { fileURLToPath } from 'node:url';
 import {
   buildReleaseStatus,
   buildReleaseStatusJson,
-  deriveReleaseBlockerGroups,
-  deriveReleaseBlockers,
-  detectOperationalTargetPlaceholders,
   parseReleaseStatusArgs,
   renderReleaseStatusText,
 } from '../scripts/release-status.mjs';
+import {
+  collectReleaseStatusEvidence,
+  detectOperationalTargetPlaceholders,
+} from '../scripts/lib/release-status-collector.mjs';
+import {
+  deriveReleaseBlockerGroups,
+  deriveReleaseBlockers,
+} from '../scripts/lib/release-status-evaluator.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
@@ -258,6 +263,40 @@ test('builds a local promotion status summary from read-only command sources', a
     ),
     'release status should read production release-state from the production deploy root'
   );
+  assert.equal(
+    commandLines.some((line) =>
+      /(git push|git tag (?!--)|gh workflow run|gh run rerun|npm run deploy|promote:production)/.test(
+        line
+      )
+    ),
+    false
+  );
+});
+
+test('collector owns read-only release status command-backed evidence', async () => {
+  const harness = createCommandHarness({ originSha: CLASSROOM_SHA });
+  const status = await collectReleaseStatusEvidence({
+    argv: ['--sha', CLASSROOM_SHA],
+    env: {
+      ...process.env,
+      RELEASE_STATUS_TEST_MODE: '1',
+      RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
+      RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
+    },
+    runCommand: harness.runCommand,
+  });
+
+  assert.equal(status.classroomPath.headSha, CLASSROOM_SHA);
+  assert.equal(status.releaseCandidate.manifest?.app_sha, CLASSROOM_SHA);
+  assert.equal(status.productionDeploy.latestRun?.databaseId, 987654);
+  assert.equal(status.release.nextTag, 'v1.2.302');
+  assert.deepEqual(status.operationalTargets.placeholders, []);
+
+  const commandLines = harness.calls.map((call) => [call.command, ...call.args].join(' '));
+  assert.ok(commandLines.some((line) => line.startsWith('git rev-parse HEAD')));
+  assert.ok(commandLines.some((line) => line.startsWith('gh run list')));
+  assert.ok(commandLines.some((line) => line.startsWith('ssh ')));
   assert.equal(
     commandLines.some((line) =>
       /(git push|git tag (?!--)|gh workflow run|gh run rerun|npm run deploy|promote:production)/.test(

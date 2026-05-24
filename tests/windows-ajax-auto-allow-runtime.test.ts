@@ -198,25 +198,30 @@ describe('Windows AJAX auto-allow runtime module', () => {
       new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),
       'utf8'
     );
+    const browserChecksSource = await readFile(
+      new URL('../scripts/lib/windows-ajax-browser-checks.mjs', import.meta.url),
+      'utf8'
+    );
+    const browserSubcheckSource = `${runtimeSource}\n${browserChecksSource}`;
 
-    assert.match(runtimeSource, /BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN/);
-    assert.match(runtimeSource, /runBlockedPageUnblockRequestCheck/);
-    assert.match(runtimeSource, /extensions\\.webextensions\\.uuids/);
-    assert.match(runtimeSource, /blocked\/blocked\.html/);
-    assert.match(runtimeSource, /request-reason/);
-    assert.match(runtimeSource, /submit-unblock-request/);
-    assert.match(runtimeSource, /request-status/);
-    assert.match(runtimeSource, /Enviando solicitud/);
+    assert.match(browserSubcheckSource, /BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN/);
+    assert.match(runtimeSource, /runBrowserBlockedPageUnblockRequestCheck/);
+    assert.match(browserSubcheckSource, /extensions\\.webextensions\\.uuids/);
+    assert.match(browserSubcheckSource, /blocked\/blocked\.html/);
+    assert.match(browserSubcheckSource, /request-reason/);
+    assert.match(browserSubcheckSource, /submit-unblock-request/);
+    assert.match(browserSubcheckSource, /request-status/);
+    assert.match(browserSubcheckSource, /Enviando solicitud/);
     assert.match(runtimeSource, /installAddon\(LOCAL_ADDON_PATH,\s*true\)/);
-    assert.match(runtimeSource, /permissionsMonkeypatch:\s*false/);
-    assert.match(runtimeSource, /permissionStrategy:\s*'required-data-collection'/);
+    assert.match(browserSubcheckSource, /permissionsMonkeypatch:\s*false/);
+    assert.match(browserSubcheckSource, /permissionStrategy:\s*'required-data-collection'/);
     assert.match(
-      runtimeSource,
+      browserSubcheckSource,
       /permissions\.request may only be called from a user input handler/
     );
-    assert.doesNotMatch(runtimeSource, /executeScript\([\s\S]*browser\.permissions/);
-    assert.doesNotMatch(runtimeSource, /acceptFirefoxPermissionPromptIfPresent/);
-    assert.doesNotMatch(runtimeSource, /permissionPrompt/);
+    assert.doesNotMatch(browserSubcheckSource, /executeScript\([\s\S]*browser\.permissions/);
+    assert.doesNotMatch(browserSubcheckSource, /acceptFirefoxPermissionPromptIfPresent/);
+    assert.doesNotMatch(browserSubcheckSource, /permissionPrompt/);
   });
 
   test('blocked-page unblock request accepts English and Spanish success text', async () => {
@@ -236,18 +241,22 @@ describe('Windows AJAX auto-allow runtime module', () => {
       new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),
       'utf8'
     );
-    assert.match(runtimeSource, /isBlockedPageUnblockRequestSuccessText\(pageVisibleText\)/);
-    assert.match(runtimeSource, /userInputHandlerError\s*\|\|/);
-    assert.match(runtimeSource, /statusIndicatesSuccess && !statusIndicatesError/);
+    const browserChecksSource = await readFile(
+      new URL('../scripts/lib/windows-ajax-browser-checks.mjs', import.meta.url),
+      'utf8'
+    );
+    assert.match(browserChecksSource, /isBlockedPageUnblockRequestSuccessText\(pageVisibleText\)/);
+    assert.match(browserChecksSource, /userInputHandlerError\s*\|\|/);
+    assert.match(browserChecksSource, /statusIndicatesSuccess && !statusIndicatesError/);
   });
 
   test('runtime suppresses unsupported Firefox browser-log collection noise', async () => {
-    const runtimeSource = await readFile(
-      new URL('../scripts/lib/windows-ajax-auto-allow-runtime.mjs', import.meta.url),
+    const browserChecksSource = await readFile(
+      new URL('../scripts/lib/windows-ajax-browser-checks.mjs', import.meta.url),
       'utf8'
     );
 
-    assert.match(runtimeSource, /HTTP method not allowed/i);
-    assert.match(runtimeSource, /return \[\];/);
+    assert.match(browserChecksSource, /HTTP method not allowed/i);
+    assert.match(browserChecksSource, /return \[\];/);
   });
 });
