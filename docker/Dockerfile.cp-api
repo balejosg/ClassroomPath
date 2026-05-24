@@ -102,6 +102,9 @@ COPY --from=builder /app/contracts/package.json ./node_modules/@classroompath/co
 COPY --from=builder /app/presenters/dist ./node_modules/@classroompath/presenters/dist
 COPY --from=builder /app/presenters/package.json ./node_modules/@classroompath/presenters/package.json
 
+# Runtime environment policy data is loaded by api/dist/config at startup.
+COPY config/runtime-environment-policy.catalog.json ./config/runtime-environment-policy.catalog.json
+
 # Copy database tools
 COPY api/drizzle.config.ts ./api/
 COPY api/src/db ./api/src/db

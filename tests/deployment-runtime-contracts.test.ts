@@ -128,6 +128,11 @@ describe('Deployment runtime contracts', () => {
         '/app/presenters/dist ./node_modules/@classroompath/presenters/dist'
       )
     );
+    assert.ok(
+      gatewayDockerfile.includes(
+        'COPY config/runtime-environment-policy.catalog.json ./config/runtime-environment-policy.catalog.json'
+      )
+    );
     assert.ok(gatewayDockerignore.includes('tests/**'));
     assert.ok(gatewayDockerignore.includes('react-spa/src/**/__tests__/**'));
     assert.ok(gatewayDockerignore.includes('upstream/openpath/react-spa/src/**/__tests__/**'));
