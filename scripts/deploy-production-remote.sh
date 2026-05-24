@@ -392,13 +392,17 @@ load_production_release_manifest() {
   load_production_release_manifest_impl "$@"
 }
 
+classify_migration_risk_without_node() {
+  release_risk_policy_classify_migration_risk_without_node "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
+}
+
 classify_production_migration_risk() {
   deployment_state_capture_previous_release
 
   if command -v node >/dev/null 2>&1; then
     release_execution_classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
   else
-    release_risk_policy_classify_migration_risk_without_node "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
+    classify_migration_risk_without_node
   fi
 
   if [ "${MIGRATION_RISK_LEVEL:-safe}" = "destructive" ]; then
