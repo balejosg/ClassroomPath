@@ -151,6 +151,10 @@ export const WINDOWS_CANARY_SCRIPT_UPLOADS = [
     destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\windows-ajax-auto-allow-runtime.mjs`,
   },
   {
+    source: 'scripts/lib/windows-ajax-browser-checks.mjs',
+    destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\windows-ajax-browser-checks.mjs`,
+  },
+  {
     source: 'scripts/lib/ajax-auto-allow-canary-runtime.mjs',
     destination: `${WINDOWS_WORKSPACE}\\scripts\\lib\\ajax-auto-allow-canary-runtime.mjs`,
   },

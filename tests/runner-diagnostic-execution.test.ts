@@ -22,9 +22,10 @@ describe('runner diagnostic execution plan', () => {
       baseUrl: 'http://staging-host.example.invalid:3000',
       artifactDir: '/tmp/windows-direct',
       openpathRoot: '/repo/OpenPath',
+      vmid: '<vmid>',
     });
 
-    assert.equal(plan.runnerTarget.vmid, '103');
+    assert.equal(plan.runnerTarget.vmid, '<vmid>');
     assert.equal(plan.safety.requiresProductionConfirmation, false);
     assert.equal(plan.firefox.mode, 'selenium');
     assert.ok(
@@ -38,6 +39,14 @@ describe('runner diagnostic execution plan', () => {
           upload.source === 'scripts/lib/windows-ajax-auto-allow-runtime.mjs' &&
           upload.destination ===
             'C:\\Windows\\Temp\\openpath-ajax-direct\\scripts\\lib\\windows-ajax-auto-allow-runtime.mjs'
+      )
+    );
+    assert.ok(
+      plan.canaryScriptUploads.some(
+        (upload) =>
+          upload.source === 'scripts/lib/windows-ajax-browser-checks.mjs' &&
+          upload.destination ===
+            'C:\\Windows\\Temp\\openpath-ajax-direct\\scripts\\lib\\windows-ajax-browser-checks.mjs'
       )
     );
     assert.ok(
