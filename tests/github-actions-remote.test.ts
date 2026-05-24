@@ -85,4 +85,26 @@ describe('github-actions remote helper', () => {
       /SSH to deploy@192\.0\.2\.10:22 failed after 2 attempts \(ssh-timeout\)/
     );
   });
+
+  test('resolves remote env files from the explicit target context', () => {
+    const result = runProjectCommand('bash', [
+      '-lc',
+      [
+        'source scripts/lib/github-actions-remote.sh',
+        'github_actions_remote_ssh() { printf "%s\\n" "$5"; }',
+        'TARGET_ENVIRONMENT=staging github_actions_remote_read_env_key /tmp/key 22 deploy 192.0.2.10 CP_BILLING_MODE',
+        'TARGET_ENVIRONMENT=production CLASSROOMPATH_DEPLOY_ROOT=/private/classroompath github_actions_remote_read_env_key /tmp/key 22 deploy 192.0.2.10 CP_BILLING_MODE',
+      ].join('; '),
+    ]);
+
+    assert.equal(result.status, 0);
+    assert.match(
+      result.stdout,
+      /grep '\^CP_BILLING_MODE=' '\/srv\/classroompath\/app\/config\/\.env'/
+    );
+    assert.match(
+      result.stdout,
+      /grep '\^CP_BILLING_MODE=' '\/private\/classroompath\/app\/config\/\.env'/
+    );
+  });
 });

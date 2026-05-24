@@ -155,6 +155,10 @@ github_actions_remote_read_env_key() {
   local env_key="$5"
   local env_file="${6:-${CLASSROOMPATH_REMOTE_ENV_FILE:-}}"
 
+  if [ -z "$env_file" ] && [ "${TARGET_ENVIRONMENT:-}" = "staging" ]; then
+    env_file="/srv/classroompath/app/config/.env"
+  fi
+
   if [ -z "$env_file" ] && [ -n "${CLASSROOMPATH_DEPLOY_ROOT:-}" ]; then
     env_file="${CLASSROOMPATH_DEPLOY_ROOT%/}/app/config/.env"
   fi

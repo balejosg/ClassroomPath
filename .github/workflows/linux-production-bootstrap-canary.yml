@@ -57,6 +57,8 @@ jobs:
     name: Linux Production Bootstrap Canary
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      CLASSROOMPATH_DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
     outputs:
       canary_result: ${{ steps.result.outputs.canary_result }}
       failure_boundary_id: ${{ steps.result.outputs.failure_boundary_id }}

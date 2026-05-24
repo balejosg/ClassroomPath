@@ -98,6 +98,7 @@ jobs:
     timeout-minutes: 10
     env:
       PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL }}
+      CLASSROOMPATH_DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
 
     steps:
       - name: Checkout
@@ -318,6 +319,7 @@ jobs:
     timeout-minutes: 35
     env:
       PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL }}
+      CLASSROOMPATH_DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
 
     steps:
       - name: Restore Windows runner DNS before checkout
@@ -825,6 +827,7 @@ jobs:
     timeout-minutes: 35
     env:
       PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL }}
+      CLASSROOMPATH_DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
 
     steps:
       - name: Checkout
