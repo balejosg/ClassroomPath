@@ -1056,10 +1056,7 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /Copy-Item -Path '\$\{WINDOWS_WORKSPACE\}\\\\local-windows\\\\\*'/);
     assert.match(script, /windows\/lib\/internal/);
     assert.match(script, /windows\/runtime\/browser-policy-spec\.json/);
-    assert.match(
-      script,
-      /\[System\.IO\.File\]::WriteAllText\(\$path, \$content, \[System\.Text\.UTF8Encoding\]::new\(\$false\)\)/
-    );
+    assert.match(script, /\[System\.IO\.File\]::WriteAllBytes\(\$path, \$bytes\)/);
     assert.ok(script.includes("'Push-Location \\\\$WindowsRoot'"));
   });
 
@@ -1097,6 +1094,8 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /FileMode\]::Append/);
     assert.match(script, /base64\.slice\(offset, offset \+ BINARY_UPLOAD_CHUNK_CHARS\)/);
     assert.match(script, /Read-GuestStdinExact/);
+    assert.match(script, /Buffer\.from\(content, 'utf8'\)\.toString\('base64'\)/);
+    assert.match(script, /\[System\.IO\.File\]::WriteAllBytes\(\$path, \$bytes\)/);
     assert.doesNotMatch(script, /\[Console\]::In\.ReadToEnd\(\)/);
     assert.ok(chunkMatch?.groups?.value, 'binary upload chunk size should be explicit');
     assert.ok(

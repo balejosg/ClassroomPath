@@ -422,20 +422,22 @@ $content = Read-GuestStdinExact -ExpectedChars ${expectedInputChars}
 
 function writeGuestText(options, localSourcePath, destinationPath) {
   const content = readFileSync(localSourcePath, 'utf8');
+  const contentBase64 = Buffer.from(content, 'utf8').toString('base64');
   const script = `
 $ErrorActionPreference = 'Stop'
 $path = ${psSingleQuote(destinationPath)}
 $parent = Split-Path -Parent $path
 New-Item -ItemType Directory -Force -Path $parent | Out-Null
-${buildGuestStdinExactReadScript(content.length)}
-[System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false))
+${buildGuestStdinExactReadScript(contentBase64.length)}
+$bytes = [Convert]::FromBase64String($content)
+[System.IO.File]::WriteAllBytes($path, $bytes)
 `;
 
   if (DRY_RUN) {
     console.log(`guest-upload: ${localSourcePath} -> ${destinationPath}`);
   }
 
-  runGuestPowerShell(options, script, { input: content });
+  runGuestPowerShell(options, script, { input: contentBase64 });
 }
 
 function writeGuestBinary(options, localSourcePath, destinationPath) {
