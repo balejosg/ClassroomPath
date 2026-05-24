@@ -1,12 +1,14 @@
 export {
   buildOrganizationMutationOperation,
-  getOrCreateOrganizationMutationOperation,
-  getOrganizationMutationRetryHandler,
   getOrganizationMutationWorkflowFamily,
   organizationMutationCatalog,
   organizationMutationOperationTypes,
+} from './catalog.js';
+export { getOrCreateOrganizationMutationOperation } from './operations.js';
+export {
+  getOrganizationMutationRetryHandler,
   organizationMutationRetryHandlers,
-} from './organization-mutation-workflow/index.js';
+} from './retry-registry.js';
 export type {
   GroupRuleRecord,
   OrganizationBusinessMutation,
@@ -16,4 +18,4 @@ export type {
   OrganizationMutationRetryHandler,
   OrganizationMutationWorkflowFamily,
   OrganizationRole,
-} from './organization-mutation-workflow/index.js';
+} from './types.js';

@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server';
-import { getOrCreateOrganizationMutationOperation } from '../../lib/cross-system-mutation-definitions.js';
+import { getOrCreateOrganizationMutationOperation } from '../../lib/organization-mutation-workflow/operations.js';
 import { getMutationResult } from '../../lib/cross-system-mutations.js';
 import { throwConflictOnUniqueViolation } from '../../lib/pg-errors.js';
 import { presentTenantClassroom } from './classroom-access.service.js';

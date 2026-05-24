@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 
 import { db } from '../../db/index.js';
 import * as schema from '../../db/schema.js';
-import { getOrCreateOrganizationMutationOperation } from '../../lib/cross-system-mutation-definitions.js';
+import { getOrCreateOrganizationMutationOperation } from '../../lib/organization-mutation-workflow/operations.js';
 import { getMutationResult } from '../../lib/cross-system-mutations.js';
 import { getOrgClassroomLinkOrThrow } from '../../lib/tenant-access.js';
 import { runDeleteMutationWorkflow } from '../../lib/cross-system-workflow-engine.js';

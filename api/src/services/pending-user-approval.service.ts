@@ -1,7 +1,7 @@
 import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
 import { SINGLE_ORG_MEMBERSHIP_MESSAGE } from '../lib/tenant-memberships.js';
-import { getOrCreateOrganizationMutationOperation } from '../lib/cross-system-mutation-definitions.js';
+import { getOrCreateOrganizationMutationOperation } from '../lib/organization-mutation-workflow/operations.js';
 import { runLocalFirstMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
 import { getMutationResult } from '../lib/cross-system-mutations.js';
 import { recordPendingUserApprovedAuditEvent } from './audit.service.js';

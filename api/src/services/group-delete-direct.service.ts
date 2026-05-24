@@ -10,7 +10,7 @@ import {
   whitelistRules,
 } from '../db/openpath.js';
 import { assertCanUseGroup } from '../lib/tenant-access.js';
-import { getOrCreateOrganizationMutationOperation } from '../lib/cross-system-mutation-definitions.js';
+import { getOrCreateOrganizationMutationOperation } from '../lib/organization-mutation-workflow/operations.js';
 import { runDeleteMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
 import { getMutationResult } from '../lib/cross-system-mutations.js';
 import { removeGroupFromTeacherRole } from './group-role-membership.service.js';

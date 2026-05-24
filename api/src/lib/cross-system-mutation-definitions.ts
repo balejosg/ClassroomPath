@@ -6,7 +6,7 @@ export {
   organizationMutationCatalog,
   organizationMutationOperationTypes,
   organizationMutationRetryHandlers,
-} from './organization-mutation-catalog.js';
+} from './organization-mutation-workflow/index.js';
 export type {
   GroupRuleRecord,
   OrganizationBusinessMutation,
@@ -14,4 +14,4 @@ export type {
   OrganizationMutationOperationType,
   OrganizationMutationWorkflowFamily,
   OrganizationRole,
-} from './organization-mutation-catalog.js';
+} from './organization-mutation-workflow/index.js';

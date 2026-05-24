@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { getOrCreateOrganizationMutationOperation } from '../lib/cross-system-mutation-definitions.js';
+import { getOrCreateOrganizationMutationOperation } from '../lib/organization-mutation-workflow/operations.js';
 import { runLocalFirstMutationWorkflow } from '../lib/cross-system-workflow-engine.js';
 import { getMutationResult } from '../lib/cross-system-mutations.js';
 import { synchronizeOpenPathRole } from '../lib/openpath-roles.js';
