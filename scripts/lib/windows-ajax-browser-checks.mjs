@@ -388,8 +388,8 @@ return {
   href: location.href,
   title: document.title,
   readyState: document.readyState,
-  statusText: status ? status.textContent || '' : '',
-  statusClass: status ? status.className || '',
+  statusText: status ? (status.textContent || '') : '',
+  statusClass: status ? (status.className || '') : '',
   bodyText: bodyText.slice(0, 4000)
 };
 `);

@@ -15,6 +15,7 @@ import {
 
 function createDriver({ page, statusText = '', browserLogs = [], navigationError = null } = {}) {
   const calls: string[] = [];
+  const scriptCalls: string[] = [];
   const statusElement = {
     getText: async () => statusText,
   };
@@ -41,17 +42,20 @@ function createDriver({ page, statusText = '', browserLogs = [], navigationError
       calls.push(`get:${url}`);
       if (navigationError) throw new Error(navigationError);
     },
-    executeScript: async (script: string) =>
-      script.includes('document.getElementById')
-        ? {
+    scriptCalls,
+    executeScript: async (script: string) => {
+      scriptCalls.push(script);
+      return script.includes('document.getElementById')
+        ? ({
             href: 'moz-extension://uuid/blocked/blocked.html',
             title: 'Blocked',
             readyState: 'complete',
             statusText,
             statusClass: 'success',
             bodyText: statusText,
-          }
-        : page,
+          } as const)
+        : page;
+    },
     executeAsyncScript: async () => ({ success: true }),
     findElement: async (locator: { value?: string }) => {
       const rawValue = String(locator.value ?? '');
@@ -145,6 +149,8 @@ describe('Windows AJAX browser checks', () => {
       assert.equal(evidence.submitClicked, true);
       assert.match(evidence.blockedPageUrl, /^moz-extension:\/\/uuid\/blocked\/blocked\.html/);
       assert.ok(driver.calls.includes('submit'));
+      assert.match(driver.scriptCalls.join('\n'), /status \? \(status\.textContent \|\| ''\) : ''/);
+      assert.match(driver.scriptCalls.join('\n'), /status \? \(status\.className \|\| ''\) : ''/);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
