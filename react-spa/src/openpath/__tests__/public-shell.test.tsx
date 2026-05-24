@@ -14,7 +14,17 @@ vi.mock('@openpath/public-shell', () => ({
   TeacherDashboard: () => <div>TeacherDashboard</div>,
 }));
 
-import { Dashboard, Header, Sidebar } from '../public-shell';
+import {
+  Classrooms,
+  Dashboard,
+  DomainRequests,
+  Groups,
+  Header,
+  RulesManager,
+  Settings,
+  Sidebar,
+  TeacherDashboard,
+} from '../public-shell';
 
 describe('openpath public-shell adapter', () => {
   it('re-exports shell components through the local boundary', () => {
@@ -23,11 +33,23 @@ describe('openpath public-shell adapter', () => {
         <Sidebar activeTab="dashboard" setActiveTab={() => {}} isOpen={false} />
         <Header title="Panel" onMenuClick={() => {}} />
         <Dashboard onNavigateToRules={() => {}} onNavigateToClassroom={() => {}} />
+        <TeacherDashboard onNavigateToRules={() => {}} />
+        <Classrooms />
+        <Groups onNavigateToRules={() => {}} />
+        <RulesManager groupId="group-1" groupName="Group 1" onBack={() => {}} />
+        <DomainRequests />
+        <Settings />
       </div>
     );
 
     expect(screen.getByText('Sidebar')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Panel' })).toBeInTheDocument();
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('TeacherDashboard')).toBeInTheDocument();
+    expect(screen.getByText('Classrooms')).toBeInTheDocument();
+    expect(screen.getByText('Groups')).toBeInTheDocument();
+    expect(screen.getByText('RulesManager')).toBeInTheDocument();
+    expect(screen.getByText('DomainRequests')).toBeInTheDocument();
+    expect(screen.getByText('Settings')).toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-@import '../../upstream/openpath/react-spa/src/index.css';
+@import './openpath/openpath.css';
 
 @source "../../upstream/openpath/react-spa/src";
 @source ".";

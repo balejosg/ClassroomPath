@@ -9,6 +9,7 @@
       "@openpath/openpath.css": ["../upstream/openpath/react-spa/src/index.css"],
       "@openpath/public-auth": ["../upstream/openpath/react-spa/src/public/auth.ts"],
       "@openpath/public-google": ["../upstream/openpath/react-spa/src/public/google.ts"],
+      "@openpath/public-i18n": ["../upstream/openpath/react-spa/src/public/i18n.ts"],
       "@openpath/public-shell": ["../upstream/openpath/react-spa/src/public/shell.ts"],
       "@openpath/public-ui": ["../upstream/openpath/react-spa/src/public/ui.ts"],
       "@openpath/api": ["../upstream/openpath/api/src/index.ts"],

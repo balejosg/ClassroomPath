@@ -22,6 +22,10 @@ export default defineConfig({
         __dirname,
         '../upstream/openpath/react-spa/src/public/google.ts'
       ),
+      '@openpath/public-i18n': path.resolve(
+        __dirname,
+        '../upstream/openpath/react-spa/src/public/i18n.ts'
+      ),
       '@openpath/public-shell': path.resolve(
         __dirname,
         '../upstream/openpath/react-spa/src/public/shell.ts'
