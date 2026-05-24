@@ -47,6 +47,10 @@ test('release execution marks deploy stages through a backward-compatible contex
       APP_SHA=target123
       IMAGE_SOURCE=release-candidate
       PREVIOUS_APP_SHA=prev123
+      MIGRATION_RISK_LEVEL=expand-contract
+      MIGRATION_CHANGED_FILES=api/drizzle/0001_create.sql,api/drizzle/0002_safe.sql
+      MIGRATION_EXPAND_FILES=api/drizzle/0001_create.sql
+      MIGRATION_SAFE_FILES=api/drizzle/0002_safe.sql
       release_execution_mark_stage preflight
       release_execution_mark_stage migrations
       release_execution_mark_stage startup
@@ -57,6 +61,13 @@ test('release execution marks deploy stages through a backward-compatible contex
     const snapshot = parseReleaseStateText(readFileSync(contextPath, 'utf-8'));
     assert.equal(snapshot.TARGET_SHA, 'target123');
     assert.equal(snapshot.APP_SHA, 'target123');
+    assert.equal(snapshot.MIGRATION_RISK_LEVEL, 'expand-contract');
+    assert.equal(
+      snapshot.MIGRATION_CHANGED_FILES,
+      'api/drizzle/0001_create.sql,api/drizzle/0002_safe.sql'
+    );
+    assert.equal(snapshot.MIGRATION_EXPAND_FILES, 'api/drizzle/0001_create.sql');
+    assert.equal(snapshot.MIGRATION_SAFE_FILES, 'api/drizzle/0002_safe.sql');
     assert.equal(snapshot.FAILURE_STAGE, 'completed');
     assert.equal(snapshot.DEPLOY_FAILURE_STAGE, 'completed');
     assert.equal(snapshot.ROLLBACK_ATTEMPTED, '0');
@@ -124,6 +135,65 @@ test('release execution gates destructive production migrations on a backup refe
   assert.equal(withBackup.stdout.trim().split('\n').at(-1), 'backup-2026-04-27');
 });
 
+test('release risk policy shell exposes backup and recovery decisions behind compatibility aliases', () => {
+  const result = requireSuccessfulShell(`
+    set -euo pipefail
+    source "$PROJECT_ROOT/scripts/lib/common.sh"
+    source "$PROJECT_ROOT/scripts/lib/release-risk-policy.sh"
+    MIGRATION_RISK_LEVEL=safe release_risk_policy_production_backup_is_required || echo no-safe-backup
+    MIGRATION_RISK_LEVEL=destructive release_risk_policy_production_backup_is_required && echo destructive-backup
+    DB_MIGRATED=1 FAILURE_STAGE=startup release_risk_policy_staging_restore_is_eligible && echo staging-startup
+    release_risk_policy_production_rollback_is_eligible success failure skipped && echo production-smoke-failure
+  `);
+
+  assert.deepEqual(result.stdout.trim().split('\n'), [
+    'no-safe-backup',
+    'destructive-backup',
+    'staging-startup',
+    'production-smoke-failure',
+  ]);
+
+  const releaseExecution = readFileSync(
+    resolve(projectRoot, 'scripts/lib/release-execution.sh'),
+    'utf-8'
+  );
+  assert.match(releaseExecution, /source "\$release_risk_policy_path"/);
+  assert.match(releaseExecution, /release_risk_policy_require_production_backup/);
+});
+
+test('release risk policy shell fallback classifies migration risk without Node', () => {
+  const repoDir = mkdtempSync(join(tmpdir(), 'release-risk-policy-shell-'));
+
+  try {
+    gitOutput(['init'], { cwd: repoDir });
+    gitOutput(['checkout', '-b', 'main'], { cwd: repoDir });
+    gitOutput(['config', 'user.name', 'Codex'], { cwd: repoDir });
+    gitOutput(['config', 'user.email', 'codex@example.com'], { cwd: repoDir });
+    writeFileSync(join(repoDir, 'README.md'), 'baseline\n');
+    const baseSha = commitAll(repoDir, 'baseline');
+    mkdirSync(join(repoDir, 'api', 'drizzle'), { recursive: true });
+    writeFileSync(
+      join(repoDir, 'api', 'drizzle', '0001_add_column.sql'),
+      'ALTER TABLE schools ADD COLUMN display_name text;\n'
+    );
+    const targetSha = commitAll(repoDir, 'expand migration');
+
+    const result = requireSuccessfulShell(`
+      set -euo pipefail
+      source "$PROJECT_ROOT/scripts/lib/release-risk-policy.sh"
+      release_risk_policy_classify_migration_risk_without_node "${repoDir}" "${baseSha}" "${targetSha}"
+      printf 'risk=%s\\nchanged=%s\\nexpand=%s\\nsafe=%s\\n' "$MIGRATION_RISK_LEVEL" "$MIGRATION_CHANGED_FILES" "$MIGRATION_EXPAND_FILES" "$MIGRATION_SAFE_FILES"
+    `);
+
+    assert.match(result.stdout, /risk=expand-contract/);
+    assert.match(result.stdout, /changed=api\/drizzle\/0001_add_column\.sql/);
+    assert.match(result.stdout, /expand=api\/drizzle\/0001_add_column\.sql/);
+    assert.match(result.stdout, /safe=\n/);
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test('release execution exposes staging restore and production rollback eligibility', () => {
   const result = requireSuccessfulShell(`
     set -euo pipefail
@@ -172,6 +242,7 @@ test('remote deploy scripts load release execution and delegate release-risk dec
   );
 
   assert.ok(existsSync(helperPath));
+  assert.ok(existsSync(resolve(projectRoot, 'scripts/lib/release-risk-policy.sh')));
   assert.match(scaffold, /RELEASE_EXECUTION_HELPER_PATH=/);
   assert.match(helperContracts, /RELEASE_EXECUTION_HELPER_MIN_CONTRACT_VERSION=/);
   assert.match(helperContracts, /release_execution_helper_supports_contract\(\)/);
@@ -181,6 +252,8 @@ test('remote deploy scripts load release execution and delegate release-risk dec
   assert.match(productionRemote, /source "\$RELEASE_EXECUTION_HELPER_PATH"/);
   assert.match(productionRemote, /release_execution_mark_stage migrations/);
   assert.match(productionRemote, /release_execution_mark_stage startup/);
+  assert.doesNotMatch(productionRemote, /classify_sql_migration_file_fallback\(\)/);
+  assert.match(productionRemote, /release_risk_policy_classify_migration_risk_without_node/);
   assert.match(productionContext, /release_execution_classify_and_gate_production_migrations/);
   assert.doesNotMatch(productionContext, /classify_sql_migration_file\(\)/);
 });

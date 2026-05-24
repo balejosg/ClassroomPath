@@ -72,7 +72,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
     name: 'deploy-shell',
     patterns: [
       '^scripts/(?:deploy-.+|detect-email-delivery-risk|detect-windows-firefox-risk|rollback-.+|persist-.+|run-staging-release-gate|tag-production-release|verify-production-promotion-ready|verify-staging-release-state)\\.sh$',
-      '^scripts/lib/(?:deployment-state|release-risk|release-runtime|release-state|remote-bootstrap|remote-deploy-scaffold|deploy-production-context|deploy-production-runtime|staging-gates)\\.sh$',
+      '^scripts/lib/(?:deployment-state|release-execution|release-risk|release-risk-policy|release-runtime|release-state|remote-bootstrap|remote-deploy-scaffold|deploy-production-context|deploy-production-runtime|staging-gates)\\.sh$',
     ],
     capabilities: { ciRelevant: true, verificationScope: 'ops-regression' },
     ...releasePolicy(),
@@ -92,7 +92,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-library',
     patterns: [
-      '^scripts/lib/(?:ajax-auto-allow-canary-harness|ajax-auto-allow-canary-runtime|auto-allow-boundary-evidence|firefox-release-version|github-actions|github-actions-artifacts|github-actions-diagnostic-client|linux-auto-allow-canary-evidence|openpath-ci-checks|prepromotion-runner-rehearsal|promotion-eligibility|regression-plan|release-candidate|release-candidate-components|release-cli|release-evidence|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|runner-diagnostic-execution|verification-catalog|verification-report-contract|verify-report-consumer|windows-ajax-auto-allow-runtime|windows-auto-allow-canary-evidence)\\.mjs$',
+      '^scripts/lib/(?:ajax-auto-allow-canary-harness|ajax-auto-allow-canary-runtime|auto-allow-boundary-evidence|firefox-release-version|github-actions|github-actions-artifacts|github-actions-diagnostic-client|linux-auto-allow-canary-evidence|migration-risk-classifier|openpath-ci-checks|prepromotion-runner-rehearsal|promotion-eligibility|regression-plan|release-candidate|release-candidate-components|release-cli|release-evidence|release-images|release-risk|release-risk-policy|release-state-contract|resolve-latest-verifier-image|runner-diagnostic-execution|verification-catalog|verification-report-contract|verify-report-consumer|windows-ajax-auto-allow-runtime|windows-auto-allow-canary-evidence)\\.mjs$',
     ],
     capabilities: {
       ciRelevant: true,

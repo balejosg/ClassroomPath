@@ -299,89 +299,6 @@ load_deploy_container_platform_helper() {
   source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"
 }
 
-classify_sql_migration_file_fallback() {
-  local path="$1"
-
-  if grep -Eiq '\b(DELETE[[:space:]]+FROM|TRUNCATE|DROP[[:space:]]+(TABLE|INDEX|COLUMN|CONSTRAINT))\b' "$path"; then
-    printf '%s\n' "destructive"
-    return 0
-  fi
-
-  if grep -Eiq '\bALTER[[:space:]]+TABLE\b' "$path" \
-    && grep -Eiq '\b(DROP|ALTER[[:space:]]+COLUMN[[:space:][:alnum:]_"]*[[:space:]]+TYPE|SET[[:space:]]+DATA[[:space:]]+TYPE)\b' "$path"; then
-    printf '%s\n' "destructive"
-    return 0
-  fi
-
-  if grep -Eiq '\bUPDATE\b' "$path" && grep -Eiq '\bSET\b' "$path"; then
-    printf '%s\n' "destructive"
-    return 0
-  fi
-
-  if grep -Eiq '\b(CREATE[[:space:]]+TABLE|CREATE[[:space:]]+(UNIQUE[[:space:]]+)?INDEX)\b' "$path"; then
-    printf '%s\n' "expand-contract"
-    return 0
-  fi
-
-  if grep -Eiq '\bALTER[[:space:]]+TABLE\b' "$path" \
-    && grep -Eiq '\bADD[[:space:]]+(COLUMN|CONSTRAINT)\b' "$path"; then
-    printf '%s\n' "expand-contract"
-    return 0
-  fi
-
-  printf '%s\n' "safe"
-}
-
-classify_migration_risk_without_node() {
-  local repo_root="$1"
-  local from_ref="$2"
-  local to_ref="$3"
-  local -a changed_files=()
-  local -a destructive_files=()
-  local -a expand_files=()
-  local file=""
-  local risk="safe"
-
-  if [ -z "$from_ref" ] || [ -z "$to_ref" ] || [ "$from_ref" = "$to_ref" ]; then
-    MIGRATION_RISK_LEVEL="safe"
-    MIGRATION_CHANGED_FILES=""
-    MIGRATION_DESTRUCTIVE_FILES=""
-    return 0
-  fi
-
-  while IFS= read -r file; do
-    [ -n "$file" ] || continue
-    changed_files+=("$file")
-  done < <(
-    git -C "$repo_root" diff --name-only "${from_ref}..${to_ref}" -- \
-      'api/drizzle/*.sql' \
-      'upstream/openpath/api/drizzle/*.sql'
-  )
-
-  for file in "${changed_files[@]}"; do
-    risk="$(classify_sql_migration_file_fallback "$repo_root/$file")"
-    case "$risk" in
-      destructive)
-        destructive_files+=("$file")
-        ;;
-      expand-contract)
-        expand_files+=("$file")
-        ;;
-    esac
-  done
-
-  if [ "${#destructive_files[@]}" -gt 0 ]; then
-    MIGRATION_RISK_LEVEL="destructive"
-  elif [ "${#expand_files[@]}" -gt 0 ]; then
-    MIGRATION_RISK_LEVEL="expand-contract"
-  else
-    MIGRATION_RISK_LEVEL="safe"
-  fi
-
-  MIGRATION_CHANGED_FILES="$(IFS=,; printf '%s' "${changed_files[*]}")"
-  MIGRATION_DESTRUCTIVE_FILES="$(IFS=,; printf '%s' "${destructive_files[*]}")"
-}
-
 load_production_deploy_payload() {
   local release_manifest_b64=""
   local payload_image_source=""
@@ -481,7 +398,7 @@ classify_production_migration_risk() {
   if command -v node >/dev/null 2>&1; then
     release_execution_classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
   else
-    classify_migration_risk_without_node "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
+    release_risk_policy_classify_migration_risk_without_node "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
   fi
 
   if [ "${MIGRATION_RISK_LEVEL:-safe}" = "destructive" ]; then

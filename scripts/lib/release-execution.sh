@@ -2,7 +2,7 @@
 # release-execution.sh - Shared release transition, risk, and recovery helpers
 # shellcheck shell=bash
 
-RELEASE_EXECUTION_HELPER_CONTRACT_VERSION=1
+RELEASE_EXECUTION_HELPER_CONTRACT_VERSION=2
 
 release_execution_scripts_dir() {
   local script_source="${BASH_SOURCE[0]:-}"
@@ -16,6 +16,10 @@ release_execution_scripts_dir() {
 
   printf '%s\n' "$(cd "$lib_dir/.." && pwd)"
 }
+
+release_risk_policy_path="$(release_execution_scripts_dir)/lib/release-risk-policy.sh"
+# shellcheck source=lib/release-risk-policy.sh
+source "$release_risk_policy_path"
 
 release_execution_init_context() {
   DEPLOY_CONTEXT_FILE="$1"
@@ -62,6 +66,8 @@ release_execution_write_deploy_context() {
   MIGRATION_RISK_LEVEL="${MIGRATION_RISK_LEVEL:-safe}" \
   MIGRATION_CHANGED_FILES="${MIGRATION_CHANGED_FILES:-}" \
   MIGRATION_DESTRUCTIVE_FILES="${MIGRATION_DESTRUCTIVE_FILES:-}" \
+  MIGRATION_EXPAND_FILES="${MIGRATION_EXPAND_FILES:-}" \
+  MIGRATION_SAFE_FILES="${MIGRATION_SAFE_FILES:-}" \
   PRODUCTION_BACKUP_REFERENCE="${PRODUCTION_BACKUP_REFERENCE:-}" \
   DB_MIGRATED="${DB_MIGRATED:-0}" \
   FAILURE_STAGE="${FAILURE_STAGE:-${DEPLOY_FAILURE_STAGE:-preflight}}" \
@@ -94,28 +100,7 @@ release_execution_classify_migration_risk() {
 }
 
 release_execution_require_production_backup() {
-  if [ "${MIGRATION_RISK_LEVEL:-safe}" != "destructive" ]; then
-    return 0
-  fi
-
-  if [ -n "${PRODUCTION_DB_BACKUP_COMMAND:-}" ]; then
-    if declare -f log_info >/dev/null 2>&1; then
-      log_info "Creating production backup using PRODUCTION_DB_BACKUP_COMMAND..."
-    fi
-    PRODUCTION_BACKUP_REFERENCE="$(sh -lc "$PRODUCTION_DB_BACKUP_COMMAND")"
-  elif [ -n "${PRODUCTION_DB_BACKUP_ID:-}" ]; then
-    PRODUCTION_BACKUP_REFERENCE="$PRODUCTION_DB_BACKUP_ID"
-  else
-    die "Destructive migrations require PRODUCTION_DB_BACKUP_ID or PRODUCTION_DB_BACKUP_COMMAND" 1
-  fi
-
-  if [ -z "$PRODUCTION_BACKUP_REFERENCE" ]; then
-    die "Backup command did not return a backup identifier" 1
-  fi
-
-  if declare -f log_info >/dev/null 2>&1; then
-    log_info "Recorded production backup reference: $PRODUCTION_BACKUP_REFERENCE"
-  fi
+  release_risk_policy_require_production_backup
 }
 
 release_execution_classify_and_gate_production_migrations() {
@@ -131,24 +116,9 @@ release_execution_classify_and_gate_production_migrations() {
 }
 
 release_execution_staging_restore_is_eligible() {
-  local stage="${FAILURE_STAGE:-${DEPLOY_FAILURE_STAGE:-}}"
-
-  [ "${DB_MIGRATED:-0}" = "1" ] || return 1
-
-  case "$stage" in
-    startup|readiness)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
+  release_risk_policy_staging_restore_is_eligible
 }
 
 release_execution_production_rollback_is_eligible() {
-  local deploy_result="${1:-}"
-  local smoke_result="${2:-}"
-  local windows_canary_result="${3:-}"
-
-  [ "$deploy_result" = "failure" ] || [ "$smoke_result" = "failure" ] || [ "$windows_canary_result" = "failure" ]
+  release_risk_policy_production_rollback_is_eligible "$@"
 }

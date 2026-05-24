@@ -6,6 +6,12 @@ import {
   evaluateReleaseRiskPathsForCanary,
   evaluateReleaseRiskPaths,
 } from '../scripts/lib/release-risk-policy.mjs';
+import {
+  classifyMigrationFileContents,
+  classifyMigrationRiskFromFiles,
+  formatMigrationRiskEnv,
+} from '../scripts/lib/migration-risk-classifier.mjs';
+import { detectCiRelevantChanges } from '../scripts/detect-ci-relevant-changes.mjs';
 
 test('release risk policy keeps canary-triggering client and extension paths in a single catalog', () => {
   const ruleIds = RELEASE_RISK_POLICY_DEFINITIONS.map((definition) => definition.id);
@@ -140,4 +146,66 @@ test('release risk policy evaluates email delivery preflight risk independently'
   assert.equal(clientRuntimeChange.highRisk, false);
   assert.equal(windowsFirefoxRisk.highRisk, true);
   assert.equal(windowsFirefoxRisk.matchedRules[0]?.id, 'openpath-firefox-extension');
+});
+
+test('migration risk classifier is importable and preserves CLI env output fields', () => {
+  const files = [
+    { path: 'api/drizzle/0001_create.sql', contents: 'CREATE TABLE schools (id text);\n' },
+    { path: 'api/drizzle/0002_safe.sql', contents: 'SELECT 1;\n' },
+  ];
+
+  assert.equal(classifyMigrationFileContents('DROP TABLE schools;\n'), 'destructive');
+  assert.equal(
+    classifyMigrationFileContents('ALTER TABLE schools ADD COLUMN name text;\n'),
+    'expand-contract'
+  );
+  assert.equal(classifyMigrationFileContents('SELECT 1;\n'), 'safe');
+
+  const result = classifyMigrationRiskFromFiles(files);
+  assert.deepEqual(result, {
+    riskLevel: 'expand-contract',
+    changedFiles: ['api/drizzle/0001_create.sql', 'api/drizzle/0002_safe.sql'],
+    destructiveFiles: [],
+    expandFiles: ['api/drizzle/0001_create.sql'],
+    safeFiles: ['api/drizzle/0002_safe.sql'],
+  });
+
+  assert.deepEqual(formatMigrationRiskEnv(result), [
+    'MIGRATION_RISK_LEVEL=expand-contract',
+    'MIGRATION_CHANGED_FILES=api/drizzle/0001_create.sql,api/drizzle/0002_safe.sql',
+    'MIGRATION_DESTRUCTIVE_FILES=',
+    'MIGRATION_EXPAND_FILES=api/drizzle/0001_create.sql',
+    'MIGRATION_SAFE_FILES=api/drizzle/0002_safe.sql',
+  ]);
+});
+
+test('release risk policy helpers remain routed through release automation validation', () => {
+  assert.deepEqual(
+    {
+      shell: detectCiRelevantChanges(['scripts/lib/release-risk-policy.sh']),
+      node: detectCiRelevantChanges(['scripts/lib/migration-risk-classifier.mjs']),
+    },
+    {
+      shell: {
+        ci_relevant: 'true',
+        product_validation: 'false',
+        ops_regression: 'true',
+        release_automation: 'false',
+        domain_owners: 'release-engineering',
+        release_gates: 'staging-release-gate,production-release-gate',
+        required_approvals: 'release-engineering',
+        reviewers: 'release-engineering',
+      },
+      node: {
+        ci_relevant: 'true',
+        product_validation: 'false',
+        ops_regression: 'false',
+        release_automation: 'true',
+        domain_owners: 'release-engineering',
+        release_gates: 'staging-release-gate,production-release-gate',
+        required_approvals: 'release-engineering',
+        reviewers: 'release-engineering',
+      },
+    }
+  );
 });

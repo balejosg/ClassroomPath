@@ -261,7 +261,7 @@ void describe('Remote Deploy Bootstrap', () => {
       !deployRemoteContent.includes(
         'configure_node_path\n\nif release_manifest_helper_supports_contract'
       ) &&
-        deployRemoteContent.includes('classify_migration_risk_without_node()') &&
+        deployRemoteContent.includes('release_risk_policy_classify_migration_risk_without_node') &&
         deployRemoteContent.includes('if command -v node >/dev/null 2>&1; then') &&
         deployRemoteContent.includes(
           'release_execution_classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"'

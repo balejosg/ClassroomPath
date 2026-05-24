@@ -61,6 +61,25 @@ test('versioned helper contracts accept higher versions', () => {
   assert.equal(result.status, 0);
 });
 
+test('release execution helper contract requires the sibling release risk policy helper', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'remote-helper-contracts-release-execution-'));
+  const helperPath = writeHelper(
+    tempDir,
+    'release-execution.sh',
+    'RELEASE_EXECUTION_HELPER_CONTRACT_VERSION=2\n'
+  );
+
+  const missingPolicy = runPredicate('release_execution_helper_supports_contract', helperPath);
+  assert.equal(missingPolicy.stdout, 'unsupported:2');
+  assert.equal(missingPolicy.status, 2);
+
+  writeHelper(tempDir, 'release-risk-policy.sh', 'RELEASE_RISK_POLICY_HELPER_CONTRACT_VERSION=1\n');
+
+  const withPolicy = runPredicate('release_execution_helper_supports_contract', helperPath);
+  assert.equal(withPolicy.stdout, 'supported');
+  assert.equal(withPolicy.status, 0);
+});
+
 test('versioned helper contracts reject lower versions even when legacy snippets still match', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'remote-helper-contracts-low-'));
   const helperPath = writeHelper(

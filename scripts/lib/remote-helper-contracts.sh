@@ -7,7 +7,8 @@ RELEASE_STATE_RUNTIME_MIN_CONTRACT_VERSION=1
 RELEASE_STATE_STAGING_VERIFICATION_MIN_CONTRACT_VERSION=1
 DEPLOYMENT_STATE_HELPER_MIN_CONTRACT_VERSION=1
 RELEASE_RUNTIME_HELPER_MIN_CONTRACT_VERSION=1
-RELEASE_EXECUTION_HELPER_MIN_CONTRACT_VERSION=1
+RELEASE_EXECUTION_HELPER_MIN_CONTRACT_VERSION=2
+RELEASE_RISK_POLICY_HELPER_MIN_CONTRACT_VERSION=1
 
 remote_helper_path_supports_all() {
   local helper_path="${1:-}"
@@ -118,12 +119,31 @@ release_runtime_helper_supports_runtime_contract() {
     "$RELEASE_RUNTIME_HELPER_MIN_CONTRACT_VERSION"
 }
 
+release_risk_policy_helper_supports_contract() {
+  local helper_path="${1:-}"
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    RELEASE_RISK_POLICY_HELPER_CONTRACT_VERSION \
+    "$RELEASE_RISK_POLICY_HELPER_MIN_CONTRACT_VERSION"
+}
+
 release_execution_helper_supports_contract() {
   local helper_path="${1:-}"
+  local helper_dir=""
+  local status=0
+
   remote_helper_contract_version_at_least \
     "$helper_path" \
     RELEASE_EXECUTION_HELPER_CONTRACT_VERSION \
     "$RELEASE_EXECUTION_HELPER_MIN_CONTRACT_VERSION"
+  status=$?
+
+  if [ "$status" -ne 0 ]; then
+    return "$status"
+  fi
+
+  helper_dir="$(cd "$(dirname "$helper_path")" && pwd)" || return 2
+  release_risk_policy_helper_supports_contract "$helper_dir/release-risk-policy.sh"
 }
 
 refresh_deployed_release_helpers() {
