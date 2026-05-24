@@ -45,6 +45,9 @@ function walkFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const fullPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
+      if (entry.name === '__tests__') {
+        return [];
+      }
       return walkFiles(fullPath);
     }
 
