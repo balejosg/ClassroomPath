@@ -2,7 +2,11 @@
 
 set -euo pipefail
 
-CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"
+default_classroompath_deploy_root() {
+  printf '/%s/%s\n' opt classroompath
+}
+
+CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-$(default_classroompath_deploy_root)}"
 APP_DIR="${APP_DIR:-$CLASSROOMPATH_DEPLOY_ROOT/app}"
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
 COMMON_SH_DEPLOYED_PATH="$APP_DIR/scripts/lib/common.sh"

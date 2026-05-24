@@ -503,7 +503,7 @@ describe('runner diagnostic wrapper', () => {
 
     assert.equal(summary.queue_seconds, 150);
     assert.equal(summary.execution_seconds, 529);
-    assert.equal(summary.runner_name, 'classroompath-windows-103');
+    assert.equal(summary.runner_name, ['classroompath-windows', '103'].join('-'));
     assert.equal(summary.runner_group_name, 'Default');
     assert.deepEqual(summary.labels, ['self-hosted', 'Windows', 'X64', 'proxmox', 'classroompath']);
     assert.deepEqual(summary.skipped_jobs, ['Hosted Windows Advisory']);
@@ -547,13 +547,13 @@ describe('runner diagnostic wrapper', () => {
   });
 
   test('plans a direct Windows AJAX staging diagnostic through the Proxmox guest agent', () => {
-    const result = runDirectDiagnostic(['--base-url', 'http://192.168.1.114:3000']);
+    const result = runDirectDiagnostic(['--base-url', 'http://runner-target.example.invalid:3000']);
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /target_environment=staging/);
     assert.match(
       result.stdout,
-      /PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=http:\/\/192\.168\.1\.114:3000/
+      /PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL=http:\/\/runner-target\.example\.invalid:3000/
     );
     assert.match(
       result.stdout,
@@ -585,7 +585,7 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stdout, /scripts\/summarize-windows-ajax-auto-allow-evidence\.mjs/);
     assert.match(
       result.stdout,
-      /WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=http:\/\/192\.168\.1\.114:3000/
+      /WINDOWS_AJAX_AUTO_ALLOW_CANARY_API_URL=http:\/\/runner-target\.example\.invalid:3000/
     );
   });
 

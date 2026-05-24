@@ -145,7 +145,7 @@ test('release preflight accepts a real Proxmox alias without PROXMOX_HOST', asyn
     env: {
       STAGING_HOST: 'staging.internal',
       DEPLOY_HOST: 'prod.internal',
-      PROXMOX_SSH_ALIAS: 'whitelist-proxmox',
+      PROXMOX_SSH_ALIAS: 'proxmox-ci-alias',
     },
     runCommand: harness.runCommand,
   });

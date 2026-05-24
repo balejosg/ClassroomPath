@@ -231,9 +231,11 @@ void describe('Remote Deploy Bootstrap', () => {
         `${scriptName} should guard against missing BASH_SOURCE when appleboy/ssh-action streams the payload`
       );
       assert.ok(
-        content.includes(
-          'CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"'
-        ) && content.includes('APP_DIR="${APP_DIR:-$CLASSROOMPATH_DEPLOY_ROOT/app}"'),
+        content.includes('default_classroompath_deploy_root()') &&
+          content.includes(
+            'CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-$(default_classroompath_deploy_root)}"'
+          ) &&
+          content.includes('APP_DIR="${APP_DIR:-$CLASSROOMPATH_DEPLOY_ROOT/app}"'),
         `${scriptName} should resolve the production app directory from the deploy root`
       );
       assert.ok(

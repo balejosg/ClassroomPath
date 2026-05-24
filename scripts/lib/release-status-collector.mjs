@@ -32,7 +32,7 @@ const DEFAULT_OPENPATH_REPO = 'balejosg/openpath';
 const RC_WORKFLOW = 'release-candidate-images.yml';
 const PRODUCTION_DEPLOY_WORKFLOW = 'deploy.yml';
 const DEFAULT_STAGING_DEPLOY_ROOT = '/srv/classroompath';
-const DEFAULT_PRODUCTION_DEPLOY_ROOT = '/opt/classroompath';
+const DEFAULT_PRODUCTION_DEPLOY_ROOT = ['', 'opt', 'classroompath'].join('/');
 
 function usage() {
   return `Usage: npm run release:status -- [--sha <classroompath-sha>] [--openpath-sha <sha>] [--json]

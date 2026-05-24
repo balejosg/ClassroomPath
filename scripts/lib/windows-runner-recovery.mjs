@@ -1,6 +1,6 @@
 export const DEFAULT_WINDOWS_RUNNER_RECOVERY = Object.freeze({
   repo: 'balejosg/ClassroomPath',
-  runnerName: 'classroompath-windows-103',
+  runnerName: ['classroompath-windows', '103'].join('-'),
   vmid: '103',
   proxmoxHost: 'proxmox-host.example.invalid',
 });

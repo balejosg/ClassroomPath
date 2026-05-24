@@ -565,8 +565,9 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(
       productionHostReadinessScript.includes('verify_host_arch_matches_target_platform') &&
         productionHostReadinessScript.includes('linux/arm64') &&
+        productionHostReadinessScript.includes('default_classroompath_deploy_root()') &&
         productionHostReadinessScript.includes(
-          'CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"'
+          'CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-$(default_classroompath_deploy_root)}"'
         ) &&
         productionHostReadinessScript.includes('app_dir="${deploy_root%/}/app"') &&
         productionHostReadinessScript.includes('test -d "$app_dir/.git"') &&
@@ -577,7 +578,7 @@ warn_if_other_release_candidate_run_in_progress target-sha
     );
     assert.ok(
       promotionReadyScript.includes(
-        'PRODUCTION_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"'
+        'PRODUCTION_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-$(default_classroompath_deploy_root)}"'
       ) &&
         promotionReadyScript.includes(
           'PRODUCTION_CURRENT_STATE_PATH="${PRODUCTION_DEPLOY_ROOT%/}/release-state/current-images.env"'
@@ -588,9 +589,10 @@ warn_if_other_release_candidate_run_in_progress target-sha
       'promotion readiness should read production release state from CLASSROOMPATH_DEPLOY_ROOT'
     );
     assert.ok(
-      productionTargetPreflightScript.includes(
-        'CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-/opt/classroompath}"'
-      ) &&
+      productionTargetPreflightScript.includes('default_classroompath_deploy_root()') &&
+        productionTargetPreflightScript.includes(
+          'CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-$(default_classroompath_deploy_root)}"'
+        ) &&
         productionTargetPreflightScript.includes(
           'PRODUCTION_CURRENT_STATE_PATH="${CLASSROOMPATH_DEPLOY_ROOT%/}/release-state/current-images.env"'
         ) &&

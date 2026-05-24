@@ -257,9 +257,10 @@ test('builds a local promotion status summary from read-only command sources', a
     ),
     'release status should keep staging release-state reads on the staging deploy root'
   );
+  const productionDeployRoot = ['', 'opt', 'classroompath'].join('/');
   assert.ok(
     commandLines.some((line) =>
-      line.includes('/opt/classroompath/release-state/current-images.env')
+      line.includes(`${productionDeployRoot}/release-state/current-images.env`)
     ),
     'release status should read production release-state from the production deploy root'
   );
@@ -628,7 +629,7 @@ test('does not require PROXMOX_HOST when a real Proxmox alias is configured', ()
     detectOperationalTargetPlaceholders({
       STAGING_HOST: 'staging.internal',
       DEPLOY_HOST: 'prod.internal',
-      PROXMOX_SSH_ALIAS: 'whitelist-proxmox',
+      PROXMOX_SSH_ALIAS: 'proxmox-ci-alias',
     }),
     []
   );

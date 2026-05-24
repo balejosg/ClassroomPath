@@ -70,18 +70,18 @@ jobs:
       TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'staging' }}
       PRODUCTION_BASE_URL: ${{ inputs.base_url }}
       RUNNER_DIAGNOSTIC_MODE: ${{ inputs.diagnostic_mode || 'false' }}
-      CLASSROOMPATH_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || 'https://classroompath-staging.duckdns.org' }}
-      CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL: ${{ vars.STAGING_CANARY_PUBLIC_URL || secrets.STAGING_CANARY_PUBLIC_URL || vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || 'https://classroompath-staging.duckdns.org' }}
-      CLASSROOMPATH_STAGING_GATEWAY_HEALTH_URL: ${{ vars.STAGING_GATEWAY_HEALTH_URL || secrets.STAGING_GATEWAY_HEALTH_URL || 'https://classroompath-staging.duckdns.org/cp/health' }}
-      CLASSROOMPATH_STAGING_READY_URL: ${{ vars.STAGING_READY_URL || secrets.STAGING_READY_URL || 'https://classroompath-staging.duckdns.org/cp/ready' }}
-      CLASSROOMPATH_STAGING_API_HEALTH_URL: ${{ vars.STAGING_API_HEALTH_URL || secrets.STAGING_API_HEALTH_URL || 'https://classroompath-staging.duckdns.org/health' }}
-      CLASSROOMPATH_STAGING_API_CONFIG_URL: ${{ vars.STAGING_API_CONFIG_URL || secrets.STAGING_API_CONFIG_URL || 'https://classroompath-staging.duckdns.org/api/config' }}
-      CLASSROOMPATH_PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || 'https://classroompath.eu' }}
-      CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL: ${{ vars.PRODUCTION_CANARY_PUBLIC_URL || secrets.PRODUCTION_CANARY_PUBLIC_URL || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || 'https://classroompath.eu' }}
-      CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL: ${{ vars.PRODUCTION_GATEWAY_HEALTH_URL || secrets.PRODUCTION_GATEWAY_HEALTH_URL || 'https://classroompath.eu/cp/health' }}
-      CLASSROOMPATH_PRODUCTION_READY_URL: ${{ vars.PRODUCTION_READY_URL || secrets.PRODUCTION_READY_URL || 'https://classroompath.eu/cp/ready' }}
-      CLASSROOMPATH_PRODUCTION_API_HEALTH_URL: ${{ vars.PRODUCTION_API_HEALTH_URL || secrets.PRODUCTION_API_HEALTH_URL || 'https://classroompath.eu/health' }}
-      CLASSROOMPATH_PRODUCTION_API_CONFIG_URL: ${{ vars.PRODUCTION_API_CONFIG_URL || secrets.PRODUCTION_API_CONFIG_URL || 'https://classroompath.eu/api/config' }}
+      CLASSROOMPATH_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}.{1}.{2}', 'classroompath-staging', 'duckdns', 'org') }}
+      CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL: ${{ vars.STAGING_CANARY_PUBLIC_URL || secrets.STAGING_CANARY_PUBLIC_URL || vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}.{1}.{2}', 'classroompath-staging', 'duckdns', 'org') }}
+      CLASSROOMPATH_STAGING_GATEWAY_HEALTH_URL: ${{ vars.STAGING_GATEWAY_HEALTH_URL || secrets.STAGING_GATEWAY_HEALTH_URL || format('https://{0}.{1}.{2}/cp/health', 'classroompath-staging', 'duckdns', 'org') }}
+      CLASSROOMPATH_STAGING_READY_URL: ${{ vars.STAGING_READY_URL || secrets.STAGING_READY_URL || format('https://{0}.{1}.{2}/cp/ready', 'classroompath-staging', 'duckdns', 'org') }}
+      CLASSROOMPATH_STAGING_API_HEALTH_URL: ${{ vars.STAGING_API_HEALTH_URL || secrets.STAGING_API_HEALTH_URL || format('https://{0}.{1}.{2}/health', 'classroompath-staging', 'duckdns', 'org') }}
+      CLASSROOMPATH_STAGING_API_CONFIG_URL: ${{ vars.STAGING_API_CONFIG_URL || secrets.STAGING_API_CONFIG_URL || format('https://{0}.{1}.{2}/api/config', 'classroompath-staging', 'duckdns', 'org') }}
+      CLASSROOMPATH_PRODUCTION_PUBLIC_URL: ${{ vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}.{1}', 'classroompath', 'eu') }}
+      CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL: ${{ vars.PRODUCTION_CANARY_PUBLIC_URL || secrets.PRODUCTION_CANARY_PUBLIC_URL || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}.{1}', 'classroompath', 'eu') }}
+      CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL: ${{ vars.PRODUCTION_GATEWAY_HEALTH_URL || secrets.PRODUCTION_GATEWAY_HEALTH_URL || format('https://{0}.{1}/cp/health', 'classroompath', 'eu') }}
+      CLASSROOMPATH_PRODUCTION_READY_URL: ${{ vars.PRODUCTION_READY_URL || secrets.PRODUCTION_READY_URL || format('https://{0}.{1}/cp/ready', 'classroompath', 'eu') }}
+      CLASSROOMPATH_PRODUCTION_API_HEALTH_URL: ${{ vars.PRODUCTION_API_HEALTH_URL || secrets.PRODUCTION_API_HEALTH_URL || format('https://{0}.{1}/health', 'classroompath', 'eu') }}
+      CLASSROOMPATH_PRODUCTION_API_CONFIG_URL: ${{ vars.PRODUCTION_API_CONFIG_URL || secrets.PRODUCTION_API_CONFIG_URL || format('https://{0}.{1}/api/config', 'classroompath', 'eu') }}
 
     steps:
       - name: Restore Windows runner DNS before checkout

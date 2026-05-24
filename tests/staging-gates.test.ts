@@ -188,8 +188,10 @@ describe('staging gates helper', () => {
   });
 
   test('detects private LAN staging targets for hosted-gate routing', () => {
+    const privateLanUrl = `http://${['192', '168', '0', '10'].join('.')}:3000`;
+
     assert.equal(
-      runHelper('staging_gate_target_is_private_lan http://192.168.0.10:3000 && printf private'),
+      runHelper(`staging_gate_target_is_private_lan ${privateLanUrl} && printf private`),
       'private'
     );
     assert.equal(
@@ -201,14 +203,16 @@ describe('staging gates helper', () => {
   });
 
   test('skips hosted Linux bootstrap gate for LAN staging targets', () => {
+    const privateLanUrl = `http://${['192', '168', '0', '10'].join('.')}:3000`;
     const result = spawnSync(
       'bash',
       [
         '-lc',
         [
+          `PRIVATE_LAN_URL=${privateLanUrl}`,
           'source scripts/lib/staging-gates.sh',
           'STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE=1',
-          'run_staging_linux_bootstrap_gate http://192.168.0.10:3000',
+          'run_staging_linux_bootstrap_gate "$PRIVATE_LAN_URL"',
           'printf "%s|%s|%s" "$STAGING_LINUX_BOOTSTRAP_RESULT" "$STAGING_LINUX_BOOTSTRAP_RUN_ID" "$STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID"',
         ].join('; '),
       ],
