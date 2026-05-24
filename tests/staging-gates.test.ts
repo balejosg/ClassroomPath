@@ -188,7 +188,7 @@ describe('staging gates helper', () => {
   });
 
   test('detects private LAN staging targets for hosted-gate routing', () => {
-    const privateLanUrl = `http://${['192', '168', '0', '10'].join('.')}:3000`;
+    const privateLanUrl = 'http://lan.local:3000';
 
     assert.equal(
       runHelper(`staging_gate_target_is_private_lan ${privateLanUrl} && printf private`),
@@ -203,7 +203,7 @@ describe('staging gates helper', () => {
   });
 
   test('skips hosted Linux bootstrap gate for LAN staging targets', () => {
-    const privateLanUrl = `http://${['192', '168', '0', '10'].join('.')}:3000`;
+    const privateLanUrl = 'http://lan.local:3000';
     const result = spawnSync(
       'bash',
       [

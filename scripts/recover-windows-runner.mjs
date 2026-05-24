@@ -54,6 +54,9 @@ function runCommand(args, { capture = false, allowFailure = false } = {}) {
 }
 
 function runProxmoxQm(args, options) {
+  if (!DRY_RUN && DEFAULT_WINDOWS_RUNNER_RECOVERY.vmid === '<vmid>') {
+    throw new Error('Set WINDOWS_RUNNER_VMID to the private Windows runner VMID.');
+  }
   return runCommand(['ssh', DEFAULT_WINDOWS_RUNNER_RECOVERY.proxmoxHost, 'qm', ...args], options);
 }
 

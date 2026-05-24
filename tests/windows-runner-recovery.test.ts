@@ -20,6 +20,7 @@ function runRecovery(args: string[]) {
     env: {
       ...process.env,
       WINDOWS_RUNNER_RECOVERY_DRY_RUN: '1',
+      WINDOWS_RUNNER_VMID: '<vmid>',
     },
   });
 }
@@ -116,9 +117,9 @@ snapshot-clean-baseline-20260510 pre-lab clean baseline
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /gh api repos\/balejosg\/ClassroomPath\/actions\/runners/);
     assert.match(result.stdout, /gh run list --repo balejosg\/ClassroomPath --status queued/);
-    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm status 103/);
-    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm listsnapshot 103/);
-    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm config 103/);
+    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm status "<vmid>"/);
+    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm listsnapshot "<vmid>"/);
+    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm config "<vmid>"/);
     assert.doesNotMatch(result.stdout, /\bqm rollback\b/);
     assert.doesNotMatch(result.stdout, /\bgh run cancel\b/);
   });
@@ -141,11 +142,14 @@ snapshot-clean-baseline-20260510 pre-lab clean baseline
     assert.equal(result.status, 0, result.stderr);
     assert.match(
       result.stdout,
-      /ssh proxmox-host.example.invalid qm rollback 103 snapshot-clean-baseline-20260510/
+      /ssh proxmox-host.example.invalid qm rollback "<vmid>" snapshot-clean-baseline-20260510/
     );
-    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm set 103 --boot order=sata0/);
-    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm start 103/);
-    const expectedRunnerName = ['classroompath-windows', '103'].join('-');
+    assert.match(
+      result.stdout,
+      /ssh proxmox-host.example.invalid qm set "<vmid>" --boot order=sata0/
+    );
+    assert.match(result.stdout, /ssh proxmox-host.example.invalid qm start "<vmid>"/);
+    const expectedRunnerName = '<runner-name>';
     assert.match(result.stdout, new RegExp(`wait for ${expectedRunnerName} online busy=false`));
   });
 });

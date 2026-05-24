@@ -32,7 +32,6 @@ const DEFAULT_OPENPATH_REPO = 'balejosg/openpath';
 const RC_WORKFLOW = 'release-candidate-images.yml';
 const PRODUCTION_DEPLOY_WORKFLOW = 'deploy.yml';
 const DEFAULT_STAGING_DEPLOY_ROOT = '/srv/classroompath';
-const DEFAULT_PRODUCTION_DEPLOY_ROOT = ['', 'opt', 'classroompath'].join('/');
 
 function usage() {
   return `Usage: npm run release:status -- [--sha <classroompath-sha>] [--openpath-sha <sha>] [--json]
@@ -375,11 +374,19 @@ function resolveProductionAccess(env) {
     port: env.DEPLOY_PORT || '22',
     key: expandTilde(key, env),
     strictHostKey: env.DEPLOY_SSH_STRICT_HOSTKEY || 'accept-new',
-    deployRoot: env.CLASSROOMPATH_DEPLOY_ROOT || DEFAULT_PRODUCTION_DEPLOY_ROOT,
+    deployRoot: env.CLASSROOMPATH_DEPLOY_ROOT || '',
   };
 }
 
 function readRemoteState({ runCommand, env, access, fileName }) {
+  if (!access.deployRoot) {
+    return {
+      ok: false,
+      state: null,
+      error: `CLASSROOMPATH_DEPLOY_ROOT is required for read-only ${fileName} read`,
+    };
+  }
+
   if (!access.key || (!env.RELEASE_STATUS_TEST_MODE && !existsSync(access.key))) {
     return {
       ok: false,

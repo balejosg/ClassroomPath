@@ -294,13 +294,17 @@ describe('Windows AJAX auto-allow canary evidence contracts', () => {
     assert.ok(workflowText.includes('name: ci-workflow-hygiene-report'));
     assert.ok(
       workflowText.includes(
-        "github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}.{1}', 'classroompath', 'eu')"
+        'github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL'
       ),
-      'production canary must resolve a real production URL when the manual input is empty'
+      'production canary must require an explicit production URL from workflow input, GitHub vars, or GitHub secrets'
+    );
+    assert.ok(
+      !/https:\/\/classroompath\.eu/.test(workflowText),
+      'production canary must not reconstruct the live production URL in tracked workflow defaults'
     );
     assert.ok(
       !workflowText.includes(
-        "github.event.inputs.production_base_url || format('https://{0}.{1}', 'classroompath', 'eu')"
+        "github.event.inputs.production_base_url || 'https://classroompath.example.invalid'"
       ),
       'production canary must not default scheduled runs to the public placeholder host'
     );
@@ -1724,18 +1728,20 @@ describe('Production client update canary workflow contracts', () => {
     );
     assert.equal(
       job?.env?.CLASSROOMPATH_STAGING_PUBLIC_URL,
-      "${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}.{1}.{2}', 'classroompath-staging', 'duckdns', 'org') }}",
-      'reusable bootstrap canary must resolve staging public URLs locally without falling back to the SSH host'
+      '${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL }}',
+      'reusable bootstrap canary must require staging public URLs from GitHub vars or secrets'
     );
     assert.equal(
       job?.env?.CLASSROOMPATH_PRODUCTION_PUBLIC_URL,
-      "${{ vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}.{1}', 'classroompath', 'eu') }}",
-      'reusable bootstrap canary must resolve production public URLs locally without falling back to the SSH host'
+      '${{ vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL }}',
+      'reusable bootstrap canary must require production public URLs from GitHub vars or secrets'
     );
     assert.equal(
       job?.env?.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL,
-      "${{ vars.STAGING_CANARY_PUBLIC_URL || secrets.STAGING_CANARY_PUBLIC_URL || vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}.{1}.{2}', 'classroompath-staging', 'duckdns', 'org') }}"
+      '${{ vars.STAGING_CANARY_PUBLIC_URL || secrets.STAGING_CANARY_PUBLIC_URL || vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL }}'
     );
+    assert.ok(!/classroompath-staging\.duckdns\.org/.test(workflowText));
+    assert.ok(!/https:\/\/classroompath\.eu/.test(workflowText));
     assert.ok(
       !String(job?.env?.CLASSROOMPATH_STAGING_PUBLIC_URL ?? '').includes('STAGING_DEPLOY_HOST')
     );

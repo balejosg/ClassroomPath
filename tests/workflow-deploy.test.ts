@@ -450,7 +450,8 @@ describe('Deploy workflow contracts', () => {
     assert.ok(deployWorkflowText.includes('promotion-evidence-cli.mjs extract-tag-message'));
     assert.equal(
       deployWorkflow.env?.CLASSROOMPATH_DEPLOY_ROOT,
-      "${{ vars.CLASSROOMPATH_DEPLOY_ROOT || format('/{0}/{1}', 'opt', 'classroompath') }}"
+      '${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}',
+      'production deploy root must be configured explicitly through GitHub vars'
     );
     assert.equal(
       deployWorkflow.env?.CLASSROOMPATH_PRODUCTION_PUBLIC_URL,

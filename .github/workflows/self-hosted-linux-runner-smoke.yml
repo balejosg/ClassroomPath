@@ -19,15 +19,22 @@ jobs:
     steps:
       - name: Check runner identity
         shell: bash
+        env:
+          EXPECTED_RUNNER_NAME: ${{ vars.CLASSROOMPATH_LINUX_RUNNER_NAME }}
         run: |
           set -euo pipefail
+
+          if [ -z "$EXPECTED_RUNNER_NAME" ]; then
+            echo "::error::Set vars.CLASSROOMPATH_LINUX_RUNNER_NAME to the private self-hosted Linux runner name."
+            exit 1
+          fi
 
           echo "RUNNER_NAME=$RUNNER_NAME"
           echo "RUNNER_OS=$RUNNER_OS"
           echo "RUNNER_ARCH=$RUNNER_ARCH"
 
-          if [ "$RUNNER_NAME" != "classroompath-linux-102" ]; then
-            echo "::error::Expected classroompath-linux-102, got $RUNNER_NAME"
+          if [ "$RUNNER_NAME" != "$EXPECTED_RUNNER_NAME" ]; then
+            echo "::error::Unexpected Linux runner name: $RUNNER_NAME"
             exit 1
           fi
 

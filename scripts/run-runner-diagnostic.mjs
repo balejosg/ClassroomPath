@@ -14,7 +14,6 @@ import {
 const DEFAULT_REF = 'main';
 const DEFAULT_ENVIRONMENT = 'staging';
 const DEFAULT_SUITE = 'windows-bootstrap-ajax';
-const DEFAULT_RUNNER_NAME = ['classroompath-windows', '103'].join('-');
 const DRY_RUN = process.env.RUNNER_DIAGNOSTIC_DRY_RUN === '1';
 const FAKE_WATCH_FAILURE = process.env.RUNNER_DIAGNOSTIC_FAKE_WATCH_FAILURE === '1';
 const FAKE_ARTIFACT_DOWNLOAD_FAILURE =
@@ -70,7 +69,7 @@ Options:
   --wait                      Wait for the dispatched run to finish
   --download-artifacts        Download artifacts after waiting
   --check-runner-state        Inspect self-hosted runner state before dispatch
-  --runner-name <name>        Runner name for --check-runner-state (default: ${DEFAULT_RUNNER_NAME})
+  --runner-name <name>        Runner name for --check-runner-state
   --force-dispatch            Dispatch even when checked runner is busy
   --confirm-production        Required when --environment production
 `);
@@ -85,7 +84,7 @@ function parseArgs(argv) {
     wait: false,
     downloadArtifacts: false,
     checkRunnerState: false,
-    runnerName: DEFAULT_RUNNER_NAME,
+    runnerName: '',
     forceDispatch: false,
     confirmProduction: false,
   };
@@ -174,12 +173,24 @@ function main() {
     process.exit(1);
   }
 
+  if (options.environment === 'production' && suite.baseUrlField && !options.baseUrl) {
+    console.error(
+      'Production runner diagnostics require --base-url with a private production URL.'
+    );
+    process.exit(1);
+  }
+
   const artifactDir = resolve(
     '.opencode/tmp/runner-diagnostics',
     DRY_RUN ? '<latest-run-id>' : `${options.suite}-${Date.now()}`
   );
 
   if (options.checkRunnerState) {
+    if (!options.runnerName) {
+      console.error('Runner state diagnostics require --runner-name with the private runner name.');
+      process.exit(1);
+    }
+
     const state = inspectRunnerState({
       repo: suite.repo,
       runnerName: options.runnerName,

@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}.{1}', 'classroompath', 'eu') }}
+      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL }}
 
     steps:
       - name: Checkout
@@ -317,7 +317,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     timeout-minutes: 35
     env:
-      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}.{1}', 'classroompath', 'eu') }}
+      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL }}
 
     steps:
       - name: Restore Windows runner DNS before checkout
@@ -824,7 +824,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, proxmox, classroompath]
     timeout-minutes: 35
     env:
-      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL || format('https://{0}.{1}', 'classroompath', 'eu') }}
+      PRODUCTION_BASE_URL: ${{ github.event.inputs.production_base_url || vars.PRODUCTION_PUBLIC_URL || secrets.PRODUCTION_PUBLIC_URL }}
 
     steps:
       - name: Checkout

@@ -25,7 +25,7 @@ describe('destructive Windows runner guard', () => {
             name: 'Windows Client Self-Update Canary',
             status: 'in_progress',
             conclusion: null,
-            runner_name: ['classroompath-windows', '103'].join('-'),
+            runner_name: '<runner-name>',
             labels: ['self-hosted', 'Windows', 'X64', 'proxmox', 'classroompath'],
           },
         ],

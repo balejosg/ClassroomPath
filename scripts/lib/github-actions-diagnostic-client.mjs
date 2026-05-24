@@ -101,7 +101,7 @@ function buildDryRunJobsFallback() {
         createdAt: '2026-04-29T10:00:00Z',
         startedAt: '2026-04-29T10:02:30Z',
         completedAt: '2026-04-29T10:11:19Z',
-        runner_name: ['classroompath-windows', '103'].join('-'),
+        runner_name: '<runner-name>',
         runner_group_name: 'Default',
         labels: ['self-hosted', 'Windows', 'X64', 'proxmox', 'classroompath'],
       },

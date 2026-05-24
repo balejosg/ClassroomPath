@@ -24,10 +24,14 @@ jobs:
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
-          RUNNER_NAME: ${{ vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME || format('{0}-{1}', 'classroompath-windows', '103') }}
+          RUNNER_NAME: ${{ vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME }}
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "$RUNNER_NAME" ]; then
+            echo "::error::Set vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME to the private self-hosted Windows runner name."
+            exit 1
+          fi
           runner_json_path="$(mktemp)"
           runner_error_path="$(mktemp)"
 
@@ -104,12 +108,15 @@ jobs:
     needs: [inspect-runner-registration]
     runs-on: [self-hosted, Windows, X64, proxmox, classroompath]
     timeout-minutes: 10
-    env:
-      EXPECTED_RUNNER_NAME: ${{ vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME || format('{0}-{1}', 'classroompath-windows', '103') }}
     steps:
       - name: Verify runner identity
         shell: pwsh
+        env:
+          EXPECTED_RUNNER_NAME: ${{ vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME }}
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:EXPECTED_RUNNER_NAME)) {
+            throw "Set vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME to the private self-hosted Windows runner name."
+          }
           if ($env:RUNNER_NAME -ne $env:EXPECTED_RUNNER_NAME) {
             throw "Unexpected runner name: $env:RUNNER_NAME"
           }

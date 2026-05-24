@@ -29,7 +29,7 @@ import {
 
 const DEFAULT_ENVIRONMENT = 'staging';
 const DEFAULT_PROXMOX_HOST = 'proxmox-host.example.invalid';
-const DEFAULT_WINDOWS_RUNNER_VMID = '103';
+const DEFAULT_WINDOWS_RUNNER_VMID = '';
 const DEFAULT_CANARY_TIMEOUT_MS = '180000';
 const DEFAULT_POST_FAILURE_OBSERVATION_MS = '60000';
 const DEFAULT_FIREFOX_EXTENSION_SOURCE = 'managed';
@@ -122,7 +122,7 @@ Options:
   --openpath-root <path>      Local OpenPath checkout (default: ../OpenPath)
   --artifact-dir <path>       Local evidence directory (default: .opencode/tmp/windows-ajax-direct/<timestamp>)
   --proxmox-host <host>       Proxmox SSH host/alias (default: ${DEFAULT_PROXMOX_HOST})
-  --vmid <id>                 Windows runner VMID (default: ${DEFAULT_WINDOWS_RUNNER_VMID})
+  --vmid <id>                 Windows runner VMID or WINDOWS_RUNNER_VMID env value
   --canary-timeout-ms <ms>    Browser canary timeout (default: ${DEFAULT_CANARY_TIMEOUT_MS})
   --post-failure-observation-ms <ms>
                               Extra local observation window after canary failure (default: ${DEFAULT_POST_FAILURE_OBSERVATION_MS})
@@ -1317,6 +1317,11 @@ async function main() {
 
   if (!['off', 'diagnostic', 'gate'].includes(options.redditNavigationMode)) {
     console.error(`Unsupported Reddit navigation mode: ${options.redditNavigationMode}`);
+    process.exit(1);
+  }
+
+  if (!DRY_RUN && !options.vmid) {
+    console.error('Direct Windows AJAX diagnostics require --vmid or WINDOWS_RUNNER_VMID.');
     process.exit(1);
   }
 

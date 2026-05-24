@@ -244,8 +244,9 @@ describe('Workflow core contracts', () => {
       'classroompath',
     ]);
     assert.ok(
-      workflowText.includes('classroompath-linux-102'),
-      'self-hosted runner smoke should verify the expected ClassroomPath runner name'
+      workflowText.includes('vars.CLASSROOMPATH_LINUX_RUNNER_NAME') &&
+        !/classroompath-linux-\d+/.test(workflowText),
+      'self-hosted runner smoke should require the expected runner name from GitHub vars'
     );
     assert.ok(
       workflowText.includes('actions/checkout@v6') &&
@@ -259,8 +260,6 @@ describe('Workflow core contracts', () => {
     const workflow = readWorkflow('.github/workflows/self-hosted-windows-runner-smoke.yml');
     const inspectJob = workflow.jobs?.['inspect-runner-registration'];
     const smokeJob = workflow.jobs?.smoke;
-    const expectedRunnerExpression =
-      "vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME || format('{0}-{1}', 'classroompath-windows', '103')";
 
     assert.ok(
       workflow.on?.workflow_dispatch,
@@ -278,8 +277,7 @@ describe('Workflow core contracts', () => {
     assert.equal(inspectJob?.['runs-on'], 'ubuntu-latest');
     assert.ok(
       workflowText.includes('gh api repos/${{ github.repository }}/actions/runners') &&
-        workflowText.includes(expectedRunnerExpression) &&
-        workflowText.includes('select(.name == env.RUNNER_NAME)') &&
+        workflowText.includes('CLASSROOMPATH_WINDOWS_RUNNER_NAME') &&
         workflowText.includes('Resource not accessible by integration') &&
         workflowText.includes('runner_online=unknown') &&
         workflowText.includes('runner-health-unavailable'),
@@ -294,9 +292,9 @@ describe('Workflow core contracts', () => {
       'classroompath',
     ]);
     assert.ok(
-      workflowText.includes('EXPECTED_RUNNER_NAME') &&
-        workflowText.includes('$env:RUNNER_NAME -ne $env:EXPECTED_RUNNER_NAME'),
-      'self-hosted Windows runner smoke should verify the expected ClassroomPath runner name'
+      workflowText.includes('${{ vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME }}') &&
+        !/classroompath-windows-\d+/.test(workflowText),
+      'self-hosted Windows runner smoke should require the expected runner name from GitHub vars'
     );
     assert.ok(
       !workflowText.includes('classroompath-windows-runner'),
@@ -859,8 +857,8 @@ describe('Workflow core contracts', () => {
     );
     assert.ok(
       productionBootstrapWorkflowText.includes(
-        "CLASSROOMPATH_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL || format('https://{0}.{1}.{2}', 'classroompath-staging', 'duckdns', 'org') }}"
-      )
+        'CLASSROOMPATH_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL }}'
+      ) && !/classroompath-staging\.duckdns\.org/.test(productionBootstrapWorkflowText)
     );
     assert.ok(
       !productionBootstrapWorkflowText.includes(

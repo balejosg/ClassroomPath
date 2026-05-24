@@ -9,6 +9,7 @@ const ignoredPathPatterns = [
   /^coverage\//,
   /(^|\/)package-lock\.json$/,
   /^scripts\/check-public-surface\.mjs$/,
+  /^tests\/public-surface-checker\.test\.ts$/,
   /\.(?:png|jpg|jpeg|gif|webp|ico|woff2?)$/,
 ];
 
@@ -46,7 +47,8 @@ const checks = [
   },
   {
     name: 'operator infrastructure identifier',
-    pattern: /\b(?:whitelist-proxmox|classroompath-windows-\d+|student-linux|CT\s*\d+|VM\s*\d+)\b/i,
+    pattern:
+      /\b(?:whitelist-proxmox|classroompath-windows-\d+|classroompath-linux-\d+|student-linux|CT\s*\d+|VM\s*\d+|vmid\s*[:=]\s*['"]?\d+['"]?|qm\s+(?:guest\s+exec|rollback|set|start|status|listsnapshot|config)\s+\d+)\b/i,
   },
   {
     name: 'staging smoke or canary URL',
@@ -54,6 +56,78 @@ const checks = [
       /\bhttps?:\/\/(?!(?:[^/"'`)]*\.)?(?:example\.invalid|example\.com|example\.test|test)(?:[/:)"'`]|\b))[^$<>\s"'`)]*(?:staging|smoke|canary)[^$<>\s"'`)]*/i,
   },
 ];
+
+function unquoteToken(token) {
+  return token
+    .slice(1, -1)
+    .replace(/\\n/g, '\n')
+    .replace(/\\(['"`\\])/g, '$1');
+}
+
+function quotedStrings(text) {
+  return [...text.matchAll(/(['"`])((?:\\.|(?!\1).)*)\1/g)].map((match) => unquoteToken(match[0]));
+}
+
+function splitArgs(text) {
+  return text
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function literalTokenValue(token) {
+  const trimmed = token.trim();
+  if (/^['"`]/.test(trimmed)) {
+    return unquoteToken(trimmed);
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return trimmed;
+  }
+  return null;
+}
+
+function reconstructedCandidates(line) {
+  const candidates = [];
+
+  for (const match of line.matchAll(/\bformat\(([^)]*)\)/g)) {
+    const args = splitArgs(match[1]);
+    const template = args[0];
+    if (!template || !/^['"`]/.test(template)) {
+      continue;
+    }
+    let rendered = unquoteToken(template);
+    for (const [index, arg] of args.slice(1).entries()) {
+      if (/^['"`]/.test(arg)) {
+        rendered = rendered.replaceAll(`{${index}}`, unquoteToken(arg));
+      }
+    }
+    candidates.push(rendered);
+  }
+
+  for (const match of line.matchAll(/\[((?:[^\]])*)\]\.join\(([^)]*)\)/g)) {
+    const parts = splitArgs(match[1])
+      .map(literalTokenValue)
+      .filter((part) => part !== null);
+    const separator = literalTokenValue(match[2].trim()) ?? '';
+    if (parts.length > 0) {
+      candidates.push(parts.join(separator));
+    }
+  }
+
+  for (const match of line.matchAll(/\bprintf\s+((['"`])(?:\\.|(?!\2).)*\2)\s+(.+)$/g)) {
+    const template = unquoteToken(match[1]);
+    const args = match[3].trim().split(/\s+/);
+    let index = 0;
+    candidates.push(template.replace(/%s/g, () => args[index++] ?? ''));
+  }
+
+  const stringParts = quotedStrings(line);
+  if (stringParts.length > 1) {
+    candidates.push(stringParts.join(''));
+  }
+
+  return candidates;
+}
 
 function trackedFiles() {
   return execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' })
@@ -101,6 +175,19 @@ for (const file of trackedFiles()) {
           name: check.name,
           text: line.trim().slice(0, 220),
         });
+      }
+    }
+    for (const candidate of reconstructedCandidates(line)) {
+      for (const check of checks) {
+        if (check.pattern.test(candidate)) {
+          findings.push({
+            file,
+            line: index + 1,
+            name: 'reconstructed public surface leak',
+            text: line.trim().slice(0, 220),
+          });
+          break;
+        }
       }
     }
   }

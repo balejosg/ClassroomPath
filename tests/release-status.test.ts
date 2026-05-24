@@ -50,6 +50,7 @@ function realOperationalTargetEnv() {
     STAGING_HOST: 'staging.internal',
     DEPLOY_HOST: 'production.internal',
     PROXMOX_HOST: 'proxmox.internal',
+    CLASSROOMPATH_DEPLOY_ROOT: '/private/classroompath',
   };
 }
 
@@ -232,6 +233,8 @@ test('builds a local promotion status summary from read-only command sources', a
       RELEASE_STATUS_TEST_MODE: '1',
       RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
       RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
+      ...realOperationalTargetEnv(),
     },
     runCommand: harness.runCommand,
   });
@@ -257,10 +260,9 @@ test('builds a local promotion status summary from read-only command sources', a
     ),
     'release status should keep staging release-state reads on the staging deploy root'
   );
-  const productionDeployRoot = ['', 'opt', 'classroompath'].join('/');
   assert.ok(
     commandLines.some((line) =>
-      line.includes(`${productionDeployRoot}/release-state/current-images.env`)
+      line.includes('/private/classroompath/release-state/current-images.env')
     ),
     'release status should read production release-state from the production deploy root'
   );
@@ -283,6 +285,8 @@ test('collector owns read-only release status command-backed evidence', async ()
       RELEASE_STATUS_TEST_MODE: '1',
       RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
       RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
+      ...realOperationalTargetEnv(),
       ...realOperationalTargetEnv(),
     },
     runCommand: harness.runCommand,
@@ -558,6 +562,7 @@ test('keeps stale staging as promotion-only blocker when production already runs
       RELEASE_STATUS_TEST_MODE: '1',
       RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
       RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
     },
     runCommand(command, args) {
       if (command === 'ssh' && args.at(-1)?.includes('staging-verification.env')) {

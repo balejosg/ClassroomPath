@@ -153,7 +153,16 @@ github_actions_remote_read_env_key() {
   local user="$3"
   local ip="$4"
   local env_key="$5"
-  local env_file="${6:-$(printf '/%s/%s/app/config/.env' opt classroompath)}"
+  local env_file="${6:-${CLASSROOMPATH_REMOTE_ENV_FILE:-}}"
+
+  if [ -z "$env_file" ] && [ -n "${CLASSROOMPATH_DEPLOY_ROOT:-}" ]; then
+    env_file="${CLASSROOMPATH_DEPLOY_ROOT%/}/app/config/.env"
+  fi
+
+  if [ -z "$env_file" ]; then
+    printf '::error::Remote env file path must be passed or CLASSROOMPATH_DEPLOY_ROOT must be configured.\n' >&2
+    return 1
+  fi
 
   github_actions_remote_ssh \
     "$key_path" \

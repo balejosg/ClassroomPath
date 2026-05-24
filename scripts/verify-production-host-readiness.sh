@@ -28,7 +28,7 @@ Environment:
   DEPLOY_SSH_KEY              Private key path
   DEPLOY_SSH_CONFIG           SSH client config file (default: /dev/null)
   DEPLOY_SSH_STRICT_HOSTKEY   StrictHostKeyChecking value (default: accept-new)
-  CLASSROOMPATH_DEPLOY_ROOT   Production deploy root
+  CLASSROOMPATH_DEPLOY_ROOT   Production deploy root from private config
 EOF
 }
 
@@ -50,11 +50,7 @@ DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_USER="${DEPLOY_USER:-}"
 DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"
 DEPLOY_SSH_STRICT_HOSTKEY="${DEPLOY_SSH_STRICT_HOSTKEY:-accept-new}"
-default_classroompath_deploy_root() {
-  printf '/%s/%s\n' opt classroompath
-}
-
-CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-$(default_classroompath_deploy_root)}"
+: "${CLASSROOMPATH_DEPLOY_ROOT:?Set CLASSROOMPATH_DEPLOY_ROOT to the private production deploy root.}"
 DEFAULT_DEPLOY_SSH_KEY="$HOME/.ssh/classroompath_deploy"
 
 if [ -z "${DEPLOY_SSH_KEY:-}" ] && [ -f "$DEFAULT_DEPLOY_SSH_KEY" ]; then
@@ -134,7 +130,7 @@ verify_host_arch_matches_target_platform() {
 
 verify_host_arch_matches_target_platform
 
-deploy_root="${CLASSROOMPATH_DEPLOY_ROOT:-$(default_classroompath_deploy_root)}"
+deploy_root="$CLASSROOMPATH_DEPLOY_ROOT"
 app_dir="${deploy_root%/}/app"
 state_dir="${deploy_root%/}/release-state"
 

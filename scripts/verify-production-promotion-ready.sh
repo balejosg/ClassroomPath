@@ -41,11 +41,8 @@ DEPLOY_USER="${DEPLOY_USER:-}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_SSH_CONFIG="${DEPLOY_SSH_CONFIG:-/dev/null}"
 DEPLOY_SSH_STRICT_HOSTKEY="${DEPLOY_SSH_STRICT_HOSTKEY:-accept-new}"
-default_classroompath_deploy_root() {
-  printf '/%s/%s\n' opt classroompath
-}
-
-PRODUCTION_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-$(default_classroompath_deploy_root)}"
+: "${CLASSROOMPATH_DEPLOY_ROOT:?Set CLASSROOMPATH_DEPLOY_ROOT to the private production deploy root.}"
+PRODUCTION_DEPLOY_ROOT="$CLASSROOMPATH_DEPLOY_ROOT"
 PRODUCTION_CURRENT_STATE_PATH="${PRODUCTION_DEPLOY_ROOT%/}/release-state/current-images.env"
 DEFAULT_DEPLOY_SSH_KEY="$HOME/.ssh/classroompath_deploy"
 
