@@ -41,11 +41,13 @@ test('release risk policy keeps canary-triggering client and extension paths in 
     'linux-bootstrap-ajax',
     'windows-self-update',
     'linux-self-update',
+    'wedu-captive-portal-lab',
   ]);
   assert.deepEqual(RELEASE_RISK_POLICY_DEFINITIONS[1].preproductionEvidence, [
     'windows-installed-client',
     'firefox-policy-ajax',
     'windows-self-update',
+    'wedu-captive-portal-lab',
   ]);
   assert.deepEqual(RELEASE_RISK_POLICY_DEFINITIONS[2].preproductionEvidence, [
     'linux-bootstrap-ajax',
@@ -71,11 +73,13 @@ test('release risk policy maps platform changes to required preproduction eviden
     'linux-bootstrap-ajax',
     'windows-self-update',
     'linux-self-update',
+    'wedu-captive-portal-lab',
   ]);
   assert.deepEqual(windowsChange.requiredPreproductionEvidence, [
     'windows-installed-client',
     'firefox-policy-ajax',
     'windows-self-update',
+    'wedu-captive-portal-lab',
   ]);
   assert.deepEqual(linuxChange.requiredPreproductionEvidence, [
     'linux-bootstrap-ajax',
@@ -84,6 +88,7 @@ test('release risk policy maps platform changes to required preproduction eviden
   assert.deepEqual(firefoxChange.requiredPreproductionEvidence, [
     'windows-installed-client',
     'firefox-policy-ajax',
+    'wedu-captive-portal-lab',
   ]);
 });
 

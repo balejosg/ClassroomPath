@@ -8,6 +8,7 @@ import {
   resolveOpenPathRequiredChecks,
   OPENPATH_CI_JOB_NAMES,
   OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
+  OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK,
 } from '../scripts/lib/openpath-ci-checks.mjs';
 import {
   fetchCheckRuns,
@@ -691,6 +692,58 @@ describe('OpenPath required check auto-dispatch', () => {
     }
   });
 
+  it('dispatches the WEDU lab workflow with the full-lab timeout input', async () => {
+    const originalFetch = globalThis.fetch;
+    const dispatches: unknown[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes('/actions/workflows/wedu-captive-portal-lab.yml/runs')) {
+        return buildFetchResponse({ workflow_runs: [] });
+      }
+
+      if (url.includes('/git/ref/heads/release-evidence/')) {
+        return buildFetchResponse({
+          ref: `refs/heads/release-evidence/${sha}`,
+        });
+      }
+
+      if (url.includes('/actions/workflows/wedu-captive-portal-lab.yml/dispatches')) {
+        dispatches.push(JSON.parse(String(init?.body)));
+        return {
+          ok: true,
+          status: 204,
+          json: async () => ({}),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected URL ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const result = await dispatchMissingOpenPathRequiredChecks({
+        repo,
+        sha,
+        token: 'dispatch-token',
+        missingChecks: [OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK],
+      });
+
+      assert.deepEqual(result.dispatched, [OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK]);
+      assert.deepEqual(result.reused, []);
+      assert.deepEqual(dispatches, [
+        {
+          ref: `release-evidence/${sha}`,
+          inputs: {
+            timeout_seconds: '900',
+          },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('fails closed for unknown required checks', async () => {
     await assert.rejects(
       () =>
@@ -821,6 +874,26 @@ describe('classifyRequiredCheckWaitState', () => {
     assert.deepEqual(state.pending, []);
     assert.deepEqual(state.terminalFailures, []);
   });
+
+  it('does not treat WEDU healthcheck or Linux smoke names as the full WEDU lab gate', () => {
+    for (const checkName of ['WEDU gateway healthcheck', 'WEDU Linux client smoke']) {
+      const state = classifyRequiredCheckWaitState({
+        checkRuns: [
+          {
+            name: checkName,
+            status: 'completed',
+            conclusion: 'success',
+            completed_at: '2026-04-22T07:03:00Z',
+          },
+        ],
+        requiredChecks: [OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK],
+      });
+
+      assert.equal(state.kind, 'pending');
+      assert.deepEqual(state.pending, [OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK]);
+      assert.deepEqual(state.terminalFailures, []);
+    }
+  });
 });
 
 describe('resolveOpenPathRequiredChecks', () => {
@@ -834,14 +907,12 @@ describe('resolveOpenPathRequiredChecks', () => {
     assert.deepEqual(result.matchedFiles, []);
   });
 
-  it('requires E2E and installer evidence for Windows, Linux, Firefox, and token delivery changes', () => {
+  it('requires WEDU lab evidence for captive-sensitive Windows and Firefox changes', () => {
     const result = resolveOpenPathRequiredChecks({
       changedFiles: [
-        'windows/OpenPath.psm1',
-        'linux/lib/firefox-policy.sh',
-        'firefox-extension/src/lib/request-api.ts',
-        'tests/selenium/student-policy-driver-browser.ts',
-        'api/src/routes/token-delivery.ts',
+        'windows/scripts/Recover-CaptivePortal.ps1',
+        'firefox-extension/src/lib/native-messaging-client.ts',
+        'tests/e2e/ci/run-windows-captive-portal-wedu-lab.ps1',
       ],
     });
 
@@ -850,14 +921,51 @@ describe('resolveOpenPathRequiredChecks', () => {
       'CI Success',
       'E2E Summary',
       'Installer Contracts Success',
+      OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK,
     ]);
     assert.deepEqual(result.matchedFiles, [
-      'windows/OpenPath.psm1',
-      'linux/lib/firefox-policy.sh',
-      'firefox-extension/src/lib/request-api.ts',
-      'tests/selenium/student-policy-driver-browser.ts',
-      'api/src/routes/token-delivery.ts',
+      'windows/scripts/Recover-CaptivePortal.ps1',
+      'firefox-extension/src/lib/native-messaging-client.ts',
+      'tests/e2e/ci/run-windows-captive-portal-wedu-lab.ps1',
     ]);
+  });
+
+  it('keeps non-captive Windows and Firefox changes off the WEDU gate', () => {
+    const result = resolveOpenPathRequiredChecks({
+      changedFiles: ['windows/OpenPath.psm1', 'firefox-extension/src/lib/request-api.ts'],
+    });
+
+    assert.equal(result.highRisk, true);
+    assert.deepEqual(result.requiredChecks, [
+      'CI Success',
+      'E2E Summary',
+      'Installer Contracts Success',
+    ]);
+    assert.equal(
+      result.requiredChecks.includes(OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK),
+      false
+    );
+  });
+
+  it('requires the exact WEDU lab check for WEDU captive portal paths', () => {
+    const result = resolveOpenPathRequiredChecks({
+      changedFiles: [
+        'scripts/run-wedu-captive-portal-lab-ci.sh',
+        'scripts/wedu-captive-portal-gateway-healthcheck.sh',
+        'scripts/run-wedu-captive-portal-gateway-client-smoke.sh',
+        'scripts/assert-wedu-captive-portal-result.mjs',
+        '.github/workflows/wedu-captive-portal-lab.yml',
+      ],
+    });
+
+    assert.equal(result.highRisk, true);
+    assert.deepEqual(result.requiredChecks, [
+      'CI Success',
+      OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK,
+    ]);
+    assert.ok(result.requiredChecks.includes(OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK));
+    assert.equal(result.requiredChecks.includes('WEDU Gateway Healthcheck'), false);
+    assert.equal(result.requiredChecks.includes('WEDU Linux client smoke'), false);
   });
 
   it('adds prerelease APT publication only for release infrastructure changes', () => {
@@ -926,6 +1034,24 @@ describe('parseWaitOptions', () => {
         intervalSeconds: 5,
         failFast: false,
         autoDispatch: true,
+      }
+    );
+  });
+
+  it('enforces the minimum wait timeout for WEDU lab evidence', () => {
+    assert.deepEqual(
+      parseWaitOptions(
+        {
+          OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS: '900',
+          OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS: '30',
+        },
+        [OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK]
+      ),
+      {
+        timeoutSeconds: 1200,
+        intervalSeconds: 30,
+        failFast: true,
+        autoDispatch: false,
       }
     );
   });

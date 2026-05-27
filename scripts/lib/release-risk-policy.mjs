@@ -11,6 +11,7 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
       'linux-bootstrap-ajax',
       'windows-self-update',
       'linux-self-update',
+      'wedu-captive-portal-lab',
     ],
   },
   {
@@ -23,6 +24,7 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
       'windows-installed-client',
       'firefox-policy-ajax',
       'windows-self-update',
+      'wedu-captive-portal-lab',
     ],
   },
   {
@@ -39,7 +41,11 @@ export const RELEASE_RISK_POLICY_DEFINITIONS = [
       'Firefox extension delivery changes must keep Windows policy/bootstrap evidence and prod canaries.',
     patterns: ['^upstream/openpath/firefox-extension/'],
     canaries: ['windows-firefox-canary', 'production-client-update-canary'],
-    preproductionEvidence: ['windows-installed-client', 'firefox-policy-ajax'],
+    preproductionEvidence: [
+      'windows-installed-client',
+      'firefox-policy-ajax',
+      'wedu-captive-portal-lab',
+    ],
   },
   {
     id: 'openpath-api-bootstrap',

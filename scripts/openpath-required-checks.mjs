@@ -3,6 +3,7 @@
 import {
   OPENPATH_CI_JOB_NAMES,
   OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
+  OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK,
   classifyRequiredCheckWaitState,
   evaluateRequiredChecks,
   formatOpenPathRequiredChecksReport,
@@ -33,7 +34,7 @@ Environment variables:
   OPENPATH_BASE_SHA         Optional previous OpenPath SHA used to derive risk-aware required checks.
   OPENPATH_REPO             GitHub repo in owner/name form. Default: balejosg/openpath
   OPENPATH_REQUIRED_CHECKS  Comma-separated explicit override of required check names.
-  OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS   Wait mode timeout. Default: 600.
+  OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS   Wait mode timeout. Default: 600; WEDU lab waits at least 1200.
   OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS  Wait mode polling interval. Default: 10.
   OPENPATH_REQUIRED_CHECKS_FAIL_FAST         Wait mode terminal failure behavior. Default: true.
   OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH     Set to true to dispatch missing OpenPath evidence in wait mode.
@@ -103,9 +104,18 @@ function parseBooleanEnv(env, name, defaultValue) {
   }
 }
 
-export function parseWaitOptions(env = process.env) {
+export function parseWaitOptions(env = process.env, requiredChecks = []) {
+  const timeoutSeconds = parsePositiveIntegerEnv(
+    env,
+    'OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS',
+    600
+  );
+  const minimumTimeoutSeconds = requiredChecks.includes(OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK)
+    ? 1200
+    : 0;
+
   return {
-    timeoutSeconds: parsePositiveIntegerEnv(env, 'OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS', 600),
+    timeoutSeconds: Math.max(timeoutSeconds, minimumTimeoutSeconds),
     intervalSeconds: parsePositiveIntegerEnv(env, 'OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS', 10),
     failFast: parseBooleanEnv(env, 'OPENPATH_REQUIRED_CHECKS_FAIL_FAST', true),
     autoDispatch: parseBooleanEnv(env, 'OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH', false),
@@ -226,6 +236,15 @@ const OPENPATH_REQUIRED_CHECK_WORKFLOWS = new Map([
   ],
   ['Installer Contracts Success', { workflow: 'installer-contracts.yml', inputs: {} }],
   [OPENPATH_PRERELEASE_APT_REQUIRED_CHECK, { workflow: 'prerelease-deb.yml', inputs: {} }],
+  [
+    OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK,
+    {
+      workflow: 'wedu-captive-portal-lab.yml',
+      inputs: {
+        timeout_seconds: '900',
+      },
+    },
+  ],
 ]);
 
 function evidenceRefName(sha) {
@@ -850,7 +869,10 @@ export async function runOpenPathRequiredChecksCommand(argv = process.argv) {
   }
 
   if (command === 'wait') {
-    const ok = await waitForRequiredChecks(context, parseWaitOptions());
+    const ok = await waitForRequiredChecks(
+      context,
+      parseWaitOptions(process.env, context.requiredChecks)
+    );
     if (!ok) {
       process.exitCode = 1;
     }

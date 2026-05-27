@@ -52,6 +52,9 @@ Use the cheapest layer that proves the risk:
   ClassroomPath. Trust the upstream required checks, then prove the wrapper
   build, release contracts, and any ClassroomPath-specific tenant or deploy
   behavior affected by the new SHA.
+- Captive-portal-sensitive OpenPath promotions require the exact upstream
+  `WEDU captive portal lab` check. Gateway healthcheck and Linux client smoke
+  lanes are useful diagnostics, but they do not satisfy that promotion gate.
 
 Do not expand `.test-allowlist`. It is legacy debt only. When touching an
 allowlisted file, add a focused test or route it through an existing contract
@@ -234,6 +237,10 @@ The shared workspace wrapper selects the maintained first pass. During developme
   gate with explicitly skipped target-platform lanes; runtime, product,
   browser, API, shared, installer, and Selenium changes still require the
   relevant OpenPath platform evidence.
+- WEDU captive portal lab evidence is broad preproduction evidence for
+  OpenPath gitlink, Windows runtime, and Firefox extension release risk. The
+  path-granular decision remains in `scripts/openpath-required-checks.mjs`;
+  this matrix only describes the evidence category expected before promotion.
 - Transactional email provider checks are risk-gated. Staging and production
   run a live Resend preflight for email/auth/onboarding/billing changes or
   forced checks; low-risk deploys record `skipped-low-risk` and keep the

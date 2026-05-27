@@ -11,6 +11,8 @@ export const OPENPATH_BASE_REQUIRED_CHECKS = ['CI Success'];
 export const OPENPATH_PRERELEASE_APT_REQUIRED_CHECK =
   'Publish Prerelease to APT Repository / Publish to APT Repository (unstable)';
 
+export const OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK = 'WEDU captive portal lab';
+
 export const OPENPATH_HIGH_RISK_REQUIRED_CHECKS = [
   {
     check: 'E2E Summary',
@@ -43,6 +45,31 @@ export const OPENPATH_HIGH_RISK_REQUIRED_CHECKS = [
       /^VERSION$/,
       /^\.github\/workflows\/release.*\.ya?ml$/,
       /^scripts\/.*(?:build|release|installer).*$/,
+    ],
+  },
+  {
+    check: OPENPATH_WEDU_CAPTIVE_PORTAL_REQUIRED_CHECK,
+    patterns: [
+      /^windows\/lib\/CaptivePortal\.psm1$/,
+      /^windows\/scripts\/Recover-CaptivePortal\.ps1$/,
+      /^windows\/lib\/internal\/NativeHost\.Actions\.ps1$/,
+      /^windows\/lib\/internal\/TaskRunner\.ps1$/,
+      /^windows\/lib\/internal\/Watchdog\.Runtime\.ps1$/,
+      /^firefox-extension\/src\/lib\/captive-portal-recovery-controller\.ts$/,
+      /^firefox-extension\/src\/lib\/blocked-screen-navigation-controller\.ts$/,
+      /^firefox-extension\/src\/lib\/native-messaging-client\.ts$/,
+      /^firefox-extension\/src\/lib\/background-listeners\.ts$/,
+      /^firefox-extension\/tests\/background-runtime\.test\.ts$/,
+      /^tests\/e2e\/ci\/run-windows-captive-portal-(?:navigation|wedu-lab)\.ps1$/,
+      /^tests\/e2e\/ci\/windows-direct-runtime-staging\.ps1$/,
+      /^scripts\/run-windows-runner-direct\.mjs$/,
+      /^scripts\/run-wedu-captive-portal-lab-ci\.sh$/,
+      /^scripts\/wedu-captive-portal-gateway-healthcheck\.sh$/,
+      /^scripts\/run-wedu-captive-portal-gateway-client-smoke\.sh$/,
+      /^scripts\/assert-wedu-captive-portal-result\.mjs$/,
+      /^scripts\/lib\/windows-direct-diagnostic-modes\.mjs$/,
+      /^scripts\/lib\/wedu-captive-portal-lab-controller\.sh$/,
+      /^\.github\/workflows\/wedu-captive-portal-lab\.ya?ml$/,
     ],
   },
 ];
