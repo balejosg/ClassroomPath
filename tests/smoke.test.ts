@@ -626,6 +626,17 @@ void describe('Smoke Tests - Live Deployment Verification', () => {
         },
       });
 
+      if (SMOKE_RELAX_CORS) {
+        assert.notStrictEqual(
+          response.status,
+          502,
+          'Smoke target is unreachable (502). Check gateway/api containers and reverse proxy.'
+        );
+        assert.ok(response.status < 500, `Expected API to be reachable, got ${response.status}`);
+        console.log('WARN: skipping strict CORS preflight assertion for IP/fallback smoke target.');
+        return;
+      }
+
       // Preflight should return 200 or 204
       assert.ok(
         [200, 204].includes(response.status),

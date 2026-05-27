@@ -208,9 +208,67 @@ process.exit(privateHost ? 0 : 1);
 NODE
 }
 
+staging_gate_address_is_private_lan() {
+  local address="${1:-}"
+
+  node - "$address" <<'NODE'
+const address = process.argv[2] ?? '';
+
+const privateAddress =
+  /^127\./.test(address) ||
+  /^10\./.test(address) ||
+  /^192\.168\./.test(address) ||
+  /^172\.(1[6-9]|2\d|3[0-1])\./.test(address) ||
+  address === '::1' ||
+  address.toLowerCase() === 'localhost';
+
+process.exit(privateAddress ? 0 : 1);
+NODE
+}
+
+staging_gate_target_is_ip_address() {
+  local target_url="${1:-}"
+
+  node - "$target_url" <<'NODE'
+const { isIP } = require('node:net');
+const value = process.argv[2] ?? '';
+
+try {
+  const hostname = new URL(value).hostname.replace(/^\[/, '').replace(/\]$/, '');
+  process.exit(isIP(hostname) ? 0 : 1);
+} catch {
+  process.exit(1);
+}
+NODE
+}
+
+staging_gate_explicit_resolved_address() {
+  local target_host="${1:-}"
+  local explicit_address="${STAGING_RESOLVED_ADDRESS:-${CLASSROOMPATH_STAGING_RESOLVED_ADDRESS:-}}"
+
+  if [ -z "$target_host" ] || [ -z "$explicit_address" ]; then
+    printf '\n'
+    return 0
+  fi
+
+  if ! node - "$explicit_address" <<'NODE'
+const { isIP } = require('node:net');
+const address = process.argv[2] ?? '';
+process.exit(isIP(address) ? 0 : 1);
+NODE
+  then
+    echo "Invalid staging resolved address override for $target_host: expected an IP address" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$explicit_address"
+}
+
 run_staging_linux_bootstrap_gate() {
   local canonical_staging_url="$1"
   local output_file=""
+  local canonical_staging_host=""
+  local explicit_resolved_address=""
 
   output_file="$(staging_gate_results_file linux-bootstrap-gate)"
   STAGING_LINUX_BOOTSTRAP_RESULT="skipped-low-risk"
@@ -220,6 +278,19 @@ run_staging_linux_bootstrap_gate() {
 
   if [ "${STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE:-0}" != "1" ]; then
     echo "Skipping Linux bootstrap gate because high-risk live browser evidence is not required" >&2
+    return 0
+  fi
+
+  canonical_staging_host=$(printf '%s\n' "$canonical_staging_url" | sed -E 's#^[A-Za-z]+://([^/:]+).*#\1#')
+  if ! explicit_resolved_address="$(staging_gate_explicit_resolved_address "$canonical_staging_host")"; then
+    return 1
+  fi
+  if [ -n "$explicit_resolved_address" ] && staging_gate_address_is_private_lan "$explicit_resolved_address"; then
+    STAGING_LINUX_BOOTSTRAP_RESULT="skipped-lan-staging"
+    STAGING_LINUX_BOOTSTRAP_RUN_ID=""
+    STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID="skipped-lan-staging"
+    STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE="Linux bootstrap GitHub-hosted gate skipped because explicit LAN staging resolution is not reachable from GitHub-hosted runners."
+    echo "Skipping Linux bootstrap gate because explicit LAN staging resolution is not reachable from GitHub-hosted runners" >&2
     return 0
   fi
 
@@ -288,11 +359,20 @@ run_staging_enrollment_download_gate() {
 resolve_target_address() {
   local target_host="$1"
   local target_port="${2:-443}"
+  local explicit_resolved_address=""
   local resolver_output=""
   local resolved_address=""
 
   if [ -z "$target_host" ]; then
     printf '\n'
+    return 0
+  fi
+
+  if ! explicit_resolved_address="$(staging_gate_explicit_resolved_address "$target_host")"; then
+    return 1
+  fi
+  if [ -n "$explicit_resolved_address" ]; then
+    printf '%s\n' "$explicit_resolved_address"
     return 0
   fi
 
@@ -431,7 +511,11 @@ run_staging_smoke_gate() {
   fi
 
   STAGING_SMOKE_RESULT="success"
-  STAGING_SMOKE_STATUS="PASS"
+  if [ "$SMOKE_SKIP_CORS" = "1" ] || staging_gate_target_is_ip_address "$SMOKE_TARGET_URL"; then
+    STAGING_SMOKE_STATUS="PASS_WITH_FALLBACK"
+  else
+    STAGING_SMOKE_STATUS="PASS"
+  fi
   echo "Smoke tests passed" >&2
 }
 

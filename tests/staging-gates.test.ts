@@ -119,6 +119,29 @@ describe('staging gates helper', () => {
     assert.match(result.stdout, /^SMOKE_ALLOW_MUTATIONS=1$/m);
   });
 
+  test('records fallback smoke status for direct-IP smoke targets', () => {
+    const result = spawnSync(
+      'bash',
+      [
+        '-lc',
+        [
+          'source scripts/lib/staging-gates.sh',
+          'resolve_target_address() { printf ""; }',
+          'run_gate_command() { return 0; }',
+          'run_staging_smoke_gate staging-host http://192.168.1.114:3001',
+          'printf "%s|%s" "$STAGING_SMOKE_RESULT" "$STAGING_SMOKE_STATUS"',
+        ].join('; '),
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'success|PASS_WITH_FALLBACK');
+  });
+
   test('runs enrollment download canary as a blocking staging gate', () => {
     const helper = readFileSync(helperPath, 'utf8');
     const runner = readFileSync(runnerPath, 'utf8');
@@ -202,6 +225,43 @@ describe('staging gates helper', () => {
     );
   });
 
+  test('accepts explicit staging resolved address overrides before DNS fallback', () => {
+    assert.equal(
+      runHelper(
+        'STAGING_RESOLVED_ADDRESS=192.168.1.114 resolve_target_address classroompath-staging.example.invalid 443'
+      ),
+      '192.168.1.114'
+    );
+    assert.equal(
+      runHelper(
+        'CLASSROOMPATH_STAGING_RESOLVED_ADDRESS=10.0.0.24 resolve_target_address classroompath-staging.example.invalid 443'
+      ),
+      '10.0.0.24'
+    );
+  });
+
+  test('rejects invalid explicit staging resolved address overrides', () => {
+    const result = spawnSync(
+      'bash',
+      [
+        '-lc',
+        [
+          'source scripts/lib/staging-gates.sh',
+          'STAGING_RESOLVED_ADDRESS=not-an-ip',
+          'resolve_target_address classroompath-staging.example.invalid 443',
+        ].join('; '),
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Invalid staging resolved address override/);
+    assert.doesNotMatch(result.stderr, /Target host does not resolve locally/);
+  });
+
   test('skips hosted Linux bootstrap gate for LAN staging targets', () => {
     const privateLanUrl = 'http://lan.local:3000';
     const result = spawnSync(
@@ -228,6 +288,36 @@ describe('staging gates helper', () => {
       /Skipping Linux bootstrap gate because LAN staging is not reachable from GitHub-hosted runners/
     );
     assert.equal(result.stdout, 'skipped-lan-staging||skipped-lan-staging');
+  });
+
+  test('skips hosted Linux bootstrap gate for explicit LAN staging resolution', () => {
+    const publicStagingUrl = 'https://classroompath-staging.example.invalid';
+    const result = spawnSync(
+      'bash',
+      [
+        '-lc',
+        [
+          `PUBLIC_STAGING_URL=${publicStagingUrl}`,
+          'source scripts/lib/staging-gates.sh',
+          'STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE=1',
+          'STAGING_RESOLVED_ADDRESS=192.168.1.114',
+          'run_staging_linux_bootstrap_gate "$PUBLIC_STAGING_URL"',
+          'printf "%s|%s|%s|%s" "$STAGING_LINUX_BOOTSTRAP_RESULT" "$STAGING_LINUX_BOOTSTRAP_RUN_ID" "$STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID" "$STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE"',
+        ].join('; '),
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(
+      result.stderr,
+      /Skipping Linux bootstrap gate because explicit LAN staging resolution is not reachable from GitHub-hosted runners/
+    );
+    assert.match(result.stdout, /^skipped-lan-staging\|\|skipped-lan-staging\|/);
+    assert.match(result.stdout, /explicit LAN staging resolution/);
   });
 
   test('shared runner sources the helper and delegates gate orchestration to it', () => {
