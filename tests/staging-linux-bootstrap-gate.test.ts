@@ -38,6 +38,10 @@ case "$*" in
   run\\ watch*)
     exit 0
     ;;
+  api\\ repos/balejosg/ClassroomPath/actions/runs/987654*)
+    printf '{"status":"completed","conclusion":"success"}'
+    exit 0
+    ;;
   run\\ download*)
     mkdir -p "$FAKE_GH_ARTIFACT"
     tmp="$(mktemp -d)"
@@ -53,6 +57,42 @@ exit 1
 `;
   const ghPath = join(binDir, 'gh');
   writeFileSync(ghPath, script, { encoding: 'utf8', mode: 0o755 });
+}
+
+function writeWatchJobs404FakeGh(binDir: string): void {
+  mkdirSync(binDir, { recursive: true });
+  const script = `#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+  workflow\\ run*)
+    exit 0
+    ;;
+  run\\ list*)
+    printf '[{"databaseId":987654,"displayTitle":"Linux Production Bootstrap Canary staging test-gate","createdAt":"2099-01-01T00:00:00Z"}]'
+    exit 0
+    ;;
+  run\\ watch*)
+    echo 'failed to get jobs: HTTP 404: 404 Not Found' >&2
+    exit 1
+    ;;
+  api\\ repos/balejosg/ClassroomPath/actions/runs/987654*)
+    printf '{"status":"completed","conclusion":"success"}'
+    exit 0
+    ;;
+  run\\ download*)
+    mkdir -p "$FAKE_GH_ARTIFACT"
+    tmp="$(mktemp -d)"
+    cat > "$tmp/production-linux-ajax-auto-allow-canary.json" <<'JSON'
+{"success":true,"failureBoundary":{"id":"none","message":"ok"}}
+JSON
+    tar -czf "$FAKE_GH_ARTIFACT/linux-production-bootstrap-canary-evidence.tgz" -C "$tmp" production-linux-ajax-auto-allow-canary.json
+    exit 0
+    ;;
+esac
+echo "unexpected gh args: $*" >&2
+exit 1
+`;
+  writeFileSync(join(binDir, 'gh'), script, { encoding: 'utf8', mode: 0o755 });
 }
 
 function writeMissingRunFakeGh(binDir: string): void {
@@ -95,6 +135,31 @@ test('staging Linux bootstrap gate polls until GitHub exposes the correlated run
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(readFileSync(join(tempDir, 'gh-state.count'), 'utf8').trim(), '2');
+  assert.match(readFileSync(outputPath, 'utf8'), /STAGING_LINUX_BOOTSTRAP_RUN_ID='987654'/);
+  assert.match(readFileSync(outputPath, 'utf8'), /STAGING_LINUX_BOOTSTRAP_RESULT='success'/);
+});
+
+test('staging Linux bootstrap gate waits by run status when gh watch cannot read jobs', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'staging-linux-bootstrap-gate-'));
+  const binDir = join(tempDir, 'bin');
+  const artifactDir = resolve(projectRoot, '.opencode/tmp/staging-linux-bootstrap-gate/987654');
+  const outputPath = join(tempDir, 'linux-bootstrap-gate.env');
+  writeWatchJobs404FakeGh(binDir);
+
+  const result = runProjectCommand('node', ['scripts/run-staging-linux-bootstrap-gate.mjs'], {
+    env: {
+      PATH: `${binDir}${delimiter}${process.env.PATH ?? ''}`,
+      FAKE_GH_ARTIFACT: artifactDir,
+      STAGING_LINUX_BOOTSTRAP_GATE_ID: 'test-gate',
+      STAGING_LINUX_BOOTSTRAP_GATE_OUTPUT: outputPath,
+      STAGING_LINUX_BOOTSTRAP_GATE_RUN_RESOLVE_TIMEOUT_MS: '1000',
+      STAGING_LINUX_BOOTSTRAP_GATE_RUN_RESOLVE_POLL_MS: '1',
+      GITHUB_ACTIONS_RUN_WAIT_POLL_MS: '1',
+      GITHUB_ACTIONS_RUN_WAIT_TIMEOUT_MS: '1000',
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
   assert.match(readFileSync(outputPath, 'utf8'), /STAGING_LINUX_BOOTSTRAP_RUN_ID='987654'/);
   assert.match(readFileSync(outputPath, 'utf8'), /STAGING_LINUX_BOOTSTRAP_RESULT='success'/);
 });

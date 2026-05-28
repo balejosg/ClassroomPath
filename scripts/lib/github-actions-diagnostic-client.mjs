@@ -158,6 +158,10 @@ export function findLatestRun({ repo, workflow, ref, dryRun = false, emit }) {
 }
 
 export function waitForRun({ repo, runId, dryRun = false, fakeWatchFailure = false, emit }) {
+  if (!dryRun) {
+    return waitForRunStatus({ repo, runId });
+  }
+
   return runGithubCommand(['gh', 'run', 'watch', runId, '--repo', repo, '--exit-status'], {
     allowFailure: true,
     dryRun,
@@ -165,6 +169,60 @@ export function waitForRun({ repo, runId, dryRun = false, fakeWatchFailure = fal
     shouldFail: (args) =>
       fakeWatchFailure && args[0] === 'gh' && args[1] === 'run' && args[2] === 'watch',
   });
+}
+
+function readPositiveNumberEnv(name, fallback) {
+  const value = Number(process.env[name] ?? '');
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function waitForRunStatus({ repo, runId }) {
+  const pollIntervalMs = readPositiveNumberEnv('GITHUB_ACTIONS_RUN_WAIT_POLL_MS', 10_000);
+  const timeoutMs = readPositiveNumberEnv('GITHUB_ACTIONS_RUN_WAIT_TIMEOUT_MS', 60 * 60 * 1000);
+  const deadline = Date.now() + timeoutMs;
+  let lastStdout = '';
+  let lastStderr = '';
+
+  do {
+    const result = runGithubCommand(
+      [
+        'gh',
+        'api',
+        `repos/${repo}/actions/runs/${runId}`,
+        '--jq',
+        '{status:.status,conclusion:.conclusion}',
+      ],
+      { capture: true, allowFailure: true }
+    );
+
+    lastStdout = result.stdout ?? '';
+    lastStderr = result.stderr ?? '';
+
+    if (result.status === 0) {
+      try {
+        const state = JSON.parse(lastStdout || '{}');
+        if (state.status === 'completed') {
+          return {
+            status: state.conclusion === 'success' ? 0 : 1,
+            stdout: lastStdout,
+            stderr: lastStderr,
+          };
+        }
+      } catch (error) {
+        lastStderr = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    if (Date.now() < deadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pollIntervalMs);
+    }
+  } while (Date.now() < deadline);
+
+  return {
+    status: 1,
+    stdout: lastStdout,
+    stderr: `Timed out waiting for GitHub Actions run ${runId} to complete.${lastStderr ? ` Last error: ${lastStderr}` : ''}`,
+  };
 }
 
 export function downloadArtifacts({
