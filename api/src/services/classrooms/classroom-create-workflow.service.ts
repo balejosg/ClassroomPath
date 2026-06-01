@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
 import { db } from '../../db/index.js';
@@ -55,15 +55,25 @@ export async function runCreateClassroomWorkflow(params: {
         })
         .returning();
 
-      await updateCreatedClassroomCaptivePortalDomainsIfSupported(
-        classroomId,
-        params.captivePortalDomains
-      );
+      const updatedCaptivePortalDomains =
+        await updateCreatedClassroomCaptivePortalDomainsIfSupported(
+          classroomId,
+          params.captivePortalDomains
+        );
+      const classroomForState = updatedCaptivePortalDomains
+        ? ((
+            await openpathDb
+              .select()
+              .from(classrooms)
+              .where(eq(classrooms.id, classroomId))
+              .limit(1)
+          )[0] ?? createdClassroom)
+        : createdClassroom;
 
       return {
         organizationId: params.organizationId,
         result: { classroomId },
-        state: { classroom: createdClassroom },
+        state: { classroom: classroomForState },
       };
     },
     linkLocal: async ({ result, state }) => {
@@ -114,30 +124,26 @@ export async function runCreateClassroomWorkflow(params: {
 async function updateCreatedClassroomCaptivePortalDomainsIfSupported(
   classroomId: string,
   captivePortalDomains: string[]
-): Promise<void> {
+): Promise<boolean> {
   if (captivePortalDomains.length === 0) {
-    return;
+    return false;
   }
 
   try {
-    await openpathDb.execute(sql`
-      UPDATE classrooms
-      SET captive_portal_domains = ${captivePortalDomains}::text[]
-      WHERE id = ${classroomId}
-    `);
+    await openpathDb
+      .update(classrooms)
+      .set({ captivePortalDomains })
+      .where(eq(classrooms.id, classroomId));
+    return true;
   } catch (err) {
     if (isMissingCaptivePortalDomainsColumnError(err)) {
-      return;
+      return false;
     }
     throw err;
   }
 }
 
 function isMissingCaptivePortalDomainsColumnError(err: unknown): boolean {
-  const error = err as { code?: string; cause?: { code?: string }; message?: string };
-  return (
-    error.code === '42703' ||
-    error.cause?.code === '42703' ||
-    error.message?.includes('captive_portal_domains') === true
-  );
+  const error = err as { code?: string; cause?: { code?: string } };
+  return error.code === '42703' || error.cause?.code === '42703';
 }

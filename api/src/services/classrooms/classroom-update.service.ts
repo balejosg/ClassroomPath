@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { classrooms, notifyOpenPathClassroomChanged, openpathDb } from '../../db/openpath.js';
 import { assertOrgClassroomAccess } from '../../lib/tenant-access.js';
@@ -23,18 +23,27 @@ export async function updateClassroomForTenant(params: {
     captivePortalDomains !== undefined
       ? normalizeCaptivePortalDomains(captivePortalDomains)
       : undefined;
-  const [updated] = await openpathDb
-    .update(classrooms)
-    .set(updateData)
-    .where(eq(classrooms.id, id))
-    .returning();
+  const hasClassroomUpdates = Object.keys(updateData).length > 0;
+  let [updated] = hasClassroomUpdates
+    ? await openpathDb.update(classrooms).set(updateData).where(eq(classrooms.id, id)).returning()
+    : await openpathDb.select().from(classrooms).where(eq(classrooms.id, id)).limit(1);
 
   if (!updated) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Classroom not found' });
   }
 
-  if (normalizedCaptivePortalDomains !== undefined) {
-    await updateCaptivePortalDomainsIfSupported(updated.id, normalizedCaptivePortalDomains);
+  const updatedCaptivePortalDomains =
+    normalizedCaptivePortalDomains !== undefined
+      ? await updateCaptivePortalDomainsIfSupported(updated.id, normalizedCaptivePortalDomains)
+      : false;
+
+  if (updatedCaptivePortalDomains) {
+    const [refreshed] = await openpathDb
+      .select()
+      .from(classrooms)
+      .where(eq(classrooms.id, updated.id))
+      .limit(1);
+    updated = refreshed ?? updated;
   }
 
   if (
@@ -50,28 +59,24 @@ export async function updateClassroomForTenant(params: {
 async function updateCaptivePortalDomainsIfSupported(
   classroomId: string,
   captivePortalDomains: string[]
-): Promise<void> {
+): Promise<boolean> {
   try {
-    await openpathDb.execute(sql`
-      UPDATE classrooms
-      SET captive_portal_domains = ${captivePortalDomains}::text[]
-      WHERE id = ${classroomId}
-    `);
+    await openpathDb
+      .update(classrooms)
+      .set({ captivePortalDomains })
+      .where(eq(classrooms.id, classroomId));
+    return true;
   } catch (err) {
     if (isMissingCaptivePortalDomainsColumnError(err)) {
-      return;
+      return false;
     }
     throw err;
   }
 }
 
 function isMissingCaptivePortalDomainsColumnError(err: unknown): boolean {
-  const error = err as { code?: string; cause?: { code?: string }; message?: string };
-  return (
-    error.code === '42703' ||
-    error.cause?.code === '42703' ||
-    error.message?.includes('captive_portal_domains') === true
-  );
+  const error = err as { code?: string; cause?: { code?: string } };
+  return error.code === '42703' || error.cause?.code === '42703';
 }
 
 export async function setActiveGroupForTenant(params: {

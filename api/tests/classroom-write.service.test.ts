@@ -108,6 +108,7 @@ describe('classroom-write.service', () => {
         name: 'laboratorio-escritura',
         displayName: 'Laboratorio Escritura',
         defaultGroupId: GROUP_ID,
+        captivePortalDomains: [' Portal.School.EXAMPLE ', 'portal.school.example'],
       },
     });
 
@@ -118,6 +119,7 @@ describe('classroom-write.service', () => {
     assert.strictEqual(created.defaultGroupDisplayName, 'Grupo Visible');
     assert.strictEqual(created.currentGroupId, GROUP_ID);
     assert.strictEqual(created.currentGroupSource, 'default');
+    assert.deepStrictEqual(created.captivePortalDomains, ['portal.school.example']);
 
     const updated = await updateClassroomForTenant({
       ctx: adminCtx,
@@ -130,6 +132,24 @@ describe('classroom-write.service', () => {
     assert.strictEqual(updated.name, 'Laboratorio Escritura 2');
     assert.strictEqual(updated.displayName, 'Laboratorio Escritura 2');
     assert.strictEqual(updated.currentGroupSource, 'default');
+
+    const domainsOnlyUpdate = await updateClassroomForTenant({
+      ctx: adminCtx,
+      input: {
+        id: created.id,
+        captivePortalDomains: [' Login.MicrosoftOnline.COM '],
+      },
+    });
+
+    assert.strictEqual(domainsOnlyUpdate.id, created.id);
+    assert.deepStrictEqual(domainsOnlyUpdate.captivePortalDomains, ['login.microsoftonline.com']);
+
+    const [persistedDomains] = await openpathDb
+      .select({ captivePortalDomains: openpathSchema.classrooms.captivePortalDomains })
+      .from(openpathSchema.classrooms)
+      .where(eq(openpathSchema.classrooms.id, created.id));
+
+    assert.deepStrictEqual(persistedDomains?.captivePortalDomains, ['login.microsoftonline.com']);
 
     const manual = await setActiveGroupForTenant({
       ctx: adminCtx,
