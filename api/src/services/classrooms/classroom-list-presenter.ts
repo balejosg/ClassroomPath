@@ -7,6 +7,7 @@ export type OpenPathClassroomRowForPresent = {
   displayName: string | null;
   defaultGroupId: string | null;
   activeGroupId: string | null;
+  captivePortalDomains?: string[] | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 };
@@ -33,6 +34,7 @@ export function presentClassroomBase(params: {
   defaultGroupId: string | null;
   defaultGroupDisplayName: string | null;
   activeGroupId: string | null;
+  captivePortalDomains: string[];
   currentGroupId: string | null;
   currentGroupDisplayName: string | null;
   currentGroupSource: ReturnType<typeof resolveCurrentGroup>['source'];
@@ -55,6 +57,7 @@ export function presentClassroomBase(params: {
       ? (params.groupDisplayNamesById?.get(c.defaultGroupId) ?? null)
       : null,
     activeGroupId: c.activeGroupId,
+    captivePortalDomains: Array.isArray(c.captivePortalDomains) ? c.captivePortalDomains : [],
     currentGroupId: currentGroup.id,
     currentGroupDisplayName: currentGroup.id
       ? (params.groupDisplayNamesById?.get(currentGroup.id) ?? null)
@@ -77,6 +80,7 @@ export function presentClassroomListItem(params: {
   defaultGroupId: string | null;
   defaultGroupDisplayName: string | null;
   activeGroupId: string | null;
+  captivePortalDomains: string[];
   currentGroupId: string | null;
   currentGroupDisplayName: string | null;
   currentGroupSource: ReturnType<typeof resolveCurrentGroup>['source'];

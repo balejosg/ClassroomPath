@@ -116,6 +116,10 @@ export const classrooms = pgTable('classrooms', {
   displayName: varchar('display_name', { length: 255 }).notNull(),
   defaultGroupId: varchar('default_group_id', { length: 100 }),
   activeGroupId: varchar('active_group_id', { length: 100 }),
+  captivePortalDomains: text('captive_portal_domains')
+    .array()
+    .default(sql`'{}'::text[]`)
+    .notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

@@ -42,6 +42,7 @@ void describe('cross-system-mutation-definitions', () => {
         organizationId: 'org_1',
         userId: 'admin_1',
         metadata: {
+          captivePortalDomains: [],
           defaultGroupId: null,
           displayName: 'Maths',
           publicName: 'maths',

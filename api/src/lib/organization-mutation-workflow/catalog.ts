@@ -139,6 +139,7 @@ export const organizationMutationCatalog = {
         organizationId: typed.organizationId,
         userId: typed.userId,
         metadata: {
+          captivePortalDomains: typed.captivePortalDomains ?? [],
           defaultGroupId: typed.defaultGroupId ?? null,
           displayName: typed.displayName,
           publicName: typed.publicName,

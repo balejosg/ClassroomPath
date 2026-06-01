@@ -105,6 +105,7 @@ describe('classroom-presenter', () => {
         displayName: null,
         defaultGroupId: null,
         activeGroupId: null,
+        captivePortalDomains: ['wifi.example'],
         createdAt: new Date('2025-01-01T00:00:00.000Z'),
         updatedAt: new Date('2025-01-02T00:00:00.000Z'),
       };
@@ -112,6 +113,7 @@ describe('classroom-presenter', () => {
       const presented = presentClassroomBase({ classroom, scheduleGroupId: 'g-schedule' });
       assert.strictEqual(presented.currentGroupId, 'g-schedule');
       assert.strictEqual(presented.currentGroupSource, 'schedule');
+      assert.deepStrictEqual(presented.captivePortalDomains, ['wifi.example']);
     });
   });
 
@@ -123,6 +125,7 @@ describe('classroom-presenter', () => {
         displayName: 'Lab',
         defaultGroupId: null,
         activeGroupId: null,
+        captivePortalDomains: ['portal.school.example'],
         createdAt: null,
         updatedAt: null,
       };
@@ -155,6 +158,7 @@ describe('classroom-presenter', () => {
       assert.strictEqual(presented.machineCount, 2);
       assert.strictEqual(presented.onlineMachineCount, 1);
       assert.strictEqual(presented.status, 'degraded');
+      assert.deepStrictEqual(presented.captivePortalDomains, ['portal.school.example']);
     });
   });
 });

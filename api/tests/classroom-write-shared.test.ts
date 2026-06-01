@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   assertClassroomWriteInputName,
+  normalizeCaptivePortalDomains,
   presentClassroomExemption,
 } from '../src/services/classrooms/classroom-write-shared.js';
 
@@ -10,6 +11,33 @@ describe('classroom-write-shared', () => {
   it('trims classroom names and rejects empty values', () => {
     assert.strictEqual(assertClassroomWriteInputName('  Aula Norte  '), 'Aula Norte');
     assert.throws(() => assertClassroomWriteInputName('   '), /Classroom name is required/);
+  });
+
+  it('normalizes captive portal domains by trimming, lowercasing, and deduplicating', () => {
+    assert.deepStrictEqual(
+      normalizeCaptivePortalDomains([
+        '  Login.School.EXAMPLE  ',
+        'login.school.example',
+        'WIFI.EXAMPLE',
+      ]),
+      ['login.school.example', 'wifi.example']
+    );
+  });
+
+  it('rejects unsafe captive portal domain values', () => {
+    assert.throws(
+      () =>
+        normalizeCaptivePortalDomains(
+          Array.from({ length: 11 }, (_, index) => `wifi-${index}.example`)
+        ),
+      /At most 10 captive portal domains/
+    );
+    assert.throws(() => normalizeCaptivePortalDomains(['https://wifi.example']), /must be domains/);
+    assert.throws(() => normalizeCaptivePortalDomains(['*.wifi.example']), /Wildcard/);
+    assert.throws(
+      () => normalizeCaptivePortalDomains(['bad_domain.example']),
+      /Invalid captive portal domain/
+    );
   });
 
   it('presents classroom exemptions with serialized timestamps', () => {

@@ -26,6 +26,7 @@ export async function createClassroomForTenant(params: {
     publicName: normalized.publicName,
     displayName: normalized.displayName,
     defaultGroupId: normalized.defaultGroupId,
+    captivePortalDomains: normalized.captivePortalDomains,
   });
 
   const storedResult = getMutationResult<{ classroomId: string }>(operation);
@@ -40,6 +41,7 @@ export async function createClassroomForTenant(params: {
   try {
     const classroom = await runCreateClassroomWorkflow({
       defaultGroupId: normalized.defaultGroupId,
+      captivePortalDomains: normalized.captivePortalDomains,
       displayName: normalized.displayName,
       operation,
       organizationId: normalized.organizationId,

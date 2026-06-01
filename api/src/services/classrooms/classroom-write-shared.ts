@@ -9,12 +9,14 @@ export interface CreateClassroomInput {
   name: string;
   displayName?: string;
   defaultGroupId?: string;
+  captivePortalDomains?: string[];
 }
 
 export interface UpdateClassroomInput {
   id: string;
   displayName?: string;
   defaultGroupId?: string;
+  captivePortalDomains?: string[];
 }
 
 export interface CreateClassroomExemptionInput {
@@ -66,4 +68,62 @@ export function assertClassroomWriteInputName(name: string): string {
   }
 
   return publicName;
+}
+
+const MAX_CAPTIVE_PORTAL_DOMAINS = 10;
+const DOMAIN_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+export function normalizeCaptivePortalDomains(domains: readonly string[] | undefined): string[] {
+  if (domains === undefined) {
+    return [];
+  }
+
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  for (const rawDomain of domains) {
+    const domain = rawDomain.trim().toLowerCase();
+    if (!domain) {
+      continue;
+    }
+    if (/^https?:\/\//.test(domain) || domain.includes('/')) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Captive portal entries must be domains, not URLs',
+      });
+    }
+    if (domain.includes('*')) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Wildcard captive portal domains are not allowed',
+      });
+    }
+
+    const labels = domain.split('.');
+    const validDomain =
+      domain.length <= 253 &&
+      labels.length >= 2 &&
+      labels.every((label) => DOMAIN_LABEL_PATTERN.test(label));
+
+    if (!validDomain) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `Invalid captive portal domain: ${rawDomain}`,
+      });
+    }
+
+    if (!seen.has(domain)) {
+      seen.add(domain);
+      normalized.push(domain);
+    }
+  }
+
+  if (normalized.length > MAX_CAPTIVE_PORTAL_DOMAINS) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'At most 10 captive portal domains are allowed',
+    });
+  }
+
+  return normalized;
 }

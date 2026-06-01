@@ -28,12 +28,14 @@ const CreateClassroomSchema = z.object({
   name: z.string().min(1).max(100),
   displayName: z.string().min(1).max(255).optional(),
   defaultGroupId: z.string().optional(),
+  captivePortalDomains: z.array(z.string()).max(10).optional(),
 });
 
 const UpdateClassroomSchema = z.object({
   id: z.string(),
   displayName: z.string().min(1).max(255).optional(),
   defaultGroupId: z.string().optional(),
+  captivePortalDomains: z.array(z.string()).max(10).optional(),
 });
 
 const CreateOperationalExemptionSchema = z.object({

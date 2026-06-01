@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
 import { db } from '../../db/index.js';
@@ -20,6 +20,7 @@ type StoredClassroomCreateResult = NonNullable<
 >;
 
 export async function runCreateClassroomWorkflow(params: {
+  captivePortalDomains: string[];
   defaultGroupId?: string | null;
   displayName: string;
   operation: MutationOperation;
@@ -53,6 +54,11 @@ export async function runCreateClassroomWorkflow(params: {
           defaultGroupId: params.defaultGroupId,
         })
         .returning();
+
+      await updateCreatedClassroomCaptivePortalDomainsIfSupported(
+        classroomId,
+        params.captivePortalDomains
+      );
 
       return {
         organizationId: params.organizationId,
@@ -103,4 +109,35 @@ export async function runCreateClassroomWorkflow(params: {
 
   classroom = workflow.state.classroom;
   return classroom;
+}
+
+async function updateCreatedClassroomCaptivePortalDomainsIfSupported(
+  classroomId: string,
+  captivePortalDomains: string[]
+): Promise<void> {
+  if (captivePortalDomains.length === 0) {
+    return;
+  }
+
+  try {
+    await openpathDb.execute(sql`
+      UPDATE classrooms
+      SET captive_portal_domains = ${captivePortalDomains}::text[]
+      WHERE id = ${classroomId}
+    `);
+  } catch (err) {
+    if (isMissingCaptivePortalDomainsColumnError(err)) {
+      return;
+    }
+    throw err;
+  }
+}
+
+function isMissingCaptivePortalDomainsColumnError(err: unknown): boolean {
+  const error = err as { code?: string; cause?: { code?: string }; message?: string };
+  return (
+    error.code === '42703' ||
+    error.cause?.code === '42703' ||
+    error.message?.includes('captive_portal_domains') === true
+  );
 }

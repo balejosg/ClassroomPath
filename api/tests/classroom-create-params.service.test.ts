@@ -13,6 +13,7 @@ describe('classroom-create-params.service', () => {
       input: {
         name: '  Aula Principal  ',
         displayName: ' Aula Principal ',
+        captivePortalDomains: [' Portal.School.EXAMPLE ', 'portal.school.example'],
       },
     });
 
@@ -20,6 +21,7 @@ describe('classroom-create-params.service', () => {
     assert.equal(normalized.displayName, 'Aula Principal');
     assert.equal(normalized.organizationId, 'org_123');
     assert.equal(normalized.userId, 'user_123');
+    assert.deepEqual(normalized.captivePortalDomains, ['portal.school.example']);
     assert.match(normalized.scopedName, /^cp-[a-f0-9]{10}-aula-principal-[a-f0-9]{8}$/);
   });
 });

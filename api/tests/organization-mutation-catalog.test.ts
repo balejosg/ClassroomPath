@@ -125,6 +125,7 @@ void describe('organization-mutation-catalog', () => {
       visibility: 'private',
     });
     assert.deepEqual(buildOrganizationMutationOperation(sampleMutations[7]!).metadata, {
+      captivePortalDomains: [],
       defaultGroupId: 'group_1',
       displayName: 'Maths',
       publicName: 'maths',

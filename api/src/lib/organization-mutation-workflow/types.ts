@@ -73,6 +73,7 @@ export type OrganizationBusinessMutation =
       userRole?: string;
     }
   | {
+      captivePortalDomains?: string[];
       defaultGroupId?: string | null;
       displayName: string;
       kind: 'classroomCreate';
