@@ -1092,6 +1092,16 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(workflowText.includes('scripts/production-enrollment-download-canary.mjs'));
     assert.ok(workflowText.includes('production-enrollment-download-canary.json'));
     assert.ok(workflowText.includes('production-enrollment-download-canary'));
+    assert.ok(
+      workflowText.includes(
+        'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_CAPTIVE_PORTAL_DOMAINS: login.microsoftonline.com'
+      )
+    );
+    assert.ok(
+      workflowText.includes(
+        'ENROLLMENT_CANARY_EXPECTED_CAPTIVE_PORTAL_DOMAINS: login.microsoftonline.com'
+      )
+    );
     assert.ok(helperText.includes('runEnrollmentDownloadCanary'));
     assert.ok(genericHelperText.includes('/api/enroll/'));
     assert.ok(genericHelperText.includes('/windows.ps1'));
@@ -1692,6 +1702,9 @@ describe('Production client update canary workflow contracts', () => {
     assert.ok(scriptText.includes('sanitizeSummaryForArtifact'));
     assert.ok(scriptText.includes("enrollmentToken: summary.enrollmentToken ? '[redacted]' : ''"));
     assert.ok(scriptText.includes('enrollment_token: summary.enrollmentToken'));
+    assert.ok(scriptText.includes('PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_CAPTIVE_PORTAL_DOMAINS'));
+    assert.ok(scriptText.includes('captivePortalDomains: captivePortalDomains'));
+    assert.ok(scriptText.includes('captive_portal_domains: summary.captivePortalDomains'));
   });
 
   test('windows bootstrap canary can seed reversible reddit diagnostic allowlist hosts', () => {

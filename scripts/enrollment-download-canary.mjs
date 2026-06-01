@@ -39,6 +39,18 @@ function contentLength(content) {
   return Buffer.byteLength(String(content ?? ''), 'utf8');
 }
 
+function normalizeExpectedCaptivePortalDomains(domains) {
+  const values = Array.isArray(domains)
+    ? domains
+    : String(domains ?? '')
+        .split(',')
+        .map((domain) => domain.trim());
+
+  return Array.from(
+    new Set(values.map((domain) => String(domain).trim().toLowerCase()).filter(Boolean))
+  );
+}
+
 function linuxMarkerChecks(content, expectedLinuxAgentVersion) {
   const script = String(content ?? '');
   const checks = {
@@ -55,13 +67,25 @@ function linuxMarkerChecks(content, expectedLinuxAgentVersion) {
   return checks;
 }
 
-function windowsMarkerChecks(content) {
+function windowsMarkerChecks(content, expectedCaptivePortalDomains = []) {
   const script = String(content ?? '');
-  return {
+  const checks = {
     hasBootstrapManifestPath: script.includes('api/agent/windows/bootstrap/manifest'),
     hasOpenPathVersionEnv: script.includes('$env:OPENPATH_VERSION'),
     hasInstallScriptReference: script.includes('Install-OpenPath.ps1'),
   };
+  const captivePortalDomains = normalizeExpectedCaptivePortalDomains(expectedCaptivePortalDomains);
+
+  if (captivePortalDomains.length > 0) {
+    checks.hasCaptivePortalDomainsVariable = script.includes('$CaptivePortalDomains');
+    checks.hasCaptivePortalDomainsArgument =
+      /-CaptivePortalDomains['"]?\s*,\s*\$CaptivePortalDomains/.test(script);
+    checks.expectedCaptivePortalDomains = Object.fromEntries(
+      captivePortalDomains.map((domain) => [domain, script.toLowerCase().includes(domain)])
+    );
+  }
+
+  return checks;
 }
 
 function allChecksPass(checks) {
@@ -110,6 +134,7 @@ export async function runEnrollmentDownloadCanary({
   classroomId,
   enrollmentToken,
   expectedLinuxAgentVersion = '',
+  expectedCaptivePortalDomains = [],
   environment = 'production',
   outputPath = DEFAULT_ENROLLMENT_CANARY_OUTPUT_PATH,
   now = () => new Date(),
@@ -145,7 +170,7 @@ export async function runEnrollmentDownloadCanary({
   const windowsEvidence = scriptEvidence({
     url: windowsUrl,
     response: windows,
-    markerChecks: windowsMarkerChecks(windows.body),
+    markerChecks: windowsMarkerChecks(windows.body, expectedCaptivePortalDomains),
   });
   const ok = linuxEvidence.ok && windowsEvidence.ok;
   const evidence = {
@@ -183,6 +208,7 @@ async function main() {
       'ENROLLMENT_CANARY_EXPECTED_LINUX_AGENT_VERSION',
       'OPENPATH_LINUX_AGENT_VERSION'
     ),
+    expectedCaptivePortalDomains: envValue('ENROLLMENT_CANARY_EXPECTED_CAPTIVE_PORTAL_DOMAINS'),
     environment: envValue('ENROLLMENT_CANARY_ENVIRONMENT') ?? 'production',
     outputPath:
       envValue('ENROLLMENT_CANARY_OUTPUT', 'PRODUCTION_ENROLLMENT_CANARY_OUTPUT') ??

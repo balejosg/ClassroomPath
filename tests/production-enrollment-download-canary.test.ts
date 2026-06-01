@@ -197,6 +197,65 @@ describe('production enrollment download canary', () => {
     assert.equal(evidence.result, 'failed');
   });
 
+  test('fails Windows script checks when expected captive portal domains are missing', async () => {
+    const requests: Array<{ url: string; authorization: string }> = [];
+    const outputPath = join(mkdtempSync(join(tmpdir(), 'cp-enrollment-canary-')), 'evidence.json');
+
+    const evidence = await runEnrollmentDownloadCanary({
+      baseUrl: 'https://classroompath.example.invalid/',
+      classroomId: 'classroom-123',
+      enrollmentToken: 'secret-token',
+      expectedLinuxAgentVersion: '0.0.20260421051157',
+      expectedCaptivePortalDomains: ['login.microsoftonline.com'],
+      environment: 'production',
+      outputPath,
+      fetchImpl: successfulFetch(requests),
+    });
+
+    assert.equal(evidence.windows.ok, false);
+    assert.equal(evidence.windows.result, 'failed');
+    assert.equal(evidence.windows.markerChecks.hasCaptivePortalDomainsVariable, false);
+    assert.equal(evidence.windows.markerChecks.hasCaptivePortalDomainsArgument, false);
+    assert.deepEqual(evidence.windows.markerChecks.expectedCaptivePortalDomains, {
+      'login.microsoftonline.com': false,
+    });
+    assert.equal(evidence.result, 'failed');
+  });
+
+  test('passes Windows script checks when expected captive portal domains are present', async () => {
+    const requests: Array<{ url: string; authorization: string }> = [];
+    const outputPath = join(mkdtempSync(join(tmpdir(), 'cp-enrollment-canary-')), 'evidence.json');
+
+    const evidence = await runEnrollmentDownloadCanary({
+      baseUrl: 'https://classroompath.example.invalid/',
+      classroomId: 'classroom-123',
+      enrollmentToken: 'secret-token',
+      expectedLinuxAgentVersion: '0.0.20260421051157',
+      expectedCaptivePortalDomains: [' Login.MicrosoftOnline.COM '],
+      environment: 'production',
+      outputPath,
+      fetchImpl: successfulFetch(requests, {
+        windowsScript: [
+          "$ErrorActionPreference = 'Stop'",
+          "$ProgressPreference = 'SilentlyContinue'",
+          '$env:OPENPATH_VERSION = "0.0.20260421051157"',
+          '$CaptivePortalDomains = @("login.microsoftonline.com")',
+          'api/agent/windows/bootstrap/manifest',
+          'Install-OpenPath.ps1',
+          "$InstallArgs += @('-CaptivePortalDomains', $CaptivePortalDomains)",
+        ].join('\n'),
+      }),
+    });
+
+    assert.equal(evidence.windows.ok, true);
+    assert.equal(evidence.windows.markerChecks.hasCaptivePortalDomainsVariable, true);
+    assert.equal(evidence.windows.markerChecks.hasCaptivePortalDomainsArgument, true);
+    assert.deepEqual(evidence.windows.markerChecks.expectedCaptivePortalDomains, {
+      'login.microsoftonline.com': true,
+    });
+    assert.equal(evidence.result, 'success');
+  });
+
   test('fails Linux script checks when the expected version is absent', async () => {
     const requests: Array<{ url: string; authorization: string }> = [];
     const outputPath = join(mkdtempSync(join(tmpdir(), 'cp-enrollment-canary-')), 'evidence.json');

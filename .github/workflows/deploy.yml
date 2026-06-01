@@ -623,6 +623,7 @@ jobs:
         env:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.CLASSROOMPATH_PRODUCTION_PUBLIC_URL }}
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_CAPTIVE_PORTAL_DOMAINS: login.microsoftonline.com
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
       - name: Download live enrollment scripts
@@ -632,6 +633,7 @@ jobs:
           ENROLLMENT_CANARY_CLASSROOM_ID: ${{ steps.provision-enrollment.outputs.classroom_id }}
           ENROLLMENT_CANARY_TOKEN: ${{ steps.provision-enrollment.outputs.enrollment_token }}
           ENROLLMENT_CANARY_EXPECTED_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
+          ENROLLMENT_CANARY_EXPECTED_CAPTIVE_PORTAL_DOMAINS: login.microsoftonline.com
           ENROLLMENT_CANARY_ENVIRONMENT: production
           ENROLLMENT_CANARY_OUTPUT: production-enrollment-download-canary.json
         run: |

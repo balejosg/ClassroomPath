@@ -13,6 +13,7 @@ export async function runProductionEnrollmentDownloadCanary({
   classroomId,
   enrollmentToken,
   expectedLinuxAgentVersion = '',
+  expectedCaptivePortalDomains = [],
   outputPath = DEFAULT_OUTPUT_PATH,
   now = () => new Date(),
   fetchImpl = fetch,
@@ -22,6 +23,7 @@ export async function runProductionEnrollmentDownloadCanary({
     classroomId,
     enrollmentToken,
     expectedLinuxAgentVersion,
+    expectedCaptivePortalDomains,
     environment: 'production',
     outputPath,
     now,
@@ -35,6 +37,7 @@ async function main() {
     classroomId: process.env.CLASSROOM_ID,
     enrollmentToken: process.env.ENROLLMENT_TOKEN,
     expectedLinuxAgentVersion: process.env.OPENPATH_LINUX_AGENT_VERSION,
+    expectedCaptivePortalDomains: process.env.ENROLLMENT_CANARY_EXPECTED_CAPTIVE_PORTAL_DOMAINS,
     outputPath: process.env.PRODUCTION_ENROLLMENT_CANARY_OUTPUT || DEFAULT_OUTPUT_PATH,
   });
 

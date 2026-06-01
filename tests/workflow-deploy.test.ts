@@ -681,6 +681,10 @@ describe('Deploy workflow contracts', () => {
       windowsEnrollmentStep?.env?.ENROLLMENT_CANARY_EXPECTED_LINUX_AGENT_VERSION,
       '${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}'
     );
+    assert.equal(
+      windowsEnrollmentStep?.env?.ENROLLMENT_CANARY_EXPECTED_CAPTIVE_PORTAL_DOMAINS,
+      'login.microsoftonline.com'
+    );
     assert.match(
       String(windowsEnrollmentStep?.run ?? ''),
       /production-enrollment-download-canary\.json/
@@ -711,6 +715,10 @@ describe('Deploy workflow contracts', () => {
     assert.equal(
       provisionEnrollmentStep?.env?.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL,
       '${{ env.CLASSROOMPATH_PRODUCTION_PUBLIC_URL }}'
+    );
+    assert.equal(
+      provisionEnrollmentStep?.env?.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_CAPTIVE_PORTAL_DOMAINS,
+      'login.microsoftonline.com'
     );
     assert.equal(
       runProductionSmokeStep?.env?.SMOKE_TEST_URL,

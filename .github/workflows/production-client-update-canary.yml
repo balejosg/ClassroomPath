@@ -231,6 +231,7 @@ jobs:
         env:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_CAPTIVE_PORTAL_DOMAINS: login.microsoftonline.com
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
       - name: Download live production enrollment scripts
@@ -240,6 +241,7 @@ jobs:
           CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
           ENROLLMENT_TOKEN: ${{ steps.provision.outputs.enrollment_token }}
           OPENPATH_LINUX_AGENT_VERSION: ${{ steps.read-linux-runtime.outputs.linux_agent_version }}
+          ENROLLMENT_CANARY_EXPECTED_CAPTIVE_PORTAL_DOMAINS: login.microsoftonline.com
           PRODUCTION_ENROLLMENT_CANARY_OUTPUT: production-enrollment-download-canary.json
         run: |
           set -euo pipefail
@@ -570,6 +572,7 @@ jobs:
         env:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_CAPTIVE_PORTAL_DOMAINS: login.microsoftonline.com
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
       - name: Download and run live Windows enrollment script
@@ -1036,6 +1039,7 @@ jobs:
         env:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_URL: ${{ env.PRODUCTION_BASE_URL }}
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_CAPTIVE_PORTAL_DOMAINS: login.microsoftonline.com
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
       - name: Download and run live Linux enrollment script

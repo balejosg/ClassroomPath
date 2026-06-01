@@ -38,6 +38,9 @@ const stripeWebhookSecret =
   process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET ?? '';
 const adminCanaryToken = process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN ?? '';
 const billingMode = process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE ?? 'stripe';
+const captivePortalDomains = normalizeCaptivePortalDomains(
+  process.env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_CAPTIVE_PORTAL_DOMAINS
+);
 const CANARY_MARKER = '[client-canary]';
 const REQUIRED_WINDOWS_BOOTSTRAP_RUNTIME_FILES = Object.freeze([
   'scripts/Enroll-Machine.ps1',
@@ -57,6 +60,17 @@ function readCurrentTermsVersion() {
 
 function uniqueValue(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeCaptivePortalDomains(value) {
+  return Array.from(
+    new Set(
+      String(value ?? '')
+        .split(',')
+        .map((domain) => domain.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
 }
 
 function extractTrpcData(envelope) {
@@ -487,6 +501,7 @@ async function main() {
       name: uniqueValue('windows-production-bootstrap-canary'),
       displayName: 'Windows Production Bootstrap Canary',
       defaultGroupId: group.id,
+      captivePortalDomains: captivePortalDomains,
     },
     cookieHeader
   );
@@ -497,6 +512,13 @@ async function main() {
     group.id,
     'classrooms.create should bind the seeded group as defaultGroupId'
   );
+  if (captivePortalDomains.length > 0) {
+    assert.deepEqual(
+      classroom.captivePortalDomains,
+      captivePortalDomains,
+      'classrooms.create should persist configured captive portal domains'
+    );
+  }
 
   const ticketResponse = await fetchWithRetry(`${apiUrl}/api/enroll/${classroom.id}/ticket`, {
     method: 'POST',
@@ -613,6 +635,7 @@ async function main() {
     extensionId: metadata.extensionId,
     extensionVersion: metadata.version,
     bootstrapManifestVersion: manifest.version ?? '',
+    captivePortalDomains,
   };
   const artifactSummary = sanitizeSummaryForArtifact(summary);
   const artifactPath =
@@ -636,6 +659,7 @@ async function main() {
     extension_id: summary.extensionId,
     extension_version: summary.extensionVersion,
     bootstrap_manifest_version: summary.bootstrapManifestVersion,
+    captive_portal_domains: summary.captivePortalDomains.join(','),
   })) {
     setGithubOutput(key, value);
   }
