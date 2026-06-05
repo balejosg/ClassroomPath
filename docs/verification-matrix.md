@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: ClassroomPath verification and release flow
-> Last verified: 2026-05-15
+> Last verified: 2026-05-28
 > Source of truth: `docs/verification-matrix.md`
 
 This matrix maps the current verification lanes to the evidence they provide.
@@ -339,23 +339,41 @@ Decision:
 
 ## Risk To Proof Mapping
 
-| Risk                                          | Primary proof                                                                                                                                                     | Where it runs                                     | Notes                                                               |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------- |
-| Broken build, type, or static regression      | `npm run verify:incremental`, then `npm run verify:commit` for stronger pre-push confidence                                                                       | developer machine                                 | commit hook stays fast; broader gates remain explicit               |
-| Docs/workflow/runtime drift                   | `npm run verify:docs` plus targeted regression suites such as `tests/agent-docs-consistency.test.ts`, `tests/deployment-*.test.ts`, `tests/workflow-core.test.ts` | developer machine or CI                           | useful when changes are ops-heavy but not product-heavy             |
-| Regressed browser or UI flow                  | Playwright lanes chosen by the verification orchestrator                                                                                                          | developer machine                                 | product-impacting changes can escalate to the full suite            |
-| Runner-bound Linux student-policy symptom     | `npm run diagnostics:linux-student:direct -- --openpath-root ../OpenPath`                                                                                         | developer machine + local OpenPath Linux runner   | preserves `linux-auto-allow-boundary.json` before staging/CI        |
-| Runner-bound Windows/bootstrap/canary symptom | `npm run diagnostics:windows-ajax:direct`, then `npm run diagnostics:runner -- --suite windows-bootstrap-ajax ...`                                                | developer machine + runner VM / targeted workflow | use before staging deploy when the question is runner-local         |
-| Broken staging deployment                     | `npm run deploy:staging`                                                                                                                                          | developer machine + staging host                  | deploys `origin/main`, runs live verification, and records evidence |
-| Unsafe production migration                   | migration risk classification + backup reference requirement                                                                                                      | GitHub Actions + production host                  | destructive migrations need stronger proof                          |
-| Production image mismatch or drift            | tag-only workflow + immutable release manifest                                                                                                                    | GitHub Actions                                    | production reconciles to the tagged commit only                     |
-| Production stack unavailable after deploy     | production smoke and readiness checks                                                                                                                             | GitHub Actions against production                 | rollback remains available if smoke fails                           |
+| Risk                                          | Primary proof                                                                                                                                                     | Where it runs                                     | Notes                                                                                  |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Broken build, type, or static regression      | `npm run verify:incremental`, then `npm run verify:commit` for stronger pre-push confidence                                                                       | developer machine                                 | commit hook stays fast; broader gates remain explicit                                  |
+| Docs/workflow/runtime drift                   | `npm run verify:docs` plus targeted regression suites such as `tests/agent-docs-consistency.test.ts`, `tests/deployment-*.test.ts`, `tests/workflow-core.test.ts` | developer machine or CI                           | useful when changes are ops-heavy but not product-heavy                                |
+| Regressed browser or UI flow                  | Playwright lanes chosen by the verification orchestrator                                                                                                          | developer machine                                 | product-impacting changes can escalate to the full suite                               |
+| Runner-bound Linux student-policy symptom     | `npm run diagnostics:linux-student:direct -- --openpath-root ../OpenPath`                                                                                         | developer machine + local OpenPath Linux runner   | preserves `linux-auto-allow-boundary.json` before staging/CI                           |
+| Runner-bound Windows/bootstrap/canary symptom | `npm run diagnostics:windows-ajax:direct`, then `npm run diagnostics:runner -- --suite windows-bootstrap-ajax ...`                                                | developer machine + runner VM / targeted workflow | use before staging deploy when the question is runner-local                            |
+| OpenPath captive-portal-sensitive change      | OpenPath workflow `WEDU Captive Portal Lab E2E`; exact check-run `WEDU captive portal lab`                                                                        | OpenPath Proxmox lab, consumed by release review  | full destructive lab only; gateway health checks or VM smoke lanes are not substitutes |
+| Broken staging deployment                     | `npm run deploy:staging`                                                                                                                                          | developer machine + staging host                  | deploys `origin/main`, runs live verification, and records evidence                    |
+| Unsafe production migration                   | migration risk classification + backup reference requirement                                                                                                      | GitHub Actions + production host                  | destructive migrations need stronger proof                                             |
+| Production image mismatch or drift            | tag-only workflow + immutable release manifest                                                                                                                    | GitHub Actions                                    | production reconciles to the tagged commit only                                        |
+| Production stack unavailable after deploy     | production smoke and readiness checks                                                                                                                             | GitHub Actions against production                 | rollback remains available if smoke fails                                              |
 
 Use direct Windows diagnostics first when the question is packaging, runner
 state, Firefox policy, native-host behavior, or AJAX auto-allow behavior. Use
 `workflow_dispatch` only when the question needs workflow-shaped integration
 evidence, and use staging/production release workflows only after local or
 direct runner evidence has narrowed the failure boundary.
+
+For OpenPath captive-portal-sensitive submodule updates, release reviewers should
+look for current WEDU lab evidence before promotion. The precise path-granular
+gate belongs in `scripts/openpath-required-checks.mjs`; broad release-risk
+classification for an OpenPath gitlink bump must not claim that only captive
+portal paths changed.
+
+If ClassroomPath dispatches or waits for the WEDU evidence, the wait budget must
+be long enough for the lab workflow rather than the generic short required-check
+polling window. The accepted promotable signal is the exact `WEDU captive portal
+lab` check-run. Distinct checks such as `WEDU gateway healthcheck` or `WEDU Linux
+client smoke` may be useful drift signals, but they must not satisfy the WEDU
+promotion evidence requirement.
+
+Keep the dependency direction explicit: ClassroomPath may read OpenPath workflow
+and check-run evidence, but OpenPath WEDU scripts, workflows, inputs, and
+environment variables must remain OpenPath-owned.
 
 When promotion readiness fails on Windows evidence, inspect before rerunning the
 full release flow:
