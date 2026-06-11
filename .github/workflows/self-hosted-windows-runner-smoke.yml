@@ -29,13 +29,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$RUNNER_NAME" ]; then
-            echo "::error::Set vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME to the private self-hosted Windows runner name."
+            echo "::error::Set vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME to a comma-separated list of private self-hosted Windows runner names."
             exit 1
           fi
           runner_json_path="$(mktemp)"
           runner_error_path="$(mktemp)"
 
-          if ! gh api repos/${{ github.repository }}/actions/runners --paginate --jq '.runners[] | select(.name == env.RUNNER_NAME)' >"$runner_json_path" 2>"$runner_error_path"; then
+          if ! gh api repos/${{ github.repository }}/actions/runners --paginate --jq '.runners[]' >"$runner_json_path" 2>"$runner_error_path"; then
             runner_error="$(cat "$runner_error_path")"
             if grep -q 'Resource not accessible by integration' "$runner_error_path"; then
               echo "::warning::GITHUB_TOKEN cannot inspect self-hosted runner registration; continuing with on-runner smoke. $runner_error"
@@ -60,37 +60,48 @@ jobs:
             exit 1
           fi
 
-          runner_json="$(cat "$runner_json_path")"
+          all_runners_json="$(cat "$runner_json_path")"
+          all_online=true
+          IFS=',' read -ra runner_names <<< "$RUNNER_NAME"
+          for name in "${runner_names[@]}"; do
+            name="$(echo "$name" | tr -d '[:space:]')"
+            runner_json="$(jq -r --arg n "$name" 'select(.name == $n)' <<<"$all_runners_json")"
 
-          if [ -z "$runner_json" ]; then
-            echo "::error::Expected Windows runner is not registered: $RUNNER_NAME"
-            exit 1
-          fi
+            if [ -z "$runner_json" ]; then
+              echo "::error::Expected Windows runner is not registered: $name"
+              all_online=false
+              continue
+            fi
 
-          status="$(jq -r '.status' <<<"$runner_json")"
-          busy="$(jq -r '.busy' <<<"$runner_json")"
-          echo "Runner $RUNNER_NAME status=$status busy=$busy"
+            status="$(jq -r '.status' <<<"$runner_json")"
+            busy="$(jq -r '.busy' <<<"$runner_json")"
+            echo "Runner $name status=$status busy=$busy"
+
+            if [ "$status" != "online" ]; then
+              echo "::error::Windows runner is not online: $name"
+              all_online=false
+            fi
+
+            if [ "$busy" = "true" ]; then
+              echo "::warning::Windows runner is currently busy; smoke may queue behind active work: $name"
+            fi
+          done
+
           jq -n \
             --arg runner_name "$RUNNER_NAME" \
-            --arg status "$status" \
-            --argjson busy "$busy" \
+            --arg status "$([ "$all_online" = "true" ] && echo "online" || echo "degraded")" \
             --arg checked_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{
               runner_name: $runner_name,
               status: $status,
-              busy: $busy,
+              busy: null,
               checked_at: $checked_at,
               evidence_type: "runner-health"
             }' > runner-state.json
 
-          if [ "$status" != "online" ]; then
+          if [ "$all_online" != "true" ]; then
             echo "runner_online=false" >> "$GITHUB_OUTPUT"
-            echo "::error::Windows runner is not online: $RUNNER_NAME"
             exit 1
-          fi
-
-          if [ "$busy" = "true" ]; then
-            echo "::warning::Windows runner is currently busy; smoke may queue behind active work"
           fi
 
           echo "runner_online=true" >> "$GITHUB_OUTPUT"
@@ -115,9 +126,10 @@ jobs:
           EXPECTED_RUNNER_NAME: ${{ vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:EXPECTED_RUNNER_NAME)) {
-            throw "Set vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME to the private self-hosted Windows runner name."
+            throw "Set vars.CLASSROOMPATH_WINDOWS_RUNNER_NAME to a comma-separated list of private self-hosted Windows runner names."
           }
-          if ($env:RUNNER_NAME -ne $env:EXPECTED_RUNNER_NAME) {
+          $allowedRunners = $env:EXPECTED_RUNNER_NAME -split ',' | ForEach-Object { $_.Trim() }
+          if ($allowedRunners -notcontains $env:RUNNER_NAME) {
             throw "Unexpected runner name: $env:RUNNER_NAME"
           }
           if ($env:RUNNER_OS -ne 'Windows') {
