@@ -28,6 +28,8 @@ Rules:
 - Environment variables and runtime policy: [`docs/contracts/env.md`](contracts/env.md)
 - Public routes, passthroughs, and port wiring: [`docs/contracts/routes-ports.md`](contracts/routes-ports.md)
 - Cross-system mutation ledger and retry model: [`docs/contracts/cross-system-mutations.md`](contracts/cross-system-mutations.md)
+- OpenPath public SPA surface and wrapper bridge: [`docs/contracts/openpath-public-surface.md`](contracts/openpath-public-surface.md)
+- Test inventory (which test guards which contract): [`docs/test-inventory.md`](test-inventory.md)
 - Verification matrix: [`docs/verification-matrix.md`](verification-matrix.md)
 
 ## Evaluation
@@ -51,6 +53,8 @@ Rules:
 - Public Windows runner recovery note: [`docs/runbooks/windows-runner-recovery.md`](runbooks/windows-runner-recovery.md)
 - Deploy target example: [`config/deploy-targets.example.json`](../config/deploy-targets.example.json)
 - Update OpenPath submodule boundary: [`docs/runbooks/update-openpath-submodule.md`](runbooks/update-openpath-submodule.md)
+- Add a cross-system mutation: [`docs/runbooks/add-cross-system-mutation.md`](runbooks/add-cross-system-mutation.md)
+- Add a database table: [`docs/runbooks/add-database-table.md`](runbooks/add-database-table.md)
 - Docker + Nginx Proxy Manager: [`docs/DOCKER.md`](DOCKER.md)
 - Secrets and private operations: [`docs/SECRETS.md`](SECRETS.md)
 - Session/security model: [`docs/SESSION_SECURITY_MODEL.md`](SESSION_SECURITY_MODEL.md)

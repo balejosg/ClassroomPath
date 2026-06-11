@@ -6,10 +6,35 @@ import {
   translateClassroomPathText,
 } from '../classroompath-i18n';
 
+/**
+ * Returns a diff object for two flat-key catalogs.
+ * The ClassroomPath catalog is a flat Record<string, string> so "nesting" is
+ * represented by dot-delimited key names, not actual object nesting.
+ */
+function flatCatalogDiff(
+  a: Record<string, string>,
+  b: Record<string, string>
+): { missingInB: string[]; missingInA: string[] } {
+  const keysA = new Set(Object.keys(a));
+  const keysB = new Set(Object.keys(b));
+  return {
+    missingInB: [...keysA].filter((k) => !keysB.has(k)).sort(),
+    missingInA: [...keysB].filter((k) => !keysA.has(k)).sort(),
+  };
+}
+
 describe('classroompath-i18n', () => {
   it('keeps English and Spanish resource keys in parity', () => {
-    expect(Object.keys(classroomPathI18nCatalogs.es).sort()).toEqual(
-      Object.keys(classroomPathI18nCatalogs.en).sort()
+    const { missingInB: missingInEs, missingInA: missingInEn } = flatCatalogDiff(
+      classroomPathI18nCatalogs.en as Record<string, string>,
+      classroomPathI18nCatalogs.es as Record<string, string>
+    );
+
+    expect(missingInEs, `Keys present in EN but missing in ES:\n${missingInEs.join('\n')}`).toEqual(
+      []
+    );
+    expect(missingInEn, `Keys present in ES but missing in EN:\n${missingInEn.join('\n')}`).toEqual(
+      []
     );
   });
 
