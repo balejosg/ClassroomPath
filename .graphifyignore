@@ -1,0 +1,45 @@
+# graphify scan exclusions (gitignore syntax).
+# IMPORTANT: when this file exists graphify ignores .gitignore entirely, so it
+# must repeat the .gitignore patterns and add graph-only exclusions on top.
+# Keep in sync with .gitignore.
+
+# --- graph-only exclusions ---
+# upstream/ is the vendored OpenPath core — it has its own knowledge graph at
+# the workspace root (../graphify-out). Including it here would triple the
+# graph and blur the wrapper boundary.
+upstream/
+graphify-out/
+
+# --- mirrored from .gitignore ---
+node_modules/
+api/package-lock.json
+.env
+config/.env
+config/deploy-targets.local.json
+dist/
+dist-ssr/
+**/dist-ssr/
+*.tsbuildinfo
+logs/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+MANUAL_TEST_REPORT.md
+.env.local
+.opencode/
+.cache/
+.turbo/
+.worktrees/
+docs/plans/*
+playwright-report/
+tests/e2e/test-results/
+smoke-results.txt
+smoke-failure-boundary.json
+coverage/
+**/coverage/
+.nyc_output/
+**/.nyc_output/

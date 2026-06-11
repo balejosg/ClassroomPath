@@ -37,3 +37,11 @@ echo "$msg" | grep -q '^Verified-by: pre-commit$' || {
 echo ""
 echo "[OK] Commit verified: pre-commit hook executed verify:precommit"
 echo ""
+
+# graphify: refresh this repo's knowledge graph in the background (local tooling).
+# No-ops when graphify or the graph is absent (CI, plain clones, agent worktrees).
+if command -v graphify >/dev/null 2>&1 && [ -f "graphify-out/.graphify_root" ]; then
+    mkdir -p "$HOME/.cache"
+    ( nohup graphify update . >> "$HOME/.cache/graphify-rebuild.log" 2>&1 & )
+    echo "[graphify] background graph update launched (log: ~/.cache/graphify-rebuild.log)"
+fi

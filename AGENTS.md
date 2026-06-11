@@ -71,3 +71,16 @@ path. Real targets must stay untracked.
 - documenting live hostnames, LAN addresses, SSH users, key filenames, VM identifiers, or provider
   setup commands
 - claiming production resolution from local or staging-only evidence
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+
+- For codebase questions, first run `graphify query "<identifiers>" --graph graphify-out/graph.json` (from this repo's root) when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Query with code identifiers (function/file/symbol names), not prose questions — start-node matching is literal substring matching on node labels. If results look irrelevant, grep graph.json node labels for your term first, then re-query with the labels you find.
+- Always pass `--graph` explicitly; the default depends on the current working directory.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- The graph rebuilds automatically via the post-commit hook (background, log: `~/.cache/graphify-rebuild.log`). Manual refresh: `graphify update .` from this repo's root. `.graphifyignore` excludes `upstream/` — the vendored OpenPath core is covered by its own graph at the workspace root.

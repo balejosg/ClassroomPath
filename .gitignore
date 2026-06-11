@@ -31,6 +31,7 @@ Thumbs.db
 MANUAL_TEST_REPORT.md
 .env.local
 .opencode/
+graphify-out/
 .cache/
 .turbo/
 .worktrees/
