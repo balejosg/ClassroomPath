@@ -69,6 +69,26 @@ function main(argv = process.argv.slice(2)) {
   log(result.reason);
 
   if (!result.ok) {
+    console.error('');
+    console.error('How to fix (threshold policy lives in scripts/check-npm-audit-critical.mjs):');
+    console.error(
+      '  inspect vulnerabilities  -> npm audit --json | node scripts/check-npm-audit-critical.mjs /dev/stdin'
+    );
+    console.error(
+      '                             or: npm audit --json > /tmp/audit.json && node scripts/check-npm-audit-critical.mjs /tmp/audit.json'
+    );
+    console.error(
+      '  non-breaking patches     -> npm audit fix  (safe upgrades only; re-run audit after)'
+    );
+    console.error(
+      '  breaking upgrades        -> review manually: npm audit --json, check each advisory'
+    );
+    console.error(
+      '                             then npm install <package>@<safe-version> per advisory'
+    );
+    console.error(
+      '  policy change            -> edit the evaluateNpmAuditCritical function in this script'
+    );
     process.exit(1);
   }
 }

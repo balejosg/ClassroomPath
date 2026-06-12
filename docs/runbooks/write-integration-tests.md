@@ -111,6 +111,11 @@ assertStatus(mutResp, 200);
 The tRPC endpoint base path is `/cp/trpc/<procedure>`. `parseTRPC` returns `{ data }` on
 success or `{ error, code }` on a tRPC error.
 
+> **Where these helpers come from**: `parseTRPC`, `assertStatus`, `bearerAuth`, `trpcQuery`, and
+> `trpcMutate` are defined in `api/tests/test-trpc.ts` and re-exported through
+> `api/tests/test-utils.ts` (which also re-exports `test-db.ts` and `test-network.ts`). Always
+> import from `../test-utils.js` so that the barrel import path remains stable.
+
 ## 5. Use the scenario builder for multi-entity setups
 
 `createTenantScenario` in `scenario-builder.ts` wraps the low-level harness calls for

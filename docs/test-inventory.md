@@ -206,7 +206,7 @@ Tests over Firefox extension release versioning, metadata, and asset cache.
 
 Files that do not fit the above categories, including staging gates, git process helpers, docs consistency, and sub-directory tests.
 
-**Files in this category: 25**
+**Files in this category: 26**
 
 | Test file                                    | Lines | Guards                                                                                                                                                                                                                                                        | Breaks when                                                         |
 | -------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -243,20 +243,42 @@ Files that do not fit the above categories, including staging gates, git process
 
 These are live API integration tests against a real database. They do NOT read workflow YAML.
 
-| Test file                                | Guards                                                                                                                                         |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| billing.integration.test.ts              | Billing tRPC: free self-service block, manual-only mode block, annual checkout, entitlement activation from webhook                            |
-| classrooms.integration.test.ts           | Classrooms tRPC: list/getById with schedule group, readable group names, enrollment ticket for tenant classrooms                               |
-| gateway.integration.test.ts              | Gateway integration: API-only mode, unauthenticated 401, refresh token rejection, wrong-issuer rejection                                       |
-| groups.integration.test.ts               | Groups tRPC: name/slug conflict, cross-org slug isolation, clone rules + templates                                                             |
-| invitations.integration.test.ts          | Invitations tRPC: user creation delivery metadata, invitation accept end-to-end, existing-user accept                                          |
-| multi-org-membership.integration.test.ts | Multi-org hardening: billing gate on org creation, cross-org user approval rejection, implicit org selection                                   |
-| onboarding-policy.integration.test.ts    | Onboarding policy: self-service block in production, directory hiding, invitation-wait fallback                                                |
-| requests.integration.test.ts             | Requests tRPC: approve creates whitelist rule, root rule for legacy subdomain requests                                                         |
-| scenario-builder.integration.test.ts     | Integration scenario builder: seedOrgAdmin + seedMember fixtures, standalone actor merge                                                       |
-| schedules.integration.test.ts            | Schedules tRPC: auth + tenant membership gate, teacher schedule creation scope, cross-teacher readable names, owner-only update/delete         |
-| tenant-api-harness.integration.test.ts   | Tenant API harness: typed group + classroom fixture creation                                                                                   |
-| users.integration.test.ts                | Users tRPC: SafeUserWithRoles (no passwordHash), invitation creation without upfront OpenPath user, invitation revocation, email normalization |
+| Test file                                                      | Guards                                                                                                                                         |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| api/tests/integration/billing.integration.test.ts              | Billing tRPC: free self-service block, manual-only mode block, annual checkout, entitlement activation from webhook                            |
+| api/tests/integration/classrooms.integration.test.ts           | Classrooms tRPC: list/getById with schedule group, readable group names, enrollment ticket for tenant classrooms                               |
+| api/tests/integration/gateway.integration.test.ts              | Gateway integration: API-only mode, unauthenticated 401, refresh token rejection, wrong-issuer rejection                                       |
+| api/tests/integration/groups.integration.test.ts               | Groups tRPC: name/slug conflict, cross-org slug isolation, clone rules + templates                                                             |
+| api/tests/integration/invitations.integration.test.ts          | Invitations tRPC: user creation delivery metadata, invitation accept end-to-end, existing-user accept                                          |
+| api/tests/integration/multi-org-membership.integration.test.ts | Multi-org hardening: billing gate on org creation, cross-org user approval rejection, implicit org selection                                   |
+| api/tests/integration/onboarding-policy.integration.test.ts    | Onboarding policy: self-service block in production, directory hiding, invitation-wait fallback                                                |
+| api/tests/integration/requests.integration.test.ts             | Requests tRPC: approve creates whitelist rule, root rule for legacy subdomain requests                                                         |
+| api/tests/integration/scenario-builder.integration.test.ts     | Integration scenario builder: seedOrgAdmin + seedMember fixtures, standalone actor merge                                                       |
+| api/tests/integration/schedules.integration.test.ts            | Schedules tRPC: auth + tenant membership gate, teacher schedule creation scope, cross-teacher readable names, owner-only update/delete         |
+| api/tests/integration/tenant-api-harness.integration.test.ts   | Tenant API harness: typed group + classroom fixture creation                                                                                   |
+| api/tests/integration/users.integration.test.ts                | Users tRPC: SafeUserWithRoles (no passwordHash), invitation creation without upfront OpenPath user, invitation revocation, email normalization |
+
+---
+
+## Appendix A1: Infrastructure helpers (api/tests/)
+
+These files are not test files themselves but are required by the integration tests above. They live
+alongside the integration tests and must NOT be imported after application modules (see ordering
+constraints below).
+
+| File                                        | Role                                                                                                                                                                                                                                                                                |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api/tests/helpers/test-env.ts`             | Sets `process.env.JWT_SECRET` and `process.env.NODE_ENV = 'test'` at module-evaluation time. Must be the **first import** of any integration test file. Exports `TEST_JWT_SECRET` (the literal value used as the secret).                                                           |
+| `api/tests/integration/harness.ts`          | Exports `signToken` (canonical JWT creation with correct payload shape), `ensureOpenPathUser`, `bootstrapOrg`, `approveOrganizationMember`, `useIntegrationServer` (before/after hook manager), `startIntegrationServer`, `stopIntegrationServer`, and mock OpenPath state helpers. |
+| `api/tests/integration/scenario-builder.ts` | Exports `createTenantScenario` -- a factory that wraps harness calls for common multi-entity setups (seedOrgAdmin, seedMember, createGroup, createClassroom, createSchedule).                                                                                                       |
+| `api/tests/test-utils.ts`                   | Re-export barrel: `export * from './test-db.js'`, `export * from './test-network.js'`, `export * from './test-trpc.js'`. Keeps import paths stable across the test tree.                                                                                                            |
+| `api/tests/test-trpc.ts`                    | Source of `parseTRPC`, `assertStatus`, `bearerAuth`, `trpcQuery`, `trpcMutate`, `TRPCResponse`. These are re-exported through `test-utils.ts`.                                                                                                                                      |
+| `api/tests/test-db.ts`                      | Database reset helpers (`resetDb`). Re-exported through `test-utils.ts`.                                                                                                                                                                                                            |
+| `api/tests/test-network.ts`                 | Network helpers: `getAvailablePort`, `waitForHealth`. Re-exported through `test-utils.ts`.                                                                                                                                                                                          |
+
+**Import order constraint**: `api/tests/helpers/test-env.ts` must appear before any app or config
+import in every integration test file. Importing it after the application singleton loads silently
+uses whatever `JWT_SECRET` the process already has, producing auth failures that are hard to trace.
 
 ---
 
@@ -305,7 +327,7 @@ No static `test.skip`, `test.only`, `describe.skip`, or `describe.only` calls we
 ## File count verification
 
 - Root-level `tests/*.test.ts`: **89 files**
-- Sub-directory `tests/e2e/**` and `tests/helpers/**`: **8 files** (4 e2e/fixtures, 4 e2e/setup... wait, 4 e2e/fixtures: actors, mailbox-providers, performance-budgets = 3; e2e/setup: build-artifacts, global-setup, test-environment, worker-runtime = 4; helpers: test-actors = 1; total = 8)
+- Sub-directory `tests/e2e/**` and `tests/helpers/**`: **8 files** (e2e/fixtures: actors, mailbox-providers, performance-budgets = 3; e2e/setup: build-artifacts, global-setup, test-environment, worker-runtime = 4; helpers: test-actors = 1; total = 8)
 - **Total `tests/` tree**: **97 files**
 - **Rows in category tables 1-10 (deduplicated)**: 89 root files + 8 subdir files = 97 files catalogued.
 

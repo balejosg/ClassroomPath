@@ -70,4 +70,6 @@ Rules:
 ## Drafts And Historical Context
 
 - Draft plans and design notes (may be empty between active efforts): [`docs/plans/README.md`](plans/README.md)
+  - `docs/plans/2026-04-22-openpath-apt-wait.md` -- OpenPath APT wait implementation plan
+  - `docs/plans/2026-04-30-existing-user-invitation-org-transfer-design.md` -- existing-user invitation org-transfer design
 - Archive boundary and retention policy: [`docs/archive/README.md`](archive/README.md)

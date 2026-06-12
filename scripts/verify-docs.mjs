@@ -167,6 +167,32 @@ if (failures.length > 0) {
   for (const failure of failures) {
     console.error(`- ${failure}`);
   }
+  console.error('');
+  console.error('How to fix (policy enforced by scripts/verify-docs.mjs):');
+  console.error(
+    '  broken link                      -> correct or remove the link target in the listed file'
+  );
+  console.error(
+    '  non-ASCII / expected ASCII-only  -> remove non-ASCII characters; use ASCII equivalents or plain English'
+  );
+  console.error(
+    '  maintained doc not in index      -> add a link to the file in docs/INDEX.md, or remove the "> Status: maintained" header'
+  );
+  console.error(
+    '  missing "> Applies to:" etc.     -> add the three required metadata lines (Applies to, Last verified, Source of truth)'
+  );
+  console.error(
+    '  draft plan marked as maintained  -> remove "> Status: maintained" from files under docs/plans/'
+  );
+  console.error(
+    '  index links a draft plan         -> move draft plan links out of docs/INDEX.md (use docs/plans/README.md instead)'
+  );
+  console.error(
+    '  index links a .github/ doc       -> remove the .github/ link from docs/INDEX.md'
+  );
+  console.error(
+    '  language-specific .es.md file    -> rename to a non-language-specific path (e.g. docs/evaluation/es/filename.md)'
+  );
   process.exit(1);
 }
 
