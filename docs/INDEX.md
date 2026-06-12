@@ -55,6 +55,7 @@ Rules:
 - Update OpenPath submodule boundary: [`docs/runbooks/update-openpath-submodule.md`](runbooks/update-openpath-submodule.md)
 - Add a cross-system mutation: [`docs/runbooks/add-cross-system-mutation.md`](runbooks/add-cross-system-mutation.md)
 - Add a database table: [`docs/runbooks/add-database-table.md`](runbooks/add-database-table.md)
+- Write integration tests (canonical harness, signToken, scenario builder): [`docs/runbooks/write-integration-tests.md`](runbooks/write-integration-tests.md)
 - Docker + Nginx Proxy Manager: [`docs/DOCKER.md`](DOCKER.md)
 - Secrets and private operations: [`docs/SECRETS.md`](SECRETS.md)
 - Session/security model: [`docs/SESSION_SECURITY_MODEL.md`](SESSION_SECURITY_MODEL.md)

@@ -12,6 +12,8 @@ to find which tests will break. This file maps every test file to the contract i
 
 **[ops-contract]** marks files that read `.github/workflows/*.yml` or `scripts/` source text directly. Those tests fail by design when the workflow or script is edited.
 
+How to write new integration tests: see [`docs/runbooks/write-integration-tests.md`](runbooks/write-integration-tests.md).
+
 ---
 
 ## How to use this document
