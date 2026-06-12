@@ -21,11 +21,11 @@ private evaluation.
 
 ## Trunk-Based Workflow
 
-`main` is the only allowed working branch.
+`main` is the only allowed working branch. (canonical: root AGENTS.md "Workspace Rules > Trunk-Based Only")
 
 - Do not create feature branches, PR branches, or integration branches.
 - Do not commit from detached HEAD.
-- Never push from the workspace root.
+- Never push from the workspace root. (canonical: root AGENTS.md "Workspace Rules > Root Pushes Are Forbidden")
 - Push only from `ClassroomPath/` when explicitly asked.
 
 ## Verification
