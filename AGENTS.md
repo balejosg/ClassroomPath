@@ -40,6 +40,30 @@ For public-surface or documentation changes, prefer local checks:
 Do not use deploy workflows, live staging/production checks, or provider APIs as the first signal for
 ordinary code or documentation work.
 
+### Script Semantics
+
+**Warning: script names in ClassroomPath do NOT mean the same as in OpenPath. Never assume cross-repo symmetry.**
+
+| Script                        | What it actually runs                                                                                                                                  | When to use                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `verify:precommit`            | lint-staged (staged files only)                                                                                                                        | runs automatically via pre-commit hook                                                       |
+| `verify:commit`               | verify:public-surface + VERIFY_MODE=commit verify-full.sh -- includes tests                                                                            | standard pre-commit manual check for code changes                                            |
+| `verify:fast`                 | VERIFY_MODE=fast bash scripts/verify-full.sh -- **runs tests** (reduced e2e depth)                                                                     | fastest full-suite pass; first manual lane for most changes                                  |
+| `verify:release`              | VERIFY_MODE=release bash scripts/verify-full.sh -- full suite, no cache shortcuts                                                                      | pre-tag gate; use when preparing a release                                                   |
+| `verify:full`                 | alias of verify:release (VERIFY_MODE=release)                                                                                                          | same as verify:release                                                                       |
+| `verify:public-surface`       | node scripts/check-public-surface.mjs -- scans all tracked files for private hostnames, internal IPs, secrets                                          | after any content change before push                                                         |
+| `verify:docs`                 | node scripts/verify-docs.mjs -- dead links, non-ASCII, docs/ structure                                                                                 | after editing any markdown doc                                                               |
+| `verify:promotion-ready`      | bash scripts/verify-production-promotion-ready.sh -- checks staging is promotion-eligible                                                              | before initiating a production promotion                                                     |
+| `test:ci-regression`          | runCiRegression + runWorkflowConfigRegression from run-ci-regression.mjs                                                                               | after editing CI workflow files                                                              |
+| `test:deployment`             | node tests/deployment-foundation.test.ts, deployment-staging-release.test.ts, deployment-runtime-contracts.test.ts                                     | after editing deploy scripts or Docker config                                                |
+| `test:windows-bootstrap-gate` | node tests/windows-bootstrap-gate.test.ts                                                                                                              | after editing Windows bootstrap or enrollment scripts                                        |
+| `db:test:reset`               | docker compose down -v + up postgres for the test project -- **destroys local test DB containers**                                                     | reset a corrupted or leftover test database; data loss is expected                           |
+| `release:preflight`           | node scripts/release-preflight.mjs -- read-only pass/block report for the next release                                                                 | before cutting a release tag                                                                 |
+| `release:status`              | node scripts/release-status.mjs -- read-only local promotion status                                                                                    | inspect current release/submodule state                                                      |
+| `release:evidence-bundle`     | node scripts/release-evidence-bundle.mjs -- assembles verifiable evidence from artifacts                                                               | after a staging deploy, before production promotion                                          |
+| `promote:production`          | bash scripts/tag-production-release.sh **requires explicit version tag argument** -- tags origin/main after staging promotion check                    | production promotion: requires `<tag>` argument, e.g. `npm run promote:production -- v1.2.x` |
+| `promote:production:full`     | node scripts/release-promote.mjs --auto-tag -- full orchestrated sequence (evidence validation, deploy, health check, canary); **auto-determines tag** | fully automated production promotion; no version argument needed                             |
+
 ## Architecture Boundary
 
 Read these first for wrapper work:
