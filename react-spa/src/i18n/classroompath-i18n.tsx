@@ -8,6 +8,7 @@ import {
 } from '../openpath/public-i18n';
 
 const classroomPathI18nEn = {
+  // --- Section: app.loader + app.common (application chrome, loader, and universal UI labels) ---
   'app.loader.preparing': 'Preparing ClassroomPath...',
   'app.loader.panel': 'Loading your panel...',
   'app.common.pending': 'pending',
@@ -34,6 +35,7 @@ const classroomPathI18nEn = {
   'app.common.inactive': 'Inactive',
   'app.common.approve': 'Approve',
   'app.common.reject': 'Reject',
+  // --- Section: groupLibrary (policy library UI) ---
   'groupLibrary.openAriaLabel': 'Open policy library',
   'groupLibrary.openSrLabel': 'Library',
   'groupLibrary.title': 'Policy library',
@@ -73,6 +75,7 @@ const classroomPathI18nEn = {
   'groupLibrary.ruleType.allow': 'Allow',
   'groupLibrary.ruleType.deny': 'Block',
   'groupLibrary.ruleType.blockPath': 'Block path',
+  // --- Section: app.title (page and section titles) ---
   'app.title.dashboard.admin': 'Overview',
   'app.title.dashboard.user': 'My Dashboard',
   'app.title.classrooms.admin': 'Classroom Management',
@@ -84,6 +87,7 @@ const classroomPathI18nEn = {
   'app.title.users.admin': 'User Administration',
   'app.title.domainRequests.admin': 'Access Requests',
   'app.title.settings': 'Settings',
+  // --- Section: domainApproval (domain unblock approval flow) ---
   'domainApproval.loading': 'Loading request...',
   'domainApproval.approved.title': 'Domain approved',
   'domainApproval.approved.body': 'The request has been added to the allowlist.',
@@ -97,6 +101,7 @@ const classroomPathI18nEn = {
   'domainApproval.group.label': 'Group',
   'domainApproval.approve.pending': 'Approving...',
   'domainApproval.approve.action': 'Approve domain',
+  // --- Section: validation (form validation messages) ---
   'validation.invalidEmail': 'Invalid email address',
   'validation.weakPassword':
     'Password must be at least 8 characters and include uppercase, lowercase, and numbers',
@@ -105,12 +110,15 @@ const classroomPathI18nEn = {
   'validation.registrationFailed': 'Could not create the account. Please try again.',
   'validation.loginFailed': 'Could not log in. Check your credentials.',
   'validation.minLength': 'At least 8 characters',
+  // --- Section: passwordStrength (password strength indicator) ---
   'passwordStrength.hasUpper': 'One uppercase letter',
   'passwordStrength.hasLower': 'One lowercase letter',
   'passwordStrength.hasDigit': 'One number',
   'passwordStrength.aria': 'Password strength: {strength} of 4 requirements met',
+  // --- Section: google (Google OAuth button) ---
   'google.loading.aria': 'Loading Google button...',
   'google.retry': 'Retry Google',
+  // --- Section: auth (authentication flows: login, register, invitation, reset) ---
   'auth.email.label': 'Email address',
   'auth.email.placeholder': 'admin@institution.edu',
   'auth.email.genericPlaceholder': 'user@example.com',
@@ -184,6 +192,7 @@ const classroomPathI18nEn = {
   'auth.reset.failed': 'Could not reset the password',
   'auth.reset.updating': 'Updating...',
   'auth.reset.submit': 'Update password',
+  // --- Section: onboarding (new school onboarding and billing setup) ---
   'onboarding.title': 'Welcome to ClassroomPath',
   'onboarding.subtitle': 'Choose how you want to start managing your rooms',
   'onboarding.orgNameRequired': 'Enter an organization name',
@@ -233,6 +242,7 @@ const classroomPathI18nEn = {
   'onboarding.gate.accessFailedBody':
     'Try again in a few seconds. If the problem persists, go back to login.',
   'onboarding.gate.verifying': 'Verifying status...',
+  // --- Section: waiting (pending invitation waiting screen) ---
   'waiting.title': 'Waiting for invitation',
   'waiting.body':
     'An administrator from your institution must add you to the organization. We will redirect you automatically when this happens.',
@@ -244,6 +254,7 @@ const classroomPathI18nEn = {
   'waiting.checkNow': 'Check now',
   'waiting.cancel': 'Change my mind',
   'waiting.autoRefresh': 'This page updates automatically every 30 seconds.',
+  // --- Section: billing (billing events, banners, and success/cancel flows) ---
   'billing.cancel.title': 'Checkout canceled',
   'billing.cancel.body':
     'No school was activated. You can return to onboarding and resume the process whenever you want.',
@@ -258,6 +269,7 @@ const classroomPathI18nEn = {
     'The school remains temporarily active while we resolve payment. Deadline:',
   'billing.banner.cancel': 'The subscription is marked to end at the close of the current period:',
   'billing.banner.pilot': 'The pilot ends on {date}. Close renewal before that date.',
+  // --- Section: platform (platform admin: entitlements, manual requests, audit) ---
   'platform.title': 'Platform administration',
   'platform.subtitle':
     'Review commercial exceptions, monitor school status, and preserve traceability.',
@@ -304,6 +316,7 @@ const classroomPathI18nEn = {
   'platform.auditAction.manual-request.approved': 'Manual request approved',
   'platform.auditAction.manual-request.rejected': 'Manual request rejected',
   'platform.auditAction.entitlement.updated': 'Entitlement updated',
+  // --- Section: admin (organization admin banners and access requests) ---
   'admin.pendingUsersBanner': '{count} users waiting for approval',
   'admin.pendingUsersBanner.one': '{count} user waiting for approval',
   'admin.pendingUsersBanner.many': '{count} users waiting for approval',
@@ -313,6 +326,7 @@ const classroomPathI18nEn = {
   'admin.pendingUsersSummary.one': '{count} pending user',
   'admin.pendingUsersSummary.many': '{count} pending users',
   'admin.closePanel': 'Close panel',
+  // --- Section: pendingUsers (pending user access request list) ---
   'pendingUsers.loading': 'Loading pending requests...',
   'pendingUsers.loadError': 'Could not load requests',
   'pendingUsers.title': 'Access Requests',
@@ -329,6 +343,7 @@ const classroomPathI18nEn = {
   'pendingUsers.summary.one': '{count} pending request',
   'pendingUsers.summary.many': '{count} pending requests',
   'pendingUsers.rejectConfirm': 'Are you sure you want to reject this request?',
+  // --- Section: orgUsers (organization user management table and invite flow) ---
   'orgUsers.title': 'User Management',
   'orgUsers.subtitle':
     'Invite new members, revoke access, and generate recoveries without asking for passwords.',
@@ -370,6 +385,7 @@ const classroomPathI18nEn = {
   'orgUsers.invite.passwordNote':
     'The password is not set here. The user will create it when accepting the invitation.',
   'orgUsers.invite.send': 'Send invitation',
+  // --- Section: pwa (push notification and PWA install prompts) ---
   'pwa.permissionDenied': 'Notification permission denied',
   'pwa.notConfigured': 'Notifications are not configured',
   'pwa.enabled': 'Notifications active',
@@ -380,6 +396,7 @@ const classroomPathI18nEn = {
   'pwa.iosBody':
     'In Safari, open Share and tap Add to Home Screen. Then open ClassroomPath from the icon and enable notifications.',
   'pwa.requestAlerts': 'Request alerts',
+  // --- Section: public.nav + public.faq + public.contact (public marketing pages shared navigation) ---
   'public.landing.title': 'Classroom web filtering | ClassroomPath',
   'public.landing.description':
     'Control what opens and what gets blocked in each classroom. Managed service on OpenPath, classroom-based pricing, and remote activation with the school IT team.',
@@ -397,6 +414,7 @@ const classroomPathI18nEn = {
   'public.faq.pricingTitle': 'Direct answers for institutional evaluation',
   'public.contact.requestLabel': 'Request a quote, activation, or demo',
   'public.contact.loginPrompt': 'Already have an account?',
+  // --- Section: landing (public landing / home page content) ---
   'landing.hero.badge': 'Classroom web filtering by classroom · managed service on OpenPath',
   'landing.hero.title':
     'Decide what Internet reaches each classroom, without adding more work for the IT team.',
@@ -481,6 +499,7 @@ const classroomPathI18nEn = {
   'public.pricing.title': 'Classroom web filtering pricing | ClassroomPath',
   'public.pricing.description':
     'Calculate the cost of ClassroomPath by classroom count. Public pricing, separate onboarding, lightweight remote activation, and managed service on OpenPath.',
+  // --- Section: pricing (public pricing page content) ---
   'pricing.hero.badge': 'Public classroom pricing · no surprises',
   'pricing.hero.title': 'Calculate the first year in seconds and decide the next step.',
   'pricing.hero.body':
@@ -619,6 +638,7 @@ const classroomPathI18nEn = {
   'pricing.onboarding.tier.medium.range': '26-100 classrooms',
   'pricing.onboarding.tier.large.range': '101+ classrooms',
   'pricing.onboarding.tier.contact': 'Contact us',
+  // --- Section: contact (contact / quote request form) ---
   'contact.sent.title': 'Request sent',
   'contact.sent.body': 'We will respond within 48 h.',
   'contact.sent.again': 'Send another request',
@@ -645,6 +665,7 @@ const classroomPathI18nEn = {
   'contact.email.body':
     'Need: {intent}\nName: {name}\nSchool: {center}\nEmail: {email}\nClassrooms (approx.): {classrooms}\nTechnical owner: {technicalOwner}\nNeeds implementation partner?: {deploymentPartnerNeed}',
   'contact.notProvided': 'Not provided',
+  // --- Section: faq (frequently asked questions: landing and pricing) ---
   'faq.landing.screenTime.q': 'Does ClassroomPath promote more screen use?',
   'faq.landing.screenTime.a':
     'No. ClassroomPath is designed for schools that want to use technology with more intent. It does not sell more digital exposure; it helps limit Internet access to contexts and resources that make educational sense.',
@@ -687,6 +708,7 @@ const classroomPathI18nEn = {
 type ClassroomPathI18nKey = keyof typeof classroomPathI18nEn;
 
 const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
+  // --- Section (es): app.loader + app.common (application chrome, loader, and universal UI labels) ---
   'app.loader.preparing': 'Preparando ClassroomPath...',
   'app.loader.panel': 'Cargando tu panel...',
   'app.common.pending': 'pendiente',
@@ -713,6 +735,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'app.common.inactive': 'Inactivo',
   'app.common.approve': 'Aprobar',
   'app.common.reject': 'Rechazar',
+  // --- Section (es): groupLibrary (policy library UI) ---
   'groupLibrary.openAriaLabel': 'Abrir biblioteca de políticas',
   'groupLibrary.openSrLabel': 'Biblioteca',
   'groupLibrary.title': 'Biblioteca de políticas',
@@ -752,6 +775,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'groupLibrary.ruleType.allow': 'Permitir',
   'groupLibrary.ruleType.deny': 'Bloquear',
   'groupLibrary.ruleType.blockPath': 'Bloquear ruta',
+  // --- Section (es): app.title (page and section titles) ---
   'app.title.dashboard.admin': 'Vista General',
   'app.title.dashboard.user': 'Mi Panel',
   'app.title.classrooms.admin': 'Gestión de Aulas',
@@ -763,6 +787,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'app.title.users.admin': 'Administración de Usuarios',
   'app.title.domainRequests.admin': 'Solicitudes de Acceso',
   'app.title.settings': 'Configuración',
+  // --- Section (es): domainApproval (domain unblock approval flow) ---
   'domainApproval.loading': 'Cargando solicitud...',
   'domainApproval.approved.title': 'Dominio aprobado',
   'domainApproval.approved.body': 'La solicitud ya se ha añadido a la whitelist.',
@@ -776,6 +801,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'domainApproval.group.label': 'Grupo',
   'domainApproval.approve.pending': 'Aprobando...',
   'domainApproval.approve.action': 'Aprobar dominio',
+  // --- Section (es): validation (form validation messages) ---
   'validation.invalidEmail': 'Correo electrónico inválido',
   'validation.weakPassword':
     'La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas y números',
@@ -784,12 +810,15 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'validation.registrationFailed': 'No se pudo crear la cuenta. Inténtalo de nuevo.',
   'validation.loginFailed': 'No se pudo iniciar sesión. Verifica tus credenciales.',
   'validation.minLength': 'Al menos 8 caracteres',
+  // --- Section (es): passwordStrength (password strength indicator) ---
   'passwordStrength.hasUpper': 'Una mayúscula',
   'passwordStrength.hasLower': 'Una minúscula',
   'passwordStrength.hasDigit': 'Un número',
   'passwordStrength.aria': 'Fortaleza de contraseña: {strength} de 4 requisitos cumplidos',
+  // --- Section (es): google (Google OAuth button) ---
   'google.loading.aria': 'Cargando botón de Google...',
   'google.retry': 'Reintentar Google',
+  // --- Section (es): auth (authentication flows: login, register, invitation, reset) ---
   'auth.email.label': 'Correo electrónico',
   'auth.email.placeholder': 'admin@institucion.edu',
   'auth.email.genericPlaceholder': 'usuario@dominio.com',
@@ -863,6 +892,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'auth.reset.failed': 'No se pudo restablecer la contraseña',
   'auth.reset.updating': 'Actualizando...',
   'auth.reset.submit': 'Actualizar contraseña',
+  // --- Section (es): onboarding (new school onboarding and billing setup) ---
   'onboarding.title': '¡Bienvenido a ClassroomPath!',
   'onboarding.subtitle': 'Elige cómo quieres comenzar a gestionar tus salas',
   'onboarding.orgNameRequired': 'Debes ingresar un nombre para la organización',
@@ -912,6 +942,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
     'No se pudo verificar tu estado a tiempo. Reintenta o vuelve a iniciar sesión.',
   'onboarding.gate.accessFailedTitle': 'No se pudo verificar tu acceso',
   'onboarding.gate.accessFailedBody':
+    // --- Section (es): waiting (pending invitation waiting screen) ---
     'Reintenta en unos segundos. Si el problema persiste, vuelve a iniciar sesión.',
   'onboarding.gate.verifying': 'Verificando estado...',
   'waiting.title': 'Esperando invitación',
@@ -923,6 +954,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
     'Por privacidad, este portal no mostrará el directorio de organizaciones mientras tu solicitud siga pendiente.',
   'waiting.checking': 'Verificando...',
   'waiting.checkNow': 'Verificar ahora',
+  // --- Section (es): billing (billing events, banners, and success/cancel flows) ---
   'waiting.cancel': 'Cambiar de opinión',
   'waiting.autoRefresh': 'Esta página se actualiza automáticamente cada 30 segundos.',
   'billing.cancel.title': 'Checkout cancelado',
@@ -937,6 +969,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'billing.success.title': 'Activando el centro',
   'billing.banner.grace':
     'El centro sigue activo temporalmente mientras resolvemos el cobro. Fecha límite:',
+  // --- Section (es): platform (platform admin: entitlements, manual requests, audit) ---
   'billing.banner.cancel':
     'La suscripción está marcada para finalizar al cierre del periodo actual:',
   'billing.banner.pilot':
@@ -983,6 +1016,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'platform.auditActor.user': 'Usuario',
   'platform.auditTarget.manual_request': 'Solicitud manual',
   'platform.auditTarget.entitlement': 'Derecho',
+  // --- Section (es): admin (organization admin banners and access requests) ---
   'platform.auditTarget.organization': 'Organización',
   'platform.auditAction.manual-request.approved': 'Solicitud manual aprobada',
   'platform.auditAction.manual-request.rejected': 'Solicitud manual rechazada',
@@ -992,6 +1026,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'admin.pendingUsersBanner.many': '{count} usuarios esperando aprobación',
   'admin.review': 'Revisar',
   'admin.accessRequests': 'Solicitudes de acceso',
+  // --- Section (es): pendingUsers (pending user access request list) ---
   'admin.pendingUsersSummary': '{count} usuarios pendientes',
   'admin.pendingUsersSummary.one': '{count} usuario pendiente',
   'admin.pendingUsersSummary.many': '{count} usuarios pendientes',
@@ -1008,6 +1043,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'pendingUsers.actions': 'Acciones',
   'pendingUsers.unknownDate': 'Fecha desconocida',
   'pendingUsers.summary': '{count} solicitudes pendientes',
+  // --- Section (es): orgUsers (organization user management table and invite flow) ---
   'pendingUsers.summary.one': '{count} solicitud pendiente',
   'pendingUsers.summary.many': '{count} solicitudes pendientes',
   'pendingUsers.rejectConfirm': '¿Estás seguro de que quieres rechazar esta solicitud?',
@@ -1049,6 +1085,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'orgUsers.table.resetAccess': 'Restablecer acceso',
   'orgUsers.invite.fullNamePlaceholder': 'Nombre completo',
   'orgUsers.invite.emailPlaceholder': 'usuario@dominio.com',
+  // --- Section (es): pwa (push notification and PWA install prompts) ---
   'orgUsers.invite.passwordNote':
     'La contraseña no se define aquí. El usuario la creará al aceptar su invitación.',
   'orgUsers.invite.send': 'Enviar invitación',
@@ -1059,6 +1096,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'pwa.enabling': 'Activando...',
   'pwa.enable': 'Activar notificaciones',
   'pwa.iosTitle': 'Instala ClassroomPath en este iPhone',
+  // --- Section (es): public.nav + public.faq + public.contact (public marketing pages shared navigation) ---
   'pwa.iosBody':
     'En Safari, abre compartir y pulsa Añadir a pantalla de inicio. Después abre ClassroomPath desde el icono y activa las notificaciones.',
   'pwa.requestAlerts': 'Avisos de solicitudes',
@@ -1076,6 +1114,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'public.nav.privacyPolicy': 'Política de privacidad',
   'public.faq.label': 'Preguntas frecuentes',
   'public.faq.landingTitle': 'Lo que suelen preguntar los centros',
+  // --- Section (es): landing (public landing / home page content) ---
   'public.faq.pricingTitle': 'Respuestas directas para evaluación institucional',
   'public.contact.requestLabel': 'Solicitar presupuesto, activación o demo',
   'public.contact.loginPrompt': '¿Ya tienes cuenta?',
@@ -1160,6 +1199,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'landing.fitSignal.open.title': 'Transparencia y autonomía',
   'landing.fitSignal.open.text':
     'Operar sobre código abierto y conservar una salida real si el centro quiere migrar a OpenPath.',
+  // --- Section (es): pricing (public pricing page content) ---
   'public.pricing.title': 'Precios de filtrado web escolar por aula | ClassroomPath',
   'public.pricing.description':
     'Calcula el coste de ClassroomPath por número de aulas. Precio público, onboarding separado, activación remota ligera y servicio gestionado sobre OpenPath.',
@@ -1298,6 +1338,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'pricing.tier.network.range': '101+ aulas',
   'pricing.tier.network.tagline':
     'Precio optimizado para redes de centros y despliegues multisede.',
+  // --- Section (es): contact (contact / quote request form) ---
   'pricing.tier.network.bestFor':
     'Precio optimizado para despliegues multisede y redes educativas.',
   'pricing.onboarding.tier.small.range': 'Hasta 25 aulas',
@@ -1324,6 +1365,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   'contact.yes': 'Sí',
   'contact.no': 'No',
   'contact.notSure': 'No lo sé',
+  // --- Section (es): faq (frequently asked questions: landing and pricing) ---
   'contact.sending': 'Enviando...',
   'contact.submit': 'Enviar solicitud',
   'contact.email.subject': 'Solicitud ClassroomPath',
