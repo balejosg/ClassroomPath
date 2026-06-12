@@ -1,3 +1,13 @@
+/**
+ * PricingPageSections -- named section components that compose the public pricing page.
+ *
+ * Exports: PricingPageHeader, and individual section components (hero, calculator, tiers,
+ * value proposition, onboarding, not-included, contact/quote-request).  Each section is a
+ * standalone named export consumed by the pricing page view (not by the authenticated shell).
+ * All user-visible strings go through useClassroomPathT from src/i18n/classroompath-i18n.
+ * Pricing data (PRICING_TIERS, ONBOARDING_TIERS, getPricingQuote, etc.) is sourced from
+ * src/data/pricing-data.  No OpenPath imports -- this is a purely public-facing CP component.
+ */
 import React from 'react';
 import { ArrowRight, Building2, Calculator, School, ShieldCheck } from 'lucide-react';
 

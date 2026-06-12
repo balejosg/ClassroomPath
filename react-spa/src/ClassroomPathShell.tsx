@@ -1,3 +1,14 @@
+/**
+ * ClassroomPathShell -- authenticated application shell rendered inside ClassroomPathApp.
+ *
+ * Owns: the URL-based tab router (Routes/Navigate), Sidebar + Header layout sourced from
+ * OpenPath via src/openpath/public-shell, and CP-only views (OrganizationUsers,
+ * DomainRequestsPage, DomainRequestApprovalPage).  Routing helpers and title logic live in
+ * src/app/classroom-path-shell-routing.ts and classroom-path-shell-state.ts respectively.
+ * isAdmin() comes from src/openpath/public-auth.  The topBanner slot is injected by
+ * ClassroomPathApp (BillingStatusBanner).  This module has no boot or auth responsibility --
+ * all auth/onboarding gating is handled upstream in ClassroomPathApp via useClassroomPathBoot.
+ */
 import React, { useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 

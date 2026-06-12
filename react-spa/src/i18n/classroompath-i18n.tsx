@@ -1,3 +1,13 @@
+/**
+ * ClassroomPath i18n layer -- CP-specific translation keys layered on top of OpenPath public i18n.
+ *
+ * Owns: classroomPathI18nEn and classroomPathI18nEs catalogs (CP-only keys; OpenPath shared keys
+ * are provided by OpenPathI18nProvider from src/openpath/public-i18n).  The two catalogs must
+ * stay in key-parity -- this is enforced by src/i18n/__tests__/classroompath-i18n.test.ts.
+ * Sections are marked with "--- Section: <name> ---" comments inside each catalog object for
+ * navigation.  Exports: ClassroomPathI18nProvider (wraps OpenPathI18nProvider), useClassroomPathT,
+ * useClassroomPathI18n, translateClassroomPathText, and resolveClassroomPathLocale.
+ */
 import React, { createContext, useContext, useMemo } from 'react';
 
 import {

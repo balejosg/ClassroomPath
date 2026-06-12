@@ -1,3 +1,15 @@
+/**
+ * useClassroomPathBoot -- boot, auth, and navigation state machine for the ClassroomPath SPA.
+ *
+ * State is held in a useReducer backed by createClassroomPathBootControllerState /
+ * reduceClassroomPathBootControllerState (src/app/classroom-path-boot-controller.ts).
+ * Key state fields: isAuth, openPathReady, loadingTimedOut, isAcceptingPendingInvitation.
+ * getClassroomPathBootScreen maps these to one of: 'preparing' | 'auth' | 'billing-success' |
+ * 'billing-cancel' | 'onboarding' (the main shell), which ClassroomPathApp uses for screen
+ * dispatch.  Side-effect hooks handle: OpenPath bridge activation, unauthorized-refresh
+ * interception, profile sync after login, service worker registration, pending invitation
+ * auto-accept, and onboarding session refresh on 401-class errors.
+ */
 import { useCallback, useEffect, useReducer } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type {

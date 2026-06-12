@@ -1,3 +1,13 @@
+/**
+ * Vite build config for the ClassroomPath SPA wrapper.
+ *
+ * Wrapper architecture: the @openpath/public-* aliases (and @openpath/openpath.css) map
+ * each OpenPath public entrypoint to its versioned file inside upstream/openpath/react-spa/src/public/.
+ * ClassroomPath code must consume OpenPath functionality ONLY through these aliases or through
+ * the src/openpath/ adapter layer that re-exports them -- deep imports into OpenPath internals
+ * (anything not under src/public/) violate the wrapper contract and break the boundary enforced
+ * by src/openpath/__tests__/adapter-boundary.test.ts.
+ */
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';

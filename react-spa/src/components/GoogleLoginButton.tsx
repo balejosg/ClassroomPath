@@ -1,3 +1,14 @@
+/**
+ * GoogleLoginButton -- self-contained Google Identity Services button for ClassroomPath auth.
+ *
+ * Depends on src/openpath/public-google (GoogleCredentialResponse type + google.accounts.id
+ * global type augmentation).  On mount it: (1) dynamically injects the GSI SDK script if not
+ * already present and polls until window.google.accounts.id is ready, (2) fetches the Google
+ * client ID from /api/config, then (3) calls google.accounts.id.initialize + renderButton.
+ * Both phases run inside an AbortController so teardown on unmount or prop change is clean.
+ * Render failures are retried up to GOOGLE_RENDER_MAX_ATTEMPTS (5) via a MutationObserver +
+ * fallback timeout; after exhausting retries a user-visible retry button is shown.
+ */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { GoogleCredentialResponse } from '../openpath/public-google';
 import '../openpath/public-google';
