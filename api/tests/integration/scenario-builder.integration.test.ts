@@ -1,6 +1,4 @@
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
@@ -15,7 +13,7 @@ describe('integration scenario builder', async () => {
   test('seedOrgAdmin and seedMember build reusable direct-db tenant fixtures', async () => {
     const scenario = createTenantScenario({
       baseUrl: integration.baseUrl,
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
     });
     const { actor: admin, organization } = await scenario.seedOrgAdmin({
       userId: `seed-admin-${Date.now()}`,
@@ -49,7 +47,7 @@ describe('integration scenario builder', async () => {
   test('standalone actors can be moved into a seeded tenant flow', async () => {
     const scenario = createTenantScenario({
       baseUrl: integration.baseUrl,
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
     });
     const admin = await scenario.createActor({
       userId: `scenario-admin-${Date.now()}`,

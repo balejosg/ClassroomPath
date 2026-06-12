@@ -1,6 +1,4 @@
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert';
@@ -65,7 +63,7 @@ async function issueToken(userId: string, email: string, name = 'Onboarding Poli
   await ensureOpenPathUser({ userId, email, name });
 
   return signToken({
-    jwtSecret: JWT_SECRET,
+    jwtSecret: TEST_JWT_SECRET,
     userId,
     email,
     name,

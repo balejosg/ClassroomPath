@@ -2,9 +2,7 @@
  * ClassroomPath schedules integration tests (/cp/trpc/schedules.*)
  */
 
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
@@ -33,7 +31,7 @@ import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 const integration = useIntegrationServer({ resetBeforeStart: true });
 
 function buildScenario() {
-  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: TEST_JWT_SECRET });
 }
 
 async function createGroup(user: { token: string }, name: string): Promise<{ groupId: string }> {
@@ -225,7 +223,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin2');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User 2' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User 2',
@@ -243,7 +241,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherAEmail = uniqueEmail('teachera');
     await ensureOpenPathUser({ userId: teacherAId, email: teacherAEmail, name: 'Teacher A' });
     const teacherAToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherAId,
       email: teacherAEmail,
       name: 'Teacher A',
@@ -267,7 +265,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherBEmail = uniqueEmail('teacherb');
     await ensureOpenPathUser({ userId: teacherBId, email: teacherBEmail, name: 'Teacher B' });
     const teacherBToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherBId,
       email: teacherBEmail,
       name: 'Teacher B',
@@ -347,7 +345,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-oneoff');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin OneOff' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin OneOff',
@@ -369,7 +367,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher A OneOff',
     });
     const teacherAToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherAId,
       email: teacherAEmail,
       name: 'Teacher A OneOff',
@@ -395,7 +393,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher B OneOff',
     });
     const teacherBToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherBId,
       email: teacherBEmail,
       name: 'Teacher B OneOff',
@@ -503,7 +501,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-oneoff-validate');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Validate' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Validate',
@@ -521,7 +519,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherEmail = uniqueEmail('teacher-oneoff-validate');
     await ensureOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Teacher Validate' });
     const teacherToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher Validate',
@@ -604,7 +602,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-oneoff-conflict');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Conflict' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Conflict',
@@ -622,7 +620,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherEmail = uniqueEmail('teacher-oneoff-conflict');
     await ensureOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Teacher Conflict' });
     const teacherToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher Conflict',
@@ -673,7 +671,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-oneoff-update');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Update' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Update',
@@ -691,7 +689,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherAEmail = uniqueEmail('teacher-oneoff-owner');
     await ensureOpenPathUser({ userId: teacherAId, email: teacherAEmail, name: 'Teacher Owner' });
     const teacherAToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherAId,
       email: teacherAEmail,
       name: 'Teacher Owner',
@@ -713,7 +711,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherBEmail = uniqueEmail('teacher-oneoff-other');
     await ensureOpenPathUser({ userId: teacherBId, email: teacherBEmail, name: 'Teacher Other' });
     const teacherBToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherBId,
       email: teacherBEmail,
       name: 'Teacher Other',
@@ -796,7 +794,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-empty-mine');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Empty Mine' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Empty Mine',
@@ -816,7 +814,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher Empty Mine',
     });
     const teacherToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher Empty Mine',
@@ -849,7 +847,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-unknown-ids');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Unknown Ids' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Unknown Ids',
@@ -905,7 +903,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin Weekly Invalid Window',
     });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Weekly Invalid Window',
@@ -927,7 +925,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher Weekly Invalid Window',
     });
     const teacherToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher Weekly Invalid Window',
@@ -983,7 +981,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin Weekly Group Change',
     });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Weekly Group Change',
@@ -1001,7 +999,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherAEmail = uniqueEmail('teacher-weekly-group-change-a');
     await ensureOpenPathUser({ userId: teacherAId, email: teacherAEmail, name: 'Teacher Group A' });
     const teacherAToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherAId,
       email: teacherAEmail,
       name: 'Teacher Group A',
@@ -1023,7 +1021,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherBEmail = uniqueEmail('teacher-weekly-group-change-b');
     await ensureOpenPathUser({ userId: teacherBId, email: teacherBEmail, name: 'Teacher Group B' });
     const teacherBToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherBId,
       email: teacherBEmail,
       name: 'Teacher Group B',
@@ -1082,7 +1080,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin OneOff Invalid Range',
     });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin OneOff Invalid Range',
@@ -1103,7 +1101,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher OneOff Invalid Range',
     });
     const teacherToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher OneOff Invalid Range',
@@ -1158,7 +1156,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin Classroom Missing',
     });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Classroom Missing',
@@ -1197,7 +1195,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Admin OneOff Corrupt',
     });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin OneOff Corrupt',
@@ -1218,7 +1216,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
       name: 'Teacher OneOff Corrupt',
     });
     const teacherToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher OneOff Corrupt',
@@ -1266,7 +1264,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-weekly-conflict');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin Weekly' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Weekly',
@@ -1284,7 +1282,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const teacherEmail = uniqueEmail('teacher-weekly-conflict');
     await ensureOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Teacher Weekly' });
     const teacherToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher Weekly',

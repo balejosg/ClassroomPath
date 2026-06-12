@@ -1,6 +1,4 @@
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 process.env.CP_ALLOW_SELF_SERVICE_ORGS = 'false';
 process.env.CP_BILLING_MODE = 'stripe';
 process.env.CP_PLATFORM_ADMIN_EMAILS = 'ops@classroompath.test';
@@ -57,7 +55,7 @@ async function issueToken(params: {
   });
 
   return signToken({
-    jwtSecret: JWT_SECRET,
+    jwtSecret: TEST_JWT_SECRET,
     userId: params.userId,
     email: params.email,
     name: params.name ?? 'Billing Test User',

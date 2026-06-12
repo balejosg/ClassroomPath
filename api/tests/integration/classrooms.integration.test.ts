@@ -2,9 +2,7 @@
  * ClassroomPath classrooms integration tests (/cp/trpc/classrooms.*)
  */
 
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
@@ -34,7 +32,7 @@ import * as cpSchema from '../../src/db/schema.js';
 const integration = useIntegrationServer({ resetBeforeStart: true });
 
 function buildScenario() {
-  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: TEST_JWT_SECRET });
 }
 
 async function createGroup(admin: { token: string }, name: string): Promise<{ groupId: string }> {
@@ -368,7 +366,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminAEmail = uniqueEmail('admin-a');
     await ensureOpenPathUser({ userId: adminAUserId, email: adminAEmail, name: 'Admin A' });
     const adminAToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminAUserId,
       email: adminAEmail,
       name: 'Admin A',
@@ -403,7 +401,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminBEmail = uniqueEmail('admin-b');
     await ensureOpenPathUser({ userId: adminBUserId, email: adminBEmail, name: 'Admin B' });
     const adminBToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminBUserId,
       email: adminBEmail,
       name: 'Admin B',
@@ -466,7 +464,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-groups-update');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
@@ -520,7 +518,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminAEmail = uniqueEmail('gda');
     await ensureOpenPathUser({ userId: adminAUserId, email: adminAEmail, name: 'Admin A' });
     const adminAToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminAUserId,
       email: adminAEmail,
       name: 'Admin A',
@@ -536,7 +534,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminBEmail = uniqueEmail('gdb');
     await ensureOpenPathUser({ userId: adminBUserId, email: adminBEmail, name: 'Admin B' });
     const adminBToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminBUserId,
       email: adminBEmail,
       name: 'Admin B',
@@ -585,7 +583,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('admin-perms');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
@@ -608,7 +606,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const teacherEmail = uniqueEmail('teacher-perms');
     await ensureOpenPathUser({ userId: teacherUserId, email: teacherEmail, name: 'Teacher User' });
     const teacherToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherUserId,
       email: teacherEmail,
       name: 'Teacher User',
@@ -660,7 +658,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('machines-admin');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
@@ -755,7 +753,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('student-gate-admin');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
@@ -786,7 +784,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const studentEmail = uniqueEmail('student');
     await ensureOpenPathUser({ userId: studentUserId, email: studentEmail, name: 'Student User' });
     const studentToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: studentUserId,
       email: studentEmail,
       name: 'Student User',
@@ -831,7 +829,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('delete-machine-admin');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
@@ -884,7 +882,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('exemptions-admin');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
@@ -1104,7 +1102,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('weekend-exemptions-admin');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
@@ -1155,7 +1153,7 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     const adminEmail = uniqueEmail('active-group-admin');
     await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',

@@ -1,3 +1,4 @@
+import { TEST_JWT_SECRET } from './helpers/test-env.js';
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert';
 import jwt from 'jsonwebtoken';
@@ -6,9 +7,6 @@ import { TRPCError } from '@trpc/server';
 import { ACCESS_COOKIE_NAME } from '../src/lib/session-cookies.js';
 import { createContext } from '../src/trpc/context.js';
 import { protectedProcedure, router } from '../src/trpc/trpc.js';
-
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
 
 const probeRouter = router({
   probe: protectedProcedure.query(({ ctx }) => ({
@@ -37,7 +35,7 @@ function signToken(
       roles: [{ role: 'admin', groupIds: [] }],
       type: params.type ?? 'access',
     },
-    JWT_SECRET,
+    TEST_JWT_SECRET,
     {
       issuer: params.issuer ?? 'openpath-api',
       expiresIn: '1h',

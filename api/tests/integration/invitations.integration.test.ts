@@ -1,6 +1,4 @@
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
@@ -25,7 +23,7 @@ import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../src/lib/session-c
 const integration = useIntegrationServer({ resetBeforeStart: true });
 
 function getScenario() {
-  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: TEST_JWT_SECRET });
 }
 
 function hashInvitationToken(token: string): string {
@@ -559,7 +557,7 @@ describe('ClassroomPath invitations integration (/cp/trpc)', async () => {
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Reset',

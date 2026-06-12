@@ -2,9 +2,7 @@
  * ClassroomPath Gateway & Multi-tenancy Integration Tests
  */
 
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
@@ -39,7 +37,7 @@ const ONE_DAY_SECONDS = 24 * 60 * 60;
 const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
 
 function buildScenario() {
-  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: TEST_JWT_SECRET });
 }
 
 async function seedTenantOrganization(params: { token: string; name: string }): Promise<string> {
@@ -77,7 +75,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
   test('should reject refresh tokens on /cp/trpc/onboarding.status', async () => {
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: 'refresh-only-user',
       email: uniqueEmail('refresh'),
       name: 'Refresh Only',
@@ -99,7 +97,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
   test('should reject tokens with the wrong issuer on /cp/trpc/onboarding.status', async () => {
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: 'wrong-issuer-user',
       email: uniqueEmail('issuer'),
       name: 'Wrong Issuer',
@@ -121,7 +119,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
   test('should reject revoked access tokens on /cp/trpc/onboarding.status', async () => {
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: 'revoked-token-user',
       email: uniqueEmail('revoked'),
       name: 'Revoked Token',
@@ -143,7 +141,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
   test('should allow valid cookie-backed sessions on /cp/trpc/onboarding.status', async () => {
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: 'cookie-session-user',
       email: uniqueEmail('cookie'),
       name: 'Cookie Session',
@@ -529,14 +527,14 @@ describe('ClassroomPath Gateway Integration', async () => {
 
   test('/cp/trpc/auth.logout revokes both access and refresh tokens when a cookie session is present', async () => {
     const accessToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: 'logout-cookie-user',
       email: uniqueEmail('logout-cookie'),
       name: 'Logout Cookie User',
       roles: [],
     });
     const refreshToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: 'logout-cookie-user',
       email: uniqueEmail('logout-cookie-refresh'),
       name: 'Logout Cookie User',
@@ -556,7 +554,7 @@ describe('ClassroomPath Gateway Integration', async () => {
 
   test('/cp/trpc/auth.changePassword forwards the authenticated password change to OpenPath', async () => {
     const accessToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: 'change-password-user',
       email: uniqueEmail('change-password'),
       name: 'Change Password User',
@@ -580,14 +578,14 @@ describe('ClassroomPath Gateway Integration', async () => {
 
   test('/cp/trpc/auth.logout clears local cookies but returns an explicit degraded error when upstream revocation fails', async () => {
     const accessToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: 'logout-cookie-failure-user',
       email: uniqueEmail('logout-cookie-failure'),
       name: 'Logout Cookie Failure User',
       roles: [],
     });
     const refreshToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: 'logout-cookie-failure-user',
       email: uniqueEmail('logout-cookie-failure-refresh'),
       name: 'Logout Cookie Failure User',
@@ -721,7 +719,7 @@ describe('ClassroomPath Gateway Integration', async () => {
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Reset Shape',
@@ -824,7 +822,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       });
 
       const adminToken = signToken({
-        jwtSecret: JWT_SECRET,
+        jwtSecret: TEST_JWT_SECRET,
         userId: adminUserId,
         email: adminEmail,
         name: 'Admin Reset Delivery',
@@ -1137,7 +1135,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       .onConflictDoNothing();
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: userId,
       email,
       name: 'Healthcheck Test User',
@@ -1189,7 +1187,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       .onConflictDoNothing();
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: userId,
       email,
       name: 'API Tokens Test User',
@@ -1232,7 +1230,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       .onConflictDoNothing();
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: userId,
       email,
       name: 'API Tokens Create Test User',
@@ -1277,7 +1275,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       .onConflictDoNothing();
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: userId,
       email,
       name: 'Groups Counts Test User',
@@ -1355,7 +1353,7 @@ describe('ClassroomPath Gateway Integration', async () => {
       .onConflictDoNothing();
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: userId,
       email,
       name: 'System Status Test User',

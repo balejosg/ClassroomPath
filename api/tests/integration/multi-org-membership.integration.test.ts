@@ -1,6 +1,4 @@
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { TRPCError } from '@trpc/server';
 import { describe, test } from 'node:test';
@@ -108,7 +106,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
     await grantActiveEntitlement({ organizationId: existingOrgId, grantedBy: userId });
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'Already Member',
@@ -202,7 +200,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin User',
@@ -241,7 +239,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
     });
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'Single Org User',
@@ -280,7 +278,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
     });
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'No Org User',
@@ -330,7 +328,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
     ]);
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'Many Org User',
@@ -383,7 +381,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
     });
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'Cancel Waiting User',
@@ -455,7 +453,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
       ]);
 
       const token = signToken({
-        jwtSecret: JWT_SECRET,
+        jwtSecret: TEST_JWT_SECRET,
         userId,
         email,
         name: 'Ambiguous User',
@@ -561,7 +559,7 @@ describe('ClassroomPath multi-org membership hardening', { concurrency: 1 }, asy
       ]);
 
       const adminToken = signToken({
-        jwtSecret: JWT_SECRET,
+        jwtSecret: TEST_JWT_SECRET,
         userId: adminUserId,
         email: adminEmail,
         name: 'Ambiguous Admin',

@@ -2,9 +2,7 @@
  * ClassroomPath groups integration tests (/cp/trpc/groups.*)
  */
 
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
@@ -28,7 +26,7 @@ import { eq, inArray } from 'drizzle-orm';
 const integration = useIntegrationServer({ resetBeforeStart: true });
 
 function buildScenario() {
-  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: TEST_JWT_SECRET });
 }
 
 describe('ClassroomPath groups integration (/cp/trpc)', async () => {

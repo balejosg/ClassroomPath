@@ -2,9 +2,7 @@
  * ClassroomPath users integration tests (/cp/trpc/users.*)
  */
 
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
@@ -30,7 +28,7 @@ const integration = useIntegrationServer({ resetBeforeStart: true });
 const LAST_ADMIN_MESSAGE = /last admin|at least one.*admin/i;
 
 function getScenario() {
-  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: JWT_SECRET });
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: TEST_JWT_SECRET });
 }
 
 async function assertLastAdminConflict(response: Response): Promise<void> {
@@ -152,7 +150,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Creator',
@@ -271,7 +269,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Revoke Invite',
@@ -365,7 +363,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Normalize',
@@ -525,7 +523,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Delete',
@@ -636,7 +634,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Last Admin Delete',
@@ -728,7 +726,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Update',
@@ -827,7 +825,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Role',
@@ -1018,7 +1016,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     ]);
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Pending Audit',
@@ -1109,7 +1107,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Last Admin Demote',
@@ -1205,7 +1203,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Forbidden',
@@ -1292,7 +1290,7 @@ describe('ClassroomPath users integration (/cp/trpc)', { concurrency: 1 }, async
     });
 
     const adminToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminUserId,
       email: adminEmail,
       name: 'Admin Delete Forbidden',

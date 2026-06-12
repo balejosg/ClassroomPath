@@ -2,9 +2,7 @@
  * ClassroomPath requests integration tests (/cp/trpc/requests.*)
  */
 
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
@@ -231,7 +229,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     await seedRequest({ requestId, groupId: groupB, domain: 'cross-tenant.com' });
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: adminAId,
       email: adminAEmail,
       name: 'Admin A',
@@ -264,7 +262,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     await seedRequest({ requestId, groupId, domain: 'teacher-denied.com' });
 
     const deniedToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher 1',
@@ -280,7 +278,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     assertStatus(deniedResp, 403);
 
     const allowedToken = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Teacher 1',
@@ -314,7 +312,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     await seedTeacherRoleOwnership({ userId: teacherId, groupId: ownedGroupId });
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Push Teacher',
@@ -367,7 +365,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     await seedRequest({ requestId, groupId, domain: 'approve-from-notification.test' });
 
     const token = signToken({
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
       email: teacherEmail,
       name: 'Action Teacher',

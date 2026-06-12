@@ -11,14 +11,15 @@ patterns so new tests do not add more copies.
 
 ## 1. Boot an integration server
 
-Every integration test file must set `JWT_SECRET` and `NODE_ENV` before any imports, then
-call `useIntegrationServer`. The hook registers `before` / `after` hooks automatically.
+Every integration test file must set `JWT_SECRET` and `NODE_ENV` before any app imports.
+The shared helper `tests/helpers/test-env.ts` does this at module-evaluation time, so import
+it FIRST, then call `useIntegrationServer`. The hook registers `before` / `after` hooks
+automatically. Use the exported `TEST_JWT_SECRET` wherever the secret value is needed
+(for example as `jwtSecret` in signing calls); do not redeclare a local copy.
 
 ```typescript
 // Must appear before any other imports.
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -54,7 +55,7 @@ await ensureOpenPathUser({ userId, email, name: 'Test User' });
 
 // 2. Sign a token with the same identity.
 const token = signToken({
-  jwtSecret: JWT_SECRET, // pass explicitly; never rely on process.env alone in tests
+  jwtSecret: TEST_JWT_SECRET, // pass explicitly; never rely on process.env alone in tests
   userId,
   email,
   name: 'Test User',
@@ -122,7 +123,7 @@ import { assertStatus, bearerAuth, parseTRPC, trpcQuery } from '../test-utils.js
 
 const scenario = createTenantScenario({
   baseUrl: integration.baseUrl,
-  jwtSecret: JWT_SECRET,
+  jwtSecret: TEST_JWT_SECRET,
 });
 
 // Seed a fully licensed admin + organization in one call.

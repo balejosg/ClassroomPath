@@ -1,6 +1,4 @@
-const JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_SECRET = JWT_SECRET;
-process.env.NODE_ENV = 'test';
+import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +13,7 @@ describe('tenant api harness integration', async () => {
   test('creates tenant groups and classrooms through a typed shared harness', async () => {
     const scenario = createTenantScenario({
       baseUrl: integration.baseUrl,
-      jwtSecret: JWT_SECRET,
+      jwtSecret: TEST_JWT_SECRET,
     });
     const { actor: admin } = await scenario.seedOrgAdmin({
       userId: `tenant-api-admin-${Date.now()}`,
