@@ -36,7 +36,7 @@ export type MyNewRecord = typeof cpMyNewTable.$inferSelect;
 export type NewMyNewRecord = typeof cpMyNewTable.$inferInsert;
 ```
 
-All types are exported immediately after the table definition — follow the existing convention.
+All types are exported immediately after the table definition -- follow the existing convention.
 
 ### 2. Generate the migration file
 

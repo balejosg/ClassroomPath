@@ -140,12 +140,12 @@ export async function runMyUpstreamFirstWorkflow(params: {
 
 After adding the entry, the following tests cover the catalog exhaustively:
 
-- **`api/tests/lib/organization-mutation-workflow/catalog.test.ts`** — asserts that
+- **`api/tests/lib/organization-mutation-workflow/catalog.test.ts`** -- asserts that
   `organizationMutationOperationTypes.length === Object.keys(organizationMutationCatalog).length`
   and that catalog entries carry no `retry` field (line 26-29)
-- **`api/tests/organization-mutation-workflow-module.test.ts`** — re-checks the same
+- **`api/tests/organization-mutation-workflow-module.test.ts`** -- re-checks the same
   parity between the type list and the catalog keys at line 109-110
-- **`api/tests/organization-mutation-catalog.test.ts`** — spot-checks
+- **`api/tests/organization-mutation-catalog.test.ts`** -- spot-checks
   `buildOrganizationMutationOperation` for existing kinds; add a case for the new kind
 
 Run:
