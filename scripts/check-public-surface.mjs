@@ -204,6 +204,28 @@ if (findings.length > 0) {
   for (const finding of findings) {
     console.error(`${finding.file}:${finding.line}: ${finding.name}: ${finding.text}`);
   }
+  console.error('');
+  console.error('How to fix (policy lives in scripts/check-public-surface.mjs):');
+  console.error(
+    '  live/staging hostname      -> use a placeholder ending in .invalid, e.g. app.example.invalid'
+  );
+  console.error(
+    '  private or LAN IP address  -> use RFC 5737 documentation addresses (192.0.2.x, 198.51.100.x,'
+  );
+  console.error('                                203.0.113.x) or the loopback address 127.0.0.1');
+  console.error(
+    '  operator/VM/runner id      -> use a generic label, e.g. <runner-hostname> or runner-01'
+  );
+  console.error('  private filesystem path    -> use a generic placeholder, e.g. /srv/appname');
+  console.error(
+    '  secret or token value      -> remove entirely; load from env at runtime, never commit'
+  );
+  console.error(
+    '  reconstructed leak (format/join/printf) -> apply the fix to the original source string'
+  );
+  console.error(
+    '  Example fixtures: tests/public-surface-checker.test.ts (same file is excluded from scanning)'
+  );
   process.exit(1);
 }
 
