@@ -1,3 +1,9 @@
+/**
+ * Runs the CI and release-automation regression suites by spawning test files and collecting results.
+ *
+ * Invoked by: Developer CLI via `npm run test:ci-regression` and `npm run test:release-automation`.
+ * Usage: node scripts/run-ci-regression.mjs
+ */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

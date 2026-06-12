@@ -1,5 +1,13 @@
 // @ts-check
 
+/**
+ * Formats and emits structured CANARY_PROGRESS log lines used to track canary phase transitions.
+ *
+ * Invoked by: Imported by `scripts/lib/ajax-auto-allow-canary-runtime.mjs`;
+ * copied to the remote Windows workspace by `scripts/lib/runner-diagnostic-execution.mjs`.
+ * Usage: (library module, not invoked directly)
+ */
+
 const CANARY_PROGRESS_PREFIX = 'CANARY_PROGRESS ';
 const VALID_STATUSES = new Set(['started', 'passed', 'failed']);
 

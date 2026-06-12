@@ -1,3 +1,9 @@
+/**
+ * Formats a human-readable wait summary showing blocking artifacts and elapsed time for release-candidate polling.
+ *
+ * Invoked by: Imported by `scripts/wait-for-release-candidate.mjs`.
+ * Usage: (library module, not invoked directly)
+ */
 import { summarizeJobTiming } from './github-actions-run-timing.mjs';
 
 function parseTimestamp(value) {

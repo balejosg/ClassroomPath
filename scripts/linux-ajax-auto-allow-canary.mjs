@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Runs the Linux AJAX auto-allow canary: launches Firefox under Selenium, visits probe URLs, and writes per-probe evidence JSON.
+ *
+ * Invoked by: GitHub Actions `linux-production-bootstrap-canary.yml` workflow; also `runner-diagnostic-execution`.
+ * Usage: node scripts/linux-ajax-auto-allow-canary.mjs
+ * Env: LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID, LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN, LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_URL.
+ */
+
 import dns from 'node:dns/promises';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Runs a full runner diagnostic: collects environment snapshots, network probes, and extension health from a self-hosted runner.
+ *
+ * Invoked by: Developer CLI via `npm run diagnostics:runner`.
+ * Usage: node scripts/run-runner-diagnostic.mjs [--target staging|production]
+ * Env: GITHUB_TOKEN, WINDOWS_RUNNER_LABEL.
+ */
+
 import { resolve } from 'node:path';
 import process from 'node:process';
 import {

@@ -1,3 +1,9 @@
+/**
+ * Defines the verification report contract: report shape, domain results, and summary formatting.
+ *
+ * Invoked by: Imported by verification pipeline scripts; tested by `deployment-foundation.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 export const VERIFICATION_REPORT_VERSION = 3;
 export const VERIFICATION_REPORT_ARTIFACT_NAME = 'classroompath-ci-verification-report';
 

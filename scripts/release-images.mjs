@@ -1,3 +1,10 @@
+/**
+ * Library: GitHub owner/slug parsing, image tag derivation, and release-candidate run selection from GHCR.
+ *
+ * Invoked by: Imported by `scripts/release-images.mjs`; tested by `release-images.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN.
+ */
 import { dirname, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

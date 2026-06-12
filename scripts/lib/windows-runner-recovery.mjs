@@ -1,3 +1,10 @@
+/**
+ * Library: implements Windows runner re-registration and health-check recovery logic via the GitHub Actions API.
+ *
+ * Invoked by: Imported by `scripts/recover-windows-runner.mjs`.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY.
+ */
 export const DEFAULT_WINDOWS_RUNNER_RECOVERY = Object.freeze({
   repo: 'balejosg/ClassroomPath',
   runnerName: process.env.CLASSROOMPATH_WINDOWS_RUNNER_NAME ?? '<runner-name>',

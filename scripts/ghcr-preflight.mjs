@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * CLI: verifies that required GHCR container images are accessible before a deploy.
+ *
+ * Invoked by: Developer CLI and GitHub Actions deploy workflows; tested by `ghcr-preflight.test.ts`.
+ * Usage: node scripts/ghcr-preflight.mjs [--remote] [--images <list>]
+ * Env: GHCR_TOKEN, GITHUB_REPOSITORY.
+ */
+
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

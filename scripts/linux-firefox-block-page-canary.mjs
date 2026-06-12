@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Runs a Linux Firefox block-page canary: navigates to a blocked domain and verifies the OpenPath block page is shown.
+ *
+ * Invoked by: GitHub Actions `linux-production-bootstrap-canary.yml` workflow.
+ * Usage: node scripts/linux-firefox-block-page-canary.mjs
+ * Env: BLOCK_PAGE_CANARY_TARGET_URL, LINUX_FIREFOX_PROFILE_DIR.
+ */
+
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { constants, accessSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';

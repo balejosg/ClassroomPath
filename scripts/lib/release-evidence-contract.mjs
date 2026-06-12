@@ -1,3 +1,9 @@
+/**
+ * Defines the release evidence contract types, artifact name constants, and dry-run failure collectors.
+ *
+ * Invoked by: Imported by evidence, state, and snapshot scripts; tested by `release-evidence.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

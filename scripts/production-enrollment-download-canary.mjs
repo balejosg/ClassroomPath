@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Runs the production enrollment-download canary: fetches the OpenPath installer from the production CDN and records evidence.
+ *
+ * Invoked by: GitHub Actions `production-client-update-canary.yml` workflow.
+ * Usage: node scripts/production-enrollment-download-canary.mjs [--output <file>]
+ * Env: ENROLLMENT_CANARY_BASE_URL, ENROLLMENT_DOWNLOAD_TOKEN.
+ */
+
 const DEFAULT_OUTPUT_PATH = 'production-enrollment-download-canary.json';
 
 import { resolve } from 'node:path';

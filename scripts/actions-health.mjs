@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Classifies the health of a GitHub Actions workflow run (queued, stale, in-progress, or terminal) and optionally waits for completion.
+ *
+ * Invoked by: Developer CLI; also imported by canary and deploy workflows.
+ * Usage: node scripts/actions-health.mjs classify|wait|report --run-url <url>
+ * Env: GITHUB_TOKEN.
+ */
+
 import { execFile as nodeExecFile } from 'node:child_process';
 import { promisify } from 'node:util';
 

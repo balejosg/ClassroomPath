@@ -1,3 +1,9 @@
+/**
+ * Detects which CI verification domains are affected by the changed files in a push or pull-request, and writes GitHub Actions outputs.
+ *
+ * Invoked by: GitHub Actions `ci.yml` workflow; imported by regression and release-risk scripts.
+ * Usage: node scripts/detect-ci-relevant-changes.mjs --base <sha> --head <sha>
+ */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

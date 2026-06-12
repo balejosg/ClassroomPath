@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Library: builds and renders the deploy brief Markdown from staging release state and canary evidence.
+ *
+ * Invoked by: Imported by `scripts/deploy-brief.mjs`.
+ * Usage: (library module, not invoked directly)
+ */
+
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';

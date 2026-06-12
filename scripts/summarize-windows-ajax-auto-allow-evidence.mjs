@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Reads Windows AJAX auto-allow canary evidence JSON and writes a Markdown summary for the GitHub Actions step summary.
+ *
+ * Invoked by: GitHub Actions `production-client-update-canary.yml` workflow; `runner-diagnostic-execution.test.ts`.
+ * Usage: node scripts/summarize-windows-ajax-auto-allow-evidence.mjs [--input <file>] [--output <file>]
+ */
+
 import { appendFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import process from 'node:process';

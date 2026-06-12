@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Library: assembles, validates, and serializes the full release evidence bundle from per-platform artifacts.
+ *
+ * Invoked by: Imported by `scripts/release-evidence-bundle.mjs`; tested by `release-evidence-bundle.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
+
 import { resolve } from 'node:path';
 
 import { runReleaseEvidenceBundle } from './lib/release-evidence-bundle.mjs';

@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Creates the production Linux bootstrap canary evidence artifact from a completed canary run.
+ *
+ * Invoked by: GitHub Actions `linux-production-bootstrap-canary.yml` workflow.
+ * Usage: node scripts/create-production-linux-bootstrap-canary.mjs
+ * Env: LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID, CANARY_ARTIFACT_DIR.
+ */
+
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';

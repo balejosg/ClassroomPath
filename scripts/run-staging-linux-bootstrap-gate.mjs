@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Runs the staging Linux bootstrap gate check: verifies the Linux agent installs and applies DNS rules on the staging host.
+ *
+ * Invoked by: GitHub Actions staging deploy workflows; `staging-linux-bootstrap-gate.test.ts`.
+ * Usage: node scripts/run-staging-linux-bootstrap-gate.mjs [--host <host>]
+ * Env: STAGING_SSH_HOST, STAGING_SSH_KEY.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';

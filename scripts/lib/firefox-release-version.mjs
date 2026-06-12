@@ -1,3 +1,9 @@
+/**
+ * Library: derives and normalizes Firefox extension release version strings from the manifest or source revision.
+ *
+ * Invoked by: Imported by `scripts/firefox-release-version.mjs`; tested by `firefox-release-version.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

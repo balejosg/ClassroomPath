@@ -1,3 +1,10 @@
+/**
+ * Resolves and evaluates OpenPath CI required checks (job names, APT check, WEDU captive-portal check) against GitHub Checks API.
+ *
+ * Invoked by: Imported by `scripts/openpath-required-checks.mjs`; tested by `openpath-required-checks.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN.
+ */
 export const OPENPATH_CI_JOB_NAMES = [
   'Detect Relevant Changes',
   'Linux Agent Tests (BATS)',

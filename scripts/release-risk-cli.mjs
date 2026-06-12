@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * CLI wrapper for the release risk detector: emits per-platform risk outputs for use in CI and deploy gating.
+ *
+ * Invoked by: GitHub Actions release-candidate and deploy workflows.
+ * Usage: node scripts/release-risk-cli.mjs [--base <sha>] [--head <sha>]
+ * Env: GITHUB_TOKEN.
+ */
+
 import process from 'node:process';
 
 import {

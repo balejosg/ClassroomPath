@@ -1,3 +1,10 @@
+/**
+ * Fetches and summarizes per-job timing data for a GitHub Actions workflow run.
+ *
+ * Invoked by: Imported by `scripts/run-github-run-timing-summary.mjs`.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN.
+ */
 export function parseGitHubTimestamp(value) {
   if (!value) {
     return null;

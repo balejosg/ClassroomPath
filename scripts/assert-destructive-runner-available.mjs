@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Asserts that no blocking destructive-runner job is currently in progress before starting a new Windows canary run.
+ *
+ * Invoked by: GitHub Actions `windows-production-bootstrap-canary.yml` and `production-client-update-canary.yml` workflows.
+ * Usage: node scripts/assert-destructive-runner-available.mjs
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY.
+ */
+
 import process from 'node:process';
 
 import {

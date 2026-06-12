@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Creates the production Windows bootstrap canary evidence artifact from a completed canary run.
+ *
+ * Invoked by: GitHub Actions `windows-production-bootstrap-canary.yml`, `deploy.yml`, and `production-client-update-canary.yml` workflows.
+ * Usage: node scripts/create-production-windows-bootstrap-canary.mjs
+ * Env: WINDOWS_CANARY_ARTIFACT_DIR, CANARY_RUN_ID.
+ */
+
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';

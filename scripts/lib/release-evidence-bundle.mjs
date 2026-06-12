@@ -1,3 +1,9 @@
+/**
+ * Library: assembles, validates, and serializes the full release evidence bundle from per-platform artifacts.
+ *
+ * Invoked by: Imported by `scripts/release-evidence-bundle.mjs`; tested by `release-evidence-bundle.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';

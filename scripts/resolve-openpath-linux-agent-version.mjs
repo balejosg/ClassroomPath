@@ -1,3 +1,9 @@
+/**
+ * Resolves the pinned OpenPath Linux agent version from the submodule git history for release notes and canary config.
+ *
+ * Invoked by: GitHub Actions release-candidate workflows; `openpath-linux-agent-version.test.ts`.
+ * Usage: node scripts/resolve-openpath-linux-agent-version.mjs
+ */
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitOutput as runGitOutput } from './lib/git-process.mjs';

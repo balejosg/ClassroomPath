@@ -1,3 +1,9 @@
+/**
+ * Samples CI routing decisions for the current diff and computes per-domain coverage statistics.
+ *
+ * Invoked by: CI routing measurement tests via `npm run test:ci-regression`; also `ci-routing-measurement.test.ts`.
+ * Usage: node scripts/measure-ci-routing.mjs [--base <sha>] [--head <sha>]
+ */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';

@@ -1,3 +1,9 @@
+/**
+ * Safe wrappers around git subprocess calls: sanitizeGitEnv, gitOutput, and gitMaybe helpers.
+ *
+ * Invoked by: Imported by scripts that need git metadata (diff base, submodule SHA).
+ * Usage: (library module, not invoked directly)
+ */
 import { execFileSync } from 'node:child_process';
 
 export const SANITIZED_GIT_ENV_KEYS = [

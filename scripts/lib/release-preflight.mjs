@@ -1,5 +1,13 @@
 // @ts-check
 
+/**
+ * Implements the `runReleasePreflight` function: runs all pre-promotion gate checks and returns a structured pass/block result.
+ *
+ * Invoked by: Imported by `scripts/release-preflight.mjs` (the `npm run release:preflight` CLI entry point).
+ * Usage: (library module, not invoked directly)
+ * Tested by `tests/release-preflight.test.ts` and `tests/release-orchestration.test.ts`.
+ */
+
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

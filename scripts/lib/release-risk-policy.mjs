@@ -1,3 +1,9 @@
+/**
+ * Defines the canary-triggering paths catalog, platform evidence requirements, and email delivery preflight risk policy.
+ *
+ * Invoked by: Imported by risk CLI and orchestration scripts; tested by `release-risk-policy.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 export const RELEASE_RISK_POLICY_DEFINITIONS = [
   {
     id: 'openpath-gitlink',

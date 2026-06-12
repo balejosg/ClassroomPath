@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Runs the Windows AJAX auto-allow canary directly against a self-hosted Windows runner, collecting artifacts locally.
+ *
+ * Invoked by: Developer CLI via `npm run diagnostics:windows-ajax:direct`.
+ * Usage: node scripts/run-windows-ajax-direct.mjs [--target staging|production]
+ * Env: GITHUB_TOKEN, WINDOWS_RUNNER_LABEL. Key flags: --target, --artifact-dir.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { isIP } from 'node:net';

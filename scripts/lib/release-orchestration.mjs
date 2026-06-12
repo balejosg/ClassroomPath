@@ -1,3 +1,9 @@
+/**
+ * Library: implements the high-risk promotion step order, production deploy commands, and post-release canary trigger.
+ *
+ * Invoked by: Imported by `scripts/release-promote.mjs`; tested by `release-orchestration.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 import { execFile as nodeExecFile, spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';

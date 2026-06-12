@@ -1,3 +1,10 @@
+/**
+ * Guards against concurrent destructive Windows runner jobs by querying active workflow runs and blocking if conflicts are found.
+ *
+ * Invoked by: Imported by `assert-destructive-runner-available.mjs`; tested by `destructive-runner-guard.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY.
+ */
 export const DEFAULT_DESTRUCTIVE_WINDOWS_JOB_NAMES = Object.freeze([
   'Windows Client Self-Update Canary',
   'Windows Firefox Canary',

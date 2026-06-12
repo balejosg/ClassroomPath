@@ -1,3 +1,9 @@
+/**
+ * Browser-level checks for the Windows AJAX canary: verifies extension installation, CSP headers, and navigation outcomes.
+ *
+ * Invoked by: Imported by `windows-ajax-auto-allow-runtime.mjs`.
+ * Usage: (library module, not invoked directly)
+ */
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 

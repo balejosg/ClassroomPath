@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Maps OpenPath file paths to Docker image families and detects Firefox assets for release-candidate image selection.
+ *
+ * Invoked by: Imported by release-candidate and release-images scripts; tested by `release-candidate-components.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
+
 import { readFileSync } from 'node:fs';
 
 function createEmptyFlags() {

@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 // @ts-check
 
+/**
+ * Collects all evidence needed to determine release status: release candidate runs, staging verification state, production deploy state, and OpenPath required checks.
+ *
+ * Invoked by: Imported by `scripts/release-status.mjs` (the `npm run release:status` CLI entry point).
+ * Usage: (library module, not invoked directly)
+ * Tested by `tests/release-status.test.ts`.
+ */
+
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

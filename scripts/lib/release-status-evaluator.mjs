@@ -1,5 +1,13 @@
 // @ts-check
 
+/**
+ * Pure evaluation functions that derive release blocker groups from collected release status evidence.
+ *
+ * Invoked by: Imported by `scripts/release-status.mjs` and `scripts/lib/release-preflight.mjs`.
+ * Usage: (library module, not invoked directly)
+ * Tested by `tests/release-status.test.ts`.
+ */
+
 function isSuccess(value) {
   return (
     String(value ?? '')

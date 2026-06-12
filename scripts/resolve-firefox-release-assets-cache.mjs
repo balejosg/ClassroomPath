@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Resolves the cache key for Firefox release asset artifacts and cleans up temporary artifact directories.
+ *
+ * Invoked by: GitHub Actions `firefox-release-assets.yml` workflow; `firefox-release-assets-cache.test.ts`.
+ * Usage: node scripts/resolve-firefox-release-assets-cache.mjs [--cache-dir <dir>]
+ */
+
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {

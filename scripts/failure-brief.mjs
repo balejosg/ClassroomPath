@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Library: builds and renders the failure brief Markdown from a failed GitHub Actions workflow run.
+ *
+ * Invoked by: Imported by `scripts/failure-brief.mjs`.
+ * Usage: (library module, not invoked directly)
+ */
+
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';

@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Attempts to recover a self-hosted Windows runner by re-registering it via the GitHub Actions API.
+ *
+ * Invoked by: Developer CLI for manual runner recovery operations.
+ * Usage: node scripts/recover-windows-runner.mjs [--runner-name <name>]
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY.
+ */
+
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';

@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+
+/**
+ * Fetches GitHub Actions run timing data and writes a Markdown summary report for the given workflow run.
+ *
+ * Invoked by: Developer CLI via `npm run diagnostics:run-timing`; `runner-diagnostic.test.ts`.
+ * Usage: node scripts/run-github-run-timing-summary.mjs [--run-id <id>]
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY.
+ */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';

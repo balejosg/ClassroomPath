@@ -1,3 +1,10 @@
+/**
+ * Library: implements the pre-promotion Windows runner rehearsal sequence and readiness evaluation logic.
+ *
+ * Invoked by: Imported by `scripts/prepromotion-runner-rehearsal.mjs`; tested by `prepromotion-runner-rehearsal.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN, WINDOWS_RUNNER_LABEL.
+ */
 import { existsSync, readFileSync } from 'node:fs';
 
 import { parseReleaseStateText } from './release-state-contract.mjs';

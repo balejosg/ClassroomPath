@@ -1,3 +1,10 @@
+/**
+ * Attempts to recover a blocked OpenPath pre-release by re-running failed required checks on the PR.
+ *
+ * Invoked by: Imported by release orchestration scripts.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN.
+ */
 import { normalizeWorkflowRunId } from './github-actions.mjs';
 import {
   OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,

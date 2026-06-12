@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+
+/**
+ * Validates that the QA fixtures applied to staging are consistent with the expected fixture schema using Playwright.
+ *
+ * Invoked by: Developer CLI for QA fixture validation before smoke tests.
+ * Usage: node scripts/validate-staging-qa-fixtures.mjs --fixture <name>
+ * Env: STAGING_API_URL, PLAYWRIGHT_HEADLESS.
+ */
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { lookup } from 'node:dns/promises';

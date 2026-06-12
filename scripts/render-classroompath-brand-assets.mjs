@@ -1,3 +1,9 @@
+/**
+ * Renders ClassroomPath brand assets (icons, splash screens) from source SVGs using Playwright Chromium.
+ *
+ * Invoked by: Developer CLI for asset regeneration; run manually when brand assets change.
+ * Usage: node scripts/render-classroompath-brand-assets.mjs [--output-dir <dir>]
+ */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

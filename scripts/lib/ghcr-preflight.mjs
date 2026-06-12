@@ -1,3 +1,10 @@
+/**
+ * Library: implements GHCR image authentication, manifest fetch, and network-failure classification for deploy preflights.
+ *
+ * Invoked by: Imported by `scripts/ghcr-preflight.mjs`; tested by `ghcr-preflight.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: GHCR_TOKEN.
+ */
 import { execFile as nodeExecFile, spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { promisify } from 'node:util';

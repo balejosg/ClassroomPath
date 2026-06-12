@@ -1,3 +1,9 @@
+/**
+ * Reads an `npm audit --json` report and exits non-zero if any critical or high vulnerabilities are present.
+ *
+ * Invoked by: GitHub Actions `security.yml` workflow via `node scripts/check-npm-audit-critical.mjs <report.json>`.
+ * Usage: node scripts/check-npm-audit-critical.mjs <audit-report.json>
+ */
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 

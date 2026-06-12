@@ -1,5 +1,13 @@
 // @ts-check
 
+/**
+ * Builds and renders a Markdown deploy brief summarising job results, durations, and failure details for a workflow run.
+ *
+ * Invoked by: Imported by `scripts/deploy-brief.mjs` (the `npm run ops:deploy-brief` CLI entry point).
+ * Usage: (library module, not invoked directly)
+ * Tested by `tests/release-evidence.test.ts`, `tests/workflow-deploy.test.ts`, and `tests/release-evidence-bundle.test.ts`.
+ */
+
 const FAILURE_RESULTS = new Set(['failure', 'failed', 'cancelled', 'timed_out', 'action_required']);
 const SUCCESS_RESULTS = new Set(['success', 'live-tested', 'ok', 'published']);
 const PARTIAL_RESULTS = new Set([

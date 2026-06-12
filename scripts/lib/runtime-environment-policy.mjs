@@ -1,3 +1,9 @@
+/**
+ * Evaluates the runtime environment policy: required env vars, Docker network mode, and API service readiness.
+ *
+ * Invoked by: Imported by deployment verification scripts.
+ * Usage: (library module, not invoked directly)
+ */
 import { readFileSync } from 'node:fs';
 
 function loadRuntimeEnvironmentPolicyCatalog() {

@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Waits for or evaluates the required CI checks on an OpenPath pull request before promotion is allowed.
+ *
+ * Invoked by: GitHub Actions `sync-openpath.yml` workflow via `node scripts/openpath-required-checks.mjs wait`.
+ * Usage: node scripts/openpath-required-checks.mjs <wait|check> [--run-url <url>]
+ * Env: GITHUB_TOKEN, OPENPATH_PR_URL.
+ */
+
 import {
   OPENPATH_CI_JOB_NAMES,
   OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,

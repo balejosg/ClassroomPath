@@ -1,3 +1,9 @@
+/**
+ * Runtime utilities for the AJAX auto-allow canary: probe execution, timeout handling, and evidence aggregation.
+ *
+ * Invoked by: Imported by `ajax-auto-allow-canary-harness.mjs`.
+ * Usage: (library module, not invoked directly)
+ */
 import { appendFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import process from 'node:process';

@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Reads Firefox release artifacts and emits GitHub Actions outputs confirming the signed XPI and source ZIP are present.
+ *
+ * Invoked by: GitHub Actions `firefox-release-assets.yml` and `release-candidate-images.yml` workflows.
+ * Usage: node scripts/firefox-release-evidence.mjs
+ * Env: FIREFOX_RELEASE_ARTIFACT_DIR.
+ */
+
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { isDirectExecution, writeOutputs } from './lib/github-actions.mjs';

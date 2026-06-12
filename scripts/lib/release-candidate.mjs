@@ -1,3 +1,9 @@
+/**
+ * Core release-candidate data model: resolves manifest, selects image run, and validates promotion eligibility.
+ *
+ * Invoked by: Imported by release orchestration and image scripts.
+ * Usage: (library module, not invoked directly)
+ */
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 

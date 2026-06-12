@@ -1,5 +1,13 @@
 // @ts-check
 
+/**
+ * Parses a canary failure artifact and renders a structured Markdown failure brief with boundary metadata and retry guidance.
+ *
+ * Invoked by: Imported by `scripts/failure-brief.mjs` (the `npm run ops:failure-brief` CLI entry point).
+ * Usage: (library module, not invoked directly)
+ * Tested by `tests/failure-brief.test.ts`.
+ */
+
 import { existsSync, readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 

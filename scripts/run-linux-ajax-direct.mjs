@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Runs the Linux AJAX auto-allow canary directly for local diagnostics, without going through the full CI workflow.
+ *
+ * Invoked by: Developer CLI via `npm run diagnostics:linux-ajax:direct`.
+ * Usage: node scripts/run-linux-ajax-direct.mjs [--target staging|production]
+ * Env: LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID, LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

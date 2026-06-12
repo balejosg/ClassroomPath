@@ -1,3 +1,9 @@
+/**
+ * Library: evaluates the outcome of a Linux AJAX browser page load (first-page-load success, expected probes observed).
+ *
+ * Invoked by: Imported by `linux-ajax-auto-allow-canary.mjs` and test files.
+ * Usage: (library module, not invoked directly)
+ */
 export function evaluateLinuxAjaxBrowserPageOutcome({
   firstPageLoadCompleted,
   firstPageLoadError = null,

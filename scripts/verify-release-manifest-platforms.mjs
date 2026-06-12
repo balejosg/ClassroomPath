@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 // @ts-check
 
+/**
+ * Verifies that every runtime image listed in a release manifest supports the specified target platform.
+ *
+ * Invoked by: the `deploy.yml` workflow (`node scripts/verify-release-manifest-platforms.mjs verify`).
+ * Usage: node scripts/verify-release-manifest-platforms.mjs verify --manifest-file <path> --target-platform <os/arch[/variant]>
+ * Also accepts --manifest-base64; tested by `tests/release-manifest-platforms.test.ts`.
+ */
+
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 

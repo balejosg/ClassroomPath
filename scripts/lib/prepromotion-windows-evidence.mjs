@@ -1,3 +1,9 @@
+/**
+ * Library: reads and validates pre-promotion Windows canary evidence artifacts for the runner rehearsal gate.
+ *
+ * Invoked by: Imported by `scripts/lib/prepromotion-runner-rehearsal.mjs`.
+ * Usage: (library module, not invoked directly)
+ */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

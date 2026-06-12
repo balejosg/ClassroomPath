@@ -1,3 +1,9 @@
+/**
+ * Defines the release state contract: shell-compatible snapshot fields, promotion-evidence validation, and signed Firefox gate.
+ *
+ * Invoked by: Imported by release state and promotion evidence CLIs; tested by `release-state-cli.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 

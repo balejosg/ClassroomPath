@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+
+/**
+ * Detects and optionally cancels stale or duplicate GitHub Actions workflow runs to keep the CI queue clean.
+ *
+ * Invoked by: CI regression suite via `npm run test:ci-regression`; also invoked by workflow hygiene checks.
+ * Usage: node scripts/ci-workflow-hygiene.mjs [--cancel] [--dry-run]
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY.
+ */
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, writeFileSync } from 'node:fs';
 

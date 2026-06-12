@@ -1,3 +1,10 @@
+/**
+ * Helpers for listing, downloading, and polling GitHub Actions artifacts with retry and timeout formatting.
+ *
+ * Invoked by: Imported by canary, release, and wait scripts; tested by `github-actions-artifacts.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN.
+ */
 import { execFileSync } from 'node:child_process';
 import {
   cpSync,

@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 // @ts-check
 
+/**
+ * CLI entry point that runs the release preflight gate and prints a human-readable pass/block report.
+ *
+ * Invoked by: `npm run release:preflight` (`node scripts/release-preflight.mjs`).
+ * Usage: node scripts/release-preflight.mjs
+ * Exits with code 1 when any preflight check is blocked; tested by `tests/release-preflight.test.ts`.
+ */
+
 import { isDirectExecution } from './lib/github-actions.mjs';
 import { runReleasePreflight } from './lib/release-preflight.mjs';
 

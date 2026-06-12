@@ -1,3 +1,9 @@
+/**
+ * Shared canary harness: orchestrates Selenium/Firefox session setup and per-probe evidence collection for auto-allow canaries.
+ *
+ * Invoked by: Imported by both `linux-ajax-auto-allow-canary.mjs` and `windows-ajax-auto-allow-runtime.mjs`.
+ * Usage: (library module, not invoked directly)
+ */
 import { createServer } from 'node:http';
 
 const PIXEL_PNG = Buffer.from(

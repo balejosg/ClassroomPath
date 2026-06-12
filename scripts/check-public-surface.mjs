@@ -1,3 +1,9 @@
+/**
+ * Scans all tracked files in the repo for private hostnames, internal IPs, and secret patterns that must not appear on the public surface.
+ *
+ * Invoked by: CI commit gate via `npm run verify:public-surface`; also part of `npm run verify:commit`.
+ * Usage: node scripts/check-public-surface.mjs
+ */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 

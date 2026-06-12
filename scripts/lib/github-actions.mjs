@@ -1,3 +1,9 @@
+/**
+ * Core GitHub Actions helpers: writing step outputs, detecting direct execution, normalizing run IDs.
+ *
+ * Invoked by: Imported by most scripts that interact with GitHub Actions.
+ * Usage: (library module, not invoked directly)
+ */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

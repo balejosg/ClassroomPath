@@ -1,3 +1,10 @@
+/**
+ * Classifies GitHub Actions workflow run health (queued, stale, in-progress, terminal) for use by health-check scripts.
+ *
+ * Invoked by: Imported by `scripts/actions-health.mjs`; tested by `github-actions-health.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN.
+ */
 export function classifyWorkflowRunHealth(run = {}) {
   const nowMs = run.nowMs ?? Date.now();
   const staleAfterMs = run.staleAfterMs ?? 30 * 60 * 1000;

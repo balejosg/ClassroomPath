@@ -1,3 +1,9 @@
+/**
+ * Defines the verification domain catalog: maps domain names to their canonical test suites and CI relevance rules.
+ *
+ * Invoked by: Imported by `scripts/detect-ci-relevant-changes.mjs` and verification orchestration scripts.
+ * Usage: (library module, not invoked directly)
+ */
 const RELEASE_ENGINEERING = 'release-engineering';
 const APPLICATION = 'application';
 const STAGING_GATE = 'staging-release-gate';

@@ -1,3 +1,9 @@
+/**
+ * Reads a verification report JSON file and formats a human-readable Markdown summary.
+ *
+ * Invoked by: Imported by `scripts/print-verify-report-summary.mjs`.
+ * Usage: (library module, not invoked directly)
+ */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

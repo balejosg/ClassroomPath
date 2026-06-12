@@ -1,5 +1,13 @@
 // @ts-check
 
+/**
+ * Assembles and renders release evidence, re-exporting snapshot builders and validation helpers from `release-evidence-snapshot.mjs`.
+ *
+ * Invoked by: Imported by `scripts/write-release-evidence.mjs` and `scripts/lib/release-evidence-bundle.mjs`.
+ * Usage: (library module, not invoked directly)
+ * Tested by `tests/release-evidence.test.ts` and `tests/release-evidence-bundle.test.ts`.
+ */
+
 import { createReleaseEvidenceSnapshot } from './release-evidence-snapshot.mjs';
 
 export {

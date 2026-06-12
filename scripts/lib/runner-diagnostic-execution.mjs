@@ -1,3 +1,10 @@
+/**
+ * Executes the runner diagnostic plan: SSH probes, network checks, and extension health for self-hosted runners.
+ *
+ * Invoked by: Imported by `scripts/run-runner-diagnostic.mjs`; tested by `runner-diagnostic-execution.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN, SSH_HOST.
+ */
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

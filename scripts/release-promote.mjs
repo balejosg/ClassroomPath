@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Orchestrates the full production promotion sequence: evidence validation, deploy, health check, and post-release canary.
+ *
+ * Invoked by: Developer CLI via `npm run release:promote` and `npm run promote:production:full`.
+ * Usage: node scripts/release-promote.mjs [--auto-tag] [--dry-run]
+ * Env: GITHUB_TOKEN, RELEASE_EVIDENCE_PATH.
+ */
+
 import { execFile as nodeExecFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Writes a Linux bootstrap canary failure artifact JSON with the error details when a canary probe fails.
+ *
+ * Invoked by: GitHub Actions `linux-production-bootstrap-canary.yml` workflow on failure.
+ * Usage: node scripts/write-linux-bootstrap-canary-failure.mjs
+ * Env: CANARY_FAILURE_REASON, CANARY_ARTIFACT_PATH.
+ */
+
 import { writeFile } from 'node:fs/promises';
 import process from 'node:process';
 

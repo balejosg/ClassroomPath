@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+
+/**
+ * Applies QA fixture data to the staging environment via the ClassroomPath API, seeding tenants and users for manual testing.
+ *
+ * Invoked by: Developer CLI; CI staging-qa-fixtures gate.
+ * Usage: node scripts/apply-staging-qa-fixtures.mjs --fixture <name>
+ * Env: STAGING_API_URL, STAGING_ADMIN_TOKEN.
+ */
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 

@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Reads Linux student-policy evidence JSON and writes a Markdown summary for operator review.
+ *
+ * Invoked by: GitHub Actions Linux bootstrap workflows; `linux-student-evidence-summary.test.ts`.
+ * Usage: node scripts/summarize-linux-student-policy-evidence.mjs [--input <file>]
+ */
+
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';

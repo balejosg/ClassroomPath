@@ -1,3 +1,10 @@
+/**
+ * Waits for a release-candidate GitHub Actions run to complete and emits the artifact download URL when ready.
+ *
+ * Invoked by: GitHub Actions release-candidate and deploy workflows; `wait-for-release-candidate.test.ts`.
+ * Usage: node scripts/wait-for-release-candidate.mjs --run-id <id> [--timeout <duration>]
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY.
+ */
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

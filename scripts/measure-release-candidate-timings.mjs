@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Collects per-platform timing data from the most recent release-candidate workflow run and writes a summary JSON.
+ *
+ * Invoked by: GitHub Actions release-candidate workflows; `release-candidate-timings.test.ts`.
+ * Usage: node scripts/measure-release-candidate-timings.mjs [--run-id <id>]
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY.
+ */
+
 import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';

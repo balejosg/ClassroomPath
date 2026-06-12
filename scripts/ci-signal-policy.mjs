@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+
+/**
+ * Enforces CI signal freshness and duplicate-suppression policies: checks deploy-workflow evidence selectors and scheduled same-SHA suppression.
+ *
+ * Invoked by: CI regression suite via `npm run test:ci-regression`; also called directly in CI signal checks.
+ * Usage: node scripts/ci-signal-policy.mjs [--dry-run] [--window <duration>]
+ */
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, writeFileSync } from 'node:fs';
 

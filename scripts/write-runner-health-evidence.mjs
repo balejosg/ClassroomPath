@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Reads runner health diagnostic output and writes a structured evidence JSON for trend tracking and alerting.
+ *
+ * Invoked by: GitHub Actions runner health workflows.
+ * Usage: node scripts/write-runner-health-evidence.mjs [--input <file>] [--output <file>]
+ */
+
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 

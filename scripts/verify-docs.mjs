@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Verifies documentation constraints: checks for dead links, non-ASCII characters, and formatting issues across docs/.
+ *
+ * Invoked by: Developer CLI via `npm run verify:docs`; `docs-verification.test.ts`.
+ * Usage: node scripts/verify-docs.mjs [--fix]
+ */
+
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

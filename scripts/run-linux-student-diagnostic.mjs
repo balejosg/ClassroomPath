@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Runs a Linux student-policy diagnostic: checks that OpenPath DNS rules are applied correctly on a Linux test machine.
+ *
+ * Invoked by: Developer CLI via `npm run diagnostics:linux-student:direct`.
+ * Usage: node scripts/run-linux-student-diagnostic.mjs [--target <host>]
+ * Env: LINUX_DIAGNOSTIC_SSH_HOST.
+ */
+
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';

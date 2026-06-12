@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 // @ts-check
 
+/**
+ * CLI entry point that collects and displays read-only local promotion status for the current ClassroomPath checkout.
+ *
+ * Invoked by: `npm run release:status` (`node scripts/release-status.mjs`).
+ * Usage: node scripts/release-status.mjs [--sha <classroompath-sha>] [--openpath-sha <sha>] [--json]
+ * Also exports `buildReleaseStatus`, `buildReleaseStatusJson`, and related helpers used by
+ * `scripts/lib/release-preflight.mjs`; tested by `tests/release-status.test.ts`.
+ */
+
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -1,3 +1,9 @@
+/**
+ * Builds and serializes Linux auto-allow canary evidence records from raw probe observations.
+ *
+ * Invoked by: Imported by `linux-ajax-auto-allow-canary.mjs`; tested by `linux-auto-allow-canary.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 import {
   buildAutoAllowArtifactFailureSummary,
   buildAutoAllowEvidenceModel,

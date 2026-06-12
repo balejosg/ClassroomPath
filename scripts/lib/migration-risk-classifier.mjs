@@ -1,3 +1,9 @@
+/**
+ * Classifies database migration risk for a diff range: detects destructive migrations, multi-table changes, and rollback eligibility.
+ *
+ * Invoked by: Imported by `scripts/classify-migration-risk.mjs`; tested by `release-risk-policy.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';

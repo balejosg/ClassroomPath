@@ -1,3 +1,10 @@
+/**
+ * Fetches per-group diagnostics from the ClassroomPath canary API and formats them for evidence records.
+ *
+ * Invoked by: Imported by `linux-ajax-auto-allow-canary.mjs`; tested by `linux-auto-allow-canary.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN.
+ */
 export async function collectCanaryGroupDiagnostics({
   apiUrl,
   groupId,

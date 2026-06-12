@@ -1,3 +1,9 @@
+/**
+ * Builds and validates the auto-allow boundary evidence record that separates pre- and post-allow probe observations.
+ *
+ * Invoked by: Imported by canary runtime libraries and tested by `auto-allow-boundary-evidence.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 export function allExpectedHostsPresent(value, expectedHosts) {
   if (!value || typeof value !== 'object') {
     return false;

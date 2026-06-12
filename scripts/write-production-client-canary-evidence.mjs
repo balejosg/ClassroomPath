@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Writes the production client canary evidence artifact (probe results, timestamps) after a canary run completes.
+ *
+ * Invoked by: GitHub Actions `production-client-update-canary.yml` workflow.
+ * Usage: node scripts/write-production-client-canary-evidence.mjs
+ * Env: CANARY_EVIDENCE_DIR.
+ */
+
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';

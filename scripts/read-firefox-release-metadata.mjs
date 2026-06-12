@@ -1,3 +1,9 @@
+/**
+ * Reads Firefox release metadata from stdin (AMO API JSON) and normalizes it for downstream release scripts.
+ *
+ * Invoked by: Piped from `curl` calls in GitHub Actions `firefox-release-assets.yml` workflow.
+ * Usage: curl <amo-url> | node scripts/read-firefox-release-metadata.mjs
+ */
 import { stdin } from 'node:process';
 
 function normalizeNonEmptyString(value) {

@@ -1,3 +1,10 @@
+/**
+ * Closes open smoke-recovery GitHub issues once the deployment smoke test passes again.
+ *
+ * Invoked by: GitHub Actions `reusable-smoke-test.yml` and `production-client-update-canary.yml` workflows.
+ * Usage: node scripts/close-smoke-recovery.mjs
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY, ISSUE_LABELS.
+ */
 const token = process.env.GITHUB_TOKEN;
 const repository = process.env.GITHUB_REPOSITORY;
 const issueLabels = String(process.env.ISSUE_LABELS ?? '')

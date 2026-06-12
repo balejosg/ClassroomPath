@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * CLI: derives the Firefox/AMO-safe release version from the extension manifest and source revision.
+ *
+ * Invoked by: GitHub Actions release-candidate workflows; tested by `firefox-release-version.test.ts`.
+ * Usage: node scripts/firefox-release-version.mjs --manifest <path> --source-revision <repo>
+ */
+
 import {
   deriveFirefoxReleaseVersionFromManifest,
   deriveFirefoxReleaseVersionFromSourceRevision,

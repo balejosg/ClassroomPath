@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * CLI for reading and writing the release state snapshot, including staging evidence and promotion eligibility.
+ *
+ * Invoked by: GitHub Actions deploy and staging workflows; `release-state-cli.test.ts`.
+ * Usage: node scripts/release-state-cli.mjs read|write|validate [options]
+ * Env: RELEASE_STATE_PATH.
+ */
+
 import { appendFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 

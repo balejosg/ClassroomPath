@@ -1,3 +1,10 @@
+/**
+ * HTTP client for the GitHub Actions API used by diagnostic and runner health scripts.
+ *
+ * Invoked by: Imported by `runner-diagnostic-execution.mjs` and related libs.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN.
+ */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

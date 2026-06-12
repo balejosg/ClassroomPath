@@ -1,3 +1,9 @@
+/**
+ * Builds and appends to the release transcript log, recording each promotion step with timestamp and outcome.
+ *
+ * Invoked by: Imported by release orchestration scripts.
+ * Usage: (library module, not invoked directly)
+ */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 

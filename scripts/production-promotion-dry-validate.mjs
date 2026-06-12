@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Dry-runs the production promotion eligibility checks against the current staging evidence without mutating any state.
+ *
+ * Invoked by: Developer CLI via `npm run verify:production-promotion-dry`; tested by `deployment-foundation.test.ts`.
+ * Usage: node scripts/production-promotion-dry-validate.mjs
+ * Env: RELEASE_EVIDENCE_PATH.
+ */
+
 import { readFileSync } from 'node:fs';
 
 import { collectProductionPromotionDryRunFailures } from './lib/release-evidence-contract.mjs';

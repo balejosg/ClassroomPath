@@ -1,3 +1,9 @@
+/**
+ * Detects release risk by diffing changed files against known risk paths and applying the triple-dot fallback for diff base.
+ *
+ * Invoked by: Imported by `scripts/release-risk-cli.mjs`; tested by `release-risk.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 import { appendFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 

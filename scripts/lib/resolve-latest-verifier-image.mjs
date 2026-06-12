@@ -1,3 +1,10 @@
+/**
+ * Library: resolves the latest verifier image tag by scanning GHCR release-candidate runs and reading manifests.
+ *
+ * Invoked by: Imported by `scripts/resolve-latest-verifier-image.mjs`; tested by `resolve-latest-verifier-image.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY.
+ */
 import { listGitHubWorkflowRuns } from './github-actions-artifacts.mjs';
 import { readLatestSuccessfulReleaseCandidateManifest } from './release-candidate.mjs';
 

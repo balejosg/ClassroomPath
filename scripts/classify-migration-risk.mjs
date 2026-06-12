@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Classifies the migration risk for a diff range and emits shell-compatible env assignments for downstream deploy gating.
+ *
+ * Invoked by: Release automation; imported by `npm run test:release-automation`.
+ * Usage: node scripts/classify-migration-risk.mjs --base <sha> --head <sha>
+ */
+
 import { resolve } from 'node:path';
 
 import {

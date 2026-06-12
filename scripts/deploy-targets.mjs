@@ -1,3 +1,9 @@
+/**
+ * Library and CLI for resolving named deploy targets (staging, production) to their public URLs and configuration.
+ *
+ * Invoked by: Imported by many scripts and tests; CLI used in npm scripts such as `npm run test:e2e:auth-email:staging`.
+ * Usage: node scripts/deploy-targets.mjs get <staging|production> <field>
+ */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -1,3 +1,9 @@
+/**
+ * Checks that the local git history has sufficient depth for the diff base resolution used by release-risk scripts.
+ *
+ * Invoked by: Imported by release-risk and release-candidate scripts.
+ * Usage: (library module, not invoked directly)
+ */
 export function isNoMergeBaseError(error) {
   return /no merge base/i.test(String(error?.stderr ?? error?.message ?? error));
 }

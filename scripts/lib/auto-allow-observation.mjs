@@ -1,3 +1,9 @@
+/**
+ * Models a single auto-allow canary observation event (probe hit, timing, outcome) and provides serialization helpers.
+ *
+ * Invoked by: Imported by canary harness and evidence scripts.
+ * Usage: (library module, not invoked directly)
+ */
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

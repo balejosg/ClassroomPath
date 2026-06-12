@@ -1,3 +1,9 @@
+/**
+ * CLI option parsing helpers: parseCommandLine, requireCliOption, and runCli wrappers used by release scripts.
+ *
+ * Invoked by: Imported by most release CLI entry points.
+ * Usage: (library module, not invoked directly)
+ */
 export function parseCommandLine(argv, { valueFlags = [] } = {}) {
   const [command, ...rest] = argv;
   const options = {};

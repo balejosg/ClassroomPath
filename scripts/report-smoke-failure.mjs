@@ -1,3 +1,10 @@
+/**
+ * Creates or updates a GitHub issue to report a smoke-test failure, attaching run details and failure context.
+ *
+ * Invoked by: GitHub Actions `reusable-smoke-test.yml` workflow.
+ * Usage: node scripts/report-smoke-failure.mjs
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY, ISSUE_TITLE, ISSUE_LABELS.
+ */
 const token = process.env.GITHUB_TOKEN;
 const repository = process.env.GITHUB_REPOSITORY;
 const issueTitle = process.env.ISSUE_TITLE;

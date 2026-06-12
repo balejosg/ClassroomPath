@@ -1,3 +1,9 @@
+/**
+ * Measures CI cache hit rates by parsing workflow YAML and run logs, writing a timing-report JSON for trend analysis.
+ *
+ * Invoked by: CI cache measurement tests via `npm run test:ci-regression`; also `ci-cache-measurement.test.ts`.
+ * Usage: node scripts/measure-ci-cache.mjs [--output <file>]
+ */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';

@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Runs the enrollment-download canary: verifies that the OpenPath installer can be fetched from the staging or production CDN.
+ *
+ * Invoked by: GitHub Actions `windows-production-bootstrap-canary.yml` and `production-client-update-canary.yml` workflows.
+ * Usage: node scripts/enrollment-download-canary.mjs [--output <file>]
+ * Env: ENROLLMENT_CANARY_BASE_URL, ENROLLMENT_DOWNLOAD_TOKEN.
+ */
+
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

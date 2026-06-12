@@ -1,3 +1,9 @@
+/**
+ * Builds and serializes Windows auto-allow canary evidence records from raw probe observations.
+ *
+ * Invoked by: Imported by `windows-ajax-auto-allow-runtime.mjs`; tested by `runner-diagnostic-execution.test.ts`.
+ * Usage: (library module, not invoked directly)
+ */
 import {
   buildAutoAllowArtifactFailureSummary,
   buildAutoAllowDiagnosticPhase,

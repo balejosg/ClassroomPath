@@ -1,3 +1,10 @@
+/**
+ * Implements the Windows AJAX auto-allow canary runtime: launches Firefox via Selenium, navigates probes, and collects evidence.
+ *
+ * Invoked by: Imported by `scripts/windows-ajax-auto-allow-canary.mjs`; tested by `windows-ajax-auto-allow-runtime.test.ts`.
+ * Usage: (library module, not invoked directly)
+ * Env: WINDOWS_AUTO_ALLOW_CANARY_GROUP_ID, REDDIT_AUTO_ALLOW_DIAGNOSTIC_HOSTS.
+ */
 import { mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';

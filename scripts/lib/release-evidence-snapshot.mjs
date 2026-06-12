@@ -1,5 +1,14 @@
 // @ts-check
 
+/**
+ * Defines the release evidence snapshot schema: creation, validation, serialization, and promotion-eligibility evaluation from environment inputs.
+ *
+ * Invoked by: Imported by `scripts/lib/release-evidence.mjs`, `scripts/lib/release-state-contract.mjs`,
+ * and (indirectly) by `scripts/write-release-evidence.mjs`.
+ * Usage: (library module, not invoked directly)
+ * Tested by `tests/release-evidence.test.ts`.
+ */
+
 import { readFileSync } from 'node:fs';
 
 import {
