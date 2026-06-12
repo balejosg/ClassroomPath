@@ -48,3 +48,7 @@ coverage/
 **/coverage/
 .nyc_output/
 **/.nyc_output/
+
+# Local Claude Code tooling state (per-developer, not repo content)
+.claude/
+CLAUDE.md
