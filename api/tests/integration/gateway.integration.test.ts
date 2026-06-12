@@ -40,14 +40,6 @@ function buildScenario() {
   return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: TEST_JWT_SECRET });
 }
 
-async function seedTenantOrganization(params: { token: string; name: string }): Promise<string> {
-  const organization = await buildScenario().seedOrganizationForToken({
-    token: params.token,
-    organizationName: params.name,
-  });
-  return organization.organizationId;
-}
-
 function getSetCookieHeaders(response: Response): string[] {
   const headers = response.headers as Headers & { getSetCookie?: () => string[] };
   if (typeof headers.getSetCookie === 'function') {
@@ -1142,7 +1134,10 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    await seedTenantOrganization({ token, name: 'Healthcheck Test Org' });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: 'Healthcheck Test Org',
+    });
 
     setMockOpenPathSystemInfoMode('unavailable');
     try {
@@ -1194,7 +1189,10 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    await seedTenantOrganization({ token, name: 'API Tokens Test Org' });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: 'API Tokens Test Org',
+    });
 
     setMockOpenPathApiTokensListMode('unavailable');
     try {
@@ -1237,7 +1235,10 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    await seedTenantOrganization({ token, name: 'API Tokens Create Test Org' });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: 'API Tokens Create Test Org',
+    });
 
     const createResp = await trpcMutate(
       integration.baseUrl,
@@ -1282,7 +1283,10 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    await seedTenantOrganization({ token, name: 'Groups Counts Test Org' });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: 'Groups Counts Test Org',
+    });
 
     // Create a group
     const createResp = await trpcMutate(
@@ -1360,7 +1364,10 @@ describe('ClassroomPath Gateway Integration', async () => {
       roles: [],
     });
 
-    await seedTenantOrganization({ token, name: 'System Status Test Org' });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: 'System Status Test Org',
+    });
 
     // Call groups.systemStatus
     const resp = await trpcQuery(

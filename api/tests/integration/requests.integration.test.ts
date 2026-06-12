@@ -17,7 +17,8 @@ import {
   resetDb,
   uniqueEmail,
 } from '../test-utils.js';
-import { signToken, useIntegrationServer } from './harness.js';
+import { ensureOpenPathUser, signToken, useIntegrationServer } from './harness.js';
+import { createTenantScenario } from './scenario-builder.js';
 
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
@@ -25,42 +26,8 @@ import { openpathDb, openpathSchema } from '../../src/db/openpath.js';
 
 const integration = useIntegrationServer({ resetBeforeStart: true });
 
-async function seedTenant(params: {
-  orgId: string;
-  userId: string;
-  userRole: 'admin' | 'teacher';
-}) {
-  await db.insert(cpSchema.cpOrganizations).values({
-    id: params.orgId,
-    name: `Org ${params.orgId}`,
-    createdBy: params.userId,
-  });
-
-  await db.insert(cpSchema.cpMemberships).values({
-    id: `m-${params.userId}`,
-    userId: params.userId,
-    organizationId: params.orgId,
-    role: params.userRole,
-    invitedBy: params.userId,
-  });
-
-  await db.insert(cpSchema.cpOrganizationEntitlements).values({
-    organizationId: params.orgId,
-    source: 'manual_admin',
-    status: 'active',
-    productKind: 'annual',
-    classroomLimit: 100,
-    grantedBy: params.userId,
-  });
-}
-
-async function seedOpenPathUser(params: { userId: string; email: string; name: string }) {
-  await openpathDb.insert(openpathSchema.users).values({
-    id: params.userId,
-    email: params.email,
-    name: params.name,
-    passwordHash: 'hashed',
-  });
+function buildScenario() {
+  return createTenantScenario({ baseUrl: integration.baseUrl, jwtSecret: TEST_JWT_SECRET });
 }
 
 async function seedGroupForOrg(params: { orgId: string; groupId: string }) {
@@ -124,17 +91,21 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const groupId = 'group-req-1';
     const requestId = 'request-req-1';
 
-    await seedOpenPathUser({ userId, email, name: 'Req Admin' });
-    await seedTenant({ orgId, userId, userRole: 'admin' });
-    await seedGroupForOrg({ orgId, groupId });
-    await seedRequest({ requestId, groupId, domain: 'example.com' });
-
+    await ensureOpenPathUser({ userId, email, name: 'Req Admin' });
     const token = signToken({
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'Req Admin',
       roles: [{ role: 'admin', groupIds: [] }],
     });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+    });
+    await seedGroupForOrg({ orgId, groupId });
+    await seedRequest({ requestId, groupId, domain: 'example.com' });
 
     const resp = await trpcMutate(
       integration.baseUrl,
@@ -174,17 +145,21 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const groupId = 'group-req-root-legacy';
     const requestId = 'request-req-root-legacy';
 
-    await seedOpenPathUser({ userId, email, name: 'Req Root Legacy Admin' });
-    await seedTenant({ orgId, userId, userRole: 'admin' });
-    await seedGroupForOrg({ orgId, groupId });
-    await seedRequest({ requestId, groupId, domain: 'es.wikipedia.org' });
-
+    await ensureOpenPathUser({ userId, email, name: 'Req Root Legacy Admin' });
     const token = signToken({
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'Req Root Legacy Admin',
       roles: [{ role: 'admin', groupIds: [] }],
     });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+    });
+    await seedGroupForOrg({ orgId, groupId });
+    await seedRequest({ requestId, groupId, domain: 'es.wikipedia.org' });
 
     const resp = await trpcMutate(
       integration.baseUrl,
@@ -218,16 +193,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const groupB = 'group-b';
     const requestId = 'request-cross-tenant';
 
-    await seedOpenPathUser({ userId: adminAId, email: adminAEmail, name: 'Admin A' });
-    await seedTenant({ orgId: orgA, userId: adminAId, userRole: 'admin' });
-    await db.insert(cpSchema.cpOrganizations).values({
-      id: orgB,
-      name: 'Org B',
-      createdBy: adminAId,
-    });
-    await seedGroupForOrg({ orgId: orgB, groupId: groupB });
-    await seedRequest({ requestId, groupId: groupB, domain: 'cross-tenant.com' });
-
+    await ensureOpenPathUser({ userId: adminAId, email: adminAEmail, name: 'Admin A' });
     const token = signToken({
       jwtSecret: TEST_JWT_SECRET,
       userId: adminAId,
@@ -235,6 +201,18 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
       name: 'Admin A',
       roles: [{ role: 'admin', groupIds: [] }],
     });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: 'Org A',
+      organizationId: orgA,
+    });
+    await db.insert(cpSchema.cpOrganizations).values({
+      id: orgB,
+      name: 'Org B',
+      createdBy: adminAId,
+    });
+    await seedGroupForOrg({ orgId: orgB, groupId: groupB });
+    await seedRequest({ requestId, groupId: groupB, domain: 'cross-tenant.com' });
 
     const resp = await trpcMutate(
       integration.baseUrl,
@@ -256,11 +234,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const groupId = 'group-teacher-1';
     const requestId = 'request-teacher-1';
 
-    await seedOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Teacher 1' });
-    await seedTenant({ orgId, userId: teacherId, userRole: 'teacher' });
-    await seedGroupForOrg({ orgId, groupId });
-    await seedRequest({ requestId, groupId, domain: 'teacher-denied.com' });
-
+    await ensureOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Teacher 1' });
     const deniedToken = signToken({
       jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
@@ -268,6 +242,14 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
       name: 'Teacher 1',
       roles: [{ role: 'teacher', groupIds: [] }],
     });
+    await buildScenario().seedOrganizationForToken({
+      token: deniedToken,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+      membershipRole: 'teacher',
+    });
+    await seedGroupForOrg({ orgId, groupId });
+    await seedRequest({ requestId, groupId, domain: 'teacher-denied.com' });
 
     const deniedResp = await trpcMutate(
       integration.baseUrl,
@@ -305,12 +287,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const ownedGroupId = 'group-push-owned';
     const otherGroupId = 'group-push-other';
 
-    await seedOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Push Teacher' });
-    await seedTenant({ orgId, userId: teacherId, userRole: 'teacher' });
-    await seedGroupForOrg({ orgId, groupId: ownedGroupId });
-    await seedGroupForOrg({ orgId, groupId: otherGroupId });
-    await seedTeacherRoleOwnership({ userId: teacherId, groupId: ownedGroupId });
-
+    await ensureOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Push Teacher' });
     const token = signToken({
       jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
@@ -318,6 +295,15 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
       name: 'Push Teacher',
       roles: [{ role: 'teacher', groupIds: [ownedGroupId] }],
     });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+      membershipRole: 'teacher',
+    });
+    await seedGroupForOrg({ orgId, groupId: ownedGroupId });
+    await seedGroupForOrg({ orgId, groupId: otherGroupId });
+    await seedTeacherRoleOwnership({ userId: teacherId, groupId: ownedGroupId });
 
     const deniedResp = await trpcMutate(
       integration.baseUrl,
@@ -358,12 +344,7 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const groupId = 'group-action-owned';
     const requestId = 'request-action-approve';
 
-    await seedOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Action Teacher' });
-    await seedTenant({ orgId, userId: teacherId, userRole: 'teacher' });
-    await seedGroupForOrg({ orgId, groupId });
-    await seedTeacherRoleOwnership({ userId: teacherId, groupId });
-    await seedRequest({ requestId, groupId, domain: 'approve-from-notification.test' });
-
+    await ensureOpenPathUser({ userId: teacherId, email: teacherEmail, name: 'Action Teacher' });
     const token = signToken({
       jwtSecret: TEST_JWT_SECRET,
       userId: teacherId,
@@ -371,6 +352,15 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
       name: 'Action Teacher',
       roles: [{ role: 'teacher', groupIds: [groupId] }],
     });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+      membershipRole: 'teacher',
+    });
+    await seedGroupForOrg({ orgId, groupId });
+    await seedTeacherRoleOwnership({ userId: teacherId, groupId });
+    await seedRequest({ requestId, groupId, domain: 'approve-from-notification.test' });
 
     const response = await fetch(
       `${integration.baseUrl}/cp/notification-actions/domain-request/approve`,
@@ -408,17 +398,21 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const groupId = 'group-reject';
     const requestId = 'request-reject';
 
-    await seedOpenPathUser({ userId, email, name: 'Reject Admin' });
-    await seedTenant({ orgId, userId, userRole: 'admin' });
-    await seedGroupForOrg({ orgId, groupId });
-    await seedRequest({ requestId, groupId, domain: 'reject-me.com' });
-
+    await ensureOpenPathUser({ userId, email, name: 'Reject Admin' });
     const token = signToken({
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'Reject Admin',
       roles: [{ role: 'admin', groupIds: [] }],
     });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+    });
+    await seedGroupForOrg({ orgId, groupId });
+    await seedRequest({ requestId, groupId, domain: 'reject-me.com' });
 
     const resp = await trpcMutate(
       integration.baseUrl,
@@ -445,16 +439,21 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const orgId = 'org-cmg';
     const groupId = 'grp-cmg';
 
-    await seedOpenPathUser({ userId, email, name: 'Create Missing Group' });
-    await seedTenant({ orgId, userId, userRole: 'teacher' });
-    await seedGroupForOrg({ orgId, groupId });
-
+    await ensureOpenPathUser({ userId, email, name: 'Create Missing Group' });
     const token = signToken({
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'Create Missing Group',
       roles: [{ role: 'teacher', groupIds: [groupId] }],
     });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+      membershipRole: 'teacher',
+    });
+    await seedGroupForOrg({ orgId, groupId });
 
     const createResp = await trpcMutate(
       integration.baseUrl,
@@ -480,17 +479,21 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const orgId = 'org-cv';
     const groupId = 'grp-cv';
 
-    await seedOpenPathUser({ userId, email, name: 'Create Visible' });
-    await seedTenant({ orgId, userId, userRole: 'teacher' });
-    await seedGroupForOrg({ orgId, groupId });
-
+    await ensureOpenPathUser({ userId, email, name: 'Create Visible' });
     const token = signToken({
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'Create Visible',
       roles: [{ role: 'teacher', groupIds: [groupId] }],
     });
-
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+      membershipRole: 'teacher',
+    });
+    await seedGroupForOrg({ orgId, groupId });
     await seedTeacherRoleOwnership({ userId, groupId });
 
     const createResp = await trpcMutate(
@@ -530,17 +533,22 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const orgId = 'org-create-root';
     const groupId = 'grp-create-root';
 
-    await seedOpenPathUser({ userId, email, name: 'Create Root' });
-    await seedTenant({ orgId, userId, userRole: 'teacher' });
-    await seedGroupForOrg({ orgId, groupId });
-    await seedTeacherRoleOwnership({ userId, groupId });
-
+    await ensureOpenPathUser({ userId, email, name: 'Create Root' });
     const token = signToken({
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'Create Root',
       roles: [{ role: 'teacher', groupIds: [groupId] }],
     });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+      membershipRole: 'teacher',
+    });
+    await seedGroupForOrg({ orgId, groupId });
+    await seedTeacherRoleOwnership({ userId, groupId });
 
     const createResp = await trpcMutate(
       integration.baseUrl,
@@ -579,16 +587,20 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const orgId = 'org-listgroups';
     const groupId = 'group-listgroups-1';
 
-    await seedOpenPathUser({ userId, email, name: 'ListGroups Admin' });
-    await seedTenant({ orgId, userId, userRole: 'admin' });
-    await seedGroupForOrg({ orgId, groupId });
-
+    await ensureOpenPathUser({ userId, email, name: 'ListGroups Admin' });
     const token = signToken({
+      jwtSecret: TEST_JWT_SECRET,
       userId,
       email,
       name: 'ListGroups Admin',
       roles: [{ role: 'admin', groupIds: [] }],
     });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+    });
+    await seedGroupForOrg({ orgId, groupId });
 
     const resp = await trpcQuery(
       integration.baseUrl,
@@ -617,8 +629,19 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
     const orgId = 'org-stats';
     const groupId = 'group-stats-1';
 
-    await seedOpenPathUser({ userId, email, name: 'Stats Admin' });
-    await seedTenant({ orgId, userId, userRole: 'admin' });
+    await ensureOpenPathUser({ userId, email, name: 'Stats Admin' });
+    const token = signToken({
+      jwtSecret: TEST_JWT_SECRET,
+      userId,
+      email,
+      name: 'Stats Admin',
+      roles: [{ role: 'admin', groupIds: [] }],
+    });
+    await buildScenario().seedOrganizationForToken({
+      token,
+      organizationName: `Org ${orgId}`,
+      organizationId: orgId,
+    });
     await seedGroupForOrg({ orgId, groupId });
 
     await openpathDb.insert(openpathSchema.requests).values([
@@ -644,13 +667,6 @@ describe('ClassroomPath requests integration (/cp/trpc)', async () => {
         status: 'rejected',
       },
     ]);
-
-    const token = signToken({
-      userId,
-      email,
-      name: 'Stats Admin',
-      roles: [{ role: 'admin', groupIds: [] }],
-    });
 
     const resp = await trpcQuery(
       integration.baseUrl,
