@@ -128,7 +128,7 @@ describe('staging gates helper', () => {
           'source scripts/lib/staging-gates.sh',
           'resolve_target_address() { printf ""; }',
           'run_gate_command() { return 0; }',
-          'run_staging_smoke_gate staging-host http://192.168.1.114:3001',
+          'run_staging_smoke_gate staging-host http://192.0.2.10:3001',
           'printf "%s|%s" "$STAGING_SMOKE_RESULT" "$STAGING_SMOKE_STATUS"',
         ].join('; '),
       ],
@@ -228,15 +228,15 @@ describe('staging gates helper', () => {
   test('accepts explicit staging resolved address overrides before DNS fallback', () => {
     assert.equal(
       runHelper(
-        'STAGING_RESOLVED_ADDRESS=192.168.1.114 resolve_target_address classroompath-staging.example.invalid 443'
+        'STAGING_RESOLVED_ADDRESS=192.0.2.10 resolve_target_address classroompath-staging.example.invalid 443'
       ),
-      '192.168.1.114'
+      '192.0.2.10'
     );
     assert.equal(
       runHelper(
-        'CLASSROOMPATH_STAGING_RESOLVED_ADDRESS=10.0.0.24 resolve_target_address classroompath-staging.example.invalid 443'
+        'CLASSROOMPATH_STAGING_RESOLVED_ADDRESS=192.0.2.20 resolve_target_address classroompath-staging.example.invalid 443'
       ),
-      '10.0.0.24'
+      '192.0.2.20'
     );
   });
 
@@ -300,7 +300,7 @@ describe('staging gates helper', () => {
           `PUBLIC_STAGING_URL=${publicStagingUrl}`,
           'source scripts/lib/staging-gates.sh',
           'STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE=1',
-          'STAGING_RESOLVED_ADDRESS=192.168.1.114',
+          'STAGING_RESOLVED_ADDRESS=127.0.0.1',
           'run_staging_linux_bootstrap_gate "$PUBLIC_STAGING_URL"',
           'printf "%s|%s|%s|%s" "$STAGING_LINUX_BOOTSTRAP_RESULT" "$STAGING_LINUX_BOOTSTRAP_RUN_ID" "$STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_ID" "$STAGING_LINUX_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE"',
         ].join('; '),
