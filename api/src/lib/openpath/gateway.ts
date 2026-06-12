@@ -1,3 +1,17 @@
+/**
+ * OpenPath gateway client interface and default singleton for the ClassroomPath API.
+ *
+ * Defines the OpenPathGateway interface and provides createOpenPathGateway, which
+ * wraps every upstream OpenPath tRPC procedure call through callOpenPathTrpc in
+ * api/src/lib/openpath/trpc-client.ts.  The pre-built openPathGateway singleton
+ * is consumed by tRPC routers under api/src/trpc/routers/ and by the health-check
+ * helpers exported from this same file.
+ *
+ * Non-obvious constraint: getSystemInfo returns a safe SYSTEM_INFO_FALLBACK
+ * (degraded=true, upstreamAvailable=false) on any upstream error rather than
+ * throwing -- callers must inspect the degraded flag, not catch an exception, to
+ * detect an unreachable upstream.
+ */
 import { TRPCError } from '@trpc/server';
 
 import type { OpenPathForwardRequest } from './headers.js';

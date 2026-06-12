@@ -1,3 +1,20 @@
+/**
+ * Web Push subscription management and notification dispatch service.
+ *
+ * Owns all VAPID-based push logic for the ClassroomPath tenant layer:
+ * saving and deleting subscriptions in the pushSubscriptions table, querying
+ * subscription status for the current user, and fanning out push payloads to
+ * every subscriber of a whitelist group when a new domain request arrives.
+ *
+ * Consumed by the push tRPC router under api/src/trpc/routers/ and by
+ * api/src/services/request-write.service.ts when a new domain request is
+ * created.
+ *
+ * Non-obvious constraint: VAPID details are applied to the web-push library
+ * singleton lazily and only once (guarded by webPushConfigured) -- if VAPID
+ * env vars change at runtime after the first successful call, the library will
+ * continue using the original credentials until the process restarts.
+ */
 import { TRPCError } from '@trpc/server';
 import { nanoid } from 'nanoid';
 import { eq, sql } from 'drizzle-orm';

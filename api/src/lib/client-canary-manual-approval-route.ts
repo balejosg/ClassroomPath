@@ -1,3 +1,19 @@
+/**
+ * Express route handlers for the internal client-canary automation endpoints.
+ *
+ * Exposes two handlers: clientCanaryManualBillingApprovalHandler (approves a
+ * pending manual billing request identified by the [client-canary] marker in
+ * its organizationName or note) and clientCanaryGroupDiagnosticsHandler
+ * (returns group state, whitelist rules, and per-host expected-host analysis
+ * for a given OpenPath group).  Both handlers are mounted under
+ * /cp/internal/client-canary/ in api/src/lib/gateway/application-routes.ts.
+ *
+ * Non-obvious constraint: authentication reads the configured token exclusively
+ * via config.clientCanaryAdminToken -- reading the admin-token environment
+ * variable directly is intentionally avoided (and asserted against in this
+ * module's test, which scans this file as raw text) so that the module
+ * respects the singleton config.
+ */
 import { timingSafeEqual } from 'node:crypto';
 import type { RequestHandler } from 'express';
 import { desc, eq } from 'drizzle-orm';

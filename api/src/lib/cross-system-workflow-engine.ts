@@ -1,3 +1,21 @@
+/**
+ * Generic resumable workflow engine for cross-system mutations.
+ *
+ * Provides runMutationWorkflow and three opinionated workflow variants:
+ * runLocalFirstMutationWorkflow (write CP DB first, then sync to OpenPath),
+ * runUpstreamFirstProvisioningWorkflow (create in OpenPath first, then link
+ * locally), and runDeleteMutationWorkflow (delete locally, then mark complete).
+ *
+ * Consumed by every service that performs cross-system writes, such as
+ * api/src/services/group-write.service.ts and
+ * api/src/services/organization-write.service.ts.
+ *
+ * Non-obvious constraint: step skipping is determined by comparing the
+ * persisted currentStep against a hard-coded step-order array -- if a new
+ * step is inserted between existing steps the step-order array in the
+ * relevant workflow function must be updated, or already-in-progress operations
+ * will re-run steps they have already completed.
+ */
 import type {
   CrossSystemMutationStatus,
   CrossSystemMutationStep,

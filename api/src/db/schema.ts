@@ -1,3 +1,21 @@
+/**
+ * Drizzle ORM table definitions for the ClassroomPath-owned database schema.
+ *
+ * Declares every table prefixed with cp_ that belongs exclusively to the
+ * ClassroomPath layer: organizations, memberships, invitations,
+ * organization-to-OpenPath-resource link tables (classrooms, groups),
+ * billing objects (checkout intents, entitlements, manual requests, Stripe
+ * webhook deduplication, billing audit log), cross-system mutation operations,
+ * group templates, terms acceptance, and user onboarding status.
+ *
+ * Consumed by all service files under api/src/services/ and by Drizzle Kit
+ * migrations via api/drizzle.config.ts.  The OpenPath database tables (users,
+ * whitelist groups, requests, etc.) live in api/src/db/openpath.ts, not here.
+ *
+ * Non-obvious constraint: cpMemberships carries a unique constraint on userId
+ * alone (cp_memberships_user_id_key) in addition to the (userId, organizationId)
+ * pair -- a user may therefore belong to at most one organization at a time.
+ */
 import {
   boolean,
   index,

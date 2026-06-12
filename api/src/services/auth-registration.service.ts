@@ -1,3 +1,21 @@
+/**
+ * Self-service user registration and Google OAuth sign-up service.
+ *
+ * Owns the multi-step flow that lands a new user in the system: validate
+ * terms version, register the account in the upstream OpenPath database,
+ * record the ClassroomPath terms-acceptance row, and trigger email
+ * verification delivery.  Also handles Google OAuth sign-up, which includes
+ * identity verification via google-auth-library, upsert of the OpenPath user
+ * row, and session cookie issuance via api/src/lib/session-cookies.ts.
+ *
+ * Consumed by the auth tRPC routers under api/src/trpc/routers/auth*.ts.
+ *
+ * Non-obvious constraint: Google sign-up calls googleLoginOpenPathUser on the
+ * upstream AFTER ensureOpenPathGoogleUser completes the upsert -- if the
+ * upstream login step fails after the local upsert succeeds the user row will
+ * exist without a session cookie, so callers should not treat the upsert as
+ * evidence of a complete login.
+ */
 import { eq } from 'drizzle-orm';
 import type { Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';

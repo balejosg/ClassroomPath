@@ -1,3 +1,19 @@
+/**
+ * Runtime environment policy resolver for the ClassroomPath API.
+ *
+ * Owns the single authoritative pass over process.env at startup: reads the
+ * policy catalog JSON (config/runtime-environment-policy.catalog.json), then
+ * exposes typed resolve* helpers that translate raw env vars into structured
+ * policy objects (RuntimeEnvironmentPolicy, PushRuntimePolicy, etc.).
+ *
+ * Consumed by api/src/config.ts (the top-level config singleton) and by the
+ * startup assertion in api/src/server.ts via assertRuntimeEnvironmentPolicyConfigured.
+ *
+ * Non-obvious constraint: billing validation is asymmetric -- when
+ * CP_ALLOW_SELF_SERVICE_ORGS is true the stripe/admin-email checks are
+ * bypassed entirely, so tests that set that flag must NOT also assert that
+ * Stripe vars are required.
+ */
 import { readFileSync } from 'node:fs';
 
 import { parseBooleanEnv, trimToNull, type RuntimeEnv } from './shared.js';
