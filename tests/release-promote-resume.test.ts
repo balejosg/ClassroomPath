@@ -5,7 +5,7 @@
  *   node --import tsx --test tests/release-orchestration.test.ts tests/release-execution.test.ts tests/release-promote-resume.test.ts
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -554,7 +554,6 @@ describe('writeStepState / readStepState', () => {
 
   it('state file is written per step during --execute', async () => {
     const root = mkdtempSync(join(tmpdir(), 'release-state-execute-'));
-    const writtenSteps: string[] = [];
 
     await runReleasePromoteCommand(
       [
