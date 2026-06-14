@@ -125,6 +125,21 @@ describe('release promotion orchestration', () => {
     assert.equal(plan.steps.at(-1)?.id, 'print-summary');
   });
 
+  it('verify-clean-repos includes ensure-openpath-submodule-on-main.sh before the --abbrev-ref assert', () => {
+    const plan = buildPromotionPlan({ tag: 'v1.2.3' });
+    const verifyStep = plan.steps.find((step) => step.id === 'verify-clean-repos');
+    const command = formatCommand(verifyStep?.command);
+
+    assert.match(command, /ensure-openpath-submodule-on-main\.sh/);
+
+    const ensureIdx = command.indexOf('ensure-openpath-submodule-on-main.sh');
+    const abbrevIdx = command.indexOf('--abbrev-ref HEAD');
+    assert.ok(
+      ensureIdx !== -1 && abbrevIdx !== -1 && ensureIdx < abbrevIdx,
+      'ensure-openpath-submodule-on-main.sh must appear before the --abbrev-ref HEAD assert'
+    );
+  });
+
   it('builds a polling command for the tag-triggered deploy run', () => {
     const command = formatCommand(buildWaitForTagDeployCommand('v1.2.301'));
 

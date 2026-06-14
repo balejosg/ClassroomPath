@@ -96,6 +96,7 @@ export function buildPromotionPlan({
           'git -C upstream/openpath diff --quiet',
           'git -C upstream/openpath diff --cached --quiet',
           'git -C upstream/openpath fetch origin main --quiet',
+          'bash scripts/ensure-openpath-submodule-on-main.sh',
           'test "$(git -C upstream/openpath rev-parse --abbrev-ref HEAD)" = "main"',
           'test "$(git -C upstream/openpath rev-parse HEAD)" = "$(git -C upstream/openpath rev-parse origin/main)"',
         ].join(' && '),
