@@ -282,6 +282,48 @@ describe('Deploy workflow contracts', () => {
     assert.equal(verifyStep.env?.OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN, undefined);
     assert.equal(verifyStep.env?.OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH, false);
     assert.equal(verifyStep.env?.OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS, 2400);
+    assert.equal(
+      verifyStep.env?.CLASSROOMPATH_DEPLOY_ROOT,
+      '${{ secrets.CLASSROOMPATH_DEPLOY_ROOT }}',
+      'promotion-readiness gate must receive CLASSROOMPATH_DEPLOY_ROOT secret so it can actually evaluate'
+    );
+    assert.ok(
+      verifyStep['continue-on-error'] !== true,
+      'promotion-readiness gate must NOT have continue-on-error: true'
+    );
+  });
+
+  test('promote-current-staging-candidate.sh verifies promotion readiness before tagging', () => {
+    const promoteScript = readText('scripts/promote-current-staging-candidate.sh');
+
+    const verifyIndex = promoteScript.indexOf('verify-production-promotion-ready.sh');
+    const tagIndex = promoteScript.indexOf('git tag -a');
+
+    assert.ok(
+      verifyIndex !== -1,
+      'promote-current-staging-candidate.sh must invoke verify-production-promotion-ready.sh'
+    );
+    assert.ok(
+      tagIndex !== -1,
+      'promote-current-staging-candidate.sh must contain a git tag -a command'
+    );
+    assert.ok(
+      verifyIndex < tagIndex,
+      'promote-current-staging-candidate.sh must invoke verify-production-promotion-ready.sh BEFORE git tag -a'
+    );
+
+    // --local-only must only guard the push, never skip the verification.
+    // The push-skip guard is 'if [ "$PUSH_MODE" = "--local-only" ]' which appears after git tag -a.
+    const pushSkipGuard = 'if [ "$PUSH_MODE" = "--local-only" ]';
+    const pushSkipIndex = promoteScript.indexOf(pushSkipGuard);
+    assert.ok(
+      pushSkipIndex !== -1,
+      'promote-current-staging-candidate.sh must have a --local-only push-skip guard'
+    );
+    assert.ok(
+      pushSkipIndex > tagIndex,
+      '--local-only push-skip guard must appear after git tag -a, not before verification'
+    );
   });
 
   test('manual current staging promotion workflow creates a tag and leaves deploy to deploy.yml', () => {

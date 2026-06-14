@@ -366,12 +366,18 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          CLASSROOMPATH_DEPLOY_ROOT: ${{ secrets.CLASSROOMPATH_DEPLOY_ROOT }}
           OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH: false
           OPENPATH_REQUIRED_CHECKS_TIMEOUT_SECONDS: 2400
           OPENPATH_REQUIRED_CHECKS_INTERVAL_SECONDS: 10
           PROMOTION_REPORT_JSON_PATH: ${{ runner.temp }}/promotion-ready/report.json
           PROMOTION_EVIDENCE_DIR: ${{ runner.temp }}/promotion-ready/evidence
         run: |
+          if [ -z "${CLASSROOMPATH_DEPLOY_ROOT:-}" ]; then
+            echo "::error::CLASSROOMPATH_DEPLOY_ROOT secret is not configured; the production promotion-readiness gate cannot evaluate. Set the CLASSROOMPATH_DEPLOY_ROOT repository secret." >&2
+            exit 1
+          fi
+
           mkdir -p "$(dirname "$PROMOTION_REPORT_JSON_PATH")" "$PROMOTION_EVIDENCE_DIR"
 
           set +e
