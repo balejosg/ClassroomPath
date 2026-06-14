@@ -106,7 +106,19 @@ describe('release promotion orchestration', () => {
     assert.equal(plan.steps.at(-1)?.id, 'print-summary');
     assert.equal(
       commandsById['run-post-production-windows-canary'],
-      'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir .opencode/tmp/postproduction-windows-ajax/v1.2.301'
+      'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir .opencode/tmp/postproduction-windows-ajax/v1.2.301 --skip-when-canary-token-absent'
+    );
+  });
+
+  it('run-post-production-windows-canary command includes --skip-when-canary-token-absent', () => {
+    const plan = buildPromotionPlan({ tag: 'v1.2.301', highRiskWindows: true });
+    const canaryStep = plan.steps.find((step) => step.id === 'run-post-production-windows-canary');
+
+    assert.ok(canaryStep, 'run-post-production-windows-canary step should be present');
+    assert.ok(
+      Array.isArray(canaryStep.command) &&
+        canaryStep.command.includes('--skip-when-canary-token-absent'),
+      'post-production canary command must include --skip-when-canary-token-absent'
     );
   });
 
@@ -601,6 +613,36 @@ describe('release promotion orchestration', () => {
     assert.doesNotMatch(
       stdout,
       /npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir \.opencode\/tmp\/postproduction-windows-ajax\/v0\.0\.0/
+    );
+  });
+
+  it('logs a clear skip message when the post-production canary exits 0 with the skip marker', async () => {
+    let stdout = '';
+
+    const result = await runReleasePromoteCommand(
+      ['--tag', 'v0.0.0', '--execute', '--no-high-risk-windows'],
+      {
+        stdout: (value) => {
+          stdout += value;
+        },
+        stderr: () => {},
+        runStep: async (step) => ({
+          id: step.id,
+          status: 'success',
+          seconds: 1,
+          stdout:
+            step.id === 'run-post-production-windows-canary'
+              ? 'POST_PRODUCTION_WINDOWS_CANARY_SKIPPED=token-absent\n'
+              : '',
+          stderr: '',
+        }),
+      }
+    );
+
+    assert.equal(result.status, 0);
+    assert.match(
+      stdout,
+      /run-post-production-windows-canary skipped \(CI-only CP_CLIENT_CANARY_ADMIN_TOKEN absent/
     );
   });
 

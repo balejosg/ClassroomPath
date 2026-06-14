@@ -160,6 +160,16 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       }
 
       if (
+        planStep.id === 'run-post-production-windows-canary' &&
+        result.status === 'success' &&
+        String(result.stdout ?? '').includes('POST_PRODUCTION_WINDOWS_CANARY_SKIPPED=token-absent')
+      ) {
+        io.stdout(
+          'run-post-production-windows-canary skipped (CI-only CP_CLIENT_CANARY_ADMIN_TOKEN absent; deploy.yml production Windows canaries cover it)\n'
+        );
+      }
+
+      if (
         result.status !== 'success' &&
         planStep.id === 'verify-promotion-ready' &&
         shouldRefreshWindowsPrepromotionEvidence(result)

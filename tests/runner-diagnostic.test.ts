@@ -1167,4 +1167,82 @@ describe('runner diagnostic wrapper', () => {
     assert.match(script, /postSuccessObservation/);
     assert.match(script, /waitForLocalWhitelistObservation\(expectedHosts, remaining/);
   });
+
+  test('direct Windows AJAX diagnostic loads .env.local before resolving env vars for proxmoxHost and vmid', () => {
+    const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+
+    // The import must be present.
+    assert.match(
+      script,
+      /import \{ readEnvLocalFile \} from '\.\/lib\/prepromotion-windows-evidence\.mjs'/
+    );
+    // The merge-under-process.env loop must appear before parseArgs reads process.env.
+    const mergeIndex = script.indexOf('readEnvLocalFile(resolve(projectRoot');
+    const parseArgsIndex = script.indexOf('function parseArgs(');
+    assert.ok(mergeIndex >= 0, 'readEnvLocalFile merge block should be present');
+    assert.ok(parseArgsIndex >= 0, 'parseArgs function should be present');
+    assert.ok(
+      mergeIndex < parseArgsIndex,
+      '.env.local merge must appear before the parseArgs function declaration so defaults pick it up'
+    );
+    // process.env wins: the merge only sets keys not already in process.env.
+    assert.match(script, /if \(!\(key in process\.env\)\)/);
+  });
+
+  test('direct Windows AJAX diagnostic exits 0 with skip marker when token absent and --skip-when-canary-token-absent is set', () => {
+    // DRY_RUN=1 so no real SSH calls are made; token vars absent trigger the graceful-skip path.
+    // The skip fires inside resolveBillingContext before the DRY_RUN short-circuit so DRY_RUN
+    // is safe here — it gates guest commands only, not the billing context resolution.
+    const result = spawnSync(
+      process.execPath,
+      [
+        directScriptPath,
+        '--openpath-root',
+        preparedOpenPathRoot,
+        '--environment',
+        'production',
+        '--confirm-production',
+        '--skip-when-canary-token-absent',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          WINDOWS_AJAX_DIRECT_DRY_RUN: '1',
+          WINDOWS_RUNNER_VMID: '<vmid>',
+          // Absent token env vars: trigger the graceful-skip path.
+          CP_CLIENT_CANARY_ADMIN_TOKEN: '',
+          PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN: '',
+        },
+      }
+    );
+
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    assert.match(result.stdout, /POST_PRODUCTION_WINDOWS_CANARY_SKIPPED=token-absent/);
+    assert.match(result.stderr, /CP_CLIENT_CANARY_ADMIN_TOKEN is absent/);
+    assert.match(result.stderr, /--skip-when-canary-token-absent/);
+  });
+
+  test('direct Windows AJAX diagnostic still throws when token is absent and skip flag is not set', () => {
+    const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+
+    // The throw path must remain for the default (no skip flag) case.
+    assert.match(
+      script,
+      /CP_CLIENT_CANARY_ADMIN_TOKEN is missing for \$\{options\.environment\}; set it in the environment \(CI secret\)/
+    );
+    // The skip path must be conditional on skipWhenCanaryTokenAbsent.
+    assert.match(script, /options\.skipWhenCanaryTokenAbsent/);
+    // The skip and throw must be distinct branches.
+    assert.match(script, /POST_PRODUCTION_WINDOWS_CANARY_SKIPPED=token-absent/);
+  });
+
+  test('direct Windows AJAX diagnostic accepts --skip-when-canary-token-absent CLI flag', () => {
+    const script = readProjectText('scripts/run-windows-ajax-direct.mjs');
+
+    assert.match(script, /--skip-when-canary-token-absent/);
+    assert.match(script, /options\.skipWhenCanaryTokenAbsent = true/);
+    assert.match(script, /CP_CANARY_SKIP_WHEN_TOKEN_ABSENT/);
+  });
 });

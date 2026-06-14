@@ -194,6 +194,7 @@ export function buildPromotionPlan({
           '--confirm-production',
           '--artifact-dir',
           `.opencode/tmp/postproduction-windows-ajax/${tag}`,
+          '--skip-when-canary-token-absent',
         ],
         'Run the post-production Windows AJAX canary against production.'
       )

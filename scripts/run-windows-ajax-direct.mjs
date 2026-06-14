@@ -34,6 +34,7 @@ import {
   uploadRunnerDiagnosticPlanFiles,
   validateRunnerDiagnosticPlan,
 } from './lib/runner-diagnostic-execution.mjs';
+import { readEnvLocalFile } from './lib/prepromotion-windows-evidence.mjs';
 
 const DEFAULT_ENVIRONMENT = 'staging';
 const DEFAULT_PROXMOX_HOST = 'proxmox-host.example.invalid';
@@ -65,6 +66,14 @@ const DRY_RUN = process.env.WINDOWS_AJAX_DIRECT_DRY_RUN === '1';
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
 const projectRoot = resolve(scriptDir, '..');
+
+// Merge .env.local under process.env (process.env wins) so operators can set
+// WINDOWS_RUNNER_VMID, PROXMOX_SSH_ALIAS, etc. without exporting them.
+for (const [key, value] of Object.entries(readEnvLocalFile(resolve(projectRoot, '.env.local')))) {
+  if (!(key in process.env)) {
+    process.env[key] = value;
+  }
+}
 
 const SELENIUM_NODE_MODULES = [
   'selenium-webdriver',
@@ -142,6 +151,11 @@ Options:
                               off | diagnostic | gate (default: ${DEFAULT_REDDIT_NAVIGATION_MODE})
   --skip-reset                Do not uninstall the existing OpenPath Windows client before enrollment
   --confirm-production        Required when --environment production
+  --skip-when-canary-token-absent
+                              If CP_CLIENT_CANARY_ADMIN_TOKEN is absent, exit 0 with a skip marker
+                              instead of failing. Intended for the orchestrated post-production step;
+                              locally, set the token in the environment or .env.local.
+                              Also honoured via env CP_CANARY_SKIP_WHEN_TOKEN_ABSENT=1.
 `);
 }
 
@@ -173,6 +187,7 @@ function parseArgs(argv) {
       process.env.WINDOWS_AJAX_REDDIT_NAVIGATION_TIMEOUT_MS ?? DEFAULT_REDDIT_NAVIGATION_TIMEOUT_MS,
     skipReset: false,
     confirmProduction: false,
+    skipWhenCanaryTokenAbsent: process.env.CP_CANARY_SKIP_WHEN_TOKEN_ABSENT === '1',
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -212,6 +227,8 @@ function parseArgs(argv) {
       options.skipReset = true;
     } else if (arg === '--confirm-production') {
       options.confirmProduction = true;
+    } else if (arg === '--skip-when-canary-token-absent') {
+      options.skipWhenCanaryTokenAbsent = true;
     } else if (arg === '--help' || arg === '-h') {
       printUsage();
       process.exit(0);
@@ -656,6 +673,19 @@ function readRemoteEnvKey(access, key) {
 }
 
 function resolveBillingContext(options, env) {
+  // If skip-when-absent is set and the token is not in the local env, skip immediately
+  // without attempting any remote SSH lookup — the SSH key may not be present locally,
+  // and this path runs after production is already live.
+  if (options.skipWhenCanaryTokenAbsent && !env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN) {
+    process.stderr.write(
+      `WARNING: CP_CLIENT_CANARY_ADMIN_TOKEN is absent for ${options.environment}; ` +
+        '--skip-when-canary-token-absent is set — skipping the post-production Windows canary.\n' +
+        'In CI this token must be a secret. Locally, set it in .env.local or the environment.\n'
+    );
+    process.stdout.write('POST_PRODUCTION_WINDOWS_CANARY_SKIPPED=token-absent\n');
+    process.exit(0);
+  }
+
   if (DRY_RUN) {
     return {
       billingMode: 'manual_only',
@@ -675,7 +705,9 @@ function resolveBillingContext(options, env) {
       env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN ||
       readRemoteEnvKey(access, 'CP_CLIENT_CANARY_ADMIN_TOKEN');
     if (!adminToken) {
-      throw new Error(`CP_CLIENT_CANARY_ADMIN_TOKEN is missing for ${options.environment}`);
+      throw new Error(
+        `CP_CLIENT_CANARY_ADMIN_TOKEN is missing for ${options.environment}; set it in the environment (CI secret) — locally, pass --skip-when-canary-token-absent to skip the post-production canary.`
+      );
     }
     return { billingMode, adminToken, stripeWebhookSecret: '' };
   }
@@ -1331,7 +1363,9 @@ async function main() {
   }
 
   if (!DRY_RUN && !options.vmid) {
-    console.error('Direct Windows AJAX diagnostics require --vmid or WINDOWS_RUNNER_VMID.');
+    console.error(
+      'Direct Windows AJAX diagnostics require a VM id: pass --vmid or set WINDOWS_RUNNER_VMID in .env.local (or the environment).'
+    );
     process.exit(1);
   }
 
