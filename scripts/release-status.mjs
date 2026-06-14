@@ -21,6 +21,7 @@ import {
   resolveNextPatchTagFromRemoteTags,
 } from './lib/release-status-collector.mjs';
 import {
+  deriveBlockerDetails,
   deriveReleaseBlockerGroups as evaluateReleaseBlockerGroups,
   deriveReleaseBlockers as evaluateReleaseBlockers,
   isProductionCurrentAtTarget as evaluateProductionCurrentAtTarget,
@@ -218,7 +219,7 @@ export function renderReleaseStatusText(status) {
   const stagingState = status.stagingVerification.state ?? {};
   const productionState = status.productionDeploy.currentState ?? {};
   const lines = [
-    'Local release status',
+    'Local release status (advisory snapshot — authoritative gate: `npm run verify:promotion-ready`, live SSH)',
     '',
     'ClassroomPath:',
     `  HEAD: ${shortSha(status.classroomPath.headSha)}`,
@@ -263,12 +264,24 @@ export function renderReleaseStatusText(status) {
     '',
     'Promotion blockers:',
     ...(status.promotionBlockers?.length
-      ? status.promotionBlockers.map((blocker) => `  - ${blocker}`)
+      ? (() => {
+          const details = deriveBlockerDetails(status);
+          return status.promotionBlockers.map((blocker) => {
+            const detail = details[blocker];
+            return detail ? `  - ${blocker}: ${detail}` : `  - ${blocker}`;
+          });
+        })()
       : ['  - none']),
     '',
     'Production blockers:',
     ...(status.productionBlockers?.length
-      ? status.productionBlockers.map((blocker) => `  - ${blocker}`)
+      ? (() => {
+          const details = deriveBlockerDetails(status);
+          return status.productionBlockers.map((blocker) => {
+            const detail = details[blocker];
+            return detail ? `  - ${blocker}: ${detail}` : `  - ${blocker}`;
+          });
+        })()
       : ['  - none']),
   ];
 

@@ -17,6 +17,8 @@ import {
   detectOperationalTargetPlaceholders,
   resolveNextPatchTagFromRemoteTags,
 } from '../release-status.mjs';
+import { deriveBlockerDetails } from './release-status-evaluator.mjs';
+import { evaluateStagingEligibility } from './promotion-eligibility-contract.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '../..');
@@ -84,9 +86,15 @@ function checkReleaseCandidate(status) {
     releaseCandidate.latestRun?.conclusion === 'success' &&
     releaseCandidate.manifestStatus === 'read' &&
     Boolean(releaseCandidate.manifest);
-  return available
-    ? okCheck('release candidate is available')
-    : failedCheck('release-candidate-missing', 'release candidate run or manifest is missing');
+  if (available) {
+    return okCheck('release candidate is available');
+  }
+  const runConclusion = releaseCandidate.latestRun?.conclusion ?? 'none';
+  const manifestStatus = releaseCandidate.manifestStatus ?? 'none';
+  return failedCheck(
+    'release-candidate-missing',
+    `release-candidate-missing: run-conclusion=${runConclusion}, manifest-status=${manifestStatus}`
+  );
 }
 
 function checkStagingPromotion(status) {
@@ -94,12 +102,13 @@ function checkStagingPromotion(status) {
   const stagingBlockers = promotionBlockers.filter((blocker) =>
     ['staging-not-promotion-eligible', 'release-candidate-missing'].includes(blocker)
   );
-  return stagingBlockers.length === 0
-    ? okCheck('staging is promotion-eligible')
-    : failedCheck(
-        stagingBlockers[0],
-        `staging promotion evidence is blocked: ${stagingBlockers.join(', ')}`
-      );
+  if (stagingBlockers.length === 0) {
+    return okCheck('staging is promotion-eligible');
+  }
+
+  const details = deriveBlockerDetails(status);
+  const messages = stagingBlockers.map((blocker) => details[blocker] ?? blocker);
+  return failedCheck(stagingBlockers[0], `staging promotion blocked: ${messages.join('; ')}`);
 }
 
 function checkWindowsEvidence(status) {
@@ -108,12 +117,17 @@ function checkWindowsEvidence(status) {
     isSuccess(verification.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT) ||
     isSuccess(verification.STAGING_WINDOWS_AJAX_CANARY_RESULT) ||
     isSuccess(verification.STAGING_PREPROMOTION_REHEARSAL_RESULT);
-  return hasEvidence
-    ? okCheck('Windows prepromotion evidence is present')
-    : failedCheck(
-        'windows-prepromotion-evidence-missing',
-        'Windows prepromotion evidence is missing; run the maintained prepromotion Windows lane before promotion'
-      );
+  if (hasEvidence) {
+    return okCheck('Windows prepromotion evidence is present');
+  }
+  const canaryResult =
+    String(verification.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT ?? '').trim() || 'n/a';
+  const prepromotion =
+    String(verification.STAGING_PREPROMOTION_REHEARSAL_RESULT ?? '').trim() || 'n/a';
+  return failedCheck(
+    'windows-prepromotion-evidence-missing',
+    `windows-prepromotion-evidence-missing: STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT=${canaryResult}, STAGING_PREPROMOTION_REHEARSAL_RESULT=${prepromotion}`
+  );
 }
 
 function checkOperationalTargets(env) {

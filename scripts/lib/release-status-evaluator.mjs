@@ -8,6 +8,8 @@
  * Tested by `tests/release-status.test.ts`.
  */
 
+import { evaluateStagingEligibility } from './promotion-eligibility-contract.mjs';
+
 function isSuccess(value) {
   return (
     String(value ?? '')
@@ -25,15 +27,13 @@ export function isReleaseCandidateAvailable(releaseCandidate) {
 }
 
 export function isStagingPromotionEligible({ status, stagingState, stagingCurrentImages }) {
-  return (
-    stagingState.STAGING_VERIFIED_APP_SHA === status.classroomPath.headSha &&
-    stagingState.STAGING_VERIFIED_OPENPATH_SHA === status.openPath.submoduleSha &&
-    stagingState.STAGING_VERIFIED_IMAGE_SOURCE === 'release-candidate' &&
-    stagingCurrentImages.IMAGE_SOURCE === 'release-candidate' &&
-    isSuccess(stagingState.STAGING_SMOKE_RESULT ?? stagingState.STAGING_SMOKE_STATUS) &&
-    isSuccess(stagingState.STAGING_RELEASE_GATE_RESULT) &&
-    isSuccess(stagingState.STAGING_PREPROMOTION_REHEARSAL_RESULT)
-  );
+  const result = evaluateStagingEligibility({
+    stagingState,
+    stagingCurrentImages,
+    headSha: status.classroomPath.headSha,
+    submoduleSha: status.openPath.submoduleSha,
+  });
+  return result.eligible;
 }
 
 export function hasWindowsPrepromotionEvidence(stagingState) {
@@ -96,4 +96,80 @@ export function deriveReleaseBlockerGroups(status) {
     promotionBlockers: blockers,
     productionBlockers,
   };
+}
+
+/**
+ * Returns a map of blocker-id → human-readable detail string for the given status.
+ * Used by renderers (renderReleaseStatusText, release-preflight) to enrich output
+ * without changing the stable machine-readable blocker ID strings.
+ *
+ * @param {object} status
+ * @returns {Record<string, string>}
+ */
+export function deriveBlockerDetails(status) {
+  const stagingState = status.stagingVerification?.state ?? {};
+  const stagingCurrentImages = status.stagingCurrentImages?.state ?? {};
+  const details = {};
+
+  // classroompath-head-behind-origin
+  const headSha = String(status.classroomPath?.headSha ?? '').trim();
+  const originSha = String(status.classroomPath?.originMainSha ?? '').trim();
+  if (headSha && originSha && headSha !== originSha) {
+    details['classroompath-head-behind-origin'] =
+      `HEAD=${headSha.slice(0, 12)}, origin/main=${originSha.slice(0, 12)}`;
+  }
+
+  // openpath-required-checks-not-green
+  const checks = status.openPath?.requiredChecks ?? [];
+  if (checks.length === 0) {
+    details['openpath-required-checks-not-green'] = 'no checks available';
+  } else {
+    const failing = checks
+      .filter((check) => check.status !== 'success')
+      .map((check) => `${check.name}=${check.status}`);
+    if (failing.length > 0) {
+      details['openpath-required-checks-not-green'] = failing.join(', ');
+    }
+  }
+
+  // release-candidate-missing
+  const rc = status.releaseCandidate ?? {};
+  const runConclusion = rc.latestRun?.conclusion ?? 'none';
+  const manifestStatus = rc.manifestStatus ?? 'none';
+  details['release-candidate-missing'] =
+    `run-conclusion=${runConclusion}, manifest-status=${manifestStatus}`;
+
+  // staging-not-promotion-eligible
+  const eligibility = evaluateStagingEligibility({
+    stagingState,
+    stagingCurrentImages,
+    headSha: status.classroomPath?.headSha ?? '',
+    submoduleSha: status.openPath?.submoduleSha ?? '',
+  });
+  if (!eligibility.eligible) {
+    const shortSha = (v) =>
+      String(v ?? '').length > 12 ? String(v).slice(0, 12) : String(v ?? '') || 'n/a';
+    const parts = eligibility.failures.map((f) => {
+      const exp =
+        f.expected.length > 12 && /^[0-9a-f]{40}$/.test(f.expected)
+          ? shortSha(f.expected)
+          : f.expected;
+      const act =
+        f.actual.length > 12 && /^[0-9a-f]{40}$/.test(f.actual) ? shortSha(f.actual) : f.actual;
+      return `${f.field} (expected=${exp}, actual=${act})`;
+    });
+    details['staging-not-promotion-eligible'] = `staging promotion blocked: ${parts.join(', ')}`;
+  }
+
+  // windows-prepromotion-evidence-missing
+  const canaryResult = String(stagingState.STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT ?? '').trim();
+  details['windows-prepromotion-evidence-missing'] =
+    `STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT=${canaryResult || 'n/a'}`;
+
+  // production-deploy-not-success
+  const prodConclusion = status.productionDeploy?.latestRun?.conclusion ?? 'none';
+  const prodRunId = status.productionDeploy?.latestRun?.databaseId ?? 'none';
+  details['production-deploy-not-success'] = `run=${prodRunId}, conclusion=${prodConclusion}`;
+
+  return details;
 }

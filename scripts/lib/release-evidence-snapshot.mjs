@@ -19,6 +19,14 @@ import {
   valueOrNull,
 } from './release-evidence-contract.mjs';
 
+// NOTE: The authoritative live gate checks a STRICTLY BROADER set of conditions
+// than the advisory `evaluateStagingEligibility` (deployment mode, runtime image
+// digests, enrollment downloads, signed Firefox, high-risk Windows/Firefox). Routing
+// the live path through the shared contract would silently DROP those checks, so we
+// keep the live evaluation logic here and only import shared field key constants
+// for consistent error messaging.
+import { STAGING_ELIGIBILITY_KEYS } from './promotion-eligibility-contract.mjs';
+
 export const STAGING_DEPLOYMENT_MODES = /** @type {const} */ (['promotion-eligible', 'debug']);
 export const PROMOTION_ELIGIBILITY_POLICY = Object.freeze({
   requiredDeploymentMode: 'promotion-eligible',
@@ -124,12 +132,14 @@ export function validateStagingVerification(snapshot, expected) {
   }
 
   if ((snapshot.STAGING_SMOKE_RESULT ?? '') !== 'success') {
+    // Field: STAGING_ELIGIBILITY_KEYS.SMOKE_RESULT covers STAGING_SMOKE_RESULT / STAGING_SMOKE_STATUS
     errors.push(
       `::error::Staging smoke evidence is missing or failed (STAGING_SMOKE_RESULT=${snapshot.STAGING_SMOKE_RESULT ?? 'unset'})`
     );
   }
 
   if ((snapshot.STAGING_RELEASE_GATE_RESULT ?? '') !== 'success') {
+    // Field: STAGING_ELIGIBILITY_KEYS.RELEASE_GATE_RESULT
     errors.push(
       `::error::Staging release-gate evidence is missing or failed (STAGING_RELEASE_GATE_RESULT=${snapshot.STAGING_RELEASE_GATE_RESULT ?? 'unset'})`
     );
