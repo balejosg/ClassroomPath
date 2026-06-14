@@ -18,15 +18,17 @@ import { rerunGitHubRunFailedJobs as defaultRerunGitHubRunFailedJobs } from './l
 import {
   buildPromotionPlan,
   formatCommand,
+  readStepState,
   runStep,
   summarizeGitHubRunMonitor,
+  writeStepState,
 } from './lib/release-orchestration.mjs';
 import { buildReleaseTranscript, writeReleaseTranscript } from './lib/release-transcript.mjs';
 
 const execFile = promisify(nodeExecFile);
 
 function usage() {
-  return `Usage: npm run release:promote -- (--tag <vX.Y.Z>|--auto-tag) [--execute|--dry-run] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary|--no-post-production-windows-canary]
+  return `Usage: npm run release:promote -- (--tag <vX.Y.Z>|--auto-tag) [--execute|--dry-run] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary|--no-post-production-windows-canary] [--from-step <id>|--only <id>|--resume]
 
 Builds and runs the production promotion plan.
 
@@ -39,6 +41,14 @@ Options:
   --no-high-risk-windows              Omit Windows prepromotion evidence step.
   --post-production-windows-canary    Include the post-production Windows canary step. Default.
   --no-post-production-windows-canary Omit the post-production Windows canary step for emergency opt-out.
+  --from-step <id>                    Skip all steps before <id> and run from <id> to the end.
+                                      Rejected if any skipped promotion gate has not already passed
+                                      (i.e. is not recorded 'success' in the state file for this tag).
+  --only <id>                         Run only this step. May be repeated to build a set of steps
+                                      (e.g. --only verify-promotion-ready --only release-preflight).
+                                      Subject to the same promotion-gate guard as --from-step.
+  --resume                            Read the persisted state file for this tag and skip every step
+                                      already recorded 'success'. Promotion-gate guard still applies.
   --help                              Show this help.
 `;
 }
@@ -52,6 +62,9 @@ export function parseReleasePromoteArgs(argv) {
     highRiskWindows: true,
     postProductionWindowsCanary: true,
     help: false,
+    fromStep: null,
+    only: [],
+    resume: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -82,6 +95,15 @@ export function parseReleasePromoteArgs(argv) {
         break;
       case '--no-post-production-windows-canary':
         options.postProductionWindowsCanary = false;
+        break;
+      case '--from-step':
+        options.fromStep = requireNextValue(argv, ++index, '--from-step');
+        break;
+      case '--only':
+        options.only.push(requireNextValue(argv, ++index, '--only'));
+        break;
+      case '--resume':
+        options.resume = true;
         break;
       case '--help':
       case '-h':
@@ -124,8 +146,17 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       postProductionWindowsCanary: options.postProductionWindowsCanary,
     });
 
+    // --- Step filtering (--from-step / --only / --resume) ---
+    const { skipSet, skipReasons } = resolveSkipSet({
+      plan,
+      options,
+      stateRoot: dependencies.transcriptRoot,
+      tag,
+      readStepStateFn: dependencies.readStepState ?? readStepState,
+    });
+
     if (options.dryRun || !options.execute) {
-      printPlan(plan, io);
+      printPlan(plan, io, skipSet, skipReasons);
       return { status: 0 };
     }
 
@@ -145,12 +176,28 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       if (recorded.githubRun) {
         io.stdout(`${summarizeGitHubRunMonitor(recorded.githubRun)}\n`);
       }
+      // Persist step outcome so --resume can skip it on the next run.
+      (dependencies.writeStepState ?? writeStepState)({
+        root: dependencies.transcriptRoot,
+        tag,
+        startedAt,
+        stepId: recorded.id,
+        status: recorded.status,
+        seconds: recorded.seconds,
+      });
       return recorded;
     };
 
     for (const planStep of plan.steps) {
       if (!planStep.command) {
         printSummary(plan, results, io);
+        continue;
+      }
+
+      // Skip steps excluded by --from-step / --only / --resume.
+      if (skipSet.has(planStep.id)) {
+        const reason = skipReasons.get(planStep.id) ?? 'skipped';
+        io.stdout(`\n==> ${planStep.id} [${reason}]\n`);
         continue;
       }
 
@@ -245,6 +292,110 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
     io.stderr(`${error.message}\n\n${usage()}`);
     return { status: 2 };
   }
+}
+
+// Step ids that are mandatory pre-promotion safety gates.
+// Skipping any of these without a 'success' record in the state file is fatal.
+const PROMOTION_GATE_IDS = new Set([
+  'verify-clean-repos',
+  'verify-promotion-ready',
+  'verify-production-target-ready',
+  'release-preflight',
+]);
+
+/**
+ * Compute the skip set and skip reasons for the current run based on --from-step / --only / --resume.
+ *
+ * Throws (fail-closed) if any promotion gate would be skipped without a prior 'success' record.
+ *
+ * Returns { skipSet: Set<string>, skipReasons: Map<string, string> }.
+ *
+ * @param {object} params
+ * @param {object} params.plan
+ * @param {object} params.options - parsed CLI options
+ * @param {string|undefined} params.stateRoot - transcriptRoot for state files
+ * @param {string} params.tag
+ * @param {Function} params.readStepStateFn - injected readStepState (for tests)
+ */
+function resolveSkipSet({ plan, options, stateRoot, tag, readStepStateFn }) {
+  const allIds = plan.steps.map((s) => s.id);
+  const skipSet = new Set();
+  const skipReasons = new Map();
+
+  // The three step-selection flags are mutually exclusive; combining them is ambiguous.
+  const selectionFlags = [
+    options.fromStep !== null ? '--from-step' : null,
+    options.only.length > 0 ? '--only' : null,
+    options.resume ? '--resume' : null,
+  ].filter(Boolean);
+  if (selectionFlags.length > 1) {
+    throw new Error(
+      `--from-step, --only, and --resume are mutually exclusive (got ${selectionFlags.join(', ')}).`
+    );
+  }
+
+  // Validate that any id supplied to --from-step / --only exists in the plan.
+  if (options.fromStep !== null) {
+    if (!allIds.includes(options.fromStep)) {
+      throw new Error(
+        `--from-step '${options.fromStep}' is not a valid step id. Valid ids: ${allIds.join(', ')}`
+      );
+    }
+  }
+  for (const id of options.only) {
+    if (!allIds.includes(id)) {
+      throw new Error(`--only '${id}' is not a valid step id. Valid ids: ${allIds.join(', ')}`);
+    }
+  }
+
+  // Build the raw skip set from the flags.
+  if (options.fromStep !== null) {
+    const cutoff = allIds.indexOf(options.fromStep);
+    for (let i = 0; i < cutoff; i += 1) {
+      skipSet.add(allIds[i]);
+      skipReasons.set(allIds[i], `skipped: before --from-step ${options.fromStep}`);
+    }
+  } else if (options.only.length > 0) {
+    const onlySet = new Set(options.only);
+    for (const id of allIds) {
+      if (!onlySet.has(id)) {
+        skipSet.add(id);
+        skipReasons.set(id, `skipped: not in --only set`);
+      }
+    }
+  } else if (options.resume) {
+    const state = readStepStateFn({ root: stateRoot, tag });
+    for (const id of allIds) {
+      if ((state?.steps?.[id]?.status ?? '') === 'success') {
+        skipSet.add(id);
+        skipReasons.set(id, `skipped: recorded success`);
+      }
+    }
+  }
+
+  // Fail-closed guard: reject any skip of an un-passed promotion gate, regardless of which
+  // flag built the skip set. Gates added by --resume are present only when already recorded
+  // success, so they re-confirm here; gates added by --from-step / --only are checked against
+  // the persisted state. Reading state unconditionally keeps the guard sound even if the
+  // selection flags are somehow combined.
+  if (skipSet.size > 0) {
+    const state = readStepStateFn({ root: stateRoot, tag });
+    const blockedGates = [];
+    for (const id of skipSet) {
+      if (PROMOTION_GATE_IDS.has(id) && (state?.steps?.[id]?.status ?? '') !== 'success') {
+        blockedGates.push(id);
+      }
+    }
+
+    if (blockedGates.length > 0) {
+      throw new Error(
+        `Refusing to skip un-passed promotion gate(s): ${blockedGates.join(', ')}. ` +
+          `Re-run without --from-step/--only, or use --resume after they have passed.`
+      );
+    }
+  }
+
+  return { skipSet, skipReasons };
 }
 
 function buildWindowsPrepromotionEvidenceStep() {
@@ -441,13 +592,16 @@ export async function resolveNextPatchTag({ execFile: runExecFile = execFile } =
   return `v${latest.major}.${latest.minor}.${latest.patch + 1}`;
 }
 
-function printPlan(plan, io) {
+function printPlan(plan, io, skipSet = new Set(), skipReasons = new Map()) {
   io.stdout(`Production promotion plan for ${plan.tag}\n`);
   io.stdout(`mode: dry-run\n`);
   io.stdout(`high_risk_windows: ${plan.highRiskWindows ? 'true' : 'false'}\n\n`);
 
   plan.steps.forEach((planStep, index) => {
-    io.stdout(`${index + 1}. ${planStep.id}\n`);
+    const skipped = skipSet.has(planStep.id);
+    const reason = skipReasons.get(planStep.id) ?? '';
+    const status = skipped ? ` [${reason}]` : '';
+    io.stdout(`${index + 1}. ${planStep.id}${status}\n`);
     io.stdout(`   ${planStep.description}\n`);
     io.stdout(`   command: ${formatCommand(planStep.command)}\n`);
   });

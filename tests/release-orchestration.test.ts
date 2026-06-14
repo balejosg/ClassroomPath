@@ -183,6 +183,9 @@ describe('release promotion orchestration', () => {
         highRiskWindows: true,
         postProductionWindowsCanary: true,
         help: false,
+        fromStep: null,
+        only: [],
+        resume: false,
       }
     );
 
@@ -201,6 +204,9 @@ describe('release promotion orchestration', () => {
         highRiskWindows: true,
         postProductionWindowsCanary: false,
         help: false,
+        fromStep: null,
+        only: [],
+        resume: false,
       }
     );
 
@@ -212,6 +218,9 @@ describe('release promotion orchestration', () => {
       highRiskWindows: true,
       postProductionWindowsCanary: true,
       help: false,
+      fromStep: null,
+      only: [],
+      resume: false,
     });
 
     assert.deepEqual(parseReleasePromoteArgs(['--auto-tag', '--dry-run']), {
@@ -222,6 +231,9 @@ describe('release promotion orchestration', () => {
       highRiskWindows: true,
       postProductionWindowsCanary: true,
       help: false,
+      fromStep: null,
+      only: [],
+      resume: false,
     });
   });
 

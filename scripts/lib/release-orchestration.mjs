@@ -5,6 +5,8 @@
  * Usage: (library module, not invoked directly)
  */
 import { execFile as nodeExecFile, spawn } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
 
@@ -309,6 +311,60 @@ export function summarizeGitHubRunMonitor(summary) {
       : '';
   const urlText = summary.url ? ` ${summary.url}` : '';
   return `GitHub Actions run ${summary.runId}: ${summary.workflow} status=${summary.status} conclusion=${summary.conclusion}${failureText}${urlText}`;
+}
+
+/**
+ * Write (or update) the per-step state file for a given tag.
+ *
+ * Shape: { tag, startedAt, updatedAt, steps: { <id>: { status, seconds } } }
+ *
+ * Called after each step result during an --execute run so a crash mid-sequence
+ * leaves a recoverable state that --resume can consult.
+ */
+export function writeStepState({
+  root = '.opencode/tmp/release-promote',
+  tag,
+  startedAt,
+  stepId,
+  status,
+  seconds,
+} = {}) {
+  const stateDir = join(root, tag);
+  const statePath = join(stateDir, 'state.json');
+
+  let existing = {};
+  try {
+    existing = JSON.parse(readFileSync(statePath, 'utf8'));
+  } catch {
+    // First write for this tag — start fresh.
+  }
+
+  const updated = {
+    tag,
+    startedAt: existing.startedAt ?? startedAt,
+    updatedAt: new Date().toISOString(),
+    steps: {
+      ...(existing.steps ?? {}),
+      [stepId]: { status, seconds },
+    },
+  };
+
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(statePath, `${JSON.stringify(updated, null, 2)}\n`);
+  return updated;
+}
+
+/**
+ * Read the per-step state file for a given tag.
+ * Returns null when no state file exists yet.
+ */
+export function readStepState({ root = '.opencode/tmp/release-promote', tag } = {}) {
+  const statePath = join(root, tag, 'state.json');
+  try {
+    return JSON.parse(readFileSync(statePath, 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 function step(id, command, description) {
