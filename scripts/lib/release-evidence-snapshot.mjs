@@ -22,10 +22,9 @@ import {
 // NOTE: The authoritative live gate checks a STRICTLY BROADER set of conditions
 // than the advisory `evaluateStagingEligibility` (deployment mode, runtime image
 // digests, enrollment downloads, signed Firefox, high-risk Windows/Firefox). Routing
-// the live path through the shared contract would silently DROP those checks, so we
-// keep the live evaluation logic here and only import shared field key constants
-// for consistent error messaging.
-import { STAGING_ELIGIBILITY_KEYS } from './promotion-eligibility-contract.mjs';
+// the live path through the shared contract would silently DROP those checks, so the
+// authoritative evaluation deliberately stays here; comments below cross-reference the
+// shared field names in promotion-eligibility-contract.mjs for traceability.
 
 export const STAGING_DEPLOYMENT_MODES = /** @type {const} */ (['promotion-eligible', 'debug']);
 export const PROMOTION_ELIGIBILITY_POLICY = Object.freeze({
