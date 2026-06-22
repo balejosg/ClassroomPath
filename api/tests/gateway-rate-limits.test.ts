@@ -246,7 +246,7 @@ await describe('createRateLimitMiddleware', async () => {
     // Exhaust limit for IP A
     const reqA = makeReq({
       url: '/cp/trpc/auth.login',
-      headers: { 'x-forwarded-for': '10.0.0.1' },
+      headers: { 'x-forwarded-for': '192.0.2.1' },
     });
     middleware(reqA as never, makeRes() as never, () => {});
 
@@ -254,7 +254,7 @@ await describe('createRateLimitMiddleware', async () => {
     const resA = makeRes();
     let nextCalledA = false;
     middleware(
-      makeReq({ url: '/cp/trpc/auth.login', headers: { 'x-forwarded-for': '10.0.0.1' } }) as never,
+      makeReq({ url: '/cp/trpc/auth.login', headers: { 'x-forwarded-for': '192.0.2.1' } }) as never,
       resA as never,
       () => {
         nextCalledA = true;
@@ -267,7 +267,7 @@ await describe('createRateLimitMiddleware', async () => {
     const resB = makeRes();
     let nextCalledB = false;
     middleware(
-      makeReq({ url: '/cp/trpc/auth.login', headers: { 'x-forwarded-for': '10.0.0.2' } }) as never,
+      makeReq({ url: '/cp/trpc/auth.login', headers: { 'x-forwarded-for': '192.0.2.2' } }) as never,
       resB as never,
       () => {
         nextCalledB = true;
