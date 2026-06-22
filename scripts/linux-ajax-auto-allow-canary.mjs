@@ -191,8 +191,19 @@ async function waitForFirefoxExtensionRuntimeReady({
 }
 
 async function resolveFirefoxCanaryExtensionPath() {
+  // Prefer downloading the served XPI (the artifact under test), but a download must NOT be able
+  // to wedge the whole canary: the fetch's AbortSignal.timeout does not reliably interrupt a stalled
+  // body read, so a transient network blip on the runner used to hang until the 90s top-level abort
+  // (firefox-extension-ready failure with no evidence). On any download failure, fall through to the
+  // locally-installed agent XPI candidates instead of throwing.
   for (const extensionUrl of FIREFOX_EXTENSION_URL_CANDIDATES) {
-    return await materializeFirefoxCanaryExtensionDownload(extensionUrl);
+    try {
+      return await materializeFirefoxCanaryExtensionDownload(extensionUrl);
+    } catch (error) {
+      console.error(
+        `CANARY_DIAG firefox-warmup: download from ${extensionUrl} failed (${error instanceof Error ? error.message : String(error)}); falling back to local extension`
+      );
+    }
   }
 
   for (const candidate of FIREFOX_EXTENSION_PATH_CANDIDATES) {
@@ -217,14 +228,37 @@ async function resolveFirefoxCanaryExtensionPath() {
 async function materializeFirefoxCanaryExtensionDownload(extensionUrl) {
   const archiveDir = await mkdtemp(join(tmpdir(), 'openpath-firefox-canary-extension-'));
   const archivePath = join(archiveDir, 'openpath-firefox-extension.xpi');
-  const response = await fetch(extensionUrl, { signal: AbortSignal.timeout(10000) });
+  // Hard wall-clock cap around the whole fetch+body read: AbortSignal.timeout aborts the request
+  // phase but does not reliably interrupt a stalled `arrayBuffer()`, which is what hung the canary.
+  const DOWNLOAD_TIMEOUT_MS = 20000;
+  let timer;
+  const response = await Promise.race([
+    fetch(extensionUrl, { signal: AbortSignal.timeout(10000) }),
+    new Promise((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`Timed out downloading Firefox extension from ${extensionUrl}`)),
+        DOWNLOAD_TIMEOUT_MS
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
   if (!response.ok) {
     throw new Error(
       `Could not download signed Firefox extension from ${extensionUrl}: HTTP ${response.status}`
     );
   }
 
-  const extensionBytes = Buffer.from(await response.arrayBuffer());
+  let bodyTimer;
+  const extensionBytes = Buffer.from(
+    await Promise.race([
+      response.arrayBuffer(),
+      new Promise((_, reject) => {
+        bodyTimer = setTimeout(
+          () => reject(new Error(`Timed out reading Firefox extension body from ${extensionUrl}`)),
+          DOWNLOAD_TIMEOUT_MS
+        );
+      }),
+    ]).finally(() => clearTimeout(bodyTimer))
+  );
   if (extensionBytes.byteLength === 0) {
     throw new Error(`Downloaded signed Firefox extension is empty: ${extensionUrl}`);
   }
