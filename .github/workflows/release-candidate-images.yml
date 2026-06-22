@@ -74,7 +74,19 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$OPENPATH_LINUX_AGENT_REQUIRED" != 'true' ]; then
-            echo "OpenPath Linux agent promotion contract not required; reusing previous metadata when available."
+            # OpenPath Linux agent promotion contract not required by the changed-file
+            # classifier (no linux/ or runtime change in this diff). Even so, the pinned
+            # OpenPath SHA's published promotion contract may now advertise a NEWER agent
+            # version than the previously-pinned metadata -- e.g. a stable release was cut
+            # after the last linux-touching change. Reusing the previous metadata blindly is
+            # what froze the managed fleet on a stale pre-rename pin (firefox_registration_missing,
+            # machine max12), so re-resolve from the contract first and only fall back to the
+            # previous PREVIOUS_OPENPATH_LINUX_AGENT_VERSION metadata when no contract resolves.
+            if resolved_linux_agent="$(node scripts/resolve-openpath-linux-agent-version.mjs --openpath-dir upstream/openpath 2>/dev/null)"; then
+              printf '%s\n' "$resolved_linux_agent" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "OpenPath Linux agent promotion contract not required and no contract resolved; reusing previous metadata."
             {
               echo "openpath_version=$PREVIOUS_OPENPATH_VERSION"
               echo "version=$PREVIOUS_OPENPATH_LINUX_AGENT_VERSION"
