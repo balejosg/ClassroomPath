@@ -9,9 +9,11 @@
  */
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import process from 'node:process';
 
 const DEFAULT_API_URL = 'https://classroompath.example.invalid';
@@ -103,6 +105,34 @@ function stripeSignature(payload) {
     .digest('hex');
 
   return `t=${timestamp},v1=${signature}`;
+}
+
+// The Firefox managed-extension id the canary must wait for is whatever the deployment
+// actually serves, NOT a hardcoded constant. Hardcoding the legacy id here is what made the
+// Linux bootstrap gate reject the corrected (post-rename) agent. Read the gecko id straight
+// out of the served signed XPI so this can never drift from the id the agent installs.
+async function resolveServedFirefoxExtensionId(xpiUrl) {
+  const response = await fetchWithRetry(xpiUrl, {
+    headers: { accept: 'application/x-xpinstall' },
+  });
+  assert.equal(response.status, 200, `served Firefox XPI should be downloadable from ${xpiUrl}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const workDir = mkdtempSync(join(tmpdir(), 'openpath-canary-xpi-'));
+  try {
+    const xpiPath = join(workDir, 'openpath.xpi');
+    writeFileSync(xpiPath, bytes);
+    const manifestJson = execFileSync('unzip', ['-p', xpiPath, 'manifest.json'], {
+      encoding: 'utf8',
+    });
+    const id = JSON.parse(manifestJson)?.browser_specific_settings?.gecko?.id;
+    assert.ok(
+      typeof id === 'string' && id.length > 0,
+      'served Firefox XPI manifest.json must declare browser_specific_settings.gecko.id'
+    );
+    return id;
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
+  }
 }
 
 async function activateStripeBilling({ cookieHeader, organizationName }) {
@@ -529,6 +559,9 @@ async function main() {
   );
   maskGithubSecret(ticketPayload.enrollmentToken);
 
+  const publicFirefoxXpiUrl = `${apiUrl}/api/extensions/firefox/openpath.xpi`;
+  const servedFirefoxExtensionId = await resolveServedFirefoxExtensionId(publicFirefoxXpiUrl);
+
   const summary = {
     apiUrl,
     requestOrigin,
@@ -542,8 +575,8 @@ async function main() {
     classroomId: classroom.id,
     enrollmentToken: ticketPayload.enrollmentToken,
     linuxScriptUrl: `${apiUrl}/api/enroll/${classroom.id}`,
-    publicFirefoxXpiUrl: `${apiUrl}/api/extensions/firefox/openpath.xpi`,
-    extensionId: 'monitor-bloqueos@openpath',
+    publicFirefoxXpiUrl,
+    extensionId: servedFirefoxExtensionId,
     extensionVersion: '',
     bootstrapManifestVersion: '',
   };
