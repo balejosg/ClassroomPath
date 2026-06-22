@@ -575,10 +575,20 @@ function createCanaryServer() {
 }
 
 async function createFirefoxSession() {
+  // Flush-immediately diagnostics: createFirefoxSession is the only stretch with an UNBOUNDED
+  // operation (the Selenium Builder().build() Firefox launch). When that hangs, the canary's
+  // 90s top-level timeout aborts the whole process before any structured evidence is written,
+  // so the failure is a black box (firefoxExtensionWarmup=null). These stderr breadcrumbs survive
+  // the abort, so the last line printed pinpoints exactly where the warmup stalled.
+  const diag = (msg) => console.error(`CANARY_DIAG firefox-warmup: ${msg}`);
+  diag('importing selenium-webdriver');
   const { Builder } = await import('selenium-webdriver');
   const firefox = await import('selenium-webdriver/firefox.js');
+  diag('resolving selenium extension path');
   const seleniumExtensionPath = await resolveFirefoxCanaryExtensionPath();
+  diag(`selenium extension path = ${seleniumExtensionPath ?? '(none)'}`);
   const expectedExtensionId = await resolveFirefoxExpectedExtensionId(seleniumExtensionPath);
+  diag(`expected extension id = ${expectedExtensionId}`);
   const options = new firefox.Options();
   options.addArguments('-headless');
   if (seleniumExtensionPath !== null) {
@@ -589,13 +599,16 @@ async function createFirefoxSession() {
   options.setPreference('network.trr.uri', '');
   options.setPreference('network.dnsCacheExpiration', 0);
   options.setPreference('network.dnsCacheExpirationGracePeriod', 0);
+  diag('launching headless Firefox via geckodriver (Builder().build())');
   const driver = await new Builder().forBrowser('firefox').setFirefoxOptions(options).build();
+  diag('Firefox launched; configuring timeouts');
   await driver.manage().setTimeouts({ pageLoad: PAGE_LOAD_TIMEOUT_MS, script: 10000 });
   const capabilities = await driver.getCapabilities();
   const profileDir = capabilities.get('moz:profile');
   if (typeof profileDir !== 'string' || profileDir === '') {
     throw new Error('Firefox did not expose a moz:profile path for extension warmup');
   }
+  diag(`profile=${profileDir}; waiting for extension UUID in prefs.js`);
   const firefoxExtensionWarmup = await waitForFirefoxExtensionRuntimeReady({
     driver,
     profileDir,
