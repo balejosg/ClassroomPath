@@ -145,7 +145,10 @@ export EXPECTED_OPENPATH_LINUX_AGENT_VERSION="$OPENPATH_LINUX_AGENT_VERSION"
 export EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE="$OPENPATH_LINUX_AGENT_APT_SUITE"
 export EXPECTED_SPA_IMAGE="$CLASSROOMPATH_SPA_IMAGE"
 
-node "$SCRIPT_DIR/resolve-openpath-linux-agent-version.mjs" verify-runtime-pin
+# Fail closed (not warn-and-skip) on the Firefox extension-id consistency check: this gate has the
+# OpenPath submodule checked out, so the pinned agent version's .deb id MUST match the served XPI id.
+OPENPATH_REQUIRE_AGENT_EXTENSION_ID_CHECK=1 \
+  node "$SCRIPT_DIR/resolve-openpath-linux-agent-version.mjs" verify-runtime-pin
 
 SSH_CMD=(
   ssh

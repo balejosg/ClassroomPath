@@ -6,7 +6,12 @@ import {
   DEFAULT_PROMOTION_CONTRACTS_BASE_URL,
   assertOpenPathLinuxAgentVersionAdvertised,
   assertOpenPathLinuxAgentRuntimePinAdvertised,
+  assertLinuxAgentExtensionIdMatchesManifest,
+  assertOpenPathLinuxAgentExtensionIdConsistent,
   buildAptPackagesUrl,
+  findOpenPathDnsmasqDebFilename,
+  parseFirefoxPolicyManagedExtensionId,
+  readManifestGeckoId,
   renderOpenPathLinuxAgentInstallProbeScript,
   buildPromotionContractUrl,
   parseOpenPathDnsmasqAptVersions,
@@ -252,5 +257,111 @@ Architecture: all
         }),
       /linuxAgentVersion/
     );
+  });
+});
+
+describe('OpenPath Linux agent Firefox extension-id consistency (max12 guard)', () => {
+  const MANIFEST = JSON.stringify({
+    browser_specific_settings: { gecko: { id: 'openpath-block-monitor@openpath' } },
+  });
+  const policyScript = (id: string) =>
+    `#!/bin/bash\nFIREFOX_MANAGED_EXTENSION_ID="\${FIREFOX_MANAGED_EXTENSION_ID:-${id}}"\n`;
+
+  test('reads the served XPI gecko id from the pinned submodule manifest', () => {
+    assert.equal(readManifestGeckoId(MANIFEST), 'openpath-block-monitor@openpath');
+    assert.equal(
+      readManifestGeckoId(JSON.stringify({ applications: { gecko: { id: 'legacy@x' } } })),
+      'legacy@x'
+    );
+    assert.throws(() => readManifestGeckoId('{}'), /no gecko id/);
+  });
+
+  test('parses the managed-extension id baked into a shipped firefox-policy.sh', () => {
+    assert.equal(
+      parseFirefoxPolicyManagedExtensionId(policyScript('openpath-block-monitor@openpath')),
+      'openpath-block-monitor@openpath'
+    );
+    assert.equal(
+      parseFirefoxPolicyManagedExtensionId(policyScript('monitor-bloqueos@openpath')),
+      'monitor-bloqueos@openpath'
+    );
+    assert.throws(() => parseFirefoxPolicyManagedExtensionId('nothing here'), /Could not find/);
+  });
+
+  test('finds the .deb Filename for the blessed version (strips the debian revision)', () => {
+    const packages =
+      'Package: openpath-dnsmasq\nVersion: 4.1.25-1\nFilename: pool/stable/main/openpath-dnsmasq_4.1.25-1_amd64.deb\n\n' +
+      'Package: openpath-dnsmasq\nVersion: 4.1.26-1\nFilename: pool/stable/main/openpath-dnsmasq_4.1.26-1_amd64.deb\n';
+    assert.equal(
+      findOpenPathDnsmasqDebFilename(packages, '4.1.26'),
+      'pool/stable/main/openpath-dnsmasq_4.1.26-1_amd64.deb'
+    );
+    assert.throws(
+      () => findOpenPathDnsmasqDebFilename(packages, '4.1.99'),
+      /no openpath-dnsmasq Filename/
+    );
+  });
+
+  test('passes when the blessed agent .deb id matches the manifest gecko id', () => {
+    assert.doesNotThrow(() =>
+      assertLinuxAgentExtensionIdMatchesManifest({
+        linuxAgentVersion: '4.1.26',
+        agentExtensionId: 'openpath-block-monitor@openpath',
+        manifestGeckoId: 'openpath-block-monitor@openpath',
+      })
+    );
+  });
+
+  test('fails closed when the blessed agent .deb id is the pre-rename legacy id (the max12 bug)', () => {
+    assert.throws(
+      () =>
+        assertLinuxAgentExtensionIdMatchesManifest({
+          linuxAgentVersion: '0.0.20260507111458',
+          agentExtensionId: 'monitor-bloqueos@openpath',
+          manifestGeckoId: 'openpath-block-monitor@openpath',
+        }),
+      /firefox_registration_missing/
+    );
+  });
+
+  test('end-to-end: rejects a pinned version whose served .deb carries the legacy id', async () => {
+    const fetched: string[] = [];
+    await assert.rejects(
+      () =>
+        assertOpenPathLinuxAgentExtensionIdConsistent({
+          aptBaseUrl: 'https://example.test/apt',
+          aptSuite: 'unstable',
+          linuxAgentVersion: '0.0.20260507111458',
+          manifestGeckoId: 'openpath-block-monitor@openpath',
+          downloadText: async (url: string) => {
+            fetched.push(url);
+            return 'Package: openpath-dnsmasq\nVersion: 0.0.20260507111458-1\nFilename: pool/unstable/main/openpath-dnsmasq_0.0.20260507111458-1_amd64.deb\n';
+          },
+          downloadBuffer: async (url: string) => {
+            fetched.push(url);
+            return Buffer.from('deb-bytes');
+          },
+          extractId: () => 'monitor-bloqueos@openpath',
+        }),
+      /ships managed-extension id 'monitor-bloqueos@openpath'/
+    );
+    assert.deepEqual(fetched, [
+      'https://example.test/apt/dists/unstable/main/binary-amd64/Packages',
+      'https://example.test/apt/pool/unstable/main/openpath-dnsmasq_0.0.20260507111458-1_amd64.deb',
+    ]);
+  });
+
+  test('end-to-end: accepts a pinned version whose served .deb carries the manifest id', async () => {
+    const agentId = await assertOpenPathLinuxAgentExtensionIdConsistent({
+      aptBaseUrl: 'https://example.test/apt',
+      aptSuite: 'stable',
+      linuxAgentVersion: '4.1.26',
+      manifestGeckoId: 'openpath-block-monitor@openpath',
+      downloadText: async () =>
+        'Package: openpath-dnsmasq\nVersion: 4.1.26-1\nFilename: pool/stable/main/openpath-dnsmasq_4.1.26-1_amd64.deb\n',
+      downloadBuffer: async () => Buffer.from('deb-bytes'),
+      extractId: () => 'openpath-block-monitor@openpath',
+    });
+    assert.equal(agentId, 'openpath-block-monitor@openpath');
   });
 });
