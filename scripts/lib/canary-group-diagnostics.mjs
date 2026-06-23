@@ -41,10 +41,17 @@ export async function collectCanaryGroupDiagnostics({
       const retryAfterMs = Number(body?.error?.data?.retryAfterMs ?? 0);
       await sleep(Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? retryAfterMs : 5000);
     } catch (error) {
+      const cause = error instanceof Error ? error.cause : undefined;
       lastResult = {
         available: false,
         attempt,
         error: error instanceof Error ? error.message : String(error),
+        errorCause:
+          cause instanceof Error
+            ? `${cause.code ?? cause.name ?? 'Error'}: ${cause.message}`
+            : cause !== undefined
+              ? String(cause)
+              : undefined,
       };
       if (attempt === maxAttempts) {
         return lastResult;
