@@ -39,6 +39,29 @@ pin_linux_bootstrap_canary_api_host() {
   printf '%s %s\n' "$api_ip" "$api_host" | sudo tee -a /etc/hosts >/dev/null
 }
 
+unpin_linux_bootstrap_canary_api_host() {
+  # The /etc/hosts pin is only needed for initial registration, before the agent
+  # configures dnsmasq. Once the agent is installed it protects the control-plane
+  # domain through dnsmasq, but /etc/hosts (nsswitch "files" before "dns") shadows
+  # that path and forces a direct-IP connection that the agent's bypass-resistance
+  # firewall drops (UND_ERR_CONNECT_TIMEOUT on the remote canary-group fetch). Drop
+  # the pin so post-install canary traffic resolves via the protected dnsmasq path,
+  # exactly like a real enrolled Linux agent.
+  local api_url="${LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL:-}"
+  if [ -z "$api_url" ]; then
+    return 0
+  fi
+
+  local api_host
+  api_host="$(API_URL="$api_url" node -e 'const value = process.env.API_URL; try { process.stdout.write(new URL(value).hostname); } catch { process.exit(0); }')"
+  if [ -z "$api_host" ]; then
+    return 0
+  fi
+
+  echo "Unpinning $api_host from /etc/hosts so post-install canary traffic resolves via the OpenPath dnsmasq protected-domain path"
+  sudo sed -i "/[[:space:]]${api_host//./\\.}\$/d" /etc/hosts || true
+}
+
 restore_linux_bootstrap_canary_external_dns() {
   set +e
   echo "Restoring Linux runner DNS/connectivity after OpenPath canary runtime"
@@ -118,6 +141,8 @@ main() {
     write_install_failure_artifact "$message"
     exit "$install_status"
   fi
+
+  unpin_linux_bootstrap_canary_api_host
 
   set +e
   LINUX_AJAX_AUTO_ALLOW_CANARY_PORT=80 timeout --kill-after=30s 10m node scripts/linux-ajax-auto-allow-canary.mjs 2>&1 | tee linux-ajax-auto-allow-canary.log
