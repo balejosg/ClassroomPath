@@ -107,7 +107,7 @@ function sleep(ms: number): Promise<void> {
 /**
  * Helper to retry transient fetch failures.
  *
- * GitHub-hosted runners can hit intermittent network/DNS flakiness against DuckDNS.
+ * GitHub-hosted runners can hit intermittent network/DNS flakiness against remote smoke targets.
  * We retry ONLY on network errors and on common transient gateway statuses.
  */
 async function fetchWithRetry(
