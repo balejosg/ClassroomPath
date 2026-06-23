@@ -396,24 +396,15 @@ jobs:
 
       - name: Read target Stripe webhook secret
         if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
-        shell: bash
-        run: |
-          set -euo pipefail
-          source scripts/lib/github-actions-remote.sh
-          stripe_webhook_secret="$(github_actions_remote_read_env_key \
-            "$TARGET_SSH_KEY_PATH" \
-            "${{ steps.resolve-production.outputs.port }}" \
-            "${{ steps.resolve-production.outputs.user }}" \
-            "${{ steps.resolve-production.outputs.ip }}" \
-            STRIPE_WEBHOOK_SECRET)"
-
-          if [ -z "$stripe_webhook_secret" ]; then
-            echo "::error::STRIPE_WEBHOOK_SECRET is missing for $TARGET_ENVIRONMENT"
-            exit 1
-          fi
-
-          echo "::add-mask::$stripe_webhook_secret"
-          echo "PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET=$stripe_webhook_secret" >> "$GITHUB_ENV"
+        uses: ./.github/actions/read-canary-target-secret
+        with:
+          ssh-key-path: ${{ env.TARGET_SSH_KEY_PATH }}
+          port: ${{ steps.resolve-production.outputs.port }}
+          user: ${{ steps.resolve-production.outputs.user }}
+          host: ${{ steps.resolve-production.outputs.ip }}
+          remote-key: STRIPE_WEBHOOK_SECRET
+          export-name: PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET
+          target-environment: ${{ env.TARGET_ENVIRONMENT }}
 
       - name: Provision production enrollment canary
         id: provision

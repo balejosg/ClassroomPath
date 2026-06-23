@@ -1,0 +1,61 @@
+name: Read canary target secret
+description: >-
+  Read a single env key from a bootstrap-canary target host over SSH, fail when it
+  is empty, mask it, and export it to $GITHUB_ENV under a chosen name. Shared by the
+  Linux and Windows production bootstrap canaries so a required secret read cannot
+  silently exist in only one of them.
+
+inputs:
+  ssh-key-path:
+    description: Path to the installed SSH private key for the target host.
+    required: true
+  port:
+    description: SSH port of the resolved target host.
+    required: true
+  user:
+    description: SSH user for the target host.
+    required: true
+  host:
+    description: Resolved IP/hostname of the target host.
+    required: true
+  remote-key:
+    description: Name of the env key to read from the target host (e.g. STRIPE_WEBHOOK_SECRET).
+    required: true
+  export-name:
+    description: Name under which to export the secret to $GITHUB_ENV.
+    required: true
+  target-environment:
+    description: Target environment label, used only in the missing-secret error message.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Read remote secret over SSH
+      shell: bash
+      env:
+        SSH_KEY_PATH: ${{ inputs.ssh-key-path }}
+        TARGET_PORT: ${{ inputs.port }}
+        TARGET_USER: ${{ inputs.user }}
+        TARGET_HOST: ${{ inputs.host }}
+        REMOTE_KEY: ${{ inputs.remote-key }}
+        EXPORT_NAME: ${{ inputs.export-name }}
+        TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
+      run: |
+        set -euo pipefail
+        source scripts/lib/github-actions-remote.sh
+
+        secret_value="$(github_actions_remote_read_env_key \
+          "$SSH_KEY_PATH" \
+          "$TARGET_PORT" \
+          "$TARGET_USER" \
+          "$TARGET_HOST" \
+          "$REMOTE_KEY")"
+
+        if [ -z "$secret_value" ]; then
+          echo "::error::$REMOTE_KEY is missing for $TARGET_ENVIRONMENT"
+          exit 1
+        fi
+
+        echo "::add-mask::$secret_value"
+        echo "$EXPORT_NAME=$secret_value" >> "$GITHUB_ENV"

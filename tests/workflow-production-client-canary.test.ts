@@ -2178,3 +2178,70 @@ describe('Production client update canary workflow contracts', () => {
     );
   });
 });
+
+describe('Bootstrap canary shared secret-read contract', () => {
+  const sharedSecretActionRef = './.github/actions/read-canary-target-secret';
+
+  const bootstrapCanaries = [
+    {
+      label: 'Linux',
+      workflowPath: '.github/workflows/linux-production-bootstrap-canary.yml',
+      jobKey: 'linux-production-bootstrap-canary',
+      exportName: 'PRODUCTION_LINUX_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET',
+    },
+    {
+      label: 'Windows',
+      workflowPath: '.github/workflows/windows-production-bootstrap-canary.yml',
+      jobKey: 'windows-production-bootstrap-canary',
+      exportName: 'PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET',
+    },
+  ];
+
+  // Regression guard for the production-blocking drift where the Linux canary
+  // lacked the Stripe webhook secret read its Windows sibling already had. Both
+  // canaries must read the secret through the shared composite action so a
+  // required secret read can never silently exist in only one of them.
+  for (const canary of bootstrapCanaries) {
+    test(`${canary.label} bootstrap canary reads the Stripe webhook secret through the shared action`, () => {
+      const workflow = readProjectWorkflow(canary.workflowPath);
+      const workflowText = readProjectText(canary.workflowPath);
+      const job = workflow.jobs?.[canary.jobKey];
+      assert.ok(job, `${canary.label} bootstrap canary must define job ${canary.jobKey}`);
+
+      const stripeStep = findWorkflowStepByName(job, 'Read target Stripe webhook secret');
+      assert.equal(
+        stripeStep.uses,
+        sharedSecretActionRef,
+        `${canary.label} bootstrap canary must read the Stripe secret via the shared composite action, not an inline copy`
+      );
+      assert.equal(
+        stripeStep.run,
+        undefined,
+        `${canary.label} bootstrap canary Stripe step must delegate to the shared action, not inline a run script`
+      );
+      assert.equal(stripeStep.if, "steps.read-billing-mode.outputs.billing_mode == 'stripe'");
+
+      const withInputs = (stripeStep.with ?? {}) as Record<string, string>;
+      assert.equal(withInputs['remote-key'], 'STRIPE_WEBHOOK_SECRET');
+      assert.equal(withInputs['export-name'], canary.exportName);
+      assert.ok(
+        String(withInputs['ssh-key-path'] ?? '').includes('TARGET_SSH_KEY_PATH'),
+        `${canary.label} bootstrap canary must pass the resolved SSH key path to the shared action`
+      );
+
+      assert.ok(
+        !workflowText.includes('stripe_webhook_secret='),
+        `${canary.label} bootstrap canary must not keep an inline STRIPE_WEBHOOK_SECRET read alongside the shared action`
+      );
+    });
+  }
+
+  test('shared canary secret action masks and exports the secret and fails closed on empty values', () => {
+    const actionText = readProjectText('.github/actions/read-canary-target-secret/action.yml');
+    assert.match(actionText, /using:\s*composite/);
+    assert.match(actionText, /github_actions_remote_read_env_key/);
+    assert.match(actionText, /::add-mask::/);
+    assert.match(actionText, /is missing for \$TARGET_ENVIRONMENT/);
+    assert.match(actionText, /echo "\$EXPORT_NAME=\$secret_value" >> "\$GITHUB_ENV"/);
+  });
+});
