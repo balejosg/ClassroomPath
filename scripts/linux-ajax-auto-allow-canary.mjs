@@ -502,6 +502,41 @@ async function collectLinuxFailureDebugSnapshot() {
   };
 }
 
+// OpenPath sinkholes blocked/not-yet-applied domains to these sentinels
+// (mirrors firefox-extension/native/openpath-native-host.py BLOCKED_DNS_SENTINELS).
+const BLOCKED_DNS_SENTINELS = new Set(['0.0.0.0', '::', '192.0.2.1', '100::']);
+
+function isBlockedDnsSentinel(address) {
+  return BLOCKED_DNS_SENTINELS.has(
+    String(address ?? '')
+      .trim()
+      .toLowerCase()
+  );
+}
+
+// The whitelist file is written (download_whitelist) before openpath-update.sh
+// finishes generate_dnsmasq_config + restart_dnsmasq, so the origin appearing in
+// whitelist.txt does NOT mean the active resolver serves its real IP yet. Block
+// until the origin resolves to a non-sinkhole address before navigating.
+async function waitForOriginDnsReady(timeoutMs = ENROLLMENT_WAIT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  let lastResult = null;
+  while (Date.now() <= deadline) {
+    try {
+      const addresses = await dns.lookup(ORIGIN_HOST, { all: true });
+      const realAddresses = addresses.filter((entry) => !isBlockedDnsSentinel(entry.address));
+      lastResult = { ok: true, addresses };
+      if (realAddresses.length > 0) {
+        return { resolved: true, timeoutMs, addresses, realAddresses };
+      }
+    } catch (error) {
+      lastResult = { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    await sleep(1000);
+  }
+  return { resolved: false, timeoutMs, lastResult };
+}
+
 async function waitForEnrollmentSeed(timeoutMs = ENROLLMENT_WAIT_MS) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() <= deadline) {
@@ -738,10 +773,12 @@ async function main() {
 
   let firefoxSession = null;
   const enrollmentSeed = await waitForEnrollmentSeed();
+  const originDnsReady = await waitForOriginDnsReady();
   const originPreflight = await collectOriginPreflight(originUrl);
   const preflight = {
     ...(await collectLinuxAutoAllowDiagnostics('preflight', expectedHosts)),
     enrollmentSeed,
+    originDnsReady,
     originPreflight,
   };
   try {
