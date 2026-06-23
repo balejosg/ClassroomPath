@@ -250,6 +250,27 @@ jobs:
           echo "::add-mask::$client_canary_admin_token"
           echo "PRODUCTION_LINUX_BOOTSTRAP_CANARY_ADMIN_TOKEN=$client_canary_admin_token" >> "$GITHUB_ENV"
 
+      - name: Read target Stripe webhook secret
+        if: steps.read-billing-mode.outputs.billing_mode == 'stripe'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          stripe_webhook_secret="$(github_actions_remote_read_env_key \
+            "$TARGET_SSH_KEY_PATH" \
+            "${{ steps.resolve-production.outputs.port }}" \
+            "${{ steps.resolve-production.outputs.user }}" \
+            "${{ steps.resolve-production.outputs.ip }}" \
+            STRIPE_WEBHOOK_SECRET)"
+
+          if [ -z "$stripe_webhook_secret" ]; then
+            echo "::error::STRIPE_WEBHOOK_SECRET is missing for ${{ steps.inputs.outputs.target_environment }}"
+            exit 1
+          fi
+
+          echo "::add-mask::$stripe_webhook_secret"
+          echo "PRODUCTION_LINUX_BOOTSTRAP_CANARY_STRIPE_WEBHOOK_SECRET=$stripe_webhook_secret" >> "$GITHUB_ENV"
+
       - name: Provision production enrollment canary
         id: provision
         shell: bash
