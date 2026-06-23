@@ -659,6 +659,12 @@ async function createFirefoxSession() {
   const expectedExtensionId = await resolveFirefoxExpectedExtensionId(seleniumExtensionPath);
   diag(`expected extension id = ${expectedExtensionId}`);
   const options = new firefox.Options();
+  // This page deliberately loads blocked (sinkholed) ajax-observe-* sub-resources
+  // that hang on the 100:: discard sink, so pageLoadStrategy 'normal' would block
+  // window.load until the pageLoad timeout fires. Mirror linux-firefox-block-page-canary
+  // and use 'none': driver.get returns once navigation starts, and waitForPageObserver
+  // then waits for the document_start observer + probe results.
+  options.setPageLoadStrategy('none');
   options.addArguments('-headless');
   if (seleniumExtensionPath !== null) {
     options.addExtensions(seleniumExtensionPath);
