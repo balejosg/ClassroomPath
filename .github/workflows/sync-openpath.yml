@@ -106,9 +106,14 @@ jobs:
             echo "OpenPath is up to date"
           fi
 
+      # Non-fatal: this only mints a token for AUTO-DISPATCHING missing OpenPath
+      # checks. If the GitHub App is not installed on the openpath repo the call
+      # 404s, but check *reading* below uses GITHUB_TOKEN, so a green SHA must
+      # still sync. Auto-dispatch degrades to off when no token is produced.
       - name: Create OpenPath dispatch token
         id: openpath-dispatch-token
         if: steps.lock.outputs.locked != 'true' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
+        continue-on-error: true
         uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ vars.CLASSROOMPATH_PROMOTION_APP_CLIENT_ID }}
@@ -124,7 +129,10 @@ jobs:
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH: true
+          # Auto-dispatch only when a dispatch token was actually minted (the App
+          # is installed). Without it, just wait on the existing checks via
+          # GITHUB_TOKEN and sync when they are green.
+          OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH: ${{ steps.openpath-dispatch-token.outputs.token != '' }}
           OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN: ${{ steps.openpath-dispatch-token.outputs.token }}
           OPENPATH_BASE_SHA: ${{ steps.check.outputs.current }}
           OPENPATH_SHA: ${{ steps.check.outputs.latest }}

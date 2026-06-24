@@ -366,11 +366,20 @@ describe('Workflow core contracts', () => {
     assert.equal(tokenStep.with?.['permission-contents'], 'write');
     assert.equal(tokenStep.with?.owner, '${{ github.repository_owner }}');
     assert.equal(tokenStep.with?.repositories, 'openpath');
+    // Minting the dispatch token must be non-fatal: when the GitHub App is not
+    // installed on the openpath repo the call 404s, but a green SHA must still
+    // sync via GITHUB_TOKEN-based check reading rather than failing the job.
+    assert.equal(tokenStep['continue-on-error'], true);
     assert.equal(
       verifyStep.env?.OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN,
       '${{ steps.openpath-dispatch-token.outputs.token }}'
     );
-    assert.equal(verifyStep.env?.OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH, true);
+    // Auto-dispatch only when a token was actually minted; otherwise just wait
+    // on the existing checks (no dependency on the OpenPath dispatch App).
+    assert.equal(
+      verifyStep.env?.OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH,
+      "${{ steps.openpath-dispatch-token.outputs.token != '' }}"
+    );
     assert.match(String(hygieneStep.run ?? ''), /ci-workflow-hygiene\.mjs report-stale-runs/);
     assert.equal(hygieneStep.env?.CI_WORKFLOW_HYGIENE_MODE, 'dry-run');
     assert.equal(hygieneStep.env?.CI_WORKFLOW_HYGIENE_STALE_AFTER, '90m');
