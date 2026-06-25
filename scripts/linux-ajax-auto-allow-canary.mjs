@@ -416,11 +416,10 @@ async function collectOriginPreflight(originUrl) {
   };
 }
 
+let loggedObserverRealmDiag = false;
 async function collectBrowserNavigationDiagnostics(driver) {
   try {
-    return {
-      ok: true,
-      ...(await driver.executeScript(`return {
+    const payload = await driver.executeScript(`return {
         href: window.location.href,
         readyState: document.readyState,
         title: document.title,
@@ -428,7 +427,36 @@ async function collectBrowserNavigationDiagnostics(driver) {
         openpathObserverInstalled: window.__openpathPageResourceObserverInstalled === true,
         openpathObserverState: window.__openpathPageResourceObserverState ?? null,
         canaryState: window.__openpathLinuxAjaxCanaryState ?? null,
-      };`)),
+        diagHasWrappedJSObject: typeof window.wrappedJSObject,
+        diagObserverInstalledWrapped:
+          typeof window.wrappedJSObject !== 'undefined' &&
+          window.wrappedJSObject.__openpathPageResourceObserverInstalled === true,
+      };`);
+    // Diagnostic (additive, does not affect pass/fail): emitted once after the
+    // page leaves 'loading'. Distinguishes "world:MAIN observer never executed"
+    // (plain=false AND wrapped=false) from "observer ran but executeScript's
+    // realm/Xray hides the MAIN-world expando" (plain=false BUT wrapped=true).
+    if (!loggedObserverRealmDiag && payload.readyState && payload.readyState !== 'loading') {
+      loggedObserverRealmDiag = true;
+      let browserVersion = null;
+      let geckodriverVersion = null;
+      try {
+        const caps = await driver.getCapabilities();
+        browserVersion = caps.get('browserVersion') ?? null;
+        geckodriverVersion = caps.get('moz:geckodriverVersion') ?? null;
+      } catch {
+        // capabilities are best-effort for diagnostics only
+      }
+      console.error(
+        `CANARY_DIAG observer-realm: plain=${payload.openpathObserverInstalled} ` +
+          `wrapped=${payload.diagObserverInstalledWrapped} ` +
+          `hasWrappedJSObject=${payload.diagHasWrappedJSObject} ` +
+          `readyState=${payload.readyState} browser=${browserVersion} gecko=${geckodriverVersion}`
+      );
+    }
+    return {
+      ok: true,
+      ...payload,
     };
   } catch (error) {
     return {
