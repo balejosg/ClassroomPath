@@ -823,6 +823,55 @@ async function waitForPageObserver(driver, originUrl) {
   });
 }
 
+async function pinWhitelistedAutoAllowHostsLocally() {
+  // ROOT CAUSE FIX for the page-observer boundary: the auto-allow test hosts are
+  // `*.127.0.0.1.sslip.io` (they encode 127.0.0.1). Resolving them through the
+  // agent's dnsmasq forwards `sslip.io` to the runner's upstream, which is flaky
+  // / rate-limited under the canary's many queries and returns EAI_AGAIN ->
+  // Firefox NS_ERROR_UNKNOWN_HOST -> "Server Not Found" -> the origin page never
+  // renders -> no page-resource observer (and pageObserverInstalled stays false).
+  // Pin the whitelisted auto-allow hosts to 127.0.0.1 in /etc/hosts (nsswitch
+  // "files" before "dns") so they resolve reliably. The non-whitelisted
+  // ajax-observe-* hosts are intentionally NOT pinned, so dnsmasq still sinkholes
+  // them -- that is the actual no-auto-allow contract under test.
+  let whitelistContents = '';
+  try {
+    whitelistContents = await readFile(WHITELIST_PATH, 'utf8');
+  } catch (error) {
+    console.error(
+      `CANARY_DIAG host-pin: could not read whitelist ${WHITELIST_PATH} (${
+        error instanceof Error ? error.message : String(error)
+      })`
+    );
+    return;
+  }
+  const hosts = [
+    ...new Set(whitelistContents.match(/ajax-auto-allow-[a-z]+\.127\.0\.0\.1\.sslip\.io/g) ?? []),
+  ];
+  for (const host of hosts) {
+    try {
+      await execFileAsync('sudo', [
+        'bash',
+        '-c',
+        `grep -qE '[[:space:]]${host}\\$' /etc/hosts || printf '127.0.0.1 %s\\n' '${host}' >> /etc/hosts`,
+      ]);
+    } catch (error) {
+      console.error(
+        `CANARY_DIAG host-pin: failed to pin ${host} (${
+          error instanceof Error ? error.message : String(error)
+        })`
+      );
+    }
+  }
+  if (hosts.length > 0) {
+    console.error(
+      `CANARY_DIAG host-pin: ensured ${hosts.length} whitelisted auto-allow host(s) resolve to 127.0.0.1 via /etc/hosts (${hosts.join(
+        ', '
+      )})`
+    );
+  }
+}
+
 async function main() {
   const progress = createAjaxAutoAllowCanaryRuntimeProgress({ canary: 'linux-ajax' });
   progress('bootstrap', 'started', { message: 'Starting Linux AJAX auto-allow canary' });
@@ -838,6 +887,7 @@ async function main() {
   let firefoxSession = null;
   const enrollmentSeed = await waitForEnrollmentSeed();
   const originDnsReady = await waitForOriginDnsReady();
+  await pinWhitelistedAutoAllowHostsLocally();
   const originPreflight = await collectOriginPreflight(originUrl);
   const preflight = {
     ...(await collectLinuxAutoAllowDiagnostics('preflight', expectedHosts)),
