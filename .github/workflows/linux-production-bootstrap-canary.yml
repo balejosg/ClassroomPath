@@ -96,6 +96,20 @@ jobs:
           set -euo pipefail
           npm ci --ignore-scripts
           node -e "await import('selenium-webdriver'); await import('selenium-webdriver/firefox.js')"
+          # Provide a non-snap firefox-esr for the Selenium canary at the path the
+          # harness setBinary()s (/opt/firefox/firefox). The runner's default
+          # Firefox is a confined snap whose sandbox makes world:MAIN content
+          # scripts (the page-resource observer) execute unreliably, so the
+          # page-observer boundary flaps even though the extension and agent are
+          # correct. This mirrors the green OpenPath student-policy lane, which
+          # also runs firefox-esr. Runs before the agent install so the download
+          # is not affected by the agent DNS sinkhole.
+          if [ ! -x /opt/firefox/firefox ]; then
+            wget -qO /tmp/firefox-esr.tar.xz "https://download.mozilla.org/?product=firefox-esr-latest-ssl&os=linux64&lang=en-US"
+            sudo tar -xf /tmp/firefox-esr.tar.xz -C /opt
+            rm -f /tmp/firefox-esr.tar.xz
+          fi
+          /opt/firefox/firefox --version || true
 
       - name: Initialize Linux canary evidence files
         shell: bash
