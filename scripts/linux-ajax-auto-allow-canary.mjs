@@ -687,6 +687,36 @@ async function createFirefoxSession() {
   const expectedExtensionId = await resolveFirefoxExpectedExtensionId(seleniumExtensionPath);
   diag(`expected extension id = ${expectedExtensionId}`);
   const options = new firefox.Options();
+  // The canary must exercise the production browser the OpenPath agent installs
+  // (firefox-esr from the Mozilla apt repo), NOT the runner's default Firefox.
+  // Ubuntu ships Firefox as a confined snap whose sandbox prevents world:MAIN
+  // content scripts (the page-resource observer) from executing, so a
+  // geckodriver-auto-selected snap Firefox fails the page-observer boundary even
+  // though the extension and agent are correct. Diagnostic evidence: the canary
+  // ran on snap firefox 152.0.1 with the observer absent (plain=false,
+  // wrapped=false, page realm), while firefox-esr 140.12 installs it reliably.
+  let openpathFirefoxBinary = null;
+  for (const candidate of [
+    '/usr/bin/firefox-esr',
+    '/usr/lib/firefox-esr/firefox-esr',
+    '/opt/firefox/firefox',
+  ]) {
+    try {
+      const info = await stat(candidate);
+      if (info.isFile()) {
+        openpathFirefoxBinary = candidate;
+        break;
+      }
+    } catch {
+      // candidate not present; try the next
+    }
+  }
+  if (openpathFirefoxBinary !== null) {
+    options.setBinary(openpathFirefoxBinary);
+    diag(`using OpenPath-managed firefox binary: ${openpathFirefoxBinary}`);
+  } else {
+    diag('OpenPath firefox-esr binary not found; using geckodriver default Firefox');
+  }
   // This page deliberately loads blocked (sinkholed) ajax-observe-* sub-resources
   // that hang on the 100:: discard sink, so pageLoadStrategy 'normal' would block
   // window.load until the pageLoad timeout fires. Mirror linux-firefox-block-page-canary
