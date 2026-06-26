@@ -499,6 +499,10 @@ async function collectLinuxFailureDebugSnapshot() {
     allowIpset6,
     outputChain,
     apiHostResolution,
+    dnsmasqConfig,
+    apiHostDnsmasqA,
+    apiHostDnsmasqAaaa,
+    openpathLog,
   ] = await Promise.all([
     runDiagnosticCommand('systemctl', [
       'status',
@@ -535,6 +539,26 @@ async function collectLinuxFailureDebugSnapshot() {
     CANARY_API_HOST
       ? runDiagnosticCommand('getent', ['hosts', CANARY_API_HOST])
       : Promise.resolve(null),
+    // Live generated dnsmasq config: is the management host emitted as a
+    // protected-domain server= forward, or is it falling through to the wildcard
+    // sinkhole (address=/#/...) at failure time? Generator is proven to emit it;
+    // this reveals whether the *active* config diverges at runtime.
+    runDiagnosticCommand('sudo', [
+      'bash',
+      '-c',
+      "grep -nE 'address=/#/|server=/|classroompath' /etc/dnsmasq.d/openpath.conf 2>&1 | head -40",
+    ]),
+    // What the agent's own resolver (dnsmasq on 127.0.0.1) answers for the
+    // management host, split by family -- distinguishes "no A" from "AAAA sink".
+    CANARY_API_HOST
+      ? runDiagnosticCommand('getent', ['ahostsv4', CANARY_API_HOST])
+      : Promise.resolve(null),
+    CANARY_API_HOST
+      ? runDiagnosticCommand('getent', ['ahostsv6', CANARY_API_HOST])
+      : Promise.resolve(null),
+    // openpath-update dnsmasq generation log (protected-domain emission, upstream
+    // selection, restart) -- not in journald.
+    runDiagnosticCommand('sudo', ['bash', '-c', 'tail -n 80 /var/log/openpath.log 2>&1']),
   ]);
 
   return {
@@ -561,6 +585,10 @@ async function collectLinuxFailureDebugSnapshot() {
     managementHostPath: {
       apiHost: CANARY_API_HOST,
       apiHostResolution,
+      apiHostDnsmasqA,
+      apiHostDnsmasqAaaa,
+      dnsmasqConfig,
+      openpathLog,
       allowIpset,
       allowIpset6,
       outputChain,
