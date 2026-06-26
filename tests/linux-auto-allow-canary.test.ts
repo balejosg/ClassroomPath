@@ -627,8 +627,8 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.equal(diagnostics.attempt, 2);
     assert.deepEqual(sleeps, [25]);
     assert.deepEqual(requests, [
-      'https://classroompath.example.com/cp/internal/client-check/group/group-linux/diagnostics',
-      'https://classroompath.example.com/cp/internal/client-check/group/group-linux/diagnostics',
+      'https://classroompath.example/cp/internal/client-canary/group/group-linux/diagnostics',
+      'https://classroompath.example/cp/internal/client-canary/group/group-linux/diagnostics',
     ]);
   });
 

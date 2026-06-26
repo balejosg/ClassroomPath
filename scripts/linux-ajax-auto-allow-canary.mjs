@@ -72,6 +72,17 @@ const ARTIFACT_PATH =
   process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_ARTIFACT ??
   'production-linux-ajax-auto-allow-canary.json';
 const CANARY_API_URL = (process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL ?? '').replace(/\/$/, '');
+// Management-host (staging API) name, used by the failure snapshot to check whether the
+// agent's dnsmasq resolves it and whether its IP is in the firewall allow set. The
+// explicit-whitelist-apply boundary needs a NEW connection to this host; when it
+// connect-times-out we want to see the live ipset/iptables/dnsmasq state on the runner.
+const CANARY_API_HOST = (() => {
+  try {
+    return CANARY_API_URL ? new URL(CANARY_API_URL).hostname : '';
+  } catch {
+    return '';
+  }
+})();
 const CANARY_GROUP_ID = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID ?? '';
 const CANARY_ADMIN_TOKEN = process.env.LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN ?? '';
 const WHITELIST_PATH = process.env.OPENPATH_WHITELIST_PATH ?? '/var/lib/openpath/whitelist.txt';
@@ -484,6 +495,10 @@ async function collectLinuxFailureDebugSnapshot() {
     rootFirefoxNativeHostManifest,
     userNativeHostLog,
     tmpNativeHostLog,
+    allowIpset,
+    allowIpset6,
+    outputChain,
+    apiHostResolution,
   ] = await Promise.all([
     runDiagnosticCommand('systemctl', [
       'status',
@@ -508,6 +523,18 @@ async function collectLinuxFailureDebugSnapshot() {
     readTextEvidence('/root/.mozilla/native-messaging-hosts/whitelist_native_host.json'),
     readTextEvidence(join(process.env.HOME ?? '', '.local/share/openpath/native-host.log')),
     readTextEvidence('/tmp/openpath-native-host.log'),
+    // Live firewall allow-set: does the management host's resolved IP land in the
+    // openpath-allow-dst ipset that the OUTPUT whitelist-ACCEPT is scoped to?
+    runDiagnosticCommand('sudo', ['ipset', 'list', 'openpath-allow-dst']),
+    runDiagnosticCommand('sudo', ['ipset', 'list', 'openpath-allow-dst6']),
+    // Live OUTPUT chain: confirm the whitelist-ACCEPT precedes the deny and see
+    // exactly what would drop a new connection to the management host.
+    runDiagnosticCommand('sudo', ['iptables', '-S', 'OUTPUT']),
+    // Does the agent's dnsmasq resolve the management host (and thus populate the
+    // allow-set) at failure time?
+    CANARY_API_HOST
+      ? runDiagnosticCommand('getent', ['hosts', CANARY_API_HOST])
+      : Promise.resolve(null),
   ]);
 
   return {
@@ -526,6 +553,17 @@ async function collectLinuxFailureDebugSnapshot() {
         userNativeHostLog,
         tmpNativeHostLog,
       },
+    },
+    // Management-host (staging API) reachability path. The explicit-whitelist-apply
+    // boundary opens a NEW connection to this host; when it connect-times-out while
+    // the established SSE stays up, these reveal whether the host resolved and whether
+    // its IP made it into the firewall allow-set.
+    managementHostPath: {
+      apiHost: CANARY_API_HOST,
+      apiHostResolution,
+      allowIpset,
+      allowIpset6,
+      outputChain,
     },
   };
 }
