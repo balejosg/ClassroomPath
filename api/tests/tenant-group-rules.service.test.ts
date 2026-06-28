@@ -24,7 +24,6 @@ describe('tenant-group-rules.service', () => {
           type: input.type,
           value: input.value,
           comment: input.comment ?? null,
-          source: 'manual',
           createdAt: null,
           created: true,
         };
@@ -32,9 +31,6 @@ describe('tenant-group-rules.service', () => {
       bulkCreateGroupRules: async () => 0,
       deleteGroupRule: async () => false,
       updateGroupRule: async () => {
-        throw new Error('not used');
-      },
-      revokeAutoApprovalRule: async () => {
         throw new Error('not used');
       },
     };

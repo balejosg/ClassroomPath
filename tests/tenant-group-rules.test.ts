@@ -26,7 +26,6 @@ function createHarness(overrides: Partial<TenantGroupRulesDependencies> = {}) {
         type: input.type,
         value: input.value,
         comment: input.comment ?? null,
-        source: 'manual',
         createdAt: null,
         created: true,
       };
@@ -49,14 +48,9 @@ function createHarness(overrides: Partial<TenantGroupRulesDependencies> = {}) {
           type: 'whitelist',
           value: input.value ?? 'example.org',
           comment: input.comment ?? null,
-          source: 'manual',
           createdAt: null,
         },
       };
-    },
-    revokeAutoApprovalRule: async (input) => {
-      calls.push({ name: 'revokeAutoApprovalRule', payload: input });
-      return { revoked: true, blockedRuleId: 'blocked-1' };
     },
     ...overrides,
   };
@@ -183,23 +177,6 @@ describe('TenantGroupRules', () => {
     assert.deepEqual(
       calls.map((call) => call.name),
       ['assertCanUseGroup', 'deleteGroupRule', 'publishWhitelistGroupChanged']
-    );
-  });
-
-  test('revokeAutoApproval passes the actor name and publishes only revoked approvals', async () => {
-    const { calls, service } = createHarness();
-
-    const result = await service.revokeAutoApproval(ctx, { id: 'rule-1', groupId: 'group-1' });
-
-    assert.deepEqual(result, { revoked: true, blockedRuleId: 'blocked-1' });
-    assert.deepEqual(calls[1]?.payload, {
-      id: 'rule-1',
-      groupId: 'group-1',
-      resolvedBy: 'Teacher One',
-    });
-    assert.deepEqual(
-      calls.map((call) => call.name),
-      ['assertCanUseGroup', 'revokeAutoApprovalRule', 'publishWhitelistGroupChanged']
     );
   });
 });

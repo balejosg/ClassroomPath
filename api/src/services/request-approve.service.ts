@@ -34,7 +34,6 @@ export async function approveTenantRequest(
       groupId: requestGroupId,
       type: 'whitelist',
       value: getRootDomain(request.domain),
-      source: 'manual',
     })
     .onConflictDoNothing({
       target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],

@@ -35,11 +35,6 @@ export type UpdateRuleInput = {
   comment?: string | null;
 };
 
-export type RevokeAutoApprovalInput = {
-  id: string;
-  groupId: string;
-};
-
 type CreateRuleResult = SerializedWhitelistRule & { created: boolean };
 
 export type TenantGroupRulesDependencies = {
@@ -55,11 +50,6 @@ export type TenantGroupRulesDependencies = {
   updateGroupRule: (
     input: UpdateRuleInput
   ) => Promise<{ rule: SerializedWhitelistRule; valueChanged: boolean }>;
-  revokeAutoApprovalRule: (
-    input: RevokeAutoApprovalInput & {
-      resolvedBy: string;
-    }
-  ) => Promise<{ revoked: boolean; blockedRuleId: string | null }>;
 };
 
 export interface TenantGroupRules {
@@ -73,10 +63,6 @@ export interface TenantGroupRules {
     input: UpdateRuleInput
   ): Promise<SerializedWhitelistRule>;
   deleteRule(ctx: TenantGroupRulesContext, input: DeleteRuleInput): Promise<{ success: true }>;
-  revokeAutoApproval(
-    ctx: TenantGroupRulesContext,
-    input: RevokeAutoApprovalInput
-  ): Promise<{ revoked: boolean; blockedRuleId: string | null }>;
 }
 
 const defaultDependencies: TenantGroupRulesDependencies = {
@@ -103,10 +89,6 @@ const defaultDependencies: TenantGroupRulesDependencies = {
   async updateGroupRule(input) {
     const { updateGroupRule } = await import('./group-rules-update.service.js');
     return updateGroupRule(input);
-  },
-  async revokeAutoApprovalRule(input) {
-    const { revokeAutoApprovalRule } = await import('./group-rules-update.service.js');
-    return revokeAutoApprovalRule(input);
   },
 };
 
@@ -152,20 +134,6 @@ export function createTenantGroupRules(
       }
 
       return { success: true };
-    },
-
-    async revokeAutoApproval(ctx, input) {
-      await dependencies.assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-      const result = await dependencies.revokeAutoApprovalRule({
-        id: input.id,
-        groupId: input.groupId,
-        resolvedBy: ctx.user.name,
-      });
-      if (result.revoked) {
-        await dependencies.publishWhitelistGroupChanged(input.groupId);
-      }
-
-      return result;
     },
   };
 }

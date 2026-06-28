@@ -140,7 +140,6 @@ export const whitelistRules = pgTable(
     groupId: varchar('group_id', { length: 50 }).notNull(),
     type: varchar('type', { length: 50 }).notNull(),
     value: varchar('value', { length: 500 }).notNull(),
-    source: varchar('source', { length: 50 }).default('manual').notNull(),
     comment: text('comment'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   },

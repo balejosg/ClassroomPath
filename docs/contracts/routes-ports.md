@@ -59,7 +59,6 @@ policy/API entrypoints.
 - `GET /api/extensions/firefox/openpath.xpi`
 - `/api/extensions/chromium/*`
 - `/api/enroll/*`
-- `/api/requests/auto`
 - `/api/requests/submit`
 - `/api/agent/windows/*`
 - `/api/agent/linux/*`

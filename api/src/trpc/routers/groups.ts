@@ -51,8 +51,6 @@ const AddRuleSchema = z.object({
   comment: z.string().optional(),
 });
 
-const RuleSourceSchema = z.enum(['manual', 'auto_extension']);
-
 const BulkCreateRulesSchema = z.object({
   groupId: z.string(),
   type: z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']),
@@ -62,7 +60,6 @@ const BulkCreateRulesSchema = z.object({
 const ListRulesPaginatedSchema = z.object({
   groupId: z.string(),
   type: z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']).optional(),
-  source: RuleSourceSchema.optional(),
   limit: z.number().min(1).max(100).default(50),
   offset: z.number().min(0).default(0),
   search: z.string().optional(),
@@ -75,7 +72,6 @@ const BulkDeleteRulesSchema = z.object({
 const ListRulesGroupedSchema = z.object({
   groupId: z.string(),
   type: z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']).optional(),
-  source: RuleSourceSchema.optional(),
   limit: z.number().min(1).max(50).optional().default(20),
   offset: z.number().min(0).optional().default(0),
   search: z.string().optional(),
@@ -152,7 +148,6 @@ export const groupsRouter = router({
       z.object({
         groupId: z.string(),
         type: z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']).optional(),
-        source: RuleSourceSchema.optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -250,12 +245,6 @@ export const groupsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       return tenantGroupRules.updateRule(ctx, input);
-    }),
-
-  revokeAutoApproval: tenantMemberProcedure
-    .input(z.object({ id: z.string().min(1), groupId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      return tenantGroupRules.revokeAutoApproval(ctx, input);
     }),
 
   systemStatus: teacherOrAdminProcedure.query(async ({ ctx }) => {
