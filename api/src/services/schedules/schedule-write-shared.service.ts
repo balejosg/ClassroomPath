@@ -16,16 +16,26 @@ export function weeklyRecurrenceWhereClause() {
   return or(eq(schedules.recurrence, 'weekly'), isNull(schedules.recurrence));
 }
 
+/**
+ * Allowed minute step for schedule start/end times.
+ *
+ * Source of truth lives in OpenPath (`@openpath/shared`'s
+ * SCHEDULE_TIME_STEP_MINUTES). This is a deliberate local copy of the wrapper's
+ * validator; the cross-repo contract test in this package guards that the two
+ * values stay in sync. Keep them equal.
+ */
+export const SCHEDULE_TIME_STEP_MINUTES = 5;
+
 export function assertQuarterHour(t: string, field: string): void {
   const minutes = parseTimeToMinutes(t);
   if (!Number.isFinite(minutes)) {
     throw new TRPCError({ code: 'BAD_REQUEST', message: `${field} must be a valid time` });
   }
   const minuteOfHour = minutes % 60;
-  if (minuteOfHour % 15 !== 0) {
+  if (minuteOfHour % SCHEDULE_TIME_STEP_MINUTES !== 0) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
-      message: `${field} must be in 15-minute increments`,
+      message: `${field} must be in ${String(SCHEDULE_TIME_STEP_MINUTES)}-minute increments`,
     });
   }
 }
@@ -42,10 +52,10 @@ export function assertQuarterHourInstant(date: Date, field: string): void {
   if (date.getUTCSeconds() !== 0 || date.getUTCMilliseconds() !== 0) {
     throw new TRPCError({ code: 'BAD_REQUEST', message: `${field} must not include seconds` });
   }
-  if (date.getUTCMinutes() % 15 !== 0) {
+  if (date.getUTCMinutes() % SCHEDULE_TIME_STEP_MINUTES !== 0) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
-      message: `${field} must be in 15-minute increments`,
+      message: `${field} must be in ${String(SCHEDULE_TIME_STEP_MINUTES)}-minute increments`,
     });
   }
 }

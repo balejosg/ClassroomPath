@@ -12,15 +12,17 @@ import {
 } from '../src/services/schedules/schedule-write-shared.service.js';
 
 describe('schedule-write-shared.service', () => {
-  it('accepts quarter-hour times and rejects invalid minute increments', () => {
+  it('accepts 5-minute-step times and rejects invalid minute increments', () => {
     assert.doesNotThrow(() => assertQuarterHour('10:30', 'startTime'));
+    assert.doesNotThrow(() => assertQuarterHour('10:20', 'startTime'));
+    assert.doesNotThrow(() => assertQuarterHour('10:35', 'startTime'));
 
     assert.throws(
       () => assertQuarterHour('10:07', 'startTime'),
       (error) => {
         assert.ok(error instanceof TRPCError);
         assert.strictEqual(error.code, 'BAD_REQUEST');
-        assert.strictEqual(error.message, 'startTime must be in 15-minute increments');
+        assert.strictEqual(error.message, 'startTime must be in 5-minute increments');
         return true;
       }
     );
@@ -41,9 +43,12 @@ describe('schedule-write-shared.service', () => {
     );
   });
 
-  it('rejects instants with seconds or non-quarter-minute values', () => {
+  it('rejects instants with seconds or non-5-minute values', () => {
     assert.doesNotThrow(() =>
       assertQuarterHourInstant(new Date('2026-03-06T10:30:00.000Z'), 'startAt')
+    );
+    assert.doesNotThrow(() =>
+      assertQuarterHourInstant(new Date('2026-03-06T10:20:00.000Z'), 'startAt')
     );
 
     assert.throws(
@@ -61,7 +66,7 @@ describe('schedule-write-shared.service', () => {
       (error) => {
         assert.ok(error instanceof TRPCError);
         assert.strictEqual(error.code, 'BAD_REQUEST');
-        assert.strictEqual(error.message, 'startAt must be in 15-minute increments');
+        assert.strictEqual(error.message, 'startAt must be in 5-minute increments');
         return true;
       }
     );
