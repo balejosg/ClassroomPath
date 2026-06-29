@@ -53,6 +53,7 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
   const activeTab = getTabFromPathname(pathname);
   const isClassroomsView = activeTab === 'classrooms';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<SelectedGroup | null>(null);
   const [pendingSelectedClassroomId, setPendingSelectedClassroomId] = useState<string | null>(null);
   const admin = isAdmin();
@@ -64,7 +65,8 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
   );
 
   const contentShellClassName = cx(
-    'flex min-h-screen flex-1 flex-col md:ml-64',
+    'flex min-h-screen flex-1 flex-col transition-all duration-300',
+    sidebarCollapsed ? 'md:ml-16' : 'md:ml-64',
     isClassroomsView ? 'lg:h-full lg:min-h-0 lg:overflow-hidden' : ''
   );
 
@@ -123,6 +125,8 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
         activeTab={activeTab}
         setActiveTab={(tab) => navigateToTab(tab as AppTab)}
         isOpen={sidebarOpen}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
         allowDomainRequestsForNonAdmins
       />
 
