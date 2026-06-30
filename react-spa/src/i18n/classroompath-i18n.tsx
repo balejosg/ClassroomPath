@@ -48,6 +48,7 @@ const classroomPathI18nEn = {
   // --- Section: groupLibrary (policy library UI) ---
   'groupLibrary.openAriaLabel': 'Open policy library',
   'groupLibrary.openSrLabel': 'Library',
+  'groupLibrary.openButtonLabel': 'Import from library',
   'groupLibrary.title': 'Policy library',
   'groupLibrary.description': 'View and clone shared policies in your organization.',
   'groupLibrary.searchPlaceholder': 'Search by name...',
@@ -748,6 +749,7 @@ const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
   // --- Section (es): groupLibrary (policy library UI) ---
   'groupLibrary.openAriaLabel': 'Abrir biblioteca de políticas',
   'groupLibrary.openSrLabel': 'Biblioteca',
+  'groupLibrary.openButtonLabel': 'Importar de la biblioteca',
   'groupLibrary.title': 'Biblioteca de políticas',
   'groupLibrary.description': 'Consulta y clona políticas compartidas en tu organización.',
   'groupLibrary.searchPlaceholder': 'Buscar por nombre...',
