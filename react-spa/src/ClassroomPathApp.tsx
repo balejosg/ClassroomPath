@@ -5,15 +5,14 @@
  * useClassroomPathBoot hook that drives auth/boot state, and top-level screen dispatch
  * (preparing / auth / billing-success / billing-cancel / onboarding gate / main shell).
  * ClassroomPathShell is lazy-loaded inside the authenticated OnboardingAccessGate subtree.
- * OpenPath components (AdminPanel, GroupLibrary) are imported only via src/openpath adapters
- * or CP-local components -- never directly from upstream.
+ * AdminPanel is composed here; the policy-library dialog (GroupLibrary) now lives inside
+ * ClassroomPathShell. CP-local and adapter components are never imported directly from upstream.
  */
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 
 import { DualTRPCProvider } from './lib/dual-trpc-provider';
 import { AdminPanel } from './components/AdminPanel';
-import { GroupLibrary } from './components/GroupLibrary';
 import { AuthEntryView } from './app/AuthEntryView';
 import { OnboardingAccessGate } from './app/OnboardingAccessGate';
 import { useClassroomPathBoot } from './app/use-classroom-path-boot';
@@ -88,8 +87,7 @@ function AppContent() {
       authenticatedContent={
         <React.Suspense fallback={<FullScreenLoader label={t('app.loader.panel')} />}>
           <AdminPanel userRole={boot.status?.organization?.role} />
-          <GroupLibrary userRole={boot.status?.organization?.role} />
-          <ClassroomPathShell topBanner={topBanner} />
+          <ClassroomPathShell topBanner={topBanner} userRole={boot.status?.organization?.role} />
         </React.Suspense>
       }
     />

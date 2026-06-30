@@ -115,14 +115,14 @@ describe('GroupLibrary', () => {
     publishMutationOptions = undefined;
   });
 
-  it('opens and closes the library modal for teachers', () => {
-    renderWithQueryClient(<GroupLibrary userRole="teacher" />);
+  it('renders the library modal for teachers and fires onClose from the Close button', () => {
+    const onClose = vi.fn();
+    renderWithQueryClient(<GroupLibrary userRole="teacher" isOpen onClose={onClose} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
     expect(screen.getByRole('heading', { name: /Policy library/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(screen.queryByRole('heading', { name: /Policy library/i })).not.toBeInTheDocument();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('clones a library policy from the teacher-facing tab', () => {
@@ -137,9 +137,8 @@ describe('GroupLibrary', () => {
       },
     ];
 
-    renderWithQueryClient(<GroupLibrary userRole="teacher" />);
+    renderWithQueryClient(<GroupLibrary userRole="teacher" isOpen onClose={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
 
     expect(mockCloneMutate).toHaveBeenCalledWith({ sourceGroupId: 'group-1' });
@@ -158,9 +157,8 @@ describe('GroupLibrary', () => {
       },
     ];
 
-    renderWithQueryClient(<GroupLibrary userRole="admin" />);
+    renderWithQueryClient(<GroupLibrary userRole="admin" isOpen onClose={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Manage' }));
     fireEvent.change(screen.getByDisplayValue('Private'), {
       target: { value: 'instance_public' },
@@ -198,9 +196,8 @@ describe('GroupLibrary', () => {
       isLoading: false,
     };
 
-    renderWithQueryClient(<GroupLibrary userRole="teacher" />);
+    renderWithQueryClient(<GroupLibrary userRole="teacher" isOpen onClose={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
 
     expect(screen.getByRole('heading', { name: /preview \(read-only\)/i })).toBeInTheDocument();
@@ -242,10 +239,12 @@ describe('GroupLibrary', () => {
       isLoading: false,
     };
 
-    const { queryClient } = renderWithQueryClient(<GroupLibrary userRole="admin" />);
+    const onClose = vi.fn();
+    const { queryClient } = renderWithQueryClient(
+      <GroupLibrary userRole="admin" isOpen onClose={onClose} />
+    );
     const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
-    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Templates' }));
     fireEvent.change(screen.getByPlaceholderText('Search by name...'), {
       target: { value: 'starter' },
@@ -261,8 +260,8 @@ describe('GroupLibrary', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Import' })[1]);
     fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[1]);
     fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
-    fireEvent.click(screen.getByRole('button', { name: /Open policy library/i }));
 
+    expect(onClose).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Library' })).toHaveClass('bg-slate-900');
     expect(screen.getByPlaceholderText('Search by name...')).toHaveValue('');
     expect(mockImportMutate).toHaveBeenCalledWith({ templateId: 'template-1' });

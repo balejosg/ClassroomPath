@@ -74,11 +74,14 @@ vi.mock('../openpath/public-shell', () => ({
   ),
   Groups: ({
     onNavigateToRules,
+    headerActions,
   }: {
     onNavigateToRules: (group: { id: string; name: string; readOnly?: boolean }) => void;
+    headerActions?: React.ReactNode;
   }) => (
     <div>
       <div>Groups View</div>
+      {headerActions}
       <button onClick={() => onNavigateToRules({ id: 'grp-3', name: 'Grupo de Ciencias' })}>
         Ir a reglas del grupo
       </button>
@@ -113,6 +116,10 @@ vi.mock('../views/OrganizationUsers', () => ({
 
 vi.mock('../views/DomainRequestApprovalPage', () => ({
   DomainRequestApprovalPage: () => <div>Focused Approval View</div>,
+}));
+
+vi.mock('../components/GroupLibrary', () => ({
+  GroupLibrary: ({ isOpen }: { isOpen: boolean }) => (isOpen ? <div>Library dialog</div> : null),
 }));
 
 import ClassroomPathShell from '../ClassroomPathShell';
@@ -317,5 +324,29 @@ describe('ClassroomPathShell', () => {
     expect(screen.getByRole('heading', { name: 'Access Requests' })).toBeInTheDocument();
     expect(screen.getByText('Focused Approval View')).toBeInTheDocument();
     expect(screen.queryByText('Domain Requests View')).not.toBeInTheDocument();
+  });
+
+  it('shows the policy-library action on Políticas and opens the dialog for admins', () => {
+    mockIsAdmin.mockReturnValue(true);
+    window.history.pushState({}, '', '/policies');
+
+    renderShell({ userRole: 'admin' });
+
+    // El nombre accesible del botón es su aria-label ("Open policy library"),
+    // no el texto visible ("Import from library").
+    const button = screen.getByRole('button', { name: /policy library/i });
+    expect(button).toHaveTextContent(/Import from library/i);
+
+    fireEvent.click(button);
+    expect(screen.getByText('Library dialog')).toBeInTheDocument();
+  });
+
+  it('hides the policy-library action for students', () => {
+    mockIsAdmin.mockReturnValue(false);
+    window.history.pushState({}, '', '/policies');
+
+    renderShell({ userRole: 'student' });
+
+    expect(screen.queryByRole('button', { name: /policy library/i })).toBeNull();
   });
 });

@@ -1,9 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { cpTrpcReact } from '../lib/dual-trpc-provider';
-import { FloatingActionButton } from './FloatingActionButton';
 import { useClassroomPathT } from '../i18n/classroompath-i18n';
 import { GroupLibraryDialog } from './group-library/GroupLibraryDialog';
 import {
@@ -16,7 +14,15 @@ import {
 } from './group-library/group-library-helpers';
 import { RulesPreviewModal } from './group-library/RulesPreviewModal';
 
-export function GroupLibrary({ userRole }: { userRole?: string }) {
+export function GroupLibrary({
+  userRole,
+  isOpen,
+  onClose,
+}: {
+  userRole?: string;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
   const t = useClassroomPathT();
   const canUse = userRole === 'admin' || userRole === 'teacher';
   const isAdmin = userRole === 'admin';
@@ -24,7 +30,6 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
   const queryClient = useQueryClient();
   const cpUtils = cpTrpcReact.useUtils();
 
-  const [isOpen, setIsOpen] = useState(false);
   const [tab, setTab] = useState<LibraryTab>('library');
   const [search, setSearch] = useState('');
   const [preview, setPreview] = useState<PreviewState>(null);
@@ -136,10 +141,10 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
   );
 
   const close = () => {
-    setIsOpen(false);
     setTab('library');
     setSearch('');
     setPreview(null);
+    onClose();
   };
 
   if (!canUse) return null;
@@ -151,14 +156,6 @@ export function GroupLibrary({ userRole }: { userRole?: string }) {
 
   return (
     <>
-      <FloatingActionButton
-        ariaLabel={t('groupLibrary.openAriaLabel')}
-        onClick={() => setIsOpen(true)}
-      >
-        <BookOpen size={18} />
-        <span className="sr-only">{t('groupLibrary.openSrLabel')}</span>
-      </FloatingActionButton>
-
       {isOpen && (
         <>
           <GroupLibraryDialog

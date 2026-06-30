@@ -24,6 +24,8 @@ import {
 } from './openpath/public-shell';
 import { isAdmin } from './openpath/public-auth';
 
+import { GroupLibrary } from './components/GroupLibrary';
+import { PolicyLibraryButton } from './components/PolicyLibraryButton';
 import { OrganizationUsers } from './views/OrganizationUsers';
 import { DomainRequestsPage } from './views/DomainRequestsPage';
 import { DomainRequestApprovalPage } from './views/DomainRequestApprovalPage';
@@ -40,13 +42,14 @@ interface SelectedGroup extends SelectedGroupState {}
 
 type ClassroomPathShellProps = {
   topBanner?: React.ReactNode;
+  userRole?: string;
 };
 
 function cx(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ');
 }
 
-function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
+function ClassroomPathShellContent({ topBanner, userRole }: ClassroomPathShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const pathname = normalizeShellPathname(location.pathname);
@@ -56,8 +59,14 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<SelectedGroup | null>(null);
   const [pendingSelectedClassroomId, setPendingSelectedClassroomId] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const admin = isAdmin();
   const t = useClassroomPathT();
+
+  const canUseLibrary = userRole === 'admin' || userRole === 'teacher';
+  const libraryAction = canUseLibrary ? (
+    <PolicyLibraryButton onClick={() => setLibraryOpen(true)} />
+  ) : undefined;
 
   const shellClassName = cx(
     'flex min-h-screen bg-slate-50 font-sans text-slate-900',
@@ -171,7 +180,9 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
               />
               <Route
                 path="/policies"
-                element={<Groups onNavigateToRules={handleNavigateToRules} />}
+                element={
+                  <Groups onNavigateToRules={handleNavigateToRules} headerActions={libraryAction} />
+                }
               />
               <Route
                 path="/rules"
@@ -184,7 +195,10 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
                       onBack={handleBackFromRules}
                     />
                   ) : (
-                    <Groups onNavigateToRules={handleNavigateToRules} />
+                    <Groups
+                      onNavigateToRules={handleNavigateToRules}
+                      headerActions={libraryAction}
+                    />
                   )
                 }
               />
@@ -203,10 +217,16 @@ function ClassroomPathShellContent({ topBanner }: ClassroomPathShellProps) {
           </div>
         </main>
       </div>
+
+      <GroupLibrary
+        userRole={userRole}
+        isOpen={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+      />
     </div>
   );
 }
 
 export default function ClassroomPathShell(props: ClassroomPathShellProps) {
-  return <ClassroomPathShellContent topBanner={props.topBanner} />;
+  return <ClassroomPathShellContent topBanner={props.topBanner} userRole={props.userRole} />;
 }
