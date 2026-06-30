@@ -79,6 +79,7 @@ export const classroomsRouter = router({
         machineId: z.string().min(1),
         classroomId: z.string().min(1),
         scheduleId: z.string().uuid(),
+        groupId: z.string().min(1).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

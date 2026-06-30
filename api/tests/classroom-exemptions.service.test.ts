@@ -193,6 +193,53 @@ describe('classroom-exemptions.service', () => {
     assert.strictEqual(remaining.length, 0);
   });
 
+  it('persists and presents groupId when creating a classroom exemption with a group', async () => {
+    const classroom = await createClassroomForTenant({
+      ctx: adminCtx,
+      input: {
+        name: 'classroom-exemptions-groupid',
+        displayName: 'Classroom Exemptions GroupId',
+        defaultGroupId: GROUP_ID,
+      },
+    });
+
+    const machineId = `machine_groupid_exemptions_${RUN_ID}`;
+    await openpathDb.insert(openpathSchema.machines).values({
+      id: machineId,
+      hostname: `machine-groupid-exemptions-${RUN_ID}.test`,
+      classroomId: classroom.id,
+      version: '1.0.0',
+    });
+
+    const scheduleId = '00000000-0000-4000-8000-000000000022';
+    const now = new Date();
+    await openpathDb.insert(openpathSchema.schedules).values({
+      id: scheduleId,
+      classroomId: classroom.id,
+      teacherId: ADMIN_ID,
+      groupId: GROUP_ID,
+      startAt: new Date(now.getTime() - 60 * 60 * 1000),
+      endAt: new Date(now.getTime() + 60 * 60 * 1000),
+      recurrence: 'one_off',
+    });
+
+    const created = await createClassroomExemptionForTenant({
+      ctx: teacherCtx,
+      input: {
+        machineId,
+        classroomId: classroom.id,
+        scheduleId,
+        groupId: GROUP_ID,
+      },
+    });
+
+    assert.ok(created.id.startsWith('exempt_'));
+    assert.strictEqual(created.machineId, machineId);
+    assert.strictEqual(created.classroomId, classroom.id);
+    assert.strictEqual(created.scheduleId, scheduleId);
+    assert.strictEqual(created.groupId, GROUP_ID);
+  });
+
   it('creates operational exemptions for admins and blocks teacher revocation', async () => {
     const classroom = await createClassroomForTenant({
       ctx: adminCtx,

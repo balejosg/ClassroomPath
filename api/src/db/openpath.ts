@@ -190,6 +190,7 @@ export const machineExemptions = pgTable(
     machineId: varchar('machine_id', { length: 50 }).notNull(),
     classroomId: varchar('classroom_id', { length: 50 }).notNull(),
     scheduleId: uuid('schedule_id'),
+    groupId: varchar('group_id', { length: 50 }),
     source: varchar('source', { length: 20 }).notNull().default('schedule'),
     reason: text('reason'),
     createdBy: varchar('created_by', { length: 50 }),

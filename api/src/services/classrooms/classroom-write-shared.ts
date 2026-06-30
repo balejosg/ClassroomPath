@@ -23,6 +23,7 @@ export interface CreateClassroomExemptionInput {
   machineId: string;
   classroomId: string;
   scheduleId: string;
+  groupId?: string | null;
 }
 
 export interface CreateOperationalClassroomExemptionInput {
@@ -53,6 +54,7 @@ export function presentClassroomExemption(row: typeof machineExemptions.$inferSe
     machineId: row.machineId,
     classroomId: row.classroomId,
     scheduleId: row.scheduleId,
+    groupId: row.groupId ?? null,
     source: row.source === 'operational' ? 'operational' : 'schedule',
     reason: row.reason ?? null,
     createdBy: row.createdBy ?? null,

@@ -12,6 +12,7 @@ import {
 import { assertOrgClassroomAccess } from '../../lib/tenant-access.js';
 import { resolveActiveScheduleExpiresAt } from '../schedules/current-group.service.js';
 import {
+  assertUsableGroupIfProvided,
   ClassroomWriteContext,
   CreateClassroomExemptionInput,
   CreateOperationalClassroomExemptionInput,
@@ -55,6 +56,8 @@ export async function createClassroomExemptionForTenant(params: {
     now: new Date(),
   });
 
+  await assertUsableGroupIfProvided(params.ctx, params.input.groupId);
+
   const id = `exempt_${nanoid(10)}`;
   const inserted = await openpathDb
     .insert(machineExemptions)
@@ -63,6 +66,7 @@ export async function createClassroomExemptionForTenant(params: {
       machineId: params.input.machineId,
       classroomId: params.input.classroomId,
       scheduleId: params.input.scheduleId,
+      groupId: params.input.groupId ?? null,
       createdBy: params.ctx.user.sub,
       expiresAt,
     })
