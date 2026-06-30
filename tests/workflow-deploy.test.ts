@@ -68,7 +68,7 @@ function assertOpenPathSubmoduleResetBeforeRecursiveCheckout(
   assert.match(resetScript, /""\|"\/"/);
   assert.match(resetScript, /\$GITHUB_WORKSPACE\/upstream\/openpath/);
   assert.match(resetScript, /\$GITHUB_WORKSPACE\/\.git\/modules\/upstream\/openpath/);
-  assert.equal(checkoutStep?.uses, 'actions/checkout@v6');
+  assert.equal(checkoutStep?.uses, 'actions/checkout@v7');
   assert.equal(checkoutStep?.with?.submodules, 'recursive');
 }
 

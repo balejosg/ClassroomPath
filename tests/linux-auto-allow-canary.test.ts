@@ -638,7 +638,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
 
     assert.match(
       workflow,
-      /name: Checkout\s+uses: actions\/checkout@v6\s+with:\s+persist-credentials: false/
+      /name: Checkout\s+uses: actions\/checkout@v7\s+with:\s+persist-credentials: false/
     );
     assert.match(
       runtimeScript,

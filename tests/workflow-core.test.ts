@@ -84,13 +84,13 @@ describe('Workflow core contracts', () => {
     const cases = [
       {
         relativePath: '.github/workflows/ci.yml',
-        required: ['actions/checkout@v6', './.github/actions/setup-node'],
+        required: ['actions/checkout@v7', './.github/actions/setup-node'],
         forbidden: ['actions/checkout@v4', 'actions/setup-node@v4'],
       },
       {
         relativePath: '.github/workflows/sync-openpath.yml',
         required: [
-          'actions/checkout@v6',
+          'actions/checkout@v7',
           './.github/actions/setup-node',
           'persist-credentials: false',
         ],
@@ -103,7 +103,7 @@ describe('Workflow core contracts', () => {
       },
       {
         relativePath: '.github/workflows/verify-trailers.yml',
-        required: ['actions/checkout@v6'],
+        required: ['actions/checkout@v7'],
         forbidden: ['actions/checkout@v4'],
       },
       {
@@ -249,7 +249,7 @@ describe('Workflow core contracts', () => {
       'self-hosted runner smoke should require the expected runner name from GitHub vars'
     );
     assert.ok(
-      workflowText.includes('actions/checkout@v6') &&
+      workflowText.includes('actions/checkout@v7') &&
         workflowText.includes('persist-credentials: false'),
       'self-hosted runner smoke should use checkout without persisted credentials'
     );
@@ -301,7 +301,7 @@ describe('Workflow core contracts', () => {
       'self-hosted Windows runner smoke must not assert the old runner name'
     );
     assert.ok(
-      workflowText.includes('actions/checkout@v6') &&
+      workflowText.includes('actions/checkout@v7') &&
         workflowText.includes('persist-credentials: false'),
       'self-hosted Windows runner smoke should use checkout without persisted credentials'
     );
@@ -651,7 +651,7 @@ describe('Workflow core contracts', () => {
     const cleanupWorkflowText = readText(cleanupWorkflowPath);
     const cleanupJob = findWorkflowJob(cleanupWorkflow, 'cleanup-staging');
     const steps = cleanupJob.steps ?? [];
-    const checkoutStep = steps.find((step) => step.uses === 'actions/checkout@v6');
+    const checkoutStep = steps.find((step) => step.uses === 'actions/checkout@v7');
     const cleanupStep = findWorkflowStepByName(cleanupJob, 'Check and clean staging disk via SSH');
     const cleanupScript = String(cleanupStep.run ?? cleanupStep.with?.script ?? '');
 
@@ -746,7 +746,7 @@ describe('Workflow core contracts', () => {
     );
     assert.ok(
       windowsFirefoxSteps.some(
-        (step) => typeof step === 'object' && step !== null && step.uses === 'actions/checkout@v6'
+        (step) => typeof step === 'object' && step !== null && step.uses === 'actions/checkout@v7'
       )
     );
     assert.ok(windowsFirefoxWorkflowText.includes('policies.json'));

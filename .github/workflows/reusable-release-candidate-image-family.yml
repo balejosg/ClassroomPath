@@ -142,11 +142,11 @@ jobs:
 
       - name: Checkout
         if: ${{ !inputs.checkout_submodules }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Checkout with submodules
         if: inputs.checkout_submodules
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -195,11 +195,11 @@ jobs:
 
       - name: Checkout
         if: ${{ !inputs.checkout_submodules }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Checkout with submodules
         if: inputs.checkout_submodules
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -248,7 +248,7 @@ jobs:
         run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Publish image family manifest output
         id: publish-manifest

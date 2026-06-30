@@ -93,7 +93,7 @@ jobs:
 
       - name: Checkout with submodules
         if: steps.mode.outputs.build_required == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
