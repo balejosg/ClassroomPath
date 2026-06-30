@@ -2,7 +2,7 @@ import { whitelistRules } from '../db/openpath.js';
 
 type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
 
-export type WhitelistRuleType = 'whitelist' | 'blocked_subdomain' | 'blocked_path';
+export type WhitelistRuleType = 'whitelist' | 'blocked_subdomain' | 'blocked_path' | 'allowed_path';
 
 export interface SerializedWhitelistRule {
   id: string;
