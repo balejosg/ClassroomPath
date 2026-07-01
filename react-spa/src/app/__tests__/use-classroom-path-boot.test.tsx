@@ -176,14 +176,12 @@ describe('useClassroomPathBoot', () => {
     expect(mockSetReportErrorSink).toHaveBeenCalledWith('report-error-sink');
     expect(mockSetRequestsApiUrl).toHaveBeenCalledWith('/cp');
     expect(mockSetUnauthorizedResponseHandler).toHaveBeenCalledWith(expect.any(Function));
-    expect(window.localStorage.getItem('openpath_teacher_groups_enabled')).toBe('1');
 
     unmount();
 
     expect(mockSetReportErrorSink).toHaveBeenLastCalledWith(null);
     expect(mockSetUnauthorizedResponseHandler).toHaveBeenLastCalledWith(null);
     expect(mockClearRequestsApiUrl).toHaveBeenCalledTimes(1);
-    expect(window.localStorage.getItem('openpath_teacher_groups_enabled')).toBeNull();
   });
 
   it('refreshes an unauthorized onboarding status once and refetches the status', async () => {

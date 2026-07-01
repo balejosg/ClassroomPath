@@ -237,7 +237,6 @@ describe('ClassroomPathApp', () => {
 
     expect(screen.getByRole('button', { name: 'Register to login' })).toBeInTheDocument();
     expect(mockSetRequestsApiUrl).toHaveBeenCalledWith('/cp');
-    expect(window.localStorage.getItem('openpath_teacher_groups_enabled')).toBe('1');
 
     window.history.pushState({}, '', '/reset-password');
     fireEvent.popState(window);

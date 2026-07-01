@@ -242,7 +242,6 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
     return activateOpenPathBridge({
       setRequestsApiUrl,
       clearRequestsApiUrl,
-      storage: window.localStorage,
       onReady: () => dispatch({ type: 'openpath-ready' }),
     });
   }, []);

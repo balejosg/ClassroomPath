@@ -8,8 +8,6 @@ import { getSessionClientMode, type SessionClientMode } from '../lib/session-cli
 import { shouldSyncAuthenticatedProfile } from './classroom-path-app-state';
 import { shouldAttemptOnboardingSessionRefresh } from './classroom-path-boot-state';
 
-export const TEACHER_GROUPS_FEATURE_KEY = 'openpath_teacher_groups_enabled';
-
 export type ClassroomPathBootControllerState = {
   isAuth: boolean;
   openPathReady: boolean;
@@ -222,25 +220,13 @@ export function installUnauthorizedRefreshHandler(args: {
 export function activateOpenPathBridge(args: {
   setRequestsApiUrl: (url: string) => void;
   clearRequestsApiUrl: () => void;
-  storage: Pick<Storage, 'setItem' | 'removeItem'>;
   onReady: () => void;
 }): () => void {
   args.setRequestsApiUrl('/cp');
   args.onReady();
 
-  try {
-    args.storage.setItem(TEACHER_GROUPS_FEATURE_KEY, '1');
-  } catch {
-    // best-effort
-  }
-
   return () => {
     args.clearRequestsApiUrl();
-    try {
-      args.storage.removeItem(TEACHER_GROUPS_FEATURE_KEY);
-    } catch {
-      // best-effort
-    }
   };
 }
 

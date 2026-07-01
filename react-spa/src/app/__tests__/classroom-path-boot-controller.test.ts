@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { CURRENT_TERMS_VERSION } from '../../constants/legal';
 import {
-  TEACHER_GROUPS_FEATURE_KEY,
   acceptPendingInvitation,
   activateOpenPathBridge,
   createClassroomPathBootControllerState,
@@ -155,7 +154,6 @@ describe('classroom-path-boot-controller', () => {
   });
 
   it('installs the OpenPath bridge and cleans it up', () => {
-    const storage = new Map<string, string>();
     const setRequestsApiUrl = vi.fn();
     const clearRequestsApiUrl = vi.fn();
     const onReady = vi.fn();
@@ -163,21 +161,15 @@ describe('classroom-path-boot-controller', () => {
     const cleanup = activateOpenPathBridge({
       setRequestsApiUrl,
       clearRequestsApiUrl,
-      storage: {
-        setItem: (key, value) => storage.set(key, value),
-        removeItem: (key) => storage.delete(key),
-      },
       onReady,
     });
 
     expect(setRequestsApiUrl).toHaveBeenCalledWith('/cp');
     expect(onReady).toHaveBeenCalledTimes(1);
-    expect(storage.get(TEACHER_GROUPS_FEATURE_KEY)).toBe('1');
 
     cleanup();
 
     expect(clearRequestsApiUrl).toHaveBeenCalledTimes(1);
-    expect(storage.has(TEACHER_GROUPS_FEATURE_KEY)).toBe(false);
   });
 
   it('installs unauthorized refresh handling for retryable OpenPath requests', async () => {
