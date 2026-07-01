@@ -598,6 +598,25 @@ describe('prepromotion runner rehearsal', () => {
     assert.match(result.stdout, /artifact_path=\/tmp\/classroompath prepromotion cli quote/);
   });
 
+  test('CLI run without --staging-verification prints usage and exits 1 without an uncaught throw', () => {
+    const result = spawnSync(process.execPath, [cliPath, 'run'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /--staging-verification is required/);
+    assert.match(result.stderr, /Usage:/);
+    assert.match(
+      result.stderr,
+      /verify:prepromotion-windows-ajax.*-- --staging-verification <path>/
+    );
+    assert.match(result.stderr, /prepromotion-windows-evidence\.mjs run-and-persist/);
+    assert.doesNotMatch(result.stderr, /throw new Error/);
+    assert.doesNotMatch(result.stderr, /^\s+at /m);
+    assert.doesNotMatch(result.stderr, /prepromotion-runner-rehearsal\.mjs:\d+/);
+  });
+
   test('CLI verify passes from current staging evidence without requiring its own artifact', () => {
     const tempDir = createTempDir('classroompath-prepromotion-cli-verify-');
     const stagingVerificationPath = resolve(tempDir, 'staging-verification.env');

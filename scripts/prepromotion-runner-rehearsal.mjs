@@ -58,6 +58,12 @@ Options:
   --base-url <url>               Public ClassroomPath URL override
   --openpath-root <path>         Local OpenPath checkout for the direct runner
   --confirm-production           Required when --environment production
+
+Note: the npm alias "verify:prepromotion-windows-ajax" runs this script's "run"
+command with no other arguments, so --staging-verification must be passed after
+an extra "--", e.g. npm run verify:prepromotion-windows-ajax -- --staging-verification <path>
+For the fully orchestrated pre-promotion rehearsal (run + persist evidence), use:
+  node scripts/prepromotion-windows-evidence.mjs run-and-persist
 `);
 }
 
@@ -231,7 +237,11 @@ function printResult(result) {
 }
 
 function loadRequirement(options) {
-  if (!options.stagingVerification) throw new Error('--staging-verification is required');
+  if (!options.stagingVerification) {
+    console.error('Error: --staging-verification is required.');
+    printUsage();
+    process.exit(1);
+  }
   if (!existsSync(options.stagingVerification)) {
     throw new Error(`Staging verification file not found: ${options.stagingVerification}`);
   }
