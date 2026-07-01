@@ -193,10 +193,39 @@ jobs:
           echo "Required approvals: ${{ needs.detect-relevant-changes.outputs.required_approvals || 'none' }}"
           echo "Release gates: ${{ needs.detect-relevant-changes.outputs.release_gates || 'none' }}"
 
+  typecheck-ratchet:
+    name: Typecheck Ratchet
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+
+      - name: Install ClassroomPath dependencies
+        run: npm ci
+
+      - name: Build workspaces
+        run: npm run build
+
+      - name: Run typecheck ratchet
+        run: npm run verify:scripts-types
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [detect-relevant-changes, product-validation, ops-regression, release-automation]
+    needs:
+      [
+        detect-relevant-changes,
+        product-validation,
+        ops-regression,
+        release-automation,
+        typecheck-ratchet,
+      ]
     if: always()
 
     steps:
@@ -270,13 +299,16 @@ jobs:
           echo "Product validation: ${{ needs.product-validation.result }}"
           echo "Ops regression: ${{ needs.ops-regression.result }}"
           echo "Release automation: ${{ needs.release-automation.result }}"
+          echo "Typecheck ratchet: ${{ needs.typecheck-ratchet.result }}"
 
           if [[ "${{ needs.product-validation.result }}" == "failure" ]] || \
              [[ "${{ needs.product-validation.result }}" == "cancelled" ]] || \
              [[ "${{ needs.ops-regression.result }}" == "failure" ]] || \
              [[ "${{ needs.ops-regression.result }}" == "cancelled" ]] || \
              [[ "${{ needs.release-automation.result }}" == "failure" ]] || \
-             [[ "${{ needs.release-automation.result }}" == "cancelled" ]]; then
+             [[ "${{ needs.release-automation.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.typecheck-ratchet.result }}" == "failure" ]] || \
+             [[ "${{ needs.typecheck-ratchet.result }}" == "cancelled" ]]; then
             echo "CI failed"
             exit 1
           fi

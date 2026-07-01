@@ -83,6 +83,12 @@ test('buildCiCacheMeasurement records cache candidates without recommending unsu
         stepName: 'Build ClassroomPath',
         scriptName: 'build',
       },
+      {
+        workflowPath: '.github/workflows/ci.yml',
+        jobName: 'Typecheck Ratchet',
+        stepName: 'Build workspaces',
+        scriptName: 'build',
+      },
     ]
   );
   assert.equal(measurement.turbo.recommendation.action, 'measure-more');
@@ -124,6 +130,12 @@ test('buildCiCacheMeasurement records cache candidates without recommending unsu
       {
         workflowPath: '.github/workflows/ci.yml',
         jobName: 'Release Automation Regression',
+        stepName: 'Install ClassroomPath dependencies',
+        workingDirectory: '',
+      },
+      {
+        workflowPath: '.github/workflows/ci.yml',
+        jobName: 'Typecheck Ratchet',
         stepName: 'Install ClassroomPath dependencies',
         workingDirectory: '',
       },
