@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 
@@ -11,6 +12,11 @@ import {
 
 const CLASSROOM_SHA = '1111111111111111111111111111111111111111';
 const OPENPATH_SHA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+// A project root that never exists on disk, so tests that don't exercise the
+// `.env.local` merge stay hermetic even when the real repo checkout has an
+// operator `.env.local` (readEnvFileIfPresent no-ops when the file is absent).
+const NO_ENV_LOCAL_PROJECT_ROOT = resolve(tmpdir(), 'release-preflight-test-no-env-local');
 
 const healthyStatus = {
   classroompath: {
@@ -99,6 +105,7 @@ test('release preflight passes with read-only checks when promotion evidence is 
       PROXMOX_HOST: 'proxmox.internal',
     },
     runCommand: harness.runCommand,
+    projectRootOverride: NO_ENV_LOCAL_PROJECT_ROOT,
   });
 
   assert.equal(result.ok, true);
@@ -127,6 +134,7 @@ test('release preflight fails early on operational placeholder targets', async (
       PROXMOX_HOST: 'proxmox-host.example.invalid',
     },
     runCommand: harness.runCommand,
+    projectRootOverride: NO_ENV_LOCAL_PROJECT_ROOT,
   });
 
   assert.equal(result.ok, false);
@@ -148,6 +156,7 @@ test('release preflight accepts a real Proxmox alias without PROXMOX_HOST', asyn
       PROXMOX_SSH_ALIAS: 'proxmox-ci-alias',
     },
     runCommand: harness.runCommand,
+    projectRootOverride: NO_ENV_LOCAL_PROJECT_ROOT,
   });
 
   assert.equal(result.ok, true);
@@ -155,6 +164,63 @@ test('release preflight accepts a real Proxmox alias without PROXMOX_HOST', asyn
     ok: true,
     message: 'operational targets are real values',
   });
+});
+
+test('release preflight merges .env.local so real deploy hosts clear operationalTargets', async () => {
+  const harness = createHarness();
+  const tempProjectRoot = mkdtempSync(resolve(tmpdir(), 'release-preflight-'));
+  try {
+    writeFileSync(
+      resolve(tempProjectRoot, '.env.local'),
+      [
+        'STAGING_HOST=staging.real-operator.example',
+        'DEPLOY_HOST=deploy.real-operator.example',
+        'PROXMOX_HOST=proxmox.real-operator.example',
+        '',
+      ].join('\n')
+    );
+
+    const result = await runReleasePreflight({
+      status: healthyStatus,
+      nextTag: 'v1.2.3',
+      // No STAGING_HOST/DEPLOY_HOST/PROXMOX_HOST here: this mirrors the real
+      // release:promote shell, which does not export these directly and would
+      // otherwise fall back to the built-in `*.example.invalid` placeholders
+      // (config/deploy-targets.json also only ships `.example.invalid` URLs).
+      // Only `.env.local` on disk carries the real operator values.
+      env: {},
+      runCommand: harness.runCommand,
+      projectRootOverride: tempProjectRoot,
+    });
+
+    assert.equal(result.checks.operationalTargets.ok, true);
+    assert.ok(!result.blockers.includes('operational-target-placeholder'));
+  } finally {
+    rmSync(tempProjectRoot, { recursive: true, force: true });
+  }
+});
+
+test('release preflight still blocks placeholder targets when no .env.local is present', async () => {
+  const harness = createHarness();
+  const tempProjectRoot = mkdtempSync(resolve(tmpdir(), 'release-preflight-'));
+  try {
+    const result = await runReleasePreflight({
+      status: healthyStatus,
+      nextTag: 'v1.2.3',
+      env: {
+        STAGING_HOST: 'staging-host.example.invalid',
+        DEPLOY_HOST: 'classroompath.example.invalid',
+        PROXMOX_HOST: 'proxmox-host.example.invalid',
+      },
+      runCommand: harness.runCommand,
+      projectRootOverride: tempProjectRoot,
+    });
+
+    assert.equal(result.checks.operationalTargets.ok, false);
+    assert.ok(result.blockers.includes('operational-target-placeholder'));
+  } finally {
+    rmSync(tempProjectRoot, { recursive: true, force: true });
+  }
 });
 
 test('release preflight infers next tag from remote tags when no tag is provided', async () => {
@@ -168,6 +234,7 @@ test('release preflight infers next tag from remote tags when no tag is provided
       PROXMOX_HOST: 'proxmox.internal',
     },
     runCommand: harness.runCommand,
+    projectRootOverride: NO_ENV_LOCAL_PROJECT_ROOT,
   });
 
   assert.equal(result.ok, true);
@@ -212,6 +279,7 @@ test('release preflight blocks dirty checkout, stale HEAD, missing evidence, and
       PROXMOX_HOST: 'proxmox.internal',
     },
     runCommand: harness.runCommand,
+    projectRootOverride: NO_ENV_LOCAL_PROJECT_ROOT,
   });
 
   assert.equal(result.ok, false);

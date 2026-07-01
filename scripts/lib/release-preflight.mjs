@@ -17,6 +17,7 @@ import {
   detectOperationalTargetPlaceholders,
   resolveNextPatchTagFromRemoteTags,
 } from '../release-status.mjs';
+import { readEnvFileIfPresent } from './env-local.mjs';
 import { deriveBlockerDetails } from './release-status-evaluator.mjs';
 import { evaluateStagingEligibility } from './promotion-eligibility-contract.mjs';
 
@@ -169,7 +170,9 @@ export async function runReleasePreflight({
   runCommand = defaultRunCommand,
   status = null,
   nextTag = '',
+  projectRootOverride = projectRoot,
 } = {}) {
+  const mergedEnv = readEnvFileIfPresent(env, resolve(projectRootOverride, '.env.local'));
   const effectiveStatus =
     status ??
     (await buildReleaseStatus({
@@ -205,7 +208,7 @@ export async function runReleasePreflight({
             tag ? 'next-tag-already-exists' : 'next-tag-missing',
             tag ? `next tag already exists: ${tag}` : 'next tag could not be inferred'
           ),
-    operationalTargets: checkOperationalTargets(env),
+    operationalTargets: checkOperationalTargets(mergedEnv),
     releaseFence: checkReleaseFence(effectiveStatus, env),
   };
 
