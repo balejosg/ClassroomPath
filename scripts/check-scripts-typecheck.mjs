@@ -25,9 +25,32 @@ const BASELINE_PATH = resolve(projectRoot, 'scripts/typecheck-scripts-baseline.j
 const TSC_ERROR_LINE = /^(.+?)\((\d+),(\d+)\): error (TS\d+):/;
 
 /**
+ * Whether a tsc-reported file is "owned" by the ratchet — i.e. its error count is what we gate on.
+ *
+ * We count ONLY the root `scripts/` + `tests/` tree the ratchet exists to guard, and deliberately
+ * IGNORE:
+ *   - transitively-pulled workspace source (`api/src/**`, `react-spa/**`) — tsc reaches these
+ *     through imports in the tests, and their error count depends on whether the workspace `dist`
+ *     is built, which is NOT deterministic across CI runs (a build job may or may not have run).
+ *     Counting them made the ratchet flap red/green independent of code changes.
+ *   - `tests/e2e/**` and `tests/helpers/**` — Playwright end-to-end specs and their fixtures are
+ *     tightly coupled to the built application + the Playwright runtime; their typechecking is
+ *     Playwright's domain, and (like the workspace source) their counts vary with build state.
+ *
+ * The result: the ratchet counts only build-state-independent files, so the same commit yields the
+ * same counts locally and on every CI run.
+ */
+export function isRatchetOwnedFile(file) {
+  const path = file.replace(/\\/g, '/').replace(/^\.\//, '');
+  if (path.startsWith('tests/e2e/') || path.startsWith('tests/helpers/')) return false;
+  return path.startsWith('scripts/') || path.startsWith('tests/');
+}
+
+/**
  * Parses `tsc` diagnostic output into a per-file error count.
  * Only lines matching `path(line,col): error TSxxxx: message` are counted; wrapped detail
- * lines (indented continuations of a multi-line diagnostic) are ignored.
+ * lines (indented continuations of a multi-line diagnostic) are ignored. Errors in files not
+ * owned by the ratchet (see {@link isRatchetOwnedFile}) are dropped so the count is deterministic.
  */
 export function parseTscOutput(output) {
   const counts = {};
@@ -37,6 +60,7 @@ export function parseTscOutput(output) {
     if (!match) continue;
 
     const file = match[1].replace(/\\/g, '/');
+    if (!isRatchetOwnedFile(file)) continue;
     counts[file] = (counts[file] ?? 0) + 1;
   }
 

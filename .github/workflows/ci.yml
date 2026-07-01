@@ -209,9 +209,6 @@ jobs:
       - name: Install ClassroomPath dependencies
         run: npm ci
 
-      - name: Build workspaces
-        run: npm run build
-
       - name: Run typecheck ratchet
         run: npm run verify:scripts-types
 

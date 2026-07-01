@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { compareToBaseline } from '../scripts/check-scripts-typecheck.mjs';
+import {
+  compareToBaseline,
+  isRatchetOwnedFile,
+  parseTscOutput,
+} from '../scripts/check-scripts-typecheck.mjs';
 
 test('flags a file whose current error count exceeds the baseline as a regression', () => {
   const result = compareToBaseline({ 'scripts/foo.mjs': 5 }, { 'scripts/foo.mjs': 2 });
@@ -95,4 +99,32 @@ test('handles multiple files independently across regressions, new files, and im
     result.improvements.map((entry) => entry.file),
     ['scripts/improved.mjs']
   );
+});
+
+test('isRatchetOwnedFile counts scripts/ + non-e2e/non-helpers tests/ and drops build-dependent files', () => {
+  // owned — build-state-independent, the ratchet gates on these
+  assert.equal(isRatchetOwnedFile('scripts/lib/foo.mjs'), true);
+  assert.equal(isRatchetOwnedFile('tests/release-status.test.ts'), true);
+  assert.equal(isRatchetOwnedFile('./scripts/foo.mjs'), true);
+  // NOT owned — transitively-pulled workspace source + Playwright e2e/fixtures, whose tsc error
+  // counts vary with workspace build state (non-deterministic across CI runs)
+  assert.equal(isRatchetOwnedFile('api/src/openpath/domain.ts'), false);
+  assert.equal(isRatchetOwnedFile('react-spa/src/data/pricing-data.ts'), false);
+  assert.equal(isRatchetOwnedFile('tests/e2e/fixtures/accounts.ts'), false);
+  assert.equal(isRatchetOwnedFile('tests/helpers/e2e-runtime.ts'), false);
+});
+
+test('parseTscOutput ignores errors in non-owned files so the count is deterministic', () => {
+  const output = [
+    "scripts/foo.mjs(1,1): error TS2339: Property 'x' does not exist.",
+    'tests/bar.test.ts(2,2): error TS2322: Type mismatch.',
+    'api/src/openpath/domain.ts(3,3): error TS2345: Bad arg.',
+    'tests/e2e/fixtures/accounts.ts(4,4): error TS2322: Type mismatch.',
+    'tests/helpers/e2e-runtime.ts(5,5): error TS2339: Nope.',
+  ].join('\n');
+
+  assert.deepEqual(parseTscOutput(output), {
+    'scripts/foo.mjs': 1,
+    'tests/bar.test.ts': 1,
+  });
 });

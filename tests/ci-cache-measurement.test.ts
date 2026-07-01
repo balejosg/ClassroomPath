@@ -83,12 +83,6 @@ test('buildCiCacheMeasurement records cache candidates without recommending unsu
         stepName: 'Build ClassroomPath',
         scriptName: 'build',
       },
-      {
-        workflowPath: '.github/workflows/ci.yml',
-        jobName: 'Typecheck Ratchet',
-        stepName: 'Build workspaces',
-        scriptName: 'build',
-      },
     ]
   );
   assert.equal(measurement.turbo.recommendation.action, 'measure-more');
