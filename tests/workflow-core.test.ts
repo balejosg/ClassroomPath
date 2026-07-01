@@ -917,4 +917,54 @@ describe('Workflow core contracts', () => {
       )
     );
   });
+
+  test('every deploy-targets.mjs consumer workflow carries the CLASSROOMPATH_<env>_* override block', () => {
+    // 2026-05-18 "sanitize public surface" regression: deploy.yml gained the
+    // CLASSROOMPATH_<env>_* env-override block (real vars.* values), but the
+    // scheduled smoke workflows only ever unconditionally resolve deploy
+    // targets (dumping the whole config via `outputs <env>`, or reading the
+    // base `publicUrl` field for a hardcoded `staging` argument) — so they
+    // fell back to the committed `.invalid` placeholders for ~170 runs
+    // unnoticed. Any workflow matching that same unconditional-resolution
+    // shape must also carry the override wiring. Reusable canary workflows
+    // that resolve a distinct, already-wired field (e.g. `canaryPublicUrl`)
+    // via a workflow_call input, or that only fall back to
+    // deploy-targets.mjs when a caller-supplied value is absent, are a
+    // different, already-covered pattern and are intentionally not matched
+    // here.
+    const deployTargetsConsumerMarkers = [
+      'deploy-targets.mjs outputs',
+      'deploy-targets.mjs get staging publicUrl',
+    ];
+    const canonicalOverrideKey = 'CLASSROOMPATH_STAGING_PUBLIC_URL';
+    const consumers: string[] = [];
+    const missingOverride: string[] = [];
+
+    for (const relativePath of workflowPaths()) {
+      const workflowText = readText(relativePath);
+      const isDeployTargetsConsumer = deployTargetsConsumerMarkers.some((marker) =>
+        workflowText.includes(marker)
+      );
+
+      if (!isDeployTargetsConsumer) {
+        continue;
+      }
+
+      consumers.push(relativePath);
+
+      if (!workflowText.includes(canonicalOverrideKey)) {
+        missingOverride.push(relativePath);
+      }
+    }
+
+    assert.ok(
+      consumers.length > 0,
+      'expected at least one workflow to resolve deploy targets via deploy-targets.mjs'
+    );
+    assert.deepEqual(
+      missingOverride,
+      [],
+      `workflows resolving deploy targets must also carry the ${canonicalOverrideKey} operator override, missing in: ${missingOverride.join(', ')}`
+    );
+  });
 });
