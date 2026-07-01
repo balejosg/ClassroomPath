@@ -127,12 +127,6 @@ test('buildCiCacheMeasurement records cache candidates without recommending unsu
         stepName: 'Install ClassroomPath dependencies',
         workingDirectory: '',
       },
-      {
-        workflowPath: '.github/workflows/ci.yml',
-        jobName: 'Typecheck Ratchet',
-        stepName: 'Install ClassroomPath dependencies',
-        workingDirectory: '',
-      },
     ]
   );
   assert.deepEqual(

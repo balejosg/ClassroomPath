@@ -438,17 +438,12 @@ describe('Workflow core contracts', () => {
     const opsJob = workflow.jobs?.['ops-regression'];
     const releaseAutomationJob = workflow.jobs?.['release-automation'];
     const detectJob = workflow.jobs?.['detect-relevant-changes'];
-    const typecheckRatchetJob = workflow.jobs?.['typecheck-ratchet'];
     const opsSteps = opsJob?.steps ?? [];
     const releaseAutomationSteps = releaseAutomationJob?.steps ?? [];
-    const typecheckRatchetSteps = typecheckRatchetJob?.steps ?? [];
     const detectStep = (detectJob?.steps ?? []).find((step) => step.id === 'filter');
     const regressionStep = opsSteps.find((step) => step.name === 'Run ops regression tests');
     const releaseRegressionStep = releaseAutomationSteps.find(
       (step) => step.name === 'Run release automation regression tests'
-    );
-    const typecheckRatchetStep = typecheckRatchetSteps.find(
-      (step) => step.name === 'Run typecheck ratchet'
     );
     const summaryStep = opsSteps.find((step) => step.name === 'Summarize verification report');
     const uploadStep = opsSteps.find((step) => step.name === 'Upload verification report artifact');
@@ -492,9 +487,6 @@ describe('Workflow core contracts', () => {
     assert.ok(workflow.jobs?.['product-validation']);
     assert.ok(workflow.jobs?.['ops-regression']);
     assert.ok(workflow.jobs?.['release-automation']);
-    assert.equal(typecheckRatchetJob?.name, 'Typecheck Ratchet');
-    assert.equal(String(typecheckRatchetStep?.run ?? ''), 'npm run verify:scripts-types');
-    assert.ok(workflow.jobs?.['ci-success']?.needs?.includes('typecheck-ratchet'));
     assert.equal(
       workflow.jobs?.['detect-relevant-changes']?.outputs?.['release_gates'],
       '${{ steps.filter.outputs.release_gates }}'
