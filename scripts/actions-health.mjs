@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Classifies the health of a GitHub Actions workflow run (queued, stale, in-progress, or terminal) and optionally waits for completion.
+ * Classifies the health of a GitHub Actions workflow run (queued, stale, in-progress, or terminal),
+ * optionally waits for completion, and detects workflows that are chronically red across their
+ * last N scheduled/push runs (e.g. a scheduled smoke test nobody noticed had gone red).
  *
  * Invoked by: Developer CLI; also imported by canary and deploy workflows.
- * Usage: node scripts/actions-health.mjs classify|wait|report --run-url <url>
+ * Usage: node scripts/actions-health.mjs classify|wait|report-stale|chronic-failures --run-url <url>
  * Env: GITHUB_TOKEN.
  */
 
@@ -22,15 +24,22 @@ const DEFAULT_WAIT_TIMEOUT_SECONDS = 30 * 60;
 const DEFAULT_WAIT_INTERVAL_SECONDS = 15;
 const DEFAULT_STALE_AFTER_MS = 30 * 60 * 1000;
 const GATE_WORKFLOW_NAMES = new Set(['Deploy', 'Release Candidate Images']);
+const DEFAULT_CHRONIC_THRESHOLD = 5;
+const CHRONIC_FETCH_LIMIT_PER_QUERY = 100;
 
 function usage() {
   return `Usage:
   node scripts/actions-health.mjs classify --repo <owner/name> --run-id <id> [--json]
   node scripts/actions-health.mjs wait --repo <owner/name> --run-id <id> [--timeout-seconds <n>] [--interval-seconds <n>] [--json]
   node scripts/actions-health.mjs report-stale --repo <owner/name> --sha <sha> [--tag <tag>] [--json]
+  node scripts/actions-health.mjs chronic-failures --repo <owner/name> [--workflow <name>] [--threshold <n>] [--fail-on-chronic] [--json]
 
 Classifies GitHub Actions workflow runs for stale or corrupt states using:
   gh run view <id> --repo <repo> --json ${GH_RUN_VIEW_FIELDS}
+
+chronic-failures flags workflows whose last <threshold> (default ${DEFAULT_CHRONIC_THRESHOLD})
+schedule/push runs are ALL conclusion=failure -- a scheduled or non-gating workflow that has been
+red for many consecutive runs without anyone noticing.
 `;
 }
 
@@ -55,8 +64,13 @@ export async function runActionsHealthCommand(argv = process.argv, dependencies 
 export function parseArgs(args) {
   const [command, ...rest] = args;
 
-  if (command !== 'classify' && command !== 'wait' && command !== 'report-stale') {
-    throw new Error('command must be classify, wait, or report-stale');
+  if (
+    command !== 'classify' &&
+    command !== 'wait' &&
+    command !== 'report-stale' &&
+    command !== 'chronic-failures'
+  ) {
+    throw new Error('command must be classify, wait, report-stale, or chronic-failures');
   }
 
   const options = {
@@ -68,6 +82,9 @@ export function parseArgs(args) {
     tag: '',
     timeoutSeconds: DEFAULT_WAIT_TIMEOUT_SECONDS,
     intervalSeconds: DEFAULT_WAIT_INTERVAL_SECONDS,
+    workflow: '',
+    threshold: DEFAULT_CHRONIC_THRESHOLD,
+    failOnChronic: false,
   };
 
   for (let index = 0; index < rest.length; index += 1) {
@@ -101,6 +118,18 @@ export function parseArgs(args) {
           '--interval-seconds'
         );
         break;
+      case '--workflow':
+        options.workflow = requireNextValue(rest, ++index, '--workflow');
+        break;
+      case '--threshold':
+        options.threshold = parsePositiveInteger(
+          requireNextValue(rest, ++index, '--threshold'),
+          '--threshold'
+        );
+        break;
+      case '--fail-on-chronic':
+        options.failOnChronic = true;
+        break;
       default:
         throw new Error(`unknown argument: ${arg}`);
     }
@@ -128,6 +157,10 @@ async function runSelectedCommand(options, dependencies) {
 
   if (options.command === 'report-stale') {
     return reportStaleRuns(options, dependencies);
+  }
+
+  if (options.command === 'chronic-failures') {
+    return reportChronicFailures(options, dependencies);
   }
 
   return classifyRun(options, dependencies);
@@ -268,6 +301,153 @@ async function enrichRunsWithJobs(runs, options, dependencies) {
   return enrichedRuns;
 }
 
+async function reportChronicFailures(options, dependencies) {
+  try {
+    const runs = await fetchChronicFailureCandidates(options, dependencies);
+    const runsByWorkflow = groupRunsByWorkflowWindow(runs, options.threshold);
+    const chronicWorkflows = detectChronicFailures(runsByWorkflow, options.threshold);
+    const failOnChronic = options.failOnChronic && chronicWorkflows.length > 0;
+
+    return {
+      repo: options.repo,
+      workflow: options.workflow || null,
+      threshold: options.threshold,
+      chronicWorkflows,
+      state: chronicWorkflows.length > 0 ? 'chronic' : 'clean',
+      reason:
+        chronicWorkflows.length > 0
+          ? `${chronicWorkflows.length} workflow(s) failed every one of their last ${options.threshold} schedule/push run(s)`
+          : `no workflow failed all of its last ${options.threshold} schedule/push run(s)`,
+      exitStatus: failOnChronic ? 1 : 0,
+    };
+  } catch (error) {
+    return {
+      repo: options.repo,
+      workflow: options.workflow || null,
+      threshold: options.threshold,
+      chronicWorkflows: [],
+      state: 'unavailable',
+      reason: `chronic-failures report unavailable: ${error.message}`,
+      exitStatus: 0,
+    };
+  }
+}
+
+async function fetchChronicFailureCandidates(options, dependencies) {
+  const runExecFile = dependencies.execFile ?? execFile;
+  const runsById = new Map();
+  const limit = Math.max(CHRONIC_FETCH_LIMIT_PER_QUERY, options.threshold * 4);
+
+  for (const event of ['schedule', 'push']) {
+    const query = [
+      'run',
+      'list',
+      '--repo',
+      options.repo,
+      '--event',
+      event,
+      '--limit',
+      String(limit),
+    ];
+    if (options.workflow) {
+      query.push('--workflow', options.workflow);
+    }
+
+    const result = await runExecFile('gh', [...query, '--json', GH_RUN_LIST_FIELDS]);
+    const runs = JSON.parse(String(result.stdout ?? '[]'));
+    for (const run of Array.isArray(runs) ? runs : []) {
+      const id = String(run.databaseId ?? run.id ?? '');
+      if (id) {
+        runsById.set(id, run);
+      }
+    }
+  }
+
+  return [...runsById.values()];
+}
+
+/**
+ * Groups runs by workflow name, sorted most-recent-first, and truncated to the last
+ * `threshold` runs per workflow -- the window `detectChronicFailures` inspects.
+ */
+function groupRunsByWorkflowWindow(runs, threshold) {
+  const grouped = new Map();
+
+  for (const run of runs) {
+    const workflowName = workflowNameForRun(run);
+    if (!workflowName) {
+      continue;
+    }
+    if (!grouped.has(workflowName)) {
+      grouped.set(workflowName, []);
+    }
+    grouped.get(workflowName).push(run);
+  }
+
+  for (const [workflowName, workflowRuns] of grouped) {
+    const sorted = [...workflowRuns].sort((a, b) => parseRunTimestamp(b) - parseRunTimestamp(a));
+    grouped.set(workflowName, sorted.slice(0, threshold));
+  }
+
+  return grouped;
+}
+
+function parseRunTimestamp(run) {
+  const parsed = Date.parse(run.createdAt ?? run.updatedAt ?? '');
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Pure detector: given runs already bucketed per workflow (most-recent-first), flags a
+ * workflow as "chronic" when the leading run of the bucket, counted from the most recent,
+ * are consecutively conclusion==='failure' for at least `threshold` runs in a row.
+ *
+ * Edge case: if a workflow has fewer than `threshold` runs available at all, it can never
+ * accumulate `threshold` consecutive failures, so it is NOT flagged chronic -- we require a
+ * full window of evidence before calling a workflow chronically red.
+ *
+ * @param {Map<string, Array<object>>|Record<string, Array<object>>} runsByWorkflow
+ * @param {number} threshold
+ * @returns {Array<{workflowName: string, consecutiveFailures: number, streakStartRunId: string|number|null, streakStartDate: string}>}
+ */
+export function detectChronicFailures(runsByWorkflow, threshold) {
+  const entries =
+    runsByWorkflow instanceof Map
+      ? [...runsByWorkflow.entries()]
+      : Object.entries(runsByWorkflow ?? {});
+
+  const chronic = [];
+
+  for (const [workflowName, runs] of entries) {
+    const orderedRuns = Array.isArray(runs) ? runs : [];
+    const consecutiveFailures = countLeadingFailures(orderedRuns);
+
+    if (consecutiveFailures >= threshold && consecutiveFailures > 0) {
+      const streakStartRun = orderedRuns[consecutiveFailures - 1];
+      chronic.push({
+        workflowName,
+        consecutiveFailures,
+        streakStartRunId: streakStartRun?.databaseId ?? streakStartRun?.id ?? null,
+        streakStartDate: streakStartRun?.createdAt ?? streakStartRun?.updatedAt ?? '',
+      });
+    }
+  }
+
+  return chronic;
+}
+
+function countLeadingFailures(runs) {
+  let count = 0;
+  for (const run of runs) {
+    if (run?.conclusion === 'failure') {
+      count += 1;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
 function findResidualUnhealthyRuns(runs, { sha, tag, nowMs }) {
   return filterResidualRunCandidates(runs, { sha, tag })
     .map((run) => buildResidualRunHealth(run, nowMs))
@@ -342,11 +522,17 @@ function printResult(result, options, io) {
     return;
   }
 
-  io.stdout(
-    options.command === 'report-stale'
-      ? formatResidualRunsReport(result)
-      : formatHumanResult(result)
-  );
+  if (options.command === 'report-stale') {
+    io.stdout(formatResidualRunsReport(result));
+    return;
+  }
+
+  if (options.command === 'chronic-failures') {
+    io.stdout(formatChronicFailuresReport(result));
+    return;
+  }
+
+  io.stdout(formatHumanResult(result));
 }
 
 function formatHumanResult(result) {
@@ -401,11 +587,40 @@ function formatResidualRunsReport(result) {
   return `${lines.join('\n')}\n`;
 }
 
+function formatChronicFailuresReport(result) {
+  const scope = result.workflow ? ` (workflow: ${result.workflow})` : '';
+  const lines = [`Chronic workflow failures${scope}, threshold ${result.threshold}:`];
+
+  if (result.state === 'unavailable') {
+    lines.push(`- unavailable: ${result.reason}`);
+    return `${lines.join('\n')}\n`;
+  }
+
+  if (result.chronicWorkflows.length === 0) {
+    lines.push(`- none found in the last ${result.threshold} schedule/push run(s) per workflow`);
+    return `${lines.join('\n')}\n`;
+  }
+
+  for (const workflow of result.chronicWorkflows) {
+    const runId = workflow.streakStartRunId ?? 'unknown';
+    const since = workflow.streakStartDate || 'unknown time';
+    lines.push(
+      `- ${workflow.workflowName}: ${workflow.consecutiveFailures} consecutive failures, streak started run ${runId} (${since})`
+    );
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
 function isTerminalState(state) {
   return ['healthy', 'failed', 'stale', 'corrupt'].includes(state);
 }
 
 function exitStatusForResult(result) {
+  if (typeof result.exitStatus === 'number') {
+    return result.exitStatus;
+  }
+
   if (result.state === 'reported' || result.state === 'unavailable') {
     return 0;
   }
