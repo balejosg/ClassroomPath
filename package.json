@@ -64,6 +64,7 @@
     "verify:production-target-ready": "bash scripts/preflight-production-promotion-target.sh",
     "verify:production-promotion-dry": "node scripts/production-promotion-dry-validate.mjs",
     "verify:production-host": "bash scripts/verify-production-host-readiness.sh",
+    "verify:operator-config": "node scripts/check-operator-config.mjs",
     "ops:change-brief": "node ../scripts/change-brief.mjs --workspace .. --repo classroompath",
     "ops:deploy-brief": "node scripts/deploy-brief.mjs",
     "ops:failure-brief": "node scripts/failure-brief.mjs",

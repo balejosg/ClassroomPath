@@ -26,6 +26,9 @@ must be in place before running a promotion and which commands to use.
 
 ### Prerequisites
 
+Run `npm run verify:operator-config` first to check `.env.local` for missing or placeholder
+operator vars in one pass, before starting a promotion attempt.
+
 **Private config files (untracked, never committed):**
 
 - `.env.local` — operator-private environment variables. Required keys:
