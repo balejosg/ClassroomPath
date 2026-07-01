@@ -189,10 +189,12 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
         refetch,
       });
       dispatch({ type: 'loading-timeout-cleared' });
+      // The migration card can appear over any route; send the user to the new org's home.
+      navigate('/', { replace: true });
     } finally {
       dispatch({ type: 'accept-pending-invitation-finish' });
     }
-  }, [refetch]);
+  }, [navigate, refetch]);
 
   const onAcceptPendingInvitation = useCallback(() => {
     void acceptPendingInvitation();
@@ -216,7 +218,10 @@ export function useClassroomPathBoot(): ClassroomPathBoot {
   const onAuthenticated = useCallback(() => {
     dispatch({ type: 'authenticated' });
     navigate(getSafeInternalNextPath(location.search) ?? '/', { replace: true });
-  }, [location.search, navigate]);
+    // An already-authenticated user accepting an organization transfer keeps a cached
+    // onboarding status for the previous org; refetch so the gate lands on the new org.
+    refetch();
+  }, [location.search, navigate, refetch]);
 
   useEffect(() => {
     return installReportErrorSink({

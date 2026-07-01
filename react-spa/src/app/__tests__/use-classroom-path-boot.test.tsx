@@ -134,6 +134,8 @@ function BootProbe() {
       <button onClick={boot.onLogoutToLogin}>Logout to login</button>
       <button onClick={boot.onBillingSuccessComplete}>Billing success complete</button>
       <button onClick={boot.onBillingCancelBack}>Billing cancel back</button>
+      <button onClick={boot.onAuthenticated}>Authenticated</button>
+      <button onClick={boot.onAcceptPendingInvitation}>Accept pending invitation</button>
     </div>
   );
 }
@@ -310,6 +312,65 @@ describe('useClassroomPathBoot', () => {
       });
       expect(mockPersistSession).toHaveBeenCalledWith({ user: { id: 'accepted-user' } });
       expect(refetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('refetches onboarding status and lands home when authentication completes on the invitation page', async () => {
+    const refetch = vi.fn();
+    mockUseOnboardingStatus.mockReturnValue(makeOnboardingQuery({ data: activeStatus(), refetch }));
+
+    renderBootProbe('/accept-invitation?token=invite-token');
+
+    act(() => {
+      fireEvent.click(screen.getByText('Authenticated'));
+    });
+
+    await waitFor(() => {
+      expect(refetch).toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/');
+    });
+  });
+
+  it('navigates home after accepting a pending organization-migration invitation', async () => {
+    const refetch = vi.fn();
+    mockUseOnboardingStatus.mockReturnValue(
+      makeOnboardingQuery({
+        data: {
+          hasMembership: true,
+          isWaiting: false,
+          organization: { id: 'org_a', name: 'Colegio A', role: 'admin' },
+          platformAdmin: false,
+          billing: activeStatus().billing,
+          policy: {
+            allowOrgDirectory: false,
+            allowSelfServiceOrgs: false,
+            billingMode: 'stripe',
+          },
+          pendingInvitation: {
+            organizationId: 'org_b',
+            organizationName: 'Colegio B',
+            role: 'teacher',
+            requiresMigration: true,
+          },
+        },
+        refetch,
+      })
+    );
+
+    renderBootProbe('/domain-requests');
+
+    act(() => {
+      fireEvent.click(screen.getByText('Accept pending invitation'));
+    });
+
+    await waitFor(() => {
+      expect(mockAcceptPendingInvitationMutate).toHaveBeenCalledWith({
+        termsAccepted: true,
+        termsVersion: '2026-03-09',
+        clientMode: 'web',
+      });
+      expect(refetch).toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/');
     });
   });
 });
