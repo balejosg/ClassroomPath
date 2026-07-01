@@ -89,7 +89,7 @@ function createLinuxCanaryRuntimeHarness(
       RUNNER_TEMP: runnerTemp,
       GITHUB_OUTPUT: outputPath,
       LINUX_BOOTSTRAP_CANARY_ARTIFACT_DIR: tempDir,
-      LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: 'https://classroompath.example',
+      LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: 'https://classroompath.example.invalid',
       LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: 'group-linux',
       LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: 'protected-admin-token',
       EXPECTED_EXTENSION_ID: 'expected-extension',
@@ -606,7 +606,7 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     ];
 
     const diagnostics = await collectCanaryGroupDiagnostics({
-      apiUrl: 'https://classroompath.example/',
+      apiUrl: 'https://classroompath.example.invalid/',
       groupId: 'group-linux',
       adminToken: 'protected-admin-token',
       fetchImpl: async (url: string) => {
@@ -627,8 +627,8 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.equal(diagnostics.attempt, 2);
     assert.deepEqual(sleeps, [25]);
     assert.deepEqual(requests, [
-      'https://classroompath.example/cp/internal/client-canary/group/group-linux/diagnostics',
-      'https://classroompath.example/cp/internal/client-canary/group/group-linux/diagnostics',
+      'https://classroompath.example.invalid/cp/internal/client-canary/group/group-linux/diagnostics',
+      'https://classroompath.example.invalid/cp/internal/client-canary/group/group-linux/diagnostics',
     ]);
   });
 
