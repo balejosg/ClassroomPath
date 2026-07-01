@@ -583,9 +583,14 @@ export async function collectReleaseStatusEvidence({
   argv = [],
   env = process.env,
   runCommand = defaultRunCommand,
+  // Test-only seam (mirrors `runReleasePreflight`'s `projectRootOverride` in
+  // scripts/lib/release-preflight.mjs): lets tests point `.env.local` resolution at a
+  // non-existent or controlled temp directory instead of this repo checkout's real
+  // `.env.local`, so hermetic tests never depend on the operator's real dotfile.
+  projectRootOverride = projectRoot,
 } = {}) {
   const args = parseReleaseStatusArgs(argv);
-  const mergedEnv = readEnvFileIfPresent(env, resolve(projectRoot, '.env.local'));
+  const mergedEnv = readEnvFileIfPresent(env, resolve(projectRootOverride, '.env.local'));
   const classroomSha = args.sha || runGit(runCommand, ['rev-parse', 'HEAD'], mergedEnv);
   const openpathSha =
     args.openpathSha || runGit(runCommand, ['rev-parse', 'HEAD:upstream/openpath'], mergedEnv);

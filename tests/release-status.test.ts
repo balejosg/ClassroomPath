@@ -25,6 +25,12 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
 const cliPath = resolve(projectRoot, 'scripts/release-status.mjs');
 
+// A project root that never exists on disk, so tests that don't exercise the
+// `.env.local` merge stay hermetic even when the real repo checkout has an
+// operator `.env.local` (readEnvFileIfPresent no-ops when the file is absent).
+// Mirrors NO_ENV_LOCAL_PROJECT_ROOT in tests/release-preflight.test.ts.
+const NO_ENV_LOCAL_PROJECT_ROOT = resolve(tmpdir(), 'release-status-test-no-env-local');
+
 const CLASSROOM_SHA = '1111111111111111111111111111111111111111';
 const ORIGIN_SHA = '2222222222222222222222222222222222222222';
 const OPENPATH_SHA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -590,7 +596,13 @@ test('keeps stale staging as promotion-only blocker when production already runs
 
 test('detects operational placeholders in status JSON for preflight consumers', async () => {
   const harness = createCommandHarness({ originSha: CLASSROOM_SHA });
-  const status = await buildReleaseStatus({
+  // Uses collectReleaseStatusEvidence directly (rather than buildReleaseStatus) so a
+  // projectRootOverride pointing at a non-existent directory can be passed, keeping this
+  // test hermetic to the operator's real `.env.local` (e.g. a PROXMOX_SSH_ALIAS entry
+  // there would otherwise silently clear the PROXMOX_HOST placeholder below).
+  // buildReleaseStatusJson derives promotionBlockers/productionBlockers itself when they
+  // aren't already present on the status, so this is equivalent to buildReleaseStatus here.
+  const status = await collectReleaseStatusEvidence({
     argv: ['--sha', CLASSROOM_SHA],
     env: {
       ...process.env,
@@ -602,6 +614,7 @@ test('detects operational placeholders in status JSON for preflight consumers', 
       PROXMOX_HOST: 'proxmox-host.example.invalid',
     },
     runCommand: harness.runCommand,
+    projectRootOverride: NO_ENV_LOCAL_PROJECT_ROOT,
   });
 
   const payload = buildReleaseStatusJson(status);
