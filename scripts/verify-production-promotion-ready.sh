@@ -18,6 +18,20 @@ require_cmd git
 require_cmd node
 require_cmd ssh
 
+# Exit-code contract (consumed by nightly-staging-candidate.yml and pinned by
+# tests/workflow-deploy.test.ts):
+#   0  -> staging candidate is promotion-ready
+#   10 -> a readiness gate evaluated successfully and answered "not
+#         promotion-ready" (expected steady state between promotions)
+#   1+ -> the gate itself could not evaluate (config/SSH/contract error)
+PROMOTION_BLOCKED_EXIT_CODE=10
+
+blocked() {
+  log_warn "PROMOTION BLOCKED: $1"
+  log_warn "Blocked is the expected steady state when the current staging candidate is not yet promotion-eligible."
+  exit "$PROMOTION_BLOCKED_EXIT_CODE"
+}
+
 ENV_LOCAL="$PROJECT_ROOT/.env.local"
 if [ -f "$ENV_LOCAL" ]; then
   load_env_file "$ENV_LOCAL" || true
@@ -104,10 +118,12 @@ verify_openpath_required_checks() {
   OPENPATH_BASE_SHA="$openpath_base_sha" \
   OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH="${OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH:-true}" \
     node "$SCRIPT_DIR/openpath-required-checks.mjs" report || true
-  OPENPATH_SHA="$openpath_sha" \
-  OPENPATH_BASE_SHA="$openpath_base_sha" \
-  OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH="${OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH:-true}" \
-    node "$SCRIPT_DIR/openpath-required-checks.mjs" wait
+  if ! OPENPATH_SHA="$openpath_sha" \
+    OPENPATH_BASE_SHA="$openpath_base_sha" \
+    OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH="${OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH:-true}" \
+    node "$SCRIPT_DIR/openpath-required-checks.mjs" wait; then
+    blocked "OpenPath required checks are not green for staged submodule SHA $openpath_sha"
+  fi
 }
 
 verify_openpath_required_checks
@@ -222,7 +238,7 @@ if ! node "$SCRIPT_DIR/prepromotion-runner-rehearsal.mjs" verify \
   node "$SCRIPT_DIR/prepromotion-windows-evidence.mjs" inspect \
     --staging-verification "$verification_state_file" \
     --target-sha "$TARGET_SHA" || true
-  exit 1
+  blocked "Windows prepromotion rehearsal evidence is not promotion-ready for $TARGET_SHA (see inspect output above)"
 fi
 
 if "${PRODUCTION_SSH_CMD[@]}" "test -f '$PRODUCTION_CURRENT_STATE_PATH'" >/dev/null 2>&1; then
@@ -236,12 +252,21 @@ node "$SCRIPT_DIR/release-risk-cli.mjs" detect-github-output >/dev/null
 
 HIGH_RISK="$(awk -F= '$1=="high_risk"{print $2}' "$risk_output_file" | tail -1)"
 
+set +e
 node "$SCRIPT_DIR/release-state-cli.mjs" verify-promotion-ready \
   --current "$current_state_file" \
   --verification "$verification_state_file" \
   --deployment-mode promotion-eligible \
   --high-risk "${HIGH_RISK:-false}" \
   --report-json "$report_json_file"
+eligibility_status="$?"
+set -e
+
+if [ "$eligibility_status" -eq "$PROMOTION_BLOCKED_EXIT_CODE" ]; then
+  blocked "Staging release evidence for $TARGET_SHA is not promotion-eligible"
+elif [ "$eligibility_status" -ne 0 ]; then
+  die "Promotion-eligibility gate could not evaluate (release-state-cli exit $eligibility_status)" "$eligibility_status"
+fi
 
 if [ -n "${PROMOTION_EVIDENCE_DIR:-}" ]; then
   mkdir -p "$PROMOTION_EVIDENCE_DIR"

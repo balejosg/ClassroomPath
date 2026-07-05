@@ -326,6 +326,42 @@ describe('Deploy workflow contracts', () => {
     );
   });
 
+  test('verify-production-promotion-ready.sh separates blocked (exit 10) from genuine errors', () => {
+    const verifyScript = readText('scripts/verify-production-promotion-ready.sh');
+
+    // The three-way exit contract is declared once and used for every "gate answered no" path.
+    assert.match(verifyScript, /PROMOTION_BLOCKED_EXIT_CODE=10/);
+    assert.match(verifyScript, /blocked\(\) \{/);
+    assert.match(verifyScript, /exit "\$PROMOTION_BLOCKED_EXIT_CODE"/);
+
+    // Gate 1: OpenPath required checks evaluated but not green for the staged submodule SHA.
+    assert.match(
+      verifyScript,
+      /blocked "OpenPath required checks are not green for staged submodule SHA/
+    );
+    // Gate 2: Windows prepromotion rehearsal evidence missing/stale/failed for the target SHA.
+    assert.match(
+      verifyScript,
+      /blocked "Windows prepromotion rehearsal evidence is not promotion-ready for/
+    );
+    // Gate 3: release-state eligibility said no (exit 10 from release-state-cli.mjs).
+    assert.match(verifyScript, /eligibility_status="\$\?"/);
+    assert.match(
+      verifyScript,
+      /blocked "Staging release evidence for \$TARGET_SHA is not promotion-eligible"/
+    );
+    // Crashes of the eligibility CLI must stay genuine errors, not blocked.
+    assert.match(
+      verifyScript,
+      /die "Promotion-eligibility gate could not evaluate \(release-state-cli exit \$eligibility_status\)"/
+    );
+    // The old conflated exit is gone from the rehearsal branch.
+    assert.ok(
+      !/prepromotion-windows-evidence\.mjs[\s\S]{0,200}\n {2}exit 1$/m.test(verifyScript),
+      'rehearsal branch must use blocked(), not a bare exit 1'
+    );
+  });
+
   test('manual current staging promotion workflow creates a tag and leaves deploy to deploy.yml', () => {
     const workflow = readWorkflow('.github/workflows/promote-current-staging-candidate.yml');
     const workflowText = readText('.github/workflows/promote-current-staging-candidate.yml');
