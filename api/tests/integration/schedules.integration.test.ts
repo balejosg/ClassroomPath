@@ -494,7 +494,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.strictEqual(mine[0]?.id, weekly.id);
   });
 
-  test('createOneOff validates dates and 15-minute instants', async () => {
+  test('createOneOff validates dates and 5-minute instants', async () => {
     await resetDb();
 
     const adminUserId = 'sched-admin-oneoff-validate';
@@ -564,20 +564,20 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     assert.strictEqual(secondsJson.code, 'BAD_REQUEST');
     assert.match(String(secondsJson.error), /startAt.*seconds/i);
 
-    const nonQuarter = await trpcMutate(
+    const offStep = await trpcMutate(
       integration.baseUrl,
       'schedules.createOneOff',
       {
         classroomId,
         groupId,
-        startAt: '2026-01-01T10:10:00Z',
+        startAt: '2026-01-01T10:07:00Z',
         endAt: '2026-01-01T11:00:00Z',
       },
       bearerAuth(teacherToken)
     );
-    const nonQuarterJson = (await parseTRPC(nonQuarter)) as any;
-    assert.strictEqual(nonQuarterJson.code, 'BAD_REQUEST');
-    assert.match(String(nonQuarterJson.error), /15-minute increments/i);
+    const offStepJson = (await parseTRPC(offStep)) as any;
+    assert.strictEqual(offStepJson.code, 'BAD_REQUEST');
+    assert.match(String(offStepJson.error), /startAt must be in 5-minute increments/i);
 
     const invalidRange = await trpcMutate(
       integration.baseUrl,
@@ -593,6 +593,21 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     const invalidRangeJson = (await parseTRPC(invalidRange)) as any;
     assert.strictEqual(invalidRangeJson.code, 'BAD_REQUEST');
     assert.match(String(invalidRangeJson.error), /endAt.*after startAt/i);
+
+    // 5-minute-aligned instants that are NOT quarter-hour aligned are valid
+    // since the SCHEDULE_TIME_STEP_MINUTES 15 -> 5 change (b32954a).
+    const onStep = await trpcMutate(
+      integration.baseUrl,
+      'schedules.createOneOff',
+      {
+        classroomId,
+        groupId,
+        startAt: '2026-01-01T10:10:00Z',
+        endAt: '2026-01-01T11:05:00Z',
+      },
+      bearerAuth(teacherToken)
+    );
+    assertStatus(onStep, 200);
   });
 
   test('createOneOff rejects overlapping one-off schedules', async () => {
@@ -1311,7 +1326,7 @@ describe('ClassroomPath schedules integration (/cp/trpc)', async () => {
     );
     const invalidQuarterJson = (await parseTRPC(invalidQuarter)) as any;
     assert.strictEqual(invalidQuarterJson.code, 'BAD_REQUEST');
-    assert.match(String(invalidQuarterJson.error), /15-minute increments/i);
+    assert.match(String(invalidQuarterJson.error), /startTime must be in 5-minute increments/i);
 
     const invalidWindow = await trpcMutate(
       integration.baseUrl,
