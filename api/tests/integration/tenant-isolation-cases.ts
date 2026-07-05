@@ -6,6 +6,7 @@ export interface TenantAResources {
   classroomId: string;
   machineId: string;
   scheduleId: string;
+  oneOffScheduleId: string;
   exemptionId: string;
   requestId: string;
   pendingUserId: string;
@@ -107,7 +108,17 @@ export const CROSS_TENANT_CASES: Record<string, CrossTenantCase> = {
   // ---- classrooms ----
   'classrooms.list': scoped(() => undefined, 'org-scoped list'),
   'classrooms.getById': reject('NOT_FOUND', (a) => ({ id: a.classroomId })),
-  'classrooms.listMachines': reject('NOT_FOUND', (a) => ({ classroomId: a.classroomId })),
+  // listTenantClassroomMachines (classroom-machine-access.service.ts) resolves
+  // the caller's own classroomIds first and short-circuits `return []` when
+  // that set is empty -- it never reaches the specific-classroomId membership
+  // check in that case. Verified empirically: tenant B (zero classrooms of its
+  // own) gets 200 [] for ANY classroomId, real or garbage, so no tenant-A data
+  // or existence oracle is disclosed. This is an org-scoped empty-result
+  // no-op, not a leak -- registered as scoped like pendingUsers.reject.
+  'classrooms.listMachines': scoped(
+    (a) => ({ classroomId: a.classroomId }),
+    'caller-org-scoped machine list; returns [] (not NOT_FOUND) when caller org owns zero classrooms, before the specific-classroomId check runs'
+  ),
   'classrooms.listExemptions': reject('NOT_FOUND', (a) => ({ classroomId: a.classroomId })),
   'classrooms.createExemption': reject('NOT_FOUND', (a) => ({
     machineId: a.machineId,
@@ -150,11 +161,19 @@ export const CROSS_TENANT_CASES: Record<string, CrossTenantCase> = {
     startAt: FUTURE_ISO,
     endAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
   })),
-  // update/updateOneOff load the schedule then assertOrgClassroomAccess BEFORE the
-  // recurrence check, so classroom isolation (NOT_FOUND) fires first even when the
-  // recurrence of the seeded schedule does not match the mutation.
+  // update loads the schedule, validates it is weekly (it is, so this passes),
+  // then hits assertOrgClassroomAccess -> NOT_FOUND.
   'schedules.update': reject('NOT_FOUND', (a) => ({ id: a.scheduleId, dayOfWeek: 2 })),
-  'schedules.updateOneOff': reject('NOT_FOUND', (a) => ({ id: a.scheduleId, startAt: FUTURE_ISO })),
+  // updateOneOff loads the schedule and validates recurrence via
+  // getOneOffScheduleBase BEFORE assertOrgClassroomAccess (see
+  // schedule-oneoff-write.service.ts). Verified empirically: pointing this at
+  // the weekly seed schedule trips "Schedule is not one-off" (BAD_REQUEST)
+  // without ever reaching the tenant guard. Use a genuinely one-off schedule
+  // so the case actually exercises cross-tenant isolation.
+  'schedules.updateOneOff': reject('NOT_FOUND', (a) => ({
+    id: a.oneOffScheduleId,
+    startAt: FUTURE_ISO,
+  })),
   'schedules.delete': reject('NOT_FOUND', (a) => ({ id: a.scheduleId })),
 
   // ---- templates (intentional GLOBAL shared catalog; see ADR 0003) ----
