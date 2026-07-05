@@ -18,6 +18,19 @@ void describe('tenant-isolation procedure inventory', () => {
     assert.ok(procedures.length >= 100, `expected the full router, got ${procedures.length}`);
   });
 
+  void it('enumerates only query/mutation procedures (guards the _def.type assumption)', () => {
+    const unexpectedType = procedures
+      .filter((p) => p.type !== 'query' && p.type !== 'mutation')
+      .map((p) => `${p.path} (${String(p.type)})`);
+
+    assert.deepStrictEqual(
+      unexpectedType,
+      [],
+      `Procedure(s) with unexpected _def.type: ${unexpectedType.join(', ')}. ` +
+        `enumerateProcedures assumes every leaf procedure is 'query' or 'mutation'.`
+    );
+  });
+
   void it('classifies every procedure as tenant-scoped xor non-tenant', () => {
     const unclassified: string[] = [];
     const doubleClassified: string[] = [];
@@ -45,6 +58,19 @@ void describe('tenant-isolation procedure inventory', () => {
       [],
       `Procedure(s) both tenant-marked and allowlisted: ${doubleClassified.join(', ')}. ` +
         `Remove them from NON_TENANT_ALLOWLIST.`
+    );
+  });
+
+  void it('has no orphaned NON_TENANT_ALLOWLIST entries', () => {
+    const orphaned = [...NON_TENANT_ALLOWLIST].filter(
+      (path) => !procedures.some((proc) => proc.path === path)
+    );
+
+    assert.deepStrictEqual(
+      orphaned,
+      [],
+      `NON_TENANT_ALLOWLIST names procedures that no longer exist in appRouter — remove the ` +
+        `stale entr${orphaned.length === 1 ? 'y' : 'ies'}: ${orphaned.join(', ')}`
     );
   });
 
