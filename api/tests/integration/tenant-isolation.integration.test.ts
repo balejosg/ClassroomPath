@@ -2,6 +2,7 @@ import { TEST_JWT_SECRET } from '../helpers/test-env.js';
 
 import { describe, test, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { eq } from 'drizzle-orm';
 
 import {
   bearerAuth,
@@ -211,13 +212,20 @@ async function seedTenantB(baseUrl: string): Promise<TenantBActor> {
   return { token: actor.token };
 }
 
+interface DispatchResult {
+  status: number;
+  data?: unknown;
+  error?: string;
+  code?: string;
+}
+
 /** Dispatch a registry case as tenant B, returning the parsed tRPC envelope. */
 async function dispatchCase(
   baseUrl: string,
   path: string,
   input: unknown,
   token: string
-): Promise<{ status: number; data?: unknown; error?: string; code?: string }> {
+): Promise<DispatchResult> {
   const type = PROC_TYPE.get(path);
   assert.ok(type, `unknown procedure type for ${path}`);
   const response =
@@ -228,8 +236,186 @@ async function dispatchCase(
   return { status: response.status, ...parsed };
 }
 
+/**
+ * Shared assertion for "this call must be rejected as cross-tenant". Used by
+ * both the real 46-case reject loop and the harness self-check, so the
+ * self-check exercises the exact same assertion code path rather than a
+ * hand-copied mirror of it.
+ */
+function assertRejected(result: DispatchResult, path: string, expectedCode: string): void {
+  assert.ok(
+    result.error,
+    `${path}: expected a cross-tenant rejection but got 200 with data ${JSON.stringify(result.data)}`
+  );
+  assert.strictEqual(
+    result.code,
+    expectedCode,
+    `${path}: expected ${expectedCode}, got ${result.code} (${result.error})`
+  );
+}
+
+/** Assert none of tenant A's identifiers appear anywhere in a scoped result. */
+function assertNoTenantALeak(path: string, data: unknown, a: TenantAResources): void {
+  const needles = [
+    a.groupId,
+    a.ruleId,
+    a.classroomId,
+    a.machineId,
+    a.scheduleId,
+    a.oneOffScheduleId,
+    a.exemptionId,
+    a.requestId,
+    a.invitationId,
+    a.operationId,
+    a.userId,
+    a.pendingUserId,
+    a.pushEndpoint,
+    a.orgId,
+    // a.templateId is deliberately NOT a needle: templates are an intentional
+    // global shared catalog (ADR 0003), so a template id can legitimately
+    // appear in a cross-tenant caller's scoped result.
+  ];
+  const haystack = JSON.stringify(data ?? null);
+  for (const needle of needles) {
+    assert.ok(
+      !haystack.includes(needle),
+      `${path}: scoped result leaked tenant A identifier ${needle}: ${haystack}`
+    );
+  }
+}
+
+/**
+ * A before/after snapshot of every tenant-A-owned row-set touched (directly
+ * or indirectly) by one of the 6 scoped mutations. Each mutation's real
+ * write table is represented so a cross-tenant leak into tenant A's data
+ * would show up as a snapshot diff, not just a missing existence check:
+ *
+ * - groups.create        -> cpOrganizationGroups (orgGroupIds)
+ * - classrooms.create     -> cpOrganizationClassrooms (orgClassroomIds)
+ * - templates.import      -> whitelistRules under group A (ruleIds)
+ * - users.create           -> cpMemberships for org A (memberships)
+ * - pendingUsers.reject    -> cpUserStatus for pending-a (pendingStatus)
+ * - push.unsubscribe       -> pushSubscriptions for the endpoint (pushSub)
+ */
+interface TenantASnapshot {
+  group: unknown[];
+  ruleIds: string[];
+  request: unknown[];
+  pendingStatus: unknown[];
+  pushSub: unknown[];
+  orgGroupIds: string[];
+  orgClassroomIds: string[];
+  memberships: unknown[];
+}
+
+async function captureTenantASnapshot(a: TenantAResources): Promise<TenantASnapshot> {
+  const group = await openpathDb
+    .select()
+    .from(openpathSchema.whitelistGroups)
+    .where(eq(openpathSchema.whitelistGroups.id, a.groupId));
+
+  const rules = await openpathDb
+    .select({ id: openpathSchema.whitelistRules.id })
+    .from(openpathSchema.whitelistRules)
+    .where(eq(openpathSchema.whitelistRules.groupId, a.groupId));
+  const ruleIds = rules.map((r) => r.id).sort();
+
+  const request = await openpathDb
+    .select()
+    .from(openpathSchema.requests)
+    .where(eq(openpathSchema.requests.id, a.requestId));
+
+  const pendingStatus = await db
+    .select()
+    .from(cpSchema.cpUserStatus)
+    .where(eq(cpSchema.cpUserStatus.userId, a.pendingUserId));
+
+  const pushSub = await openpathDb
+    .select()
+    .from(openpathSchema.pushSubscriptions)
+    .where(eq(openpathSchema.pushSubscriptions.endpoint, a.pushEndpoint));
+
+  const orgGroups = await db
+    .select({ groupId: cpSchema.cpOrganizationGroups.groupId })
+    .from(cpSchema.cpOrganizationGroups)
+    .where(eq(cpSchema.cpOrganizationGroups.organizationId, a.orgId));
+  const orgGroupIds = orgGroups.map((g) => g.groupId).sort();
+
+  const orgClassrooms = await db
+    .select({ classroomId: cpSchema.cpOrganizationClassrooms.classroomId })
+    .from(cpSchema.cpOrganizationClassrooms)
+    .where(eq(cpSchema.cpOrganizationClassrooms.organizationId, a.orgId));
+  const orgClassroomIds = orgClassrooms.map((c) => c.classroomId).sort();
+
+  const memberships = await db
+    .select()
+    .from(cpSchema.cpMemberships)
+    .where(eq(cpSchema.cpMemberships.organizationId, a.orgId))
+    .orderBy(cpSchema.cpMemberships.id);
+
+  return {
+    group,
+    ruleIds,
+    request,
+    pendingStatus,
+    pushSub,
+    orgGroupIds,
+    orgClassroomIds,
+    memberships,
+  };
+}
+
+/**
+ * Verify every tenant A row-set covered by `captureTenantASnapshot` is
+ * byte-for-byte unchanged after tenant B's scoped mutations, by re-reading
+ * the same sets and deep-comparing them against the pre-mutation baseline.
+ */
+async function assertTenantAUnchanged(
+  a: TenantAResources,
+  baseline: TenantASnapshot
+): Promise<void> {
+  const after = await captureTenantASnapshot(a);
+
+  assert.deepStrictEqual(after.group, baseline.group, 'tenant A whitelist group row changed');
+  assert.deepStrictEqual(
+    after.ruleIds,
+    baseline.ruleIds,
+    'tenant A group rule id set changed (templates.import may have leaked rules into group A)'
+  );
+  assert.deepStrictEqual(after.request, baseline.request, 'tenant A request row changed');
+  assert.deepStrictEqual(
+    after.pendingStatus,
+    baseline.pendingStatus,
+    'tenant A pending-user status row changed (cross-org pendingUsers.reject was not a no-op)'
+  );
+  assert.deepStrictEqual(
+    after.pushSub,
+    baseline.pushSub,
+    'tenant A push subscription row changed (cross-user push.unsubscribe was not a no-op)'
+  );
+  assert.deepStrictEqual(
+    after.orgGroupIds,
+    baseline.orgGroupIds,
+    'tenant A org-group link set changed (groups.create may have attributed a group to org A)'
+  );
+  assert.deepStrictEqual(
+    after.orgClassroomIds,
+    baseline.orgClassroomIds,
+    'tenant A org-classroom link set changed (classrooms.create may have attributed a classroom to org A)'
+  );
+  assert.deepStrictEqual(
+    after.memberships,
+    baseline.memberships,
+    'tenant A membership rows changed (users.create may have attributed a membership to org A)'
+  );
+}
+
 let A: TenantAResources;
 let B: TenantBActor;
+/** Baseline snapshot of tenant A, captured right after seeding and before any
+ * of tenant B's scoped mutations run. Populated in the scoped-cases describe's
+ * `before()`; read by the final sweep test in the same describe. */
+let tenantABaseline: TenantASnapshot;
 
 void describe('cross-tenant isolation: reject cases', { concurrency: 1 }, () => {
   before(async () => {
@@ -247,93 +433,10 @@ void describe('cross-tenant isolation: reject cases', { concurrency: 1 }, () => 
     if (kase.kind !== 'reject') continue;
     void test(`${path} rejects tenant B with ${kase.code}`, async () => {
       const result = await dispatchCase(integration.baseUrl, path, kase.input(A), B.token);
-      assert.ok(
-        result.error,
-        `${path}: expected a cross-tenant rejection but got 200 with data ${JSON.stringify(result.data)}`
-      );
-      assert.strictEqual(
-        result.code,
-        kase.code,
-        `${path}: expected ${kase.code}, got ${result.code} (${result.error})`
-      );
+      assertRejected(result, path, kase.code);
     });
   }
 });
-
-import { and, eq } from 'drizzle-orm';
-
-/** Assert none of tenant A's identifiers appear anywhere in a scoped result. */
-function assertNoTenantALeak(path: string, data: unknown, a: TenantAResources): void {
-  const needles = [
-    a.groupId,
-    a.ruleId,
-    a.classroomId,
-    a.machineId,
-    a.scheduleId,
-    a.exemptionId,
-    a.requestId,
-    a.invitationId,
-    a.operationId,
-    a.userId,
-    a.pendingUserId,
-  ];
-  const haystack = JSON.stringify(data ?? null);
-  for (const needle of needles) {
-    assert.ok(
-      !haystack.includes(needle),
-      `${path}: scoped result leaked tenant A identifier ${needle}: ${haystack}`
-    );
-  }
-}
-
-/** Verify every tenant A resource still exists / is unchanged after B's mutations. */
-async function assertTenantAUnchanged(a: TenantAResources): Promise<void> {
-  const [group] = await openpathDb
-    .select({ id: openpathSchema.whitelistGroups.id })
-    .from(openpathSchema.whitelistGroups)
-    .where(eq(openpathSchema.whitelistGroups.id, a.groupId))
-    .limit(1);
-  assert.ok(group, 'tenant A group vanished');
-
-  const [rule] = await openpathDb
-    .select({ id: openpathSchema.whitelistRules.id })
-    .from(openpathSchema.whitelistRules)
-    .where(eq(openpathSchema.whitelistRules.id, a.ruleId))
-    .limit(1);
-  assert.ok(rule, 'tenant A rule vanished');
-
-  const [request] = await openpathDb
-    .select({ status: openpathSchema.requests.status })
-    .from(openpathSchema.requests)
-    .where(eq(openpathSchema.requests.id, a.requestId))
-    .limit(1);
-  assert.strictEqual(request?.status, 'pending', 'tenant A request changed status');
-
-  const [waiting] = await db
-    .select({ target: cpSchema.cpUserStatus.targetOrganizationId })
-    .from(cpSchema.cpUserStatus)
-    .where(eq(cpSchema.cpUserStatus.userId, a.pendingUserId))
-    .limit(1);
-  assert.strictEqual(
-    waiting?.target,
-    a.orgId,
-    'tenant A pending user no longer waiting for org A (cross-org reject was not a no-op)'
-  );
-
-  const [sub] = await openpathDb
-    .select({ id: openpathSchema.pushSubscriptions.id })
-    .from(openpathSchema.pushSubscriptions)
-    .where(eq(openpathSchema.pushSubscriptions.endpoint, a.pushEndpoint))
-    .limit(1);
-  assert.ok(sub, 'tenant A push subscription was deleted by a cross-tenant unsubscribe');
-
-  // org A still owns exactly its links (no new group/classroom attributed to A).
-  const orgAGroups = await db
-    .select({ groupId: cpSchema.cpOrganizationGroups.groupId })
-    .from(cpSchema.cpOrganizationGroups)
-    .where(eq(cpSchema.cpOrganizationGroups.organizationId, a.orgId));
-  assert.strictEqual(orgAGroups.length, 1, 'tenant A org-group link count changed');
-}
 
 void describe('cross-tenant isolation: scoped cases + unchanged sweep', { concurrency: 1 }, () => {
   before(async () => {
@@ -341,6 +444,8 @@ void describe('cross-tenant isolation: scoped cases + unchanged sweep', { concur
     const seeded = await seedTenantA(integration.baseUrl);
     A = seeded.resources;
     B = await seedTenantB(integration.baseUrl);
+    // Snapshot baseline BEFORE any of tenant B's scoped mutations run below.
+    tenantABaseline = await captureTenantASnapshot(A);
   });
 
   const scopedEntries = Object.entries(CROSS_TENANT_CASES).filter(
@@ -362,7 +467,7 @@ void describe('cross-tenant isolation: scoped cases + unchanged sweep', { concur
   }
 
   void test('tenant A is unchanged after all tenant B scoped mutations', async () => {
-    await assertTenantAUnchanged(A);
+    await assertTenantAUnchanged(A, tenantABaseline);
   });
 });
 
@@ -378,15 +483,13 @@ void describe('cross-tenant isolation: harness self-check', { concurrency: 1 }, 
     // groups.list returns 200 with the caller org's (empty) list. If we WRONGLY
     // asserted it must reject, the reject assertion must fail. This proves the
     // reject-execution logic in Task 3 has teeth (guards against a future change
-    // that makes every call silently pass).
+    // that makes every call silently pass). Calls the SAME assertRejected used
+    // by the real reject loop above, not a hand-copied mirror of it.
     const result = await dispatchCase(integration.baseUrl, 'groups.list', undefined, B.token);
     assert.strictEqual(result.status, 200, 'precondition: groups.list is a scoped 200');
 
     assert.throws(
-      () => {
-        // Mirror the reject-block assertion against a non-rejecting call.
-        assert.ok(result.error, 'groups.list: expected a cross-tenant rejection but got 200');
-      },
+      () => assertRejected(result, 'groups.list', 'NOT_FOUND'),
       /expected a cross-tenant rejection/,
       'the reject assertion should fail loudly for a non-rejecting procedure'
     );
