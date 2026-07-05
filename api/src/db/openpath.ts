@@ -165,6 +165,13 @@ export const machines = pgTable('machines', {
   // Mirror of OpenPath machines.config_posture: latest effective agent flag
   // posture written by OpenPath's health-report flow. CP only reads it.
   configPosture: jsonb('config_posture').$type<Record<string, string>>(),
+  // Mirror of OpenPath machines.firefox_registration: latest Firefox managed-
+  // extension registration state from the agent's health payload. CP only reads it.
+  firefoxRegistration: jsonb('firefox_registration').$type<{
+    registered: number;
+    targetCount: number;
+    lastCheckedAt?: string;
+  }>(),
   lastSeen: timestamp('last_seen', { withTimezone: true }).defaultNow(),
   downloadTokenHash: varchar('download_token_hash', { length: 64 }).unique(),
   downloadTokenLastRotatedAt: timestamp('download_token_last_rotated_at', { withTimezone: true }),
