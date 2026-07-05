@@ -7,6 +7,7 @@ import {
   discoverMirroredTables,
   extractTableColumns,
   findMissingColumns,
+  findUnallowlistedMissingColumns,
 } from './helpers/schema-mirror-diff.js';
 
 // Pure source-text contract test: no DB connection, no drizzle runtime.
@@ -45,6 +46,34 @@ void describe('discoverMirroredTables', () => {
       'whitelist_groups',
       'whitelist_rules',
     ]);
+  });
+});
+
+void describe('findUnallowlistedMissingColumns', () => {
+  void it('filters out a column that is allowlisted with a reason', () => {
+    const missing = findUnallowlistedMissingColumns(['a', 'b', 'c'], ['a', 'c'], 'fake_table', {
+      fake_table: [{ column: 'b', reason: 'test fixture: intentionally omitted' }],
+    });
+
+    assert.deepStrictEqual(missing, []);
+  });
+
+  void it('still flags a column that is missing but not allowlisted', () => {
+    const missing = findUnallowlistedMissingColumns(['a', 'b', 'c'], ['a'], 'fake_table', {
+      fake_table: [{ column: 'b', reason: 'test fixture: intentionally omitted' }],
+    });
+
+    assert.deepStrictEqual(missing, ['c']);
+  });
+
+  void it('throws on a stale allowlist entry (column is no longer missing)', () => {
+    assert.throws(
+      () =>
+        findUnallowlistedMissingColumns(['a', 'b', 'c'], ['a', 'b', 'c'], 'fake_table', {
+          fake_table: [{ column: 'b', reason: 'test fixture: no longer missing' }],
+        }),
+      /Stale allowlist entry/
+    );
   });
 });
 

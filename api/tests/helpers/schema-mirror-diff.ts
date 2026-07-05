@@ -175,3 +175,47 @@ export function discoverMirroredTables(mirrorFilePath: string): MirroredTable[] 
 
   return tables;
 }
+
+export interface AllowlistedColumn {
+  column: string;
+  reason: string;
+}
+
+/**
+ * Per-table allowlist of upstream columns CP's mirror intentionally omits.
+ * Keyed by SQL table name (e.g. 'whitelist_rules'). Every entry requires a
+ * `reason` explaining why CP does not need the column, so the allowlist
+ * stays self-documenting and reviewable in a diff.
+ */
+export type SchemaMirrorAllowlist = Record<string, AllowlistedColumn[]>;
+
+/**
+ * Like findMissingColumns, but filters out columns explicitly allowlisted
+ * for the given SQL table name. Throws if the allowlist references a column
+ * that is not actually missing, so a fixed allowlist entry cannot silently
+ * rot: once someone adds the column to the mirror, this forces the entry to
+ * be removed instead of it becoming a stale, misleading comment.
+ */
+export function findUnallowlistedMissingColumns(
+  sourceColumns: string[],
+  mirrorColumns: string[],
+  sqlTableName: string,
+  allowlist: SchemaMirrorAllowlist
+): string[] {
+  const missing = findMissingColumns(sourceColumns, mirrorColumns);
+  const allowlistedEntries = allowlist[sqlTableName] ?? [];
+  const allowlistedColumns = new Set(allowlistedEntries.map((entry) => entry.column));
+
+  const staleEntries = allowlistedEntries.filter((entry) => !missing.includes(entry.column));
+  if (staleEntries.length > 0) {
+    const staleColumns = staleEntries.map((entry) => entry.column).join(', ');
+    throw new Error(
+      `Stale allowlist entry for table '${sqlTableName}': column(s) ${staleColumns} are listed in ` +
+        `ALLOWLISTED_MISSING_COLUMNS but are no longer missing from the mirror. Remove the stale ` +
+        `entr${staleEntries.length === 1 ? 'y' : 'ies'} from ALLOWLISTED_MISSING_COLUMNS in ` +
+        `api/tests/openpath-schema-mirror.contract.test.ts.`
+    );
+  }
+
+  return missing.filter((column) => !allowlistedColumns.has(column));
+}
