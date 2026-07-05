@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -246,12 +246,21 @@ describe('Deployment foundation contracts', () => {
     );
     assert.equal(
       packageJson.scripts?.['release:production'],
-      'bash scripts/tag-production-release.sh'
+      'node scripts/deprecated-promotion-alias.mjs release:production'
     );
     assert.equal(
       packageJson.scripts?.['promote:production'],
-      'bash scripts/tag-production-release.sh'
+      'node scripts/deprecated-promotion-alias.mjs promote:production'
     );
+    assert.equal(
+      packageJson.scripts?.['promote:production:full'],
+      'node scripts/deprecated-promotion-alias.mjs promote:production:full'
+    );
+    assert.equal(
+      packageJson.scripts?.['promote:current-staging'],
+      'bash scripts/promote-current-staging-candidate.sh'
+    );
+    assert.equal(packageJson.scripts?.['release:promote'], 'node scripts/release-promote.mjs');
     assert.ok(hook.includes('npm run verify:precommit'));
     assert.ok(!hook.includes('npm run verify:commit'));
     assert.ok(!hook.includes('VERIFY_REPORT_FILE='));
@@ -332,6 +341,39 @@ describe('Deployment foundation contracts', () => {
     );
     assert.ok(!runbook.includes('npm run promote:production -- v1.2.4'));
     assert.ok(!runbook.includes('git tag v1.2.4'));
+  });
+
+  test('deprecated promotion aliases print the canonical pair and exit 2 without acting', () => {
+    const deprecatedAliases = [
+      'promote:production',
+      'promote:production:full',
+      'release:production',
+    ];
+
+    for (const alias of deprecatedAliases) {
+      const result = spawnSync(
+        process.execPath,
+        ['scripts/deprecated-promotion-alias.mjs', alias],
+        { cwd: projectRoot, encoding: 'utf-8' }
+      );
+
+      assert.equal(result.status, 2, `${alias} shim must exit 2 (deprecated, performs no action)`);
+      assert.match(result.stderr, /DEPRECATED/);
+      assert.match(result.stderr, /npm run release:promote/);
+      assert.match(result.stderr, /npm run promote:current-staging/);
+      assert.doesNotMatch(result.stderr, /git (tag|push)/);
+    }
+  });
+
+  test('npm forwards the deprecation shim exit code unchanged', () => {
+    // Also pins the npm exit-code passthrough that the nightly workflow's
+    // `$status -eq 10` branch (nightly-staging-candidate.yml) relies on.
+    const result = spawnSync('npm', ['run', 'promote:production'], {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+    });
+
+    assert.equal(result.status, 2, 'npm run must forward the shim exit code unchanged');
   });
 
   test('verification runners keep coverage and Docker cleanup policy centralized', () => {

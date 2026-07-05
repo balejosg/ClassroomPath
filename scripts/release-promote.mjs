@@ -3,7 +3,7 @@
 /**
  * Orchestrates the full production promotion sequence: evidence validation, deploy, health check, and post-release canary.
  *
- * Invoked by: Developer CLI via `npm run release:promote` and `npm run promote:production:full`.
+ * Invoked by: Developer CLI via `npm run release:promote`.
  * Usage: node scripts/release-promote.mjs [--auto-tag] [--dry-run]
  * Env: GITHUB_TOKEN, RELEASE_EVIDENCE_PATH.
  */
