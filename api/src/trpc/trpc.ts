@@ -10,17 +10,24 @@ import {
   requireTenantProcedureContext,
 } from './tenant-procedure-helpers.js';
 
-const t = initTRPC.context<Context>().create({
-  errorFormatter({ shape, ctx }) {
-    return {
-      ...shape,
-      data: {
-        ...shape.data,
-        requestId: ctx ? getRequestId(ctx.req) : undefined,
-      },
-    };
-  },
-});
+export interface TrpcMeta {
+  tenantScoped?: boolean;
+}
+
+const t = initTRPC
+  .context<Context>()
+  .meta<TrpcMeta>()
+  .create({
+    errorFormatter({ shape, ctx }) {
+      return {
+        ...shape,
+        data: {
+          ...shape.data,
+          requestId: ctx ? getRequestId(ctx.req) : undefined,
+        },
+      };
+    },
+  });
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
@@ -47,26 +54,28 @@ export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx });
 });
 
-export const tenantProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const membership = await getSingleMembershipOrThrow(ctx.user.sub);
+export const tenantProcedure = protectedProcedure
+  .meta({ tenantScoped: true })
+  .use(async ({ ctx, next }) => {
+    const membership = await getSingleMembershipOrThrow(ctx.user.sub);
 
-  if (!membership) {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: 'No organization membership found',
+    if (!membership) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'No organization membership found',
+      });
+    }
+
+    await assertOrganizationEntitled(membership.organizationId);
+
+    return next({
+      ctx: {
+        ...ctx,
+        organizationId: membership.organizationId,
+        userRole: membership.role,
+      },
     });
-  }
-
-  await assertOrganizationEntitled(membership.organizationId);
-
-  return next({
-    ctx: {
-      ...ctx,
-      organizationId: membership.organizationId,
-      userRole: membership.role,
-    },
   });
-});
 
 export const tenantMemberProcedure = tenantProcedure.use(async ({ ctx, next }) => {
   return next({ ctx: requireTenantProcedureContext(ctx) });
