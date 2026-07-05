@@ -108,17 +108,12 @@ export const CROSS_TENANT_CASES: Record<string, CrossTenantCase> = {
   // ---- classrooms ----
   'classrooms.list': scoped(() => undefined, 'org-scoped list'),
   'classrooms.getById': reject('NOT_FOUND', (a) => ({ id: a.classroomId })),
-  // listTenantClassroomMachines (classroom-machine-access.service.ts) resolves
-  // the caller's own classroomIds first and short-circuits `return []` when
-  // that set is empty -- it never reaches the specific-classroomId membership
-  // check in that case. Verified empirically: tenant B (zero classrooms of its
-  // own) gets 200 [] for ANY classroomId, real or garbage, so no tenant-A data
-  // or existence oracle is disclosed. This is an org-scoped empty-result
-  // no-op, not a leak -- registered as scoped like pendingUsers.reject.
-  'classrooms.listMachines': scoped(
-    (a) => ({ classroomId: a.classroomId }),
-    'caller-org-scoped machine list; returns [] (not NOT_FOUND) when caller org owns zero classrooms, before the specific-classroomId check runs'
-  ),
+  // listTenantClassroomMachines (classroom-machine-access.service.ts)
+  // short-circuits to `[]` when the caller org owns zero classrooms, before
+  // the specific-classroomId membership check runs. Tenant B is seeded with
+  // its own classroom (see seedTenantB) specifically so this case reaches the
+  // real guard instead of trivially passing on an empty classroomIds set.
+  'classrooms.listMachines': reject('NOT_FOUND', (a) => ({ classroomId: a.classroomId })),
   'classrooms.listExemptions': reject('NOT_FOUND', (a) => ({ classroomId: a.classroomId })),
   'classrooms.createExemption': reject('NOT_FOUND', (a) => ({
     machineId: a.machineId,

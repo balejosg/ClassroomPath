@@ -11,7 +11,7 @@ import {
   trpcQuery,
   uniqueEmail,
 } from '../test-utils.js';
-import { signToken, useIntegrationServer } from './harness.js';
+import { useIntegrationServer } from './harness.js';
 import { createTenantScenario, type TestActor } from './scenario-builder.js';
 import { db } from '../../src/db/index.js';
 import * as cpSchema from '../../src/db/schema.js';
@@ -191,6 +191,23 @@ async function seedTenantB(baseUrl: string): Promise<TenantBActor> {
     userId: 'tenant-b-admin',
     organizationName: 'Tenant B',
   });
+
+  // Tenant B must own at least one classroom of its own so cases like
+  // classrooms.listMachines reach the real per-classroomId isolation guard
+  // (listTenantClassroomMachines short-circuits to `[]` when the caller org
+  // owns zero classrooms, before that guard ever runs).
+  const groupB = await scenario.createGroup({
+    token: actor.token,
+    name: 'tenant-b-group',
+    displayName: 'Tenant B Group',
+  });
+  await scenario.createClassroom({
+    token: actor.token,
+    name: 'tenant-b-classroom',
+    displayName: 'Tenant B Classroom',
+    defaultGroupId: groupB.id,
+  });
+
   return { token: actor.token };
 }
 
