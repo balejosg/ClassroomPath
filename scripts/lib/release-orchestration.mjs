@@ -158,7 +158,7 @@ export function buildPromotionPlan({
     ),
     step(
       'tag-production',
-      ['npm', 'run', 'promote:production', '--', tag],
+      ['bash', 'scripts/tag-production-release.sh', tag],
       `Create and push production tag ${tag}.`
     ),
     step(

@@ -69,7 +69,10 @@ describe('release promotion orchestration', () => {
       commandsById['release-preflight'],
       /RELEASE_PREFLIGHT_NEXT_TAG=v1\.2\.301 npm run release:preflight/
     );
-    assert.match(commandsById['tag-production'], /npm run promote:production -- v1\.2\.301/);
+    assert.match(
+      commandsById['tag-production'],
+      /bash scripts\/tag-production-release\.sh v1\.2\.301/
+    );
     assert.match(commandsById['wait-production-deploy'], /actions-health\.mjs wait/);
     assert.match(commandsById['wait-production-deploy'], /gh run list/);
     assert.match(commandsById['wait-production-deploy'], /--workflow deploy\.yml/);
@@ -306,7 +309,7 @@ describe('release promotion orchestration', () => {
     assert.match(stdout, /ensure-windows-prepromotion-evidence/);
     assert.match(stdout, /npm run deploy:staging/);
     assert.match(stdout, /npm run verify:production-target-ready/);
-    assert.match(stdout, /npm run promote:production -- v0\.0\.0/);
+    assert.match(stdout, /bash scripts\/tag-production-release\.sh v0\.0\.0/);
     assert.match(stdout, /run-post-production-windows-canary/);
     assert.match(stdout, /actions-health\.mjs report-stale/);
   });
