@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { extractTableColumns, findMissingColumns } from './helpers/schema-mirror-diff.js';
+import {
+  discoverMirroredTables,
+  extractTableColumns,
+  findMissingColumns,
+} from './helpers/schema-mirror-diff.js';
 
 // Pure source-text contract test: no DB connection, no drizzle runtime.
 //
@@ -21,6 +25,28 @@ const projectRoot = dirname(apiDir);
 
 const OPENPATH_SCHEMA_PATH = resolve(projectRoot, 'upstream/openpath/api/src/db/schema.ts');
 const CP_MIRROR_PATH = resolve(projectRoot, 'api/src/db/openpath.ts');
+
+void describe('discoverMirroredTables', () => {
+  void it('discovers every table declared in api/src/db/openpath.ts', () => {
+    const mirroredTables = discoverMirroredTables(CP_MIRROR_PATH);
+    const sqlNames = mirroredTables.map((table) => table.sqlName).sort();
+
+    assert.deepStrictEqual(sqlNames, [
+      'classrooms',
+      'email_verification_tokens',
+      'machine_exemptions',
+      'machines',
+      'password_reset_tokens',
+      'push_subscriptions',
+      'requests',
+      'roles',
+      'schedules',
+      'users',
+      'whitelist_groups',
+      'whitelist_rules',
+    ]);
+  });
+});
 
 void describe('openpath machine_exemptions schema mirror contract', () => {
   const openpathColumns = extractTableColumns(OPENPATH_SCHEMA_PATH, 'machine_exemptions');

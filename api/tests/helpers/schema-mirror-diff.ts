@@ -143,3 +143,35 @@ export function findMissingColumns(sourceColumns: string[], mirrorColumns: strin
   const mirrorSet = new Set(mirrorColumns);
   return sourceColumns.filter((column) => !mirrorSet.has(column));
 }
+
+export interface MirroredTable {
+  /** The exported Drizzle table const name in the CP mirror, e.g. 'whitelistRules'. */
+  exportName: string;
+  /** The SQL table name passed to pgTable(...), e.g. 'whitelist_rules'. */
+  sqlName: string;
+}
+
+/**
+ * Discovers every table CP mirrors from OpenPath by scanning
+ * api/src/db/openpath.ts for `export const <name> = pgTable('<sql_name>', ...)`
+ * declarations. Adding a 13th mirrored table to that file is automatically
+ * picked up here -- no test-file changes needed to cover it in the per-table
+ * loop (though the fixed table-name list asserted in
+ * api/tests/openpath-schema-mirror.contract.test.ts's own
+ * 'discoverMirroredTables' regression test will need updating, by design --
+ * that test pins the exact current table set so an accidental table
+ * rename/removal is caught too).
+ */
+export function discoverMirroredTables(mirrorFilePath: string): MirroredTable[] {
+  const source = readFileSync(mirrorFilePath, 'utf8');
+  const declarationPattern =
+    /export const (\w+)\s*=\s*pgTable\(\s*['"]([a-zA-Z_][a-zA-Z0-9_]*)['"]/g;
+
+  const tables: MirroredTable[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = declarationPattern.exec(source)) !== null) {
+    tables.push({ exportName: match[1], sqlName: match[2] });
+  }
+
+  return tables;
+}
