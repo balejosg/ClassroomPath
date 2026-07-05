@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './helpers/strip-comments.js';
 
 // Pure source-text contract test: no DB, no imports of app code. A service that
 // imports the OpenPath mirror (db/openpath.js) reaches directly into shared,
@@ -11,6 +12,13 @@ import { fileURLToPath } from 'node:url';
 // mirror-touching service lacking that signal, unless it is an explicitly
 // documented exemption (a callee-scoped leaf helper, a pure serializer, or
 // pre-tenant auth). A new unscoped mirror accessor fails here.
+//
+// Both the mirror-import check and the scoping-signal check run against
+// stripComments(source), not the raw source: a real import or a real
+// tenant-scoping reference always lives in code, never only inside a comment.
+// Without stripping comments first, a copy-pasted docstring or a
+// `// TODO: scope by organizationId` would satisfy hasScopingSignal on an
+// otherwise-unscoped service and defeat the guard.
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const apiDir = dirname(dirname(currentFilePath));
@@ -72,6 +80,11 @@ function relKey(fullPath: string): string {
   return relative(servicesDir, fullPath).split('\\').join('/');
 }
 
+/**
+ * Both matchers below expect `source` to already have comments stripped
+ * (via stripComments) — callers strip once per file and reuse the result,
+ * rather than each matcher stripping its own copy.
+ */
 function touchesMirror(source: string): boolean {
   return MIRROR_IMPORT.test(source);
 }
@@ -83,7 +96,12 @@ function hasScopingSignal(source: string): boolean {
 void describe('tenant service guard: mirror access must be scoped', () => {
   const files = listServiceFiles(servicesDir).map((full) => ({
     key: relKey(full),
-    source: readFileSync(full, 'utf8'),
+    // Stripped once here, then reused by every check below (touchesMirror,
+    // hasScopingSignal, and the staleness re-check) — a real import or a
+    // real tenant-scoping reference always lives in code, never only inside
+    // a comment, so matching against stripped text removes false passes
+    // (and false over-flags) without widening what counts as a signal.
+    source: stripComments(readFileSync(full, 'utf8')),
   }));
 
   void it('finds the services directory', () => {
@@ -131,5 +149,24 @@ void describe('tenant service guard: mirror access must be scoped', () => {
       "import { openpathDb, whitelistRules } from '../db/openpath.js';\nexport const x = 1;\n";
     assert.ok(touchesMirror(synthetic), 'sanity: snippet must count as mirror-touching');
     assert.ok(!hasScopingSignal(synthetic), 'sanity: snippet must lack a scoping signal');
+  });
+
+  void it('self-check: a comment-only organizationId mention does not count as a scoping signal', () => {
+    const raw =
+      "import { openpathDb, whitelistRules } from '../db/openpath.js';\n" +
+      '// TODO: scope by organizationId\n' +
+      '/**\n' +
+      ' * @param organizationId copy-pasted from another service, never used below\n' +
+      ' */\n' +
+      'export function unscopedRead() {\n' +
+      '  return openpathDb.select().from(whitelistRules);\n' +
+      '}\n';
+    const stripped = stripComments(raw);
+
+    assert.ok(touchesMirror(stripped), 'sanity: snippet must count as mirror-touching');
+    assert.ok(
+      !hasScopingSignal(stripped),
+      'a scoping signal that only appears in a comment must not satisfy the guard'
+    );
   });
 });

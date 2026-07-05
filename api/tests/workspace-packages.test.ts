@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './helpers/strip-comments.js';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const apiDir = dirname(dirname(currentFilePath));
@@ -10,129 +11,6 @@ const projectRoot = dirname(apiDir);
 
 function readProjectFile(relativePath: string): string {
   return readFileSync(resolve(projectRoot, relativePath), 'utf8');
-}
-
-/**
- * Strips `//` line comments and `/* *\/` block comments from source text,
- * while preserving string/template literal contents verbatim (string- and
- * escape-aware, so a `//` or `/*` inside a quoted string is not mistaken for
- * a comment).
- *
- * The import-boundary checks below scan raw file content for forbidden
- * specifiers. Without this, a comment or docstring that merely *mentions* a
- * package name (e.g. explaining why a constant is a deliberate local copy of
- * an upstream value) reads as a real import and false-positives the guard.
- * A real `import`/`require`/`from` specifier always lives inside a string
- * literal, never inside a comment, so stripping only comments keeps the
- * guard scoped to genuine imports.
- *
- * Regex literals are also preserved verbatim (escape- and character-class-
- * aware), using the standard prev-token heuristic to tell a regex literal
- * apart from division. Without this, something like `/\/\//` reads its
- * escaped `\/\/` as a `//` line-comment opener and swallows the rest of the
- * line — including a real import that happens to share that line.
- */
-function isRegexLiteralContext(result: string): boolean {
-  const trimmed = result.replace(/\s+$/, '');
-  if (trimmed.length === 0) return true;
-
-  const lastChar = trimmed[trimmed.length - 1];
-  const punctuators = new Set(['=', '(', ',', '[', '!', '&', '|', '?', ':', ';', '{', '}']);
-  if (punctuators.has(lastChar)) return true;
-
-  const wordMatch = /[A-Za-z_$][A-Za-z0-9_$]*$/.exec(trimmed);
-  if (!wordMatch) return false;
-
-  const keywords = new Set([
-    'return',
-    'typeof',
-    'case',
-    'in',
-    'of',
-    'new',
-    'delete',
-    'void',
-    'instanceof',
-  ]);
-  return keywords.has(wordMatch[0]);
-}
-
-function stripComments(source: string): string {
-  let result = '';
-  let i = 0;
-  const n = source.length;
-
-  while (i < n) {
-    const two = source.slice(i, i + 2);
-
-    if (two === '//') {
-      while (i < n && source[i] !== '\n') i++;
-      continue;
-    }
-
-    if (two === '/*') {
-      i += 2;
-      while (i < n && source.slice(i, i + 2) !== '*/') i++;
-      i += 2;
-      continue;
-    }
-
-    const ch = source[i];
-    if (ch === '"' || ch === "'" || ch === '`') {
-      const quote = ch;
-      result += ch;
-      i++;
-      while (i < n && source[i] !== quote) {
-        if (source[i] === '\\' && i + 1 < n) {
-          result += source[i] + source[i + 1];
-          i += 2;
-          continue;
-        }
-        result += source[i];
-        i++;
-      }
-      if (i < n) {
-        result += source[i];
-        i++;
-      }
-      continue;
-    }
-
-    if (ch === '/' && isRegexLiteralContext(result)) {
-      result += ch;
-      i++;
-      let inClass = false;
-      while (i < n) {
-        const c = source[i];
-        if (c === '\\' && i + 1 < n) {
-          result += source[i] + source[i + 1];
-          i += 2;
-          continue;
-        }
-        if (c === '[') {
-          inClass = true;
-        } else if (c === ']') {
-          inClass = false;
-        } else if (c === '/' && !inClass) {
-          result += c;
-          i++;
-          break;
-        }
-        result += c;
-        i++;
-      }
-      while (i < n && /[a-zA-Z]/.test(source[i])) {
-        result += source[i];
-        i++;
-      }
-      continue;
-    }
-
-    result += ch;
-    i++;
-  }
-
-  return result;
 }
 
 function listFiles(relativePath: string): string[] {
