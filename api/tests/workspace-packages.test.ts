@@ -25,7 +25,38 @@ function readProjectFile(relativePath: string): string {
  * A real `import`/`require`/`from` specifier always lives inside a string
  * literal, never inside a comment, so stripping only comments keeps the
  * guard scoped to genuine imports.
+ *
+ * Regex literals are also preserved verbatim (escape- and character-class-
+ * aware), using the standard prev-token heuristic to tell a regex literal
+ * apart from division. Without this, something like `/\/\//` reads its
+ * escaped `\/\/` as a `//` line-comment opener and swallows the rest of the
+ * line — including a real import that happens to share that line.
  */
+function isRegexLiteralContext(result: string): boolean {
+  const trimmed = result.replace(/\s+$/, '');
+  if (trimmed.length === 0) return true;
+
+  const lastChar = trimmed[trimmed.length - 1];
+  const punctuators = new Set(['=', '(', ',', '[', '!', '&', '|', '?', ':', ';', '{', '}']);
+  if (punctuators.has(lastChar)) return true;
+
+  const wordMatch = /[A-Za-z_$][A-Za-z0-9_$]*$/.exec(trimmed);
+  if (!wordMatch) return false;
+
+  const keywords = new Set([
+    'return',
+    'typeof',
+    'case',
+    'in',
+    'of',
+    'new',
+    'delete',
+    'void',
+    'instanceof',
+  ]);
+  return keywords.has(wordMatch[0]);
+}
+
 function stripComments(source: string): string {
   let result = '';
   let i = 0;
@@ -61,6 +92,36 @@ function stripComments(source: string): string {
         i++;
       }
       if (i < n) {
+        result += source[i];
+        i++;
+      }
+      continue;
+    }
+
+    if (ch === '/' && isRegexLiteralContext(result)) {
+      result += ch;
+      i++;
+      let inClass = false;
+      while (i < n) {
+        const c = source[i];
+        if (c === '\\' && i + 1 < n) {
+          result += source[i] + source[i + 1];
+          i += 2;
+          continue;
+        }
+        if (c === '[') {
+          inClass = true;
+        } else if (c === ']') {
+          inClass = false;
+        } else if (c === '/' && !inClass) {
+          result += c;
+          i++;
+          break;
+        }
+        result += c;
+        i++;
+      }
+      while (i < n && /[a-zA-Z]/.test(source[i])) {
         result += source[i];
         i++;
       }
@@ -365,5 +426,64 @@ void describe('internal workspace package boundaries', () => {
         `${relativePath} should consume OpenPath through api/src/openpath/* adapters`
       );
     }
+  });
+});
+
+void describe('stripComments', () => {
+  void test('removes a line comment and preserves the following line', () => {
+    const source = ['// leading comment', 'const kept = 1;'].join('\n');
+    const stripped = stripComments(source);
+
+    assert.doesNotMatch(stripped, /leading comment/, 'line comment should be removed');
+    assert.match(stripped, /const kept = 1;/, 'code on the following line should be preserved');
+  });
+
+  void test('removes a block comment that ends mid-line and preserves the trailing code', () => {
+    const source = ['const before = 1;', '/* block', 'comment */ const after = 2;'].join('\n');
+    const stripped = stripComments(source);
+
+    assert.doesNotMatch(stripped, /block/, 'block comment body should be removed');
+    assert.doesNotMatch(stripped, /comment/, 'block comment body should be removed');
+    assert.match(
+      stripped,
+      /const after = 2;/,
+      'code after the closing */ on the same line should be preserved'
+    );
+  });
+
+  void test('preserves `//` that appears inside a string literal', () => {
+    const source = "const url = 'http://example.com';";
+    const stripped = stripComments(source);
+
+    assert.equal(stripped, source, 'a string literal containing // is not a comment');
+  });
+
+  void test('does not mistake a regex literal for a line comment, preserving a real import on the same line', () => {
+    const source = "const re = /\\/\\//; import { x } from '@openpath/shared';";
+    const stripped = stripComments(source);
+
+    assert.match(
+      stripped,
+      /from '@openpath\/shared'/,
+      'the real import specifier must survive regex-literal-aware stripping'
+    );
+  });
+
+  void test('does not misparse division as a regex literal', () => {
+    const source = 'const a = b / c / d;';
+    const stripped = stripComments(source);
+
+    assert.equal(stripped, source, 'division operators must be left untouched');
+  });
+
+  void test('honors a character class when scanning a regex literal for its closing slash', () => {
+    const source = "const re = /[/]/; const s = 'after';";
+    const stripped = stripComments(source);
+
+    assert.match(
+      stripped,
+      /'after'/,
+      'a `/` inside a character class must not end the regex literal early'
+    );
   });
 });
