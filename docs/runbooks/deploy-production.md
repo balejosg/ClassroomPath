@@ -68,7 +68,10 @@ update flow.
 
    This gate is blocking. If it exits non-zero, promotion must not proceed. There is no bypass.
    The gate checks that staging is promotion-eligible, submodule state is clean, and required
-   evidence is present.
+   evidence is present. Exit codes: `0` promotion-ready; `10` blocked - the expected steady state
+   between promotions (the nightly workflow reports this as a green run with `promotion_ready=false`);
+   any other non-zero means the gate itself could not evaluate and must be investigated as a genuine
+   failure.
 
 3. **Promote (auto-derives next patch tag, runs production preflight, pushes tag):**
 
@@ -86,6 +89,9 @@ update flow.
 **Evidence ladder reminder:** never claim production resolution from staging-only evidence. The
 highest completed rung must be `production evidence` or `target-platform symptom cleared` before
 reporting production resolution.
+
+The retired aliases `promote:production`, `promote:production:full`, and `release:production` are
+no-op deprecation shims: they print this canonical pair and exit 2 without tagging or deploying.
 
 ### Related runbooks
 
