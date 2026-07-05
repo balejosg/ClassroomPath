@@ -19,6 +19,16 @@ import {
   writeReleaseStateSnapshot,
 } from './lib/release-state-contract.mjs';
 
+// Exit-code contract for `verify-promotion-ready` (consumed by
+// scripts/verify-production-promotion-ready.sh and the nightly workflow):
+//   0  -> evidence is promotion-eligible
+//   10 -> the gate evaluated successfully and the evidence is NOT eligible
+//         (expected steady state between promotions)
+//   1  -> the gate itself crashed (unreadable snapshot, bad options, ...)
+// `verify-staging` keeps exit 1 for ineligible evidence: its callers treat
+// any failure identically and are out of scope for this contract.
+const PROMOTION_BLOCKED_EXIT_CODE = 10;
+
 function parseArgs(argv) {
   const [command, ...rest] = argv;
   const options = {};
@@ -133,7 +143,7 @@ async function main() {
 
       if (!report.eligible) {
         emitErrors(report.errors);
-        process.exitCode = 1;
+        process.exitCode = command === 'verify-promotion-ready' ? PROMOTION_BLOCKED_EXIT_CODE : 1;
         return;
       }
 

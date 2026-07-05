@@ -398,7 +398,11 @@ test('verify-promotion-ready rejects staging evidence without signed Firefox rel
     }
   );
 
-  assert.equal(result.status, 1);
+  assert.equal(
+    result.status,
+    10,
+    'ineligible promotion evidence is blocked (10), not an error (1)'
+  );
   assert.match(result.stderr, /STAGING_FIREFOX_SIGNATURE_STATE is missing/);
 });
 
@@ -446,7 +450,11 @@ test('verify-promotion-ready rejects staging evidence without enrollment downloa
     }
   );
 
-  assert.equal(result.status, 1);
+  assert.equal(
+    result.status,
+    10,
+    'ineligible promotion evidence is blocked (10), not an error (1)'
+  );
   assert.match(result.stderr, /Enrollment download evidence is missing or failed/);
   assert.match(result.stderr, /STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT=failed/);
 });
@@ -660,7 +668,7 @@ test('verify-promotion-ready rejects pending staging verification for target SHA
     }
   );
 
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 10, 'pending staging verification is blocked (10), not an error (1)');
   assert.match(
     result.stderr,
     /Staging verification for abc123 is pending or failed; expected successful evidence for abc123/
@@ -964,4 +972,33 @@ test('bash release-state helpers preserve shell-only staging verification values
   assert.equal(snapshot.STAGING_FIREFOX_EXTENSION_ID, 'openpath@example');
   assert.equal(snapshot.STAGING_FIREFOX_SIGNATURE_SOURCE, 'amo');
   assert.equal(snapshot.STAGING_FIREFOX_SIGNATURE_STATE, 'signed');
+});
+
+test('verify-promotion-ready exits 1 (not 10) when snapshot files cannot be read', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-crash-'));
+  const missingCurrentPath = join(tempDir, 'does-not-exist-current.env');
+  const missingVerificationPath = join(tempDir, 'does-not-exist-verification.env');
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      'verify-promotion-ready',
+      '--current',
+      missingCurrentPath,
+      '--verification',
+      missingVerificationPath,
+    ],
+    {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+      env: { ...process.env },
+    }
+  );
+
+  assert.equal(
+    result.status,
+    1,
+    'gate crashes must stay exit 1 so callers treat them as genuine errors'
+  );
 });
