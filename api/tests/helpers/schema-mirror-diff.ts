@@ -48,7 +48,11 @@ const COLUMN_BUILDER_NAMES = [
  * Finds the index of the bracket matching the one at `openIndex`, skipping
  * over the contents of string/template literals so unrelated parens/braces
  * inside quoted text (sql`` templates, default values, etc.) don't throw off
- * the balance count.
+ * the balance count. Also skips `//` line comments and `/* *\/` block
+ * comments so an apostrophe in prose (e.g. "the agent's health payload")
+ * inside a doc comment isn't mistaken for the start of a string literal --
+ * without this, such a comment would desync the quote-skipping logic and
+ * corrupt the depth count for the rest of the file.
  */
 export function findMatchingBracket(text: string, openIndex: number): number {
   const openChar = text[openIndex];
@@ -62,6 +66,19 @@ export function findMatchingBracket(text: string, openIndex: number): number {
 
   while (i < text.length) {
     const ch = text[i];
+
+    if (ch === '/' && text[i + 1] === '/') {
+      i += 2;
+      while (i < text.length && text[i] !== '\n') i++;
+      continue;
+    }
+
+    if (ch === '/' && text[i + 1] === '*') {
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
 
     if (ch === "'" || ch === '"' || ch === '`') {
       const quote = ch;

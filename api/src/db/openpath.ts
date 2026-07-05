@@ -7,6 +7,7 @@ import {
   timestamp,
   boolean,
   integer,
+  jsonb,
   unique,
   uniqueIndex,
   index,
@@ -161,6 +162,9 @@ export const machines = pgTable('machines', {
     onDelete: 'cascade',
   }),
   version: varchar('version', { length: 50 }).default('unknown'),
+  // Mirror of OpenPath machines.config_posture: latest effective agent flag
+  // posture written by OpenPath's health-report flow. CP only reads it.
+  configPosture: jsonb('config_posture').$type<Record<string, string>>(),
   lastSeen: timestamp('last_seen', { withTimezone: true }).defaultNow(),
   downloadTokenHash: varchar('download_token_hash', { length: 64 }).unique(),
   downloadTokenLastRotatedAt: timestamp('download_token_last_rotated_at', { withTimezone: true }),
