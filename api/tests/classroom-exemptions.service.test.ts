@@ -15,6 +15,7 @@ import { acquireTestDbLock, releaseTestDbLock } from './test-db.js';
 const RUN_ID = Math.random().toString(36).slice(2, 10);
 const ORG_ID = `org_classroom_exemptions_${RUN_ID}`;
 const ADMIN_ID = `admin_classroom_exemptions_${RUN_ID}`;
+const TEACHER_ID = `teacher_classroom_exemptions_${RUN_ID}`;
 const GROUP_ID = `group_classroom_exemptions_${RUN_ID}`;
 
 const adminCtx = {
@@ -26,7 +27,7 @@ const adminCtx = {
 const teacherCtx = {
   organizationId: ORG_ID,
   userRole: 'teacher' as const,
-  user: { sub: `teacher_classroom_exemptions_${RUN_ID}` },
+  user: { sub: TEACHER_ID },
 };
 
 async function cleanupTenantFixtures() {
@@ -70,12 +71,25 @@ describe('classroom-exemptions.service', () => {
     await openpathDb
       .delete(openpathSchema.whitelistGroups)
       .where(eq(openpathSchema.whitelistGroups.id, GROUP_ID));
+    await openpathDb
+      .delete(openpathSchema.roles)
+      .where(eq(openpathSchema.roles.userId, TEACHER_ID));
     await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, ADMIN_ID));
+    await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, TEACHER_ID));
 
     await openpathDb.insert(openpathSchema.users).values({
       id: ADMIN_ID,
       email: `classroom-exemptions-${RUN_ID}@example.com`,
       name: 'Classroom Exemptions Admin',
+      passwordHash: 'hashed_password_placeholder',
+      isActive: true,
+      emailVerified: true,
+    });
+
+    await openpathDb.insert(openpathSchema.users).values({
+      id: TEACHER_ID,
+      email: `classroom-exemptions-teacher-${RUN_ID}@example.com`,
+      name: 'Classroom Exemptions Teacher',
       passwordHash: 'hashed_password_placeholder',
       isActive: true,
       emailVerified: true,
@@ -100,6 +114,17 @@ describe('classroom-exemptions.service', () => {
       groupId: GROUP_ID,
       publicName: `classroom-exemptions-group-${RUN_ID}`,
     });
+
+    // Teacher must be explicitly assigned GROUP_ID via their OpenPath role
+    // (roles.groupIds) for assertCanUseGroup/teacherCanUseGroup to allow them
+    // to apply that group to an exemption; see api/src/lib/tenant-access.ts.
+    await openpathDb.insert(openpathSchema.roles).values({
+      id: `role_classroom_exemptions_${RUN_ID}`,
+      userId: TEACHER_ID,
+      role: 'teacher',
+      groupIds: [GROUP_ID],
+      createdBy: ADMIN_ID,
+    });
   });
 
   after(async () => {
@@ -112,7 +137,11 @@ describe('classroom-exemptions.service', () => {
       await openpathDb
         .delete(openpathSchema.whitelistGroups)
         .where(eq(openpathSchema.whitelistGroups.id, GROUP_ID));
+      await openpathDb
+        .delete(openpathSchema.roles)
+        .where(eq(openpathSchema.roles.userId, TEACHER_ID));
       await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, ADMIN_ID));
+      await openpathDb.delete(openpathSchema.users).where(eq(openpathSchema.users.id, TEACHER_ID));
     } finally {
       await releaseTestDbLock();
     }

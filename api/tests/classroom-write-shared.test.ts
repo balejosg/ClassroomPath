@@ -50,6 +50,7 @@ describe('classroom-write-shared', () => {
         machineId: 'machine_1',
         classroomId: 'classroom_1',
         scheduleId: '00000000-0000-4000-8000-000000000001',
+        groupId: null,
         source: 'schedule',
         reason: null,
         createdBy: 'user_1',
@@ -61,6 +62,7 @@ describe('classroom-write-shared', () => {
         machineId: 'machine_1',
         classroomId: 'classroom_1',
         scheduleId: '00000000-0000-4000-8000-000000000001',
+        groupId: null,
         source: 'schedule',
         reason: null,
         createdBy: 'user_1',
@@ -68,5 +70,25 @@ describe('classroom-write-shared', () => {
         expiresAt: expiresAt.toISOString(),
       }
     );
+  });
+
+  it('passes through a non-null groupId on the presented classroom exemption', () => {
+    const createdAt = new Date('2026-04-14T10:00:00.000Z');
+    const expiresAt = new Date('2026-04-14T11:00:00.000Z');
+
+    const presented = presentClassroomExemption({
+      id: 'exempt_test_group',
+      machineId: 'machine_1',
+      classroomId: 'classroom_1',
+      scheduleId: '00000000-0000-4000-8000-000000000002',
+      groupId: 'group_1',
+      source: 'schedule',
+      reason: null,
+      createdBy: 'user_1',
+      createdAt,
+      expiresAt,
+    });
+
+    assert.strictEqual(presented.groupId, 'group_1');
   });
 });
