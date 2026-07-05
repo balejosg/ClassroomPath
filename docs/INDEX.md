@@ -65,6 +65,7 @@ Rules:
 
 - Cross-system mutation ledger ADR: [`docs/adr/0001-cross-system-mutation-ledger.md`](adr/0001-cross-system-mutation-ledger.md)
 - Release risk gating ADR: [`docs/adr/0002-release-risk-gating.md`](adr/0002-release-risk-gating.md)
+- Tenant isolation application-layer ADR: [`docs/adr/0003-tenant-isolation-application-layer.md`](adr/0003-tenant-isolation-application-layer.md)
 - OpenPath boundary contract: [`upstream/openpath/docs/adr/0010-public-spa-extension-surface.md`](../upstream/openpath/docs/adr/0010-public-spa-extension-surface.md)
 
 ## Drafts And Historical Context
