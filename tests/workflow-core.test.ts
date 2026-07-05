@@ -718,6 +718,50 @@ describe('Workflow core contracts', () => {
     );
   });
 
+  test('nightly promotion readiness treats blocked as green and gate errors as red', () => {
+    const workflowPath = '.github/workflows/nightly-staging-candidate.yml';
+    const workflow = readWorkflow(workflowPath);
+    const workflowText = readText(workflowPath);
+    const readinessJob = findWorkflowJob(workflow, 'verify-production-promotion-readiness');
+    const readinessStep = findWorkflowStepByName(
+      readinessJob,
+      'Verify production promotion readiness'
+    );
+    const readinessScript = String(readinessStep.run ?? '');
+
+    // promotion_ready is exposed as a job output for future consumers.
+    assert.ok(
+      workflowText.includes(
+        'promotion_ready: ${{ steps.promotion-ready.outputs.promotion_ready }}'
+      ),
+      'readiness job must expose promotion_ready as a job output'
+    );
+    assert.match(readinessScript, /echo "promotion_ready=\$promotion_ready" >> "\$GITHUB_OUTPUT"/);
+
+    // Three-way contract from scripts/verify-production-promotion-ready.sh.
+    assert.match(readinessScript, /preflight_state="success"/);
+    assert.match(readinessScript, /elif \[ "\$status" -eq 10 \]; then/);
+    assert.match(readinessScript, /preflight_state="blocked"/);
+    assert.match(readinessScript, /preflight_state="error \(exit \$status\)"/);
+    assert.match(readinessScript, /expected steady state/);
+
+    // Blocked exits 0 (green run) BEFORE any auto-issue logic; genuine errors stay red.
+    const blockedExit = readinessScript.indexOf('exit 0');
+    const issueLogic = readinessScript.indexOf('gh issue');
+    assert.ok(blockedExit !== -1, 'blocked branch must exit 0 so steady-state runs stay green');
+    assert.ok(issueLogic !== -1, 'genuine gate errors must file an auto-issue');
+    assert.ok(blockedExit < issueLogic, 'blocked must exit 0 before the auto-issue logic runs');
+    assert.match(readinessScript, /Nightly promotion-readiness gate failed/);
+    assert.match(readinessScript, /gh issue list/);
+    assert.match(readinessScript, /gh issue comment/);
+    assert.match(readinessScript, /gh issue create/);
+    assert.match(readinessScript, /"\$\{GITHUB_EVENT_NAME:-\}" = "schedule"/);
+    assert.ok(
+      readinessScript.trimEnd().endsWith('exit "$status"'),
+      'genuine gate errors must propagate their exit code and fail the run'
+    );
+  });
+
   test('Windows canary workflows keep live staging and production bootstrap coverage', () => {
     const windowsFirefoxWorkflowText = readText('.github/workflows/windows-firefox-canary.yml');
     const windowsFirefoxWorkflow = readWorkflow('.github/workflows/windows-firefox-canary.yml');

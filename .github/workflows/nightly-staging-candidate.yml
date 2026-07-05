@@ -269,6 +269,8 @@ jobs:
     name: Verify production promotion readiness
     runs-on: [self-hosted, Linux, X64, proxmox, classroompath]
     timeout-minutes: 90
+    outputs:
+      promotion_ready: ${{ steps.promotion-ready.outputs.promotion_ready }}
     needs:
       [
         deploy-current-main-to-staging,
@@ -386,7 +388,22 @@ jobs:
           status="$?"
           set -e
 
+          # Exit-code contract from scripts/verify-production-promotion-ready.sh:
+          #   0 -> promotion-ready; 10 -> blocked (expected steady state); 1+ -> genuine gate error.
+          if [ "$status" -eq 0 ]; then
+            preflight_state="success"
+            promotion_ready="true"
+          elif [ "$status" -eq 10 ]; then
+            preflight_state="blocked"
+            promotion_ready="false"
+          else
+            preflight_state="error (exit $status)"
+            promotion_ready="false"
+          fi
+          echo "promotion_ready=$promotion_ready" >> "$GITHUB_OUTPUT"
+
           staging_url="${{ needs.deploy-current-main-to-staging.outputs.staging_url }}"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           {
             echo "## Nightly Staging Candidate"
             echo
@@ -394,18 +411,56 @@ jobs:
             echo "| --- | --- |"
             echo "| SHA | \`${{ needs.deploy-current-main-to-staging.outputs.sha }}\` |"
             echo "| Release-candidate run | \`${{ needs.deploy-current-main-to-staging.outputs.release_candidate_run_id }}\` |"
+            echo "| Workflow run | $run_url |"
             echo "| Staging URL | $staging_url |"
             echo "| Staging deploy state | success |"
             echo "| Windows staging bootstrap canary | \`${{ needs.windows-staging-bootstrap-canary.outputs.canary_result || needs.windows-staging-bootstrap-canary.result }}\` |"
+            echo "| Promotion-ready preflight state | $preflight_state |"
+            echo "| promotion_ready output | $promotion_ready |"
+            echo
             if [ "$status" -eq 0 ]; then
-              echo "| Promotion-ready preflight state | success |"
-              echo
               echo "Staging is live and the current candidate passed production promotion-readiness preflight."
+            elif [ "$status" -eq 10 ]; then
+              echo "Staging deployed successfully; the candidate is not promotion-eligible yet. Blocked is the expected steady state between promotions, so this run stays green with promotion_ready=false."
             else
-              echo "| Promotion-ready preflight state | blocked |"
-              echo
-              echo "Staging deployment succeeded, but production promotion is blocked by the promotion-readiness preflight."
+              echo "Staging deployed successfully, but the promotion-readiness gate itself could not evaluate (exit $status). This is a genuine failure; inspect the 'Verify production promotion readiness' step logs."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$status" -eq 10 ]; then
+            exit 0
+          fi
+
+          if [ "$status" -ne 0 ] && [ "${GITHUB_EVENT_NAME:-}" = "schedule" ]; then
+            issue_title="Nightly promotion-readiness gate failed for ${{ needs.deploy-current-main-to-staging.outputs.sha }}"
+            issue_body="$(mktemp)"
+            {
+              echo "## Nightly promotion-readiness gate failed"
+              echo
+              echo "| Field | Value |"
+              echo "| --- | --- |"
+              echo "| SHA | \`${{ needs.deploy-current-main-to-staging.outputs.sha }}\` |"
+              echo "| Workflow run | $run_url |"
+              echo "| Gate exit code | $status |"
+              echo "| Failed step | Verify production promotion readiness |"
+              echo
+              echo "The promotion-readiness gate could not evaluate the staging candidate (exit $status is a genuine error, not the blocked steady state 10). Inspect the workflow run logs; this workflow remains failed after writing this evidence."
+            } > "$issue_body"
+            existing_issue_url="$(
+              gh issue list \
+                --state open \
+                --search "Nightly promotion-readiness gate failed in:title" \
+                --json url \
+                --jq '.[0].url // ""'
+            )"
+            if [ -n "$existing_issue_url" ]; then
+              gh issue comment "$existing_issue_url" --body-file "$issue_body"
+              echo "Updated existing promotion-readiness gate failure issue: $existing_issue_url" >> "$GITHUB_STEP_SUMMARY"
+            else
+              gh issue create \
+                --title "$issue_title" \
+                --body-file "$issue_body"
+            fi
+          fi
 
           exit "$status"
