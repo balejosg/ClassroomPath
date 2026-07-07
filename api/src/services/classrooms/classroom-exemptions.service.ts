@@ -1,9 +1,17 @@
 import { TRPCError } from '@trpc/server';
-import { and, eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
-import { classrooms, machineExemptions, machines, openpathDb } from '../../db/openpath.js';
-import { notifyOpenPathClassroomChanged } from '../../db/openpath-repos/publish.js';
+import {
+  deleteClassroomById,
+  deleteMachineFromClassroom,
+  getMachineClassroomLink,
+} from '../../db/openpath-repos/classrooms.repo.js';
+import {
+  createOperationalExemptionAndNotify,
+  createScheduleExemptionAndNotify,
+  deleteExemptionAndNotify,
+  getExemptionById,
+} from '../../db/openpath-repos/machine-exemptions.repo.js';
 import { assertOrgClassroomAccess } from '../../lib/tenant-access.js';
 import { resolveActiveScheduleExpiresAt } from '../schedules/current-group.service.js';
 import {
@@ -21,11 +29,7 @@ export async function deleteClassroomMachineForTenant(params: {
 }): Promise<void> {
   await assertOrgClassroomAccess(params.ctx.organizationId!, params.input.classroomId);
 
-  await openpathDb
-    .delete(machines)
-    .where(
-      and(eq(machines.id, params.input.id), eq(machines.classroomId, params.input.classroomId))
-    );
+  await deleteMachineFromClassroom(params.input.id, params.input.classroomId);
 }
 
 export async function createClassroomExemptionForTenant(params: {
@@ -34,13 +38,7 @@ export async function createClassroomExemptionForTenant(params: {
 }) {
   await assertOrgClassroomAccess(params.ctx.organizationId!, params.input.classroomId);
 
-  const machineRow = await openpathDb
-    .select({ id: machines.id, classroomId: machines.classroomId })
-    .from(machines)
-    .where(eq(machines.id, params.input.machineId))
-    .limit(1);
-
-  const machine = machineRow[0];
+  const machine = await getMachineClassroomLink(params.input.machineId);
   if (!machine || machine.classroomId !== params.input.classroomId) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Machine not found' });
   }
@@ -54,48 +52,20 @@ export async function createClassroomExemptionForTenant(params: {
   await assertUsableGroupIfProvided(params.ctx, params.input.groupId);
 
   const id = `exempt_${nanoid(10)}`;
-  const inserted = await openpathDb
-    .insert(machineExemptions)
-    .values({
-      id,
-      machineId: params.input.machineId,
-      classroomId: params.input.classroomId,
-      scheduleId: params.input.scheduleId,
-      groupId: params.input.groupId ?? null,
-      createdBy: params.ctx.user.sub,
-      expiresAt,
-    })
-    .onConflictDoNothing({
-      target: [
-        machineExemptions.machineId,
-        machineExemptions.scheduleId,
-        machineExemptions.expiresAt,
-      ],
-      where: sql`${machineExemptions.source} = 'schedule'`,
-    })
-    .returning();
-
-  const row =
-    inserted[0] ??
-    (
-      await openpathDb
-        .select()
-        .from(machineExemptions)
-        .where(
-          and(
-            eq(machineExemptions.machineId, params.input.machineId),
-            eq(machineExemptions.scheduleId, params.input.scheduleId),
-            eq(machineExemptions.expiresAt, expiresAt)
-          )
-        )
-        .limit(1)
-    )[0];
+  const row = await createScheduleExemptionAndNotify({
+    id,
+    machineId: params.input.machineId,
+    classroomId: params.input.classroomId,
+    scheduleId: params.input.scheduleId,
+    groupId: params.input.groupId ?? null,
+    createdBy: params.ctx.user.sub,
+    expiresAt,
+  });
 
   if (!row) {
     throw new TRPCError({ code: 'CONFLICT', message: 'Could not create exemption' });
   }
 
-  await notifyOpenPathClassroomChanged(params.input.classroomId);
   return presentClassroomExemption(row);
 }
 
@@ -128,39 +98,28 @@ export async function createOperationalClassroomExemptionForTenant(params: {
 
   await assertOrgClassroomAccess(params.ctx.organizationId!, params.input.classroomId);
 
-  const machineRow = await openpathDb
-    .select({ id: machines.id, classroomId: machines.classroomId })
-    .from(machines)
-    .where(eq(machines.id, params.input.machineId))
-    .limit(1);
-
-  const machine = machineRow[0];
+  const machine = await getMachineClassroomLink(params.input.machineId);
   if (!machine || machine.classroomId !== params.input.classroomId) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Machine not found' });
   }
 
   const expiresAt = new Date(Date.now() + params.input.durationHours * 60 * 60 * 1000);
   const id = `exempt_${nanoid(10)}`;
-  const inserted = await openpathDb
-    .insert(machineExemptions)
-    .values({
-      id,
-      machineId: params.input.machineId,
-      classroomId: params.input.classroomId,
-      scheduleId: null,
-      source: 'operational',
-      reason,
-      createdBy: params.ctx.user.sub,
-      expiresAt,
-    })
-    .returning();
+  const row = await createOperationalExemptionAndNotify({
+    id,
+    machineId: params.input.machineId,
+    classroomId: params.input.classroomId,
+    scheduleId: null,
+    source: 'operational',
+    reason,
+    createdBy: params.ctx.user.sub,
+    expiresAt,
+  });
 
-  const row = inserted[0];
   if (!row) {
     throw new TRPCError({ code: 'CONFLICT', message: 'Could not create exemption' });
   }
 
-  await notifyOpenPathClassroomChanged(params.input.classroomId);
   return presentClassroomExemption(row);
 }
 
@@ -168,17 +127,7 @@ export async function deleteClassroomExemptionForTenant(params: {
   ctx: ClassroomWriteContext;
   id: string;
 }): Promise<void> {
-  const existing = await openpathDb
-    .select({
-      id: machineExemptions.id,
-      classroomId: machineExemptions.classroomId,
-      source: machineExemptions.source,
-    })
-    .from(machineExemptions)
-    .where(eq(machineExemptions.id, params.id))
-    .limit(1);
-
-  const row = existing[0];
+  const row = await getExemptionById(params.id);
   if (!row) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Exemption not found' });
   }
@@ -191,10 +140,9 @@ export async function deleteClassroomExemptionForTenant(params: {
     });
   }
 
-  await openpathDb.delete(machineExemptions).where(eq(machineExemptions.id, params.id));
-  await notifyOpenPathClassroomChanged(row.classroomId);
+  await deleteExemptionAndNotify(params.id, row.classroomId);
 }
 
 export async function deleteClassroomRecord(classroomId: string): Promise<void> {
-  await openpathDb.delete(classrooms).where(eq(classrooms.id, classroomId));
+  await deleteClassroomById(classroomId);
 }

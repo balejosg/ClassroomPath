@@ -2,7 +2,11 @@ import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
 import { db } from '../../db/index.js';
-import { classrooms, openpathDb } from '../../db/openpath.js';
+import {
+  createClassroom,
+  getClassroomById,
+  updateCaptivePortalDomainsIfSupported,
+} from '../../db/openpath-repos/classrooms.repo.js';
 import * as schema from '../../db/schema.js';
 import { runUpstreamFirstProvisioningWorkflow } from '../../lib/cross-system-workflow-engine.js';
 import type {
@@ -29,13 +33,7 @@ export async function runCreateClassroomWorkflow(params: {
   storedResult: StoredClassroomCreateResult | null;
 }) {
   let classroom = params.storedResult
-    ? (
-        await openpathDb
-          .select()
-          .from(classrooms)
-          .where(eq(classrooms.id, params.storedResult.classroomId))
-          .limit(1)
-      )[0]
+    ? await getClassroomById(params.storedResult.classroomId)
     : undefined;
 
   const workflow = await runUpstreamFirstProvisioningWorkflow({
@@ -45,29 +43,18 @@ export async function runCreateClassroomWorkflow(params: {
     metadata: params.operation.metadata as Record<string, unknown>,
     createUpstream: async () => {
       const classroomId = nanoid();
-      const [createdClassroom] = await openpathDb
-        .insert(classrooms)
-        .values({
-          id: classroomId,
-          name: params.scopedName,
-          displayName: params.displayName,
-          defaultGroupId: params.defaultGroupId,
-        })
-        .returning();
+      const createdClassroom = await createClassroom({
+        id: classroomId,
+        name: params.scopedName,
+        displayName: params.displayName,
+        defaultGroupId: params.defaultGroupId,
+      });
 
       const updatedCaptivePortalDomains =
-        await updateCreatedClassroomCaptivePortalDomainsIfSupported(
-          classroomId,
-          params.captivePortalDomains
-        );
+        params.captivePortalDomains.length > 0 &&
+        (await updateCaptivePortalDomainsIfSupported(classroomId, params.captivePortalDomains));
       const classroomForState = updatedCaptivePortalDomains
-        ? ((
-            await openpathDb
-              .select()
-              .from(classrooms)
-              .where(eq(classrooms.id, classroomId))
-              .limit(1)
-          )[0] ?? createdClassroom)
+        ? ((await getClassroomById(classroomId)) ?? createdClassroom)
         : createdClassroom;
 
       return {
@@ -119,31 +106,4 @@ export async function runCreateClassroomWorkflow(params: {
 
   classroom = workflow.state.classroom;
   return classroom;
-}
-
-async function updateCreatedClassroomCaptivePortalDomainsIfSupported(
-  classroomId: string,
-  captivePortalDomains: string[]
-): Promise<boolean> {
-  if (captivePortalDomains.length === 0) {
-    return false;
-  }
-
-  try {
-    await openpathDb
-      .update(classrooms)
-      .set({ captivePortalDomains })
-      .where(eq(classrooms.id, classroomId));
-    return true;
-  } catch (err) {
-    if (isMissingCaptivePortalDomainsColumnError(err)) {
-      return false;
-    }
-    throw err;
-  }
-}
-
-function isMissingCaptivePortalDomainsColumnError(err: unknown): boolean {
-  const error = err as { code?: string; cause?: { code?: string } };
-  return error.code === '42703' || error.cause?.code === '42703';
 }

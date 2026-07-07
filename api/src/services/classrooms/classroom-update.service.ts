@@ -1,7 +1,11 @@
 import { TRPCError } from '@trpc/server';
-import { eq } from 'drizzle-orm';
 
-import { classrooms, openpathDb } from '../../db/openpath.js';
+import {
+  getClassroomById,
+  setActiveGroupAndNotify,
+  updateCaptivePortalDomainsIfSupported,
+  updateClassroomFields,
+} from '../../db/openpath-repos/classrooms.repo.js';
 import { notifyOpenPathClassroomChanged } from '../../db/openpath-repos/publish.js';
 import { assertOrgClassroomAccess } from '../../lib/tenant-access.js';
 import { presentTenantClassroom } from './classroom-access.service.js';
@@ -25,9 +29,9 @@ export async function updateClassroomForTenant(params: {
       ? normalizeCaptivePortalDomains(captivePortalDomains)
       : undefined;
   const hasClassroomUpdates = Object.keys(updateData).length > 0;
-  let [updated] = hasClassroomUpdates
-    ? await openpathDb.update(classrooms).set(updateData).where(eq(classrooms.id, id)).returning()
-    : await openpathDb.select().from(classrooms).where(eq(classrooms.id, id)).limit(1);
+  let updated = hasClassroomUpdates
+    ? await updateClassroomFields(id, updateData)
+    : await getClassroomById(id);
 
   if (!updated) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Classroom not found' });
@@ -39,12 +43,7 @@ export async function updateClassroomForTenant(params: {
       : false;
 
   if (updatedCaptivePortalDomains) {
-    const [refreshed] = await openpathDb
-      .select()
-      .from(classrooms)
-      .where(eq(classrooms.id, updated.id))
-      .limit(1);
-    updated = refreshed ?? updated;
+    updated = (await getClassroomById(updated.id)) ?? updated;
   }
 
   if (
@@ -57,29 +56,6 @@ export async function updateClassroomForTenant(params: {
   return presentTenantClassroom({ classroom: updated });
 }
 
-async function updateCaptivePortalDomainsIfSupported(
-  classroomId: string,
-  captivePortalDomains: string[]
-): Promise<boolean> {
-  try {
-    await openpathDb
-      .update(classrooms)
-      .set({ captivePortalDomains })
-      .where(eq(classrooms.id, classroomId));
-    return true;
-  } catch (err) {
-    if (isMissingCaptivePortalDomainsColumnError(err)) {
-      return false;
-    }
-    throw err;
-  }
-}
-
-function isMissingCaptivePortalDomainsColumnError(err: unknown): boolean {
-  const error = err as { code?: string; cause?: { code?: string } };
-  return error.code === '42703' || error.cause?.code === '42703';
-}
-
 export async function setActiveGroupForTenant(params: {
   ctx: ClassroomWriteContext;
   classroomId: string;
@@ -88,16 +64,11 @@ export async function setActiveGroupForTenant(params: {
   await assertOrgClassroomAccess(params.ctx.organizationId!, params.classroomId);
   await assertUsableGroupIfProvided(params.ctx, params.groupId);
 
-  const [updated] = await openpathDb
-    .update(classrooms)
-    .set({ activeGroupId: params.groupId })
-    .where(eq(classrooms.id, params.classroomId))
-    .returning();
+  const updated = await setActiveGroupAndNotify(params.classroomId, params.groupId);
 
   if (!updated) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Classroom not found' });
   }
 
-  await notifyOpenPathClassroomChanged(updated.id);
   return presentTenantClassroom({ classroom: updated });
 }

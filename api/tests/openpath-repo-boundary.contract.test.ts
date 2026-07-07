@@ -30,18 +30,6 @@ const REPO_DIR_PREFIX = 'db/openpath-repos/';
  */
 const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
   // --- write sites: removed by this plan's tasks ---
-  [
-    'services/classrooms/classroom-exemptions.service.ts',
-    'exemption/machine writes -> repos (Task 8)',
-  ],
-  [
-    'services/classrooms/classroom-update.service.ts',
-    'classroom updates -> classrooms.repo (Task 8)',
-  ],
-  [
-    'services/classrooms/classroom-create-workflow.service.ts',
-    'classroom create -> classrooms.repo (Task 8)',
-  ],
   ['lib/openpath-users.ts', 'user read helpers fold into users.repo (Task 9)'],
   ['lib/openpath-roles.ts', 'role statements delegate to roles.repo (Task 9)'],
   ['services/group-role-membership.service.ts', 'teacher-role writes -> roles.repo (Task 9)'],
