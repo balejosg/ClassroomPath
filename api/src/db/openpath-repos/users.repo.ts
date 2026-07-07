@@ -84,15 +84,28 @@ export async function updateUserReturning(
   return updated;
 }
 
-export async function insertUser(values: NewUser): Promise<UserRow | undefined> {
+export async function insertUser(
+  values: NewUser
+): Promise<
+  Pick<UserRow, 'id' | 'email' | 'name' | 'emailVerified' | 'isActive' | 'googleId'> | undefined
+> {
   // Preserves auth-registration.service.ts's original insert chain exactly
   // (plan F14): concurrent Google sign-ups can race on the email/googleId
   // unique constraints, and the caller relies on a silent no-op (falling
-  // back to a lookup of the existing row) rather than a thrown DB error.
+  // back to a lookup of the existing row) rather than a thrown DB error. The
+  // explicit RETURNING projection (rather than bare .returning()) mirrors the
+  // pre-refactor SQL text exactly -- zero SQL-text changes (plan F14).
   const [created] = await openpathDb
     .insert(openpathSchema.users)
     .values(values)
     .onConflictDoNothing()
-    .returning();
+    .returning({
+      id: openpathSchema.users.id,
+      email: openpathSchema.users.email,
+      name: openpathSchema.users.name,
+      emailVerified: openpathSchema.users.emailVerified,
+      isActive: openpathSchema.users.isActive,
+      googleId: openpathSchema.users.googleId,
+    });
   return created;
 }
