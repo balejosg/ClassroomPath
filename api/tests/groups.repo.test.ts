@@ -69,6 +69,7 @@ describe('groups.repo', () => {
         updatedAt: new Date(),
         displayName: 'After',
       });
+      assert.ok(updated, 'an existing group updates and returns the row');
       assert.equal(updated.displayName, 'After');
 
       const events = await capture.waitForCount(1);
