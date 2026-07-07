@@ -1,12 +1,14 @@
 import { TRPCError } from '@trpc/server';
-import { eq } from 'drizzle-orm';
 
-import { openpathDb, requests } from '../db/openpath.js';
+import {
+  getRequestById as getRequestRowById,
+  type RequestRow,
+} from '../db/openpath-repos/requests.repo.js';
 import { assertCanUseGroup, getAccessibleTenantGroupIds } from '../lib/tenant-access.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
 import { orgHasGroup } from './org-group-membership.service.js';
 
-export type TenantRequestRow = typeof requests.$inferSelect;
+export type TenantRequestRow = RequestRow;
 
 export async function assertGroupBelongsToTenant(
   ctx: TenantProcedureContext,
@@ -45,17 +47,13 @@ export async function assertRequestBelongsToTenant(
 }
 
 export async function getRequestById(requestId: string): Promise<TenantRequestRow> {
-  const request = await openpathDb
-    .select()
-    .from(requests)
-    .where(eq(requests.id, requestId))
-    .limit(1);
+  const request = await getRequestRowById(requestId);
 
-  if (!request[0]) {
+  if (!request) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
   }
 
-  return request[0];
+  return request;
 }
 
 export async function getAccessibleRequestGroupIds(ctx: TenantProcedureContext): Promise<string[]> {

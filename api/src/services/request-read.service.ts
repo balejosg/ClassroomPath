@@ -1,6 +1,8 @@
-import { and, eq, inArray } from 'drizzle-orm';
-
-import { openpathDb, requests, whitelistGroups } from '../db/openpath.js';
+import { getGroupsByIds } from '../db/openpath-repos/groups.repo.js';
+import {
+  getRequestsByGroupIds,
+  listRequestsByGroupIds,
+} from '../db/openpath-repos/requests.repo.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
 import { getAccessibleRequestGroupIds, serializeRequestDates } from './request-shared.service.js';
 
@@ -9,10 +11,7 @@ export async function listAccessibleRequestGroups(ctx: TenantProcedureContext) {
 
   if (groupIds.length === 0) return [];
 
-  const groups = await openpathDb
-    .select()
-    .from(whitelistGroups)
-    .where(inArray(whitelistGroups.id, groupIds));
+  const groups = await getGroupsByIds(groupIds);
 
   return groups.map((group) => ({
     name: group.displayName ?? group.name,
@@ -27,10 +26,7 @@ export async function getTenantRequestStats(ctx: TenantProcedureContext) {
     return { total: 0, pending: 0, approved: 0, rejected: 0 };
   }
 
-  const allRequests = await openpathDb
-    .select()
-    .from(requests)
-    .where(inArray(requests.groupId, groupIds));
+  const allRequests = await getRequestsByGroupIds(groupIds);
 
   return {
     total: allRequests.length,
@@ -48,16 +44,7 @@ export async function listTenantRequests(
 
   if (groupIds.length === 0) return [];
 
-  const conditions = [inArray(requests.groupId, groupIds)];
-  if (status) {
-    conditions.push(eq(requests.status, status));
-  }
-
-  const results = await openpathDb
-    .select()
-    .from(requests)
-    .where(and(...conditions))
-    .orderBy(requests.createdAt);
+  const results = await listRequestsByGroupIds({ groupIds, status });
 
   return results.map((request) => serializeRequestDates(request));
 }

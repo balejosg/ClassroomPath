@@ -39,8 +39,6 @@ const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
   ['services/classrooms/classroom-machine-access.service.ts', 'read-only; ratchet'],
   ['services/classrooms/classroom-read.service.ts', 'read-only (incl. execute SELECT); ratchet'],
   ['services/classrooms/classroom-write-shared.ts', 'read-only shared asserts/presenters; ratchet'],
-  ['services/request-read.service.ts', 'read-only; ratchet'],
-  ['services/request-shared.service.ts', 'read-only; ratchet'],
   ['services/schedules/current-group-expiration.service.ts', 'read-only; ratchet'],
   ['services/schedules/current-group-read.service.ts', 'read-only; ratchet'],
   ['services/schedules/schedule-classroom-read.service.ts', 'read-only; ratchet'],
