@@ -2,13 +2,8 @@ import { TRPCError } from '@trpc/server';
 import { and, eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
-import {
-  classrooms,
-  machineExemptions,
-  machines,
-  notifyOpenPathClassroomChanged,
-  openpathDb,
-} from '../../db/openpath.js';
+import { classrooms, machineExemptions, machines, openpathDb } from '../../db/openpath.js';
+import { notifyOpenPathClassroomChanged } from '../../db/openpath-repos/publish.js';
 import { assertOrgClassroomAccess } from '../../lib/tenant-access.js';
 import { resolveActiveScheduleExpiresAt } from '../schedules/current-group.service.js';
 import {

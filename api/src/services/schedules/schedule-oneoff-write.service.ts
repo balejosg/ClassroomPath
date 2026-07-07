@@ -1,7 +1,8 @@
 import { TRPCError } from '@trpc/server';
 import { eq } from 'drizzle-orm';
 
-import { notifyOpenPathClassroomChanged, openpathDb, schedules } from '../../db/openpath.js';
+import { openpathDb, schedules } from '../../db/openpath.js';
+import { notifyOpenPathClassroomChanged } from '../../db/openpath-repos/publish.js';
 import {
   assertCanUseGroup,
   assertOrgClassroomAccess,

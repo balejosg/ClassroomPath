@@ -3,12 +3,8 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import {
-  notifyOpenPathGroupChanged,
-  openpathDb,
-  whitelistGroups,
-  whitelistRules,
-} from '../db/openpath.js';
+import { openpathDb, whitelistGroups, whitelistRules } from '../db/openpath.js';
+import { notifyOpenPathGroupChanged } from '../db/openpath-repos/publish.js';
 import { assertCanUseGroup } from '../lib/tenant-access.js';
 import { getOrCreateOrganizationMutationOperation } from '../lib/organization-mutation-workflow/operations.js';
 import { runDeleteMutationWorkflow } from '../lib/cross-system-workflow-engine.js';

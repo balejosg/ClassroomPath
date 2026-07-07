@@ -2,7 +2,8 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { notifyOpenPathGroupChanged, openpathDb, whitelistGroups } from '../db/openpath.js';
+import { openpathDb, whitelistGroups } from '../db/openpath.js';
+import { notifyOpenPathGroupChanged } from '../db/openpath-repos/publish.js';
 import { assertCanAccessGroup, toOpenPathEnabledFlag } from '../lib/tenant-access.js';
 import { presentTenantGroupMutation } from './presenters.js';
 

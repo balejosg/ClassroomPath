@@ -1,7 +1,8 @@
 import { TRPCError } from '@trpc/server';
 import { eq } from 'drizzle-orm';
 
-import { classrooms, notifyOpenPathClassroomChanged, openpathDb } from '../../db/openpath.js';
+import { classrooms, openpathDb } from '../../db/openpath.js';
+import { notifyOpenPathClassroomChanged } from '../../db/openpath-repos/publish.js';
 import { assertOrgClassroomAccess } from '../../lib/tenant-access.js';
 import { presentTenantClassroom } from './classroom-access.service.js';
 import {

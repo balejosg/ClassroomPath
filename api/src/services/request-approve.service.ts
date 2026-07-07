@@ -1,12 +1,8 @@
 import { nanoid } from 'nanoid';
 import { eq } from 'drizzle-orm';
 
-import {
-  openpathDb,
-  publishWhitelistGroupChanged,
-  requests,
-  whitelistRules,
-} from '../db/openpath.js';
+import { openpathDb, requests, whitelistRules } from '../db/openpath.js';
+import { publishWhitelistGroupChanged } from '../db/openpath-repos/publish.js';
 import { getRootDomain } from '../openpath/domain.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
 import {

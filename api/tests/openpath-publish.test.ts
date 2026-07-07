@@ -2,13 +2,12 @@ import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 import { eq, inArray } from 'drizzle-orm';
 
+import { openpathDb, whitelistGroups } from '../src/db/openpath.js';
 import {
   notifyOpenPathClassroomChanged,
-  openpathDb,
   publishWhitelistGroupChanged,
   publishWhitelistGroupsChanged,
-  whitelistGroups,
-} from '../src/db/openpath.js';
+} from '../src/db/openpath-repos/publish.js';
 import { startOpenPathNotifyCapture } from './helpers/openpath-notify.js';
 
 // Characterization of the mandatory write->publish side effects BEFORE the

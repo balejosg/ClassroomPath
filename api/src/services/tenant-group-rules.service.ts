@@ -71,7 +71,7 @@ const defaultDependencies: TenantGroupRulesDependencies = {
     await assertCanUseGroup(ctx, groupId, options);
   },
   async publishWhitelistGroupChanged(groupId) {
-    const { publishWhitelistGroupChanged } = await import('../db/openpath.js');
+    const { publishWhitelistGroupChanged } = await import('../db/openpath-repos/publish.js');
     await publishWhitelistGroupChanged(groupId);
   },
   async createOrReuseGroupRule(input) {

@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   varchar,
@@ -58,32 +58,6 @@ export async function notifyOpenPathEvent(event: OpenPathDbEventPayload): Promis
       message: err instanceof Error ? err.message : String(err),
     });
   }
-}
-
-export async function notifyOpenPathGroupChanged(groupId: string): Promise<void> {
-  await notifyOpenPathEvent({ type: 'group', groupId });
-}
-
-export async function notifyOpenPathClassroomChanged(classroomId: string): Promise<void> {
-  await notifyOpenPathEvent({ type: 'classroom', classroomId });
-}
-
-export async function touchWhitelistGroupUpdatedAt(groupId: string): Promise<void> {
-  await openpathDb
-    .update(whitelistGroups)
-    .set({ updatedAt: new Date() })
-    .where(eq(whitelistGroups.id, groupId));
-}
-
-export async function publishWhitelistGroupChanged(groupId: string): Promise<void> {
-  await touchWhitelistGroupUpdatedAt(groupId);
-  await notifyOpenPathGroupChanged(groupId);
-}
-
-export async function publishWhitelistGroupsChanged(groupIds: readonly string[]): Promise<void> {
-  const unique = [...new Set(groupIds)];
-  await Promise.all(unique.map((groupId) => touchWhitelistGroupUpdatedAt(groupId)));
-  await Promise.all(unique.map((groupId) => notifyOpenPathGroupChanged(groupId)));
 }
 
 export async function closeOpenPathConnection() {

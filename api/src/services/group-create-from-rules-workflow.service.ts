@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 
-import { openpathDb, publishWhitelistGroupChanged, whitelistGroups } from '../db/openpath.js';
+import { openpathDb, whitelistGroups } from '../db/openpath.js';
+import { publishWhitelistGroupChanged } from '../db/openpath-repos/publish.js';
 import { runUpstreamFirstProvisioningWorkflow } from '../lib/cross-system-workflow-engine.js';
 import type {
   getMutationResult,

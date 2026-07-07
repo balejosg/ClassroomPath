@@ -1,7 +1,8 @@
 import { TRPCError } from '@trpc/server';
 import { inArray } from 'drizzle-orm';
 
-import { openpathDb, publishWhitelistGroupsChanged, whitelistRules } from '../db/openpath.js';
+import { openpathDb, whitelistRules } from '../db/openpath.js';
+import { publishWhitelistGroupsChanged } from '../db/openpath-repos/publish.js';
 import { getAccessibleTenantGroupIds } from '../lib/tenant-access.js';
 
 type GroupActor = {
