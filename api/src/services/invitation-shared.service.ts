@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { config } from '../config.js';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { openpathDb, openpathSchema } from '../db/openpath.js';
+import { getUserByEmail } from '../db/openpath-repos/users.repo.js';
 import { apiCopy } from '../lib/api-content.js';
 
 export const INVITATION_TTL_HOURS = 72;
@@ -75,16 +75,7 @@ export async function findExistingOpenPathUserByEmail(email: string): Promise<{
   email: string;
   name: string;
 } | null> {
-  const [existingUser] = await openpathDb
-    .select({
-      id: openpathSchema.users.id,
-      email: openpathSchema.users.email,
-      name: openpathSchema.users.name,
-    })
-    .from(openpathSchema.users)
-    .where(eq(openpathSchema.users.email, email))
-    .limit(1);
-
+  const existingUser = await getUserByEmail(email);
   return existingUser ?? null;
 }
 

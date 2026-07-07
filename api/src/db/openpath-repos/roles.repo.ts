@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
 import { openpathDb, roles } from '../openpath.js';
@@ -18,6 +18,16 @@ export async function getRolesByUserId(userId: string): Promise<RoleRow[]> {
 export async function getRoleByUserId(userId: string): Promise<RoleRow | undefined> {
   const existing = await openpathDb.select().from(roles).where(eq(roles.userId, userId)).limit(1);
   return existing[0];
+}
+
+export async function getRolesByUserIds(userIds: readonly string[]): Promise<RoleRow[]> {
+  if (userIds.length === 0) {
+    return [];
+  }
+  return openpathDb
+    .select()
+    .from(roles)
+    .where(inArray(roles.userId, [...userIds]));
 }
 
 export async function deleteRolesByUserId(userId: string): Promise<void> {

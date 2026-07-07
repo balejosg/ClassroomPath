@@ -16,6 +16,10 @@ export interface User {
 
 export type UserRow = typeof openpathSchema.users.$inferSelect;
 export type NewUser = typeof openpathSchema.users.$inferInsert;
+export type AuthUserRow = Pick<
+  UserRow,
+  'id' | 'email' | 'name' | 'emailVerified' | 'isActive' | 'googleId'
+>;
 
 export async function getUserById(id: string): Promise<User | null> {
   const result = await openpathDb
@@ -29,6 +33,75 @@ export async function getUserById(id: string): Promise<User | null> {
     .limit(1);
 
   return result[0] ?? null;
+}
+
+export async function getUserByEmail(email: string): Promise<User | undefined> {
+  const result = await openpathDb
+    .select({
+      id: openpathSchema.users.id,
+      email: openpathSchema.users.email,
+      name: openpathSchema.users.name,
+    })
+    .from(openpathSchema.users)
+    .where(eq(openpathSchema.users.email, email))
+    .limit(1);
+
+  return result[0];
+}
+
+const AUTH_USER_PROJECTION = {
+  id: openpathSchema.users.id,
+  email: openpathSchema.users.email,
+  name: openpathSchema.users.name,
+  emailVerified: openpathSchema.users.emailVerified,
+  isActive: openpathSchema.users.isActive,
+  googleId: openpathSchema.users.googleId,
+};
+
+export async function getAuthUserByEmail(email: string): Promise<AuthUserRow | null> {
+  const [user] = await openpathDb
+    .select(AUTH_USER_PROJECTION)
+    .from(openpathSchema.users)
+    .where(eq(openpathSchema.users.email, email))
+    .limit(1);
+
+  return user ?? null;
+}
+
+export async function getAuthUserByGoogleId(googleId: string): Promise<AuthUserRow | null> {
+  const [user] = await openpathDb
+    .select(AUTH_USER_PROJECTION)
+    .from(openpathSchema.users)
+    .where(eq(openpathSchema.users.googleId, googleId))
+    .limit(1);
+
+  return user ?? null;
+}
+
+export async function getUserEmailVerificationById(
+  userId: string
+): Promise<Pick<UserRow, 'id' | 'emailVerified'> | undefined> {
+  const [user] = await openpathDb
+    .select({ id: openpathSchema.users.id, emailVerified: openpathSchema.users.emailVerified })
+    .from(openpathSchema.users)
+    .where(eq(openpathSchema.users.id, userId))
+    .limit(1);
+
+  return user;
+}
+
+export async function getUsersByIds(userIds: readonly string[]): Promise<UserRow[]> {
+  const uniqueIds = [
+    ...new Set(userIds.filter((userId) => typeof userId === 'string' && userId.trim().length > 0)),
+  ];
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+
+  return openpathDb
+    .select()
+    .from(openpathSchema.users)
+    .where(inArray(openpathSchema.users.id, uniqueIds));
 }
 
 export async function getUserNamesByIds(userIds: readonly string[]): Promise<Map<string, string>> {

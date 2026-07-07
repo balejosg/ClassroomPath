@@ -1,9 +1,9 @@
 import { TRPCError } from '@trpc/server';
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { openpathDb, roles } from '../db/openpath.js';
+import { getRolesByUserIds } from '../db/openpath-repos/roles.repo.js';
 import { normalizeRoleGroupIds, type RoleInfo } from './presenters.js';
 
 export async function getOrganizationUserIds(params: {
@@ -31,7 +31,7 @@ export async function getRolesByUserId(userIds: string[]): Promise<Map<string, R
   const result = new Map<string, RoleInfo[]>();
   if (userIds.length === 0) return result;
 
-  const rows = await openpathDb.select().from(roles).where(inArray(roles.userId, userIds));
+  const rows = await getRolesByUserIds(userIds);
 
   for (const role of rows) {
     const current = result.get(role.userId) ?? [];

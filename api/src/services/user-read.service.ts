@@ -1,6 +1,4 @@
-import { inArray } from 'drizzle-orm';
-
-import { openpathDb, users } from '../db/openpath.js';
+import { getUsersByIds } from '../db/openpath-repos/users.repo.js';
 import { presentUserRole, presentUserWithRoles } from './presenters.js';
 import {
   assertOrganizationUserAccess,
@@ -14,7 +12,7 @@ export async function listOrganizationUsers(organizationId: string) {
   if (userIds.length === 0) return [];
 
   const [usersList, rolesByUserId] = await Promise.all([
-    openpathDb.select().from(users).where(inArray(users.id, userIds)),
+    getUsersByIds(userIds),
     getRolesByUserId(userIds),
   ]);
   const nowIso = new Date().toISOString();

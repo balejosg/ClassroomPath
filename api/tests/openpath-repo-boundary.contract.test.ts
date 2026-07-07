@@ -29,12 +29,6 @@ const REPO_DIR_PREFIX = 'db/openpath-repos/';
  * Deleting a migrated file's entry is part of that migration's commit.
  */
 const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
-  // --- mixed read+write: writes migrate, reads stay (ratchet) ---
-  [
-    'services/auth-registration.service.ts',
-    'read-only after Task 9 (user-by-email lookups); ratchet',
-  ],
-  ['services/auth-recovery.service.ts', 'read-only after Task 10 (user-by-email lookup); ratchet'],
   // --- read-only importers: deliberately left to the post-plan ratchet ---
   ['lib/client-canary-manual-approval-route.ts', 'read-only (canary group lookup); ratchet'],
   [
@@ -56,10 +50,6 @@ const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
     'services/group-template-publish.service.ts',
     'read-only mirror reads (writes are cp_* tables); ratchet',
   ],
-  ['services/invitation-shared.service.ts', 'read-only user lookup; ratchet'],
-  ['services/onboarding-status.service.ts', 'read-only user lookup; ratchet'],
-  ['services/organization-user-access.service.ts', 'read-only; ratchet'],
-  ['services/organization-user-helpers.ts', 'read-only; ratchet'],
   ['services/request-read.service.ts', 'read-only; ratchet'],
   ['services/request-shared.service.ts', 'read-only; ratchet'],
   ['services/schedules/current-group-expiration.service.ts', 'read-only; ratchet'],
@@ -67,8 +57,6 @@ const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
   ['services/schedules/schedule-classroom-read.service.ts', 'read-only; ratchet'],
   ['services/schedules/schedule-teacher-read.service.ts', 'read-only; ratchet'],
   ['services/schedules/schedule-write-shared.service.ts', 'read-only loads/asserts; ratchet'],
-  ['services/user-read.service.ts', 'read-only; ratchet'],
-  ['services/waiting-status.service.ts', 'read-only; ratchet'],
 ]);
 
 function listSourceFiles(dir: string): string[] {

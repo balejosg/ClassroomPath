@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 
 import { config } from '../config.js';
 import { db, schema } from '../db/index.js';
-import { openpathDb, openpathSchema } from '../db/openpath.js';
+import { getUserById, getUserEmailVerificationById } from '../db/openpath-repos/users.repo.js';
 import {
   assertNoExistingMembershipOrThrow,
   getSingleMembershipOrThrow,
@@ -34,11 +34,7 @@ export async function getOnboardingStatus(userId: string): Promise<OnboardingSta
     .where(eq(schema.cpUserStatus.userId, userId))
     .limit(1);
 
-  const [user] = await openpathDb
-    .select({ email: openpathSchema.users.email })
-    .from(openpathSchema.users)
-    .where(eq(openpathSchema.users.id, userId))
-    .limit(1);
+  const user = await getUserById(userId);
 
   const membership = await getSingleMembershipOrThrow(userId);
   const pendingInvitation = user
@@ -102,11 +98,7 @@ export async function getOnboardingStatus(userId: string): Promise<OnboardingSta
 }
 
 export async function assertCanStartOnboarding(userId: string): Promise<void> {
-  const [user] = await openpathDb
-    .select({ id: openpathSchema.users.id, emailVerified: openpathSchema.users.emailVerified })
-    .from(openpathSchema.users)
-    .where(eq(openpathSchema.users.id, userId))
-    .limit(1);
+  const user = await getUserEmailVerificationById(userId);
 
   if (!user) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });

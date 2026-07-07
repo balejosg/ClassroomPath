@@ -16,13 +16,16 @@
  * exist without a session cookie, so callers should not treat the upsert as
  * evidence of a complete login.
  */
-import { eq } from 'drizzle-orm';
 import type { Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import { TRPCError } from '@trpc/server';
 
-import { openpathDb, openpathSchema } from '../db/openpath.js';
-import { insertUser, updateUser } from '../db/openpath-repos/users.repo.js';
+import {
+  getAuthUserByEmail,
+  getAuthUserByGoogleId,
+  insertUser,
+  updateUser,
+} from '../db/openpath-repos/users.repo.js';
 import { generateId } from '../lib/id.js';
 import { logger } from '../lib/logger.js';
 import { storeSessionFromPayload } from '../lib/session-cookies.js';
@@ -58,37 +61,11 @@ type GoogleIdentity = {
 };
 
 async function getOpenPathUserByEmail(email: string): Promise<OpenPathSignupUser | null> {
-  const [user] = await openpathDb
-    .select({
-      id: openpathSchema.users.id,
-      email: openpathSchema.users.email,
-      name: openpathSchema.users.name,
-      emailVerified: openpathSchema.users.emailVerified,
-      isActive: openpathSchema.users.isActive,
-      googleId: openpathSchema.users.googleId,
-    })
-    .from(openpathSchema.users)
-    .where(eq(openpathSchema.users.email, email))
-    .limit(1);
-
-  return user ?? null;
+  return getAuthUserByEmail(email);
 }
 
 async function getOpenPathUserByGoogleId(googleId: string): Promise<OpenPathSignupUser | null> {
-  const [user] = await openpathDb
-    .select({
-      id: openpathSchema.users.id,
-      email: openpathSchema.users.email,
-      name: openpathSchema.users.name,
-      emailVerified: openpathSchema.users.emailVerified,
-      isActive: openpathSchema.users.isActive,
-      googleId: openpathSchema.users.googleId,
-    })
-    .from(openpathSchema.users)
-    .where(eq(openpathSchema.users.googleId, googleId))
-    .limit(1);
-
-  return user ?? null;
+  return getAuthUserByGoogleId(googleId);
 }
 
 function getGoogleClientId(): string {

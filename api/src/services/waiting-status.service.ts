@@ -1,7 +1,7 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
-import { openpathDb, openpathSchema } from '../db/openpath.js';
+import { getUsersByIds } from '../db/openpath-repos/users.repo.js';
 
 export interface WaitingUser {
   userId: string;
@@ -31,14 +31,7 @@ export async function listWaitingUsersForOrganization(
   }
 
   const userIds = waitingUsers.map((user) => user.userId);
-  const openpathUsers = await openpathDb
-    .select({
-      id: openpathSchema.users.id,
-      email: openpathSchema.users.email,
-      name: openpathSchema.users.name,
-    })
-    .from(openpathSchema.users)
-    .where(inArray(openpathSchema.users.id, userIds));
+  const openpathUsers = await getUsersByIds(userIds);
 
   const userMap = new Map(openpathUsers.map((user) => [user.id, user]));
 

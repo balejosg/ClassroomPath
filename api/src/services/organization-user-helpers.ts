@@ -3,7 +3,8 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { openpathDb, roles, users } from '../db/openpath.js';
+import { getRoleByUserId } from '../db/openpath-repos/roles.repo.js';
+import { getUsersByIds } from '../db/openpath-repos/users.repo.js';
 import { getSingleMembershipOrThrow } from '../lib/tenant-memberships.js';
 import { normalizeRoleGroupIds, presentUserWithRoles } from './presenters.js';
 import {
@@ -20,7 +21,7 @@ export const LAST_ADMIN_CONFLICT_MESSAGE = 'Cannot remove the last admin from th
 
 export async function presentOrganizationUserById(userId: string, nowIso?: string) {
   const [userRows, rolesByUserId] = await Promise.all([
-    openpathDb.select().from(users).where(eq(users.id, userId)).limit(1),
+    getUsersByIds([userId]),
     getRolesByUserId([userId]),
   ]);
 
@@ -35,7 +36,7 @@ export async function presentOrganizationUserById(userId: string, nowIso?: strin
 }
 
 export async function getPersistedUserRole(userId: string) {
-  const [role] = await openpathDb.select().from(roles).where(eq(roles.userId, userId)).limit(1);
+  const role = await getRoleByUserId(userId);
 
   if (!role) {
     return null;

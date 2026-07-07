@@ -5,11 +5,11 @@ import { randomBytes } from 'node:crypto';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { openpathDb, openpathSchema } from '../db/openpath.js';
 import {
   deletePasswordResetTokensByUserId,
   replacePasswordResetToken,
 } from '../db/openpath-repos/auth-tokens.repo.js';
+import { getUserByEmail } from '../db/openpath-repos/users.repo.js';
 import { config } from '../config.js';
 import { apiCopy, getApiCopy } from '../lib/api-content.js';
 import { generateId } from '../lib/id.js';
@@ -34,15 +34,7 @@ export async function generateTenantResetToken(params: {
 }): Promise<{ success: true; emailSent: boolean }> {
   const normalizedEmail = normalizeEmailAddress(params.email);
 
-  const [user] = await openpathDb
-    .select({
-      id: openpathSchema.users.id,
-      email: openpathSchema.users.email,
-      name: openpathSchema.users.name,
-    })
-    .from(openpathSchema.users)
-    .where(eq(openpathSchema.users.email, normalizedEmail))
-    .limit(1);
+  const user = await getUserByEmail(normalizedEmail);
 
   if (!user) {
     throw new TRPCError({
