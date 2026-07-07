@@ -30,7 +30,6 @@ const REPO_DIR_PREFIX = 'db/openpath-repos/';
  */
 const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
   // --- read-only importers: deliberately left to the post-plan ratchet ---
-  ['lib/client-canary-manual-approval-route.ts', 'read-only (canary group lookup); ratchet'],
   [
     'lib/tenant-access.ts',
     'read-only tenant scoping over link tables; separate future candidate (ADR 0003)',

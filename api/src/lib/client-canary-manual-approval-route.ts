@@ -16,12 +16,16 @@
  */
 import { timingSafeEqual } from 'node:crypto';
 import type { RequestHandler } from 'express';
-import { desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
-import { openpathDb, requests, whitelistGroups, whitelistRules } from '../db/openpath.js';
+import { getGroupById } from '../db/openpath-repos/groups.repo.js';
+import { getRecentRequestsForGroup } from '../db/openpath-repos/requests.repo.js';
+import { getRecentRulesForGroup } from '../db/openpath-repos/whitelist-rules.repo.js';
 import { approveManualBillingRequest } from '../services/billing.service.js';
 import { config } from '../config.js';
+
+const GROUP_DIAGNOSTICS_LIMIT = 200;
 
 const CANARY_MARKER = '[client-canary]';
 
@@ -197,52 +201,23 @@ export const clientCanaryGroupDiagnosticsHandler: RequestHandler = async (req, r
     }
 
     const expectedHosts = extractExpectedHosts(req.query.host);
-    const [group] = await openpathDb
-      .select({
-        id: whitelistGroups.id,
-        name: whitelistGroups.name,
-        displayName: whitelistGroups.displayName,
-        enabled: whitelistGroups.enabled,
-      })
-      .from(whitelistGroups)
-      .where(eq(whitelistGroups.id, groupId))
-      .limit(1);
+    const groupRow = await getGroupById(groupId);
 
-    if (!group) {
+    if (!groupRow) {
       res.status(404).json({ error: 'group_not_found' });
       return;
     }
 
+    const group = {
+      id: groupRow.id,
+      name: groupRow.name,
+      displayName: groupRow.displayName,
+      enabled: groupRow.enabled,
+    };
+
     const [ruleRows, requestRows] = await Promise.all([
-      openpathDb
-        .select({
-          id: whitelistRules.id,
-          type: whitelistRules.type,
-          value: whitelistRules.value,
-          comment: whitelistRules.comment,
-          createdAt: whitelistRules.createdAt,
-        })
-        .from(whitelistRules)
-        .where(eq(whitelistRules.groupId, groupId))
-        .orderBy(desc(whitelistRules.createdAt))
-        .limit(200),
-      openpathDb
-        .select({
-          id: requests.id,
-          domain: requests.domain,
-          reason: requests.reason,
-          status: requests.status,
-          requesterEmail: requests.requesterEmail,
-          createdAt: requests.createdAt,
-          updatedAt: requests.updatedAt,
-          resolvedAt: requests.resolvedAt,
-          resolvedBy: requests.resolvedBy,
-          resolutionNote: requests.resolutionNote,
-        })
-        .from(requests)
-        .where(eq(requests.groupId, groupId))
-        .orderBy(desc(requests.createdAt))
-        .limit(200),
+      getRecentRulesForGroup(groupId, GROUP_DIAGNOSTICS_LIMIT),
+      getRecentRequestsForGroup(groupId, GROUP_DIAGNOSTICS_LIMIT),
     ]);
 
     const rules = ruleRows.map((rule) => ({
