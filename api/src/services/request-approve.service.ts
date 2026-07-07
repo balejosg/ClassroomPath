@@ -1,8 +1,7 @@
 import { nanoid } from 'nanoid';
-import { eq } from 'drizzle-orm';
 
-import { openpathDb, requests, whitelistRules } from '../db/openpath.js';
-import { publishWhitelistGroupChanged } from '../db/openpath-repos/publish.js';
+import { insertRuleIfAbsentAndPublish } from '../db/openpath-repos/whitelist-rules.repo.js';
+import { resolveRequest } from '../db/openpath-repos/requests.repo.js';
 import { getRootDomain } from '../openpath/domain.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
 import {
@@ -23,33 +22,18 @@ export async function approveTenantRequest(
   await assertRequestBelongsToTenant(ctx, requestGroupId);
   await assertCanManageGroup(ctx, requestGroupId);
 
-  const inserted = await openpathDb
-    .insert(whitelistRules)
-    .values({
-      id: `rule-${nanoid(16)}`,
-      groupId: requestGroupId,
-      type: 'whitelist',
-      value: getRootDomain(request.domain),
-    })
-    .onConflictDoNothing({
-      target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
-    })
-    .returning();
+  await insertRuleIfAbsentAndPublish({
+    id: `rule-${nanoid(16)}`,
+    groupId: requestGroupId,
+    type: 'whitelist',
+    value: getRootDomain(request.domain),
+  });
 
-  if (inserted.length > 0) {
-    await publishWhitelistGroupChanged(requestGroupId);
-  }
-
-  await openpathDb
-    .update(requests)
-    .set({
-      status: 'approved',
-      updatedAt: new Date(),
-      resolvedAt: new Date(),
-      resolvedBy: ctx.user.name,
-      resolutionNote: 'Approved from tenant gateway',
-    })
-    .where(eq(requests.id, requestId));
+  await resolveRequest(requestId, {
+    status: 'approved',
+    resolvedBy: ctx.user.name,
+    resolutionNote: 'Approved from tenant gateway',
+  });
 
   return { success: true };
 }

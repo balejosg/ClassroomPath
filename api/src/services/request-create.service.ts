@@ -1,8 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { nanoid } from 'nanoid';
-import { and, eq, sql } from 'drizzle-orm';
 
-import { openpathDb, requests } from '../db/openpath.js';
+import { findPendingRequestIdByDomain, insertRequest } from '../db/openpath-repos/requests.repo.js';
 import { logger } from '../lib/logger.js';
 import { getRootDomain } from '../openpath/domain.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
@@ -26,36 +25,24 @@ export async function createTenantRequest(params: {
   await assertCanManageGroup(params.ctx, params.input.groupId);
   const normalizedDomain = getRootDomain(params.input.domain);
 
-  const pendingRequest = await openpathDb
-    .select({ id: requests.id })
-    .from(requests)
-    .where(
-      and(
-        sql`LOWER(${requests.domain}) = LOWER(${normalizedDomain})`,
-        eq(requests.status, 'pending')
-      )
-    )
-    .limit(1);
+  const pendingRequestId = await findPendingRequestIdByDomain(normalizedDomain);
 
-  if (pendingRequest.length > 0) {
+  if (pendingRequestId !== undefined) {
     throw new TRPCError({
       code: 'CONFLICT',
       message: 'Pending request exists for this domain',
     });
   }
 
-  const [created] = await openpathDb
-    .insert(requests)
-    .values({
-      id: `req_${nanoid(8)}`,
-      domain: normalizedDomain.toLowerCase(),
-      reason: params.input.reason ?? 'No reason provided',
-      requesterEmail:
-        params.input.requesterEmail ?? params.ctx.user.email ?? 'anonymous@tenant.local',
-      groupId: params.input.groupId,
-      status: 'pending',
-    })
-    .returning();
+  const created = await insertRequest({
+    id: `req_${nanoid(8)}`,
+    domain: normalizedDomain.toLowerCase(),
+    reason: params.input.reason ?? 'No reason provided',
+    requesterEmail:
+      params.input.requesterEmail ?? params.ctx.user.email ?? 'anonymous@tenant.local',
+    groupId: params.input.groupId,
+    status: 'pending',
+  });
 
   if (!created) {
     throw new TRPCError({

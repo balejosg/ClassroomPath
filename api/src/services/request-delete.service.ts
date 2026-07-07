@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
-
-import { openpathDb, requests } from '../db/openpath.js';
+import { deleteRequestById } from '../db/openpath-repos/requests.repo.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
 import {
   assertRequestBelongsToTenant,
@@ -16,7 +14,7 @@ export async function deleteTenantRequest(
   const requestGroupId = assertRequestHasGroupId(request);
   await assertRequestBelongsToTenant(ctx, requestGroupId);
 
-  await openpathDb.delete(requests).where(eq(requests.id, requestId));
+  await deleteRequestById(requestId);
 
   return { success: true };
 }
