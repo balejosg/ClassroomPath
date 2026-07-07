@@ -185,7 +185,7 @@ describe('classrooms.repo + machine-exemptions.repo', () => {
     }
   });
 
-  it('deleteMachineFromClassroom and deleteClassroomById are bare (no notify -- pinned gap)', async () => {
+  it('deleteMachineFromClassroom and deleteClassroomById notify the classroom', async () => {
     const room = await createClassroom({
       id: `croom_${RUN_ID}_3`,
       name: `croom-repo-${RUN_ID}-3`,
@@ -203,7 +203,11 @@ describe('classrooms.repo + machine-exemptions.repo', () => {
     try {
       await deleteMachineFromClassroom(`mach_${RUN_ID}_2`, room.id);
       await deleteClassroomById(room.id);
-      assert.equal((await capture.waitForCount(1, 400)).length, 0);
+      const events = await capture.waitForCount(2);
+      assert.deepEqual(events, [
+        { type: 'classroom', classroomId: room.id },
+        { type: 'classroom', classroomId: room.id },
+      ]);
     } finally {
       await capture.stop();
     }

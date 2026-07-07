@@ -14,10 +14,11 @@ import { startOpenPathNotifyCapture } from './helpers/openpath-notify.js';
 
 // Self-contained 1:1 gate-named coverage for classrooms.repo.ts. Pins the
 // write/notify flavors preserved by the repository refactor (plan F5/F13):
-// createClassroom and the two deletes are BARE (no notify -- the delete
-// no-notify is the pinned F13(d) gap); setActiveGroupAndNotify pairs write+notify
-// on success only; updateCaptivePortalDomainsIfSupported returns true when the
-// column exists. Mirrors the classroom assertions co-located in
+// createClassroom is BARE (no notify); setActiveGroupAndNotify pairs
+// write+notify on success only; deleteMachineFromClassroom and
+// deleteClassroomById each notify the classroom after the delete (closing the
+// F13(d) no-notify gap); updateCaptivePortalDomainsIfSupported returns true
+// when the column exists. Mirrors the classroom assertions co-located in
 // machine-exemptions.repo.test.ts, with its own seed/cleanup.
 
 const RUN_ID = Math.random().toString(36).slice(2, 10);
@@ -61,7 +62,7 @@ describe('classrooms.repo (1:1 named)', () => {
     }
   });
 
-  it('deleteMachineFromClassroom and deleteClassroomById are bare (no notify -- pinned gap)', async () => {
+  it('deleteMachineFromClassroom and deleteClassroomById notify the classroom', async () => {
     const room = await createClassroom({
       id: `croom_${RUN_ID}_3`,
       name: `croom-repo-${RUN_ID}-3`,
@@ -79,7 +80,11 @@ describe('classrooms.repo (1:1 named)', () => {
     try {
       await deleteMachineFromClassroom(`mach_${RUN_ID}_2`, room.id);
       await deleteClassroomById(room.id);
-      assert.equal((await capture.waitForCount(1, 400)).length, 0);
+      const events = await capture.waitForCount(2);
+      assert.deepEqual(events, [
+        { type: 'classroom', classroomId: room.id },
+        { type: 'classroom', classroomId: room.id },
+      ]);
     } finally {
       await capture.stop();
     }

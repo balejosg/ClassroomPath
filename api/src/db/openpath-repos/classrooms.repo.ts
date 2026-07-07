@@ -5,11 +5,12 @@ import { notifyOpenPathClassroomChanged } from './publish.js';
 
 // Owning module for classrooms/machines writes. Mixed flavors, all preserving
 // the pre-refactor pairings exactly (plan F5/F13):
-// - createClassroom / updateClassroomFields / deleteClassroomById /
-//   deleteMachineFromClassroom are BARE: creates belong to the ledger
-//   createUpstream step; the field-update notify is input-conditioned and owned
-//   by classroom-update.service; the two deletes never notified (pinned gap,
-//   Open Question Q2 of the 2026-07-06 repository plan).
+// - createClassroom / updateClassroomFields are BARE: creates belong to the
+//   ledger createUpstream step; the field-update notify is input-conditioned
+//   and owned by classroom-update.service.
+// - deleteClassroomById / deleteMachineFromClassroom now notify the classroom
+//   after the delete, closing the F13(d) no-notify gap (agents were left
+//   applying policy for a deleted classroom).
 // - setActiveGroupAndNotify pairs write+notify (unconditional on success).
 // - updateCaptivePortalDomainsIfSupported tolerates a missing column (42703)
 //   for mixed-version shared DBs -- previously duplicated in two services.
@@ -86,6 +87,7 @@ export async function setActiveGroupAndNotify(
 
 export async function deleteClassroomById(classroomId: string): Promise<void> {
   await openpathDb.delete(classrooms).where(eq(classrooms.id, classroomId));
+  await notifyOpenPathClassroomChanged(classroomId);
 }
 
 export async function deleteMachineFromClassroom(
@@ -95,6 +97,7 @@ export async function deleteMachineFromClassroom(
   await openpathDb
     .delete(machines)
     .where(and(eq(machines.id, machineId), eq(machines.classroomId, classroomId)));
+  await notifyOpenPathClassroomChanged(classroomId);
 }
 
 export async function getMachineClassroomLink(
