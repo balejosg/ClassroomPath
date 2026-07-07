@@ -24,7 +24,12 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const apiDir = dirname(dirname(currentFilePath));
 const servicesDir = resolve(apiDir, 'src/services');
 
-const MIRROR_IMPORT = /from\s+'[^']*db\/openpath\.js'/;
+// Mirror access now has two doors: the raw Drizzle mirror (db/openpath.js) and
+// the owning repository layer (db/openpath-repos/*). Both static and dynamic
+// imports of either count as mirror-touching: a service that reaches shared
+// org-agnostic tables through a repository still needs a tenant-scoping signal
+// (ADR 0003 -- repositories deliberately carry no tenant logic).
+const MIRROR_IMPORT = /(?:from\s*|import\s*\(\s*)'[^']*db\/(?:openpath\.js|openpath-repos\/[^']+)'/;
 const SCOPING_SIGNALS = [
   /from\s+'[^']*lib\/tenant-access\.js'/, // uses a tenant-access helper
   /TenantProcedureContext/, // typed with a tenant context
@@ -168,5 +173,21 @@ void describe('tenant service guard: mirror access must be scoped', () => {
       !hasScopingSignal(stripped),
       'a scoping signal that only appears in a comment must not satisfy the guard'
     );
+  });
+
+  void it('self-check: a repository import counts as mirror-touching', () => {
+    const synthetic =
+      "import { createOrReuseRuleAndPublish } from '../db/openpath-repos/whitelist-rules.repo.js';\n" +
+      'export const x = 1;\n';
+    assert.ok(touchesMirror(synthetic), 'repository imports must count as mirror-touching');
+  });
+
+  void it('self-check: a dynamic mirror import counts as mirror-touching', () => {
+    const synthetic =
+      'export async function lazy() {\n' +
+      "  const { openpathDb } = await import('../db/openpath.js');\n" +
+      '  return openpathDb;\n' +
+      '}\n';
+    assert.ok(touchesMirror(synthetic), 'dynamic imports must count as mirror-touching');
   });
 });
