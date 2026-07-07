@@ -1,40 +1,7 @@
-import { nanoid } from 'nanoid';
+// Thin facade kept for its established import path and public names; the
+// transactional seeded create moved to the owning repository
+// (api/src/db/openpath-repos/groups.repo.ts). Callers are workflow steps that
+// publish via their own ledger `complete` step -- see groups.repo docs.
 
-import { openpathDb, whitelistGroups, whitelistRules } from '../db/openpath.js';
-
-export type GroupRuleSeed = Pick<typeof whitelistRules.$inferSelect, 'type' | 'value' | 'comment'>;
-
-export async function createSeededUpstreamGroup(params: {
-  name: string;
-  displayName: string;
-  enabled: 0 | 1;
-  rules: GroupRuleSeed[];
-}) {
-  const groupId = nanoid();
-
-  return openpathDb.transaction(async (tx) => {
-    const [created] = await tx
-      .insert(whitelistGroups)
-      .values({
-        id: groupId,
-        name: params.name,
-        displayName: params.displayName,
-        enabled: params.enabled,
-      })
-      .returning();
-
-    if (params.rules.length > 0) {
-      await tx.insert(whitelistRules).values(
-        params.rules.map((rule) => ({
-          id: nanoid(),
-          groupId: created.id,
-          type: rule.type,
-          value: rule.value,
-          comment: rule.comment,
-        }))
-      );
-    }
-
-    return created;
-  });
-}
+export type { GroupRuleSeed } from '../db/openpath-repos/groups.repo.js';
+export { createGroupWithRules as createSeededUpstreamGroup } from '../db/openpath-repos/groups.repo.js';

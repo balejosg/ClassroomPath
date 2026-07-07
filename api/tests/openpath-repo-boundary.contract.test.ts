@@ -30,14 +30,6 @@ const REPO_DIR_PREFIX = 'db/openpath-repos/';
  */
 const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
   // --- write sites: removed by this plan's tasks ---
-  ['services/group-update.service.ts', 'group update+notify -> groups.repo (Task 6)'],
-  ['services/group-seeded-upstream-create.service.ts', 'seeded tx create -> groups.repo (Task 6)'],
-  ['services/group-delete-direct.service.ts', 'cascade delete -> groups.repo (Task 6)'],
-  [
-    'services/group-create-from-rules-workflow.service.ts',
-    'group read/type -> groups.repo (Task 6)',
-  ],
-  ['lib/openpath-groups.ts', 'display-name read helper folds into groups.repo (Task 6)'],
   [
     'services/schedules/schedule-delete.service.ts',
     'schedule delete+notify -> schedules.repo (Task 7)',

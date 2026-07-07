@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { openpathDb, whitelistGroups, whitelistRules } from '../db/openpath.js';
+import { deleteGroupCascade } from '../db/openpath-repos/groups.repo.js';
 import { notifyOpenPathGroupChanged } from '../db/openpath-repos/publish.js';
 import { assertCanUseGroup } from '../lib/tenant-access.js';
 import { getOrCreateOrganizationMutationOperation } from '../lib/organization-mutation-workflow/operations.js';
@@ -20,11 +20,6 @@ type GroupActor = {
 const GROUP_PERMISSION_OPTS = {
   notAllowedMessage: 'Insufficient permissions for this group',
 } as const;
-
-async function deleteOpenPathGroupCascade(groupId: string): Promise<void> {
-  await openpathDb.delete(whitelistRules).where(eq(whitelistRules.groupId, groupId));
-  await openpathDb.delete(whitelistGroups).where(eq(whitelistGroups.id, groupId));
-}
 
 export async function deleteOrganizationGroup(params: GroupActor & { groupId: string }) {
   await assertCanUseGroup(
@@ -76,7 +71,7 @@ export async function deleteOrganizationGroup(params: GroupActor & { groupId: st
         .limit(1);
 
       if (stillReferenced.length === 0) {
-        await deleteOpenPathGroupCascade(params.groupId);
+        await deleteGroupCascade(params.groupId);
 
         if (params.userRole === 'teacher') {
           await removeGroupFromTeacherRole({ userId: params.userId, groupId: params.groupId });

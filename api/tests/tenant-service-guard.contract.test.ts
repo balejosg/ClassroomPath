@@ -66,6 +66,10 @@ const EXEMPTIONS: ReadonlyMap<string, string> = new Map([
   ],
   ['schedules/current-group-expiration.service.ts', 'leaf schedule math/read by classroom id'],
   ['schedules/current-group-read.service.ts', 'leaf schedule read by classroom/group id'],
+  [
+    'schedules/schedule-metadata.service.ts',
+    'leaf; loadScheduleMetadataMaps called by callers that scope via assertOrgClassroomAccess/organizationId first',
+  ],
 ]);
 
 function listServiceFiles(dir: string): string[] {

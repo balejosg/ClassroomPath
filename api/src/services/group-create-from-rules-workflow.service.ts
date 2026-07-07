@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
-
-import { openpathDb, whitelistGroups } from '../db/openpath.js';
+import { getGroupById, type WhitelistGroupRow } from '../db/openpath-repos/groups.repo.js';
 import { publishWhitelistGroupChanged } from '../db/openpath-repos/publish.js';
 import { runUpstreamFirstProvisioningWorkflow } from '../lib/cross-system-workflow-engine.js';
 import type {
@@ -37,16 +35,8 @@ export async function runCreateOrganizationGroupFromRulesWorkflow(params: {
   rules: GroupRuleSeed[];
   storedResult: StoredGroupCreateResult | null;
   visibility: string;
-}): Promise<typeof whitelistGroups.$inferSelect | undefined> {
-  let group = params.storedResult
-    ? (
-        await openpathDb
-          .select()
-          .from(whitelistGroups)
-          .where(eq(whitelistGroups.id, params.storedResult.groupId))
-          .limit(1)
-      )[0]
-    : undefined;
+}): Promise<WhitelistGroupRow | undefined> {
+  let group = params.storedResult ? await getGroupById(params.storedResult.groupId) : undefined;
 
   const workflow = await runUpstreamFirstProvisioningWorkflow({
     operation: params.operation,
@@ -70,7 +60,7 @@ export async function runCreateOrganizationGroupFromRulesWorkflow(params: {
           publicName: params.publicName,
           visibility: params.visibility,
         },
-        state: (current: { group?: typeof whitelistGroups.$inferSelect }) => ({
+        state: (current: { group?: WhitelistGroupRow }) => ({
           ...current,
           group: createdGroup,
         }),

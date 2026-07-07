@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { inArray } from 'drizzle-orm';
 
 import { openpathDb, openpathSchema } from '../src/db/openpath.js';
-import { getGroupDisplayNamesByIds } from '../src/lib/openpath-groups.js';
+import { getGroupDisplayNamesByIds } from '../src/db/openpath-repos/groups.repo.js';
 
 const RUN_ID = Math.random().toString(36).slice(2, 10);
 const createdGroupIds = new Set<string>();

@@ -2,8 +2,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { openpathDb, whitelistGroups } from '../db/openpath.js';
-import { notifyOpenPathGroupChanged } from '../db/openpath-repos/publish.js';
+import { updateGroupAndNotify } from '../db/openpath-repos/groups.repo.js';
 import { assertCanAccessGroup, toOpenPathEnabledFlag } from '../lib/tenant-access.js';
 import { presentTenantGroupMutation } from './presenters.js';
 
@@ -75,13 +74,7 @@ export async function updateOrganizationGroup(
       );
   }
 
-  const [updated] = await openpathDb
-    .update(whitelistGroups)
-    .set(updateData)
-    .where(eq(whitelistGroups.id, params.groupId))
-    .returning();
-
-  await notifyOpenPathGroupChanged(updated.id);
+  const updated = await updateGroupAndNotify(params.groupId, updateData);
 
   return presentTenantGroupMutation({
     group: updated,

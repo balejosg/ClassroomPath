@@ -1,7 +1,7 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 
 import { classrooms, machines, openpathDb } from '../../db/openpath.js';
-import { getGroupDisplayNamesByIds } from '../../lib/openpath-groups.js';
+import { getGroupDisplayNamesByIds } from '../../db/openpath-repos/groups.repo.js';
 import { getOrgClassroomIds } from '../org-classroom-membership.service.js';
 import {
   getCurrentScheduleGroupByClassroomId,
