@@ -282,6 +282,22 @@ uses whatever `JWT_SECRET` the process already has, producing auth failures that
 
 ---
 
+## Appendix A2: api/tests/ OpenPath repository-layer & boundary contracts (12 files)
+
+Source-text and DB-backed contract tests guarding the OpenPath repository layer
+(`api/src/db/openpath-repos/`). They do NOT read workflow YAML. Each
+`db/openpath-repos/*` module has a 1:1 same-named test file (the `check-test-files.sh`
+coverage gate), plus co-located multi-module sibling suites (e.g. `roles.repo.test.ts`
+also exercises `users.repo`).
+
+| Test file                                                                                                                                                                                                                                                                                   | Guards                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `api/tests/openpath-repo-boundary.contract.test.ts`                                                                                                                                                                                                                                         | Raw mirror imports (`db/openpath.js`) are repository-owned (`db/openpath-repos/`) or on the explicit read-only `ALLOWED_RAW_IMPORTERS` allowlist; ratchet fails on a new importer or a stale (no-longer-importing) entry |
+| `api/tests/publish.test.ts`                                                                                                                                                                                                                                                                 | Publish contract: a mirrored-table write is paired with its `updated_at` touch and its `pg_notify` call -- no write lands without the matching notify                                                                    |
+| `api/tests/whitelist-rules.repo.test.ts`, `requests.repo.test.ts`, `groups.repo.test.ts`, `schedules.repo.test.ts`, `machine-exemptions.repo.test.ts`, `roles.repo.test.ts`, `auth-tokens.repo.test.ts`, `classrooms.repo.test.ts`, `users.repo.test.ts`, `push-subscriptions.repo.test.ts` | Repository-layer write+publish co-location per mirrored table: each repo method's write and its notify/publish side effect are verified together against a real Postgres test DB                                         |
+
+---
+
 ## Appendix B: react-spa test locations (50 files)
 
 Unit and component tests live under `react-spa/src/`. They do NOT read workflow YAML. Runner: Vitest (configured in `react-spa/`).

@@ -24,7 +24,6 @@ api/src/trpc/routers/classrooms.ts
 api/src/trpc/routers/groups.ts
 
 # API - Lib
-api/src/lib/openpath-users.ts
 api/src/lib/openpath-roles.ts
 api/src/lib/jwt.ts
 api/src/lib/id.ts
