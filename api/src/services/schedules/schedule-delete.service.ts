@@ -1,7 +1,4 @@
-import { eq } from 'drizzle-orm';
-
-import { openpathDb, schedules } from '../../db/openpath.js';
-import { notifyOpenPathClassroomChanged } from '../../db/openpath-repos/publish.js';
+import { deleteScheduleAndNotify } from '../../db/openpath-repos/schedules.repo.js';
 import { assertOrgClassroomAccess } from '../../lib/tenant-access.js';
 import {
   assertCanManageSchedule,
@@ -18,6 +15,5 @@ export async function deleteScheduleForTenant(params: {
   await assertOrgClassroomAccess(params.ctx.organizationId!, schedule.classroomId);
   assertCanManageSchedule(params.ctx, schedule);
 
-  await openpathDb.delete(schedules).where(eq(schedules.id, params.id));
-  await notifyOpenPathClassroomChanged(schedule.classroomId);
+  await deleteScheduleAndNotify(params.id, schedule.classroomId);
 }

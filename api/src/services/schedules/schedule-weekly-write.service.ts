@@ -1,8 +1,10 @@
 import { TRPCError } from '@trpc/server';
-import { eq } from 'drizzle-orm';
 
-import { openpathDb, schedules } from '../../db/openpath.js';
-import { notifyOpenPathClassroomChanged } from '../../db/openpath-repos/publish.js';
+import {
+  createScheduleAndNotify,
+  type NewSchedule,
+  updateScheduleAndNotify,
+} from '../../db/openpath-repos/schedules.repo.js';
 import {
   assertCanUseGroup,
   assertOrgClassroomAccess,
@@ -61,26 +63,21 @@ export async function createWeeklyScheduleForTenant(params: {
     endTime: params.input.endTime,
   });
 
-  const [created] = await openpathDb
-    .insert(schedules)
-    .values({
-      classroomId: params.input.classroomId,
-      teacherId: params.ctx.user.sub,
-      groupId: params.input.groupId,
-      dayOfWeek: params.input.dayOfWeek,
-      startTime: params.input.startTime,
-      endTime: params.input.endTime,
-      startAt: null,
-      endAt: null,
-      recurrence: 'weekly',
-    })
-    .returning();
+  const created = await createScheduleAndNotify({
+    classroomId: params.input.classroomId,
+    teacherId: params.ctx.user.sub,
+    groupId: params.input.groupId,
+    dayOfWeek: params.input.dayOfWeek,
+    startTime: params.input.startTime,
+    endTime: params.input.endTime,
+    startAt: null,
+    endAt: null,
+    recurrence: 'weekly',
+  });
 
   if (!created) {
     throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create schedule' });
   }
-
-  await notifyOpenPathClassroomChanged(created.classroomId);
 
   return created;
 }
@@ -124,7 +121,7 @@ export async function updateWeeklyScheduleForTenant(params: {
     excludeId: params.input.id,
   });
 
-  const updateValues: Partial<typeof schedules.$inferInsert> = {
+  const updateValues: Partial<NewSchedule> = {
     startAt: null,
     endAt: null,
     updatedAt: new Date(),
@@ -143,17 +140,11 @@ export async function updateWeeklyScheduleForTenant(params: {
     updateValues.groupId = params.input.groupId;
   }
 
-  const [updated] = await openpathDb
-    .update(schedules)
-    .set(updateValues)
-    .where(eq(schedules.id, params.input.id))
-    .returning();
+  const updated = await updateScheduleAndNotify(params.input.id, updateValues);
 
   if (!updated) {
     throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update schedule' });
   }
-
-  await notifyOpenPathClassroomChanged(updated.classroomId);
 
   return updated;
 }
