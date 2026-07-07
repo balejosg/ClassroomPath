@@ -29,21 +29,12 @@ const REPO_DIR_PREFIX = 'db/openpath-repos/';
  * Deleting a migrated file's entry is part of that migration's commit.
  */
 const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
-  // --- write sites: removed by this plan's tasks ---
-  ['services/push.service.ts', 'subscription writes/reads -> push-subscriptions.repo (Task 10)'],
-  [
-    'trpc/routers/auth-email-delivery.ts',
-    'verification-token writes -> auth-tokens.repo (Task 10)',
-  ],
   // --- mixed read+write: writes migrate, reads stay (ratchet) ---
   [
     'services/auth-registration.service.ts',
     'read-only after Task 9 (user-by-email lookups); ratchet',
   ],
-  [
-    'services/auth-recovery.service.ts',
-    'reset-token writes -> auth-tokens.repo (Task 10); user reads stay (ratchet)',
-  ],
+  ['services/auth-recovery.service.ts', 'read-only after Task 10 (user-by-email lookup); ratchet'],
   // --- read-only importers: deliberately left to the post-plan ratchet ---
   ['lib/client-canary-manual-approval-route.ts', 'read-only (canary group lookup); ratchet'],
   [

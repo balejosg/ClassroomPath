@@ -6,6 +6,10 @@ import { randomBytes } from 'node:crypto';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { openpathDb, openpathSchema } from '../db/openpath.js';
+import {
+  deletePasswordResetTokensByUserId,
+  replacePasswordResetToken,
+} from '../db/openpath-repos/auth-tokens.repo.js';
 import { config } from '../config.js';
 import { apiCopy, getApiCopy } from '../lib/api-content.js';
 import { generateId } from '../lib/id.js';
@@ -70,16 +74,7 @@ export async function generateTenantResetToken(params: {
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
   const resetUrl = `${config.publicUrl}/reset-password?email=${encodeURIComponent(user.email)}&token=${encodeURIComponent(token)}`;
 
-  await openpathDb
-    .delete(openpathSchema.passwordResetTokens)
-    .where(eq(openpathSchema.passwordResetTokens.userId, user.id));
-
-  await openpathDb.insert(openpathSchema.passwordResetTokens).values({
-    id: generateId('reset'),
-    userId: user.id,
-    tokenHash,
-    expiresAt,
-  });
+  await replacePasswordResetToken(user.id, { id: generateId('reset'), tokenHash, expiresAt });
 
   const resetAuditEventId = await recordResetTokenGeneratedAuditEvent({
     organizationId: params.organizationId,
@@ -121,9 +116,7 @@ export async function generateTenantResetToken(params: {
       emailSent: true,
     };
   } catch (error) {
-    await openpathDb
-      .delete(openpathSchema.passwordResetTokens)
-      .where(eq(openpathSchema.passwordResetTokens.userId, user.id));
+    await deletePasswordResetTokensByUserId(user.id);
     await deleteAuditEventByIdBestEffort({
       auditEventId: resetAuditEventId,
       action: 'user.reset-token-generated',

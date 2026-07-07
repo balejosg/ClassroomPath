@@ -17,11 +17,17 @@
  */
 import { TRPCError } from '@trpc/server';
 import { nanoid } from 'nanoid';
-import { eq, sql } from 'drizzle-orm';
 import webPush from 'web-push';
 
 import { config } from '../config.js';
-import { openpathDb, pushSubscriptions } from '../db/openpath.js';
+import type { PushSubscriptionRow } from '../db/openpath-repos/push-subscriptions.repo.js';
+import {
+  deleteSubscriptionByEndpoint,
+  deleteSubscriptionOwnedBy,
+  getSubscriptionsByUserId,
+  getSubscriptionsForGroup,
+  replaceSubscriptionByEndpoint,
+} from '../db/openpath-repos/push-subscriptions.repo.js';
 import { getApiCopy } from '../lib/api-content.js';
 import { logger } from '../lib/logger.js';
 import type { TenantProcedureContext } from '../trpc/tenant-procedure-helpers.js';
@@ -114,9 +120,7 @@ async function normalizeTenantSubscriptionGroupIds(
   return normalized;
 }
 
-function serializePushSubscription(
-  row: typeof pushSubscriptions.$inferSelect
-): TenantPushSubscriptionRecord {
+function serializePushSubscription(row: PushSubscriptionRow): TenantPushSubscriptionRecord {
   return {
     id: row.id,
     userId: row.userId,
@@ -134,12 +138,8 @@ export async function saveTenantPushSubscription(params: {
 }): Promise<{ success: true; subscriptionId: string; groupIds: string[] }> {
   const groupIds = await normalizeTenantSubscriptionGroupIds(params.ctx, params.groupIds);
 
-  await openpathDb
-    .delete(pushSubscriptions)
-    .where(eq(pushSubscriptions.endpoint, params.subscription.endpoint));
-
   const subscriptionId = `push_${nanoid(8)}`;
-  await openpathDb.insert(pushSubscriptions).values({
+  await replaceSubscriptionByEndpoint({
     id: subscriptionId,
     userId: params.ctx.user.sub,
     groupIds,
@@ -157,10 +157,7 @@ export async function getTenantPushStatus(ctx: TenantProcedureContext): Promise<
   subscriptionCount: number;
   subscriptions: TenantPushSubscriptionRecord[];
 }> {
-  const rows = await openpathDb
-    .select()
-    .from(pushSubscriptions)
-    .where(eq(pushSubscriptions.userId, ctx.user.sub));
+  const rows = await getSubscriptionsByUserId(ctx.user.sub);
 
   return {
     pushEnabled: getTenantVapidPublicKey().enabled,
@@ -181,26 +178,13 @@ export async function deleteTenantPushSubscription(params: {
     });
   }
 
-  const predicate = params.endpoint
-    ? eq(pushSubscriptions.endpoint, params.endpoint)
-    : eq(pushSubscriptions.id, params.subscriptionId ?? '');
-  const deleted = await openpathDb
-    .delete(pushSubscriptions)
-    .where(sql`${pushSubscriptions.userId} = ${params.ctx.user.sub} AND ${predicate}`)
-    .returning({ id: pushSubscriptions.id });
+  const deleted = await deleteSubscriptionOwnedBy({
+    userId: params.ctx.user.sub,
+    endpoint: params.endpoint,
+    subscriptionId: params.subscriptionId,
+  });
 
   return { success: deleted.length > 0 };
-}
-
-async function getSubscriptionsForGroup(groupId: string) {
-  return openpathDb
-    .select()
-    .from(pushSubscriptions)
-    .where(sql`${pushSubscriptions.groupIds} @> ARRAY[${groupId}]::text[]`);
-}
-
-async function deleteSubscriptionByEndpoint(endpoint: string): Promise<void> {
-  await openpathDb.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
 }
 
 export async function notifyTenantTeachersOfNewRequest(

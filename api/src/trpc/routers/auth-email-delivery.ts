@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
 import bcrypt from 'bcrypt';
-import { eq } from 'drizzle-orm';
 
 import { config } from '../../config.js';
-import { openpathDb, openpathSchema } from '../../db/openpath.js';
+import { replaceEmailVerificationToken } from '../../db/openpath-repos/auth-tokens.repo.js';
 import { getApiCopy } from '../../lib/api-content.js';
 import { logger } from '../../lib/logger.js';
 import { sendTransactionalEmail } from '../../services/email.service.js';
@@ -36,13 +35,8 @@ export async function issueOpenPathEmailVerificationToken(
   const verificationExpiresAt = new Date();
   verificationExpiresAt.setHours(verificationExpiresAt.getHours() + EMAIL_VERIFICATION_TTL_HOURS);
 
-  await openpathDb
-    .delete(openpathSchema.emailVerificationTokens)
-    .where(eq(openpathSchema.emailVerificationTokens.userId, userId));
-
-  await openpathDb.insert(openpathSchema.emailVerificationTokens).values({
+  await replaceEmailVerificationToken(userId, {
     id: `verify_${randomUUID().slice(0, 8)}`,
-    userId,
     tokenHash: await bcrypt.hash(verificationToken, EMAIL_VERIFICATION_BCRYPT_ROUNDS),
     expiresAt: verificationExpiresAt,
   });
