@@ -78,6 +78,22 @@ describe('groups.repo', () => {
     }
   });
 
+  it('updateGroupAndNotify returns undefined and emits no event for a vanished group', async () => {
+    const capture = await startOpenPathNotifyCapture();
+    try {
+      const updated = await updateGroupAndNotify(`missing-${RUN_ID}`, {
+        updatedAt: new Date(),
+        displayName: 'x',
+      });
+      assert.equal(updated, undefined);
+
+      const events = await capture.waitForCount(1, 400);
+      assert.equal(events.length, 0, 'no update happened, so no notify');
+    } finally {
+      await capture.stop();
+    }
+  });
+
   it('deleteGroupCascade removes rules then group, no publish of its own', async () => {
     const created = await createGroupWithRules({
       name: `grepo-${RUN_ID}-del`,

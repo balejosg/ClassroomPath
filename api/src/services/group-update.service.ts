@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm';
+import { TRPCError } from '@trpc/server';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
@@ -75,6 +76,10 @@ export async function updateOrganizationGroup(
   }
 
   const updated = await updateGroupAndNotify(params.groupId, updateData);
+
+  if (!updated) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found' });
+  }
 
   return presentTenantGroupMutation({
     group: updated,

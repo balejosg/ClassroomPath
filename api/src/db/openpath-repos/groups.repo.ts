@@ -8,8 +8,9 @@ import { notifyOpenPathGroupChanged } from './publish.js';
 // helper folded in from lib/openpath-groups.ts).
 // - updateGroupAndNotify: flavor A -- the UPDATE already stamps updatedAt, so
 //   the pairing is a bare notify (not a publish/touch), exactly as
-//   group-update.service.ts did. The unguarded `updated.id` preserves the
-//   pre-refactor TypeError when the group vanished mid-flight (plan F13(b)).
+//   group-update.service.ts did. A vanished group returns undefined (no
+//   notify) so the caller can raise a clean NOT_FOUND instead of the
+//   pre-refactor TypeError (plan F13(b)).
 // - createGroupWithRules / deleteGroupCascade: flavor B -- bare writes for the
 //   cross-system ledger workflows (ADR 0001), which sequence publish/notify as
 //   their own resumable step. Do NOT fold a publish in here; it would change
@@ -21,12 +22,16 @@ export type GroupRuleSeed = Pick<typeof whitelistRules.$inferSelect, 'type' | 'v
 export async function updateGroupAndNotify(
   groupId: string,
   set: { updatedAt: Date; displayName?: string; enabled?: number }
-): Promise<WhitelistGroupRow> {
+): Promise<WhitelistGroupRow | undefined> {
   const [updated] = await openpathDb
     .update(whitelistGroups)
     .set(set)
     .where(eq(whitelistGroups.id, groupId))
     .returning();
+
+  if (!updated) {
+    return undefined;
+  }
 
   await notifyOpenPathGroupChanged(updated.id);
   return updated;
