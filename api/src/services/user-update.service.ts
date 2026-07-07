@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { TRPCError } from '@trpc/server';
 
-import { openpathDb, users } from '../db/openpath.js';
+import { updateUserReturning } from '../db/openpath-repos/users.repo.js';
 import { presentUserWithRoles } from './presenters.js';
 import {
   assertManagedOrganizationUser,
@@ -19,11 +19,11 @@ export async function updateOrganizationUser(params: {
   if (params.name !== undefined) updateData.name = params.name.trim();
   if (params.active !== undefined) updateData.isActive = params.active;
 
-  const [updated] = await openpathDb
-    .update(users)
-    .set(updateData)
-    .where(eq(users.id, params.userId))
-    .returning();
+  const updated = await updateUserReturning(params.userId, updateData);
+
+  if (!updated) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+  }
 
   return (
     (await presentOrganizationUserById(updated.id)) ??

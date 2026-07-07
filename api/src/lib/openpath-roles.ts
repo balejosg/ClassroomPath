@@ -1,8 +1,19 @@
-import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
-import { openpathDb, openpathSchema } from '../db/openpath.js';
+import {
+  deleteRolesByUserId,
+  getRoleByUserId,
+  getRolesByUserId,
+  insertRole,
+  updateRoleByUserIdReturning,
+} from '../db/openpath-repos/roles.repo.js';
+import { findUserIdById } from '../db/openpath-repos/users.repo.js';
 import { listMembershipsForUser, throwMembershipConflict } from './tenant-memberships.js';
+
+// Cross-system role synchronization: maps the single CP membership onto the
+// mirrored OpenPath role row. Stays out of db/openpath-repos because it
+// consumes CP membership logic (tenant-memberships) -- repos are mirror-only.
+// All mirror statements are delegated to roles.repo/users.repo.
 
 export interface RoleInfo {
   role: 'admin' | 'teacher';
@@ -23,20 +34,12 @@ async function resolveRoleCreatorId(params: { userId: string; actedBy: string })
     return params.userId;
   }
 
-  const [actor] = await openpathDb
-    .select({ id: openpathSchema.users.id })
-    .from(openpathSchema.users)
-    .where(eq(openpathSchema.users.id, params.actedBy))
-    .limit(1);
-
-  return actor?.id ?? params.userId;
+  const actorId = await findUserIdById(params.actedBy);
+  return actorId ?? params.userId;
 }
 
 export async function getUserRoles(userId: string): Promise<RoleInfo[]> {
-  const result = await openpathDb
-    .select()
-    .from(openpathSchema.roles)
-    .where(eq(openpathSchema.roles.userId, userId));
+  const result = await getRolesByUserId(userId);
 
   return result.map((r) => ({
     role: r.role as 'admin' | 'teacher',
@@ -56,31 +59,25 @@ export async function synchronizeOpenPathRole(params: {
 
   const membership = memberships[0] ?? null;
   if (!membership) {
-    await openpathDb
-      .delete(openpathSchema.roles)
-      .where(eq(openpathSchema.roles.userId, params.userId));
+    await deleteRolesByUserId(params.userId);
     return null;
   }
 
-  const existing = await openpathDb
-    .select()
-    .from(openpathSchema.roles)
-    .where(eq(openpathSchema.roles.userId, params.userId))
-    .limit(1);
+  const existingRole = await getRoleByUserId(params.userId);
 
   const mirroredRole = toMirroredOpenPathRole(membership.role);
   const nextGroupIds =
     params.groupIds !== undefined
       ? normalizeGroupIds(params.groupIds)
-      : normalizeGroupIds(existing[0]?.groupIds);
+      : normalizeGroupIds(existingRole?.groupIds);
 
-  if (existing.length === 0) {
+  if (existingRole === undefined) {
     const createdBy = await resolveRoleCreatorId({
       userId: params.userId,
       actedBy: params.actedBy,
     });
 
-    await openpathDb.insert(openpathSchema.roles).values({
+    await insertRole({
       id: nanoid(),
       userId: params.userId,
       role: mirroredRole,
@@ -94,14 +91,10 @@ export async function synchronizeOpenPathRole(params: {
     };
   }
 
-  const [updated] = await openpathDb
-    .update(openpathSchema.roles)
-    .set({
-      role: mirroredRole,
-      groupIds: nextGroupIds,
-    })
-    .where(eq(openpathSchema.roles.userId, params.userId))
-    .returning();
+  const updated = await updateRoleByUserIdReturning(params.userId, {
+    role: mirroredRole,
+    groupIds: nextGroupIds,
+  });
 
   return {
     role: updated.role as RoleInfo['role'],

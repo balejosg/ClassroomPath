@@ -30,10 +30,6 @@ const REPO_DIR_PREFIX = 'db/openpath-repos/';
  */
 const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
   // --- write sites: removed by this plan's tasks ---
-  ['lib/openpath-users.ts', 'user read helpers fold into users.repo (Task 9)'],
-  ['lib/openpath-roles.ts', 'role statements delegate to roles.repo (Task 9)'],
-  ['services/group-role-membership.service.ts', 'teacher-role writes -> roles.repo (Task 9)'],
-  ['services/user-update.service.ts', 'user update -> users.repo (Task 9)'],
   ['services/push.service.ts', 'subscription writes/reads -> push-subscriptions.repo (Task 10)'],
   [
     'trpc/routers/auth-email-delivery.ts',
@@ -42,7 +38,7 @@ const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
   // --- mixed read+write: writes migrate, reads stay (ratchet) ---
   [
     'services/auth-registration.service.ts',
-    'user writes -> users.repo (Task 9); user-by-email reads stay (ratchet)',
+    'read-only after Task 9 (user-by-email lookups); ratchet',
   ],
   [
     'services/auth-recovery.service.ts',

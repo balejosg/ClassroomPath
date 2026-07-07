@@ -9,7 +9,7 @@ import { storeSessionFromPayload } from '../lib/session-cookies.js';
 import type { SessionClientMode } from '../lib/session-cookies.js';
 import { apiCopy } from '../lib/api-content.js';
 import * as openpathRoles from '../lib/openpath-roles.js';
-import * as openpathUsers from '../lib/openpath-users.js';
+import * as openpathUsers from '../db/openpath-repos/users.repo.js';
 import * as onboardingService from './onboarding.service.js';
 import * as pendingUsersService from './pending-users.service.js';
 

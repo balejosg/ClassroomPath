@@ -1,7 +1,7 @@
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import { config } from '../config.js';
 import type { RoleInfo } from './openpath-roles.js';
-import type { User } from './openpath-users.js';
+import type { User } from '../db/openpath-repos/users.repo.js';
 
 export interface TokensResult {
   accessToken: string;

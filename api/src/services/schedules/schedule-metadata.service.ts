@@ -1,5 +1,5 @@
 import { getGroupDisplayNamesByIds } from '../../db/openpath-repos/groups.repo.js';
-import { getUserNamesByIds } from '../../lib/openpath-users.js';
+import { getUserNamesByIds } from '../../db/openpath-repos/users.repo.js';
 import type { DbSchedule } from './schedule-write-shared.service.js';
 
 export type ScheduleMetadataMaps = {

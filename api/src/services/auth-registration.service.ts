@@ -22,6 +22,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { TRPCError } from '@trpc/server';
 
 import { openpathDb, openpathSchema } from '../db/openpath.js';
+import { insertUser, updateUser } from '../db/openpath-repos/users.repo.js';
 import { generateId } from '../lib/id.js';
 import { logger } from '../lib/logger.js';
 import { storeSessionFromPayload } from '../lib/session-cookies.js';
@@ -178,14 +179,11 @@ async function ensureOpenPathGoogleUser(identity: GoogleIdentity): Promise<OpenP
       });
     }
 
-    await openpathDb
-      .update(openpathSchema.users)
-      .set({
-        googleId: identity.googleId,
-        emailVerified: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(openpathSchema.users.id, emailUser.id));
+    await updateUser(emailUser.id, {
+      googleId: identity.googleId,
+      emailVerified: true,
+      updatedAt: new Date(),
+    });
 
     return {
       ...emailUser,
@@ -194,25 +192,14 @@ async function ensureOpenPathGoogleUser(identity: GoogleIdentity): Promise<OpenP
     };
   }
 
-  const [createdUser] = await openpathDb
-    .insert(openpathSchema.users)
-    .values({
-      id: generateId('user'),
-      email: identity.email,
-      name: identity.name,
-      googleId: identity.googleId,
-      isActive: true,
-      emailVerified: true,
-    })
-    .onConflictDoNothing()
-    .returning({
-      id: openpathSchema.users.id,
-      email: openpathSchema.users.email,
-      name: openpathSchema.users.name,
-      emailVerified: openpathSchema.users.emailVerified,
-      isActive: openpathSchema.users.isActive,
-      googleId: openpathSchema.users.googleId,
-    });
+  const createdUser = await insertUser({
+    id: generateId('user'),
+    email: identity.email,
+    name: identity.name,
+    googleId: identity.googleId,
+    isActive: true,
+    emailVerified: true,
+  });
 
   if (createdUser) {
     return createdUser;
