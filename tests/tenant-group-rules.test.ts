@@ -15,9 +15,6 @@ function createHarness(overrides: Partial<TenantGroupRulesDependencies> = {}) {
     assertCanUseGroup: async (ctx, groupId, options) => {
       calls.push({ name: 'assertCanUseGroup', payload: { ctx, groupId, options } });
     },
-    publishWhitelistGroupChanged: async (groupId) => {
-      calls.push({ name: 'publishWhitelistGroupChanged', payload: groupId });
-    },
     createOrReuseGroupRule: async (input) => {
       calls.push({ name: 'createOrReuseGroupRule', payload: input });
       return {
@@ -79,16 +76,18 @@ describe('TenantGroupRules', () => {
     });
 
     assert.equal(result.created, true);
+    // Publish is now performed inside the injected createOrReuseGroupRule
+    // (whitelist-rules.repo), so the orchestrator's contract is
+    // authorize-then-write, not a separate publish call.
     assert.deepEqual(
       calls.map((call) => call.name),
-      ['assertCanUseGroup', 'createOrReuseGroupRule', 'publishWhitelistGroupChanged']
+      ['assertCanUseGroup', 'createOrReuseGroupRule']
     );
     assert.deepEqual(calls[0]?.payload, {
       ctx,
       groupId: 'group-1',
       options: { notAllowedMessage: 'Insufficient permissions for this group' },
     });
-    assert.equal(calls[2]?.payload, 'group-1');
   });
 
   test('createRule skips publication when the OpenPath rule already exists', async () => {
@@ -176,7 +175,7 @@ describe('TenantGroupRules', () => {
     assert.deepEqual(result, { success: true });
     assert.deepEqual(
       calls.map((call) => call.name),
-      ['assertCanUseGroup', 'deleteGroupRule', 'publishWhitelistGroupChanged']
+      ['assertCanUseGroup', 'deleteGroupRule']
     );
   });
 });
