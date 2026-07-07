@@ -3,11 +3,15 @@ import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
 import { db } from '../db/index.js';
-import { openpathDb, whitelistGroups, whitelistRules } from '../db/openpath.js';
 import * as schema from '../db/schema.js';
+import { getGroupById } from '../db/openpath-repos/groups.repo.js';
+import {
+  getRulesByGroupId,
+  type WhitelistRuleRow,
+} from '../db/openpath-repos/whitelist-rules.repo.js';
 import { findAvailableTemplateName } from './group-copy-name.service.js';
 
-type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
+type OpenPathWhitelistRule = WhitelistRuleRow;
 
 export async function publishTemplateFromGroup(params: {
   actorUserId: string;
@@ -17,20 +21,13 @@ export async function publishTemplateFromGroup(params: {
   displayName?: string;
   description?: string;
 }): Promise<{ id: string; name: string }> {
-  const sourceGroup = await openpathDb
-    .select()
-    .from(whitelistGroups)
-    .where(eq(whitelistGroups.id, params.groupId))
-    .limit(1);
+  const sourceGroup = await getGroupById(params.groupId);
 
-  if (!sourceGroup[0]) {
+  if (!sourceGroup) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found' });
   }
 
-  const sourceRules: OpenPathWhitelistRule[] = await openpathDb
-    .select()
-    .from(whitelistRules)
-    .where(eq(whitelistRules.groupId, params.groupId));
+  const sourceRules: OpenPathWhitelistRule[] = await getRulesByGroupId(params.groupId);
 
   const sourceOrgGroup =
     params.organizationId === undefined
@@ -50,9 +47,9 @@ export async function publishTemplateFromGroup(params: {
     params.name?.trim() ||
     (sourceOrgGroup[0]?.publicName
       ? `${sourceOrgGroup[0].publicName}-template`
-      : sourceGroup[0].displayName?.trim() || `${sourceGroup[0].name}-template`);
+      : sourceGroup.displayName?.trim() || `${sourceGroup.name}-template`);
   const name = await findAvailableTemplateName(rawName);
-  const displayName = params.displayName?.trim() || sourceGroup[0].displayName;
+  const displayName = params.displayName?.trim() || sourceGroup.displayName;
 
   const templateId = nanoid();
 

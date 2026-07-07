@@ -1,27 +1,18 @@
-import { and, eq } from 'drizzle-orm';
-
-import { openpathDb, whitelistRules } from '../db/openpath.js';
+import {
+  getRulesByGroupId,
+  type WhitelistRuleRow,
+} from '../db/openpath-repos/whitelist-rules.repo.js';
 import {
   serializeWhitelistRule,
   type SerializedWhitelistRule,
   type WhitelistRuleType,
 } from './group-rule-serialization.service.js';
 
-type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
-
 export async function loadGroupRules(params: {
   groupId: string;
   type?: WhitelistRuleType;
-}): Promise<OpenPathWhitelistRule[]> {
-  const conditions = [eq(whitelistRules.groupId, params.groupId)];
-  if (params.type) {
-    conditions.push(eq(whitelistRules.type, params.type));
-  }
-
-  return openpathDb
-    .select()
-    .from(whitelistRules)
-    .where(and(...conditions));
+}): Promise<WhitelistRuleRow[]> {
+  return getRulesByGroupId(params.groupId, params.type);
 }
 
 export async function listGroupRules(params: {

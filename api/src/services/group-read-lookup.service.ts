@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { openpathDb, whitelistGroups } from '../db/openpath.js';
+import { getGroupById } from '../db/openpath-repos/groups.repo.js';
 import { getTeacherGroupIdentifiers, isOrgAdmin } from '../lib/tenant-access.js';
 import { normalizeGroupKey } from './group-name.service.js';
 import { presentTenantGroupLookup } from './presenters.js';
@@ -30,17 +30,13 @@ export async function getOrganizationGroupById(params: {
         )
       )
       .limit(1),
-    openpathDb
-      .select()
-      .from(whitelistGroups)
-      .where(eq(whitelistGroups.id, params.groupId))
-      .limit(1),
+    getGroupById(params.groupId),
   ]);
 
-  if (!group[0]) return null;
+  if (!group) return null;
 
   return presentTenantGroupLookup({
-    group: group[0],
+    group,
     publicName: orgGroup[0]?.publicName ?? undefined,
   });
 }
@@ -65,23 +61,19 @@ export async function getOrganizationGroupByName(params: GroupActor & { name: st
     return null;
   }
 
-  const group = await openpathDb
-    .select()
-    .from(whitelistGroups)
-    .where(eq(whitelistGroups.id, orgGroup[0].groupId))
-    .limit(1);
+  const group = await getGroupById(orgGroup[0].groupId);
 
-  if (!group.length) return null;
+  if (!group) return null;
 
   if (!isOrgAdmin({ userRole: params.userRole })) {
     const identifiers = await getTeacherGroupIdentifiers(params.userId);
-    if (!identifiers.has(group[0].id)) {
+    if (!identifiers.has(group.id)) {
       return null;
     }
   }
 
   return presentTenantGroupLookup({
-    group: group[0],
+    group,
     publicName: orgGroup[0].publicName ?? undefined,
   });
 }

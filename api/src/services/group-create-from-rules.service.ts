@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
 
-import { whitelistGroups } from '../db/openpath.js';
+import type { WhitelistGroupRow } from '../db/openpath-repos/groups.repo.js';
 import { throwConflictOnUniqueViolation } from '../lib/pg-errors.js';
 import { getOrCreateOrganizationMutationOperation } from '../lib/organization-mutation-workflow/operations.js';
 import { getMutationResult } from '../lib/cross-system-mutations.js';
@@ -14,7 +14,7 @@ import type { GroupRuleSeed } from './group-seeded-upstream-create.service.js';
 export async function createOrganizationGroupFromRules(
   params: CreateOrganizationGroupFromRulesParams
 ): Promise<{
-  group: typeof whitelistGroups.$inferSelect;
+  group: WhitelistGroupRow;
   publicName: string;
   visibility: string;
 }> {

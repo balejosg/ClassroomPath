@@ -1,6 +1,6 @@
-import { whitelistRules } from '../db/openpath.js';
+import type { WhitelistRuleRow } from '../db/openpath-repos/whitelist-rules.repo.js';
 
-type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
+type OpenPathWhitelistRule = WhitelistRuleRow;
 
 export type WhitelistRuleType = 'whitelist' | 'blocked_subdomain' | 'blocked_path' | 'allowed_path';
 

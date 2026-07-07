@@ -2,14 +2,17 @@ import { TRPCError } from '@trpc/server';
 import { eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
-import { openpathDb, whitelistGroups, whitelistRules } from '../db/openpath.js';
 import * as schema from '../db/schema.js';
+import { getGroupById } from '../db/openpath-repos/groups.repo.js';
+import {
+  getRuleSeedsByGroupId,
+  type WhitelistRuleSeed,
+} from '../db/openpath-repos/whitelist-rules.repo.js';
 import { apiCopy } from '../lib/api-content.js';
 import { isOpenPathGroupEnabled } from '../lib/tenant-access.js';
 import { createOrganizationGroupFromRules } from './group-write.service.js';
 
-type OpenPathWhitelistRule = typeof whitelistRules.$inferSelect;
-type RuleSeed = Pick<OpenPathWhitelistRule, 'type' | 'value' | 'comment'>;
+type RuleSeed = WhitelistRuleSeed;
 
 export async function cloneGroupIntoOrganization(params: {
   organizationId: string;
@@ -19,17 +22,13 @@ export async function cloneGroupIntoOrganization(params: {
   name?: string;
   displayName?: string;
 }): Promise<{ id: string; name: string }> {
-  const source = await openpathDb
-    .select()
-    .from(whitelistGroups)
-    .where(eq(whitelistGroups.id, params.sourceGroupId))
-    .limit(1);
+  const source = await getGroupById(params.sourceGroupId);
 
-  if (!source[0]) {
+  if (!source) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Group not found' });
   }
 
-  if (!isOpenPathGroupEnabled(source[0].enabled)) {
+  if (!isOpenPathGroupEnabled(source.enabled)) {
     throw new TRPCError({
       code: 'CONFLICT',
       message: apiCopy.en.errors.inactiveGroupClone,
@@ -45,22 +44,14 @@ export async function cloneGroupIntoOrganization(params: {
   const publicName =
     params.name?.trim() ||
     sourceOrgGroup[0]?.publicName ||
-    source[0].displayName?.trim() ||
-    source[0].name;
+    source.displayName?.trim() ||
+    source.name;
 
   const rawDisplayName = params.displayName?.trim();
   const displayName =
-    rawDisplayName ||
-    `${source[0].displayName || sourceOrgGroup[0]?.publicName || source[0].name} Copia`;
+    rawDisplayName || `${source.displayName || sourceOrgGroup[0]?.publicName || source.name} Copia`;
 
-  const sourceRules: RuleSeed[] = await openpathDb
-    .select({
-      type: whitelistRules.type,
-      value: whitelistRules.value,
-      comment: whitelistRules.comment,
-    })
-    .from(whitelistRules)
-    .where(eq(whitelistRules.groupId, source[0].id));
+  const sourceRules: RuleSeed[] = await getRuleSeedsByGroupId(source.id);
 
   const { group, publicName: createdPublicName } = await createOrganizationGroupFromRules({
     organizationId: params.organizationId,

@@ -86,6 +86,17 @@ export async function getGroupById(groupId: string): Promise<WhitelistGroupRow |
   return rows[0];
 }
 
+export async function getGroupsByIds(groupIds: readonly string[]): Promise<WhitelistGroupRow[]> {
+  if (groupIds.length === 0) {
+    return [];
+  }
+
+  return openpathDb
+    .select()
+    .from(whitelistGroups)
+    .where(inArray(whitelistGroups.id, [...groupIds]));
+}
+
 export async function getGroupDisplayNamesByIds(
   groupIds: readonly string[]
 ): Promise<Map<string, string>> {

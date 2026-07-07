@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
 import { openpathDb, whitelistRules } from '../openpath.js';
@@ -12,6 +12,7 @@ import { publishWhitelistGroupChanged, publishWhitelistGroupsChanged } from './p
 // an organizationId.
 
 export type WhitelistRuleRow = typeof whitelistRules.$inferSelect;
+export type WhitelistRuleSeed = Pick<WhitelistRuleRow, 'type' | 'value' | 'comment'>;
 
 export async function createOrReuseRuleAndPublish(input: {
   groupId: string;
@@ -182,6 +183,63 @@ export async function deleteRulesByIdsAndPublishGroups(params: {
   await openpathDb.delete(whitelistRules).where(inArray(whitelistRules.id, [...params.ruleIds]));
 
   await publishWhitelistGroupsChanged(params.groupIds);
+}
+
+export async function getRulesByGroupId(
+  groupId: string,
+  type?: string
+): Promise<WhitelistRuleRow[]> {
+  const conditions = [eq(whitelistRules.groupId, groupId)];
+  if (type) {
+    conditions.push(eq(whitelistRules.type, type as WhitelistRuleRow['type']));
+  }
+
+  return openpathDb
+    .select()
+    .from(whitelistRules)
+    .where(and(...conditions));
+}
+
+export async function getRuleSeedsByGroupId(groupId: string): Promise<WhitelistRuleSeed[]> {
+  return openpathDb
+    .select({
+      type: whitelistRules.type,
+      value: whitelistRules.value,
+      comment: whitelistRules.comment,
+    })
+    .from(whitelistRules)
+    .where(eq(whitelistRules.groupId, groupId));
+}
+
+export async function getRuleGroupIdsAndTypesByGroupIds(
+  groupIds: readonly string[]
+): Promise<Array<Pick<WhitelistRuleRow, 'groupId' | 'type'>>> {
+  if (groupIds.length === 0) {
+    return [];
+  }
+
+  return openpathDb
+    .select({ groupId: whitelistRules.groupId, type: whitelistRules.type })
+    .from(whitelistRules)
+    .where(inArray(whitelistRules.groupId, [...groupIds]));
+}
+
+export async function getRecentRulesForGroup(
+  groupId: string,
+  limit: number
+): Promise<Array<Pick<WhitelistRuleRow, 'id' | 'type' | 'value' | 'comment' | 'createdAt'>>> {
+  return openpathDb
+    .select({
+      id: whitelistRules.id,
+      type: whitelistRules.type,
+      value: whitelistRules.value,
+      comment: whitelistRules.comment,
+      createdAt: whitelistRules.createdAt,
+    })
+    .from(whitelistRules)
+    .where(eq(whitelistRules.groupId, groupId))
+    .orderBy(desc(whitelistRules.createdAt))
+    .limit(limit);
 }
 
 export async function insertRuleIfAbsentAndPublish(values: {

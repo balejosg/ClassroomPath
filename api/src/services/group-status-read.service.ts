@@ -1,6 +1,4 @@
-import { inArray } from 'drizzle-orm';
-
-import { openpathDb, whitelistRules } from '../db/openpath.js';
+import { getRuleGroupIdsAndTypesByGroupIds } from '../db/openpath-repos/whitelist-rules.repo.js';
 import { isOpenPathGroupEnabled } from '../lib/tenant-access.js';
 import {
   fetchTenantGroupsByIds,
@@ -15,10 +13,7 @@ export async function getOrganizationGroupStats(params: GroupActor) {
     return { groupCount: 0, whitelistCount: 0, blockedCount: 0 };
   }
 
-  const rules = await openpathDb
-    .select({ type: whitelistRules.type })
-    .from(whitelistRules)
-    .where(inArray(whitelistRules.groupId, groupIds));
+  const rules = await getRuleGroupIdsAndTypesByGroupIds(groupIds);
 
   const whitelistCount = rules.filter((rule) => rule.type === 'whitelist').length;
   const blockedCount = rules.filter(
