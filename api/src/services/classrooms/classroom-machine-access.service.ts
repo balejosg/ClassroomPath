@@ -1,10 +1,13 @@
 import { TRPCError } from '@trpc/server';
-import { eq, inArray } from 'drizzle-orm';
 
-import { machines, openpathDb } from '../../db/openpath.js';
+import {
+  getMachinesByClassroomId,
+  getMachinesByClassroomIds,
+  type MachineRow,
+} from '../../db/openpath-repos/classrooms.repo.js';
 import { getOrgClassroomIds } from '../org-classroom-membership.service.js';
 
-type OpenPathMachineRow = typeof machines.$inferSelect;
+type OpenPathMachineRow = MachineRow;
 
 export type ClassroomMachineSummary = {
   id: string;
@@ -47,16 +50,10 @@ export async function listTenantClassroomMachines(params: {
       });
     }
 
-    const rows = await openpathDb
-      .select()
-      .from(machines)
-      .where(eq(machines.classroomId, params.classroomId));
+    const rows = await getMachinesByClassroomId(params.classroomId);
     return rows.map(presentClassroomMachineSummary);
   }
 
-  const rows = await openpathDb
-    .select()
-    .from(machines)
-    .where(inArray(machines.classroomId, classroomIds));
+  const rows = await getMachinesByClassroomIds(classroomIds);
   return rows.map(presentClassroomMachineSummary);
 }

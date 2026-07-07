@@ -1,6 +1,6 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, sql } from 'drizzle-orm';
 
-import { machineExemptions, openpathDb } from '../openpath.js';
+import { machineExemptions, machines, openpathDb } from '../openpath.js';
 import { notifyOpenPathClassroomChanged } from './publish.js';
 
 // Owning module for machine_exemptions writes. Pairing (F5): every effective
@@ -64,6 +64,46 @@ export async function createOperationalExemptionAndNotify(
 
   await notifyOpenPathClassroomChanged(values.classroomId);
   return row;
+}
+
+export async function getActiveExemptionsForClassroom(params: {
+  classroomId: string;
+  now: Date;
+}): Promise<
+  Array<{
+    id: string;
+    machineId: string;
+    machineHostname: string;
+    classroomId: string;
+    scheduleId: string | null;
+    source: string;
+    reason: string | null;
+    createdBy: string | null;
+    createdAt: Date | null;
+    expiresAt: Date;
+  }>
+> {
+  return openpathDb
+    .select({
+      id: machineExemptions.id,
+      machineId: machineExemptions.machineId,
+      machineHostname: machines.hostname,
+      classroomId: machineExemptions.classroomId,
+      scheduleId: machineExemptions.scheduleId,
+      source: machineExemptions.source,
+      reason: machineExemptions.reason,
+      createdBy: machineExemptions.createdBy,
+      createdAt: machineExemptions.createdAt,
+      expiresAt: machineExemptions.expiresAt,
+    })
+    .from(machineExemptions)
+    .innerJoin(machines, eq(machines.id, machineExemptions.machineId))
+    .where(
+      and(
+        eq(machineExemptions.classroomId, params.classroomId),
+        gt(machineExemptions.expiresAt, params.now)
+      )
+    );
 }
 
 export async function getExemptionById(

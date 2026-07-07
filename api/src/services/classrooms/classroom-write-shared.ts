@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
 
-import { machineExemptions } from '../../db/openpath.js';
+import type { MachineExemptionRow } from '../../db/openpath-repos/machine-exemptions.repo.js';
 import { assertCanUseGroup, assertOrgGroupAccess } from '../../lib/tenant-access.js';
 
 export type ClassroomWriteContext = Parameters<typeof assertCanUseGroup>[0];
@@ -48,7 +48,7 @@ export async function assertUsableGroupIfProvided(
   await assertCanUseGroup(ctx, groupId);
 }
 
-export function presentClassroomExemption(row: typeof machineExemptions.$inferSelect) {
+export function presentClassroomExemption(row: MachineExemptionRow) {
   return {
     id: row.id,
     machineId: row.machineId,

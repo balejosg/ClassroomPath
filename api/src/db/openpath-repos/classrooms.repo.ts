@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { classrooms, machines, openpathDb } from '../openpath.js';
 import { notifyOpenPathClassroomChanged } from './publish.js';
@@ -17,6 +17,7 @@ import { notifyOpenPathClassroomChanged } from './publish.js';
 
 export type ClassroomRow = typeof classrooms.$inferSelect;
 export type NewClassroom = typeof classrooms.$inferInsert;
+export type MachineRow = typeof machines.$inferSelect;
 
 export async function createClassroom(values: NewClassroom): Promise<ClassroomRow> {
   const [created] = await openpathDb.insert(classrooms).values(values).returning();
@@ -98,6 +99,65 @@ export async function deleteMachineFromClassroom(
     .delete(machines)
     .where(and(eq(machines.id, machineId), eq(machines.classroomId, classroomId)));
   await notifyOpenPathClassroomChanged(classroomId);
+}
+
+export async function getClassroomsByIds(classroomIds: readonly string[]): Promise<ClassroomRow[]> {
+  if (classroomIds.length === 0) {
+    return [];
+  }
+  return openpathDb
+    .select()
+    .from(classrooms)
+    .where(inArray(classrooms.id, [...classroomIds]));
+}
+
+export async function getMachinesByClassroomId(classroomId: string): Promise<MachineRow[]> {
+  return openpathDb.select().from(machines).where(eq(machines.classroomId, classroomId));
+}
+
+export async function getMachinesByClassroomIds(
+  classroomIds: readonly string[]
+): Promise<MachineRow[]> {
+  if (classroomIds.length === 0) {
+    return [];
+  }
+  return openpathDb
+    .select()
+    .from(machines)
+    .where(inArray(machines.classroomId, [...classroomIds]));
+}
+
+export async function getCaptivePortalDomainsByIds(
+  classroomIds: readonly string[]
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (classroomIds.length === 0) {
+    return map;
+  }
+
+  try {
+    const ids = sql.join(
+      classroomIds.map((id) => sql`${id}`),
+      sql`, `
+    );
+    const result = await openpathDb.execute<{
+      id: string;
+      captive_portal_domains: string[] | null;
+    }>(sql`
+      SELECT id, captive_portal_domains
+      FROM classrooms
+      WHERE id IN (${ids})
+    `);
+    for (const row of result.rows) {
+      map.set(row.id, row.captive_portal_domains ?? []);
+    }
+    return map;
+  } catch (err) {
+    if (isMissingCaptivePortalDomainsColumnError(err)) {
+      return map;
+    }
+    throw err;
+  }
 }
 
 export async function getMachineClassroomLink(

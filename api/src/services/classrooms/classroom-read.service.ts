@@ -1,6 +1,10 @@
-import { eq, inArray, sql } from 'drizzle-orm';
-
-import { classrooms, machines, openpathDb } from '../../db/openpath.js';
+import {
+  getCaptivePortalDomainsByIds,
+  getClassroomById,
+  getClassroomsByIds,
+  getMachinesByClassroomIds,
+  type ClassroomRow,
+} from '../../db/openpath-repos/classrooms.repo.js';
 import { getGroupDisplayNamesByIds } from '../../db/openpath-repos/groups.repo.js';
 import { getOrgClassroomIds } from '../org-classroom-membership.service.js';
 import {
@@ -13,7 +17,7 @@ import {
   presentClassroomListItem,
 } from './classroom-presenter.js';
 
-type OpenPathClassroomRow = typeof classrooms.$inferSelect;
+type OpenPathClassroomRow = ClassroomRow;
 type OpenPathClassroomRowWithCaptivePortalDomains = OpenPathClassroomRow & {
   captivePortalDomains?: string[] | null;
 };
@@ -44,10 +48,7 @@ export async function listTenantClassrooms(params: { organizationId: string }) {
     return [];
   }
 
-  const rows = await openpathDb
-    .select()
-    .from(classrooms)
-    .where(inArray(classrooms.id, classroomIds));
+  const rows = await getClassroomsByIds(classroomIds);
   const rowsWithCaptivePortalDomains = await attachCaptivePortalDomains(rows);
 
   const now = new Date();
@@ -59,10 +60,7 @@ export async function listTenantClassrooms(params: { organizationId: string }) {
     classrooms: rowsWithCaptivePortalDomains,
     scheduleGroupIdByClassroomId: scheduleGroupByClassroomId,
   });
-  const machineRows = await openpathDb
-    .select()
-    .from(machines)
-    .where(inArray(machines.classroomId, classroomIds));
+  const machineRows = await getMachinesByClassroomIds(classroomIds);
   const machinesByClassroomId = groupMachinesByClassroomIdForList(machineRows, now);
 
   return rowsWithCaptivePortalDomains.map((classroom) =>
@@ -76,13 +74,7 @@ export async function listTenantClassrooms(params: { organizationId: string }) {
 }
 
 export async function getTenantClassroomById(params: { classroomId: string }) {
-  const rows = await openpathDb
-    .select()
-    .from(classrooms)
-    .where(eq(classrooms.id, params.classroomId))
-    .limit(1);
-
-  const classroom = rows[0];
+  const classroom = await getClassroomById(params.classroomId);
   if (!classroom) {
     return null;
   }
@@ -111,40 +103,10 @@ async function attachCaptivePortalDomains(
     return [];
   }
 
-  try {
-    const ids = sql.join(
-      rows.map((row) => sql`${row.id}`),
-      sql`, `
-    );
-    const result = await openpathDb.execute<{
-      id: string;
-      captive_portal_domains: string[] | null;
-    }>(sql`
-      SELECT id, captive_portal_domains
-      FROM classrooms
-      WHERE id IN (${ids})
-    `);
-    const domainsByClassroomId = new Map(
-      result.rows.map((row) => [row.id, row.captive_portal_domains ?? []])
-    );
+  const domainsByClassroomId = await getCaptivePortalDomainsByIds(rows.map((row) => row.id));
 
-    return rows.map((row) => ({
-      ...row,
-      captivePortalDomains: domainsByClassroomId.get(row.id) ?? [],
-    }));
-  } catch (err) {
-    if (isMissingCaptivePortalDomainsColumnError(err)) {
-      return rows.map((row) => ({ ...row, captivePortalDomains: [] }));
-    }
-    throw err;
-  }
-}
-
-function isMissingCaptivePortalDomainsColumnError(err: unknown): boolean {
-  const error = err as { code?: string; cause?: { code?: string }; message?: string };
-  return (
-    error.code === '42703' ||
-    error.cause?.code === '42703' ||
-    error.message?.includes('captive_portal_domains') === true
-  );
+  return rows.map((row) => ({
+    ...row,
+    captivePortalDomains: domainsByClassroomId.get(row.id) ?? [],
+  }));
 }
