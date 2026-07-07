@@ -1,8 +1,9 @@
 import { TRPCError } from '@trpc/server';
-import { inArray } from 'drizzle-orm';
 
-import { openpathDb, whitelistRules } from '../db/openpath.js';
-import { publishWhitelistGroupsChanged } from '../db/openpath-repos/publish.js';
+import {
+  deleteRulesByIdsAndPublishGroups,
+  getRulesByIds,
+} from '../db/openpath-repos/whitelist-rules.repo.js';
 import { getAccessibleTenantGroupIds } from '../lib/tenant-access.js';
 
 type GroupActor = {
@@ -12,10 +13,7 @@ type GroupActor = {
 };
 
 export async function bulkDeleteOrganizationGroupRules(params: GroupActor & { ids: string[] }) {
-  const rulesToDelete = await openpathDb
-    .select()
-    .from(whitelistRules)
-    .where(inArray(whitelistRules.id, params.ids));
+  const rulesToDelete = await getRulesByIds(params.ids);
 
   if (rulesToDelete.length === 0) {
     return { rules: [], deleted: 0 };
@@ -36,10 +34,8 @@ export async function bulkDeleteOrganizationGroupRules(params: GroupActor & { id
   }
 
   const accessibleIds = accessibleRules.map((rule) => rule.id);
-  await openpathDb.delete(whitelistRules).where(inArray(whitelistRules.id, accessibleIds));
-
   const affectedGroupIds = [...new Set(accessibleRules.map((rule) => rule.groupId))];
-  await publishWhitelistGroupsChanged(affectedGroupIds);
+  await deleteRulesByIdsAndPublishGroups({ ruleIds: accessibleIds, groupIds: affectedGroupIds });
 
   return {
     rules: accessibleRules.map((rule) => ({

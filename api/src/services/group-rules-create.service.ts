@@ -1,13 +1,19 @@
 import { TRPCError } from '@trpc/server';
-import { and, eq } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
 
-import { openpathDb, whitelistRules } from '../db/openpath.js';
+import {
+  bulkCreateRulesAndPublish,
+  createOrReuseRuleAndPublish,
+} from '../db/openpath-repos/whitelist-rules.repo.js';
 import {
   serializeWhitelistRule,
   type SerializedWhitelistRule,
   type WhitelistRuleType,
 } from './group-rules-read.service.js';
+
+// Thin service facade over the owning repository. The repository performs the
+// write AND its mandatory publish (previously the caller had to remember to
+// publish after this function returned). Exported names and signatures are
+// unchanged; serialization stays service-side.
 
 export async function createOrReuseGroupRule(input: {
   groupId: string;
@@ -15,50 +21,19 @@ export async function createOrReuseGroupRule(input: {
   value: string;
   comment?: string;
 }): Promise<SerializedWhitelistRule & { created: boolean }> {
-  const insertResult = await openpathDb
-    .insert(whitelistRules)
-    .values({
-      id: nanoid(),
-      groupId: input.groupId,
-      type: input.type,
-      value: input.value,
-      comment: input.comment,
-    })
-    .onConflictDoNothing({
-      target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
-    })
-    .returning();
+  const { row, created } = await createOrReuseRuleAndPublish(input);
 
-  if (insertResult.length > 0) {
-    return {
-      ...serializeWhitelistRule(insertResult[0]),
-      created: true,
-    };
+  if (!row) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Failed to create or find rule',
+    });
   }
 
-  const existingRule = await openpathDb
-    .select()
-    .from(whitelistRules)
-    .where(
-      and(
-        eq(whitelistRules.groupId, input.groupId),
-        eq(whitelistRules.type, input.type),
-        eq(whitelistRules.value, input.value)
-      )
-    )
-    .limit(1);
-
-  if (existingRule.length > 0) {
-    return {
-      ...serializeWhitelistRule(existingRule[0]),
-      created: false,
-    };
-  }
-
-  throw new TRPCError({
-    code: 'INTERNAL_SERVER_ERROR',
-    message: 'Failed to create or find rule',
-  });
+  return {
+    ...serializeWhitelistRule(row),
+    created,
+  };
 }
 
 export async function bulkCreateGroupRules(params: {
@@ -66,20 +41,5 @@ export async function bulkCreateGroupRules(params: {
   type: WhitelistRuleType;
   values: string[];
 }): Promise<number> {
-  const insertedRules = await openpathDb
-    .insert(whitelistRules)
-    .values(
-      params.values.map((value) => ({
-        id: nanoid(),
-        groupId: params.groupId,
-        type: params.type,
-        value,
-      }))
-    )
-    .onConflictDoNothing({
-      target: [whitelistRules.groupId, whitelistRules.type, whitelistRules.value],
-    })
-    .returning();
-
-  return insertedRules.length;
+  return bulkCreateRulesAndPublish(params);
 }

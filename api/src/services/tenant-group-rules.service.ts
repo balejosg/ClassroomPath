@@ -43,7 +43,6 @@ export type TenantGroupRulesDependencies = {
     groupId: string,
     options: typeof GROUP_PERMISSION_OPTS
   ) => Promise<void>;
-  publishWhitelistGroupChanged: (groupId: string) => Promise<void>;
   createOrReuseGroupRule: (input: CreateRuleInput) => Promise<CreateRuleResult>;
   bulkCreateGroupRules: (input: BulkCreateRulesInput) => Promise<number>;
   deleteGroupRule: (input: DeleteRuleInput) => Promise<boolean>;
@@ -70,10 +69,6 @@ const defaultDependencies: TenantGroupRulesDependencies = {
     const { assertCanUseGroup } = await import('../lib/tenant-access.js');
     await assertCanUseGroup(ctx, groupId, options);
   },
-  async publishWhitelistGroupChanged(groupId) {
-    const { publishWhitelistGroupChanged } = await import('../db/openpath-repos/publish.js');
-    await publishWhitelistGroupChanged(groupId);
-  },
   async createOrReuseGroupRule(input) {
     const { createOrReuseGroupRule } = await import('./group-rules-create.service.js');
     return createOrReuseGroupRule(input);
@@ -98,41 +93,25 @@ export function createTenantGroupRules(
   return {
     async createRule(ctx, input) {
       await dependencies.assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-      const result = await dependencies.createOrReuseGroupRule(input);
-      if (result.created) {
-        await dependencies.publishWhitelistGroupChanged(input.groupId);
-      }
-
-      return result;
+      // Publish is performed by the repository write itself (whitelist-rules.repo).
+      return dependencies.createOrReuseGroupRule(input);
     },
 
     async bulkCreateRules(ctx, input) {
       await dependencies.assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
       const insertedCount = await dependencies.bulkCreateGroupRules(input);
-      if (insertedCount > 0) {
-        await dependencies.publishWhitelistGroupChanged(input.groupId);
-      }
-
       return { count: insertedCount };
     },
 
     async updateRule(ctx, input) {
       await dependencies.assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-      const { rule, valueChanged } = await dependencies.updateGroupRule(input);
-      if (valueChanged) {
-        await dependencies.publishWhitelistGroupChanged(input.groupId);
-      }
-
+      const { rule } = await dependencies.updateGroupRule(input);
       return rule;
     },
 
     async deleteRule(ctx, input) {
       await dependencies.assertCanUseGroup(ctx, input.groupId, GROUP_PERMISSION_OPTS);
-      const deleted = await dependencies.deleteGroupRule(input);
-      if (deleted) {
-        await dependencies.publishWhitelistGroupChanged(input.groupId);
-      }
-
+      await dependencies.deleteGroupRule(input);
       return { success: true };
     },
   };

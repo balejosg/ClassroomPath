@@ -30,12 +30,6 @@ const REPO_DIR_PREFIX = 'db/openpath-repos/';
  */
 const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
   // --- write sites: removed by this plan's tasks ---
-  ['services/group-rules-create.service.ts', 'rule writes -> whitelist-rules.repo (Task 4)'],
-  ['services/group-rules-update.service.ts', 'rule writes -> whitelist-rules.repo (Task 4)'],
-  [
-    'services/group-rule-bulk-delete.service.ts',
-    'rule bulk delete -> whitelist-rules.repo (Task 4)',
-  ],
   ['services/request-create.service.ts', 'request insert -> requests.repo (Task 5)'],
   ['services/request-reject.service.ts', 'request resolution -> requests.repo (Task 5)'],
   ['services/request-delete.service.ts', 'request delete -> requests.repo (Task 5)'],

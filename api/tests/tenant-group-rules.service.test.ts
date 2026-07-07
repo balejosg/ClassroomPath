@@ -13,9 +13,6 @@ describe('tenant-group-rules.service', () => {
       assertCanUseGroup: async (_ctx, groupId, options) => {
         calls.push(`assert:${groupId}:${options.notAllowedMessage}`);
       },
-      publishWhitelistGroupChanged: async (groupId) => {
-        calls.push(`publish:${groupId}`);
-      },
       createOrReuseGroupRule: async (input) => {
         calls.push(`create:${input.groupId}:${input.value}`);
         return {
@@ -54,7 +51,6 @@ describe('tenant-group-rules.service', () => {
     assert.deepEqual(calls, [
       'assert:group-1:Insufficient permissions for this group',
       'create:group-1:example.org',
-      'publish:group-1',
     ]);
   });
 });
