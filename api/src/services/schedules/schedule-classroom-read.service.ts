@@ -1,7 +1,10 @@
 import { TRPCError } from '@trpc/server';
-import { and, eq } from 'drizzle-orm';
 
-import { openpathDb, classrooms, schedules } from '../../db/openpath.js';
+import { getClassroomById } from '../../db/openpath-repos/classrooms.repo.js';
+import {
+  getOneOffSchedulesForClassroom,
+  getWeeklySchedulesForClassroom,
+} from '../../db/openpath-repos/schedules.repo.js';
 import { assertOrgClassroomAccess, isOrgAdmin } from '../../lib/tenant-access.js';
 import { loadScheduleMetadataMaps } from './schedule-metadata.service.js';
 import {
@@ -9,16 +12,10 @@ import {
   presentWeeklyScheduleWithPermissions,
 } from './schedule-permission-presenter.js';
 import type { ScheduleReadContext } from './schedule-read.service.js';
-import { type DbSchedule, weeklyRecurrenceWhereClause } from './schedule-write-shared.service.js';
+import type { DbSchedule } from './schedule-write-shared.service.js';
 
 async function loadClassroomOrThrow(classroomId: string) {
-  const classroom = await openpathDb
-    .select()
-    .from(classrooms)
-    .where(eq(classrooms.id, classroomId))
-    .limit(1);
-
-  const row = classroom[0];
+  const row = await getClassroomById(classroomId);
   if (!row) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Classroom not found' });
   }
@@ -34,18 +31,8 @@ export async function getClassroomSchedulesForTenant(params: {
 
   const classroom = await loadClassroomOrThrow(params.classroomId);
   const [weeklyRows, oneOffRows] = await Promise.all([
-    openpathDb
-      .select()
-      .from(schedules)
-      .where(and(eq(schedules.classroomId, params.classroomId), weeklyRecurrenceWhereClause()))
-      .orderBy(schedules.dayOfWeek, schedules.startTime),
-    openpathDb
-      .select()
-      .from(schedules)
-      .where(
-        and(eq(schedules.classroomId, params.classroomId), eq(schedules.recurrence, 'one_off'))
-      )
-      .orderBy(schedules.startAt),
+    getWeeklySchedulesForClassroom(params.classroomId),
+    getOneOffSchedulesForClassroom(params.classroomId),
   ]);
 
   const metadata = await loadScheduleMetadataMaps([...weeklyRows, ...oneOffRows]);

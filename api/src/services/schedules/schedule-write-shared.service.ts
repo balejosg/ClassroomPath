@@ -1,20 +1,23 @@
 import { TRPCError } from '@trpc/server';
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
 
-import { openpathDb, schedules } from '../../db/openpath.js';
+import {
+  findConflictingOneOffScheduleId,
+  findConflictingWeeklyScheduleId,
+  getScheduleById,
+  weeklyRecurrenceWhereClause as repoWeeklyRecurrenceWhereClause,
+  type ScheduleRow,
+} from '../../db/openpath-repos/schedules.repo.js';
 import { normalizeTimeHHMM, parseTimeToMinutes } from './schedule-time.js';
 import { isOrgAdmin } from '../../lib/tenant-access.js';
 
-export type DbSchedule = typeof schedules.$inferSelect;
+export type DbSchedule = ScheduleRow;
 
 export type ScheduleWriteContext = Parameters<typeof isOrgAdmin>[0] & {
   organizationId?: string;
   user: { sub: string };
 };
 
-export function weeklyRecurrenceWhereClause() {
-  return or(eq(schedules.recurrence, 'weekly'), isNull(schedules.recurrence));
-}
+export const weeklyRecurrenceWhereClause = repoWeeklyRecurrenceWhereClause;
 
 /**
  * Allowed minute step for schedule start/end times.
@@ -66,29 +69,9 @@ export async function assertNoOneOffConflict(params: {
   endAt: Date;
   excludeId?: string;
 }): Promise<void> {
-  const { classroomId, startAt, endAt, excludeId } = params;
+  const conflictId = await findConflictingOneOffScheduleId(params);
 
-  const conditions =
-    excludeId !== undefined
-      ? and(
-          eq(schedules.classroomId, classroomId),
-          eq(schedules.recurrence, 'one_off'),
-          sql`${schedules.startAt} < ${endAt} AND ${schedules.endAt} > ${startAt}`,
-          sql`${schedules.id} != ${excludeId}::uuid`
-        )
-      : and(
-          eq(schedules.classroomId, classroomId),
-          eq(schedules.recurrence, 'one_off'),
-          sql`${schedules.startAt} < ${endAt} AND ${schedules.endAt} > ${startAt}`
-        );
-
-  const conflicts = await openpathDb
-    .select({ id: schedules.id })
-    .from(schedules)
-    .where(conditions)
-    .limit(1);
-
-  if (conflicts.length > 0) {
+  if (conflictId) {
     throw new TRPCError({
       code: 'CONFLICT',
       message: 'Ese tramo horario ya está reservado',
@@ -103,32 +86,9 @@ export async function assertNoConflict(params: {
   endTime: string;
   excludeId?: string;
 }): Promise<void> {
-  const { classroomId, dayOfWeek, startTime, endTime, excludeId } = params;
+  const conflictId = await findConflictingWeeklyScheduleId(params);
 
-  const overlaps = sql`(${startTime}::time, ${endTime}::time) OVERLAPS (${schedules.startTime}, ${schedules.endTime})`;
-  const conditions =
-    excludeId !== undefined
-      ? and(
-          eq(schedules.classroomId, classroomId),
-          weeklyRecurrenceWhereClause(),
-          eq(schedules.dayOfWeek, dayOfWeek),
-          overlaps,
-          sql`${schedules.id} != ${excludeId}::uuid`
-        )
-      : and(
-          eq(schedules.classroomId, classroomId),
-          weeklyRecurrenceWhereClause(),
-          eq(schedules.dayOfWeek, dayOfWeek),
-          overlaps
-        );
-
-  const conflicts = await openpathDb
-    .select({ id: schedules.id })
-    .from(schedules)
-    .where(conditions)
-    .limit(1);
-
-  if (conflicts.length > 0) {
+  if (conflictId) {
     throw new TRPCError({
       code: 'CONFLICT',
       message: 'Ese tramo horario ya está reservado',
@@ -178,8 +138,7 @@ export function mapToOneOffScheduleBase(schedule: DbSchedule) {
 }
 
 export async function loadScheduleOrThrow(id: string): Promise<DbSchedule> {
-  const existing = await openpathDb.select().from(schedules).where(eq(schedules.id, id)).limit(1);
-  const schedule = existing[0];
+  const schedule = await getScheduleById(id);
   if (!schedule) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Schedule not found' });
   }

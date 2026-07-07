@@ -34,11 +34,14 @@ const ALLOWED_RAW_IMPORTERS: ReadonlyMap<string, string> = new Map([
     'lib/tenant-access.ts',
     'read-only tenant scoping over link tables; separate future candidate (ADR 0003)',
   ],
-  ['services/schedules/current-group-expiration.service.ts', 'read-only; ratchet'],
-  ['services/schedules/current-group-read.service.ts', 'read-only; ratchet'],
-  ['services/schedules/schedule-classroom-read.service.ts', 'read-only; ratchet'],
-  ['services/schedules/schedule-teacher-read.service.ts', 'read-only; ratchet'],
-  ['services/schedules/schedule-write-shared.service.ts', 'read-only loads/asserts; ratchet'],
+  [
+    'services/schedules/current-group-expiration.service.ts',
+    'gnarly time-of-day/day-of-week math + weekend business rule embedded in the read; flagged, see plan report',
+  ],
+  [
+    'services/schedules/current-group-read.service.ts',
+    'gnarly time-of-day/day-of-week math + one-off/weekly precedence business rule embedded in the read; flagged, see plan report',
+  ],
 ]);
 
 function listSourceFiles(dir: string): string[] {
