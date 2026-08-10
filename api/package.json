@@ -37,7 +37,7 @@
     "google-auth-library": "^10.9.0",
     "http-proxy-middleware": "^3.0.5",
     "jsonwebtoken": "^9.0.2",
-    "nanoid": "^5.1.6",
+    "nanoid": "^5.1.16",
     "pg": "^8.20.0",
     "web-push": "^3.6.7",
     "winston": "^3.11.0",
