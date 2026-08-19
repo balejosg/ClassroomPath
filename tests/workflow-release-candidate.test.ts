@@ -331,7 +331,11 @@ describe('Release candidate workflow contracts', () => {
       )
     );
     assert.ok(verifyInstallabilityRun.includes('docker run --rm -i ubuntu:24.04 bash'));
-    assert.equal(deriveCheckout?.with?.['fetch-depth'], 1);
+    assert.equal(
+      deriveCheckout?.with?.['fetch-depth'],
+      0,
+      'derive job needs OpenPath first-parent history to resolve the pinned SHA promotion contract'
+    );
     assert.equal(
       jobs['build-gateway-release-candidate']?.uses,
       './.github/workflows/reusable-release-candidate-image-family.yml'
