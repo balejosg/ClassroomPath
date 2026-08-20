@@ -42,6 +42,7 @@ function createDriver({ page, statusText = '', browserLogs = [], navigationError
       calls.push(`get:${url}`);
       if (navigationError) throw new Error(navigationError);
     },
+    getCurrentUrl: async () => 'moz-extension://uuid/blocked/blocked.html',
     scriptCalls,
     executeScript: async (script: string) => {
       scriptCalls.push(script);
@@ -148,6 +149,8 @@ describe('Windows AJAX browser checks', () => {
       assert.equal(evidence.permissionStrategy, 'required-data-collection');
       assert.equal(evidence.submitClicked, true);
       assert.match(evidence.blockedPageUrl, /^moz-extension:\/\/uuid\/blocked\/blocked\.html/);
+      assert.equal(evidence.blockedPageNavigationUrl, 'http://blocked.example.test/');
+      assert.ok(driver.calls.includes('get:http://blocked.example.test/'));
       assert.ok(driver.calls.includes('submit'));
       assert.match(driver.scriptCalls.join('\n'), /status \? \(status\.textContent \|\| ''\) : ''/);
       assert.match(driver.scriptCalls.join('\n'), /status \? \(status\.className \|\| ''\) : ''/);

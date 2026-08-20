@@ -277,6 +277,11 @@ function buildBlockedPageUrl(extensionBaseUrl, domain) {
   return url.toString();
 }
 
+function buildBlockedPageNavigationUrl(domain, port) {
+  const host = port ? `${domain}:${port}` : domain;
+  return `http://${host}/`;
+}
+
 async function collectExtensionRuntimeDiagnostics(driver, domains) {
   try {
     return await driver.executeAsyncScript(
@@ -340,6 +345,7 @@ export async function runBlockedPageUnblockRequestCheck({
   }
 
   const blockedPageUrl = buildBlockedPageUrl(discovery.baseUrl, blockedPageDomain);
+  const blockedPageNavigationUrl = buildBlockedPageNavigationUrl(blockedPageDomain, config.port);
   const startedAt = Date.now();
   let navigationError = null;
   let statusText = '';
@@ -356,7 +362,16 @@ export async function runBlockedPageUnblockRequestCheck({
       script: 15_000,
       implicit: 2_000,
     });
-    await driver.get(blockedPageUrl);
+    await driver.get(blockedPageNavigationUrl).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/Reached error page|neterror/i.test(message)) {
+        throw error;
+      }
+    });
+    await driver.wait(async () => {
+      const currentUrl = String(await driver.getCurrentUrl());
+      return currentUrl.startsWith(discovery.baseUrl);
+    }, config.blockedPageUnblockRequestTimeoutMs);
     extensionDiagnosticsBeforeSubmit = await collectExtensionRuntimeDiagnostics(driver, [
       blockedPageDomain,
     ]);
@@ -435,6 +450,7 @@ return {
     firefoxMode,
     blockedPageDomain,
     blockedPageUrl,
+    blockedPageNavigationUrl,
     statusText: statusText || pageSnapshot?.statusText || '',
     errorText,
     userInputHandlerError,
