@@ -22,6 +22,7 @@ export interface GatewayApplicationRoutesOptions {
   notificationApproveDomainRequestHandler: RequestHandler;
   clientCanaryManualBillingApprovalHandler: RequestHandler;
   clientCanaryGroupDiagnosticsHandler: RequestHandler;
+  windowsOfflineInstallerDownloadHandler: RequestHandler;
 }
 
 export function registerGatewayApplicationRoutes(
@@ -92,6 +93,10 @@ export function registerGatewayApplicationRoutes(
   app.get('/cp/qa-fixtures/ajax.json', (_req, res) => {
     res.json({ status: 'loaded' });
   });
+  app.get(
+    '/cp/api/windows-offline-installer/download',
+    options.windowsOfflineInstallerDownloadHandler
+  );
   app.use('/cp/trpc', options.trpcMiddleware);
 
   app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {

@@ -27,6 +27,7 @@ export interface ComposeGatewayAppOptions {
   notificationApproveDomainRequestHandler: GatewayApplicationRoutesOptions['notificationApproveDomainRequestHandler'];
   clientCanaryManualBillingApprovalHandler: GatewayApplicationRoutesOptions['clientCanaryManualBillingApprovalHandler'];
   clientCanaryGroupDiagnosticsHandler: GatewayApplicationRoutesOptions['clientCanaryGroupDiagnosticsHandler'];
+  windowsOfflineInstallerDownloadHandler: GatewayApplicationRoutesOptions['windowsOfflineInstallerDownloadHandler'];
   serveSpa: boolean;
   reactSpaPath: GatewaySpaRoutesOptions['reactSpaPath'];
 }
@@ -50,6 +51,7 @@ export function composeGatewayApp(options: ComposeGatewayAppOptions): Express {
     notificationApproveDomainRequestHandler: options.notificationApproveDomainRequestHandler,
     clientCanaryManualBillingApprovalHandler: options.clientCanaryManualBillingApprovalHandler,
     clientCanaryGroupDiagnosticsHandler: options.clientCanaryGroupDiagnosticsHandler,
+    windowsOfflineInstallerDownloadHandler: options.windowsOfflineInstallerDownloadHandler,
   });
 
   if (options.serveSpa) {
