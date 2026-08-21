@@ -18,6 +18,14 @@ import {
 } from '../openpath/public-i18n';
 
 const classroomPathI18nEn = {
+  'cp.offlineInstaller.action': 'Download Windows installer',
+  'cp.offlineInstaller.generating': 'Generating installer…',
+  'cp.offlineInstaller.error': 'Could not generate the installer.',
+  'cp.offlineInstaller.metadata': 'v{version} · SHA-256 {sha256}… · token expires {expiresAt}',
+  'cp.offlineInstaller.action': 'Download Windows installer',
+  'cp.offlineInstaller.generating': 'Generating installer…',
+  'cp.offlineInstaller.error': 'Could not generate the installer.',
+  'cp.offlineInstaller.metadata': 'v{version} · SHA-256 {sha256}… · token expires {expiresAt}',
   // --- Section: app.loader + app.common (application chrome, loader, and universal UI labels) ---
   'app.loader.preparing': 'Preparing ClassroomPath...',
   'app.loader.panel': 'Loading your panel...',
@@ -719,6 +727,10 @@ const classroomPathI18nEn = {
 type ClassroomPathI18nKey = keyof typeof classroomPathI18nEn;
 
 const classroomPathI18nEs: Record<ClassroomPathI18nKey, string> = {
+  'cp.offlineInstaller.action': 'Descargar instalador Windows',
+  'cp.offlineInstaller.generating': 'Generando instalador…',
+  'cp.offlineInstaller.error': 'No se pudo generar el instalador.',
+  'cp.offlineInstaller.metadata': 'v{version} · SHA-256 {sha256}… · el token expira {expiresAt}',
   // --- Section (es): app.loader + app.common (application chrome, loader, and universal UI labels) ---
   'app.loader.preparing': 'Preparando ClassroomPath...',
   'app.loader.panel': 'Cargando tu panel...',

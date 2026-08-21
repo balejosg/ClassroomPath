@@ -25,6 +25,7 @@ import {
 import { isAdmin } from './openpath/public-auth';
 
 import { GroupLibrary } from './components/GroupLibrary';
+import WindowsOfflineInstallerAction from './components/WindowsOfflineInstallerAction';
 import { PolicyLibraryButton } from './components/PolicyLibraryButton';
 import { OrganizationUsers } from './views/OrganizationUsers';
 import { DomainRequestsPage } from './views/DomainRequestsPage';
@@ -67,6 +68,11 @@ function ClassroomPathShellContent({ topBanner, userRole }: ClassroomPathShellPr
   const libraryAction = canUseLibrary ? (
     <PolicyLibraryButton onClick={() => setLibraryOpen(true)} />
   ) : undefined;
+
+  const classroomsHeaderAction =
+    canUseLibrary && pendingSelectedClassroomId ? (
+      <WindowsOfflineInstallerAction classroomId={pendingSelectedClassroomId} />
+    ) : undefined;
 
   const shellClassName = cx(
     'flex min-h-screen bg-slate-50 font-sans text-slate-900',
@@ -175,6 +181,7 @@ function ClassroomPathShellContent({ topBanner, userRole }: ClassroomPathShellPr
                   <Classrooms
                     initialSelectedClassroomId={pendingSelectedClassroomId}
                     onInitialSelectedClassroomIdConsumed={handlePendingSelectedClassroomIdConsumed}
+                    headerActions={classroomsHeaderAction}
                   />
                 }
               />

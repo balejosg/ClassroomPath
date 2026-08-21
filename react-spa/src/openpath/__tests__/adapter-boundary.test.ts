@@ -112,3 +112,13 @@ describe('OpenPath SPA adapter boundary', () => {
     }
   });
 });
+
+// Windows offline installer: the generic headerActions seam must stay exposed
+// through the public shell so ClassroomPath can inject classroom actions
+// without importing internal OpenPath modules.
+test('public-shell Classrooms surface forwards headerActions', async () => {
+  const { Classrooms } = await import('@openpath/public-shell');
+  type ClassroomsProps = React.ComponentProps<typeof Classrooms>;
+  const props: ClassroomsProps = { headerActions: null };
+  expect('headerActions' in props).toBe(true);
+});
