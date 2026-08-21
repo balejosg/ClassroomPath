@@ -11,7 +11,7 @@ import {
   WINDOWS_OFFLINE_INSTALLER_SCHEMA_VERSION,
   WINDOWS_OFFLINE_INSTALLER_SLOT_LENGTH,
   type WindowsOfflineInstallerConfig,
-} from '@openpath/shared/windows-offline-installer';
+} from '../openpath/windows-offline-installer.js';
 
 export class WindowsOfflineOverlayError extends Error {
   constructor(message: string) {

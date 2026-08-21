@@ -7,7 +7,7 @@ interface Props {
   classroomId: string;
 }
 
-export default function WindowsOfflineInstallerAction({ classroomId }: Props): JSX.Element {
+export default function WindowsOfflineInstallerAction({ classroomId }: Props): React.ReactElement {
   const t = useClassroomPathT();
   const [progress, setProgress] = useState<'idle' | 'generating' | 'ready' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);

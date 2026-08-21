@@ -111,6 +111,24 @@ upstream OpenPath service.
 - `CP_ENABLE_RATE_LIMIT_IN_TEST`
 - `CP_SERVE_SPA`
 
+### Windows Offline Installer
+
+Read by `api/src/lib/windows-offline-installer-config.ts` (`loadWindowsOfflineInstallerConfig`).
+Generation fails closed when a required variable is missing.
+
+Required:
+
+- `CP_OFFLINE_INSTALLER_TEMPLATE_SHA256`: hex SHA-256 of the pinned installer template zip in the template cache
+- `CP_OFFLINE_INSTALLER_TEMPLATE_VERSION`: template version string surfaced in generated artifact metadata
+- `OPENPATH_URL`: upstream OpenPath base URL used to build embedded enrollment endpoints (also carried for other features)
+
+Optional (defaults shown):
+
+- `CP_OFFLINE_INSTALLER_TOKEN_TTL_HOURS`: `24` -- enrollment-token TTL requested from OpenPath when generating an offline installer
+- `CP_OFFLINE_INSTALLER_DOWNLOAD_TTL_MINUTES`: `10` -- lifetime of a single-use download reference
+- `CP_OFFLINE_INSTALLER_DOWNLOAD_MAX_ATTEMPTS`: `3` -- download attempts allowed per reference
+- `CP_OFFLINE_INSTALLER_TEMPLATE_CACHE_DIR`: `./var/windows-offline-installer` -- local cache of the pinned NSIS template artifacts
+
 ## Local Staging Deploy File (`.env.local`)
 
 Source of truth: `.env.local.example`.

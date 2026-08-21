@@ -22,10 +22,6 @@ const classroomPathI18nEn = {
   'cp.offlineInstaller.generating': 'Generating installer…',
   'cp.offlineInstaller.error': 'Could not generate the installer.',
   'cp.offlineInstaller.metadata': 'v{version} · SHA-256 {sha256}… · token expires {expiresAt}',
-  'cp.offlineInstaller.action': 'Download Windows installer',
-  'cp.offlineInstaller.generating': 'Generating installer…',
-  'cp.offlineInstaller.error': 'Could not generate the installer.',
-  'cp.offlineInstaller.metadata': 'v{version} · SHA-256 {sha256}… · token expires {expiresAt}',
   // --- Section: app.loader + app.common (application chrome, loader, and universal UI labels) ---
   'app.loader.preparing': 'Preparing ClassroomPath...',
   'app.loader.panel': 'Loading your panel...',

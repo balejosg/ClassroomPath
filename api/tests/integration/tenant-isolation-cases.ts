@@ -108,6 +108,7 @@ export const CROSS_TENANT_CASES: Record<string, CrossTenantCase> = {
   // ---- classrooms ----
   'classrooms.list': scoped(() => undefined, 'org-scoped list'),
   'classrooms.getById': reject('NOT_FOUND', (a) => ({ id: a.classroomId })),
+  'windowsOfflineInstaller.generate': reject('NOT_FOUND', (a) => ({ classroomId: a.classroomId })),
   // listTenantClassroomMachines (classroom-machine-access.service.ts)
   // short-circuits to `[]` when the caller org owns zero classrooms, before
   // the specific-classroomId membership check runs. Tenant B is seeded with
