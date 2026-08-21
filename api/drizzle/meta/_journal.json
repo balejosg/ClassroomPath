@@ -64,6 +64,13 @@
       "when": 1775900000000,
       "tag": "0009_billing_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777500000000,
+      "tag": "0010_windows_offline_installer",
+      "breakpoints": true
     }
   ]
 }

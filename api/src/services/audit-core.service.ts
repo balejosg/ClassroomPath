@@ -5,7 +5,7 @@ import * as schema from '../db/schema.js';
 import { generateId } from '../lib/id.js';
 import { logger } from '../lib/logger.js';
 
-export type AuditTargetType = 'invitation' | 'user';
+export type AuditTargetType = 'invitation' | 'user' | 'classroom';
 
 export interface AuditEventInput<Metadata extends Record<string, unknown>> {
   organizationId: string;

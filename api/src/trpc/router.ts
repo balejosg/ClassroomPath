@@ -13,6 +13,7 @@ import { templatesRouter } from './routers/templates.js';
 import { clientTelemetryRouter } from './routers/client-telemetry.js';
 import { billingRouter } from './routers/billing.js';
 import { pushRouter } from './routers/push.js';
+import { windowsOfflineInstallerRouter } from './routers/windows-offline-installer.js';
 
 export const appRouter = router({
   auth: authRouter,
@@ -29,6 +30,7 @@ export const appRouter = router({
   clientTelemetry: clientTelemetryRouter,
   billing: billingRouter,
   push: pushRouter,
+  windowsOfflineInstaller: windowsOfflineInstallerRouter,
 });
 
 export type AppRouter = typeof appRouter;
