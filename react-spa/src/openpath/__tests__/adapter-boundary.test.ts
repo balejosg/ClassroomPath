@@ -10,6 +10,7 @@ const directOpenPathImportPattern =
   /(?:from\s+['"]([^'"]+)['"]|import\s+['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)|@import\s+['"]([^'"]+)['"]|@source\s+['"]([^'"]+)['"])/g;
 
 const forbiddenOpenPathImports = [
+  /^@openpath\/shared/,
   /^@openpath\/public-/,
   /^@openpath\/openpath\.css$/,
   /upstream\/openpath\/react-spa\/src/,

@@ -1,5 +1,7 @@
 import { randomBytes, createHash } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { existsSync, rmSync } from 'node:fs';
+import path from 'node:path';
+import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
@@ -112,14 +114,38 @@ export function createWindowsOfflineDownloadRefsService(deps: RefsRepoDeps = {})
 
     const [updated] = await database
       .update(schema.cpWindowsOfflineDownloadRefs)
-      .set({ usedAttempts: row.usedAttempts + 1 })
+      .set({
+        usedAttempts: sql`${schema.cpWindowsOfflineDownloadRefs.usedAttempts} + 1`,
+      })
       .where(
         and(
           eq(schema.cpWindowsOfflineDownloadRefs.id, row.id),
-          isNull(schema.cpWindowsOfflineDownloadRefs.consumedAt)
+          isNull(schema.cpWindowsOfflineDownloadRefs.consumedAt),
+          lt(
+            schema.cpWindowsOfflineDownloadRefs.usedAttempts,
+            schema.cpWindowsOfflineDownloadRefs.maxAttempts
+          )
         )
       )
       .returning();
+
+    if (!updated) {
+      const [latest] = await database
+        .select()
+        .from(schema.cpWindowsOfflineDownloadRefs)
+        .where(eq(schema.cpWindowsOfflineDownloadRefs.id, row.id))
+        .limit(1);
+      if (!latest) {
+        throw new DownloadReferenceError('INVALID', 'Unknown download reference');
+      }
+      if (latest.consumedAt) {
+        throw new DownloadReferenceError('CONSUMED', 'Download reference already consumed');
+      }
+      if (latest.usedAttempts >= latest.maxAttempts) {
+        throw new DownloadReferenceError('EXHAUSTED', 'Download attempt limit reached');
+      }
+      throw new DownloadReferenceError('EXPIRED', 'Download reference expired');
+    }
 
     return toRecord(updated);
   }
@@ -138,6 +164,50 @@ export function createWindowsOfflineDownloadRefsService(deps: RefsRepoDeps = {})
       );
   }
 
+  /** Cleans up expired, exhausted, or consumed download references and their artifact files. */
+  async function cleanupExpired(artifactsDir?: string): Promise<number> {
+    const expiredCutoff = now();
+    const expiredRows = await database
+      .select()
+      .from(schema.cpWindowsOfflineDownloadRefs)
+      .where(
+        or(
+          isNotNull(schema.cpWindowsOfflineDownloadRefs.consumedAt),
+          lte(schema.cpWindowsOfflineDownloadRefs.expiresAt, expiredCutoff),
+          gte(
+            schema.cpWindowsOfflineDownloadRefs.usedAttempts,
+            schema.cpWindowsOfflineDownloadRefs.maxAttempts
+          )
+        )
+      );
+
+    if (artifactsDir && existsSync(artifactsDir)) {
+      for (const row of expiredRows) {
+        const filePath = path.join(artifactsDir, `${row.referenceHash.slice(0, 32)}.exe`);
+        if (existsSync(filePath)) {
+          try {
+            rmSync(filePath, { force: true });
+          } catch (error) {
+            logger.warn(`Failed to remove expired artifact: ${filePath}`, { error });
+          }
+        }
+      }
+    }
+
+    if (expiredRows.length === 0) {
+      return 0;
+    }
+
+    await database.delete(schema.cpWindowsOfflineDownloadRefs).where(
+      inArray(
+        schema.cpWindowsOfflineDownloadRefs.id,
+        expiredRows.map((r) => r.id)
+      )
+    );
+
+    return expiredRows.length;
+  }
+
   function toRecord(row: WindowsOfflineDownloadRef): DownloadRefRecord {
     return {
       id: row.id,
@@ -154,7 +224,7 @@ export function createWindowsOfflineDownloadRefsService(deps: RefsRepoDeps = {})
     };
   }
 
-  return { mintReference, consumeAttempt, markConsumed, now };
+  return { mintReference, consumeAttempt, markConsumed, cleanupExpired, now };
 }
 
 export type WindowsOfflineDownloadRefsService = ReturnType<

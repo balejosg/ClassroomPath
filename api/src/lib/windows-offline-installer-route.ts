@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, rmSync, statSync } from 'node:fs';
 import type { RequestHandler } from 'express';
 import {
   DownloadReferenceError,
@@ -59,9 +59,20 @@ export function createWindowsOfflineInstallerDownloadHandler(
           res.destroy(error);
         });
         stream.on('end', () => {
-          deps.refs.markConsumed(reference).catch((error: unknown) => {
-            logger.error(`Could not mark offline installer reference consumed: ${String(error)}`);
-          });
+          deps.refs
+            .markConsumed(reference)
+            .then(() => {
+              if (existsSync(artifactPath)) {
+                try {
+                  rmSync(artifactPath, { force: true });
+                } catch {
+                  // ignore
+                }
+              }
+            })
+            .catch((error: unknown) => {
+              logger.error(`Could not mark offline installer reference consumed: ${String(error)}`);
+            });
         });
         stream.pipe(res);
       })

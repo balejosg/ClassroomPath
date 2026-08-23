@@ -9,9 +9,21 @@ import {
 
 function toTrpcError(error: unknown): unknown {
   if (error instanceof WindowsOfflineInstallerError) {
+    if (error.code === 'NOT_FOUND') {
+      return new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'Classroom not found',
+      });
+    }
+    if (error.code === 'UNAUTHORIZED') {
+      return new TRPCError({
+        code: 'UNAUTHORIZED',
+        message: 'Upstream authorization missing',
+      });
+    }
     return new TRPCError({
-      code: error.code === 'NOT_FOUND' ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR',
-      message: error.message,
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Failed to generate offline installer',
     });
   }
   return error;
