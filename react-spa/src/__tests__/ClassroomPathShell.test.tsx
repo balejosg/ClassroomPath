@@ -60,13 +60,16 @@ vi.mock('../openpath/public-shell', () => ({
   Classrooms: ({
     initialSelectedClassroomId,
     onInitialSelectedClassroomIdConsumed,
+    renderWindowsInstallAction,
   }: {
     initialSelectedClassroomId?: string | null;
     onInitialSelectedClassroomIdConsumed?: () => void;
+    renderWindowsInstallAction?: (classroomId: string) => React.ReactNode;
   }) => (
     <div>
       <div>Classrooms View</div>
       <div>Initial classroom: {initialSelectedClassroomId ?? 'none'}</div>
+      {renderWindowsInstallAction?.('classroom-selected')}
       <button onClick={() => onInitialSelectedClassroomIdConsumed?.()}>
         Consumir selección inicial
       </button>
@@ -122,6 +125,12 @@ vi.mock('../components/GroupLibrary', () => ({
   GroupLibrary: ({ isOpen }: { isOpen: boolean }) => (isOpen ? <div>Library dialog</div> : null),
 }));
 
+vi.mock('../components/WindowsOfflineInstallerAction', () => ({
+  default: ({ classroomId }: { classroomId: string }) => (
+    <span data-testid="windows-install-action">Installer {classroomId}</span>
+  ),
+}));
+
 import ClassroomPathShell from '../ClassroomPathShell';
 
 function renderShell(props?: React.ComponentProps<typeof ClassroomPathShell>) {
@@ -175,6 +184,16 @@ describe('ClassroomPathShell', () => {
     expect(screen.getByTestId('classroompath-shell-content-wrapper')).toHaveClass(
       'lg:h-full',
       'lg:min-h-0'
+    );
+  });
+
+  it('passes the selected classroom id to the Windows action through the public callback', () => {
+    window.history.pushState({}, '', '/classrooms');
+
+    renderShell({ userRole: 'admin' });
+
+    expect(screen.getByTestId('windows-install-action')).toHaveTextContent(
+      'Installer classroom-selected'
     );
   });
 

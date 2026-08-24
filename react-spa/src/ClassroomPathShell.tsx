@@ -69,11 +69,6 @@ function ClassroomPathShellContent({ topBanner, userRole }: ClassroomPathShellPr
     <PolicyLibraryButton onClick={() => setLibraryOpen(true)} />
   ) : undefined;
 
-  const classroomsHeaderAction =
-    canUseLibrary && pendingSelectedClassroomId ? (
-      <WindowsOfflineInstallerAction classroomId={pendingSelectedClassroomId} />
-    ) : undefined;
-
   const shellClassName = cx(
     'flex min-h-screen bg-slate-50 font-sans text-slate-900',
     isClassroomsView ? 'lg:h-screen lg:overflow-hidden' : ''
@@ -181,7 +176,13 @@ function ClassroomPathShellContent({ topBanner, userRole }: ClassroomPathShellPr
                   <Classrooms
                     initialSelectedClassroomId={pendingSelectedClassroomId}
                     onInitialSelectedClassroomIdConsumed={handlePendingSelectedClassroomIdConsumed}
-                    headerActions={classroomsHeaderAction}
+                    renderWindowsInstallAction={
+                      canUseLibrary
+                        ? (classroomId) => (
+                            <WindowsOfflineInstallerAction classroomId={classroomId} />
+                          )
+                        : undefined
+                    }
                   />
                 }
               />
