@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_WINDOWS_OFFLINE_INSTALLER_CANARY_OUTPUT =
   'windows-offline-installer-canary.json';
+export const DEFAULT_WINDOWS_OFFLINE_INSTALLER_REUSE_RETRY_DELAYS_MS = Object.freeze([
+  0, 100, 250, 500,
+]);
+export const MAX_WINDOWS_OFFLINE_INSTALLER_REUSE_RETRY_WINDOW_MS = 2000;
 
 const HEX_SHA256 = /^[0-9a-f]{64}$/;
 const SAFE_EXE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._-]*\.exe$/i;
@@ -38,12 +42,13 @@ function writeEvidence(outputPath, evidence) {
 }
 
 /**
- * @param {{ generated?: boolean, firstDownloadStatus?: number|null, reuseStatus?: number|null, errorCode: string }} options
+ * @param {{ generated?: boolean, firstDownloadStatus?: number|null, reuseStatus?: number|null, reuseAttempts?: number, errorCode: string }} options
  */
 function failedEvidence({
   generated = false,
   firstDownloadStatus = null,
   reuseStatus = null,
+  reuseAttempts = 0,
   errorCode,
 }) {
   return {
@@ -51,6 +56,7 @@ function failedEvidence({
     generated,
     firstDownloadStatus,
     reuseStatus,
+    reuseAttempts,
     fileName: null,
     size: null,
     expectedSha256: null,
@@ -74,6 +80,7 @@ export async function runWindowsOfflineInstallerCanary({
   outputPath = DEFAULT_WINDOWS_OFFLINE_INSTALLER_CANARY_OUTPUT,
   now = () => new Date(),
   fetchImpl = fetch,
+  reuseRetryDelaysMs = DEFAULT_WINDOWS_OFFLINE_INSTALLER_REUSE_RETRY_DELAYS_MS,
 }) {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const normalizedClassroomId = required(
@@ -88,6 +95,16 @@ export async function runWindowsOfflineInstallerCanary({
     );
   }
   const generateUrl = `${normalizedBaseUrl}/cp/trpc/windowsOfflineInstaller.generate`;
+  if (
+    !Array.isArray(reuseRetryDelaysMs) ||
+    reuseRetryDelaysMs.length === 0 ||
+    reuseRetryDelaysMs.length > 4 ||
+    reuseRetryDelaysMs.some((delay) => !Number.isInteger(delay) || delay < 0) ||
+    reuseRetryDelaysMs.reduce((sum, delay) => sum + delay, 0) >
+      MAX_WINDOWS_OFFLINE_INSTALLER_REUSE_RETRY_WINDOW_MS
+  ) {
+    throw new Error('reuse retry window must be short and bounded');
+  }
 
   let generatedResponse;
   let generatedData;
@@ -156,19 +173,26 @@ export async function runWindowsOfflineInstallerCanary({
 
   /** @type {number|null} */
   let reuseStatus = null;
-  try {
-    const reuseResponse = await fetchImpl(downloadUrl);
-    reuseStatus = reuseResponse.status;
-  } catch {
-    return writeEvidence(
-      outputPath,
-      failedEvidence({
-        generated: true,
-        firstDownloadStatus,
-        reuseStatus,
-        errorCode: 'REUSE_DOWNLOAD_FAILED',
-      })
-    );
+  let reuseAttempts = 0;
+  for (const delay of reuseRetryDelaysMs) {
+    if (delay > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, delay));
+    reuseAttempts += 1;
+    try {
+      const reuseResponse = await fetchImpl(downloadUrl);
+      reuseStatus = reuseResponse.status;
+      if (reuseStatus === 410) break;
+    } catch {
+      return writeEvidence(
+        outputPath,
+        failedEvidence({
+          generated: true,
+          firstDownloadStatus,
+          reuseStatus,
+          reuseAttempts,
+          errorCode: 'REUSE_DOWNLOAD_FAILED',
+        })
+      );
+    }
   }
 
   const actualSha256 = firstBytes.length > 0 ? hashBytes(firstBytes) : null;
@@ -188,6 +212,7 @@ export async function runWindowsOfflineInstallerCanary({
     generated: true,
     firstDownloadStatus,
     reuseStatus,
+    reuseAttempts,
     fileName,
     size: firstBytes.length,
     expectedSha256,

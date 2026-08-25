@@ -153,6 +153,11 @@ test('release-state CLI writes shell-compatible snapshots through the typed cont
       OPENPATH_VERSION: '4.1.19',
       OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
       CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
+      CP_OFFLINE_INSTALLER_TEMPLATE_VERSION: '4.1.0',
+      CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT: '0123456789abcdef0123456789abcdef01234567',
+      CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: 'scripts-v4.1.0-0123456',
+      CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:
+        'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
     }
   );
 
@@ -165,6 +170,98 @@ test('release-state CLI writes shell-compatible snapshots through the typed cont
     'ghcr.io/balejosg/classroompath-gateway:abc123'
   );
   assert.equal(snapshot.OPENPATH_LINUX_AGENT_VERSION, '4.1.19');
+  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_VERSION, '4.1.0');
+  assert.equal(
+    snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT,
+    '0123456789abcdef0123456789abcdef01234567'
+  );
+  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG, 'scripts-v4.1.0-0123456');
+  assert.equal(
+    snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_SHA256,
+    'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'
+  );
+});
+
+test('release-runtime helper persists and restores the complete offline-installer pin', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-runtime-offline-pin-'));
+  const snapshotPath = join(tempDir, 'current-images.env');
+  const commit = 'c'.repeat(40);
+  const sha256 = 'd'.repeat(64);
+
+  runCommand(
+    'bash',
+    [
+      '-lc',
+      [
+        'source scripts/lib/common.sh',
+        'source scripts/lib/release-state.sh',
+        'source scripts/lib/release-runtime.sh',
+        `write_release_runtime_state ${snapshotPath} app-sha release-candidate gateway migrations firefox-assets openpath-api 4.1.0 4.1.0 spa 4.1.0 ${commit} scripts-v4.1.0-ccccccc ${sha256}`,
+      ].join('; '),
+    ],
+    { ...process.env }
+  );
+
+  const snapshot = readReleaseStateSnapshot(snapshotPath);
+  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_VERSION, '4.1.0');
+  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT, commit);
+  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG, 'scripts-v4.1.0-ccccccc');
+  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_SHA256, sha256);
+
+  const restored = runCommand(
+    'bash',
+    [
+      '-lc',
+      [
+        'source scripts/lib/common.sh',
+        'source scripts/lib/release-state.sh',
+        `load_release_state_env ${snapshotPath}`,
+        'printf "%s,%s,%s,%s\\n" "$CP_OFFLINE_INSTALLER_TEMPLATE_VERSION" "$CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT" "$CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG" "$CP_OFFLINE_INSTALLER_TEMPLATE_SHA256"',
+      ].join('; '),
+    ],
+    { ...process.env }
+  );
+  assert.equal(restored.trim(), `4.1.0,${commit},scripts-v4.1.0-ccccccc,${sha256}`);
+});
+
+test('promotion evidence detects a runtime offline-installer pin drift', () => {
+  const report = validateReleaseStatePromotionEvidence({
+    deploymentMode: 'debug',
+    imageSource: 'release-candidate',
+    currentState: {
+      IMAGE_SOURCE: 'release-candidate',
+      APP_SHA: 'abc123',
+      CLASSROOMPATH_GATEWAY_IMAGE: 'gateway',
+      CLASSROOMPATH_MIGRATIONS_IMAGE: 'migrations',
+      OPENPATH_FIREFOX_ASSETS_IMAGE: 'firefox-assets',
+      OPENPATH_API_IMAGE: 'openpath-api',
+      OPENPATH_VERSION: '4.1.0',
+      OPENPATH_LINUX_AGENT_VERSION: '4.1.0',
+      CLASSROOMPATH_SPA_IMAGE: 'spa',
+      CP_OFFLINE_INSTALLER_TEMPLATE_VERSION: '4.1.0',
+      CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT: 'a'.repeat(40),
+      CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: 'scripts-v4.1.0-aaaaaaa',
+      CP_OFFLINE_INSTALLER_TEMPLATE_SHA256: 'a'.repeat(64),
+    },
+    verificationState: {},
+    expectedRuntime: {
+      EXPECTED_APP_SHA: 'abc123',
+      EXPECTED_GATEWAY_IMAGE: 'gateway',
+      EXPECTED_MIGRATIONS_IMAGE: 'migrations',
+      EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE: 'firefox-assets',
+      EXPECTED_OPENPATH_API_IMAGE: 'openpath-api',
+      EXPECTED_OPENPATH_VERSION: '4.1.0',
+      EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.0',
+      EXPECTED_SPA_IMAGE: 'spa',
+      EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_VERSION: '4.1.0',
+      EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT: 'b'.repeat(40),
+      EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: 'scripts-v4.1.0-bbbbbbb',
+      EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_SHA256: 'b'.repeat(64),
+    },
+  });
+
+  assert.equal(report.checks.currentRuntime.status, 'fail');
+  assert.match(report.checks.currentRuntime.errors.join('\n'), /offline installer template/);
 });
 
 test('release-state CLI verifies staging evidence and emits workflow outputs', () => {

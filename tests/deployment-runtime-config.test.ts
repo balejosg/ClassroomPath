@@ -128,13 +128,30 @@ void describe('Docker Compose Configuration', () => {
         'CP_OFFLINE_INSTALLER_ARTIFACTS_DIR=/app/var/windows-offline-installer/artifacts'
       )
     );
+    assert.ok(
+      gateway.environment?.includes(
+        'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION=${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:?}'
+      ),
+      'Gateway must receive the release-manifest template version explicitly'
+    );
+    assert.ok(
+      gateway.environment?.includes(
+        'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT=${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:?}'
+      ),
+      'Gateway must receive the release-manifest template commit explicitly'
+    );
+    assert.ok(
+      gateway.environment?.includes(
+        'CP_OFFLINE_INSTALLER_TEMPLATE_SHA256=${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:?}'
+      ),
+      'Gateway must receive the release-manifest template SHA explicitly'
+    );
     assert.ok(gateway.environment?.includes('OPENPATH_URL=${OPENPATH_URL:-http://api:3000}'));
     assert.ok(
-      gateway.volumes?.some(
-        (volume) =>
-          volume.includes('${CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR') &&
-          volume.includes(':/app/var/windows-offline-installer/templates:ro')
-      )
+      gateway.volumes?.includes(
+        '${CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR:-../var/windows-offline-installer/templates}:/app/var/windows-offline-installer/templates:ro'
+      ),
+      'Compose and provisioning must share the canonical host-dir default'
     );
     assert.ok(
       gateway.volumes?.includes(

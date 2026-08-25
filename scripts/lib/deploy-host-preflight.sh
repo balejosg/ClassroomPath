@@ -36,6 +36,9 @@ cleanup_docker_disk_if_needed() {
 provision_windows_offline_installer_template() {
   local app_dir="${1:-${APP_DIR:-}}"
   local provisioner=""
+  local template_path_helper=""
+  local template_host_dir=""
+  local release_manifest_file="${RELEASE_MANIFEST_FILE:-${STAGING_RELEASE_MANIFEST_FILE:-}}"
   local pinned_version="${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}"
   local pinned_commit="${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}"
   local pinned_release_tag="${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}"
@@ -52,15 +55,39 @@ provision_windows_offline_installer_template() {
     return 1
   fi
 
+  template_path_helper="$app_dir/scripts/lib/windows-offline-installer-template-path.mjs"
+  if [ ! -f "$template_path_helper" ]; then
+    log_error "Windows installer template path helper not found: $template_path_helper"
+    return 1
+  fi
+
   configure_node_path
   load_env_file "$app_dir/config/.env" || true
 
   # Release metadata supplied by the deploy payload is authoritative. Keep it
   # across loading the host's shared .env, which may still contain an older pin.
-  if [ -n "$pinned_version" ]; then export CP_OFFLINE_INSTALLER_TEMPLATE_VERSION="$pinned_version"; fi
-  if [ -n "$pinned_commit" ]; then export CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT="$pinned_commit"; fi
-  if [ -n "$pinned_release_tag" ]; then export CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG="$pinned_release_tag"; fi
-  if [ -n "$pinned_sha256" ]; then export CP_OFFLINE_INSTALLER_TEMPLATE_SHA256="$pinned_sha256"; fi
+  if [ -n "$release_manifest_file" ] && [ -f "$release_manifest_file" ] && declare -f load_release_manifest_runtime >/dev/null 2>&1; then
+    load_release_manifest_runtime "$release_manifest_file" "${STAGING_RELEASE_SHA:-${TARGET_SHA:-}}" || return 1
+  else
+    if [ -n "$pinned_version" ]; then export CP_OFFLINE_INSTALLER_TEMPLATE_VERSION="$pinned_version"; fi
+    if [ -n "$pinned_commit" ]; then export CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT="$pinned_commit"; fi
+    if [ -n "$pinned_release_tag" ]; then export CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG="$pinned_release_tag"; fi
+    if [ -n "$pinned_sha256" ]; then export CP_OFFLINE_INSTALLER_TEMPLATE_SHA256="$pinned_sha256"; fi
+  fi
+
+  template_host_dir="$(
+    cd "$app_dir/docker" || exit 1
+    "$NODE_BIN" "$template_path_helper" --print-host-dir
+  )" || return 1
+  export CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR="$template_host_dir"
+
+  if [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}" ] ||
+    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}" ] ||
+    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}" ] ||
+    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:-}" ]; then
+    log_error "Windows offline installer release pin is incomplete"
+    return 1
+  fi
 
   log_info "Provisioning pinned Windows offline installer template..."
   (

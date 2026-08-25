@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
@@ -118,6 +126,51 @@ void describe('Windows offline installer template provisioner', () => {
       },
     });
     assert.equal(second.status, 'already_valid');
+  });
+
+  test('uses the Compose-relative default when a legacy host has no HOST_DIR', async () => {
+    const composeCwd = path.join(tempRoot, 'docker');
+    const expectedRoot = path.resolve(composeCwd, '../var/windows-offline-installer/templates');
+    const noHostDirEnv = env({ CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR: undefined });
+    await provisionWindowsOfflineInstallerTemplate({
+      env: noHostDirEnv,
+      cwd: composeCwd,
+      fetchImpl: fetchFor(bytes, `${sha256}  OpenPath-Windows-Setup-Template.exe\n`, { count: 0 }),
+    });
+    assert.equal(
+      existsSync(path.join(expectedRoot, version, commit, 'OpenPath-Windows-Setup-Template.exe')),
+      true
+    );
+    rmSync(expectedRoot, { recursive: true, force: true });
+  });
+
+  test('publishes a traversable read-only template tree on POSIX', async (t) => {
+    if (process.platform === 'win32') {
+      t.skip('POSIX mode assertions are not portable to Windows');
+    }
+
+    const destination = path.join(templateHostDir, version, commit);
+    const exePath = path.join(destination, 'OpenPath-Windows-Setup-Template.exe');
+    const sidecarPath = `${exePath}.sha256`;
+    const sidecar = `${sha256}  OpenPath-Windows-Setup-Template.exe\n`;
+    await provisionWindowsOfflineInstallerTemplate({
+      env: env(),
+      fetchImpl: fetchFor(bytes, sidecar, { count: 0 }),
+    });
+
+    const rootMode = statSync(templateHostDir).mode & 0o777;
+    const versionMode = statSync(path.join(templateHostDir, version)).mode & 0o777;
+    const commitMode = statSync(destination).mode & 0o777;
+    const exeMode = statSync(exePath).mode & 0o777;
+    const sidecarMode = statSync(sidecarPath).mode & 0o777;
+    assert.equal(rootMode, 0o755);
+    assert.equal(versionMode, 0o755);
+    assert.equal(commitMode, 0o755);
+    assert.equal(exeMode, 0o644);
+    assert.equal(sidecarMode, 0o644);
+    assert.equal(commitMode & 0o002, 0);
+    assert.equal(exeMode & 0o002, 0);
+    assert.equal(sidecarMode & 0o002, 0);
   });
 
   test('reprovisions corrupt state without changing it when download fails', async () => {

@@ -94,6 +94,33 @@ export function validateCurrentReleaseState(snapshot, expected) {
     ],
   ];
 
+  for (const [label, expectedKey, actualKey] of [
+    [
+      'Windows offline installer template version',
+      'EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_VERSION',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION',
+    ],
+    [
+      'Windows offline installer template commit',
+      'EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
+    ],
+    [
+      'Windows offline installer template release tag',
+      'EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
+    ],
+    [
+      'Windows offline installer template SHA-256',
+      'EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_SHA256',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_SHA256',
+    ],
+  ]) {
+    if (expected[expectedKey]) {
+      comparisons.push([label, expected[expectedKey], snapshot[actualKey]]);
+    }
+  }
+
   for (const [label, expectedValue, actualValue] of comparisons) {
     if (String(expectedValue ?? '') !== String(actualValue ?? '')) {
       errors.push(`::error::${label} mismatch. expected=${expectedValue} actual=${actualValue}`);

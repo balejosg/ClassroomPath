@@ -26,8 +26,29 @@ export class WindowsOfflineTemplateCacheError extends Error {
   }
 }
 
-function sha256File(filePath: string): string {
-  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+export type WindowsOfflineTemplateReadFile = (
+  filePath: string,
+  encoding?: BufferEncoding
+) => Buffer | string;
+
+export interface WindowsOfflineTemplateLoaderIo {
+  exists?: (filePath: string) => boolean;
+  readFile?: WindowsOfflineTemplateReadFile;
+  hashFile?: (filePath: string) => string;
+}
+
+function readTemplateFile(
+  filePath: string,
+  encoding: BufferEncoding | undefined,
+  io: WindowsOfflineTemplateLoaderIo
+): Buffer | string {
+  if (io.readFile) return io.readFile(filePath, encoding);
+  return encoding ? readFileSync(filePath, encoding) : readFileSync(filePath);
+}
+
+function sha256File(filePath: string, io: WindowsOfflineTemplateLoaderIo): string {
+  const bytes = readTemplateFile(filePath, undefined, io);
+  return createHash('sha256').update(bytes).digest('hex');
 }
 
 /**
@@ -38,12 +59,14 @@ function sha256File(filePath: string): string {
  */
 export function loadCachedWindowsOfflineTemplate(
   templateDir: string,
-  expected: { version: string; commit: string; sha256: string }
+  expected: { version: string; commit: string; sha256: string },
+  io: WindowsOfflineTemplateLoaderIo = {}
 ): CachedTemplate {
+  const exists = io.exists ?? existsSync;
   const expectedTemplateDir = path.join(templateDir, expected.version, expected.commit);
   const templatePath = path.join(expectedTemplateDir, 'OpenPath-Windows-Setup-Template.exe');
 
-  if (!existsSync(templatePath)) {
+  if (!exists(templatePath)) {
     throw new WindowsOfflineTemplateCacheError(
       'TEMPLATE_MISSING',
       `Cached OpenPath Windows setup template not found for version ${expected.version} (${expected.commit})`
@@ -51,14 +74,16 @@ export function loadCachedWindowsOfflineTemplate(
   }
 
   const sidecarPath = `${templatePath}.sha256`;
-  if (!existsSync(sidecarPath)) {
+  if (!exists(sidecarPath)) {
     throw new WindowsOfflineTemplateCacheError(
       'SIDECAR_MISSING',
       'Cached template is missing its .sha256 sidecar; refusing to use an unverifiable asset'
     );
   }
 
-  const sidecarDigest = readFileSync(sidecarPath, 'utf8').trim().split(/\s+/)[0];
+  const sidecarDigest = String(readTemplateFile(sidecarPath, 'utf8', io))
+    .trim()
+    .split(/\s+/)[0];
   if (!sidecarDigest || !HEX_SHA256.test(sidecarDigest)) {
     throw new WindowsOfflineTemplateCacheError(
       'SIDECAR_INVALID',
@@ -73,7 +98,7 @@ export function loadCachedWindowsOfflineTemplate(
     );
   }
 
-  const actualDigest = sha256File(templatePath);
+  const actualDigest = io.hashFile?.(templatePath) ?? sha256File(templatePath, io);
   if (actualDigest !== expected.sha256) {
     throw new WindowsOfflineTemplateCacheError(
       'TEMPLATE_HASH_MISMATCH',

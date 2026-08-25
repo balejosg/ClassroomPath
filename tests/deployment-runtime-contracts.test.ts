@@ -238,6 +238,7 @@ describe('Deployment runtime contracts', () => {
     );
     const deployProductionContextHelper = readFileSync(deployProductionContextHelperPath, 'utf-8');
     const deployProductionRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
+    const deployHostPreflightHelper = readFileSync(deployHostPreflightHelperPath, 'utf-8');
     const releaseRuntimeHelper = readFileSync(
       resolve(projectRoot, 'scripts/lib/release-runtime.sh'),
       'utf-8'
@@ -259,6 +260,38 @@ describe('Deployment runtime contracts', () => {
     assert.ok(manifestHelper.includes('OPENPATH_FIREFOX_ASSETS_IMAGE'));
     assert.ok(manifestHelper.includes('release_manifest_validate_contract()'));
     assert.ok(manifestHelper.includes('release_manifest_is_canonical_contract()'));
+    for (const pinName of [
+      'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_SHA256',
+    ]) {
+      assert.ok(
+        stagingRemote.includes(pinName),
+        `staging runtime must preserve ${pinName} from the release manifest`
+      );
+      assert.ok(
+        productionRemote.includes(pinName) || deployProductionRuntimeHelper.includes(pinName),
+        `production runtime must preserve ${pinName} from the release manifest`
+      );
+    }
+    assert.ok(
+      dockerCompose.includes(
+        'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION=${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:?}'
+      ) &&
+        dockerCompose.includes(
+          'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT=${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:?}'
+        ) &&
+        dockerCompose.includes(
+          'CP_OFFLINE_INSTALLER_TEMPLATE_SHA256=${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:?}'
+        ),
+      'gateway Compose contract must pass all runtime pin fields explicitly'
+    );
+    assert.ok(
+      deployHostPreflightHelper.includes('CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR') &&
+        deployHostPreflightHelper.includes('windows-offline-installer-template-path'),
+      'deploy preflight must resolve the canonical template host directory before provisioning'
+    );
     assert.ok(deployPayloadHelper.includes('export function buildDeployPayload'));
     assert.ok(deployPayloadHelper.includes('export function encodeDeployPayloadBase64'));
     assert.ok(deployPayloadHelper.includes('export function decodeDeployPayloadBase64'));

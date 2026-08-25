@@ -164,6 +164,16 @@ authorized post-deploy evidence run, use
 `WINDOWS_OFFLINE_INSTALLER_CANARY_COOKIE`. This command is prepared for gates
 but is not run by the local implementation checks.
 
+The preflight resolves `CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR` from the same
+Compose working directory used by `docker compose`; when no override exists,
+both use `../var/windows-offline-installer/templates`. The gateway receives the
+version, full commit, and SHA explicitly from the release environment, while
+the release tag is used only by provisioning. Readiness performs a full byte
+hash on the first healthy identity and repeats it only when the template or
+sidecar stat identity changes; it still fails closed and never provisions.
+The current release-state snapshot stores all four pin fields so rollback and
+promotion evidence cannot combine an old runtime pin with a new template.
+
 ## Local Staging Deploy File (`.env.local`)
 
 Source of truth: `.env.local.example`.

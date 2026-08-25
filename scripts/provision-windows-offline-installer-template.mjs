@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import {
   existsSync,
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -12,6 +13,8 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+import { resolveWindowsOfflineInstallerTemplateDestination as resolveTemplateDestination } from './lib/windows-offline-installer-template-path.mjs';
 
 const EXE_NAME = 'OpenPath-Windows-Setup-Template.exe';
 const SIDECAR_NAME = `${EXE_NAME}.sha256`;
@@ -93,17 +96,11 @@ export function readWindowsOfflineInstallerTemplatePin(env = process.env) {
   return validateWindowsOfflineInstallerTemplatePin({ version, commit, releaseTag, sha256 });
 }
 
-export function resolveWindowsOfflineInstallerTemplateDestination(env = process.env) {
-  const root =
-    env.CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR?.trim() ||
-    env.CP_OFFLINE_INSTALLER_TEMPLATE_DIR?.trim();
-  if (!root) {
-    throw new WindowsOfflineInstallerTemplateProvisionError(
-      'CONFIG_INVALID',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR or CP_OFFLINE_INSTALLER_TEMPLATE_DIR is required'
-    );
-  }
-  return path.resolve(root);
+export function resolveWindowsOfflineInstallerTemplateDestination(
+  env = process.env,
+  cwd = process.cwd()
+) {
+  return resolveTemplateDestination(env, cwd);
 }
 
 export function resolveWindowsOfflineInstallerTemplateAssetUrls(releaseTag) {
@@ -166,6 +163,16 @@ function verifyFiles(paths, pin) {
   }
 }
 
+function normalizePublishedTemplatePermissions(root, paths) {
+  const versionDirectory = path.dirname(paths.directory);
+  mkdirSync(versionDirectory, { recursive: true, mode: 0o755 });
+  chmodSync(root, 0o755);
+  chmodSync(versionDirectory, 0o755);
+  chmodSync(paths.directory, 0o755);
+  chmodSync(paths.exePath, 0o644);
+  chmodSync(paths.sidecarPath, 0o644);
+}
+
 async function downloadAsset(fetchImpl, url) {
   let response;
   try {
@@ -208,9 +215,12 @@ function assertDownloadedAssets(exeBytes, sidecarBytes, pin) {
   }
 }
 
-export async function verifyWindowsOfflineInstallerTemplate({ env = process.env } = {}) {
+export async function verifyWindowsOfflineInstallerTemplate({
+  env = process.env,
+  cwd = process.cwd(),
+} = {}) {
   const pin = readWindowsOfflineInstallerTemplatePin(env);
-  const destinationRoot = resolveWindowsOfflineInstallerTemplateDestination(env);
+  const destinationRoot = resolveWindowsOfflineInstallerTemplateDestination(env, cwd);
   const paths = getPaths(destinationRoot, pin);
   verifyFiles(paths, pin);
   return { status: 'valid', directory: paths.directory };
@@ -219,13 +229,15 @@ export async function verifyWindowsOfflineInstallerTemplate({ env = process.env 
 export async function provisionWindowsOfflineInstallerTemplate({
   env = process.env,
   fetchImpl = globalThis.fetch,
+  cwd = process.cwd(),
 } = {}) {
   const pin = readWindowsOfflineInstallerTemplatePin(env);
-  const destinationRoot = resolveWindowsOfflineInstallerTemplateDestination(env);
+  const destinationRoot = resolveWindowsOfflineInstallerTemplateDestination(env, cwd);
   const paths = getPaths(destinationRoot, pin);
 
   try {
     verifyFiles(paths, pin);
+    normalizePublishedTemplatePermissions(destinationRoot, paths);
     return { status: 'already_valid', directory: paths.directory };
   } catch (error) {
     if (!(error instanceof WindowsOfflineInstallerTemplateProvisionError)) throw error;
@@ -253,15 +265,21 @@ export async function provisionWindowsOfflineInstallerTemplate({
   assertDownloadedAssets(exeBytes, sidecarBytes, pin);
 
   const parent = path.dirname(paths.directory);
-  mkdirSync(parent, { recursive: true });
+  mkdirSync(destinationRoot, { recursive: true, mode: 0o755 });
+  mkdirSync(parent, { recursive: true, mode: 0o755 });
+  chmodSync(destinationRoot, 0o755);
+  chmodSync(parent, 0o755);
   const temporaryDirectory = mkdtempSync(path.join(parent, `.cp-template-${process.pid}-`));
   const temporaryExePath = path.join(temporaryDirectory, EXE_NAME);
   const temporarySidecarPath = path.join(temporaryDirectory, SIDECAR_NAME);
   const backupDirectory = `${paths.directory}.backup-${process.pid}-${Date.now().toString(36)}`;
   let movedExistingDirectory = false;
   try {
-    writeFileSync(temporaryExePath, exeBytes, { flag: 'wx' });
-    writeFileSync(temporarySidecarPath, sidecarBytes, { flag: 'wx' });
+    writeFileSync(temporaryExePath, exeBytes, { flag: 'wx', mode: 0o644 });
+    writeFileSync(temporarySidecarPath, sidecarBytes, { flag: 'wx', mode: 0o644 });
+    chmodSync(temporaryDirectory, 0o755);
+    chmodSync(temporaryExePath, 0o644);
+    chmodSync(temporarySidecarPath, 0o644);
     if (existsSync(paths.directory)) {
       renameSync(paths.directory, backupDirectory);
       movedExistingDirectory = true;

@@ -117,8 +117,9 @@ after(() => {
   rmSync(tempRoot, { recursive: true, force: true });
 });
 
-function makeDeps(options: { failMint?: boolean } = {}) {
+function makeDeps(options: { failMint?: boolean; failPublish?: boolean } = {}) {
   let mintCalls = 0;
+  let invalidationCalls = 0;
   const refs = {
     async mintReference(input: Record<string, unknown>) {
       mintCalls += 1;
@@ -138,6 +139,9 @@ function makeDeps(options: { failMint?: boolean } = {}) {
       throw new Error('not used');
     },
     async markConsumed() {},
+    async invalidateReference() {
+      invalidationCalls += 1;
+    },
   };
 
   const ticketClient = async () => ({
@@ -156,9 +160,20 @@ function makeDeps(options: { failMint?: boolean } = {}) {
       name: 'Math <A> "B"',
       captivePortalDomains: ['login.example.test'],
     })) as never,
+    renameArtifact: options.failPublish
+      ? () => {
+          throw new Error('publish exploded');
+        }
+      : undefined,
   });
 
-  return { service, mintCalls };
+  return {
+    service,
+    mintCalls,
+    get invalidationCalls() {
+      return invalidationCalls;
+    },
+  };
 }
 
 describe('windows-offline-installer artifact service', () => {
@@ -209,6 +224,22 @@ describe('windows-offline-installer artifact service', () => {
       (error: unknown) => error instanceof WindowsOfflineInstallerError
     );
 
+    assert.equal(existsSync(artifactsDir) && readdirSyncLength(artifactsDir) > 0, false);
+  });
+
+  test('revokes a minted reference when publishing the artifact fails', async () => {
+    const deps = makeDeps({ failPublish: true });
+    await assert.rejects(
+      () =>
+        deps.service.generate(
+          { organizationId: 'org-1', actorUserId: 'user-1', classroomId: 'room-1' },
+          { accessToken: 'access-token' }
+        ),
+      (error: unknown) =>
+        error instanceof WindowsOfflineInstallerError && error.code === 'ARTIFACT_PUBLISH_FAILED'
+    );
+
+    assert.equal(deps.invalidationCalls, 1);
     assert.equal(existsSync(artifactsDir) && readdirSyncLength(artifactsDir) > 0, false);
   });
 

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, beforeEach, describe, test } from 'node:test';
 
 import {
   checkWindowsOfflineInstallerReadiness,
+  resetWindowsOfflineInstallerReadinessCache,
   type WindowsOfflineInstallerReadiness,
 } from '../src/lib/windows-offline-installer-readiness.js';
 
@@ -53,6 +54,7 @@ after(() => {
 
 void describe('windows offline installer readiness', () => {
   beforeEach(() => {
+    resetWindowsOfflineInstallerReadinessCache();
     rmSync(templateDir, { recursive: true, force: true });
     rmSync(artifactsDir, { recursive: true, force: true });
   });
@@ -79,6 +81,31 @@ void describe('windows offline installer readiness', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  test('hashes once, reuses an unchanged template identity, and rechecks changes', () => {
+    writeTemplate({ sidecar: `${sha256}  file\n` });
+    mkdirSync(artifactsDir, { recursive: true });
+    let reads = 0;
+    const readTemplateFile = (filePath: string, encoding?: BufferEncoding) => {
+      reads += 1;
+      return encoding ? readFileSync(filePath, encoding) : readFileSync(filePath);
+    };
+
+    assertCode(checkWindowsOfflineInstallerReadiness({ env: env(), readTemplateFile }), 'OK');
+    const firstReadCount = reads;
+    assertCode(checkWindowsOfflineInstallerReadiness({ env: env(), readTemplateFile }), 'OK');
+    assert.equal(reads, firstReadCount);
+
+    writeFileSync(
+      path.join(templateDir, version, commit, 'OpenPath-Windows-Setup-Template.exe'),
+      Buffer.from('changed-template')
+    );
+    assertCode(
+      checkWindowsOfflineInstallerReadiness({ env: env(), readTemplateFile }),
+      'TEMPLATE_HASH_MISMATCH'
+    );
+    assert.ok(reads > firstReadCount);
   });
 
   test('reports config, template, sidecar, hash, and artifact failures', () => {

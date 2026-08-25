@@ -59,6 +59,7 @@ export interface ArtifactServiceDeps {
   now?: () => Date;
   assertAccess?: typeof assertOrgClassroomAccess;
   findClassroom?: typeof getClassroomById;
+  renameArtifact?: typeof renameSync;
 }
 
 const TTL_TOLERANCE_MS = 5 * 60 * 1000;
@@ -84,6 +85,7 @@ export function createWindowsOfflineInstallerService(deps: ArtifactServiceDeps =
   const now = deps.now ?? (() => new Date());
   const assertAccess = deps.assertAccess ?? assertOrgClassroomAccess;
   const findClassroom = deps.findClassroom ?? getClassroomById;
+  const renameArtifact = deps.renameArtifact ?? renameSync;
 
   function resolveTemplateDir(config = loadWindowsOfflineInstallerConfig()): string {
     return config.templateDir;
@@ -247,9 +249,16 @@ export function createWindowsOfflineInstallerService(deps: ArtifactServiceDeps =
 
     const publishedPath = path.join(artifactsDir, `${minted.ref.referenceHash.slice(0, 32)}.exe`);
     try {
-      renameSync(stagingPath, publishedPath);
+      renameArtifact(stagingPath, publishedPath);
     } catch {
       rmSync(stagingPath, { force: true });
+      try {
+        await refs.invalidateReference?.(minted.rawToken);
+      } catch {
+        logger.error('offline_installer_reference_invalidate_failed', {
+          templateVersion: config.templateVersion,
+        });
+      }
       logger.error('offline_installer_artifact_publish_failed', {
         templateVersion: config.templateVersion,
       });

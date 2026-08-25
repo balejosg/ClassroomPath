@@ -128,6 +128,27 @@ describe('windows-offline-installer download refs', () => {
     );
   });
 
+  test('deletes a freshly minted reference when artifact publication is rolled back', async () => {
+    const service = createWindowsOfflineDownloadRefsService();
+    const { rawToken } = await service.mintReference({
+      organizationId: ORG_ID,
+      classroomId: 'room-publish-failure',
+      classroomName: 'Publish failure room',
+      createdBy: 'user-1',
+      artifactSha256: 'f'.repeat(64),
+      artifactSize: 128,
+      ttlMinutes: 10,
+      maxAttempts: 3,
+    });
+
+    await service.invalidateReference(rawToken);
+
+    await assert.rejects(
+      () => service.consumeAttempt(rawToken),
+      (error: unknown) => error instanceof DownloadReferenceError && error.code === 'INVALID'
+    );
+  });
+
   test('rejects unknown references', async () => {
     const service = createWindowsOfflineDownloadRefsService();
     await assert.rejects(

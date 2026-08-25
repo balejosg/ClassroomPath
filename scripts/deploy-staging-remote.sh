@@ -172,7 +172,11 @@ write_release_state() {
     "$RESOLVED_OPENPATH_API_IMAGE" \
     "$RESOLVED_OPENPATH_VERSION" \
     "$RESOLVED_OPENPATH_LINUX_AGENT_VERSION" \
-    "$RESOLVED_SPA_IMAGE"
+    "$RESOLVED_SPA_IMAGE" \
+    "${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}" \
+    "${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}" \
+    "${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}" \
+    "${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:-}"
 }
 
 write_deploy_context() {
@@ -308,6 +312,10 @@ deploy_with_release_candidates() {
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_VERSION "${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT "${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG "${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_SHA256 "${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
 
   log_info "Pulling release candidate migrations image for ${STAGING_RELEASE_SHA:-origin-main}..."
@@ -342,17 +350,24 @@ ensure_staging_release_candidate_runtime_env() {
     return 0
   fi
 
-  if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
-    if [ -n "${STAGING_RELEASE_MANIFEST_FILE:-}" ] && [ -f "$STAGING_RELEASE_MANIFEST_FILE" ]; then
-      load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE" "${STAGING_RELEASE_SHA:-}"
-      STAGING_RELEASE_SHA="${RELEASE_MANIFEST_APP_SHA:-${STAGING_RELEASE_SHA:-}}"
-    fi
+  if [ -n "${STAGING_RELEASE_MANIFEST_FILE:-}" ] && [ -f "$STAGING_RELEASE_MANIFEST_FILE" ]; then
+    load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE" "${STAGING_RELEASE_SHA:-}"
+    STAGING_RELEASE_SHA="${RELEASE_MANIFEST_APP_SHA:-${STAGING_RELEASE_SHA:-}}"
   fi
 
-  if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
+  if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] ||
+    [ -z "${OPENPATH_VERSION:-}" ] ||
+    [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] ||
+    [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] ||
+    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}" ] ||
+    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}" ] ||
+    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}" ] ||
+    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:-}" ]; then
     log_error "Release candidate manifest did not export OpenPath runtime versions"
     return 1
   fi
+
+  require_windows_offline_installer_runtime_pin || return 1
 
   return 0
 }

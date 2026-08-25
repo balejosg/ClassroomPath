@@ -12,17 +12,17 @@ ensure_production_release_candidate_runtime_env() {
     return 0
   fi
 
-  if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
-    release_manifest_b64="${RELEASE_MANIFEST_B64_FROM_PAYLOAD:-${RELEASE_MANIFEST_B64:-}}"
-    if [ -n "$release_manifest_b64" ]; then
-      RELEASE_MANIFEST_FILE="$(mktemp)"
-      decode_release_manifest_base64 "$release_manifest_b64" "$RELEASE_MANIFEST_FILE" >/dev/null
-    fi
+  release_manifest_b64="${RELEASE_MANIFEST_B64_FROM_PAYLOAD:-${RELEASE_MANIFEST_B64:-}}"
+  if [ -n "$release_manifest_b64" ]; then
+    RELEASE_MANIFEST_FILE="$(mktemp)"
+    decode_release_manifest_base64 "$release_manifest_b64" "$RELEASE_MANIFEST_FILE" >/dev/null
+  fi
 
-    if [ -n "${RELEASE_MANIFEST_FILE:-}" ] && [ -f "$RELEASE_MANIFEST_FILE" ]; then
-      load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "${TARGET_SHA:-}"
-      TARGET_SHA="${RELEASE_MANIFEST_APP_SHA:-${TARGET_SHA:-}}"
-    fi
+  # A release manifest is authoritative even when a legacy host already has a
+  # complete, but stale, runtime pin in its environment.
+  if [ -n "${RELEASE_MANIFEST_FILE:-}" ] && [ -f "$RELEASE_MANIFEST_FILE" ]; then
+    load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "${TARGET_SHA:-}"
+    TARGET_SHA="${RELEASE_MANIFEST_APP_SHA:-${TARGET_SHA:-}}"
   fi
 
   if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
@@ -41,6 +41,8 @@ ensure_production_release_candidate_runtime_env() {
     return 1
   fi
 
+  require_windows_offline_installer_runtime_pin || return 1
+
   return 0
 }
 
@@ -53,6 +55,10 @@ apply_production_runtime_deploy_impl() {
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_VERSION "${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT "${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG "${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_SHA256 "${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
   export CP_REQUIRE_PUSH_NOTIFICATIONS=1
   bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"
@@ -92,7 +98,11 @@ apply_production_runtime_deploy_impl() {
     "$OPENPATH_API_IMAGE" \
     "${OPENPATH_VERSION:-}" \
     "${OPENPATH_LINUX_AGENT_VERSION:-}" \
-    "$CLASSROOMPATH_SPA_IMAGE"
+    "$CLASSROOMPATH_SPA_IMAGE" \
+    "$CP_OFFLINE_INSTALLER_TEMPLATE_VERSION" \
+    "$CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT" \
+    "$CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG" \
+    "$CP_OFFLINE_INSTALLER_TEMPLATE_SHA256"
 }
 
 start_production_runtime_impl() {

@@ -164,6 +164,14 @@ export function createWindowsOfflineDownloadRefsService(deps: RefsRepoDeps = {})
       );
   }
 
+  /** Removes a freshly minted reference when its artifact could not be published. */
+  async function invalidateReference(rawToken: string): Promise<void> {
+    const referenceHash = hashDownloadReference(rawToken);
+    await database
+      .delete(schema.cpWindowsOfflineDownloadRefs)
+      .where(eq(schema.cpWindowsOfflineDownloadRefs.referenceHash, referenceHash));
+  }
+
   /** Cleans up expired, exhausted, or consumed download references and their artifact files. */
   async function cleanupExpired(artifactsDir: string): Promise<number> {
     const expiredCutoff = now();
@@ -226,7 +234,7 @@ export function createWindowsOfflineDownloadRefsService(deps: RefsRepoDeps = {})
     };
   }
 
-  return { mintReference, consumeAttempt, markConsumed, cleanupExpired, now };
+  return { mintReference, consumeAttempt, markConsumed, invalidateReference, cleanupExpired, now };
 }
 
 export type WindowsOfflineDownloadRefsService = ReturnType<
