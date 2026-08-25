@@ -60,6 +60,7 @@ describe('Healthcheck Router', () => {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
+      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
     });
 
     assert.strictEqual(readiness.ready, true);
@@ -75,6 +76,7 @@ describe('Healthcheck Router', () => {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
+      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
     });
 
     assert.strictEqual(readiness.ready, true);
@@ -88,6 +90,7 @@ describe('Healthcheck Router', () => {
       fetchImpl: async () => {
         throw new Error('upstream down');
       },
+      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
     });
 
     assert.strictEqual(readiness.ready, false);
@@ -103,6 +106,7 @@ describe('Healthcheck Router', () => {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
+      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
     });
 
     assert.strictEqual(readiness.ready, false);

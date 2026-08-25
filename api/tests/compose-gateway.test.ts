@@ -46,6 +46,8 @@ await describe('compose-gateway', { concurrency: false }, async () => {
         databaseConnected: true,
         databaseSchemaReady: true,
         missingTables: [],
+        offlineInstallerReady: true,
+        offlineInstallerCode: 'OK',
       }),
       jsonBodyLimit: '1kb',
       trpcMiddleware,

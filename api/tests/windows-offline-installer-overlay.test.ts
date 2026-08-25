@@ -23,8 +23,10 @@ const CONFIG: WindowsOfflineInstallerConfig = {
   downloadRefTtlMinutes: 10,
   downloadRefMaxAttempts: 3,
   templateVersion: '4.1.0',
+  templateCommit: 'a'.repeat(40),
   templateSha256: 'a'.repeat(64),
-  templateCacheDir: '/tmp/cache',
+  templateDir: '/tmp/templates',
+  artifactsDir: '/tmp/artifacts',
   openpathUrl: 'https://openpath.example.test',
 };
 

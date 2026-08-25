@@ -109,7 +109,9 @@ COPY config/runtime-environment-policy.catalog.json ./config/runtime-environment
 COPY api/drizzle.config.ts ./api/
 COPY api/src/db ./api/src/db
 
-RUN mkdir -p /app/data /app/react-spa/dist/downloads && chown -R node:node /app
+ENV CP_OFFLINE_INSTALLER_TEMPLATE_DIR=/app/var/windows-offline-installer/templates
+ENV CP_OFFLINE_INSTALLER_ARTIFACTS_DIR=/app/var/windows-offline-installer/artifacts
+RUN mkdir -p /app/var/windows-offline-installer/templates /app/var/windows-offline-installer/artifacts /app/data /app/react-spa/dist/downloads && chown -R node:node /app
 
 WORKDIR /app/api
 USER node

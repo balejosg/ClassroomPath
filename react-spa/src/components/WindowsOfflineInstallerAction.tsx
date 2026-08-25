@@ -17,19 +17,19 @@ interface InstallerResult {
   downloadExpiresAt: string;
 }
 
-const DOWNLOAD_CACHE_SAFETY_MARGIN_MS = 30_000;
-const installerCache = new Map<string, InstallerResult>();
-
-function hasFreshDownloadUrl(result: InstallerResult, now = Date.now()): boolean {
-  const expiresAt = Date.parse(result.downloadExpiresAt);
-  return Number.isFinite(expiresAt) && expiresAt - now > DOWNLOAD_CACHE_SAFETY_MARGIN_MS;
+interface InstallerMetadata {
+  fileName: string;
+  version: string;
+  sha256: string;
+  tokenExpiresAt: string;
 }
 
 export default function WindowsOfflineInstallerAction({ classroomId }: Props): React.ReactElement {
   const t = useClassroomPathT();
   const [progress, setProgress] = useState<'idle' | 'generating' | 'ready' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<InstallerResult | null>(null);
+  const [result, setResult] = useState<InstallerMetadata | null>(null);
+  const [downloadHref, setDownloadHref] = useState<string | undefined>();
   const anchorRef = useRef<HTMLAnchorElement | null>(null);
   const programmaticNavigationRef = useRef(false);
 
@@ -37,30 +37,44 @@ export default function WindowsOfflineInstallerAction({ classroomId }: Props): R
     setProgress('idle');
     setError(null);
     setResult(null);
+    setDownloadHref(undefined);
   }, [classroomId]);
 
   const navigateWithResult = useCallback((nextResult: InstallerResult) => {
     flushSync(() => {
-      setResult(nextResult);
+      setResult({
+        fileName: nextResult.fileName,
+        version: nextResult.version,
+        sha256: nextResult.sha256,
+        tokenExpiresAt: nextResult.tokenExpiresAt,
+      });
+      setDownloadHref(nextResult.downloadUrl);
       setProgress('ready');
       setError(null);
     });
 
     const anchor = anchorRef.current;
-    if (!anchor) return;
+    if (!anchor) {
+      setDownloadHref(undefined);
+      return;
+    }
 
     programmaticNavigationRef.current = true;
-    anchor.click();
-    programmaticNavigationRef.current = false;
+    try {
+      anchor.click();
+    } finally {
+      programmaticNavigationRef.current = false;
+      setDownloadHref(undefined);
+    }
   }, []);
 
   const generateMutation = cpTrpcReact.windowsOfflineInstaller.generate.useMutation({
     onSuccess: (data) => {
-      installerCache.set(classroomId, data);
       navigateWithResult(data);
     },
     onError: () => {
       setResult(null);
+      setDownloadHref(undefined);
       setError(t('cp.offlineInstaller.error'));
       setProgress('error');
     },
@@ -80,17 +94,8 @@ export default function WindowsOfflineInstallerAction({ classroomId }: Props): R
     if (isGenerating) return;
 
     setError(null);
-    const cachedResult = installerCache.get(classroomId);
-    if (cachedResult && hasFreshDownloadUrl(cachedResult)) {
-      navigateWithResult(cachedResult);
-      return;
-    }
-
-    if (cachedResult) {
-      installerCache.delete(classroomId);
-    }
-
     setResult(null);
+    setDownloadHref(undefined);
     setProgress('generating');
     generateMutation.mutate({ classroomId });
   };
@@ -105,7 +110,7 @@ export default function WindowsOfflineInstallerAction({ classroomId }: Props): R
     <div className="flex flex-col items-end gap-1" data-testid="windows-offline-installer-action">
       <a
         ref={anchorRef}
-        href={result?.downloadUrl}
+        href={downloadHref}
         download={result?.fileName}
         role="link"
         aria-disabled={isGenerating ? 'true' : undefined}

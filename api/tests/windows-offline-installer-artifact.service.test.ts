@@ -82,14 +82,18 @@ function buildTemplateBytes(): Buffer {
 }
 
 const tempRoot = mkdtempSync(path.join(tmpdir(), 'cp-woi-artifact-'));
+const templateDir = path.join(tempRoot, 'templates');
+const artifactsDir = path.join(tempRoot, 'artifacts');
+const templateCommit = 'c'.repeat(40);
 let templateSha256 = '';
 const templateBaseLength = Buffer.byteLength('MZ-template');
 
 before(() => {
   const templateBytes = buildTemplateBytes();
   templateSha256 = createHash('sha256').update(templateBytes).digest('hex');
-  const dir = path.join(tempRoot, 'cache', '9.9.9', 'commit42');
-  mkdirSync(path.join(dir, 'artifacts'), { recursive: true });
+  const dir = path.join(templateDir, '9.9.9', templateCommit);
+  mkdirSync(dir, { recursive: true });
+  mkdirSync(artifactsDir, { recursive: true });
   writeFileSync(path.join(dir, 'OpenPath-Windows-Setup-Template.exe'), templateBytes);
   writeFileSync(
     path.join(dir, 'OpenPath-Windows-Setup-Template.exe.sha256'),
@@ -97,9 +101,10 @@ before(() => {
   );
 
   process.env.CP_OFFLINE_INSTALLER_TEMPLATE_VERSION = '9.9.9';
-  process.env.CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT = 'commit42';
+  process.env.CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT = templateCommit;
   process.env.CP_OFFLINE_INSTALLER_TEMPLATE_SHA256 = templateSha256;
-  process.env.CP_OFFLINE_INSTALLER_TEMPLATE_CACHE_DIR = path.join(tempRoot, 'cache');
+  process.env.CP_OFFLINE_INSTALLER_TEMPLATE_DIR = templateDir;
+  process.env.CP_OFFLINE_INSTALLER_ARTIFACTS_DIR = artifactsDir;
   process.env.OPENPATH_URL = 'https://openpath.example.test';
 });
 
@@ -107,7 +112,8 @@ after(() => {
   delete process.env.CP_OFFLINE_INSTALLER_TEMPLATE_VERSION;
   delete process.env.CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT;
   delete process.env.CP_OFFLINE_INSTALLER_TEMPLATE_SHA256;
-  delete process.env.CP_OFFLINE_INSTALLER_TEMPLATE_CACHE_DIR;
+  delete process.env.CP_OFFLINE_INSTALLER_TEMPLATE_DIR;
+  delete process.env.CP_OFFLINE_INSTALLER_ARTIFACTS_DIR;
   rmSync(tempRoot, { recursive: true, force: true });
 });
 
@@ -176,6 +182,8 @@ describe('windows-offline-installer artifact service', () => {
     );
 
     assert.ok(existsSync(artifact.artifactPath));
+    assert.equal(path.dirname(artifact.artifactPath), artifactsDir);
+    assert.ok(!artifact.artifactPath.startsWith(templateDir));
     assert.ok(
       !JSON.stringify({ ...artifact, artifactPath: '', reference: '' }).includes('ticket-token')
     );
@@ -192,8 +200,6 @@ describe('windows-offline-installer artifact service', () => {
 
   test('deletes the orphaned artifact when reference minting fails', async () => {
     const { service } = makeDeps({ failMint: true });
-    const artifactsDir = path.join(tempRoot, 'cache', 'artifacts');
-
     await assert.rejects(
       () =>
         service.generate(

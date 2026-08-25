@@ -6,6 +6,7 @@ import {
   isGatewayUpstreamReadyStatus,
   parseGatewayUpstreamReadiness,
 } from '../src/lib/gateway-readiness.js';
+import type { WindowsOfflineInstallerReadiness } from '../src/lib/windows-offline-installer-readiness.js';
 
 function trpcResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify({ result: { data } }), {
@@ -39,6 +40,7 @@ await describe('gateway readiness helpers', async () => {
     const readiness = await getGatewayReadiness({
       checkDatabase: async () => true,
       fetchImpl: async () => trpcResponse({ status: 'ok' }),
+      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
     });
 
     assert.deepStrictEqual(readiness, {
@@ -47,6 +49,8 @@ await describe('gateway readiness helpers', async () => {
       databaseConnected: true,
       databaseSchemaReady: true,
       missingTables: [],
+      offlineInstallerReady: true,
+      offlineInstallerCode: 'OK',
     });
   });
 
@@ -58,6 +62,7 @@ await describe('gateway readiness helpers', async () => {
         missingTables: ['cp_terms_acceptance'],
       }),
       fetchImpl: async () => trpcResponse({ status: 'ready' }),
+      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
     });
 
     assert.deepStrictEqual(readiness, {
@@ -66,6 +71,30 @@ await describe('gateway readiness helpers', async () => {
       databaseConnected: true,
       databaseSchemaReady: false,
       missingTables: ['cp_terms_acceptance'],
+      offlineInstallerReady: true,
+      offlineInstallerCode: 'OK',
+    });
+  });
+
+  await test('reports not ready when the local offline installer is broken', async () => {
+    const offlineInstaller: WindowsOfflineInstallerReadiness = {
+      ready: false,
+      code: 'TEMPLATE_MISSING',
+    };
+    const readiness = await getGatewayReadiness({
+      checkDatabase: async () => true,
+      fetchImpl: async () => trpcResponse({ status: 'ok' }),
+      checkOfflineInstaller: () => offlineInstaller,
+    });
+
+    assert.deepStrictEqual(readiness, {
+      ready: false,
+      upstreamAvailable: true,
+      databaseConnected: true,
+      databaseSchemaReady: true,
+      missingTables: [],
+      offlineInstallerReady: false,
+      offlineInstallerCode: 'TEMPLATE_MISSING',
     });
   });
 });

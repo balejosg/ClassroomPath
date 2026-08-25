@@ -4,6 +4,10 @@ import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { extractTrpcData } from './openpath/response.js';
 import { openPathTrpcUrl } from './openpath/trpc-client.js';
+import {
+  checkWindowsOfflineInstallerReadiness,
+  type WindowsOfflineInstallerReadiness,
+} from './windows-offline-installer-readiness.js';
 
 export interface GatewayDatabaseStatus {
   connected: boolean;
@@ -17,6 +21,8 @@ export interface GatewayReadiness {
   databaseConnected: boolean;
   databaseSchemaReady: boolean;
   missingTables: string[];
+  offlineInstallerReady: boolean;
+  offlineInstallerCode: WindowsOfflineInstallerReadiness['code'];
 }
 
 const requiredGatewayTableNames = Object.freeze(
@@ -95,12 +101,18 @@ export async function getGatewayReadiness(
   deps: {
     checkDatabase?: () => Promise<boolean | GatewayDatabaseStatus>;
     fetchImpl?: typeof fetch;
+    checkOfflineInstaller?: () =>
+      | WindowsOfflineInstallerReadiness
+      | Promise<WindowsOfflineInstallerReadiness>;
   } = {}
 ): Promise<GatewayReadiness> {
   const checkDatabase = deps.checkDatabase ?? defaultDatabaseCheck;
   const fetchImpl = deps.fetchImpl ?? fetch;
+  const checkOfflineInstaller =
+    deps.checkOfflineInstaller ?? (() => checkWindowsOfflineInstallerReadiness());
 
   const database = normalizeGatewayDatabaseStatus(await checkDatabase());
+  const offlineInstaller = await checkOfflineInstaller();
   let upstreamAvailable = false;
 
   try {
@@ -119,10 +131,13 @@ export async function getGatewayReadiness(
   }
 
   return {
-    ready: upstreamAvailable && database.connected && database.schemaReady,
+    ready:
+      upstreamAvailable && database.connected && database.schemaReady && offlineInstaller.ready,
     upstreamAvailable,
     databaseConnected: database.connected,
     databaseSchemaReady: database.schemaReady,
     missingTables: database.missingTables,
+    offlineInstallerReady: offlineInstaller.ready,
+    offlineInstallerCode: offlineInstaller.code,
   };
 }

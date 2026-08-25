@@ -2,6 +2,7 @@ import { createReadStream, existsSync, rmSync, statSync } from 'node:fs';
 import type { RequestHandler } from 'express';
 import {
   DownloadReferenceError,
+  logReferenceFailure,
   type WindowsOfflineDownloadRefsService,
 } from '../services/windows-offline-installer-download-refs.service.js';
 import { sanitizeWindowsInstallerFileName } from '../services/windows-offline-installer-artifact.service.js';
@@ -40,7 +41,7 @@ export function createWindowsOfflineInstallerDownloadHandler(
       .then(async (record) => {
         const artifactPath = deps.resolveArtifactPath(record.referenceHash);
         if (!existsSync(artifactPath) || !statSync(artifactPath).isFile()) {
-          logger.warn('Offline installer artifact missing for an active reference');
+          logger.warn('offline_installer_artifact_missing');
           res.status(404).json({ error: 'Installer artifact unavailable' });
           return;
         }
@@ -54,9 +55,9 @@ export function createWindowsOfflineInstallerDownloadHandler(
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
         const stream = createReadStream(artifactPath);
-        stream.on('error', (error) => {
-          logger.warn(`Offline installer download failed before completion: ${error.message}`);
-          res.destroy(error);
+        stream.on('error', () => {
+          logger.warn('offline_installer_download_stream_failed');
+          res.destroy();
         });
         stream.on('end', () => {
           deps.refs
@@ -70,18 +71,19 @@ export function createWindowsOfflineInstallerDownloadHandler(
                 }
               }
             })
-            .catch((error: unknown) => {
-              logger.error(`Could not mark offline installer reference consumed: ${String(error)}`);
+            .catch(() => {
+              logger.error('offline_installer_reference_consume_mark_failed');
             });
         });
         stream.pipe(res);
       })
       .catch((error: unknown) => {
         if (error instanceof DownloadReferenceError) {
+          logReferenceFailure(error.code);
           res.status(STATUS_BY_CODE[error.code]).json({ error: error.message });
           return;
         }
-        logger.error(`Offline installer download crashed: ${String(error)}`);
+        logger.error('offline_installer_download_failed');
         res.status(500).json({ error: 'Download failed' });
       });
   };

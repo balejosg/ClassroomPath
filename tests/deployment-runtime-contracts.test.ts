@@ -103,6 +103,22 @@ describe('Deployment runtime contracts', () => {
     assert.ok(gatewayDockerfile.includes('COPY react-spa/src ./react-spa/src'));
     assert.ok(
       gatewayDockerfile.includes(
+        'RUN mkdir -p /app/var/windows-offline-installer/templates /app/var/windows-offline-installer/artifacts'
+      )
+    );
+    assert.ok(
+      gatewayDockerfile.includes(
+        'CP_OFFLINE_INSTALLER_TEMPLATE_DIR=/app/var/windows-offline-installer/templates'
+      )
+    );
+    assert.ok(
+      gatewayDockerfile.includes(
+        'CP_OFFLINE_INSTALLER_ARTIFACTS_DIR=/app/var/windows-offline-installer/artifacts'
+      )
+    );
+    assert.doesNotMatch(gatewayDockerfile, /OpenPath-Windows-Setup-Template\.exe/);
+    assert.ok(
+      gatewayDockerfile.includes(
         'HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD curl -fsS http://127.0.0.1:3001/cp/ready || exit 1'
       )
     );
@@ -194,6 +210,10 @@ describe('Deployment runtime contracts', () => {
     assert.ok(content.includes('CLASSROOMPATH_VERIFIER_IMAGE='));
     assert.ok(content.includes('OPENPATH_LINUX_AGENT_VERSION='));
     assert.ok(content.includes('OPENPATH_VERSION='));
+    assert.ok(content.includes('windows_offline_installer_template_version='));
+    assert.ok(content.includes('windows_offline_installer_template_commit='));
+    assert.ok(content.includes('windows_offline_installer_template_release_tag='));
+    assert.ok(content.includes('windows_offline_installer_template_sha256='));
     assert.ok(content.includes('resolve-openpath-linux-agent-version.mjs'));
   });
 
@@ -557,6 +577,7 @@ describe('Deployment runtime contracts', () => {
       '  load_production_deploy_payload \\',
       '  prepare_production_checkout \\',
       '  load_production_release_manifest \\',
+      '  provision_windows_offline_installer_template \\',
       '  classify_production_migration_risk \\',
       '  cleanup_production_disk_if_needed \\',
       '  run_production_database_migrations \\',
@@ -566,6 +587,11 @@ describe('Deployment runtime contracts', () => {
 
     assert.ok(existsSync(deployHostPreflightHelperPath));
     assert.ok(deployHostPreflightHelper.includes('cleanup_docker_disk_if_needed()'));
+    assert.ok(
+      deployHostPreflightHelper.includes('provision_windows_offline_installer_template()') &&
+        deployHostPreflightHelper.includes('provision-windows-offline-installer-template.mjs') &&
+        deployHostPreflightHelper.includes('"$NODE_BIN" "$provisioner" --verify-only')
+    );
     assert.ok(
       stagingRemote.includes('source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"') &&
         productionRemote.includes('source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"')
@@ -584,7 +610,7 @@ describe('Deployment runtime contracts', () => {
         stagingRemote.includes('run_staging_email_delivery_preflight()') &&
         stagingRemote.includes('run_staging_preflight_checks()') &&
         stagingRemote.includes(
-          'run_remote_deploy_phase_group staging-preflight run_staging_runtime_validation run_staging_email_delivery_preflight'
+          'run_remote_deploy_phase_group staging-preflight provision_windows_offline_installer_template run_staging_runtime_validation run_staging_email_delivery_preflight'
         ) &&
         stagingRemote.includes('login_staging_release_candidate_registry()') &&
         stagingRemote.includes('cleanup_staging_disk_if_needed()') &&

@@ -27,10 +27,15 @@ services:
     environment:
       - CP_PORT=3001
       - OPENPATH_API_URL=http://api:3000
+      - OPENPATH_URL=${OPENPATH_URL:-http://api:3000}
+      - CP_OFFLINE_INSTALLER_TEMPLATE_DIR=/app/var/windows-offline-installer/templates
+      - CP_OFFLINE_INSTALLER_ARTIFACTS_DIR=/app/var/windows-offline-installer/artifacts
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     volumes:
       - /srv/classroompath/downloads:/app/react-spa/dist/downloads:ro
+      - ${CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR:-../var/windows-offline-installer/templates}:/app/var/windows-offline-installer/templates:ro
+      - windows-offline-installer-artifacts:/app/var/windows-offline-installer/artifacts:rw
     depends_on:
       - api
     healthcheck:
@@ -104,3 +109,4 @@ services:
 
 volumes:
   api-data:
+  windows-offline-installer-artifacts:

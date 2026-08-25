@@ -165,7 +165,7 @@ export function createWindowsOfflineDownloadRefsService(deps: RefsRepoDeps = {})
   }
 
   /** Cleans up expired, exhausted, or consumed download references and their artifact files. */
-  async function cleanupExpired(artifactsDir?: string): Promise<number> {
+  async function cleanupExpired(artifactsDir: string): Promise<number> {
     const expiredCutoff = now();
     const expiredRows = await database
       .select()
@@ -181,14 +181,16 @@ export function createWindowsOfflineDownloadRefsService(deps: RefsRepoDeps = {})
         )
       );
 
-    if (artifactsDir && existsSync(artifactsDir)) {
+    if (existsSync(artifactsDir)) {
       for (const row of expiredRows) {
         const filePath = path.join(artifactsDir, `${row.referenceHash.slice(0, 32)}.exe`);
         if (existsSync(filePath)) {
           try {
             rmSync(filePath, { force: true });
-          } catch (error) {
-            logger.warn(`Failed to remove expired artifact: ${filePath}`, { error });
+          } catch {
+            logger.warn('offline_installer_cleanup_failed', {
+              code: 'offline_installer_cleanup_failed',
+            });
           }
         }
       }
@@ -233,5 +235,5 @@ export type WindowsOfflineDownloadRefsService = ReturnType<
 
 export function logReferenceFailure(code: string): void {
   // Audit-safe: never logs raw tokens or payload contents.
-  logger.warn(`windows offline installer download reference rejected (${code})`);
+  logger.warn(`offline_installer_reference_${code.toLowerCase()}`);
 }

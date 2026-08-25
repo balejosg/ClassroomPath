@@ -84,8 +84,9 @@ function writePinnedTemplate(version: string, commit: string, sha256: string): v
 
 const TEMPLATE_BYTES = Buffer.concat([Buffer.from('MZ-template'), serializeTrailerPlaceholder()]);
 const TEMPLATE_SHA = createHash('sha256').update(TEMPLATE_BYTES).digest('hex');
+const TEMPLATE_COMMIT = 'a'.repeat(40);
 
-writePinnedTemplate('4.1.0', 'abc123', TEMPLATE_SHA);
+writePinnedTemplate('4.1.0', TEMPLATE_COMMIT, TEMPLATE_SHA);
 
 after(() => {
   rmSync(tempRoot, { recursive: true, force: true });
@@ -95,27 +96,77 @@ void describe('windows-offline-installer template cache', () => {
   void test('loads a matching cached template and reports its coordinates', () => {
     const template = loadCachedWindowsOfflineTemplate(tempRoot, {
       version: '4.1.0',
-      commit: 'abc123',
+      commit: TEMPLATE_COMMIT,
       sha256: TEMPLATE_SHA,
     });
 
     assert.equal(template.version, '4.1.0');
-    assert.equal(template.commit, 'abc123');
+    assert.equal(template.commit, TEMPLATE_COMMIT);
     assert.equal(template.sha256, TEMPLATE_SHA);
   });
 
-  void test('fails closed on missing version/commit, bad sidecar, or hash mismatch', () => {
+  void test('fails closed on missing version or full commit', () => {
     assert.throws(
       () =>
         loadCachedWindowsOfflineTemplate(tempRoot, {
           version: '9.9.9',
-          commit: 'abc123',
+          commit: TEMPLATE_COMMIT,
           sha256: TEMPLATE_SHA,
         }),
       WindowsOfflineTemplateCacheError
     );
 
-    const staleDir = path.join(tempRoot, '4.1.0', 'deadbeef');
+    assert.throws(
+      () =>
+        loadCachedWindowsOfflineTemplate(tempRoot, {
+          version: '4.1.0',
+          commit: 'b'.repeat(40),
+          sha256: TEMPLATE_SHA,
+        }),
+      WindowsOfflineTemplateCacheError
+    );
+  });
+
+  void test('fails closed when sidecar is missing or malformed', () => {
+    const missingSidecarDir = path.join(tempRoot, '4.1.1', TEMPLATE_COMMIT);
+    mkdirSync(missingSidecarDir, { recursive: true });
+    writeFileSync(
+      path.join(missingSidecarDir, 'OpenPath-Windows-Setup-Template.exe'),
+      TEMPLATE_BYTES
+    );
+    assert.throws(
+      () =>
+        loadCachedWindowsOfflineTemplate(tempRoot, {
+          version: '4.1.1',
+          commit: TEMPLATE_COMMIT,
+          sha256: TEMPLATE_SHA,
+        }),
+      /missing its \.sha256 sidecar/
+    );
+
+    const malformedSidecarDir = path.join(tempRoot, '4.1.2', TEMPLATE_COMMIT);
+    mkdirSync(malformedSidecarDir, { recursive: true });
+    writeFileSync(
+      path.join(malformedSidecarDir, 'OpenPath-Windows-Setup-Template.exe'),
+      TEMPLATE_BYTES
+    );
+    writeFileSync(
+      path.join(malformedSidecarDir, 'OpenPath-Windows-Setup-Template.exe.sha256'),
+      'not-a-digest  file\n'
+    );
+    assert.throws(
+      () =>
+        loadCachedWindowsOfflineTemplate(tempRoot, {
+          version: '4.1.2',
+          commit: TEMPLATE_COMMIT,
+          sha256: TEMPLATE_SHA,
+        }),
+      /sidecar is malformed/
+    );
+  });
+
+  void test('fails closed when sidecar or template bytes disagree with config', () => {
+    const staleDir = path.join(tempRoot, '4.1.3', TEMPLATE_COMMIT);
     mkdirSync(staleDir, { recursive: true });
     writeFileSync(path.join(staleDir, 'OpenPath-Windows-Setup-Template.exe'), TEMPLATE_BYTES);
     writeFileSync(
@@ -126,11 +177,32 @@ void describe('windows-offline-installer template cache', () => {
     assert.throws(
       () =>
         loadCachedWindowsOfflineTemplate(tempRoot, {
-          version: '4.1.0',
-          commit: 'deadbeef',
+          version: '4.1.3',
+          commit: TEMPLATE_COMMIT,
           sha256: TEMPLATE_SHA,
         }),
-      /sidecar/
+      /sidecar does not match/
+    );
+
+    const bytesMismatchDir = path.join(tempRoot, '4.1.4', TEMPLATE_COMMIT);
+    mkdirSync(bytesMismatchDir, { recursive: true });
+    writeFileSync(
+      path.join(bytesMismatchDir, 'OpenPath-Windows-Setup-Template.exe'),
+      Buffer.from('different-template')
+    );
+    writeFileSync(
+      path.join(bytesMismatchDir, 'OpenPath-Windows-Setup-Template.exe.sha256'),
+      `${TEMPLATE_SHA}  file\n`
+    );
+
+    assert.throws(
+      () =>
+        loadCachedWindowsOfflineTemplate(tempRoot, {
+          version: '4.1.4',
+          commit: TEMPLATE_COMMIT,
+          sha256: TEMPLATE_SHA,
+        }),
+      /bytes do not match/
     );
   });
 });

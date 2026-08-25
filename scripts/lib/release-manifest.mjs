@@ -17,6 +17,10 @@ import { readFileSync, writeFileSync } from 'node:fs';
  *   linux_agent_apt_suite: string;
  *   spa_image: string;
  *   verifier_image: string;
+ *   windows_offline_installer_template_version?: string;
+ *   windows_offline_installer_template_commit?: string;
+ *   windows_offline_installer_template_release_tag?: string;
+ *   windows_offline_installer_template_sha256?: string;
  * }} CanonicalReleaseManifest
  */
 
@@ -66,6 +70,33 @@ function requireManifestKeys(assignments, keys, prefix) {
   }
 }
 
+function readOfflineInstallerPin(assignments) {
+  const values = {
+    windows_offline_installer_template_version:
+      assignments.windows_offline_installer_template_version ??
+      assignments.CP_OFFLINE_INSTALLER_TEMPLATE_VERSION ??
+      '',
+    windows_offline_installer_template_commit:
+      assignments.windows_offline_installer_template_commit ??
+      assignments.CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT ??
+      '',
+    windows_offline_installer_template_release_tag:
+      assignments.windows_offline_installer_template_release_tag ??
+      assignments.CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG ??
+      '',
+    windows_offline_installer_template_sha256:
+      assignments.windows_offline_installer_template_sha256 ??
+      assignments.CP_OFFLINE_INSTALLER_TEMPLATE_SHA256 ??
+      '',
+  };
+  const present = Object.values(values).filter(Boolean).length;
+  if (present === 0) return {};
+  if (present !== Object.keys(values).length) {
+    throw new Error('Release manifest must contain the complete Windows offline installer pin');
+  }
+  return values;
+}
+
 /**
  * @param {string} text
  * @param {{ sha?: string }} [options]
@@ -81,6 +112,8 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
     );
   }
 
+  const offlineInstallerPin = readOfflineInstallerPin(assignments);
+
   return /** @type {CanonicalReleaseManifest} */ ({
     repository: assignments.repository,
     run_id: assignments.run_id,
@@ -94,6 +127,7 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
     linux_agent_apt_suite: assignments.linux_agent_apt_suite,
     spa_image: assignments.spa_image,
     verifier_image: assignments.verifier_image,
+    ...offlineInstallerPin,
   });
 }
 
@@ -111,10 +145,15 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
  *   linuxAgentAptSuite: string;
  *   spaImage: string;
  *   verifierImage: string;
+ *   windowsOfflineInstallerTemplateVersion?: string;
+ *   windowsOfflineInstallerTemplateCommit?: string;
+ *   windowsOfflineInstallerTemplateReleaseTag?: string;
+ *   windowsOfflineInstallerTemplateSha256?: string;
  * }}
  */
 export function parseArtifactReleaseManifestText(text, options = {}) {
   const assignments = parseManifestAssignments(text);
+  const offlineInstallerPin = readOfflineInstallerPin(assignments);
   const manifest = {
     appSha: assignments.APP_SHA,
     gatewayImage: assignments.CLASSROOMPATH_GATEWAY_IMAGE,
@@ -126,6 +165,18 @@ export function parseArtifactReleaseManifestText(text, options = {}) {
     linuxAgentAptSuite: assignments.OPENPATH_LINUX_AGENT_APT_SUITE ?? '',
     spaImage: assignments.CLASSROOMPATH_SPA_IMAGE,
     verifierImage: assignments.CLASSROOMPATH_VERIFIER_IMAGE,
+    ...(offlineInstallerPin.windows_offline_installer_template_version
+      ? {
+          windowsOfflineInstallerTemplateVersion:
+            offlineInstallerPin.windows_offline_installer_template_version,
+          windowsOfflineInstallerTemplateCommit:
+            offlineInstallerPin.windows_offline_installer_template_commit,
+          windowsOfflineInstallerTemplateReleaseTag:
+            offlineInstallerPin.windows_offline_installer_template_release_tag,
+          windowsOfflineInstallerTemplateSha256:
+            offlineInstallerPin.windows_offline_installer_template_sha256,
+        }
+      : {}),
   };
 
   for (const [key, value] of Object.entries(manifest)) {
@@ -173,6 +224,16 @@ export function buildCanonicalReleaseManifest({ repository, runId, manifest }) {
     linux_agent_apt_suite: manifest.linuxAgentAptSuite,
     spa_image: manifest.spaImage,
     verifier_image: manifest.verifierImage,
+    ...(manifest.windowsOfflineInstallerTemplateVersion
+      ? {
+          windows_offline_installer_template_version:
+            manifest.windowsOfflineInstallerTemplateVersion,
+          windows_offline_installer_template_commit: manifest.windowsOfflineInstallerTemplateCommit,
+          windows_offline_installer_template_release_tag:
+            manifest.windowsOfflineInstallerTemplateReleaseTag,
+          windows_offline_installer_template_sha256: manifest.windowsOfflineInstallerTemplateSha256,
+        }
+      : {}),
   };
 }
 
@@ -181,7 +242,17 @@ export function buildCanonicalReleaseManifest({ repository, runId, manifest }) {
  * @returns {string}
  */
 export function serializeReleaseManifest(manifest) {
-  return `${CANONICAL_RELEASE_MANIFEST_KEYS.map((key) => `${key}=${manifest[key]}`).join('\n')}\n`;
+  /** @type {string[]} */
+  const keys = [...CANONICAL_RELEASE_MANIFEST_KEYS];
+  if (manifest.windows_offline_installer_template_version) {
+    keys.push(
+      'windows_offline_installer_template_version',
+      'windows_offline_installer_template_commit',
+      'windows_offline_installer_template_release_tag',
+      'windows_offline_installer_template_sha256'
+    );
+  }
+  return `${keys.map((key) => `${key}=${manifest[key]}`).join('\n')}\n`;
 }
 
 /**

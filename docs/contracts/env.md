@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: ClassroomPath runtime config, Docker deploys, and local staging deploys
-> Last verified: 2026-04-13
+> Last verified: 2026-08-25
 > Source of truth: `docs/contracts/env.md`
 
 Source files:
@@ -42,6 +42,7 @@ address) when public DNS or TLS is not yet warm.
 
 - `CP_PORT`: gateway listen port, defaults to `3001`
 - `OPENPATH_API_URL`: upstream OpenPath API target, defaults to `http://api:3000`
+- `OPENPATH_URL`: canonical upstream URL embedded in Windows offline-installer payloads
 - `OPENPATH_ACCESS_TOKEN_COOKIE_NAME`: optional cookie-auth bridge for selected upstream REST routes
 - `CP_JSON_LIMIT`: optional JSON body size limit for gateway requests
 
@@ -114,12 +115,21 @@ upstream OpenPath service.
 ### Windows Offline Installer
 
 Read by `api/src/lib/windows-offline-installer-config.ts` (`loadWindowsOfflineInstallerConfig`).
-Generation fails closed when a required variable is missing.
+The template source is the exact public OpenPath release identified by
+`CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG`; provisioning downloads only the
+two release assets, verifies their sidecar and bytes, then publishes them
+before the gateway starts. Runtime never resolves a branch, uses `latest`, or
+downloads during an HTTP request.
 
 Required:
 
-- `CP_OFFLINE_INSTALLER_TEMPLATE_SHA256`: hex SHA-256 of the pinned installer template zip in the template cache
-- `CP_OFFLINE_INSTALLER_TEMPLATE_VERSION`: template version string surfaced in generated artifact metadata
+- `CP_OFFLINE_INSTALLER_TEMPLATE_VERSION`: functional OpenPath release version, for example `4.1.0`
+- `CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT`: full 40-character lowercase OpenPath source commit; never inferred from version
+- `CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG`: exact OpenPath release tag, normally `scripts-v<version>-<short-sha>`; provisioning verifies version and commit prefix coherence
+- `CP_OFFLINE_INSTALLER_TEMPLATE_SHA256`: lowercase 64-character SHA-256 of `OpenPath-Windows-Setup-Template.exe`
+- `CP_OFFLINE_INSTALLER_TEMPLATE_DIR`: container template root, mounted read-only at `/app/var/windows-offline-installer/templates`
+- `CP_OFFLINE_INSTALLER_ARTIFACTS_DIR`: container artifact root, writable and separate from the template root at `/app/var/windows-offline-installer/artifacts`
+- `CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR`: deploy-side host directory populated by provisioning and bind-mounted read-only into the gateway; the example path is relative to `docker/docker-compose.yml`
 - `OPENPATH_URL`: upstream OpenPath base URL used to build embedded enrollment endpoints (also carried for other features)
 
 Optional (defaults shown):
@@ -127,7 +137,32 @@ Optional (defaults shown):
 - `CP_OFFLINE_INSTALLER_TOKEN_TTL_HOURS`: `24` -- enrollment-token TTL requested from OpenPath when generating an offline installer
 - `CP_OFFLINE_INSTALLER_DOWNLOAD_TTL_MINUTES`: `10` -- lifetime of a single-use download reference
 - `CP_OFFLINE_INSTALLER_DOWNLOAD_MAX_ATTEMPTS`: `3` -- download attempts allowed per reference
-- `CP_OFFLINE_INSTALLER_TEMPLATE_CACHE_DIR`: `./var/windows-offline-installer` -- local cache of the pinned NSIS template artifacts
+- `CP_OFFLINE_INSTALLER_TEMPLATE_CACHE_DIR`: deprecated compatibility fallback only; when both new directory variables are absent it maps to `templateDir` and `templateDir/artifacts`. New Docker deployments must not use it.
+
+The final template layout is `<templateDir>/<version>/<full-commit>/` with the
+EXE and `.sha256` sidecar. Customized EXEs and staging files live only under
+`artifactsDir`, which is a dedicated Docker named volume and is not served by
+the SPA static root. `scripts/provision-windows-offline-installer-template.mjs
+--verify-only` checks the existing template without network or mutation.
+
+`/cp/ready` treats this installer capability as mandatory. It checks config,
+template/sidecar hashes, and effective artifact-directory writeability locally;
+it never provisions or calls GitHub. The dedicated
+`scripts/windows-offline-installer-canary.mjs` can be run with a canary teacher
+session cookie or access token; its evidence records status, filename, size,
+and hashes but never the download URL, raw reference, authorization, JWT, or
+enrollment token.
+
+The release-candidate manifest carries the four pinned template values. The
+deployment preflight exports those values before running provisioning, so a
+host `.env` cannot silently select a different OpenPath release. For an
+authorized post-deploy evidence run, use
+`npm run canary:windows-offline-installer` with
+`WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL`,
+`WINDOWS_OFFLINE_INSTALLER_CANARY_CLASSROOM_ID`, and either
+`WINDOWS_OFFLINE_INSTALLER_CANARY_ACCESS_TOKEN` or
+`WINDOWS_OFFLINE_INSTALLER_CANARY_COOKIE`. This command is prepared for gates
+but is not run by the local implementation checks.
 
 ## Local Staging Deploy File (`.env.local`)
 

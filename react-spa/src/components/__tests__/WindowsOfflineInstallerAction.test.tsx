@@ -55,15 +55,15 @@ vi.mock('../../i18n/classroompath-i18n', () => ({
 }));
 
 function buildResult(
-  downloadExpiresAt = new Date(Date.now() + 5 * 60_000).toISOString()
+  downloadUrl = '/cp/api/windows-offline-installer/download?ref=abc'
 ): InstallerResult {
   return {
     fileName: 'OpenPath-Offline-Setup.exe',
     version: '4.1.0',
     sha256: 'a'.repeat(64),
     tokenExpiresAt: '2026-08-22T00:00:00.000Z',
-    downloadUrl: '/cp/api/windows-offline-installer/download?ref=abc',
-    downloadExpiresAt,
+    downloadUrl,
+    downloadExpiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
   };
 }
 
@@ -107,7 +107,12 @@ describe('WindowsOfflineInstallerAction', () => {
   });
 
   it('assigns the generated URL and filename before navigating the visible link', async () => {
-    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    let navigatedHref = '';
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement
+    ) {
+      navigatedHref = this.getAttribute('href') ?? '';
+    });
     const user = userEvent.setup();
     renderAction('classroom-success');
 
@@ -117,7 +122,8 @@ describe('WindowsOfflineInstallerAction', () => {
 
     await waitFor(() => {
       const link = screen.getByRole('link', { name: 'Download Windows installer (.exe)' });
-      expect(link).toHaveAttribute('href', result.downloadUrl);
+      expect(navigatedHref).toBe(result.downloadUrl);
+      expect(link).not.toHaveAttribute('href');
       expect(link).toHaveAttribute('download', result.fileName);
       expect(anchorClick).toHaveBeenCalledTimes(1);
     });
@@ -136,39 +142,36 @@ describe('WindowsOfflineInstallerAction', () => {
     expect(generateMutate).toHaveBeenCalledTimes(2);
   });
 
-  it('reuses a fresh cached response for the same classroom without mutating again', async () => {
-    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  it('generates a fresh reference for every explicit click', async () => {
+    const navigatedHrefs: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement
+    ) {
+      navigatedHrefs.push(this.getAttribute('href') ?? '');
+    });
     const user = userEvent.setup();
-    const first = renderAction('classroom-cache');
-
-    await user.click(screen.getByRole('link', { name: 'Download Windows installer (.exe)' }));
-    resolveSuccess(buildResult());
-    await waitFor(() => expect(anchorClick).toHaveBeenCalledTimes(1));
-
-    first.unmount();
-    generateMutate.mockClear();
     renderAction('classroom-cache');
 
     await user.click(screen.getByRole('link', { name: 'Download Windows installer (.exe)' }));
-
-    expect(generateMutate).not.toHaveBeenCalled();
-    expect(anchorClick).toHaveBeenCalledTimes(2);
-  });
-
-  it('remints a cached response that is expired or inside the safety window', async () => {
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    const user = userEvent.setup();
-    const first = renderAction('classroom-expired');
-
-    await user.click(screen.getByRole('link', { name: 'Download Windows installer (.exe)' }));
-    resolveSuccess(buildResult(new Date(Date.now() + 1_000).toISOString()));
-
-    first.unmount();
-    generateMutate.mockClear();
-    renderAction('classroom-expired');
+    resolveSuccess(buildResult('/cp/api/windows-offline-installer/download?ref=A'));
+    await waitFor(() =>
+      expect(navigatedHrefs).toEqual(['/cp/api/windows-offline-installer/download?ref=A'])
+    );
 
     await user.click(screen.getByRole('link', { name: 'Download Windows installer (.exe)' }));
 
-    expect(generateMutate).toHaveBeenCalledWith({ classroomId: 'classroom-expired' });
+    expect(generateMutate).toHaveBeenCalledTimes(2);
+    resolveSuccess(buildResult('/cp/api/windows-offline-installer/download?ref=B'));
+    await waitFor(() =>
+      expect(navigatedHrefs).toEqual([
+        '/cp/api/windows-offline-installer/download?ref=A',
+        '/cp/api/windows-offline-installer/download?ref=B',
+      ])
+    );
+    expect(navigatedHrefs).not.toEqual([
+      '/cp/api/windows-offline-installer/download?ref=A',
+      '/cp/api/windows-offline-installer/download?ref=A',
+    ]);
+    expect(screen.getByRole('link')).not.toHaveAttribute('href');
   });
 });

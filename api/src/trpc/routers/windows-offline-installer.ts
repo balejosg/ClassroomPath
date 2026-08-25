@@ -26,7 +26,10 @@ function toTrpcError(error: unknown): unknown {
       message: 'Failed to generate offline installer',
     });
   }
-  return error;
+  return new TRPCError({
+    code: 'INTERNAL_SERVER_ERROR',
+    message: 'Failed to generate offline installer',
+  });
 }
 
 const generateInput = z.object({

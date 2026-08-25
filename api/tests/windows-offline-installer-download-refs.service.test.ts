@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 
 process.env.DATABASE_URL ??= [
@@ -131,5 +134,42 @@ describe('windows-offline-installer download refs', () => {
       () => service.consumeAttempt('no-such-reference'),
       (error: unknown) => error instanceof DownloadReferenceError && error.code === 'INVALID'
     );
+  });
+
+  test('cleanup removes only expired artifacts from artifactsDir', async () => {
+    let currentNow = new Date('2026-08-21T12:00:00.000Z');
+    const service = createWindowsOfflineDownloadRefsService({ now: () => currentNow });
+    const { ref } = await service.mintReference({
+      organizationId: ORG_ID,
+      classroomId: 'room-cleanup',
+      classroomName: 'Cleanup room',
+      createdBy: 'user-1',
+      artifactSha256: 'e'.repeat(64),
+      artifactSize: 16,
+      ttlMinutes: 1,
+      maxAttempts: 3,
+    });
+
+    const root = mkdtempSync(path.join(tmpdir(), 'cp-woi-cleanup-'));
+    const artifactsDir = path.join(root, 'artifacts');
+    const templateDir = path.join(root, 'templates');
+    mkdirSync(artifactsDir, { recursive: true });
+    mkdirSync(templateDir, { recursive: true });
+    const artifactPath = path.join(artifactsDir, `${ref.referenceHash.slice(0, 32)}.exe`);
+    const templatePath = path.join(templateDir, 'OpenPath-Windows-Setup-Template.exe');
+    const sidecarPath = `${templatePath}.sha256`;
+    writeFileSync(artifactPath, 'expired artifact');
+    writeFileSync(templatePath, 'immutable template');
+    writeFileSync(sidecarPath, 'template-sidecar');
+
+    try {
+      currentNow = new Date('2026-08-21T12:02:00.000Z');
+      assert.ok((await service.cleanupExpired(artifactsDir)) >= 1);
+      assert.equal(existsSync(artifactPath), false);
+      assert.equal(existsSync(templatePath), true);
+      assert.equal(existsSync(sidecarPath), true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

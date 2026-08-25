@@ -10,6 +10,7 @@ import { composeGatewayApp } from './lib/gateway/compose-gateway.js';
 import { createWindowsOfflineInstallerDownloadHandler } from './lib/windows-offline-installer-route.js';
 import { createWindowsOfflineDownloadRefsService } from './services/windows-offline-installer-download-refs.service.js';
 import { getGatewayReadiness } from './lib/gateway-readiness.js';
+import { resolveWindowsOfflineInstallerArtifactsDir } from './lib/windows-offline-installer-config.js';
 import {
   clientCanaryGroupDiagnosticsHandler,
   clientCanaryManualBillingApprovalHandler,
@@ -23,12 +24,6 @@ import { logTrpcError } from './trpc/trpc.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-function resolveWindowsOfflineArtifactDir(): string {
-  const cacheDir =
-    process.env.CP_OFFLINE_INSTALLER_TEMPLATE_CACHE_DIR ?? './var/windows-offline-installer';
-  return path.join(path.resolve(cacheDir), 'artifacts');
-}
 
 export function createGatewayApp(options: GatewayAppOptions = {}) {
   assertRuntimeSecretsConfigured();
@@ -63,7 +58,10 @@ export function createGatewayApp(options: GatewayAppOptions = {}) {
     windowsOfflineInstallerDownloadHandler: createWindowsOfflineInstallerDownloadHandler({
       refs: createWindowsOfflineDownloadRefsService(),
       resolveArtifactPath: (referenceHash) =>
-        path.join(resolveWindowsOfflineArtifactDir(), `${referenceHash.slice(0, 32)}.exe`),
+        path.join(
+          resolveWindowsOfflineInstallerArtifactsDir(),
+          `${referenceHash.slice(0, 32)}.exe`
+        ),
     }),
     serveSpa: gatewayConfig.serveSpa,
     reactSpaPath,

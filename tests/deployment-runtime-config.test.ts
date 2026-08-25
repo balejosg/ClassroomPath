@@ -113,6 +113,37 @@ void describe('Docker Compose Configuration', () => {
     );
   });
 
+  void test('gateway separates read-only template storage from writable artifact volume', () => {
+    const content = readFileSync(composePath, 'utf-8');
+    const compose = parseYaml(content) as DockerCompose;
+    const gateway = compose.services['gateway'];
+
+    assert.ok(
+      gateway.environment?.includes(
+        'CP_OFFLINE_INSTALLER_TEMPLATE_DIR=/app/var/windows-offline-installer/templates'
+      )
+    );
+    assert.ok(
+      gateway.environment?.includes(
+        'CP_OFFLINE_INSTALLER_ARTIFACTS_DIR=/app/var/windows-offline-installer/artifacts'
+      )
+    );
+    assert.ok(gateway.environment?.includes('OPENPATH_URL=${OPENPATH_URL:-http://api:3000}'));
+    assert.ok(
+      gateway.volumes?.some(
+        (volume) =>
+          volume.includes('${CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR') &&
+          volume.includes(':/app/var/windows-offline-installer/templates:ro')
+      )
+    );
+    assert.ok(
+      gateway.volumes?.includes(
+        'windows-offline-installer-artifacts:/app/var/windows-offline-installer/artifacts:rw'
+      )
+    );
+    assert.ok('windows-offline-installer-artifacts' in (compose.volumes ?? {}));
+  });
+
   void test('SPA service is properly configured', () => {
     const content = readFileSync(composePath, 'utf-8');
     const compose = parseYaml(content) as DockerCompose;
@@ -286,12 +317,36 @@ void describe('Environment Configuration', () => {
     );
   });
 
+  void test('.env.example documents canonical Windows offline installer pins and storage', () => {
+    const content = readFileSync(envExamplePath, 'utf-8');
+    for (const envVar of [
+      'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_SHA256',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_DIR',
+      'CP_OFFLINE_INSTALLER_ARTIFACTS_DIR',
+      'CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR',
+      'CP_OFFLINE_INSTALLER_TOKEN_TTL_HOURS',
+      'CP_OFFLINE_INSTALLER_DOWNLOAD_TTL_MINUTES',
+      'CP_OFFLINE_INSTALLER_DOWNLOAD_MAX_ATTEMPTS',
+    ]) {
+      assert.ok(content.includes(envVar), `${envVar} should be documented`);
+    }
+    assert.ok(content.includes('CP_OFFLINE_INSTALLER_TEMPLATE_CACHE_DIR'));
+    assert.match(content, /deprecated/i);
+  });
+
   void test('.env.example does not contain actual secrets', () => {
     const content = readFileSync(envExamplePath, 'utf-8');
     const lines = content.split('\n');
 
     for (const line of lines) {
-      if (line.includes('SECRET') || line.includes('PASSWORD') || line.includes('TOKEN')) {
+      if (
+        line.includes('SECRET') ||
+        line.includes('PASSWORD') ||
+        (line.includes('TOKEN') && !line.includes('TOKEN_TTL'))
+      ) {
         const [key, value] = line.split('=');
         if (key && value && !line.startsWith('#')) {
           assert.ok(

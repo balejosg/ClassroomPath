@@ -35,6 +35,10 @@ jobs:
       openpath_version: ${{ steps.linux-agent.outputs.openpath_version }}
       openpath_linux_agent_version: ${{ steps.linux-agent.outputs.version }}
       openpath_linux_agent_apt_suite: ${{ steps.linux-agent.outputs.apt_suite }}
+      windows_offline_installer_template_version: ${{ steps.offline-installer.outputs.template_version }}
+      windows_offline_installer_template_commit: ${{ steps.offline-installer.outputs.template_commit }}
+      windows_offline_installer_template_release_tag: ${{ steps.offline-installer.outputs.template_release_tag }}
+      windows_offline_installer_template_sha256: ${{ steps.offline-installer.outputs.template_sha256 }}
       gateway_tag: ${{ steps.image-refs.outputs.gateway_tag }}
       migrations_tag: ${{ steps.image-refs.outputs.migrations_tag }}
       openpath_firefox_assets_tag: ${{ steps.image-refs.outputs.openpath_firefox_assets_tag }}
@@ -97,6 +101,13 @@ jobs:
 
           node scripts/resolve-openpath-linux-agent-version.mjs \
             --openpath-dir upstream/openpath >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Windows offline installer template pin
+        id: offline-installer
+        env:
+          OPENPATH_VERSION: ${{ steps.linux-agent.outputs.openpath_version }}
+          OPENPATH_SHA: ${{ steps.openpath.outputs.sha }}
+        run: node scripts/resolve-windows-offline-installer-template-pin.mjs >> "$GITHUB_OUTPUT"
 
   verify-openpath-prerelease-apt:
     name: Verify OpenPath Prerelease APT
@@ -451,6 +462,10 @@ jobs:
           OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_version }}
           OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_version }}
           OPENPATH_LINUX_AGENT_APT_SUITE=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_apt_suite }}
+          windows_offline_installer_template_version=${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_version }}
+          windows_offline_installer_template_commit=${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_commit }}
+          windows_offline_installer_template_release_tag=${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_release_tag }}
+          windows_offline_installer_template_sha256=${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_sha256 }}
           CLASSROOMPATH_SPA_IMAGE=${{ needs.build-spa-release-candidate.outputs.image }}
           CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.build-verifier-release-candidate.outputs.image }}
           EOF

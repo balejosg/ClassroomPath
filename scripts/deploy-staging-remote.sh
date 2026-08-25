@@ -588,7 +588,7 @@ run_staging_email_delivery_preflight() {
 }
 
 run_staging_preflight_checks() {
-  run_remote_deploy_phase_group staging-preflight run_staging_runtime_validation run_staging_email_delivery_preflight
+  run_remote_deploy_phase_group staging-preflight provision_windows_offline_installer_template run_staging_runtime_validation run_staging_email_delivery_preflight
 }
 
 cleanup_staging_disk_if_needed() {
