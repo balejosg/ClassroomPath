@@ -1,0 +1,12 @@
+{
+  "name": "@size-limit/preset-app",
+  "version": "12.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "dependencies": {
+    "@size-limit/file": "12.1.0"
+  }
+}
