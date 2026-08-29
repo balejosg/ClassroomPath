@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: ClassroomPath runtime config, Docker deploys, and local staging deploys
-> Last verified: 2026-08-28
+> Last verified: 2026-08-29
 > Source of truth: `docs/contracts/env.md`
 
 Source files:
@@ -151,7 +151,15 @@ The forward migration that retires the historical ClassroomPath download-ref
 table is intentionally deferred by normal migration runs. Apply it only after
 the deployed canonical path and legacy drain are evidenced, using the explicit
 `--confirm-windows-offline-installer-legacy-retirement` migration command; this
-confirmation is not a runtime feature switch.
+confirmation is not a runtime feature switch. The old personalized-artifact
+volume is retired separately, and only with the same explicit confirmation,
+through the manual one-shot
+`ops:retire-windows-offline-installer-legacy-storage` command documented in
+[`docs/runbooks/windows-offline-installer-legacy-retirement.md`](../runbooks/windows-offline-installer-legacy-retirement.md).
+That helper resolves the effective Compose volume through both Compose identity
+labels and an exact name/driver check; it never selects the canonical OpenPath
+`windows_offline_installer_artifacts` volume and is never invoked by a normal
+deploy.
 
 ## Local Staging Deploy File (`.env.local`)
 

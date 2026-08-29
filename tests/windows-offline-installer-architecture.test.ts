@@ -42,8 +42,15 @@ test('ClassroomPath has one Windows offline installer lifecycle: the OpenPath ca
 
   const scanRoots = ['api/src', 'config', 'docker', 'react-spa/src', 'scripts'];
   const sourceFiles = scanRoots.flatMap((root) => walk(join(projectRoot, root)));
+  const legacyStorageRetirementPath = 'scripts/retire-windows-offline-installer-legacy-storage.mjs';
+  assert.equal(
+    existsSync(join(projectRoot, legacyStorageRetirementPath)),
+    true,
+    'the legacy artifact volume may exist only behind an explicit retirement helper'
+  );
   const retiredRoute = ['/cp/api', '/windows-offline-installer/download'].join('');
   const retiredRoutePolicyPath = 'api/src/lib/openpath-proxy-policy.ts';
+  const legacyArtifactVolumeKey = 'windows-offline-installer-artifacts';
   const forbiddenFragments = [
     ['CP', '_OFFLINE_INSTALLER_'].join(''),
     'createWindowsOfflineInstallerDownloadHandler',
@@ -60,12 +67,16 @@ test('ClassroomPath has one Windows offline installer lifecycle: the OpenPath ca
   const violations: string[] = [];
   for (const file of sourceFiles) {
     const content = readFileSync(file, 'utf8');
+    const relativePath = relative(projectRoot, file);
     if (content.includes(retiredRoute) && relative(projectRoot, file) !== retiredRoutePolicyPath) {
-      violations.push(`${relative(projectRoot, file)} contains an active retired installer route`);
+      violations.push(`${relativePath} contains an active retired installer route`);
+    }
+    if (content.includes(legacyArtifactVolumeKey) && relativePath !== legacyStorageRetirementPath) {
+      violations.push(`${relativePath} contains active legacy installer storage wiring`);
     }
     for (const fragment of forbiddenFragments) {
       if (content.includes(fragment)) {
-        violations.push(`${relative(projectRoot, file)} contains ${fragment}`);
+        violations.push(`${relativePath} contains ${fragment}`);
       }
     }
   }

@@ -16,6 +16,7 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
 import type { OpenPathForwardRequest } from './headers.js';
+import { resolveGatewayConfig } from '../gateway-config.js';
 import { parseOpenPathPayload } from './response.js';
 import { callOpenPathTrpc, type OpenPathTrpcCallOptions } from './trpc-client.js';
 
@@ -130,6 +131,7 @@ export interface OpenPathGateway {
 
 export interface OpenPathGatewayOptions {
   fetchImpl?: typeof fetch;
+  publicOrigin?: string;
 }
 
 export interface AuthenticatedOpenPathGatewayParams {
@@ -214,8 +216,44 @@ function throwSafeWindowsOfflineInstallerError(error: unknown): never {
   });
 }
 
+function resolvePublicOrigin(configuredOrigin: string): string {
+  const parsed = new URL(configuredOrigin);
+
+  if (
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    (parsed.pathname !== '' && parsed.pathname !== '/')
+  ) {
+    throw new Error('Invalid ClassroomPath public origin');
+  }
+
+  return parsed.origin;
+}
+
+function rebuildPublicWindowsOfflineInstallerDownloadUrl(
+  upstreamDownloadUrl: string,
+  publicOrigin: string
+): string {
+  const upstreamUrl = new URL(upstreamDownloadUrl);
+  const ref = upstreamUrl.searchParams.get('ref');
+
+  if (!ref) {
+    throw new Error('OpenPath returned an empty offline installer reference');
+  }
+
+  const publicUrl = new URL(CANONICAL_WINDOWS_OFFLINE_INSTALLER_DOWNLOAD_PATH, publicOrigin);
+  publicUrl.searchParams.set('ref', ref);
+  return publicUrl.toString();
+}
+
 export function createOpenPathGateway(options: OpenPathGatewayOptions = {}): OpenPathGateway {
   const fetchImpl = options.fetchImpl;
+  const publicOrigin = resolvePublicOrigin(
+    options.publicOrigin ?? resolveGatewayConfig().publicOrigin
+  );
 
   return {
     healthLive: () =>
@@ -265,11 +303,19 @@ export function createOpenPathGateway(options: OpenPathGatewayOptions = {}): Ope
           )
         );
 
-        return parseOpenPathPayload(
+        const metadata = parseOpenPathPayload(
           payload,
           WINDOWS_OFFLINE_INSTALLER_METADATA_SCHEMA,
           'OpenPath returned invalid offline installer metadata'
         );
+
+        return {
+          ...metadata,
+          downloadUrl: rebuildPublicWindowsOfflineInstallerDownloadUrl(
+            metadata.downloadUrl,
+            publicOrigin
+          ),
+        };
       } catch (error) {
         throwSafeWindowsOfflineInstallerError(error);
       }

@@ -35,6 +35,7 @@ describe('OpenPathGateway Windows offline installer adapter', () => {
     let seenBody = '';
 
     const gateway = createOpenPathGateway({
+      publicOrigin: 'https://classroompath.example',
       fetchImpl: async (input, init) => {
         seenUrl = String(input);
         seenMethod = String(init?.method);
@@ -56,6 +57,54 @@ describe('OpenPathGateway Windows offline installer adapter', () => {
     assert.equal(seenHeaders['X-Forwarded-For'], '203.0.113.7');
     assert.deepEqual(JSON.parse(seenBody), { classroomId: 'classroom-7' });
     assert.deepEqual(result, metadata);
+  });
+
+  it('rebuilds attacker-controlled upstream origins as the ClassroomPath same-origin URL', async () => {
+    const opaqueRef = 'opaque-A_123-xyz';
+    const upstreamOrigins = [
+      'https://attacker.example/api/windows-offline-installer/download?ref=opaque-A_123-xyz',
+      'http://api:3000/api/windows-offline-installer/download?ref=opaque-A_123-xyz',
+    ];
+
+    for (const downloadUrl of upstreamOrigins) {
+      const gateway = createOpenPathGateway({
+        publicOrigin: 'https://classroompath.example',
+        fetchImpl: async () => trpcResponse({ ...metadata, downloadUrl }),
+      });
+
+      const result = await gateway.generateWindowsOfflineInstaller({
+        token: 'teacher-access-token',
+        input: { classroomId: 'classroom-7' },
+      });
+      const publicDownloadUrl = new URL(result.downloadUrl);
+
+      assert.equal(publicDownloadUrl.origin, 'https://classroompath.example');
+      assert.equal(publicDownloadUrl.pathname, '/api/windows-offline-installer/download');
+      assert.deepEqual([...publicDownloadUrl.searchParams.keys()], ['ref']);
+      assert.equal(publicDownloadUrl.searchParams.get('ref'), opaqueRef);
+      assert.equal(result.downloadUrl.includes('attacker.example'), false);
+      assert.equal(result.downloadUrl.includes('api:3000'), false);
+    }
+  });
+
+  it('preserves the opaque ref through URL query serialization', async () => {
+    const opaqueRef = 'opaque/ref + value?';
+    const upstreamUrl = new URL('https://api:3000/api/windows-offline-installer/download');
+    upstreamUrl.searchParams.set('ref', opaqueRef);
+    const gateway = createOpenPathGateway({
+      publicOrigin: 'https://classroompath.example',
+      fetchImpl: async () => trpcResponse({ ...metadata, downloadUrl: upstreamUrl.toString() }),
+    });
+
+    const result = await gateway.generateWindowsOfflineInstaller({
+      token: 'teacher-access-token',
+      input: { classroomId: 'classroom-7' },
+    });
+    const publicDownloadUrl = new URL(result.downloadUrl);
+
+    assert.deepEqual([...publicDownloadUrl.searchParams.keys()], ['ref']);
+    assert.equal(publicDownloadUrl.searchParams.get('ref'), opaqueRef);
+    assert.equal(publicDownloadUrl.origin, 'https://classroompath.example');
   });
 
   it('rejects malformed upstream metadata without returning a ref or accepting a generic payload', async () => {
@@ -82,6 +131,49 @@ describe('OpenPathGateway Windows offline installer adapter', () => {
           ...metadata,
           downloadUrl: 'https://classroompath.example/api/other-download?ref=opaque-A',
         }),
+    });
+
+    await assert.rejects(
+      gateway.generateWindowsOfflineInstaller({
+        token: 'teacher-access-token',
+        input: { classroomId: 'classroom-7' },
+      }),
+      (error: unknown) =>
+        error instanceof TRPCError &&
+        error.code === 'INTERNAL_SERVER_ERROR' &&
+        error.message === 'OpenPath returned invalid offline installer metadata'
+    );
+  });
+
+  it('rejects credentials, fragments, missing refs, extra parameters, and unexpected metadata', async () => {
+    const invalidDownloads = [
+      'https://user:password@classroompath.example/api/windows-offline-installer/download?ref=opaque-A',
+      'https://classroompath.example/api/windows-offline-installer/download?ref=opaque-A#fragment',
+      'https://classroompath.example/api/windows-offline-installer/download',
+      'https://classroompath.example/api/windows-offline-installer/download?ref=opaque-A&extra=1',
+    ];
+
+    for (const downloadUrl of invalidDownloads) {
+      const gateway = createOpenPathGateway({
+        publicOrigin: 'https://classroompath.example',
+        fetchImpl: async () => trpcResponse({ ...metadata, downloadUrl }),
+      });
+
+      await assert.rejects(
+        gateway.generateWindowsOfflineInstaller({
+          token: 'teacher-access-token',
+          input: { classroomId: 'classroom-7' },
+        }),
+        (error: unknown) =>
+          error instanceof TRPCError &&
+          error.code === 'INTERNAL_SERVER_ERROR' &&
+          error.message === 'OpenPath returned invalid offline installer metadata'
+      );
+    }
+
+    const gateway = createOpenPathGateway({
+      publicOrigin: 'https://classroompath.example',
+      fetchImpl: async () => trpcResponse({ ...metadata, unexpected: 'value' }),
     });
 
     await assert.rejects(

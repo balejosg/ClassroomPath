@@ -147,6 +147,17 @@ void describe('Docker Compose Configuration', () => {
       provision.command?.join('\n').includes('dist/scripts/provision-windows-offline-installer.js')
     );
     assert.ok(
+      provision.volumes?.includes(
+        'windows_offline_installer_templates:/app/var/windows-offline-installer/templates'
+      ),
+      'the provisioner must receive the template volume read-write'
+    );
+    assert.equal(
+      provision.volumes?.some((value) => value.includes('windows_offline_installer_artifacts')),
+      false,
+      'the provisioner must not receive the artifact volume'
+    );
+    assert.ok(
       api.volumes?.includes(
         'windows_offline_installer_templates:/app/var/windows-offline-installer/templates:ro'
       )
@@ -155,6 +166,13 @@ void describe('Docker Compose Configuration', () => {
       api.volumes?.includes(
         'windows_offline_installer_artifacts:/app/var/windows-offline-installer/artifacts:rw'
       )
+    );
+    assert.equal(
+      api.volumes?.some(
+        (value) => value.includes('windows_offline_installer_templates:') && !value.endsWith(':ro')
+      ),
+      false,
+      'the API must never mount the template volume read-write'
     );
     assert.ok(
       content.includes(
@@ -284,6 +302,39 @@ void describe('Docker Compose Configuration', () => {
     assert.ok(
       content.includes('CMD ["node", "dist/src/server.js"]'),
       'Runtime image should execute the API from the /app/api working directory'
+    );
+  });
+
+  void test('API runtime image prepares both OpenPath installer roots before USER node', () => {
+    const content = readFileSync(apiDockerfilePath, 'utf-8');
+    const userNodeIndex = content.lastIndexOf('USER node');
+    const runtimeSetup = content.slice(content.indexOf('# Final production image'), userNodeIndex);
+
+    assert.ok(userNodeIndex >= 0, 'Dockerfile.api must keep node as the final runtime user');
+    assert.match(
+      runtimeSetup,
+      /mkdir -p[\s\S]*\/app\/var\/windows-offline-installer\/templates[\s\S]*\/app\/var\/windows-offline-installer\/artifacts/u,
+      'the image must create both canonical installer roots before dropping privileges'
+    );
+    assert.match(
+      runtimeSetup,
+      /chown -R node:node \/app/u,
+      'the canonical installer roots must be owned by the node runtime user'
+    );
+    assert.match(
+      runtimeSetup,
+      /chmod 0755 \/app\/var\/windows-offline-installer\/templates/u,
+      'the template root must be provisioner-writable and API-readable'
+    );
+    assert.match(
+      runtimeSetup,
+      /chmod 0700 \/app\/var\/windows-offline-installer\/artifacts/u,
+      'the artifact root must remain private to the runtime user'
+    );
+    assert.ok(
+      runtimeSetup.indexOf('chmod 0700 /app/var/windows-offline-installer/artifacts') <
+        content.indexOf('USER node'),
+      'installer root preparation must precede USER node'
     );
   });
 });

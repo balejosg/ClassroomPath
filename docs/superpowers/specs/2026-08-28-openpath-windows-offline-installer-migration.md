@@ -141,6 +141,8 @@ gate have been proven in the target environment.
 | `api/src/db/schema.ts` legacy refs table                                                           | `MIGRATE_THEN_REMOVE`     | Remove the runtime schema after the forward retirement migration is deployed after drain.                                                  |
 | `api/drizzle/0010_windows_offline_installer.sql`                                                   | `TEMPORARY_COMPATIBILITY` | Preserve historical migration unchanged; never edit it in place.                                                                           |
 | new forward DB migration for `cp_windows_offline_download_refs`                                    | `MIGRATE_THEN_REMOVE`     | Drop the unused legacy table only after the no-new-writes/TTL/no-consumers gate.                                                           |
+| `scripts/retire-windows-offline-installer-legacy-storage.mjs`                                      | `TEMPORARY_COMPATIBILITY` | Keep as an explicit one-shot drain operation until the legacy artifact volume is retired; resolve only the exact Compose-labelled volume.  |
+| legacy `windows-offline-installer-artifacts` Docker volume                                         | `MIGRATE_THEN_REMOVE`     | Leave untouched during normal cutover; after ref/runtime drain and DB retirement, remove only after exact project/key label verification.  |
 | `api/scripts/baseline-cp-migrations.ts` retirement filter                                          | `TEMPORARY_COMPATIBILITY` | Keep 0011 out of the baseline ledger until the explicit retirement migration is applied; remove this exception after the table is retired. |
 | `api/scripts/migrate-cp.ts`                                                                        | `TEMPORARY_COMPATIBILITY` | Use a filtered normal runner and an explicit one-shot confirmation for destructive 0011; remove the guard after retirement.                |
 | `scripts/run-migrations.sh`, `scripts/run-migrations-docker.sh`, `scripts/run-migrations-image.sh` | `TEMPORARY_COMPATIBILITY` | Carry the explicit drain confirmation to the migration process; default deployment never passes it.                                        |
@@ -169,10 +171,14 @@ gate have been proven in the target environment.
    until an operator invokes the one-shot
    `--confirm-windows-offline-installer-legacy-retirement` command after the
    deployed drain gate; no runtime feature switch or legacy fallback remains.
-6. For an authorized staging cutover, prove login/enrollment UI or API, wrapper
+6. After the canonical path, ref TTL/invalidations, and legacy-consumer drain
+   are proven, apply the deferred DB retirement and then invoke the separate
+   exact-label storage retirement helper. A normal deploy never deletes the
+   old volume, and no old `.exe` is copied to OpenPath.
+7. For an authorized staging cutover, prove login/enrollment UI or API, wrapper
    policy, canonical generate, a 200 attachment, and safe length/hash evidence;
    also prove no new legacy refs/artifacts.
-7. Only after the traffic/drain gates are proven may an operator apply the
+8. Only after the traffic/drain gates are proven may an operator apply the
    destructive DB/storage cleanup. A rollback uses a coherent ClassroomPath /
    OpenPath release pair; no mixed legacy/canonical runtime is supported.
 

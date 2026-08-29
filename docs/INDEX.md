@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: first-party ClassroomPath documentation
-> Last verified: 2026-04-16
+> Last verified: 2026-08-29
 > Source of truth: `docs/INDEX.md`
 
 This index is the entrypoint for the maintained ClassroomPath documentation set.
@@ -51,6 +51,7 @@ Rules:
 - Public billing provider note: [`docs/runbooks/configure-stripe-billing.md`](runbooks/configure-stripe-billing.md)
 - Public staging QA note: [`docs/runbooks/staging-qa-fixtures.md`](runbooks/staging-qa-fixtures.md)
 - Public Windows runner recovery note: [`docs/runbooks/windows-runner-recovery.md`](runbooks/windows-runner-recovery.md)
+- Windows offline installer legacy retirement: [`docs/runbooks/windows-offline-installer-legacy-retirement.md`](runbooks/windows-offline-installer-legacy-retirement.md)
 - Deploy target example: [`config/deploy-targets.example.json`](../config/deploy-targets.example.json)
 - Update OpenPath submodule boundary: [`docs/runbooks/update-openpath-submodule.md`](runbooks/update-openpath-submodule.md)
 - Add a cross-system mutation: [`docs/runbooks/add-cross-system-mutation.md`](runbooks/add-cross-system-mutation.md)
