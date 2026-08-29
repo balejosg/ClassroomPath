@@ -11,10 +11,29 @@ import { DEFAULT_JWT_SECRET } from '../src/config/shared.js';
 void describe('runtime config', () => {
   void test('resolvePublicUrl normalizes explicit URLs and falls back in development', () => {
     assert.equal(
-      resolvePublicUrl({ NODE_ENV: 'production', PUBLIC_URL: 'https://classroompath.test/app/' }),
-      'https://classroompath.test/app'
+      resolvePublicUrl({ NODE_ENV: 'production', PUBLIC_URL: 'https://classroompath.test/' }),
+      'https://classroompath.test'
     );
     assert.equal(resolvePublicUrl({ NODE_ENV: 'development' }), 'http://localhost:5173');
+  });
+
+  void test('resolvePublicUrl rejects values that are not a bare public origin', () => {
+    for (const publicUrl of [
+      'https://classroompath.test/app',
+      'https://classroompath.test/./',
+      'https://classroompath.test/%2e%2e',
+      'https://@classroompath.test',
+      'https://user:password@classroompath.test',
+      'https://classroompath.test?tenant=one',
+      'https://classroompath.test?',
+      'https://classroompath.test#fragment',
+      'https://classroompath.test#',
+    ]) {
+      assert.throws(
+        () => resolvePublicUrl({ NODE_ENV: 'production', PUBLIC_URL: publicUrl }),
+        /bare.*origin|PUBLIC_URL/u
+      );
+    }
   });
 
   void test('requireJwtSecret uses the test default and enforces explicit production secrets', () => {

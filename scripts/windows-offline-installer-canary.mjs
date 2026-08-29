@@ -19,7 +19,35 @@ function required(value, name) {
 }
 
 function normalizeBaseUrl(value) {
-  return required(value, 'WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL').replace(/\/+$/u, '');
+  const rawValue = required(value, 'WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL');
+  let parsed;
+  try {
+    parsed = new URL(rawValue);
+  } catch {
+    throw new Error('WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL must be a valid absolute URL');
+  }
+
+  const schemeSeparator = rawValue.indexOf('://');
+  const authorityStart = schemeSeparator + 3;
+  const remainder = schemeSeparator >= 0 ? rawValue.slice(authorityStart) : '';
+  const suffixOffset = remainder.search(/[/?#]/u);
+  const authority = suffixOffset === -1 ? remainder : remainder.slice(0, suffixOffset);
+  const suffix = suffixOffset === -1 ? '' : remainder.slice(suffixOffset);
+
+  if (
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    schemeSeparator < 0 ||
+    parsed.username ||
+    parsed.password ||
+    authority.includes('@') ||
+    suffix.includes('?') ||
+    suffix.includes('#') ||
+    (suffix !== '' && suffix !== '/')
+  ) {
+    throw new Error('WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL must be a bare http(s) origin');
+  }
+
+  return parsed.origin;
 }
 
 function extractTrpcData(payload) {
@@ -31,6 +59,16 @@ function extractTrpcData(payload) {
 
 function hashBytes(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+function hasUrlUserInfo(value) {
+  const schemeSeparator = value.indexOf('://');
+  if (schemeSeparator < 0) return false;
+
+  const remainder = value.slice(schemeSeparator + 3);
+  const suffixOffset = remainder.search(/[/?#]/u);
+  const authority = suffixOffset === -1 ? remainder : remainder.slice(0, suffixOffset);
+  return authority.includes('@');
 }
 
 function writeEvidence(outputPath, evidence) {
@@ -70,7 +108,12 @@ function parseCanonicalDownloadUrl(downloadUrl, baseUrl) {
   const base = new URL(baseUrl);
   if (
     parsed.origin !== base.origin ||
+    parsed.username ||
+    parsed.password ||
+    hasUrlUserInfo(downloadUrl) ||
+    downloadUrl.includes('#') ||
     parsed.pathname !== CANONICAL_DOWNLOAD_PATH ||
+    parsed.searchParams.size !== 1 ||
     !parsed.searchParams.get('ref')
   ) {
     return null;

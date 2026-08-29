@@ -52,7 +52,11 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   },
   {
     name: 'docker-runtime',
-    patterns: ['^docker/.+$', '^config/deploy-targets\\.json$'],
+    patterns: [
+      '^docker/.+$',
+      '^config/deploy-targets\\.json$',
+      '^scripts/(?:retire-windows-offline-installer-legacy-storage|windows-offline-installer-volume-smoke)\\.mjs$',
+    ],
     capabilities: { ciRelevant: true, verificationScope: 'ops-regression' },
     ...releasePolicy(),
   },
@@ -77,7 +81,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'deploy-shell',
     patterns: [
-      '^scripts/(?:deploy-.+|detect-email-delivery-risk|detect-windows-firefox-risk|rollback-.+|persist-.+|run-staging-release-gate|tag-production-release|verify-production-promotion-ready|verify-staging-release-state)\\.sh$',
+      '^scripts/(?:deploy-.+|detect-email-delivery-risk|detect-windows-firefox-risk|rollback-.+|persist-.+|run-migrations(?:-docker|-image)?|run-staging-release-gate|tag-production-release|verify-production-promotion-ready|verify-staging-release-state)\\.sh$',
       '^scripts/lib/(?:deployment-state|release-execution|release-risk|release-risk-policy|release-runtime|release-state|remote-bootstrap|remote-deploy-scaffold|deploy-production-context|deploy-production-runtime|staging-gates)\\.sh$',
     ],
     capabilities: { ciRelevant: true, verificationScope: 'ops-regression' },
@@ -326,6 +330,8 @@ export const REGRESSION_PLAN_DEFINITIONS = {
       'tests/resolve-latest-verifier-image.test.ts',
       'tests/release-gate-policy.test.ts',
       'tests/wait-for-release-candidate.test.ts',
+      'tests/windows-offline-installer-legacy-retirement.test.ts',
+      'tests/windows-offline-installer-volume-runtime.test.ts',
     ],
   },
   'workflow-config': {

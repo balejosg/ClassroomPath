@@ -5,7 +5,10 @@ import { resolve } from 'node:path';
 
 import {
   CANONICAL_ARTIFACT_VOLUME_KEY,
+  LEGACY_RETIREMENT_CONFIRMATION_ENV,
   LEGACY_ARTIFACT_VOLUME_KEY,
+  LEGACY_RETIREMENT_CONFIRMATION_FLAG,
+  parseLegacyRetirementCliArgs,
   retireLegacyWindowsOfflineInstallerStorage,
 } from '../scripts/retire-windows-offline-installer-legacy-storage.mjs';
 
@@ -85,12 +88,51 @@ describe('legacy Windows offline installer storage retirement', () => {
     assert.deepEqual(calls, [], 'confirmation must be checked before Docker mutation or lookup');
   });
 
+  it('does not treat the DB confirmation environment variable as storage confirmation', async () => {
+    const { calls, runDocker } = runnerFor();
+    const parsed = parseLegacyRetirementCliArgs(['--project-name', projectName], {
+      [LEGACY_RETIREMENT_CONFIRMATION_ENV]: '1',
+    });
+
+    assert.equal(parsed.confirmedByCli, false);
+    await assert.rejects(
+      retireLegacyWindowsOfflineInstallerStorage({ ...parsed, runDocker }),
+      /explicit legacy-retirement confirmation/u
+    );
+    assert.deepEqual(calls, [], 'DB migration confirmation must never authorize Docker deletion');
+  });
+
+  it('requires the effective Compose project to be supplied by the CLI', () => {
+    assert.throws(
+      () =>
+        parseLegacyRetirementCliArgs([LEGACY_RETIREMENT_CONFIRMATION_FLAG], {
+          COMPOSE_PROJECT_NAME: projectName,
+          [LEGACY_RETIREMENT_CONFIRMATION_ENV]: '1',
+        }),
+      /--project-name/u
+    );
+  });
+
+  it('accepts the CLI confirmation flag independently of the DB environment variable', async () => {
+    const { calls, runDocker } = runnerFor();
+    const parsed = parseLegacyRetirementCliArgs(
+      ['--project-name', projectName, LEGACY_RETIREMENT_CONFIRMATION_FLAG],
+      { [LEGACY_RETIREMENT_CONFIRMATION_ENV]: '1' }
+    );
+
+    assert.equal(parsed.confirmedByCli, true);
+    const result = await retireLegacyWindowsOfflineInstallerStorage({ ...parsed, runDocker });
+
+    assert.deepEqual(result, { status: 'removed', volumeName: legacyVolumeName });
+    assert.ok(calls.some((args) => args[0] === 'volume' && args[1] === 'rm'));
+  });
+
   it('removes only the exact, strongly identified legacy Compose volume', async () => {
     const { calls, runDocker } = runnerFor();
 
     const result = await retireLegacyWindowsOfflineInstallerStorage({
       projectName,
-      confirmed: true,
+      confirmedByCli: true,
       runDocker,
     });
 
@@ -120,7 +162,7 @@ describe('legacy Windows offline installer storage retirement', () => {
     await assert.doesNotReject(
       retireLegacyWindowsOfflineInstallerStorage({
         projectName,
-        confirmed: true,
+        confirmedByCli: true,
         runDocker,
       })
     );
@@ -134,7 +176,7 @@ describe('legacy Windows offline installer storage retirement', () => {
 
     const result = await retireLegacyWindowsOfflineInstallerStorage({
       projectName,
-      confirmed: true,
+      confirmedByCli: true,
       runDocker,
     });
 
@@ -168,7 +210,7 @@ describe('legacy Windows offline installer storage retirement', () => {
       await assert.rejects(
         retireLegacyWindowsOfflineInstallerStorage({
           projectName,
-          confirmed: true,
+          confirmedByCli: true,
           runDocker,
         }),
         /identity|label|legacy/u
@@ -193,7 +235,7 @@ describe('legacy Windows offline installer storage retirement', () => {
       await assert.rejects(
         retireLegacyWindowsOfflineInstallerStorage({
           projectName,
-          confirmed: true,
+          confirmedByCli: true,
           runDocker,
         }),
         /identity|ambiguous|canonical|legacy/u
@@ -214,7 +256,7 @@ describe('legacy Windows offline installer storage retirement', () => {
     await assert.rejects(
       retireLegacyWindowsOfflineInstallerStorage({
         projectName,
-        confirmed: true,
+        confirmedByCli: true,
         runDocker: ambiguous.runDocker,
       }),
       /ambiguous|identity/u
@@ -222,7 +264,7 @@ describe('legacy Windows offline installer storage retirement', () => {
 
     await assert.rejects(
       retireLegacyWindowsOfflineInstallerStorage({
-        confirmed: true,
+        confirmedByCli: true,
         runDocker: ambiguous.runDocker,
       }),
       /project name/u

@@ -94,4 +94,34 @@ await describe('gateway config', async () => {
       /non-localhost/i
     );
   });
+
+  await test('rejects a missing or non-origin PUBLIC_URL in the gateway boundary', () => {
+    const invalidPublicUrls = [
+      undefined,
+      'https://classroompath.test/app',
+      'https://classroompath.test/./',
+      'https://classroompath.test/%2e%2e',
+      'https://@classroompath.test',
+      'https://user:password@classroompath.test',
+      'https://classroompath.test?tenant=one',
+      'https://classroompath.test?',
+      'https://classroompath.test#fragment',
+      'https://classroompath.test#',
+    ];
+
+    for (const publicUrl of invalidPublicUrls) {
+      assert.throws(
+        () =>
+          resolveGatewayConfig(
+            {},
+            {
+              NODE_ENV: 'production',
+              ...(publicUrl === undefined ? {} : { PUBLIC_URL: publicUrl }),
+              CORS_ORIGINS: 'https://classroompath.test',
+            }
+          ),
+        /PUBLIC_URL|origin/u
+      );
+    }
+  });
 });

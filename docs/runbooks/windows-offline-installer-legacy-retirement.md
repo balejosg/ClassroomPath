@@ -40,10 +40,16 @@ canonical deployment and all of the following:
 The helper also requires the effective Compose project name. It never guesses a
 project from a volume name and never uses a name-only prefix match.
 
+The DB migration confirmation and the physical storage confirmation are separate
+authorizations. The migration environment variable
+`CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1` is scoped to the
+deferred DB migration only; it never authorizes this helper and must not be used
+as a persistent runtime setting.
+
 ## Explicit command
 
 Set `COMPOSE_PROJECT_NAME` to the project name used by the running stack and
-pass the same value explicitly:
+pass the same value explicitly with the required `--project-name` argument:
 
 ```sh
 COMPOSE_PROJECT_NAME=<effective-project-name> \
@@ -52,10 +58,10 @@ COMPOSE_PROJECT_NAME=<effective-project-name> \
   --confirm-windows-offline-installer-legacy-retirement
 ```
 
-The command fails closed unless the confirmation flag is present (the same
-confirmation may be supplied through
-`CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1`). It first looks
-up the exact old Compose volume using both labels:
+The command fails closed unless the confirmation flag is present in that exact
+invocation. The DB migration environment variable is ignored by this storage
+helper, even when it is set to `1`. It first looks up the exact old Compose
+volume using both labels:
 
 ```text
 com.docker.compose.project=<effective-project-name>
@@ -80,3 +86,15 @@ without removal.
 
 Never substitute `docker compose down -v`, `docker volume prune`, a wildcard,
 or a project-wide volume deletion command.
+
+## Rollback boundary
+
+Applying `0011_retire_windows_offline_installer_refs` and removing the legacy
+artifact volume are the point of no return for the pre-OpenPath installer
+lifecycle. Neither operation is part of a normal deploy or automatic rollback.
+Automatic rollback accepts only release state with the complete OpenPath
+installer pin and restores that pin before starting the provisioner/API pair;
+it refuses an older state that cannot prove canonical compatibility. Once the
+DB drain and storage retirement are complete, restore a compatible OpenPath
+release manually if required; do not roll back to a release that expects the
+old table or volume.

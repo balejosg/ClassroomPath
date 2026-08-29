@@ -122,6 +122,13 @@ if [ ! -f "$ENV_FILE" ]; then
   die "Env file not found: $ENV_FILE" 1
 fi
 
+# Docker env files are allowed to contain stale operator state. Override the
+# destructive DB gate explicitly so only this invocation's CLI flag can set it.
+migration_confirmation_env_args=(-e "CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=0")
+if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ]; then
+  migration_confirmation_env_args=(-e "CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1")
+fi
+
 run_prebuilt_runner_image() {
   log_info "[MIGRATIONS] Using prebuilt migration runner image: $RUNNER_IMAGE"
 
@@ -141,6 +148,7 @@ run_prebuilt_runner_image() {
   docker run --rm \
     --add-host host.docker.internal:host-gateway \
     --env-file "$ENV_FILE" \
+    "${migration_confirmation_env_args[@]}" \
     "$RUNNER_IMAGE" \
     "${args[@]}"
 }
@@ -160,20 +168,13 @@ run_cp_migrations() {
   log_info "[MIGRATIONS] - ClassroomPath API schema..."
   local log
   log=$(mktemp)
-  local -a migration_env_args=()
-  if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ]; then
-    migration_env_args+=(
-      -e
-      "CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1"
-    )
-  fi
 
   if docker run --rm \
     -v "$APP_DIR:/app" \
     -v "$ENV_FILE:/app/.env:ro" \
     -w /app \
     --env-file "$ENV_FILE" \
-    "${migration_env_args[@]}" \
+    "${migration_confirmation_env_args[@]}" \
     "$NODE_IMAGE" \
     sh -c "npm ci --silent -w @classroompath/api && node --import tsx api/scripts/cleanup-cp-schema.ts && node --import tsx api/scripts/baseline-cp-migrations.ts && npm run db:migrate -w @classroompath/api" \
     >"$log" 2>&1; then
@@ -198,6 +199,7 @@ run_openpath_migrations() {
     -v "$OPENPATH_DB_ENV_HELPER_PATH:/derive-openpath-db-env.mjs:ro" \
     -w /app \
     --env-file "$ENV_FILE" \
+    "${migration_confirmation_env_args[@]}" \
     "$NODE_IMAGE" \
     sh -c "eval \"\$(node /derive-openpath-db-env.mjs)\" && npm ci --silent && npm run db:migrate -w @openpath/api" \
     >"$log" 2>&1; then

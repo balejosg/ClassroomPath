@@ -107,6 +107,32 @@ describe('OpenPathGateway Windows offline installer adapter', () => {
     assert.equal(publicDownloadUrl.origin, 'https://classroompath.example');
   });
 
+  it('resolves the public origin when generation starts instead of capturing import-time env', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalPublicUrl = process.env.PUBLIC_URL;
+    process.env.NODE_ENV = 'test';
+    process.env.PUBLIC_URL = 'https://before.example';
+
+    try {
+      const gateway = createOpenPathGateway({
+        fetchImpl: async () => trpcResponse(metadata),
+      });
+      process.env.PUBLIC_URL = 'https://after.example';
+
+      const result = await gateway.generateWindowsOfflineInstaller({
+        token: 'teacher-access-token',
+        input: { classroomId: 'classroom-7' },
+      });
+
+      assert.equal(new URL(result.downloadUrl).origin, 'https://after.example');
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+      if (originalPublicUrl === undefined) delete process.env.PUBLIC_URL;
+      else process.env.PUBLIC_URL = originalPublicUrl;
+    }
+  });
+
   it('rejects malformed upstream metadata without returning a ref or accepting a generic payload', async () => {
     const gateway = createOpenPathGateway({
       fetchImpl: async () => trpcResponse({ ...metadata, sha256: 'not-a-sha' }),
@@ -148,7 +174,9 @@ describe('OpenPathGateway Windows offline installer adapter', () => {
   it('rejects credentials, fragments, missing refs, extra parameters, and unexpected metadata', async () => {
     const invalidDownloads = [
       'https://user:password@classroompath.example/api/windows-offline-installer/download?ref=opaque-A',
+      'https://@classroompath.example/api/windows-offline-installer/download?ref=opaque-A',
       'https://classroompath.example/api/windows-offline-installer/download?ref=opaque-A#fragment',
+      'https://classroompath.example/api/windows-offline-installer/download?ref=opaque-A#',
       'https://classroompath.example/api/windows-offline-installer/download',
       'https://classroompath.example/api/windows-offline-installer/download?ref=opaque-A&extra=1',
     ];

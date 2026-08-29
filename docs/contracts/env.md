@@ -27,7 +27,9 @@ Dockerized stack.
 ### Core Required Variables For Deployed Environments
 
 - `DATABASE_URL`: PostgreSQL connection string
-- `PUBLIC_URL`: absolute external URL; production rejects localhost values
+- `PUBLIC_URL`: bare external `http(s)` origin only (no path, credentials, query, or fragment);
+  production rejects localhost values. The installer gateway reconstructs browser download URLs
+  from this origin, so an internal OpenPath origin is never exposed.
 - `JWT_SECRET`: JWT signing secret
 - `JWT_ACCESS_EXPIRY`: access token lifetime; ClassroomPath defaults to `24h`
 - `JWT_REFRESH_EXPIRY`: refresh token lifetime; ClassroomPath defaults to `30d` for installed app sessions
@@ -152,14 +154,22 @@ table is intentionally deferred by normal migration runs. Apply it only after
 the deployed canonical path and legacy drain are evidenced, using the explicit
 `--confirm-windows-offline-installer-legacy-retirement` migration command; this
 confirmation is not a runtime feature switch. The old personalized-artifact
-volume is retired separately, and only with the same explicit confirmation,
-through the manual one-shot
+volume is retired separately through the manual one-shot
 `ops:retire-windows-offline-installer-legacy-storage` command documented in
 [`docs/runbooks/windows-offline-installer-legacy-retirement.md`](../runbooks/windows-offline-installer-legacy-retirement.md).
-That helper resolves the effective Compose volume through both Compose identity
-labels and an exact name/driver check; it never selects the canonical OpenPath
+That helper requires the same-looking confirmation as a CLI flag in its own
+invocation; `CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1` is
+never sufficient for physical storage deletion. It resolves the effective
+Compose volume through both Compose identity labels and an exact name/driver
+check; it never selects the canonical OpenPath
 `windows_offline_installer_artifacts` volume and is never invoked by a normal
 deploy.
+
+The static deployment contract is always covered by
+`npm run test:deployment`. The real fresh-named-volume permission smoke runs in
+the Docker-backed `Ops Regression` CI job through
+`npm run test:windows-offline-installer:volumes`; machines without Docker may
+run the static contract but must not claim physical volume evidence.
 
 ## Local Staging Deploy File (`.env.local`)
 

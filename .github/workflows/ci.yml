@@ -113,6 +113,9 @@ jobs:
       - name: Install ClassroomPath dependencies
         run: npm ci
 
+      - name: Run fresh named-volume installer smoke
+        run: npm run test:windows-offline-installer:volumes
+
       - name: Run ops regression tests
         run: |
           export VERIFY_REPORT_FILE="$RUNNER_TEMP/classroompath-ops-regression-report.json"

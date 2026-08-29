@@ -29,6 +29,11 @@ if [ -f "$PROJECT_ROOT/config/.env" ]; then
   export $(grep -v '^#' "$PROJECT_ROOT/config/.env" | xargs)
 fi
 
+# The DB retirement confirmation is an invocation-scoped capability. A value
+# persisted in config/.env or inherited from the host must never authorize a
+# future ordinary migration run.
+unset CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED
+
 if [ -z "${DATABASE_URL:-}" ]; then
   die "DATABASE_URL environment variable is not set" 1
 fi
@@ -38,6 +43,7 @@ cd "$PROJECT_ROOT"
 for migration_arg in "$@"; do
   case "$migration_arg" in
     --confirm-windows-offline-installer-legacy-retirement)
+      # Re-enable the guard only for this explicit CLI invocation.
       export CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1
       ;;
     *)

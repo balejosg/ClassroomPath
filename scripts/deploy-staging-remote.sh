@@ -216,6 +216,11 @@ restore_previous_release_state() {
   . "$PREVIOUS_STATE_FILE"
   set +a
 
+  # Never restore a pre-canonical ClassroomPath release. The complete
+  # OpenPath installer pin is the compatibility boundary for both source and
+  # release-candidate rollback paths.
+  require_windows_offline_installer_runtime_pin || return 1
+
   git checkout --detach "$APP_SHA"
   git reset --hard "$APP_SHA"
   git submodule sync --recursive
@@ -223,6 +228,11 @@ restore_previous_release_state() {
 
   cd "$APP_DIR/docker"
   export COMPOSE_PROJECT_NAME=classroompath-staging
+
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
 
   if [ "${IMAGE_SOURCE:-source-build}" = "release-candidate" ]; then
     export CLASSROOMPATH_GATEWAY_IMAGE
@@ -232,7 +242,7 @@ restore_previous_release_state() {
     upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
     upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
     upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
-    docker compose pull gateway api spa
+    docker compose pull gateway api windows-offline-installer-provision spa
     compose_up_force_recreate_no_build
   else
     remove_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION

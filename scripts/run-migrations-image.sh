@@ -24,6 +24,11 @@ RUN_CP=0
 RUN_OPENPATH=0
 CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT=0
 
+# Do not let a value inherited from a persistent env file authorize the
+# deferred destructive migration. The CLI parser below is the only source of
+# confirmation for this process.
+unset CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --cp)

@@ -129,17 +129,17 @@ function parseAndValidateVolumeInspection(stdout, expectedName, expectedProjectN
 /**
  * @param {{
  *   projectName?: string,
- *   confirmed?: boolean,
+ *   confirmedByCli?: boolean,
  *   runDocker?: DockerRunner,
  * }} options
  * @returns {Promise<{status: 'removed'|'absent', volumeName: string}>}
  */
 export async function retireLegacyWindowsOfflineInstallerStorage({
   projectName,
-  confirmed = false,
+  confirmedByCli = false,
   runDocker = runDockerCommand,
 } = {}) {
-  if (!confirmed) {
+  if (!confirmedByCli) {
     throw new Error(
       `explicit legacy-retirement confirmation is required: ${LEGACY_RETIREMENT_CONFIRMATION_FLAG}`
     );
@@ -204,22 +204,35 @@ export async function retireLegacyWindowsOfflineInstallerStorage({
  * @param {string[]} argv
  * @param {Record<string, string | undefined>} env
  */
-function parseCliArgs(argv, env) {
+export function parseLegacyRetirementCliArgs(argv, env) {
   let cliProjectName;
-  let confirmed = env[LEGACY_RETIREMENT_CONFIRMATION_ENV] === '1';
+  let confirmedByCli = false;
+  let projectNameProvided = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === LEGACY_RETIREMENT_CONFIRMATION_FLAG) {
-      confirmed = true;
+      confirmedByCli = true;
       continue;
     }
     if (argument === '--project-name') {
-      cliProjectName = argv[index + 1];
+      if (projectNameProvided) {
+        throw new Error('--project-name may be supplied only once');
+      }
+      const value = argv[index + 1];
+      if (!value || value.startsWith('--')) {
+        throw new Error('--project-name requires an explicit effective project name');
+      }
+      cliProjectName = value;
+      projectNameProvided = true;
       index += 1;
       continue;
     }
     throw new Error(`unknown argument: ${argument}`);
+  }
+
+  if (!projectNameProvided) {
+    throw new Error('--project-name <effective-project> is required');
   }
 
   const environmentProjectName = env.COMPOSE_PROJECT_NAME?.trim();
@@ -228,13 +241,13 @@ function parseCliArgs(argv, env) {
   }
 
   return {
-    projectName: cliProjectName ?? environmentProjectName,
-    confirmed,
+    projectName: cliProjectName,
+    confirmedByCli,
   };
 }
 
 async function main() {
-  const options = parseCliArgs(process.argv.slice(2), process.env);
+  const options = parseLegacyRetirementCliArgs(process.argv.slice(2), process.env);
   const result = await retireLegacyWindowsOfflineInstallerStorage(options);
   process.stdout.write(`legacy installer storage ${result.status}: ${result.volumeName}\n`);
 }

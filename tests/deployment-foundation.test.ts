@@ -92,6 +92,37 @@ describe('Deployment foundation contracts', () => {
     );
   });
 
+  test('migration runners neutralize persisted DB retirement confirmation unless the CLI flag is present', () => {
+    const dockerContent = readFileSync(migrationsScriptPath, 'utf-8');
+    const hostContent = readFileSync(migrationsScriptPath.replace('-docker', ''), 'utf-8');
+    const imageContent = readFileSync(
+      resolve(projectRoot, 'scripts/run-migrations-image.sh'),
+      'utf-8'
+    );
+    const confirmationEnv = 'CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED';
+    const confirmationFlag = '--confirm-windows-offline-installer-legacy-retirement';
+
+    assert.ok(
+      hostContent.includes(`unset ${confirmationEnv}`) &&
+        hostContent.includes(confirmationFlag) &&
+        hostContent.includes(`export ${confirmationEnv}=1`),
+      'host migrations must discard a persisted DB confirmation and restore it only for the explicit CLI flag'
+    );
+    assert.ok(
+      dockerContent.includes('migration_confirmation_env_args=') &&
+        dockerContent.includes(`"${confirmationEnv}=0"`) &&
+        dockerContent.includes(`"${confirmationEnv}=1"`) &&
+        dockerContent.includes('"${migration_confirmation_env_args[@]}"'),
+      'Docker migrations must override a persisted DB confirmation and pass 1 only for the explicit CLI flag'
+    );
+    assert.ok(
+      imageContent.includes(`unset ${confirmationEnv}`) &&
+        imageContent.includes(confirmationFlag) &&
+        imageContent.includes(`export ${confirmationEnv}=1`),
+      'the prebuilt migration image must not authorize 0011 from inherited environment state'
+    );
+  });
+
   test('staging deploy validates the gateway runtime contract before migrations', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
     const remoteContent = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');

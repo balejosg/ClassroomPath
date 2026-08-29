@@ -17,6 +17,7 @@
 import { readFileSync } from 'node:fs';
 
 import { parseBooleanEnv, trimToNull, type RuntimeEnv } from './shared.js';
+import { resolveBareHttpOrigin } from '../lib/public-origin.js';
 
 export type { RuntimeEnv } from './shared.js';
 
@@ -100,16 +101,8 @@ export interface RuntimeEnvironmentPolicy {
 }
 
 export function normalizeRuntimePublicUrl(value: string, env: RuntimeEnv): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error('PUBLIC_URL must be a valid absolute URL');
-  }
-
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error('PUBLIC_URL must use http:// or https://');
-  }
+  const normalizedOrigin = resolveBareHttpOrigin(value, 'PUBLIC_URL must be a bare http(s) origin');
+  const url = new URL(normalizedOrigin);
 
   if (
     env.NODE_ENV === 'production' &&
@@ -118,8 +111,7 @@ export function normalizeRuntimePublicUrl(value: string, env: RuntimeEnv): strin
     throw new Error('PUBLIC_URL must not point to localhost in production');
   }
 
-  const pathname = url.pathname.replace(/\/+$/, '');
-  return pathname ? `${url.origin}${pathname}` : url.origin;
+  return normalizedOrigin;
 }
 
 export function resolvePlatformAdminEmails(env: RuntimeEnv = process.env): string[] {

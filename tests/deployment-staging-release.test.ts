@@ -108,7 +108,11 @@ describe('Deployment staging and promotion contracts', () => {
     );
     assert.ok(releaseHelperContent.includes('Manual cleanup command: gh run cancel ${runId}'));
     assert.ok(remoteContent.includes('deploy_with_release_candidates'));
-    assert.ok(remoteContent.includes('docker compose pull gateway api spa'));
+    assert.ok(
+      remoteContent.includes(
+        'docker compose pull gateway api windows-offline-installer-provision spa'
+      )
+    );
     assert.ok(localContent.includes('Allowed value: release-candidate'));
     assert.ok(localContent.includes('does not support source-build staging deploys'));
     assert.ok(
@@ -487,14 +491,57 @@ warn_if_other_release_candidate_run_in_progress target-sha
       rollbackRemoteScript.includes('OPENPATH_FIREFOX_ASSETS_IMAGE') &&
         rollbackRemoteScript.includes('release_runtime_helper_supports_runtime_contract') &&
         rollbackRemoteScript.includes('source "$RELEASE_RUNTIME_HELPER_PATH"') &&
+        rollbackRemoteScript.includes('require_windows_offline_installer_runtime_pin') &&
+        rollbackRemoteScript.includes('IMAGE_SOURCE') &&
         rollbackRemoteScript.includes(
           'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release'
         ) &&
         rollbackRemoteScript.includes(
+          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION'
+        ) &&
+        rollbackRemoteScript.includes(
+          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT'
+        ) &&
+        rollbackRemoteScript.includes(
+          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG'
+        ) &&
+        rollbackRemoteScript.includes(
+          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256'
+        ) &&
+        rollbackRemoteScript.includes(
           'prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "$APP_SHA"'
-        )
+        ) &&
+        rollbackRemoteScript.includes(
+          'docker compose pull gateway api windows-offline-installer-provision spa'
+        ) &&
+        rollbackRemoteScript.includes('http://localhost:3001/cp/ready')
     );
     assert.ok(!rollbackRemoteScript.includes('upsert_env_file_var() {'));
+  });
+
+  test('staging rollback restores the canonical OpenPath installer contract for release candidates and source builds', () => {
+    const stagingRuntime = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
+    const restoreStart = stagingRuntime.indexOf('restore_previous_release_state()');
+    const restoreEnd = stagingRuntime.indexOf('fail_after_migrations()', restoreStart);
+    const restoreSection = stagingRuntime.slice(restoreStart, restoreEnd);
+
+    assert.ok(restoreStart >= 0 && restoreEnd > restoreStart);
+    assert.ok(restoreSection.includes('require_windows_offline_installer_runtime_pin'));
+    for (const field of [
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256',
+    ]) {
+      assert.ok(
+        restoreSection.includes(`upsert_env_file_var "$APP_DIR/config/.env" ${field}`),
+        `staging rollback must restore ${field} before rebuilding or starting the previous release`
+      );
+    }
+    assert.ok(
+      restoreSection.includes('windows-offline-installer-provision'),
+      'staging release-candidate rollback must restore the OpenPath provisioner service'
+    );
   });
 
   test('production runbook exposes an explicit pre-tag promotion-ready gate', () => {

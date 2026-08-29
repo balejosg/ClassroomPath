@@ -17,10 +17,21 @@ import { z } from 'zod';
 
 import type { OpenPathForwardRequest } from './headers.js';
 import { resolveGatewayConfig } from '../gateway-config.js';
+import { resolveBareHttpOrigin } from '../public-origin.js';
 import { parseOpenPathPayload } from './response.js';
 import { callOpenPathTrpc, type OpenPathTrpcCallOptions } from './trpc-client.js';
 
 const CANONICAL_WINDOWS_OFFLINE_INSTALLER_DOWNLOAD_PATH = '/api/windows-offline-installer/download';
+
+function hasUrlUserInfo(value: string): boolean {
+  const schemeSeparator = value.indexOf('://');
+  if (schemeSeparator < 0) return true;
+
+  const remainder = value.slice(schemeSeparator + 3);
+  const suffixOffset = remainder.search(/[/?#]/u);
+  const authority = suffixOffset === -1 ? remainder : remainder.slice(0, suffixOffset);
+  return authority.includes('@');
+}
 
 export type OpenPathGatewaySystemInfo = {
   version: string;
@@ -87,6 +98,8 @@ const WINDOWS_OFFLINE_INSTALLER_METADATA_SCHEMA = z
             (url.protocol === 'http:' || url.protocol === 'https:') &&
             !url.username &&
             !url.password &&
+            !hasUrlUserInfo(value) &&
+            !value.includes('#') &&
             !url.hash &&
             url.pathname === CANONICAL_WINDOWS_OFFLINE_INSTALLER_DOWNLOAD_PATH &&
             url.searchParams.size === 1 &&
@@ -217,20 +230,7 @@ function throwSafeWindowsOfflineInstallerError(error: unknown): never {
 }
 
 function resolvePublicOrigin(configuredOrigin: string): string {
-  const parsed = new URL(configuredOrigin);
-
-  if (
-    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
-    parsed.username ||
-    parsed.password ||
-    parsed.search ||
-    parsed.hash ||
-    (parsed.pathname !== '' && parsed.pathname !== '/')
-  ) {
-    throw new Error('Invalid ClassroomPath public origin');
-  }
-
-  return parsed.origin;
+  return resolveBareHttpOrigin(configuredOrigin, 'Invalid ClassroomPath public origin');
 }
 
 function rebuildPublicWindowsOfflineInstallerDownloadUrl(
@@ -251,9 +251,11 @@ function rebuildPublicWindowsOfflineInstallerDownloadUrl(
 
 export function createOpenPathGateway(options: OpenPathGatewayOptions = {}): OpenPathGateway {
   const fetchImpl = options.fetchImpl;
-  const publicOrigin = resolvePublicOrigin(
-    options.publicOrigin ?? resolveGatewayConfig().publicOrigin
-  );
+  const configuredPublicOrigin =
+    options.publicOrigin === undefined ? undefined : resolvePublicOrigin(options.publicOrigin);
+
+  const getPublicOrigin = (): string =>
+    resolvePublicOrigin(configuredPublicOrigin ?? resolveGatewayConfig().publicOrigin);
 
   return {
     healthLive: () =>
@@ -286,6 +288,7 @@ export function createOpenPathGateway(options: OpenPathGatewayOptions = {}): Ope
 
     generateWindowsOfflineInstaller: async (params) => {
       try {
+        const publicOrigin = getPublicOrigin();
         const payload = await callOpenPathTrpc(
           buildCallOptions(
             {

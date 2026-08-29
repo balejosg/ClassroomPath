@@ -86,3 +86,9 @@ policy/API entrypoints.
 - canonical public URLs and health endpoints live in `config/deploy-targets.json`
 - the SPA container nginx config is intentionally simple because the host-level proxy handles
   API/gateway routing before requests reach the SPA container
+- `/cp/health` is intentionally lightweight gateway liveness and may remain `200` while
+  `/cp/ready` is `503`; `/cp/ready` is the traffic/readiness gate and includes the gateway DB,
+  schema, OpenPath availability, and `windowsOfflineInstaller` capability checks.
+- The OpenPath API container's own `/health` Docker healthcheck is process liveness used by its
+  container dependency chain; it is not a substitute for the gateway's `/cp/ready` capability
+  gate. The gateway container healthcheck uses `/cp/ready`.

@@ -1,3 +1,5 @@
+import { resolveBareHttpOrigin } from './public-origin.js';
+
 export interface GatewayAppOptions {
   agentDeliveryRateLimitMax?: number;
   agentDeliveryRateLimitWindowMs?: number;
@@ -75,11 +77,15 @@ function parseCorsOrigins(
 
 function resolvePublicOrigin(env: Record<string, string | undefined>): string {
   const publicUrl = env.PUBLIC_URL?.trim();
-  if (publicUrl) {
-    return normalizeOrigin(publicUrl);
+  if (!publicUrl) {
+    if (env.NODE_ENV === 'production') {
+      throw new Error('PUBLIC_URL must be set outside local development/test mode');
+    }
+
+    return 'http://localhost:5173';
   }
 
-  return 'http://localhost:5173';
+  return resolveBareHttpOrigin(publicUrl, 'PUBLIC_URL must be a bare http(s) origin');
 }
 
 export function resolveGatewayConfig(

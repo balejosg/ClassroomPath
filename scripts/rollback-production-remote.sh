@@ -113,10 +113,30 @@ STATE_DIR="$DEPLOY_DIR/release-state"
 deployment_state_init_paths "$STATE_DIR"
 deployment_state_load_previous_release
 
-if [ -z "${APP_SHA:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
-  log_error "Previous release metadata is incomplete"
+if [ -z "${APP_SHA:-}" ] || [ -z "${IMAGE_SOURCE:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}" ]; then
+  log_error "Previous release metadata is incomplete for the canonical OpenPath installer lifecycle"
   exit 1
 fi
+
+case "$IMAGE_SOURCE" in
+  release-candidate)
+    if [[ ! "$OPENPATH_API_IMAGE" =~ @sha256:[0-9a-f]{64}$ ]]; then
+      log_error "Previous release OpenPath API image is not pinned by digest; refusing rollback"
+      exit 1
+    fi
+    ;;
+  source-build)
+    ;;
+  *)
+    log_error "Previous release image source is not rollback-compatible: $IMAGE_SOURCE"
+    exit 1
+    ;;
+esac
+
+# Evaluate this before checkout or Docker mutation. An old ClassroomPath
+# release without the canonical OpenPath installer pins is not eligible for
+# automatic rollback, including after legacy DB/storage retirement.
+require_windows_offline_installer_runtime_pin || exit 1
 
 ROLLBACK_RELEASE_APP_SHA="$APP_SHA"
 ROLLBACK_RELEASE_IMAGE_SOURCE="${IMAGE_SOURCE:-}"
@@ -136,6 +156,7 @@ git reset --hard "$APP_SHA"
 git submodule deinit -f --all || true
 git submodule update --init --recursive --force
 refresh_rollback_checked_out_helpers
+require_windows_offline_installer_runtime_pin || exit 1
 
 echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
@@ -146,19 +167,24 @@ configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/arm6
 verify_deploy_container_platform
 upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
 upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
+upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"
+upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}"
+upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}"
+upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
 upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
 
 log_info "Pulling previous immutable images for rollback..."
 prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "$APP_SHA"
-docker compose pull gateway api spa
+docker compose pull gateway api windows-offline-installer-provision spa
 log_info "Recreating containers from previous release state..."
 docker compose up -d --force-recreate --no-build
 
 deployment_state_activate_previous_release
 
 for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-  if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-    log_success "Rollback health check passed"
+  if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1 &&
+    curl -sf http://localhost:3001/cp/ready > /dev/null 2>&1; then
+    log_success "Rollback health and readiness checks passed"
     exit 0
   fi
 

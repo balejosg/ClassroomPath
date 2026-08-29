@@ -118,6 +118,56 @@ describe('ClassroomPath Windows offline installer canary', () => {
     assert.equal(evidence.downloadStatus, null);
   });
 
+  test('rejects credentials, fragments, and extra download query parameters', async () => {
+    for (const downloadUrl of [
+      'https://@staging.classroompath.example.invalid/api/windows-offline-installer/download?ref=opaque',
+      'https://staging.classroompath.example.invalid/api/windows-offline-installer/download?ref=opaque#',
+      'https://staging.classroompath.example.invalid/api/windows-offline-installer/download?ref=opaque&extra=1',
+    ]) {
+      const evidence = await runWindowsOfflineInstallerCanary({
+        baseUrl: 'https://staging.classroompath.example.invalid',
+        classroomId: 'classroom-canary',
+        accessToken: 'jwt-secret',
+        outputPath: outputPath(),
+        fetchImpl: async (url) =>
+          url.endsWith('/cp/trpc/windowsOfflineInstaller.generate')
+            ? new Response(JSON.stringify(generatedPayload(downloadUrl)), { status: 200 })
+            : new Response(artifact, { status: 200 }),
+      });
+
+      assert.equal(evidence.result, 'failed');
+      assert.equal(evidence.errorCode, 'GENERATE_CONTRACT_INVALID');
+      assert.equal(evidence.downloadStatus, null);
+    }
+  });
+
+  test('rejects a canary base URL that is not a bare public origin', async () => {
+    for (const baseUrl of [
+      'https://staging.classroompath.example.invalid/app',
+      'https://staging.classroompath.example.invalid/./',
+      'https://staging.classroompath.example.invalid/%2e%2e',
+      'https://@staging.classroompath.example.invalid',
+      'https://user:password@staging.classroompath.example.invalid',
+      'https://staging.classroompath.example.invalid?tenant=one',
+      'https://staging.classroompath.example.invalid?',
+      'https://staging.classroompath.example.invalid#fragment',
+      'https://staging.classroompath.example.invalid#',
+    ]) {
+      await assert.rejects(
+        runWindowsOfflineInstallerCanary({
+          baseUrl,
+          classroomId: 'classroom-canary',
+          accessToken: 'jwt-secret',
+          outputPath: outputPath(),
+          fetchImpl: async () => {
+            throw new Error('fetch must not run for an invalid base URL');
+          },
+        }),
+        /bare.*origin/u
+      );
+    }
+  });
+
   test('fails safely when generation fails', async () => {
     const pathToEvidence = outputPath();
     const evidence = await runWindowsOfflineInstallerCanary({
