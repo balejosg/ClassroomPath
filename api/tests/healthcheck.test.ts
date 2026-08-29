@@ -56,11 +56,17 @@ describe('Healthcheck Router', () => {
     const readiness = await getGatewayReadiness({
       checkDatabase: async () => true,
       fetchImpl: async () =>
-        new Response(JSON.stringify({ result: { data: { status: 'ready' } } }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
+        new Response(
+          JSON.stringify({
+            result: {
+              data: { status: 'ready', checks: { windowsOfflineInstaller: { status: 'ok' } } },
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        ),
     });
 
     assert.strictEqual(readiness.ready, true);
@@ -72,11 +78,17 @@ describe('Healthcheck Router', () => {
     const readiness = await getGatewayReadiness({
       checkDatabase: async () => true,
       fetchImpl: async () =>
-        new Response(JSON.stringify({ result: { data: { status: 'ok' } } }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
+        new Response(
+          JSON.stringify({
+            result: {
+              data: { status: 'ok', checks: { windowsOfflineInstaller: { status: 'ok' } } },
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        ),
     });
 
     assert.strictEqual(readiness.ready, true);
@@ -90,7 +102,6 @@ describe('Healthcheck Router', () => {
       fetchImpl: async () => {
         throw new Error('upstream down');
       },
-      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
     });
 
     assert.strictEqual(readiness.ready, false);
@@ -102,11 +113,17 @@ describe('Healthcheck Router', () => {
     const readiness = await getGatewayReadiness({
       checkDatabase: async () => false,
       fetchImpl: async () =>
-        new Response(JSON.stringify({ result: { data: { status: 'ready' } } }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
+        new Response(
+          JSON.stringify({
+            result: {
+              data: { status: 'ready', checks: { windowsOfflineInstaller: { status: 'ok' } } },
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        ),
     });
 
     assert.strictEqual(readiness.ready, false);

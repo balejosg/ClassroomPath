@@ -9,52 +9,51 @@ import { runWindowsOfflineInstallerCanary } from '../scripts/windows-offline-ins
 
 const artifact = Buffer.from('MZ-customized-installer');
 const expectedSha256 = createHash('sha256').update(artifact).digest('hex');
-const rawDownloadUrl = '/cp/api/windows-offline-installer/download?ref=raw-secret-ref';
+const rawDownloadUrl = '/api/windows-offline-installer/download?ref=raw-secret-ref';
 
 function outputPath(): string {
   return path.join(mkdtempSync(path.join(tmpdir(), 'cp-woi-canary-')), 'evidence.json');
 }
 
-function successfulFetch(requests: string[], reuseStatuses: number[] = [410]) {
-  let downloads = 0;
+function generatedPayload(downloadUrl = rawDownloadUrl) {
+  return {
+    result: {
+      data: {
+        fileName: 'OpenPath-Math-Windows-Setup.exe',
+        version: '4.1.0',
+        sha256: expectedSha256,
+        downloadUrl,
+        tokenExpiresAt: '2026-08-25T12:00:00.000Z',
+        downloadExpiresAt: '2026-08-25T12:10:00.000Z',
+      },
+    },
+  };
+}
+
+function successfulFetch(requests: string[]) {
   return async (url: string, init?: RequestInit): Promise<Response> => {
     requests.push(`${init?.method ?? 'GET'} ${url}`);
     if (url.endsWith('/cp/trpc/windowsOfflineInstaller.generate')) {
-      assert.equal(init?.body, JSON.stringify({ json: { classroomId: 'classroom-canary' } }));
-      return new Response(
-        JSON.stringify({
-          result: {
-            data: {
-              fileName: 'OpenPath-Math-Windows-Setup.exe',
-              version: '4.1.0',
-              sha256: expectedSha256,
-              downloadUrl: rawDownloadUrl,
-              tokenExpiresAt: '2026-08-25T12:00:00.000Z',
-              downloadExpiresAt: '2026-08-25T12:10:00.000Z',
-            },
-          },
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    downloads += 1;
-    if (downloads === 1) {
-      return new Response(artifact, {
+      assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer jwt-secret');
+      assert.equal(init?.body, JSON.stringify({ classroomId: 'classroom-canary' }));
+      return new Response(JSON.stringify(generatedPayload()), {
         status: 200,
-        headers: {
-          'Content-Disposition': 'attachment; filename="OpenPath-Math-Windows-Setup.exe"',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
     }
-    return new Response('', {
-      status: reuseStatuses[Math.min(downloads - 2, reuseStatuses.length - 1)],
+
+    return new Response(artifact, {
+      status: 200,
+      headers: {
+        'Content-Disposition': 'attachment; filename="OpenPath-Math-Windows-Setup.exe"',
+        'Content-Length': String(artifact.length),
+      },
     });
   };
 }
 
 describe('ClassroomPath Windows offline installer canary', () => {
-  test('generates, downloads, hashes, and proves reuse returns 410', async () => {
+  test('proves wrapper generate, canonical download, attachment, length, and SHA', async () => {
     const requests: string[] = [];
     const pathToEvidence = outputPath();
     const evidence = await runWindowsOfflineInstallerCanary({
@@ -67,17 +66,18 @@ describe('ClassroomPath Windows offline installer canary', () => {
 
     assert.equal(evidence.result, 'success');
     assert.equal(evidence.generated, true);
-    assert.equal(evidence.firstDownloadStatus, 200);
-    assert.equal(evidence.reuseStatus, 410);
-    assert.equal(evidence.reuseAttempts, 1);
+    assert.equal(evidence.downloadStatus, 200);
     assert.equal(evidence.fileName, 'OpenPath-Math-Windows-Setup.exe');
     assert.equal(evidence.size, artifact.length);
+    assert.equal(evidence.contentLength, artifact.length);
+    assert.equal(evidence.contentLengthMatches, true);
     assert.equal(evidence.expectedSha256, expectedSha256);
     assert.equal(evidence.actualSha256, expectedSha256);
     assert.equal(evidence.shaMatches, true);
+    assert.equal(evidence.attachment, true);
+    assert.equal(evidence.canonicalPath, true);
     assert.deepEqual(requests, [
       'POST https://staging.classroompath.example.invalid/cp/trpc/windowsOfflineInstaller.generate',
-      `GET https://staging.classroompath.example.invalid${rawDownloadUrl}`,
       `GET https://staging.classroompath.example.invalid${rawDownloadUrl}`,
     ]);
 
@@ -94,18 +94,28 @@ describe('ClassroomPath Windows offline installer canary', () => {
     }
   });
 
-  test('allows one short consistency retry when consumption is eventually visible', async () => {
+  test('rejects a download URL that would bypass the ClassroomPath gateway', async () => {
     const evidence = await runWindowsOfflineInstallerCanary({
       baseUrl: 'https://staging.classroompath.example.invalid',
       classroomId: 'classroom-canary',
       accessToken: 'jwt-secret',
       outputPath: outputPath(),
-      reuseRetryDelaysMs: [0, 0],
-      fetchImpl: successfulFetch([], [200, 410]),
+      fetchImpl: async (url) => {
+        assert.ok(url.endsWith('/cp/trpc/windowsOfflineInstaller.generate'));
+        return new Response(
+          JSON.stringify(
+            generatedPayload(
+              'https://openpath.example/api/windows-offline-installer/download?ref=opaque'
+            )
+          ),
+          { status: 200 }
+        );
+      },
     });
-    assert.equal(evidence.result, 'success');
-    assert.equal(evidence.reuseStatus, 410);
-    assert.equal(evidence.reuseAttempts, 2);
+
+    assert.equal(evidence.result, 'failed');
+    assert.equal(evidence.errorCode, 'GENERATE_CONTRACT_INVALID');
+    assert.equal(evidence.downloadStatus, null);
   });
 
   test('fails safely when generation fails', async () => {
@@ -120,152 +130,52 @@ describe('ClassroomPath Windows offline installer canary', () => {
 
     assert.equal(evidence.result, 'failed');
     assert.equal(evidence.generated, false);
-    assert.equal(evidence.firstDownloadStatus, null);
-    assert.equal(evidence.reuseStatus, null);
+    assert.equal(evidence.downloadStatus, null);
     assert.equal(readFileSync(pathToEvidence, 'utf8').includes('upstream failure'), false);
   });
 
-  test('fails on non-200 download, empty/hash mismatch, or reusable reference', async () => {
-    const firstFailure = await runWindowsOfflineInstallerCanary({
-      baseUrl: 'https://staging.classroompath.example.invalid',
-      classroomId: 'classroom-canary',
-      accessToken: 'jwt-secret',
-      outputPath: outputPath(),
-      fetchImpl: async (url) => {
-        if (url.endsWith('/cp/trpc/windowsOfflineInstaller.generate')) {
-          return new Response(
-            JSON.stringify({
-              result: {
-                data: {
-                  fileName: 'OpenPath-Canary.exe',
-                  sha256: expectedSha256,
-                  downloadUrl: rawDownloadUrl,
-                },
-              },
-            }),
-            { status: 200 }
-          );
-        }
-        return new Response('failed', { status: 503 });
-      },
-    });
-    assert.equal(firstFailure.result, 'failed');
-    assert.equal(firstFailure.firstDownloadStatus, 503);
-
-    const generatedPayload = JSON.stringify({
-      result: {
-        data: {
-          fileName: 'OpenPath-Canary.exe',
-          sha256: expectedSha256,
-          downloadUrl: rawDownloadUrl,
+  test('fails on empty bytes, missing length, or a hash mismatch', async () => {
+    const cases = [
+      new Response('', {
+        status: 200,
+        headers: {
+          'Content-Disposition': 'attachment; filename="OpenPath-Math-Windows-Setup.exe"',
+          'Content-Length': '0',
         },
-      },
-    });
-    const empty = await runWindowsOfflineInstallerCanary({
-      baseUrl: 'https://staging.classroompath.example.invalid',
-      classroomId: 'classroom-canary',
-      accessToken: 'jwt-secret',
-      outputPath: outputPath(),
-      fetchImpl: (() => {
-        let downloads = 0;
-        return async (url: string) => {
-          if (url.endsWith('/cp/trpc/windowsOfflineInstaller.generate')) {
-            return new Response(generatedPayload, { status: 200 });
-          }
-          if (url.includes('raw-secret-ref')) {
-            downloads += 1;
-            return downloads === 1
-              ? new Response('', {
-                  status: 200,
-                  headers: { 'Content-Disposition': 'attachment; filename="OpenPath-Canary.exe"' },
-                })
-              : new Response('', { status: 410 });
-          }
-          return new Response('', { status: 410 });
-        };
-      })(),
-    });
-    assert.equal(empty.result, 'failed');
-    assert.equal(empty.size, 0);
-    assert.equal(empty.shaMatches, false);
+      }),
+      new Response(artifact, {
+        status: 200,
+        headers: {
+          'Content-Disposition': 'attachment; filename="OpenPath-Math-Windows-Setup.exe"',
+        },
+      }),
+      new Response('wrong-bytes', {
+        status: 200,
+        headers: {
+          'Content-Disposition': 'attachment; filename="OpenPath-Math-Windows-Setup.exe"',
+          'Content-Length': '11',
+        },
+      }),
+    ];
 
-    const mismatch = await runWindowsOfflineInstallerCanary({
-      baseUrl: 'https://staging.classroompath.example.invalid',
-      classroomId: 'classroom-canary',
-      accessToken: 'jwt-secret',
-      outputPath: outputPath(),
-      fetchImpl: (() => {
-        let downloads = 0;
-        return async (url: string) => {
-          if (url.endsWith('/cp/trpc/windowsOfflineInstaller.generate')) {
-            return new Response(generatedPayload, { status: 200 });
-          }
-          if (url.includes('raw-secret-ref')) {
-            downloads += 1;
-            return downloads === 1
-              ? new Response('wrong-bytes', {
-                  status: 200,
-                  headers: { 'Content-Disposition': 'attachment; filename="OpenPath-Canary.exe"' },
-                })
-              : new Response('', { status: 410 });
-          }
-          return new Response('', { status: 410 });
-        };
-      })(),
-    });
-    assert.equal(mismatch.result, 'failed');
-    assert.equal(mismatch.shaMatches, false);
+    for (const downloadResponse of cases) {
+      const evidence = await runWindowsOfflineInstallerCanary({
+        baseUrl: 'https://staging.classroompath.example.invalid',
+        classroomId: 'classroom-canary',
+        accessToken: 'jwt-secret',
+        outputPath: outputPath(),
+        fetchImpl: async (url) =>
+          url.endsWith('/cp/trpc/windowsOfflineInstaller.generate')
+            ? new Response(JSON.stringify(generatedPayload()), { status: 200 })
+            : downloadResponse,
+      });
 
-    const reusable = await runWindowsOfflineInstallerCanary({
-      baseUrl: 'https://staging.classroompath.example.invalid',
-      classroomId: 'classroom-canary',
-      accessToken: 'jwt-secret',
-      outputPath: outputPath(),
-      reuseRetryDelaysMs: [0, 0, 0, 0],
-      fetchImpl: successfulFetch([], [200]),
-    });
-    assert.equal(reusable.result, 'failed');
-    assert.equal(reusable.reuseStatus, 200);
-    assert.equal(reusable.reuseAttempts, 4);
-  });
-
-  test('fails immediately on a reuse network error and bounds the retry window', async () => {
-    const requests: string[] = [];
-    const happyFetch = successfulFetch(requests);
-    let downloadCalls = 0;
-    const evidencePath = outputPath();
-    const evidence = await runWindowsOfflineInstallerCanary({
-      baseUrl: 'https://staging.classroompath.example.invalid',
-      classroomId: 'classroom-canary',
-      accessToken: 'jwt-secret',
-      outputPath: evidencePath,
-      reuseRetryDelaysMs: [0, 0, 0, 0],
-      fetchImpl: async (url, init) => {
-        if (url.endsWith('/cp/trpc/windowsOfflineInstaller.generate')) {
-          return happyFetch(url, init);
-        }
-        downloadCalls += 1;
-        if (downloadCalls === 1) return happyFetch(url, init);
-        throw new Error('network down');
-      },
-    });
-
-    assert.equal(evidence.result, 'failed');
-    assert.equal(evidence.errorCode, 'REUSE_DOWNLOAD_FAILED');
-    assert.equal(evidence.reuseAttempts, 1);
-    assert.doesNotMatch(readFileSync(evidencePath, 'utf8'), /raw-secret-ref|Bearer|Authorization/);
-
-    await assert.rejects(
-      () =>
-        runWindowsOfflineInstallerCanary({
-          baseUrl: 'https://staging.classroompath.example.invalid',
-          classroomId: 'classroom-canary',
-          accessToken: 'jwt-secret',
-          outputPath: outputPath(),
-          reuseRetryDelaysMs: [0, 2001],
-          fetchImpl: happyFetch,
-        }),
-      /short and bounded/
-    );
+      assert.equal(evidence.result, 'failed');
+      assert.equal(
+        evidence.contentLengthMatches && evidence.shaMatches,
+        false,
+        'a malformed download must fail a binary contract check'
+      );
+    }
   });
 });

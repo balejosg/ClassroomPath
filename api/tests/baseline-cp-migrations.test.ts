@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 
 import {
   findMissingSchemaMarkers,
+  LEGACY_WINDOWS_OFFLINE_RETIREMENT_TAG,
+  readMigrationLedgerEntriesForBaseline,
   readMigrationLedgerEntries,
 } from '../scripts/baseline-cp-migrations.js';
 
@@ -41,4 +43,20 @@ test('reports missing schema markers before baselining an existing schema', () =
   );
 
   assert.deepStrictEqual(missing, ['cp_billing_manual_requests.resolution_note']);
+});
+
+test('never baselines the destructive legacy retirement migration', () => {
+  const migrationsDir = join(import.meta.dirname, '..', 'drizzle');
+  const defaultEntries = readMigrationLedgerEntriesForBaseline(migrationsDir);
+  const confirmedEntries = readMigrationLedgerEntriesForBaseline(migrationsDir);
+
+  assert.ok(defaultEntries.some((entry) => entry.tag === '0010_windows_offline_installer'));
+  assert.equal(
+    defaultEntries.some((entry) => entry.tag === LEGACY_WINDOWS_OFFLINE_RETIREMENT_TAG),
+    false
+  );
+  assert.equal(
+    confirmedEntries.some((entry) => entry.tag === LEGACY_WINDOWS_OFFLINE_RETIREMENT_TAG),
+    false
+  );
 });

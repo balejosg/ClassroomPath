@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: ClassroomPath gateway, OpenPath upstream, and public host routing
-> Last verified: 2026-04-13
+> Last verified: 2026-08-28
 > Source of truth: `docs/contracts/routes-ports.md`
 
 Source files:
@@ -50,6 +50,7 @@ policy/API entrypoints.
 - `GET /cp/ready` -> readiness check that can return `503`
 - `POST /cp/stripe/webhook` -> raw-body Stripe webhook entrypoint
 - `/cp/trpc/*` -> tenant-scoped ClassroomPath tRPC surface
+- `POST /cp/trpc/windowsOfflineInstaller.generate` -> wrapper auth/policy, then OpenPath canonical generate
 - `/`, `/pricing`, `/pricing/` -> SSR or SPA-shell public routes
 
 ## Allowed Upstream Passthroughs
@@ -57,6 +58,7 @@ policy/API entrypoints.
 - `GET /health`
 - `GET /api/config`
 - `GET /api/extensions/firefox/openpath.xpi`
+- `GET /api/windows-offline-installer/download?ref=<opaque-reference>`
 - `/api/extensions/chromium/*`
 - `/api/enroll/*`
 - `/api/requests/submit`
@@ -72,6 +74,7 @@ policy/API entrypoints.
 - `/export` -> `404`
 - raw `/trpc/*` is blocked except `healthReports.submit`
 - unknown raw `/api/*` passthroughs are rejected by gateway policy
+- `/cp/api/windows-offline-installer/download` -> `404`; the retired ClassroomPath binary route is not a compatibility alias
 
 ## SSE
 

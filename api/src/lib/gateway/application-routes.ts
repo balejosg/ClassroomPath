@@ -12,7 +12,7 @@ import {
   isPayloadTooLargeError,
 } from '../gateway-hardening.js';
 import { getClientIp } from '../http-request-meta.js';
-import { logger } from '../logger.js';
+import { logger, redactSensitiveUrlText } from '../logger.js';
 import { getRequestId } from '../request-id.js';
 
 export interface GatewayApplicationRoutesOptions {
@@ -22,7 +22,6 @@ export interface GatewayApplicationRoutesOptions {
   notificationApproveDomainRequestHandler: RequestHandler;
   clientCanaryManualBillingApprovalHandler: RequestHandler;
   clientCanaryGroupDiagnosticsHandler: RequestHandler;
-  windowsOfflineInstallerDownloadHandler: RequestHandler;
 }
 
 export function registerGatewayApplicationRoutes(
@@ -93,10 +92,6 @@ export function registerGatewayApplicationRoutes(
   app.get('/cp/qa-fixtures/ajax.json', (_req, res) => {
     res.json({ status: 'loaded' });
   });
-  app.get(
-    '/cp/api/windows-offline-installer/download',
-    options.windowsOfflineInstallerDownloadHandler
-  );
   app.use('/cp/trpc', options.trpcMiddleware);
 
   app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
@@ -109,7 +104,7 @@ export function registerGatewayApplicationRoutes(
 
     logger.request(requestId).warn('Rejected oversized request body', {
       method: req.method,
-      path: req.originalUrl || req.url,
+      path: redactSensitiveUrlText(req.originalUrl || req.url),
       ip: getClientIp(req),
       limit: options.jsonBodyLimit,
     });

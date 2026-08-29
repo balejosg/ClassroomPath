@@ -38,6 +38,10 @@ export const OPENPATH_PROXY_MANIFEST = {
     },
     {
       method: 'get',
+      path: '/api/windows-offline-installer/download',
+    },
+    {
+      method: 'get',
       path: '/api/extensions/firefox/openpath.xpi',
     },
     {
@@ -87,7 +91,7 @@ export const OPENPATH_PROXY_MANIFEST = {
       path: '/trpc/healthReports.submit',
     },
   ],
-  notFoundRoutes: ['/v2', '/export'],
+  notFoundRoutes: ['/v2', '/export', '/cp/api/windows-offline-installer/download'],
   blockedPassthroughPrefixes: ['/api', '/w', '/api-docs'],
   allowedTrpcProcedures: ['healthReports.submit'],
 } as const satisfies OpenPathProxyManifest;

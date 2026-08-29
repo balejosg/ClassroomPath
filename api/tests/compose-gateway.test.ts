@@ -27,9 +27,6 @@ await describe('compose-gateway', { concurrency: false }, async () => {
     const clientCanaryManualBillingApprovalHandler: RequestHandler = (_req, res) => {
       res.json({ status: 'canary-approved' });
     };
-    const windowsOfflineInstallerDownloadHandler: RequestHandler = (_req, res) => {
-      res.status(404).json({ error: 'not configured in this fixture' });
-    };
     const clientCanaryGroupDiagnosticsHandler: RequestHandler = (_req, res) => {
       res.json({ status: 'canary-diagnostics' });
     };
@@ -55,7 +52,6 @@ await describe('compose-gateway', { concurrency: false }, async () => {
       notificationApproveDomainRequestHandler,
       clientCanaryManualBillingApprovalHandler,
       clientCanaryGroupDiagnosticsHandler,
-      windowsOfflineInstallerDownloadHandler,
       serveSpa: false,
       reactSpaPath: '/tmp/classroompath-missing-spa',
     });

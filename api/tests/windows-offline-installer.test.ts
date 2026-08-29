@@ -22,14 +22,14 @@ describe('windows-offline-installer tRPC router', () => {
   test('generate is a teacher/admin-guarded mutation with a bounded classroomId input', () => {
     assert.match(ROUTER_SOURCE, /teacherOrAdminProcedure/);
     assert.match(ROUTER_SOURCE, /\.mutation\(/);
-    assert.match(ROUTER_SOURCE, /classroomId: z\.string\(\)\.min\(1\)\.max\(50\)/);
-    assert.match(ROUTER_SOURCE, /assertOrgClassroomAccess|createWindowsOfflineInstallerService/);
+    assert.match(ROUTER_SOURCE, /classroomId: z\.string\(\)\.min\(1\)\.max\(128\)/);
+    assert.match(ROUTER_SOURCE, /generateClassroomPathWindowsOfflineInstaller/);
+    assert.doesNotMatch(ROUTER_SOURCE, /artifact|download-refs|windows-offline-installer-route/);
   });
 
   test('never returns token material in the output contract', () => {
-    for (const field of ['fileName', 'version', 'sha256', 'tokenExpiresAt', 'downloadUrl']) {
-      assert.match(ROUTER_SOURCE, new RegExp(field));
-    }
+    assert.match(ROUTER_SOURCE, /generateClassroomPathWindowsOfflineInstaller/);
+    assert.doesNotMatch(ROUTER_SOURCE, /artifactPath|referenceHash|enrollmentToken/);
     assert.doesNotMatch(ROUTER_SOURCE, /enrollmentToken:/);
   });
 });

@@ -97,25 +97,15 @@ describe('Deployment runtime contracts', () => {
     assert.ok(migrationsImageScript.includes('npm run db:migrate -w @classroompath/api'));
     assert.ok(migrationsImageScript.includes('npm run db:migrate -w @openpath/api'));
     assert.ok(migrationsImageScript.includes('node scripts/derive-openpath-db-env.mjs'));
+    assert.ok(
+      migrationsImageScript.includes('--confirm-windows-offline-installer-legacy-retirement'),
+      'the migrations image must expose the explicit legacy-retirement confirmation'
+    );
 
     assert.ok(!gatewayDockerfile.includes('COPY . .'));
     assert.ok(gatewayDockerfile.includes('COPY api/src ./api/src'));
     assert.ok(gatewayDockerfile.includes('COPY react-spa/src ./react-spa/src'));
-    assert.ok(
-      gatewayDockerfile.includes(
-        'RUN mkdir -p /app/var/windows-offline-installer/templates /app/var/windows-offline-installer/artifacts'
-      )
-    );
-    assert.ok(
-      gatewayDockerfile.includes(
-        'CP_OFFLINE_INSTALLER_TEMPLATE_DIR=/app/var/windows-offline-installer/templates'
-      )
-    );
-    assert.ok(
-      gatewayDockerfile.includes(
-        'CP_OFFLINE_INSTALLER_ARTIFACTS_DIR=/app/var/windows-offline-installer/artifacts'
-      )
-    );
+    assert.doesNotMatch(gatewayDockerfile, /windows-offline-installer/u);
     assert.doesNotMatch(gatewayDockerfile, /OpenPath-Windows-Setup-Template\.exe/);
     assert.ok(
       gatewayDockerfile.includes(
@@ -261,10 +251,10 @@ describe('Deployment runtime contracts', () => {
     assert.ok(manifestHelper.includes('release_manifest_validate_contract()'));
     assert.ok(manifestHelper.includes('release_manifest_is_canonical_contract()'));
     for (const pinName of [
-      'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_SHA256',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256',
     ]) {
       assert.ok(
         stagingRemote.includes(pinName),
@@ -277,20 +267,20 @@ describe('Deployment runtime contracts', () => {
     }
     assert.ok(
       dockerCompose.includes(
-        'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION=${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:?}'
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:?'
       ) &&
         dockerCompose.includes(
-          'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT=${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:?}'
+          'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:?'
         ) &&
         dockerCompose.includes(
-          'CP_OFFLINE_INSTALLER_TEMPLATE_SHA256=${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:?}'
+          'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:?'
         ),
-      'gateway Compose contract must pass all runtime pin fields explicitly'
+      'OpenPath runtime must receive all template pin fields explicitly'
     );
     assert.ok(
-      deployHostPreflightHelper.includes('CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR') &&
-        deployHostPreflightHelper.includes('windows-offline-installer-template-path'),
-      'deploy preflight must resolve the canonical template host directory before provisioning'
+      !deployHostPreflightHelper.includes('provision_windows_offline_installer_template') &&
+        !deployHostPreflightHelper.includes('windows-offline-installer-template-path'),
+      'ClassroomPath deploy preflight must not own OpenPath template provisioning'
     );
     assert.ok(deployPayloadHelper.includes('export function buildDeployPayload'));
     assert.ok(deployPayloadHelper.includes('export function encodeDeployPayloadBase64'));
@@ -610,7 +600,6 @@ describe('Deployment runtime contracts', () => {
       '  load_production_deploy_payload \\',
       '  prepare_production_checkout \\',
       '  load_production_release_manifest \\',
-      '  provision_windows_offline_installer_template \\',
       '  classify_production_migration_risk \\',
       '  cleanup_production_disk_if_needed \\',
       '  run_production_database_migrations \\',
@@ -620,11 +609,7 @@ describe('Deployment runtime contracts', () => {
 
     assert.ok(existsSync(deployHostPreflightHelperPath));
     assert.ok(deployHostPreflightHelper.includes('cleanup_docker_disk_if_needed()'));
-    assert.ok(
-      deployHostPreflightHelper.includes('provision_windows_offline_installer_template()') &&
-        deployHostPreflightHelper.includes('provision-windows-offline-installer-template.mjs') &&
-        deployHostPreflightHelper.includes('"$NODE_BIN" "$provisioner" --verify-only')
-    );
+    assert.doesNotMatch(deployHostPreflightHelper, /provision_windows_offline_installer_template/u);
     assert.ok(
       stagingRemote.includes('source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"') &&
         productionRemote.includes('source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"')
@@ -643,7 +628,7 @@ describe('Deployment runtime contracts', () => {
         stagingRemote.includes('run_staging_email_delivery_preflight()') &&
         stagingRemote.includes('run_staging_preflight_checks()') &&
         stagingRemote.includes(
-          'run_remote_deploy_phase_group staging-preflight provision_windows_offline_installer_template run_staging_runtime_validation run_staging_email_delivery_preflight'
+          'run_remote_deploy_phase_group staging-preflight run_staging_runtime_validation run_staging_email_delivery_preflight'
         ) &&
         stagingRemote.includes('login_staging_release_candidate_registry()') &&
         stagingRemote.includes('cleanup_staging_disk_if_needed()') &&

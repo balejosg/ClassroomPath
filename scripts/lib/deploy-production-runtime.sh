@@ -55,10 +55,10 @@ apply_production_runtime_deploy_impl() {
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_VERSION "${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT "${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG "${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_SHA256 "${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
   export CP_REQUIRE_PUSH_NOTIFICATIONS=1
   bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"
@@ -74,7 +74,7 @@ apply_production_runtime_deploy_impl() {
   prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "${TARGET_SHA:-current}"
 
   log_info "Pulling immutable release images..."
-  docker compose pull gateway api spa
+  docker compose pull gateway api windows-offline-installer-provision spa
 
   log_info "Stopping existing containers..."
   docker compose down --remove-orphans || true
@@ -99,10 +99,10 @@ apply_production_runtime_deploy_impl() {
     "${OPENPATH_VERSION:-}" \
     "${OPENPATH_LINUX_AGENT_VERSION:-}" \
     "$CLASSROOMPATH_SPA_IMAGE" \
-    "$CP_OFFLINE_INSTALLER_TEMPLATE_VERSION" \
-    "$CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT" \
-    "$CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG" \
-    "$CP_OFFLINE_INSTALLER_TEMPLATE_SHA256"
+    "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION" \
+    "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT" \
+    "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG" \
+    "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256"
 }
 
 start_production_runtime_impl() {

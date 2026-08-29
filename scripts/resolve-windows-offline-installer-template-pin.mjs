@@ -76,17 +76,10 @@ export async function resolveWindowsOfflineInstallerTemplatePin({
   };
 }
 
-function envValue(...names) {
-  for (const name of names) {
-    if (process.env[name]?.trim()) return process.env[name].trim();
-  }
-  return undefined;
-}
-
 async function main() {
   const pin = await resolveWindowsOfflineInstallerTemplatePin({
-    version: envValue('OPENPATH_VERSION', 'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION'),
-    commit: envValue('OPENPATH_SHA', 'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT'),
+    version: process.env.OPENPATH_VERSION?.trim(),
+    commit: process.env.OPENPATH_SHA?.trim(),
   });
   process.stdout.write(
     [

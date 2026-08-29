@@ -97,23 +97,23 @@ export function validateCurrentReleaseState(snapshot, expected) {
   for (const [label, expectedKey, actualKey] of [
     [
       'Windows offline installer template version',
-      'EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_VERSION',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION',
+      'EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
     ],
     [
       'Windows offline installer template commit',
-      'EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
+      'EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
     ],
     [
       'Windows offline installer template release tag',
-      'EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
+      'EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG',
     ],
     [
       'Windows offline installer template SHA-256',
-      'EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_SHA256',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_SHA256',
+      'EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256',
     ],
   ]) {
     if (expected[expectedKey]) {

@@ -27,7 +27,7 @@ MIGRATIONS_NODE_IMAGE_FALLBACK="node:20-alpine"
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/run-migrations-docker.sh [--cp] [--openpath] [--app-dir <dir>] [--env-file <path>] [--node-image <image>] [--runner-image <image>]
+  scripts/run-migrations-docker.sh [--cp] [--openpath] [--app-dir <dir>] [--env-file <path>] [--node-image <image>] [--runner-image <image>] [--confirm-windows-offline-installer-legacy-retirement]
 
 Options:
   --cp                 Run ClassroomPath gateway API migrations (@classroompath/api)
@@ -36,6 +36,8 @@ Options:
   --env-file <path>    Env file to pass to containers (default: <app-dir>/config/.env)
   --node-image <img>   Node image to use (default: pinned digest)
   --runner-image <img> Prebuilt migration runner image to use instead of npm-installing in a generic Node image
+  --confirm-windows-offline-installer-legacy-retirement
+                       Apply the deferred destructive legacy-ref retirement migration once the drain is proven
 
 Notes:
   - If no schema flags are provided, both --cp and --openpath are run.
@@ -49,6 +51,7 @@ RUN_OPENPATH=0
 ENV_FILE=""
 NODE_IMAGE="${MIGRATIONS_NODE_IMAGE:-$MIGRATIONS_NODE_IMAGE_DEFAULT}"
 RUNNER_IMAGE=""
+CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -76,6 +79,10 @@ while [ "$#" -gt 0 ]; do
       RUNNER_IMAGE="$2"
       shift 2
       ;;
+    --confirm-windows-offline-installer-legacy-retirement)
+      CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -91,6 +98,10 @@ done
 if [ "$RUN_CP" = "0" ] && [ "$RUN_OPENPATH" = "0" ]; then
   RUN_CP=1
   RUN_OPENPATH=1
+fi
+
+if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ] && [ "$RUN_CP" = "0" ]; then
+  die "The Windows offline installer legacy retirement confirmation requires --cp" 1
 fi
 
 if [ -z "$ENV_FILE" ]; then
@@ -121,6 +132,9 @@ run_prebuilt_runner_image() {
   if [ "$RUN_OPENPATH" = "1" ]; then
     args+=("--openpath")
   fi
+  if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ]; then
+    args+=("--confirm-windows-offline-installer-legacy-retirement")
+  fi
 
   docker_prepare_required_image "$RUNNER_IMAGE" "migration runner image" || return 1
 
@@ -146,12 +160,20 @@ run_cp_migrations() {
   log_info "[MIGRATIONS] - ClassroomPath API schema..."
   local log
   log=$(mktemp)
+  local -a migration_env_args=()
+  if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ]; then
+    migration_env_args+=(
+      -e
+      "CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1"
+    )
+  fi
 
   if docker run --rm \
     -v "$APP_DIR:/app" \
     -v "$ENV_FILE:/app/.env:ro" \
     -w /app \
     --env-file "$ENV_FILE" \
+    "${migration_env_args[@]}" \
     "$NODE_IMAGE" \
     sh -c "npm ci --silent -w @classroompath/api && node --import tsx api/scripts/cleanup-cp-schema.ts && node --import tsx api/scripts/baseline-cp-migrations.ts && npm run db:migrate -w @classroompath/api" \
     >"$log" 2>&1; then

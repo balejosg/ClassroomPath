@@ -13,9 +13,13 @@
  * detect an unreachable upstream.
  */
 import { TRPCError } from '@trpc/server';
+import { z } from 'zod';
 
 import type { OpenPathForwardRequest } from './headers.js';
+import { parseOpenPathPayload } from './response.js';
 import { callOpenPathTrpc, type OpenPathTrpcCallOptions } from './trpc-client.js';
+
+const CANONICAL_WINDOWS_OFFLINE_INSTALLER_DOWNLOAD_PATH = '/api/windows-offline-installer/download';
 
 export type OpenPathGatewaySystemInfo = {
   version: string;
@@ -62,6 +66,47 @@ export type OpenPathApiTokenIdInput = {
   id: string;
 };
 
+const WINDOWS_OFFLINE_INSTALLER_METADATA_SCHEMA = z
+  .object({
+    fileName: z
+      .string()
+      .min(1)
+      .max(255)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9 ._-]*\.exe$/i),
+    version: z.string().min(1).max(128),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    tokenExpiresAt: z.string().min(1),
+    downloadUrl: z
+      .string()
+      .url()
+      .refine((value) => {
+        try {
+          const url = new URL(value);
+          return (
+            (url.protocol === 'http:' || url.protocol === 'https:') &&
+            !url.username &&
+            !url.password &&
+            !url.hash &&
+            url.pathname === CANONICAL_WINDOWS_OFFLINE_INSTALLER_DOWNLOAD_PATH &&
+            url.searchParams.size === 1 &&
+            Boolean(url.searchParams.get('ref'))
+          );
+        } catch {
+          return false;
+        }
+      }),
+    downloadExpiresAt: z.string().min(1),
+  })
+  .strict();
+
+export type OpenPathWindowsOfflineInstallerMetadata = z.infer<
+  typeof WINDOWS_OFFLINE_INSTALLER_METADATA_SCHEMA
+>;
+
+export type OpenPathWindowsOfflineInstallerInput = {
+  classroomId: string;
+};
+
 export interface OpenPathGateway {
   healthLive(): Promise<unknown>;
   healthReady(): Promise<unknown>;
@@ -76,6 +121,11 @@ export interface OpenPathGateway {
   regenerateApiToken(
     params: AuthenticatedOpenPathGatewayParams & { input: OpenPathApiTokenIdInput }
   ): Promise<unknown>;
+  generateWindowsOfflineInstaller(
+    params: AuthenticatedOpenPathGatewayParams & {
+      input: OpenPathWindowsOfflineInstallerInput;
+    }
+  ): Promise<OpenPathWindowsOfflineInstallerMetadata>;
 }
 
 export interface OpenPathGatewayOptions {
@@ -132,6 +182,38 @@ function requireApiTokenList(payload: unknown): OpenPathApiTokenListItem[] {
   });
 }
 
+function throwSafeWindowsOfflineInstallerError(error: unknown): never {
+  if (error instanceof TRPCError) {
+    if (error.message === 'OpenPath returned invalid offline installer metadata') {
+      throw error;
+    }
+
+    switch (error.code) {
+      case 'UNAUTHORIZED':
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
+      case 'FORBIDDEN':
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Classroom access denied' });
+      case 'NOT_FOUND':
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Classroom not found' });
+      case 'SERVICE_UNAVAILABLE':
+      case 'BAD_GATEWAY':
+      case 'GATEWAY_TIMEOUT':
+      case 'TIMEOUT':
+        throw new TRPCError({
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'OpenPath offline installer capability unavailable',
+        });
+      default:
+        break;
+    }
+  }
+
+  throw new TRPCError({
+    code: 'INTERNAL_SERVER_ERROR',
+    message: 'Failed to generate offline installer',
+  });
+}
+
 export function createOpenPathGateway(options: OpenPathGatewayOptions = {}): OpenPathGateway {
   const fetchImpl = options.fetchImpl;
 
@@ -163,6 +245,35 @@ export function createOpenPathGateway(options: OpenPathGatewayOptions = {}): Ope
           fetchImpl
         )
       ),
+
+    generateWindowsOfflineInstaller: async (params) => {
+      try {
+        const payload = await callOpenPathTrpc(
+          buildCallOptions(
+            {
+              procedure: 'windowsOfflineInstaller.generate',
+              req: params.req,
+              token: params.token,
+              includeAuth: true,
+              input: params.input,
+              defaultErrorCode: 'INTERNAL_SERVER_ERROR',
+              upstreamFailureMessage: 'Failed to generate offline installer',
+              unavailableMessage: 'OpenPath offline installer capability unavailable',
+              unavailableCode: 'SERVICE_UNAVAILABLE',
+            },
+            fetchImpl
+          )
+        );
+
+        return parseOpenPathPayload(
+          payload,
+          WINDOWS_OFFLINE_INSTALLER_METADATA_SCHEMA,
+          'OpenPath returned invalid offline installer metadata'
+        );
+      } catch (error) {
+        throwSafeWindowsOfflineInstallerError(error);
+      }
+    },
 
     getSystemInfo: async () => {
       const payload = await callOpenPathTrpc(

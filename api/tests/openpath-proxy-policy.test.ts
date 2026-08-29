@@ -15,6 +15,7 @@ void describe('openpath-proxy-policy', () => {
       [
         '/health',
         '/api/config',
+        '/api/windows-offline-installer/download',
         '/api/extensions/firefox/openpath.xpi',
         '/api/extensions/chromium',
         '/api/enroll',
@@ -29,7 +30,11 @@ void describe('openpath-proxy-policy', () => {
         '/trpc/healthReports.submit',
       ]
     );
-    assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.notFoundRoutes, ['/v2', '/export']);
+    assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.notFoundRoutes, [
+      '/v2',
+      '/export',
+      '/cp/api/windows-offline-installer/download',
+    ]);
     assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.blockedPassthroughPrefixes, [
       '/api',
       '/w',
@@ -94,6 +99,10 @@ void describe('openpath-proxy-policy', () => {
   test('returns the normalized blocked passthrough path while using the shared manifest', () => {
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/health'), null);
     assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/config?source=smoke'), null);
+    assert.strictEqual(
+      findBlockedOpenPathPassthroughPath('/api/windows-offline-installer/download?ref=opaque'),
+      null
+    );
     assert.strictEqual(
       findBlockedOpenPathPassthroughPath('/api/extensions/firefox/openpath.xpi'),
       null

@@ -78,4 +78,23 @@ windows_offline_installer_template_sha256=abcdef0123456789abcdef0123456789abcdef
       /complete Windows offline installer pin/
     );
   });
+
+  test('does not revive the retired ClassroomPath pin namespace', () => {
+    const canonical = normalizeReleaseManifestText(
+      `${buildReleaseManifestScenario()}
+CP_OFFLINE_INSTALLER_TEMPLATE_VERSION=legacy
+CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT=${'a'.repeat(40)}
+CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG=legacy
+CP_OFFLINE_INSTALLER_TEMPLATE_SHA256=${'b'.repeat(64)}
+`,
+      {
+        repository: 'balejosg/ClassroomPath',
+        runId: '24006418074',
+        sha: 'target-sha',
+      }
+    );
+
+    assert.equal('windows_offline_installer_template_version' in canonical, false);
+    assert.equal('OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION' in canonical, false);
+  });
 });

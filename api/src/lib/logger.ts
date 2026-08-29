@@ -25,6 +25,13 @@ interface HttpRequestLogMeta extends LogMeta {
   ip: string | undefined;
 }
 
+const SENSITIVE_QUERY_PARAMETER_PATTERN =
+  /([?&](?:ref|token|access_token|accessToken|enrollmentToken|jwt|authorization|cookie)=)[^&#\s"'<>]*/giu;
+
+export function redactSensitiveUrlText(value: string): string {
+  return value.replace(SENSITIVE_QUERY_PARAMETER_PATTERN, '$1REDACTED');
+}
+
 const isProduction = process.env.NODE_ENV === 'production';
 const logLevel = process.env.LOG_LEVEL ?? (isProduction ? 'info' : 'debug');
 
@@ -93,7 +100,7 @@ function requestMiddleware(req: Request, res: Response, next: NextFunction): voi
     logHttpRequest({
       requestId: getRequestId(req),
       method: req.method,
-      path: req.originalUrl || req.url,
+      path: redactSensitiveUrlText(req.originalUrl || req.url),
       statusCode: res.statusCode,
       durationMs: Number((performance.now() - startedAt).toFixed(2)),
       userAgent: req.get('user-agent'),

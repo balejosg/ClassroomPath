@@ -153,10 +153,10 @@ test('release-state CLI writes shell-compatible snapshots through the typed cont
       OPENPATH_VERSION: '4.1.19',
       OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
       CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
-      CP_OFFLINE_INSTALLER_TEMPLATE_VERSION: '4.1.0',
-      CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT: '0123456789abcdef0123456789abcdef01234567',
-      CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: 'scripts-v4.1.0-0123456',
-      CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:
+      OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION: '4.1.0',
+      OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT: '0123456789abcdef0123456789abcdef01234567',
+      OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG: 'scripts-v4.1.0-0123456',
+      OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:
         'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
     }
   );
@@ -170,14 +170,14 @@ test('release-state CLI writes shell-compatible snapshots through the typed cont
     'ghcr.io/balejosg/classroompath-gateway:abc123'
   );
   assert.equal(snapshot.OPENPATH_LINUX_AGENT_VERSION, '4.1.19');
-  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_VERSION, '4.1.0');
+  assert.equal(snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION, '4.1.0');
   assert.equal(
-    snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT,
+    snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT,
     '0123456789abcdef0123456789abcdef01234567'
   );
-  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG, 'scripts-v4.1.0-0123456');
+  assert.equal(snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG, 'scripts-v4.1.0-0123456');
   assert.equal(
-    snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_SHA256,
+    snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256,
     'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'
   );
 });
@@ -203,10 +203,10 @@ test('release-runtime helper persists and restores the complete offline-installe
   );
 
   const snapshot = readReleaseStateSnapshot(snapshotPath);
-  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_VERSION, '4.1.0');
-  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT, commit);
-  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG, 'scripts-v4.1.0-ccccccc');
-  assert.equal(snapshot.CP_OFFLINE_INSTALLER_TEMPLATE_SHA256, sha256);
+  assert.equal(snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION, '4.1.0');
+  assert.equal(snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT, commit);
+  assert.equal(snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG, 'scripts-v4.1.0-ccccccc');
+  assert.equal(snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256, sha256);
 
   const restored = runCommand(
     'bash',
@@ -216,7 +216,7 @@ test('release-runtime helper persists and restores the complete offline-installe
         'source scripts/lib/common.sh',
         'source scripts/lib/release-state.sh',
         `load_release_state_env ${snapshotPath}`,
-        'printf "%s,%s,%s,%s\\n" "$CP_OFFLINE_INSTALLER_TEMPLATE_VERSION" "$CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT" "$CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG" "$CP_OFFLINE_INSTALLER_TEMPLATE_SHA256"',
+        'printf "%s,%s,%s,%s\\n" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256"',
       ].join('; '),
     ],
     { ...process.env }
@@ -238,10 +238,10 @@ test('promotion evidence detects a runtime offline-installer pin drift', () => {
       OPENPATH_VERSION: '4.1.0',
       OPENPATH_LINUX_AGENT_VERSION: '4.1.0',
       CLASSROOMPATH_SPA_IMAGE: 'spa',
-      CP_OFFLINE_INSTALLER_TEMPLATE_VERSION: '4.1.0',
-      CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT: 'a'.repeat(40),
-      CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: 'scripts-v4.1.0-aaaaaaa',
-      CP_OFFLINE_INSTALLER_TEMPLATE_SHA256: 'a'.repeat(64),
+      OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION: '4.1.0',
+      OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT: 'a'.repeat(40),
+      OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG: 'scripts-v4.1.0-aaaaaaa',
+      OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256: 'a'.repeat(64),
     },
     verificationState: {},
     expectedRuntime: {
@@ -253,10 +253,10 @@ test('promotion evidence detects a runtime offline-installer pin drift', () => {
       EXPECTED_OPENPATH_VERSION: '4.1.0',
       EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.0',
       EXPECTED_SPA_IMAGE: 'spa',
-      EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_VERSION: '4.1.0',
-      EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT: 'b'.repeat(40),
-      EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: 'scripts-v4.1.0-bbbbbbb',
-      EXPECTED_CP_OFFLINE_INSTALLER_TEMPLATE_SHA256: 'b'.repeat(64),
+      EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION: '4.1.0',
+      EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT: 'b'.repeat(40),
+      EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG: 'scripts-v4.1.0-bbbbbbb',
+      EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256: 'b'.repeat(64),
     },
   });
 

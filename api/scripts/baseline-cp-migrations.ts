@@ -13,6 +13,10 @@ export type MigrationLedgerEntry = {
 
 export type SchemaMarkers = Record<string, string[]>;
 
+export const LEGACY_WINDOWS_OFFLINE_RETIREMENT_TAG = '0011_retire_windows_offline_installer_refs';
+export const LEGACY_WINDOWS_OFFLINE_RETIREMENT_CONFIRMATION_ENV =
+  'CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED';
+
 export const REQUIRED_SCHEMA_MARKERS: SchemaMarkers = {
   cp_organizations: ['id'],
   cp_memberships: ['id', 'organization_id'],
@@ -65,6 +69,19 @@ export function readMigrationLedgerEntries(
       tag: entry.tag,
     };
   });
+}
+
+export function shouldApplyLegacyWindowsOfflineRetirement(
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  return env[LEGACY_WINDOWS_OFFLINE_RETIREMENT_CONFIRMATION_ENV] === '1';
+}
+
+export function readMigrationLedgerEntriesForBaseline(
+  migrationsDir = getDefaultMigrationsDir()
+): MigrationLedgerEntry[] {
+  const entries = readMigrationLedgerEntries(migrationsDir);
+  return entries.filter((entry) => entry.tag !== LEGACY_WINDOWS_OFFLINE_RETIREMENT_TAG);
 }
 
 export function findMissingSchemaMarkers(
@@ -142,7 +159,7 @@ export async function baselineClassroomPathMigrations(client: Client): Promise<s
     );
   }
 
-  const entries = readMigrationLedgerEntries();
+  const entries = readMigrationLedgerEntriesForBaseline();
   await client.query('BEGIN');
   try {
     for (const entry of entries) {

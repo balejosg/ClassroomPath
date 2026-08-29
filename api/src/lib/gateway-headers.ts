@@ -6,7 +6,7 @@
 
 import type { Request, RequestHandler } from 'express';
 
-import { logger } from './logger.js';
+import { logger, redactSensitiveUrlText } from './logger.js';
 import { getRequestId } from './request-id.js';
 import { getClientIp } from './http-request-meta.js';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, parseCookieValue } from './session-cookies.js';
@@ -134,7 +134,7 @@ export function createGatewayCsrfProtectionMiddleware(params: {
       .request(requestId)
       .warn('Rejected cookie-authenticated request with invalid CSRF origin', {
         method: req.method,
-        path: req.originalUrl || req.url,
+        path: redactSensitiveUrlText(req.originalUrl || req.url),
         candidateOrigin,
         requestOrigin,
         ip: getClientIp(req),

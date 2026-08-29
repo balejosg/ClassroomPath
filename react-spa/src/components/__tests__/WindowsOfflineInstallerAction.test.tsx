@@ -55,7 +55,7 @@ vi.mock('../../i18n/classroompath-i18n', () => ({
 }));
 
 function buildResult(
-  downloadUrl = '/cp/api/windows-offline-installer/download?ref=abc'
+  downloadUrl = '/api/windows-offline-installer/download?ref=opaque-reference'
 ): InstallerResult {
   return {
     fileName: 'OpenPath-Offline-Setup.exe',
@@ -153,25 +153,40 @@ describe('WindowsOfflineInstallerAction', () => {
     renderAction('classroom-cache');
 
     await user.click(screen.getByRole('link', { name: 'Download Windows installer (.exe)' }));
-    resolveSuccess(buildResult('/cp/api/windows-offline-installer/download?ref=A'));
+    resolveSuccess(buildResult('/api/windows-offline-installer/download?ref=A'));
     await waitFor(() =>
-      expect(navigatedHrefs).toEqual(['/cp/api/windows-offline-installer/download?ref=A'])
+      expect(navigatedHrefs).toEqual(['/api/windows-offline-installer/download?ref=A'])
     );
 
     await user.click(screen.getByRole('link', { name: 'Download Windows installer (.exe)' }));
 
     expect(generateMutate).toHaveBeenCalledTimes(2);
-    resolveSuccess(buildResult('/cp/api/windows-offline-installer/download?ref=B'));
+    resolveSuccess(buildResult('/api/windows-offline-installer/download?ref=B'));
     await waitFor(() =>
       expect(navigatedHrefs).toEqual([
-        '/cp/api/windows-offline-installer/download?ref=A',
-        '/cp/api/windows-offline-installer/download?ref=B',
+        '/api/windows-offline-installer/download?ref=A',
+        '/api/windows-offline-installer/download?ref=B',
       ])
     );
     expect(navigatedHrefs).not.toEqual([
-      '/cp/api/windows-offline-installer/download?ref=A',
-      '/cp/api/windows-offline-installer/download?ref=A',
+      '/api/windows-offline-installer/download?ref=A',
+      '/api/windows-offline-installer/download?ref=A',
     ]);
     expect(screen.getByRole('link')).not.toHaveAttribute('href');
+  });
+
+  it('never treats the canonical download URL as a cache or persistent href', async () => {
+    const user = userEvent.setup();
+    renderAction('classroom-ephemeral');
+
+    await user.click(screen.getByRole('link', { name: 'Download Windows installer (.exe)' }));
+    resolveSuccess(buildResult('/api/windows-offline-installer/download?ref=one'));
+
+    await waitFor(() => expect(screen.getByRole('link')).not.toHaveAttribute('href'));
+    expect(screen.getByRole('link')).not.toHaveAttribute(
+      'href',
+      '/api/windows-offline-installer/download?ref=one'
+    );
+    expect(generateMutate).toHaveBeenCalledTimes(1);
   });
 });

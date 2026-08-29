@@ -185,13 +185,13 @@ export_release_manifest_runtime_env() {
   export CLASSROOMPATH_VERIFIER_IMAGE
   CLASSROOMPATH_VERIFIER_IMAGE="$(release_manifest_require_key "$manifest_path" verifier_image)"
 
-  # Optional for compatibility with manifests created before the Windows
+  # Optional for compatibility with manifests created before the OpenPath
   # offline-installer pin became part of the release payload. New manifests
   # carry all four values together; never mix a manifest pin with host state.
-  unset CP_OFFLINE_INSTALLER_TEMPLATE_VERSION
-  unset CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT
-  unset CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG
-  unset CP_OFFLINE_INSTALLER_TEMPLATE_SHA256
+  unset OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION
+  unset OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT
+  unset OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG
+  unset OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256
   offline_template_version="$(release_manifest_get "$manifest_path" windows_offline_installer_template_version 2>/dev/null || true)"
   offline_template_commit="$(release_manifest_get "$manifest_path" windows_offline_installer_template_commit 2>/dev/null || true)"
   offline_template_release_tag="$(release_manifest_get "$manifest_path" windows_offline_installer_template_release_tag 2>/dev/null || true)"
@@ -203,9 +203,9 @@ export_release_manifest_runtime_env() {
       log_error "Release manifest Windows offline installer pin is incomplete"
       return 1
     fi
-    export CP_OFFLINE_INSTALLER_TEMPLATE_VERSION="$offline_template_version"
-    export CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT="$offline_template_commit"
-    export CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG="$offline_template_release_tag"
-    export CP_OFFLINE_INSTALLER_TEMPLATE_SHA256="$offline_template_sha256"
+    export OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION="$offline_template_version"
+    export OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT="$offline_template_commit"
+    export OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG="$offline_template_release_tag"
+    export OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256="$offline_template_sha256"
   fi
 }

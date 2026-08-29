@@ -27,18 +27,10 @@ services:
     environment:
       - CP_PORT=3001
       - OPENPATH_API_URL=http://api:3000
-      - OPENPATH_URL=${OPENPATH_URL:-http://api:3000}
-      - CP_OFFLINE_INSTALLER_TEMPLATE_DIR=/app/var/windows-offline-installer/templates
-      - CP_OFFLINE_INSTALLER_ARTIFACTS_DIR=/app/var/windows-offline-installer/artifacts
-      - CP_OFFLINE_INSTALLER_TEMPLATE_VERSION=${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:?}
-      - CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT=${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:?}
-      - CP_OFFLINE_INSTALLER_TEMPLATE_SHA256=${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:?}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     volumes:
       - /srv/classroompath/downloads:/app/react-spa/dist/downloads:ro
-      - ${CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR:-../var/windows-offline-installer/templates}:/app/var/windows-offline-installer/templates:ro
-      - windows-offline-installer-artifacts:/app/var/windows-offline-installer/artifacts:rw
     depends_on:
       - api
     healthcheck:
@@ -47,6 +39,41 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
+    networks:
+      - openpath_default
+    security_opt:
+      - no-new-privileges:true
+
+  # OpenPath owns template provisioning. The gateway never sees the template
+  # or personalized artifact volume.
+  windows-offline-installer-provision:
+    image: ${OPENPATH_API_IMAGE:-classroompath-api:local}
+    platform: ${CLASSROOMPATH_CONTAINER_PLATFORM:-linux/amd64}
+    build:
+      context: ../upstream/openpath
+      dockerfile: ../../docker/Dockerfile.api
+    container_name: classroompath-openpath-windows-offline-installer-provision
+    restart: 'no'
+    env_file:
+      - ../config/.env
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - OPENPATH_WINDOWS_OFFLINE_TEMPLATE_DIR=/app/var/windows-offline-installer/templates
+      - OPENPATH_WINDOWS_OFFLINE_ARTIFACTS_DIR=/app/var/windows-offline-installer/artifacts
+      - OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:?OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION is required}
+      - OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:?OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT is required}
+      - OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:?OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 is required}
+      - OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:?OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG is required}
+      - OPENPATH_WINDOWS_OFFLINE_ARTIFACT_RETENTION_HOURS=${OPENPATH_WINDOWS_OFFLINE_ARTIFACT_RETENTION_HOURS:-24}
+      - OPENPATH_GITHUB_REPO=${OPENPATH_GITHUB_REPO:-balejosg/openpath}
+    command:
+      - sh
+      - -ec
+      - |
+        node dist/scripts/provision-windows-offline-installer.js
+        node dist/scripts/provision-windows-offline-installer.js --verify-only
+    volumes:
+      - windows_offline_installer_templates:/app/var/windows-offline-installer/templates
     networks:
       - openpath_default
     security_opt:
@@ -73,11 +100,27 @@ services:
       - JWT_REFRESH_EXPIRY=${JWT_REFRESH_EXPIRY:-30d}
       - OPENPATH_FIREFOX_RELEASE_ROOT=/openpath-firefox-release
       - OPENPATH_FIREFOX_EXTENSION_INSTALL_URL=${OPENPATH_FIREFOX_EXTENSION_INSTALL_URL:-}
+      - OPENPATH_WINDOWS_OFFLINE_TEMPLATE_DIR=/app/var/windows-offline-installer/templates
+      - OPENPATH_WINDOWS_OFFLINE_ARTIFACTS_DIR=/app/var/windows-offline-installer/artifacts
+      - OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:?OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION is required}
+      - OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:?OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT is required}
+      - OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:?OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 is required}
+      - OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:?OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG is required}
+      - OPENPATH_WINDOWS_OFFLINE_TOKEN_TTL_HOURS=${OPENPATH_WINDOWS_OFFLINE_TOKEN_TTL_HOURS:-2}
+      - OPENPATH_WINDOWS_OFFLINE_DOWNLOAD_TTL_MINUTES=${OPENPATH_WINDOWS_OFFLINE_DOWNLOAD_TTL_MINUTES:-10}
+      - OPENPATH_WINDOWS_OFFLINE_DOWNLOAD_MAX_ATTEMPTS=${OPENPATH_WINDOWS_OFFLINE_DOWNLOAD_MAX_ATTEMPTS:-3}
+      - OPENPATH_WINDOWS_OFFLINE_ARTIFACT_RETENTION_HOURS=${OPENPATH_WINDOWS_OFFLINE_ARTIFACT_RETENTION_HOURS:-24}
+      - OPENPATH_GITHUB_REPO=${OPENPATH_GITHUB_REPO:-balejosg/openpath}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     volumes:
       - api-data:/app/data
       - ${OPENPATH_FIREFOX_RELEASE_DIR:-/srv/classroompath/openpath-firefox-release/current}:/openpath-firefox-release:ro
+      - windows_offline_installer_templates:/app/var/windows-offline-installer/templates:ro
+      - windows_offline_installer_artifacts:/app/var/windows-offline-installer/artifacts:rw
+    depends_on:
+      windows-offline-installer-provision:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://127.0.0.1:3000/health']
       interval: 5s
@@ -112,4 +155,5 @@ services:
 
 volumes:
   api-data:
-  windows-offline-installer-artifacts:
+  windows_offline_installer_templates:
+  windows_offline_installer_artifacts:

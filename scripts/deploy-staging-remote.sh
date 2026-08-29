@@ -173,10 +173,10 @@ write_release_state() {
     "$RESOLVED_OPENPATH_VERSION" \
     "$RESOLVED_OPENPATH_LINUX_AGENT_VERSION" \
     "$RESOLVED_SPA_IMAGE" \
-    "${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}" \
-    "${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}" \
-    "${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}" \
-    "${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:-}"
+    "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" \
+    "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" \
+    "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}" \
+    "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
 }
 
 write_deploy_context() {
@@ -312,10 +312,10 @@ deploy_with_release_candidates() {
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_VERSION "${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT "${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG "${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" CP_OFFLINE_INSTALLER_TEMPLATE_SHA256 "${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
   upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
 
   log_info "Pulling release candidate migrations image for ${STAGING_RELEASE_SHA:-origin-main}..."
@@ -325,7 +325,7 @@ deploy_with_release_candidates() {
   prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "${STAGING_RELEASE_SHA:-origin-main}" || return 1
 
   log_info "Pulling release candidate images for ${STAGING_RELEASE_SHA:-origin-main}..."
-  docker compose pull gateway api spa || return 1
+  docker compose pull gateway api windows-offline-installer-provision spa || return 1
 
   log_info "Starting staging from release candidate images..."
   docker compose down --remove-orphans 2>/dev/null || true
@@ -359,10 +359,10 @@ ensure_staging_release_candidate_runtime_env() {
     [ -z "${OPENPATH_VERSION:-}" ] ||
     [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] ||
     [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] ||
-    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}" ] ||
-    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}" ] ||
-    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}" ] ||
-    [ -z "${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:-}" ]; then
+    [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" ] ||
+    [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" ] ||
+    [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}" ] ||
+    [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}" ]; then
     log_error "Release candidate manifest did not export OpenPath runtime versions"
     return 1
   fi
@@ -603,7 +603,7 @@ run_staging_email_delivery_preflight() {
 }
 
 run_staging_preflight_checks() {
-  run_remote_deploy_phase_group staging-preflight provision_windows_offline_installer_template run_staging_runtime_validation run_staging_email_delivery_preflight
+  run_remote_deploy_phase_group staging-preflight run_staging_runtime_validation run_staging_email_delivery_preflight
 }
 
 cleanup_staging_disk_if_needed() {

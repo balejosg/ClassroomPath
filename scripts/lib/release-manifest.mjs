@@ -73,21 +73,13 @@ function requireManifestKeys(assignments, keys, prefix) {
 function readOfflineInstallerPin(assignments) {
   const values = {
     windows_offline_installer_template_version:
-      assignments.windows_offline_installer_template_version ??
-      assignments.CP_OFFLINE_INSTALLER_TEMPLATE_VERSION ??
-      '',
+      assignments.windows_offline_installer_template_version ?? '',
     windows_offline_installer_template_commit:
-      assignments.windows_offline_installer_template_commit ??
-      assignments.CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT ??
-      '',
+      assignments.windows_offline_installer_template_commit ?? '',
     windows_offline_installer_template_release_tag:
-      assignments.windows_offline_installer_template_release_tag ??
-      assignments.CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG ??
-      '',
+      assignments.windows_offline_installer_template_release_tag ?? '',
     windows_offline_installer_template_sha256:
-      assignments.windows_offline_installer_template_sha256 ??
-      assignments.CP_OFFLINE_INSTALLER_TEMPLATE_SHA256 ??
-      '',
+      assignments.windows_offline_installer_template_sha256 ?? '',
   };
   const present = Object.values(values).filter(Boolean).length;
   if (present === 0) return {};

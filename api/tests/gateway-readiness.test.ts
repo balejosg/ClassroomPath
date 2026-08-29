@@ -4,9 +4,9 @@ import { describe, test } from 'node:test';
 import {
   getGatewayReadiness,
   isGatewayUpstreamReadyStatus,
+  parseGatewayOfflineInstallerReadiness,
   parseGatewayUpstreamReadiness,
 } from '../src/lib/gateway-readiness.js';
-import type { WindowsOfflineInstallerReadiness } from '../src/lib/windows-offline-installer-readiness.js';
 
 function trpcResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify({ result: { data } }), {
@@ -36,11 +36,39 @@ await describe('gateway readiness helpers', async () => {
     assert.strictEqual(parseGatewayUpstreamReadiness(null), false);
   });
 
+  await test('parses the canonical OpenPath installer capability signal', () => {
+    assert.deepStrictEqual(
+      parseGatewayOfflineInstallerReadiness({
+        result: {
+          data: {
+            status: 'ok',
+            checks: { windowsOfflineInstaller: { status: 'ok' } },
+          },
+        },
+      }),
+      { ready: true, code: 'OK' }
+    );
+    assert.deepStrictEqual(
+      parseGatewayOfflineInstallerReadiness({
+        status: 'degraded',
+        checks: { windowsOfflineInstaller: { status: 'error', error: 'CAPABILITY_UNAVAILABLE' } },
+      }),
+      { ready: false, code: 'OPENPATH_CAPABILITY_UNAVAILABLE' }
+    );
+    assert.deepStrictEqual(parseGatewayOfflineInstallerReadiness(null), {
+      ready: false,
+      code: 'OPENPATH_CAPABILITY_UNAVAILABLE',
+    });
+  });
+
   await test('getGatewayReadiness reports ready when db and upstream checks succeed', async () => {
     const readiness = await getGatewayReadiness({
       checkDatabase: async () => true,
-      fetchImpl: async () => trpcResponse({ status: 'ok' }),
-      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
+      fetchImpl: async () =>
+        trpcResponse({
+          status: 'ok',
+          checks: { windowsOfflineInstaller: { status: 'ok' } },
+        }),
     });
 
     assert.deepStrictEqual(readiness, {
@@ -61,8 +89,11 @@ await describe('gateway readiness helpers', async () => {
         schemaReady: false,
         missingTables: ['cp_terms_acceptance'],
       }),
-      fetchImpl: async () => trpcResponse({ status: 'ready' }),
-      checkOfflineInstaller: () => ({ ready: true, code: 'OK' }),
+      fetchImpl: async () =>
+        trpcResponse({
+          status: 'ready',
+          checks: { windowsOfflineInstaller: { status: 'ok' } },
+        }),
     });
 
     assert.deepStrictEqual(readiness, {
@@ -76,25 +107,43 @@ await describe('gateway readiness helpers', async () => {
     });
   });
 
-  await test('reports not ready when the local offline installer is broken', async () => {
-    const offlineInstaller: WindowsOfflineInstallerReadiness = {
-      ready: false,
-      code: 'TEMPLATE_MISSING',
-    };
+  await test('reports not ready when the canonical OpenPath capability is unavailable', async () => {
     const readiness = await getGatewayReadiness({
       checkDatabase: async () => true,
-      fetchImpl: async () => trpcResponse({ status: 'ok' }),
-      checkOfflineInstaller: () => offlineInstaller,
+      fetchImpl: async () =>
+        trpcResponse({
+          status: 'degraded',
+          checks: { windowsOfflineInstaller: { status: 'error', error: 'CONFIG_INVALID' } },
+        }),
     });
 
     assert.deepStrictEqual(readiness, {
       ready: false,
-      upstreamAvailable: true,
+      upstreamAvailable: false,
       databaseConnected: true,
       databaseSchemaReady: true,
       missingTables: [],
       offlineInstallerReady: false,
-      offlineInstallerCode: 'TEMPLATE_MISSING',
+      offlineInstallerCode: 'OPENPATH_CAPABILITY_UNAVAILABLE',
+    });
+  });
+
+  await test('reports upstream unavailable without attempting local template checks', async () => {
+    const readiness = await getGatewayReadiness({
+      checkDatabase: async () => true,
+      fetchImpl: async () => {
+        throw new Error('OpenPath unavailable');
+      },
+    });
+
+    assert.deepStrictEqual(readiness, {
+      ready: false,
+      upstreamAvailable: false,
+      databaseConnected: true,
+      databaseSchemaReady: true,
+      missingTables: [],
+      offlineInstallerReady: false,
+      offlineInstallerCode: 'OPENPATH_UNAVAILABLE',
     });
   });
 });

@@ -86,6 +86,10 @@ describe('Deployment foundation contracts', () => {
         `${scriptName} should clean the schema before db:migrate`
       );
     }
+    assert.ok(
+      dockerContent.includes('--confirm-windows-offline-installer-legacy-retirement'),
+      'the destructive legacy retirement must require an explicit migration confirmation'
+    );
   });
 
   test('staging deploy validates the gateway runtime contract before migrations', () => {

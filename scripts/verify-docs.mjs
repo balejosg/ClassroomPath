@@ -30,7 +30,8 @@ function listTrackedMarkdownFiles() {
   return String(result.stdout ?? '')
     .split('\n')
     .map((entry) => entry.trim())
-    .filter((entry) => entry.endsWith('.md'));
+    .filter((entry) => entry.endsWith('.md'))
+    .filter((entry) => fs.existsSync(path.join(rootDir, entry)));
 }
 
 function isSpanishMaintainedException(relativePath) {

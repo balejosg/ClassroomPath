@@ -6,11 +6,13 @@ set -eu
 usage() {
   cat <<'EOF'
 Usage:
-  sh scripts/run-migrations-image.sh [--cp] [--openpath]
+  sh scripts/run-migrations-image.sh [--cp] [--openpath] [--confirm-windows-offline-installer-legacy-retirement]
 
 Options:
   --cp        Run ClassroomPath gateway schema push
   --openpath  Run OpenPath core schema push
+  --confirm-windows-offline-installer-legacy-retirement
+              Apply the deferred destructive legacy-ref retirement migration once the drain is proven
 
 Notes:
   - If no schema flags are provided, both schema pushes are run.
@@ -20,6 +22,7 @@ EOF
 
 RUN_CP=0
 RUN_OPENPATH=0
+CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -29,6 +32,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --openpath)
       RUN_OPENPATH=1
+      shift
+      ;;
+    --confirm-windows-offline-installer-legacy-retirement)
+      CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT=1
       shift
       ;;
     -h|--help)
@@ -46,6 +53,15 @@ done
 if [ "$RUN_CP" = "0" ] && [ "$RUN_OPENPATH" = "0" ]; then
   RUN_CP=1
   RUN_OPENPATH=1
+fi
+
+if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ] && [ "$RUN_CP" = "0" ]; then
+  echo "The Windows offline installer legacy retirement confirmation requires --cp" >&2
+  exit 1
+fi
+
+if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ]; then
+  export CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1
 fi
 
 cd /app

@@ -26,7 +26,7 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
         databaseSchemaReady: false,
         missingTables: ['cp_terms_acceptance'],
         offlineInstallerReady: false,
-        offlineInstallerCode: 'TEMPLATE_MISSING',
+        offlineInstallerCode: 'OPENPATH_CAPABILITY_UNAVAILABLE',
       }),
     });
 
@@ -95,7 +95,7 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
       databaseSchemaReady: false,
       missingTables: ['cp_terms_acceptance'],
       offlineInstallerReady: false,
-      offlineInstallerCode: 'TEMPLATE_MISSING',
+      offlineInstallerCode: 'OPENPATH_CAPABILITY_UNAVAILABLE',
     });
   });
 
@@ -162,6 +162,26 @@ await describe('gateway route registrars', { concurrency: false }, async () => {
       proxied: true,
       path: '/api/config?source=smoke',
     });
+  });
+
+  test('registerGatewayProxyRoutes sends the canonical installer download to OpenPath', async () => {
+    const response = await fetch(
+      `${baseUrl}/api/windows-offline-installer/download?ref=opaque-reference`
+    );
+
+    assert.strictEqual(response.status, 418);
+    assert.deepStrictEqual(await response.json(), {
+      proxied: true,
+      path: '/api/windows-offline-installer/download?ref=opaque-reference',
+    });
+  });
+
+  test('registerGatewayProxyRoutes rejects the retired ClassroomPath installer route', async () => {
+    const response = await fetch(
+      `${baseUrl}/cp/api/windows-offline-installer/download?ref=legacy-reference`
+    );
+
+    assert.strictEqual(response.status, 404);
   });
 
   test('registerGatewayProxyRoutes proxies the classroom enrollment ticket flow', async () => {

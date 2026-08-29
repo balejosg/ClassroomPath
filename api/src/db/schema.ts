@@ -17,7 +17,6 @@
  * pair -- a user may therefore belong to at most one organization at a time.
  */
 import {
-  bigint,
   boolean,
   index,
   integer,
@@ -26,10 +25,8 @@ import {
   text,
   timestamp,
   unique,
-  uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 
 // =============================================================================
 // Organizations Table
@@ -374,33 +371,3 @@ export type BillingManualRequest = typeof cpBillingManualRequests.$inferSelect;
 export type NewBillingManualRequest = typeof cpBillingManualRequests.$inferInsert;
 export type BillingAuditEvent = typeof cpBillingAuditEvents.$inferSelect;
 export type NewBillingAuditEvent = typeof cpBillingAuditEvents.$inferInsert;
-
-export const cpWindowsOfflineDownloadRefs = pgTable(
-  'cp_windows_offline_download_refs',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    organizationId: varchar('organization_id', { length: 50 })
-      .notNull()
-      .references(() => cpOrganizations.id, { onDelete: 'cascade' }),
-    classroomId: varchar('classroom_id', { length: 50 }).notNull(),
-    classroomName: text('classroom_name').notNull(),
-    referenceHash: text('reference_hash').notNull().unique(),
-    artifactSha256: text('artifact_sha256').notNull(),
-    artifactSize: bigint('artifact_size', { mode: 'number' }).notNull(),
-    maxAttempts: integer('max_attempts').notNull().default(3),
-    usedAttempts: integer('used_attempts').notNull().default(0),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    consumedAt: timestamp('consumed_at', { withTimezone: true }),
-    createdBy: varchar('created_by', { length: 50 }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index('idx_cp_woi_refs_org').on(table.organizationId),
-    index('idx_cp_woi_refs_expires')
-      .on(table.expiresAt)
-      .where(sql`consumed_at IS NULL`),
-  ]
-);
-
-export type WindowsOfflineDownloadRef = typeof cpWindowsOfflineDownloadRefs.$inferSelect;
-export type NewWindowsOfflineDownloadRef = typeof cpWindowsOfflineDownloadRefs.$inferInsert;

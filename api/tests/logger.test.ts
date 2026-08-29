@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
 
-import { logger } from '../src/lib/logger.js';
+import { logger, redactSensitiveUrlText } from '../src/lib/logger.js';
 
 function captureStdout<T>(run: () => T): { result: T; output: string } {
   const originalWrite = process.stdout.write.bind(process.stdout);
@@ -51,6 +51,18 @@ await describe('logger', async () => {
     const child = logger.child({ requestId: 'req-123' });
     assert.strictEqual(typeof child.info, 'function');
     child.info('child info', { extra: true });
+  });
+
+  await test('redacts installer refs and other credential-like query values', () => {
+    const value = redactSensitiveUrlText(
+      '/api/windows-offline-installer/download?ref=opaque-ref&keep=visible&token=jwt-value'
+    );
+
+    assert.equal(
+      value,
+      '/api/windows-offline-installer/download?ref=REDACTED&keep=visible&token=REDACTED'
+    );
+    assert.doesNotMatch(value, /opaque-ref|jwt-value/u);
   });
 
   await test('requestMiddleware prefers x-forwarded-for over req.ip when logging', () => {

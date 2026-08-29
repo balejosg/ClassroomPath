@@ -16,10 +16,10 @@ require_windows_offline_installer_runtime_pin() {
   local name=""
 
   for name in \
-    CP_OFFLINE_INSTALLER_TEMPLATE_VERSION \
-    CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT \
-    CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG \
-    CP_OFFLINE_INSTALLER_TEMPLATE_SHA256; do
+    OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION \
+    OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT \
+    OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG \
+    OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256; do
     if [ -z "${!name:-}" ]; then
       log_error "Windows offline installer runtime pin is missing: $name"
       return 1
@@ -39,10 +39,10 @@ write_release_runtime_state() {
   local openpath_version="$8"
   local openpath_linux_agent_version="$9"
   local spa_image="${10}"
-  local template_version="${11:-${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:-}}"
-  local template_commit="${12:-${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:-}}"
-  local template_release_tag="${13:-${CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG:-}}"
-  local template_sha256="${14:-${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:-}}"
+  local template_version="${11:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}}"
+  local template_commit="${12:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}}"
+  local template_release_tag="${13:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}}"
+  local template_sha256="${14:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}}"
 
   APP_SHA="$app_sha" \
   IMAGE_SOURCE="$image_source" \
@@ -53,10 +53,10 @@ write_release_runtime_state() {
   OPENPATH_VERSION="$openpath_version" \
   OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
   CLASSROOMPATH_SPA_IMAGE="$spa_image" \
-  CP_OFFLINE_INSTALLER_TEMPLATE_VERSION="$template_version" \
-  CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT="$template_commit" \
-  CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG="$template_release_tag" \
-  CP_OFFLINE_INSTALLER_TEMPLATE_SHA256="$template_sha256" \
+  OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION="$template_version" \
+  OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT="$template_commit" \
+  OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG="$template_release_tag" \
+  OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256="$template_sha256" \
     write_current_release_state "$state_path"
 }
 

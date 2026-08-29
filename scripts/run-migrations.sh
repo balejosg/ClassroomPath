@@ -16,7 +16,7 @@ log_info "Running ClassroomPath Gateway database migrations..."
 log_info "Project root: $PROJECT_ROOT"
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-  bash "$PROJECT_ROOT/scripts/run-migrations-docker.sh" --cp
+  bash "$PROJECT_ROOT/scripts/run-migrations-docker.sh" --cp "$@"
   exit 0
 fi
 
@@ -34,6 +34,18 @@ if [ -z "${DATABASE_URL:-}" ]; then
 fi
 
 cd "$PROJECT_ROOT"
+
+for migration_arg in "$@"; do
+  case "$migration_arg" in
+    --confirm-windows-offline-installer-legacy-retirement)
+      export CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1
+      ;;
+    *)
+      die "Unknown migration argument: $migration_arg" 2
+      ;;
+  esac
+done
+
 if [ ! -d "node_modules" ]; then
   log_info "Installing dependencies..."
   npm ci -w @classroompath/api

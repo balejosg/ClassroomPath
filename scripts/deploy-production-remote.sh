@@ -454,7 +454,6 @@ run_remote_deploy_phases \
   load_production_deploy_payload \
   prepare_production_checkout \
   load_production_release_manifest \
-  provision_windows_offline_installer_template \
   classify_production_migration_risk \
   cleanup_production_disk_if_needed \
   run_production_database_migrations \

@@ -7,13 +7,10 @@ import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_WINDOWS_OFFLINE_INSTALLER_CANARY_OUTPUT =
   'windows-offline-installer-canary.json';
-export const DEFAULT_WINDOWS_OFFLINE_INSTALLER_REUSE_RETRY_DELAYS_MS = Object.freeze([
-  0, 100, 250, 500,
-]);
-export const MAX_WINDOWS_OFFLINE_INSTALLER_REUSE_RETRY_WINDOW_MS = 2000;
 
-const HEX_SHA256 = /^[0-9a-f]{64}$/;
-const SAFE_EXE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._-]*\.exe$/i;
+const HEX_SHA256 = /^[0-9a-f]{64}$/u;
+const SAFE_EXE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._-]*\.exe$/iu;
+const CANONICAL_DOWNLOAD_PATH = '/api/windows-offline-installer/download';
 
 function required(value, name) {
   const normalized = String(value ?? '').trim();
@@ -22,7 +19,7 @@ function required(value, name) {
 }
 
 function normalizeBaseUrl(value) {
-  return required(value, 'WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL').replace(/\/+$/, '');
+  return required(value, 'WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL').replace(/\/+$/u, '');
 }
 
 function extractTrpcData(payload) {
@@ -42,35 +39,78 @@ function writeEvidence(outputPath, evidence) {
 }
 
 /**
- * @param {{ generated?: boolean, firstDownloadStatus?: number|null, reuseStatus?: number|null, reuseAttempts?: number, errorCode: string }} options
+ * @param {{ generated?: boolean; downloadStatus?: number | null; errorCode: string }} input
  */
-function failedEvidence({
-  generated = false,
-  firstDownloadStatus = null,
-  reuseStatus = null,
-  reuseAttempts = 0,
-  errorCode,
-}) {
+function failedEvidence({ generated = false, downloadStatus = null, errorCode }) {
   return {
     result: 'failed',
     generated,
-    firstDownloadStatus,
-    reuseStatus,
-    reuseAttempts,
+    downloadStatus,
     fileName: null,
     size: null,
+    contentLength: null,
+    contentLengthMatches: false,
     expectedSha256: null,
     actualSha256: null,
     shaMatches: false,
     attachment: false,
+    canonicalPath: false,
     errorCode,
   };
 }
 
+function parseCanonicalDownloadUrl(downloadUrl, baseUrl) {
+  let parsed;
+  try {
+    parsed = new URL(downloadUrl, baseUrl);
+  } catch {
+    return null;
+  }
+
+  const base = new URL(baseUrl);
+  if (
+    parsed.origin !== base.origin ||
+    parsed.pathname !== CANONICAL_DOWNLOAD_PATH ||
+    !parsed.searchParams.get('ref')
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function validateGeneratedMetadata(data, baseUrl) {
+  if (!data || typeof data !== 'object') return null;
+
+  const fileName = typeof data.fileName === 'string' ? data.fileName : '';
+  const version = typeof data.version === 'string' ? data.version : '';
+  const sha256 = typeof data.sha256 === 'string' ? data.sha256 : '';
+  const tokenExpiresAt = typeof data.tokenExpiresAt === 'string' ? data.tokenExpiresAt : '';
+  const downloadExpiresAt =
+    typeof data.downloadExpiresAt === 'string' ? data.downloadExpiresAt : '';
+  const downloadUrl = typeof data.downloadUrl === 'string' ? data.downloadUrl : '';
+  const canonicalUrl = parseCanonicalDownloadUrl(downloadUrl, baseUrl);
+
+  if (
+    !SAFE_EXE_FILE_NAME.test(fileName) ||
+    !version ||
+    !HEX_SHA256.test(sha256) ||
+    !tokenExpiresAt ||
+    !downloadExpiresAt ||
+    !canonicalUrl
+  ) {
+    return null;
+  }
+
+  return { fileName, sha256, canonicalUrl };
+}
+
 /**
- * Exercises only the ClassroomPath Windows offline-installer mutation and
- * its single-use download route. Evidence intentionally omits URLs, refs,
- * authorization, JWTs, and enrollment tokens.
+ * Exercises only the ClassroomPath boundary and the canonical OpenPath
+ * download. OpenPath owns the single-use replay proof; this canary checks the
+ * wrapper's session/policy/gateway path, attachment headers, length, and bytes.
+ * Evidence intentionally omits URLs, refs, authorization, JWTs, cookies, and
+ * enrollment/personalized payloads.
  */
 export async function runWindowsOfflineInstallerCanary({
   baseUrl,
@@ -80,7 +120,6 @@ export async function runWindowsOfflineInstallerCanary({
   outputPath = DEFAULT_WINDOWS_OFFLINE_INSTALLER_CANARY_OUTPUT,
   now = () => new Date(),
   fetchImpl = fetch,
-  reuseRetryDelaysMs = DEFAULT_WINDOWS_OFFLINE_INSTALLER_REUSE_RETRY_DELAYS_MS,
 }) {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const normalizedClassroomId = required(
@@ -94,24 +133,12 @@ export async function runWindowsOfflineInstallerCanary({
       'WINDOWS_OFFLINE_INSTALLER_CANARY_ACCESS_TOKEN or WINDOWS_OFFLINE_INSTALLER_CANARY_COOKIE is required'
     );
   }
-  const generateUrl = `${normalizedBaseUrl}/cp/trpc/windowsOfflineInstaller.generate`;
-  if (
-    !Array.isArray(reuseRetryDelaysMs) ||
-    reuseRetryDelaysMs.length === 0 ||
-    reuseRetryDelaysMs.length > 4 ||
-    reuseRetryDelaysMs.some((delay) => !Number.isInteger(delay) || delay < 0) ||
-    reuseRetryDelaysMs.reduce((sum, delay) => sum + delay, 0) >
-      MAX_WINDOWS_OFFLINE_INSTALLER_REUSE_RETRY_WINDOW_MS
-  ) {
-    throw new Error('reuse retry window must be short and bounded');
-  }
 
+  const generateUrl = `${normalizedBaseUrl}/cp/trpc/windowsOfflineInstaller.generate`;
   let generatedResponse;
   let generatedData;
   try {
-    const generateHeaders = {
-      'Content-Type': 'application/json',
-    };
+    const generateHeaders = { 'Content-Type': 'application/json' };
     if (normalizedCookieHeader) {
       generateHeaders.Cookie = normalizedCookieHeader;
     } else {
@@ -120,111 +147,79 @@ export async function runWindowsOfflineInstallerCanary({
     generatedResponse = await fetchImpl(generateUrl, {
       method: 'POST',
       headers: generateHeaders,
-      body: JSON.stringify({ json: { classroomId: normalizedClassroomId } }),
+      body: JSON.stringify({ classroomId: normalizedClassroomId }),
     });
     if (generatedResponse.status !== 200) {
       return writeEvidence(outputPath, failedEvidence({ errorCode: 'GENERATE_HTTP_ERROR' }));
     }
-    generatedData = extractTrpcData(await generatedResponse.json());
-    if (
-      !generatedData ||
-      typeof generatedData.downloadUrl !== 'string' ||
-      typeof generatedData.fileName !== 'string' ||
-      typeof generatedData.sha256 !== 'string'
-    ) {
+    generatedData = validateGeneratedMetadata(
+      extractTrpcData(await generatedResponse.json()),
+      normalizedBaseUrl
+    );
+    if (!generatedData) {
       return writeEvidence(outputPath, failedEvidence({ errorCode: 'GENERATE_CONTRACT_INVALID' }));
     }
   } catch {
     return writeEvidence(outputPath, failedEvidence({ errorCode: 'GENERATE_FAILED' }));
   }
 
-  const downloadUrl = new URL(generatedData.downloadUrl, normalizedBaseUrl).toString();
-  let firstDownloadResponse;
-  let firstBytes = Buffer.alloc(0);
-  /** @type {number|null} */
-  let firstDownloadStatus = null;
+  let downloadStatus = null;
+  let downloadBytes = Buffer.alloc(0);
+  let contentLength = null;
   let attachment = false;
   try {
-    firstDownloadResponse = await fetchImpl(downloadUrl);
-    firstDownloadStatus = firstDownloadResponse.status;
-    if (firstDownloadStatus !== 200) {
+    const downloadResponse = await fetchImpl(generatedData.canonicalUrl.toString());
+    downloadStatus = downloadResponse.status;
+    if (downloadStatus !== 200) {
       return writeEvidence(
         outputPath,
-        failedEvidence({
-          generated: true,
-          firstDownloadStatus,
-          errorCode: 'FIRST_DOWNLOAD_HTTP_ERROR',
-        })
+        failedEvidence({ generated: true, downloadStatus, errorCode: 'DOWNLOAD_HTTP_ERROR' })
       );
     }
-    const contentDisposition = firstDownloadResponse.headers.get('content-disposition') ?? '';
-    attachment = /^attachment\s*;\s*filename="[^"]+\.exe"$/i.test(contentDisposition);
-    firstBytes = Buffer.from(await firstDownloadResponse.arrayBuffer());
+
+    const contentDisposition = downloadResponse.headers.get('content-disposition') ?? '';
+    attachment = /^attachment\s*;\s*filename="[^"]+\.exe"$/iu.test(contentDisposition);
+    const rawContentLength = downloadResponse.headers.get('content-length');
+    contentLength =
+      rawContentLength && /^\d+$/u.test(rawContentLength)
+        ? Number.parseInt(rawContentLength, 10)
+        : null;
+    downloadBytes = Buffer.from(await downloadResponse.arrayBuffer());
   } catch {
     return writeEvidence(
       outputPath,
-      failedEvidence({
-        generated: true,
-        firstDownloadStatus,
-        errorCode: 'FIRST_DOWNLOAD_FAILED',
-      })
+      failedEvidence({ generated: true, downloadStatus, errorCode: 'DOWNLOAD_FAILED' })
     );
   }
 
-  /** @type {number|null} */
-  let reuseStatus = null;
-  let reuseAttempts = 0;
-  for (const delay of reuseRetryDelaysMs) {
-    if (delay > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, delay));
-    reuseAttempts += 1;
-    try {
-      const reuseResponse = await fetchImpl(downloadUrl);
-      reuseStatus = reuseResponse.status;
-      if (reuseStatus === 410) break;
-    } catch {
-      return writeEvidence(
-        outputPath,
-        failedEvidence({
-          generated: true,
-          firstDownloadStatus,
-          reuseStatus,
-          reuseAttempts,
-          errorCode: 'REUSE_DOWNLOAD_FAILED',
-        })
-      );
-    }
-  }
-
-  const actualSha256 = firstBytes.length > 0 ? hashBytes(firstBytes) : null;
-  const expectedSha256 = HEX_SHA256.test(generatedData.sha256) ? generatedData.sha256 : null;
-  const shaMatches = actualSha256 === expectedSha256;
-  const fileName = SAFE_EXE_FILE_NAME.test(generatedData.fileName) ? generatedData.fileName : null;
+  const actualSha256 = downloadBytes.length > 0 ? hashBytes(downloadBytes) : null;
+  const contentLengthMatches = contentLength === downloadBytes.length;
+  const shaMatches = actualSha256 === generatedData.sha256;
   const ok =
-    firstDownloadStatus === 200 &&
+    downloadStatus === 200 &&
     attachment &&
-    fileName !== null &&
-    firstBytes.length > 0 &&
-    shaMatches &&
-    reuseStatus === 410;
+    downloadBytes.length > 0 &&
+    contentLengthMatches &&
+    shaMatches;
 
   return writeEvidence(outputPath, {
     result: ok ? 'success' : 'failed',
     generated: true,
-    firstDownloadStatus,
-    reuseStatus,
-    reuseAttempts,
-    fileName,
-    size: firstBytes.length,
-    expectedSha256,
+    downloadStatus,
+    fileName: generatedData.fileName,
+    size: downloadBytes.length,
+    contentLength,
+    contentLengthMatches,
+    expectedSha256: generatedData.sha256,
     actualSha256,
     shaMatches,
     attachment,
+    canonicalPath: true,
     errorCode: ok ? null : 'DOWNLOAD_CONTRACT_FAILED',
     generatedAt: now().toISOString(),
   });
 }
 
-/** @returns {string|undefined} */
 function envValue(...names) {
   for (const name of names) {
     if (process.env[name]) return process.env[name];

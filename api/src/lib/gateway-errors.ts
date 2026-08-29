@@ -6,7 +6,7 @@
 
 import type { ErrorRequestHandler, NextFunction, Request, Response } from 'express';
 
-import { logger } from './logger.js';
+import { logger, redactSensitiveUrlText } from './logger.js';
 import { getRequestId } from './request-id.js';
 import { getClientIp } from './http-request-meta.js';
 
@@ -71,9 +71,9 @@ export function createGatewayErrorMiddleware(): ErrorRequestHandler {
 
     logger.request(requestId).error('Unhandled gateway error', {
       method: req.method,
-      path: req.originalUrl || req.url,
+      path: redactSensitiveUrlText(req.originalUrl || req.url),
       ip: getClientIp(req),
-      error: error instanceof Error ? error.message : String(error),
+      error: redactSensitiveUrlText(error instanceof Error ? error.message : String(error)),
     });
 
     res.status(500).json(

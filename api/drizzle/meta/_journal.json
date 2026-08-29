@@ -71,6 +71,13 @@
       "when": 1787501467370,
       "tag": "0010_windows_offline_installer",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787946735000,
+      "tag": "0011_retire_windows_offline_installer_refs",
+      "breakpoints": true
     }
   ]
 }

@@ -24,7 +24,7 @@ await describe('health-routes', { concurrency: false }, async () => {
         databaseSchemaReady: false,
         missingTables: ['cp_terms_acceptance'],
         offlineInstallerReady: false,
-        offlineInstallerCode: 'TEMPLATE_MISSING',
+        offlineInstallerCode: 'OPENPATH_CAPABILITY_UNAVAILABLE',
       }),
     });
 
@@ -69,7 +69,7 @@ await describe('health-routes', { concurrency: false }, async () => {
       databaseSchemaReady: false,
       missingTables: ['cp_terms_acceptance'],
       offlineInstallerReady: false,
-      offlineInstallerCode: 'TEMPLATE_MISSING',
+      offlineInstallerCode: 'OPENPATH_CAPABILITY_UNAVAILABLE',
     });
   });
 });

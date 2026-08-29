@@ -6,7 +6,7 @@
 
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
-import { logger } from './logger.js';
+import { logger, redactSensitiveUrlText } from './logger.js';
 import { getRequestId } from './request-id.js';
 import { getClientIp } from './http-request-meta.js';
 import { createGatewayErrorBody } from './gateway-errors.js';
@@ -122,7 +122,7 @@ export function createRateLimitMiddleware(rules: GatewayRateLimitRule[]): Reques
         bucket: rule.bucket,
         ip: clientIp,
         method: req.method,
-        path,
+        path: redactSensitiveUrlText(path),
         retryAfterMs,
       });
 

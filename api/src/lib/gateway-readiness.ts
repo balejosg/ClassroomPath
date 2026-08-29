@@ -4,10 +4,6 @@ import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { extractTrpcData } from './openpath/response.js';
 import { openPathTrpcUrl } from './openpath/trpc-client.js';
-import {
-  checkWindowsOfflineInstallerReadiness,
-  type WindowsOfflineInstallerReadiness,
-} from './windows-offline-installer-readiness.js';
 
 export interface GatewayDatabaseStatus {
   connected: boolean;
@@ -22,7 +18,7 @@ export interface GatewayReadiness {
   databaseSchemaReady: boolean;
   missingTables: string[];
   offlineInstallerReady: boolean;
-  offlineInstallerCode: WindowsOfflineInstallerReadiness['code'];
+  offlineInstallerCode: 'OK' | 'OPENPATH_UNAVAILABLE' | 'OPENPATH_CAPABILITY_UNAVAILABLE';
 }
 
 const requiredGatewayTableNames = Object.freeze(
@@ -46,6 +42,26 @@ export function parseGatewayUpstreamReadiness(payload: unknown): boolean {
     'status' in data &&
     isGatewayUpstreamReadyStatus((data as { status?: unknown }).status)
   );
+}
+
+export function parseGatewayOfflineInstallerReadiness(payload: unknown): {
+  ready: boolean;
+  code: GatewayReadiness['offlineInstallerCode'];
+} {
+  const data =
+    extractTrpcData<{
+      checks?: { windowsOfflineInstaller?: { status?: unknown } };
+    }>(payload) ?? payload;
+
+  const capabilityStatus =
+    typeof data === 'object' && data !== null && 'checks' in data
+      ? (data as { checks?: { windowsOfflineInstaller?: { status?: unknown } } }).checks
+          ?.windowsOfflineInstaller?.status
+      : undefined;
+
+  return capabilityStatus === 'ok'
+    ? { ready: true, code: 'OK' }
+    : { ready: false, code: 'OPENPATH_CAPABILITY_UNAVAILABLE' };
 }
 
 function normalizeGatewayDatabaseStatus(
@@ -101,19 +117,17 @@ export async function getGatewayReadiness(
   deps: {
     checkDatabase?: () => Promise<boolean | GatewayDatabaseStatus>;
     fetchImpl?: typeof fetch;
-    checkOfflineInstaller?: () =>
-      | WindowsOfflineInstallerReadiness
-      | Promise<WindowsOfflineInstallerReadiness>;
   } = {}
 ): Promise<GatewayReadiness> {
   const checkDatabase = deps.checkDatabase ?? defaultDatabaseCheck;
   const fetchImpl = deps.fetchImpl ?? fetch;
-  const checkOfflineInstaller =
-    deps.checkOfflineInstaller ?? (() => checkWindowsOfflineInstallerReadiness());
 
   const database = normalizeGatewayDatabaseStatus(await checkDatabase());
-  const offlineInstaller = await checkOfflineInstaller();
   let upstreamAvailable = false;
+  let offlineInstaller = {
+    ready: false,
+    code: 'OPENPATH_UNAVAILABLE' as GatewayReadiness['offlineInstallerCode'],
+  };
 
   try {
     const response = await fetchImpl(openPathTrpcUrl('healthcheck.ready'), {
@@ -124,10 +138,16 @@ export async function getGatewayReadiness(
     });
 
     if (response.ok) {
-      upstreamAvailable = parseGatewayUpstreamReadiness(await response.json());
+      const payload = await response.json();
+      upstreamAvailable = parseGatewayUpstreamReadiness(payload);
+      offlineInstaller = parseGatewayOfflineInstallerReadiness(payload);
     }
   } catch {
     upstreamAvailable = false;
+    offlineInstaller = {
+      ready: false,
+      code: 'OPENPATH_UNAVAILABLE',
+    };
   }
 
   return {

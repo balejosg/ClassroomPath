@@ -18,6 +18,7 @@ const projectRoot = resolve(testDir, '..');
 
 interface DockerComposeService {
   build?: { context: string; dockerfile: string };
+  command?: string[];
   image?: string;
   platform?: string;
   ports?: Array<string | number>;
@@ -113,52 +114,53 @@ void describe('Docker Compose Configuration', () => {
     );
   });
 
-  void test('gateway separates read-only template storage from writable artifact volume', () => {
+  void test('gateway has no OpenPath installer storage ownership', () => {
     const content = readFileSync(composePath, 'utf-8');
     const compose = parseYaml(content) as DockerCompose;
     const gateway = compose.services['gateway'];
 
+    assert.ok(!gateway.environment?.some((value) => String(value).includes('OFFLINE')));
     assert.ok(
-      gateway.environment?.includes(
-        'CP_OFFLINE_INSTALLER_TEMPLATE_DIR=/app/var/windows-offline-installer/templates'
+      !gateway.volumes?.some((value) => String(value).includes('windows-offline-installer')),
+      'Gateway must not mount OpenPath installer storage'
+    );
+    assert.ok(!('windows-offline-installer-artifacts' in (compose.volumes ?? {})));
+  });
+
+  void test('OpenPath API owns canonical installer provisioning and storage', () => {
+    const content = readFileSync(composePath, 'utf-8');
+    const compose = parseYaml(content) as DockerCompose;
+    const api = compose.services['api'];
+    const provision = compose.services['windows-offline-installer-provision'];
+
+    assert.ok(provision, 'Compose must define the OpenPath provisioner service');
+    assert.ok(
+      provision.image?.includes('${OPENPATH_API_IMAGE'),
+      'Provisioner must use the same immutable OpenPath API image'
+    );
+    assert.ok(
+      provision.environment?.some((value) =>
+        String(value).startsWith('OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=')
       )
     );
     assert.ok(
-      gateway.environment?.includes(
-        'CP_OFFLINE_INSTALLER_ARTIFACTS_DIR=/app/var/windows-offline-installer/artifacts'
+      provision.command?.join('\n').includes('dist/scripts/provision-windows-offline-installer.js')
+    );
+    assert.ok(
+      api.volumes?.includes(
+        'windows_offline_installer_templates:/app/var/windows-offline-installer/templates:ro'
       )
     );
     assert.ok(
-      gateway.environment?.includes(
-        'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION=${CP_OFFLINE_INSTALLER_TEMPLATE_VERSION:?}'
-      ),
-      'Gateway must receive the release-manifest template version explicitly'
-    );
-    assert.ok(
-      gateway.environment?.includes(
-        'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT=${CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT:?}'
-      ),
-      'Gateway must receive the release-manifest template commit explicitly'
-    );
-    assert.ok(
-      gateway.environment?.includes(
-        'CP_OFFLINE_INSTALLER_TEMPLATE_SHA256=${CP_OFFLINE_INSTALLER_TEMPLATE_SHA256:?}'
-      ),
-      'Gateway must receive the release-manifest template SHA explicitly'
-    );
-    assert.ok(gateway.environment?.includes('OPENPATH_URL=${OPENPATH_URL:-http://api:3000}'));
-    assert.ok(
-      gateway.volumes?.includes(
-        '${CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR:-../var/windows-offline-installer/templates}:/app/var/windows-offline-installer/templates:ro'
-      ),
-      'Compose and provisioning must share the canonical host-dir default'
-    );
-    assert.ok(
-      gateway.volumes?.includes(
-        'windows-offline-installer-artifacts:/app/var/windows-offline-installer/artifacts:rw'
+      api.volumes?.includes(
+        'windows_offline_installer_artifacts:/app/var/windows-offline-installer/artifacts:rw'
       )
     );
-    assert.ok('windows-offline-installer-artifacts' in (compose.volumes ?? {}));
+    assert.ok(
+      content.includes(
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:?'
+      )
+    );
   });
 
   void test('SPA service is properly configured', () => {
@@ -337,21 +339,21 @@ void describe('Environment Configuration', () => {
   void test('.env.example documents canonical Windows offline installer pins and storage', () => {
     const content = readFileSync(envExamplePath, 'utf-8');
     for (const envVar of [
-      'CP_OFFLINE_INSTALLER_TEMPLATE_VERSION',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_SHA256',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_DIR',
-      'CP_OFFLINE_INSTALLER_ARTIFACTS_DIR',
-      'CP_OFFLINE_INSTALLER_TEMPLATE_HOST_DIR',
-      'CP_OFFLINE_INSTALLER_TOKEN_TTL_HOURS',
-      'CP_OFFLINE_INSTALLER_DOWNLOAD_TTL_MINUTES',
-      'CP_OFFLINE_INSTALLER_DOWNLOAD_MAX_ATTEMPTS',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_DIR',
+      'OPENPATH_WINDOWS_OFFLINE_ARTIFACTS_DIR',
+      'OPENPATH_WINDOWS_OFFLINE_TOKEN_TTL_HOURS',
+      'OPENPATH_WINDOWS_OFFLINE_DOWNLOAD_TTL_MINUTES',
+      'OPENPATH_WINDOWS_OFFLINE_DOWNLOAD_MAX_ATTEMPTS',
+      'OPENPATH_WINDOWS_OFFLINE_ARTIFACT_RETENTION_HOURS',
+      'OPENPATH_GITHUB_REPO',
     ]) {
       assert.ok(content.includes(envVar), `${envVar} should be documented`);
     }
-    assert.ok(content.includes('CP_OFFLINE_INSTALLER_TEMPLATE_CACHE_DIR'));
-    assert.match(content, /deprecated/i);
+    assert.doesNotMatch(content, /CP_OFFLINE_INSTALLER_/);
   });
 
   void test('.env.example does not contain actual secrets', () => {
