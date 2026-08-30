@@ -24,6 +24,17 @@ describe('Windows offline installer release pin resolver', () => {
     );
   });
 
+  test('preserves the OpenPath git short SHA used by the published release tag', () => {
+    const release = deriveWindowsOfflineInstallerTemplateRelease({
+      version: '4.1.0',
+      commit: 'da3a9c910707f1c565e15239f45ccb808c4588e9',
+      shortCommit: 'da3a9c91',
+    });
+
+    assert.equal(release.releaseTag, 'scripts-v4.1.0-da3a9c91');
+    assert.match(release.sidecarUrl, /scripts-v4\.1\.0-da3a9c91\//);
+  });
+
   test('accepts standard sha256 sidecar format and rejects malformed values', () => {
     assert.equal(
       parseWindowsOfflineInstallerTemplateSidecar(
@@ -39,6 +50,7 @@ describe('Windows offline installer release pin resolver', () => {
     const pin = await resolveWindowsOfflineInstallerTemplatePin({
       version: '4.1.0',
       commit,
+      shortCommit: '0123456',
       fetchImpl: async (url: string) => {
         requests.push(url);
         return new Response(`${sha256}  OpenPath-Windows-Setup-Template.exe\n`, { status: 200 });
@@ -58,6 +70,7 @@ describe('Windows offline installer release pin resolver', () => {
       resolveWindowsOfflineInstallerTemplatePin({
         version: '4.1.0',
         commit,
+        shortCommit: '0123456',
         fetchImpl: async () => new Response('', { status: 404 }),
       }),
       /sidecar download failed/

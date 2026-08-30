@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/;
+const SHORT_COMMIT_SHA = /^[0-9a-f]{7,40}$/;
 const HEX_SHA256 = /^[0-9a-f]{64}$/;
 const SAFE_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -16,20 +17,32 @@ function required(value, name) {
   return normalized;
 }
 
-export function deriveWindowsOfflineInstallerTemplateRelease({ version, commit }) {
+export function deriveWindowsOfflineInstallerTemplateRelease({
+  version,
+  commit,
+  shortCommit = '',
+}) {
   const normalizedVersion = required(version, 'OpenPath template version');
   const normalizedCommit = required(commit, 'OpenPath template commit');
+  const normalizedShortCommit = String(shortCommit ?? '').trim() || normalizedCommit.slice(0, 7);
   if (!SAFE_VERSION.test(normalizedVersion)) {
     throw new Error('OpenPath template version is invalid');
   }
   if (!FULL_COMMIT_SHA.test(normalizedCommit)) {
     throw new Error('OpenPath template commit must be a full lowercase SHA');
   }
+  if (
+    !SHORT_COMMIT_SHA.test(normalizedShortCommit) ||
+    !normalizedCommit.startsWith(normalizedShortCommit)
+  ) {
+    throw new Error('OpenPath template short commit is invalid');
+  }
 
-  const releaseTag = `scripts-v${normalizedVersion}-${normalizedCommit.slice(0, 7)}`;
+  const releaseTag = `scripts-v${normalizedVersion}-${normalizedShortCommit}`;
   return {
     version: normalizedVersion,
     commit: normalizedCommit,
+    shortCommit: normalizedShortCommit,
     releaseTag,
     sidecarUrl: `https://github.com/balejosg/openpath/releases/download/${encodeURIComponent(
       releaseTag
@@ -50,9 +63,10 @@ export function parseWindowsOfflineInstallerTemplateSidecar(sidecarText) {
 export async function resolveWindowsOfflineInstallerTemplatePin({
   version,
   commit,
+  shortCommit = '',
   fetchImpl = globalThis.fetch,
 }) {
-  const release = deriveWindowsOfflineInstallerTemplateRelease({ version, commit });
+  const release = deriveWindowsOfflineInstallerTemplateRelease({ version, commit, shortCommit });
   if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is unavailable');
 
   let response;
@@ -80,6 +94,7 @@ async function main() {
   const pin = await resolveWindowsOfflineInstallerTemplatePin({
     version: process.env.OPENPATH_VERSION?.trim(),
     commit: process.env.OPENPATH_SHA?.trim(),
+    shortCommit: process.env.OPENPATH_SHORT_SHA?.trim(),
   });
   process.stdout.write(
     [

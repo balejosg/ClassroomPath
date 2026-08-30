@@ -219,6 +219,49 @@ describe('Release candidate workflow contracts', () => {
       jobs['derive-release-image-refs']?.steps?.find((step) => step.name === 'Resolve OpenPath SHA')
         ?.run ?? '';
     assert.ok(deriveOpenPathShaRun.includes('git rev-parse HEAD:upstream/openpath'));
+    const deriveOpenPathTemplateVersionStep = jobs['derive-release-image-refs']?.steps?.find(
+      (step) => step.name === 'Resolve OpenPath installer template version'
+    );
+    const deriveOpenPathTemplateVersionRun = deriveOpenPathTemplateVersionStep?.run ?? '';
+    assert.ok(
+      deriveOpenPathTemplateVersionStep,
+      'RC workflow must resolve the published OpenPath template version separately from the Linux agent package version'
+    );
+    assert.ok(
+      deriveOpenPathTemplateVersionRun.includes('git -C upstream/openpath show HEAD:VERSION')
+    );
+    assert.ok(deriveOpenPathTemplateVersionRun.includes('set -euo pipefail'));
+    assert.ok(
+      deriveOpenPathTemplateVersionRun.includes(
+        'git -C upstream/openpath rev-parse --short "$OPENPATH_TEMPLATE_COMMIT"'
+      )
+    );
+    assert.equal(
+      deriveOpenPathTemplateVersionStep?.env?.OPENPATH_TEMPLATE_COMMIT,
+      '${{ steps.linux-agent.outputs.openpath_promotion_contract_sha }}'
+    );
+    const resolveOfflineInstallerStep = jobs['derive-release-image-refs']?.steps?.find(
+      (step) => step.name === 'Resolve Windows offline installer template pin'
+    );
+    assert.equal(
+      resolveOfflineInstallerStep?.env?.OPENPATH_VERSION,
+      '${{ steps.openpath-template.outputs.version }}',
+      'the Windows template pin must use the OpenPath VERSION, not the Linux agent package version'
+    );
+    assert.equal(
+      resolveOfflineInstallerStep?.env?.OPENPATH_SHA,
+      '${{ steps.linux-agent.outputs.openpath_promotion_contract_sha }}',
+      'the Windows template pin must use the published OpenPath promotion contract commit'
+    );
+    assert.equal(
+      resolveOfflineInstallerStep?.env?.OPENPATH_SHORT_SHA,
+      '${{ steps.openpath-template.outputs.short_sha }}',
+      'the Windows template pin must use the exact git abbreviation from the published OpenPath release'
+    );
+    assert.notEqual(
+      resolveOfflineInstallerStep?.env?.OPENPATH_VERSION,
+      '${{ steps.linux-agent.outputs.openpath_version }}'
+    );
     const deriveLinuxAgentVersionRun =
       jobs['derive-release-image-refs']?.steps?.find(
         (step) => step.name === 'Resolve OpenPath Linux agent version'
@@ -317,6 +360,14 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(
       deriveStepNames.indexOf('Resolve OpenPath SHA') <
         deriveStepNames.indexOf('Resolve OpenPath Linux agent version')
+    );
+    assert.ok(
+      deriveStepNames.indexOf('Resolve OpenPath Linux agent version') <
+        deriveStepNames.indexOf('Resolve OpenPath installer template version')
+    );
+    assert.ok(
+      deriveStepNames.indexOf('Resolve OpenPath installer template version') <
+        deriveStepNames.indexOf('Resolve Windows offline installer template pin')
     );
     assert.ok(
       deriveLinuxAgentVersionRun.includes('node scripts/resolve-openpath-linux-agent-version.mjs')

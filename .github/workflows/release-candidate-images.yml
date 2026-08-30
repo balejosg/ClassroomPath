@@ -102,11 +102,37 @@ jobs:
           node scripts/resolve-openpath-linux-agent-version.mjs \
             --openpath-dir upstream/openpath >> "$GITHUB_OUTPUT"
 
+      - name: Resolve OpenPath installer template version
+        id: openpath-template
+        shell: bash
+        env:
+          OPENPATH_TEMPLATE_COMMIT: ${{ steps.linux-agent.outputs.openpath_promotion_contract_sha }}
+        run: |
+          set -euo pipefail
+          # The Windows template is published by OpenPath's installation-scripts
+          # release and is versioned by the checked-out OpenPath VERSION file.
+          # Keep this separate from the Linux agent package version: they are
+          # different public release contracts.
+          git -C upstream/openpath rev-parse --verify "${OPENPATH_TEMPLATE_COMMIT}^{commit}" >/dev/null
+          template_version="$(git -C upstream/openpath show HEAD:VERSION)"
+          template_short_sha="$(git -C upstream/openpath rev-parse --short "$OPENPATH_TEMPLATE_COMMIT")"
+          if [[ ! "$template_version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "OpenPath template VERSION is missing or invalid" >&2
+            exit 1
+          fi
+          if [[ ! "$template_short_sha" =~ ^[0-9a-f]{7,40}$ || "$OPENPATH_TEMPLATE_COMMIT" != "$template_short_sha"* ]]; then
+            echo "OpenPath template commit abbreviation is invalid" >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$template_version" >> "$GITHUB_OUTPUT"
+          printf 'short_sha=%s\n' "$template_short_sha" >> "$GITHUB_OUTPUT"
+
       - name: Resolve Windows offline installer template pin
         id: offline-installer
         env:
-          OPENPATH_VERSION: ${{ steps.linux-agent.outputs.openpath_version }}
-          OPENPATH_SHA: ${{ steps.openpath.outputs.sha }}
+          OPENPATH_VERSION: ${{ steps.openpath-template.outputs.version }}
+          OPENPATH_SHA: ${{ steps.linux-agent.outputs.openpath_promotion_contract_sha }}
+          OPENPATH_SHORT_SHA: ${{ steps.openpath-template.outputs.short_sha }}
         run: node scripts/resolve-windows-offline-installer-template-pin.mjs >> "$GITHUB_OUTPUT"
 
   verify-openpath-prerelease-apt:
