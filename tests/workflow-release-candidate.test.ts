@@ -805,6 +805,30 @@ describe('Release candidate workflow contracts', () => {
         `manifest-only publisher must pass ${outputName} to the transformation helper`
       );
     }
+    for (const [envName, outputName] of [
+      [
+        'NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION',
+        'windows_offline_installer_template_version',
+      ],
+      [
+        'NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
+        'windows_offline_installer_template_commit',
+      ],
+      [
+        'NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
+        'windows_offline_installer_template_release_tag',
+      ],
+      [
+        'NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256',
+        'windows_offline_installer_template_sha256',
+      ],
+    ] as const) {
+      assert.equal(
+        fastPersistStep?.env?.[envName],
+        `\${{ needs.derive-release-image-refs.outputs.${outputName} }}`,
+        `manifest-only publisher must pass the new ${outputName} to the transformation helper`
+      );
+    }
     assert.ok(
       String(fastPersistStep?.run ?? '').includes(
         'node scripts/lib/release-manifest.mjs manifest-only'

@@ -101,6 +101,16 @@ describe('Windows offline installer release pin resolver', () => {
     assert.deepEqual(selectWindowsOfflineInstallerTemplatePin({ newPin, previousPin }), newPin);
   });
 
+  test('uses a complete new promotion pin even when the previous tuple is partial', () => {
+    assert.deepEqual(
+      selectWindowsOfflineInstallerTemplatePin({
+        newPin,
+        previousPin: { version: previousPin.version },
+      }),
+      newPin
+    );
+  });
+
   test('fails closed for every partial new tuple instead of falling back to the previous tuple', () => {
     const fields = Object.keys(newPin) as Array<keyof WindowsPin>;
     for (let mask = 1; mask < 1 << fields.length; mask += 1) {

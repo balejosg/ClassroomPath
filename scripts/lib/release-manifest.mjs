@@ -3,7 +3,110 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 
-import { validateWindowsOfflineInstallerTemplatePin } from '../resolve-windows-offline-installer-template-pin.mjs';
+import {
+  selectWindowsOfflineInstallerTemplatePin,
+  validateWindowsOfflineInstallerTemplatePin,
+} from '../resolve-windows-offline-installer-template-pin.mjs';
+
+/**
+ * @typedef {{
+ *   version?: string;
+ *   commit?: string;
+ *   releaseTag?: string;
+ *   sha256?: string;
+ * }} WindowsOfflineInstallerTemplatePinInput
+ */
+
+/**
+ * @typedef {{
+ *   version: string;
+ *   commit: string;
+ *   releaseTag: string;
+ *   sha256: string;
+ * }} WindowsOfflineInstallerTemplatePin
+ */
+
+/**
+ * @typedef {{
+ *   windows_offline_installer_template_version?: string;
+ *   windows_offline_installer_template_commit?: string;
+ *   windows_offline_installer_template_release_tag?: string;
+ *   windows_offline_installer_template_sha256?: string;
+ * }} ReleaseManifestOfflineInstallerPin
+ */
+
+/**
+ * @typedef {ReleaseManifestOfflineInstallerPin & {
+ *   windowsOfflineInstallerTemplateVersion?: string;
+ *   windowsOfflineInstallerTemplateCommit?: string;
+ *   windowsOfflineInstallerTemplateReleaseTag?: string;
+ *   windowsOfflineInstallerTemplateSha256?: string;
+ * }} ReleaseManifestPinFields
+ */
+
+/**
+ * @typedef {{
+ *   gateway_image?: string;
+ *   migrations_image?: string;
+ *   openpath_firefox_assets_image?: string;
+ *   openpath_api_image?: string;
+ *   spa_image?: string;
+ *   verifier_image?: string;
+ *   windows_offline_installer_template_version?: string;
+ *   windows_offline_installer_template_commit?: string;
+ *   windows_offline_installer_template_release_tag?: string;
+ *   windows_offline_installer_template_sha256?: string;
+ * }} PreviousReleaseCandidateManifest
+ */
+
+/**
+ * @typedef {{
+ *   APP_SHA: string;
+ *   CLASSROOMPATH_GATEWAY_IMAGE: string;
+ *   CLASSROOMPATH_MIGRATIONS_IMAGE: string;
+ *   OPENPATH_FIREFOX_ASSETS_IMAGE: string;
+ *   OPENPATH_API_IMAGE: string;
+ *   OPENPATH_VERSION: string;
+ *   OPENPATH_LINUX_AGENT_VERSION: string;
+ *   OPENPATH_LINUX_AGENT_APT_SUITE: string;
+ *   windows_offline_installer_template_version: string;
+ *   windows_offline_installer_template_commit: string;
+ *   windows_offline_installer_template_release_tag: string;
+ *   windows_offline_installer_template_sha256: string;
+ *   CLASSROOMPATH_SPA_IMAGE: string;
+ *   CLASSROOMPATH_VERIFIER_IMAGE: string;
+ * }} ReleaseCandidateArtifactManifest
+ */
+
+/**
+ * @typedef {{
+ *   appSha: string;
+ *   gatewayImage: string;
+ *   migrationsImage: string;
+ *   openpathFirefoxAssetsImage: string;
+ *   openpathApiImage: string;
+ *   openpathVersion: string;
+ *   linuxAgentVersion: string;
+ *   linuxAgentAptSuite: string;
+ *   spaImage: string;
+ *   verifierImage: string;
+ *   windowsOfflineInstallerTemplateVersion?: string;
+ *   windowsOfflineInstallerTemplateCommit?: string;
+ *   windowsOfflineInstallerTemplateReleaseTag?: string;
+ *   windowsOfflineInstallerTemplateSha256?: string;
+ * }} ParsedReleaseCandidateManifest
+ */
+
+/**
+ * @typedef {{
+ *   appSha?: string;
+ *   previousManifest?: PreviousReleaseCandidateManifest;
+ *   openpathVersion?: string;
+ *   linuxAgentVersion?: string;
+ *   linuxAgentAptSuite?: string;
+ *   newWindowsPin?: WindowsOfflineInstallerTemplatePinInput;
+ * }} ManifestOnlyReleaseCandidateOptions
+ */
 
 /**
  * @typedef {{
@@ -72,6 +175,10 @@ function requireManifestKeys(assignments, keys, prefix) {
   }
 }
 
+/**
+ * @param {Record<string, string>} assignments
+ * @returns {ReleaseManifestOfflineInstallerPin}
+ */
 function readOfflineInstallerPin(assignments) {
   const values = {
     windows_offline_installer_template_version:
@@ -102,6 +209,10 @@ function readOfflineInstallerPin(assignments) {
   return values;
 }
 
+/**
+ * @param {ReleaseManifestPinFields} manifest
+ * @returns {ReleaseManifestOfflineInstallerPin}
+ */
 function readCanonicalOfflineInstallerPin(manifest) {
   const pin = {
     version:
@@ -168,22 +279,7 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
 /**
  * @param {string} text
  * @param {{ sha?: string }} [options]
- * @returns {{
- *   appSha: string;
- *   gatewayImage: string;
- *   migrationsImage: string;
- *   openpathFirefoxAssetsImage: string;
- *   openpathApiImage: string;
- *   openpathVersion: string;
- *   linuxAgentVersion: string;
- *   linuxAgentAptSuite: string;
- *   spaImage: string;
- *   verifierImage: string;
- *   windowsOfflineInstallerTemplateVersion?: string;
- *   windowsOfflineInstallerTemplateCommit?: string;
- *   windowsOfflineInstallerTemplateReleaseTag?: string;
- *   windowsOfflineInstallerTemplateSha256?: string;
- * }}
+ * @returns {ParsedReleaseCandidateManifest}
  */
 export function parseArtifactReleaseManifestText(text, options = {}) {
   const assignments = parseManifestAssignments(text);
@@ -232,7 +328,7 @@ export function parseArtifactReleaseManifestText(text, options = {}) {
  * @param {{
  *   repository: string;
  *   runId: string;
- *   manifest: ReturnType<typeof parseArtifactReleaseManifestText>;
+ *   manifest: ParsedReleaseCandidateManifest;
  * }} params
  * @returns {CanonicalReleaseManifest}
  */
@@ -267,69 +363,76 @@ export function buildCanonicalReleaseManifest({ repository, runId, manifest }) {
 /**
  * Builds the artifact manifest for the manifest-only release-candidate path.
  * The image references and previous Windows tuple are copied from the previous
- * candidate; only the ClassroomPath SHA and explicitly resolved OpenPath
- * metadata are supplied by the new run.
+ * candidate; the Windows tuple is selected from the new pin when present and
+ * otherwise from the previous candidate.
  *
- * @param {{
- *   appSha: string;
- *   previousManifest: Record<string, string>;
- *   openpathVersion: string;
- *   linuxAgentVersion: string;
- *   linuxAgentAptSuite: string;
- * }} params
- * @returns {Record<string, string>}
+ * @param {ManifestOnlyReleaseCandidateOptions} params
+ * @returns {ReleaseCandidateArtifactManifest}
  */
 export function buildManifestOnlyReleaseCandidateArtifact({
   appSha,
-  previousManifest,
+  previousManifest = {},
   openpathVersion,
   linuxAgentVersion,
   linuxAgentAptSuite,
+  newWindowsPin = {},
 }) {
-  const requiredValues = {
-    APP_SHA: appSha,
-    CLASSROOMPATH_GATEWAY_IMAGE: previousManifest?.gateway_image,
-    CLASSROOMPATH_MIGRATIONS_IMAGE: previousManifest?.migrations_image,
-    OPENPATH_FIREFOX_ASSETS_IMAGE: previousManifest?.openpath_firefox_assets_image,
-    OPENPATH_API_IMAGE: previousManifest?.openpath_api_image,
-    OPENPATH_VERSION: openpathVersion,
-    OPENPATH_LINUX_AGENT_VERSION: linuxAgentVersion,
-    OPENPATH_LINUX_AGENT_APT_SUITE: linuxAgentAptSuite,
-    CLASSROOMPATH_SPA_IMAGE: previousManifest?.spa_image,
-    CLASSROOMPATH_VERIFIER_IMAGE: previousManifest?.verifier_image,
-  };
-  for (const [key, value] of Object.entries(requiredValues)) {
-    if (!String(value ?? '').trim()) {
+  /**
+   * @param {unknown} value
+   * @param {string} key
+   * @returns {string}
+   */
+  const requiredValue = (value, key) => {
+    const normalized = String(value ?? '').trim();
+    if (!normalized) {
       throw new Error(`Manifest-only release candidate is missing required value: ${key}`);
     }
-  }
+    return normalized;
+  };
+  const previousWindowsPin = {
+    version: previousManifest.windows_offline_installer_template_version,
+    commit: previousManifest.windows_offline_installer_template_commit,
+    releaseTag: previousManifest.windows_offline_installer_template_release_tag,
+    sha256: previousManifest.windows_offline_installer_template_sha256,
+  };
+  /** @type {WindowsOfflineInstallerTemplatePin} */
+  const windowsPin = selectWindowsOfflineInstallerTemplatePin({
+    newPin: newWindowsPin,
+    previousPin: previousWindowsPin,
+  });
 
-  const windowsPin = validateWindowsOfflineInstallerTemplatePin(
-    {
-      version: previousManifest?.windows_offline_installer_template_version,
-      commit: previousManifest?.windows_offline_installer_template_commit,
-      releaseTag: previousManifest?.windows_offline_installer_template_release_tag,
-      sha256: previousManifest?.windows_offline_installer_template_sha256,
-    },
-    { context: 'Previous Windows offline installer pin' }
-  );
-
-  return {
-    APP_SHA: String(appSha).trim(),
-    CLASSROOMPATH_GATEWAY_IMAGE: previousManifest.gateway_image,
-    CLASSROOMPATH_MIGRATIONS_IMAGE: previousManifest.migrations_image,
-    OPENPATH_FIREFOX_ASSETS_IMAGE: previousManifest.openpath_firefox_assets_image,
-    OPENPATH_API_IMAGE: previousManifest.openpath_api_image,
-    OPENPATH_VERSION: String(openpathVersion).trim(),
-    OPENPATH_LINUX_AGENT_VERSION: String(linuxAgentVersion).trim(),
-    OPENPATH_LINUX_AGENT_APT_SUITE: String(linuxAgentAptSuite).trim(),
+  const artifact = {
+    APP_SHA: requiredValue(appSha, 'APP_SHA'),
+    CLASSROOMPATH_GATEWAY_IMAGE: requiredValue(
+      previousManifest.gateway_image,
+      'CLASSROOMPATH_GATEWAY_IMAGE'
+    ),
+    CLASSROOMPATH_MIGRATIONS_IMAGE: requiredValue(
+      previousManifest.migrations_image,
+      'CLASSROOMPATH_MIGRATIONS_IMAGE'
+    ),
+    OPENPATH_FIREFOX_ASSETS_IMAGE: requiredValue(
+      previousManifest.openpath_firefox_assets_image,
+      'OPENPATH_FIREFOX_ASSETS_IMAGE'
+    ),
+    OPENPATH_API_IMAGE: requiredValue(previousManifest.openpath_api_image, 'OPENPATH_API_IMAGE'),
+    OPENPATH_VERSION: requiredValue(openpathVersion, 'OPENPATH_VERSION'),
+    OPENPATH_LINUX_AGENT_VERSION: requiredValue(linuxAgentVersion, 'OPENPATH_LINUX_AGENT_VERSION'),
+    OPENPATH_LINUX_AGENT_APT_SUITE: requiredValue(
+      linuxAgentAptSuite,
+      'OPENPATH_LINUX_AGENT_APT_SUITE'
+    ),
     windows_offline_installer_template_version: windowsPin.version,
     windows_offline_installer_template_commit: windowsPin.commit,
     windows_offline_installer_template_release_tag: windowsPin.releaseTag,
     windows_offline_installer_template_sha256: windowsPin.sha256,
-    CLASSROOMPATH_SPA_IMAGE: previousManifest.spa_image,
-    CLASSROOMPATH_VERIFIER_IMAGE: previousManifest.verifier_image,
+    CLASSROOMPATH_SPA_IMAGE: requiredValue(previousManifest.spa_image, 'CLASSROOMPATH_SPA_IMAGE'),
+    CLASSROOMPATH_VERIFIER_IMAGE: requiredValue(
+      previousManifest.verifier_image,
+      'CLASSROOMPATH_VERIFIER_IMAGE'
+    ),
   };
+  return artifact;
 }
 
 /**
@@ -396,34 +499,61 @@ function parseCliArgs(args) {
   return parsed;
 }
 
+/**
+ * @param {ReleaseCandidateArtifactManifest} manifest
+ * @returns {string}
+ */
 function serializeArtifactReleaseManifest(manifest) {
   return `${Object.entries(manifest)
     .map(([key, value]) => `${key}=${value}`)
     .join('\n')}\n`;
 }
 
+/**
+ * @param {string} name
+ * @returns {string | undefined}
+ */
+function readOptionalEnvironmentValue(name) {
+  const value = process.env[name]?.trim();
+  return value || undefined;
+}
+
 function runManifestOnlyCli() {
   const artifact = buildManifestOnlyReleaseCandidateArtifact({
-    appSha: process.env.APP_SHA,
+    appSha: readOptionalEnvironmentValue('APP_SHA'),
     previousManifest: {
-      gateway_image: process.env.PREVIOUS_CLASSROOMPATH_GATEWAY_IMAGE,
-      migrations_image: process.env.PREVIOUS_CLASSROOMPATH_MIGRATIONS_IMAGE,
-      openpath_firefox_assets_image: process.env.PREVIOUS_OPENPATH_FIREFOX_ASSETS_IMAGE,
-      openpath_api_image: process.env.PREVIOUS_OPENPATH_API_IMAGE,
-      spa_image: process.env.PREVIOUS_CLASSROOMPATH_SPA_IMAGE,
-      verifier_image: process.env.PREVIOUS_CLASSROOMPATH_VERIFIER_IMAGE,
-      windows_offline_installer_template_version:
-        process.env.PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION,
-      windows_offline_installer_template_commit:
-        process.env.PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT,
-      windows_offline_installer_template_release_tag:
-        process.env.PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG,
-      windows_offline_installer_template_sha256:
-        process.env.PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256,
+      gateway_image: readOptionalEnvironmentValue('PREVIOUS_CLASSROOMPATH_GATEWAY_IMAGE'),
+      migrations_image: readOptionalEnvironmentValue('PREVIOUS_CLASSROOMPATH_MIGRATIONS_IMAGE'),
+      openpath_firefox_assets_image: readOptionalEnvironmentValue(
+        'PREVIOUS_OPENPATH_FIREFOX_ASSETS_IMAGE'
+      ),
+      openpath_api_image: readOptionalEnvironmentValue('PREVIOUS_OPENPATH_API_IMAGE'),
+      spa_image: readOptionalEnvironmentValue('PREVIOUS_CLASSROOMPATH_SPA_IMAGE'),
+      verifier_image: readOptionalEnvironmentValue('PREVIOUS_CLASSROOMPATH_VERIFIER_IMAGE'),
+      windows_offline_installer_template_version: readOptionalEnvironmentValue(
+        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION'
+      ),
+      windows_offline_installer_template_commit: readOptionalEnvironmentValue(
+        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT'
+      ),
+      windows_offline_installer_template_release_tag: readOptionalEnvironmentValue(
+        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG'
+      ),
+      windows_offline_installer_template_sha256: readOptionalEnvironmentValue(
+        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256'
+      ),
     },
-    openpathVersion: process.env.OPENPATH_VERSION,
-    linuxAgentVersion: process.env.OPENPATH_LINUX_AGENT_VERSION,
-    linuxAgentAptSuite: process.env.OPENPATH_LINUX_AGENT_APT_SUITE,
+    openpathVersion: readOptionalEnvironmentValue('OPENPATH_VERSION'),
+    linuxAgentVersion: readOptionalEnvironmentValue('OPENPATH_LINUX_AGENT_VERSION'),
+    linuxAgentAptSuite: readOptionalEnvironmentValue('OPENPATH_LINUX_AGENT_APT_SUITE'),
+    newWindowsPin: {
+      version: readOptionalEnvironmentValue('NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION'),
+      commit: readOptionalEnvironmentValue('NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT'),
+      releaseTag: readOptionalEnvironmentValue(
+        'NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG'
+      ),
+      sha256: readOptionalEnvironmentValue('NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256'),
+    },
   });
   process.stdout.write(serializeArtifactReleaseManifest(artifact));
 }

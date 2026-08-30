@@ -694,6 +694,10 @@ jobs:
           OPENPATH_VERSION: ${{ needs.derive-release-image-refs.outputs.openpath_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_version }}
           OPENPATH_LINUX_AGENT_VERSION: ${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_version }}
           OPENPATH_LINUX_AGENT_APT_SUITE: ${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_apt_suite }}
+          NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION: ${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_version }}
+          NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT: ${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_commit }}
+          NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: ${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_release_tag }}
+          NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256: ${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_sha256 }}
           PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_version }}
           PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_commit }}
           PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_release_tag }}

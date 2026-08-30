@@ -139,6 +139,95 @@ windows_offline_installer_template_sha256=abcdef0123456789abcdef0123456789abcdef
     );
   });
 
+  test('selects the new Windows tuple without mixing it with previous metadata', () => {
+    const previousManifest = {
+      gateway_image: 'ghcr.io/example/gateway@sha256:old-gateway',
+      migrations_image: 'ghcr.io/example/migrations@sha256:old-migrations',
+      openpath_firefox_assets_image: 'ghcr.io/example/firefox@sha256:old-firefox',
+      openpath_api_image: 'ghcr.io/example/api@sha256:old-api',
+      spa_image: 'ghcr.io/example/spa@sha256:old-spa',
+      verifier_image: 'ghcr.io/example/verifier@sha256:old-verifier',
+      windows_offline_installer_template_version: '4.1.0',
+      windows_offline_installer_template_commit: '0123456789abcdef0123456789abcdef01234567',
+      windows_offline_installer_template_release_tag: 'scripts-v4.1.0-01234567',
+      windows_offline_installer_template_sha256:
+        'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+    };
+    const newWindowsPin = {
+      version: '4.2.0',
+      commit: 'fedcba9876543210fedcba9876543210fedcba98',
+      releaseTag: 'scripts-v4.2.0-fedcba9',
+      sha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    };
+    const expectedNewTuple = {
+      windows_offline_installer_template_version: newWindowsPin.version,
+      windows_offline_installer_template_commit: newWindowsPin.commit,
+      windows_offline_installer_template_release_tag: newWindowsPin.releaseTag,
+      windows_offline_installer_template_sha256: newWindowsPin.sha256,
+    };
+    const build = (previous, newPin) =>
+      buildManifestOnlyReleaseCandidateArtifact({
+        appSha: 'new-classroompath-sha',
+        previousManifest: previous,
+        openpathVersion: '4.2.0',
+        linuxAgentVersion: '4.2.0',
+        linuxAgentAptSuite: 'unstable',
+        newWindowsPin: newPin,
+      });
+    const windowsTuple = (artifact) =>
+      Object.fromEntries(Object.entries(artifact).filter(([key]) => key.startsWith('windows_')));
+
+    assert.deepEqual(windowsTuple(build(previousManifest, newWindowsPin)), expectedNewTuple);
+
+    const previousWithoutPin = Object.fromEntries(
+      Object.entries(previousManifest).filter(([key]) => !key.startsWith('windows_'))
+    );
+    assert.deepEqual(windowsTuple(build(previousWithoutPin, newWindowsPin)), expectedNewTuple);
+
+    const previousPartial = {
+      ...previousWithoutPin,
+      windows_offline_installer_template_version:
+        previousManifest.windows_offline_installer_template_version,
+    };
+    assert.deepEqual(windowsTuple(build(previousPartial, newWindowsPin)), expectedNewTuple);
+
+    assert.throws(
+      () => build(previousManifest, { version: newWindowsPin.version }),
+      /complete Windows offline installer pin/
+    );
+  });
+
+  test('fails closed when manifest-only has no new pin and the previous pin is missing or partial', () => {
+    const baseManifest = {
+      gateway_image: 'ghcr.io/example/gateway@sha256:old-gateway',
+      migrations_image: 'ghcr.io/example/migrations@sha256:old-migrations',
+      openpath_firefox_assets_image: 'ghcr.io/example/firefox@sha256:old-firefox',
+      openpath_api_image: 'ghcr.io/example/api@sha256:old-api',
+      spa_image: 'ghcr.io/example/spa@sha256:old-spa',
+      verifier_image: 'ghcr.io/example/verifier@sha256:old-verifier',
+    };
+    for (const previousManifest of [
+      baseManifest,
+      {
+        ...baseManifest,
+        windows_offline_installer_template_commit: '0123456789abcdef0123456789abcdef01234567',
+      },
+    ]) {
+      assert.throws(
+        () =>
+          buildManifestOnlyReleaseCandidateArtifact({
+            appSha: 'new-classroompath-sha',
+            previousManifest,
+            openpathVersion: '4.2.0',
+            linuxAgentVersion: '4.2.0',
+            linuxAgentAptSuite: 'unstable',
+            newWindowsPin: {},
+          }),
+        /complete Windows offline installer pin/
+      );
+    }
+  });
+
   test('does not revive the retired ClassroomPath pin namespace', () => {
     const canonical = normalizeReleaseManifestText(
       `${buildReleaseManifestScenario()}
